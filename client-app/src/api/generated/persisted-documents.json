@@ -1,0 +1,8 @@
+{
+  "sha256:af8e1ae51013b0447b2f85c0f7c70ef04b729d14f06917c0ce7a147162eabbfb": "query GetCurrentUser { currentUser { email firstName id lastName updatedAt } }",
+  "sha256:40d716b767bb51cf495181bd9f0c8d2287e91d02b3ebaebe05267fa8726788c3": "mutation UpdateCurrentUser($data: UpdateCurrentUserInput!) { updateCurrentUser(data: $data) { user { email firstName id lastName updatedAt } } }",
+  "sha256:6a5f0d618d672c4aad9a4d132dfb290ba306800d6235aa57d0240d139fd5f057": "fragment ProjectSummary on Project { archived id name updatedAt } query Projects { projects { ...ProjectSummary } }",
+  "sha256:43d2ed07aa2dbad1dd304b7842a3c7fc1bf5ee2009aad45cff3b3e0f988218eb": "fragment ProjectSummary on Project { archived id name updatedAt } mutation CreateProject($data: CreateProjectInput!) { createProject(data: $data) { project { ...ProjectSummary } } }",
+  "sha256:ecacab456f70095a6e0d557772dfb7a58491d44523a104f6ca513e53b781d78a": "fragment ProjectSummary on Project { archived id name updatedAt } mutation SetProjectArchived($archived: Boolean!, $id: ID!) { setProjectArchived(id: $id, archived: $archived) { project { ...ProjectSummary } } }",
+  "sha256:3f94ccdab2a1444ca2384d1deb0ee0260593841e91548ddbaad54b8e843d8540": "mutation DeleteProject($id: ID!) { deleteProject(id: $id) { deletedId } }"
+}

@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1-labs@sha256:63e440b412b6acba117974e793b7e7f702e58ee65e044bdff1b8d388ee0d853b
+# Pinned by digest so `npm run dev` builds from the local content store instead
+# of re-resolving a floating tag at Docker Hub on every rebuild. Update it
+# deliberately, with docker pull.
+#
+# The one image every local container runs. Compose Watch synchronizes source
+# into it; dependencies, the Prisma client and the framework's generated
+# contracts are owned by the image, so a host node_modules cannot shadow them.
+FROM node:24-bookworm-slim
+WORKDIR /workspace
+
+# openssl: Prisma's query engine. docker and buildx: local-invocation-runner builds
+# and runs task and container-Lambda images through the mounted socket, and a
+# CLI this recent dispatches `docker build` to the buildx plugin.
+# ca-certificates: the slim base ships none and Node brings its own, but buildx
+# fetches registry tokens itself, so a base image the daemon has not cached
+# fails with "x509: certificate signed by unknown authority" without them.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=docker:28-cli /usr/local/bin/docker /usr/local/bin/docker
+COPY --from=docker:28-cli /usr/local/libexec/docker/cli-plugins/docker-buildx \
+     /usr/local/libexec/docker/cli-plugins/docker-buildx
+
+# Manifests before sources: editing a handler must not reinstall the workspace.
+# The glob reaches every depth, so adding a workspace needs no edit here.
+COPY --parents package.json package-lock.json ./**/package.json ./
+# Defer only the root's Prisma postinstall until its inputs are copied below.
+# Dependency install scripts still run; restore the original manifest afterwards.
+RUN --mount=type=cache,target=/root/.npm \
+    cp package.json /tmp/workspace-package.json \
+    && npm pkg delete scripts.postinstall \
+    && npm ci --prefer-offline --no-audit --no-fund \
+    && mv /tmp/workspace-package.json package.json
+
+# The Prisma client is regenerated only when the contract changes.
+COPY packages/database/prisma.config.ts ./packages/database/prisma.config.ts
+COPY packages/database/prisma ./packages/database/prisma
+RUN npm --workspace @repo/database run generate
+
+COPY . .
+RUN npm run framework:generate

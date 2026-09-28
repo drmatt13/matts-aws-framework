@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "request": {
+    "title": "PythonExampleRequest",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["message"],
+    "properties": {
+      "message": {
+        "type": "string"
+      }
+    }
+  },
+  "response": {
+    "title": "PythonExampleResponse",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["ok", "language", "message"],
+    "properties": {
+      "ok": {
+        "const": true
+      },
+      "language": {
+        "const": "python"
+      },
+      "message": {
+        "type": "string"
+      }
+    }
+  }
+}

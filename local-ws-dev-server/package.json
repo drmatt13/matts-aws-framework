@@ -1,0 +1,27 @@
+{
+  "name": "local-ws-server",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon -L",
+    "typecheck": "tsc --noEmit"
+  },
+  "author": "Matthew Sweeney",
+  "license": "UNLICENSED",
+  "description": "",
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.147",
+    "@types/node": "^24.12.4",
+    "@types/ws": "^8.18.0",
+    "nodemon": "^3.1.9",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@repo/framework": "*",
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.1013.0",
+    "dotenv": "^16.4.7",
+    "ws": "^8.18.1"
+  }
+}

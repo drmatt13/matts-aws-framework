@@ -1,0 +1,23 @@
+{
+  "name": "@repo/invocation-test-task",
+  "version": "1.0.0",
+  "description": "The framework's end-to-end task fixture: reads FRAMEWORK_TASK_INPUT, logs it, waits, exits.",
+  "private": true,
+  "license": "UNLICENSED",
+  "author": "Matthew Sweeney",
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": { "@repo/framework": "*" },
+  "devDependencies": {
+    "@types/node": "^24.12.4",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

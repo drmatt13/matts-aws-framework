@@ -1,0 +1,15 @@
+{
+  "watch": [
+    "../framework.config.ts",
+    "../cdk-app/lambda_functions",
+    "../packages/framework",
+    "./src",
+    "./lib",
+    "./events",
+    "../framework-config",
+    "../packages/database/src",
+    "../packages/api-contract"
+  ],
+  "ext": "ts,json,py,Dockerfile,dockerfile",
+  "exec": "tsx src/index.ts"
+}

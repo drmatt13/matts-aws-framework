@@ -1,0 +1,19 @@
+{
+  "name": "test-run-task",
+  "version": "1.0.0",
+  "description": "Framework invocation smoke test: the deployed and local caller for the run-task path.",
+  "main": "index.ts",
+  "author": "Matthew Sweeney",
+  "license": "UNLICENSED",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@repo/framework": "*"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.161",
+    "@types/node": "^24.12.4",
+    "typescript": "^5.9.3"
+  }
+}

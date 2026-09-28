@@ -1,0 +1,45 @@
+{
+  "name": "@repo/database",
+  "version": "1.0.0",
+  "description": "",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "generate": "prisma contract emit",
+    "scaffold": "tsx scripts/scaffold-cli.ts",
+    "db:init": "prisma db init",
+    "db:migrate": "prisma db migrate",
+    "db:update": "prisma db update",
+    "db:verify": "prisma db verify",
+    "db:schema": "prisma db schema",
+    "migration:new": "prisma migration plan",
+    "migration:status": "prisma migration status",
+    "migration:list": "prisma migration list",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "keywords": [],
+  "author": "Matthew Sweeney",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "npm@10.9.8",
+  "dependencies": {
+    "@prisma/orm-postgres": "8.0.0-rc.8"
+  },
+  "devDependencies": {
+    "@prisma/cli-engine": "0.3.0",
+    "@types/node": "^24.12.4",
+    "dotenv": "^17.4.2",
+    "pg": "^8.20.0",
+    "prisma": "8.0.0-rc.12",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  }
+}

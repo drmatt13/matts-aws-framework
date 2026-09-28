@@ -1,0 +1,21 @@
+{
+  // Typed as the browser program it is. `types: []` keeps ambient @types/node
+  // out of the compilation, so a `node:fs` import here is a compile error;
+  // `lib` names the globals a bundle may actually rely on. Note the gap this
+  // leaves: an explicit dependency can still bring Node typings back, and
+  // nothing checks the resolved import graph, so a server-only module reached
+  // through a dependency will typecheck and then fail in the browser.
+  "compilerOptions": {
+    "target": "es2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "types": [],
+    "strict": true,
+    "noEmit": true,
+    "sourceMap": false,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "exclude": ["node_modules", "**/*.test.ts"]
+}

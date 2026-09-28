@@ -1,0 +1,299 @@
+# Handwritten local containers. Routes, tasks and workflows stay in framework.config.ts.
+# npm run export:cdk-outputs, then npm run dev (docker compose up --build --watch).
+# Postgres and pgAdmin publish on 127.0.0.1 only: their credentials are
+# placeholders, so nothing else on your network may reach them.
+# One Dockerfile with one stage: every container runs the same workspace, and
+# only local-invocation-runner is given the Docker socket that makes its CLI useful.
+# Compose tags one image per service; they share every layer.
+x-build: &build
+  context: .
+  dockerfile: Dockerfile.dev
+
+# Source delivery for the long-running service containers. Each one restarts its
+# own process - nodemon, or Vite's own reload - so Compose only has to put the
+# file there. Dockerfiles stay out: these containers never build anything, and
+# local-invocation-runner, which does, declares its own rules below.
+x-watch-rule: &watch-rule
+  action: sync
+  path: .
+  target: /workspace
+  initial_sync: true
+  ignore:
+    - '**/node_modules/'
+    - '**/.env*'
+    - '**/dist/'
+    - '**/cdk.out/'
+    - .cache/
+    - .framework/
+    - .git/
+    - '**/package.json'
+    - package-lock.json
+    - '**/Dockerfile*'
+    - '**/dockerfile'
+    - framework.config.ts
+    - framework-config/
+    - packages/framework/src/
+    - packages/framework/scripts/
+    - packages/database/prisma/
+    - packages/database/src/generated/
+x-watch: &watch
+  watch:
+    - *watch-rule
+    - action: sync+restart
+      path: ./framework.config.ts
+      target: /workspace/framework.config.ts
+    - action: sync+restart
+      path: ./framework-config
+      target: /workspace/framework-config
+    - action: sync+restart
+      path: ./packages/framework/src
+      target: /workspace/packages/framework/src
+    - action: sync+restart
+      path: ./packages/framework/scripts
+      target: /workspace/packages/framework/scripts
+
+x-aws-env: &aws-env
+  AWS_PROFILE: ${LOCAL_AWS_PROFILE:-dev}
+  AWS_REGION: ${LOCAL_AWS_REGION:-us-east-1}
+  AWS_SDK_LOAD_CONFIG: '1'
+x-aws-mount: &aws-mount
+  type: bind
+  source: ${LOCAL_AWS_CONFIG_DIR:?Run npm run export:cdk-outputs to prepare root .env}
+  target: /root/.aws
+  read_only: true
+  bind:
+    create_host_path: false
+x-resources-mount: &resources-mount
+  type: bind
+  source: ./.framework/local
+  target: /workspace/.framework/local
+  read_only: true
+  bind:
+    create_host_path: false
+x-inputs-mount: &inputs-mount
+  type: bind
+  source: ./cdk-app/.env
+  target: /workspace/cdk-app/.env
+  read_only: true
+  bind:
+    create_host_path: false
+x-auth-env: &auth-env
+  USER_POOL_ID: ${USER_POOL_ID}
+  USER_POOL_CLIENT_ID: ${USER_POOL_CLIENT_ID}
+  COGNITO_DOMAIN_URL: ${COGNITO_DOMAIN_URL}
+  LOCAL_BROWSER_ORIGINS: ${LOCAL_BROWSER_ORIGINS}
+x-runtime-env: &runtime-env
+  <<: [*aws-env, *auth-env]
+  PRIMARY_DATABASE_URL: postgresql://admin:password@postgres:5432/app_db
+  LOCAL_FRAMEWORK_DEPLOYMENT: ${LOCAL_FRAMEWORK_DEPLOYMENT}
+  LOCAL_FRAMEWORK_ACCOUNT: ${LOCAL_FRAMEWORK_ACCOUNT}
+  USE_LOCAL_DEV_STACK: 'false'
+  LOCAL_INVOCATION_RUNNER_URL: http://local-invocation-runner:8090
+  # Where @repo/framework/runtime/websocket pushes to a browser locally: the
+  # WebSocket dev server's management port, reachable on the Compose network only.
+  LOCAL_WEBSOCKET_CONNECTIONS_URL: http://local-ws-dev-server:8082
+  LOCAL_LAMBDA_WARM: ${LOCAL_LAMBDA_WARM:-true}
+  LOCAL_LAMBDA_WARM_MAX: ${LOCAL_LAMBDA_WARM_MAX:-6}
+  LOCAL_LAMBDA_WARM_IDLE_SECONDS: ${LOCAL_LAMBDA_WARM_IDLE_SECONDS:-120}
+x-database-ready: &database-ready
+  postgres:
+    condition: service_healthy
+  prisma-migrate:
+    condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: app_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password
+    ports: ['127.0.0.1:${POSTGRES_HOST_PORT}:5432']
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U admin -d app_db']
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+      start_interval: 1s
+
+  prisma-migrate:
+    build: *build
+    working_dir: /workspace/packages/database
+    environment:
+      DATABASE_URL: postgresql://admin:password@postgres:5432/app_db
+      PRISMA_LOCAL_SCHEMA_SYNC: ${PRISMA_LOCAL_SCHEMA_SYNC:-migrate}
+    command:
+      - sh
+      - -c
+      - 'case "$$PRISMA_LOCAL_SCHEMA_SYNC" in migrate|"") npm run db:migrate -- --no-interactive ;; push) npm run db:update -- --no-interactive --confirm app_db ;; *) echo "PRISMA_LOCAL_SCHEMA_SYNC must be migrate or push" >&2; exit 64 ;; esac'
+    # Migration authoring writes back; dependencies and generated clients stay in the image.
+    volumes:
+      - ./packages/database/prisma:/workspace/packages/database/prisma
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  local-invocation-runner:
+    build: *build
+    init: true
+    stop_grace_period: 30s
+    command: [node, --import, tsx, local-invocation-runner/src/index.ts]
+    # Two kinds of edit, two actions. Ordinary workload source is a build input
+    # this process reads when it prepares an image, so delivering it must not
+    # restart anything: a restart here cancels preparation, stops tracked
+    # containers and loses run history. Its own implementation and the framework
+    # modules it imports through package barrels reach it only by restarting.
+    # The lists do not overlap - the sync rule ignores every restart path - so
+    # one edit is handled once.
+    develop:
+      watch:
+        - action: sync
+          path: .
+          target: /workspace
+          initial_sync: true
+          ignore:
+            - '**/node_modules/'
+            - '**/.env*'
+            - '**/dist/'
+            - '**/cdk.out/'
+            - .cache/
+            - .framework/
+            - .git/
+            - '**/package.json'
+            - package-lock.json
+            # Workload Dockerfiles and their build inputs do sync: this is the
+            # one container that builds them. Dockerfile.dev builds the image
+            # underneath it, which is an explicit rebuild, not a file to deliver.
+            - Dockerfile.dev
+            - packages/database/prisma/
+            - packages/database/src/generated/
+            - local-invocation-runner/src/
+            - local-invocation-runner/tsconfig.json
+            - packages/framework/src/
+            - framework.config.ts
+            - framework-config/
+        - action: sync+restart
+          path: ./local-invocation-runner/src
+          target: /workspace/local-invocation-runner/src
+          initial_sync: true
+        - action: sync+restart
+          path: ./local-invocation-runner/tsconfig.json
+          target: /workspace/local-invocation-runner/tsconfig.json
+        - action: sync+restart
+          path: ./packages/framework/src
+          target: /workspace/packages/framework/src
+          initial_sync: true
+        - action: sync+restart
+          path: ./framework.config.ts
+          target: /workspace/framework.config.ts
+        - action: sync+restart
+          path: ./framework-config
+          target: /workspace/framework-config
+          initial_sync: true
+    environment:
+      <<: *runtime-env
+      LOCAL_CONTAINER_LAMBDA_TIMEOUT_MS: ${LOCAL_CONTAINER_LAMBDA_TIMEOUT_MS:-10000}
+    ports: ['127.0.0.1:${LOCAL_INVOCATION_RUNNER_HOST_PORT}:8090']
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - *resources-mount
+      - *inputs-mount
+      - *aws-mount
+    depends_on: *database-ready
+    healthcheck:
+      test: [CMD, node, -e, "require('node:http').get('http://127.0.0.1:8090/health',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 1s
+
+  local-api-dev-server:
+    build: *build
+    init: true
+    command: [npm, --workspace, local-api-dev-server, run, dev]
+    develop: *watch
+    environment:
+      <<: *runtime-env
+      PORT: '8080'
+      DEV_LAMBDA_REPLAY_BUCKET_NAME: ${DEV_LAMBDA_REPLAY_BUCKET_NAME:-}
+      DEV_LAMBDA_REPLAY_QUEUE_URL: ${DEV_LAMBDA_REPLAY_QUEUE_URL:-}
+    ports: ['${LOCAL_API_DEV_SERVER_HOST_PORT}:8080']
+    volumes: [*aws-mount, *resources-mount, *inputs-mount]
+    depends_on:
+      <<: *database-ready
+      local-invocation-runner:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "require('node:http').get('http://127.0.0.1:8080/',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 1s
+
+  local-ws-dev-server:
+    build: *build
+    init: true
+    command: [npm, --workspace, local-ws-dev-server, run, dev]
+    develop: *watch
+    environment:
+      <<: *runtime-env
+      PORT: '8081'
+      # Not published: see LOCAL_WEBSOCKET_CONNECTIONS_URL above.
+      CONNECTIONS_PORT: '8082'
+    ports: ['${LOCAL_WS_DEV_SERVER_HOST_PORT}:8081']
+    volumes: [*aws-mount, *resources-mount, *inputs-mount]
+    depends_on:
+      <<: *database-ready
+      local-invocation-runner:
+        condition: service_healthy
+
+  langgraph:
+    build: *build
+    init: true
+    command: [node, --import, tsx, packages/framework/scripts/run-service.ts, langgraph, --, npm, --workspace, '@repo/langgraph', run, dev]
+    develop: *watch
+    environment:
+      <<: *runtime-env
+      PORT: '5000'
+    volumes: [*aws-mount, *resources-mount, *inputs-mount]
+    depends_on: *database-ready
+    healthcheck:
+      test: [CMD, node, -e, "require('node:http').get('http://127.0.0.1:5000/health',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+      start_interval: 1s
+
+  frontend-ws-connection-and-payload-tester:
+    build: *build
+    init: true
+    command: [npm, --workspace, frontend-ws-connection-and-payload-tester, run, dev]
+    develop: *watch
+    environment:
+      VITE_LOCAL_WS_URL: 'ws://localhost:${LOCAL_WS_DEV_SERVER_HOST_PORT}?token='
+      VITE_API_GATEWAY_WS_URL: ${VITE_API_GATEWAY_WS_URL:-}
+    ports: ['${FRONTEND_WS_CONNECTION_AND_PAYLOAD_TESTER_HOST_PORT}:3001']
+
+  pgadmin:
+    image: dpage/pgadmin4
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@local.dev
+      PGADMIN_DEFAULT_PASSWORD: password
+      GUNICORN_ACCESS_LOGFILE: /dev/null
+    ports: ['127.0.0.1:${PGADMIN_HOST_PORT}:80']
+    # Its image declares VOLUME; tmpfs prevents an anonymous data volume.
+    tmpfs: [/var/lib/pgadmin]
+    volumes: ['./pgadmin/servers.json:/pgadmin4/servers.json:ro']
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

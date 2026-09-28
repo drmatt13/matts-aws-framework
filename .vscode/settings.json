@@ -1,0 +1,17 @@
+{
+  "prisma.pinToPrisma6": false,
+
+  // The Prisma VS Code extension (v31.x) bundles a Prisma 7-era language
+  // server and claims every `.prisma` file. `prisma/contract.prisma` is
+  // Prisma 8 PSL (`Uuid`, `TimestamptzString(6)`, `@@index(..., unique: true)`),
+  // which that server does not understand — letting it format on save rewrites
+  // the contract into Prisma 7 syntax and breaks `prisma contract emit`.
+  // Remove these once the extension ships Prisma 8 support.
+  "[prisma]": {
+    "editor.formatOnSave": false,
+    "editor.formatOnPaste": false,
+    "editor.formatOnSaveMode": "file"
+  },
+  "prisma.enableDiagnostics": false,
+  "prisma.fileWatcher": false
+}

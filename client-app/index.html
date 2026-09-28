@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en" class="light" data-theme="light" style="color-scheme: light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>matt's-aws-framework</title>
+    <meta
+      name="description"
+      content="A development kit for building, testing, and shipping AWS CDK applications."
+    />
+    <meta name="application-name" content="matt's-aws-framework" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="http://localhost:3000/" />
+    <link rel="image_src" href="/og/homepage.jpg" />
+    <meta property="og:site_name" content="matt's-aws-framework" />
+    <meta property="og:title" content="matt's-aws-framework" />
+    <meta
+      property="og:description"
+      content="A development kit for building, testing, and shipping AWS CDK applications."
+    />
+    <meta property="og:image" content="/og/homepage.jpg" />
+    <meta property="og:image:secure_url" content="/og/homepage.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="matt's-aws-framework preview"
+    />
+    <meta property="og:url" content="http://localhost:3000/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="matt's-aws-framework" />
+    <meta
+      name="twitter:description"
+      content="A development kit for building, testing, and shipping AWS CDK applications."
+    />
+    <meta name="twitter:image" content="/og/homepage.jpg" />
+    <meta
+      name="twitter:image:alt"
+      content="matt's-aws-framework preview"
+    />
+
+    <!--
+      Resolves the stored theme before first paint, so a reload in dark mode
+      never flashes white. Mirrors applyThemeMode in src/components/ThemeToggle.
+      Inline and synchronous on purpose -- a module import would be too late.
+    -->
+    <script>
+      try {
+        var mode = localStorage.getItem("theme");
+        if (mode !== "light" && mode !== "dark") mode = "auto";
+        var resolved =
+          mode === "auto"
+            ? matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light"
+            : mode;
+        var root = document.documentElement;
+        root.classList.remove("light", "dark");
+        root.classList.add(resolved);
+        if (mode === "auto") root.removeAttribute("data-theme");
+        else root.setAttribute("data-theme", mode);
+        root.style.colorScheme = resolved;
+      } catch (e) {
+        /* Private mode can throw on localStorage; the light default stands. */
+      }
+    </script>
+  </head>
+  <body
+    class="bg-canvas text-ink antialiased mx-auto min-h-dvh overflow-y-scroll overflow-x-clip scrollbar-gutter-stable"
+  >
+    <div id="root"></div>
+    <script type="module" src="/src/client.tsx"></script>
+  </body>
+</html>

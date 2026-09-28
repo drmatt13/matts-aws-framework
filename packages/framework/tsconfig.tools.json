@@ -1,0 +1,17 @@
+{
+  // Typecheck generation and local checks separately from source and tests.
+  // These tools run through tsx and use import.meta with extensionless dynamic
+  // imports. Source modules retain their NodeNext configuration.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["scripts/**/*.ts"]
+}

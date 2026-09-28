@@ -1,0 +1,49 @@
+{
+  "name": "@repo/framework",
+  "version": "1.0.0",
+  "description": "Framework configuration, backend runtime, and local execution through explicit entry points.",
+  "private": true,
+  "exports": {
+    "./config": "./src/config/index.ts",
+    "./config/source": "./src/config/source.ts",
+    "./runtime/invocation": "./src/runtime/invocation.ts",
+    "./runtime/auth": "./src/runtime/auth.ts",
+    "./runtime/callbacks": "./src/runtime/callbacks.ts",
+    "./runtime/http": "./src/runtime/http.ts",
+    "./runtime/database": "./src/runtime/database.ts",
+    "./runtime/event-replay": "./src/runtime/event-replay.ts",
+    "./runtime/websocket": "./src/runtime/websocket.ts",
+    "./local": "./src/local/index.ts",
+    "./local/origins": "./src/local/origins.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.tools.json",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.1127.0",
+    "@aws-sdk/client-dynamodb": "^3.1136.0",
+    "@aws-sdk/client-ecs": "^3.1128.0",
+    "@aws-sdk/client-eventbridge": "^3.1136.0",
+    "@aws-sdk/client-s3": "^3.1032.0",
+    "@aws-sdk/client-secrets-manager": "^3.930.0",
+    "@aws-sdk/client-sfn": "^3.1128.0",
+    "@aws-sdk/client-sns": "^3.1136.0",
+    "@aws-sdk/client-sqs": "^3.1032.0",
+    "cookie": "^0.7.2",
+    "jose": "^6.2.3",
+    "yaml": "^2.8.1"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.161",
+    "@types/cookie": "^0.6.0",
+    "@types/node": "^24.12.4",
+    "esbuild": "0.28.2",
+    "jsonata": "^2.2.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "peerDependencies": {
+    "aws-cdk-lib": "^2.263.0"
+  }
+}

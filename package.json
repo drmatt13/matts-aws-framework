@@ -1,0 +1,64 @@
+{
+  "name": "matts-aws-framework",
+  "author": "Matthew Sweeney",
+  "license": "SEE LICENSE IN LICENSE",
+  "private": true,
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "postinstall": "npm --workspace @repo/database run generate",
+    "dev": "docker compose up --build --watch",
+    "dev:client": "npm --workspace client-app run dev",
+    "dev:request": "tsx scripts/dev-request.ts",
+    "replay:list": "tsx scripts/replay.ts list",
+    "replay:redrive": "tsx scripts/replay.ts redrive",
+    "contract": "npm run framework:generate && npm --workspace @repo/database run generate && npm run codegen && npm run typecheck",
+    "framework:generate": "tsx packages/framework/scripts/generate-contracts.ts",
+    "framework:check": "tsx packages/framework/scripts/generate-contracts.ts --check && tsx packages/framework/scripts/check-local.ts",
+    "workflows:smoke": "tsx scripts/workflows-smoke.ts",
+    "workflows:inspect": "tsx packages/framework/scripts/inspect-workflows.ts",
+    "codegen": "graphql-codegen --config codegen.ts",
+    "codegen:check": "graphql-codegen --config codegen.ts --check",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm test --workspaces --if-present",
+    "lockfile:check": "node scripts/check-lockfile-platforms.mjs",
+    "verify": "node scripts/check-lockfile-platforms.mjs && npm run framework:check && npm --workspace @repo/database run generate && npm run codegen:check && npm run typecheck && node --import tsx --test cdk-app/lambda_functions/http_functions/graphql-api/schema/*.test.ts && npm run test",
+    "export:cdk-outputs": "tsx scripts/export-cdk-outputs.mjs",
+    "deploy": "tsx scripts/deploy.ts"
+  },
+  "workspaces": [
+    "client-app",
+    "local-api-dev-server",
+    "local-invocation-runner",
+    "cdk-app",
+    "cdk-app/lambda_functions/*/*",
+    "cdk-app/ecs_containers/services/*",
+    "cdk-app/ecs_containers/tasks/*",
+    "packages/*",
+    "frontend-ws-connection-and-payload-tester",
+    "local-ws-dev-server"
+  ],
+  "devDependencies": {
+    "@graphql-codegen/cli": "^7.0.0",
+    "@graphql-codegen/schema-ast": "^6.0.0",
+    "@hono/node-server": "1.19.15",
+    "deepmerge-ts": "8.0.2",
+    "esbuild": "0.28.2",
+    "hono": "4.13.5",
+    "json-schema-to-typescript": "^15.0.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "packageManager": "npm@11.19.0",
+  "overrides": {
+    "@hono/node-server": "1.19.15",
+    "@prisma/cli-engine": "0.3.0",
+    "@prisma/orm-postgres": "8.0.0-rc.8",
+    "deepmerge-ts": "8.0.2",
+    "hono": "4.13.5",
+    "lodash": "4.18.1",
+    "valibot": "1.4.2",
+    "vite": "8.2.2"
+  }
+}

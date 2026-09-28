@@ -1,0 +1,21 @@
+{
+  "name": "@repo/local-invocation-runner",
+  "version": "1.0.0",
+  "description": "Isolated Docker executor for declared local targets: container Lambda images, container tasks, and workflow executions.",
+  "private": true,
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@repo/framework": "*",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.12.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

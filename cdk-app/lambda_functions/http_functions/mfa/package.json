@@ -1,0 +1,22 @@
+{
+  "name": "mfa",
+  "version": "1.0.0",
+  "description": "A Lambda function that enrolls users in authenticator-app two-step verification.",
+  "main": "index.ts",
+  "author": "Matthew Sweeney",
+  "license": "UNLICENSED",
+  "scripts": {
+    "compile": "tsc",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
+    "@repo/framework": "*",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.161",
+    "@types/node": "^24.12.4",
+    "typescript": "^5.9.3"
+  }
+}

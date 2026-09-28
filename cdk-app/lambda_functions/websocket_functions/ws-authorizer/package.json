@@ -1,0 +1,21 @@
+{
+  "name": "authorizer-function",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "author": "Matthew Sweeney",
+  "license": "UNLICENSED",
+  "scripts": {
+    "compile": "tsc",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@repo/framework": "*",
+    "esbuild": "^0.28.2"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.92",
+    "@types/node": "^24.12.4",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.9.3"
+  }
+}

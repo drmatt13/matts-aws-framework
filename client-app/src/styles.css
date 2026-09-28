@@ -1,0 +1,136 @@
+@import "tailwindcss";
+
+/* Theme follows the `.dark` class that ThemeToggle writes onto <html>, so an
+   explicit choice beats the OS preference instead of fighting it. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------------------------------------------------------------------------
+   Brand. Rebranding this kit means editing the values below and nothing else:
+   every surface, hairline, focus ring and gradient is derived from them, and
+   Tailwind mints the matching utilities (bg-surface, text-muted, border-line,
+   ring-brand/20, ...) automatically.
+   --------------------------------------------------------------------------- */
+@theme {
+  --color-brand: oklch(0.63 0.226 25); /* TanStack coral  ~#ff4154 */
+  --color-brand-2: oklch(0.77 0.166 62); /* TanStack amber  ~#ff9f1c */
+  --color-brand-3: oklch(0.62 0.16 285); /* cool counterweight        */
+  --color-accent: oklch(0.55 0.19 25); /* coral, darkened to pass AA */
+
+  --color-canvas: oklch(0.985 0.004 85);
+  --color-surface: oklch(1 0 0);
+  --color-line: oklch(0.9 0.006 80);
+  --color-ink: oklch(0.24 0.008 65);
+  --color-muted: oklch(0.53 0.012 70);
+
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.04), 0 16px 40px -18px
+    oklch(0 0 0 / 0.25);
+}
+
+/* Only the neutrals move in the dark; the brand hues carry across unchanged. */
+.dark {
+  --color-accent: oklch(0.78 0.15 30);
+  --color-canvas: oklch(0.18 0.008 70);
+  --color-surface: oklch(0.23 0.009 70);
+  --color-line: oklch(0.32 0.01 70);
+  --color-ink: oklch(0.96 0.004 85);
+  --color-muted: oklch(0.71 0.011 75);
+  --shadow-card: 0 1px 2px oklch(0 0 0 / 0.3), 0 16px 40px -18px
+    oklch(0 0 0 / 0.6);
+}
+
+@layer base {
+  body {
+    @apply bg-canvas text-ink;
+  }
+
+  ::selection {
+    @apply bg-brand/20;
+  }
+}
+
+@layer components {
+  /* The first screen anyone sees. A soft field of TanStack light over the
+     canvas -- three radial washes, no images, retinted by the tokens above. */
+  .auth-stage {
+    @apply relative flex min-h-dvh flex-col items-center justify-center gap-7 px-5 py-12;
+    background:
+      radial-gradient(
+        58rem 38rem at 6% -14%,
+        color-mix(in oklab, var(--color-brand) 26%, transparent),
+        transparent 62%
+      ),
+      radial-gradient(
+        50rem 34rem at 98% 2%,
+        color-mix(in oklab, var(--color-brand-2) 24%, transparent),
+        transparent 60%
+      ),
+      radial-gradient(
+        46rem 34rem at 50% 114%,
+        color-mix(in oklab, var(--color-brand-3) 15%, transparent),
+        transparent 62%
+      ),
+      var(--color-canvas);
+  }
+
+  /* Same light, dialled right down, so signed-in pages read as the same app. */
+  .app-stage {
+    @apply min-h-dvh;
+    background:
+      radial-gradient(
+        54rem 30rem at 50% -18%,
+        color-mix(in oklab, var(--color-brand) 11%, transparent),
+        transparent 65%
+      ),
+      var(--color-canvas);
+  }
+
+  .auth-card {
+    @apply relative w-full overflow-hidden rounded-2xl border border-line bg-surface/85 p-7 shadow-card backdrop-blur-xl sm:p-8;
+  }
+
+  /* The one flourish: a brand hairline caught along the top edge. */
+  .auth-card::before {
+    content: "";
+    @apply pointer-events-none absolute inset-x-0 top-0 h-px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      var(--color-brand),
+      var(--color-brand-2),
+      transparent
+    );
+  }
+
+  .card {
+    @apply rounded-2xl border border-line bg-surface p-6 shadow-card;
+  }
+
+  .label {
+    @apply mb-1.5 block text-[0.8125rem] font-medium text-ink/85;
+  }
+
+  /* 16px under sm: keeps iOS from zooming the viewport on focus; 14px above. */
+  .field {
+    @apply w-full rounded-lg border border-line bg-canvas/70 px-3 py-2.5 text-base shadow-xs outline-none transition sm:text-sm;
+    @apply placeholder:text-muted/70;
+    @apply focus:border-brand/55 focus:bg-surface focus:ring-4 focus:ring-brand/15;
+    @apply disabled:cursor-not-allowed disabled:opacity-55;
+  }
+
+  .alert {
+    @apply rounded-lg border px-3 py-2.5 text-sm;
+  }
+  .alert-ok {
+    @apply border-emerald-600/25 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300;
+  }
+  .alert-bad {
+    @apply border-red-600/25 bg-red-500/10 text-red-800 dark:text-red-300;
+  }
+  .alert-info {
+    @apply border-amber-600/30 bg-amber-500/10 text-amber-900 dark:text-amber-300;
+  }
+
+  .link {
+    @apply font-medium text-accent underline-offset-4 transition hover:underline;
+  }
+}

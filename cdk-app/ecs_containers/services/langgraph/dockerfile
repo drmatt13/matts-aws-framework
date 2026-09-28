@@ -1,0 +1,51 @@
+FROM node:24-bookworm-slim AS build
+WORKDIR /workspace
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl \
+  && rm -rf /var/lib/apt/lists/*
+
+# Copy the whole monorepo so npm workspaces can see shared packages.
+# The build context is the repository root for both docker-compose and the
+# CDK image asset, so the workspace paths below resolve in either case.
+COPY . .
+
+# Install all workspace dependencies from the root lockfile.
+RUN npm ci
+
+# Run setup/build commands for shared workspace packages that need them.
+# Keep @repo/database because it needs code generation.
+RUN npm run generate --workspace @repo/database
+
+# If you later add another shared package that needs its own build step,
+# add another line like one of these:
+#
+# RUN npm run build --workspace @repo/<my-shared-package>
+# RUN npm run generate --workspace @repo/<my-shared-package>
+#
+# Only add a line if that package needs a separate build or generate step.
+
+# Build the ECS service itself.
+RUN npm run build --workspace @repo/langgraph
+
+
+FROM node:24-bookworm-slim AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+
+# Copy the built service.
+COPY --from=build /workspace/cdk-app/ecs_containers/services/langgraph/dist ./dist
+COPY --from=build /workspace/cdk-app/ecs_containers/services/langgraph/package.json ./package.json
+
+# Copy installed dependencies so the app can actually run.
+COPY --from=build /workspace/node_modules ./node_modules
+
+# If a shared package needs runtime files that are not bundled into dist,
+# copy them here with another COPY line.
+#
+# Example:
+# COPY --from=build /workspace/packages/<my-shared-package>/dist ./packages/<my-shared-package>/dist
+
+EXPOSE 5000
+
+CMD ["npm", "run", "start"]

@@ -1,0 +1,25 @@
+{
+  "name": "sign-out",
+  "version": "1.0.0",
+  "description": "A Lambda function to handle user sign-out.",
+  "main": "index.ts",
+  "repository": "",
+  "author": "Matthew Sweeney",
+  "license": "UNLICENSED",
+  "scripts": {
+    "lint": "eslint '*.ts' --quiet --fix",
+    "compile": "tsc",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.0.0",
+    "@repo/framework": "*",
+    "esbuild": "^0.28.2"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.161",
+    "@types/node": "^24.12.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}

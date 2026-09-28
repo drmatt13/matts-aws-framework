@@ -1,0 +1,44 @@
+[
+  {
+    "id": "dropColumn.users.profile_picture",
+    "label": "Drop column \"profile_picture\" from \"users\"",
+    "operationClass": "destructive",
+    "target": {
+      "id": "postgres",
+      "details": {
+        "schema": "public",
+        "objectType": "column",
+        "name": "profile_picture",
+        "table": "users"
+      }
+    },
+    "precheck": [
+      {
+        "description": "ensure column \"profile_picture\" exists",
+        "sql": "SELECT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "users",
+          "profile_picture"
+        ]
+      }
+    ],
+    "execute": [
+      {
+        "description": "drop column \"profile_picture\"",
+        "sql": "ALTER TABLE \"public\".\"users\" DROP COLUMN \"profile_picture\""
+      }
+    ],
+    "postcheck": [
+      {
+        "description": "verify column \"profile_picture\" does not exist",
+        "sql": "SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"information_schema\".\"columns\" WHERE (\"table_schema\" = $1 AND \"table_name\" = $2 AND \"column_name\" = $3)) AS \"result\"",
+        "params": [
+          "public",
+          "users",
+          "profile_picture"
+        ]
+      }
+    ]
+  }
+]

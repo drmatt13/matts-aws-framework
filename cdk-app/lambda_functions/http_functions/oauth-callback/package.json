@@ -1,0 +1,26 @@
+{
+  "name": "oauth-callback",
+  "version": "1.0.0",
+  "description": "A Lambda function to exchange Cognito OAuth codes and establish app sessions.",
+  "main": "index.ts",
+  "repository": "",
+  "author": "Matthew Sweeney",
+  "license": "UNLICENSED",
+  "scripts": {
+    "lint": "eslint '*.ts' --quiet --fix",
+    "compile": "tsc",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@aws-sdk/client-secrets-manager": "^3.930.0",
+    "@repo/database": "*",
+    "@repo/framework": "*",
+    "esbuild": "^0.28.2"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.161",
+    "@types/node": "^24.12.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}

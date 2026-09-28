@@ -1,0 +1,57 @@
+schema {
+  query: Query
+  mutation: Mutation
+}
+
+input CreateProjectInput {
+  name: String!
+}
+
+type CreateProjectPayload {
+  project: Project!
+}
+
+type CurrentUser {
+  email: String!
+  firstName: String!
+  id: ID!
+  lastName: String!
+  updatedAt: String!
+}
+
+type DeleteProjectPayload {
+  deletedId: ID!
+}
+
+type Mutation {
+  createProject(data: CreateProjectInput!): CreateProjectPayload!
+  deleteProject(id: ID!): DeleteProjectPayload!
+  setProjectArchived(archived: Boolean!, id: ID!): SetProjectArchivedPayload!
+  updateCurrentUser(data: UpdateCurrentUserInput!): UpdateCurrentUserPayload!
+}
+
+type Project {
+  archived: Boolean!
+  createdAt: String!
+  id: ID!
+  name: String!
+  updatedAt: String!
+}
+
+type Query {
+  currentUser: CurrentUser!
+  projects: [Project!]!
+}
+
+type SetProjectArchivedPayload {
+  project: Project!
+}
+
+input UpdateCurrentUserInput {
+  firstName: String
+  lastName: String
+}
+
+type UpdateCurrentUserPayload {
+  user: CurrentUser!
+}

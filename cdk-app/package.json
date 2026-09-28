@@ -1,0 +1,29 @@
+{
+  "name": "cdk-app",
+  "version": "0.1.0",
+  "author": "Matthew Sweeney",
+  "license": "UNLICENSED",
+  "bin": {
+    "cdk-app": "bin/cdk-app.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.4",
+    "aws-cdk": "^2.1135.1",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@repo/database": "*",
+    "@repo/framework": "*",
+    "aws-cdk-lib": "^2.270.0",
+    "constructs": "^10.6.0"
+  }
+}

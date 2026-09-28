@@ -1,0 +1,7 @@
+# Every text file is checked out with LF on every platform. Git for Windows
+# otherwise converts text files to CRLF on checkout (core.autocrlf=true). A
+# bundled Lambda's source map embeds its source text, and its asset hash is
+# taken from the bundle, so a CRLF checkout gives the same code a different hash:
+# each deploy from the other operating system would update the Lambda for nothing.
+# Files copied into Linux images need LF too.
+* text=auto eol=lf

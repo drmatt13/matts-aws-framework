@@ -1,0 +1,16 @@
+{
+  "name": "invocation-test-step",
+  "version": "1.0.0",
+  "description": "Framework invocation smoke test: the workflow activity that validates and returns its state input.",
+  "main": "index.ts",
+  "author": "Matthew Sweeney",
+  "license": "UNLICENSED",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.161",
+    "@types/node": "^24.12.4",
+    "typescript": "^5.9.3"
+  }
+}
