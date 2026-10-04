@@ -28,7 +28,7 @@ async function main(): Promise<void> {
   }
 
   const api = `http://127.0.0.1:${port}`;
-  const signIn = await fetch(`${api}/sign-in`, {
+  const signIn = await fetch(`${api}/api/sign-in`, {
     method: "POST",
     headers: { "content-type": "application/json", origin },
     body: JSON.stringify({ type: "password", email, password }),
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const response = await fetch(`${api}${path}`, {
+  const response = await fetch(`${api}/api${path}`, {
     method: method.toUpperCase(),
     headers: {
       authorization: `Bearer ${session.idToken}`,

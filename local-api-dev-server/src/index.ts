@@ -3,8 +3,10 @@ import dotenv from "dotenv";
 import cors from "cors";
 import {
   getAllHttpRoutes,
+  getAgentBrowserRoutes,
   getDeclaredHttpMethods,
   getHttpRoutes,
+  getLocalTargets,
   toTargetReference,
   validateFrameworkConfig,
   type LambdaTarget,
@@ -15,6 +17,7 @@ import { getLocalBrowserOrigins } from "@repo/framework/local/origins";
 import framework from "../../framework.config";
 import {
   applyApiGatewayRouting,
+  registerAgentRoute,
   registerApiGatewayErrorHandler,
   registerLambdaRoute,
   registerServiceRoute,
@@ -35,7 +38,8 @@ app.use(
   cors({
     origin: localBrowserOrigins,
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization"],
+    // The session header routes an agent conversation to its session.
+    allowedHeaders: ["Content-Type", "Authorization", "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id"],
     // Same derivation as the deployed HTTP API's corsPreflight, so a route
     // added to the manifest cannot be reachable locally but blocked in AWS.
     methods: [...getDeclaredHttpMethods(framework, "local")],
@@ -92,22 +96,37 @@ const skippedRoutes = getAllHttpRoutes(framework)
   .map((route) => route.path)
   .filter((path) => !enabledPaths.has(path));
 
+// Preserve full browser paths at this server too. HTTP/service declarations
+// are mounted under /api; agent routes are independently mounted verbatim.
+const httpApp = express();
+applyApiGatewayRouting(httpApp);
 for (const route of enabledRoutes) {
   if (route.type === "lambda") {
     registerLambdaRoute(
-      app,
+      httpApp,
       route,
       toTargetReference("lambda", route.target) as LambdaTarget,
       executor,
     );
   } else {
-    registerServiceRoute(app, route, serviceRegistry);
+    registerServiceRoute(httpApp, route, serviceRegistry);
   }
 }
 
+// Explicit agent browser routes stream from
+// its session process in the invocation runner.
+const runnerUrl = process.env.LOCAL_INVOCATION_RUNNER_URL ?? "http://local-invocation-runner:8090";
+const localAgentIds = new Set(getLocalTargets(framework, ["agent"]).map((target) => target.id));
+for (const { id, path } of getAgentBrowserRoutes(framework)) {
+  if (localAgentIds.has(id)) registerAgentRoute(app, id, path, runnerUrl);
+}
+registerUnmatchedRouteHandler(httpApp, enabledRoutes);
+registerApiGatewayErrorHandler(httpApp);
+app.use("/api", httpApp);
+
 // Registered after every route, because it is what answers when none of them
 // did — including a declared path reached with a method it does not serve.
-registerUnmatchedRouteHandler(app, enabledRoutes);
+registerUnmatchedRouteHandler(app, []);
 registerApiGatewayErrorHandler(app);
 
 app.listen(PORT, () => {

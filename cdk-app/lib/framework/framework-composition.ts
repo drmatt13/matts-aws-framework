@@ -13,7 +13,8 @@ import {
 import { DevLambdaReplayStack } from "./dev-lambda-replay-stack";
 import { EcsServicesStack } from "./ecs-services-stack";
 import { EcsTasksStack, type TaskNetworkInput } from "./ecs-tasks-stack";
-import { WorkflowsStack } from "./workflows-stack";
+import type { FrameworkAgentCore } from "./framework-agentcore";
+import { hasOrchestrationCloudResources, OrchestrationStack } from "./orchestration-stack";
 import {
   developmentBridgeReferences,
   WorkflowBridgesStack,
@@ -107,32 +108,41 @@ export function createFrameworkTasks(
   };
 }
 
-export interface FrameworkWorkflowsProps {
+export interface FrameworkOrchestrationProps {
   readonly env: cdk.Environment;
   readonly stackId: (name: string) => string;
   readonly config: FrameworkConfig;
   /**
-   * Which graph this is. A workflow needs no resource catalog, but it still
-   * needs the mode: an execution is started by a developer, so a dev deployment
-   * builds no state machine and the local interpreter answers instead.
+   * Which graph this is. Workflows and agents need no resource catalog, but
+   * they still need the mode: an execution is started, and an agent invoked,
+   * by a developer, so a dev deployment builds neither and the local runner
+   * answers instead.
    */
   readonly mode: CloudMode;
+  /** The user pool an agent with `auth: true` accepts tokens from. */
+  readonly cognito: CognitoResources;
   /** Stacks whose targets this graph invokes, so the reference edge is explicit. */
   readonly dependencies?: readonly cdk.Stack[];
 }
 
 /**
- * Workflow state machines, built after the events and tasks their graphs name.
+ * Workflows and agents, in the one stack they share, built after the events and
+ * tasks their graphs name and before the routed handlers that start or invoke
+ * them.
  *
- * A workflow references targets rather than resources, so it takes no catalog
- * view and no provider: what it needs is the *handles* of the event Lambdas and
- * tasks already built, which is exactly why it is constructed here and not
- * earlier.
+ * They reference targets rather than resources, so they take no catalog view:
+ * what they need is the *handles* of the event Lambdas and tasks already built,
+ * which is exactly why they are constructed here and not earlier. Why the two
+ * share a stack is in `orchestration-stack.ts`.
  */
-export function createFrameworkWorkflows(
+export function createFrameworkOrchestration(
   scope: Construct,
-  props: FrameworkWorkflowsProps,
-): { readonly stack?: WorkflowsStack; readonly bridges?: WorkflowBridgesStack } {
+  props: FrameworkOrchestrationProps,
+): {
+  readonly stack?: OrchestrationStack;
+  readonly agentcore?: FrameworkAgentCore;
+  readonly bridges?: WorkflowBridgesStack;
+} {
   // A development deployment builds no state machines, but it may still owe the
   // developer's machine two things it cannot do for itself: an authenticated
   // HTTPS call and an explicitly granted AWS action. Those get a bridge.
@@ -148,19 +158,25 @@ export function createFrameworkWorkflows(
   // local runner reaches them with the developer's credentials.
   if (props.mode === "dev") publishLocalWorkflowIntegrations(scope, props.config);
 
-  const targets = getCloudTargets(props.config, ["workflow"], props.mode);
-  if (targets.length === 0) return bridges ? { bridges } : {};
+  if (!hasOrchestrationCloudResources(props.config, props.mode)) return bridges ? { bridges } : {};
 
-  const stack = new WorkflowsStack(scope, props.stackId("WorkflowsStack"), {
+  // `WorkflowsStack` is the deployed name of this stack, from before it held
+  // agents too; it is kept so existing state machines are not replaced.
+  const stack = new OrchestrationStack(scope, props.stackId("WorkflowsStack"), {
     env: props.env,
     config: props.config,
     mode: props.mode,
-    targets,
+    cognito: props.cognito,
+    workflows: getCloudTargets(props.config, ["workflow"], props.mode),
   });
   for (const dependency of props.dependencies ?? []) {
     stack.addStackDependency(dependency);
   }
-  return bridges ? { stack, bridges } : { stack };
+  return {
+    stack,
+    ...(stack.agentcore ? { agentcore: stack.agentcore } : {}),
+    ...(bridges ? { bridges } : {}),
+  };
 }
 
 export interface FrameworkWorkloadsProps {
@@ -185,6 +201,12 @@ export interface FrameworkWorkloadsProps {
   readonly readers?: ResourceEnvironmentReaders;
   readonly frontendUrls: string[];
   readonly deployWebSocketApi: boolean;
+  /**
+   * AgentCore, from the orchestration stack, so its tool Lambdas join the
+   * target inventory. Built before this factory runs: a routed handler that
+   * invokes an agent reads its Runtime from the app's invocation registry.
+   */
+  readonly agentcore?: FrameworkAgentCore;
   /** Application ordering requirements shared by HTTP and WebSocket handlers. */
   readonly handlerDependencies?: readonly cdk.Stack[];
   /** Additional application ordering requirements for the HTTP API. */
@@ -247,6 +269,7 @@ export function createFrameworkWorkloads(
 
   const cloud = { mode };
 
+  const agentcore = props.agentcore;
   const httpHandlers = httpTargets.length > 0
     ? new SynchronousLambdaFunctionsStack(
         scope, stackId("SynchronousLambdaFunctionsStack"),
@@ -273,6 +296,7 @@ export function createFrameworkWorkloads(
   }
 
   const targets = new FrameworkTargetRegistry().merge(
+    ...(agentcore ? [agentcore.targets] : []),
     ...(httpHandlers ? [httpHandlers.targets] : []),
     // Every event Lambda this app built, whether by the generic stack or by an
     // application stack constructing one natively. Nothing has to be passed in

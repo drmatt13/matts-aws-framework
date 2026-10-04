@@ -1,0 +1,30 @@
+flowchart TB
+  DECL["Agent declaration / request-event contract / allowed tool IDs"]
+  subgraph AWS["Hosted authenticated browser stream"]
+    B["Browser"] --> CF["CloudFront — forwards bearer token"]
+    CF -->|"/api/agents/id — SSE"| R["AgentCore Runtime"]
+    R -->|"stream events"| CF
+    CF -->|"stream events"| B
+    R -->|"IAM-authorized tool call"| G["Per-agent Gateway"]
+    G --> T["Lambda tool"]
+    T --> DATA["Authorized data / AWS resource operation"]
+  end
+  subgraph LOCAL["Local authenticated browser stream"]
+    LB["Browser"] --> V["Vite proxy"] --> A["Local API server"]
+    A --> S["Runner session process"]
+    S -->|"stream events"| A
+    A -->|"stream events"| V
+    V -->|"stream events"| LB
+    S --> EG["Emulated Gateway"]
+    EG --> ET["Shared tool executor"]
+    ET --> LD["Local data / AWS resource"]
+  end
+  DECL -.-> R
+  DECL -.-> S
+  DECL -. "exactly declared tools" .-> G
+  DECL -. "exactly declared tools" .-> EG
+  AUTH["authenticatedTool — forwarded identity, argument validation, application authorization"] -.-> T
+  AUTH -.-> ET
+  CALL["Declared backend caller"] -->|"invokeAgent"| NR["Non-streaming agent"]
+  NR -->|"JSON response"| CALL
+  NOTE["User agent: caller session. Service agent: IAM. Agents are bundled Node code; local processes differ from hosted isolation."]

@@ -10,6 +10,7 @@ import {
   formatAccessResource,
   getCallbackBindings,
   getInvocationBindings,
+  getAgentInvocationBindings,
   INVOCATION_DESCRIPTOR_VERSION,
   LAMBDA_ENVIRONMENT_BYTE_LIMIT,
   resolveCloudValues,
@@ -246,6 +247,18 @@ export function resolveInvocationDescriptors(
 ): Readonly<Record<string, string>> {
   const registry = appInvocationRegistry(scope);
   const environment: Record<string, string> = {};
+  for (const binding of getAgentInvocationBindings(target.cloud.bindings)) {
+    const agent = registry.requireAgent(binding.agent);
+    environment[binding.environment] = JSON.stringify({
+      version: INVOCATION_DESCRIPTOR_VERSION,
+      kind: "agent",
+      transport: "aws",
+      target: binding.agent,
+      auth: agent.auth,
+      arn: agent.arn,
+      region: agent.region,
+    });
+  }
 
   for (const binding of getInvocationBindings(target.cloud.bindings)) {
     if (binding.capability === "runsTask") {
@@ -288,6 +301,12 @@ export function applyInvocationGrants(
       continue;
     }
     registry.requireWorkflow(`workflow:${binding.workflow}`).grantStart(grantee);
+  }
+  // An agent with users accepts only the user's token, which its caller
+  // forwards; an IAM grant on its Runtime would authorize nothing.
+  for (const binding of getAgentInvocationBindings(target.cloud.bindings)) {
+    const agent = registry.requireAgent(binding.agent);
+    if (!agent.auth) agent.grantInvoke(grantee);
   }
 }
 
@@ -356,12 +375,13 @@ export function buildFrameworkLambdas(
   registry: FrameworkTargetRegistry,
   targets: readonly NormalizedTarget[],
   context: CloudBuildContext,
+  lambdaScope: Construct = stack,
 ): Map<string, lambda.Function> {
   const built = new Map<string, lambda.Function>();
 
   for (const target of targets) {
     const fn = frameworkLambda(
-      stack,
+      lambdaScope,
       target.cloud.constructId,
       resolveLambdaTarget(context.config, target.id),
       // An empty environment stays undefined so a function that needs nothing

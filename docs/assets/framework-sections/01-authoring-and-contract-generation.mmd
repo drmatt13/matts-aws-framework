@@ -1,0 +1,29 @@
+flowchart TB
+  subgraph INPUT["Authored source"]
+    CFG["framework.config.ts + section modules + defaults"]
+    RES["resources.ts"]
+    PSL["contract.prisma"]
+    GQL["Explicit Pothos schema + GraphQL documents"]
+  end
+  subgraph CONTRACT["npm run contract — coordinated development pipeline"]
+    FG["framework:generate"] --> DB["Database contract emit"]
+    DB --> CG["GraphQL Codegen"]
+    CG --> TC["Consumer typechecking"]
+  end
+  CFG -.-> FG
+  RES -.-> FG
+  PSL -.-> DB
+  GQL -.-> CG
+  FG -.-> META["Routes / target IDs / payload projections"]
+  DB -.-> TYPES["Contract JSON / types"]
+  CG -.-> OPS["Operation results / variables"]
+  META -.-> TC
+  TYPES -.-> TC
+  OPS -.-> TC
+  CFG -. "read declarations" .-> CDK["CDK builders"]
+  RES -. "read resources" .-> CDK
+  CFG -. "read declarations" .-> LOCAL["Local adapters"]
+  RES -. "resolve workload environment" .-> LOCAL
+  APP["Native application CDK constructs"] -. "linkResources" .-> LINKS["Registered resource bindings"]
+  LINKS -.-> CDK
+  NOTE["Explicit application policy; generation does not migrate or deploy"]

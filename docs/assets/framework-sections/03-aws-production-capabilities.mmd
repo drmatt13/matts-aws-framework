@@ -1,0 +1,26 @@
+flowchart TB
+  B["Browser"] -->|"same-origin"| CF["CloudFront — configured frontend domain"]
+  CF -->|"frontend assets"| S3["S3 static assets"]
+  CF -->|"/api/* — strip /api"| API["HTTP API Gateway"]
+  API --> GQL["GraphQL Lambda / Yoga + Pothos"]
+  GQL -->|"PostgreSQL over TLS"| RDS["RDS — current public endpoint"]
+  API -->|"service route"| VPC["VPC link"]
+  VPC --> ALB["Internal ALB"]
+  ALB --> SERVICE["ECS Fargate service — long-running"]
+  CALLER["Declared caller"] -->|"startWorkflow"| SF["Step Functions"]
+  CALLER -->|"runTask"| TASK["ECS Fargate task — finite job"]
+  SF --> EVENT["Event Lambda"]
+  SF --> TASK
+  SF --> INTEGRATIONS["Declared integrations / nested workflows"]
+  CF -->|"/api/agents/* — SSE"| AGENT["AgentCore Runtime"]
+  AGENT --> GATEWAY["Per-agent Gateway"]
+  GATEWAY --> TOOL["Lambda tools"]
+  WSB["Browser WebSocket client"] <--> WSG["WebSocket API Gateway — optional"]
+  WSG --> WSL["WS route Lambdas"]
+  COG["Cognito identity"] -. "ID-token verification" .-> API
+  COG -. "connect authorizer" .-> WSG
+  COG -. "JWT verification" .-> AGENT
+  BIND["Declared bindings"] -.-> IAM["Derived permissions"]
+  IAM -.-> SECRETS["Secrets Manager"]
+  IAM -.-> AWS["Other declared AWS resources"]
+  NOTE["Current Lambdas outside VPC; tasks and services have separate clusters. Submission IDs do not prove completion."]

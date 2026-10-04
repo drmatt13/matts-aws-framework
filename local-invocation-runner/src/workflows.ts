@@ -12,11 +12,13 @@ import {
 } from "@repo/framework/config";
 import { resolveLambdaSourcePath } from "@repo/framework/config/source";
 import {
+  invokeAgentStep,
   LocalCallbackBroker,
   newExecution,
   runWorkflow,
   stepInvocationEnvironment,
   resolveLocalWorkloadEnvironment,
+  type LocalAgentInvoker,
   type WorkflowExecution,
   type WorkflowStepRunner,
 } from "@repo/framework/local";
@@ -88,6 +90,12 @@ export interface LocalWorkflowEngineOptions {
    * an integration step is refused when it starts rather than part-way through.
    */
   readonly callIntegration?: WorkflowStepRunner["callIntegration"];
+  /**
+   * The runner's agent supervisor, for `invokeAgent` steps. Absent means this
+   * engine has no agent lane, and a graph that invokes one is refused when it
+   * starts.
+   */
+  readonly agents?: LocalAgentInvoker;
 }
 
 /**
@@ -232,6 +240,18 @@ export class LocalWorkflowEngine {
       );
     }
     for (const target of workflow.targets) {
+      if (target.startsWith("agent:")) {
+        const agent = target.slice("agent:".length);
+        if (this.options.agents === undefined) {
+          throw new Error(`workflow:${workflow.id} invokes ${target}, and this runner has no agent lane.`);
+        }
+        if (!isTargetEnabled(this.options.config, "agent", agent, "local")) {
+          throw new Error(
+            `workflow:${workflow.id} invokes ${target}, which is not enabled for local execution. Declare it under agents with a deploy setting that includes "local".`,
+          );
+        }
+        continue;
+      }
       if (target.startsWith("workflow:")) {
         const child = target.slice("workflow:".length);
         if (!isTargetEnabled(this.options.config, "workflow", child, "local")) {
@@ -273,6 +293,12 @@ export class LocalWorkflowEngine {
         this.runWorkflowStep(id, input, options, execution),
       ...(this.options.callIntegration
         ? { callIntegration: this.options.callIntegration }
+        : {}),
+      ...(this.options.agents
+        ? {
+            invokeAgent: (id: string, request: { readonly conversationId: string; readonly input: unknown }, options: { readonly signal: AbortSignal }) =>
+              invokeAgentStep(this.options.agents!, id, request, options.signal),
+          }
         : {}),
       awaitCallback: (request, options) => this.callbacks.await(request, options),
       startTaskWithCallback: (id, input, callback, options) =>

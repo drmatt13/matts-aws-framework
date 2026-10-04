@@ -30,6 +30,7 @@ import type { ITable } from "aws-cdk-lib/aws-dynamodb";
 import type { IEventBus } from "aws-cdk-lib/aws-events";
 import type { ITopic } from "aws-cdk-lib/aws-sns";
 import type { IQueue } from "aws-cdk-lib/aws-sqs";
+import type { AGENTCORE_AGENTS, AgentCoreAgents } from "../generated/agentcore";
 import type { CdkResource } from "./cdk-resources";
 import {
   assertIntegrationKind,
@@ -351,6 +352,89 @@ export function runWorkflow<Out = unknown, In = unknown>(
   options: InvokeOptions<In> = {},
 ): Flow<Out> {
   return asFlow<Out>(invocation("workflow", target, options));
+}
+
+/**
+ * The agents a workflow can call: no users, and a JSON response.
+ *
+ * A workflow has no signed-in user to forward, so an `auth: true` agent is not
+ * reachable from one, and a state's result is one document, so an agent that
+ * streams events has nothing a step could return. Both are missing from this
+ * union, which is what makes `invokeAgent("support-agent", …)` a compile error
+ * rather than a failed execution. Generic over the manifest so the rule itself
+ * can be tested; {@link WorkflowAgentId} applies it to this repository's agents.
+ */
+export type WorkflowCallableAgentIds<Manifest> = {
+  [Id in keyof Manifest]: Manifest[Id] extends { readonly auth: false; readonly streaming: false } ? Id : never;
+}[keyof Manifest] &
+  string;
+
+export type WorkflowAgentId = WorkflowCallableAgentIds<typeof AGENTCORE_AGENTS>;
+
+type WorkflowAgentRequest<Id> = Id extends keyof AgentCoreAgents ? AgentCoreAgents[Id]["request"] : unknown;
+type WorkflowAgentResponse<Id> = Id extends keyof AgentCoreAgents
+  ? AgentCoreAgents[Id] extends { readonly response: infer Response }
+    ? Response
+    : never
+  : unknown;
+
+/**
+ * AgentCore Runtime's synchronous request limit, which is not adjustable. An
+ * agent step waits at most this long, and by default exactly this long, in
+ * both lanes.
+ * @see https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/bedrock-agentcore-limits.html
+ */
+export const AGENT_STEP_MAX_SECONDS = 900;
+
+export interface InvokeAgentStepOptions {
+  /** At most {@link AGENT_STEP_MAX_SECONDS}, which is also the default. */
+  readonly timeoutSeconds?: number;
+  /**
+   * Which of this execution's sessions the call runs in.
+   *
+   * Sessions belong to the execution: calls with the same `session` (or none)
+   * in one execution reach the same Runtime session, and no two executions
+   * ever share one. Name a session per item to keep concurrent calls apart —
+   * `session: item.caseId` — which a step inside `map`, or the same agent in
+   * two `parallel` branches, must do: concurrent calls into one session race
+   * its provisioning and share its memory.
+   */
+  readonly session?: WorkflowExpression<string | number>;
+}
+
+/**
+ * Invokes a declared agent and waits for its response.
+ *
+ * ```ts
+ * const analysis = invokeAgent("case-analysis", { caseId: input.caseId });
+ * ```
+ *
+ * `.output` is the agent's `response`, checked against its contract by the
+ * agent before it answers. In AWS this is Step Functions' SDK integration with
+ * AgentCore Runtime (`InvokeAgentRuntime`) under the workflow's own role, which
+ * the step grants on this Runtime only; locally the runner calls the agent's
+ * session process. An agent that fails answers
+ * `BedrockAgentCore.RuntimeClientErrorException` in both lanes.
+ */
+export function invokeAgent<Id extends WorkflowAgentId>(
+  agent: Id,
+  input: WorkflowExpression<WorkflowAgentRequest<Id>>,
+  options: InvokeAgentStepOptions = {},
+): Flow<WorkflowAgentResponse<Id>> {
+  if (input === undefined) {
+    throw new Error(`invokeAgent("${agent}") needs the agent's input, as its contract's request.`);
+  }
+  const timeoutSeconds = options.timeoutSeconds ?? AGENT_STEP_MAX_SECONDS;
+  assertPositiveInteger(timeoutSeconds, `invokeAgent("${agent}") timeoutSeconds`);
+  if (timeoutSeconds > AGENT_STEP_MAX_SECONDS) {
+    throw new Error(
+      `invokeAgent("${agent}") has timeoutSeconds ${timeoutSeconds}. AgentCore Runtime ends a synchronous request after ${AGENT_STEP_MAX_SECONDS} seconds, so a longer step would fail in AWS; keep it at ${AGENT_STEP_MAX_SECONDS} or less.`,
+    );
+  }
+  const node = invocation("agent", agent, { payload: input, timeoutSeconds });
+  return asFlow<WorkflowAgentResponse<Id>>(
+    options.session === undefined ? node : { ...node, session: options.session },
+  );
 }
 
 function invocation<In>(

@@ -553,6 +553,40 @@ describe("same-origin API routing", () => {
 });
 
 describe("FrameworkHttpApiFetch", () => {
+  it("uses an exact same-origin agent URL and retries that same path after refreshing", async () => {
+    const originalToken = makeIdToken(600);
+    const refreshedToken = makeIdToken(3600);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ success: true, idToken: originalToken }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    )));
+    const auth = await loadAuth();
+    await auth.signInUser("user@example.com", "password");
+
+    let agentCalls = 0;
+    const paths: string[] = [];
+    const authorizations: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      const requestPath = new URL(url, window.location.origin).pathname;
+      paths.push(requestPath);
+      if (requestPath === "/api/refresh") {
+        return new Response(JSON.stringify({ success: true, idToken: refreshedToken }), {
+          status: 200, headers: { "content-type": "application/json" },
+        });
+      }
+      authorizations.push(new Headers(init?.headers).get("Authorization")!);
+      agentCalls += 1;
+      return new Response("", { status: agentCalls === 1 ? 401 : 200 });
+    }));
+    const response = await auth.FrameworkHttpApiFetch(new URL("/chat/echo", window.location.origin), {
+      method: "POST", body: JSON.stringify({ message: "hello" }),
+    });
+    expect(response.status).toBe(200);
+    expect(paths).toEqual(["/chat/echo", "/api/refresh", "/chat/echo"]);
+    expect(authorizations).toEqual([`Bearer ${originalToken}`, `Bearer ${refreshedToken}`]);
+  });
+
   it("replays a Request body once after refresh", async () => {
     const originalToken = makeIdToken(600);
     const refreshedToken = makeIdToken(3600);

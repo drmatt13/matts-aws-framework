@@ -45,6 +45,12 @@ export const WORKFLOW_ERROR_NAMES = {
    * exceptional.
    */
   queryEvaluation: "States.QueryEvaluationError",
+  /**
+   * An agent that answered with an error status. Step Functions names an SDK
+   * integration's error `<Service>.<Error>Exception`, and Runtime reports the
+   * agent's own failure as `RuntimeClientError`; the local lane raises the same.
+   */
+  agentFailed: "BedrockAgentCore.RuntimeClientErrorException",
 } as const;
 
 /**

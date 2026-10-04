@@ -27,6 +27,14 @@ export {
   PUBLIC_API_ROUTES,
 } from "./generated/framework-routes";
 
+/**
+ * Agents with users: `AGENT_ROUTE["support-agent"]` is the path the browser
+ * streams from, and `AgentEndpoints["support-agent"]` is that agent's contract,
+ * so a request and its events are typed by the declaration the agent itself
+ * validates against.
+ */
+export { AGENT_ROUTE, type AgentEndpoints } from "./generated/framework-routes";
+
 export const API_ROUTES = [
   ...PUBLIC_API_ROUTES,
   ...AUTHENTICATED_API_ROUTES,

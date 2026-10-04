@@ -1,6 +1,5 @@
 import { deferResourceAttachment } from "./framework-resources";
 import * as cdk from "aws-cdk-lib";
-import { Construct } from "constructs";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as sfn from "aws-cdk-lib/aws-stepfunctions";
@@ -21,7 +20,15 @@ import { emitCloudOutputs } from "./framework-cloud";
 import { FrameworkTargetRegistry } from "./framework-target-registry";
 
 /**
- * Step Functions state machines, compiled from the authored graphs.
+ * Step Functions state machines, compiled from the authored graphs, built into
+ * the orchestration stack they share with AgentCore (`orchestration-stack.ts`).
+ *
+ * Built directly in that stack's own scope, not under a construct of their own:
+ * a workflow's role, log group and state machine keep exactly the construct
+ * paths, and so the logical ids, they had when this was a stack by itself.
+ * Nothing here knows about agents beyond the resolver that hands a step its
+ * Runtime's ARN and grant.
+ *
  *
  * Standard by default. Express is available but is not a free toggle: it has a
  * different set of supported integrations, and a graph that waits for a
@@ -40,7 +47,7 @@ import { FrameworkTargetRegistry } from "./framework-target-registry";
  * @see https://docs.aws.amazon.com/step-functions/latest/dg/connect-lambda.html
  */
 
-export interface WorkflowsStackProps extends cdk.StackProps {
+export interface FrameworkWorkflowsProps {
   readonly config: FrameworkConfig;
   /**
    * Which CDK graph this is. A workflow needs no resource catalog, so this is
@@ -110,11 +117,13 @@ function orderByDependency(
   return ordered;
 }
 
-export class WorkflowsStack extends cdk.Stack {
+export class FrameworkWorkflows {
   public readonly targets = new FrameworkTargetRegistry();
 
-  constructor(scope: Construct, id: string, props: WorkflowsStackProps) {
-    super(scope, id, props);
+  public constructor(
+    private readonly stack: cdk.Stack,
+    props: FrameworkWorkflowsProps,
+  ) {
 
     const workflows =
       props.targets ?? getCloudTargets(props.config, ["workflow"], props.mode);
@@ -130,13 +139,14 @@ export class WorkflowsStack extends cdk.Stack {
   }
 
   private addWorkflow(target: NormalizedTarget, config: FrameworkConfig): void {
+    const stack = this.stack;
     const workflow = resolveWorkflow(config, target.id);
 
-    const events = appEventRegistry(this);
-    const invocations = appInvocationRegistry(this);
+    const events = appEventRegistry(stack);
+    const invocations = appInvocationRegistry(stack);
 
     // A role of its own, so every statement below is one this graph asked for.
-    const role = new iam.Role(this, `${target.cloud.constructId}Role`, {
+    const role = new iam.Role(stack, `${target.cloud.constructId}Role`, {
       assumedBy: new iam.ServicePrincipal("states.amazonaws.com"),
       description: `Derived from the states of workflows["${target.id}"].`,
     });
@@ -177,6 +187,17 @@ export class WorkflowsStack extends cdk.Stack {
         awaitsExecution = true;
         return handle.stateMachine.stateMachineArn;
       },
+      // `InvokeAgentRuntime` on this Runtime and nothing else, through the
+      // same grant a Lambda's `invokesAgent` binding gets. Config validation
+      // has refused an agent with users, whose Runtime would reject the role.
+      agentArn: (id) => {
+        const agent = invocations.requireAgent(id);
+        if (agent.auth) {
+          throw new Error(`workflows["${target.id}"] invokes agent:${id}, which has auth: true and accepts only a user's token.`);
+        }
+        agent.grantInvoke(role);
+        return agent.arn;
+      },
       // Resolved from the app-scoped binding registry rather than from a
       // resource catalog: a workflow's integrations come from its own graph,
       // and the construct they name is bound beside the resource in
@@ -184,7 +205,7 @@ export class WorkflowsStack extends cdk.Stack {
       // graph actually performs, so a workflow that only reads a table holds
       // only read permission.
       integrationTarget: (spec) => {
-        const binding = requireIntegration(this, spec);
+        const binding = requireIntegration(stack, spec);
         const use = workflow.integrations.find(
           (candidate) =>
             candidate.reference.kind === spec.kind &&
@@ -229,7 +250,7 @@ export class WorkflowsStack extends cdk.Stack {
     };
 
     let definition: string | undefined;
-    deferResourceAttachment(this, () => {
+    deferResourceAttachment(stack, () => {
     definition = JSON.stringify(compileWorkflowToAsl(workflow, resolver));
 
     if (awaitsContainer) {
@@ -251,7 +272,7 @@ export class WorkflowsStack extends cdk.Stack {
           resources: [
             cdk.Arn.format(
               { service: "events", resource: "rule", resourceName: ECS_TASK_RULE_NAME },
-              this,
+              stack,
             ),
           ],
         }),
@@ -275,7 +296,7 @@ export class WorkflowsStack extends cdk.Stack {
                 resourceName: "*",
                 arnFormat: cdk.ArnFormat.COLON_RESOURCE_NAME,
               },
-              this,
+              stack,
             ),
           ],
         }),
@@ -287,7 +308,7 @@ export class WorkflowsStack extends cdk.Stack {
           resources: [
             cdk.Arn.format(
               { service: "events", resource: "rule", resourceName: EXECUTION_RULE_NAME },
-              this,
+              stack,
             ),
           ],
         }),
@@ -296,12 +317,12 @@ export class WorkflowsStack extends cdk.Stack {
 
     });
 
-    const logGroup = new logs.LogGroup(this, `${target.cloud.constructId}Logs`, {
+    const logGroup = new logs.LogGroup(stack, `${target.cloud.constructId}Logs`, {
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    const stateMachine = new sfn.StateMachine(this, target.cloud.constructId, {
+    const stateMachine = new sfn.StateMachine(stack, target.cloud.constructId, {
       stateMachineType:
         workflow.type === "express"
           ? sfn.StateMachineType.EXPRESS
@@ -331,8 +352,8 @@ export class WorkflowsStack extends cdk.Stack {
       },
     };
     this.targets.workflow(target.id, handle);
-    registerAppWorkflow(this, target.id, handle);
+    registerAppWorkflow(stack, target.id, handle);
 
-    emitCloudOutputs(this, target, { arn: stateMachine.stateMachineArn });
+    emitCloudOutputs(stack, target, { arn: stateMachine.stateMachineArn });
   }
 }

@@ -95,6 +95,92 @@ export class FrontendWebsiteS3Stack extends cdk.Stack {
     cacheBehaviors.push(apiBehavior);
   }
 
+  /**
+   * Serves each agent at its declared browser path, straight from AgentCore.
+   *
+   * Same-origin like the rest of /api, so the browser sends its Cognito token
+   * as it does to every authenticated route and needs no CORS. AgentCore's JWT
+   * authorizer checks the token, and the agent's adapter checks it again.
+   * There is no Lambda in between, so a turn may stream for as long as the
+   * agent works: the read timeout is between bytes, and the adapter sends a
+   * keepalive comment well inside it.
+   *
+   * Inserted ahead of /api/*, which CloudFront would otherwise match first.
+   */
+  public addAgentOrigins(region: string, agents: readonly { readonly id: string; readonly path: string; readonly runtimeArn: string }[]): void {
+    if (!this.frontendDistribution || agents.length === 0) {
+      return;
+    }
+
+    const originId = "AgentCoreRuntime";
+    const routes = Object.fromEntries(agents.map((agent) => [agent.path, agent.runtimeArn]));
+    const routeFunction = new cloudfront.CfnFunction(this, "AgentRouteFunction", {
+      name: `${this.stackName}-agent-route`,
+      autoPublish: true,
+      functionConfig: {
+        comment: "Route declared agent paths to their AgentCore Runtime",
+        runtime: "cloudfront-js-2.0",
+      },
+      functionCode: [
+        `var AGENTS = ${JSON.stringify(routes)};`,
+        "function handler(event) {",
+        "  var request = event.request;",
+        "  if (!Object.prototype.hasOwnProperty.call(AGENTS, request.uri)) {",
+        "    return { statusCode: 404, statusDescription: 'Not Found' };",
+        "  }",
+        "  if (request.method !== 'POST') {",
+        "    return { statusCode: 405, statusDescription: 'Method Not Allowed' };",
+        "  }",
+        "  request.uri = '/runtimes/' + encodeURIComponent(AGENTS[request.uri]) + '/invocations';",
+        "  request.querystring = { qualifier: { value: 'DEFAULT' } };",
+        "  return request;",
+        "}",
+      ].join("\n"),
+    });
+
+    // Not AllViewerExceptHostHeader, which /api/* uses: the browser sends the
+    // HttpOnly refresh-token cookie with every /api request, and it must never
+    // leave for AgentCore. Exactly what an invocation needs, and nothing else.
+    const originRequestPolicy = new cloudfront.CfnOriginRequestPolicy(this, "AgentOriginRequestPolicy", {
+      originRequestPolicyConfig: {
+        name: `${this.stackName}-agent-invocation`,
+        comment: "Token, session routing and content headers for AgentCore Runtime; no cookies",
+        cookiesConfig: { cookieBehavior: "none" },
+        headersConfig: {
+          headerBehavior: "whitelist",
+          headers: ["Authorization", "Content-Type", "Accept", "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id"],
+        },
+        queryStringsConfig: { queryStringBehavior: "whitelist", queryStrings: ["qualifier"] },
+      },
+    });
+
+    const distributionConfig = this.frontendDistribution
+      .distributionConfig as cloudfront.CfnDistribution.DistributionConfigProperty;
+    (distributionConfig.origins as cloudfront.CfnDistribution.OriginProperty[]).push({
+      id: originId,
+      domainName: `bedrock-agentcore.${region}.amazonaws.com`,
+      customOriginConfig: {
+        originProtocolPolicy: "https-only",
+        originSslProtocols: ["TLSv1.2"],
+        originReadTimeout: 60,
+      },
+    });
+    (distributionConfig.cacheBehaviors as cloudfront.CfnDistribution.CacheBehaviorProperty[]).unshift(...agents.map((agent) => ({
+      pathPattern: agent.path,
+      targetOriginId: originId,
+      viewerProtocolPolicy: "redirect-to-https",
+      allowedMethods: ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"],
+      cachedMethods: ["GET", "HEAD"],
+      // A stream compressed by CloudFront is buffered by it; agents stream.
+      compress: false,
+      // Nothing cached: every turn belongs to one user.
+      cachePolicyId: cloudfront.CachePolicy.CACHING_DISABLED.cachePolicyId,
+      originRequestPolicyId: originRequestPolicy.ref,
+      ...(this.securityHeadersPolicyId ? { responseHeadersPolicyId: this.securityHeadersPolicyId } : {}),
+      functionAssociations: [{ eventType: "viewer-request", functionArn: routeFunction.attrFunctionArn }],
+    })));
+  }
+
   constructor(scope: Construct, id: string, props?: FrontendWebsiteS3StackProps) {
     super(scope, id, props);
 

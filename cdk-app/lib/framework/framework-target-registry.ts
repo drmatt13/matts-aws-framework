@@ -5,6 +5,7 @@ import type { TaskDefinition } from "aws-cdk-lib/aws-ecs";
 import type { IStateMachine } from "aws-cdk-lib/aws-stepfunctions";
 import {
   getLambdaTargetIds,
+  getFrameworkTargets,
   getServiceTargetIds,
   getTaskTargetIds,
   getWorkflowTargetIds,
@@ -78,11 +79,25 @@ export type FrameworkWorkflowTarget = {
   readonly grantStart: (grantee: IGrantable) => void;
 };
 
+export type FrameworkAgentTarget = {
+  readonly kind: "agent";
+  readonly arn: string;
+  readonly region: string;
+  /**
+   * Whether the agent has users. Its Runtime then accepts only a user's
+   * Cognito token, so a caller forwards one and holds no IAM grant.
+   */
+  readonly auth: boolean;
+  /** `bedrock-agentcore:InvokeAgentRuntime` on this Runtime only. */
+  readonly grantInvoke: (grantee: IGrantable) => void;
+};
+
 export type FrameworkCdkTarget =
   | FrameworkLambdaTarget
   | FrameworkServiceTarget
   | FrameworkTaskTarget
-  | FrameworkWorkflowTarget;
+  | FrameworkWorkflowTarget
+  | FrameworkAgentTarget;
 
 export class FrameworkTargetRegistry {
   private readonly targetMap = new Map<TargetReference, FrameworkCdkTarget>();
@@ -106,6 +121,16 @@ export class FrameworkTargetRegistry {
     target: Omit<FrameworkWorkflowTarget, "kind">,
   ): void {
     this.register(`workflow:${id}`, { kind: "workflow", ...target });
+  }
+
+  public agent(id: string, target: Omit<FrameworkAgentTarget, "kind">): void {
+    this.register(`agent:${id}`, { kind: "agent", ...target });
+  }
+
+  public requireAgent(id: string): FrameworkAgentTarget {
+    const target = this.require(`agent:${id}`);
+    if (target.kind !== "agent") throw new Error(`agent:${id} is not an AgentCore Runtime.`);
+    return target;
   }
 
   public merge(...registries: readonly FrameworkTargetRegistry[]): this {
@@ -220,6 +245,7 @@ export function assertFrameworkTargetsComplete(
     ["service", getServiceTargetIds(config)],
     ["task", getTaskTargetIds(config)],
     ["workflow", getWorkflowTargetIds(config)],
+    ["agent", getFrameworkTargets(config).filter(target => target.kind === "agent").map(target => target.id)],
   ] as const) {
     for (const id of ids) {
       const reference = toTargetReference(kind, id);
@@ -267,6 +293,7 @@ export function assertFrameworkTargetsComplete(
     service: getServiceTargetIds(config),
     task: getTaskTargetIds(config),
     workflow: getWorkflowTargetIds(config),
+    agent: getFrameworkTargets(config).filter(target => target.kind === "agent").map(target => target.id),
   };
   for (const [reference] of registry.entries()) {
     const { kind, id } = parseTargetReference(reference);

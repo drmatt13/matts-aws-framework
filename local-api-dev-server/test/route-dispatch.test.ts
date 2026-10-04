@@ -156,8 +156,11 @@ async function withDevServer(
   registerUnmatchedRouteHandler(app, routes);
   registerApiGatewayErrorHandler(app);
 
-  const server = createServer(app);
-  const url = await listen(server);
+  const browserApp = express();
+  applyApiGatewayRouting(browserApp);
+  browserApp.use("/api", app);
+  const server = createServer(browserApp);
+  const url = (await listen(server)) + "/api";
   try {
     await run({ url, invocations, upstream });
   } finally {

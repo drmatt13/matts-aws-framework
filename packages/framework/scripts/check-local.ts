@@ -11,9 +11,10 @@ import {
   resolveLambdaTarget,
   validateFrameworkConfig,
 } from "@repo/framework/config";
-import { findRepositoryRoot, resolveLambdaSourcePath } from "@repo/framework/config/source";
+import { findRepositoryRoot, resolveAgentSourcePath, resolveLambdaSourcePath } from "@repo/framework/config/source";
 import framework from "../../../framework.config";
 import { planLocalInvocation } from "../src/local/invocation";
+import { assertAgentCoreEntries } from "./check-agentcore";
 import { assertWorkflowAuthoringIsSupported } from "./check-workflow-authoring";
 import { LOCAL_HOST_PORT_NAMES } from "../../../scripts/local-export";
 
@@ -102,6 +103,20 @@ for (const id of getLambdaTargetIds(framework)) {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// A tool's `auth: true` and an agent's id are paired with their entry points,
+// for the same reason as localReplay above. See check-agentcore.ts.
+// ---------------------------------------------------------------------------
+assertAgentCoreEntries(framework, (reference) => {
+  const [kind, id] = reference.split(":");
+  const directory =
+    kind === "agent"
+      ? resolveAgentSourcePath(framework, id, { repositoryRoot })
+      : resolveLambdaSourcePath(framework, id, { repositoryRoot });
+  const entry = path.join(directory, "index.ts");
+  return existsSync(entry) ? readFileSync(entry, "utf8") : undefined;
+});
 
 // ---------------------------------------------------------------------------
 // The catalog stays free of CDK at runtime.

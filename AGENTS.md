@@ -11,6 +11,7 @@ This is a TypeScript npm-workspace monorepo for AWS-backed applications. Start w
 | Workload declarations, resources, CDK, local execution | [Framework](docs/FRAMEWORK.md) |
 | Features spanning workloads: routes, events, tasks, workflows, resources | [Feature build procedure](agents/feature-build-agent.md) and [Framework](docs/FRAMEWORK.md) |
 | Authentication or authorization | [Auth checklist](agents/auth.md) and its linked auth model |
+| AgentCore agents and tools | [AgentCore](docs/AGENTCORE.md) and [Framework](docs/FRAMEWORK.md) |
 | Development environment | [Development](docs/DEV-DEPLOYMENT.md) |
 | Production release | [Production](docs/PROD-DEPLOYMENT.md) and [deployment procedure](agents/prod-deployment-agent.md) |
 

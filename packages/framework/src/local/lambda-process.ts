@@ -6,12 +6,18 @@ import { isNodeLambdaRuntime, resolveLambdaTarget, type FrameworkConfig, type La
 import { resolveLambdaSourcePath } from "@repo/framework/config/source";
 import { resolveLocalWorkloadEnvironment, type LocalEnvironmentOptions } from "./environment";
 
+/** Fields a caller may pin on the Lambda context. See lambda-child.ts. */
+export interface PinnedLambdaContext {
+  readonly awsRequestId?: string;
+  readonly clientContext?: { readonly custom: Readonly<Record<string, string>> };
+}
+
 /** What one invocation sends the child. See lambda-child.ts. */
 interface ChildRequest {
   readonly entry: string;
   readonly handler: string;
   readonly event: unknown;
-  readonly context?: { readonly awsRequestId?: string };
+  readonly context?: PinnedLambdaContext;
   readonly lambda: { readonly functionName: string; readonly memoryLimitInMB: number; readonly timeoutSeconds: number };
 }
 
@@ -23,7 +29,7 @@ interface ChildReply {
 }
 
 export interface LocalLambdaInvocationOptions extends LocalEnvironmentOptions {
-  readonly context?: { readonly awsRequestId?: string };
+  readonly context?: PinnedLambdaContext;
   readonly signal?: AbortSignal;
   /** Reuse warm handler processes. Absent, every invocation gets a fresh one. */
   readonly pool?: LambdaWorkerPool;

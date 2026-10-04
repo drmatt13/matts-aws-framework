@@ -1,0 +1,40 @@
+flowchart TB
+  SOURCE["Same authorizer + route-handler source — separate local/cloud instances"]
+  subgraph LOCAL["Local WebSocket transport"]
+    LB["Local browser"] -->|"handshake / ID token"| LS["Local WS server"]
+    LS --> LA["Connect authorizer"]
+    LA -->|"allow"| LC["$connect handler"]
+    LS -->|"body.action"| LM["Message route selection"]
+    LM -->|"customAction"| LCA["customAction handler"]
+    LM -->|"fallback"| LD["$default handler"]
+    LS -->|"connection close"| LDISC["$disconnect handler"]
+    LCA -->|"route reply"| LS
+    LD -->|"route reply"| LS
+    LS -->|"reply"| LB
+  end
+  subgraph CLOUD["AWS WebSocket transport"]
+    AB["AWS browser"] -->|"handshake / ID token"| AS["API Gateway WebSocket API"]
+    AS --> AA["Connect authorizer"]
+    AA -->|"allow"| AC["$connect handler"]
+    AS -->|"$request.body.action"| AM["Message route selection"]
+    AM -->|"customAction"| ACA["customAction handler"]
+    AM -->|"fallback"| AD["$default handler"]
+    AS -->|"connection close"| ADISC["$disconnect handler"]
+    ACA -->|"route reply"| AS
+    AD -->|"route reply"| AS
+    AS -->|"reply"| AB
+  end
+  SOURCE -. "shared implementation" .-> LA
+  SOURCE -. "shared implementation" .-> AA
+  SOURCE -. "shared implementation" .-> LM
+  SOURCE -. "shared implementation" .-> AM
+  COG["Cognito ID-token verification"] -.-> LA
+  COG -.-> AA
+  subgraph PUSH["Explicit push capability — requires cloud.manageConnections"]
+    PH["Push-enabled handler"] --> HELPER["webSocketConnections(event).send"]
+    HELPER --> LMG["Local internal management endpoint"]
+    HELPER --> AMG["AWS Management API"]
+    LMG --> LCLIENT["Connected local browser"]
+    AMG --> ACLIENT["Connected AWS browser"]
+  end
+  NOTE["Principal/context travels in route events. Disconnect has no route reply. Current sample routes do not enable push grant."]

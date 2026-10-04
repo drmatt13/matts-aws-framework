@@ -150,17 +150,17 @@ export function unmarshalDocument(
  * refusal {@link marshalValue} raises, under AWS's own error name.
  */
 export function marshalDocumentExpression(body: string): string {
-  return `(${MARSHAL_DEFINITION}; $__wf_marshal(${body}).M)`;
+  return `(${MARSHAL_DEFINITION}; $wf_marshal(${body}).M)`;
 }
 
 /** Marshals `body` into a single attribute value. */
 export function marshalValueExpression(body: string): string {
-  return `(${MARSHAL_DEFINITION}; $__wf_marshal(${body}))`;
+  return `(${MARSHAL_DEFINITION}; $wf_marshal(${body}))`;
 }
 
 /** Reads an attribute map back as a JSON document. */
 export function unmarshalDocumentExpression(body: string): string {
-  return `(${UNMARSHAL_DEFINITION}; $__wf_unmarshal({"M": ${body}}))`;
+  return `(${UNMARSHAL_DEFINITION}; $wf_unmarshal({"M": ${body}}))`;
 }
 
 /**
@@ -175,23 +175,23 @@ export function unmarshalDocumentExpression(body: string): string {
  * `States.QueryEvaluationError`.
  */
 const MARSHAL_DEFINITION = [
-  "$__wf_marshal := function($v) {",
+  "$wf_marshal := function($v) {",
   '  $type($v) = "string" ? {"S": $v}',
   '  : $type($v) = "number" ? {"N": $string($v)}',
   '  : $type($v) = "boolean" ? {"BOOL": $v}',
   '  : $type($v) = "null" ? {"NULL": true}',
-  '  : $type($v) = "array" ? ($l := [$map($v, function($e) { $__wf_marshal($e) })]; $count($l) = $count($v) ? {"L": $l})',
-  '  : $type($v) = "object" ? ($m := $merge([{}, $each($v, function($e, $k) { {$k: $__wf_marshal($e)} })]); $count($keys($m)) = $count($keys($v)) ? {"M": $m})',
+  '  : $type($v) = "array" ? ($l := [$map($v, function($e) { $wf_marshal($e) })]; $count($l) = $count($v) ? {"L": $l})',
+  '  : $type($v) = "object" ? ($m := $merge([{}, $each($v, function($e, $k) { {$k: $wf_marshal($e)} })]); $count($keys($m)) = $count($keys($v)) ? {"M": $m})',
   "}",
 ].join(" ");
 
 const UNMARSHAL_DEFINITION = [
-  "$__wf_unmarshal := function($v) {",
+  "$wf_unmarshal := function($v) {",
   "  $exists($v.S) ? $v.S",
   "  : $exists($v.N) ? $number($v.N)",
   "  : $exists($v.BOOL) ? $v.BOOL",
   "  : $exists($v.NULL) ? null",
-  "  : $exists($v.L) ? ($l := [$map($v.L, function($e) { $__wf_unmarshal($e) })]; $count($l) = $count($v.L) ? $l)",
-  '  : $exists($v.M) ? ($m := $merge([{}, $each($v.M, function($e, $k) { {$k: $__wf_unmarshal($e)} })]); $count($keys($m)) = $count($keys($v.M)) ? $m)',
+  "  : $exists($v.L) ? ($l := [$map($v.L, function($e) { $wf_unmarshal($e) })]; $count($l) = $count($v.L) ? $l)",
+  '  : $exists($v.M) ? ($m := $merge([{}, $each($v.M, function($e, $k) { {$k: $wf_unmarshal($e)} })]); $count($keys($m)) = $count($keys($v.M)) ? $m)',
   "}",
 ].join(" ");

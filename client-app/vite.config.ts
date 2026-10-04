@@ -7,6 +7,10 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+// Bundle the public projection into Vite's Node config rather than asking
+// native Node to import the workspace's TypeScript package entry point.
+import { AGENT_ROUTE } from "../packages/api-contract/src/generated/framework-routes";
+import { developmentApiProxy } from "./dev-proxy";
 
 const config = defineConfig(({ command, mode }) => {
   // This workspace's .env owns the Cognito values; the repository root's is
@@ -21,8 +25,8 @@ const config = defineConfig(({ command, mode }) => {
   };
   const apiProxyTarget = env.VITE_API_GATEWAY_URL?.replace(/\/+$/, "");
 
-  // The client always calls a same-origin /api, matching the CloudFront
-  // /api/* behavior in a deployed stack. VITE_API_GATEWAY_URL is no longer
+  // HTTP routes use /api; agent routes use their explicit same-origin paths.
+  // VITE_API_GATEWAY_URL is no longer
   // read by application code -- it is only this proxy's target.
   //
   // Not enforced under `mode === "test"`: Vitest resolves this config with
@@ -41,14 +45,7 @@ const config = defineConfig(({ command, mode }) => {
     },
     server: apiProxyTarget
       ? {
-          proxy: {
-            "/api": {
-              target: apiProxyTarget,
-              changeOrigin: true,
-              // The lookahead keeps a path like /apifoo from being mangled.
-              rewrite: (path) => path.replace(/^\/api(?=\/|$)/, "") || "/",
-            },
-          },
+          proxy: developmentApiProxy(apiProxyTarget, AGENT_ROUTE),
         }
       : undefined,
     plugins: [

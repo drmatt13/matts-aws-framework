@@ -2,6 +2,7 @@ import path from "node:path";
 import {
   getFrameworkTargets,
   getInvocationBindings,
+  getAgentInvocationBindings,
   getLocalTargets,
   parseTargetReference,
   resolveTaskTarget,
@@ -165,6 +166,19 @@ export function localInvocationDescriptors(
 
   const endpoint = runnerUrl.replace(/\/+$/, "");
   const descriptors: Record<string, string> = {};
+  for (const binding of getAgentInvocationBindings(target.cloud.bindings)) {
+    descriptors[binding.environment] = JSON.stringify({
+      version: INVOCATION_DESCRIPTOR_VERSION,
+      kind: "agent",
+      transport: "local",
+      target: binding.agent,
+      // Whether the agent has users decides how its caller authenticates, in
+      // both lanes: with the user's token, or (in AWS) with its own role.
+      auth: config.agents?.[binding.agent]?.auth === true,
+      runnerUrl: endpoint,
+      caller,
+    });
+  }
   for (const binding of getInvocationBindings(target.cloud.bindings)) {
     const kind = binding.capability === "runsTask" ? "task" : "workflow";
     const id = binding.capability === "runsTask" ? binding.task : binding.workflow;
@@ -199,7 +213,7 @@ export function assertLocalInvocationEdge(
   target: TargetReference,
 ): void {
   const { kind, id } = parseTargetReference(target);
-  if (kind !== "task" && kind !== "workflow") {
+  if (kind !== "task" && kind !== "workflow" && kind !== "agent") {
     throw new Error(`"${target}" is not a task or workflow target.`);
   }
   if (!caller) {
@@ -213,7 +227,7 @@ export function assertLocalInvocationEdge(
   if (!source) {
     throw new Error(`Caller "${caller}" is not declared in framework.config.ts.`);
   }
-  const declared = getInvocationBindings(source.cloud.bindings).some((binding) =>
+  const declared = kind === "agent" ? getAgentInvocationBindings(source.cloud.bindings).some(binding => binding.agent === id) : getInvocationBindings(source.cloud.bindings).some((binding) =>
     kind === "task"
       ? binding.capability === "runsTask" && binding.task === id
       : binding.capability === "startsWorkflow" && binding.workflow === id,

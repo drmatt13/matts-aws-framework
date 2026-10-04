@@ -4,6 +4,15 @@ import {
   TASK_SOURCE_ROOT,
 } from "./conventions";
 import { isDeploySettingEnabled } from "./deploy";
+import {
+  getAgentBrowserRoutes,
+  getDefaultAgentDirectory,
+  getDefaultToolDirectory,
+  validateAgentCoreConfig,
+  type AgentTargetDefinition,
+  type FrameworkAgents,
+  type FrameworkTools,
+} from "./agentcore";
 import type { DeployScope, DeploySetting } from "./deploy";
 import { LAMBDA_SOURCE_DIRECTORY_BY_ID } from "../generated/target-ids";
 import type {
@@ -40,6 +49,7 @@ import type {
   CloudAccessStatement,
   CloudMode,
   InvocationBinding,
+  InvokesAgentBinding,
   CompletesCallbackBinding,
   ReadSecretBinding,
   ResourceBinding,
@@ -61,6 +71,7 @@ export * from "./secret-bindings";
 export * from "./cdk-resources";
 export * from "./resource-manifest";
 export * from "./workflows";
+export * from "./agentcore";
 export * from "./workflow-semantics";
 export * from "./workflow-asl";
 // Named rather than `export *`: reading a deploy token is the framework's job,
@@ -70,6 +81,8 @@ export type { DeployScope, DeploySetting } from "./deploy";
 
 export {
   EVENT_LAMBDA_IDS,
+  AGENT_TARGET_IDS,
+  type AgentTargetId,
   LAMBDA_SOURCE_DIRECTORIES,
   LAMBDA_SOURCE_DIRECTORY_BY_ID,
   LAMBDA_TARGET_IDS,
@@ -113,13 +126,15 @@ export type LambdaTarget = `lambda:${string}`;
 export type ServiceTarget = `service:${string}`;
 export type TaskTarget = `task:${string}`;
 export type WorkflowTarget = `workflow:${string}`;
+export type AgentTarget = `agent:${string}`;
 export type TargetReference =
   | LambdaTarget
   | ServiceTarget
   | TaskTarget
-  | WorkflowTarget;
+  | WorkflowTarget
+  | AgentTarget;
 
-export type TargetKind = "lambda" | "service" | "task" | "workflow";
+export type TargetKind = "lambda" | "service" | "task" | "workflow" | "agent";
 
 /**
  * Kinds built from a source directory.
@@ -128,7 +143,7 @@ export type TargetKind = "lambda" | "service" | "task" | "workflow";
  * and its steps are other targets — so it is the one kind with nothing on disk
  * to resolve, build, or sweep for an adjacent contract.
  */
-export type SourcedTargetKind = "lambda" | "service" | "task";
+export type SourcedTargetKind = "lambda" | "service" | "task" | "agent";
 
 export interface ParsedTargetReference {
   readonly kind: TargetKind;
@@ -142,6 +157,8 @@ export type TargetRole =
   | "webSocket"
   | "webSocketAuthorizer"
   | "event"
+  | "tool"
+  | "agent"
   | "service"
   | "task"
   | "workflow";
@@ -230,7 +247,7 @@ function getDefaultEventDirectory(id: string): FrameworkDirectory {
 
 const TARGET_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const TARGET_PATTERN =
-  /^(lambda|service|task|workflow):([a-z0-9]+(?:-[a-z0-9]+)*)$/;
+  /^(lambda|service|task|workflow|agent):([a-z0-9]+(?:-[a-z0-9]+)*)$/;
 const DIRECTORY_SEGMENT_PATTERN = /^[A-Za-z0-9._-]+$/;
 
 /**
@@ -615,7 +632,14 @@ export const LAMBDA_ENVIRONMENT_BYTE_LIMIT = 4096;
 export const FRAMEWORK_DESCRIPTOR_PREFIXES = [
   "FRAMEWORK_TASK_",
   "FRAMEWORK_WORKFLOW_",
+  "FRAMEWORK_AGENT_",
 ] as const;
+
+/**
+ * What an agent's Runtime adapter is told about itself — which agent it is and
+ * where its Gateway answers. Owned by the framework like a descriptor.
+ */
+export const FRAMEWORK_AGENTCORE_ENVIRONMENT_PREFIX = "FRAMEWORK_AGENTCORE_";
 
 /**
  * The descriptor document version CDK writes and the runtime helper reads.
@@ -631,18 +655,19 @@ export const INVOCATION_DESCRIPTOR_VERSION = 1;
 
 /** The environment name a target id's descriptor arrives under. */
 export function descriptorEnvironmentName(
-  kind: "task" | "workflow",
+  kind: "task" | "workflow" | "agent",
   id: string,
 ): string {
-  return `${kind === "task" ? "FRAMEWORK_TASK_" : "FRAMEWORK_WORKFLOW_"}${id
-    .replace(/-/g, "_")
-    .toUpperCase()}`;
+  const prefix =
+    kind === "task" ? "FRAMEWORK_TASK_" : kind === "workflow" ? "FRAMEWORK_WORKFLOW_" : "FRAMEWORK_AGENT_";
+  return `${prefix}${id.replace(/-/g, "_").toUpperCase()}`;
 }
 
 /** Whether a name belongs to the framework's own invocation projection. */
 export function isFrameworkOwnedEnvironmentName(name: string): boolean {
   return (
     name === FRAMEWORK_TASK_INPUT_ENVIRONMENT ||
+    name.startsWith(FRAMEWORK_AGENTCORE_ENVIRONMENT_PREFIX) ||
     FRAMEWORK_DESCRIPTOR_PREFIXES.some((prefix) => name.startsWith(prefix))
   );
 }
@@ -841,7 +866,12 @@ export type ResolvedBinding =
   | NativeGrantBinding
   | (RunsTaskBinding & { readonly environment: string })
   | (StartsWorkflowBinding & { readonly environment: string })
+  | (InvokesAgentBinding & { readonly environment: string })
   | CompletesCallbackBinding;
+
+export function getAgentInvocationBindings(bindings: readonly ResolvedBinding[]): readonly (InvokesAgentBinding & { readonly environment: string })[] {
+  return bindings.filter((binding): binding is InvokesAgentBinding & { readonly environment: string } => binding.capability === "invokesAgent");
+}
 
 /** The callback completions among a target's bindings, in declaration order. */
 export function getCallbackBindings(
@@ -1170,7 +1200,7 @@ export function resolveTargetSettings(
     owners.set(name, owner);
   };
 
-  const isLambda = role !== "service" && role !== "task" && role !== "workflow";
+  const isLambda = role !== "service" && role !== "task" && role !== "workflow" && role !== "agent";
   const isContainer = role === "service" || role === "task";
   const environment: Record<string, string | ResourceReference> = {};
   /** ARN reads found in `environment`, which become this target's grants. */
@@ -1241,6 +1271,22 @@ export function resolveTargetSettings(
       }
       assertJsonArguments(binding.arguments, `${origin} ${where}`);
       bindings.push(binding);
+      continue;
+    }
+    if (binding.capability === "invokesAgent") {
+      if (typeof binding.agent !== "string" || !TARGET_ID_PATTERN.test(binding.agent)) {
+        throw new Error(
+          `${origin} declares ${where} against "${String(binding.agent)}", which is not a kebab-case agent id.`,
+        );
+      }
+      if (binding.environment !== undefined) {
+        throw new Error(
+          `${origin} declares ${where} with an "environment". Its descriptor name is derived from the agent id; remove it.`,
+        );
+      }
+      const environment = descriptorEnvironmentName("agent", binding.agent);
+      claimName(environment, where, true);
+      bindings.push({ capability: "invokesAgent", agent: binding.agent, environment });
       continue;
     }
     if (binding.capability === "runsTask" || binding.capability === "startsWorkflow") {
@@ -1352,7 +1398,9 @@ export function resolveTargetSettings(
     throw new Error(
       role === "workflow"
         ? `${origin} declares startup secrets on a workflow, which has no process to start. Declare them on the target it invokes.`
-        : `${origin} declares startup secrets on a Lambda, which has no startup the ECS agent can inject into. Write environment: { NAME: resources.<secret>.arn } and read the secret in the handler.`,
+        : role === "agent"
+          ? `${origin} declares secrets. AgentCore Runtime has no startup secret injection; write environment: { NAME: resources.<secret>.arn } and read the secret in the agent, which also grants the read.`
+          : `${origin} declares startup secrets on a Lambda, which has no startup the ECS agent can inject into. Write environment: { NAME: resources.<secret>.arn } and read the secret in the handler.`,
     );
   }
   const service = role === "service"
@@ -1813,8 +1861,8 @@ export interface WebSocketRouteDefinition {
   readonly origin: string;
 }
 
-/** The three ways a Lambda can be invoked, and the config section for each. */
-export type LambdaSection = "http" | "webSocket" | "events";
+/** The ways a Lambda can be invoked, and the config section for each. */
+export type LambdaSection = "http" | "webSocket" | "events" | "tools";
 
 /**
  * Defaults, cascading. A target inherits `lambda`, then its section's overrides,
@@ -1832,6 +1880,8 @@ export interface FrameworkDefaults {
   readonly webSocket?: LambdaTargetDefinition;
   /** Overrides applied to every Lambda in the `events` section. */
   readonly events?: LambdaTargetDefinition;
+  /** Overrides applied to every Lambda in the `tools` section. */
+  readonly tools?: LambdaTargetDefinition;
 }
 
 // ---------------------------------------------------------------------------
@@ -1918,6 +1968,10 @@ export interface FrameworkConfig {
   readonly tasks?: Readonly<Record<string, TaskTargetDefinition>>;
   /** Orchestration of declared events and tasks, keyed by stable target id. */
   readonly workflows?: Readonly<Record<string, WorkflowDefinition>>;
+  /** Lambdas an agent calls through its Gateway, keyed by stable target id. */
+  readonly tools?: FrameworkTools;
+  /** AgentCore Runtime agents, keyed by stable target id. */
+  readonly agents?: FrameworkAgents;
 }
 
 // ---------------------------------------------------------------------------
@@ -1950,6 +2004,8 @@ export interface FrameworkConfigInput {
   readonly services: SectionInput<Readonly<Record<string, ServiceTargetDefinition>>>;
   readonly tasks?: SectionInput<Readonly<Record<string, TaskTargetDefinition>>>;
   readonly workflows?: SectionInput<Readonly<Record<string, WorkflowDefinition>>>;
+  readonly tools?: SectionInput<FrameworkTools>;
+  readonly agents?: SectionInput<FrameworkAgents>;
 }
 
 type UnionToIntersection<Union> = (
@@ -1982,6 +2038,8 @@ type FlattenedConfig<Input> = {
     | "services"
     | "tasks"
     | "workflows"
+    | "tools"
+    | "agents"
     ? Flatten<Input[Key]>
     : Input[Key];
 };
@@ -2045,6 +2103,11 @@ function mergeSection<Entry>(
 export function defineFrameworkConfig<const Input extends FrameworkConfigInput>(
   input: Input,
 ): ComposedFrameworkConfig<Input> {
+  if ("gateways" in input) {
+    throw new Error(
+      "gateways is no longer a section. An agent's Gateway is derived from its tools list: move each Gateway's tools onto the agents that used it, as agents.<id>.tools.",
+    );
+  }
   const config: FrameworkConfig = {
     ...input,
     http: mergeSection("http", input.http),
@@ -2053,6 +2116,8 @@ export function defineFrameworkConfig<const Input extends FrameworkConfigInput>(
     services: mergeSection("services", input.services),
     tasks: mergeSection("tasks", input.tasks ?? {}),
     workflows: mergeSection("workflows", input.workflows ?? {}),
+    tools: mergeSection("tools", input.tools ?? {}),
+    agents: mergeSection("agents", input.agents ?? {}),
   };
 
   // Preserve eager validation of identities and shared directory ownership.
@@ -2313,6 +2378,7 @@ interface MutableExtras {
   readonly definition: ResolvableLambdaDefinition;
   readonly serviceDefinition?: ServiceTargetDefinition;
   readonly taskDefinition?: TaskTargetDefinition;
+  readonly agentDefinition?: AgentTargetDefinition;
   readonly resolvedSpec: string;
 }
 
@@ -2611,6 +2677,7 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
     origin: string,
     extra: {
       readonly taskDefinition?: TaskTargetDefinition;
+      readonly agentDefinition?: AgentTargetDefinition;
       readonly workflow?: NormalizedWorkflow;
       readonly deploy?: DeploySetting;
     } = {},
@@ -2659,6 +2726,8 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
         ? serviceDefinition ?? {}
         : kind === "task"
           ? extra.taskDefinition ?? {}
+          : kind === "agent"
+            ? extra.agentDefinition ?? {}
           : definition,
       origin,
       config.defaults.container?.architecture,
@@ -2746,6 +2815,7 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
       definition,
       ...(serviceDefinition ? { serviceDefinition } : {}),
       ...(extra.taskDefinition ? { taskDefinition: extra.taskDefinition } : {}),
+      ...(extra.agentDefinition ? { agentDefinition: extra.agentDefinition } : {}),
       ...(extra.workflow ? { workflow: extra.workflow } : {}),
       resolvedSpec,
     } as MutableTarget;
@@ -2890,6 +2960,46 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
     );
   }
 
+  // Keyed by target id, like events and tasks: a Gateway invokes a tool and a
+  // Runtime hosts an agent, so neither has a route to be keyed by.
+  for (const [id, definition] of Object.entries(config.tools ?? {})) {
+    const origin = `tools["${id}"]`;
+    if ("id" in definition) {
+      throw new Error(`${origin} declares "id". The object key is already this target's id.`);
+    }
+    claim(
+      "lambda",
+      { directory: definition.directory ?? getDefaultToolDirectory(id), id },
+      "tool",
+      "tools",
+      definition,
+      undefined,
+      origin,
+    );
+  }
+
+  for (const [id, definition] of Object.entries(config.agents ?? {})) {
+    const origin = `agents["${id}"]`;
+    if (definition.route !== undefined) {
+      assertHttpRouteKey(definition.route, `${origin}.route`, { allowCatchAll: false });
+    }
+    if ("id" in definition) {
+      throw new Error(`${origin} declares "id". The object key is already this target's id.`);
+    }
+    claim(
+      "agent",
+      { directory: definition.directory ?? getDefaultAgentDirectory(id), id },
+      "agent",
+      undefined,
+      {},
+      undefined,
+      origin,
+      { agentDefinition: definition, deploy: definition.deploy ?? "both" },
+    );
+  }
+
+  validateAgentCoreConfig(config);
+
   for (const [routeKey, definition] of Object.entries(config.services)) {
     const origin = `services["${routeKey}"]`;
     assertHttpRouteKey(routeKey, origin, { allowCatchAll: true });
@@ -3030,11 +3140,68 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
     }
   }
 
+  // Agent browser paths are full URLs on the application origin. HTTP/service
+  // keys live under /api. CloudFront selects an origin by path, not by method,
+  // so an agent cannot share a browser path even with a GET-only HTTP route.
+  // Compare all declarations, including disabled lanes, before any side effects.
+  const agentRoutes = getAgentBrowserRoutes(config);
+  for (const [index, agent] of agentRoutes.entries()) {
+    const origin = `agents["${agent.id}"].route`;
+    for (const other of agentRoutes.slice(index + 1)) {
+      if (agent.path === other.path) {
+        throw new Error(`Browser route collision: ${origin} (agent:${agent.id}) and agents["${other.id}"].route (agent:${other.id}) both claim ${agent.path}. Choose a distinct route.`);
+      }
+    }
+    for (const route of http) {
+      const browserPath = route.path === "/" ? "/api" : `/api${route.path}`;
+      if (pathsOverlap(agent.path, browserPath)) {
+        throw new Error(`Browser route collision: ${origin} (agent:${agent.id}, ${agent.path}) and ${route.origin} (${route.type}:${route.target}, ${browserPath}) overlap at ${agent.path}. CloudFront routes by path regardless of HTTP method; choose a distinct route.`);
+      }
+    }
+  }
+
   assertDistinctConstructIds(targets);
+  assertOrchestrationIdentities(targets);
   assertReferencesAreDeclared(config, targets);
-  assertInvocationEdges(targets);
+  assertInvocationEdges(config, targets);
 
   return { targets, http, webSocket };
+}
+
+/**
+ * The construct id AgentCore's resources live under, in the stack it shares
+ * with the workflows. A workflow's state machine is built at that stack's top
+ * level under its own construct id, so a workflow may not resolve to this one.
+ */
+export const AGENTCORE_CONSTRUCT_ID = "AgentCore";
+
+/**
+ * Workflows, agents and tools deploy in one stack, so what each puts at that
+ * stack's top level has to be distinct across all three kinds: a workflow's
+ * construct id against AgentCore's, and every output id against every other.
+ * Two such collisions would otherwise surface as a CDK error naming a construct
+ * the author never wrote.
+ */
+function assertOrchestrationIdentities(targets: ReadonlyMap<TargetReference, MutableTarget>): void {
+  const outputs = new Map<string, MutableTarget>();
+  for (const target of targets.values()) {
+    const orchestrated = target.kind === "workflow" || target.kind === "agent" || target.role === "tool";
+    if (!orchestrated) continue;
+    if (target.kind === "workflow" && target.cloud.constructId === AGENTCORE_CONSTRUCT_ID) {
+      throw new Error(
+        `${target.origins[0] ?? target.reference} resolves to construct id "${AGENTCORE_CONSTRUCT_ID}", which the framework's AgentCore resources use in the stack workflows share with them. Rename the workflow.`,
+      );
+    }
+    for (const spec of Object.values(target.cloud.outputs)) {
+      const existing = outputs.get(spec.id);
+      if (existing) {
+        throw new Error(
+          `Targets "${existing.reference}" and "${target.reference}" both declare the output id "${spec.id}", and workflows, agents and tools publish their outputs from one stack. Rename one of them.`,
+        );
+      }
+      outputs.set(spec.id, target);
+    }
+  }
 }
 
 /**
@@ -3174,6 +3341,7 @@ function assertReferencesAreDeclared(
  * and says nothing about target availability or invocation permission.
  */
 function assertInvocationEdges(
+  config: FrameworkConfig,
   targets: ReadonlyMap<TargetReference, MutableTarget>,
 ): void {
   const describe = (target: MutableTarget): string =>
@@ -3182,7 +3350,7 @@ function assertInvocationEdges(
   /** Which descriptor name each target id claims, so a collision names both. */
   const descriptorOwners = new Map<string, TargetReference>();
   for (const target of targets.values()) {
-    if (target.kind !== "task" && target.kind !== "workflow") continue;
+    if (target.kind !== "task" && target.kind !== "workflow" && target.kind !== "agent") continue;
     const name = descriptorEnvironmentName(target.kind, target.id);
     const existing = descriptorOwners.get(name);
     if (existing) {
@@ -3230,6 +3398,38 @@ function assertInvocationEdges(
   };
 
   for (const caller of targets.values()) {
+    // An agent's tool list is its Gateway: each entry is an edge the agent's
+    // role is granted, so it is held to the rules of every other edge.
+    if (caller.kind === "agent") {
+      for (const toolId of caller.agentDefinition?.tools ?? []) {
+        const where = `tools("${toolId}")`;
+        const destination = requireDestination(caller, `lambda:${toolId}`, where);
+        if (destination.role !== "tool") {
+          throw new Error(
+            `${describe(caller)} ${where} names an ${destination.role} Lambda. An agent calls Lambdas declared under tools; declare a tool there that shares the application module.`,
+          );
+        }
+      }
+    }
+    for (const binding of getAgentInvocationBindings(caller.cloud.bindings)) {
+      const where = `cloud.bindings invokesAgent("${binding.agent}")`;
+      if (!STARTER_ROLES.includes(caller.role)) {
+        throw new Error(
+          `${describe(caller)} ${where} invokes an agent from a ${caller.role} target. In v1 agent callers are routed Lambdas, services, tools and other agents.`,
+        );
+      }
+      const destination = requireDestination(caller, `agent:${binding.agent}`, where);
+      if (destination.kind !== "agent") {
+        throw new Error(`${describe(caller)} ${where} names "${destination.reference}", which is declared as a ${destination.kind}.`);
+      }
+      // An agent with users accepts only a user's token, so its caller has to
+      // hold one: an authenticated route, or another agent with users.
+      if (destination.agentDefinition?.auth === true && !hasSignedInUser(caller)) {
+        throw new Error(
+          `${describe(caller)} ${where} calls an agent with auth: true from a caller with no signed-in user. Call it from an auth: true route or agent and pass its session, or remove auth from the agent.`,
+        );
+      }
+    }
     for (const binding of getInvocationBindings(caller.cloud.bindings)) {
       const reference = (
         binding.capability === "runsTask"
@@ -3259,7 +3459,9 @@ function assertInvocationEdges(
           ? "invokeLambda"
           : reference.startsWith("task:")
             ? "runTask"
-            : "runWorkflow";
+            : reference.startsWith("agent:")
+              ? "invokeAgent"
+              : "runWorkflow";
       const id = reference.slice(reference.indexOf(":") + 1);
       const where = `${verb}("${id}")`;
       const destination = requireDestination(caller, reference as TargetReference, where);
@@ -3271,10 +3473,18 @@ function assertInvocationEdges(
       if (
         destination.kind !== "lambda" &&
         destination.kind !== "task" &&
-        destination.kind !== "workflow"
+        destination.kind !== "workflow" &&
+        destination.kind !== "agent"
       ) {
         throw new Error(
-          `${describe(caller)} ${where} names a ${destination.kind}. A workflow step runs a declared event Lambda, container task or workflow.`,
+          `${describe(caller)} ${where} names a ${destination.kind}. A workflow step runs a declared event Lambda, container task, workflow or agent.`,
+        );
+      }
+      // The step calls the Runtime with the workflow's role, and an agent with
+      // users accepts only a user's token — which a workflow never holds.
+      if (destination.kind === "agent" && destination.agentDefinition?.auth === true) {
+        throw new Error(
+          `${describe(caller)} ${where} calls an agent with auth: true, which accepts only a signed-in user's token, and a workflow has none. Give the workflow an agent without auth, or call this one from an authenticated route.`,
         );
       }
       if (destination.kind === "workflow" && destination.id === caller.id) {
@@ -3303,8 +3513,20 @@ function assertInvocationEdges(
   for (const reference of targets.keys()) visit(reference, []);
 }
 
+/** Whether every invocation of a target carries a verified user it can pass on. */
+function hasSignedInUser(target: MutableTarget): boolean {
+  if (target.role === "agent") return target.agentDefinition?.auth === true;
+  if (target.role === "service") return target.serviceDefinition?.auth === true;
+  return (
+    (target.role === "http" || target.role === "tool") &&
+    (target.definition as { readonly auth?: true }).auth === true
+  );
+}
+
 /** Roles allowed to call `startWorkflow` at runtime in v1. */
 const STARTER_ROLES: readonly TargetRole[] = [
+  "tool",
+  "agent",
   "http",
   "webSocket",
   "webSocketAuthorizer",
@@ -3647,6 +3869,7 @@ export function assertCloudEdgesResolvable(
             `startsWorkflow("${binding.workflow}")`,
           ] as const),
     );
+    for (const binding of getAgentInvocationBindings(caller.cloud.bindings)) edges.push([`agent:${binding.agent}`, `invokesAgent("${binding.agent}")`]);
     if (caller.kind === "workflow") {
       for (const reference of getWorkflowStepTargets(config, caller.id)) {
         edges.push([reference as TargetReference, `states task("${reference}")`]);

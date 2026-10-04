@@ -1,0 +1,39 @@
+flowchart TB
+  subgraph HOST["Developer machine — frontend"]
+    UI["React / TanStack Query"] -->|"same-origin /api"| VITE["Vite proxy"]
+    WSB["Browser / WebSocket tester"]
+  end
+  subgraph COMPOSE["Docker Compose — local compute"]
+    API["Local HTTP server"]
+    LX["Lambda executor"]
+    HANDLER["Shared HTTP handler / Yoga + Pothos + repositories"]
+    PG["Local PostgreSQL"]
+    PROXY["Service proxy"]
+    SERVICE["Long-running Compose service"]
+    RUNNER["Invocation runner"]
+    TASK["Task containers — run to exit"]
+    FLOW["Workflow interpreter — in-memory history"]
+    AGENT["Per-conversation agent processes"]
+    WS["Local WebSocket server"]
+    WLX["WS authorizer / route executor"]
+    API -->|"/graphql"| LX --> HANDLER --> PG
+    API --> PROXY --> SERVICE
+    API --> RUNNER
+    RUNNER --> TASK
+    RUNNER --> FLOW
+    RUNNER --> AGENT
+    WS --> WLX
+  end
+  VITE --> API
+  WSB <-->|"WebSocket protocol"| WS
+  COG["Development Cognito / signing keys"] -. "ID-token verification" .-> API
+  COG -. "ID-token verification" .-> WS
+  AWS["Declared development AWS resources"]
+  FLOW -->|"declared integrations"| AWS
+  COMPUTE["Permitted local workloads"] -->|"development credentials"| AWS
+  MAN["Exported resource manifest"] -.-> ENV["Local environment resolver"]
+  INPUT["Authored deployment inputs"] -.-> ENV
+  ENV -. "per-workload settings" .-> LX
+  ENV -. "per-workload settings" .-> SERVICE
+  ENV -. "per-workload settings" .-> RUNNER
+  NOTE["LangGraph and echo samples: local-only. Local histories/callbacks are not durable."]

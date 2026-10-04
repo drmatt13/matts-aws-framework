@@ -13,6 +13,7 @@
  * one target can appear there.
  */
 
+export * as agentEchoAgent from "./contracts/agent-echo-agent";
 export * as lambdaMfa from "./contracts/lambda-mfa";
 export * as lambdaPythonExample from "./contracts/lambda-python-example";
 export * as lambdaSignIn from "./contracts/lambda-sign-in";
@@ -50,7 +51,7 @@ export type {
 
 /**
  * Not re-exported flat, because more than one target declares them:
- *   - contract is exported by lambda:mfa, lambda:sign-in
+ *   - contract is exported by agent:echo-agent, lambda:mfa, lambda:sign-in
  *
  * Reach each through its namespace above. Rebinding one of them here
  * would hand the name to whichever target happened to sort last.
@@ -58,6 +59,7 @@ export type {
 
 /** Browser-safe metadata for targets that expose optional payload contracts. */
 export const frameworkContracts = {
+  "agent:echo-agent": { kind: "typescript" },
   "lambda:mfa": { kind: "typescript" },
   "lambda:python-example": { kind: "json-schema" },
   "lambda:sign-in": { kind: "typescript" },

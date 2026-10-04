@@ -92,14 +92,42 @@ export type TaskDescriptor = AwsTaskDescriptor | LocalTaskDescriptor;
 export type WorkflowDescriptor = AwsWorkflowDescriptor | LocalWorkflowDescriptor;
 export type InvocationDescriptor = TaskDescriptor | WorkflowDescriptor;
 
+/**
+ * An agent, as its caller is told about it. `auth` travels with the transport
+ * because it decides how the caller authenticates: an agent with users accepts
+ * only a user's token, so its caller forwards one instead of signing with IAM.
+ */
+export interface AwsAgentDescriptor {
+  readonly version: number;
+  readonly kind: "agent";
+  readonly transport: "aws";
+  readonly target: string;
+  readonly auth: boolean;
+  readonly region: string;
+  readonly arn: string;
+}
+
+export interface LocalAgentDescriptor {
+  readonly version: number;
+  readonly kind: "agent";
+  readonly transport: "local";
+  readonly target: string;
+  readonly auth: boolean;
+  readonly runnerUrl: string;
+  /** The bound caller, for the same reason as {@link LocalTaskDescriptor.caller}. */
+  readonly caller?: string;
+}
+
+export type AgentDescriptor = AwsAgentDescriptor | LocalAgentDescriptor;
+
 /** The environment name a target id's descriptor arrives under. */
 export function descriptorEnvironmentName(
-  kind: "task" | "workflow",
+  kind: "task" | "workflow" | "agent",
   id: string,
 ): string {
-  return `${kind === "task" ? "FRAMEWORK_TASK_" : "FRAMEWORK_WORKFLOW_"}${id
-    .replace(/-/g, "_")
-    .toUpperCase()}`;
+  const prefix =
+    kind === "task" ? "FRAMEWORK_TASK_" : kind === "workflow" ? "FRAMEWORK_WORKFLOW_" : "FRAMEWORK_AGENT_";
+  return `${prefix}${id.replace(/-/g, "_").toUpperCase()}`;
 }
 
 /** The reserved override a launched task reads its JSON input from. */
@@ -276,6 +304,72 @@ export function parseInvocationDescriptor(
       assignPublicIp: spec.assignPublicIp,
     },
   };
+}
+
+/** Parses an `invokesAgent` descriptor and proves it describes the agent asked for. */
+export function parseAgentDescriptor(raw: string | undefined, target: string): AgentDescriptor {
+  const where = `Invocation descriptor ${descriptorEnvironmentName("agent", target)}`;
+  if (raw === undefined) {
+    throw new InvocationDescriptorError(
+      `${where} is not set. Declare invokesAgent("${target}") in this target's cloud.bindings; the descriptor is injected from that declaration.`,
+    );
+  }
+  let record: Record<string, unknown>;
+  try {
+    record = JSON.parse(raw) as Record<string, unknown>;
+  } catch (error) {
+    throw new InvocationDescriptorError(
+      `${where} is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (record === null || typeof record !== "object" || Array.isArray(record)) {
+    throw new InvocationDescriptorError(`${where} is not a JSON object.`);
+  }
+  if (record.version !== INVOCATION_DESCRIPTOR_VERSION) {
+    throw new InvocationDescriptorError(
+      `${where} declares version ${String(record.version)}; this runtime reads version ${INVOCATION_DESCRIPTOR_VERSION}. Redeploy the caller, or update @repo/framework.`,
+    );
+  }
+  if (record.kind !== "agent" || record.target !== target) {
+    throw new InvocationDescriptorError(
+      `${where} describes ${String(record.kind)} "${String(record.target)}", not agent "${target}".`,
+    );
+  }
+  if (typeof record.auth !== "boolean") {
+    throw new InvocationDescriptorError(`${where} has no boolean "auth".`);
+  }
+  if (record.transport === "local") {
+    if (!isNonEmptyString(record.runnerUrl)) throw new InvocationDescriptorError(`${where} has no "runnerUrl".`);
+    if (record.caller !== undefined && !isNonEmptyString(record.caller)) {
+      throw new InvocationDescriptorError(`${where} has a "caller" that is not a non-empty string.`);
+    }
+    return {
+      version: INVOCATION_DESCRIPTOR_VERSION,
+      kind: "agent",
+      transport: "local",
+      target,
+      auth: record.auth,
+      runnerUrl: record.runnerUrl.replace(/\/+$/, ""),
+      ...(record.caller === undefined ? {} : { caller: record.caller as string }),
+    };
+  }
+  if (record.transport === "aws") {
+    for (const field of ["region", "arn"] as const) {
+      if (!isNonEmptyString(record[field])) throw new InvocationDescriptorError(`${where} has no "${field}".`);
+    }
+    return {
+      version: INVOCATION_DESCRIPTOR_VERSION,
+      kind: "agent",
+      transport: "aws",
+      target,
+      auth: record.auth,
+      region: record.region as string,
+      arn: record.arn as string,
+    };
+  }
+  throw new InvocationDescriptorError(
+    `${where} declares transport "${String(record.transport)}". Expected "aws" or "local".`,
+  );
 }
 
 /** The document as the one string both projections write. */

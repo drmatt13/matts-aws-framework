@@ -1,7 +1,8 @@
 # matt's-aws-framework
 
 A TypeScript npm-workspace framework for AWS applications: React, Cognito,
-GraphQL, PostgreSQL, Lambda, container services, tasks, and workflows. The same
+GraphQL, PostgreSQL, Lambda, container services, tasks, workflows, and AgentCore
+agents and tools. The same
 workload declarations drive AWS infrastructure and the local development servers.
 
 ## Start here
@@ -14,8 +15,11 @@ The CDK CLI is installed in the workspace; a global installation is unnecessary.
 | Set up and run development | [Development](docs/DEV-DEPLOYMENT.md) |
 | Deploy or update production | [Production](docs/PROD-DEPLOYMENT.md) |
 | Understand persistence and migrations | [Database](docs/DATABASE.md) |
+| Find shared application and declaration helpers | [Shared functions](docs/SHARED-FUNCTIONS.md) |
+| See which AWS services development still uses | [Shared AWS dependencies](docs/SHARED-AWS-DEPENDENCIES.md) |
 | Have an agent wire a data change through the application | [Data features](docs/DATA-FEATURES.md) |
 | Add an endpoint, service, task, workflow, or resource | [Framework](docs/FRAMEWORK.md) |
+| Add an AgentCore agent or the tools it calls | [AgentCore](docs/AGENTCORE.md) |
 
 ## The two declarations you normally edit
 
@@ -47,6 +51,7 @@ explicit source. Generators and agents handle the surrounding mechanics.
 | `cdk-app/lib/framework/` | Infrastructure constructed from workload declarations |
 | `cdk-app/lambda_functions/` | HTTP, WebSocket, and event handlers |
 | `cdk-app/ecs_containers/` | Services and run-to-completion tasks |
+| `agentcore/` | AgentCore agents, one directory each; tools live in `cdk-app/lambda_functions/tool_functions/` |
 | `packages/database/` | Prisma contract, migrations, and repositories |
 | `packages/framework/` | Framework implementation partitioned into config, runtime, and local execution; generation/check scripts |
 | `packages/api-contract/` | Browser-safe public routes and payload contracts |
@@ -78,3 +83,6 @@ can be built. It is read-only and needs no AWS credentials.
 
 AWS synth, deployment, live database checks, and browser smoke tests are separate
 steps documented in the relevant deployment guide.
+
+`npm run agents:inspect` prints each declared agent: where it runs, who may call it, and
+the Gateway derived from its tools. It is read-only and needs no AWS credentials.

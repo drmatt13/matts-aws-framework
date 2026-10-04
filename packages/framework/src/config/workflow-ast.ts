@@ -259,8 +259,8 @@ interface WorkflowNodeBase {
   readonly label?: string | undefined;
 }
 
-/** A step target: an `events` Lambda, a container task, or a child workflow. */
-export type WorkflowInvocationKind = "lambda" | "task" | "workflow";
+/** A step target: an `events` Lambda, a container task, a child workflow, or an agent. */
+export type WorkflowInvocationKind = "lambda" | "task" | "workflow" | "agent";
 
 /**
  * One unit of framework work, awaited.
@@ -287,6 +287,11 @@ export interface InvocationNode extends WorkflowNodeBase {
   readonly completion?: "exit" | "callback";
   /** Callback mode only, and never an extension of the absolute deadline. */
   readonly heartbeatSeconds?: number | undefined;
+  /**
+   * Agent steps only: which of the execution's Runtime sessions the call runs
+   * in. Absent means the execution's default session.
+   */
+  readonly session?: unknown;
 }
 
 /**

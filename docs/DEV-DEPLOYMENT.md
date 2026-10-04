@@ -3,6 +3,10 @@
 This guide gets a checkout running and explains the everyday edit/reload loop.
 Commands run from the repository root. Replace placeholders before running commands.
 
+The local API server uses browser paths: `/api/<http-or-service-path>` for HTTP/service
+declarations and the exact `route` for agents. The Vite proxy preserves those paths.
+`npm run dev:request` still takes an HTTP declaration key (e.g. `/graphql`) and adds `/api`.
+
 ## First setup
 
 Install Node 24+, npm, AWS CLI credentials for the intended dev account, and Docker

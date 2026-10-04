@@ -21,8 +21,14 @@ interface Request {
   readonly entry: string;
   readonly handler: string;
   readonly event: unknown;
-  /** Fields a caller may pin, such as a replayed invocation's original request id. */
-  readonly context?: { readonly awsRequestId?: string };
+  /**
+   * Fields a caller may pin: a replayed invocation's original request id, or
+   * the client context a Gateway hands a tool.
+   */
+  readonly context?: {
+    readonly awsRequestId?: string;
+    readonly clientContext?: { readonly custom: Readonly<Record<string, string>> };
+  };
   readonly lambda?: LambdaDescription;
   /** Stay alive for the next invocation instead of exiting after this one. */
   readonly keepAlive?: boolean;
@@ -47,6 +53,7 @@ function lambdaContext(request: Request) {
     invokedFunctionArn: `arn:aws:lambda:local:000000000000:function:${functionName}`,
     memoryLimitInMB: String(request.lambda?.memoryLimitInMB ?? 128),
     awsRequestId: request.context?.awsRequestId ?? randomUUID(),
+    ...(request.context?.clientContext ? { clientContext: request.context.clientContext } : {}),
     logGroupName: `/aws/lambda/${functionName}`,
     logStreamName: "local",
     getRemainingTimeInMillis: () => Math.max(0, deadline - Date.now()),

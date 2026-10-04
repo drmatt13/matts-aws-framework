@@ -14,7 +14,7 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { EcsServicesStack } from "../lib/framework/ecs-services-stack";
 import { defineFrameworkConfig, defineResources, resource, getFrameworkTargets, dynamodb as workflowDynamodb, sequence, sqs as workflowSqs, workflow, type FrameworkConfig } from "@repo/framework/config";
-import { createFrameworkWorkflows } from "../lib/framework/framework-composition";
+import { createFrameworkOrchestration } from "../lib/framework/framework-composition";
 import { initializeFrameworkResources, linkResource, finalizeFrameworkResources, resolveLinkedResource, applyNativeGrant, resolveDeploymentSecret } from "../lib/framework/framework-resources";
 import { attachLambdaResources } from "../lib/framework/framework-cloud";
 import { defaults } from "../../framework-config/defaults";
@@ -166,7 +166,8 @@ test("a development deployment publishes the tables and queues its local workflo
     workflowSqs.request<{ id: string }, { ok: boolean }>(catalog.queue, { id: input.id }, { timeoutSeconds: 60 }),
   ), { timeoutSeconds: 300, deploy: "local-only" }) }] } as never);
   const { app, owner } = setup(configuration);
-  createFrameworkWorkflows(app, { env, stackId: (name) => name, config: configuration, mode: "dev" });
+  // No agents in development either, so no user pool is read.
+  createFrameworkOrchestration(app, { env, stackId: (name) => name, config: configuration, mode: "dev", cognito: undefined as never });
   // Linked after the workflows are composed, as an application stack may be.
   linkResource(owner, catalog.queue, new sqs.Queue(owner, "Approvals"));
   linkResource(owner, catalog.table, new dynamodb.Table(owner, "Ledger", { partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING } }));

@@ -79,6 +79,8 @@ export interface AslResolver {
   };
   /** The state machine ARN of a declared child workflow. */
   readonly workflowArn?: (id: string) => string;
+  /** The Runtime ARN of a declared agent. The resolver also grants the invoke. */
+  readonly agentArn?: (id: string) => string;
   /**
    * The identifier a bound integration is reached by.
    *
@@ -172,6 +174,29 @@ export const ECS_RUN_TASK_SYNC_RESOURCE = "arn:aws:states:::ecs:runTask.sync";
 export const STATES_START_EXECUTION_SYNC_RESOURCE =
   "arn:aws:states:::states:startExecution.sync:2";
 
+/**
+ * AgentCore Runtime through the AWS SDK integration.
+ *
+ * Step Functions' optimized AgentCore integration (`invokeHarness`) is for
+ * managed harnesses; an agent this repository builds is a code Runtime, which
+ * only the SDK integration reaches. Request-response, so express can run it.
+ */
+export const AGENTCORE_INVOKE_RUNTIME_RESOURCE =
+  "arn:aws:states:::aws-sdk:bedrockagentcore:invokeAgentRuntime";
+
+/**
+ * The conversation an agent step runs in: a digest of the execution and the
+ * step's session key, so it belongs to this execution alone and always fits
+ * the adapter's conversation id pattern. A newline separates the two because
+ * an execution ARN cannot contain one. The local interpreter derives its own
+ * from its execution id the same way. `$hash` answers lowercase hex, as
+ * Node's digest does — verified against Step Functions' TestState.
+ */
+function agentConversation(session: string): string {
+  // `\\n` is JSONata's escape, so the emitted expression holds no raw newline.
+  return `$hash($states.context.Execution.Id & "\\n" & ${session}, "SHA-256")`;
+}
+
 type Json = Record<string, unknown>;
 
 // ---------------------------------------------------------------------------
@@ -233,7 +258,7 @@ function root(reference: WorkflowReference, current: WorkflowNodeId | undefined)
 
 /** The lambda parameter of a compiled `project` or `filter`. */
 function elementVariable(binding: WorkflowBindingId): string {
-  return `__wf_el_${binding}`;
+  return `wf_el_${binding}`;
 }
 
 /**
@@ -246,15 +271,15 @@ function elementVariable(binding: WorkflowBindingId): string {
 let blockCounter = 0;
 function blockVariable(): string {
   blockCounter += 1;
-  return `__wf_v${blockCounter}`;
+  return `wf_v${blockCounter}`;
 }
 
 function mapBindingVariable(map: WorkflowNodeId, field: "item" | "index"): string {
-  return `__wf_${field}_${map}`;
+  return `wf_${field}_${map}`;
 }
 
 function errorVariable(attempt: WorkflowNodeId): string {
-  return `__wf_err_${attempt}`;
+  return `wf_err_${attempt}`;
 }
 
 function expressionOf(
@@ -1221,6 +1246,42 @@ function invocationState(
         StateMachineArn: resolve(node.target),
         Input:
           node.payload === undefined ? {} : compilePayload(node.payload, node.id),
+      },
+      ...assignments(node.id, result, aliases),
+      Output: result,
+      ...flow(next),
+    };
+  }
+
+  if (node.invokes === "agent") {
+    const resolve = context.resolver.agentArn;
+    if (resolve === undefined) {
+      throw new Error(
+        `invokeAgent("${node.target}") needs an agent resolver. The compiler was given no way to resolve a Runtime ARN.`,
+      );
+    }
+    const input = node.payload === undefined ? "{}" : operandText(node.payload, node.id);
+    // A string key as JSONata's `&` makes one, and the interpreter likewise.
+    const conversation = agentConversation(node.session === undefined ? '""' : operandText(node.session, node.id));
+    // The adapter's protocol, spelled in JSONata: the body is
+    // `{ conversationId, input }`, and the session is the digest of the owner
+    // and the conversation, which the adapter recomputes and insists on. A
+    // workflow has no user, so the owner is the service sentinel.
+    const sessionId = `$hash('["service","' & ${conversation} & '"]', "SHA-256")`;
+    // The adapter answers `{ result }`, and Step Functions models `Response`
+    // as a string (TestState refuses a mocked object). A body that is not that
+    // document fails the state with States.QueryEvaluationError.
+    const result = jsonata("$parse($states.result.Response).result");
+    return {
+      ...shared,
+      Resource: AGENTCORE_INVOKE_RUNTIME_RESOURCE,
+      Arguments: {
+        AgentRuntimeArn: resolve(node.target),
+        Qualifier: "DEFAULT",
+        RuntimeSessionId: jsonata(sessionId),
+        ContentType: "application/json",
+        Accept: "application/json",
+        Payload: jsonata(`$string({"conversationId": ${conversation}, "input": ${input}})`),
       },
       ...assignments(node.id, result, aliases),
       Output: result,

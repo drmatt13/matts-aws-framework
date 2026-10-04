@@ -12,6 +12,7 @@ import { langgraphService } from "./framework-config/services/langgraph";
 import { invocationTestTasks } from "./framework-config/tasks/invocation-tests";
 import { capabilityWorkflows } from "./framework-config/workflows/capabilities";
 import { invocationTestWorkflows } from "./framework-config/workflows/invocation-tests";
+import { exampleAgents, exampleTools } from "./framework-config/agents/example";
 
 /**
  * The repository's inventory: every target, grouped by how it is invoked.
@@ -39,6 +40,8 @@ const framework = defineFrameworkConfig({
   services: [langgraphService],
   tasks: [invocationTestTasks],
   workflows: [invocationTestWorkflows, capabilityWorkflows],
+  tools: [exampleTools],
+  agents: [exampleAgents],
 });
 
 export default framework;

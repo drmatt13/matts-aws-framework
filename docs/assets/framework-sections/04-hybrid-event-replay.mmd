@@ -1,0 +1,19 @@
+flowchart LR
+  subgraph DEV["Development AWS"]
+    EVT["AWS event / Cognito trigger"] --> CAP["Event Lambda — withLocalReplay"]
+    CAP -->|"store envelope"| S3["S3 captured invocation"]
+    S3 -->|"object-created notification"| Q["SQS replay queue"]
+    BRIDGE["Development AWS Express bridge"] --> BOUND["Bound AWS operation / credentialed HTTPS"]
+  end
+  subgraph LOCAL["Local development"]
+    D["Replay dispatcher"] --> LX["Local Lambda executor"]
+    LX --> H["Shared event handler"]
+    H --> PG["Local PostgreSQL side effects"]
+    FLOW["Local workflow"]
+  end
+  Q -->|"poll notification"| D
+  D -->|"fetch captured envelope"| S3
+  S3 -->|"event envelope"| D
+  D -->|"delete only after success"| Q
+  FLOW --> BRIDGE
+  NOTE["Only localReplay events captured; no replay infrastructure in production. Cognito response immediate, local side effects asynchronous."]

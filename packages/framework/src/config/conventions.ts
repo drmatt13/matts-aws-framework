@@ -33,3 +33,18 @@ export const EVENT_SOURCE_ROOT = `${LAMBDA_SOURCE_ROOT}/event_functions` as cons
  * `events` entry defaults into the event grouping directory.
  */
 export const TASK_SOURCE_ROOT = "/ecs_containers/tasks";
+
+/**
+ * Where AgentCore tool handlers are filed, and the directory a `tools` entry
+ * defaults into. A tool is an ordinary Lambda that a Gateway invokes, so it
+ * lives beside the other Lambda groupings.
+ */
+export const TOOL_SOURCE_ROOT = `${LAMBDA_SOURCE_ROOT}/tool_functions` as const;
+
+/**
+ * Where an `agents` entry defaults into. The one framework path that is rooted
+ * at the repository rather than at `cdk-app`: an agent is an application in its
+ * own right, packaged for AgentCore Runtime rather than built by a CDK stack
+ * from cdk-app sources.
+ */
+export const AGENT_SOURCE_ROOT = "/agentcore";

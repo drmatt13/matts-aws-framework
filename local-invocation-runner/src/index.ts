@@ -21,13 +21,20 @@ import {
   readWorkflowBindings,
   redactCallbackHandles,
   TASK_CONTAINER_PROJECT_LABEL,
+  LocalLambdaExecutor,
+  loadToolManifest,
 } from "@repo/framework/local";
+import { registerAgentRoutes } from "./agent-routes";
+import { LocalAgentSupervisor } from "./agents";
 import { docker, dockerWithEnvironment, containerEnvironment, dockerBuild, composeIdentity, followContainerLogs, cancelDockerBuilds } from "./docker";
 import framework from "../../framework.config";
 import { LocalTaskSupervisor, TaskSubmissionError } from "./tasks";
 import { LocalWorkflowEngine } from "./workflows";
 
 const repositoryRoot = path.resolve(__dirname, "..", "..");
+// AgentCore tools run cold, one process per call, so a tool edited between two
+// calls in one conversation runs as edited on the second.
+const toolExecutor = new LocalLambdaExecutor({ config: framework, repositoryRoot, pool: null });
 const runnerLabel = "com.matts-aws-framework.local-lambda=true";
 const buildPromises = new Map<string, Promise<string>>();
 
@@ -248,6 +255,7 @@ async function cleanupStaleContainers(): Promise<void> {
 const runnerUrl = (
   process.env.LOCAL_INVOCATION_RUNNER_URL ?? "http://local-invocation-runner:8090"
 ).replace(/\/+$/, "");
+const agentSupervisor = new LocalAgentSupervisor(framework, repositoryRoot, runnerUrl);
 
 let taskSupervisor: LocalTaskSupervisor;
 let workflowEngine: LocalWorkflowEngine;
@@ -312,6 +320,13 @@ app.use((_request, response, next) => {
   next();
 });
 app.get("/health", (_request, response) => response.json({ ok: true }));
+registerAgentRoutes(app, {
+  config: framework,
+  agents: agentSupervisor,
+  tools: toolExecutor,
+  loadTools: () => loadToolManifest(framework, repositoryRoot),
+});
+
 app.post("/invoke", async (request, response) => {
   if (!request.body || typeof request.body !== "object" || Array.isArray(request.body)) {
     response.status(400).json({ error: "Request body must be a JSON object." });
@@ -503,6 +518,8 @@ function shutdown(): Promise<void> {
   server?.close();
   for (const controller of lambdaControllers) controller.abort(new Error("Local runner is shutting down."));
   shutdownPromise = (async () => {
+    agentSupervisor.close();
+    toolExecutor.close();
     await Promise.all([workflowEngine?.shutdown(), taskSupervisor?.shutdown()]);
     await Promise.allSettled([...lambdaInvocations]);
     if (projectName) await cleanupStaleContainers();
@@ -546,6 +563,9 @@ async function main(): Promise<void> {
     // it looked in.
     callIntegration: (request, options) =>
       callIntegration(request, integrationClients, workflowBindings, options),
+    // The same session processes the browser and invokeAgent reach, so an
+    // agent behaves identically whichever lane calls it.
+    agents: agentSupervisor,
   });
   await Promise.all([cleanupStaleContainers(), taskSupervisor.initialize()]);
   if (closing) return;

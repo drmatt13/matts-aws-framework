@@ -6,6 +6,8 @@ local execution, and generated browser route/payload contracts.
 
 Use [Development](DEV-DEPLOYMENT.md) or [Production](PROD-DEPLOYMENT.md) to run the system.
 Use [Data features](DATA-FEATURES.md) for changes inside the existing GraphQL endpoint.
+Use [AgentCore](AGENTCORE.md) for the `agents` and `tools` sections: agents, the tools they
+call through their derived Gateways, and the browser and local lanes for both.
 
 ## Package boundaries
 
@@ -45,6 +47,8 @@ Backend code imports the module it uses:
 | Entry point | Use |
 | --- | --- |
 | `@repo/framework/runtime/invocation` | runTask/startWorkflow and invocation descriptors/context |
+| `@repo/framework/runtime/agentcore` | `agent()` for an agent's entry point, and `invokeAgent` for a workload calling one |
+| `@repo/framework/runtime/tools` | `tool()` and `authenticatedTool()` for an AgentCore tool's handler |
 | `@repo/framework/runtime/auth` | Cognito ID-token verification and authenticated sessions |
 | `@repo/framework/runtime/http` | HTTP responses, cookies, and trusted browser origin checks |
 | `@repo/framework/runtime/database` | Database connection URL/Secrets Manager resolution |
@@ -75,6 +79,8 @@ feature directory, and frontend operations without changing these package bounda
 | Service | Public mount in services | /ecs_containers/services/id plus a Compose service | [LangGraph](../framework-config/services/langgraph.ts) |
 | Task | Stable target id in tasks | Defaults to /ecs_containers/tasks/id | [task](../framework-config/tasks/invocation-tests.ts) |
 | Workflow | Stable target id in workflows | Graph declaration; no implementation directory | [workflow](../framework-config/workflows/invocation-tests.ts) |
+| AgentCore tool | Stable target id in tools | Defaults to /lambda_functions/tool_functions/id, with contract.ts | [echo](../framework-config/agents/example.ts) |
+| AgentCore agent | Stable target id in agents | Defaults to /agentcore/id at the repository root, with contract.ts | [echo-agent](../framework-config/agents/example.ts) |
 
 1. Add the implementation and its npm workspace manifest if appropriate.
 2. Declare a literal entry in a section, using `satisfies HttpSection` (or the matching
@@ -101,6 +107,13 @@ includes /langgraph and descendants. Path parameters, trailing/duplicate slashes
 ambiguous path/method overlaps are rejected. Different methods may share a path.
 Routes are case-sensitive; unmatched methods/paths return API Gateway-style 404 locally.
 The local proxy strips a service's public mount before forwarding to its container.
+
+Agent ids are separate from browser routes. Declare `route: "/chat/support"` on an
+`auth: true` agent to expose that exact same-origin path, with no automatic prefix;
+omit `route` for workload-only invocation. HTTP/service keys still appear under `/api`.
+Shared validation rejects duplicate agent routes and agent overlap with HTTP/service
+browser paths, including wildcard mounts and disabled deployment lanes. Agent collisions
+are path-based regardless of HTTP method because CloudFront selects an origin by path.
 
 Frontend consumers use `API_ROUTE["/graphql"]` from @repo/api-contract. A service mount's
 value is its prefix. The generated route union includes all declared routes regardless
@@ -450,7 +463,8 @@ credentials, and does so silently if the graph has a fallback.
 
 Build graphs with the declarations from @repo/framework/config: `workflow`, `sequence`,
 `parallel`, `map`, `when`, `choose`, `retry`, `attempt`, `wait`, `transform`, `succeed`,
-`fail`, and the steps `invokeLambda`, `runTask`, `runWorkflow`. Conditions are `eq`, `ne`,
+`fail`, and the steps `invokeLambda`, `runTask`, `runWorkflow`, `invokeAgent` (see
+[AgentCore](AGENTCORE.md#calling-an-agent)). Conditions are `eq`, `ne`,
 `gt`, `gte`, `lt`, `lte`, `contains`, `startsWith`, `endsWith`, `and`, `or`, `not`,
 `exists`, `isNull`. Follow the [working graph](../framework-config/workflows/invocation-tests.ts)
 and the typed API in [workflow definitions](../packages/framework/src/config/workflows.ts).
@@ -687,7 +701,9 @@ GraphQL resolvers receive an authenticated session and separately enforce record
   unavailable state. Proactive renewal is part of the auth lifecycle.
 - refreshToken and sessionMode are HttpOnly cookies scoped to Path=/api, so pages and assets
   never carry them. The browser calls same-origin /api; SameSite=Lax depends on this arrangement. CloudFront strips /api for the HTTP gateway;
-  Vite proxies it locally. Keep Vite base=/ and SPA fallback separate from API errors.
+  Vite proxies it locally without removing the prefix; the local API server mounts
+  HTTP/service routes at /api. Agent routes use their explicitly declared same-origin
+  paths and the same bearer/refresh lifecycle. Keep Vite base=/ and SPA fallback separate from API errors.
 - Cookie-bearing auth endpoints validate trusted browser origins. Bearer-only GraphQL
   does not use ambient cookie authentication. Sign-out clears cookies and revokes refresh.
 - Hosted UI uses authorization code flow with PKCE and state. Frontend /auth/callback and

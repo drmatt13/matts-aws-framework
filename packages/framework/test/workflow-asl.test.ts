@@ -240,7 +240,7 @@ test("attempt attaches a catch to the fallible states its block produced", () =>
   const guarded = states.InvokeLambda_Alpha_1 as Json;
   const [clause] = guarded.Catch as readonly Json[];
   assert.deepEqual(clause?.ErrorEquals, ["CustomError"]);
-  assert.ok((clause?.Assign as Json)["__wf_err_2"]);
+  assert.ok((clause?.Assign as Json)["wf_err_2"]);
 });
 
 test("a task step launches the revision-pinned definition with the framework input", () => {
@@ -291,4 +291,33 @@ test("every state either continues or ends", () => {
     }
     assert.ok(entry.Next !== undefined || entry.End === true, `${name} continues or ends`);
   }
+});
+
+test("every variable the compiler assigns has a name Step Functions accepts", () => {
+  // Step Functions refuses a variable name that starts with an underscore
+  // ("the variable name contains invalid characters"), as AWS's own
+  // ValidateStateMachineDefinition reported for the framework's old `__wf_`
+  // prefix. Every kind of name is exercised: step results, map bindings, the
+  // error an attempt catches, and a variable a later state reads.
+  const definition = asl(
+    workflow<{ ids: string[] }>(({ input }) => {
+      const first = invokeLambda<{ ok: boolean }>("alpha");
+      return sequence(
+        first,
+        map(input.ids, ({ item }) => invokeLambda("beta", { payload: { id: item } })),
+        attempt(invokeLambda("gamma"), (error) => succeed({ caught: error.error }), { on: ["CustomError"] }),
+        parallel({ a: invokeLambda("delta", { payload: first.output }), b: wait({ seconds: 1 }) }),
+      );
+    }, { timeoutSeconds: 600 }),
+  );
+  const names: string[] = [];
+  const walk = (value: unknown): void => {
+    if (value === null || typeof value !== "object") return;
+    const assign = (value as Json).Assign;
+    if (assign && typeof assign === "object") names.push(...Object.keys(assign));
+    for (const child of Object.values(value as Json)) walk(child);
+  };
+  walk(definition);
+  assert.ok(names.length >= 4, `found ${names.join(", ")}`);
+  for (const name of names) assert.match(name, /^[A-Za-z][A-Za-z0-9_]*$/, `${name} is a valid Step Functions variable name`);
 });

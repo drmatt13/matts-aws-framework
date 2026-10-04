@@ -12,6 +12,8 @@ const entryPoints = [
   "database",
   "event-replay",
   "websocket",
+  "agentcore",
+  "tools",
 ] as const;
 
 // Exercise package exports through the same bundler used by Lambda/service

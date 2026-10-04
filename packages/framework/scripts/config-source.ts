@@ -26,6 +26,8 @@ const CHECKED_SECTIONS = [
   "services",
   "tasks",
   "workflows",
+  "tools",
+  "agents",
 ] as const;
 
 export type CheckedSection = (typeof CHECKED_SECTIONS)[number];
@@ -218,7 +220,7 @@ export function readSectionKeys(
   const source = new ConfigSource(host, repositoryRoot);
   const problems: string[] = [];
   const keys: Record<CheckedSection, string[]> = {
-    http: [], webSocket: [], events: [], services: [], tasks: [], workflows: [],
+    http: [], webSocket: [], events: [], services: [], tasks: [], workflows: [], tools: [], agents: [],
   };
 
   /** Every module composed into one section, flattening the array literal. */

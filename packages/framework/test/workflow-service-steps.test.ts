@@ -124,7 +124,7 @@ test("a table read compiles to the optimized getItem integration", () => {
   );
   assert.equal(state.Resource, "arn:aws:states:::dynamodb:getItem");
   assert.equal((state.Arguments as Json).TableName, "orders-table");
-  assert.match((state.Arguments as Json).Key as string, /^\{% \(\$__wf_marshal/);
+  assert.match((state.Arguments as Json).Key as string, /^\{% \(\$wf_marshal/);
   // A missing item is null rather than an absent value.
   assert.match(state.Output as string, /\$exists\(\$states\.result\.Item\).*: null/);
 });
@@ -179,7 +179,7 @@ test("an update builds an explicit expression with placeholders for every name",
     "#wfr0": "total",
   });
   assert.equal(args.ReturnValues, "ALL_NEW");
-  assert.match(state.Output as string, /\$__wf_unmarshal/);
+  assert.match(state.Output as string, /\$wf_unmarshal/);
 });
 
 test("sending a message compiles to sqs:sendMessage with a JSON body", () => {

@@ -50,12 +50,13 @@ async function withUpstream(
 
 function mockRequest(
   originalUrl: string,
-  options: { method?: string; rawBody?: Buffer } = {},
+  options: { method?: string; rawBody?: Buffer; baseUrl?: string } = {},
 ): Request {
   const [pathname] = originalUrl.split("?");
   const request = {
     method: options.method ?? "GET",
     originalUrl,
+    baseUrl: options.baseUrl,
     path: pathname,
     headers: { "content-type": "application/json" },
     rawBody: options.rawBody,
@@ -127,6 +128,21 @@ test("strips the public mount prefix before reaching the service", async () => {
       calls.map((call) => call.url),
       ["/chat", "/"],
     );
+  });
+});
+
+test("strips both /api and the service mount, including a root service mount", async () => {
+  await withUpstream(async (baseUrl, calls) => {
+    for (const [url, base, mount] of [
+      ["/api/langgraph/chat?limit=5", "/api/langgraph", "/langgraph"],
+      ["/api/langgraph", "/api/langgraph", "/langgraph"],
+      ["/api/chat?limit=5", "/api", "/"],
+    ]) {
+      const response = mockResponse();
+      await proxyToContainer(mockRequest(url, { baseUrl: base }), response.response, baseUrl, mount);
+      await response.finished;
+    }
+    assert.deepEqual(calls.map((call) => call.url), ["/chat?limit=5", "/", "/chat?limit=5"]);
   });
 });
 

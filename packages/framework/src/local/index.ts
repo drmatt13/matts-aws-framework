@@ -1,3 +1,6 @@
+export * from "./agentcore";
+export * from "./agentcore-contracts";
+
 import {
   getLambdaTargetIds,
   parseTargetReference,
@@ -50,6 +53,8 @@ export interface LocalLambdaExecutorOptions {
 export interface LocalInvocationContext {
   /** Defaults to a fresh id; a replay passes the captured invocation's. */
   readonly awsRequestId?: string;
+  /** What a Gateway hands a tool: the tool's wire name, the MCP message, the Gateway. */
+  readonly clientContext?: { readonly custom: Readonly<Record<string, string>> };
 }
 
 /** Resolve a declared service through Compose DNS, with an optional endpoint override. */

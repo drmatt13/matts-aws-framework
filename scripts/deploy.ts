@@ -18,6 +18,11 @@ function run(file: string, args: string[], cwd = root): Promise<void> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.includes("--help") || args.includes("-h")) { await run(cdk, ["deploy", "--help"]); return; }
+  // Validate inside main so declaration errors name their owners cleanly,
+  // before synth, identity checks, secret synchronization or AWS deployment.
+  const { default: framework } = await import("../framework.config");
+  const { validateFrameworkConfig } = await import("@repo/framework/config");
+  validateFrameworkConfig(framework);
   const selection = deploymentArguments(args);
   const inputFile = resolve(root, "cdk-app/.env");
   const authored = existsSync(inputFile) ? parseEnv(readFileSync(inputFile, "utf8")) : {};

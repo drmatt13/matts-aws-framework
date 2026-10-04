@@ -865,6 +865,24 @@ export interface StartsWorkflowBinding {
 export type InvocationBinding = RunsTaskBinding | StartsWorkflowBinding;
 
 /**
+ * Permission to invoke a declared AgentCore agent with `invokeAgent`.
+ *
+ * Like `runsTask`, the descriptor name is derived from the id. A service agent
+ * is invoked with the caller's own role, which this binding grants; an agent
+ * with users is invoked with the caller's user session, and normalization
+ * refuses the edge from a caller that has none.
+ */
+export interface InvokesAgentBinding {
+  readonly capability: "invokesAgent";
+  readonly agent: string;
+  readonly environment?: string;
+}
+
+export function invokesAgent(agent: string): InvokesAgentBinding {
+  return { capability: "invokesAgent", agent };
+}
+
+/**
  * Permission to complete the callbacks of a declared integration.
  *
  * Declared by the *worker* — the Lambda or service that reads the queue and
@@ -893,6 +911,7 @@ export interface CompletesCallbackBinding {
  */
 export type ResourceBinding<Catalog = AnyResourceCatalog> =
   | InvocationBinding
+  | InvokesAgentBinding
   | CompletesCallbackBinding
   | NativeGrantBinding;
 

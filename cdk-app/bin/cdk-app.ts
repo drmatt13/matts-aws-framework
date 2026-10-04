@@ -4,7 +4,7 @@ import * as path from "path";
 import {
   createFrameworkFoundation,
   createFrameworkTasks,
-  createFrameworkWorkflows,
+  createFrameworkOrchestration,
   createFrameworkWorkloads,
 } from "../lib/framework/framework-composition";
 // lib/app: this application's own infrastructure.
@@ -191,14 +191,16 @@ if (mode === "dev") {
 }
 // ────────────────────────────────────────────────────────────────────────────
 
-// Workflows come after the events and tasks their graphs name, and before the
-// routed workload factory whose starter Lambdas bind them. A workflow
-// references targets rather than resources, so it takes no provider contract.
-const workflows = createFrameworkWorkflows(app, {
+// Workflows and agents come after the events and tasks their graphs name, and
+// before the routed workload factory whose handlers start and invoke them. They
+// share one stack, so each may call the other; neither takes a provider
+// contract, because they reference targets rather than resources.
+const orchestration = createFrameworkOrchestration(app, {
   env: stackEnv,
   stackId,
   config: framework,
   mode,
+  cognito: cognitoStack,
   dependencies: [eventHandlers, ...(tasks.stack ? [tasks.stack] : [])],
 });
 
@@ -214,6 +216,7 @@ const workloads = createFrameworkWorkloads(app, {
   config: framework,
   cloud: { mode },
   cognito: cognitoStack,
+  ...(orchestration.agentcore ? { agentcore: orchestration.agentcore } : {}),
   readers,
   frontendUrls: frontend.trustedFrontendUrls,
   deployWebSocketApi: deployment.deployWebSocketApi,
@@ -222,7 +225,7 @@ const workloads = createFrameworkWorkloads(app, {
     // A routed starter's descriptor and grants reference these stacks, so the
     // handlers wait for whichever of them this deployment built.
     ...(tasks.stack ? [tasks.stack] : []),
-    ...(workflows.stack ? [workflows.stack] : []),
+    ...(orchestration.stack ? [orchestration.stack] : []),
   ],
   httpApiDependencies: rdsStack ? [rdsStack] : [],
 });
@@ -255,6 +258,21 @@ if (
 ) {
   frontendWebsiteS3Stack.addApiOrigin(workloads.httpApi.apiDomainName);
   frontendWebsiteS3Stack.addStackDependency(workloads.httpApi);
+}
+
+// Agents with declared browser routes stream at those same-origin paths,
+// straight from AgentCore Runtime. Under the same condition as /api/*: with only
+// a generated CloudFront domain, Cognito depends on the website, and the agents'
+// Runtime authorizer depends on Cognito, so the website cannot depend on them.
+if (
+  frontend.useSameOriginApiProxy &&
+  frontendWebsiteS3Stack &&
+  orchestration.stack &&
+  orchestration.agentcore &&
+  orchestration.agentcore.browserAgents.length > 0
+) {
+  frontendWebsiteS3Stack.addAgentOrigins(orchestration.agentcore.region, orchestration.agentcore.browserAgents);
+  frontendWebsiteS3Stack.addStackDependency(orchestration.stack);
 }
 
 finalizeFrameworkResources(app);

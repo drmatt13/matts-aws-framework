@@ -162,6 +162,28 @@ export function resolveFrameworkDirectory(
   return candidate;
 }
 
+/**
+ * Resolves an agent's directory. The one framework path rooted at the
+ * repository rather than at `cdk-app` (see AGENT_SOURCE_ROOT), and contained to
+ * the repository's `agentcore` directory the way every other path is contained
+ * to `cdk-app`.
+ */
+export function resolveAgentSourcePath(config: FrameworkConfig, id: string, options: FrameworkRootOptions = {}): string {
+  const target = getFrameworkTargets(config).find((candidate) => candidate.reference === `agent:${id}`);
+  if (!target?.directory) throw new Error(`agent:${id} is not declared under agents.`);
+  const repositoryRoot = options.repositoryRoot ?? findRepositoryRoot();
+  const boundary = realPath(path.join(repositoryRoot, "agentcore"));
+  const candidate = path.resolve(repositoryRoot, target.directory.slice(1));
+  const relative = path.relative(boundary, realPath(candidate));
+  if (relative.startsWith("..") || path.isAbsolute(relative) || relative === "") {
+    throw new Error(`${target.origins[0]} directory "${target.directory}" resolves outside the repository's agentcore directory.`);
+  }
+  if (!existsSync(candidate) || !statSync(candidate).isDirectory()) {
+    throw new Error(`${target.origins[0]} directory "${target.directory}" does not exist. Expected ${candidate}.`);
+  }
+  return candidate;
+}
+
 /** Case-insensitive Dockerfile lookup, because both spellings are in use. */
 export function findDockerfile(directory: string): string | undefined {
   if (!existsSync(directory)) return undefined;
@@ -237,7 +259,7 @@ export function resolveTargetSources(
       reference: target.reference,
       id: target.id,
       directory: target.directory,
-      path: resolveFrameworkDirectory(target.directory, target.origins[0] ?? target.reference, {
+      path: target.kind === "agent" ? resolveAgentSourcePath(config, target.id, { repositoryRoot }) : resolveFrameworkDirectory(target.directory, target.origins[0] ?? target.reference, {
         repositoryRoot,
       }),
     });
@@ -312,6 +334,10 @@ export function assertTargetArtifacts(
 ): void {
   const origin = target.origins[0] ?? target.reference;
 
+  if (target.kind === "agent") {
+    if (!existsSync(path.join(directory, "index.ts"))) throw new Error(`${origin}: agents require index.ts exporting handler.`);
+    return;
+  }
   if (target.kind === "service" || target.kind === "task") {
     if (!findDockerfile(directory)) {
       throw new Error(

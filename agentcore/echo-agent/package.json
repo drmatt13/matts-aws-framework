@@ -1,0 +1,7 @@
+{
+  "name": "@repo/echo-agent",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": { "@repo/framework": "*", "zod": "^4.4.3" }
+}

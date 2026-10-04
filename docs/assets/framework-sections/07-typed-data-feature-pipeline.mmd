@@ -1,0 +1,29 @@
+flowchart TB
+  subgraph DEV["Development-time source / type propagation"]
+    PSL["Authored contract.prisma"] -.-> EMIT["Generated contract JSON / types"]
+    EMIT -.-> ROW["Derived records / explicit write inputs"]
+    ROW -.-> REPO["Authored repository"]
+    REPO -.-> SCHEMA["Explicit Pothos schema / resolvers"]
+    SCHEMA -.-> DOCS["Authored GraphQL documents / fragments"]
+    DOCS -.-> GEN["GraphQL Codegen"]
+    SCHEMA -.-> GEN
+    GEN -.-> TYPES["Generated operation results / variables"]
+    TYPES -.-> OPTIONS["Authored TanStack Query options"]
+    OPTIONS -.-> REACT["React components"]
+  end
+  subgraph RUNTIME["Runtime request / result path"]
+    CLIENT["React / TanStack Query"] --> ENDPOINT["Authenticated /graphql endpoint"]
+    subgraph PROCESS["GraphQL process — local Lambda executor or AWS Lambda"]
+      YOGA["GraphQL Yoga"] --> RESOLVER["Pothos resolver"]
+      RESOLVER --> RR["Repository"]
+      RR --> PRISMA["Rust-free Prisma PostgreSQL runtime"]
+    end
+    ENDPOINT --> YOGA
+    PRISMA --> PG["Local PostgreSQL or RDS"]
+  end
+  subgraph MIG["Separate database change action"]
+    MS["Storage contract"] -.-> PLAN["Offline migration plan"]
+    PLAN -.-> SQL["Reviewed SQL"]
+    SQL -->|"explicit application"| APPLY["Selected database"]
+  end
+  NOTE["Source/type dependencies are not network calls. Fields, writes, exposure and ownership remain explicit. Results return through runtime call chain."]

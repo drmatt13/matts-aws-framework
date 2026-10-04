@@ -10,6 +10,7 @@ export const LAMBDA_SOURCE_DIRECTORY_BY_ID = {
   "cognito-custom-message": "/lambda_functions/event_functions/cognito-custom-message",
   "cognito-post-confirmation-trigger": "/lambda_functions/event_functions/cognito-post-confirmation-trigger",
   "cognito-pre-signup-trigger": "/lambda_functions/event_functions/cognito-pre-signup-trigger",
+  "echo": "/lambda_functions/tool_functions/echo",
   "graphql-api": "/lambda_functions/http_functions/graphql-api",
   "invocation-test-step": "/lambda_functions/event_functions/invocation-test-step",
   "mfa": "/lambda_functions/http_functions/mfa",
@@ -34,6 +35,7 @@ export const LAMBDA_TARGET_IDS = [
   "cognito-custom-message",
   "cognito-post-confirmation-trigger",
   "cognito-pre-signup-trigger",
+  "echo",
   "graphql-api",
   "invocation-test-step",
   "mfa",
@@ -60,6 +62,7 @@ export const LAMBDA_SOURCE_DIRECTORIES = [
   "/lambda_functions/event_functions/cognito-custom-message",
   "/lambda_functions/event_functions/cognito-post-confirmation-trigger",
   "/lambda_functions/event_functions/cognito-pre-signup-trigger",
+  "/lambda_functions/tool_functions/echo",
   "/lambda_functions/http_functions/graphql-api",
   "/lambda_functions/event_functions/invocation-test-step",
   "/lambda_functions/http_functions/mfa",
@@ -94,6 +97,17 @@ export const EVENT_LAMBDA_IDS = [
 ] as const;
 
 export type EventLambdaId = (typeof EVENT_LAMBDA_IDS)[number];
+
+/**
+ * Handler directories under `cdk-app/lambda_functions/tool_functions`: the
+ * ids an agent's `tools` list completes, and the ones a `tools` entry can
+ * declare without spelling its own directory.
+ */
+export const TOOL_LAMBDA_IDS = [
+  "echo",
+] as const;
+
+export type ToolLambdaId = (typeof TOOL_LAMBDA_IDS)[number];
 
 /** Every directory directly under `cdk-app/ecs_containers/services`. */
 export const SERVICE_TARGET_IDS = [
@@ -136,3 +150,13 @@ export const WORKFLOW_TARGET_IDS = [
 ] as const;
 
 export type WorkflowTargetId = (typeof WORKFLOW_TARGET_IDS)[number];
+
+/**
+ * Agent ids, read from the config's literal `agents` keys for the same
+ * reason as workflow ids: the config is typed against them.
+ */
+export const AGENT_TARGET_IDS = [
+  "echo-agent",
+] as const;
+
+export type AgentTargetId = (typeof AGENT_TARGET_IDS)[number];

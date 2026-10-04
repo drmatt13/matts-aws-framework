@@ -32,11 +32,12 @@ import {
   type WorkflowNodeId,
 } from "./workflow-ast";
 
-/** A step target: an `events` Lambda, a container task, or a child workflow. */
+/** A step target: an `events` Lambda, a container task, a child workflow, or an agent. */
 export type WorkflowStepTarget =
   | `lambda:${string}`
   | `task:${string}`
-  | `workflow:${string}`;
+  | `workflow:${string}`
+  | `agent:${string}`;
 
 const TARGET_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -69,9 +70,14 @@ export interface CompiledWorkflow {
  * in which an inner scope assigns a name an outer scope also assigns, so a
  * per-scope counter would produce a graph that fails at create time. One global
  * allocator makes that impossible by construction.
+ *
+ * Every name the compiler assigns starts with `wf_`, a letter first: Step
+ * Functions refuses a variable whose name begins with an underscore ("the
+ * variable name contains invalid characters"), which ValidateStateMachineDefinition
+ * reports and `workflow-asl.test.ts` holds every assigned name to.
  */
 export function variableOf(node: WorkflowNodeId): string {
-  return `__wf_${node}`;
+  return `wf_${node}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +134,9 @@ function nameOf(node: WorkflowNode): string {
             ? "InvokeLambda"
             : node.invokes === "task"
               ? "RunTask"
-              : "RunWorkflow";
+              : node.invokes === "agent"
+                ? "InvokeAgent"
+                : "RunWorkflow";
         return `${verb}_${pascal(node.target)}`;
       }
       case "integration": {

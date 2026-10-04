@@ -1,3 +1,4 @@
+import http from "node:http";
 import express from "express";
 import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import {
@@ -170,6 +171,70 @@ export function registerServiceRoute(
       }
     }
   });
+}
+
+/** What an agent invocation carries through to the runner, and back. */
+const AGENT_REQUEST_HEADERS = ["content-type", "authorization", "x-amzn-bedrock-agentcore-runtime-session-id"];
+const AGENT_RESPONSE_HEADERS = ["content-type", "cache-control"];
+
+/**
+ * The browser's explicitly declared agent path, preserved by the Vite proxy.
+ *
+ * Verified here as AgentCore's JWT authorizer verifies it in AWS, then
+ * streamed through the invocation runner to the agent's session process,
+ * whose adapter verifies the token again and binds the session to the user.
+ * Server-sent events pass through as the agent yields them.
+ */
+export function registerAgentRoute(app: express.Express, agentId: string, route: string, runnerUrl: string): void {
+  // Match the supported path literally, including characters Express's string
+  // route grammar would otherwise interpret as parameters or operators.
+  const matcher = new RegExp(`^${route.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+  app.post(matcher, async (req, res) => {
+    let session: Awaited<ReturnType<typeof getRequestSession>>;
+    try {
+      session = await getRequestSession(req);
+    } catch (error) {
+      if (error instanceof AuthUnavailableError) {
+        console.error(`[agents] ${error.message}`, error.reason);
+        serviceUnavailable(res);
+        return;
+      }
+      throw error;
+    }
+    if (!session) {
+      unauthorized(res);
+      return;
+    }
+
+    const headers: http.OutgoingHttpHeaders = {};
+    for (const name of AGENT_REQUEST_HEADERS) {
+      const value = req.header(name);
+      if (value !== undefined) headers[name] = value;
+    }
+    const upstream = http.request(
+      new URL(`/agents/${agentId}/invocations`, runnerUrl),
+      { method: "POST", headers },
+      (reply) => {
+        res.status(reply.statusCode ?? 502);
+        for (const name of AGENT_RESPONSE_HEADERS) {
+          const value = reply.headers[name];
+          if (value !== undefined) res.setHeader(name, value);
+        }
+        reply.pipe(res);
+      },
+    );
+    upstream.on("error", (error) => {
+      console.error(`[agents] agent:${agentId} is unreachable through the invocation runner:`, error);
+      if (!res.headersSent) res.status(502).json({ message: "Bad Gateway" });
+      else res.destroy();
+    });
+    res.on("close", () => {
+      if (!res.writableFinished) upstream.destroy();
+    });
+    req.pipe(upstream);
+  });
+  // CloudFront's route function rejects non-POST methods before invocation.
+  app.all(matcher, (_req, res) => res.status(405).json({ message: "Method Not Allowed" }));
 }
 
 /**

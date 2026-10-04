@@ -423,9 +423,9 @@ test("a transform assigns its own variable, so the compiled graph can read it to
   >;
   const pass = Object.values(states).find((state) => state.Type === "Pass");
   assert.ok(pass?.Assign, "the pass assigns its result");
-  assert.deepEqual(Object.keys(pass?.Assign as object), ["__wf_1"]);
+  assert.deepEqual(Object.keys(pass?.Assign as object), ["wf_1"]);
   const task = Object.values(states).find((state) => state.Type === "Task");
-  assert.equal(task?.Arguments, "{% $__wf_1 %}");
+  assert.equal(task?.Arguments, "{% $wf_1 %}");
 });
 
 test("an element binding cannot escape the expression that introduced it", () => {

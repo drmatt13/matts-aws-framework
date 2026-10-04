@@ -10,8 +10,18 @@ export default async function proxyToContainer(
   containerUrl: string,
   mountPath: string,
 ): Promise<void> {
-  const [originalPathname, originalSearch = ""] = req.originalUrl.split("?");
+  const [browserPathname, originalSearch = ""] = req.originalUrl.split("?");
   const normalizedMount = mountPath.replace(/\/+$/, "");
+  // Express includes /api and the service mount in baseUrl. Remove only the
+  // outer app mount before applying the service's own mount stripping below.
+  const outerMount = normalizedMount === ""
+    ? req.baseUrl ?? ""
+    : req.baseUrl?.endsWith(normalizedMount)
+      ? req.baseUrl.slice(0, -normalizedMount.length)
+      : "";
+  const originalPathname = outerMount && browserPathname.startsWith(`${outerMount}/`)
+    ? browserPathname.slice(outerMount.length)
+    : browserPathname;
   const strippedPath =
     originalPathname === normalizedMount
       ? "/"

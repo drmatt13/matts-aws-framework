@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   assertPayloadWithinLimit,
   assertTaskInputIsDocument,
@@ -89,6 +89,20 @@ export interface WorkflowStepRunner {
     input: unknown,
     options: { readonly timeoutSeconds?: number; readonly signal: AbortSignal },
   ) => Promise<{ readonly runId: string; readonly exitCode: number }>;
+  /**
+   * Invokes an agent and returns its `result`.
+   *
+   * `conversationId` is derived from the execution and the step's session, as
+   * the cloud lane derives it. An
+   * agent that answers with an error status is reported as
+   * `BedrockAgentCore.RuntimeClientErrorException`, the name Step Functions
+   * gives the same failure. Absent means this runner has no agent lane.
+   */
+  readonly invokeAgent?: (
+    id: string,
+    request: { readonly conversationId: string; readonly input: unknown },
+    options: { readonly timeoutSeconds?: number; readonly signal: AbortSignal },
+  ) => Promise<unknown>;
   /** Runs a child workflow to completion. Absent until nested workflows land. */
   readonly runWorkflow?: (
     id: string,
@@ -684,6 +698,30 @@ export async function runWorkflow(
     if (node.invokes === "lambda") {
       return bounded(name, scope, node.timeoutSeconds, (signal) =>
         options.runner.invokeLambda(node.target, payload, { ...timeout, signal }),
+      );
+    }
+
+    if (node.invokes === "agent") {
+      const invoke = options.runner.invokeAgent;
+      if (invoke === undefined) {
+        throw new WorkflowStateError(
+          WORKFLOW_ERROR_NAMES.runtime,
+          `${name} invokes an agent, which this runner does not support.`,
+        );
+      }
+      // The execution's session, or the one the step names: a digest of the
+      // execution and the key, as the cloud lane computes it, so it belongs to
+      // this execution alone and always fits the adapter's pattern. A key that
+      // is not a string is stringified, as JSONata's `&` does.
+      const key =
+        node.session === undefined
+          ? ""
+          : resolvePayload(node.session, valuesFor(scope, options.input), referenceIn, `Step "${name}" session`);
+      const conversationId = createHash("sha256")
+        .update(`${execution.executionId}\n${typeof key === "string" ? key : JSON.stringify(key)}`)
+        .digest("hex");
+      return bounded(name, scope, node.timeoutSeconds, (signal) =>
+        invoke(node.target, { conversationId, input: payload }, { ...timeout, signal }),
       );
     }
 

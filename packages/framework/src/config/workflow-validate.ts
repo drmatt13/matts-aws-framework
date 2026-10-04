@@ -121,6 +121,7 @@ function readsOf(node: WorkflowNode): readonly WorkflowReference[] {
   switch (node.kind) {
     case "invocation":
       referencesIn(node.payload, found);
+      referencesIn(node.session, found);
       break;
     case "integration":
       referencesIn(node.arguments, found);
@@ -310,6 +311,7 @@ export function validateWorkflow(
   });
 
   problems.push(...capabilityProblems(workflow, origin));
+  problems.push(...agentSessionProblems(workflow, origin));
   problems.push(...retryProblems(workflow, origin));
   problems.push(...unsupportedProblems(workflow, origin));
   return problems;
@@ -365,7 +367,8 @@ function capabilityProblems(
 
   const problems: WorkflowValidationProblem[] = [];
   const visit = (node: WorkflowNode): void => {
-    if (node.kind === "invocation" && node.invokes !== "lambda") {
+    // An agent is a plain request-response SDK call, which express supports.
+    if (node.kind === "invocation" && node.invokes !== "lambda" && node.invokes !== "agent") {
       const verb = node.invokes === "task" ? "runTask" : "runWorkflow";
       problems.push({
         message: `${origin} cannot use ${verb}("${node.target}") with express execution, because waiting for it needs an integration express workflows do not have. Use a standard workflow, or a step that returns without waiting.`,
@@ -378,6 +381,67 @@ function capabilityProblems(
       problems.push({
         message: `${origin} waits for a callback on ${node.reference.kind}:${node.reference.id} with express execution. Waiting for a task token is a standard-workflow pattern; use a standard workflow, or send without waiting.`,
       });
+    }
+    for (const child of childrenOf(node)) visit(child);
+  };
+  visit(workflow.root);
+  return problems;
+}
+
+/**
+ * Agent calls that would share a Runtime session concurrently without saying so.
+ *
+ * An execution's agent calls share its default session, which is right in
+ * sequence — the session stays warm, and a retry lands where the first attempt
+ * ran. Run concurrently, the calls race the session's provisioning (AgentCore
+ * answers `RetryableConflictException` while a session is still being created)
+ * and share one microVM's memory. So a call that can run beside another call
+ * to the same agent must name its session: in a `map` body, unless the map
+ * runs one item at a time, and in two branches of one `parallel`.
+ */
+function agentSessionProblems(
+  workflow: CompiledWorkflow,
+  origin: string,
+): readonly WorkflowValidationProblem[] {
+  const problems: WorkflowValidationProblem[] = [];
+  const unnamed = (node: WorkflowNode): Extract<WorkflowNode, { kind: "invocation" }>[] => {
+    const found: Extract<WorkflowNode, { kind: "invocation" }>[] = [];
+    const walk = (current: WorkflowNode): void => {
+      if (current.kind === "invocation" && current.invokes === "agent" && current.session === undefined) {
+        found.push(current);
+      }
+      // A child workflow is its own execution, with its own sessions.
+      for (const child of childrenOf(current)) walk(child);
+    };
+    walk(node);
+    return found;
+  };
+  const reported = new Set<string>();
+  const advice = 'Name a session per concurrent call, such as { session: item.caseId }, or the same literal in each to share one deliberately.';
+
+  const visit = (node: WorkflowNode): void => {
+    if (node.kind === "map" && node.maxConcurrency !== 1) {
+      for (const call of unnamed(node.body)) {
+        if (reported.has(call.id)) continue;
+        reported.add(call.id);
+        problems.push({
+          message: `${origin}: invokeAgent("${call.target}") runs inside map(), whose items run concurrently, in the execution's one default session. ${advice}`,
+        });
+      }
+    }
+    if (node.kind === "parallel") {
+      const branchesByAgent = new Map<string, number>();
+      for (const branch of node.branches) {
+        for (const agent of new Set(unnamed(branch).map((call) => call.target))) {
+          branchesByAgent.set(agent, (branchesByAgent.get(agent) ?? 0) + 1);
+        }
+      }
+      for (const [agent, branches] of branchesByAgent) {
+        if (branches < 2) continue;
+        problems.push({
+          message: `${origin}: invokeAgent("${agent}") runs in ${branches} branches of one parallel(), concurrently, in the execution's one default session. ${advice}`,
+        });
+      }
     }
     for (const child of childrenOf(node)) visit(child);
   };

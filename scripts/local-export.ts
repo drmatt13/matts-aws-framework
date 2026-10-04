@@ -89,8 +89,8 @@ export function localExportValues(
     LOCAL_LAMBDA_WARM_MAX: "6",
     LOCAL_LAMBDA_WARM_IDLE_SECONDS: "120",
     LOCAL_INVOCATION_RUNNER_PUBLIC_URL: `http://localhost:${hostPort("LOCAL_INVOCATION_RUNNER_HOST_PORT")}`,
-    // The target of client-app's /api dev proxy, read from the repository root
-    // by client-app/vite.config.ts. Application code always calls /api.
+    // The target of client-app's HTTP and explicit agent route proxies, read
+    // from the repository root by client-app/vite.config.ts.
     VITE_API_GATEWAY_URL: `http://localhost:${hostPort("LOCAL_API_DEV_SERVER_HOST_PORT")}`,
   };
   for (const [name, fallback] of Object.entries(controls)) {

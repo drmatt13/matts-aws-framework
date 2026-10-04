@@ -18,6 +18,8 @@
     "framework:check": "tsx packages/framework/scripts/generate-contracts.ts --check && tsx packages/framework/scripts/check-local.ts",
     "workflows:smoke": "tsx scripts/workflows-smoke.ts",
     "workflows:inspect": "tsx packages/framework/scripts/inspect-workflows.ts",
+    "agents:inspect": "tsx packages/framework/scripts/inspect-agents.ts",
+    "agents:smoke": "tsx scripts/agents-smoke.ts",
     "codegen": "graphql-codegen --config codegen.ts",
     "codegen:check": "graphql-codegen --config codegen.ts --check",
     "typecheck": "npm run typecheck --workspaces --if-present",
@@ -36,6 +38,7 @@
     "cdk-app/ecs_containers/services/*",
     "cdk-app/ecs_containers/tasks/*",
     "packages/*",
+    "agentcore/*",
     "frontend-ws-connection-and-payload-tester",
     "local-ws-dev-server"
   ],
