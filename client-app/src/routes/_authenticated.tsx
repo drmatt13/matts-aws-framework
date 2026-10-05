@@ -1,11 +1,12 @@
 import { useSyncExternalStore } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Navigate, Outlet, createFileRoute } from "@tanstack/react-router";
 
 import AppLayout from "#/components/layouts/AppLayout";
 import LoadingSpinner from "#/components/LoadingSpinner";
 import PageError from "#/components/errors/PageError";
 import SessionError from "#/components/errors/SessionError";
-import { useCurrentUserQuery } from "#/api/currentUser/hooks";
+import { currentUserQuery } from "#/api/currentUser/operations";
 import {
   getAuthSnapshot,
   isAuthServiceUnavailableError,
@@ -24,7 +25,7 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function AuthenticatedLayout() {
-  const { data, isPending, error, refetch } = useCurrentUserQuery();
+  const { data, isPending, error, refetch } = useQuery(currentUserQuery);
 
   // Auth failures arrive from two directions: pushed from the background
   // renewal timer via this snapshot, or pulled from a request that just threw.

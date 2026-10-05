@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
 import { API_ROUTE } from "@repo/api-contract";
 import { ArrowRight } from "lucide-react";
 
-import { useCurrentUserQuery } from "#/api/currentUser/hooks";
+import { currentUserQuery } from "#/api/currentUser/operations";
 import Button from "#/components/Button";
 import ProjectsPanel from "#/components/ProjectsPanel";
 import SecurityPanel from "#/components/SecurityPanel";
@@ -38,7 +39,7 @@ function App() {
   } | null>(null);
 
   // `user` is undefined only while the query is pending.
-  const { data: user } = useCurrentUserQuery();
+  const { data: user } = useQuery(currentUserQuery);
 
   async function handleLogout() {
     setIsLoggingOut(true);

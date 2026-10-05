@@ -62,10 +62,21 @@ The screen's ProjectSummary selects id, name, archived, and updatedAt. Component
 `useQuery(projectsQuery)` and `useMutation(deleteProjectMutation)`, then
 `deleteProject.mutate({ id })`. No feature hook wrapper is required.
 
-User is a documented exception: currentUser is a single profile with verified-identity
-provisioning. Its existing hooks and exports remain compatible with route consumers.
-Its [schema tests](../cdk-app/lambda_functions/http_functions/graphql-api/schema/user.test.ts)
-cover that behavior; new features follow Project's options pattern.
+currentUser uses the same frontend pattern: its
+[operations.ts](../client-app/src/api/currentUser/operations.ts) exports
+`currentUserKeys`, `currentUserQuery`, and `updateCurrentUserMutation`. Components use
+`useQuery(currentUserQuery)` and `useMutation(updateCurrentUserMutation)`; updates pass
+`{ data: { firstName, lastName } }`. Its singleton cache key remains `["currentUser"]`.
+Session-expired errors are not retried; other failures receive at most two retries.
+Override per-consumer options with `useQuery({ ...currentUserQuery, enabled })`.
+Its [API tests](../client-app/src/api/currentUser/operations.test.ts) cover selections,
+retries, and invalidation. All features keep documents, options, and cache behavior in
+operations.ts rather than adding a feature hook wrapper solely for these concerns.
+
+User's backend still handles a single profile with verified-identity provisioning,
+instead of generic owner CRUD. Its
+[schema tests](../cdk-app/lambda_functions/http_functions/graphql-api/schema/user.test.ts)
+cover that behavior.
 
 ## New-feature scaffolding
 

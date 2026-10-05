@@ -1,14 +1,8 @@
+import { mutationOptions, queryOptions } from "@tanstack/react-query";
+import type { VariablesOf } from "@graphql-typed-document-node/core";
 import { graphql } from "#/api/generated";
-import type {
-  GetCurrentUserQuery,
-  UpdateCurrentUserMutationVariables,
-} from "#/api/generated/graphql";
 import { executeGraphQL } from "#/api/graphql/client";
-
-// The generated operation result is the frontend's type. There is no hand-written
-// mirror of it: add a field to the document below and it appears here for free.
-export type CurrentUser = GetCurrentUserQuery["currentUser"];
-export type UpdateUserPayload = UpdateCurrentUserMutationVariables["data"];
+import { isSessionExpiredError } from "#/lib/auth";
 
 // Typed GraphQL documents for this feature's operations.
 const GetCurrentUserDocument = graphql(`
@@ -37,17 +31,22 @@ const UpdateCurrentUserDocument = graphql(`
   }
 `);
 
-// API operations consumed by hooks and other feature callers.
-export async function getCurrentUser(): Promise<CurrentUser> {
-  const data = await executeGraphQL(GetCurrentUserDocument);
-  return data.currentUser;
-}
+// This singleton keeps its existing cache key; all consumers share one profile.
+export const currentUserKeys = {
+  all: ["currentUser"] as const,
+};
 
-export async function updateUser(
-  payload: UpdateUserPayload,
-): Promise<CurrentUser> {
-  const data = await executeGraphQL(UpdateCurrentUserDocument, {
-    data: payload,
-  });
-  return data.updateCurrentUser.user;
-}
+export const currentUserQuery = queryOptions({
+  queryKey: currentUserKeys.all,
+  queryFn: async () => (await executeGraphQL(GetCurrentUserDocument)).currentUser,
+  retry: (failureCount, error) =>
+    !isSessionExpiredError(error) && failureCount < 2,
+});
+
+export const updateCurrentUserMutation = mutationOptions({
+  mutationFn: async (variables: VariablesOf<typeof UpdateCurrentUserDocument>) =>
+    (await executeGraphQL(UpdateCurrentUserDocument, variables)).updateCurrentUser
+      .user,
+  onSuccess: (_data, _variables, _result, { client }) =>
+    client.invalidateQueries({ queryKey: currentUserKeys.all }),
+});

@@ -150,8 +150,11 @@ not a generic owner CRUD model. Do not copy its provisioning into new model reso
   fallback after failure or make components responsible for required invalidation.
 - Components consume `useQuery(options)` / `useMutation(options)`. When UI is requested,
   connect pending/error states and prevent conflicting duplicate submissions.
-- Preserve currentUser exports/hooks and their auth retry behavior for existing callers.
-  They are compatibility code, not the template for new features.
+- currentUser follows the same operations/options pattern: export `currentUserKeys`,
+  `currentUserQuery`, and `updateCurrentUserMutation` from operations.ts. Preserve its
+  singleton `["currentUser"]` cache key and auth retry behavior: session-expired errors
+  are not retried; other failures receive at most two retries. Components may override
+  `enabled` with `useQuery({ ...currentUserQuery, enabled })`.
 
 ## 6. Required behavioral tests
 
