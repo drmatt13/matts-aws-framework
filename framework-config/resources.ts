@@ -61,8 +61,8 @@ export const resources = defineResources({
       .fromEnv("LANGGRAPH_MODEL_PROVIDER")
       .enum("bedrock-mantle", "bedrock", "openai")
       .default("bedrock-mantle"),
-    bedrockModelId: resource.fromEnv("LANGGRAPH_BEDROCK_MODEL_ID"),
-    bedrockMantleModelId: resource.fromEnv("LANGGRAPH_BEDROCK_MANTLE_MODEL_ID"),
-    openaiModelId: resource.fromEnv("LANGGRAPH_OPENAI_MODEL_ID"),
+    bedrockModelId: resource.fromEnv("LANGGRAPH_BEDROCK_MODEL_ID").default("global.amazon.nova-2-lite-v1:0"),
+    bedrockMantleModelId: resource.fromEnv("LANGGRAPH_BEDROCK_MANTLE_MODEL_ID").default("openai.gpt-oss-20b"),
+    openaiModelId: resource.fromEnv("LANGGRAPH_OPENAI_MODEL_ID").default("gpt-4.1-mini"),
   },
 });
