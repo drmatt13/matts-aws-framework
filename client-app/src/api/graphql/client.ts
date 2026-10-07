@@ -1,6 +1,6 @@
 import type { DocumentTypeDecoration } from "@graphql-typed-document-node/core";
 import { API_ROUTE } from "@repo/api-contract";
-import { FrameworkHttpApiFetch } from "#/lib/auth";
+import { frameworkHttpApiFetch } from "#/lib/auth";
 
 /**
  * A document codegen generated: a typed string, carrying the hash the
@@ -100,7 +100,7 @@ export async function executeGraphQL<TData, TVariables>(
     ? [variables?: NoInfer<TVariables>]
     : [variables: NoInfer<TVariables>]
 ): Promise<TData> {
-  const res = await FrameworkHttpApiFetch(API_ROUTE["/graphql"], {
+  const res = await frameworkHttpApiFetch(API_ROUTE["/graphql"], {
     method: "POST",
     headers: {
       "content-type": "application/json",

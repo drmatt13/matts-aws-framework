@@ -15,14 +15,15 @@ provides the CDK CLI; use `npm --workspace cdk-app exec -- cdk ...`.
 
 ```powershell
 npm ci
-aws sts get-caller-identity --profile <PROFILE>
+aws sts get-caller-identity
 ```
 
 Create `cdk-app/.env` from [the dev example](../cdk-app/.env.dev.example) if it does
 not already exist. Preserve existing values when switching configurations. Set:
 
 - PROD_DEPLOYMENT=false and a distinct CDK_APP_NAME for this deployment.
-- LOCAL_DEV_URL, LOCAL_AWS_PROFILE, LOCAL_AWS_REGION, and every host port in the example.
+- LOCAL_DEV_URL, LOCAL_AWS_REGION, and every host port in the example. Leave
+  LOCAL_AWS_PROFILE blank to use your AWS default profile.
 - Any workload settings, such as the LangGraph provider and its required local key.
 - Optional Google OAuth credentials. Leave custom domains off for routine development.
 - SKIP_EMAIL_VERIFICATION=true if new users should skip the emailed code. Without it, sign-up
@@ -33,12 +34,19 @@ The [framework guide](FRAMEWORK.md#configuration-and-environment) owns configura
 precedence and environment-file responsibilities. Do not author LOCAL_BROWSER_ORIGINS;
 it is derived during export. Never put backend secrets in a VITE_ variable.
 
-Deploy the AWS portion of development:
+Deploy the AWS portion of development. The deploy command synthesizes the dev
+graph and exports the root `.env` and local resource manifest after deployment.
+`PROD_DEPLOYMENT=false` in `cdk-app/.env` selects the dev graph, so no mode flag
+is needed:
 
 ```powershell
-npm --workspace cdk-app exec -- cdk synth -c useLocalDevStack=true --profile <PROFILE> --quiet
-npm run deploy -- --all -c useLocalDevStack=true --profile <PROFILE>
+npm run deploy -- --all
 ```
+
+For a named AWS profile, use `aws sts get-caller-identity --profile <PROFILE>`
+to check the account, then deploy with `npm run deploy -- --all --profile=<PROFILE>`.
+Without a profile flag or an authored `AWS_PROFILE`, deployment uses the AWS
+default credential chain.
 
 The deploy command synchronizes only the selected graph's configured/required secrets,
 supplies ARN parameters, deploys, then exports development files. Existing managed secrets
@@ -108,7 +116,18 @@ In another:
 npm run dev:client
 ```
 
-`npm run dev` is `docker compose up --build --watch`; `npm run dev:client` is the Vite dev server.
+`npm run dev` runs `docker compose up --build --watch`; `npm run dev:client` is the Vite dev server.
+It uses the AWS `default` profile unless you pass a profile for this run or set
+`AWS_PROFILE` in the shell:
+
+```powershell
+npm run dev -- --profile=<PROFILE>
+```
+
+With npm 11, `npm run dev --profile=<PROFILE>` also works, but npm warns about
+the unknown npm config option. The `--` form passes the flag directly to the
+dev script. Use the same profile for deployment and local execution when they
+must access the same AWS account.
 
 Compose runs postgres, migration, the local API/WebSocket servers, invocation runner,
 LangGraph, WebSocket tester, and pgAdmin. Postgres and pgAdmin listen on 127.0.0.1 only.
@@ -133,7 +152,8 @@ image-owned dependencies. Only the invocation runner gets the Docker socket.
 | Framework config or runner/framework source | Watch restarts affected processes; in-flight local work may stop |
 | Manifests, lockfile, Dockerfile.dev, ignore rules, deleted files while Watch was off | Rebuild and restart with `npm run dev` |
 | A captured event whose handler failed every replay | Fix the handler, then `npm run replay:redrive` (`npm run replay:list` shows what is waiting) |
-| Ports, profile, outputs, local secrets | Edit cdk-app/.env, rerun export, recreate containers |
+| Ports, outputs, local secrets | Edit cdk-app/.env, rerun export, recreate containers |
+| Local AWS profile | Restart with `npm run dev -- --profile=<PROFILE>`; deploy that account's dev graph first if needed |
 | Database contract | Follow Database planning/application steps and rebuild; Watch does not regenerate it |
 | AWS event handler, Cognito, or infrastructure | Redeploy the dev graph, then re-export changed outputs |
 

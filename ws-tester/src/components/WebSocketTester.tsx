@@ -49,7 +49,7 @@ const normalizeMessageForJsonView = (value: unknown) => {
   return { value };
 };
 
-const WS_ConnectionAndPayloadTester = ({ initialConnectionURL }: Props) => {
+const WebSocketTester = ({ initialConnectionURL }: Props) => {
   const [mounted, setMounted] = useState(false);
   const [wsUrl, setWsUrl] = useState(initialConnectionURL);
   const wsUrlInputRef = useRef<HTMLInputElement>(null);
@@ -361,4 +361,4 @@ const WS_ConnectionAndPayloadTester = ({ initialConnectionURL }: Props) => {
   );
 };
 
-export default WS_ConnectionAndPayloadTester;
+export default WebSocketTester;

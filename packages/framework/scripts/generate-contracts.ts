@@ -837,14 +837,10 @@ async function main(): Promise<void> {
       if (!produced.has(file)) removeGenerated(file);
     }
   }
-  const { deploymentEnvironmentExample, replaceEnvironmentExampleBlock, serviceEnvironmentExample } =
-    await import("./env-examples");
-  const environmentBlock = deploymentEnvironmentExample(config);
-  for (const entry of readdirSync(path.join(repositoryRoot, "cdk-app"))) {
-    if (!/^\.env(?:\.[^.]+)?\.example$/.test(entry)) continue;
-    const file = path.join(repositoryRoot, "cdk-app", entry);
-    stageGenerated(file, replaceEnvironmentExampleBlock(readFileSync(file, "utf8"), environmentBlock));
-  }
+  // cdk-app/.env*.example are authored templates. Generation never writes them
+  // and --check never compares them, so a declared input or secret is added to
+  // them by hand.
+  const { serviceEnvironmentExample } = await import("./env-examples");
   for (const target of framework.getFrameworkTargets(config)) {
     if (target.kind !== "service") continue;
     const directory = directories.get(target.reference)!;
@@ -852,8 +848,8 @@ async function main(): Promise<void> {
       config, target, source.resolveServicePort(config, target.id, { repositoryRoot }),
     ));
   }
-  // Tasks document their environment in the deployment block above and receive
-  // their values from CDK or from local startup. Deliberately no per-task
+  // Tasks read authored inputs from cdk-app/.env and receive their values from
+  // CDK or from local startup. Deliberately no per-task
   // authored .env file: a task is launched, not run by a developer, and a second
   // authored input file would be one more place its environment could disagree.
   flushStaged();

@@ -1,5 +1,5 @@
 import { AGENT_ROUTE, type AgentEndpoints } from "@repo/api-contract";
-import { FrameworkHttpApiFetch, getCognitoIdToken, refreshSession, SessionExpiredError } from "./auth";
+import { frameworkHttpApiFetch, getCognitoIdToken, refreshSession, SessionExpiredError } from "./auth";
 
 /**
  * Talking to an agent with users from the browser.
@@ -108,7 +108,7 @@ export async function* streamAgent<Id extends AgentId>(
   const sessionId = await agentSessionId(await currentSubject(), options.conversationId);
   // A URL bypasses the HTTP API helper's /api prefix while retaining its
   // origin check, bearer authentication, refresh and one retry after 401.
-  const response = await FrameworkHttpApiFetch(new URL(AGENT_ROUTE[id], window.location.origin), {
+  const response = await frameworkHttpApiFetch(new URL(AGENT_ROUTE[id], window.location.origin), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

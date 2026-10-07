@@ -8,7 +8,7 @@
   },
   "scripts": {
     "postinstall": "npm --workspace @repo/database run generate",
-    "dev": "docker compose up --build --watch",
+    "dev": "node scripts/dev.mjs",
     "dev:client": "npm --workspace client-app run dev",
     "dev:request": "tsx scripts/dev-request.ts",
     "replay:list": "tsx scripts/replay.ts list",
@@ -39,7 +39,7 @@
     "cdk-app/ecs_containers/tasks/*",
     "packages/*",
     "agentcore/*",
-    "frontend-ws-connection-and-payload-tester",
+    "ws-tester",
     "local-ws-dev-server"
   ],
   "devDependencies": {
@@ -56,8 +56,8 @@
   "packageManager": "npm@11.19.0",
   "overrides": {
     "@hono/node-server": "1.19.15",
-    "@prisma/cli-engine": "0.3.0",
-    "@prisma/orm-postgres": "8.0.0-rc.8",
+    "@prisma/cli-engine": "0.6.2",
+    "@prisma/orm-postgres": "8.0.0-rc.14",
     "deepmerge-ts": "8.0.2",
     "hono": "4.13.13",
     "lodash": "4.18.1",

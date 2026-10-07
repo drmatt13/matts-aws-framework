@@ -1,3 +1,5 @@
+// use prisma-8
+
 // The application data contract. This is the source of truth for the schema:
 // `prisma contract emit` generates the client artifacts from it, and
 // `prisma migration plan` turns changes to it into on-disk migrations.

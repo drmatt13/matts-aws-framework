@@ -56,11 +56,13 @@ contract plus migration package. Check renames, drops, constraints, backfills, a
 whether existing rows can satisfy new required fields. Generation/planning are offline;
 neither applies the migration. A no-op storage plan is valid for execution-default changes.
 
-If planning reports MIGRATION.PLAN_ORIGIN_UNKNOWN on an unmigrated checkout, use the
-existing graph tip reported by Prisma, after confirming it is the intended baseline:
+If planning reports MIGRATION.PLAN_ORIGIN_UNKNOWN on an unmigrated checkout, start from
+the newest migration's contract hash, after confirming it is the intended baseline.
+`migration:list` shows it as that migration's `toContract`:
 
 ```powershell
-npm --workspace @repo/database run migration:new -- --name <change_name> --from <graphTipHash>
+npm --workspace @repo/database run migration:list
+npm --workspace @repo/database run migration:new -- --name <change_name> --from <latestContractHash>
 ```
 
 Do not substitute an arbitrary snapshot. An abandoned plan can leave a snapshot that

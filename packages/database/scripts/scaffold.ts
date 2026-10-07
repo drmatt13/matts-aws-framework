@@ -35,7 +35,7 @@ export interface Metadata {
   execution: {
     mutations: {
       defaults: Array<{
-        ref: { namespace: string; table: string; column: string };
+        ref: { entry: string; field: string; namespace: string };
         onCreate?: unknown;
       }>;
     };
@@ -326,8 +326,8 @@ function validate(metadata: Metadata, choices: Choices): Feature {
     const generated = metadata.execution.mutations.defaults.some(
       (entry) =>
         entry.ref.namespace === model.storage.namespaceId &&
-        entry.ref.table === model.storage.table &&
-        entry.ref.column === column &&
+        entry.ref.entry === model.storage.table &&
+        entry.ref.field === column &&
         entry.onCreate !== undefined,
     );
     if (

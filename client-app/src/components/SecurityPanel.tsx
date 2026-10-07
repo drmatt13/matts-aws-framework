@@ -7,7 +7,7 @@ import {
 } from "@repo/api-contract";
 
 import Button from "#/components/Button";
-import { FrameworkHttpApiFetch } from "#/lib/auth";
+import { frameworkHttpApiFetch } from "#/lib/auth";
 
 /**
  * Two-step verification with an authenticator app.
@@ -19,7 +19,7 @@ import { FrameworkHttpApiFetch } from "#/lib/auth";
  * Owns its own failure state, like the other panels on this page.
  */
 async function callMfa(request: MfaRequest): Promise<MfaResponse> {
-  const response = await FrameworkHttpApiFetch(API_ROUTE["/mfa"], {
+  const response = await frameworkHttpApiFetch(API_ROUTE["/mfa"], {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(request),

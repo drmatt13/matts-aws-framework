@@ -682,7 +682,7 @@ export async function refreshSession(
   }
 }
 
-export async function FrameworkHttpApiFetch(
+export async function frameworkHttpApiFetch(
   input: FrameworkHttpApiFetchInput,
   init: RequestInit = {},
 ): Promise<Response> {

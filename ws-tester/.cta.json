@@ -1,5 +1,5 @@
 {
-  "projectName": "frontend-ws-connection-and-payload-tester",
+  "projectName": "ws-tester",
   "mode": "file-router",
   "typescript": true,
   "tailwind": true,

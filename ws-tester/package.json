@@ -1,5 +1,5 @@
 {
-  "name": "frontend-ws-connection-and-payload-tester",
+  "name": "ws-tester",
   "author": "Matthew Sweeney",
   "license": "UNLICENSED",
   "private": true,
@@ -20,8 +20,8 @@
     "@tanstack/react-router-devtools": "latest",
     "lucide-react": "^0.545.0",
     "parse-json": "^8.3.0",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.16",

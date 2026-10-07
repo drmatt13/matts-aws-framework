@@ -274,9 +274,13 @@ never pass through an environment file on their way to deployed compute.
 what the application's CDK built, `fromEnv(name?)` and `secret(name?)` for a line you
 author. An environment variable is always a string, so `fromEnv("NAME")` needs no kind;
 chain `.enum(...)` to restrict what it may say, `.default(...)` for the fallback, and
-`.note(...)` for one line of the generated example. Naming the variable is preferred;
+`.note(...)` for one line of prose beside the declaration. Naming the variable is preferred;
 omitting the name derives the catalog path in SCREAMING_SNAKE_CASE. `-c` context wins
 over the file, and the declared default is last.
+
+cdk-app/.env.dev.example and cdk-app/.env.prod.example are hand-authored templates:
+`framework:generate` never writes them and `framework:check` never compares them. When
+you declare a new `fromEnv` or `secret` line, add it to both templates yourself.
 
 cdk-app/.env is the file itself, not process.env: a variable exported in the shell, or
 one the generated repository-root .env carries, cannot stand in for a setting this file
@@ -695,7 +699,7 @@ GraphQL resolvers receive an authenticated session and separately enforce record
   unreachable Cognito signing keys answer 503, which the client treats as "try again"
   rather than as a signed-out session. `getAuthenticatedSession(event)` is the nullable
   form for a handler that decides for itself.
-- The client keeps the ID token in memory. FrameworkHttpApiFetch refreshes when needed,
+- The client keeps the ID token in memory. `frameworkHttpApiFetch` refreshes when needed,
   retries once after 401, and preserves replayable request bodies. Refresh is single-flight
   across tabs; only 401 expires the session. Network/5xx failures retain it and surface an
   unavailable state. Proactive renewal is part of the auth lifecycle.
@@ -727,7 +731,8 @@ refresh, and sign-out checks are separate from unit tests.
 ## Generated contracts and verification
 
 `framework:generate` validates inventory, emits route/target/payload projections, and
-updates generated env example blocks. Adjacent contract.ts or contract.schema.json files
+writes each service's documentation-only .env.example; it leaves the authored
+cdk-app/.env*.example templates alone. Adjacent contract.ts or contract.schema.json files
 provide optional workload payload contracts; TypeScript contracts must be self-contained
 apart from Zod imports. No custom handler-import arrays are needed.
 

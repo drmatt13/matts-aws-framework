@@ -5,7 +5,7 @@ const fetchMock = vi.fn<(input: unknown, init?: RequestInit) => Promise<Response
 let idToken: string | null = null;
 
 vi.mock("./auth", () => ({
-  FrameworkHttpApiFetch: (input: unknown, init?: RequestInit) => fetchMock(input, init),
+  frameworkHttpApiFetch: (input: unknown, init?: RequestInit) => fetchMock(input, init),
   getCognitoIdToken: () => idToken,
   refreshSession: async () => "expired",
   SessionExpiredError: class SessionExpiredError extends Error {},

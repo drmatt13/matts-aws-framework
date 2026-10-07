@@ -1,6 +1,6 @@
 {
   "short_name": "WS Tester",
-  "name": "WS Connection and Payload Tester",
+  "name": "WebSocket Tester",
   "icons": [
     {
       "src": "favicon.ico",

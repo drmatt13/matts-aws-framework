@@ -53,7 +53,7 @@ x-watch: &watch
       target: /workspace/packages/framework/scripts
 
 x-aws-env: &aws-env
-  AWS_PROFILE: ${LOCAL_AWS_PROFILE:-dev}
+  AWS_PROFILE: ${LOCAL_AWS_PROFILE:-default}
   AWS_REGION: ${LOCAL_AWS_REGION:-us-east-1}
   AWS_SDK_LOAD_CONFIG: '1'
 x-aws-mount: &aws-mount
@@ -270,15 +270,15 @@ services:
       start_period: 60s
       start_interval: 1s
 
-  frontend-ws-connection-and-payload-tester:
+  ws-tester:
     build: *build
     init: true
-    command: [npm, --workspace, frontend-ws-connection-and-payload-tester, run, dev]
+    command: [npm, --workspace, ws-tester, run, dev]
     develop: *watch
     environment:
       VITE_LOCAL_WS_URL: 'ws://localhost:${LOCAL_WS_DEV_SERVER_HOST_PORT}?token='
       VITE_API_GATEWAY_WS_URL: ${VITE_API_GATEWAY_WS_URL:-}
-    ports: ['${FRONTEND_WS_CONNECTION_AND_PAYLOAD_TESTER_HOST_PORT}:3001']
+    ports: ['${WS_TESTER_HOST_PORT}:3001']
 
   pgadmin:
     image: dpage/pgadmin4

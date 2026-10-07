@@ -34,10 +34,11 @@ request to implement a feature.
 
    ```sh
    npm --workspace @repo/database run generate
-   npm --workspace @repo/database run migration:new -- --name <change_name> --from <graphTipHash>
+   npm --workspace @repo/database run migration:new -- --name <change_name> --from <latestContractHash>
    ```
 
-   Use a confirmed graph tip when one is required; follow
+   When an origin is required, use the newest migration's `toContract` from
+   `migration:list`, once confirmed as the intended baseline; follow
    [Database](../docs/DATABASE.md#changing-storage). Inspect and present the SQL,
    then continue source work. Planning does not apply it.
 3. Implement repositories and their explicit write boundaries. For a supplied

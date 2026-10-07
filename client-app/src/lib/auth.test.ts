@@ -552,7 +552,7 @@ describe("same-origin API routing", () => {
   });
 });
 
-describe("FrameworkHttpApiFetch", () => {
+describe("frameworkHttpApiFetch", () => {
   it("uses an exact same-origin agent URL and retries that same path after refreshing", async () => {
     const originalToken = makeIdToken(600);
     const refreshedToken = makeIdToken(3600);
@@ -579,7 +579,7 @@ describe("FrameworkHttpApiFetch", () => {
       agentCalls += 1;
       return new Response("", { status: agentCalls === 1 ? 401 : 200 });
     }));
-    const response = await auth.FrameworkHttpApiFetch(new URL("/chat/echo", window.location.origin), {
+    const response = await auth.frameworkHttpApiFetch(new URL("/chat/echo", window.location.origin), {
       method: "POST", body: JSON.stringify({ message: "hello" }),
     });
     expect(response.status).toBe(200);
@@ -634,7 +634,7 @@ describe("FrameworkHttpApiFetch", () => {
       headers: { "content-type": "application/json" },
     });
 
-    const response = await auth.FrameworkHttpApiFetch(request);
+    const response = await auth.frameworkHttpApiFetch(request);
 
     expect(response.status).toBe(200);
     expect(protectedBodies).toEqual([
@@ -647,10 +647,10 @@ describe("FrameworkHttpApiFetch", () => {
   it("refuses to send a bearer token to another origin", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
-    const { FrameworkHttpApiFetch } = await loadAuth();
+    const { frameworkHttpApiFetch } = await loadAuth();
 
     await expect(
-      FrameworkHttpApiFetch("https://third-party.example/protected"),
+      frameworkHttpApiFetch("https://third-party.example/protected"),
     ).rejects.toThrow("Authenticated requests must use the application origin");
     expect(fetchMock).not.toHaveBeenCalled();
   });

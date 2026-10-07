@@ -488,7 +488,7 @@ export const RESERVED_LOCAL_ENVIRONMENT_KEYS = [
  * can never collide with the database or a dev server after the fact.
  */
 export const RESERVED_LOCAL_SERVICE_NAMES = [
-  "frontend-ws-connection-and-payload-tester",
+  "ws-tester",
   "local-api-dev-server",
   "local-invocation-runner",
   "local-ws-dev-server",

@@ -14,7 +14,7 @@ export const LOCAL_HOST_PORT_NAMES = [
   "LOCAL_API_DEV_SERVER_HOST_PORT",
   "LOCAL_WS_DEV_SERVER_HOST_PORT",
   "LOCAL_INVOCATION_RUNNER_HOST_PORT",
-  "FRONTEND_WS_CONNECTION_AND_PAYLOAD_TESTER_HOST_PORT",
+  "WS_TESTER_HOST_PORT",
   "POSTGRES_HOST_PORT",
   "PGADMIN_HOST_PORT",
 ] as const;
@@ -77,7 +77,7 @@ export function localExportValues(
   const hostPort = (name: string): string => values.get(name)!;
 
   const controls: Record<string, string> = {
-    LOCAL_AWS_PROFILE: options.profile ?? "dev",
+    LOCAL_AWS_PROFILE: options.profile ?? "default",
     LOCAL_AWS_REGION: options.region ?? "us-east-1",
     LOCAL_AWS_CONFIG_DIR: path.join(os.homedir(), ".aws"),
     PRISMA_LOCAL_SCHEMA_SYNC: "migrate",
@@ -106,7 +106,7 @@ export function localExportValues(
   // *local* servers, which previously trusted localhost and nothing else.
   const origins = [...new Set([
     toOrigin(authored.LOCAL_DEV_URL ?? LOCALHOST_DEV_URL, "LOCAL_DEV_URL"),
-    `http://localhost:${hostPort("FRONTEND_WS_CONNECTION_AND_PAYLOAD_TESTER_HOST_PORT")}`,
+    `http://localhost:${hostPort("WS_TESTER_HOST_PORT")}`,
   ])].join(",");
   // One name, because one thing reads it: the local dev servers. The auth
   // lambdas' TRUSTED_FRONTEND_ORIGINS is derived from this by the API server,

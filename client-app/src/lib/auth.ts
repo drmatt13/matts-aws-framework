@@ -25,7 +25,7 @@ export {
   checkSession,
   consumeAuthNotice,
   consumePostAuthReturnTo,
-  FrameworkHttpApiFetch,
+  frameworkHttpApiFetch,
   getAuthSnapshot,
   getCognitoIdToken,
   initializeAuthLifecycle,

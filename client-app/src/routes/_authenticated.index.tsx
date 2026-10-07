@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, useNavigate } from "@tanstack/react-router";
-import { API_ROUTE } from "@repo/api-contract";
 import { ArrowRight } from "lucide-react";
 
 import { currentUserQuery } from "#/api/currentUser/operations";
+import AgentCorePanel from "#/components/AgentCorePanel";
 import Button from "#/components/Button";
+import EcsServicePanel from "#/components/EcsServicePanel";
+import HttpLambdaPanel from "#/components/HttpLambdaPanel";
+import InvocationTestPanel from "#/components/InvocationTestPanel";
 import ProjectsPanel from "#/components/ProjectsPanel";
 import SecurityPanel from "#/components/SecurityPanel";
 import WorkflowsPanel from "#/components/WorkflowsPanel";
-import { FrameworkHttpApiFetch, getCognitoIdToken } from "#/lib/auth";
+import { getCognitoIdToken } from "#/lib/auth";
 import logout from "#/lib/logout";
 
 // The guard, the layout chrome, and every auth/loading failure state belong to
@@ -18,25 +21,12 @@ export const Route = createFileRoute("/_authenticated/")({
   component: App,
 });
 
-async function responseError(response: Response): Promise<string> {
-  const body = (await response.json().catch(() => null)) as {
-    error?: unknown;
-  } | null;
-
-  return typeof body?.error === "string"
-    ? body.error
-    : `Request failed with status ${response.status}.`;
-}
-
 function App() {
   const navigate = useNavigate();
   const idToken = getCognitoIdToken();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
-  const [isRunningTask, setIsRunningTask] = useState(false);
-  const [invocationStatus, setInvocationStatus] = useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
+  const [testerLinkError, setTesterLinkError] = useState<string | null>(null);
+  const wsTesterUrl = import.meta.env.VITE_WS_TESTER_URL as string | undefined;
 
   // `user` is undefined only while the query is pending.
   const { data: user } = useQuery(currentUserQuery);
@@ -56,35 +46,18 @@ function App() {
     }
   }
 
-  async function handleRunTask() {
-    setIsRunningTask(true);
-    setInvocationStatus(null);
-
-    try {
-      const response = await FrameworkHttpApiFetch(
-        API_ROUTE["/test/run-task"],
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ message: "Hello from the client app!" }),
-        },
-      );
-      if (!response.ok) throw new Error(await responseError(response));
-
-      // A 202 is an acknowledgement, not a result. The container is still
-      // running when this resolves, and its outcome is read from its logs.
-      setInvocationStatus({
-        type: "success",
-        message: "Task submitted.",
-      });
-    } catch (error) {
-      setInvocationStatus({
-        type: "error",
-        message: error instanceof Error ? error.message : "Unable to run task.",
-      });
-    } finally {
-      setIsRunningTask(false);
+  function openWebSocketTester(event: React.MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    const token = getCognitoIdToken();
+    if (!token || !wsTesterUrl) {
+      setTesterLinkError("The WebSocket tester URL or your sign-in token is unavailable.");
+      return;
     }
+
+    const destination = new URL(wsTesterUrl);
+    destination.hash = new URLSearchParams({ token }).toString();
+    window.open(destination.toString(), "_blank", "noopener,noreferrer");
+    setTesterLinkError(null);
   }
 
   return (
@@ -129,6 +102,23 @@ function App() {
         </dl>
       </section>
 
+      <a
+        href={wsTesterUrl || "#"}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={openWebSocketTester}
+        className="card mt-4 flex items-center justify-between gap-4 transition hover:border-brand/40"
+      >
+        <span>
+          <span className="text-sm font-medium">WebSocket tester</span>
+          <span className="mt-0.5 block text-sm text-muted">
+            Open the connection and payload tester with your sign-in token.
+          </span>
+        </span>
+        <ArrowRight className="size-4 shrink-0 text-muted" />
+      </a>
+      {testerLinkError && <p role="alert" className="alert alert-bad mt-2">{testerLinkError}</p>}
+
       <Link
         to="/test-route"
         className="card mt-4 flex items-center justify-between gap-4 transition hover:border-brand/40"
@@ -146,32 +136,15 @@ function App() {
 
       <ProjectsPanel />
 
-      <section className="card mt-4">
-        <h2 className="text-sm font-semibold">Invocation test</h2>
-        <p className="mt-1.5 text-sm text-muted">
-          Submits the declared container task directly, without a workflow
-          around it.
-        </p>
-        <div className="mt-4">
-          <Button
-            text={isRunningTask ? "Running task..." : "Run test task"}
-            onClick={handleRunTask}
-            disabled={isRunningTask}
-          />
-        </div>
-        {invocationStatus && (
-          <p
-            role={invocationStatus.type === "error" ? "alert" : "status"}
-            className={`alert mt-4 ${
-              invocationStatus.type === "error" ? "alert-bad" : "alert-ok"
-            }`}
-          >
-            {invocationStatus.message}
-          </p>
-        )}
-      </section>
+      <HttpLambdaPanel />
+
+      <EcsServicePanel />
 
       <WorkflowsPanel />
+
+      <InvocationTestPanel />
+
+      <AgentCorePanel />
     </div>
   );
 }

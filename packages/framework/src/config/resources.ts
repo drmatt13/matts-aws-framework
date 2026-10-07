@@ -140,13 +140,10 @@ export interface ResourceReference<
    */
   readonly secretField?: string;
   /**
-   * One line of authored prose for the generated `cdk-app/.env*.example`,
-   * written for whoever fills the file in: "If using Bedrock".
-   *
-   * It replaces the line the generator would otherwise derive, and the
-   * `resources.x.y` path line with it, because a note is there precisely when
-   * the derived text was not worth its space. Documentation only — nothing
-   * reads it at deploy time.
+   * One line of authored prose beside the declaration, written for whoever
+   * fills in cdk-app/.env: "If using Bedrock". Documentation only — nothing
+   * reads it at deploy time, and the hand-authored cdk-app/.env*.example
+   * templates are not generated from it.
    */
   readonly note?: string;
   /** Value used when the environment supplies nothing. */
@@ -437,7 +434,7 @@ const BUILDER_PROTOTYPE = {
   note(this: BuilderData, text: string): BuilderData {
     if (typeof text !== "string" || !text.trim() || /[\r\n]/.test(text)) {
       throw new Error(
-        `A ${this.$payload.kind} resource declares a blank or multi-line .note(). A note is one line of an env example comment.`,
+        `A ${this.$payload.kind} resource declares a blank or multi-line .note(). A note is one line of prose.`,
       );
     }
     return rebuild(this, { note: text });

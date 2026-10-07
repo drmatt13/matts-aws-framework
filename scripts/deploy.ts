@@ -26,9 +26,9 @@ async function main(): Promise<void> {
   const selection = deploymentArguments(args);
   const inputFile = resolve(root, "cdk-app/.env");
   const authored = existsSync(inputFile) ? parseEnv(readFileSync(inputFile, "utf8")) : {};
-  // One profile setting: the one cdk-app/.env already names for the local
-  // containers, unless --profile or the shell says otherwise.
-  const profile = selection.profile ?? process.env.AWS_PROFILE ?? authored.AWS_PROFILE ?? authored.LOCAL_AWS_PROFILE;
+  // An explicit flag or AWS_PROFILE selects named credentials. Otherwise the
+  // AWS CLI and SDK use their standard default credential chain.
+  const profile = selection.profile ?? process.env.AWS_PROFILE ?? authored.AWS_PROFILE;
   if (profile) process.env.AWS_PROFILE = profile;
   if (selection.region) process.env.AWS_REGION = selection.region;
   const cache = resolve(root, ".cache/deploy");

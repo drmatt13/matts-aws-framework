@@ -12,7 +12,7 @@ test("contract timestamps apply on create and update without a connection or Tem
       const started = Date.now();
       const defaults = client.context.applyMutationDefaults({
         namespace: "public",
-        table,
+        entry: table,
         op,
         values:
           table === "projects"
@@ -20,7 +20,7 @@ test("contract timestamps apply on create and update without a connection or Tem
             : { first_name: "Updated" },
       });
       const timestamp = defaults.find(
-        (entry) => entry.column === "updated_at",
+        (applied) => applied.field === "updated_at",
       )?.value;
       assert.ok(timestamp instanceof Date);
       assert.ok(
@@ -36,7 +36,7 @@ test("contract timestamps apply on create and update without a connection or Tem
     assert.deepEqual(
       client.context.applyMutationDefaults({
         namespace: "public",
-        table,
+        entry: table,
         op: "update",
         values: {},
       }),

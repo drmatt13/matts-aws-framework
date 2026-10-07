@@ -6,7 +6,7 @@ import {
 import { executeGraphQL, GraphQLRequestError } from "./client";
 
 const { fetchApi } = vi.hoisted(() => ({ fetchApi: vi.fn() }));
-vi.mock("#/lib/auth", () => ({ FrameworkHttpApiFetch: fetchApi }));
+vi.mock("#/lib/auth", () => ({ frameworkHttpApiFetch: fetchApi }));
 
 beforeEach(() => {
   fetchApi.mockReset();

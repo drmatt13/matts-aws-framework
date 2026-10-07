@@ -66,8 +66,8 @@ function fixture() {
   );
   metadata.execution.mutations.defaults.push(
     ...metadata.execution.mutations.defaults
-      .filter((entry) => entry.ref.table === "projects")
-      .map((entry) => ({ ...entry, ref: { ...entry.ref, table: "notes" } })),
+      .filter((entry) => entry.ref.entry === "projects")
+      .map((entry) => ({ ...entry, ref: { ...entry.ref, entry: "notes" } })),
   );
   return {
     directory,
@@ -353,7 +353,7 @@ export default definePrismaConfig({ orm: defineConfig({ contract: "contract.pris
     mkdirSync(dirname(auth), { recursive: true });
     writeFileSync(
       auth,
-      'export function FrameworkHttpApiFetch(_path: string, _options: RequestInit): Promise<Response> { throw new Error("Fixture never performs network requests"); }',
+      'export function frameworkHttpApiFetch(_path: string, _options: RequestInit): Promise<Response> { throw new Error("Fixture never performs network requests"); }',
     );
     const projection = join(database, "src/projection-check.ts");
     writeFileSync(
