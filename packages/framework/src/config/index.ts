@@ -177,7 +177,7 @@ export type TargetRole =
 /**
  * A source directory relative to `cdk-app`, with a leading slash.
  * @example "/lambda_functions/http_functions/sign-in"
- * @example "/ecs_containers/services/langgraph"
+ * @example "/ecs_containers/services/example-service"
  */
 export type FrameworkDirectory = `/${string}`;
 
@@ -1628,7 +1628,7 @@ export interface ServiceTargetDefinition<Catalog = AnyResourceCatalog>
   extends HttpBindingSpec, ServiceEnvironment<Catalog> {
   /**
    * Implementation directory, rooted at `cdk-app`.
-   * @example "/ecs_containers/services/langgraph"
+   * @example "/ecs_containers/services/example-service"
    */
   readonly directory: SuggestedServiceDirectory;
   /** Stable target id. Defaults to the directory's final segment. */
@@ -2169,7 +2169,7 @@ type IsAuthenticatedRoute<
 
 /**
  * Route key -> the URL a client actually calls. A catch-all mount resolves to
- * its public prefix, so `API_ROUTE["/langgraph/*"]` is `"/langgraph"`.
+ * its public prefix, so `API_ROUTE["/example-service/*"]` is `"/example-service"`.
  */
 export type HttpRoutePaths<Config extends FrameworkConfig> = {
   readonly [Key in HttpRouteKey<Config>]: StripCatchAll<Key>;
@@ -2620,8 +2620,8 @@ function isSegmentPrefix(
 /**
  * Whether two declarations can ever accept the same request path.
  *
- * A mount owns its root and every descendant, so `/langgraph/*` covers
- * `/langgraph` and `/langgraph/chat` but not `/langgraphql`. Comparison is by
+ * A mount owns its root and every descendant, so `/example-service/*` covers
+ * `/example-service` and `/example-service/greet` but not `/example-services`. Comparison is by
  * segment rather than by string prefix, so the root mount `/*` — whose prefix is
  * empty — is handled instead of degenerating into a test for `//`.
  */

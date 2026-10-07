@@ -17,7 +17,7 @@ import {
 /**
  * Public path -> the URL to call, keyed by the route as `framework.config.ts`
  * declares it. A catch-all mount resolves to its public prefix, so
- * `API_ROUTE["/langgraph/*"]` is `"/langgraph"`. Looking a route up by its own
+ * `API_ROUTE["/example-service/*"]` is `"/example-service"`. Looking a route up by its own
  * path keeps the typo checking while staying unambiguous when several routes
  * share one target.
  */

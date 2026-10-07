@@ -22,8 +22,8 @@ Preserve existing configuration rather than blindly overwriting it. Set:
 - COGNITO_SES_FROM_EMAIL, an address or domain already verified in Amazon SES. Cognito's
   built-in sender stops after about 50 messages a day, which ends sign-up verification and
   password reset for everyone; synth warns while it is unset.
-- WebSocket deployment settings and any cloud-enabled workload inputs. LangGraph is
-  local-only until its declaration enables cloud deployment. SKIP_EMAIL_VERIFICATION is
+- WebSocket deployment settings and any cloud-enabled workload inputs. The example
+  service and example agent are local-only until their declarations enable cloud deployment. SKIP_EMAIL_VERIFICATION is
   refused in production.
 
 Current limitation: a generated CloudFront URL without a configured frontend domain serves
@@ -226,7 +226,7 @@ retention before executing. Without RETAIN_STATEFUL_RESOURCES the database is de
 final snapshot, and its automated backups are kept for their retention window:
 
 ```powershell
-npm --workspace cdk-app exec -- cdk destroy --all -c useLocalDevStack=false --profile <PROFILE>
+npm run destroy -- --all -c useLocalDevStack=false --profile <PROFILE>
 ```
 
 Review CDK's confirmation list. Use useLocalDevStack=true for a dev graph. Retained resources

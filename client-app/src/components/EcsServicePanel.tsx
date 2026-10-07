@@ -6,9 +6,9 @@ export default function EcsServicePanel() {
   return (
     <JsonRequestPanel
       title="Services"
-      description="Send a custom JSON payload to the LangGraph chat service. It requires a message and accepts optional threadId and resume fields."
-      path={`${API_ROUTE["/langgraph/*"]}/chat`}
-      initialPayload={'{\n  "message": "Hello from the client app!"\n}'}
+      description="Send a JSON payload to the example Express service's /greet route. It requires a name."
+      path={`${API_ROUTE["/example-service/*"]}/greet`}
+      initialPayload={'{\n  "name": "client app"\n}'}
       buttonText="Invoke ECS service"
     />
   );

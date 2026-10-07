@@ -203,25 +203,25 @@ test("tools.call maps ids to wire names and carries the user's token only to use
 
 test("serveAgent starts the adapter its environment describes, and refuses another agent's module", async () => {
   const environment = {
-    agent: "echo-agent",
+    agent: "example-agent",
     auth: false,
     gateway: { transport: "local", url: "http://127.0.0.1:9" },
   };
   process.env[ADAPTER_ENVIRONMENT] = JSON.stringify(environment);
   try {
-    await assert.rejects(serveAgent(summarizer, 0), /serves agent "echo-agent", but its module exports agent\("summarizer"/);
+    await assert.rejects(serveAgent(summarizer, 0), /serves agent "example-agent", but its module exports agent\("summarizer"/);
     await assert.rejects(serveAgent({ handler() {} }, 0), /must export `handler = agent\(\.\.\.\)\.stream\(\.\.\.\)` or `\.respond\(\.\.\.\)`/);
 
     // The generated projection supplies the tools when the environment does not.
-    const echo = agent("echo-agent", {
+    const example = agent("example-agent", {
       request: z.object({}),
       response: z.object({ names: z.array(z.string()) }),
     }).respond(async (_input, { tools }) => ({ names: tools.specs.map((spec) => spec.name) }));
-    const server = await serveAgent(echo, 0);
+    const server = await serveAgent(example, 0);
     try {
       const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
       const reply = await invoke(url, { conversationId: "c", input: {} }, service("c"));
-      assert.deepEqual(await reply.json(), { result: { names: ["echo"] } });
+      assert.deepEqual(await reply.json(), { result: { names: ["add-numbers", "multiply-numbers"] } });
     } finally {
       server.close();
     }

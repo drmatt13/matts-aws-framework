@@ -1,16 +1,17 @@
 import { fromIni } from "@aws-sdk/credential-providers";
 
-export const awsRegion = () => process.env.AWS_REGION?.trim() || "us-east-1";
+export const awsRegion = () =>
+  process.env.AWS_REGION?.trim() || process.env.AWS_DEFAULT_REGION?.trim() || "us-east-1";
 
 /**
  * AWS_PROFILE is a local-development concept: it names an entry in the
  * developer's ~/.aws config, which docker-compose bind-mounts into the
- * container. An ECS task has no such file -- it receives credentials from its
- * IAM task role via the SDK's default provider chain.
+ * invocation runner that hosts local agent sessions. AgentCore Runtime has no
+ * such file -- it receives credentials from the agent's execution role via the
+ * SDK's default provider chain.
  *
- * So the presence of AWS_PROFILE is the switch between the two worlds, and
- * cdk-app/lib/framework/ecs-services-stack.ts deliberately never sets it on the task
- * definition.
+ * So the presence of AWS_PROFILE is the switch between the two worlds, and the
+ * framework never sets it on a deployed Runtime.
  */
 export const awsProfile = () => process.env.AWS_PROFILE?.trim() || undefined;
 
@@ -43,10 +44,9 @@ const iniCredentials = memoizePerIdentity((profile, region) =>
 
 /**
  * Credentials for the AWS SDK, or `undefined` to let the SDK resolve them
- * itself. Returning `undefined` is the ECS path: the default provider chain
- * picks up the task role from the container credentials endpoint. Passing an
- * explicit `fromIni` provider there would fail, because there is no shared
- * credentials file to read.
+ * itself. Returning `undefined` is the Runtime path: the default provider chain
+ * picks up the execution role. Passing an explicit `fromIni` provider there
+ * would fail, because there is no shared credentials file to read.
  *
  * `fromIni` supports plain credentials, assumed roles, and IAM Identity
  * Center/SSO profiles.

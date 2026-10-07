@@ -5,8 +5,8 @@ import { awsProfile, awsRegion, memoizePerIdentity } from "./awsCredentials";
 
 // The provider caches short-term API keys and refreshes them from the AWS
 // profile. No Bedrock API key is stored in source or environment variables.
-// With no profile -- the ECS case -- it falls back to the default credential
-// chain and mints the same short-lived token from the task role.
+// With no profile -- the AgentCore Runtime case -- it falls back to the default
+// credential chain and mints the same short-lived token from the execution role.
 //
 // Memoized so that cache survives across calls; building a new provider per
 // request would mint a fresh token every turn.

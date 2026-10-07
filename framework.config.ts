@@ -8,11 +8,12 @@ import { invocationTestRoutes } from "./framework-config/http/invocation-tests";
 import { webSocketRoutes } from "./framework-config/websocket/routes";
 import { cognitoEvents } from "./framework-config/events/cognito";
 import { invocationTestEvents } from "./framework-config/events/invocation-tests";
-import { langgraphService } from "./framework-config/services/langgraph";
+import { exampleService } from "./framework-config/services/example";
 import { invocationTestTasks } from "./framework-config/tasks/invocation-tests";
 import { capabilityWorkflows } from "./framework-config/workflows/capabilities";
 import { invocationTestWorkflows } from "./framework-config/workflows/invocation-tests";
-import { exampleAgents, exampleTools } from "./framework-config/agents/example";
+import { exampleTools } from "./framework-config/tools/example";
+import { exampleAgent } from "./framework-config/agents/example";
 
 /**
  * The repository's inventory: every target, grouped by how it is invoked.
@@ -37,11 +38,11 @@ const framework = defineFrameworkConfig({
   http: [authRoutes, graphqlRoutes, exampleRoutes, invocationTestRoutes],
   webSocket: [webSocketRoutes],
   events: [cognitoEvents, invocationTestEvents],
-  services: [langgraphService],
+  services: [exampleService],
   tasks: [invocationTestTasks],
   workflows: [invocationTestWorkflows, capabilityWorkflows],
   tools: [exampleTools],
-  agents: [exampleAgents],
+  agents: [exampleAgent],
 });
 
 export default framework;

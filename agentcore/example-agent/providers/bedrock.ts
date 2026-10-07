@@ -9,7 +9,7 @@ export function getModel(options: ModelOptions = {}) {
   return new ChatBedrockConverse({
     region,
     // Omitted entirely when no AWS_PROFILE is set, so the SDK's default
-    // provider chain resolves the ECS task role instead.
+    // provider chain resolves the Runtime's execution role instead.
     ...(credentials ? { credentials } : {}),
     model: process.env.BEDROCK_MODEL_ID || "global.amazon.nova-2-lite-v1:0",
     temperature: options.temperature ?? DEFAULT_MODEL_OPTIONS.temperature,

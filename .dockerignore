@@ -2,7 +2,7 @@
 **/node_modules
 **/dist
 
-# CDK output. Excluding these matters: the LangGraph image asset uses the
+# CDK output. Excluding these matters: a service's image asset uses the
 # repository root as its build context, so without them CDK stages cdk-app/cdk.out
 # into itself and the asset balloons from a few dozen files to tens of thousands.
 **/cdk.out

@@ -556,7 +556,7 @@ function routesModule(config: FrameworkConfig): string {
     ...(agentRoutes.imports.length > 0 ? [...agentRoutes.imports, ""] : []),
     "/**",
     " * Public route key -> the URL a client actually calls. A catch-all mount",
-    ' * resolves to its public prefix, so `API_ROUTE["/langgraph/*"]` is `"/langgraph"`.',
+    ' * resolves to its public prefix, so `API_ROUTE["/example-service/*"]` is `"/example-service"`.',
     " */",
     "export const API_ROUTE = {",
     ...routes.map(

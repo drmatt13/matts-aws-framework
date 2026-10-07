@@ -12,7 +12,7 @@ type UpstreamCall = { method: string; url: string; body: string };
  * A stand-in container. The deployed side asserts the equivalent behaviour
  * through the synthesized `overwrite:path` parameter mappings in
  * cdk-app/test/framework-routing.test.ts; this covers the local half, which
- * cannot be reached through the dev server because /langgraph is auth: true.
+ * cannot be reached through the dev server because /example-service is auth: true.
  */
 async function withUpstream(
   run: (baseUrl: string, calls: UpstreamCall[]) => Promise<void>,

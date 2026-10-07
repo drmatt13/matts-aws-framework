@@ -5,39 +5,67 @@
  * descriptions and schemas. Edit the tool's contract.ts and regenerate.
  */
 export const AGENTCORE_TOOLS = {
-  "echo": {
-    "description": "Echo a message back, with its length and the signed-in user it was echoed for.",
-    "auth": true,
+  "add-numbers": {
+    "description": "Add two numbers together.",
+    "auth": false,
     "inputSchema": {
       "type": "object",
       "properties": {
-        "message": {
-          "type": "string",
-          "description": "The text to echo. At least 1 character. At most 2000 characters."
+        "a": {
+          "type": "number",
+          "description": "First number to add."
+        },
+        "b": {
+          "type": "number",
+          "description": "Second number to add."
         }
       },
       "required": [
-        "message"
+        "a",
+        "b"
       ]
     },
     "outputSchema": {
       "type": "object",
       "properties": {
-        "message": {
-          "type": "string"
-        },
-        "length": {
-          "type": "integer"
-        },
-        "sub": {
-          "type": "string",
-          "description": "The Cognito subject of the user the tool acted as."
+        "sum": {
+          "type": "number"
         }
       },
       "required": [
-        "message",
-        "length",
-        "sub"
+        "sum"
+      ]
+    }
+  },
+  "multiply-numbers": {
+    "description": "Multiply two numbers together.",
+    "auth": false,
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "a": {
+          "type": "number",
+          "description": "First number to multiply."
+        },
+        "b": {
+          "type": "number",
+          "description": "Second number to multiply."
+        }
+      },
+      "required": [
+        "a",
+        "b"
+      ]
+    },
+    "outputSchema": {
+      "type": "object",
+      "properties": {
+        "product": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "product"
       ]
     }
   }
@@ -45,53 +73,110 @@ export const AGENTCORE_TOOLS = {
 
 /** Each agent: whether it has users, whether it streams, and the tools its Gateway holds. */
 export const AGENTCORE_AGENTS = {
-  "echo-agent": {
+  "example-agent": {
     "auth": true,
     "streaming": true,
     "tools": [
-      "echo"
+      "add-numbers",
+      "multiply-numbers"
     ]
   }
 } as const;
 
-export interface ToolEchoRequest {
+export interface ToolAddNumbersRequest {
   /**
-   * The text to echo
+   * First number to add
    */
-  message: string;
-}
-
-export interface ToolEchoResponse {
-  message: string;
-  length: number;
+  a: number;
   /**
-   * The Cognito subject of the user the tool acted as
+   * Second number to add
    */
-  sub: string;
+  b: number;
 }
 
-export interface AgentEchoAgentRequest {
-  message: string;
+export interface ToolAddNumbersResponse {
+  sum: number;
 }
 
-export type AgentEchoAgentEvent =
+export interface ToolMultiplyNumbersRequest {
+  /**
+   * First number to multiply
+   */
+  a: number;
+  /**
+   * Second number to multiply
+   */
+  b: number;
+}
+
+export interface ToolMultiplyNumbersResponse {
+  product: number;
+}
+
+export type AgentExampleAgentRequest =
   | {
-      type: "status";
+      type: "message";
+      message: string;
+    }
+  | {
+      type: "resume";
+      response: string;
+    }
+  | {
+      type: "history";
+    };
+
+export type AgentExampleAgentEvent =
+  | {
+      type: "delta";
       text: string;
     }
   | {
-      type: "echo";
+      type: "message";
+      text: string;
+    }
+  | {
+      type: "interrupt";
+      prompt: string;
+      continuingThread: boolean;
+    }
+  | {
+      type: "history";
+      exists: boolean;
+      interrupted: boolean;
+      interrupt?: {
+        prompt: string;
+        continuingThread: boolean;
+      };
+      next: string[];
+      messages: {
+        role: string;
+        name?: string;
+        content: string;
+        toolCalls?: {
+          id?: string;
+          name: string;
+          args: {
+            [k: string]: unknown;
+          };
+        }[];
+        toolCallId?: string;
+      }[];
+      updatedAt?: string;
+    }
+  | {
+      type: "refused";
+      reason: "NO_PENDING_INTERRUPT";
       message: string;
-      length: number;
-      sub: string;
     };
 
 /** Tool ids to the types `tools.call` checks a call against. */
 export interface AgentCoreTools {
-  "echo": { request: ToolEchoRequest; response: ToolEchoResponse };
+  "add-numbers": { request: ToolAddNumbersRequest; response: ToolAddNumbersResponse };
+  "multiply-numbers": { request: ToolMultiplyNumbersRequest; response: ToolMultiplyNumbersResponse };
 }
 
 /** Agent ids to the tools they may call and the types they are invoked with. */
 export interface AgentCoreAgents {
-  "echo-agent": { tools: "echo"; request: AgentEchoAgentRequest; event: AgentEchoAgentEvent };
+  "example-agent": { tools: "add-numbers" | "multiply-numbers"; request: AgentExampleAgentRequest; event: AgentExampleAgentEvent };
 }

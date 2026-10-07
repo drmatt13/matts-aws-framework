@@ -7,13 +7,14 @@
  * Lambda finds the directory it never had to declare.
  */
 export const LAMBDA_SOURCE_DIRECTORY_BY_ID = {
+  "add-numbers": "/lambda_functions/tool_functions/add-numbers",
   "cognito-custom-message": "/lambda_functions/event_functions/cognito-custom-message",
   "cognito-post-confirmation-trigger": "/lambda_functions/event_functions/cognito-post-confirmation-trigger",
   "cognito-pre-signup-trigger": "/lambda_functions/event_functions/cognito-pre-signup-trigger",
-  "echo": "/lambda_functions/tool_functions/echo",
   "graphql-api": "/lambda_functions/http_functions/graphql-api",
   "invocation-test-step": "/lambda_functions/event_functions/invocation-test-step",
   "mfa": "/lambda_functions/http_functions/mfa",
+  "multiply-numbers": "/lambda_functions/tool_functions/multiply-numbers",
   "oauth-callback": "/lambda_functions/http_functions/oauth-callback",
   "python-example": "/lambda_functions/http_functions/python-example",
   "refresh": "/lambda_functions/http_functions/refresh",
@@ -32,13 +33,14 @@ export const LAMBDA_SOURCE_DIRECTORY_BY_ID = {
 
 /** Every handler directory under `cdk-app/lambda_functions`, by target id. */
 export const LAMBDA_TARGET_IDS = [
+  "add-numbers",
   "cognito-custom-message",
   "cognito-post-confirmation-trigger",
   "cognito-pre-signup-trigger",
-  "echo",
   "graphql-api",
   "invocation-test-step",
   "mfa",
+  "multiply-numbers",
   "oauth-callback",
   "python-example",
   "refresh",
@@ -59,13 +61,14 @@ export type LambdaTargetId = (typeof LAMBDA_TARGET_IDS)[number];
 
 /** Conventional Lambda source directories, offered as `directory` completions. */
 export const LAMBDA_SOURCE_DIRECTORIES = [
+  "/lambda_functions/tool_functions/add-numbers",
   "/lambda_functions/event_functions/cognito-custom-message",
   "/lambda_functions/event_functions/cognito-post-confirmation-trigger",
   "/lambda_functions/event_functions/cognito-pre-signup-trigger",
-  "/lambda_functions/tool_functions/echo",
   "/lambda_functions/http_functions/graphql-api",
   "/lambda_functions/event_functions/invocation-test-step",
   "/lambda_functions/http_functions/mfa",
+  "/lambda_functions/tool_functions/multiply-numbers",
   "/lambda_functions/http_functions/oauth-callback",
   "/lambda_functions/http_functions/python-example",
   "/lambda_functions/http_functions/refresh",
@@ -104,21 +107,22 @@ export type EventLambdaId = (typeof EVENT_LAMBDA_IDS)[number];
  * declare without spelling its own directory.
  */
 export const TOOL_LAMBDA_IDS = [
-  "echo",
+  "add-numbers",
+  "multiply-numbers",
 ] as const;
 
 export type ToolLambdaId = (typeof TOOL_LAMBDA_IDS)[number];
 
 /** Every directory directly under `cdk-app/ecs_containers/services`. */
 export const SERVICE_TARGET_IDS = [
-  "langgraph",
+  "example-service",
 ] as const;
 
 export type ServiceTargetId = (typeof SERVICE_TARGET_IDS)[number];
 
 /** Conventional service source directories, offered as `directory` completions. */
 export const SERVICE_SOURCE_DIRECTORIES = [
-  "/ecs_containers/services/langgraph",
+  "/ecs_containers/services/example-service",
 ] as const;
 
 export type ServiceSourceDirectory = (typeof SERVICE_SOURCE_DIRECTORIES)[number];
@@ -156,7 +160,7 @@ export type WorkflowTargetId = (typeof WORKFLOW_TARGET_IDS)[number];
  * reason as workflow ids: the config is typed against them.
  */
 export const AGENT_TARGET_IDS = [
-  "echo-agent",
+  "example-agent",
 ] as const;
 
 export type AgentTargetId = (typeof AGENT_TARGET_IDS)[number];

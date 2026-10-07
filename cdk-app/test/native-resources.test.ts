@@ -124,7 +124,7 @@ test("conditional secret parameters and linked encryption permissions attach to 
   const resources = defineResources({ provider: resource.fromEnv().enum("native", "external").default("native"), apiKey: resource.secret(), vault: resource.stack<CredentialsStack>() });
   for (const provider of ["native", "external"]) {
     const configuration = defineFrameworkConfig({ resources, defaults, http: [], webSocket: [], events: [], tasks: [], workflows: [], services: [{ "/example/*": {
-      directory: "/ecs_containers/services/langgraph", port: 5000, auth: true, methods: "*", deploy: "both", environment: { PROVIDER: resources.provider },
+      directory: "/ecs_containers/services/example-service", port: 5000, auth: true, methods: "*", deploy: "both", environment: { PROVIDER: resources.provider },
       secrets: { API_KEY: resources.apiKey, CREDENTIALS: resources.vault.credentials.value },
       cloud: { requirements: [{ when: { resource: resources.provider, equals: "external" }, require: [resources.apiKey] }] },
     } }] });

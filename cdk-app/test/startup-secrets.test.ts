@@ -34,7 +34,7 @@ import {
  * it here.
  *
  * The fixture declares its own service rather than using framework-config,
- * where langgraph is deploy: "local-only" and so reaches no cloud graph.
+ * where the example service is deploy: "local-only" and so reaches no cloud graph.
  */
 
 const RAW_VALUE = "sk-test-not-a-real-key-000111222";
@@ -57,7 +57,7 @@ function config(secrets: Record<string, unknown>): FrameworkConfig {
     services: [
       {
         "/example/*": {
-          directory: "/ecs_containers/services/langgraph",
+          directory: "/ecs_containers/services/example-service",
           methods: "*",
           auth: true,
           port: 5000,

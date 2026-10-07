@@ -4,7 +4,7 @@ import { frameworkHttpApiFetch, getCognitoIdToken, refreshSession, SessionExpire
 /**
  * Talking to an agent with users from the browser.
  *
- *   for await (const event of streamAgent("echo-agent", { message }, { conversationId })) {
+ *   for await (const event of streamAgent("example-agent", { type: "message", message }, { conversationId })) {
  *     render(event);
  *   }
  *

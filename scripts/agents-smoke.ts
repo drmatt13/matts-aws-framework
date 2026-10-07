@@ -1,9 +1,12 @@
 /**
- * Exercises the echo sample in a disposable AWS deployment: Runtime, Gateway and
- * tool Lambda, the user's identity across all three, and every refusal.
+ * Exercises the example agent in a disposable AWS deployment: Runtime, Gateway
+ * and tool Lambdas, each user's own session, and every refusal.
  *
  * Needs a prod-mode deployment whose CDK_APP_NAME contains "smoke", with the
- * echo sample set to `deploy: "both"` (docs/AGENTCORE.md, "Smoke test in AWS").
+ * example agent and its tools set to `deploy: "both"` (docs/AGENTCORE.md,
+ * "Smoke test in AWS"). One turn calls the model, so the deployment needs
+ * access to the model LANGGRAPH_MODEL_PROVIDER selects; every other check
+ * reads the conversation's history and makes no model call.
  * Creates two throwaway users in that deployment's own user pool and deletes
  * them before it exits. It refuses any other deployment, so it cannot touch a
  * shared pool.
@@ -36,12 +39,11 @@ import { SignatureV4 } from "@smithy/signature-v4";
 import { AGENTCORE_TOOLS, gatewayInputSchema } from "@repo/framework/config";
 import { agentSessionId } from "@repo/framework/runtime/agentcore";
 
-const AGENT = "echo-agent";
-const TOOL = "echo";
+const AGENT = "example-agent";
+const TOOLS = ["add-numbers", "multiply-numbers"] as const;
 // The wire as AWS sees it, written out rather than imported: this script checks
 // the deployed system against the protocol, not the framework against itself.
-const WIRE_NAME = `${TOOL}___${TOOL}`;
-const IDENTITY_ARGUMENT = "__framework_identity";
+const wireName = (tool: string) => `${tool}___${tool}`;
 const SESSION_HEADER = "x-amzn-bedrock-agentcore-runtime-session-id";
 
 // ---------------------------------------------------------------------------
@@ -104,7 +106,7 @@ function stackResources(stack: string): readonly StackResource[] {
 
 function only(resources: readonly StackResource[], type: string): string {
   const found = resources.filter((resource) => resource.ResourceType === type);
-  if (found.length !== 1) throw new Error(`Expected one ${type}, found ${found.length}. Deploy only the echo sample.`);
+  if (found.length !== 1) throw new Error(`Expected one ${type}, found ${found.length}. Deploy only the example agent.`);
   // Ref is an id for some types and an ARN for others; the id ends either.
   return found[0].PhysicalResourceId.split("/").pop()!;
 }
@@ -266,8 +268,21 @@ async function invoke(
   };
 }
 
-function turn(conversationId: string, message: string): string {
-  return JSON.stringify({ conversationId, input: { message } });
+function turn(conversationId: string, input: unknown): string {
+  return JSON.stringify({ conversationId, input });
+}
+
+/** Reads the conversation from the session without calling the model. */
+const HISTORY = { type: "history" } as const;
+
+type AgentEvent = { type?: string; exists?: boolean; messages?: { role: string; name?: string }[]; text?: string };
+
+function eventsOf(reply: AgentReply): AgentEvent[] {
+  return reply.events.map((item) => item.data as AgentEvent);
+}
+
+function historyOf(reply: AgentReply): AgentEvent | undefined {
+  return eventsOf(reply).find((event) => event.type === "history");
 }
 
 // ---------------------------------------------------------------------------
@@ -289,9 +304,9 @@ async function main(): Promise<void> {
   const gatewayId = only(agentStack, "AWS::BedrockAgentCore::Gateway");
   const userPoolId = only(cognitoStack, "AWS::Cognito::UserPool");
   const clientId = only(cognitoStack, "AWS::Cognito::UserPoolClient");
-  const toolFunction = agentStack.find(
-    (resource) => resource.ResourceType === "AWS::Lambda::Function" && resource.LogicalResourceId.startsWith("AgentCoreTools"),
-  )?.PhysicalResourceId;
+  const toolFunctions = agentStack
+    .filter((resource) => resource.ResourceType === "AWS::Lambda::Function" && resource.LogicalResourceId.startsWith("AgentCoreTools"))
+    .map((resource) => resource.PhysicalResourceId);
 
   const control = new BedrockAgentCoreControlClient({ region });
   const runtime = await control.send(new GetAgentRuntimeCommand({ agentRuntimeId: runtimeId }));
@@ -314,55 +329,72 @@ async function main(): Promise<void> {
     const [a, b] = users;
     record("Two users signed in", a.sub !== b.sub);
 
-    // -- Gateway: discovery, the identity argument, and how errors come back --
+    // -- Gateway: discovery, the tools' answers, and how errors come back --
     const listed = await mcp(gateway.gatewayUrl!, "tools/list", {});
-    const tool = listed.message?.result?.tools?.find((candidate) => candidate.name === WIRE_NAME);
-    const expected = gatewayInputSchema(AGENTCORE_TOOLS[TOOL]);
-    record("Gateway lists the tool under its wire name", Boolean(tool), `HTTP ${listed.status}, ${listed.message?.result?.tools?.length ?? 0} tools`);
-    record(
-      "Gateway lists the committed description and schema",
-      tool?.description === AGENTCORE_TOOLS[TOOL].description && isDeepStrictEqual(tool?.inputSchema, expected),
-      tool ? "" : "tool missing",
-    );
+    record("Gateway lists the agent's tools", listed.message?.result?.tools?.length === TOOLS.length, `HTTP ${listed.status}, ${listed.message?.result?.tools?.length ?? 0} tools`);
+    for (const id of TOOLS) {
+      const tool = listed.message?.result?.tools?.find((candidate) => candidate.name === wireName(id));
+      record(
+        `Gateway lists ${id} with its committed description and schema`,
+        tool?.description === AGENTCORE_TOOLS[id].description &&
+          isDeepStrictEqual(tool?.inputSchema, gatewayInputSchema(AGENTCORE_TOOLS[id])),
+        tool ? "" : "tool missing",
+      );
+    }
 
-    const asA = await mcp(gateway.gatewayUrl!, "tools/call", {
-      name: WIRE_NAME,
-      arguments: { message: "smoke", [IDENTITY_ARGUMENT]: a.idToken },
-    });
-    const structured = (asA.message?.result?.structuredContent ?? JSON.parse(toolText(asA) || "null")) as { sub?: string; length?: number } | null;
-    record("Tool acts as the user whose token it was given", structured?.sub === a.sub && structured?.length === 5, `HTTP ${asA.status}`);
-    observe("Tool success shape", `isError=${asA.message?.result?.isError}, structuredContent=${asA.message?.result?.structuredContent !== undefined}`);
+    const answers: [string, Record<string, unknown>, Record<string, number>][] = [
+      ["add-numbers", { a: 2, b: 3 }, { sum: 5 }],
+      ["multiply-numbers", { a: 5, b: 4 }, { product: 20 }],
+    ];
+    for (const [id, args, expected] of answers) {
+      const reply = await mcp(gateway.gatewayUrl!, "tools/call", { name: wireName(id), arguments: args });
+      const structured = reply.message?.result?.structuredContent ?? JSON.parse(toolText(reply) || "null");
+      record(`${id} answers through the Gateway`, isDeepStrictEqual(structured, expected), `HTTP ${reply.status}`);
+      observe(`${id} success shape`, `isError=${reply.message?.result?.isError}, structuredContent=${reply.message?.result?.structuredContent !== undefined}`);
+    }
 
     const refusals: [string, Record<string, unknown>][] = [
-      ["no identity", { message: "smoke" }],
-      ["a tampered ID token", { message: "smoke", [IDENTITY_ARGUMENT]: tampered(a.idToken) }],
-      ["an access token", { message: "smoke", [IDENTITY_ARGUMENT]: a.accessToken }],
-      ["not a JWT", { message: "smoke", [IDENTITY_ARGUMENT]: "not-a-jwt" }],
-      ["arguments its contract refuses", { message: "", [IDENTITY_ARGUMENT]: a.idToken }],
+      ["arguments its contract refuses", { a: "two", b: 3 }],
+      ["a missing argument", { a: 2 }],
     ];
     for (const [label, args] of refusals) {
-      const reply = await mcp(gateway.gatewayUrl!, "tools/call", { name: WIRE_NAME, arguments: args });
+      const reply = await mcp(gateway.gatewayUrl!, "tools/call", { name: wireName("add-numbers"), arguments: args });
       const refused = reply.message?.result?.isError === true || reply.message?.error !== undefined || reply.status >= 400;
-      const leaked = /eyJ[\w-]+\.[\w-]+\./.test(reply.raw) || reply.raw.includes(a.sub);
-      record(`Tool refuses ${label}`, refused && !leaked, `HTTP ${reply.status}: ${toolText(reply)}`);
+      record(`Tool refuses ${label}`, refused, `HTTP ${reply.status}: ${toolText(reply)}`);
     }
 
     // -- Runtime: the browser's path, minus CloudFront --
+    // The one model call. The prompt insists on the tools, because a turn that
+    // calls one is the only proof the Runtime's role reaches its own Gateway.
     const conversation = `smoke-${randomUUID()}`;
-    const streamA = await invoke(runtimeUrl, { token: a.idToken, sessionId: agentSessionId(a.sub, conversation), body: turn(conversation, "hello") });
-    const kinds = streamA.events.map((item) => (item.data as { type?: string }).type ?? item.event);
-    const echoA = streamA.events.find((item) => (item.data as { type?: string }).type === "echo")?.data as { sub?: string } | undefined;
-    record("Runtime streams events to user A", streamA.status === 200 && streamA.contentType.includes("text/event-stream") && streamA.events.length >= 2, `HTTP ${streamA.status}, ${streamA.contentType}, events [${kinds.join(", ")}]`);
-    record("The tool saw user A through Runtime and Gateway", echoA?.sub === a.sub);
+    const streamA = await invoke(runtimeUrl, {
+      token: a.idToken,
+      sessionId: agentSessionId(a.sub, conversation),
+      body: turn(conversation, {
+        type: "message",
+        message: "Use the add-numbers tool to add 2 and 3, then the multiply-numbers tool to multiply the result by 4. Reply with the final number only.",
+      }),
+    });
+    const kinds = eventsOf(streamA).map((event) => event.type ?? "?");
+    record(
+      "Runtime streams a model turn to user A",
+      streamA.status === 200 && streamA.contentType.includes("text/event-stream") && ["message", "interrupt"].includes(kinds.at(-1) ?? ""),
+      `HTTP ${streamA.status}, ${streamA.contentType}, events [${[...new Set(kinds)].join(", ")}]`,
+    );
+    observe("The model's reply", eventsOf(streamA).find((event) => event.type === "message")?.text ?? "(none)");
 
-    const streamB = await invoke(runtimeUrl, { token: b.idToken, sessionId: agentSessionId(b.sub, conversation), body: turn(conversation, "hello") });
-    const echoB = streamB.events.find((item) => (item.data as { type?: string }).type === "echo")?.data as { sub?: string } | undefined;
-    record("Same conversation id, user B gets B's own session", streamB.status === 200 && echoB?.sub === b.sub, `HTTP ${streamB.status}`);
+    const historyA = historyOf(await invoke(runtimeUrl, { token: a.idToken, sessionId: agentSessionId(a.sub, conversation), body: turn(conversation, HISTORY) }));
+    const called = (historyA?.messages ?? []).filter((message) => message.role === "tool").map((message) => message.name);
+    record("User A's session kept the conversation", historyA?.exists === true, `${historyA?.messages?.length ?? 0} messages`);
+    record("The turn reached the Gateway's tools from Runtime", TOOLS.some((id) => called.includes(id)), `tool results: [${called.join(", ")}]`);
 
-    const intruder = await invoke(runtimeUrl, { token: b.idToken, sessionId: agentSessionId(a.sub, conversation), body: turn(conversation, "hello") });
+    const historyB = historyOf(await invoke(runtimeUrl, { token: b.idToken, sessionId: agentSessionId(b.sub, conversation), body: turn(conversation, HISTORY) }));
+    record("Same conversation id, user B gets B's own empty session", historyB?.exists === false && historyB.messages?.length === 0);
+
+    const intruder = await invoke(runtimeUrl, { token: b.idToken, sessionId: agentSessionId(a.sub, conversation), body: turn(conversation, HISTORY) });
     record("User B cannot enter user A's session", intruder.status >= 400 && !intruder.raw.includes(a.sub), `HTTP ${intruder.status}: ${intruder.raw}`);
 
-    const noSession = await invoke(runtimeUrl, { token: a.idToken, body: turn(conversation, "hello") });
+    const noSession = await invoke(runtimeUrl, { token: a.idToken, body: turn(conversation, HISTORY) });
     record("A request without a session id is refused", noSession.status >= 400, `HTTP ${noSession.status}: ${noSession.raw}`);
 
     const credentials: [string, string | undefined][] = [
@@ -372,14 +404,14 @@ async function main(): Promise<void> {
       ["not a JWT", "not-a-jwt"],
     ];
     for (const [label, token] of credentials) {
-      const reply = await invoke(runtimeUrl, { token, sessionId: agentSessionId(a.sub, conversation), body: turn(conversation, "hello") });
+      const reply = await invoke(runtimeUrl, { token, sessionId: agentSessionId(a.sub, conversation), body: turn(conversation, HISTORY) });
       record(`Runtime refuses ${label}`, reply.status === 401 || reply.status === 403, `HTTP ${reply.status}, www-authenticate ${reply.headers.has("www-authenticate")}`);
     }
 
     const malformed: [string, string][] = [
       ["a body that is not JSON", "{"],
-      ["a missing conversation id", JSON.stringify({ input: { message: "hello" } })],
-      ["input its contract refuses", turn(conversation, "")],
+      ["a missing conversation id", JSON.stringify({ input: HISTORY })],
+      ["input its contract refuses", turn(conversation, { type: "message", message: "" })],
     ];
     for (const [label, body] of malformed) {
       const reply = await invoke(runtimeUrl, { token: a.idToken, sessionId: agentSessionId(a.sub, conversation), body });
@@ -394,14 +426,17 @@ async function main(): Promise<void> {
       const viaCdn = await invoke(route, {
         token: a.idToken,
         sessionId: agentSessionId(a.sub, conversation),
-        body: turn(conversation, "through cloudfront"),
+        body: turn(conversation, HISTORY),
         cookie: "smoke=not-forwarded",
       });
-      const echoCdn = viaCdn.events.find((item) => (item.data as { type?: string }).type === "echo")?.data as { sub?: string } | undefined;
-      record("CloudFront streams the agent to user A", viaCdn.status === 200 && echoCdn?.sub === a.sub, `HTTP ${viaCdn.status}, x-cache ${viaCdn.headers.get("x-cache")}`);
-      const again = await invoke(route, { token: a.idToken, sessionId: agentSessionId(a.sub, conversation), body: turn(conversation, "through cloudfront") });
+      record(
+        "CloudFront streams user A's own session to user A",
+        viaCdn.status === 200 && historyOf(viaCdn)?.exists === true,
+        `HTTP ${viaCdn.status}, x-cache ${viaCdn.headers.get("x-cache")}`,
+      );
+      const again = await invoke(route, { token: a.idToken, sessionId: agentSessionId(a.sub, conversation), body: turn(conversation, HISTORY) });
       record("CloudFront does not cache agent replies", !/hit/i.test(again.headers.get("x-cache") ?? ""), `x-cache ${again.headers.get("x-cache")}`);
-      const viaCdnNoToken = await invoke(route, { sessionId: agentSessionId(a.sub, conversation), body: turn(conversation, "x") });
+      const viaCdnNoToken = await invoke(route, { sessionId: agentSessionId(a.sub, conversation), body: turn(conversation, HISTORY) });
       record("CloudFront passes the Runtime's 401 through", viaCdnNoToken.status === 401, `HTTP ${viaCdnNoToken.status}`);
       const get = await invoke(route, { token: a.idToken, method: "GET" });
       record("CloudFront answers GET with 405", get.status === 405, `HTTP ${get.status}`);
@@ -413,15 +448,13 @@ async function main(): Promise<void> {
       const wait = Math.max(0, a.expiresAt - Date.now()) + 60_000;
       console.log(`Waiting ${Math.round(wait / 60_000)} minutes for user A's ID token to expire.`);
       await new Promise((resolve) => setTimeout(resolve, wait));
-      const expiredAtRuntime = await invoke(runtimeUrl, { token: a.idToken, sessionId: agentSessionId(a.sub, conversation), body: turn(conversation, "late") });
+      const expiredAtRuntime = await invoke(runtimeUrl, { token: a.idToken, sessionId: agentSessionId(a.sub, conversation), body: turn(conversation, HISTORY) });
       record("Runtime refuses an expired ID token", expiredAtRuntime.status === 401 || expiredAtRuntime.status === 403, `HTTP ${expiredAtRuntime.status}`);
-      const expiredAtTool = await mcp(gateway.gatewayUrl!, "tools/call", { name: WIRE_NAME, arguments: { message: "late", [IDENTITY_ARGUMENT]: a.idToken } });
-      record("Tool refuses an expired ID token", expiredAtTool.message?.result?.isError === true || expiredAtTool.status >= 400, toolText(expiredAtTool));
     }
 
     // -- Logs: no token this run minted appears in any log it produced --
     const signatures = users.flatMap((user) => [user.idToken, user.accessToken].map((token) => token.split(".")[2]));
-    const groups = [`/aws/bedrock-agentcore/runtimes/${runtimeId}-DEFAULT`, ...(toolFunction ? [`/aws/lambda/${toolFunction}`] : [])];
+    const groups = [`/aws/bedrock-agentcore/runtimes/${runtimeId}-DEFAULT`, ...toolFunctions.map((name) => `/aws/lambda/${name}`)];
     for (const group of groups) {
       let messages: string[] = [];
       try {

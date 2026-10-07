@@ -252,10 +252,10 @@ services:
       local-invocation-runner:
         condition: service_healthy
 
-  langgraph:
+  example-service:
     build: *build
     init: true
-    command: [node, --import, tsx, packages/framework/scripts/run-service.ts, langgraph, --, npm, --workspace, '@repo/langgraph', run, dev]
+    command: [node, --import, tsx, packages/framework/scripts/run-service.ts, example-service, --, npm, --workspace, '@repo/example-service', run, dev]
     develop: *watch
     environment:
       <<: *runtime-env

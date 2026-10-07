@@ -65,13 +65,13 @@ describe("agents", () => {
     fetchMock.mockResolvedValue(
       new Response(body('data: {"type":"status","text":"hi"}\n\n'), { headers: { "content-type": "text/event-stream" } }),
     );
-  const events = await collect(streamAgent("echo-agent", { message: "hello" }, { conversationId: "c-1" }));
+  const events = await collect(streamAgent("example-agent", { type: "message", message: "hello" }, { conversationId: "c-1" }));
     expect(events).toEqual([{ type: "status", text: "hi" }]);
 
     const [route, init] = fetchMock.mock.calls[0];
     expect(route).toBeInstanceOf(URL);
-    expect((route as URL).href).toBe("https://app.example.com/chat/echo");
-    expect(JSON.parse(init!.body as string)).toEqual({ conversationId: "c-1", input: { message: "hello" } });
+    expect((route as URL).href).toBe("https://app.example.com/chat/example");
+    expect(JSON.parse(init!.body as string)).toEqual({ conversationId: "c-1", input: { type: "message", message: "hello" } });
     expect((init!.headers as Record<string, string>)["X-Amzn-Bedrock-AgentCore-Runtime-Session-Id"]).toBe(
       await agentSessionId("user-a", "c-1"),
     );

@@ -76,11 +76,11 @@ feature directory, and frontend operations without changing these package bounda
 | HTTP Lambda | Public path in http | Explicit directory under cdk-app | [graphql](../framework-config/http/graphql.ts) |
 | WebSocket Lambda | API Gateway route key in webSocket | Explicit directory; authorizer belongs to connect | [routes](../framework-config/websocket/routes.ts) |
 | Event Lambda | Stable target id in events | Defaults to /lambda_functions/event_functions/id | [Cognito](../framework-config/events/cognito.ts) |
-| Service | Public mount in services | /ecs_containers/services/id plus a Compose service | [LangGraph](../framework-config/services/langgraph.ts) |
+| Service | Public mount in services | /ecs_containers/services/id plus a Compose service | [example-service](../framework-config/services/example.ts) |
 | Task | Stable target id in tasks | Defaults to /ecs_containers/tasks/id | [task](../framework-config/tasks/invocation-tests.ts) |
 | Workflow | Stable target id in workflows | Graph declaration; no implementation directory | [workflow](../framework-config/workflows/invocation-tests.ts) |
-| AgentCore tool | Stable target id in tools | Defaults to /lambda_functions/tool_functions/id, with contract.ts | [echo](../framework-config/agents/example.ts) |
-| AgentCore agent | Stable target id in agents | Defaults to /agentcore/id at the repository root, with contract.ts | [echo-agent](../framework-config/agents/example.ts) |
+| AgentCore tool | Stable target id in tools | Explicit directory under cdk-app, with contract.ts | [add-numbers](../framework-config/tools/example.ts) |
+| AgentCore agent | Stable target id in agents | Explicit directory under agentcore at the repository root, with contract.ts | [example-agent](../framework-config/agents/example.ts) |
 
 1. Add the implementation and its npm workspace manifest if appropriate.
 2. Declare a literal entry in a section, using `satisfies HttpSection` (or the matching
@@ -102,8 +102,8 @@ path, not an OS root. A routed target's id defaults to its directory basename; e
 id can preserve identity through a move. Event/task/workflow keys are target ids. A
 public route rename must not rename the target or its deployed constructs.
 
-HTTP routes are literal paths. Services may use a terminal `/*` mount: /langgraph/*
-includes /langgraph and descendants. Path parameters, trailing/duplicate slashes, and
+HTTP routes are literal paths. Services may use a terminal `/*` mount: /example-service/*
+includes /example-service and descendants. Path parameters, trailing/duplicate slashes, and
 ambiguous path/method overlaps are rejected. Different methods may share a path.
 Routes are case-sensitive; unmatched methods/paths return API Gateway-style 404 locally.
 The local proxy strips a service's public mount before forwarding to its container.
@@ -147,7 +147,7 @@ Deployment mode separately says what the AWS graph constructs:
 
 Events are invoked by AWS and do not have a per-target deploy toggle. A dev deployment
 publishes no task/service images. Compose independently runs targets enabled in the local
-lane. LangGraph currently opts into local-only; change its declaration to deploy it in AWS.
+lane. The example service currently opts into local-only; change its declaration to deploy it in AWS.
 
 A deployed service sits behind an internal load balancer that the HTTP API reaches over a
 VPC link, so the route's `auth: true` is the only way in, exactly as through the local

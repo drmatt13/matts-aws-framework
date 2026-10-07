@@ -8,7 +8,7 @@
   },
   "scripts": {
     "postinstall": "npm --workspace @repo/database run generate",
-    "dev": "node scripts/dev.mjs",
+    "dev:containers": "node scripts/dev.mjs",
     "dev:client": "npm --workspace client-app run dev",
     "dev:request": "tsx scripts/dev-request.ts",
     "replay:list": "tsx scripts/replay.ts list",
@@ -27,7 +27,8 @@
     "lockfile:check": "node scripts/check-lockfile-platforms.mjs",
     "verify": "node scripts/check-lockfile-platforms.mjs && npm run framework:check && npm --workspace @repo/database run generate && npm run codegen:check && npm run typecheck && node --import tsx --test cdk-app/lambda_functions/http_functions/graphql-api/schema/*.test.ts && npm run test",
     "export:cdk-outputs": "tsx scripts/export-cdk-outputs.mjs",
-    "deploy": "tsx scripts/deploy.ts"
+    "deploy:resources": "tsx scripts/deploy.ts",
+    "destroy:resources": "npm --workspace cdk-app exec -- cdk destroy"
   },
   "workspaces": [
     "client-app",

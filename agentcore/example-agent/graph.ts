@@ -7,10 +7,8 @@ import {
   MemorySaver,
   Command,
   interrupt,
-  isInterrupted,
-  INTERRUPT,
 } from "@langchain/langgraph";
-import type { StateSnapshot } from "@langchain/langgraph";
+import type { Runtime, StateSnapshot } from "@langchain/langgraph";
 import {
   AIMessage,
   HumanMessage,
@@ -21,6 +19,7 @@ import type { BaseMessage } from "@langchain/core/messages";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { tool } from "@langchain/core/tools";
 import type { ToolRuntime } from "@langchain/core/tools";
+import type { AgentTools, ModelToolSpec } from "@repo/framework/runtime/agentcore";
 import { z } from "zod";
 
 import { getModel } from "./providers";
@@ -55,54 +54,30 @@ export const GraphState = new StateSchema({
 });
 export type GraphStateType = typeof GraphState.State;
 
+/**
+ * Per-turn context: what one run of the graph is given and never
+ * checkpoints. `tools` is the agent's Gateway for this turn — it
+ * carries the turn's abort signal, and the user's token for any
+ * tool that acts as the user — so it arrives with each run rather
+ * than living in state. Nodes read it as `runtime.context`.
+ */
+export const GraphContext = z.object({
+  tools: z.custom<AgentTools>(),
+});
+export type GraphContextType = z.infer<typeof GraphContext>;
+
 /* ============================================================
  * 2. Tools
  * ------------------------------------------------------------
- * Anything the assistant is allowed to call. Add a tool, push it
- * into `tools`, done — it's bound to the model and routed to the
- * shared `tools` node automatically.
+ * Anything the assistant is allowed to call. Two kinds:
+ *
+ * - The graph's own tools, written here. One that has to reach
+ *   into the graph itself — interrupt(), state — lives here.
+ * - The agent's Gateway tools: Lambdas declared on the agent in
+ *   framework-config/agents/example.ts. Give the agent another
+ *   one by writing its Lambda and listing it there; it reaches
+ *   the model and the shared `tools` node with no change here.
  * ============================================================ */
-
-// Example tool: plain function call, no side effects on the graph.
-const addTool = tool(
-  async ({ a, b }: { a: number; b: number }) => {
-    const sum = a + b;
-    return sum.toString();
-  },
-  {
-    name: "add_numbers",
-    description: "Add two numbers together.",
-    schema: {
-      type: "object",
-      properties: {
-        a: { type: "number", description: "First number to add" },
-        b: { type: "number", description: "Second number to add" },
-      },
-      required: ["a", "b"],
-      additionalProperties: false,
-    },
-  },
-);
-
-const multiplyTool = tool(
-  async ({ a, b }: { a: number; b: number }) => {
-    const product = a * b;
-    return product.toString();
-  },
-  {
-    name: "multiply_numbers",
-    description: "Multiply two numbers together.",
-    schema: {
-      type: "object",
-      properties: {
-        a: { type: "number", description: "First number to multiply" },
-        b: { type: "number", description: "Second number to multiply" },
-      },
-      required: ["a", "b"],
-      additionalProperties: false,
-    },
-  },
-);
 
 // Example tool: pauses the graph via interrupt() for human-in-the-loop input.
 // The second `runtime` parameter is how a tool reads shared graph state —
@@ -122,8 +97,6 @@ const requestHumanConfirmationTool = tool(
       // involved — it's true only for a node that runs before the assistant
       // does. Included here purely to demonstrate reading shared state.
       continuingThread: !runtime.state.initialInvocation,
-      instructions:
-        "Resume this thread with resume=true and message set to the human response.",
     });
 
     // perform logic on resumeValue if needed, or just return it to the caller. The graph is paused until the human responds.
@@ -151,21 +124,48 @@ const requestHumanConfirmationTool = tool(
   },
 );
 
-const tools = [addTool, multiplyTool, requestHumanConfirmationTool];
-const toolNode = new ToolNode(tools);
+/**
+ * One Gateway tool as a LangChain tool. The model reads the spec —
+ * the description and schema from the tool's contract.ts — and
+ * `tools.call` sends the call it chose through the Gateway, where
+ * the tool validates the arguments. A refusal is thrown, and
+ * ToolNode hands its message back to the model to correct.
+ */
+function gatewayTool(gateway: AgentTools, spec: ModelToolSpec) {
+  return tool(
+    async (args: Record<string, unknown>) =>
+      JSON.stringify(await gateway.call(spec.name, args)),
+    {
+      name: spec.name,
+      description: spec.description,
+      schema: { ...spec.inputSchema },
+    },
+  );
+}
+
+/** Every tool the assistant may call on this turn. */
+function turnTools(context: GraphContextType | undefined) {
+  if (!context) throw new Error("Run the graph with its context: { tools }.");
+  return [
+    requestHumanConfirmationTool,
+    ...context.tools.specs.map((spec) => gatewayTool(context.tools, spec)),
+  ];
+}
 
 /* ============================================================
  * 3. Nodes
  * ------------------------------------------------------------
- * A node is `(state) => Partial<GraphStateType>`. To add a step
- * to the pipeline — a planner, a critic, a retriever — write a
- * function here in the same shape, then wire it in step 5.
+ * A node is `(state, runtime) => Partial<GraphStateType>`. To add
+ * a step to the pipeline — a planner, a critic, a retriever —
+ * write a function here in the same shape, then wire it in step 5.
  * ============================================================ */
 
-const assistant = async (state: GraphStateType) => {
+type GraphRuntime = Runtime<GraphContextType>;
+
+const assistant = async (state: GraphStateType, runtime: GraphRuntime) => {
   // MODEL_PROVIDER selects the provider. Pass one explicitly -- getModel("openai"),
   // getModel("bedrock") -- to pin this node to a specific provider instead.
-  const modelWithTools = (await getModel()).bindTools(tools);
+  const modelWithTools = (await getModel()).bindTools(turnTools(runtime.context));
 
   // `state.initialInvocation` is true only up to this point in the thread's
   // very first turn — flipped below so every later invocation (a follow-up
@@ -186,6 +186,13 @@ const assistant = async (state: GraphStateType) => {
     initialInvocation: false,
   };
 };
+
+// Runs every tool call the assistant's last message asked for. The node is
+// built per turn because the Gateway's tools arrive with the turn's context;
+// it is passed the node's own runtime so interrupt() and streaming still see
+// the graph.
+const runTools = async (state: GraphStateType, runtime: GraphRuntime) =>
+  new ToolNode(turnTools(runtime.context)).invoke(state, runtime);
 
 
 /* ============================================================
@@ -214,9 +221,14 @@ function routeAfterAssistant(state: GraphStateType) {
 /* ============================================================
  * 5. Graph assembly
  * ------------------------------------------------------------
- * Swap MemorySaver for a durable checkpointer (Postgres, SQLite,
- * Redis...) once this leaves local development — everything else
- * on this page stays the same.
+ * The checkpointer lives in this process, and AgentCore gives each
+ * conversation its own session (locally, its own process), so a
+ * thread lasts as long as its session: until the agent's
+ * `cloud.idleSeconds` pass without a turn, or its
+ * `maxLifetimeSeconds` run out. Swap MemorySaver for a durable
+ * checkpointer (Postgres, DynamoDB, AgentCore Memory...) for
+ * threads that outlive their session — everything else on this
+ * page stays the same.
  *
  *        START
  *          │
@@ -240,10 +252,10 @@ const checkpointer = new MemorySaver();
 /**
  * Wrap an assistant-style node so every AIMessage it returns is tagged with
  * the node's own name. Do this for each one you register below — it's what
- * makes `message.name` (visible via /chat/debug or /chat/history) tell you
- * which node produced which reply once there's more than one in the graph.
- * (Tool results already carry this: ToolNode stamps `name: tool.name` on
- * every ToolMessage automatically, no wrapping needed there.)
+ * makes `message.name` (visible in a `history` request) tell you which node
+ * produced which reply once there's more than one in the graph. (Tool results
+ * already carry this: ToolNode stamps `name: tool.name` on every ToolMessage
+ * automatically, no wrapping needed there.)
  *
  * The name must be set *at construction*, not assigned after (`msg.name =
  * ...`) — the checkpointer round-trips messages through
@@ -253,10 +265,10 @@ const checkpointer = new MemorySaver();
  */
 function withNodeName(
   name: string,
-  node: (state: GraphStateType) => Promise<{ messages: BaseMessage[] }>,
+  node: (state: GraphStateType, runtime: GraphRuntime) => Promise<{ messages: BaseMessage[] }>,
 ) {
-  return async (state: GraphStateType) => {
-    const result = await node(state);
+  return async (state: GraphStateType, runtime: GraphRuntime) => {
+    const result = await node(state, runtime);
     return {
       ...result,
       messages: result.messages.map((message) =>
@@ -275,9 +287,9 @@ function withNodeName(
   };
 }
 
-export const graph = new StateGraph(GraphState)
+export const graph = new StateGraph(GraphState, GraphContext)
   .addNode("assistant", withNodeName("assistant", assistant))
-  .addNode("tools", toolNode)
+  .addNode("tools", runTools)
   .addEdge(START, "assistant")
   .addConditionalEdges("assistant", routeAfterAssistant, {
     tools: "tools",
@@ -290,25 +302,21 @@ export const graph = new StateGraph(GraphState)
  * 6. Public API
  * ------------------------------------------------------------
  * Everything a transport layer (index.ts, a CLI, a worker) needs
- * to drive the graph. Keep transport concerns (HTTP, SSE, auth)
- * out of this file, and keep graph internals out of index.ts.
+ * to drive the graph. Keep transport concerns (the agent contract,
+ * auth) out of this file, and keep graph internals out of index.ts.
  * ============================================================ */
 
 export function threadConfig(threadId: string) {
   return { configurable: { thread_id: threadId } };
 }
 
-export type InvokeResult = GraphStateType & {
-  [INTERRUPT]?: { id?: string; value?: unknown }[];
-};
-
 /**
- * Thrown when `resume: true` is passed for a thread that isn't actually
- * paused on an `interrupt()`. Without this check the call silently no-ops —
- * `resume` targets a specific paused task, not "continue the conversation",
- * so if nothing is waiting, there's nothing to hand the value to and the
- * graph just returns its last state unchanged (looking like a repeated
- * reply). Plain follow-ups should omit `resume` entirely.
+ * Thrown when a resume is asked for on a thread that isn't actually paused on
+ * an `interrupt()`. Without this check the call silently no-ops — `resume`
+ * targets a specific paused task, not "continue the conversation", so if
+ * nothing is waiting, there's nothing to hand the value to and the graph just
+ * returns its last state unchanged (looking like a repeated reply). Plain
+ * follow-ups should send a message instead.
  */
 export class NoPendingInterruptError extends Error {
   constructor(threadId: string) {
@@ -327,52 +335,35 @@ async function assertResumable(threadId: string): Promise<void> {
   if (!pendingInterrupt(snapshot)) throw new NoPendingInterruptError(threadId);
 }
 
-/** Run the graph to completion and return the full resulting state. */
-export async function invoke(
-  input: string,
-  threadId: string,
-  resume?: boolean,
-): Promise<InvokeResult> {
-  if (resume) await assertResumable(threadId);
-
-  // Resume from the last interrupt() checkpoint, or append a new user message.
-  const result = resume
-    ? await graph.invoke(new Command({ resume: input }), threadConfig(threadId))
-    : await graph.invoke(
-        { messages: [new HumanMessage(input)] },
-        threadConfig(threadId),
-      );
-  return result as InvokeResult;
-}
-
-/** If the run paused on an interrupt(), return its value; otherwise undefined. */
-export function checkInterrupt(result: InvokeResult): unknown | undefined {
-  if (isInterrupted(result)) {
-    return result[INTERRUPT]?.[0]?.value;
-  }
-  return undefined;
+/** One run of the graph: the thread, its per-turn context, and when to stop. */
+export interface Turn {
+  readonly threadId: string;
+  readonly context: GraphContextType;
+  readonly signal?: AbortSignal;
 }
 
 /**
- * Stream the assistant's reply token by token as it's generated. Yields
- * plain text deltas — pipe straight into an SSE / WebSocket response.
+ * Run one turn and stream the assistant's reply token by token as it's
+ * generated. Yields plain text deltas. With `resume`, `input` answers the
+ * pending interrupt() rather than starting a new user message.
  */
 export async function* streamAssistant(
   input: string,
-  threadId: string,
+  turn: Turn,
   resume?: boolean,
 ): AsyncGenerator<string> {
-  if (resume) await assertResumable(threadId);
+  if (resume) await assertResumable(turn.threadId);
 
+  const options = {
+    ...threadConfig(turn.threadId),
+    context: turn.context,
+    streamMode: "messages" as const,
+    ...(turn.signal ? { signal: turn.signal } : {}),
+  };
+  // Resume from the last interrupt() checkpoint, or append a new user message.
   const events = resume
-    ? await graph.stream(new Command({ resume: input }), {
-        ...threadConfig(threadId),
-        streamMode: "messages",
-      })
-    : await graph.stream(
-        { messages: [new HumanMessage(input)] },
-        { ...threadConfig(threadId), streamMode: "messages" },
-      );
+    ? await graph.stream(new Command({ resume: input }), options)
+    : await graph.stream({ messages: [new HumanMessage(input)] }, options);
 
   for await (const [chunk, metadata] of events) {
     if (metadata?.langgraph_node !== "assistant") continue;
@@ -396,11 +387,14 @@ export type ConversationMessage = {
   toolCallId?: string;
 };
 
+/** What `request_human_confirmation` paused the graph to ask. */
+export type PendingInterrupt = { prompt: string; continuingThread: boolean };
+
 /** Read-only view of a thread: where it stands and everything said so far. */
 export type ThreadView = {
   exists: boolean;
   interrupted: boolean;
-  interrupt?: unknown;
+  interrupt?: PendingInterrupt;
   /** Nodes queued to run next. Empty once the graph has reached END. */
   next: string[];
   messages: ConversationMessage[];
@@ -415,12 +409,15 @@ export async function getThread(threadId: string): Promise<ThreadView> {
   const snapshot = await getSnapshot(threadId);
   const messages: BaseMessage[] = snapshot.values?.messages ?? [];
   const interrupt = pendingInterrupt(snapshot);
+  const value = interrupt?.value as PendingInterrupt | undefined;
 
   return {
     // A thread that was never started has no checkpoint behind it.
     exists: snapshot.createdAt !== undefined || messages.length > 0,
     interrupted: interrupt !== undefined,
-    interrupt: interrupt?.value,
+    ...(value
+      ? { interrupt: { prompt: value.prompt, continuingThread: value.continuingThread } }
+      : {}),
     next: [...snapshot.next],
     messages: toConversation(messages),
     ...(snapshot.createdAt ? { updatedAt: snapshot.createdAt } : {}),
@@ -454,13 +451,4 @@ export function toConversation(messages: BaseMessage[]): ConversationMessage[] {
 
     return entry;
   });
-}
-
-/** Full checkpoint history for a thread, oldest first. For dev/debug tooling. */
-export async function getHistory(threadId: string): Promise<StateSnapshot[]> {
-  const history: StateSnapshot[] = [];
-  for await (const snapshot of graph.getStateHistory(threadConfig(threadId))) {
-    history.push(snapshot);
-  }
-  return history.reverse();
 }

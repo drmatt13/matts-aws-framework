@@ -21,8 +21,8 @@ import {
 /**
  * A service with `auth: true` must be reachable only through the HTTP API, as
  * it is through the local dev server's proxy: an internal load balancer, and a
- * VPC link from the API to it. Declares its own service, because langgraph is
- * local-only and reaches no cloud graph.
+ * VPC link from the API to it. Declares its own service, because the example
+ * service is local-only and reaches no cloud graph.
  */
 const env = { account: "111122223333", region: "eu-west-2" };
 
@@ -35,7 +35,7 @@ function config(): FrameworkConfig {
     services: [
       {
         "/example/*": {
-          directory: "/ecs_containers/services/langgraph",
+          directory: "/ecs_containers/services/example-service",
           methods: "*",
           auth: true,
           port: 5000,

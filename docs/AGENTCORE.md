@@ -11,9 +11,9 @@ deploy settings.
 ## Declaring them
 
 ```ts
-// framework-config/agents/support.ts
+// framework-config/tools/support.ts
 import { startsWorkflow } from "@repo/framework/config";
-import type { AgentsSection, ToolsSection } from "../contracts";
+import type { ToolsSection } from "../contracts";
 import { resources } from "../resources";
 
 const cognito = {
@@ -22,17 +22,28 @@ const cognito = {
 };
 
 export const supportTools = {
-  "lookup-case": { auth: true, deploy: "both", environment: { ...cognito, DATABASE_SECRET_ARN: resources.rds.credentialsSecret.arn } },
-  "start-review": { auth: true, deploy: "both", environment: { ...cognito }, cloud: { bindings: [startsWorkflow("case-review")] } },
+  "lookup-case": { directory: "/lambda_functions/tool_functions/lookup-case", auth: true, deploy: "both", environment: { ...cognito, DATABASE_SECRET_ARN: resources.rds.credentialsSecret.arn } },
+  "start-review": { directory: "/lambda_functions/tool_functions/start-review", auth: true, deploy: "both", environment: { ...cognito }, cloud: { bindings: [startsWorkflow("case-review")] } },
 } satisfies ToolsSection;
+```
+
+```ts
+// framework-config/agents/support.ts
+import type { AgentsSection } from "../contracts";
+import { resources } from "../resources";
 
 export const supportAgents = {
   "support-agent": {
+    directory: "/agentcore/support-agent",
     auth: true,
     route: "/chat/support",
     tools: ["lookup-case", "start-review"],
     deploy: "both",
-    environment: { ...cognito, MODEL_ID: resources.models.supportModelId },
+    environment: {
+      USER_POOL_ID: resources.cognito.userPool.userPoolId,
+      USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId,
+      MODEL_ID: resources.models.supportModelId,
+    },
     cloud: { access: [bedrockModels], idleSeconds: 900 },
   },
 } satisfies AgentsSection;
@@ -359,14 +370,15 @@ an application splits into deployments; the framework does not shard the stack.
 
 ## Smoke test in AWS
 
-`npm run agents:smoke` checks the echo sample in a disposable deployment, and only one whose
+`npm run agents:smoke` checks the example agent in a disposable deployment, and only one whose
 `CDK_APP_NAME` contains `smoke`:
 
 ```sh
 # a separate checkout or worktree, so the main cdk-app/.env is untouched
 # cdk-app/.env: PROD_DEPLOYMENT=true, CDK_APP_NAME=agents-smoke-<you>,
 #   DATABASE_BACKUP_RETENTION_DAYS=0, optionally FRONTEND_URL + certificate
-# framework-config/agents/example.ts: both entries deploy: "both"
+# framework-config/agents/example.ts: the agent deploys "both"
+# framework-config/tools/example.ts: both tools deploy "both"
 npm run deploy -- --all -c useLocalDevStack=false --profile <PROFILE>
 npm run agents:smoke -- --app agents-smoke-<you> --profile <PROFILE> [--frontend <FRONTEND_URL>] [--include-expiry]
 ```
@@ -374,11 +386,17 @@ npm run agents:smoke -- --app agents-smoke-<you> --profile <PROFILE> [--frontend
 It creates two users in that deployment's pool and deletes them on exit. It checks:
 
 - the Runtime is ready with MMDSv2 required;
-- Gateway lists the committed tool schema;
-- the tool acts as each user, and refuses missing, tampered, access, malformed and contract-violating input;
-- the Runtime streams to each user, refuses another user's session, and rejects every bad credential and malformed request;
+- Gateway lists each tool's committed schema, answers through each tool, and refuses contract-violating input;
+- one model turn streams to user A and calls the tools from Runtime through the agent's own Gateway;
+- user B, with the same conversation id, lands in B's own empty session, and cannot enter A's;
+- the Runtime rejects every bad credential and malformed request;
 - with `--frontend`, the same path through CloudFront;
-- no token it minted appears in the Runtime's or the tool's logs.
+- no token it minted appears in the Runtime's or the tools' logs.
+
+The model turn needs access to the model `LANGGRAPH_MODEL_PROVIDER` selects in the smoke
+deployment's account; every other check reads the conversation's history and calls no model.
+The tools are service tools, so a user's identity reaching a tool through Gateway
+(`authenticatedTool`) is covered only by the local tests, not by this run.
 
 It prints statuses only, with JWT-shaped text redacted. `--include-expiry` waits out the ID token's hour
 to check expiry. After editing a tool description or the agent, redeploy and rerun it: the schema

@@ -24,7 +24,9 @@ not already exist. Preserve existing values when switching configurations. Set:
 - PROD_DEPLOYMENT=false and a distinct CDK_APP_NAME for this deployment.
 - LOCAL_DEV_URL, LOCAL_AWS_REGION, and every host port in the example. Leave
   LOCAL_AWS_PROFILE blank to use your AWS default profile.
-- Any workload settings, such as the LangGraph provider and its required local key.
+- Any workload settings, such as the example agent's LangGraph model provider. With
+  LANGGRAPH_MODEL_PROVIDER=openai, also set OPENAI_API_KEY and deploy: the agent reads the
+  key from Secrets Manager by ARN, locally as in AWS.
 - Optional Google OAuth credentials. Leave custom domains off for routine development.
 - SKIP_EMAIL_VERIFICATION=true if new users should skip the emailed code. Without it, sign-up
   sends Cognito's own verification code, which the Verify page accepts. It is refused in
@@ -130,7 +132,7 @@ dev script. Use the same profile for deployment and local execution when they
 must access the same AWS account.
 
 Compose runs postgres, migration, the local API/WebSocket servers, invocation runner,
-LangGraph, WebSocket tester, and pgAdmin. Postgres and pgAdmin listen on 127.0.0.1 only.
+the example service, WebSocket tester, and pgAdmin. Postgres and pgAdmin listen on 127.0.0.1 only.
 Each Node Lambda you call keeps a warm process for its next call, as a warm Lambda does, up
 to LOCAL_LAMBDA_WARM_MAX processes, each stopped after LOCAL_LAMBDA_WARM_IDLE_SECONDS idle;
 set LOCAL_LAMBDA_WARM=false in cdk-app/.env to start every call cold. See

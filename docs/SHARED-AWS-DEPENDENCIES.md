@@ -75,8 +75,8 @@ Source: [replay stack](../cdk-app/lib/framework/dev-lambda-replay-stack.ts),
 | **Step Functions** | A local workflow uses `aws.call()` or `http.request()`. Development creates a small Express integration bridge per referenced operation/connection; the local runner starts it synchronously. Ordinary local workflow orchestration runs in the interpreter. |
 | **EventBridge Connections** | An `http.request()` step uses a bound connection. AWS owns the connection's authentication and executes the request through its development bridge. An event bus alone does not require a Connection. |
 | **SSM Parameter Store** | A declared AWS operation reads or writes parameters; the current capability-check fixture reads one through a bridge. |
-| **Secrets Manager** | Deployment needs a declared cloud secret, or a local workload reads a stack-owned secret. Locally, raw `resource.secret("NAME")` contents come from authored `cdk-app/.env`; stack-owned secret contents are fetched from AWS. Local Postgres does not require an RDS credential secret. |
-| **Bedrock** | Application model calls select `bedrock` or `bedrock-mantle`. LangGraph currently defaults to `bedrock-mantle`, so its AI calls need AWS model access unless configured for OpenAI. Running the service locally does not run the model locally. |
+| **Secrets Manager** | Deployment needs a declared cloud secret, or a local workload reads a stack-owned secret. Locally, raw `resource.secret("NAME")` contents injected through `secrets` come from authored `cdk-app/.env`; stack-owned secret contents, and any secret a workload reads itself by `.arn` (as the example agent reads its OpenAI key), are fetched from AWS. Local Postgres does not require an RDS credential secret. |
+| **Bedrock** | Application model calls select `bedrock` or `bedrock-mantle`. The example agent currently defaults to `bedrock-mantle`, so its AI calls need AWS model access unless configured for OpenAI. Running the agent locally does not run the model locally. |
 | **SES** | Cognito is configured with a custom SES sender. Otherwise it uses its built-in email sender; an independently configured SES identity is optional. |
 | **Other application AWS services** | Explicit application stacks and operations use them, such as S3 document storage or Textract document analysis. They are feature dependencies, not automatic framework requirements. |
 
@@ -87,7 +87,7 @@ the application workflow instead of creating separate development bridges.
 Source: [local workflow execution](FRAMEWORK.md#local-execution-of-a-workflow),
 [bridge stack](../cdk-app/lib/framework/workflow-bridges-stack.ts),
 [local environment resolution](../packages/framework/src/local/environment.ts),
-[LangGraph declaration](../framework-config/services/langgraph.ts), and
+[example agent declaration](../framework-config/agents/example.ts), and
 [Cognito stack](../cdk-app/lib/app/cognito-stack.ts).
 
 ## Extra resources in the current dev graph
@@ -125,7 +125,7 @@ A dev deployment publishes no ECS task/service images. AWS event Lambdas and
 CDK-created support providers can still require deployment assets; local compute
 does not mean deployment is asset-free.
 
-The echo-agent sample is local-only. Developing it does not require a deployed
+The example agent and its tools are local-only. Developing them does not require a deployed
 AgentCore Runtime or Gateway. Live AWS parity checks are a separate deployment
 and verification action.
 

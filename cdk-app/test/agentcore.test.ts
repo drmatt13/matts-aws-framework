@@ -28,34 +28,51 @@ const root = findRepositoryRoot(__dirname);
 const cognitoEnvironment = { USER_POOL_ID: "us-east-1_pool", USER_POOL_CLIENT_ID: "client" };
 
 /**
- * A second agent and a service tool, written for this test beside the
- * repository's echo sample, so the synthesized graph has two Gateways to keep
- * apart. Removed afterwards.
+ * Where this run's `echo` user tool and `echo-agent` live. They stand in for an
+ * agent with users and a tool that acts as them, which the repository's own
+ * example does not have: its tools are service tools.
+ */
+function userDirectories(toolId: string) {
+  const suffix = toolId.slice("lookup-".length);
+  return { tool: `echo-${suffix}`, agent: `echo-agent-${suffix}` };
+}
+
+/**
+ * Two agents and their tools, written for this test, so the synthesized graph
+ * has two Gateways to keep apart: an agent with users and a user tool, and a
+ * service agent and a service tool. Removed afterwards.
  */
 function fixtures() {
   const suffix = randomUUID().slice(0, 8);
   const toolId = `lookup-${suffix}`;
   const agentId = `worker-${suffix}`;
-  const toolDirectory = path.join(root, "cdk-app", "lambda_functions", "tool_functions", toolId);
-  const agentDirectory = path.join(root, "agentcore", agentId);
-  mkdirSync(toolDirectory, { recursive: true });
-  mkdirSync(agentDirectory, { recursive: true });
-  writeFileSync(path.join(toolDirectory, "index.ts"), "export const lambdaHandler = async () => ({});");
-  writeFileSync(
-    path.join(agentDirectory, "index.ts"),
-    `export const handler = { kind: "framework-agent", id: ${JSON.stringify(agentId)} };`,
-  );
+  const users = userDirectories(toolId);
+  const tools = [toolId, users.tool].map((id) => path.join(root, "cdk-app", "lambda_functions", "tool_functions", id));
+  const agents: [string, string][] = [
+    [agentId, path.join(root, "agentcore", agentId)],
+    ["echo-agent", path.join(root, "agentcore", users.agent)],
+  ];
+  for (const directory of tools) {
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(path.join(directory, "index.ts"), "export const lambdaHandler = async () => ({});");
+  }
+  for (const [id, directory] of agents) {
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(path.join(directory, "index.ts"), `export const handler = { kind: "framework-agent", id: ${JSON.stringify(id)} };`);
+  }
   return {
     toolId,
     agentId,
     dispose: () => {
-      rmSync(toolDirectory, { recursive: true, force: true });
-      rmSync(agentDirectory, { recursive: true, force: true });
+      for (const directory of [...tools, ...agents.map(([, directory]) => directory)]) {
+        rmSync(directory, { recursive: true, force: true });
+      }
     },
   };
 }
 
 function config(toolId: string, agentId: string, http = {}): FrameworkConfig {
+  const users = userDirectories(toolId);
   return defineFrameworkConfig({
     defaults,
     http: [http],
@@ -65,6 +82,7 @@ function config(toolId: string, agentId: string, http = {}): FrameworkConfig {
     tools: [
       {
         echo: {
+          directory: `/lambda_functions/tool_functions/${users.tool}`,
           auth: true,
           deploy: "both",
           environment: cognitoEnvironment,
@@ -76,6 +94,7 @@ function config(toolId: string, agentId: string, http = {}): FrameworkConfig {
     agents: [
       {
         "echo-agent": {
+          directory: `/agentcore/${users.agent}`,
           auth: true,
           route: "/chat/echo",
           tools: ["echo"],
