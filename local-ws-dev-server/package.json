@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon -L",
+    "dev": "node --watch-path=../framework.config.ts --watch-path=../cdk-app/lambda_functions --watch-path=../packages/framework --watch-path=src --watch-path=lib --watch-path=events --watch-path=../framework-config --watch-path=../packages/database/src --watch-path=../packages/api-contract --watch-preserve-output --import tsx src/index.ts",
     "typecheck": "tsc --noEmit"
   },
   "author": "Matthew Sweeney",
@@ -13,14 +13,13 @@
     "@types/aws-lambda": "^8.10.147",
     "@types/node": "^24.12.4",
     "@types/ws": "^8.18.0",
-    "nodemon": "^3.1.9",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@repo/framework": "*",
     "@aws-sdk/client-apigatewaymanagementapi": "^3.1013.0",
+    "@repo/framework": "*",
     "dotenv": "^16.4.7",
     "ws": "^8.18.1"
   }

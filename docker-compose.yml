@@ -10,9 +10,11 @@ x-build: &build
   dockerfile: Dockerfile.dev
 
 # Source delivery for the long-running service containers. Each one restarts its
-# own process - nodemon, or Vite's own reload - so Compose only has to put the
-# file there. Dockerfiles stay out: these containers never build anything, and
-# local-invocation-runner, which does, declares its own rules below.
+# own process - node --watch-path, or Vite's own reload - so Compose only has to
+# put the file there. A sync is an ordinary write inside the container, so native
+# file events fire and no watcher needs to poll. Dockerfiles stay out: these
+# containers never build anything, and local-invocation-runner, which does,
+# declares its own rules below.
 x-watch-rule: &watch-rule
   action: sync
   path: .
@@ -111,9 +113,12 @@ services:
       POSTGRES_PASSWORD: password
     ports: ['127.0.0.1:${POSTGRES_HOST_PORT}:5432']
     volumes: [postgres_data:/var/lib/postgresql/data]
+    # Every healthcheck probes each second within start_period until its first
+    # success, which is all depends_on waits for; after that, a probe every 30s
+    # keeps the idle cost of exec-ing a process low.
     healthcheck:
       test: [CMD-SHELL, 'pg_isready -U admin -d app_db']
-      interval: 5s
+      interval: 30s
       timeout: 5s
       retries: 3
       start_period: 20s
@@ -205,7 +210,7 @@ services:
     depends_on: *database-ready
     healthcheck:
       test: [CMD, node, -e, "require('node:http').get('http://127.0.0.1:8090/health',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
-      interval: 5s
+      interval: 30s
       timeout: 5s
       retries: 3
       start_period: 60s
@@ -229,7 +234,7 @@ services:
         condition: service_healthy
     healthcheck:
       test: [CMD, node, -e, "require('node:http').get('http://127.0.0.1:8080/',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
-      interval: 5s
+      interval: 30s
       timeout: 5s
       retries: 3
       start_period: 60s
@@ -264,7 +269,7 @@ services:
     depends_on: *database-ready
     healthcheck:
       test: [CMD, node, -e, "require('node:http').get('http://127.0.0.1:5000/health',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
-      interval: 5s
+      interval: 30s
       timeout: 5s
       retries: 3
       start_period: 60s
