@@ -19,8 +19,11 @@ For agent-driven changes through GraphQL and React, start with [Data features](D
 
 Consumers import `getDatabase`, `disconnectDatabase`, and application types from
 `@repo/database`. They do not import generated Prisma files or construct ORM queries.
-`getDatabase(databaseUrl)` reuses a pool across warm Lambda invocations and rejects a
-different URL while that pool is active; disconnect before changing databases.
+`getDatabase(databaseConnection())` takes the settings `@repo/framework/runtime/database`
+resolves for a workload that declares `database: true`: the Compose Postgres locally, an IAM
+login that signs a token per connection in AWS. It reuses one `pg` pool across warm Lambda
+invocations and rejects a different database while that pool is active; disconnect before
+changing databases.
 
 ## Records and writes
 

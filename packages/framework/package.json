@@ -35,10 +35,12 @@
     "@aws-sdk/client-sns": "^3.1136.0",
     "@aws-sdk/client-sqs": "^3.1032.0",
     "@aws-sdk/credential-provider-node": "3.972.83",
+    "@aws-sdk/rds-signer": "^3.1128.0",
     "@smithy/hash-node": "4.5.2",
     "@smithy/signature-v4": "5.7.3",
     "cookie": "^0.7.2",
     "jose": "^6.2.3",
+    "pg": "^8.20.0",
     "yaml": "^2.8.1",
     "zod": "^4.4.3"
   },

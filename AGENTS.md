@@ -45,6 +45,13 @@ This is a TypeScript npm-workspace monorepo for AWS-backed applications. Start w
 - Keep public paths, target ids, and deployed construct identities distinct. Preserve
   cloud.constructId, stack scopes, historical AsynchronousLambdaFunctionsStack identity,
   and stack-prefixed output names; compare logical ids when moving infrastructure.
+- A workload reaches the database only by declaring `database: true` (framework.config.ts
+  names the database); it logs in with IAM, so never give a workload a database password
+  or secret. A Lambda joins the network with `vpc: true` or `database: true`; never set
+  CDK vpc, subnets or security groups on a framework workload by hand.
+  Application stacks build into the network with `frameworkVpc(this)`, which only a
+  production deployment builds. Inside a Lambda in the VPC, an SDK client with a custom
+  `endpoint` passes `useDualstackEndpoint: false`.
 - Call runTask/startWorkflow through declared bindings, and push to WebSocket clients
   with webSocketConnections(event) from @repo/framework/runtime/websocket. Do not
   hand-author descriptor variables or branch on environment to select local versus AWS

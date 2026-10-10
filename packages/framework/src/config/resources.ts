@@ -910,7 +910,32 @@ export type ResourceBinding<Catalog = AnyResourceCatalog> =
   | InvocationBinding
   | InvokesAgentBinding
   | CompletesCallbackBinding
+  | ConnectsToBinding
   | NativeGrantBinding;
+
+/**
+ * A construct a workload can open a connection to: one that carries CDK's
+ * `connections`, such as a database instance. Matched by shape, because this
+ * module never imports CDK as a value.
+ */
+export type Connectable = { readonly connections: object };
+
+/**
+ * A network edge: this workload opens connections to a resource inside the
+ * application's network. Never authored: `database: true` on a workload is
+ * normalized into one, pointing at the config's `database`.
+ *
+ * Where `runsTask` derives IAM, this derives the network. In a production
+ * deployment it places the workload in the private subnets, makes it a member
+ * of the one security group the resource admits, and points its AWS SDK at
+ * dual-stack endpoints. Locally it is what hands the workload the Compose
+ * stand-in, so a workload that forgot it fails on a laptop exactly as it would
+ * in AWS.
+ */
+export interface ConnectsToBinding {
+  readonly capability: "connectsTo";
+  readonly resource: CdkResourceSpec;
+}
 
 /**
  * Declares that this workload launches the named ECS task.

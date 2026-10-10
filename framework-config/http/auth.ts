@@ -43,8 +43,8 @@ export const authRoutes = {
     environment: {
       ...authEndpointEnvironment,
       COGNITO_DOMAIN_URL: resources.cognito.userPoolDomainUrl,
-      PRIMARY_DATABASE_SECRET_ARN: resources.rds.credentialsSecret.arn,
     },
+    database: true,
     cloud: {
       constructId: "OAuthCallback",
       outputs: { arn: { id: "OAuthCallbackLambdaArn" } },

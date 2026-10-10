@@ -16,6 +16,8 @@ import { EventLambdaFunctionsStack } from "../lib/framework/event-lambda-functio
 import { assertCloudEdgesResolvable, validateFrameworkConfig } from "@repo/framework/config";
 import { PROD_DEPLOYMENT, readAuthoredInputs } from "@repo/framework/config/source";
 import { initializeFrameworkResources, finalizeFrameworkResources } from "../lib/framework/framework-resources";
+import { describeFrameworkNetwork } from "../lib/framework/framework-network";
+import { describeFrameworkDatabase } from "../lib/framework/framework-database";
 import framework from "../../framework.config";
 
 import {
@@ -105,9 +107,7 @@ const foundation = createFrameworkFoundation(app, composition);
 const rdsStack = mode === "prod"
   ? new RdsStack(app, stackId("RdsStack"), {
       env: stackEnv,
-      enableRdsProxy: deployment.enableRdsProxy,
       primaryDatabaseName: "app_db",
-      primaryDatabaseUsername: "app_user",
       retainStatefulResources: deployment.retainStatefulResources,
       backupRetentionDays: deployment.databaseBackupRetentionDays,
     })
@@ -121,7 +121,6 @@ const tasks = createFrameworkTasks(app, {
   config: framework,
   cloud: { mode },
   readers,
-  network: deployment.taskNetwork,
 });
 if (tasks.stack && rdsStack) {
   tasks.stack.addStackDependency(rdsStack);
@@ -276,3 +275,10 @@ if (
 }
 
 finalizeFrameworkResources(app);
+
+// What the network holds and what it costs, when this deployment built one. A
+// dev deployment never does.
+const network = describeFrameworkNetwork(app);
+if (network) console.warn(network);
+const database = describeFrameworkDatabase(app);
+if (database) console.warn(database);

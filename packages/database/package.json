@@ -31,13 +31,13 @@
   },
   "packageManager": "npm@10.9.8",
   "dependencies": {
-    "@prisma/orm-postgres": "8.0.0-rc.14"
+    "@prisma/orm-postgres": "8.0.0-rc.14",
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "@prisma/cli-engine": "0.6.2",
     "@types/node": "^24.12.4",
     "dotenv": "^17.4.2",
-    "pg": "^8.20.0",
     "prisma": "8.0.0-rc.20",
     "tsx": "^4.23.13",
     "typescript": "^5.9.3"

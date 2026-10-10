@@ -27,6 +27,8 @@
     "lockfile:check": "node scripts/check-lockfile-platforms.mjs",
     "verify": "node scripts/check-lockfile-platforms.mjs && npm run framework:check && npm --workspace @repo/database run generate && npm run codegen:check && npm run typecheck && node --import tsx --test cdk-app/lambda_functions/http_functions/graphql-api/schema/*.test.ts && npm run test",
     "export:cdk-outputs": "tsx scripts/export-cdk-outputs.mjs",
+    "task:cloud": "tsx scripts/run-cloud-task.ts",
+    "db:migrate:cloud": "tsx scripts/run-cloud-task.ts db-migrate",
     "deploy:resources": "tsx scripts/deploy.ts",
     "destroy:resources": "npm --workspace cdk-app exec -- cdk destroy"
   },

@@ -21,7 +21,8 @@ All import suffixes below follow `@repo/framework/runtime/`. For example,
 | `webSocketConnections(event)` | Get `.send(connectionId, data)` and `.disconnect(connectionId)` for the WebSocket API that delivered the event. Uses the local management endpoint during development. | `websocket` |
 | `authenticated(handler)` | Verify an HTTP caller and pass its session to the handler. Pair with `auth: true` in the route declaration. | `auth` |
 | `getAuthenticatedSession`, `getAuthenticatedUser`, `getAuthenticatedSub` | Read a verified session, Cognito claims, or user ID when explicit handling is needed. | `auth` |
-| `getDatabaseUrl()` | Resolve the primary database URL from supplied settings: local Postgres during development, or Secrets Manager credentials for a deployed database. | `database` |
+| `databaseConnection()` | Connection settings for `getDatabase(...)` in a workload that declares `database: true`: the Compose Postgres locally, an IAM login that signs a token per connection in AWS. | `database` |
+| `databaseUrl()` | The same connection as a URL, for a tool that takes nothing else (the Prisma CLI). In AWS its password is an IAM token good for 15 minutes. | `database` |
 | `completeCallback`, `failCallback`, `heartbeatCallback` | Report success, failure, or continued activity to a waiting workflow step. Delivery follows the callback handle and framework-issued environment. | `callbacks` |
 | `taskCallback()` | Read the callback handle supplied to a container task launched in callback mode. | `callbacks` |
 | `parseCallbackRequest()` | Read a messaging worker's `{ payload, callback }` envelope and validate its callback handle. It does not validate the application's payload schema. | `callbacks` |

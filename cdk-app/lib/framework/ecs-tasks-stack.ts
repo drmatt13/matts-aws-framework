@@ -15,8 +15,10 @@ import {
   emitCloudOutputs,
   type CloudBuildContext,
 } from "./framework-cloud";
+import { containerPlacement, frameworkVpc } from "./framework-network";
 import {
   getCloudTargets,
+  INVOCATION_DESCRIPTOR_VERSION,
   isSourcedTarget,
   type ContainerArchitecture,
   type FrameworkConfig,
@@ -45,33 +47,18 @@ import { registerAppTask } from "./framework-tasks";
  * cluster, which is a control-plane object with no standing charge.
  */
 
-export interface TaskNetworkInput {
-  /** Absent, the default VPC is used. */
-  readonly vpcId?: string;
-  /** Absent, public subnets are selected. */
-  readonly subnetIds?: readonly string[];
-  /** Absent, a task security group with no inbound rules is created. */
-  readonly securityGroupIds?: readonly string[];
-  /** Absent, defaults to true, matching the default public-subnet placement. */
-  readonly assignPublicIp?: boolean;
-}
-
 export interface EcsTasksStackProps extends cdk.StackProps {
   readonly config: FrameworkConfig;
   /** Which CDK graph this is. */
   readonly cloud: { readonly mode: "dev" | "prod" };
-  /**
-   * One placement, shared by every task in this deployment. Per-task subnet or
-   * group selection, several task VPCs and cross-account launches are
-   * unsupported in v1 and rejected rather than inferred: a networking catalog
-   * is a second inventory, and guessing connectivity is worse than saying no.
-   */
-  readonly network?: TaskNetworkInput;
   /** The selection the composition factory validated, when there is one. */
   readonly targets?: readonly NormalizedTarget[];
 }
 
 const REPOSITORY_ROOT = findRepositoryRoot(__dirname);
+
+/** Marks the output that carries a task's launch descriptor, by task id. */
+export const TASK_LAUNCH_OUTPUT_PREFIX = "framework:task-launch:v1:";
 
 /** Pinned rather than left to "LATEST resolves to whatever": see §3.4. */
 const PLATFORM_VERSION = "LATEST";
@@ -96,8 +83,7 @@ export class EcsTasksStack extends cdk.Stack {
 
     const tasks =
       props.targets ?? getCloudTargets(props.config, ["task"], props.cloud.mode);
-    // The VPC lookup below stays out of an empty stack, exactly as the service
-    // stack's does.
+    // An empty stack asks for no network, exactly as the service stack's does.
     if (tasks.length === 0) return;
 
     const context: CloudBuildContext = {
@@ -105,98 +91,40 @@ export class EcsTasksStack extends cdk.Stack {
       mode: props.cloud.mode,
     };
 
-    const network = props.network ?? {};
-    const vpc = network.vpcId
-      ? ec2.Vpc.fromLookup(this, "TaskVpc", { vpcId: network.vpcId })
-      : ec2.Vpc.fromLookup(this, "TaskVpc", { isDefault: true });
-
-    const { subnets, assignPublicIp } = this.selectSubnets(vpc, network);
-    const securityGroups = this.selectSecurityGroups(vpc, network);
-
+    // Each task's place in the framework network follows its own declaration:
+    // cloud.subnet, inherited from defaults.container.subnet, and the groups
+    // of whatever it connects to.
+    const vpc = frameworkVpc(this);
     const cluster = new ecs.Cluster(this, "EcsTasksCluster", { vpc });
+    /** What a task that connects to nothing belongs to. A task accepts no connections. */
+    let unconnected: ec2.SecurityGroup | undefined;
 
     // Two passes, so declaration order does not matter: a task that launches
     // another needs that task's handle, and the second one may be declared
     // below the first. The config already proved these edges are acyclic.
-    const built = tasks.map((target) => ({
-      target,
-      ...this.addTask(cluster, target, context, {
-        subnets,
-        securityGroups,
-        assignPublicIp,
-      }),
-    }));
+    const built = tasks.map((target) => {
+      const placement = containerPlacement(this, target, target.cloud.task!.subnet);
+      const groups = placement.connectionGroups.length > 0
+        ? placement.connectionGroups
+        : [unconnected ??= new ec2.SecurityGroup(this, "TaskSecurityGroup", {
+            vpc,
+            description: "Framework container tasks. No inbound rules by design.",
+            allowAllOutbound: true,
+            allowAllIpv6Outbound: true,
+          })];
+      return {
+        target,
+        ...this.addTask(cluster, target, context, {
+          subnets: vpc.selectSubnets(placement.subnets).subnetIds,
+          securityGroups: groups.map((group) => group.securityGroupId),
+          assignPublicIp: placement.assignPublicIp,
+        }),
+      };
+    });
 
     for (const { target, container, taskRole } of built) {
       attachContainerResources(this, container, taskRole, target, context);
     }
-  }
-
-  /**
-   * The subnets a launch places tasks in, and whether they get a public IP.
-   *
-   * A private subnet needs working egress or VPC endpoints for image pulls,
-   * logs, secrets and the calls the task itself makes. An ARN grant is not
-   * network connectivity, and nothing here can supply one — so the placement is
-   * validated and then trusted, and a missing default VPC or usable public
-   * subnet fails with something a reader can act on.
-   */
-  private selectSubnets(
-    vpc: ec2.IVpc,
-    network: TaskNetworkInput,
-  ): { readonly subnets: readonly string[]; readonly assignPublicIp: boolean } {
-    if (network.subnetIds && network.subnetIds.length > 0) {
-      const known = new Set([
-        ...vpc.publicSubnets.map((subnet) => subnet.subnetId),
-        ...vpc.privateSubnets.map((subnet) => subnet.subnetId),
-        ...vpc.isolatedSubnets.map((subnet) => subnet.subnetId),
-      ]);
-      const foreign = network.subnetIds.filter((subnetId) => !known.has(subnetId));
-      if (foreign.length > 0) {
-        throw new Error(
-          `Task networking selects subnet(s) ${foreign.join(", ")}, which are not in VPC ${vpc.vpcId}. One VPC holds every task subnet in v1.`,
-        );
-      }
-      const isPublic = new Set(vpc.publicSubnets.map((subnet) => subnet.subnetId));
-      const assignPublicIp = network.assignPublicIp ?? false;
-      if (assignPublicIp && network.subnetIds.some((id) => !isPublic.has(id))) {
-        throw new Error(
-          "Task networking assigns a public IP to a subnet that is not public. Select public subnets, or turn the public-IP policy off and provide egress.",
-        );
-      }
-      return { subnets: network.subnetIds, assignPublicIp };
-    }
-
-    const publicSubnets = vpc.publicSubnets.map((subnet) => subnet.subnetId);
-    if (publicSubnets.length === 0) {
-      throw new Error(
-        `VPC ${vpc.vpcId} has no public subnet, so a task cannot pull its image with the default placement. Set TASK_SUBNET_IDS to subnets with working egress, or use a VPC that has public subnets.`,
-      );
-    }
-    return { subnets: publicSubnets, assignPublicIp: network.assignPublicIp ?? true };
-  }
-
-  /**
-   * Task security groups.
-   *
-   * With none supplied, one is created with no inbound rules: a task that runs
-   * to completion accepts no connections. Anything a specific resource needs to
-   * reach — a database, a cache — is a rule the application's own CDK owns,
-   * beside the resource that grants it.
-   */
-  private selectSecurityGroups(
-    vpc: ec2.IVpc,
-    network: TaskNetworkInput,
-  ): readonly string[] {
-    if (network.securityGroupIds && network.securityGroupIds.length > 0) {
-      return network.securityGroupIds;
-    }
-    const group = new ec2.SecurityGroup(this, "TaskSecurityGroup", {
-      vpc,
-      description: "Framework container tasks. No inbound rules by design.",
-      allowAllOutbound: true,
-    });
-    return [group.securityGroupId];
   }
 
   /**
@@ -295,6 +223,20 @@ export class EcsTasksStack extends cdk.Stack {
     // handle without it being threaded through props - the same arrangement
     // event Lambdas already use.
     registerAppTask(this, target.id, handle);
+
+    // The descriptor a caller's runsTask(...) receives, published so a person
+    // can launch the task from a terminal as well:
+    //   npm run task:cloud -- <task-id> --profile <PROFILE>
+    new cdk.CfnOutput(this, `${target.cloud.constructId}LaunchDescriptor`, {
+      value: JSON.stringify({
+        version: INVOCATION_DESCRIPTOR_VERSION,
+        kind: "task",
+        transport: "aws",
+        target: target.id,
+        launch,
+      }),
+      description: `${TASK_LAUNCH_OUTPUT_PREFIX}${target.id}`,
+    });
 
     emitCloudOutputs(this, target, {
       taskDefinitionArn: definition.taskDefinitionArn,

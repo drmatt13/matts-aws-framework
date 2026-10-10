@@ -4,6 +4,7 @@ import * as cdk from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import {
   defineFrameworkConfig,
+  defineNetwork,
   defineResources,
   getFrameworkTargets,
   resource,
@@ -52,6 +53,8 @@ function config(secrets: Record<string, unknown>): FrameworkConfig {
   return defineFrameworkConfig({
     resources,
     defaults,
+    // The app's defaults put containers in private subnets, which need the NAT gateway.
+    network: defineNetwork({ cidr: "10.0.0.0/16", zones: 2, nat: true }),
     http: [],
     webSocket: [],
     services: [

@@ -176,7 +176,9 @@ export class HttpApiGatewayStack extends cdk.Stack {
     const vpcLinkFor = (listener: ApplicationListener): apigwv2.VpcLink => {
       vpcLink ??= new apigwv2.VpcLink(this, "ServicesVpcLink", {
         vpc: listener.loadBalancer.vpc!,
-        subnets: { subnetType: ec2.SubnetType.PUBLIC },
+        // Beside the internal load balancers, in the framework network's
+        // private subnets.
+        subnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       });
       return vpcLink;
     };

@@ -22,7 +22,7 @@ const cognito = {
 };
 
 export const supportTools = {
-  "lookup-case": { directory: "/lambda_functions/tool_functions/lookup-case", auth: true, deploy: "both", environment: { ...cognito, DATABASE_SECRET_ARN: resources.rds.credentialsSecret.arn } },
+  "lookup-case": { directory: "/lambda_functions/tool_functions/lookup-case", auth: true, deploy: "both", environment: { ...cognito }, database: true },
   "start-review": { directory: "/lambda_functions/tool_functions/start-review", auth: true, deploy: "both", environment: { ...cognito }, cloud: { bindings: [startsWorkflow("case-review")] } },
 } satisfies ToolsSection;
 ```
@@ -135,7 +135,8 @@ token there. A turn that outlives the token's hour fails its user tools; give ba
 a service tool.
 
 Keep database and secret access in tools. An agent then needs no VPC and no database
-credentials — it thinks, and its tools touch data.
+access — it thinks, and its tools touch data. A tool that needs the database declares
+`database: true`; an agent cannot, because it runs outside the VPC.
 
 ## Writing an agent
 

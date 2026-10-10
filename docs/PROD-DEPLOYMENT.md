@@ -41,11 +41,12 @@ npm --workspace cdk-app exec -- cdk diff -c useLocalDevStack=false --profile <PR
 ```
 
 Review resource replacements, IAM, networking, and retention before deploying. The
-database is publicly reachable on port 5432 by design: the framework's Lambdas run outside
-any VPC and reach it over its public endpoint, as do migrations from your machine. It is
-guarded by its generated password and by TLS, which RDS enforces and which deployed
-handlers verify against the Amazon RDS certificate authorities (`sslmode=verify-full`).
-Narrowing the security group needs Lambdas inside the VPC.
+database is private: it sits in the isolated subnets of the framework network, is not
+publicly accessible, and admits only workloads that declare `database: true`. They log in
+with IAM as `app_user`, each signing a short-lived token, over TLS verified against the
+Amazon RDS certificate authorities; no workload holds a database password. Nothing outside
+the VPC reaches it, your machine included, which is why migrations run as a task. See
+[Framework](FRAMEWORK.md#network-and-database).
 
 ## Custom domains and Google
 
@@ -133,35 +134,20 @@ For changes requiring staged rollout or backfill, choose that order before deplo
 a universal deploy-then-migrate sequence is not safe for every schema change. On first
 installation, the schema must exist before sign-up/sign-in provisions an application user.
 
-After RDS exists, retrieve its credentials into memory without printing them. For example,
-using the RdsCredentialsSecretArn output from the RDS stack:
-
-```powershell
-$databaseSecret = aws secretsmanager get-secret-value --secret-id <RDS_CREDENTIALS_SECRET_ARN> --region <REGION> --profile <PROFILE> --query SecretString --output text | ConvertFrom-Json
-Invoke-WebRequest https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem -OutFile "$env:TEMP\rds-global-bundle.pem"
-$env:DATABASE_URL = "postgresql://$([uri]::EscapeDataString($databaseSecret.username)):$([uri]::EscapeDataString($databaseSecret.password))@$($databaseSecret.host):$($databaseSecret.port)/$($databaseSecret.dbname)?sslmode=verify-full&sslrootcert=$([uri]::EscapeDataString("$env:TEMP\rds-global-bundle.pem"))"
-```
-
-On macOS or Linux:
+Plan and review the migration offline first, following
+[Database](DATABASE.md#changing-storage). Then apply it with the `db-migrate` task, which
+runs inside the network:
 
 ```sh
-database_secret="$(aws secretsmanager get-secret-value --secret-id <RDS_CREDENTIALS_SECRET_ARN> --region <REGION> --profile <PROFILE> --query SecretString --output text)"
-rds_bundle="${TMPDIR:-/tmp}/rds-global-bundle.pem"
-curl -fsSL -o "$rds_bundle" https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
-export DATABASE_URL="$(DATABASE_SECRET="$database_secret" RDS_BUNDLE="$rds_bundle" node -e '
-const s = JSON.parse(process.env.DATABASE_SECRET);
-const e = encodeURIComponent;
-process.stdout.write(`postgresql://${e(s.username)}:${e(s.password)}@${s.host}:${s.port}/${s.dbname}?sslmode=verify-full&sslrootcert=${e(process.env.RDS_BUNDLE)}`);
-')"
+npm run db:migrate:cloud -- --profile <PROFILE>
 ```
 
-Afterwards: `unset DATABASE_URL database_secret`.
-
-The example verifies the server certificate against AWS's published RDS certificate
-bundle, the same authorities deployed handlers use.
-With DATABASE_URL set for the intended environment, follow
-[Database's application and verification steps](DATABASE.md#changing-storage). Remove the
-process variable and credential variable afterwards. Do not commit or echo the connection.
+It launches the task through the descriptor the deployment published, waits for it, and
+exits with Prisma's exit code; the task's log is in CloudWatch under the `db-migrate` stream
+prefix. The task declares `database: true` and logs in with IAM as every handler does, so no
+credential reaches your machine. The deployment creates the `app_user` login it uses, so on a
+first installation deploy before migrating. `npm run task:cloud -- <task-id>` launches any
+other cloud-enabled task the same way.
 
 A failed migration or incompatible release needs its own recovery plan; redeploying an old
 frontend does not undo data changes. Do not use direct schema synchronization as a substitute

@@ -20,10 +20,8 @@ export const graphqlRoutes = {
       GRAPHQL_PERSISTED_DOCUMENTS_ONLY: "false",
       USER_POOL_ID: resources.cognito.userPool.userPoolId,
       USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId,
-      PRIMARY_DATABASE_SECRET_ARN: resources.rds.credentialsSecret.arn,
     },
-    cloud: {
-      constructId: "GraphQLApi",
-    },
+    database: true,
+    cloud: { constructId: "GraphQLApi" },
   },
 } satisfies HttpSection;

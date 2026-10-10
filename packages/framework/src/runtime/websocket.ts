@@ -40,7 +40,11 @@ const awsClients = new Map<string, ApiGatewayManagementApiClient>();
 function awsConnections(endpoint: string): WebSocketConnections {
   let client = awsClients.get(endpoint);
   if (!client) {
-    client = new ApiGatewayManagementApiClient({ endpoint });
+    // The endpoint is the API's own, so the SDK must not swap in a dual-stack
+    // one: a Lambda inside the VPC runs with AWS_USE_DUALSTACK_ENDPOINT=true,
+    // and the SDK refuses that setting together with a custom endpoint. The
+    // WebSocket API is created dualstack, so this endpoint answers over IPv6.
+    client = new ApiGatewayManagementApiClient({ endpoint, useDualstackEndpoint: false });
     awsClients.set(endpoint, client);
   }
   const gone = (connectionId: string) => (error: unknown) => {

@@ -144,6 +144,7 @@ Deployment mode separately says what the AWS graph constructs:
 | Website, RDS, HTTP gateway | No | Yes |
 | Routed Lambdas, services, tasks, workflows | No; execute locally | If cloud-enabled |
 | WebSocket API and its handlers | No | When DEPLOY_WEBSOCKET_API is on |
+| Network (VPC) and database | No | Once a Lambda has `vpc: true` or `database: true`, or a container is built |
 
 Events are invoked by AWS and do not have a per-target deploy toggle. A dev deployment
 publishes no task/service images. Compose independently runs targets enabled in the local
@@ -294,9 +295,9 @@ An entry declared `undefined` keeps its place in the catalog and resolves to not
 rds: PROD_DEPLOYMENT ? resource.stack<RdsStack>() : undefined,
 ```
 
-`resources.rds.credentialsSecret.arn` still compiles everywhere it is read, and the
-workloads that name it simply never see the variable — which is what lets a handler fall
-back to a local database rather than branch on a deployment mode it cannot see. No
+`resources.rds.database` still compiles everywhere it is named, and anything that reads
+the entry simply never sees it — which is what lets the Compose Postgres stand in for the
+database rather than a handler branching on a deployment mode it cannot see. No
 resource carries a mode; there is no `.prodOnly()` or `.devOnly()`. `PROD_DEPLOYMENT` is
 imported from `@repo/framework/config/source`, which reads the same cdk-app/.env, so
 synthesis, the local runner and the generator all read one answer. `bin/cdk-app.ts`
@@ -310,9 +311,10 @@ A secret has two sources and three deliveries. The sources:
 - `resource.secret("NAME")` — a value authored only in cdk-app/.env, which
   `npm run deploy` uploads to Secrets Manager and supplies the ARN for.
 - A public `ISecret` field on a `resource.stack<T>()` entry — one the stack created with
-  `new secretsmanager.Secret(...)`, one RDS generated, or one imported from another
-  account with `Secret.fromSecretCompleteArn(...)`. `linkResources` supplies it with
-  everything else the stack holds.
+  `new secretsmanager.Secret(...)`, or one imported from another account with
+  `Secret.fromSecretCompleteArn(...)`. `linkResources` supplies it with everything else
+  the stack holds. The database is not one: workloads log in to it with IAM (see
+  [Network and database](#network-and-database)).
 
 The deliveries, identical for either source:
 
@@ -321,7 +323,7 @@ The deliveries, identical for either source:
   as an ordinary string grants nothing.
 - `secrets: { API_KEY: resources.x.value }` — a container is handed the whole document at
   startup.
-- `secrets: { PGPASSWORD: resources.rds.credentialsSecret.field("password") }` — one JSON
+- `secrets: { API_TOKEN: resources.partner.credentials.field("token") }` — one JSON
   key. ECS extracts it at startup; local execution extracts it in memory. ECS startup
   reads and encryption permissions belong to the execution role. Only a stack's secret
   offers `.field()`: an authored secret reaches a local container exactly as written, so
@@ -397,6 +399,123 @@ Successful development deployment refreshes the manifest and Compose .env automa
 `npm run export:cdk-outputs -- --profile <PROFILE>` remains a standalone refresh. Production
 deployment neither writes nor depends on either development file. Existing
 cdk-app/.secret-bindings.json files are ignored and may be removed locally.
+
+## Network and database
+
+[framework-config/network.ts](../framework-config/network.ts) declares the application's VPC.
+Only a production deployment builds it, and only once something needs it: a Lambda with
+`vpc: true` or `database: true`, or a container.
+
+```ts
+export const network = defineNetwork({ cidr: "10.0.0.0/16", zones: 2, nat: false });
+```
+
+The layout is fixed: a public, a private and an isolated subnet in each zone. Private subnets
+are dual-stack; IPv6 leaves through an egress-only internet gateway, which AWS does not charge
+for. S3 and DynamoDB gateway endpoints sit on every route table. `cidr` and `zones` are set
+once: changing either renumbers every subnet.
+
+`nat` is the network's only cost, and nothing turns it on but this line. Off (the default),
+the private subnets have no IPv4 route out. On, one NAT gateway (about $33 a month plus
+$0.045 per GB) gives them IPv4: a container needs it to run in a private subnet, and a Lambda
+in the VPC can then reach IPv4-only hosts too.
+
+### Lambdas in the VPC
+
+A Lambda runs outside the VPC, with the whole internet, unless it has `vpc: true`. Set it on
+one Lambda, on a section (`defaults.http`), or on every Lambda (`defaults.lambda.vpc`), and
+turn it off on any one with `vpc: false`. `database: true` implies it.
+
+```ts
+"/reports": { directory: "...", methods: ["GET"], vpc: true },
+```
+
+A Lambda in the VPC always runs in the private subnets, never the public ones: AWS gives a
+VPC Lambda no public IPv4 address, so a public subnet would only lose the NAT gateway's IPv4.
+It leaves over IPv6 (IPv4 too with `nat`), with `AWS_USE_DUALSTACK_ENDPOINT=true`, in one
+security group every such Lambda shares; one that declares `database: true` joins the
+database's group instead. Only TypeScript Lambdas run in the VPC, and an event that does
+needs `localReplay: true`, because a dev deployment builds no network.
+
+### The database
+
+framework.config.ts names the database once, and a workload that uses it says so with one
+flag. There is no secret to declare and no password anywhere in a workload:
+
+```ts
+// framework.config.ts
+database: resources.rds.database,
+
+// any Lambda, event, tool, service or task
+"/graphql": { directory: "...", methods: ["GET", "POST"], auth: true, database: true },
+
+// its handler
+const database = getDatabase(databaseConnection());
+```
+
+In a production deployment, `database: true` on a Lambda:
+
+- places it in the private subnets, in the one security group the database admits;
+- grants it `rds-db:connect` for the database's IAM login, `app_user`, and nothing else;
+- sets `PRIMARY_DATABASE_URL` (no password) and `PRIMARY_DATABASE_AUTH=iam`, from which
+  `databaseConnection()` signs a 15-minute IAM token for every new connection, locally, with
+  the workload's own role, over TLS verified against the RDS certificate authorities;
+- sets `AWS_USE_DUALSTACK_ENDPOINT=true`, so its AWS SDK calls use endpoints reachable over
+  IPv6.
+
+`vpc: true` alone grants none of this: it places a Lambda, and only `database: true` reaches
+the database. Only TypeScript Lambdas use the database: cross-language Lambdas and AgentCore
+agents always run outside the VPC, and their database work belongs in a TypeScript Lambda or a
+tool.
+
+The database is ordinary CDK, built into the network with `frameworkVpc(this)`, with no
+security groups or ingress rules of its own:
+
+```ts
+new rds.DatabaseInstance(this, "PostgresDatabase", {
+  vpc: frameworkVpc(this),
+  vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+  credentials: rds.Credentials.fromGeneratedSecret("postgres"),
+  iamAuthentication: true,
+  databaseName: "app_db",
+  publiclyAccessible: false,
+  storageEncrypted: true,
+});
+```
+
+RDS insists on a master user with a password. The framework reads that password exactly
+once, on deploy: a custom resource in the database's stack logs in as the master and creates
+`app_user`, with `rds_iam`, no password, and the right to create tables in `public`. It is
+not a superuser. Migrations run as `app_user` too, so it owns every table. A release
+therefore deploys first and then migrates: `npm run db:migrate:cloud -- --profile <PROFILE>`
+runs the `db-migrate` task inside the network.
+
+### Containers
+
+A container always runs in the network, in the subnet `cloud.subnet` names, inherited from
+`defaults.container.subnet` (default `"public"`). A public one gets a public IPv4 address and
+no inbound rules. A private one needs `nat: true`: Fargate pulls its image over IPv4, so
+configuration refuses a deployed private container without it, in every mode. Synthesis
+prints what the network holds, what it costs, and who uses the database.
+
+### In development
+
+**A dev deployment builds no network and no database.** The database is absent from the dev
+graph and runs under Compose, so asking for the network there is an error. The local lane
+holds the network's rules instead, which is what keeps "works locally" meaning "works in AWS":
+
+- `PRIMARY_DATABASE_URL` (the Compose Postgres) reaches only a workload that declares
+  `database: true`.
+- A Lambda in the VPC (`vpc: true` or `database: true`) runs with
+  `AWS_USE_DUALSTACK_ENDPOINT=true`. Without `nat`, it also runs under an egress guard that refuses, at once and with the reason, any host that publishes no
+  IPv6 address, as the private subnets would by timing out.
+- Configuration refuses `database: true` on an agent, a workflow or a cross-language Lambda,
+  on an event without `localReplay: true`, and a workload that reads anything else from the
+  database's stack without declaring it. It refuses `vpc: true` on a cross-language Lambda
+  and on an event without `localReplay: true` the same way.
+
+Inside a Lambda in the VPC, an SDK client given its own `endpoint` passes
+`useDualstackEndpoint: false`: the SDK refuses the dual-stack setting with a custom endpoint.
 
 ## Events and native infrastructure
 
@@ -640,7 +759,8 @@ Locally, inspect the runner on the configured LOCAL_INVOCATION_RUNNER_HOST_PORT:
   to establish success: check task exitCode=0 and workflow status=succeeded.
 
 In AWS, runId is an ECS task ARN; inspect it with aws ecs describe-tasks and CloudWatch
-logs. Inspect executionId with aws stepfunctions describe-execution. Verify the same
+logs. `npm run task:cloud -- <task-id> --profile <PROFILE>` launches a cloud-enabled task from
+a terminal, through the descriptor the deployment publishes, and exits with its exit code. Inspect executionId with aws stepfunctions describe-execution. Verify the same
 payload and terminal success. Local checks do not prove VPC isolation or IAM behavior.
 
 The ECS workflow integration still needs a measured AWS release check for exit 0, exit 1,

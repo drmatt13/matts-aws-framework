@@ -83,10 +83,6 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
     }
   }
 
-  // Optional prod-mode flag. Defaults to false and is force-disabled in a dev
-  // deployment. Creates the RDS Proxy layer for cloud deployments.
-  const enableRdsProxy =
-    mode === "prod" && booleanFlag({ context: "enableRdsProxy" });
 
   // Development convenience: the pre-signup trigger confirms new users itself
   // instead of mailing them a code. Never derived from anything else, and
@@ -362,47 +358,30 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
   // reaches Secrets Manager through npm run secrets:sync, and the template
   // carries a resolve reference to it instead.
 
-  // Where framework container tasks are placed, as one deployment input.
-  //
-  // Infrastructure placement is deliberately *not* in the resource catalog: the
-  // catalog describes application inputs, and workload code never consumes a
-  // subnet id. A runtime caller receives a resolved launch configuration and
-  // chooses no network.
-  //
-  // Absent, tasks use the default VPC's public subnets with a public IP, which
-  // is what makes an image pull work with no VPC endpoints. Task-scoped on
-  // purpose: it reconfigures neither RDS nor existing services.
-  const taskSubnetIds = splitCsv(stringFlag("taskSubnetIds", "TASK_SUBNET_IDS"));
-  const taskSecurityGroupIds = splitCsv(
-    stringFlag("taskSecurityGroupIds", "TASK_SECURITY_GROUP_IDS"),
-  );
-  const taskVpcId = stringFlag("taskVpcId", "TASK_VPC_ID");
-  const taskAssignPublicIp = optionalBoolean(
-    getContext("taskAssignPublicIp"),
-    "-c taskAssignPublicIp",
-  ) ?? optionalBoolean(env.TASK_ASSIGN_PUBLIC_IP, "TASK_ASSIGN_PUBLIC_IP in cdk-app/.env");
-
-  if (taskSubnetIds.length > 0 && !taskVpcId) {
-    throw new Error(
-      "TASK_SUBNET_IDS is set without TASK_VPC_ID. v1 places every task in one VPC, so the VPC has to be named explicitly when its subnets are.",
-    );
-  }
-  if (taskSecurityGroupIds.length > 0 && !taskVpcId) {
-    throw new Error(
-      "TASK_SECURITY_GROUP_IDS is set without TASK_VPC_ID. Name the VPC the groups belong to.",
+  // Container placement used to be one deployment-wide input. It is each
+  // task's own declaration now — cloud.subnet, inherited from
+  // defaults.container.subnet — in the framework network, so the old inputs
+  // are reported rather than silently ignored.
+  const retiredTaskNetwork = [
+    ["taskVpcId", "TASK_VPC_ID"],
+    ["taskSubnetIds", "TASK_SUBNET_IDS"],
+    ["taskSecurityGroupIds", "TASK_SECURITY_GROUP_IDS"],
+    ["taskAssignPublicIp", "TASK_ASSIGN_PUBLIC_IP"],
+  ].filter(([contextKey, name]) => getContext(contextKey!) !== undefined || optionalString(env[name!]) !== undefined)
+    .map(([, name]) => name);
+  if (retiredTaskNetwork.length > 0) {
+    warnings.push(
+      `[cdk-app] ${retiredTaskNetwork.join(", ")} ${retiredTaskNetwork.length === 1 ? "is" : "are"} no longer read: tasks run in the framework network, in the subnet each declares as cloud.subnet (inherited from defaults.container.subnet). Remove ${retiredTaskNetwork.length === 1 ? "the line" : "the lines"} from cdk-app/.env.`,
     );
   }
 
-  const taskNetwork = {
-    ...(taskVpcId ? { vpcId: taskVpcId } : {}),
-    ...(taskSubnetIds.length > 0 ? { subnetIds: taskSubnetIds } : {}),
-    ...(taskSecurityGroupIds.length > 0
-      ? { securityGroupIds: taskSecurityGroupIds }
-      : {}),
-    ...(taskAssignPublicIp === undefined
-      ? {}
-      : { assignPublicIp: taskAssignPublicIp }),
-  };
+  // RDS Proxy authenticated to the database with its password, which no
+  // workload holds any more: they log in with IAM.
+  if (getContext("enableRdsProxy") !== undefined) {
+    warnings.push(
+      "[cdk-app] enableRdsProxy is no longer read: workloads that declare database: true log in to the database directly with IAM. Remove it from cdk.json or the command line.",
+    );
+  }
 
   // LANGGRAPH_* is deliberately absent. A workload's own deployment inputs are
   // declared beside the workload, on `resources.langgraph` in
@@ -414,8 +393,6 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
     stackEnv,
     deploymentName,
     mode,
-    taskNetwork,
-    enableRdsProxy,
     databaseBackupRetentionDays,
     requestedSkipEmailVerification,
     cognitoSesFromEmail,

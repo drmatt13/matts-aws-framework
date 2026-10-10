@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { IQueue } from "aws-cdk-lib/aws-sqs";
-import { defineFrameworkConfig, defineResources, resource, resourceAttributeKey, parseResourceManifest, getFrameworkTargets, type FrameworkConfig, type ResourceManifest } from "../src/config";
+import { defineFrameworkConfig, defineNetwork, defineResources, resource, resourceAttributeKey, parseResourceManifest, getFrameworkTargets, type FrameworkConfig, type ResourceManifest } from "../src/config";
 import { resolveLocalWorkloadEnvironment } from "../src/local/environment";
 import { invokeLocalNodeLambda } from "../src/local/lambda-process";
 import { defaults } from "../../../framework-config/defaults";
@@ -18,7 +18,8 @@ const manifest: ResourceManifest = { ...identity, attributes: {
 }, integrations: {} };
 function config(): FrameworkConfig {
   const environment = { RESOURCE: resources.one.queueUrl, INPUT: resources.input };
-  return defineFrameworkConfig({ resources, defaults,
+  // The app's defaults put containers in private subnets, which need the NAT gateway.
+  return defineFrameworkConfig({ resources, defaults, network: defineNetwork({ cidr: "10.0.0.0/16", zones: 2, nat: true }),
     http: [{ "/one": { directory: "/lambda_functions/http_functions/one", methods: ["POST"], auth: true, environment }, "/two": { directory: "/lambda_functions/http_functions/two", methods: ["POST"], auth: true, environment: { RESOURCE: resources.two.queueUrl } } }],
     webSocket: [{ $default: { directory: "/lambda_functions/websocket_functions/socket", environment } }],
     services: [{ "/service/*": { directory: "/ecs_containers/services/service", methods: "*", auth: true, port: 5000, environment, secrets: { API_KEY: resources.key, PASSWORD: resources.vault.linked.field("password") } } }],

@@ -1,4 +1,4 @@
-import { createClient, type DatabaseClient } from "./client.js";
+import { createClient, type DatabaseClient, type DatabaseConnection } from "./client.js";
 import { createProjectRepository } from "./projects.js";
 import { createUserRepository } from "./users.js";
 
@@ -9,6 +9,7 @@ export {
 } from "./cognito-users.js";
 
 export type * from "./contracts.js";
+export type { DatabaseConnection } from "./client.js";
 
 /**
  * The repository registry, and the source `Database` is derived from.
@@ -27,7 +28,7 @@ export type Database = {
 };
 
 type DatabaseCache = {
-  databaseUrl: string;
+  identity: string;
   close(): Promise<void>;
   database: Database;
 };
@@ -46,11 +47,24 @@ function createDatabase(client: DatabaseClient): Database {
   ) as Database;
 }
 
-export function getDatabase(databaseUrl: string): Database {
+/** What makes two connections the same database: never the password. */
+function connectionIdentity(connection: DatabaseConnection): string {
+  return connection.connectionString ?? `${connection.user}@${connection.host}:${connection.port}/${connection.database}`;
+}
+
+/**
+ * The repositories, over one pool per execution environment.
+ *
+ * ```ts
+ * const database = getDatabase(databaseConnection());
+ * ```
+ */
+export function getDatabase(connection: DatabaseConnection): Database {
   const cached = globalThis.__repoDatabaseCache;
+  const identity = connectionIdentity(connection);
 
   if (cached) {
-    if (cached.databaseUrl !== databaseUrl) {
+    if (cached.identity !== identity) {
       throw new Error(
         "Database connection settings changed while a shared connection is active. Call disconnectDatabase() before reconnecting.",
       );
@@ -59,14 +73,10 @@ export function getDatabase(databaseUrl: string): Database {
     return cached.database;
   }
 
-  const client = createClient(databaseUrl);
+  const { client, close } = createClient(connection);
   const database = createDatabase(client);
 
-  globalThis.__repoDatabaseCache = {
-    databaseUrl,
-    close: () => client.close(),
-    database,
-  };
+  globalThis.__repoDatabaseCache = { identity, close, database };
 
   return database;
 }

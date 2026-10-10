@@ -3,7 +3,7 @@ import path from "node:path";
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { readAuthoredInputs } from "@repo/framework/config/source";
 import {
-  normalizeFrameworkConfig, resolveTaskTarget, isResourceAbsent, isResourceReference, resourceAttributeKey,
+  getConnectsToBindings, normalizeFrameworkConfig, resolveLambdaTarget, isResourceAbsent, isResourceReference, resourceAttributeKey,
   formatResourceReference, resolveResourceFromEnv, parseResourceManifest, RESOURCE_MANIFEST_FILE,
   type FrameworkConfig, type ResourceManifest, type ResourceReference, type TargetReference,
 } from "@repo/framework/config";
@@ -100,8 +100,16 @@ export async function resolveLocalWorkloadEnvironment(config: FrameworkConfig, t
     }
   }
   if (Object.prototype.hasOwnProperty.call(target.environment, "TRUSTED_FRONTEND_ORIGINS") && platform.LOCAL_BROWSER_ORIGINS) environment.TRUSTED_FRONTEND_ORIGINS = platform.LOCAL_BROWSER_ORIGINS;
-  // The existing database replacement and AWS credentials are local facilities.
-  if (target.kind === "lambda" || target.kind === "service" || (target.kind === "task" && resolveTaskTarget(config, target.id).local.resources.includes("primaryDatabase"))) environment.PRIMARY_DATABASE_URL = platform.PRIMARY_DATABASE_URL ?? LOCAL_PRIMARY_DATABASE_URL;
+  // The network's rules hold here as they do in AWS, so a workload that works
+  // locally works there. The Compose database stands in for the application's
+  // database, and only for a workload that declares database: true: one that
+  // does not gets nothing here, as it would get no route there. A Lambda in
+  // the VPC calls AWS's dual-stack endpoints, as it has to from the private
+  // subnets.
+  if (getConnectsToBindings(target.cloud.bindings).length > 0) {
+    environment.PRIMARY_DATABASE_URL = platform.PRIMARY_DATABASE_URL ?? LOCAL_PRIMARY_DATABASE_URL;
+  }
+  if (target.kind === "lambda" && resolveLambdaTarget(config, target.id).vpc) environment.AWS_USE_DUALSTACK_ENDPOINT = "true";
   if (target.kind !== "workflow") Object.assign(environment, localInvocationDescriptors(config, targetId, options.runnerUrl ?? platform.LOCAL_INVOCATION_RUNNER_URL ?? "http://local-invocation-runner:8090"));
   return environment;
 }

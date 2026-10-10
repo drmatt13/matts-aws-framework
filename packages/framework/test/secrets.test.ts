@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   defineFrameworkConfig,
+  defineNetwork,
   defineResources,
   getFrameworkTargets,
   assertRequirementsMet,
@@ -65,6 +66,8 @@ function serviceConfig(
   return defineFrameworkConfig({
     resources,
     defaults,
+    // The app's defaults put containers in private subnets, which need the NAT gateway.
+    network: defineNetwork({ cidr: "10.0.0.0/16", zones: 2, nat: true }),
     http: [],
     webSocket: [],
     services: [
@@ -325,18 +328,18 @@ test("a Lambda declaring startup secrets is sent to the ARN form", () => {
 
 test("reading .arn injects the name and derives the grant from the same line", () => {
   const config = lambdaConfig({
-    PRIMARY_DATABASE_SECRET_ARN: resources.database.credentials.arn,
+    VAULT_SECRET_ARN: resources.database.credentials.arn,
   });
   validateFrameworkConfig(config);
   const lambda = target(config, "lambda");
 
   assert.equal(
-    lambda.environment.PRIMARY_DATABASE_SECRET_ARN,
+    lambda.environment.VAULT_SECRET_ARN,
     resources.database.credentials.arn,
   );
   const [binding, ...rest] = getSecretBindings(lambda.cloud.bindings);
   assert.deepEqual(rest, []);
-  assert.equal(binding?.environment, "PRIMARY_DATABASE_SECRET_ARN");
+  assert.equal(binding?.environment, "VAULT_SECRET_ARN");
   // The binding names the secret, because a grant is on a secret.
   assert.equal(binding?.secret.kind, "secret");
   assert.deepEqual(binding?.secret.path, ["database", "credentials"]);
@@ -371,7 +374,7 @@ test("readSecret\\(\\) as a binding says where the read moved to", () => {
                   {
                     capability: "readSecret",
                     secret: resources.openaiApiKey,
-                    environment: "PRIMARY_DATABASE_SECRET_ARN",
+                    environment: "VAULT_SECRET_ARN",
                   },
                 ],
               },
@@ -390,25 +393,25 @@ test("readSecret\\(\\) as a binding says where the read moved to", () => {
 
 test("an absent secret's ARN drops out of the deployment entirely", () => {
   const config = lambdaConfig({
-    PRIMARY_DATABASE_SECRET_ARN: withoutDatabase.database.credentials.arn,
+    VAULT_SECRET_ARN: withoutDatabase.database.credentials.arn,
   });
   const values = resolveCloudValues(target(config, "lambda"), nothing, "test");
-  assert.equal(values.environment.PRIMARY_DATABASE_SECRET_ARN, undefined);
+  assert.equal(values.environment.VAULT_SECRET_ARN, undefined);
   assert.deepEqual(values.bindings, []);
 });
 
 test("a supplied handle resolves to its ARN, and grants read on the handle", () => {
   const config = lambdaConfig({
-    PRIMARY_DATABASE_SECRET_ARN: resources.database.credentials.arn,
+    VAULT_SECRET_ARN: resources.database.credentials.arn,
   });
   const values = resolveCloudValues(
     target(config, "lambda"),
     supplying({ "database.credentials": { secretArn: SYNCED_ARN } }),
     "test",
   );
-  assert.equal(values.environment.PRIMARY_DATABASE_SECRET_ARN, SYNCED_ARN);
+  assert.equal(values.environment.VAULT_SECRET_ARN, SYNCED_ARN);
   assert.deepEqual(values.bindings, [
-    { capability: "readSecret", environment: "PRIMARY_DATABASE_SECRET_ARN", secret: { secretArn: SYNCED_ARN } },
+    { capability: "readSecret", environment: "VAULT_SECRET_ARN", secret: { secretArn: SYNCED_ARN } },
   ]);
 });
 

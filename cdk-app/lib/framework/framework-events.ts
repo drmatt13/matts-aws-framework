@@ -4,7 +4,9 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import type * as s3 from "aws-cdk-lib/aws-s3";
 import type * as sqs from "aws-cdk-lib/aws-sqs";
 import {
+  DATABASE_ENVIRONMENT_KEYS,
   getCallbackBindings,
+  getConnectsToBindings,
   getEventReplayManifest,
   getEventReplayTarget,
   normalizeFrameworkConfig,
@@ -21,6 +23,7 @@ import {
   type FrameworkLambdaOptions,
 } from "./framework-lambda";
 import { FrameworkTargetRegistry } from "./framework-target-registry";
+import { lambdaPlacement } from "./framework-network";
 import {
   attachLambdaResources,
   assertLambdaEnvironmentBudget,
@@ -152,9 +155,12 @@ function declaredEnvironment(
       target.cloud.bindings
         // A callback completion injects no environment: it is routed by the
         // worker's own framework-issued variables and the handle in the message.
-        .filter((binding) => binding.capability !== "completesCallback" && binding.capability !== "nativeGrant")
+        .filter((binding) => binding.capability !== "completesCallback" && binding.capability !== "nativeGrant" && binding.capability !== "connectsTo")
         .map((binding) => [binding.environment, true]),
     ),
+    ...(getConnectsToBindings(target.cloud.bindings).length > 0
+      ? Object.fromEntries(DATABASE_ENVIRONMENT_KEYS.map((name) => [name, true]))
+      : {}),
   };
 }
 
@@ -226,6 +232,7 @@ function createPreparedEvent<C extends FrameworkConfig>(
     context.config,
     event.target.id,
     options,
+    lambdaPlacement(scope, event.target),
   );
   return registerPreparedEvent(context, event, fn);
 }

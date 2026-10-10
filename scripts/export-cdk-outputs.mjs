@@ -39,14 +39,7 @@ const BASE_STACK_OUTPUT_MAPPINGS = {
     HttpApiUrl: "HTTP_API_URL",
   },
   RdsStack: {
-    RdsProxyEndpoint: "RDS_PROXY_ENDPOINT",
-    RdsProxyEnabled: "RDS_PROXY_ENABLED",
-    RdsProxyPort: "RDS_PROXY_PORT",
     RdsDatabaseEndpoint: "RDS_DATABASE_ENDPOINT",
-    RdsPrimaryEndpoint: "RDS_PRIMARY_ENDPOINT",
-    PrimaryDatabaseUrlTemplate: "PRIMARY_DATABASE_URL_TEMPLATE",
-    DirectDatabaseUrlTemplate: "DIRECT_DATABASE_URL_TEMPLATE",
-    RdsCredentialsSecretArn: "RDS_CREDENTIALS_SECRET_ARN",
   },
   WebSocketApiStack: {
     WebSocketAPIEndpoint: "VITE_API_GATEWAY_WS_URL",
@@ -100,16 +93,7 @@ const GENERATED_ENV_SECTIONS = [
   },
   {
     heading: "Database",
-    envNames: [
-      "RDS_PROXY_ENABLED",
-      "RDS_PROXY_ENDPOINT",
-      "RDS_PROXY_PORT",
-      "RDS_PRIMARY_ENDPOINT",
-      "RDS_DATABASE_ENDPOINT",
-      "PRIMARY_DATABASE_URL_TEMPLATE",
-      "DIRECT_DATABASE_URL_TEMPLATE",
-      "RDS_CREDENTIALS_SECRET_ARN",
-    ],
+    envNames: ["RDS_DATABASE_ENDPOINT"],
   },
   {
     heading: "Development replay",
@@ -270,11 +254,6 @@ for (const [baseStackName, outputMappings] of Object.entries(
 
     collectedEnv.set(envName, value);
   }
-}
-
-if (collectedEnv.get("RDS_PROXY_ENABLED")?.toLowerCase() !== "true") {
-  collectedEnv.delete("RDS_PROXY_ENDPOINT");
-  collectedEnv.delete("RDS_PROXY_PORT");
 }
 
 if (collectedEnv.size === 0) {

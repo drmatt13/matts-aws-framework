@@ -129,6 +129,7 @@ export type ServiceSourceDirectory = (typeof SERVICE_SOURCE_DIRECTORIES)[number]
 
 /** Every directory directly under `cdk-app/ecs_containers/tasks`. */
 export const TASK_TARGET_IDS = [
+  "db-migrate",
   "invocation-test-task",
 ] as const;
 
@@ -136,6 +137,7 @@ export type TaskTargetId = (typeof TASK_TARGET_IDS)[number];
 
 /** Conventional task source directories, offered as `directory` completions. */
 export const TASK_SOURCE_DIRECTORIES = [
+  "/ecs_containers/tasks/db-migrate",
   "/ecs_containers/tasks/invocation-test-task",
 ] as const;
 

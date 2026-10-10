@@ -1,6 +1,6 @@
 import type { PostConfirmationTriggerEvent } from "aws-lambda";
 import { withLocalReplay } from "@repo/framework/runtime/event-replay";
-import { getDatabaseUrl } from "@repo/framework/runtime/database";
+import { databaseConnection } from "@repo/framework/runtime/database";
 import { ensureCognitoUser, getDatabase } from "@repo/database";
 
 /**
@@ -18,7 +18,7 @@ export const lambdaHandler = withLocalReplay(
       return event;
     }
 
-    const database = getDatabase(await getDatabaseUrl());
+    const database = getDatabase(databaseConnection());
     const { sub, email, given_name, family_name } = event.request.userAttributes;
 
     await ensureCognitoUser(database.users, {

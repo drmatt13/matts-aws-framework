@@ -7,6 +7,7 @@ import * as ecsPatterns from "aws-cdk-lib/aws-ecs-patterns";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as path from "path";
 import { FrameworkTargetRegistry } from "./framework-target-registry";
+import { containerPlacement, frameworkVpc, networkSubnets } from "./framework-network";
 import {
   attachContainerResources,
   emitCloudOutputs,
@@ -83,7 +84,7 @@ export class EcsServicesStack extends cdk.Stack {
       mode: props.cloud.mode,
     };
 
-    const vpc = ec2.Vpc.fromLookup(this, "DefaultVpc", { isDefault: true });
+    const vpc = frameworkVpc(this);
 
     const cluster = new ecs.Cluster(this, "EcsCluster", {
       vpc,
@@ -120,14 +121,15 @@ export class EcsServicesStack extends cdk.Stack {
       repositoryRoot: REPOSITORY_ROOT,
     });
 
-    // The default VPC has only public subnets. An internal load balancer can
-    // sit in them: the scheme, not the subnet, keeps it off the internet.
+    // An internal load balancer sits in the private subnets, where the HTTP
+    // API's VPC link reaches it; a public one goes in the public subnets.
+    const placement = containerPlacement(this, target, settings.subnet);
     const loadBalancer = settings.publicLoadBalancer
       ? undefined
       : new elbv2.ApplicationLoadBalancer(this, `${target.cloud.constructId}InternalLoadBalancer`, {
           vpc: cluster.vpc,
           internetFacing: false,
-          vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+          vpcSubnets: networkSubnets("private"),
         });
 
     const service = new ecsPatterns.ApplicationLoadBalancedFargateService(
@@ -139,7 +141,8 @@ export class EcsServicesStack extends cdk.Stack {
         memoryLimitMiB: settings.memoryMiB,
         desiredCount: settings.desiredCount,
         ...(loadBalancer ? { loadBalancer } : { publicLoadBalancer: true }),
-        assignPublicIp: settings.assignPublicIp,
+        taskSubnets: placement.subnets,
+        assignPublicIp: placement.assignPublicIp,
         runtimePlatform: {
           cpuArchitecture: taskArchitecture(settings.architecture),
         },
@@ -170,6 +173,18 @@ export class EcsServicesStack extends cdk.Stack {
     // The task role is otherwise empty, so anything the container calls has to
     // be declared. `secrets` above is read by the *execution* role instead:
     // AWS separates what starts a task from what the application then does.
+    // The groups of what the service connects to join its network
+    // configuration directly. Adding them to the service's connections would
+    // let the load balancer's ingress rule reach every other member of those
+    // shared groups.
+    if (placement.connectionGroups.length > 0) {
+      const ownGroups = service.service.connections.securityGroups.map((group) => group.securityGroupId);
+      (service.service.node.defaultChild as ecs.CfnService).addPropertyOverride(
+        "NetworkConfiguration.AwsvpcConfiguration.SecurityGroups",
+        [...ownGroups, ...placement.connectionGroups.map((group) => group.securityGroupId)],
+      );
+    }
+
     attachContainerResources(this, service.taskDefinition.defaultContainer!, service.taskDefinition.taskRole, target, context);
 
     const url = this.targets.service(

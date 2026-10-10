@@ -5,6 +5,7 @@ import { Template } from "aws-cdk-lib/assertions";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import {
   defineFrameworkConfig,
+  defineNetwork,
   defineResources,
   getFrameworkTargets,
   type FrameworkConfig,
@@ -30,6 +31,8 @@ function config(): FrameworkConfig {
   return defineFrameworkConfig({
     resources: defineResources({}),
     defaults,
+    // The app's defaults put containers in private subnets, which need the NAT gateway.
+    network: defineNetwork({ cidr: "10.0.0.0/16", zones: 2, nat: true }),
     http: [],
     webSocket: [],
     services: [

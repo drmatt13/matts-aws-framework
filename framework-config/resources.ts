@@ -17,7 +17,7 @@ import { PROD_DEPLOYMENT } from "@repo/framework/config/source";
  * is a resource under the name the field already carries, whether the field
  * holds a construct (`resources.cognito.userPool.userPoolId`), a string the
  * stack computed (`resources.cognito.userPoolDomainUrl`) or a secret the stack
- * built or imported (`resources.rds.credentialsSecret`). Renaming the field
+ * built or imported. Renaming the field
  * fails to compile here. The stack answers with one `linkResources(this, ...)`.
  *
  * Everything else is `resource.fromEnv("NAME")`, or `resource.secret("NAME")`
@@ -48,9 +48,9 @@ export const resources = defineResources({
   cognito: resource.stack<CognitoStack>(),
 
   // Only a full deployment builds a database, and `bin/cdk-app.ts` branches on
-  // the same value. Without it, `resources.rds.credentialsSecret.arn` still
-  // compiles everywhere it is read and resolves to nothing, so the handlers
-  // fall back to the local Postgres container rather than to a missing ARN.
+  // the same value. Without it, `resources.rds.database` still compiles where
+  // framework.config.ts names it, and a workload's `database: true` places
+  // nothing in AWS: the local Postgres container stands in for it.
   rds: PROD_DEPLOYMENT ? resource.stack<RdsStack>() : undefined,
 
   openaiApiKey: resource.secret("OPENAI_API_KEY"),

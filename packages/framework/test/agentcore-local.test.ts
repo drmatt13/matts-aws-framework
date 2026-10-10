@@ -115,7 +115,7 @@ test("a local agent gets no database URL, as its Runtime gets none: tools touch 
   const environment = await resolveLocalWorkloadEnvironment(config(), "agent:support-agent", { repositoryRoot: root });
   assert.equal(environment.PRIMARY_DATABASE_URL, undefined);
   const tool = await resolveLocalWorkloadEnvironment(config(), "lambda:echo", { repositoryRoot: root });
-  assert.ok(tool.PRIMARY_DATABASE_URL, "a tool is a Lambda, and gets the local database like any other");
+  assert.equal(tool.PRIMARY_DATABASE_URL, undefined, "a tool gets the database only when it declares database: true, as in AWS");
 });
 
 test("a caller's local invokesAgent descriptor is one the runtime reads", () => {

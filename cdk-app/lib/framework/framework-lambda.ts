@@ -20,6 +20,7 @@ import {
   findRepositoryRoot,
   resolveFrameworkDirectory,
 } from "@repo/framework/config/source";
+import type { LambdaPlacement } from "./framework-network";
 
 /**
  * Builds a Lambda from framework defaults plus target-specific overrides.
@@ -92,6 +93,9 @@ const MANIFEST_OWNED_OPTIONS = [
   "architecture", "memorySize", "timeout", "timeoutSeconds", "packaging",
   "directory", "code", "entry", "handler", "runtime", "bundling",
   "logGroup", "logRetention", "logRetentionDays", "loggingFormat",
+  // Placement follows `vpc` and `database: true`: see framework-network.ts.
+  "vpc", "vpcSubnets", "securityGroups", "securityGroup", "allowPublicSubnet",
+  "allowAllOutbound", "allowAllIpv6Outbound", "ipv6AllowedForDualStack",
 ] as const;
 
 /** Resolves a target id against the given config and builds it. */
@@ -101,12 +105,14 @@ export function frameworkLambdaById(
   config: FrameworkConfig,
   targetId: string,
   options: FrameworkLambdaOptions = {},
+  placement?: LambdaPlacement,
 ): lambda.Function {
   return frameworkLambda(
     scope,
     constructId,
     resolveLambdaTarget(config, targetId),
     options,
+    placement,
   );
 }
 
@@ -122,6 +128,7 @@ export function frameworkLambda(
   constructId: string,
   spec: ResolvedLambdaTarget,
   options: FrameworkLambdaOptions = {},
+  placement?: LambdaPlacement,
 ): lambda.Function {
   for (const key of MANIFEST_OWNED_OPTIONS) {
     if (key in options) {
@@ -144,6 +151,9 @@ export function frameworkLambda(
 
   const shared = {
     ...options,
+    // Passed at construction: a security group added to a function afterwards
+    // never reaches its VPC configuration.
+    ...(placement ?? {}),
     architecture: cdkArchitecture(spec.architecture),
     memorySize: spec.memorySize,
     timeout: cdk.Duration.seconds(spec.timeoutSeconds),

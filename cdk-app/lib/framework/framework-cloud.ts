@@ -22,6 +22,8 @@ import {
   type SecretHandle,
 } from "@repo/framework/config";
 import { frameworkLambda } from "./framework-lambda";
+import { isPlacedInNetwork, lambdaPlacement } from "./framework-network";
+import { connectDatabase } from "./framework-database";
 import { appInvocationRegistry } from "./framework-tasks";
 import { FrameworkTargetRegistry } from "./framework-target-registry";
 import { applyNativeGrant, deferResourceAttachment, hasFrameworkResources, resourceValuesForTarget } from "./framework-resources";
@@ -171,7 +173,14 @@ export function applyCloudPermissions(
 export function attachLambdaResources(scope: Construct, fn: lambda.Function, target: NormalizedTarget, context: CloudBuildContext): void {
   deferResourceAttachment(scope, () => {
     const values = resolveTargetCloudValues(target, scope);
-    const environment = { ...values.environment, ...resolveInvocationDescriptors(scope, target) };
+    const environment = {
+      ...values.environment,
+      ...resolveInvocationDescriptors(scope, target),
+      ...connectDatabase(scope, fn, target),
+      // From the private subnets only IPv6 leaves, and several AWS APIs answer
+      // IPv6 only on their dual-stack hostnames. Set in both lanes.
+      ...(isPlacedInNetwork(scope, target) ? { AWS_USE_DUALSTACK_ENDPOINT: "true" } : {}),
+    };
     assertLambdaEnvironmentBudget(target.id, environment);
     for (const [name, value] of Object.entries(environment)) fn.addEnvironment(name, value);
     applyCloudPermissions(scope, fn, target, values);
@@ -181,7 +190,8 @@ export function attachLambdaResources(scope: Construct, fn: lambda.Function, tar
 export function attachContainerResources(scope: Construct, container: ecs.ContainerDefinition, grantee: iam.IGrantable, target: NormalizedTarget, context: CloudBuildContext): void {
   deferResourceAttachment(scope, () => {
     const values = resolveTargetCloudValues(target, scope);
-    for (const [name, value] of Object.entries({ ...values.environment, ...resolveInvocationDescriptors(scope, target) })) container.addEnvironment(name, value);
+    const environment = { ...values.environment, ...resolveInvocationDescriptors(scope, target), ...connectDatabase(scope, grantee, target) };
+    for (const [name, value] of Object.entries(environment)) container.addEnvironment(name, value);
     for (const [name, secret] of Object.entries(values.secrets)) {
       // ECS reads a startup secret before the task runs, so the decrypt
       // permission belongs to the execution role, not to the task's grantee.
@@ -387,6 +397,7 @@ export function buildFrameworkLambdas(
       // An empty environment stays undefined so a function that needs nothing
       // keeps the template it has today.
       {},
+      lambdaPlacement(stack, target),
     );
     registry.lambda(target.id, fn);
     attachLambdaResources(stack, fn, target, context);

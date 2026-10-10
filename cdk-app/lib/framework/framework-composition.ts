@@ -12,7 +12,7 @@ import {
 } from "@repo/framework/config";
 import { DevLambdaReplayStack } from "./dev-lambda-replay-stack";
 import { EcsServicesStack } from "./ecs-services-stack";
-import { EcsTasksStack, type TaskNetworkInput } from "./ecs-tasks-stack";
+import { EcsTasksStack } from "./ecs-tasks-stack";
 import type { FrameworkAgentCore } from "./framework-agentcore";
 import { hasOrchestrationCloudResources, OrchestrationStack } from "./orchestration-stack";
 import {
@@ -71,8 +71,6 @@ export interface FrameworkTasksProps {
    */
   readonly cloud: { readonly mode: CloudMode };
   readonly readers?: ResourceEnvironmentReaders;
-  /** One task placement for this deployment. Absent, the default VPC is used. */
-  readonly network?: TaskNetworkInput;
 }
 
 /**
@@ -102,7 +100,6 @@ export function createFrameworkTasks(
       env: props.env,
       config: props.config,
       cloud,
-      ...(props.network ? { network: props.network } : {}),
       targets,
     }),
   };

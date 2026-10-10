@@ -19,7 +19,7 @@ export { buildTaskOverrides } from "./aws";
 /**
  * The shared invocation utility.
  *
- * The same separation `getDatabaseUrl()` uses: deployment and local startup
+ * The same separation `databaseConnection()` uses: deployment and local startup
  * supply the configuration, this resolves it, and the handler contains no
  * environment-specific branch. Import `runTask` from `@repo/framework/runtime/invocation`
  * is the whole integration — the same source runs under Docker Compose in

@@ -8,6 +8,7 @@
  * Lambda environment does.
  */
 import { randomUUID } from "node:crypto";
+import { installIpv6EgressGuard } from "./egress-guard";
 
 interface LambdaDescription {
   readonly functionName: string;
@@ -32,6 +33,12 @@ interface Request {
   readonly lambda?: LambdaDescription;
   /** Stay alive for the next invocation instead of exiting after this one. */
   readonly keepAlive?: boolean;
+  /**
+   * "ipv6" for a handler in the VPC (`vpc: true` or `database: true`) when it
+   * has no NAT gateway: in AWS it runs in the private subnets, where only IPv6 leaves,
+   * and this process is held to the same rule. See egress-guard.ts.
+   */
+  readonly egress?: "ipv6";
 }
 
 type Handler = (event: unknown, context: unknown) => unknown;
@@ -77,6 +84,9 @@ async function load(request: Request): Promise<Handler> {
     }
     return loaded.handler;
   }
+  // Before the import, so every client the handler builds at module scope
+  // resolves names through the guard.
+  if (request.egress === "ipv6") installIpv6EgressGuard(request.lambda?.functionName ?? "This Lambda");
   const module = (await import(request.entry)) as Record<string, unknown>;
   const handler = module[request.handler];
   if (typeof handler !== "function") {

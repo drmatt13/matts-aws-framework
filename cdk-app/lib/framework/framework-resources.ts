@@ -85,6 +85,9 @@ export function initializeFrameworkResources(scope: IConstruct, options: Options
 
 export function hasFrameworkResources(scope: IConstruct): boolean { return !!registry(scope).options; }
 
+/** The config, graph and deployment name this app was initialized with. */
+export function frameworkResourceOptions(scope: IConstruct): Readonly<Options> | undefined { return registry(scope).options; }
+
 /** A stack's secret, for a stack that links one field rather than all of them. */
 export function linkResource(scope: IConstruct, reference: SecretProjections, construct: ISecret): ISecret;
 export function linkResource<T>(scope: IConstruct, reference: CdkResource<T>, construct: NoInfer<T>): T;

@@ -37,8 +37,9 @@ import {
 import { isInvocationBinding } from "./resources";
 import { assertRequirementsMet, describeRequirementFix } from "./requirements";
 import type { CloudRequirement, ResolvedCloudRequirement } from "./requirements";
-import { assertJsonArguments, isCdkResource, isGroupMember, type NativeGrantBinding } from "./cdk-resources";
+import { assertJsonArguments, isCdkResource, isGroupMember, type CdkResource, type NativeGrantBinding } from "./cdk-resources";
 import { normalizeWorkflow } from "./workflows";
+import { isFrameworkNetwork, type FrameworkNetwork } from "./network";
 import type {
   NormalizedWorkflow,
   WorkflowDefinition,
@@ -51,6 +52,8 @@ import type {
   InvocationBinding,
   InvokesAgentBinding,
   CompletesCallbackBinding,
+  Connectable,
+  ConnectsToBinding,
   ReadSecretBinding,
   ResourceBinding,
   RunsTaskBinding,
@@ -74,6 +77,7 @@ export * from "./workflows";
 export * from "./agentcore";
 export * from "./workflow-semantics";
 export * from "./workflow-asl";
+export * from "./network";
 // Named rather than `export *`: reading a deploy token is the framework's job,
 // so `isDeploySettingEnabled` stays internal to the package.
 export { DEPLOY_SETTINGS } from "./deploy";
@@ -362,6 +366,13 @@ export interface LambdaDefaults {
    * values (1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, …). Defaults to 30.
    */
   readonly logRetentionDays?: number;
+  /**
+   * Run in the network's private subnets. Defaults to false: a Lambda runs
+   * outside the VPC, with the whole internet. In the VPC it leaves over IPv6
+   * only, unless framework-config/network.ts turns on its NAT gateway.
+   * `database: true` implies it.
+   */
+  readonly vpc?: boolean;
 }
 
 /** The retention periods CloudWatch Logs accepts, in days. */
@@ -386,6 +397,8 @@ export interface LambdaTargetDefinition {
   readonly bundling?: LambdaBundlingOptions;
   /** Override how many days CloudWatch keeps this function's logs. */
   readonly logRetentionDays?: number;
+  /** Override whether this Lambda runs in the network's private subnets. */
+  readonly vpc?: boolean;
   /**
    * Override the runtime's conventional *exported handler* name. This never
    * names a directory — {@link LambdaSourceSpec.directory} does that.
@@ -461,7 +474,6 @@ export interface EventLambdaTargetDefinition<Catalog = AnyResourceCatalog>
 
 /** Local facilities a service can ask for. Each one is an adapter, not a permission. */
 export const LOCAL_SERVICE_RESOURCES = [
-  "primaryDatabase",
   "awsCredentials",
 ] as const;
 export type LocalServiceResource = (typeof LOCAL_SERVICE_RESOURCES)[number];
@@ -479,7 +491,22 @@ export const RESERVED_LOCAL_ENVIRONMENT_KEYS = [
   "AWS_SDK_LOAD_CONFIG",
   "PORT",
   "PRIMARY_DATABASE_URL",
+  "PRIMARY_DATABASE_AUTH",
 ] as const;
+
+/**
+ * What `database: true` hands a workload, in both lanes: the connection URL,
+ * which never carries a password in AWS, and how to authenticate ("iam" in
+ * AWS, absent locally). Read by `databaseConnection()`.
+ */
+export const DATABASE_ENVIRONMENT_KEYS = ["PRIMARY_DATABASE_URL", "PRIMARY_DATABASE_AUTH"] as const;
+
+/**
+ * The database role every workload logs in as: created on deploy with
+ * `rds_iam` and no password, it owns the tables migrations create and is not a
+ * superuser. The master user RDS requires is never a workload's.
+ */
+export const DATABASE_LOGIN = "app_user";
 
 /**
  * Compose service names the framework's own local infrastructure holds.
@@ -517,6 +544,22 @@ export const RESERVED_LOCAL_SERVICE_NAMES = [
 
 /** Container CPU architecture. The same two values a Lambda has. */
 export type ContainerArchitecture = LambdaArchitecture;
+
+export const CONTAINER_SUBNETS = ["private", "public"] as const;
+/** Which subnet of the application's network a container runs in. */
+export type ContainerSubnet = (typeof CONTAINER_SUBNETS)[number];
+
+/** What every task and service inherits unless it declares its own. */
+export interface ContainerDefaults {
+  /** Architecture for every task and service that does not declare its own. */
+  readonly architecture?: ContainerArchitecture;
+  /**
+   * Subnet for every task and service that does not declare its own:
+   * "public" or "private". Defaults to "public". "private" needs the
+   * network's NAT gateway, which is off unless defineNetwork({ nat: true }).
+   */
+  readonly subnet?: ContainerSubnet;
+}
 
 /** A `CfnOutput` carrying one of a target's deployed values. */
 export interface CloudOutputSpec {
@@ -675,6 +718,22 @@ export function isFrameworkOwnedEnvironmentName(name: string): boolean {
 /** The workload environment shared by deployed and local execution. */
 export interface TargetEnvironment<Catalog = AnyResourceCatalog> {
   readonly environment?: Readonly<Record<string, string | StringResourceReference<Catalog>>>;
+  /**
+   * This workload uses the application's database, the one framework.config.ts
+   * names as `database`.
+   *
+   * In a production deployment a Lambda moves into the network's private
+   * subnets for it, joins the security group the database admits, may log in
+   * as the database's IAM login and nothing else, and is handed
+   * `PRIMARY_DATABASE_URL` with no password in it. Locally it is handed the
+   * Compose Postgres instead, under the network's egress rules. Either way the
+   * handler calls `getDatabase(databaseConnection())` and never sees a
+   * password or a secret.
+   *
+   * A Lambda without it runs outside the VPC, with the whole internet,
+   * unless it sets `vpc: true`.
+   */
+  readonly database?: true;
 }
 
 export interface ServiceEnvironment<Catalog = AnyResourceCatalog> extends TargetEnvironment<Catalog> {
@@ -779,8 +838,16 @@ export interface ServiceCloudSettings<Catalog = AnyResourceCatalog>
    * be combined with `auth: true`.
    */
   readonly publicLoadBalancer?: boolean;
-  /** Give tasks a public IP. Defaults to true. */
-  readonly assignPublicIp?: boolean;
+  /**
+   * Where the tasks run in the application's network. Inherits
+   * defaults.container.subnet, falling back to "public".
+   *
+   * "public": a public subnet, with a public IPv4 address per running task and
+   * no inbound rules. "private": a private subnet, reaching the internet
+   * through the network's NAT gateway, which defineNetwork({ nat: true }) has
+   * to turn on (about $33 a month).
+   */
+  readonly subnet?: ContainerSubnet;
   /**
    * Image and task architecture, kept in step with each other. Inherits
    * defaults.container.architecture, falling back to x86_64.
@@ -805,6 +872,16 @@ export interface TaskCloudSettings<Catalog = AnyResourceCatalog>
   readonly cpu?: number;
   /** Task memory in MiB. Defaults to 512. */
   readonly memoryMiB?: number;
+  /**
+   * Where the tasks run in the application's network. Inherits
+   * defaults.container.subnet, falling back to "public".
+   *
+   * "public": a public subnet, with a public IPv4 address per running task and
+   * no inbound rules. "private": a private subnet, reaching the internet
+   * through the network's NAT gateway, which defineNetwork({ nat: true }) has
+   * to turn on (about $33 a month).
+   */
+  readonly subnet?: ContainerSubnet;
   /**
    * Image and task architecture. Inherits defaults.container.architecture,
    * falling back to x86_64. Pins the local build and ECS runtime platform
@@ -839,6 +916,7 @@ const FARGATE_CPU_MEMORY: ReadonlyMap<
 export interface ResolvedTaskCloudSettings {
   readonly cpu: number;
   readonly memoryMiB: number;
+  readonly subnet: ContainerSubnet;
   /** Always concrete: local build platform and ECS runtime platform agree. */
   readonly architecture: ContainerArchitecture;
   readonly buildTarget?: string;
@@ -850,7 +928,7 @@ export interface ResolvedServiceCloudSettings {
   readonly memoryMiB: number;
   readonly desiredCount: number;
   readonly publicLoadBalancer: boolean;
-  readonly assignPublicIp: boolean;
+  readonly subnet: ContainerSubnet;
   readonly architecture: ContainerArchitecture;
   readonly buildTarget?: string;
 }
@@ -867,7 +945,17 @@ export type ResolvedBinding =
   | (RunsTaskBinding & { readonly environment: string })
   | (StartsWorkflowBinding & { readonly environment: string })
   | (InvokesAgentBinding & { readonly environment: string })
-  | CompletesCallbackBinding;
+  | CompletesCallbackBinding
+  | ConnectsToBinding;
+
+/** The network edges among a target's bindings, in declaration order. */
+export function getConnectsToBindings(
+  bindings: readonly ResolvedBinding[],
+): readonly ConnectsToBinding[] {
+  return bindings.filter(
+    (binding): binding is ConnectsToBinding => binding.capability === "connectsTo",
+  );
+}
 
 export function getAgentInvocationBindings(bindings: readonly ResolvedBinding[]): readonly (InvokesAgentBinding & { readonly environment: string })[] {
   return bindings.filter((binding): binding is InvokesAgentBinding & { readonly environment: string } => binding.capability === "invokesAgent");
@@ -1092,9 +1180,9 @@ function assertContainerBuildSettings(
 function assertTaskCloudSettings(
   settings: TaskCloudSettings,
   origin: string,
-  containerDefault?: ContainerArchitecture,
+  containerDefaults: ContainerDefaults = {},
 ): ResolvedTaskCloudSettings {
-  for (const field of ["desiredCount", "publicLoadBalancer", "assignPublicIp"] as const) {
+  for (const field of ["desiredCount", "publicLoadBalancer"] as const) {
     rejectObsoleteField(
       settings,
       field,
@@ -1102,23 +1190,48 @@ function assertTaskCloudSettings(
       "A task runs to completion and is never load balanced or maintained at a count.",
     );
   }
+  rejectObsoleteField(settings, "assignPublicIp", `${origin}.cloud`, ASSIGN_PUBLIC_IP_RETIRED);
   const { cpu, memoryMiB } = assertFargateSize(settings, origin);
   assertContainerBuildSettings(settings, origin);
   return {
     cpu,
     memoryMiB,
-    architecture: settings.architecture ?? containerDefault ?? "x86_64",
+    subnet: resolveContainerSubnet(settings.subnet, containerDefaults, origin),
+    architecture: settings.architecture ?? containerDefaults.architecture ?? "x86_64",
     ...(settings.buildTarget === undefined
       ? {}
       : { buildTarget: settings.buildTarget }),
   };
 }
 
+const ASSIGN_PUBLIC_IP_RETIRED =
+  'A container\'s place in the network is cloud.subnet: "public" (a public subnet and a public IP) or "private" (a private subnet behind the network\'s NAT gateway). It inherits defaults.container.subnet.';
+
+/**
+ * A container's subnet: its own, else the container default, else public —
+ * the one that runs without a NAT gateway, which the network does not build
+ * unless asked.
+ */
+function resolveContainerSubnet(
+  declared: unknown,
+  containerDefaults: ContainerDefaults,
+  origin: string,
+): ContainerSubnet {
+  const subnet = declared ?? containerDefaults.subnet ?? "public";
+  if (!(CONTAINER_SUBNETS as readonly unknown[]).includes(subnet)) {
+    throw new Error(
+      `${origin} declares cloud.subnet ${JSON.stringify(subnet)}. A container runs in a "private" or a "public" subnet.`,
+    );
+  }
+  return subnet as ContainerSubnet;
+}
+
 function assertServiceCloudSettings(
   settings: ServiceCloudSettings,
   origin: string,
-  containerDefault?: ContainerArchitecture,
+  containerDefaults: ContainerDefaults = {},
 ): ResolvedServiceCloudSettings {
+  rejectObsoleteField(settings, "assignPublicIp", `${origin}.cloud`, ASSIGN_PUBLIC_IP_RETIRED);
   const { cpu, memoryMiB } = assertFargateSize(settings, origin);
 
   const desiredCount = settings.desiredCount ?? 1;
@@ -1135,8 +1248,8 @@ function assertServiceCloudSettings(
     memoryMiB,
     desiredCount,
     publicLoadBalancer: settings.publicLoadBalancer ?? false,
-    assignPublicIp: settings.assignPublicIp ?? true,
-    architecture: settings.architecture ?? containerDefault ?? "x86_64",
+    subnet: resolveContainerSubnet(settings.subnet, containerDefaults, origin),
+    architecture: settings.architecture ?? containerDefaults.architecture ?? "x86_64",
     ...(settings.buildTarget === undefined
       ? {}
       : { buildTarget: settings.buildTarget }),
@@ -1164,7 +1277,8 @@ export function resolveTargetSettings(
       | WorkflowCloudSettings;
   },
   origin: string,
-  containerDefault?: ContainerArchitecture,
+  containerDefaults: ContainerDefaults = {},
+  database?: CdkResource<Connectable>,
 ): ResolvedTargetSettings {
   const cloud = declaration.cloud ?? {};
   for (const key of ["environment", "secrets"] as const) {
@@ -1207,6 +1321,16 @@ export function resolveTargetSettings(
   const secretReads: { readonly name: string; readonly secret: ResourceReference }[] = [];
   for (const [name, value] of Object.entries(declaration.environment ?? {})) {
     claimName(name, "environment");
+    if (name === "AWS_USE_DUALSTACK_ENDPOINT") {
+      throw new Error(
+        `${origin} declares environment "AWS_USE_DUALSTACK_ENDPOINT". The framework sets it on every Lambda in the VPC, in both lanes; remove it.`,
+      );
+    }
+    if ((DATABASE_ENVIRONMENT_KEYS as readonly string[]).includes(name)) {
+      throw new Error(
+        `${origin} declares environment "${name}". The framework sets it on a workload that declares database: true; declare that instead.`,
+      );
+    }
     if (
       isLambda &&
       (RESERVED_LAMBDA_ENVIRONMENT_KEYS as readonly string[]).includes(name)
@@ -1354,6 +1478,34 @@ export function resolveTargetSettings(
     );
   }
 
+  if (declaration.database !== undefined) {
+    if (declaration.database !== true) {
+      throw new Error(`${origin} declares database ${JSON.stringify(declaration.database)}. It is true or left out.`);
+    }
+    if (role === "workflow") {
+      throw new Error(`${origin} declares database: true. A workflow has no process of its own; declare it on the target the workflow invokes.`);
+    }
+    if (role === "agent") {
+      throw new Error(
+        `${origin} declares database: true, but an AgentCore agent runs outside the VPC. Give the work that needs the database to a tool: tools are Lambdas and can declare database: true.`,
+      );
+    }
+    if (!database) {
+      throw new Error(
+        `${origin} declares database: true, but the config names no database. Add database: resources.<stack>.<construct> to framework.config.ts, such as database: resources.rds.database.`,
+      );
+    }
+    bindings.push({
+      capability: "connectsTo",
+      resource: {
+        $cdk: database.$cdk,
+        path: [...database.path],
+        optional: database.optional,
+        ...(database.absent === true ? { absent: true as const } : {}),
+      },
+    });
+  }
+
   // Derived from the environment entries above, in the order they were
   // written, so a target's grants read in the order its inputs do.
   //
@@ -1404,10 +1556,10 @@ export function resolveTargetSettings(
     );
   }
   const service = role === "service"
-    ? assertServiceCloudSettings(cloud as ServiceCloudSettings, origin, containerDefault)
+    ? assertServiceCloudSettings(cloud as ServiceCloudSettings, origin, containerDefaults)
     : undefined;
   const task = role === "task"
-    ? assertTaskCloudSettings(cloud as TaskCloudSettings, origin, containerDefault)
+    ? assertTaskCloudSettings(cloud as TaskCloudSettings, origin, containerDefaults)
     : undefined;
   for (const name of Object.keys(secrets)) {
     claimName(name, "secrets");
@@ -1483,6 +1635,7 @@ function reservedContainerEnvironment(role: TargetRole): readonly string[] {
  */
 function bindingSortKey(binding: ResolvedBinding): string {
   if (binding.capability === "nativeGrant") return JSON.stringify(binding);
+  if (binding.capability === "connectsTo") return `connectsTo:${binding.resource.path.join(".")}`;
   return binding.capability === "completesCallback"
     ? `completesCallback:${binding.integration}`
     : binding.environment;
@@ -1695,6 +1848,11 @@ export function resolveTaskLocalSpec(
   const resources = local.resources ?? [];
   const seen = new Set<string>();
   for (const resource of resources) {
+    if ((resource as string) === "primaryDatabase") {
+      throw new Error(
+        `${origin} requests local resource "primaryDatabase". A task reaches the database the way every workload does, in both lanes: declare database: true.`,
+      );
+    }
     if (!(LOCAL_SERVICE_RESOURCES as readonly string[]).includes(resource)) {
       throw new Error(
         `${origin} requests local resource "${resource}". Expected ${LOCAL_SERVICE_RESOURCES.join(" or ")}.`,
@@ -1750,6 +1908,8 @@ interface ResolvedLambdaBase {
   readonly memorySize: number;
   readonly timeoutSeconds: number;
   readonly logRetentionDays: number;
+  /** In the network's private subnets: `vpc`, or `database: true`. */
+  readonly vpc: boolean;
   readonly localReplay?: true;
 }
 
@@ -1872,8 +2032,8 @@ export type LambdaSection = "http" | "webSocket" | "events" | "tools";
 export interface FrameworkDefaults {
   /** Baseline inherited by every framework-built Lambda. */
   readonly lambda: LambdaDefaults;
-  /** Architecture for every task and service that does not declare its own. */
-  readonly container?: { readonly architecture?: ContainerArchitecture };
+  /** Architecture and subnet for every task and service that does not declare its own. */
+  readonly container?: ContainerDefaults;
   /** Overrides applied to every Lambda in the `http` section. */
   readonly http?: LambdaTargetDefinition;
   /** Overrides applied to every Lambda in the `webSocket` section. */
@@ -1972,6 +2132,19 @@ export interface FrameworkConfig {
   readonly tools?: FrameworkTools;
   /** AgentCore Runtime agents, keyed by stable target id. */
   readonly agents?: FrameworkAgents;
+  /**
+   * The application's network, from `defineNetwork(...)`. Built only by a
+   * production deployment, and only once a workload uses the database or a
+   * container needs a subnet.
+   */
+  readonly network?: FrameworkNetwork;
+  /**
+   * The application's database: the catalog construct a workload reaches by
+   * declaring `database: true`, such as `resources.rds.database`. An
+   * `rds.DatabaseInstance` built in `frameworkVpc(this)`; workloads log in to
+   * it with IAM, never with a password.
+   */
+  readonly database?: CdkResource<Connectable>;
 }
 
 // ---------------------------------------------------------------------------
@@ -2006,6 +2179,8 @@ export interface FrameworkConfigInput {
   readonly workflows?: SectionInput<Readonly<Record<string, WorkflowDefinition>>>;
   readonly tools?: SectionInput<FrameworkTools>;
   readonly agents?: SectionInput<FrameworkAgents>;
+  readonly network?: FrameworkNetwork;
+  readonly database?: CdkResource<Connectable>;
 }
 
 type UnionToIntersection<Union> = (
@@ -2103,6 +2278,16 @@ function mergeSection<Entry>(
 export function defineFrameworkConfig<const Input extends FrameworkConfigInput>(
   input: Input,
 ): ComposedFrameworkConfig<Input> {
+  if (input.network !== undefined && !isFrameworkNetwork(input.network)) {
+    throw new Error(
+      'network takes the value defineNetwork(...) returns, such as defineNetwork({ cidr: "10.0.0.0/16", zones: 2 }).',
+    );
+  }
+  if (input.database !== undefined && (!isCdkResource(input.database) || input.database.path.length < 2)) {
+    throw new Error(
+      "database takes the catalog construct workloads connect to, such as database: resources.rds.database.",
+    );
+  }
   if ("gateways" in input) {
     throw new Error(
       "gateways is no longer a section. An agent's Gateway is derived from its tools list: move each Gateway's tools onto the agents that used it, as agents.<id>.tools.",
@@ -2280,11 +2465,18 @@ export function resolveLambdaTargetDefinition(
     memorySize: pick("memorySize") ?? defaults.memorySize,
     timeoutSeconds: pick("timeoutSeconds") ?? defaults.timeoutSeconds,
     logRetentionDays: pick("logRetentionDays") ?? defaults.logRetentionDays ?? 30,
+    // The database is in the network, so using it means being there too.
+    vpc: definition.database === true || (pick("vpc") ?? defaults.vpc ?? false),
     ...(definition.localReplay ? { localReplay: true as const } : {}),
   };
   if (!(CLOUDWATCH_LOG_RETENTION_DAYS as readonly number[]).includes(base.logRetentionDays)) {
     throw new Error(
       `lambda:${id} keeps logs for ${base.logRetentionDays} days, which CloudWatch does not offer. Use one of ${CLOUDWATCH_LOG_RETENTION_DAYS.join(", ")}.`,
+    );
+  }
+  if (definition.database === true && definition.vpc === false) {
+    throw new Error(
+      `lambda:${id} declares database: true and vpc: false. The database is in the VPC, so a Lambda that uses it runs there too: remove vpc: false.`,
     );
   }
 
@@ -2424,6 +2616,10 @@ function validateLambdaBuildDefinition(
     throw new Error(
       `${origin} has unsupported packaging "${packaging}". Expected ${LAMBDA_PACKAGING.join(" or ")}.`,
     );
+  }
+
+  if (definition.vpc !== undefined && typeof definition.vpc !== "boolean") {
+    throw new Error(`${origin} declares vpc ${JSON.stringify(definition.vpc)}. It is true or false.`);
   }
 
   if (
@@ -2730,7 +2926,8 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
             ? extra.agentDefinition ?? {}
           : definition,
       origin,
-      config.defaults.container?.architecture,
+      config.defaults.container,
+      config.database,
     );
     const { cloud, environment, secrets } = settings;
     // Defaults are folded in before comparing, so two routes that reach one
@@ -3164,6 +3361,7 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
   assertOrchestrationIdentities(targets);
   assertReferencesAreDeclared(config, targets);
   assertInvocationEdges(config, targets);
+  assertNetworkEdges(config, targets);
 
   return { targets, http, webSocket };
 }
@@ -3286,6 +3484,10 @@ function assertReferencesAreDeclared(
   for (const target of targets.values()) {
     const origin = target.origins[0] ?? target.reference;
     for (const binding of target.cloud.bindings) {
+      if (binding.capability === "connectsTo") {
+        if (!declaredNatively(binding.resource.path)) throw new Error(`${origin} declares database: true, and the config's database, resources.${binding.resource.path.join(".")}, is not declared in its "resources" catalog.`);
+        continue;
+      }
       if (binding.capability !== "nativeGrant") continue;
       if (!declaredNatively(binding.resource.path)) throw new Error(`${origin} grant ${binding.method} references a native resource absent from this catalog.`);
     }
@@ -3340,6 +3542,83 @@ function assertReferencesAreDeclared(
  * `cloud.requirements` answers none of these: it validates resource *inputs*,
  * and says nothing about target availability or invocation permission.
  */
+/** The catalog entry a path belongs to: a stack's group for its member, else the entry. */
+function catalogGroup(path: readonly string[]): string {
+  return (path.length > 1 ? path.slice(0, -1) : path).join(".");
+}
+
+/**
+ * Network edges, checked across the whole config.
+ *
+ * A connection is decided by its declaration's path, never by whether the
+ * resource is present in the graph being built: a development deployment
+ * builds no database, and the local lane still has to
+ * hold the edge exactly as a production network would. That is what makes
+ * "works in a dev deployment" mean "works in prod" for the network too.
+ */
+function assertNetworkEdges(
+  config: FrameworkConfig,
+  targets: ReadonlyMap<TargetReference, MutableTarget>,
+): void {
+  const describe = (target: MutableTarget): string => target.origins[0] ?? target.reference;
+
+  // Without a NAT gateway a private subnet has IPv6 out and no IPv4, and
+  // Fargate pulls a task's image over IPv4, so a container there never starts.
+  // Inbound traffic is not the issue: it starts no task. Checked here rather
+  // than at a production synth, so the config that runs locally is the config
+  // that deploys.
+  if (config.network?.nat !== true) {
+    for (const target of targets.values()) {
+      const settings = target.cloud.service ?? target.cloud.task;
+      if (settings?.subnet !== "private" || !isDeploySettingEnabled(target.deploy, "cloud")) continue;
+      throw new Error(
+        `${describe(target)} runs in a private subnet, which has no IPv4 route out because framework-config/network.ts has no NAT gateway, and Fargate pulls a container's image over IPv4: it could not start. Give it cloud.subnet: "public" (or set defaults.container.subnet), or turn one on with defineNetwork({ ..., nat: true }), about $33 a month.`,
+      );
+    }
+  }
+
+  const lambdaSpec = (target: MutableTarget) =>
+    resolveLambdaTargetDefinition(config, target.id, target.directory as FrameworkDirectory, target.definition, target.section);
+
+  /** Why a Lambda cannot run in the VPC, or undefined when it can. */
+  const outsideTheNetwork = (target: MutableTarget): string | undefined => {
+    if (target.kind !== "lambda") return undefined;
+    const spec = lambdaSpec(target);
+    if (spec.packaging === "zip" && isNodeLambdaRuntime(spec.runtime)) return undefined;
+    return `It is a ${spec.packaging === "container" ? "container" : spec.runtime} Lambda, and only TypeScript Lambdas run inside the VPC`;
+  };
+
+  for (const target of targets.values()) {
+    const database = getConnectsToBindings(target.cloud.bindings).length > 0;
+    if (!database && !(target.kind === "lambda" && lambdaSpec(target).vpc)) continue;
+    const flag = database ? "declares database: true" : "has vpc: true";
+    const outside = outsideTheNetwork(target);
+    if (outside) {
+      throw new Error(`${describe(target)} ${flag}. ${outside}: ${database ? "reach the database from a TypeScript Lambda instead" : "give it vpc: false"}.`);
+    }
+    if (target.role === "event" && config.events?.[target.id]?.localReplay !== true) {
+      throw new Error(
+        `${describe(target)} ${flag}, and a dev deployment builds no ${database ? "database" : "network"}. AWS invokes this event in a dev deployment too, so its handler has to run locally: add localReplay: true.`,
+      );
+    }
+  }
+
+  // Anything else read from the database's stack is an address with no route
+  // to it unless the workload is in the network too.
+  if (!config.database) return;
+  const databaseGroup = catalogGroup(config.database.path);
+  for (const target of targets.values()) {
+    if (getConnectsToBindings(target.cloud.bindings).length > 0) continue;
+    const reads = [...Object.values(target.environment), ...Object.values(target.secrets)].filter(isResourceReference);
+    const reference = reads.find((read) => catalogGroup(read.path) === databaseGroup);
+    if (!reference) continue;
+    const outside = outsideTheNetwork(target);
+    throw new Error(
+      `${describe(target)} reads ${formatResourceReference(reference)} from the database's stack but does not declare database: true, so it would have the address and no route to it. ${outside ? `${outside}: reach the database from a TypeScript Lambda instead.` : "Declare database: true."}`,
+    );
+  }
+}
+
 function assertInvocationEdges(
   config: FrameworkConfig,
   targets: ReadonlyMap<TargetReference, MutableTarget>,
@@ -3616,7 +3895,12 @@ export function resolveTaskTarget(
     secrets: target.secrets,
     cloud:
       target.cloud.task ??
-      ({ cpu: 256, memoryMiB: 512, architecture: config.defaults.container?.architecture ?? "x86_64" } as ResolvedTaskCloudSettings),
+      ({
+        cpu: 256,
+        memoryMiB: 512,
+        subnet: config.defaults.container?.subnet ?? "public",
+        architecture: config.defaults.container?.architecture ?? "x86_64",
+      } as ResolvedTaskCloudSettings),
     local: resolveTaskLocalSpec(
       target.taskDefinition ?? {},
       target.origins[0] ?? target.reference,
@@ -4059,10 +4343,19 @@ export function validateFrameworkConfig(config: FrameworkConfig): void {
       `defaults.lambda.architecture "${defaults.architecture}" is not supported.`,
     );
   }
+  if (defaults.vpc !== undefined && typeof defaults.vpc !== "boolean") {
+    throw new Error(`defaults.lambda.vpc ${JSON.stringify(defaults.vpc)} is not true or false.`);
+  }
   const containerArchitecture = config.defaults.container?.architecture;
   if (containerArchitecture !== undefined && !LAMBDA_ARCHITECTURES.includes(containerArchitecture)) {
     throw new Error(
       `defaults.container.architecture "${containerArchitecture}" is not supported.`,
+    );
+  }
+  const containerSubnet = config.defaults.container?.subnet;
+  if (containerSubnet !== undefined && !(CONTAINER_SUBNETS as readonly unknown[]).includes(containerSubnet)) {
+    throw new Error(
+      `defaults.container.subnet ${JSON.stringify(containerSubnet)} is not a subnet. A container runs in a "private" or a "public" subnet.`,
     );
   }
 

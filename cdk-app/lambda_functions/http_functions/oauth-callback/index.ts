@@ -1,4 +1,4 @@
-import { getDatabaseUrl } from "@repo/framework/runtime/database";
+import { databaseConnection } from "@repo/framework/runtime/database";
 import {
   getHttpMethod,
   isTrustedBrowserRequest,
@@ -141,7 +141,7 @@ export const lambdaHandler = async (
       typeof payload.family_name === "string" && payload.family_name.trim()
         ? payload.family_name.trim()
         : "";
-    const database = getDatabase(await getDatabaseUrl());
+    const database = getDatabase(databaseConnection());
 
     await ensureCognitoUser(database.users, {
       cognitoSub: payload.sub,

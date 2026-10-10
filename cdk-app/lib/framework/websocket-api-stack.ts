@@ -48,6 +48,9 @@ export class WebSocketApiStack extends cdk.Stack {
 
     this.api = new apigatewayv2.WebSocketApi(this, "MyWebSocketAPI", {
       routeSelectionExpression: "$request.body.action",
+      // Dual-stack, so a handler inside the VPC, where only IPv6 leaves, can
+      // still push to its connections through this API's own endpoint.
+      ipAddressType: apigatewayv2.IpAddressType.DUAL_STACK,
     });
     this.apiId = this.api.apiId;
 

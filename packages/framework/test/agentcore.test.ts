@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   defineFrameworkConfig,
+  defineNetwork,
+  defineResources,
+  resource,
   getAgentTools,
   getAgentBrowserRoutes,
   getFrameworkTargets,
@@ -18,6 +21,8 @@ const cognito = { USER_POOL_ID: "us-east-1_pool", USER_POOL_CLIENT_ID: "client" 
 
 const base = {
   defaults: { ...defaults, tools: { timeoutSeconds: 20 } },
+  // The app's defaults put containers in private subnets, which need the NAT gateway.
+  network: defineNetwork({ cidr: "10.0.0.0/16", zones: 2, nat: true }),
   http: [],
   webSocket: [],
   events: [],
@@ -42,6 +47,21 @@ test("tools and agents take their directories from their ids", () => {
   assert.equal(targets.get("lambda:lookup-case")?.role, "tool");
   assert.equal(targets.get("lambda:lookup-case")?.directory, "/lambda_functions/tool_functions/lookup-case");
   assert.equal(targets.get("agent:support-agent")?.directory, "/agentcore/support-agent");
+});
+
+test("an agent never uses the database; a tool can", () => {
+  const catalog = defineResources({ rds: resource.stack<{ readonly database: { readonly connections: object; readonly node: { readonly id: string; readonly path: string } } }>() });
+  assert.throws(
+    () => config({
+      resources: catalog, database: catalog.rds.database,
+      agents: [{ "support-agent": { ...agents["support-agent"], database: true } }],
+    } as never),
+    /declares database: true, but an AgentCore agent runs outside the VPC\. Give the work that needs the database to a tool/,
+  );
+  assert.doesNotThrow(() => config({
+    resources: catalog, database: catalog.rds.database,
+    tools: [{ ...tools, "lookup-case": { ...tools["lookup-case"], database: true } }],
+  } as never));
 });
 
 test("a tool inherits defaults.tools like any other section", () => {

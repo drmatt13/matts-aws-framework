@@ -30,8 +30,6 @@ export const cognitoEvents = {
     timeoutSeconds: 30,
     bundling: { sourceMap: false },
     localReplay: true,
-    environment: {
-      PRIMARY_DATABASE_SECRET_ARN: resources.rds.credentialsSecret.arn,
-    },
+    database: true,
   },
 } satisfies EventsSection;

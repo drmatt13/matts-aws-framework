@@ -1,6 +1,7 @@
 import { defineFrameworkConfig } from "@repo/framework/config";
 import { defaults } from "./framework-config/defaults";
 import { resources } from "./framework-config/resources";
+import { network } from "./framework-config/network";
 import { authRoutes } from "./framework-config/http/auth";
 import { graphqlRoutes } from "./framework-config/http/graphql";
 import { exampleRoutes } from "./framework-config/http/examples";
@@ -10,6 +11,7 @@ import { cognitoEvents } from "./framework-config/events/cognito";
 import { invocationTestEvents } from "./framework-config/events/invocation-tests";
 import { exampleService } from "./framework-config/services/example";
 import { invocationTestTasks } from "./framework-config/tasks/invocation-tests";
+import { databaseTasks } from "./framework-config/tasks/database";
 import { capabilityWorkflows } from "./framework-config/workflows/capabilities";
 import { invocationTestWorkflows } from "./framework-config/workflows/invocation-tests";
 import { exampleTools } from "./framework-config/tools/example";
@@ -35,11 +37,15 @@ export { resources } from "./framework-config/resources";
 const framework = defineFrameworkConfig({
   resources,
   defaults,
+  network,
+  // What a workload reaches by declaring database: true. Built only by a
+  // production deployment; locally, the Compose Postgres stands in for it.
+  database: resources.rds.database,
   http: [authRoutes, graphqlRoutes, exampleRoutes, invocationTestRoutes],
   webSocket: [webSocketRoutes],
   events: [cognitoEvents, invocationTestEvents],
   services: [exampleService],
-  tasks: [invocationTestTasks],
+  tasks: [invocationTestTasks, databaseTasks],
   workflows: [invocationTestWorkflows, capabilityWorkflows],
   tools: [exampleTools],
   agents: [exampleAgent],

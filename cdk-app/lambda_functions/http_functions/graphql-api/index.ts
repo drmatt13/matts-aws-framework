@@ -1,7 +1,7 @@
 import { createYoga } from "graphql-yoga";
 import { authenticated } from "@repo/framework/runtime/auth";
 import { getHttpMethod, jsonResponse } from "@repo/framework/runtime/http";
-import { getDatabaseUrl } from "@repo/framework/runtime/database";
+import { databaseConnection } from "@repo/framework/runtime/database";
 import { getDatabase } from "@repo/database";
 import type { GraphQLContext } from "./graphql-context";
 import {
@@ -66,9 +66,9 @@ export const lambdaHandler = authenticated(async (event, session) => {
       headers.delete("content-length");
     }
 
-    // Resolved once per execution environment; the local lane hands the
-    // handler the Compose Postgres URL instead of a secret.
-    const database = getDatabase(await getDatabaseUrl());
+    // One pool per execution environment. In AWS each new connection signs
+    // its own IAM token; locally it is the Compose Postgres.
+    const database = getDatabase(databaseConnection());
 
     const response = await getYoga().fetch(
       getRequestUrl(event),

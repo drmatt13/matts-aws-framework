@@ -19,6 +19,7 @@ interface ChildRequest {
   readonly event: unknown;
   readonly context?: PinnedLambdaContext;
   readonly lambda: { readonly functionName: string; readonly memoryLimitInMB: number; readonly timeoutSeconds: number };
+  readonly egress?: "ipv6";
 }
 
 interface ChildReply {
@@ -278,18 +279,30 @@ export class LambdaWorkerPool {
   }
 }
 
+/**
+ * The egress a handler's process is held to. A Lambda in the VPC (`vpc: true`
+ * or `database: true`) runs in its private subnets in AWS, so it gets their
+ * egress here too: IPv6 only, unless the network has a NAT gateway.
+ */
+export function localLambdaEgress(config: FrameworkConfig, target: LambdaTarget): "ipv6" | undefined {
+  if (config.network?.nat === true) return undefined;
+  return resolveLambdaTarget(config, target.slice("lambda:".length)).vpc ? "ipv6" : undefined;
+}
+
 export async function invokeLocalNodeLambda(config: FrameworkConfig, target: LambdaTarget, event: unknown, options: LocalLambdaInvocationOptions): Promise<unknown> {
   const id = target.slice("lambda:".length);
   const spec = resolveLambdaTarget(config, id);
   if (spec.packaging !== "zip" || !isNodeLambdaRuntime(spec.runtime)) throw new Error(`${target} has no local Node zip execution lane.`);
   const environment = await resolveLocalWorkloadEnvironment(config, target, options);
   if (options.signal?.aborted) throw options.signal.reason;
+  const egress = localLambdaEgress(config, target);
   const request: ChildRequest = {
     entry: pathToFileURL(path.join(resolveLambdaSourcePath(config, id, { repositoryRoot: options.repositoryRoot }), "index.ts")).href,
     handler: spec.handler,
     event,
     ...(options.context ? { context: options.context } : {}),
     lambda: { functionName: id, memoryLimitInMB: spec.memorySize, timeoutSeconds: spec.timeoutSeconds },
+    ...(egress ? { egress } : {}),
   };
   return options.pool
     ? options.pool.invoke(target, environment, request, options.signal)

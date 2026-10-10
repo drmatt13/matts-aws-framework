@@ -113,7 +113,7 @@ Source: [CDK entry point](../cdk-app/bin/cdk-app.ts),
 
 | Production surface | Development execution |
 | --- | --- |
-| RDS / RDS Proxy | Compose PostgreSQL and local database access. |
+| RDS | Compose PostgreSQL and local database access. |
 | CloudFront and website hosting | Vite and its same-origin proxy. |
 | HTTP API Gateway and routed Lambdas | Local API server and Lambda executor. |
 | WebSocket API Gateway and routed Lambdas | Local WebSocket server and Lambda executor. |

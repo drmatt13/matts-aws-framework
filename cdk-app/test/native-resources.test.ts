@@ -13,7 +13,7 @@ import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import { EcsServicesStack } from "../lib/framework/ecs-services-stack";
-import { defineFrameworkConfig, defineResources, resource, getFrameworkTargets, dynamodb as workflowDynamodb, sequence, sqs as workflowSqs, workflow, type FrameworkConfig } from "@repo/framework/config";
+import { defineFrameworkConfig, defineNetwork, defineResources, resource, getFrameworkTargets, dynamodb as workflowDynamodb, sequence, sqs as workflowSqs, workflow, type FrameworkConfig } from "@repo/framework/config";
 import { createFrameworkOrchestration } from "../lib/framework/framework-composition";
 import { initializeFrameworkResources, linkResource, finalizeFrameworkResources, resolveLinkedResource, applyNativeGrant, resolveDeploymentSecret } from "../lib/framework/framework-resources";
 import { attachLambdaResources } from "../lib/framework/framework-cloud";
@@ -123,7 +123,8 @@ test("conditional secret parameters and linked encryption permissions attach to 
   class CredentialsStack extends Stack { public readonly credentials!: secretsmanager.ISecret; }
   const resources = defineResources({ provider: resource.fromEnv().enum("native", "external").default("native"), apiKey: resource.secret(), vault: resource.stack<CredentialsStack>() });
   for (const provider of ["native", "external"]) {
-    const configuration = defineFrameworkConfig({ resources, defaults, http: [], webSocket: [], events: [], tasks: [], workflows: [], services: [{ "/example/*": {
+    // The app's defaults put containers in private subnets, which need the NAT gateway.
+    const configuration = defineFrameworkConfig({ resources, defaults, network: defineNetwork({ cidr: "10.0.0.0/16", zones: 2, nat: true }), http: [], webSocket: [], events: [], tasks: [], workflows: [], services: [{ "/example/*": {
       directory: "/ecs_containers/services/example-service", port: 5000, auth: true, methods: "*", deploy: "both", environment: { PROVIDER: resources.provider },
       secrets: { API_KEY: resources.apiKey, CREDENTIALS: resources.vault.credentials.value },
       cloud: { requirements: [{ when: { resource: resources.provider, equals: "external" }, require: [resources.apiKey] }] },
