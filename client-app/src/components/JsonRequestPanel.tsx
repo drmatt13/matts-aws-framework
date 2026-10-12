@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 
 import Button from "#/components/Button";
 import { frameworkHttpApiFetch } from "#/lib/auth";
@@ -6,6 +6,8 @@ import { frameworkHttpApiFetch } from "#/lib/auth";
 interface JsonRequestPanelProps {
   title: string;
   description: string;
+  /** Shown under the description as a highlighted notice. */
+  note?: ReactNode;
   path: string;
   initialPayload: string;
   buttonText: string;
@@ -14,6 +16,7 @@ interface JsonRequestPanelProps {
 export default function JsonRequestPanel({
   title,
   description,
+  note,
   path,
   initialPayload,
   buttonText,
@@ -64,6 +67,7 @@ export default function JsonRequestPanel({
     <section className="card mt-4">
       <h2 className="text-sm font-semibold">{title}</h2>
       <p className="mt-1.5 text-sm text-muted">{description}</p>
+      {note && <p className="alert alert-info mt-4">{note}</p>}
       <label htmlFor={fieldId} className="label mt-4">
         JSON payload
       </label>

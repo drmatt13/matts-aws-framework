@@ -11,6 +11,7 @@ import {
 import { WorkflowFixturesStack } from "../lib/app/workflow-fixtures-stack";
 import { CognitoStack } from "../lib/app/cognito-stack";
 import { FrontendWebsiteS3Stack } from "../lib/app/frontend-website-s3-stack";
+import { FrontendRouting } from "../lib/app/frontend-routing";
 import { RdsStack } from "../lib/app/rds-stack";
 import { EventLambdaFunctionsStack } from "../lib/framework/event-lambda-functions-stack";
 import { assertCloudEdgesResolvable, validateFrameworkConfig } from "@repo/framework/config";
@@ -73,8 +74,9 @@ initializeFrameworkResources(app, {
 // Checked here, against the config, because a dev deployment holds only what
 // AWS invokes: an event Lambda naming a task would otherwise fail much later as
 // a missing registry handle, in a message about stacks rather than about the
-// declaration that caused it.
-assertCloudEdgesResolvable(framework, mode);
+// declaration that caused it. With DEPLOY_PROD_WEBSOCKET_API, that includes the
+// WebSocket handlers, which API Gateway invokes.
+assertCloudEdgesResolvable(framework, mode, { webSocketApi: deployment.deployProdWebSocketApi });
 
 // Framework stack orchestration lives in the composition factories. Your own
 // stacks go at the marked place below. Flags: docs/FRAMEWORK.md#configuration-and-environment.
@@ -87,6 +89,7 @@ const frontendWebsiteS3Stack = mode === "prod"
   ? new FrontendWebsiteS3Stack(app, stackId("FrontendWebsiteS3Stack"), {
       env: stackEnv,
       enableCloudFront: true,
+      useDynamicOrigins: !deployment.frontendDomainName,
       frontendDomainName: deployment.frontendDomainName,
       frontendCloudFrontCertificateArn: deployment.frontendDomainName
         ? deployment.configuredFrontendCloudFrontCertificateArn
@@ -218,7 +221,7 @@ const workloads = createFrameworkWorkloads(app, {
   ...(orchestration.agentcore ? { agentcore: orchestration.agentcore } : {}),
   readers,
   frontendUrls: frontend.trustedFrontendUrls,
-  deployWebSocketApi: deployment.deployWebSocketApi,
+  deployWebSocketApi: deployment.deployProdWebSocketApi,
   handlerDependencies: [
     cognitoStack,
     // A routed starter's descriptor and grants reference these stacks, so the
@@ -239,7 +242,7 @@ if (workloads.skippedTargets.disabled.length > 0) {
 }
 if (workloads.skippedTargets.withoutWebSocketApi.length > 0) {
   console.warn(
-    `Not built because this deployment has no WebSocket API (DEPLOY_WEBSOCKET_API is off): ${workloads.skippedTargets.withoutWebSocketApi.join(", ")}. They still run locally under the WebSocket dev server.`,
+    `Not built because this deployment has no WebSocket API (DEPLOY_PROD_WEBSOCKET_API is off): ${workloads.skippedTargets.withoutWebSocketApi.join(", ")}. They still run locally under the WebSocket dev server.`,
   );
 }
 if (workloads.skippedTargets.notInThisDeployment.length > 0) {
@@ -256,13 +259,14 @@ if (
   frontendWebsiteS3Stack
 ) {
   frontendWebsiteS3Stack.addApiOrigin(workloads.httpApi.apiDomainName);
-  frontendWebsiteS3Stack.addStackDependency(workloads.httpApi);
+  if (!frontendWebsiteS3Stack.routingStore) {
+    frontendWebsiteS3Stack.addStackDependency(workloads.httpApi);
+  }
 }
 
 // Agents with declared browser routes stream at those same-origin paths,
-// straight from AgentCore Runtime. Under the same condition as /api/*: with only
-// a generated CloudFront domain, Cognito depends on the website, and the agents'
-// Runtime authorizer depends on Cognito, so the website cannot depend on them.
+// straight from AgentCore Runtime. Generated-domain routing looks up Runtime
+// ARNs in the store so the website can be created before their Cognito authorizer.
 if (
   frontend.useSameOriginApiProxy &&
   frontendWebsiteS3Stack &&
@@ -271,7 +275,17 @@ if (
   orchestration.agentcore.browserAgents.length > 0
 ) {
   frontendWebsiteS3Stack.addAgentOrigins(orchestration.agentcore.region, orchestration.agentcore.browserAgents);
-  frontendWebsiteS3Stack.addStackDependency(orchestration.stack);
+  if (!frontendWebsiteS3Stack.routingStore) {
+    frontendWebsiteS3Stack.addStackDependency(orchestration.stack);
+  }
+}
+
+if (frontendWebsiteS3Stack?.routingStore && workloads.httpApi) {
+  new FrontendRouting(workloads.httpApi, "FrontendRouting", {
+    routingStore: frontendWebsiteS3Stack.routingStore,
+    apiDomainName: workloads.httpApi.apiDomainName,
+    agents: orchestration.agentcore?.browserAgents ?? [],
+  });
 }
 
 finalizeFrameworkResources(app);

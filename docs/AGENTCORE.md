@@ -22,14 +22,15 @@ const cognito = {
 };
 
 export const supportTools = {
-  "lookup-case": { directory: "/lambda_functions/tool_functions/lookup-case", auth: true, deploy: "both", environment: { ...cognito }, database: true },
-  "start-review": { directory: "/lambda_functions/tool_functions/start-review", auth: true, deploy: "both", environment: { ...cognito }, cloud: { bindings: [startsWorkflow("case-review")] } },
+  "lookup-case": { directory: "/lambda_functions/tool_functions/lookup-case", auth: true, environment: { ...cognito }, database: true },
+  "start-review": { directory: "/lambda_functions/tool_functions/start-review", auth: true, environment: { ...cognito }, cloud: { bindings: [startsWorkflow("case-review")] } },
 } satisfies ToolsSection;
 ```
 
 ```ts
 // framework-config/agents/support.ts
 import type { AgentsSection } from "../contracts";
+import { models } from "../models";
 import { resources } from "../resources";
 
 export const supportAgents = {
@@ -42,18 +43,26 @@ export const supportAgents = {
     environment: {
       USER_POOL_ID: resources.cognito.userPool.userPoolId,
       USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId,
-      MODEL_ID: resources.models.supportModelId,
+      ...models.environment,
     },
-    cloud: { access: [bedrockModels], idleSeconds: 900 },
+    cloud: { access: models.access, requirements: models.requirements, idleSeconds: 900 },
   },
 } satisfies AgentsSection;
 ```
 
 Compose them in `framework.config.ts` as `tools: [supportTools]` and `agents: [supportAgents]`.
 
+Tools have no authored `deploy` setting. Each tool runs in the union of the lanes of
+the agents that list it: local consumers enable local execution, cloud consumers
+enable cloud deployment, and a shared tool can run in both. Agents default to `both`;
+an agent with `deploy: "none"` enables neither lane. A tool with no enabled consumers
+is disabled in both lanes. Tool bindings still require destinations in every inferred
+lane. When migrating existing declarations, remove `deploy` from tools and keep it
+on agents.
+
 | Declaration | What it says |
 | --- | --- |
-| `tools.<id>` | A Lambda an agent may call. Lives in `/lambda_functions/tool_functions/<id>` unless it declares `directory`. Takes every Lambda setting, `defaults.tools`, environment, bindings and `deploy`. |
+| `tools.<id>` | A Lambda an agent may call. Lives in `/lambda_functions/tool_functions/<id>` unless it declares `directory`. Takes Lambda settings, `defaults.tools`, environment and bindings. Deployment follows its consuming agents. |
 | `tools.<id>.auth: true` | The tool acts as the signed-in user, and its handler is written with `authenticatedTool`. |
 | `agents.<id>` | An agent. Lives in `/agentcore/<id>` at the repository root unless it declares `directory`. |
 | `agents.<id>.tools` | The tools it may call. They are its Gateway, and nothing else is. |
@@ -137,6 +146,35 @@ a service tool.
 Keep database and secret access in tools. An agent then needs no VPC and no database
 access — it thinks, and its tools touch data. A tool that needs the database declares
 `database: true`; an agent cannot, because it runs outside the VPC.
+
+## The model
+
+An agent builds its model with `getModel()` from `@repo/models` (`packages/models/`):
+Bedrock, Bedrock Mantle or OpenAI as a LangChain chat model, chosen by
+`LANGGRAPH_MODEL_PROVIDER` in `cdk-app/.env`. Depend on it in the agent's package.json
+(`"@repo/models": "*"`) rather than copying the providers into the agent.
+
+What the providers need is declared once, in `framework-config/models.ts`, and each agent
+spreads it — `...models.environment` in `environment`, `access: models.access` and
+`requirements: models.requirements` in `cloud` — as the declaration above does. A model is
+not something an application builds, so there is no construct to grant from; the access is
+plain IAM. The default `bedrock-mantle` provider needs `bedrock-mantle:CreateInference` on
+the deployment account's regional `project/default`, plus `bedrock-mantle:CallWithBearerToken`
+on `*` for its short-lived token authentication. The `bedrock` provider uses
+`bedrock:InvokeModel` and `bedrock:InvokeModelWithResponseStream` on model and
+inference-profile ARNs. OpenAI needs only its key's secret, which the ARN in the
+environment grants. See [AWS's Mantle inference policy](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AmazonBedrockMantleInferenceAccess.html).
+
+Locally the model is called with your AWS profile, which proves nothing about the deployed
+Runtime's role. So `npm run verify` fails for an agent that depends on `@repo/models`
+without the shared declaration, rather than its first deployed turn.
+
+To give one agent another model, override the variable after the spread, for example
+`BEDROCK_MODEL_ID: resources.models.supportModelId`; the access already covers every model.
+Append the agent's own permissions with `access: [...models.access, { ... }]`. A new provider
+in `packages/models/` that calls AWS adds its permissions to `models.access`, which reaches
+every agent at once. An agent on a different model library does not depend on the package
+and writes its own `cloud.access`.
 
 ## Writing an agent
 
@@ -379,7 +417,7 @@ an application splits into deployments; the framework does not shard the stack.
 # cdk-app/.env: PROD_DEPLOYMENT=true, CDK_APP_NAME=agents-smoke-<you>,
 #   DATABASE_BACKUP_RETENTION_DAYS=0, optionally FRONTEND_URL + certificate
 # framework-config/agents/example.ts: the agent deploys "both"
-# framework-config/tools/example.ts: both tools deploy "both"
+# the example agent's tools follow its deployment automatically
 npm run deploy -- --all -c useLocalDevStack=false --profile <PROFILE>
 npm run agents:smoke -- --app agents-smoke-<you> --profile <PROFILE> [--frontend <FRONTEND_URL>] [--include-expiry]
 ```

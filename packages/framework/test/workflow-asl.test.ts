@@ -36,7 +36,7 @@ const resolver: AslResolver = {
   workflowArn: (id) => `arn:aws:states:eu-west-2:111122223333:stateMachine:${id}`,
   taskLaunch: () => ({
     cluster: "arn:aws:ecs:eu-west-2:111122223333:cluster/app",
-    taskDefinitionArn: "arn:aws:ecs:eu-west-2:111122223333:task-definition/worker:7",
+    taskDefinitionFamily: "worker",
     containerName: "worker",
     platformVersion: "1.4.0",
     subnets: ["subnet-1"],
@@ -253,10 +253,8 @@ test("a task step launches the revision-pinned definition with the framework inp
   assert.equal(state.Resource, "arn:aws:states:::ecs:runTask.sync");
   assert.equal(state.TimeoutSeconds, 120);
   const args = state.Arguments as Json;
-  assert.equal(
-    args.TaskDefinition,
-    "arn:aws:ecs:eu-west-2:111122223333:task-definition/worker:7",
-  );
+  // The family: a revision ARN would change with every change to the task.
+  assert.equal(args.TaskDefinition, "worker");
   const overrides = (args.Overrides as Json).ContainerOverrides as readonly Json[];
   const [variable] = (overrides[0] as Json).Environment as readonly Json[];
   assert.equal(variable?.Name, "FRAMEWORK_TASK_INPUT");

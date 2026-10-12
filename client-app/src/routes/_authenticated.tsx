@@ -4,7 +4,6 @@ import { Navigate, Outlet, createFileRoute } from "@tanstack/react-router";
 
 import AppLayout from "#/components/layouts/AppLayout";
 import LoadingSpinner from "#/components/LoadingSpinner";
-import PageError from "#/components/errors/PageError";
 import SessionError from "#/components/errors/SessionError";
 import { currentUserQuery } from "#/api/currentUser/operations";
 import {
@@ -74,13 +73,14 @@ function AuthenticatedLayout() {
     );
   }
 
+  // The session is valid but the user is not: retrying alone can loop forever
+  // on a permanent failure, so this state also offers a way to sign out.
   if (error || !data) {
     return (
-      <PageError
-        title="We couldn't load your account"
-        message="Your session has been preserved. Try loading your account again."
-        onRetry={() => {
-          void refetch();
+      <SessionError
+        kind="account"
+        onRetry={async () => {
+          await refetch();
         }}
       />
     );

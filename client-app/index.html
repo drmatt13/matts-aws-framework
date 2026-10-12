@@ -46,28 +46,9 @@
     <!--
       Resolves the stored theme before first paint, so a reload in dark mode
       never flashes white. Mirrors applyThemeMode in src/components/ThemeToggle.
-      Inline and synchronous on purpose -- a module import would be too late.
+      A synchronous same-origin script also works under the production CSP.
     -->
-    <script>
-      try {
-        var mode = localStorage.getItem("theme");
-        if (mode !== "light" && mode !== "dark") mode = "auto";
-        var resolved =
-          mode === "auto"
-            ? matchMedia("(prefers-color-scheme: dark)").matches
-              ? "dark"
-              : "light"
-            : mode;
-        var root = document.documentElement;
-        root.classList.remove("light", "dark");
-        root.classList.add(resolved);
-        if (mode === "auto") root.removeAttribute("data-theme");
-        else root.setAttribute("data-theme", mode);
-        root.style.colorScheme = resolved;
-      } catch (e) {
-        /* Private mode can throw on localStorage; the light default stands. */
-      }
-    </script>
+    <script src="/theme-init.js"></script>
   </head>
   <body
     class="bg-canvas text-ink antialiased mx-auto min-h-dvh overflow-y-scroll overflow-x-clip scrollbar-gutter-stable"

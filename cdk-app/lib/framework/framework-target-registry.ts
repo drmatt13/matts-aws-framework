@@ -49,8 +49,12 @@ export interface FrameworkTaskLaunch {
   readonly region: string;
   /** Cluster ARN, which is also what the RunTask grant is conditioned on. */
   readonly cluster: string;
-  /** Revision-qualified: a family-only ARN would drift from the grant. */
-  readonly taskDefinitionArn: string;
+  /**
+   * The family, which RunTask resolves to its latest ACTIVE revision. Never a
+   * revision ARN: every change to a task registers a new revision, and a caller
+   * in another stack holding one could not deploy past it (see grantRunTask).
+   */
+  readonly taskDefinitionFamily: string;
   readonly containerName: string;
   readonly launchType: "FARGATE";
   readonly platformVersion: string;
@@ -64,7 +68,7 @@ export type FrameworkTaskTarget = {
   readonly launch: FrameworkTaskLaunch;
   readonly taskDefinition: TaskDefinition;
   /**
-   * Applies `ecs:RunTask` on this exact revision plus `iam:PassRole` on both
+   * Applies `ecs:RunTask` on this task's family plus `iam:PassRole` on both
    * roles, each with its own condition. Owned by the task's own stack so a
    * caller cannot widen it, and so there is one implementation for Lambda
    * callers, container callers and the workflow role alike.
@@ -213,8 +217,8 @@ export interface SkippedTargets {
   readonly notInThisDeployment: readonly TargetReference[];
   /**
    * WebSocket handlers with no WebSocket API to route to them, because this
-   * deployment does not build one (DEPLOY_WEBSOCKET_API is off). Built, they
-   * would be Lambdas nothing can invoke.
+   * deployment does not build one (DEPLOY_PROD_WEBSOCKET_API is off). Built,
+   * they would be Lambdas nothing can invoke.
    */
   readonly withoutWebSocketApi: readonly TargetReference[];
 }
@@ -262,7 +266,9 @@ export function assertFrameworkTargetsComplete(
         disabled.push(reference);
         continue;
       }
-      if (!isTargetDeployed(config, kind, id, options.mode)) {
+      // Asked as if the WebSocket API were built, in either mode: whether it
+      // is decides `withoutWebSocketApi`, which is reported for its own reason.
+      if (!isTargetDeployed(config, kind, id, options.mode, { webSocketApi: true })) {
         if (registered) {
           throw new Error(
             `Framework target "${reference}" is not built by a ${options.mode} deployment but a stack registered it. A ${options.mode} deployment holds only what AWS invokes; everything else runs under Docker Compose.`,

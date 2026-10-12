@@ -22,8 +22,7 @@ import type { ToolRuntime } from "@langchain/core/tools";
 import type { AgentTools, ModelToolSpec } from "@repo/framework/runtime/agentcore";
 import { z } from "zod";
 
-import { getModel } from "./providers";
-import { extractText, toModelMessages } from "./providers/messages";
+import { extractText, getModel, toModelMessages } from "@repo/models";
 export { extractText };
 
 /* ============================================================

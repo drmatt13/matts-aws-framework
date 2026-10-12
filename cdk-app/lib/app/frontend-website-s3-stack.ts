@@ -8,12 +8,15 @@ export interface FrontendWebsiteS3StackProps extends cdk.StackProps {
   enableCloudFront?: boolean;
   frontendDomainName?: string;
   frontendCloudFrontCertificateArn?: string;
+  /** Resolve backend addresses from a routing store when auth needs this distribution's hostname. */
+  useDynamicOrigins?: boolean;
 }
 
 export class FrontendWebsiteS3Stack extends cdk.Stack {
   public readonly frontendWebsiteBucket: s3.Bucket;
   public readonly frontendDistribution?: cloudfront.CfnDistribution;
   public readonly cloudFrontUrl?: string;
+  public readonly routingStore?: cloudfront.CfnKeyValueStore;
   /** The browser security headers every response carries, pages and API alike. */
   private securityHeadersPolicyId?: string;
 
@@ -32,9 +35,22 @@ export class FrontendWebsiteS3Stack extends cdk.Stack {
         functionConfig: {
           comment: "Strip /api before forwarding requests to HTTP API Gateway",
           runtime: "cloudfront-js-2.0",
+          ...(this.routingStore ? {
+            keyValueStoreAssociations: [{ keyValueStoreArn: this.routingStore.attrArn }],
+          } : {}),
         },
         functionCode: [
-          "function handler(event) {",
+          ...(this.routingStore ? [
+            "import cf from 'cloudfront';",
+            "const store = cf.kvs();",
+            "async function handler(event) {",
+            "  try {",
+            "    var domain = await store.get('http-api');",
+            "    cf.updateRequestOrigin({ domainName: domain, hostHeader: domain });",
+            "  } catch (error) {",
+            "    return { statusCode: 503, statusDescription: 'Service Unavailable' };",
+            "  }",
+          ] : ["function handler(event) {"]),
           "  var request = event.request;",
           "  request.uri = request.uri.substring(4) || '/';",
           "  return request;",
@@ -49,7 +65,9 @@ export class FrontendWebsiteS3Stack extends cdk.Stack {
 
     origins.push({
       id: apiOriginId,
-      domainName: apiDomainName,
+      // The request function replaces this before contacting the origin.
+      // Never embed an API reference here in generated-domain mode.
+      domainName: this.routingStore ? "unconfigured.invalid" : apiDomainName,
       customOriginConfig: {
         originProtocolPolicy: "https-only",
         originSslProtocols: ["TLSv1.2"],
@@ -113,17 +131,23 @@ export class FrontendWebsiteS3Stack extends cdk.Stack {
     }
 
     const originId = "AgentCoreRuntime";
-    const routes = Object.fromEntries(agents.map((agent) => [agent.path, agent.runtimeArn]));
+    const routes = Object.fromEntries(agents.map((agent) => [
+      agent.path, this.routingStore ? true : agent.runtimeArn,
+    ]));
     const routeFunction = new cloudfront.CfnFunction(this, "AgentRouteFunction", {
       name: `${this.stackName}-agent-route`,
       autoPublish: true,
       functionConfig: {
         comment: "Route declared agent paths to their AgentCore Runtime",
         runtime: "cloudfront-js-2.0",
+        ...(this.routingStore ? {
+          keyValueStoreAssociations: [{ keyValueStoreArn: this.routingStore.attrArn }],
+        } : {}),
       },
       functionCode: [
+        ...(this.routingStore ? ["import cf from 'cloudfront';", "const store = cf.kvs();"] : []),
         `var AGENTS = ${JSON.stringify(routes)};`,
-        "function handler(event) {",
+        this.routingStore ? "async function handler(event) {" : "function handler(event) {",
         "  var request = event.request;",
         "  if (!Object.prototype.hasOwnProperty.call(AGENTS, request.uri)) {",
         "    return { statusCode: 404, statusDescription: 'Not Found' };",
@@ -131,7 +155,14 @@ export class FrontendWebsiteS3Stack extends cdk.Stack {
         "  if (request.method !== 'POST') {",
         "    return { statusCode: 405, statusDescription: 'Method Not Allowed' };",
         "  }",
-        "  request.uri = '/runtimes/' + encodeURIComponent(AGENTS[request.uri]) + '/invocations';",
+        ...(this.routingStore ? [
+          "  try {",
+          "    var runtimeArn = await store.get('agent:' + request.uri);",
+          "  } catch (error) {",
+          "    return { statusCode: 503, statusDescription: 'Service Unavailable' };",
+          "  }",
+        ] : ["  var runtimeArn = AGENTS[request.uri];"]),
+        "  request.uri = '/runtimes/' + encodeURIComponent(runtimeArn) + '/invocations';",
         "  request.querystring = { qualifier: { value: 'DEFAULT' } };",
         "  return request;",
         "}",
@@ -201,6 +232,13 @@ export class FrontendWebsiteS3Stack extends cdk.Stack {
         throw new Error(
           "frontendCloudFrontCertificateArn is required when frontendDomainName is configured.",
         );
+      }
+
+      if (props.useDynamicOrigins) {
+        this.routingStore = new cloudfront.CfnKeyValueStore(this, "FrontendRoutingStore", {
+          name: `${cdk.Names.uniqueResourceName(this, { maxLength: 56, separator: "-" })}-routing`,
+          comment: "Public API and agent destinations for the generated frontend hostname",
+        });
       }
 
       const originAccessControlName = `${cdk.Names.uniqueResourceName(this, {

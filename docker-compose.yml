@@ -102,6 +102,10 @@ x-database-ready: &database-ready
     condition: service_healthy
   prisma-migrate:
     condition: service_completed_successfully
+  prune-cognito-orphans:
+    condition: service_completed_successfully
+  seed-test-user:
+    condition: service_completed_successfully
 
 services:
   postgres:
@@ -140,6 +144,46 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  # postgres_data outlives the dev Cognito pool: a redeployed stack has new subs,
+  # and a row still holding an old sub blocks sign-up with its email. This
+  # removes users the current pool does not hold before any consumer starts.
+  # It deletes only after listing the whole pool; if Cognito cannot be listed
+  # (expired SSO, no USER_POOL_ID) it warns and leaves every row in place.
+  prune-cognito-orphans:
+    build: *build
+    working_dir: /workspace/packages/database
+    environment:
+      <<: *aws-env
+      USER_POOL_ID: ${USER_POOL_ID}
+      DATABASE_URL: postgresql://admin:password@postgres:5432/app_db
+    command: [npm, run, db:prune-cognito-orphans]
+    volumes: [*aws-mount]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      prisma-migrate:
+        condition: service_completed_successfully
+
+  # Makes LOCAL_TEST_USER_EMAIL / LOCAL_TEST_USER_PASSWORD from cdk-app/.env a
+  # working account: created in the dev pool if missing, its password reset to
+  # the authored one, and its local row written. After the prune, so a row left
+  # by an earlier pool is gone first. Refuses PROD_DEPLOYMENT=true; without the
+  # two settings, or if Cognito fails, it says so and changes nothing.
+  seed-test-user:
+    build: *build
+    working_dir: /workspace/packages/database
+    environment:
+      <<: *aws-env
+      USER_POOL_ID: ${USER_POOL_ID}
+      DATABASE_URL: postgresql://admin:password@postgres:5432/app_db
+    command: [npm, run, db:seed-test-user]
+    volumes: [*aws-mount, *inputs-mount]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      prune-cognito-orphans:
+        condition: service_completed_successfully
 
   local-invocation-runner:
     build: *build

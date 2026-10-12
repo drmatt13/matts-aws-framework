@@ -239,7 +239,9 @@ __pycache__/
 
 # End of https://www.toptal.com/developers/gitignore/api/osx,node,linux,windows,sam
 
-# Ignore artifacts left by the retired local lifecycle tooling.
+# Per-checkout deployment state: the exported development resource manifest
+# (.framework/local/resources.json) and public production outputs
+# (.framework/prod/outputs.json). .framework/artifacts/ is scratch for tests.
 .framework/
 
 # Disposable repositories the generator's end-to-end tests write to. Kept inside

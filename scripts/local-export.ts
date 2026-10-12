@@ -89,9 +89,6 @@ export function localExportValues(
     LOCAL_LAMBDA_WARM_MAX: "6",
     LOCAL_LAMBDA_WARM_IDLE_SECONDS: "120",
     LOCAL_INVOCATION_RUNNER_PUBLIC_URL: `http://localhost:${hostPort("LOCAL_INVOCATION_RUNNER_HOST_PORT")}`,
-    // The target of client-app's HTTP and explicit agent route proxies, read
-    // from the repository root by client-app/vite.config.ts.
-    VITE_API_GATEWAY_URL: `http://localhost:${hostPort("LOCAL_API_DEV_SERVER_HOST_PORT")}`,
   };
   for (const [name, fallback] of Object.entries(controls)) {
     values.set(name, authored[name] ?? fallback);
@@ -113,6 +110,33 @@ export function localExportValues(
   // not exported alongside it, so there is no second copy to drift.
   values.set("LOCAL_BROWSER_ORIGINS", origins);
   return values;
+}
+
+/**
+ * client-app's endpoints for a development deployment: the servers Compose
+ * publishes on the host ports localExportValues has already validated.
+ *
+ * VITE_API_GATEWAY_URL is the target of client-app's HTTP and explicit agent
+ * route proxies, read from the repository root by client-app/vite.config.ts.
+ *
+ * The local WebSocket URL does not follow DEPLOY_PROD_WEBSOCKET_API: Compose runs
+ * local-ws-dev-server either way, and the flag only decides whether AWS holds a
+ * WebSocket API. That one is read from the deployment, not from here.
+ */
+export function localClientEndpoints(
+  authored: Readonly<Record<string, string>>,
+  values: ReadonlyMap<string, string>,
+): { apiUrl: string; localWebSocketUrl: string; webSocketTesterUrl: string } {
+  const hostPort = (name: (typeof LOCAL_HOST_PORT_NAMES)[number]): string => {
+    const port = values.get(name);
+    if (!port) throw new Error(`${name} was not exported. Build the endpoints from localExportValues.`);
+    return port;
+  };
+  return {
+    apiUrl: authored.VITE_API_GATEWAY_URL ?? `http://localhost:${hostPort("LOCAL_API_DEV_SERVER_HOST_PORT")}`,
+    localWebSocketUrl: `ws://localhost:${hostPort("LOCAL_WS_DEV_SERVER_HOST_PORT")}`,
+    webSocketTesterUrl: `http://localhost:${hostPort("WS_TESTER_HOST_PORT")}`,
+  };
 }
 
 /** Replace owned output only. Conflicts name keys, never their values. */

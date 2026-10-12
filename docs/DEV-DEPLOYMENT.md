@@ -57,9 +57,13 @@ diff perform no secret uploads and do not require a secret-binding file. For a s
 refresh, run `npm run export:cdk-outputs -- --profile <PROFILE> --region <REGION>`.
 
 The dev graph holds Cognito, AWS-invoked event handlers, and replay resources. Routed
-HTTP/WebSocket handlers, services, tasks, and workflows run locally; no ECS image is
-published by a dev deployment. DEPLOY_WEBSOCKET_API does not turn dev mode into a cloud
-workload deployment. Use a separate full cloud deployment when testing AWS routing.
+HTTP handlers, services, tasks, and workflows run locally; no ECS image is published by a
+dev deployment. The one exception is DEPLOY_PROD_WEBSOCKET_API=true: it builds the AWS
+WebSocket API and its handlers in a dev deployment too, because API Gateway is then their
+AWS caller, while local-ws-dev-server keeps serving the same routes under Compose. Those
+handlers run in AWS against nothing else the dev graph lacks, so synth refuses one that
+declares `database: true`, `vpc: true`, or a task, workflow or agent binding; turn the flag
+off to serve it locally. Use a separate full cloud deployment when testing HTTP routing.
 
 Export writes root `.env` with fixed Compose controls and `.framework/local/resources.json`
 with discovered development resource identifiers. It does not rewrite authored
@@ -67,10 +71,15 @@ with discovered development resource identifiers. It does not rewrite authored
 settings to cdk-app/.env and rerun it. The generated manifest directory and authored input
 file are mounted read-only; neither is copied into images.
 
-Create `client-app/.env` from [its example](../client-app/.env.example). Copy the public
-Cognito outputs: VITE_AWS_REGION, VITE_USER_POOL_ID, VITE_USER_POOL_CLIENT_ID, and
-VITE_COGNITO_DOMAIN. The Vite proxy target is derived into root .env from the local API
-host port; application requests continue to use the same-origin `/api` prefix.
+Create `client-app/.env` from [its example](../client-app/.env.example), then paste in the
+client-app block that ends root .env: the Cognito settings, the Vite proxy target derived
+from the local API host port, and the WebSocket tester URL. Two WebSocket names are
+written independently: VITE_LOCAL_WS_URL is always local-ws-dev-server on its host port,
+because Compose runs it whatever DEPLOY_PROD_WEBSOCKET_API says; VITE_API_GATEWAY_WS_URL is
+the deployment's WebSocketApiStack endpoint when DEPLOY_PROD_WEBSOCKET_API=true built one,
+and is empty otherwise. The home page's tester link passes both in its query, and the tester prefills its
+left panel with the local server and its right panel with the API Gateway stage.
+Application requests continue to use the same-origin `/api` prefix.
 
 ### macOS (Apple silicon)
 
@@ -138,7 +147,8 @@ to LOCAL_LAMBDA_WARM_MAX processes, each stopped after LOCAL_LAMBDA_WARM_IDLE_SE
 set LOCAL_LAMBDA_WARM=false in cdk-app/.env to start every call cold. See
 [Framework](FRAMEWORK.md#local-resource-delivery). Services use the framework launcher, so adding
 a resource environment reference or secret requires no Compose interpolation change. It applies local migrations before consumers
-start; see [Database](DATABASE.md#local-database). The React client runs separately.
+start, then deletes local users the current dev Cognito pool does not hold and creates the
+local test user; see [Database](DATABASE.md#local-database). The React client runs separately.
 Use the configured LOCAL_DEV_URL and host ports rather than assuming defaults.
 
 The image owns Linux dependencies and generated database artifacts. Only postgres_data
@@ -165,10 +175,16 @@ Concurrent submissions may share a build, but each run gets its own container/in
 
 ## Verification and troubleshooting
 
-For headless checks, create a dedicated user through the running development
-app's sign-up page, with two-step verification off. This is a dev-pool user only;
-creating it is a separate authorized live action. Keep its email and password in
-`LOCAL_TEST_USER_EMAIL` and `LOCAL_TEST_USER_PASSWORD` in ignored `cdk-app/.env`.
+Set `LOCAL_TEST_USER_EMAIL` and `LOCAL_TEST_USER_PASSWORD` in ignored `cdk-app/.env`
+and every `npm run dev:containers` makes them a working account. Its seed-test-user
+step creates the user in the dev pool if it is missing, with the email marked verified
+and no invitation sent, sets its password to `LOCAL_TEST_USER_PASSWORD`, and writes
+its local users row. An existing row is kept, with any name edited in the app. The
+password must meet the pool's policy (12 characters). It runs only while
+`PROD_DEPLOYMENT` is not true; without both settings, or if Cognito rejects a call,
+it says so in `docker compose logs seed-test-user` and changes nothing. Sign in as
+this user in the browser or headlessly. Use an address you control: the account is
+marked verified, so a password reset mails a code there.
 These are local CLI credentials, not workload environment variables or deployment
 secrets. Never set them for a production deployment or commit their values.
 
@@ -205,6 +221,7 @@ when changing tasks or workflows.
 | Auth endpoints return Forbidden origin | Re-export LOCAL_BROWSER_ORIGINS and recreate containers; use the frontend's /api proxy |
 | Service returns 502 | The route exists but its upstream is unavailable; inspect that service's startup logs |
 | Missing table/column | Check the selected database and reviewed migrations; generation alone changes no tables |
+| "A user already exists ... with a different Cognito identity" | The local row predates the current dev pool. Restart Compose; if `docker compose logs prune-cognito-orphans` says it skipped, fix the credentials or USER_POOL_ID it names |
 | Google redirect fails on a LAN HTTP origin | Hosted UI needs HTTPS except loopback; use localhost or configured HTTPS |
 | Prisma config missing during image installation | Use the current Dockerfile.dev, which defers root generation until its inputs exist |
 

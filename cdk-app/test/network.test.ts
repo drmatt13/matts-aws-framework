@@ -120,6 +120,7 @@ test("the database's IAM login is created on deploy, once, by the only thing tha
   assert.equal(logins.length, 1, "one per database, however many workloads use it");
   assert.equal(logins[0]!.Properties.Login, "app_user");
   assert.equal(logins[0]!.Properties.Database, "app_db");
+  assert.equal(logins[0]!.Properties.PermissionsVersion, 2, "redeployment must reapply migration grants to existing logins");
   const handler = Object.entries(template.findResources("AWS::Lambda::Function"))
     .find(([id]) => id.startsWith("FrameworkDatabaseLoginHandler"))?.[1] as { Properties: { VpcConfig?: { SecurityGroupIds: unknown[]; Ipv6AllowedForDualStack?: boolean }; Environment?: { Variables?: Record<string, string> } } } | undefined;
   assert.ok(handler, "the login handler is in the database's stack");

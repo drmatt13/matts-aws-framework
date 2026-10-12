@@ -111,6 +111,10 @@ export class HttpApiGatewayStack extends cdk.Stack {
     });
 
     this.apiDomainName = `${api.apiId}.execute-api.${this.region}.${cdk.Aws.URL_SUFFIX}`;
+    // A custom-domain website imports this id. Keep that historical export
+    // when switching to generated-domain routing, which creates the website
+    // first and removes its old import before updating this stack.
+    this.exportValue(api.apiId);
 
     api.addStage("DefaultStage", {
       stageName: "$default",

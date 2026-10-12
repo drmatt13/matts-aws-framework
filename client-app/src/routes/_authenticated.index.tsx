@@ -14,6 +14,7 @@ import SecurityPanel from "#/components/SecurityPanel";
 import WorkflowsPanel from "#/components/WorkflowsPanel";
 import { getCognitoIdToken } from "#/lib/auth";
 import logout from "#/lib/logout";
+import { webSocketTesterUrl } from "#/lib/webSocketTester";
 
 // The guard, the layout chrome, and every auth/loading failure state belong to
 // the _authenticated layout route, so this only renders the happy path.
@@ -26,7 +27,14 @@ function App() {
   const idToken = getCognitoIdToken();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [testerLinkError, setTesterLinkError] = useState<string | null>(null);
-  const wsTesterUrl = import.meta.env.VITE_WS_TESTER_URL as string | undefined;
+  // Exported independently: the tester and local-ws-dev-server run only under
+  // Docker Compose, and the API Gateway WebSocket stage exists only when the
+  // deployment built a WebSocketApiStack. Empty means absent.
+  const wsTesterUrl = (import.meta.env.VITE_WS_TESTER_URL as string | undefined)?.trim();
+  const wsEndpoints = {
+    local: (import.meta.env.VITE_LOCAL_WS_URL as string | undefined)?.trim(),
+    apiGateway: (import.meta.env.VITE_API_GATEWAY_WS_URL as string | undefined)?.trim(),
+  };
 
   // `user` is undefined only while the query is pending.
   const { data: user } = useQuery(currentUserQuery);
@@ -54,9 +62,9 @@ function App() {
       return;
     }
 
-    const destination = new URL(wsTesterUrl);
-    destination.hash = new URLSearchParams({ token }).toString();
-    window.open(destination.toString(), "_blank", "noopener,noreferrer");
+    // The tester prefills its left panel with the local server and its right
+    // with the API Gateway stage from this link's query.
+    window.open(webSocketTesterUrl(wsTesterUrl, wsEndpoints, token), "_blank", "noopener,noreferrer");
     setTesterLinkError(null);
   }
 
@@ -102,22 +110,51 @@ function App() {
         </dl>
       </section>
 
-      <a
-        href={wsTesterUrl || "#"}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={openWebSocketTester}
-        className="card mt-4 flex items-center justify-between gap-4 transition hover:border-brand/40"
-      >
-        <span>
-          <span className="text-sm font-medium">WebSocket tester</span>
-          <span className="mt-0.5 block text-sm text-muted">
-            Open the connection and payload tester with your sign-in token.
-          </span>
-        </span>
-        <ArrowRight className="size-4 shrink-0 text-muted" />
-      </a>
-      {testerLinkError && <p role="alert" className="alert alert-bad mt-2">{testerLinkError}</p>}
+      {(wsEndpoints.local || wsEndpoints.apiGateway || wsTesterUrl) && (
+        <section className="card mt-4">
+          <h2 className="text-sm font-semibold">WebSocket API</h2>
+          <p className="mt-1.5 text-sm text-muted">
+            The endpoints this build was configured with.
+          </p>
+          {(wsEndpoints.local || wsEndpoints.apiGateway) && (
+            <dl className="mt-4 space-y-4">
+              {[
+                { label: "Local dev server", url: wsEndpoints.local },
+                { label: "API Gateway", url: wsEndpoints.apiGateway },
+              ].filter(({ url }) => url).map(({ label, url }) => (
+                <div key={label}>
+                  <dt className="text-xs font-medium tracking-wider text-muted uppercase">
+                    {label}
+                  </dt>
+                  <dd className="mt-1.5 w-max max-w-full rounded-lg bg-ink/5 px-3 py-2 font-mono text-sm break-all">
+                    {url}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          )}
+
+          {wsTesterUrl && (
+            <a
+              href={wsTesterUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={openWebSocketTester}
+              className="mt-5 flex items-center justify-between gap-4 rounded-lg border border-line px-4 py-3 transition hover:border-brand/40"
+            >
+              <span>
+                <span className="text-sm font-medium">WebSocket tester</span>
+                <span className="mt-0.5 block text-sm text-muted">
+                  Open the connection and payload tester with your sign-in token,
+                  prefilled with these endpoints.
+                </span>
+              </span>
+              <ArrowRight className="size-4 shrink-0 text-muted" />
+            </a>
+          )}
+          {testerLinkError && <p role="alert" className="alert alert-bad mt-2">{testerLinkError}</p>}
+        </section>
+      )}
 
       <Link
         to="/test-route"

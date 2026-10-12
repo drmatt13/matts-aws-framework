@@ -35,8 +35,11 @@ Resources live in `framework-config/resources.ts`. Declare a stack there with
 `resource.stack<MyStack>()`, end the stack's constructor with `linkResources(this, resources.myStack)`,
 then reference its fields, attributes and grants in workloads.
 `npm run deploy -- --all -c useLocalDevStack=true --profile <PROFILE>` handles secret
-synchronization, deployment, and development export. Root `.env` contains Compose controls;
+synchronization, deployment, and development export. Root `.env` contains Compose controls in dev;
 workload identifiers use the ignored `.framework/local/resources.json` manifest.
+For production, `npm run export:cdk-outputs -- --profile <PROFILE>` writes public deployment
+outputs to root `.env`. Either mode ends root `.env` with a client-app block of `VITE_*`
+settings to copy into `client-app/.env`.
 
 Application authorization, validation, public fields, and screen selections remain
 explicit source. Generators and agents handle the surrounding mechanics.
@@ -55,6 +58,7 @@ explicit source. Generators and agents handle the surrounding mechanics.
 | `packages/database/` | Prisma contract, migrations, and repositories |
 | `packages/framework/` | Framework implementation partitioned into config, runtime, and local execution; generation/check scripts |
 | `packages/api-contract/` | Browser-safe public routes and payload contracts |
+| `packages/models/` | Model providers every agent shares; their environment and IAM are declared once in `framework-config/models.ts` |
 | `local-api-dev-server/`, `local-ws-dev-server/`, `local-invocation-runner/` | Local execution |
 | `agents/`, `.claude/skills/` | Agent procedures that reference the human guides |
 

@@ -8,6 +8,7 @@ import {
   getAgentBrowserRoutes,
   getDefaultAgentDirectory,
   getDefaultToolDirectory,
+  getToolDeploySetting,
   validateAgentCoreConfig,
   type AgentTargetDefinition,
   type FrameworkAgents,
@@ -3161,6 +3162,12 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
   // Runtime hosts an agent, so neither has a route to be keyed by.
   for (const [id, definition] of Object.entries(config.tools ?? {})) {
     const origin = `tools["${id}"]`;
+    rejectObsoleteField(
+      definition,
+      "deploy",
+      origin,
+      "A tool's deployment is inferred from the agents that list it. Set deploy on those agents instead.",
+    );
     if ("id" in definition) {
       throw new Error(`${origin} declares "id". The object key is already this target's id.`);
     }
@@ -3172,6 +3179,7 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
       definition,
       undefined,
       origin,
+      { deploy: getToolDeploySetting(config, id) },
     );
   }
 
@@ -3966,11 +3974,12 @@ export function getCloudTargets(
   config: FrameworkConfig,
   roles: readonly TargetRole[],
   mode: CloudMode,
+  graph: CloudGraphOptions = {},
 ): readonly NormalizedTarget[] {
   return getFrameworkTargets(config).filter(
     (target) =>
       roles.includes(target.role) &&
-      isTargetDeployed(config, target.kind, target.id, mode),
+      isTargetDeployed(config, target.kind, target.id, mode, graph),
   );
 }
 
@@ -4079,6 +4088,21 @@ export function isAwsInvokedRole(role: TargetRole): boolean {
   return AWS_INVOKED_ROLES.has(role);
 }
 
+/** The roles the AWS WebSocket API routes to. */
+const WEB_SOCKET_ROLES: ReadonlySet<TargetRole> = new Set<TargetRole>(["webSocket", "webSocketAuthorizer"]);
+
+/**
+ * What a deployment builds beyond what its mode decides.
+ *
+ * The AWS WebSocket API is a deployment flag rather than a declaration, and the
+ * one router a dev deployment can build. Built, it makes API Gateway the AWS
+ * caller of the WebSocket handlers, so a dev deployment holds them too.
+ */
+export interface CloudGraphOptions {
+  /** This deployment builds the AWS WebSocket API. */
+  readonly webSocketApi?: boolean;
+}
+
 /**
  * Where the author wants a target, read from its `deploy` token alone.
  *
@@ -4104,18 +4128,25 @@ export function isTargetEnabled(
  *
  * A dev deployment holds only what AWS invokes. Everything else runs under
  * Compose, so deploying it would create a resource whose only caller is
- * somewhere else.
+ * somewhere else. A dev deployment that builds the WebSocket API holds its
+ * handlers too, because API Gateway is then their caller.
+ *
+ * A prod deployment answers for the WebSocket handlers whether or not it builds
+ * the API: leaving them out when it does not is the composition's decision,
+ * which it reports separately.
  */
 export function isTargetDeployed(
   config: FrameworkConfig,
   kind: TargetKind,
   id: string,
   mode: CloudMode,
+  graph: CloudGraphOptions = {},
 ): boolean {
   if (!isTargetEnabled(config, kind, id, "cloud")) return false;
   if (mode === "prod") return true;
   const role = normalize(config).targets.get(`${kind}:${id}` as TargetReference)?.role;
-  return role !== undefined && isAwsInvokedRole(role);
+  if (role === undefined) return false;
+  return isAwsInvokedRole(role) || (graph.webSocketApi === true && WEB_SOCKET_ROLES.has(role));
 }
 
 /**
@@ -4127,6 +4158,11 @@ export function isTargetDeployed(
  * missing registry handle three stacks later — the diagnostic can name the
  * declaration and the way out, which a `requireTask` failure cannot.
  *
+ * A WebSocket handler that a dev deployment builds for its WebSocket API is held
+ * to the same rule, and to one more: a dev deployment builds no network and no
+ * database, which an event satisfies with `localReplay` and a WebSocket handler
+ * cannot, because API Gateway waits for its answer.
+ *
  * A prod deployment cannot fail this. `deploy` already had to agree across the
  * cloud lane for the config to normalize, so in prod every check below restates
  * something {@link validateFrameworkConfig} has proved.
@@ -4134,14 +4170,29 @@ export function isTargetDeployed(
 export function assertCloudEdgesResolvable(
   config: FrameworkConfig,
   mode: CloudMode,
+  graph: CloudGraphOptions = {},
 ): void {
   const builds = (reference: TargetReference): boolean => {
     const { kind, id } = parseTargetReference(reference);
-    return isTargetDeployed(config, kind, id, mode);
+    return isTargetDeployed(config, kind, id, mode, graph);
   };
+  const servedLocally = (caller: NormalizedTarget): string =>
+    WEB_SOCKET_ROLES.has(caller.role)
+      ? "Turn DEPLOY_PROD_WEBSOCKET_API off to serve it under Compose, or deploy with PROD_DEPLOYMENT=true."
+      : "Call it from an http target, which runs under Compose alongside it, or deploy with PROD_DEPLOYMENT=true.";
 
   for (const caller of getFrameworkTargets(config)) {
-    if (!isTargetDeployed(config, caller.kind, caller.id, mode)) continue;
+    if (!isTargetDeployed(config, caller.kind, caller.id, mode, graph)) continue;
+
+    if (mode === "dev" && WEB_SOCKET_ROLES.has(caller.role)) {
+      const origin = caller.origins[0] ?? caller.reference;
+      const database = getConnectsToBindings(caller.cloud.bindings).length > 0;
+      if (database || (caller.kind === "lambda" && resolveLambdaTarget(config, caller.id).vpc)) {
+        throw new Error(
+          `${origin} ${database ? "declares database: true" : "has vpc: true"}, but a dev deployment builds no ${database ? "database" : "network"}, and DEPLOY_PROD_WEBSOCKET_API builds this WebSocket handler in AWS. ${servedLocally(caller)}`,
+        );
+      }
+    }
 
     const edges: (readonly [TargetReference, string])[] = getInvocationBindings(
       caller.cloud.bindings,
@@ -4164,7 +4215,7 @@ export function assertCloudEdgesResolvable(
       if (builds(reference)) continue;
       const origin = caller.origins[0] ?? caller.reference;
       throw new Error(
-        `${origin} declares ${where}, which a ${mode} deployment does not build: PROD_DEPLOYMENT=false builds only what AWS invokes, and "${reference}" is invoked by you rather than by AWS. Call it from an http target, which runs under Compose alongside it, or deploy with PROD_DEPLOYMENT=true.`,
+        `${origin} declares ${where}, which a ${mode} deployment does not build: PROD_DEPLOYMENT=false builds only what AWS invokes, and "${reference}" is invoked by you rather than by AWS. ${servedLocally(caller)}`,
       );
     }
   }

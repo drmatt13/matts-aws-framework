@@ -4,14 +4,10 @@
   "private": true,
   "scripts": { "typecheck": "tsc --noEmit" },
   "dependencies": {
-    "@aws-sdk/client-secrets-manager": "^3.930.0",
-    "@aws-sdk/credential-providers": "^3.1120.0",
-    "@aws/bedrock-token-generator": "^1.1.0",
-    "@langchain/aws": "^1.4.4",
     "@langchain/core": "^1.2.9",
     "@langchain/langgraph": "^1.4.13",
-    "@langchain/openai": "^1.5.10",
     "@repo/framework": "*",
+    "@repo/models": "*",
     "zod": "^4.4.3"
   }
 }

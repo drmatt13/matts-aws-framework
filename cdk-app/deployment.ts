@@ -154,15 +154,31 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
 
   // WebSocket configuration.
   //
-  // deployWebSocketApi creates the AWS WebSocket API Gateway (WebSocketApiStack)
-  // and the handler Lambdas it routes to (WebSocketLambdaFunctionsStack); off,
-  // neither is built, because a handler nothing can route to is dead weight. It
-  // says nothing about whether WebSockets work locally: local-ws-dev-server runs
-  // the same handlers through docker-compose either way, which is what the old
-  // "enableWebSockets" name got wrong.
-  const deployWebSocketApiContext = optionalBoolean(
-    getContext("deployWebSocketApi"),
-    "-c deployWebSocketApi",
+  // deployProdWebSocketApi creates the AWS WebSocket API Gateway
+  // (WebSocketApiStack) and the handler Lambdas it routes to
+  // (WebSocketLambdaFunctionsStack), in either mode; off, neither is built,
+  // because a handler nothing can route to is dead weight. In a dev deployment
+  // it is the one exception to "only what AWS invokes": API Gateway becomes the
+  // handlers' AWS caller. It says nothing about whether WebSockets work locally:
+  // local-ws-dev-server runs the same handlers through docker-compose either
+  // way, which is what the old "enableWebSockets" name got wrong.
+  //
+  // Renamed from DEPLOY_WEBSOCKET_API / -c deployWebSocketApi. The old names are
+  // refused rather than ignored: a stale DEPLOY_WEBSOCKET_API=true would
+  // otherwise drop the WebSocket API with no sign that the flag stopped meaning
+  // anything.
+  const renamedWebSocketFlags = [
+    ...(getContext("deployWebSocketApi") !== undefined ? ["-c deployWebSocketApi"] : []),
+    ...(env.DEPLOY_WEBSOCKET_API !== undefined ? ["DEPLOY_WEBSOCKET_API"] : []),
+  ];
+  if (renamedWebSocketFlags.length > 0) {
+    throw new Error(
+      `${renamedWebSocketFlags.join(" and ")} ${renamedWebSocketFlags.length > 1 ? "were" : "was"} renamed. Use DEPLOY_PROD_WEBSOCKET_API in cdk-app/.env, or -c deployProdWebSocketApi.`,
+    );
+  }
+  const deployProdWebSocketApiContext = optionalBoolean(
+    getContext("deployProdWebSocketApi"),
+    "-c deployProdWebSocketApi",
   );
   const enableWebSocketsLegacyContext = optionalBoolean(
     getContext("enableWebSockets"),
@@ -174,27 +190,17 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
   // the flag stopped meaning anything.
   if (enableWebSocketsLegacyContext !== undefined) {
     warnings.push(
-      "[cdk-app] -c enableWebSockets is deprecated and will be removed. Use -c deployWebSocketApi, or set DEPLOY_WEBSOCKET_API in cdk-app/.env. The old name implied it controlled WebSocket support; it only ever controlled the AWS WebSocket API Gateway.",
+      "[cdk-app] -c enableWebSockets is deprecated and will be removed. Use -c deployProdWebSocketApi, or set DEPLOY_PROD_WEBSOCKET_API in cdk-app/.env. The old name implied it controlled WebSocket support; it only ever controlled the AWS WebSocket API Gateway.",
     );
   }
 
-  const deployWebSocketApi =
-    deployWebSocketApiContext ??
+  const deployProdWebSocketApi =
+    deployProdWebSocketApiContext ??
     enableWebSocketsLegacyContext ??
     booleanFlag({
-      context: "deployWebSocketApi",
-      env: "DEPLOY_WEBSOCKET_API",
+      context: "deployProdWebSocketApi",
+      env: "DEPLOY_PROD_WEBSOCKET_API",
     });
-
-  // Reported rather than silently dropped: a WebSocket route is opened by a
-  // browser, so a dev deployment builds no handlers for the API to reach and
-  // the flag has nothing to act on. `npm run dev` serves the same routes
-  // through local-ws-dev-server.
-  if (deployWebSocketApi && mode === "dev") {
-    warnings.push(
-      "[cdk-app] DEPLOY_WEBSOCKET_API is set, but a dev deployment builds no WebSocket handlers for it to route to. Serve them locally with npm run dev, or deploy with PROD_DEPLOYMENT=true.",
-    );
-  }
 
   // Retired. The $connect authorizer declared in framework-config is the one
   // switch now, in both lanes. A leftover `true` changes nothing; a `false` is
@@ -399,7 +405,7 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
     cognitoSesFromName,
     cognitoSesRegion,
     retainStatefulResources,
-    deployWebSocketApi,
+    deployProdWebSocketApi,
     useFrontendCustomDomain,
     configuredFrontendUrl,
     configuredFrontendCloudFrontCertificateArn,
@@ -417,10 +423,7 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
 
 export type DeploymentInputs = ReturnType<typeof resolveDeploymentInputs>;
 
-/** Resolve the values that depend on the optional, newly constructed website.
- * A configured origin excludes the CloudFront token: the website depends on
- * HTTP API, whose CORS configuration must not depend back on the website.
- */
+/** Resolve auth/CORS origins and same-origin routing for either frontend hostname. */
 export function resolveFrontendSettings(
   deployment: DeploymentInputs,
   cloudFrontUrl?: string,
@@ -436,15 +439,11 @@ export function resolveFrontendSettings(
   // Only ever what was asked for. With no frontend URL the custom-message
   // trigger sends Cognito's own code message, so verification still works.
   const skipEmailVerification = requestedSkipEmailVerification;
-  // When the SPA reaches the API through CloudFront's /api/* behavior, all
-  // browser traffic arrives on the prod domain, so the CloudFront URL is not a
-  // frontend origin. It must also be dropped from this list to avoid a cycle:
-  // HttpApiGatewayStack consumes trustedFrontendUrls for CORS, while
-  // FrontendWebsiteS3Stack now depends on HttpApiGatewayStack.
-  const useSameOriginApiProxy = Boolean(configuredFrontendUrl);
+  // Both hostname choices serve /api on the frontend origin. The generated
+  // hostname uses a routing store to avoid a website -> API -> website cycle.
+  const useSameOriginApiProxy = mode === "prod" && Boolean(frontendUrl);
 
   const trustedFrontendUrls = dedupeFrontendUrls([
-    ...(!useSameOriginApiProxy && cloudFrontUrl ? [cloudFrontUrl] : []),
     ...(frontendUrl ? [frontendUrl] : []),
     // Local origins are a dev-deployment affordance and nothing else. A
     // production stack never trusts one, so LOCAL_DEV_URL cannot put
@@ -738,14 +737,13 @@ const dedupeFrontendUrls = (urls: string[]) => {
       continue;
     }
 
-    if (!cdk.Token.isUnresolved(normalizedUrl)) {
-      if (seenUrls.has(normalizedUrl)) {
-        continue;
-      }
-
-      seenUrls.add(normalizedUrl);
+    // Repeated references to the same CDK token resolve to the same origin too.
+    // Keep token strings intact, but deduplicate them just like literal URLs.
+    if (seenUrls.has(normalizedUrl)) {
+      continue;
     }
 
+    seenUrls.add(normalizedUrl);
     uniqueUrls.push(normalizedUrl);
   }
 

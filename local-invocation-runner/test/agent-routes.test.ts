@@ -24,7 +24,7 @@ const config = defineFrameworkConfig({
   webSocket: [],
   events: [],
   services: [],
-  tools: [{ echo: { deploy: "local-only" } }],
+  tools: [{ echo: {} }],
   agents: [
     {
       "support-agent": { auth: true, tools: ["echo"], deploy: "local-only", environment: cognito },

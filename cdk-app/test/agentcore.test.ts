@@ -17,6 +17,7 @@ import {
 } from "@repo/framework/config";
 import { findRepositoryRoot } from "@repo/framework/config/source";
 import { defaults } from "../../framework-config/defaults";
+import { models } from "../../framework-config/models";
 import { hasAgentCoreCloudResources } from "../lib/framework/framework-agentcore";
 import { buildFrameworkLambdas } from "../lib/framework/framework-cloud";
 import { finalizeFrameworkResources, initializeFrameworkResources } from "../lib/framework/framework-resources";
@@ -84,11 +85,10 @@ function config(toolId: string, agentId: string, http = {}): FrameworkConfig {
         echo: {
           directory: `/lambda_functions/tool_functions/${users.tool}`,
           auth: true,
-          deploy: "both",
           environment: cognitoEnvironment,
           cloud: { access: [{ actions: ["s3:GetObject"], resources: ["arn:{partition}:s3:::example-bucket/*"] }] },
         },
-        [toolId]: { directory: `/lambda_functions/tool_functions/${toolId}`, deploy: "both" },
+        [toolId]: { directory: `/lambda_functions/tool_functions/${toolId}` },
       },
     ],
     agents: [
@@ -166,6 +166,33 @@ test("a full deployment builds one Gateway per agent, holding exactly that agent
   }
 });
 
+test("cloud consumers deploy a shared tool once and omit local-only and unused tools", () => {
+  const { toolId, agentId, dispose } = fixtures();
+  try {
+    const base = config(toolId, agentId);
+    const framework = defineFrameworkConfig({
+      ...base,
+      tools: [{ ...base.tools, unused: {} }],
+      agents: [{
+        "echo-agent": { ...base.agents!["echo-agent"]!, tools: ["echo", toolId], deploy: "local-only" },
+        [agentId]: { ...base.agents![agentId]!, deploy: "cloud-only" },
+      }],
+    });
+    const template = synthesize(framework, "prod", toolId);
+    template.resourceCountIs("AWS::BedrockAgentCore::Runtime", 1);
+    template.resourceCountIs("AWS::BedrockAgentCore::Gateway", 1);
+    template.resourceCountIs("AWS::BedrockAgentCore::GatewayTarget", 1);
+    template.allResourcesProperties("AWS::BedrockAgentCore::GatewayTarget", { Name: toolId });
+    const toolLambdas = Object.keys(template.findResources("AWS::Lambda::Function"))
+      .filter((id) => id.startsWith("AgentCoreTools"));
+    assert.equal(toolLambdas.length, 1);
+    const original = synthesize(base, "prod", toolId);
+    assert.ok(original.findResources("AWS::Lambda::Function")[toolLambdas[0]!], "the shared tool retains its logical id");
+  } finally {
+    dispose();
+  }
+});
+
 test("agents deploy as Node code, with Cognito in front of an agent that has users", () => {
   const { toolId, agentId, dispose } = fixtures();
   try {
@@ -201,6 +228,33 @@ test("agents deploy as Node code, with Cognito in front of an agent that has use
       (fn) => (fn as { Properties: { Handler?: string } }).Properties.Handler === "framework.onEvent",
     );
     assert.equal(providers.length, 1, "one MMDSv2 provider serves every Runtime");
+  } finally {
+    dispose();
+  }
+});
+
+test("the shared model permissions reach an agent's Runtime role with Mantle inference scoped to the default project", () => {
+  const { toolId, agentId, dispose } = fixtures();
+  try {
+    const base = config(toolId, agentId);
+    const framework = defineFrameworkConfig({
+      ...base,
+      agents: [{
+        ...base.agents,
+        [agentId]: { ...base.agents![agentId]!, cloud: { access: models.access } },
+      }],
+    });
+    const template = synthesize(framework, "prod", toolId);
+    const policies = Object.entries(template.findResources("AWS::IAM::Policy"))
+      .filter(([id]) => id.startsWith("AgentCoreRuntimesWorker"))
+      .map(([, policy]) => (policy as { Properties: { PolicyDocument: { Statement: { Action: string | string[]; Resource: unknown }[] } } }).Properties.PolicyDocument.Statement);
+    const statements = policies.flat();
+    const action = (name: string) => statements.find((statement) => [statement.Action].flat().includes(name));
+    assert.deepEqual(action("bedrock-mantle:CreateInference")?.Resource, {
+      "Fn::Join": ["", ["arn:", { Ref: "AWS::Partition" }, `:bedrock-mantle:${env.region}:${env.account}:project/default`]],
+    });
+    assert.equal(action("bedrock-mantle:CallWithBearerToken")?.Resource, "*");
+    assert.ok(action("bedrock:InvokeModel"), "the bedrock-runtime provider retains its model permissions");
   } finally {
     dispose();
   }
@@ -251,7 +305,7 @@ test("a workflow's invokeAgent step calls the Runtime with the workflow's role, 
       webSocket: [],
       events: [],
       services: [],
-      tools: [{ [toolId]: { directory: `/lambda_functions/tool_functions/${toolId}`, deploy: "both" } }],
+      tools: [{ [toolId]: { directory: `/lambda_functions/tool_functions/${toolId}` } }],
       agents: [{ [agentId]: base.agents![agentId]! }],
       workflows: [
         {

@@ -16,6 +16,8 @@
     "db:update": "prisma db update",
     "db:verify": "prisma db verify",
     "db:schema": "prisma db schema",
+    "db:prune-cognito-orphans": "tsx scripts/prune-cognito-orphans-cli.ts",
+    "db:seed-test-user": "tsx scripts/seed-test-user-cli.ts",
     "migration:new": "prisma migration plan",
     "migration:status": "prisma migration status",
     "migration:list": "prisma migration list",
@@ -35,6 +37,7 @@
     "pg": "^8.20.0"
   },
   "devDependencies": {
+    "@aws-sdk/client-cognito-identity-provider": "^3.1055.0",
     "@prisma/cli-engine": "0.6.2",
     "@types/node": "^24.12.4",
     "dotenv": "^17.4.2",

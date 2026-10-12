@@ -5,8 +5,9 @@
  * log in with IAM until a role holding `rds_iam` exists. So on deploy this
  * handler connects as the master, the one time anything reads that password,
  * and makes the login every workload uses: no password, `rds_iam`, and enough
- * to create and own the application's tables in `public`. It is not a
- * superuser. Every statement is idempotent, so an update, or a rerun after a
+ * to create Prisma's tracking schema and own the application's tables in
+ * `public`. It is not a superuser. Every statement is idempotent, so an
+ * update, or a rerun after a
  * failure, changes nothing that is already right.
  *
  * Deleting does nothing: the login goes with the database.
@@ -56,7 +57,9 @@ export async function handler(event: LoginEvent): Promise<{ PhysicalResourceId: 
       `DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = ${client.escapeLiteral(Login)}) THEN CREATE ROLE ${login} LOGIN; END IF; END $$`,
     );
     await client.query(`GRANT rds_iam TO ${login}`);
-    await client.query(`GRANT CONNECT ON DATABASE ${client.escapeIdentifier(Database)} TO ${login}`);
+    // Prisma bootstraps prisma_contract and migrations can create schemas.
+    // CREATE on public permits tables there, but cannot create another schema.
+    await client.query(`GRANT CONNECT, CREATE ON DATABASE ${client.escapeIdentifier(Database)} TO ${login}`);
     await client.query(`GRANT USAGE, CREATE ON SCHEMA public TO ${login}`);
   } finally {
     await client.end();

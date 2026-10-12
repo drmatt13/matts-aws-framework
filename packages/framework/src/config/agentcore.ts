@@ -22,6 +22,7 @@ import type {
   TargetEnvironment,
 } from "./index";
 import { AGENT_SOURCE_ROOT, TOOL_SOURCE_ROOT } from "./conventions";
+import { isDeploySettingEnabled } from "./deploy";
 import { LAMBDA_SOURCE_DIRECTORY_BY_ID } from "../generated/target-ids";
 import type { ToolLambdaId } from "../generated/target-ids";
 
@@ -43,8 +44,8 @@ export type ToolTargetDefinition<Catalog = AnyResourceCatalog> = LambdaTargetDef
      * model never sees the token and cannot supply one.
      */
     readonly auth?: true;
-    /** Where this tool is enabled. */
-    readonly deploy?: DeploySetting;
+    /** Deployment follows the union of the agents that list this tool. */
+    readonly deploy?: never;
     readonly cloud?: HttpCloudSettings<Catalog>;
   };
 
@@ -124,6 +125,19 @@ export function getDefaultToolDirectory(id: string): FrameworkDirectory {
 
 export function getDefaultAgentDirectory(id: string): FrameworkDirectory {
   return `${AGENT_SOURCE_ROOT}/${id}`;
+}
+
+/** Internal deployment projection: shared tools run in every consuming agent's lane. */
+export function getToolDeploySetting(config: FrameworkConfig, toolId: string): DeploySetting {
+  let cloud = false;
+  let local = false;
+  for (const agent of Object.values(config.agents ?? {})) {
+    if (!agent.tools?.includes(toolId)) continue;
+    const deploy = agent.deploy ?? "both";
+    cloud ||= isDeploySettingEnabled(deploy, "cloud");
+    local ||= isDeploySettingEnabled(deploy, "local");
+  }
+  return cloud ? (local ? "both" : "cloud-only") : (local ? "local-only" : "none");
 }
 
 /** The tools an agent's Gateway holds, in the order the agent lists them. */

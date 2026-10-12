@@ -30,28 +30,37 @@ export function readDeploymentStackPages(readPage: (token?: string) => { Stacks?
 }
 
 /** Deployed metadata is authoritative; local environment flags cannot relabel production. */
-export function collectDevelopmentResources(stacks: readonly DeploymentStack[], deployment: string, config: FrameworkConfig): { manifest: ResourceManifest; stacks: readonly DeploymentStack[] } {
+export function collectDeploymentStacks(stacks: readonly DeploymentStack[], deployment: string) {
   const selected: DeploymentStack[] = [];
-  let identity: { deployment: string; mode: string; account: string; region: string } | undefined;
-  const attributes: Record<string, string> = Object.create(null);
-  const integrations: Record<string, string> = Object.create(null);
-  const put = (map: Record<string, string>, key: string, value: string): void => {
-    if (Object.hasOwn(map, key)) throw new Error(`Duplicate deployed resource output ${key}. Existing local files were preserved.`);
-    map[key] = value;
-  };
+  let identity: { version: 1; deployment: string; mode: "dev" | "prod"; account: string; region: string } | undefined;
   for (const stack of stacks) {
     const raw = stack.Outputs?.find((output) => output.Description === "framework:deployment:v1")?.OutputValue;
     if (!raw) continue;
     let metadata: any;
     try { metadata = JSON.parse(raw); } catch { throw new Error(`Invalid deployment metadata in ${stack.StackName}.`); }
     if (metadata.deployment !== deployment) continue;
-    if (metadata.version !== 1 || metadata.mode !== "dev") throw new Error("Exporting production resources into the development environment is refused.");
+    if (metadata.version !== 1 || !["dev", "prod"].includes(metadata.mode) || !/^\d{12}$/.test(metadata.account) || typeof metadata.region !== "string") throw new Error(`Invalid deployment metadata in ${stack.StackName}.`);
     if (stack.StackStatus && !["CREATE_COMPLETE", "UPDATE_COMPLETE", "IMPORT_COMPLETE", "UPDATE_ROLLBACK_COMPLETE"].includes(stack.StackStatus)) throw new Error(`${stack.StackName} is not in a completed deployment state. Existing local files were preserved.`);
     const parts = stack.StackId?.split(":");
     if (parts?.[3] !== metadata.region || parts?.[4] !== metadata.account) throw new Error(`${stack.StackName} has inconsistent account/region metadata.`);
     if (identity && ["deployment", "mode", "account", "region"].some((key) => metadata[key] !== identity![key as keyof typeof identity])) throw new Error("Deployment stacks disagree on their resource identity.");
-    identity = metadata;
+    identity = { version: 1, deployment, mode: metadata.mode, account: metadata.account, region: metadata.region };
     selected.push(stack);
+  }
+  if (!identity) throw new Error(`No resource metadata was found for ${deployment}. Deploy the updated framework before exporting.`);
+  return { identity, stacks: selected };
+}
+
+export function collectDevelopmentResources(stacks: readonly DeploymentStack[], deployment: string, config: FrameworkConfig): { manifest: ResourceManifest; stacks: readonly DeploymentStack[] } {
+  const { identity, stacks: selected } = collectDeploymentStacks(stacks, deployment);
+  if (identity.mode !== "dev") throw new Error("Exporting production resources into the development environment is refused.");
+  const attributes: Record<string, string> = Object.create(null);
+  const integrations: Record<string, string> = Object.create(null);
+  const put = (map: Record<string, string>, key: string, value: string): void => {
+    if (Object.hasOwn(map, key)) throw new Error(`Duplicate deployed resource output ${key}. Existing local files were preserved.`);
+    map[key] = value;
+  };
+  for (const stack of selected) {
     for (const output of stack.Outputs ?? []) {
       if (output.OutputValue === undefined) continue;
       const description = output.Description ?? "";
@@ -59,8 +68,7 @@ export function collectDevelopmentResources(stacks: readonly DeploymentStack[], 
       if (description.startsWith(INTEGRATION_PREFIX)) put(integrations, description.slice(INTEGRATION_PREFIX.length), output.OutputValue);
     }
   }
-  if (!identity) throw new Error(`No development resource metadata was found for ${deployment}. Deploy the updated framework before exporting.`);
-  const manifest = parseResourceManifest(JSON.stringify({ version: 1, ...identity, attributes, integrations }));
+  const manifest = parseResourceManifest(JSON.stringify({ ...identity, attributes, integrations }));
   for (const target of getLocalTargets(config, ["http", "webSocket", "webSocketAuthorizer", "event", "service", "task", "workflow"])) {
     for (const reference of [...Object.values(target.environment).filter(isResourceReference), ...Object.values(target.secrets)]) {
       if (isResourceAbsent(reference) || (reference.fromEnv && !reference.secretArn)) continue;

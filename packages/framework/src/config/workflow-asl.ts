@@ -70,7 +70,8 @@ export interface AslResolver {
   /** The immutable launch specification of a declared task. */
   readonly taskLaunch: (id: string) => {
     readonly cluster: string;
-    readonly taskDefinitionArn: string;
+    /** The family: the launch runs its latest ACTIVE revision. */
+    readonly taskDefinitionFamily: string;
     readonly containerName: string;
     readonly platformVersion: string;
     readonly subnets: readonly string[];
@@ -1381,7 +1382,7 @@ function taskLaunchArguments(
 ): Json {
   return {
     Cluster: launch.cluster,
-    TaskDefinition: launch.taskDefinitionArn,
+    TaskDefinition: launch.taskDefinitionFamily,
     LaunchType: "FARGATE",
     PlatformVersion: launch.platformVersion,
     NetworkConfiguration: {

@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { z } from "zod";
 import { agent } from "../src/runtime/agentcore";
+import type { ToolTargetDefinition } from "../src/config/index";
+
+export const toolDeploy: ToolTargetDefinition = {
+  // @ts-expect-error Tool deployment is inferred from consuming agents.
+  deploy: "both",
+};
 
 /**
  * Compile-time assertions about how an agent is written: `npm run typecheck`

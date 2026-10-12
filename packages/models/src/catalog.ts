@@ -1,5 +1,5 @@
 /**
- * The model providers this agent can construct, and the one it uses when
+ * The model providers an agent can construct, and the one it uses when
  * MODEL_PROVIDER says nothing.
  *
  * Declared here because this is where the choice is actually consumed: the
@@ -7,11 +7,12 @@
  * is what makes it exhaustive — a provider added here is a type error until it
  * is wired up.
  *
- * `framework.config.ts` declares the same values as the deployment input, and
- * `cdk-app/test/langgraph-model-providers.test.ts` fails if the two drift. The
- * two halves fail at different times otherwise: a deployment that accepted a
- * fourth value would synth and deploy clean, then leave this agent throwing on
- * its first turn.
+ * `framework-config/resources.ts` declares the same values as the deployment
+ * input, and `cdk-app/test/langgraph-model-providers.test.ts` fails if the two
+ * drift. The two halves fail at different times otherwise: a deployment that
+ * accepted a fourth value would synth and deploy clean, then leave every agent
+ * throwing on its first turn. A new provider that calls AWS also needs its
+ * permissions in `framework-config/models.ts`.
  */
 
 export const MODEL_PROVIDERS = ["bedrock-mantle", "bedrock", "openai"] as const;

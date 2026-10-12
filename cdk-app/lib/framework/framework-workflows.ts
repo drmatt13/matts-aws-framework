@@ -39,7 +39,7 @@ import { FrameworkTargetRegistry } from "./framework-target-registry";
  * The definition is compiled to ASL and handed over as a `DefinitionBody`, and
  * the role is derived from the IR's own references rather than inferred by CDK
  * from an opaque definition string. That inversion is deliberate: it is what
- * lets the ECS launch be revision-pinned to match the grant the task's stack
+ * lets the ECS launch name the same task family as the grant the task's stack
  * applied, and it means every permission this machine holds is traceable to a
  * `task(...)` in the graph.
  *
@@ -239,7 +239,7 @@ export class FrameworkWorkflows {
         }
         return {
           cluster: handle.launch.cluster,
-          taskDefinitionArn: handle.launch.taskDefinitionArn,
+          taskDefinitionFamily: handle.launch.taskDefinitionFamily,
           containerName: handle.launch.containerName,
           platformVersion: handle.launch.platformVersion,
           subnets: handle.launch.subnets,

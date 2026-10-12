@@ -90,7 +90,7 @@ test("a workload invokes an agent, which calls a tool through its emulated Gatew
     webSocket: [],
     events: [],
     services: [],
-    tools: [{ [toolId]: { directory: `/lambda_functions/tool_functions/${toolId}`, deploy: "local-only" } }],
+    tools: [{ [toolId]: { directory: `/lambda_functions/tool_functions/${toolId}` } }],
     agents: [{ [agentId]: { directory: `/agentcore/${agentId}`, tools: [toolId], deploy: "local-only" } }],
   });
 
@@ -184,7 +184,7 @@ test("a workflow step invokes an agent and reads its result, entirely locally", 
     webSocket: [],
     events: [],
     services: [],
-    tools: [{ [toolId]: { directory: `/lambda_functions/tool_functions/${toolId}`, deploy: "local-only" } }],
+    tools: [{ [toolId]: { directory: `/lambda_functions/tool_functions/${toolId}` } }],
     agents: [{ [agentId]: { directory: `/agentcore/${agentId}`, tools: [toolId], deploy: "local-only" } }],
     workflows: [
       {

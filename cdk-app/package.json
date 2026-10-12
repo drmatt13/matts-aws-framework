@@ -22,6 +22,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@aws-sdk/client-cloudfront-keyvaluestore": "3.1149.0",
+    "@aws-sdk/signature-v4a": "3.1138.0",
     "@repo/database": "*",
     "@repo/framework": "*",
     "aws-cdk-lib": "^2.270.0",

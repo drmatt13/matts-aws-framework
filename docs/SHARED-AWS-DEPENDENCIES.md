@@ -125,9 +125,10 @@ A dev deployment publishes no ECS task/service images. AWS event Lambdas and
 CDK-created support providers can still require deployment assets; local compute
 does not mean deployment is asset-free.
 
-The example agent and its tools are local-only. Developing them does not require a deployed
-AgentCore Runtime or Gateway. Live AWS parity checks are a separate deployment
-and verification action.
+Agents run locally in development; each tool's enabled lanes follow the agents
+that list it. Developing them does not require a deployed AgentCore Runtime or
+Gateway. Live AWS parity checks require a separate full cloud deployment and
+verification action.
 
 Source: [deployment mode table](FRAMEWORK.md),
 [composition factories](../cdk-app/lib/framework/framework-composition.ts),

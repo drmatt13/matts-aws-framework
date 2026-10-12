@@ -1,5 +1,10 @@
 import WebSocketTester from "../components/WebSocketTester";
-import { connectionUrlWithToken, consumeLaunchToken } from "../lib/tokenHandoff";
+import {
+  LAUNCH_URL_PARAMS,
+  connectionUrlWithToken,
+  consumeLaunchToken,
+  launchConnectionUrl,
+} from "../lib/tokenHandoff";
 
 import { createFileRoute } from "@tanstack/react-router";
 
@@ -9,9 +14,18 @@ export const Route = createFileRoute("/")({ component: App });
 // page loads so the Cognito token does not remain in the address bar or history.
 const launchToken = consumeLaunchToken();
 
+// Left: local-ws-dev-server. Right: the deployed API Gateway stage, if any.
+// client-app's launch link names both; opened directly, Compose's values apply.
+const localWsUrl = connectionUrlWithToken(
+  launchConnectionUrl(LAUNCH_URL_PARAMS.local, import.meta.env.VITE_LOCAL_WS_URL as string | undefined),
+  launchToken,
+);
+const apiGatewayWsUrl = connectionUrlWithToken(
+  launchConnectionUrl(LAUNCH_URL_PARAMS.apiGateway, import.meta.env.VITE_API_GATEWAY_WS_URL as string | undefined),
+  launchToken,
+);
+
 function App() {
-  const localWsUrl = connectionUrlWithToken(import.meta.env.VITE_LOCAL_WS_URL as string, launchToken);
-  const apiGatewayWsUrl = connectionUrlWithToken(import.meta.env.VITE_API_GATEWAY_WS_URL as string, launchToken);
 
   return (
     <div className="flex justify-center">

@@ -28,8 +28,12 @@ export interface AwsTaskLaunchSpecification {
   readonly region: string;
   /** Cluster ARN, not name: the RunTask grant is conditioned on this exact value. */
   readonly cluster: string;
-  /** Revision-qualified: a family-only ARN would silently drift from the grant. */
-  readonly taskDefinitionArn: string;
+  /**
+   * The family, which RunTask resolves to its latest ACTIVE revision; the
+   * grant covers every revision of it. A revision ARN would change with every
+   * change to the task, which a caller in another stack cannot deploy past.
+   */
+  readonly taskDefinitionFamily: string;
   readonly containerName: string;
   readonly launchType: "FARGATE";
   readonly platformVersion: string;
@@ -260,7 +264,7 @@ export function parseInvocationDescriptor(
   for (const field of [
     "region",
     "cluster",
-    "taskDefinitionArn",
+    "taskDefinitionFamily",
     "containerName",
     "platformVersion",
   ] as const) {
@@ -291,7 +295,7 @@ export function parseInvocationDescriptor(
     launch: {
       region: spec.region as string,
       cluster: spec.cluster as string,
-      taskDefinitionArn: spec.taskDefinitionArn as string,
+      taskDefinitionFamily: spec.taskDefinitionFamily as string,
       containerName: spec.containerName as string,
       launchType: "FARGATE",
       platformVersion: spec.platformVersion as string,

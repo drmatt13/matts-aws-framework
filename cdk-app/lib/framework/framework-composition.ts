@@ -251,11 +251,13 @@ export function createFrameworkWorkloads(
   const httpTargets = getCloudTargets(config, ["http"], mode);
   // WebSocket handlers exist to be routed to. Without a WebSocket API in this
   // deployment nothing could invoke them, so none are built; locally the
-  // WebSocket dev server runs the same handlers either way.
+  // WebSocket dev server runs the same handlers either way. With one, they are
+  // built in either mode: in a dev deployment API Gateway is their AWS caller.
   const declaredWebSocketTargets = getCloudTargets(
     config,
     ["webSocket", "webSocketAuthorizer"],
     mode,
+    { webSocketApi: true },
   );
   const webSocketTargets = props.deployWebSocketApi ? declaredWebSocketTargets : [];
   const serviceTargets: readonly NormalizedTarget[] = getCloudTargets(

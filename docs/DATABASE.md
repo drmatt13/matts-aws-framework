@@ -92,6 +92,23 @@ mode applies committed migrations. `PRISMA_LOCAL_SCHEMA_SYNC=push` selects direc
 `db:update` instead; it is an explicit local opt-in, not the production release path.
 Starting Compose can therefore mutate the local database.
 
+After migrating, Compose runs prune-cognito-orphans before any consumer starts.
+postgres_data outlives the dev Cognito pool: after the dev stack is destroyed and
+redeployed, a users row can hold a sub the new pool does not, which can never sign in
+and whose email makes signing up again fail with CognitoIdentityConflictError. The
+step lists the whole pool named by USER_POOL_ID with the selected AWS profile, then
+deletes every users row whose sub is absent. Deleting a user cascades to the rows it
+owns, such as its projects. If the pool cannot be listed (no USER_POOL_ID, expired
+credentials, a deleted pool) it warns and deletes nothing. It refuses any database
+other than the Compose or loopback one.
+
+Then seed-test-user makes `LOCAL_TEST_USER_EMAIL` a working account: it creates the
+user in the dev pool if needed, sets its password from cdk-app/.env, and writes its
+users row through `ensureCognitoUser`. An admin-created account never fires the
+post-confirmation trigger, so this step writes the row itself. It keeps an existing
+row, refuses `PROD_DEPLOYMENT=true`, and has the same database guard. See
+[Development](DEV-DEPLOYMENT.md#verification-and-troubleshooting).
+
 Database contract/generated files are excluded from Watch. Rebuild the development
 image after contract changes. To author a migration with the container CLI, rebuild
 first, then open a shell with `docker compose run --rm prisma-migrate sh`; its prisma/
@@ -114,6 +131,8 @@ Prefix each with `npm --workspace @repo/database run`:
 | `db:schema` | Inspect the live database schema |
 | `db:init` | Initialize an empty database additively and sign it |
 | `db:update` | Directly synchronize storage; does not author a migration package |
+| `db:prune-cognito-orphans` | Delete local users absent from the dev Cognito pool; Compose runs it |
+| `db:seed-test-user` | Create the cdk-app/.env test user in the dev pool and local database; Compose runs it |
 | `scaffold -- <Model> --dry-run` | Preview a new owned-list/create feature; see Data features |
 | `typecheck` / `test` | Check types / run offline database and scaffold tests |
 

@@ -94,7 +94,7 @@ export async function runAwsTask(
   const response = await client.send(
     new RunTaskCommand({
       cluster: launch.cluster,
-      taskDefinition: launch.taskDefinitionArn,
+      taskDefinition: launch.taskDefinitionFamily,
       launchType: launch.launchType,
       platformVersion: launch.platformVersion,
       count: 1,

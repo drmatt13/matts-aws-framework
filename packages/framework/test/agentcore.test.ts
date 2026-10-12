@@ -8,8 +8,14 @@ import {
   getAgentTools,
   getAgentBrowserRoutes,
   getFrameworkTargets,
+  getCloudTargets,
+  getLocalTargets,
   invokesAgent,
+  startsWorkflow,
+  succeed,
+  workflow,
   resolveLambdaTarget,
+  type DeploySetting,
   type FrameworkConfig,
   type FrameworkConfigInput,
   type FrameworkHttp,
@@ -82,16 +88,55 @@ test("an agent's tool list is checked like any other invocation edge", () => {
     /agents\["support-agent"\] tools\("missing"\) names "lambda:missing", which is not declared/,
   );
   assert.throws(
-    () => config({ tools: [{ ...tools, echo: { deploy: "local-only" } }], agents: [{ summarizer: { tools: ["echo"] } }] }),
-    /removes from the cloud lane/,
-  );
-  assert.throws(
     () =>
       config({
         http: [{ "/ping": { directory: "/lambda_functions/http_functions/ping", methods: ["GET"] } }],
         agents: [{ summarizer: { tools: ["ping"] } }],
       }),
     /tools\("ping"\) names an http Lambda\. An agent calls Lambdas declared under tools/,
+  );
+});
+
+test("tools follow the union of their consuming agents' deployment lanes", () => {
+  const cases: readonly [readonly (DeploySetting | undefined)[], DeploySetting][] = [
+    [[], "none"],
+    [["none"], "none"],
+    [["local-only"], "local-only"],
+    [["cloud-only"], "cloud-only"],
+    [["both"], "both"],
+    [[undefined], "both"],
+    [["local-only", "cloud-only"], "both"],
+    [["local-only", "none"], "local-only"],
+    [["cloud-only", "none"], "cloud-only"],
+  ];
+  for (const [deploys, expected] of cases) {
+    const framework = config({
+      tools: [{ echo: {}, unused: {} }],
+      agents: deploys.map((deploy, index) => ({ [`consumer-${index}`]: { tools: ["echo"], deploy } })),
+    });
+    const target = getFrameworkTargets(framework).find((item) => item.reference === "lambda:echo")!;
+    assert.equal(target.deploy, expected, JSON.stringify(deploys));
+    assert.equal(getLocalTargets(framework, ["tool"]).some((item) => item.id === "echo"), expected === "both" || expected === "local-only");
+    assert.equal(getCloudTargets(framework, ["tool"], "prod").some((item) => item.id === "echo"), expected === "both" || expected === "cloud-only");
+    assert.deepEqual(getCloudTargets(framework, ["tool"], "dev"), []);
+    assert.equal(getFrameworkTargets(framework).find((item) => item.id === "unused")!.deploy, "none");
+  }
+});
+
+test("tools reject authored deploy settings with a migration diagnostic", () => {
+  assert.throws(
+    () => config({ tools: [{ echo: { deploy: "local-only" } } as never] }),
+    /tools\["echo"\].*deploy.*deployment is inferred from the agents that list it/,
+  );
+});
+
+test("inferred tool lanes still validate outgoing invocation destinations", () => {
+  const tool = { echo: { cloud: { bindings: [startsWorkflow("review")] } } };
+  const workflows = [{ review: workflow(() => succeed(), { deploy: "local-only", timeoutSeconds: 60 }) }];
+  assert.doesNotThrow(() => config({ tools: [tool], agents: [{ summarizer: { tools: ["echo"], deploy: "local-only" } }], workflows }));
+  assert.throws(
+    () => config({ tools: [tool], agents: [{ summarizer: { tools: ["echo"], deploy: "both" } }], workflows }),
+    /tools\["echo"\].*startsWorkflow\("review"\).*removes from the cloud lane/,
   );
 });
 

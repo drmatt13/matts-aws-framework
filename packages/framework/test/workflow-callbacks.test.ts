@@ -70,7 +70,7 @@ const resolver: AslResolver = {
   }),
   taskLaunch: () => ({
     cluster: "arn:aws:ecs:eu-west-2:111122223333:cluster/app",
-    taskDefinitionArn: "arn:aws:ecs:eu-west-2:111122223333:task-definition/worker:7",
+    taskDefinitionFamily: "worker",
     containerName: "worker",
     platformVersion: "1.4.0",
     subnets: ["subnet-1"],

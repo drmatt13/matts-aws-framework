@@ -202,7 +202,8 @@ export class EcsTasksStack extends cdk.Stack {
     const launch: FrameworkTaskLaunch = {
       region: this.region,
       cluster: cluster.clusterArn,
-      taskDefinitionArn: definition.taskDefinitionArn,
+      // A literal: CDK names the family from the construct path at synthesis.
+      taskDefinitionFamily: definition.family,
       containerName,
       launchType: "FARGATE",
       platformVersion: PLATFORM_VERSION,
@@ -288,11 +289,18 @@ export class EcsTasksStack extends cdk.Stack {
 /**
  * The exact grants a launch needs, and nothing wider.
  *
- * `ecs:RunTask` on this task definition revision, restricted to this cluster;
- * `iam:PassRole` on *both* roles, restricted to the ECS tasks service. The two
- * PassRole resources are deliberate: a launch passes the execution role that
- * starts the task and the task role the application then runs as, and granting
- * only one produces an `AccessDenied` that names neither.
+ * `ecs:RunTask` on every revision of this task's family, restricted to this
+ * cluster; `iam:PassRole` on *both* roles, restricted to the ECS tasks service.
+ * The two PassRole resources are deliberate: a launch passes the execution role
+ * that starts the task and the task role the application then runs as, and
+ * granting only one produces an `AccessDenied` that names neither.
+ *
+ * The family, not the revision, because a task definition is immutable: any
+ * change to it, a rebuilt image included, registers a new revision under a new
+ * ARN. A caller in another stack would hold that ARN through an export, and
+ * CloudFormation refuses to change an export another stack imports — so the
+ * task's next change could not deploy. The family is a literal and never
+ * changes, and the caller launches by it, so the grant and the launch agree.
  *
  * Written as explicit statements rather than a broad CDK grant narrowed
  * afterwards. A second Allow does not narrow the first — it widens the policy.
@@ -309,7 +317,14 @@ export function grantRunTask(
     new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ["ecs:RunTask"],
-      resources: [launch.taskDefinitionArn],
+      resources: [
+        cdk.Stack.of(definition).formatArn({
+          service: "ecs",
+          resource: "task-definition",
+          resourceName: `${launch.taskDefinitionFamily}:*`,
+          arnFormat: cdk.ArnFormat.SLASH_RESOURCE_NAME,
+        }),
+      ],
       conditions: { ArnEquals: { "ecs:cluster": launch.cluster } },
     }),
   );

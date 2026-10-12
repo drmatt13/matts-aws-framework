@@ -53,10 +53,12 @@ export class WebSocketLambdaFunctionsStack extends cdk.Stack {
       this,
       this.targets,
       props.targets ??
+        // Built for a WebSocket API, so in either mode.
         getCloudTargets(
           props.config,
           ["webSocket", "webSocketAuthorizer"],
           props.cloud.mode,
+          { webSocketApi: true },
         ),
       context,
     );

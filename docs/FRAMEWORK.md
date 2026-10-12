@@ -135,6 +135,9 @@ the section or target. Both the container image platform and ECS runtime are
 always pinned to the resolved architecture, independent of the build host.
 
 `deploy` is one of both, local-only, cloud-only, or none. It says where a target is enabled.
+Tools infer these lanes from the agents that list them and do not accept `deploy`:
+a shared tool runs in the union of its consuming agents' lanes, and an unused tool
+runs in neither.
 Deployment mode separately says what the AWS graph constructs:
 
 | Surface | Dev AWS graph | Prod AWS graph |
@@ -143,7 +146,7 @@ Deployment mode separately says what the AWS graph constructs:
 | Replay infrastructure | Yes | No |
 | Website, RDS, HTTP gateway | No | Yes |
 | Routed Lambdas, services, tasks, workflows | No; execute locally | If cloud-enabled |
-| WebSocket API and its handlers | No | When DEPLOY_WEBSOCKET_API is on |
+| WebSocket API and its handlers | When DEPLOY_PROD_WEBSOCKET_API is on | When DEPLOY_PROD_WEBSOCKET_API is on |
 | Network (VPC) and database | No | Once a Lambda has `vpc: true` or `database: true`, or a container is built |
 
 Events are invoked by AWS and do not have a per-target deploy toggle. A dev deployment
@@ -397,7 +400,12 @@ development credentials: a cloud grant does not grant permissions to that profil
 
 Successful development deployment refreshes the manifest and Compose .env automatically.
 `npm run export:cdk-outputs -- --profile <PROFILE>` remains a standalone refresh. Production
-deployment neither writes nor depends on either development file. Existing
+deployment neither writes nor depends on either development file. For a production graph,
+the standalone export writes root .env and .framework/prod/outputs.json with public
+frontend/auth settings and publishing identifiers. Both modes end the block with the same
+client-app section of VITE_ settings; copy it into client-app/.env yourself. Root .env's generated block represents the most recently exported
+mode; exporting production replaces the generated dev controls. The exporter determines mode
+from deployed metadata and never puts production resources in the development manifest. Existing
 cdk-app/.secret-bindings.json files are ignored and may be removed locally.
 
 ## Network and database
@@ -485,8 +493,11 @@ new rds.DatabaseInstance(this, "PostgresDatabase", {
 
 RDS insists on a master user with a password. The framework reads that password exactly
 once, on deploy: a custom resource in the database's stack logs in as the master and creates
-`app_user`, with `rds_iam`, no password, and the right to create tables in `public`. It is
-not a superuser. Migrations run as `app_user` too, so it owns every table. A release
+`app_user`, with `rds_iam`, no password, database `CONNECT` and `CREATE`, and the right to
+create tables in `public`. Database `CREATE` allows Prisma to create its `prisma_contract`
+tracking schema and migrations to create schemas. The login is not a superuser.
+Versioned bootstrap permissions are reapplied on redeployment. Migrations run as
+`app_user` too, so it owns every table. A release
 therefore deploys first and then migrates: `npm run db:migrate:cloud -- --profile <PROFILE>`
 runs the `db-migrate` task inside the network.
 
@@ -773,9 +784,10 @@ from offline/local tests. Use a disposable fixture for deliberate failures.
 | File/source | Owner and purpose |
 | --- | --- |
 | cdk-app/.env | Authored deployment settings and local inputs. Deployment flags may be overridden by the shell or `-c`; PROD_DEPLOYMENT and resource inputs are read from the file itself |
-| Root .env | Fixed development Compose/auth/replay/port controls |
+| Root .env | Exported dev Compose/auth/replay/port controls, or public production outputs; either ends with a client-app block of VITE_ settings to copy manually |
 | .framework/local/resources.json | Discovered development resource and workflow identifiers; never raw secrets |
 | client-app/.env | Browser-public VITE_ values from the deployment |
+| .framework/prod/outputs.json | Exported public production outputs, including frontend publishing identifiers |
 | Service .env.example | Generated input documentation; no authored per-service env files |
 | docker-compose.yml | Local containers, launchers, read-only mounts, ports, readiness, and Watch |
 | cdk-app/deployment.ts | Application deployment input validation, precedence, and compatibility aliases |
@@ -787,7 +799,7 @@ environment, then fallback. New deployment-wide flags belong in deployment.ts pl
 workload inputs belong in the resource catalog instead.
 
 The principal deployment settings are CDK_APP_NAME, PROD_DEPLOYMENT,
-RETAIN_STATEFUL_RESOURCES, DATABASE_BACKUP_RETENTION_DAYS, DEPLOY_WEBSOCKET_API,
+RETAIN_STATEFUL_RESOURCES, DATABASE_BACKUP_RETENTION_DAYS, DEPLOY_PROD_WEBSOCKET_API,
 COGNITO_SES_FROM_EMAIL (with optional COGNITO_SES_FROM_NAME and COGNITO_SES_REGION),
 SKIP_EMAIL_VERIFICATION (development only), frontend/Cognito custom-domain toggles and
 certificate pairs, and optional Google credentials. USE_CUSTOM_WS_AUTHORIZER is retired: the
@@ -796,12 +808,17 @@ declared authorizer is always attached, a leftover `true` is ignored with a warn
 reference for accepted context keys and legacy aliases. Avoid adding new aliases or copying
 legacy precedence exceptions.
 
-The website's API origin depends on the HTTP gateway, while Cognito needs frontend URLs.
-With a configured frontend origin, resolution excludes the website token from auth/CORS
-inputs to prevent a cycle. **Current limitation:** the generated CloudFront-domain-only
-path has no /api behavior. A complete deployed browser/auth flow needs the configured
-frontend-domain path described in Production. Do not hide that limitation by switching
-the browser to cross-origin requests.
+Both custom and generated CloudFront hostnames serve same-origin /api and declared agent
+paths. With a custom frontend origin, auth/CORS use the configured URL and the website
+references the backends directly. With a generated hostname, Cognito and the handlers
+depend on the website's URL, so the website cannot depend back on them. In that mode,
+CloudFront Functions read destinations from a KeyValueStore: the website owns the store,
+and a custom resource in the HTTP API stack fills it after the backends are ready. The
+custom resource grants only DescribeKeyValueStore, ListKeys and UpdateKeys on that store and writes
+public endpoint names and Runtime ARNs. Requests without a published destination return
+503; they never fall through to the SPA. Cognito callbacks/logout and trusted browser
+origins still use the exact generated HTTPS hostname. See
+[CloudFront origin modification](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/helper-functions-origin-modification.html).
 
 ## Authentication
 
@@ -869,7 +886,7 @@ the file with the other value, and state the same mode with `-c`:
 ```powershell
 npm --workspace cdk-app exec -- cdk synth -c useLocalDevStack=true --quiet
 $env:FRAMEWORK_INPUTS_FILE = "<PROD_COPY_OF_CDK_APP_ENV>"
-npm --workspace cdk-app exec -- cdk synth -c useLocalDevStack=false -c deployWebSocketApi=true --quiet
+npm --workspace cdk-app exec -- cdk synth -c useLocalDevStack=false -c deployProdWebSocketApi=true --quiet
 Remove-Item Env:FRAMEWORK_INPUTS_FILE
 ```
 
@@ -877,7 +894,7 @@ On macOS or Linux, an inline assignment scopes the variable to the one command:
 
 ```sh
 npm --workspace cdk-app exec -- cdk synth -c useLocalDevStack=true --quiet
-FRAMEWORK_INPUTS_FILE="<PROD_COPY_OF_CDK_APP_ENV>" npm --workspace cdk-app exec -- cdk synth -c useLocalDevStack=false -c deployWebSocketApi=true --quiet
+FRAMEWORK_INPUTS_FILE="<PROD_COPY_OF_CDK_APP_ENV>" npm --workspace cdk-app exec -- cdk synth -c useLocalDevStack=false -c deployProdWebSocketApi=true --quiet
 ```
 
 Review logical ids when moving constructs. The prod graph exposes cycles and resources

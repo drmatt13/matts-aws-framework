@@ -111,6 +111,19 @@ test("the retired WebSocket authorizer flag refuses false and warns on true", ()
   );
 });
 
+test("DEPLOY_PROD_WEBSOCKET_API builds the WebSocket API in either mode, and its old names are refused", () => {
+  const dev = inputs({ PROD_DEPLOYMENT: "false", DEPLOY_PROD_WEBSOCKET_API: "true" });
+  assert.equal(dev.deployProdWebSocketApi, true);
+  assert.equal(dev.warnings.some((warning) => warning.includes("WEBSOCKET")), false, "a dev deployment no longer ignores it");
+  assert.equal(inputs({ PROD_DEPLOYMENT: "false" }).deployProdWebSocketApi, false);
+  assert.equal(inputs({ PROD_DEPLOYMENT: "true" }, { deployProdWebSocketApi: "true" }).deployProdWebSocketApi, true);
+  assert.throws(
+    () => inputs({ PROD_DEPLOYMENT: "false", DEPLOY_WEBSOCKET_API: "true" }),
+    /^Error: DEPLOY_WEBSOCKET_API was renamed\. Use DEPLOY_PROD_WEBSOCKET_API in cdk-app\/\.env/,
+  );
+  assert.throws(() => inputs({ PROD_DEPLOYMENT: "true" }, { deployWebSocketApi: false }), /-c deployWebSocketApi was renamed/);
+});
+
 test("production warns without an SES sender, and backups default to a week", () => {
   const prod = inputs({ PROD_DEPLOYMENT: "true" });
   assert.equal(prod.databaseBackupRetentionDays, 7);

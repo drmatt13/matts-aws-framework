@@ -12,8 +12,8 @@ and create cdk-app/.env from [the production example](../cdk-app/.env.prod.examp
 Preserve existing configuration rather than blindly overwriting it. Set:
 
 - PROD_DEPLOYMENT=true and the environment's stable CDK_APP_NAME.
-- USE_FRONTEND_CUSTOM_DOMAIN=true, FRONTEND_URL, and FRONTEND_CLOUDFRONT_CERTIFICATE_ARN
-  for the supported same-origin browser/API deployment.
+- USE_FRONTEND_CUSTOM_DOMAIN=false to use the generated HTTPS CloudFront hostname,
+  or true with FRONTEND_URL and FRONTEND_CLOUDFRONT_CERTIFICATE_ARN for a custom domain.
 - Optional Cognito custom-domain/certificate pair and Google credentials.
 - RETAIN_STATEFUL_RESOURCES deliberately. The resolver defaults to false; use true when
   Cognito/RDS data and the database secret must survive stack removal. Either way the
@@ -26,9 +26,12 @@ Preserve existing configuration rather than blindly overwriting it. Set:
   service and example agent are local-only until their declarations enable cloud deployment. SKIP_EMAIL_VERIFICATION is
   refused in production.
 
-Current limitation: a generated CloudFront URL without a configured frontend domain serves
-static files but has no /api behavior. It is useful for bootstrap, not a complete browser
-auth deployment. This guide does not change that infrastructure behavior.
+Both hostname choices serve the frontend and same-origin /api, with Cognito callback,
+logout and trusted-origin settings matching that frontend. For a deployment without
+owned domains, set USE_FRONTEND_CUSTOM_DOMAIN=false and USE_COGNITO_CUSTOM_DOMAIN=false;
+no domain name or ACM certificate is required. Use the website stack's CloudFrontUrl output
+to open the deployed client after publishing it. A generated-domain deployment populates
+CloudFront's routing store automatically during deployment; there is no separate setup command.
 
 Do not switch an existing production deployment to dev mode as a local-development shortcut:
 it can remove resources from that stack graph. Use a separate deployment name/account for dev.
@@ -58,15 +61,17 @@ Cognito custom-domain parent must resolve before creation. See
 For a new domain whose parent/apex does not resolve, bootstrap the frontend distribution:
 
 1. Temporarily set USE_FRONTEND_CUSTOM_DOMAIN=false, preserving the configured values.
-2. Deploy only the website stack:
+2. Deploy the production resources with USE_COGNITO_CUSTOM_DOMAIN=false too:
 
    ```powershell
-   npm --workspace cdk-app exec -- cdk deploy <CDK_APP_NAME>-FrontendWebsiteS3Stack -c useLocalDevStack=false --profile <PROFILE>
+   npm run deploy:resources -- --all -c useLocalDevStack=false --profile <PROFILE>
    ```
 
 3. Read its CloudFrontDomainName output and point the apex to it with your provider's
    alias/flattened record. Keep records DNS-only for this documented configuration.
-4. Confirm the parent resolves, then restore USE_FRONTEND_CUSTOM_DOMAIN=true.
+4. Confirm the parent resolves, then restore USE_FRONTEND_CUSTOM_DOMAIN=true and the
+   intended Cognito custom-domain setting, and deploy again. Existing distribution and
+   user-pool identities are preserved when changing hostname settings.
 
 This uses the actual distribution for parent DNS instead of a documentation-only IP.
 For first-time Cognito custom-domain creation, do not point its hostname at the frontend
@@ -90,7 +95,7 @@ federated identity checks. Auth implementation details live in [Framework](FRAME
 ## Deploy
 
 ```powershell
-npm run deploy -- --all -c useLocalDevStack=false --profile <PROFILE>
+npm run deploy:resources -- --all -c useLocalDevStack=false --profile <PROFILE>
 ```
 
 The command validates the synthesized graph and target account, resolves existing managed
@@ -100,7 +105,7 @@ preserved and removed declarations never delete secrets. A failed deployment rep
 secret updates already performed. Synthesis and diff require no secret-binding file and
 perform no uploads.
 
-Production deployment does not export root .env or a local resource manifest. Retrieve
+Production deployment does not automatically export root .env or a local resource manifest. Retrieve
 public deployment outputs directly from CloudFormation or the CDK deployment output:
 
 ```powershell
@@ -109,7 +114,21 @@ aws cloudformation describe-stacks --stack-name <CDK_APP_NAME>-CognitoStack --qu
 
 Use the same command for FrontendWebsiteS3Stack and RdsStack as needed. Their established
 output names and stack identities are unchanged. Do not copy production outputs into the
-development manifest; standalone development export rejects production metadata.
+development manifest. To export production frontend settings and public deployment outputs
+without starting containers, run:
+
+```powershell
+npm run export:cdk-outputs -- --profile <PROFILE>
+```
+
+The command detects the mode from deployed metadata. In production it writes root .env
+with public deployment outputs in the same sections as development, including the frontend
+bucket and distribution used for publishing, and ends with a client-app block to copy into
+client-app/.env. It also refreshes
+.framework/prod/outputs.json. The generated root .env block replaces any previous dev
+export block, while unrelated authored entries are preserved. It does not generate files
+inside client-app or change the development resource manifest. Both output files are
+ignored by Git; no secrets are exported.
 
 For custom DNS, use the deployment output targets:
 
@@ -155,11 +174,17 @@ for reviewing a production migration.
 
 ## Publish the client
 
-Copy public outputs into client-app/.env using [its example](../client-app/.env.example):
-VITE_AWS_REGION, VITE_USER_POOL_ID, VITE_USER_POOL_CLIENT_ID, and VITE_COGNITO_DOMAIN.
-A browser always calls same-origin /api; no deployed cross-origin API URL is needed.
+Export, then copy the client-app block at the end of root .env into client-app/.env before
+building. It holds the production Cognito region, pool, client and domain; the CloudFront
+URL as VITE_API_GATEWAY_URL, which only the Vite dev server's proxy reads; the deployed
+WebSocket endpoint as VITE_API_GATEWAY_WS_URL when DEPLOY_PROD_WEBSOCKET_API is on; and empty
+VITE_LOCAL_WS_URL and tester URLs, since neither Compose service runs. Empty values
+clear local defaults that do not apply. A browser always calls same-origin /api; no
+deployed cross-origin API URL is needed.
 
 ```powershell
+npm run export:cdk-outputs -- --profile <PROFILE>
+# Copy the exported client-app block into client-app/.env before the build.
 npm --workspace client-app run build
 aws s3 sync client-app/dist s3://<FRONTEND_WEBSITE_BUCKET_NAME> --delete --profile <PROFILE>
 aws cloudfront create-invalidation --distribution-id <CLOUDFRONT_ID> --paths "/*" --profile <PROFILE>

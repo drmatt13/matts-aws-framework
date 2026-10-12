@@ -102,6 +102,9 @@ function databaseLogin(scope: IConstruct, binding: ConnectsToBinding, instance: 
       Login: DATABASE_LOGIN,
       // A replaced instance is a new database, and needs the login again.
       ResourceId: instance.instanceResourceId,
+      // Bump when bootstrap grants change: replacing Lambda code alone does
+      // not send an Update event to an existing custom resource.
+      PermissionsVersion: 2,
     },
   });
   login.node.addDependency(instance);

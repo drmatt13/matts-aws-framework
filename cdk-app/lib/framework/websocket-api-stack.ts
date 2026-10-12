@@ -120,7 +120,8 @@ export class WebSocketApiStack extends cdk.Stack {
    * pointing one way.
    */
   private grantConnectionManagement(props: WebSocketApiStackProps): void {
-    for (const target of getCloudTargets(props.config, ["webSocket"], props.mode)) {
+    // This stack is the WebSocket API, so its handlers are built in either mode.
+    for (const target of getCloudTargets(props.config, ["webSocket"], props.mode, { webSocketApi: true })) {
       if (!target.cloud.manageConnections) continue;
 
       const handler = props.targets.requireLambda(

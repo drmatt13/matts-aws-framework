@@ -37,14 +37,11 @@ npm run deploy:resources -- --all --profile=<profile> --yes
 > `npm --workspace cdk-app exec -- cdk bootstrap --profile=<profile>`
 
 **4. Create the client env file.** Copy `client-app/.env.example` to `client-app/.env`,
-then fill in the Cognito values from the root `.env` that step 3 generated:
-
-| Put this in `client-app/.env` | Copy it from root `.env` |
-| --- | --- |
-| `VITE_USER_POOL_ID` | `USER_POOL_ID` |
-| `VITE_USER_POOL_CLIENT_ID` | `USER_POOL_CLIENT_ID` |
-| `VITE_COGNITO_DOMAIN` | `COGNITO_DOMAIN_URL` |
-| `VITE_AWS_REGION` | `LOCAL_AWS_REGION` |
+then replace its values with the last section of the root `.env` that step 3 generated,
+headed `# Client app: copy this block into client-app/.env`. It already holds every
+`VITE_*` setting the client reads, including `VITE_LOCAL_WS_URL` for the local
+WebSocket server. Set `DEPLOY_PROD_WEBSOCKET_API=true` in `cdk-app/.env` before step 3
+to also deploy the AWS WebSocket API, whose URL is `VITE_API_GATEWAY_WS_URL`.
 
 **5. Start the backend** (Docker containers). Leave this terminal running.
 
