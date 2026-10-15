@@ -30,7 +30,7 @@ This is a TypeScript npm-workspace monorepo for AWS-backed applications. Start w
   resource.stack<T>() entry for one a stack created, generated or imported. A container
   takes the contents with secrets: { NAME: resources.x.value } or .field("key"); a Lambda
   takes the ARN with environment: { NAME: resources.x.arn }, which also grants the read.
-  npm run deploy uploads the authored values and supplies their ARNs; there is no separate
+  npm run deploy:resources uploads the authored values and supplies their ARNs; there is no separate
   sync step. Never put a secret value, or a hand-pasted ARN, in a config file, a generated
   file, or a template — and never expose a stack string built from a secret, because a
   public string field is a resource.

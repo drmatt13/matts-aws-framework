@@ -310,7 +310,7 @@ retention before executing. Without RETAIN_STATEFUL_RESOURCES the database is de
 final snapshot, and its automated backups are kept for their retention window:
 
 ```powershell
-npm run destroy -- --all -c useLocalDevStack=false --profile <PROFILE>
+npm run destroy:resources -- --all -c useLocalDevStack=false --profile <PROFILE>
 ```
 
 Review CDK's confirmation list. Use useLocalDevStack=true for a dev graph. Retained resources

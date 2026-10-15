@@ -248,7 +248,7 @@ if (workloads.skippedTargets.withoutWebSocketApi.length > 0) {
 }
 if (workloads.skippedTargets.notInThisDeployment.length > 0) {
   console.warn(
-    `Not built by this ${mode} deployment, which holds only what AWS invokes: ${workloads.skippedTargets.notInThisDeployment.join(", ")}. Run them locally with npm run dev, or deploy with PROD_DEPLOYMENT=true.`,
+    `Not built by this ${mode} deployment, which holds only what AWS invokes: ${workloads.skippedTargets.notInThisDeployment.join(", ")}. Run them locally with npm run dev:containers, or deploy with PROD_DEPLOYMENT=true.`,
   );
 }
 

@@ -20,7 +20,7 @@ import {
  * What a declared startup secret becomes in a template.
  *
  * The load-bearing assertion is the negative one: the value is authored in
- * cdk-app/.env and copied into Secrets Manager by `npm run deploy`, so a
+ * cdk-app/.env and copied into Secrets Manager by `npm run deploy:resources`, so a
  * template that contained it would be a leak into every artifact a deploy
  * writes. The rest pins the mechanism that keeps it out — the template carries
  * a parameter for the ARN rather than the ARN itself, ECS resolves it at
@@ -120,7 +120,7 @@ test("an authored startup secret reaches the task definition as an ARN parameter
   assert.equal(secrets.length, 1);
   assert.equal(secrets[0].Name, "OPENAI_API_KEY");
 
-  // A reference, not a literal: the secret is created by `npm run deploy`, so a
+  // A reference, not a literal: the secret is created by `npm run deploy:resources`, so a
   // synthesized template cannot know the six-character suffix that makes the
   // ARN complete. The parameter's pattern is what requires a complete one.
   const reference = secrets[0].ValueFrom as { Ref?: string };
@@ -176,7 +176,7 @@ test("an optional startup secret this deployment does not hold is absent from th
       .some((statement) => JSON.stringify(statement.Action).includes("secretsmanager")),
     "nothing is granted for a secret the deployment does not have",
   );
-  // And no ARN parameter is minted for it either, so `npm run deploy` is never
+  // And no ARN parameter is minted for it either, so `npm run deploy:resources` is never
   // asked to supply a secret nobody declared a value for. (CDK's own
   // BootstrapVersion parameter is always present and is not ours.)
   const minted = Object.keys(template.toJSON().Parameters ?? {}).filter((name) =>

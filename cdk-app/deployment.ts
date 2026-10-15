@@ -359,7 +359,7 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
   // GOOGLE_CLIENT_SECRET and wrapped in SecretValue.unsafePlainText, which put
   // it in the template in cleartext for anyone who can read the stack. It is a
   // declared secret now - see resources.googleClientSecret - so the value
-  // reaches Secrets Manager through npm run secrets:sync, and the template
+  // reaches Secrets Manager through npm run deploy:resources, and the template
   // carries a resolve reference to it instead.
 
   // Container placement used to be one deployment-wide input. It is each

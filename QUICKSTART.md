@@ -77,11 +77,13 @@ under `framework-config/`, and this file imports and composes them:
 const framework = defineFrameworkConfig({
   resources,
   defaults,
+  network,                          // framework-config/network.ts: the production VPC
+  database: resources.rds.database, // what a workload's `database: true` reaches
   http: [authRoutes, graphqlRoutes, exampleRoutes, invocationTestRoutes],
   webSocket: [webSocketRoutes],
   events: [cognitoEvents, invocationTestEvents],
   services: [exampleService],
-  tasks: [invocationTestTasks],
+  tasks: [invocationTestTasks, databaseTasks],
   workflows: [invocationTestWorkflows, capabilityWorkflows],
   tools: [exampleTools],
   agents: [exampleAgent],
@@ -159,9 +161,22 @@ update every place that uses it.
 Handlers live in `cdk-app/lambda_functions/`. Wrap each handler in the matching helper:
 
 **`authenticated`**: an HTTP route that requires a signed-in user. Pair it with
-`auth: true` on the route.
+`auth: true` on the route, and give the route the two variables its token verifier
+reads:
 
 ```ts
+// framework-config/http/hello.ts
+"/hello": {
+  directory: "/lambda_functions/http_functions/hello",
+  methods: ["GET"],
+  auth: true,
+  environment: {
+    USER_POOL_ID: resources.cognito.userPool.userPoolId,
+    USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId,
+  },
+},
+
+// cdk-app/lambda_functions/http_functions/hello/index.ts
 import { authenticated } from "@repo/framework/runtime/auth";
 import { jsonResponse } from "@repo/framework/runtime/http";
 
@@ -169,6 +184,8 @@ export const lambdaHandler = authenticated(async (event, session) => {
   return jsonResponse(200, { sub: session.payload.sub });
 });
 ```
+
+`npm run framework:check` fails if a handler verifies a token without those variables.
 
 **`withLocalReplay`**: an AWS event (such as a Cognito trigger) that you want to run
 **on your machine** during dev. Set `localReplay: true` on the event declaration. AWS

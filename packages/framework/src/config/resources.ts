@@ -348,7 +348,7 @@ export interface EnvStringBuilder<
 /**
  * A secret whose value you author in cdk-app/.env, and nowhere else.
  *
- * Locally that value is the whole story. For a deployment, `npm run deploy`
+ * Locally that value is the whole story. For a deployment, `npm run deploy:resources`
  * copies it into Secrets Manager and supplies the ARN — never the value, which
  * reaches no template and no generated file.
  *
@@ -516,7 +516,7 @@ export interface ResourceFactory {
   /** Read from the named variable, which is the spelling worth preferring. */
   fromEnv<const Name extends string>(variable: Name): EnvStringBuilder<Name, true>;
   /**
-   * A secret you author in cdk-app/.env, which `npm run deploy` uploads to
+   * A secret you author in cdk-app/.env, which `npm run deploy:resources` uploads to
    * Secrets Manager and supplies the ARN for.
    *
    * A secret a *stack* builds or imports is not declared here — it is a public
@@ -1101,7 +1101,7 @@ export interface ResourceEnvironmentReaders {
    *
    * Passed in, never discovered: this module does not know that
    * cdk-app/.secret-bindings.json exists. A deployment leaves this unset —
-   * `npm run deploy` supplies each ARN as a CloudFormation parameter — so it is
+   * `npm run deploy:resources` supplies each ARN as a CloudFormation parameter — so it is
    * how a stack is exercised with fixture handles instead.
    */
   readonly secretBindings?: SecretBindingDocument;

@@ -34,7 +34,7 @@ The CDK CLI is installed in the workspace; a global installation is unnecessary.
 Resources live in `framework-config/resources.ts`. Declare a stack there with
 `resource.stack<MyStack>()`, end the stack's constructor with `linkResources(this, resources.myStack)`,
 then reference its fields, attributes and grants in workloads.
-`npm run deploy -- --all -c useLocalDevStack=true --profile <PROFILE>` handles secret
+`npm run deploy:resources -- --all -c useLocalDevStack=true --profile <PROFILE>` handles secret
 synchronization, deployment, and development export. Root `.env` contains Compose controls in dev;
 workload identifiers use the ignored `.framework/local/resources.json` manifest.
 For production, `npm run export:cdk-outputs -- --profile <PROFILE>` writes public deployment

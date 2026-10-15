@@ -61,7 +61,7 @@ export async function synchronizeDeploymentSecrets(
       if (!plan.arn) {
         const created = await client.send(new CreateSecretCommand({
           Name: requirement.name, SecretString: plan.value,
-          Description: `Managed resource ${requirement.path.join(".")}; populated by npm run deploy.`,
+          Description: `Managed resource ${requirement.path.join(".")}; populated by npm run deploy:resources.`,
           Tags: [
             { Key: "ManagedBy", Value: requirement.deployment },
             { Key: "framework:deployment", Value: requirement.deployment },

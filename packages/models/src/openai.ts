@@ -16,7 +16,7 @@ function readApiKey(): Promise<string> {
 
   if (!arn) {
     throw new Error(
-      "OPENAI_API_KEY is required when MODEL_PROVIDER=openai. Set OPENAI_API_KEY in cdk-app/.env and run npm run deploy: it uploads the value to Secrets Manager and hands its ARN to the agent, through the development resource manifest locally and the Runtime's environment in AWS.",
+      "OPENAI_API_KEY is required when MODEL_PROVIDER=openai. Set OPENAI_API_KEY in cdk-app/.env and run npm run deploy:resources, which uploads the value to Secrets Manager and hands its ARN to the agent, through the development resource manifest locally and the Runtime's environment in AWS.",
     );
   }
 

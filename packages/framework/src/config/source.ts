@@ -279,7 +279,7 @@ export function assertLambdaInventory(
   const missing = [...discoveredDirectories].filter(directory => !declared.has(directory as FrameworkDirectory));
   if (missing.length > 0) {
     throw new Error(missing.map(directory =>
-      `cdk-app${directory} is not declared. Add its directory to http, webSocket (including authorizers), or events in framework.config.ts.`,
+      `cdk-app${directory} is not declared. Add its directory to http, webSocket (including authorizers), events or tools in a section module that framework.config.ts composes.`,
     ).join("\n"));
   }
 }

@@ -42,11 +42,11 @@ graph and exports the root `.env` and local resource manifest after deployment.
 is needed:
 
 ```powershell
-npm run deploy -- --all
+npm run deploy:resources -- --all
 ```
 
 For a named AWS profile, use `aws sts get-caller-identity --profile <PROFILE>`
-to check the account, then deploy with `npm run deploy -- --all --profile=<PROFILE>`.
+to check the account, then deploy with `npm run deploy:resources -- --all --profile=<PROFILE>`.
 Without a profile flag or an authored `AWS_PROFILE`, deployment uses the AWS
 default credential chain.
 
@@ -118,7 +118,7 @@ git ls-files --eol   # every text file should show w/lf
 In one root terminal:
 
 ```powershell
-npm run dev
+npm run dev:containers
 ```
 
 In another:
@@ -127,15 +127,15 @@ In another:
 npm run dev:client
 ```
 
-`npm run dev` runs `docker compose up --build --watch`; `npm run dev:client` is the Vite dev server.
+`npm run dev:containers` runs `docker compose up --build --watch`; `npm run dev:client` is the Vite dev server.
 It uses the AWS `default` profile unless you pass a profile for this run or set
 `AWS_PROFILE` in the shell:
 
 ```powershell
-npm run dev -- --profile=<PROFILE>
+npm run dev:containers -- --profile=<PROFILE>
 ```
 
-With npm 11, `npm run dev --profile=<PROFILE>` also works, but npm warns about
+With npm 11, `npm run dev:containers --profile=<PROFILE>` also works, but npm warns about
 the unknown npm config option. The `--` form passes the flag directly to the
 dev script. Use the same profile for deployment and local execution when they
 must access the same AWS account.
@@ -162,10 +162,10 @@ image-owned dependencies. Only the invocation runner gets the Docker socket.
 | Ordinary handler/service/client source | Keep Watch and the client dev server running; the owning process reloads |
 | Task/container Lambda source or Dockerfile | Watch delivers it to the runner; the next invocation builds it |
 | Framework config or runner/framework source | Watch restarts affected processes; in-flight local work may stop |
-| Manifests, lockfile, Dockerfile.dev, ignore rules, deleted files while Watch was off | Rebuild and restart with `npm run dev` |
+| Manifests, lockfile, Dockerfile.dev, ignore rules, deleted files while Watch was off | Rebuild and restart with `npm run dev:containers` |
 | A captured event whose handler failed every replay | Fix the handler, then `npm run replay:redrive` (`npm run replay:list` shows what is waiting) |
 | Ports, outputs, local secrets | Edit cdk-app/.env, rerun export, recreate containers |
-| Local AWS profile | Restart with `npm run dev -- --profile=<PROFILE>`; deploy that account's dev graph first if needed |
+| Local AWS profile | Restart with `npm run dev:containers -- --profile=<PROFILE>`; deploy that account's dev graph first if needed |
 | Database contract | Follow Database planning/application steps and rebuild; Watch does not regenerate it |
 | AWS event handler, Cognito, or infrastructure | Redeploy the dev graph, then re-export changed outputs |
 

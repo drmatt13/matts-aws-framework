@@ -22,7 +22,7 @@ export function deploymentArguments(args: readonly string[]): { selectors: strin
     const arg = args[index];
     if (!arg.startsWith("-")) { selectors.push(arg); forwarded.push(arg); continue; }
     const [key, inline] = arg.replace(/^-+/, "").split(/=(.*)/s, 2);
-    if (key === "watch") throw new Error("Use npm run deploy for a completed deployment. CDK watch cannot refresh secrets from a pre-synthesized assembly.");
+    if (key === "watch") throw new Error("Use npm run deploy:resources for a completed deployment. CDK watch cannot refresh secrets from a pre-synthesized assembly.");
     if (key.startsWith("no-")) { values.set(key.slice(3), "false"); forwarded.push(arg); continue; }
     if (/^v+$/.test(key)) { forwarded.push(arg); continue; }
     if (booleanOptions.has(key)) {

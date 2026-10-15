@@ -323,7 +323,7 @@ edges of the cycle.
 
 ## Development
 
-`npm run dev`. Nothing AgentCore-specific deploys in development:
+`npm run dev:containers`. Nothing AgentCore-specific deploys in development:
 
 - Each conversation runs in its own agent process in the invocation runner, as each Runtime
   session runs in its own microVM, and is released after the agent's idle time or lifetime.
@@ -349,7 +349,7 @@ lifetime, and the Gateway derived from its tools.
 
 ## Deployment
 
-`npm run deploy` with `PROD_DEPLOYMENT=true` builds, beside the workflows:
+`npm run deploy:resources` with `PROD_DEPLOYMENT=true` builds, beside the workflows:
 
 | Resource | From |
 | --- | --- |
@@ -418,7 +418,7 @@ an application splits into deployments; the framework does not shard the stack.
 #   DATABASE_BACKUP_RETENTION_DAYS=0, optionally FRONTEND_URL + certificate
 # framework-config/agents/example.ts: the agent deploys "both"
 # the example agent's tools follow its deployment automatically
-npm run deploy -- --all -c useLocalDevStack=false --profile <PROFILE>
+npm run deploy:resources -- --all -c useLocalDevStack=false --profile <PROFILE>
 npm run agents:smoke -- --app agents-smoke-<you> --profile <PROFILE> [--frontend <FRONTEND_URL>] [--include-expiry]
 ```
 

@@ -58,7 +58,7 @@ export function serviceEnvironmentExample(config: FrameworkConfig, target: Norma
     for (const [name, entry] of Object.entries(target.secrets)) {
       lines.push(comment(
         entry.fromEnv
-          ? `${name}: raw value ${entry.fromEnv} in cdk-app/.env; deployed from the Secrets Manager secret ${frameworkSecretNameTemplate(entry.fromEnv)}, written by npm run deploy.`
+          ? `${name}: raw value ${entry.fromEnv} in cdk-app/.env; deployed from the Secrets Manager secret ${frameworkSecretNameTemplate(entry.fromEnv)}, written by npm run deploy:resources.`
           : entry.secretField === undefined
             ? `${name}: ${formatResourceReference(entry)}, a Secrets Manager handle the composition root supplies; absent locally.`
             : `${name}: the ${JSON.stringify(entry.secretField)} key of resources.${entry.path.join(".")}, a Secrets Manager handle the composition root supplies; extracted by ECS at startup and absent locally.`,

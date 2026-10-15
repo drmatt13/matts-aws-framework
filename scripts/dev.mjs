@@ -18,7 +18,7 @@ for (let index = 0; index < args.length; index += 1) {
   }
 }
 
-// npm 11 treats `npm run dev --profile=name` as an npm config option instead
+// npm 11 treats `npm run dev:containers --profile=name` as an npm config option instead
 // of passing it to this script. Support it alongside the standard `--` form.
 const profile = flagProfile ?? process.env.npm_config_profile ?? process.env.AWS_PROFILE ?? "default";
 if (!profile.trim()) {

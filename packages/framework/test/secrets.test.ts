@@ -450,7 +450,7 @@ test("a conditional requirement holds only when its condition does", () => {
       assert.match(error.message, /The task reads the key at startup\./);
       assert.match(
         error.message,
-        /Set OPENAI_API_KEY in cdk-app\/\.env and run npm run deploy\./,
+        /Set OPENAI_API_KEY in cdk-app\/\.env and run npm run deploy:resources\./,
       );
       return true;
     },

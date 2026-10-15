@@ -15,6 +15,7 @@ import { findRepositoryRoot, resolveAgentSourcePath, resolveLambdaSourcePath } f
 import framework from "../../../framework.config";
 import { planLocalInvocation } from "../src/local/invocation";
 import { assertAgentCoreEntries } from "./check-agentcore";
+import { assertCognitoVerifierInputs } from "./check-auth";
 import { assertWorkflowAuthoringIsSupported } from "./check-workflow-authoring";
 import { LOCAL_HOST_PORT_NAMES } from "../../../scripts/local-export";
 
@@ -115,6 +116,15 @@ assertAgentCoreEntries(framework, (reference) => {
       ? resolveAgentSourcePath(framework, id, { repositoryRoot })
       : resolveLambdaSourcePath(framework, id, { repositoryRoot });
   const entry = path.join(directory, "index.ts");
+  return existsSync(entry) ? readFileSync(entry, "utf8") : undefined;
+});
+
+// ---------------------------------------------------------------------------
+// A handler that verifies a user declares the pool it verifies against. See
+// check-auth.ts.
+// ---------------------------------------------------------------------------
+assertCognitoVerifierInputs(framework, (reference) => {
+  const entry = path.join(resolveLambdaSourcePath(framework, reference.slice("lambda:".length), { repositoryRoot }), "index.ts");
   return existsSync(entry) ? readFileSync(entry, "utf8") : undefined;
 });
 

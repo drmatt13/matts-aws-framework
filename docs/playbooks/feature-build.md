@@ -64,7 +64,7 @@ request to implement a feature.
    [Framework](../FRAMEWORK.md#generated-contracts-and-verification).
 9. Prepare a deployment only when resources or AWS-invoked handlers changed.
    Follow the deployment guide and obtain authorization for the intended account
-   and environment before running `npm run deploy`. Its dev export is automatic.
+   and environment before running `npm run deploy:resources`. Its dev export is automatic.
 10. Rebuild Compose when workspaces or dependencies changed. Starting Compose
     applies local migrations, so confirm the database target and obtain separate
     authorization for application before starting it.

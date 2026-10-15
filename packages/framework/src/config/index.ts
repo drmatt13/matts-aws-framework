@@ -3994,7 +3994,7 @@ export function resolveLambdaTarget(
   const target = normalize(config).targets.get(`lambda:${id}`);
   if (!target || target.kind !== "lambda") {
     throw new Error(
-      `Lambda target "${id}" is not declared under http, webSocket, or events in the framework config.`,
+      `Lambda target "${id}" is not declared under http, webSocket, events or tools in the framework config.`,
     );
   }
   return resolveLambdaTargetDefinition(

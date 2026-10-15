@@ -1,5 +1,5 @@
 # Handwritten local containers. Routes, tasks and workflows stay in framework.config.ts.
-# npm run export:cdk-outputs, then npm run dev (docker compose up --build --watch).
+# npm run export:cdk-outputs, then npm run dev:containers (docker compose up --build --watch).
 # Postgres and pgAdmin publish on 127.0.0.1 only: their credentials are
 # placeholders, so nothing else on your network may reach them.
 # One Dockerfile with one stage: every container runs the same workspace, and

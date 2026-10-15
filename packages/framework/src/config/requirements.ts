@@ -78,7 +78,7 @@ export function describeRequirementFix(reference: ResourceReference): string {
   // deployment needs is the ARN the upload returned, so setting the variable is
   // only half the fix.
   return reference.kind === "secret"
-    ? `Set ${reference.fromEnv} in cdk-app/.env and run npm run deploy.`
+    ? `Set ${reference.fromEnv} in cdk-app/.env and run npm run deploy:resources.`
     : `Set ${formatResourceEnv(reference.fromEnv)}.`;
 }
 

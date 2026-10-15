@@ -6,7 +6,7 @@
  * cdk-app/.env. Locally that is the whole story: Compose passes the value to
  * the container. A deployment cannot read your laptop, and both ways of
  * delivering a secret name it by ARN — ECS injects one, and a Lambda reads one
- * — so `npm run deploy` copies the value into Secrets Manager and hands the CDK
+ * — so `npm run deploy:resources` copies the value into Secrets Manager and hands the CDK
  * app the ARN it was given.
  *
  * {@link frameworkSecretName} is that derivation, and it is the live half of
@@ -14,7 +14,7 @@
  * neither stores it.
  *
  * The other half reads the note a separate sync command used to leave for
- * synth. `npm run deploy` supplies each ARN as a generated CloudFormation
+ * synth. `npm run deploy:resources` supplies each ARN as a generated CloudFormation
  * parameter instead, so synthesis asks for no such document and an existing
  * file can be deleted. The parser stays because a supplied document is still
  * how a stack can be exercised with fixture handles, and a wrong one should say
@@ -41,7 +41,7 @@ export const SECRET_BINDINGS_FILE = "cdk-app/.secret-bindings.json";
 export const SECRET_BINDINGS_VERSION = 2;
 
 /** The command that supplies secret ARNs now, named in every diagnostic here. */
-export const SECRET_BINDINGS_COMMAND = "npm run deploy";
+export const SECRET_BINDINGS_COMMAND = "npm run deploy:resources";
 
 /** The Secrets Manager secret one declared startup secret was synced to. */
 export interface SyncedSecret {

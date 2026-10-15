@@ -111,7 +111,7 @@ export class LocalLambdaExecutor {
   ): Promise<Result> {
     if (!this.allowedTargets.has(target)) {
       throw new Error(
-        `Local Lambda target "${target}" is not declared under http, webSocket, or events in the framework config.`,
+        `Local Lambda target "${target}" is not declared under http, webSocket, events or tools in the framework config.`,
       );
     }
 

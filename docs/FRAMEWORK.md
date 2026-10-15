@@ -312,7 +312,7 @@ cannot be re-decided after it was imported.
 A secret has two sources and three deliveries. The sources:
 
 - `resource.secret("NAME")` — a value authored only in cdk-app/.env, which
-  `npm run deploy` uploads to Secrets Manager and supplies the ARN for.
+  `npm run deploy:resources` uploads to Secrets Manager and supplies the ARN for.
 - A public `ISecret` field on a `resource.stack<T>()` entry — one the stack created with
   `new secretsmanager.Secret(...)`, or one imported from another account with
   `Secret.fromSecretCompleteArn(...)`. `linkResources` supplies it with everything else
@@ -338,7 +338,7 @@ Use cloud.requirements on the consuming workload for conditional inputs. An unus
 optional secret imposes no requirement. The canonical command is:
 
 ```powershell
-npm run deploy -- --all -c useLocalDevStack=true --profile <PROFILE>
+npm run deploy:resources -- --all -c useLocalDevStack=true --profile <PROFILE>
 ```
 
 It accepts CDK deployment switches, including stack patterns, profile, context, parameters
@@ -922,7 +922,9 @@ GraphQL resolvers receive an authenticated session and separately enforce record
   @repo/framework/runtime/auth. No session answers 401 `{"message":"Unauthorized"}`;
   unreachable Cognito signing keys answer 503, which the client treats as "try again"
   rather than as a signed-out session. `getAuthenticatedSession(event)` is the nullable
-  form for a handler that decides for itself.
+  form for a handler that decides for itself. Either one reads `USER_POOL_ID` and
+  `USER_POOL_CLIENT_ID`, which the route declares in its `environment`;
+  `framework:check` refuses a handler that verifies a token without them.
 - The client keeps the ID token in memory. `frameworkHttpApiFetch` refreshes when needed,
   retries once after 401, and preserves replayable request bodies. Refresh is single-flight
   across tabs; only 401 expires the session. Network/5xx failures retain it and surface an

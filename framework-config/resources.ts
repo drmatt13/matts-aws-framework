@@ -21,7 +21,7 @@ import { PROD_DEPLOYMENT } from "@repo/framework/config/source";
  * fails to compile here. The stack answers with one `linkResources(this, ...)`.
  *
  * Everything else is `resource.fromEnv("NAME")`, or `resource.secret("NAME")`
- * for one whose value `npm run deploy` uploads to Secrets Manager — a line you
+ * for one whose value `npm run deploy:resources` uploads to Secrets Manager — a line you
  * author in cdk-app/.env, named where it is declared. That file is the only
  * place a deployment reads an input from, so a model id is the same string in
  * AWS and under `docker compose up`. The repository-root .env is generated

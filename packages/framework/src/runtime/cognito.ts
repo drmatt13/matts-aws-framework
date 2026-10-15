@@ -94,7 +94,13 @@ const getCognitoAuthConfig = (): CognitoAuthConfig => {
   const issuer = cognitoIssuer(process.env);
 
   if (!issuer || !USER_POOL_CLIENT_ID) {
-    throw new Error("Missing Cognito environment variables");
+    // A misconfigured workload, not an outage: say which declaration fixes it.
+    const missing = (["USER_POOL_ID", "USER_POOL_CLIENT_ID"] as const).filter((name) => !process.env[name]);
+    throw new Error(
+      missing.length > 0
+        ? `Cannot verify a Cognito token: ${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} not set. Declare both in this workload's environment: USER_POOL_ID: resources.cognito.userPool.userPoolId, USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId.`
+        : `Cannot verify a Cognito token: no region for USER_POOL_ID "${process.env.USER_POOL_ID}". Set AWS_REGION, or use the pool id Cognito issued, which begins with its region.`,
+    );
   }
 
   cognitoAuthConfig = {

@@ -3,7 +3,7 @@
  * and fails unless each one succeeds.
  *
  * Needs the development stack: a dev deployment exported to .framework/local and
- * `npm run dev` running. Starts executions headlessly, as the runner allows a
+ * `npm run dev:containers` running. Starts executions headlessly, as the runner allows a
  * declared caller to (FRAMEWORK.md, "Invocation smoke checks").
  */
 import { randomUUID } from "node:crypto";

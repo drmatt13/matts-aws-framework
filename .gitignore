@@ -250,7 +250,7 @@ __pycache__/
 packages/framework/.generator-fixtures/
 
 # Left by the retired secret-sync command: which Secrets Manager secret each
-# declared startup secret was synced to. npm run deploy supplies those ARNs as
+# declared startup secret was synced to. npm run deploy:resources supplies those ARNs as
 # deployment parameters instead, so nothing reads or writes this any more and an
 # existing file can be deleted.
 cdk-app/.secret-bindings.json
