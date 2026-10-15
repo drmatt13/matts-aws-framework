@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   defineFrameworkConfig,
-  defineNetwork,
   defineResources,
   getFrameworkTargets,
   assertRequirementsMet,
@@ -66,8 +65,6 @@ function serviceConfig(
   return defineFrameworkConfig({
     resources,
     defaults,
-    // The app's defaults put containers in private subnets, which need the NAT gateway.
-    network: defineNetwork({ cidr: "10.0.0.0/16", zones: 2, nat: true }),
     http: [],
     webSocket: [],
     services: [

@@ -29,7 +29,7 @@ The CDK CLI is installed in the workspace; a global installation is unnecessary.
 - `packages/database/prisma/contract.prisma` declares storage. An agent can
   propagate an approved change through repositories, GraphQL, generated documents,
   and TanStack Query options. See the data-feature guide for the required intent
-  and the exact [automation contract](agents/typed-contract-propagation-agent.md).
+  and the exact [automation contract](docs/playbooks/typed-contract-propagation.md).
 
 Resources live in `framework-config/resources.ts`. Declare a stack there with
 `resource.stack<MyStack>()`, end the stack's constructor with `linkResources(this, resources.myStack)`,
@@ -54,13 +54,13 @@ explicit source. Generators and agents handle the surrounding mechanics.
 | `cdk-app/lib/framework/` | Infrastructure constructed from workload declarations |
 | `cdk-app/lambda_functions/` | HTTP, WebSocket, and event handlers |
 | `cdk-app/ecs_containers/` | Services and run-to-completion tasks |
-| `agentcore/` | AgentCore agents, one directory each; tools live in `cdk-app/lambda_functions/tool_functions/` |
+| `agents/` | AgentCore agents, one directory each; tools live in `cdk-app/lambda_functions/tool_functions/` |
 | `packages/database/` | Prisma contract, migrations, and repositories |
 | `packages/framework/` | Framework implementation partitioned into config, runtime, and local execution; generation/check scripts |
 | `packages/api-contract/` | Browser-safe public routes and payload contracts |
 | `packages/models/` | Model providers every agent shares; their environment and IAM are declared once in `framework-config/models.ts` |
 | `local-api-dev-server/`, `local-ws-dev-server/`, `local-invocation-runner/` | Local execution |
-| `agents/`, `.claude/skills/` | Agent procedures that reference the human guides |
+| `docs/playbooks/`, `.claude/skills/` | Coding-agent procedures that reference the human guides |
 
 ## Local checks
 

@@ -16,7 +16,7 @@ operations, and fields the screen needs. For an existing feature, the agent pres
 its established policy and asks only for decisions the request and existing code do
 not resolve. A new database column alone does not grant permission to expose it.
 
-Agents must follow the [automation contract](../agents/typed-contract-propagation-agent.md).
+Agents must follow the [automation contract](playbooks/typed-contract-propagation.md).
 That is the single home for required filenames, naming, operation shapes, error
 semantics, tests, and completion criteria. The repository's Claude entry point is
 `/propagate-contract <ModelName>`; other agents can follow that same procedure directly.

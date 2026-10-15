@@ -11,7 +11,7 @@ Target: **$ARGUMENTS**. If absent, identify the affected model from the request 
 working-tree diff without absorbing unrelated edits.
 
 Read and follow the repository's authoritative
-[automation contract](../../../agents/typed-contract-propagation-agent.md).
+[automation contract](../../../docs/playbooks/typed-contract-propagation.md).
 It defines required source, naming, authorization, tests, and completion checks.
 Read linked references only as needed for the current change.
 

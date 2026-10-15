@@ -32,11 +32,13 @@ export function resolveProjectName(
 
 
 /**
- * Labels every container the task supervisor creates carries.
+ * Labels every container the task supervisor creates carries, and every image
+ * the invocation runner builds: kind (task or lambda), project and target.
  *
  * Declared here rather than in the runner so runner shutdown can remove exactly what
  * the runner created. A task container is launched outside Compose, so nothing
- * else knows it belongs to this project.
+ * else knows it belongs to this project; the same labels let the runner reclaim
+ * images it built that no declared target uses any more.
  */
 export const TASK_CONTAINER_KIND_LABEL = "com.matts-aws-framework.kind";
 export const TASK_CONTAINER_PROJECT_LABEL = "com.matts-aws-framework.project";

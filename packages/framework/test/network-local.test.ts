@@ -11,7 +11,8 @@ import {
 } from "../src/config/index";
 import { findRepositoryRoot } from "../src/config/source";
 import { resolveLocalWorkloadEnvironment } from "../src/local/environment";
-import { ipv6EgressRefusal, isPrivateAddress, type EgressResolver } from "../src/local/egress-guard";
+import { egressFix, egressRefusal, isPrivateAddress, type EgressPolicy, type EgressResolver } from "../src/local/egress-guard";
+import { endpointServiceForHost } from "../src/config/network";
 import { localLambdaEgress } from "../src/local/lambda-process";
 import { webSocketConnections } from "../src/runtime/websocket";
 
@@ -36,15 +37,16 @@ const config = (network?: ReturnType<typeof defineNetwork>): FrameworkConfig =>
     http: [{
       "/orders": { directory: "/lambda_functions/http_functions/orders", methods: ["GET"], ...connected },
       "/plain": { directory: "/lambda_functions/http_functions/plain", methods: ["GET"] },
-      "/inside": { directory: "/lambda_functions/http_functions/inside", methods: ["GET"], vpc: true },
+      "/inside": { directory: "/lambda_functions/http_functions/inside", methods: ["GET"], subnet: "private" },
+      "/sealed": { directory: "/lambda_functions/http_functions/sealed", methods: ["GET"], subnet: "isolated" },
     }],
     webSocket: [], events: [], services: [],
     tasks: [{ job: { ...connected, cloud: { subnet: "public" } } }],
     tools: [{ lookup: { ...connected } }],
   } as never);
 
-const environmentOf = (target: string) =>
-  resolveLocalWorkloadEnvironment(config(), target as never, {
+const environmentOf = (target: string, network?: ReturnType<typeof defineNetwork>) =>
+  resolveLocalWorkloadEnvironment(config(network), target as never, {
     repositoryRoot: findRepositoryRoot(__dirname),
     environment: {},
     authored: {},
@@ -56,28 +58,55 @@ test("only a workload that declares database: true gets the Compose stand-in, wi
   assert.ok((await environmentOf("lambda:lookup")).PRIMARY_DATABASE_URL, "a tool that declares it gets it");
   assert.ok((await environmentOf("task:job")).PRIMARY_DATABASE_URL, "a task that declares it gets it");
   assert.equal((await environmentOf("lambda:plain")).PRIMARY_DATABASE_URL, undefined);
-  assert.equal((await environmentOf("lambda:inside")).PRIMARY_DATABASE_URL, undefined, "vpc: true is not database access");
+  assert.equal((await environmentOf("lambda:inside")).PRIMARY_DATABASE_URL, undefined, "a subnet is not database access");
 });
 
-test("a Lambda in the VPC calls AWS's dual-stack endpoints; containers and Lambdas outside it do not", async () => {
+test("a Lambda calls AWS's dual-stack endpoints only where IPv6 leaves its subnet; containers and Lambdas outside the VPC never do", async () => {
   assert.equal((await environmentOf("lambda:orders")).AWS_USE_DUALSTACK_ENDPOINT, "true");
   assert.equal((await environmentOf("lambda:inside")).AWS_USE_DUALSTACK_ENDPOINT, "true");
+  assert.equal((await environmentOf("lambda:sealed")).AWS_USE_DUALSTACK_ENDPOINT, undefined, "nothing leaves the isolated subnets, so it calls the names the endpoints answer");
   assert.equal((await environmentOf("lambda:plain")).AWS_USE_DUALSTACK_ENDPOINT, undefined);
   assert.equal((await environmentOf("task:job")).AWS_USE_DUALSTACK_ENDPOINT, undefined);
+  const natOnly = defineNetwork({ cidr: "10.0.0.0/16", zones: 2, egressOnlyInternetGateway: false, natGateway: true });
+  assert.equal((await environmentOf("lambda:inside", natOnly)).AWS_USE_DUALSTACK_ENDPOINT, undefined, "only IPv4 leaves, through the NAT gateway");
 });
 
-test("a Lambda in the VPC is held to IPv6 egress unless the network has a NAT gateway", () => {
-  assert.equal(localLambdaEgress(config(), "lambda:orders"), "ipv6");
-  assert.equal(localLambdaEgress(config(), "lambda:inside"), "ipv6");
+test("local reader and direct declarations keep Compose and the resolved pool settings", async () => {
+  const base = config();
+  const withReaders = defineFrameworkConfig({
+    ...base, defaults: { ...base.defaults, database: { pool: { maxConnections: 4 } } },
+    http: [{
+      "/orders": { directory: "/lambda_functions/http_functions/orders", methods: ["GET"], database: { readers: true, connection: "direct", pool: { idleTimeoutMs: 1000 } } },
+    }],
+  });
+  const env = await resolveLocalWorkloadEnvironment(withReaders, "lambda:orders", {
+    repositoryRoot: findRepositoryRoot(__dirname), environment: {}, authored: {},
+  });
+  assert.match(env.PRIMARY_DATABASE_URL!, /postgres:5432/);
+  assert.equal(env.PRIMARY_DATABASE_AUTH, undefined);
+  assert.equal(env.PRIMARY_DATABASE_READ_URLS, "[]");
+  assert.deepEqual(JSON.parse(env.PRIMARY_DATABASE_POOL_OPTIONS!), {
+    maxConnections: 4, connectionTimeoutMs: 20000, idleTimeoutMs: 1000,
+  });
+  assert.equal((await environmentOf("lambda:orders")).PRIMARY_DATABASE_READ_URLS, undefined);
+});
+
+test("a Lambda in the VPC is held to its subnet's egress, which a NAT gateway opens to everything", () => {
+  const endpoints = ["s3", "dynamodb"];
+  assert.deepEqual(localLambdaEgress(config(), "lambda:orders"), { subnet: "private", ipv6: true, endpoints });
+  assert.deepEqual(localLambdaEgress(config(), "lambda:inside"), { subnet: "private", ipv6: true, endpoints });
+  assert.deepEqual(localLambdaEgress(config(), "lambda:sealed"), { subnet: "isolated", ipv6: false, endpoints });
   assert.equal(localLambdaEgress(config(), "lambda:plain"), undefined);
-  assert.equal(localLambdaEgress(config(defineNetwork({ cidr: "10.0.0.0/16", zones: 2, nat: true })), "lambda:orders"), undefined);
+  const nat = defineNetwork({ cidr: "10.0.0.0/16", zones: 2, natGateway: true, interfaceEndpoints: ["secretsmanager"] });
+  assert.equal(localLambdaEgress(config(nat), "lambda:orders"), undefined);
+  assert.deepEqual(localLambdaEgress(config(nat), "lambda:sealed"), { subnet: "isolated", ipv6: false, endpoints: [...endpoints, "secretsmanager"] }, "NAT never reaches the isolated subnets");
 });
 
 test("the framework owns AWS_USE_DUALSTACK_ENDPOINT, and primaryDatabase is no longer a local resource", () => {
   const base = { defaults: { lambda: { runtime: "nodejs24", packaging: "zip" } }, http: [], webSocket: [], events: [], services: [] };
   assert.throws(
     () => defineFrameworkConfig({ ...base, http: [{ "/a": { directory: "/lambda_functions/http_functions/a", methods: ["GET"], environment: { AWS_USE_DUALSTACK_ENDPOINT: "true" } } }] } as never),
-    /The framework sets it on every Lambda in the VPC/,
+    /The framework sets it, in both lanes, on every Lambda in the VPC whose subnet sends IPv6 out/,
   );
   assert.throws(
     () => defineFrameworkConfig({ ...base, tasks: [{ job: { local: { resources: ["primaryDatabase"] } } }] } as never),
@@ -90,7 +119,10 @@ const resolver = (addresses: Record<string, readonly string[]>, ipv6: readonly s
   hasIpv6: async (hostname) => ipv6.includes(hostname),
 });
 
-test("the guard passes what the private subnets reach and refuses what they cannot", async () => {
+const ipv6Out: EgressPolicy = { subnet: "private", ipv6: true, endpoints: ["s3", "dynamodb"] };
+const endpointsOnly: EgressPolicy = { subnet: "isolated", ipv6: false, endpoints: ["s3", "dynamodb", "secretsmanager", "ecr.api"] };
+
+test("where IPv6 leaves, the guard passes private names, IPv6 names and endpoints, and refuses IPv4-only hosts", async () => {
   const dns = resolver(
     {
       postgres: ["172.18.0.2"],
@@ -98,16 +130,55 @@ test("the guard passes what the private subnets reach and refuses what they cann
       "cognito-idp.us-east-1.amazonaws.com": ["3.211.120.116", "2600:1f18:257:8002::1"],
       "ecs.us-east-1.api.aws": ["52.0.0.1"],
       "api.github.com": ["140.82.112.6"],
+      "my-bucket.s3.us-east-1.amazonaws.com": ["52.216.0.1"],
     },
     ["ecs.us-east-1.api.aws"],
   );
-  assert.equal(await ipv6EgressRefusal("postgres", dns), undefined, "a Compose service is on the private network");
-  assert.equal(await ipv6EgressRefusal("localhost", dns), undefined);
-  assert.equal(await ipv6EgressRefusal("cognito-idp.us-east-1.amazonaws.com", dns), undefined);
-  assert.equal(await ipv6EgressRefusal("ecs.us-east-1.api.aws", dns), undefined, "IPv6 published in DNS but hidden from getaddrinfo on an IPv4-only laptop");
-  assert.match((await ipv6EgressRefusal("api.github.com", dns)) ?? "", /api\.github\.com has no IPv6 address/);
-  assert.match((await ipv6EgressRefusal("140.82.112.6", dns)) ?? "", /is an IPv4 address/);
-  assert.equal(await ipv6EgressRefusal("2600:1f18::1", dns), undefined);
+  assert.equal(await egressRefusal("postgres", ipv6Out, dns), undefined, "a Compose service is on the private network");
+  assert.equal(await egressRefusal("localhost", ipv6Out, dns), undefined);
+  assert.equal(await egressRefusal("cognito-idp.us-east-1.amazonaws.com", ipv6Out, dns), undefined);
+  assert.equal(await egressRefusal("ecs.us-east-1.api.aws", ipv6Out, dns), undefined, "IPv6 published in DNS but hidden from getaddrinfo on an IPv4-only laptop");
+  assert.equal(await egressRefusal("my-bucket.s3.us-east-1.amazonaws.com", ipv6Out, dns), undefined, "the S3 gateway endpoint carries IPv4");
+  assert.match((await egressRefusal("api.github.com", ipv6Out, dns)) ?? "", /api\.github\.com has no IPv6 address, and only IPv6 and the network's endpoints leave the VPC's private subnets/);
+  assert.match((await egressRefusal("140.82.112.6", ipv6Out, dns)) ?? "", /is a public IPv4 address/);
+  assert.equal(await egressRefusal("2600:1f18::1", ipv6Out, dns), undefined);
+});
+
+test("where nothing leaves, the guard passes only private names and the network's endpoints", async () => {
+  const dns = resolver(
+    {
+      postgres: ["172.18.0.2"],
+      "secretsmanager.eu-west-2.amazonaws.com": ["3.8.0.1"],
+      "api.ecr.eu-west-2.amazonaws.com": ["3.8.0.2"],
+      "cognito-idp.eu-west-2.amazonaws.com": ["3.8.0.3", "2a05:d01c::1"],
+    },
+    ["cognito-idp.eu-west-2.amazonaws.com"],
+  );
+  assert.equal(await egressRefusal("postgres", endpointsOnly, dns), undefined);
+  assert.equal(await egressRefusal("secretsmanager.eu-west-2.amazonaws.com", endpointsOnly, dns), undefined);
+  assert.equal(await egressRefusal("api.ecr.eu-west-2.amazonaws.com", endpointsOnly, dns), undefined, "ecr.api's hostname spells its name backwards");
+  assert.match(
+    (await egressRefusal("cognito-idp.eu-west-2.amazonaws.com", endpointsOnly, dns)) ?? "",
+    /cognito-idp\.eu-west-2\.amazonaws\.com is outside the VPC, and nothing leaves the VPC's isolated subnets but the network's endpoints/,
+    "IPv6 does not leave the isolated subnets either",
+  );
+  assert.match((await egressRefusal("2600:1f18::1", endpointsOnly, dns)) ?? "", /is outside the VPC/);
+});
+
+test("a refused AWS host names the endpoint that would reach it", () => {
+  assert.equal(endpointServiceForHost("secretsmanager.us-east-1.amazonaws.com"), "secretsmanager");
+  assert.equal(endpointServiceForHost("api.ecr.us-east-1.amazonaws.com"), "ecr.api");
+  assert.equal(endpointServiceForHost("123456789012.dkr.ecr.us-east-1.amazonaws.com"), "ecr.dkr");
+  assert.equal(endpointServiceForHost("abc123.execute-api.eu-west-2.amazonaws.com"), "execute-api");
+  assert.equal(endpointServiceForHost("my-bucket.s3.dualstack.us-east-1.amazonaws.com"), "s3");
+  assert.equal(endpointServiceForHost("dynamodb.us-east-1.api.aws"), "dynamodb");
+  assert.equal(endpointServiceForHost("api.github.com"), undefined);
+  assert.equal(endpointServiceForHost("sts.amazonaws.com"), undefined, "a global endpoint has no regional endpoint service");
+
+  assert.match(egressFix("cognito-idp.eu-west-2.amazonaws.com", endpointsOnly), /^Add "cognito-idp" to interfaceEndpoints in framework-config\/network\.ts \(about \$7\.30 a month per zone\), or give it subnet: "private"\.$/);
+  assert.match(egressFix("dynamodb.eu-west-2.amazonaws.com", { ...endpointsOnly, endpoints: [] }), /^Turn on gatewayEndpoints\.dynamodb in framework-config\/network\.ts \(free\)/);
+  assert.match(egressFix("api.github.com", ipv6Out), /^Call it from a Lambda outside the VPC \(subnet: "none"\), or give the private subnets IPv4 with natGateway: true/);
+  assert.match(egressFix("api.github.com", { ...ipv6Out, ipv6: false }), /turn on egressOnlyInternetGateway \(free\) or natGateway/);
 });
 
 test("private addresses are recognized in both families", () => {
@@ -132,8 +203,8 @@ test("installed in a handler's process, the guard refuses an IPv4-only host befo
       return done(null, all[0].address, 4);
     };
     dns.resolve6 = (host, callback) => callback(null, host === "sts.us-east-1.api.aws" ? ["2600::1"] : []);
-    const { installIpv6EgressGuard } = require(${JSON.stringify(path.join(__dirname, "../src/local/egress-guard.ts"))});
-    installIpv6EgressGuard("orders");
+    const { installEgressGuard } = require(${JSON.stringify(path.join(__dirname, "../src/local/egress-guard.ts"))});
+    installEgressGuard("orders", { subnet: "private", ipv6: true, endpoints: ["s3", "dynamodb"] });
     const results = {};
     let pending = 3;
     for (const host of ["postgres", "api.github.com", "sts.us-east-1.api.aws"]) {
@@ -148,7 +219,7 @@ test("installed in a handler's process, the guard refuses an IPv4-only host befo
   const results = JSON.parse(run.stdout.trim()) as Record<string, string>;
   assert.equal(results.postgres, "172.18.0.2");
   assert.equal(results["sts.us-east-1.api.aws"], "52.0.0.1");
-  assert.match(results["api.github.com"] ?? "", /^ENETUNREACH: api\.github\.com has no IPv6 address, .*orders runs in the VPC \(vpc: true or database: true\), so in AWS it is in the private subnets/);
+  assert.match(results["api.github.com"] ?? "", /^ENETUNREACH: api\.github\.com has no IPv6 address, .*orders has subnet: "private", so in AWS it cannot reach api\.github\.com\. Call it from a Lambda outside the VPC/);
 });
 
 test("the WebSocket push client keeps its own endpoint when the SDK is set to dual-stack", async () => {

@@ -1,9 +1,11 @@
 import { writeFileSync } from "node:fs";
+import { randomInt } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { rootCertificates } from "node:tls";
 import { Signer } from "@aws-sdk/rds-signer";
 import { RDS_CA_BUNDLE } from "./rds-ca-bundle";
+import { resolveDatabasePool } from "../database-pool";
 
 /**
  * How a workload that declares `database: true` reaches the database.
@@ -26,6 +28,9 @@ import { RDS_CA_BUNDLE } from "./rds-ca-bundle";
  * for one each time it opens a connection rather than holding one.
  */
 export interface DatabaseConnection {
+  readonly max?: number;
+  readonly connectionTimeoutMillis?: number;
+  readonly idleTimeoutMillis?: number;
   readonly connectionString?: string;
   readonly host?: string;
   readonly port?: number;
@@ -36,7 +41,8 @@ export interface DatabaseConnection {
 }
 
 /** The variables `database: true` sets, read once per call. */
-function declared(): { readonly url: URL; readonly iam: boolean } {
+const selectedReaders = new Map<string, string>();
+function declared(role: "writer" | "reader" = "writer"): { readonly url: URL; readonly iam: boolean } {
   const value = process.env.PRIMARY_DATABASE_URL;
   if (!value) {
     throw new Error(
@@ -47,7 +53,22 @@ function declared(): { readonly url: URL; readonly iam: boolean } {
   if (auth !== undefined && auth !== "iam") {
     throw new Error(`PRIMARY_DATABASE_AUTH is "${auth}". The framework sets it to "iam" or leaves it unset.`);
   }
-  return { url: new URL(value), iam: auth === "iam" };
+  let selected = value;
+  if (role === "reader") {
+    const raw = process.env.PRIMARY_DATABASE_READ_URLS;
+    if (raw === undefined) throw new Error("Reader access is not declared. Declare database: { readers: true } on this workload.");
+    let readers: unknown;
+    try { readers = JSON.parse(raw); } catch { throw new Error("PRIMARY_DATABASE_READ_URLS must be a JSON array of PostgreSQL URLs."); }
+    if (!Array.isArray(readers) || readers.some(url => {
+      if (typeof url !== "string") return true;
+      try { const parsed = new URL(url); return !["postgres:", "postgresql:"].includes(parsed.protocol) || !parsed.hostname; } catch { return true; }
+    })) throw new Error("PRIMARY_DATABASE_READ_URLS must be a JSON array of PostgreSQL URLs.");
+    if (readers.length > 0) {
+      selected = selectedReaders.get(raw) ?? readers[randomInt(readers.length)]!;
+      selectedReaders.set(raw, selected);
+    }
+  }
+  return { url: new URL(selected), iam: auth === "iam" };
 }
 
 let trustedAuthorities: string | undefined;
@@ -86,10 +107,20 @@ function iamToken(url: URL): Promise<string> {
  * TLS is verified against the RDS certificate authorities and every new
  * connection authenticates with a token it signs itself.
  */
-export function databaseConnection(): DatabaseConnection {
-  const { url, iam } = declared();
-  if (!iam) return { connectionString: url.toString() };
+export function databaseConnection(options: { readonly role?: "writer" | "reader" } = {}): DatabaseConnection {
+  if (options.role !== undefined && !["writer", "reader"].includes(options.role)) throw new Error("Database role must be writer or reader.");
+  const { url, iam } = declared(options.role);
+  const rawPool = process.env.PRIMARY_DATABASE_POOL_OPTIONS;
+  let pool: Pick<DatabaseConnection, "max" | "connectionTimeoutMillis" | "idleTimeoutMillis"> = {};
+  if (rawPool !== undefined) {
+    let parsed: unknown;
+    try { parsed = JSON.parse(rawPool); } catch { throw new Error("PRIMARY_DATABASE_POOL_OPTIONS must be a JSON pool settings object."); }
+    const settings = resolveDatabasePool(parsed as import("../database-pool").DatabasePoolSettings);
+    pool = { max: settings.maxConnections, connectionTimeoutMillis: settings.connectionTimeoutMs, idleTimeoutMillis: settings.idleTimeoutMs };
+  }
+  if (!iam) return { connectionString: url.toString(), ...pool };
   return {
+    ...pool,
     host: url.hostname,
     port: Number(url.port || 5432),
     database: decodeURIComponent(url.pathname.slice(1)),

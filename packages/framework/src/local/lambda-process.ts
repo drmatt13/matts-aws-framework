@@ -2,8 +2,17 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { isNodeLambdaRuntime, resolveLambdaTarget, type FrameworkConfig, type LambdaTarget } from "@repo/framework/config";
+import {
+  endpointServices,
+  isNodeLambdaRuntime,
+  resolveLambdaTarget,
+  resolveNetwork,
+  subnetEgress,
+  type FrameworkConfig,
+  type LambdaTarget,
+} from "@repo/framework/config";
 import { resolveLambdaSourcePath } from "@repo/framework/config/source";
+import type { EgressPolicy } from "./egress-guard";
 import { resolveLocalWorkloadEnvironment, type LocalEnvironmentOptions } from "./environment";
 
 /** Fields a caller may pin on the Lambda context. See lambda-child.ts. */
@@ -19,7 +28,7 @@ interface ChildRequest {
   readonly event: unknown;
   readonly context?: PinnedLambdaContext;
   readonly lambda: { readonly functionName: string; readonly memoryLimitInMB: number; readonly timeoutSeconds: number };
-  readonly egress?: "ipv6";
+  readonly egress?: EgressPolicy;
 }
 
 interface ChildReply {
@@ -280,13 +289,18 @@ export class LambdaWorkerPool {
 }
 
 /**
- * The egress a handler's process is held to. A Lambda in the VPC (`vpc: true`
- * or `database: true`) runs in its private subnets in AWS, so it gets their
- * egress here too: IPv6 only, unless the network has a NAT gateway.
+ * The egress a handler's process is held to. A Lambda in the VPC (`subnet:
+ * "private"` or `"isolated"`, or `database: true`) runs in that subnet in AWS,
+ * so it gets that subnet's egress here too. Undefined where IPv4 leaves (a
+ * private subnet with a NAT gateway), which reaches everything.
  */
-export function localLambdaEgress(config: FrameworkConfig, target: LambdaTarget): "ipv6" | undefined {
-  if (config.network?.nat === true) return undefined;
-  return resolveLambdaTarget(config, target.slice("lambda:".length)).vpc ? "ipv6" : undefined;
+export function localLambdaEgress(config: FrameworkConfig, target: LambdaTarget): EgressPolicy | undefined {
+  const { subnet } = resolveLambdaTarget(config, target.slice("lambda:".length));
+  if (subnet === "none") return undefined;
+  const network = resolveNetwork(config);
+  const egress = subnetEgress(network, subnet);
+  if (egress.ipv4) return undefined;
+  return { subnet, ipv6: egress.ipv6, endpoints: [...endpointServices(network)] };
 }
 
 export async function invokeLocalNodeLambda(config: FrameworkConfig, target: LambdaTarget, event: unknown, options: LocalLambdaInvocationOptions): Promise<unknown> {

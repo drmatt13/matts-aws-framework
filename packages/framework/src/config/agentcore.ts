@@ -60,7 +60,7 @@ export interface AgentCloudSettings<Catalog = AnyResourceCatalog>
 
 /** An agent: an application AgentCore Runtime hosts, and the tools it may call. */
 export type AgentTargetDefinition<Catalog = AnyResourceCatalog> = TargetEnvironment<Catalog> & {
-  /** Defaults to `/agentcore/<id>`, rooted at the repository. */
+  /** Defaults to `/agents/<id>`, rooted at the repository. */
   readonly directory?: `${typeof AGENT_SOURCE_ROOT}/${string}`;
   /**
    * Calls use the user's Cognito session. A declared `route` exposes it to

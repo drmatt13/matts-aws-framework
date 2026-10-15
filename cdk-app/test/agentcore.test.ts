@@ -50,8 +50,8 @@ function fixtures() {
   const users = userDirectories(toolId);
   const tools = [toolId, users.tool].map((id) => path.join(root, "cdk-app", "lambda_functions", "tool_functions", id));
   const agents: [string, string][] = [
-    [agentId, path.join(root, "agentcore", agentId)],
-    ["echo-agent", path.join(root, "agentcore", users.agent)],
+    [agentId, path.join(root, "agents", agentId)],
+    ["echo-agent", path.join(root, "agents", users.agent)],
   ];
   for (const directory of tools) {
     mkdirSync(directory, { recursive: true });
@@ -94,7 +94,7 @@ function config(toolId: string, agentId: string, http = {}): FrameworkConfig {
     agents: [
       {
         "echo-agent": {
-          directory: `/agentcore/${users.agent}`,
+          directory: `/agents/${users.agent}`,
           auth: true,
           route: "/chat/echo",
           tools: ["echo"],
@@ -102,7 +102,7 @@ function config(toolId: string, agentId: string, http = {}): FrameworkConfig {
           environment: cognitoEnvironment,
           cloud: { idleSeconds: 600, access: [{ actions: ["bedrock:InvokeModel"], resources: ["arn:{partition}:bedrock:*::foundation-model/*"] }] },
         },
-        [agentId]: { directory: `/agentcore/${agentId}`, tools: [toolId], deploy: "both" },
+        [agentId]: { directory: `/agents/${agentId}`, tools: [toolId], deploy: "both" },
       },
     ],
   });

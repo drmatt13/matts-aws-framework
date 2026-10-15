@@ -2,6 +2,7 @@ import * as cdk from "aws-cdk-lib";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import type { CloudMode } from "@repo/framework/config";
+import { resolveDatabaseSettings } from "./database-settings";
 
 /** Application-owned deployment policy. See docs/FRAMEWORK.md#configuration-and-environment.
  * Importing this module never reads .env, creates an App, or generates code.
@@ -27,7 +28,7 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
 
   if (!account || !region) {
     throw new Error(
-      "CDK_DEFAULT_ACCOUNT and CDK_DEFAULT_REGION must be set for VPC lookup.",
+      "CDK_DEFAULT_ACCOUNT and CDK_DEFAULT_REGION must be set: every stack is pinned to one account and region. The CDK CLI sets them from your AWS profile (--profile <PROFILE>).",
     );
   }
 
@@ -116,11 +117,8 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
 
   // Days of automated RDS backups. Production only; 0 turns backups off, which
   // is a deliberate choice for a disposable deployment and nothing else.
-  const databaseBackupRetentionDays = optionalInteger(
-    stringFlag("databaseBackupRetentionDays", "DATABASE_BACKUP_RETENTION_DAYS"),
-    "DATABASE_BACKUP_RETENTION_DAYS",
-    { min: 0, max: 35 },
-  ) ?? 7;
+  const database = resolveDatabaseSettings({ getContext, env });
+  const databaseBackupRetentionDays = database.backupRetentionDays;
 
   // Guards deletion protection and the removal policy on the database and user
   // pool, so a value that does not parse must never fall through to false.
@@ -381,11 +379,10 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
     );
   }
 
-  // RDS Proxy authenticated to the database with its password, which no
-  // workload holds any more: they log in with IAM.
+  // The retired password-based Proxy option is not an alias for end-to-end IAM.
   if (getContext("enableRdsProxy") !== undefined) {
     warnings.push(
-      "[cdk-app] enableRdsProxy is no longer read: workloads that declare database: true log in to the database directly with IAM. Remove it from cdk.json or the command line.",
+      "[cdk-app] enableRdsProxy is no longer read. Remove it from cdk.json or the command line; use DATABASE_PROXY_ENABLED or databaseProxyEnabled for end-to-end IAM Proxy connections.",
     );
   }
 
@@ -400,6 +397,7 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
     deploymentName,
     mode,
     databaseBackupRetentionDays,
+    database,
     requestedSkipEmailVerification,
     cognitoSesFromEmail,
     cognitoSesFromName,
@@ -558,22 +556,6 @@ const optionalBoolean = (value: unknown, label: string) => {
   throw new Error(
     `${label} must be "true" or "false". Received: ${stringValue}`,
   );
-};
-
-const optionalInteger = (
-  value: string | undefined,
-  label: string,
-  range: { readonly min: number; readonly max: number },
-) => {
-  if (value === undefined) return undefined;
-  const trimmed = value.trim();
-  const parsed = Number(trimmed);
-  if (!/^\d+$/.test(trimmed) || parsed < range.min || parsed > range.max) {
-    throw new Error(
-      `${label} must be a whole number from ${range.min} to ${range.max}. Received: ${value}`,
-    );
-  }
-  return parsed;
 };
 
 const normalizeFrontendUrl = (url: string) =>

@@ -14,7 +14,7 @@ import { resources } from "../resources";
  */
 export const exampleAgent = {
   "example-agent": {
-    directory: "/agentcore/example-agent",
+    directory: "/agents/example-agent",
     auth: true,
     route: "/chat/example",
     tools: ["add-numbers", "multiply-numbers"],

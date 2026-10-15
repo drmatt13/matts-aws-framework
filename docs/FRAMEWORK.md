@@ -80,7 +80,7 @@ feature directory, and frontend operations without changing these package bounda
 | Task | Stable target id in tasks | Defaults to /ecs_containers/tasks/id | [task](../framework-config/tasks/invocation-tests.ts) |
 | Workflow | Stable target id in workflows | Graph declaration; no implementation directory | [workflow](../framework-config/workflows/invocation-tests.ts) |
 | AgentCore tool | Stable target id in tools | Explicit directory under cdk-app, with contract.ts | [add-numbers](../framework-config/tools/example.ts) |
-| AgentCore agent | Stable target id in agents | Explicit directory under agentcore at the repository root, with contract.ts | [example-agent](../framework-config/agents/example.ts) |
+| AgentCore agent | Stable target id in agents | Explicit directory under agents at the repository root, with contract.ts | [example-agent](../framework-config/agents/example.ts) |
 
 1. Add the implementation and its npm workspace manifest if appropriate.
 2. Declare a literal entry in a section, using `satisfies HttpSection` (or the matching
@@ -147,7 +147,7 @@ Deployment mode separately says what the AWS graph constructs:
 | Website, RDS, HTTP gateway | No | Yes |
 | Routed Lambdas, services, tasks, workflows | No; execute locally | If cloud-enabled |
 | WebSocket API and its handlers | When DEPLOY_PROD_WEBSOCKET_API is on | When DEPLOY_PROD_WEBSOCKET_API is on |
-| Network (VPC) and database | No | Once a Lambda has `vpc: true` or `database: true`, or a container is built |
+| Network (VPC) and database | No | Once a Lambda has a `subnet` or `database: true`, or a container is built |
 
 Events are invoked by AWS and do not have a per-target deploy toggle. A dev deployment
 publishes no task/service images. Compose independently runs targets enabled in the local
@@ -410,40 +410,72 @@ cdk-app/.secret-bindings.json files are ignored and may be removed locally.
 
 ## Network and database
 
-[framework-config/network.ts](../framework-config/network.ts) declares the application's VPC.
-Only a production deployment builds it, and only once something needs it: a Lambda with
-`vpc: true` or `database: true`, or a container.
+[framework-config/network.ts](../framework-config/network.ts) declares the application's VPC,
+and is the only place its way out is decided. Only a production deployment builds it, and only
+once something is placed in it: a Lambda with a `subnet` or `database: true`, or a container.
 
 ```ts
-export const network = defineNetwork({ cidr: "10.0.0.0/16", zones: 2, nat: false });
+export const network = defineNetwork({
+  cidr: "10.0.0.0/16",
+  zones: 2,
+  egressOnlyInternetGateway: true, // IPv6 out of the private subnets: free
+  natGateway: false,               // IPv4 out: about $33 a month plus $0.045 per GB
+  gatewayEndpoints: { s3: true, dynamodb: true }, // free
+  interfaceEndpoints: [],          // about $7.30 a month per zone each plus $0.01 per GB
+});
 ```
 
-The layout is fixed: a public, a private and an isolated subnet in each zone. Private subnets
-are dual-stack; IPv6 leaves through an egress-only internet gateway, which AWS does not charge
-for. S3 and DynamoDB gateway endpoints sit on every route table. `cidr` and `zones` are set
-once: changing either renumbers every subnet.
+The layout is fixed: a public, a private and an isolated subnet in each zone, all dual-stack.
+`cidr` and `zones` are set once: changing either renumbers every subnet. Everything else says
+what leaves the subnets:
 
-`nat` is the network's only cost, and nothing turns it on but this line. Off (the default),
-the private subnets have no IPv4 route out. On, one NAT gateway (about $33 a month plus
-$0.045 per GB) gives them IPv4: a container needs it to run in a private subnet, and a Lambda
-in the VPC can then reach IPv4-only hosts too.
+| Subnet | IPv6 out | IPv4 out | Endpoints |
+| --- | --- | --- | --- |
+| public | internet gateway | to whatever has a public IPv4 (a public container) | yes |
+| private | with `egressOnlyInternetGateway` | with `natGateway` | yes |
+| isolated | never | never | yes |
+
+The S3 and DynamoDB gateway endpoints sit on every route table and cost nothing. An interface
+endpoint reaches one AWS service privately from every subnet, over IPv4, with no gateway:
+list it by its endpoint name (the last part of `com.amazonaws.<region>.<name>`), and
+`interfaceEndpoints` completes every service the deploying CDK knows, refusing a misspelling
+with the name it meant. The list is generated from aws-cdk-lib by `npm run framework:generate`.
+Endpoints are an alternative to NAT when only AWS services need IPv4, and the only way out of the
+isolated subnets. They are not automatically cheaper: three endpoints in two zones cost more than
+one NAT gateway. Synthesis prints what the network holds and what it costs.
 
 ### Lambdas in the VPC
 
-A Lambda runs outside the VPC, with the whole internet, unless it has `vpc: true`. Set it on
-one Lambda, on a section (`defaults.http`), or on every Lambda (`defaults.lambda.vpc`), and
-turn it off on any one with `vpc: false`. `database: true` implies it.
+A Lambda's `subnet` places it. Set it on one Lambda, on a section (`defaults.http`), or on every
+Lambda (`defaults.lambda.subnet`), and override it on any one:
+
+- `"none"` (the default): outside the VPC, with the whole internet.
+- `"private"`: the private subnets, leaving as network.ts allows, plus its endpoints.
+- `"isolated"`: the isolated subnets, which reach the database and the endpoints, nothing else.
 
 ```ts
-"/reports": { directory: "...", methods: ["GET"], vpc: true },
+"/reports": { directory: "...", methods: ["GET"], subnet: "private" },
 ```
 
-A Lambda in the VPC always runs in the private subnets, never the public ones: AWS gives a
-VPC Lambda no public IPv4 address, so a public subnet would only lose the NAT gateway's IPv4.
-It leaves over IPv6 (IPv4 too with `nat`), with `AWS_USE_DUALSTACK_ENDPOINT=true`, in one
-security group every such Lambda shares; one that declares `database: true` joins the
-database's group instead. Only TypeScript Lambdas run in the VPC, and an event that does
-needs `localReplay: true`, because a dev deployment builds no network.
+There is no `"public"`: AWS gives a Lambda in a VPC no public IPv4 address, so a public subnet
+would only lose the NAT gateway. `database: true` puts a Lambda that would be `"none"` in
+`"private"`, and refuses an explicit `"none"`. A Lambda in the VPC shares one security group with
+the others (one that uses the database joins the database's group instead). Only TypeScript
+Lambdas run in the VPC, and an event that does needs `localReplay: true`, because a dev
+deployment builds no network.
+
+Where IPv6 leaves its subnet, a Lambda runs with `AWS_USE_DUALSTACK_ENDPOINT=true`, because
+several AWS APIs answer IPv6 only on their dual-stack hostnames. Everywhere else it calls the
+standard hostnames, which is what an interface endpoint's private DNS answers. Interface
+endpoints are IPv4, because IPv6 support on PrivateLink varies by service and region. So a
+Lambda whose subnet sends IPv6 out reaches AWS over IPv6 and passes by an interface endpoint;
+endpoints serve containers, isolated Lambdas, and private subnets without IPv6.
+
+Where a Lambda's subnet has no way out at all (isolated, or private with both gateways off),
+configuration requires an endpoint for every AWS call the framework makes for it: `secretsmanager`
+for a secret it reads, `ecs` for `runsTask`, `states` for `startsWorkflow` and callbacks,
+`bedrock-agentcore` for an agent. A WebSocket handler that pushes to connections is refused
+there outright: no interface endpoint reaches API Gateway's management API.
 
 ### The database
 
@@ -463,18 +495,31 @@ const database = getDatabase(databaseConnection());
 
 In a production deployment, `database: true` on a Lambda:
 
-- places it in the private subnets, in the one security group the database admits;
-- grants it `rds-db:connect` for the database's IAM login, `app_user`, and nothing else;
+- places it in the private subnets (or the isolated ones it declares), in the client group
+  for its selected endpoint;
+- grants it `rds-db:connect` for the selected writer's IAM login, `app_user`;
 - sets `PRIMARY_DATABASE_URL` (no password) and `PRIMARY_DATABASE_AUTH=iam`, from which
   `databaseConnection()` signs a 15-minute IAM token for every new connection, locally, with
   the workload's own role, over TLS verified against the RDS certificate authorities;
-- sets `AWS_USE_DUALSTACK_ENDPOINT=true`, so its AWS SDK calls use endpoints reachable over
-  IPv6.
+- sets framework-owned `PRIMARY_DATABASE_POOL_OPTIONS` from `defaults.database.pool`
+  and workload overrides (10 connections, 20000 ms connect timeout, 30000 ms idle timeout);
+- sets `AWS_USE_DUALSTACK_ENDPOINT=true` where IPv6 leaves its subnet, so its AWS SDK calls
+  use endpoints reachable over IPv6.
 
-`vpc: true` alone grants none of this: it places a Lambda, and only `database: true` reaches
+A `subnet` alone grants none of this: it places a Lambda, and only `database: true` reaches
 the database. Only TypeScript Lambdas use the database: cross-language Lambdas and AgentCore
 agents always run outside the VPC, and their database work belongs in a TypeScript Lambda or a
 tool.
+
+`database: true` selects the application writer, which uses Proxy when enabled.
+`database: { connection: "direct" }` selects the direct writer for migrations.
+`database: { readers: true }` retains the writer and adds explicit replica access through
+`getDatabase(databaseConnection({ role: "reader" }))`. Combine object options as needed,
+including `pool: { maxConnections: 4 }`. No declaration means no reader access. Zero replicas
+uses the writer, and local readers use Compose Postgres. Configured replica failures surface;
+the helper keeps one randomly selected replica per execution environment and never retries
+against the writer. Read-after-write consistency and transactions belong on the writer.
+See [Database](DATABASE.md#writer-and-reader-connections) for pooling and consistency details.
 
 The database is ordinary CDK, built into the network with `frameworkVpc(this)`, with no
 security groups or ingress rules of its own:
@@ -491,6 +536,36 @@ new rds.DatabaseInstance(this, "PostgresDatabase", {
 });
 ```
 
+Infrastructure settings live in [the production template](../cdk-app/.env.prod.example):
+instance/engine, storage, availability, backup/maintenance, replicas, Proxy and log exports.
+Their resolver uses camelCase CDK context, then environment, then defaults. Development
+builds none of these resources. Database naming and specialized parameter groups remain
+ordinary application CDK source.
+
+The CDK connection adapter separates infrastructure from workload endpoints. Beside native
+application constructs, before resource finalization, register:
+
+```ts
+bindPostgresDatabase(this, resources.rds.database, {
+  instance: this.database, proxy, readReplicas,
+});
+linkResources(this, resources.rds);
+```
+
+Import `bindPostgresDatabase` from `cdk-app/lib/framework/framework-database`. Directly linked
+PostgreSQL instances receive an equivalent default adapter. The CDK-only
+`DatabaseConnectionTarget` exposes direct/application writers, readers, database/login
+identity, native network and IAM grant hooks, and bootstrap. Attachments are finalized
+after resources are linked. Bootstrap keeps its construct scope in the writer's stack.
+
+Proxy requires TLS and end-to-end IAM: workloads receive only permission for the Proxy
+login; Proxy's role receives permission for the writer login. Direct, Proxy and replica
+clients use separate security groups. A workload joins only its declared paths. Proxy
+target registration waits for successful login bootstrap, and bootstrap always uses the
+direct writer. This instance topology proxies writer traffic; replicas are direct.
+See [AWS Proxy IAM setup](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy-iam-setup.html)
+and [Proxy limitations](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.html).
+
 RDS insists on a master user with a password. The framework reads that password exactly
 once, on deploy: a custom resource in the database's stack logs in as the master and creates
 `app_user`, with `rds_iam`, no password, database `CONNECT` and `CREATE`, and the right to
@@ -499,15 +574,24 @@ tracking schema and migrations to create schemas. The login is not a superuser.
 Versioned bootstrap permissions are reapplied on redeployment. Migrations run as
 `app_user` too, so it owns every table. A release
 therefore deploys first and then migrates: `npm run db:migrate:cloud -- --profile <PROFILE>`
-runs the `db-migrate` task inside the network.
+runs the `db-migrate` task inside the network with `database: { connection: "direct" }`.
 
 ### Containers
 
-A container always runs in the network, in the subnet `cloud.subnet` names, inherited from
-`defaults.container.subnet` (default `"public"`). A public one gets a public IPv4 address and
-no inbound rules. A private one needs `nat: true`: Fargate pulls its image over IPv4, so
-configuration refuses a deployed private container without it, in every mode. Synthesis
-prints what the network holds, what it costs, and who uses the database.
+Fargate is serverless, and it always runs in the VPC: there is no container outside it. What a
+container chooses is the subnet, `cloud.subnet`, inherited from `defaults.container.subnet`
+(default `"public"`):
+
+- `"public"`: a public IPv4 address per running task (about $3.65 a month while it runs) and no
+  inbound rules. It starts whatever network.ts declares.
+- `"private"`: no public address. Fargate pulls the image over IPv4, so the network needs its NAT
+  gateway, or the `ecr.api`, `ecr.dkr` and `logs` interface endpoints plus the S3 gateway
+  endpoint (and `secretsmanager` when it takes secrets).
+
+Configuration refuses a deployed private container that could not start, in every mode, naming
+every endpoint it lacks and what each costs, beside the NAT and public alternatives. Without NAT,
+the AWS calls the framework makes for it (`ecs`, `states`, `bedrock-agentcore`) need their
+endpoints too, since a container's SDK calls go out over IPv4.
 
 ### In development
 
@@ -517,12 +601,15 @@ holds the network's rules instead, which is what keeps "works locally" meaning "
 
 - `PRIMARY_DATABASE_URL` (the Compose Postgres) reaches only a workload that declares
   `database: true`.
-- A Lambda in the VPC (`vpc: true` or `database: true`) runs with
-  `AWS_USE_DUALSTACK_ENDPOINT=true`. Without `nat`, it also runs under an egress guard that refuses, at once and with the reason, any host that publishes no
-  IPv6 address, as the private subnets would by timing out.
+- A Lambda in the VPC gets `AWS_USE_DUALSTACK_ENDPOINT=true` exactly where it would in AWS.
+  Unless IPv4 leaves its subnet (a private subnet with `natGateway`), it runs under an egress guard
+  that refuses at once, with the reason, any host its subnet could not reach. That is a host with
+  no IPv6 address where only IPv6 leaves, or anything an endpoint does not answer where nothing
+  leaves. A refused AWS hostname names the endpoint that would reach it, such as
+  `add "cognito-idp" to interfaceEndpoints`.
 - Configuration refuses `database: true` on an agent, a workflow or a cross-language Lambda,
   on an event without `localReplay: true`, and a workload that reads anything else from the
-  database's stack without declaring it. It refuses `vpc: true` on a cross-language Lambda
+  database's stack without declaring it. It refuses a `subnet` on a cross-language Lambda
   and on an event without `localReplay: true` the same way.
 
 Inside a Lambda in the VPC, an SDK client given its own `endpoint` passes
@@ -861,7 +948,7 @@ GraphQL resolvers receive an authenticated session and separately enforce record
 - Dev trusts the configured local origin; production does not inherit localhost/LAN origins.
   HTTP LAN origins may support native login/CORS but not Cognito hosted-UI redirects.
 
-When changing auth, read [the agent checklist](../agents/auth.md) and test all coupled
+When changing auth, read [the agent checklist](playbooks/auth.md) and test all coupled
 paths. Do not log tokens, secrets, or cookies. Local browser checks and deployed sign-in,
 refresh, and sign-out checks are separate from unit tests.
 

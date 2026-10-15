@@ -28,14 +28,14 @@ export type Database = {
 };
 
 type DatabaseCache = {
-  identity: string;
+  settings: string;
   close(): Promise<void>;
   database: Database;
 };
 
 declare global {
   // Reuse one database-owned pool across warm Lambda invocations.
-  var __repoDatabaseCache: DatabaseCache | undefined;
+  var __repoDatabaseCaches: Map<string, DatabaseCache> | undefined;
 }
 
 function createDatabase(client: DatabaseClient): Database {
@@ -49,45 +49,46 @@ function createDatabase(client: DatabaseClient): Database {
 
 /** What makes two connections the same database: never the password. */
 function connectionIdentity(connection: DatabaseConnection): string {
-  return connection.connectionString ?? `${connection.user}@${connection.host}:${connection.port}/${connection.database}`;
+  if (connection.connectionString) {
+    const url = new URL(connection.connectionString);
+    return `${url.username}@${url.hostname}:${url.port || 5432}/${url.pathname.slice(1)}`;
+  }
+  return `${encodeURIComponent(connection.user ?? "")}@${connection.host}:${connection.port ?? 5432}/${connection.database}`;
 }
 
-/**
- * The repositories, over one pool per execution environment.
- *
- * ```ts
- * const database = getDatabase(databaseConnection());
- * ```
- */
+/** Repositories over one pool per connection identity in each execution environment. */
 export function getDatabase(connection: DatabaseConnection): Database {
-  const cached = globalThis.__repoDatabaseCache;
+  const caches = globalThis.__repoDatabaseCaches ??= new Map();
   const identity = connectionIdentity(connection);
-
+  const cached = caches.get(identity);
+  // Credentials rotate independently of connection and pool settings.
+  const { password: _password, connectionString: _url, ...options } = connection;
+  const settings = JSON.stringify({
+    ...options,
+    max: connection.max ?? 10,
+    connectionTimeoutMillis: connection.connectionTimeoutMillis ?? 20_000,
+    idleTimeoutMillis: connection.idleTimeoutMillis ?? 30_000,
+    ...(connection.connectionString ? { parameters: new URL(connection.connectionString).search } : {}),
+  }, (_, value) => value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)))
+    : value);
   if (cached) {
-    if (cached.identity !== identity) {
-      throw new Error(
-        "Database connection settings changed while a shared connection is active. Call disconnectDatabase() before reconnecting.",
-      );
+    if (cached.settings !== settings) {
+      throw new Error("Database pool settings changed while a shared connection is active. Call disconnectDatabase() before reconnecting.");
     }
-
     return cached.database;
   }
-
   const { client, close } = createClient(connection);
   const database = createDatabase(client);
-
-  globalThis.__repoDatabaseCache = { identity, close, database };
-
+  caches.set(identity, { settings, close, database });
   return database;
 }
 
 export async function disconnectDatabase(): Promise<void> {
-  const cached = globalThis.__repoDatabaseCache;
-
-  if (!cached) {
-    return;
-  }
-
-  globalThis.__repoDatabaseCache = undefined;
-  await cached.close();
+  const caches = globalThis.__repoDatabaseCaches;
+  if (!caches) return;
+  globalThis.__repoDatabaseCaches = undefined;
+  const results = await Promise.allSettled([...caches.values()].map(cached => cached.close()));
+  const errors = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (errors.length) throw Object.assign(new Error("Failed to close database pools."), { errors: errors.map(result => result.reason) });
 }

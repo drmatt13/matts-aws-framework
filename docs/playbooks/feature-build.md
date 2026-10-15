@@ -1,10 +1,10 @@
 # Build a feature across workloads
 
 Use this procedure for a feature spanning routes, event Lambdas, tasks, workflows,
-and application resources. Read [Framework](../docs/FRAMEWORK.md) for the APIs and
-[Development](../docs/DEV-DEPLOYMENT.md) for setup. Changes confined to the
+and application resources. Read [Framework](../FRAMEWORK.md) for the APIs and
+[Development](../DEV-DEPLOYMENT.md) for setup. Changes confined to the
 database → GraphQL → React path follow the
-[data-feature contract](typed-contract-propagation-agent.md).
+[data-feature contract](typed-contract-propagation.md).
 
 ## Decide before writing code
 
@@ -39,7 +39,7 @@ request to implement a feature.
 
    When an origin is required, use the newest migration's `toContract` from
    `migration:list`, once confirmed as the intended baseline; follow
-   [Database](../docs/DATABASE.md#changing-storage). Inspect and present the SQL,
+   [Database](../DATABASE.md#changing-storage). Inspect and present the SQL,
    then continue source work. Planning does not apply it.
 3. Implement repositories and their explicit write boundaries. For a supplied
    timestamp column, pass its ISO string through `toTimestamptz` from
@@ -61,7 +61,7 @@ request to implement a feature.
    typechecking when routes changed, so the route tree is generated.
 8. Run `npm run verify`, inspect the workflow, and synthesize the explicit dev
    graph. Infrastructure changes also require the production synth described in
-   [Framework](../docs/FRAMEWORK.md#generated-contracts-and-verification).
+   [Framework](../FRAMEWORK.md#generated-contracts-and-verification).
 9. Prepare a deployment only when resources or AWS-invoked handlers changed.
    Follow the deployment guide and obtain authorization for the intended account
    and environment before running `npm run deploy`. Its dev export is automatic.
@@ -73,7 +73,7 @@ request to implement a feature.
 
 ## Development loop
 
-[Development's edit/action table](../docs/DEV-DEPLOYMENT.md#what-to-do-after-an-edit)
+[Development's edit/action table](../DEV-DEPLOYMENT.md#what-to-do-after-an-edit)
 owns the reload rules. Handler, graph, and UI edits normally reload locally;
 new workspaces/dependencies require an install and image rebuild. Resources and
 AWS-invoked handlers need a dev deployment. A successful dev deploy also exports
@@ -88,7 +88,7 @@ editing those files and handle expired callbacks in application behavior.
 - `npm run workflows:smoke` checks the repository fixtures after dev setup.
 - `POST /workflows` on the local runner starts a graph with a declared caller
   holding `startsWorkflow(<id>)`; `GET /workflows/:id` reads its terminal status
-  and history. See [Invocation smoke checks](../docs/FRAMEWORK.md#invocation-smoke-checks).
+  and history. See [Invocation smoke checks](../FRAMEWORK.md#invocation-smoke-checks).
 - Once the local test user is configured, `npm run dev:request -- <METHOD>
   </route> [json-body]` verifies authenticated routes and GraphQL. Never print
   the credentials, session token, or cookies.
@@ -123,9 +123,9 @@ from offline tests or a successful synth.
 
 Working examples:
 
-- [Capabilities](../framework-config/workflows/capabilities.ts): managed services,
+- [Capabilities](../../framework-config/workflows/capabilities.ts): managed services,
   an AWS-operation bridge, nested workflows, and a task callback; HTTP is excluded.
-- [Invocation workflow](../framework-config/workflows/invocation-tests.ts): a
+- [Invocation workflow](../../framework-config/workflows/invocation-tests.ts): a
   Lambda followed by a task.
-- [Project data feature](../docs/DATA-FEATURES.md#project-is-the-reference): storage,
+- [Project data feature](../DATA-FEATURES.md#project-is-the-reference): storage,
   repository, schema, client operations, and UI.

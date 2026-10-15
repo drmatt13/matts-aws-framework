@@ -40,7 +40,7 @@ function fixtures(count: number) {
   const directories: string[] = [];
   for (const { agent, tool } of ids) {
     const toolDirectory = path.join(root, "cdk-app", "lambda_functions", "tool_functions", tool);
-    const agentDirectory = path.join(root, "agentcore", agent);
+    const agentDirectory = path.join(root, "agents", agent);
     mkdirSync(toolDirectory, { recursive: true });
     mkdirSync(agentDirectory, { recursive: true });
     writeFileSync(path.join(toolDirectory, "index.ts"), "export const lambdaHandler = async () => ({});");

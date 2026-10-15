@@ -62,7 +62,7 @@ dev deployment. The one exception is DEPLOY_PROD_WEBSOCKET_API=true: it builds t
 WebSocket API and its handlers in a dev deployment too, because API Gateway is then their
 AWS caller, while local-ws-dev-server keeps serving the same routes under Compose. Those
 handlers run in AWS against nothing else the dev graph lacks, so synth refuses one that
-declares `database: true`, `vpc: true`, or a task, workflow or agent binding; turn the flag
+declares `database: true`, a `subnet` other than `"none"`, or a task, workflow or agent binding; turn the flag
 off to serve it locally. Use a separate full cloud deployment when testing HTTP routing.
 
 Export writes root `.env` with fixed Compose controls and `.framework/local/resources.json`
@@ -240,3 +240,24 @@ A deliberate database reset requires stopping the project, identifying its exact
 postgres_data volume, and removing that volume. This deletes local application data;
 it is separate from rebuilding dependencies. AWS teardown is documented in
 [Production](PROD-DEPLOYMENT.md#teardown), using the dev mode and account instead.
+
+### Local images
+
+Images are cleaned up automatically. Nothing is removed with force, so an image any
+container uses, running or stopped, is kept until a later pass:
+
+| Images | Named | Removed |
+| --- | --- | --- |
+| Compose development images | `<project>-<service>:latest`, labelled `com.docker.compose.project`/`service` | By `npm run dev:containers` before it starts Compose: untagged images an earlier `--build` replaced, and images of services docker-compose.yml no longer declares. The previous start's images remain until the next start |
+| Task images | `matts-framework-task-<id>:<arch>` | By the runner after each build and at startup: the image a build replaced, an architecture no longer declared, a task no longer declared |
+| Container-Lambda images | `matts-framework-<id>:<source hash>-<arch>` | By the runner after each build and at startup: every source hash but the current one, and Lambdas no longer declared or no longer container-packaged |
+
+Runner images carry `com.matts-aws-framework.kind` (`task` or `lambda`), `.project` and
+`.target`, so `docker image ls --filter label=com.matts-aws-framework.target=<id>` finds a
+workload's image. The runner touches only images labelled with its own Compose project.
+The exception is a container-Lambda image built before project labels existed, which any
+runner may remove because it is only a cache. A reverted edit rebuilds from the build cache
+in seconds. `--remove-orphans` removes containers of services removed from the file.
+Build cache is left to Docker's builder garbage collection (`docker builder prune` reclaims
+it by hand). Checkouts with the same directory name share one Compose project, and with it
+these images, container names and postgres_data.

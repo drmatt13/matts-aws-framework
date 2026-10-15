@@ -47,4 +47,4 @@ export const TOOL_SOURCE_ROOT = `${LAMBDA_SOURCE_ROOT}/tool_functions` as const;
  * own right, packaged for AgentCore Runtime rather than built by a CDK stack
  * from cdk-app sources.
  */
-export const AGENT_SOURCE_ROOT = "/agentcore";
+export const AGENT_SOURCE_ROOT = "/agents";

@@ -1,8 +1,8 @@
 # Data-feature automation contract
 
 This is the normative output contract for agents propagating data changes. Read
-[Data features](../docs/DATA-FEATURES.md) for orientation and
-[Database](../docs/DATABASE.md) when storage changes. Project is the implementation
+[Data features](../DATA-FEATURES.md) for orientation and
+[Database](../DATABASE.md) when storage changes. Project is the implementation
 reference; inspect its repository, schema, schema tests, documents/options, and API
 tests before editing. Preserve existing application-specific behavior.
 

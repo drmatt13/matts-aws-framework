@@ -51,6 +51,79 @@ Amazon RDS certificate authorities; no workload holds a database password. Nothi
 the VPC reaches it, your machine included, which is why migrations run as a task. See
 [Framework](FRAMEWORK.md#network-and-database).
 
+## Database infrastructure
+
+The production template documents all `DATABASE_*` inputs. The resolver accepts the same
+camelCase context keys, such as `-c databaseInstanceClass=db.m7g.large`, with context taking
+precedence over environment and defaults. Defaults retain the existing small deployment:
+PostgreSQL 16, db.t3.micro, gp2, 20 GiB, a 100 GiB autoscaling ceiling, seven-day backups,
+one writer, no Proxy, no replicas and no log exports.
+
+For an application that must survive an AZ outage, enable `DATABASE_MULTI_AZ` and choose
+an instance sized for its measured load; the small default is not a capacity recommendation.
+Set `RETAIN_STATEFUL_RESOURCES=true` when data must survive stack removal. Multi-AZ provides
+a standby for failover, not read capacity. Add `DATABASE_READ_REPLICA_COUNT` (0–15) to scale
+explicit replica reads; backup retention must be positive. Replicas inherit writer storage
+and encryption and can override class and Multi-AZ independently. Initial allocation inherits
+the writer's actual size, including previous autoscaling; subsequent storage autoscaling is
+independent on each instance with the configured ceiling. Retained replicas have
+deletion protection; unretained replicas are deleted without a final snapshot. CloudFormation
+documents replica deletion-policy limitations: treat writer backups as the recovery source
+and keep replica deletion protection enabled when removal must be prevented. See the
+[DBInstance reference](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-rds-dbinstance.html#cfn-rds-dbinstance-sourcedbinstanceidentifier).
+
+`DATABASE_STORAGE_TYPE` accepts gp2, gp3 or io2. gp3 is a useful choice for new deployments;
+custom PostgreSQL gp3 IOPS/throughput starts at 400 GiB. io2 requires explicit IOPS and at
+least 100 GiB. Autoscaling can be disabled with `DATABASE_MAX_ALLOCATED_STORAGE_GIB=0`;
+otherwise its ceiling must be at least 10% above allocated storage. Storage cannot shrink.
+Validation enforces documented combinations; AWS determines engine/class/region availability
+and instance performance ceilings. Consult the
+[AWS storage rules](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Storage.html).
+
+`DATABASE_ENGINE_VERSION` accepts major or major.minor versions. Major upgrades require
+`DATABASE_ALLOW_MAJOR_VERSION_UPGRADE=true` and a reviewed compatibility plan.
+`DATABASE_AUTO_MINOR_VERSION_UPGRADE=true` retains current behavior. Optional UTC backup
+and weekly maintenance windows must last at least 30 minutes and not overlap. When
+`DATABASE_APPLY_IMMEDIATELY` is omitted, CDK behavior is preserved; explicitly setting it
+may change when supported updates take effect. Maintenance, scaling and failover can
+interrupt connections, including with Multi-AZ and Proxy. Review replacements and pending
+modifications in the deployment diff and RDS console before a release.
+
+`DATABASE_PROXY_ENABLED=true` routes application writers through an additional billed
+service with end-to-end IAM and TLS. Bootstrap and migrations remain direct; replicas also
+remain direct. Its default limits are 90% of database connections, 15 seconds borrowing
+timeout, and 1800 seconds client idle timeout. Reserve database headroom for direct clients
+and monitor pinning before relying on multiplexing. No database password reaches workloads.
+`DATABASE_CLOUDWATCH_LOGS_EXPORTS=postgresql,upgrade` enables optional logs with configurable
+retention (30 days by default). Development ignores these provisioning options and creates
+no RDS, replicas or Proxy.
+
+Monitor RDS `DatabaseConnections`, `CPUUtilization`, `FreeableMemory`, `FreeStorageSpace`,
+I/O latency and storage headroom; replicas' `ReplicaLag`; and Proxy
+`DatabaseConnectionsCurrentlySessionPinned`, `DatabaseConnectionsBorrowLatency`,
+`ClientConnections` and `DatabaseConnections`. Alert thresholds depend on measured workload,
+instance capacity and freshness requirements. Include all warm environments and both pools
+when setting application connection limits.
+
+Offline tests and synth verify the graph, not live connectivity or failover. After a separately
+authorized deployment to the intended environment, validate:
+
+1. Invoke a declared writer workload, confirm IAM login/TLS and a query succeeds, and check
+   an undeclared workload has no connection permission or network path.
+2. Invoke an explicit reader workload with replicas configured, record the selected endpoint,
+   perform a writer update, and observe its eventual appearance and replica lag. Use the
+   writer for immediate consistency. Do not inject faults into production without authorization.
+3. With Proxy enabled, confirm application writers use Proxy and migrations use the direct
+   endpoint. Under an approved representative concurrency test, measure borrowing latency,
+   backend connections and session pinning; inspect logs for authentication failures.
+4. In an explicitly authorized test environment, request a Multi-AZ failover, observe the
+   writer endpoint, connection interruption and recovery, and verify application handling.
+   Transactions can fail; this framework adds no query or transaction retries.
+
+Aurora, named databases, cross-region replication and automatic read routing are later
+extensions. This release keeps one logical PostgreSQL database and the `app_user` ownership
+model. Database names and custom parameter groups belong in application CDK source.
+
 ## Custom domains and Google
 
 For a custom frontend or Cognito hostname, issue a matching ACM certificate in us-east-1
@@ -163,7 +236,7 @@ npm run db:migrate:cloud -- --profile <PROFILE>
 
 It launches the task through the descriptor the deployment published, waits for it, and
 exits with Prisma's exit code; the task's log is in CloudWatch under the `db-migrate` stream
-prefix. The task declares `database: true` and logs in with IAM as every handler does, so no
+prefix. The task declares `database: { connection: "direct" }`, bypasses Proxy, and logs in with IAM, so no
 credential reaches your machine. The deployment creates the `app_user` login it uses, so on a
 first installation deploy before migrating. `npm run task:cloud -- <task-id>` launches any
 other cloud-enabled task the same way.

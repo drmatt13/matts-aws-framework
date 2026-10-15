@@ -24,6 +24,11 @@ export function cancelDockerBuilds(): void {
   for (const controller of builds) controller.abort();
 }
 
+/** Builds this process has in flight, of either kind. */
+export function buildsInFlight(): number {
+  return builds.size;
+}
+
 export async function docker(...args: string[]): Promise<string> {
   const build = args[0] === "build" ? new AbortController() : undefined;
   if (build && stoppingBuilds) throw new Error("Local runner is shutting down.");

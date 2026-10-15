@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   defineFrameworkConfig,
-  defineNetwork,
   defineResources,
   resource,
   getAgentTools,
@@ -27,8 +26,6 @@ const cognito = { USER_POOL_ID: "us-east-1_pool", USER_POOL_CLIENT_ID: "client" 
 
 const base = {
   defaults: { ...defaults, tools: { timeoutSeconds: 20 } },
-  // The app's defaults put containers in private subnets, which need the NAT gateway.
-  network: defineNetwork({ cidr: "10.0.0.0/16", zones: 2, nat: true }),
   http: [],
   webSocket: [],
   events: [],
@@ -52,7 +49,7 @@ test("tools and agents take their directories from their ids", () => {
   const targets = new Map(getFrameworkTargets(config()).map((target) => [target.reference, target]));
   assert.equal(targets.get("lambda:lookup-case")?.role, "tool");
   assert.equal(targets.get("lambda:lookup-case")?.directory, "/lambda_functions/tool_functions/lookup-case");
-  assert.equal(targets.get("agent:support-agent")?.directory, "/agentcore/support-agent");
+  assert.equal(targets.get("agent:support-agent")?.directory, "/agents/support-agent");
 });
 
 test("an agent never uses the database; a tool can", () => {

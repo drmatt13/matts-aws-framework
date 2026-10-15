@@ -93,7 +93,7 @@ const MANIFEST_OWNED_OPTIONS = [
   "architecture", "memorySize", "timeout", "timeoutSeconds", "packaging",
   "directory", "code", "entry", "handler", "runtime", "bundling",
   "logGroup", "logRetention", "logRetentionDays", "loggingFormat",
-  // Placement follows `vpc` and `database: true`: see framework-network.ts.
+  // Placement follows `subnet` and `database: true`: see framework-network.ts.
   "vpc", "vpcSubnets", "securityGroups", "securityGroup", "allowPublicSubnet",
   "allowAllOutbound", "allowAllIpv6Outbound", "ipv6AllowedForDualStack",
 ] as const;

@@ -33,7 +33,7 @@ const repositoryRoot = path.join(__dirname, "..", "..");
 // read from the process environment with cdk-app/.env loaded behind it. The
 // graph itself (PROD_DEPLOYMENT) is decided by that file alone; see the check
 // below.
-loadDeploymentEnvironment(path.join(__dirname, "..", ".env"));
+loadDeploymentEnvironment(process.env.FRAMEWORK_INPUTS_FILE ?? path.join(__dirname, "..", ".env"));
 const app = new cdk.App();
 
 // Declared resource inputs are *not* read from the process environment. Every
@@ -113,6 +113,7 @@ const rdsStack = mode === "prod"
       primaryDatabaseName: "app_db",
       retainStatefulResources: deployment.retainStatefulResources,
       backupRetentionDays: deployment.databaseBackupRetentionDays,
+      databaseSettings: deployment.database,
     })
   : undefined;
 

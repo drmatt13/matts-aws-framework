@@ -39,7 +39,7 @@ test("a workload invokes an agent, which calls a tool through its emulated Gatew
   const toolId = `lookup-${suffix}`;
   const agentId = `assistant-${suffix}`;
   const toolDirectory = path.join(root, "cdk-app", "lambda_functions", "tool_functions", toolId);
-  const agentDirectory = path.join(root, "agentcore", agentId);
+  const agentDirectory = path.join(root, "agents", agentId);
   mkdirSync(toolDirectory, { recursive: true });
   mkdirSync(agentDirectory, { recursive: true });
   writeFileSync(
@@ -91,7 +91,7 @@ test("a workload invokes an agent, which calls a tool through its emulated Gatew
     events: [],
     services: [],
     tools: [{ [toolId]: { directory: `/lambda_functions/tool_functions/${toolId}` } }],
-    agents: [{ [agentId]: { directory: `/agentcore/${agentId}`, tools: [toolId], deploy: "local-only" } }],
+    agents: [{ [agentId]: { directory: `/agents/${agentId}`, tools: [toolId], deploy: "local-only" } }],
   });
 
   const app = express();
@@ -142,7 +142,7 @@ test("a workflow step invokes an agent and reads its result, entirely locally", 
   const toolId = `double-${suffix}`;
   const agentId = `analyst-${suffix}`;
   const toolDirectory = path.join(root, "cdk-app", "lambda_functions", "tool_functions", toolId);
-  const agentDirectory = path.join(root, "agentcore", agentId);
+  const agentDirectory = path.join(root, "agents", agentId);
   mkdirSync(toolDirectory, { recursive: true });
   mkdirSync(agentDirectory, { recursive: true });
   writeFileSync(
@@ -185,7 +185,7 @@ test("a workflow step invokes an agent and reads its result, entirely locally", 
     events: [],
     services: [],
     tools: [{ [toolId]: { directory: `/lambda_functions/tool_functions/${toolId}` } }],
-    agents: [{ [agentId]: { directory: `/agentcore/${agentId}`, tools: [toolId], deploy: "local-only" } }],
+    agents: [{ [agentId]: { directory: `/agents/${agentId}`, tools: [toolId], deploy: "local-only" } }],
     workflows: [
       {
         "agent-chain": workflow<{ n: number }>(

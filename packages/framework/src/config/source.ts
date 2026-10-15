@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import * as path from "node:path";
 import { parseEnv } from "node:util";
+import { AGENT_SOURCE_ROOT } from "./conventions";
 import {
   parseSecretBindings,
   SECRET_BINDINGS_FILE,
@@ -165,18 +166,18 @@ export function resolveFrameworkDirectory(
 /**
  * Resolves an agent's directory. The one framework path rooted at the
  * repository rather than at `cdk-app` (see AGENT_SOURCE_ROOT), and contained to
- * the repository's `agentcore` directory the way every other path is contained
+ * the repository's `agents` directory the way every other path is contained
  * to `cdk-app`.
  */
 export function resolveAgentSourcePath(config: FrameworkConfig, id: string, options: FrameworkRootOptions = {}): string {
   const target = getFrameworkTargets(config).find((candidate) => candidate.reference === `agent:${id}`);
   if (!target?.directory) throw new Error(`agent:${id} is not declared under agents.`);
   const repositoryRoot = options.repositoryRoot ?? findRepositoryRoot();
-  const boundary = realPath(path.join(repositoryRoot, "agentcore"));
+  const boundary = realPath(path.join(repositoryRoot, AGENT_SOURCE_ROOT.slice(1)));
   const candidate = path.resolve(repositoryRoot, target.directory.slice(1));
   const relative = path.relative(boundary, realPath(candidate));
   if (relative.startsWith("..") || path.isAbsolute(relative) || relative === "") {
-    throw new Error(`${target.origins[0]} directory "${target.directory}" resolves outside the repository's agentcore directory.`);
+    throw new Error(`${target.origins[0]} directory "${target.directory}" resolves outside the repository's ${AGENT_SOURCE_ROOT.slice(1)} directory.`);
   }
   if (!existsSync(candidate) || !statSync(candidate).isDirectory()) {
     throw new Error(`${target.origins[0]} directory "${target.directory}" does not exist. Expected ${candidate}.`);

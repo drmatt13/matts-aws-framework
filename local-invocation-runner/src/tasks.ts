@@ -128,6 +128,11 @@ export interface LocalTaskSupervisorOptions {
    */
   readonly now?: () => number;
   readonly followLogs?: (container: string, prefix: string) => () => void | Promise<void>;
+  /**
+   * Told after every successful build. A build moves its target's stable tag,
+   * so the image that tag named before is superseded from this moment.
+   */
+  readonly onImageBuilt?: () => void;
 }
 
 // The labels are declared in @repo/framework/local, beside the project-name
@@ -220,6 +225,11 @@ function architecture(plan: ResolvedLocalTaskPlan): string {
   return dockerPlatform(plan).endsWith("arm64") ? "arm64" : "amd64";
 }
 
+/** The tag every build of a task moves to itself. */
+function stableTag(plan: ResolvedLocalTaskPlan): string {
+  return `matts-framework-task-${plan.id}:${architecture(plan)}`;
+}
+
 export class LocalTaskSupervisor {
   private closing = false;
   private displayCounter = 0;
@@ -240,6 +250,14 @@ export class LocalTaskSupervisor {
 
   public plans(): readonly ResolvedLocalTaskPlan[] {
     return this.graph.tasks;
+  }
+
+  /**
+   * Each declared task's stable tag, for its declared architecture: the images
+   * the next submission would reuse. Any other image of a task is superseded.
+   */
+  public currentImages(): ReadonlySet<string> {
+    return new Set(this.graph.tasks.map(stableTag));
   }
 
   /**
@@ -624,6 +642,7 @@ export class LocalTaskSupervisor {
     preparation.image = this.buildImage(plan, preparation)
       .then((reference) => {
         preparation.built = true;
+        this.options.onImageBuilt?.();
         return reference;
       })
       .finally(() => {
@@ -787,9 +806,11 @@ export class LocalTaskSupervisor {
    * reuses unchanged layers, so this is a cache check rather than a rebuild.
    *
    * Two tags, for two different readers. The stable one is for a developer
-   * running `docker image ls`; it moves with every build, so nothing is ever
-   * launched from it. The `prepare-` one belongs to this build alone and is
-   * what runs, then is dropped once every run holding it has its container.
+   * running `docker image ls`, and is what the image janitor keeps; it moves
+   * with every build, so nothing is ever launched from it, and the image it
+   * moved away from is reclaimed once no container uses it. The `prepare-` one
+   * belongs to this build alone and is what runs, then is dropped once every
+   * run holding it has its container.
    *
    * `--provenance=false` keeps the image deterministic for identical input.
    * With attestations on, two builds of the same source produce two different
@@ -807,13 +828,15 @@ export class LocalTaskSupervisor {
       "--file",
       `${this.options.repositoryRoot}/${plan.dockerfile}`,
       "--tag",
-      `matts-framework-task-${plan.id}:${architecture(plan)}`,
+      stableTag(plan),
       "--tag",
       preparation.reference,
       "--label",
       `${TASK_LABEL_KIND}=task`,
       "--label",
       `${TASK_LABEL_PROJECT}=${this.options.projectName}`,
+      "--label",
+      `${TASK_LABEL_TARGET}=${plan.id}`,
     ];
     if (plan.buildTarget) args.push("--target", plan.buildTarget);
     // The repository root, as ECS builds it: the Dockerfile installs from the

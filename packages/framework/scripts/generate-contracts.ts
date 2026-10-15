@@ -22,6 +22,7 @@ import {
   TOOL_SOURCE_ROOT,
 } from "../src/config/conventions";
 import { readSectionKeys } from "./config-source";
+import { vpcEndpointServicesModule } from "./vpc-endpoint-services";
 import {
   agentCoreModule,
   agentRouteDeclarations,
@@ -76,6 +77,15 @@ const targetIdsFile = path.join(
   "src",
   "generated",
   "target-ids.ts",
+);
+/** The interface endpoint names `defineNetwork` completes. See `./vpc-endpoint-services`. */
+const vpcEndpointServicesFile = path.join(
+  repositoryRoot,
+  "packages",
+  "framework",
+  "src",
+  "generated",
+  "vpc-endpoint-services.ts",
 );
 const contractsFile = path.join(
   repositoryRoot,
@@ -790,13 +800,15 @@ async function main(): Promise<void> {
     targetIdsFile,
     idsModule(lambdaDirectories, serviceIds, taskIds, workflowIds, [...sectionKeys.agents].sort()),
   );
+  // framework-config/network.ts is typed against it, so it is written here too.
+  writeGenerated(vpcEndpointServicesFile, vpcEndpointServicesModule(repositoryRoot));
 
   // `--check` writes nothing, so on a repository whose id union has never been
   // generated there is nothing for the framework module to import. Say that
   // plainly here: the alternative is a bare "Cannot find module
   // './generated/target-ids'" from the dynamic import below, which describes
   // the symptom and not the repair.
-  if (checkOnly && !existsSync(targetIdsFile)) {
+  if (checkOnly && (!existsSync(targetIdsFile) || !existsSync(vpcEndpointServicesFile))) {
     console.error(
       `Generated framework files are stale (${staleFiles.join(", ")}). Run npm run framework:generate.`,
     );

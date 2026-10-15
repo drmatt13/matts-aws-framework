@@ -1,21 +1,37 @@
 /**
  * The network's egress rule, held on a laptop.
  *
- * A Lambda in the VPC (`vpc: true`, or `database: true`) runs in its private
- * subnets in AWS, where the only way out is IPv6 unless the network has a NAT gateway. A host that publishes no IPv6 address
- * is unreachable from there: the connection is not refused, it simply never
- * answers until the function times out. Locally the same call would succeed
- * over the laptop's IPv4, and "works in dev" would stop meaning "works in prod".
+ * A Lambda in the VPC (`subnet: "private"` or `"isolated"`, or `database:
+ * true`) reaches, in AWS, only what its subnet routes to: IPv6 through the
+ * egress-only internet gateway when framework-config/network.ts has one, and
+ * the network's endpoints. A host beyond that is unreachable from there: the
+ * connection is not refused, it simply never answers until the function times
+ * out. Locally the same call would succeed over the laptop's IPv4, and "works
+ * in dev" would stop meaning "works in prod".
  *
  * So the child process that runs such a handler resolves every name through
  * this guard first. A name whose addresses are all private (Compose services,
- * localhost) passes, as it would inside the VPC. A public name passes only if
+ * localhost) passes, as it would inside the VPC. So does an AWS hostname one of
+ * the network's endpoints answers. Where IPv6 leaves, a public name passes if
  * it publishes an IPv6 address — asked of DNS directly, because a laptop with
  * no IPv6 of its own has those records hidden from `getaddrinfo`. Anything else
  * fails at once, with the reason and the fix, instead of hanging.
+ *
+ * A subnet with IPv4 out (a NAT gateway) reaches everything, and runs no guard.
  */
 import dns from "node:dns";
 import net from "node:net";
+import { endpointServiceForHost, formatMonthlyCost, NETWORK_PRICES } from "../config/network";
+
+/** What leaves the subnet a Lambda runs in, when it is not everything. */
+export interface EgressPolicy {
+  /** The Lambda's subnet. */
+  readonly subnet: "private" | "isolated";
+  /** Whether IPv6 leaves it, through the egress-only internet gateway. */
+  readonly ipv6: boolean;
+  /** The services the network's endpoints reach, such as "s3" or "secretsmanager". */
+  readonly endpoints: readonly string[];
+}
 
 /** Addresses a Lambda reaches inside the VPC, or a laptop reaches on its own network. */
 export function isPrivateAddress(address: string): boolean {
@@ -39,19 +55,49 @@ export interface EgressResolver {
   readonly hasIpv6: (hostname: string) => Promise<boolean>;
 }
 
-/** Why a host is unreachable from the private subnets, or undefined when it is reachable. */
-export async function ipv6EgressRefusal(hostname: string, resolver: EgressResolver): Promise<string | undefined> {
-  if (net.isIPv6(hostname)) return undefined;
-  if (net.isIPv4(hostname)) {
-    return isPrivateAddress(hostname)
-      ? undefined
-      : `${hostname} is an IPv4 address, and only IPv6 leaves the VPC's private subnets.`;
+/** Why a host is unreachable from the Lambda's subnet, or undefined when it is reachable. */
+export async function egressRefusal(
+  hostname: string,
+  policy: EgressPolicy,
+  resolver: EgressResolver,
+): Promise<string | undefined> {
+  const beyond = policy.ipv6
+    ? "only IPv6 and the network's endpoints leave the VPC's private subnets"
+    : `nothing leaves the VPC's ${policy.subnet} subnets but the network's endpoints`;
+  if (net.isIPv6(hostname)) {
+    return policy.ipv6 || isPrivateAddress(hostname) ? undefined : `${hostname} is outside the VPC, and ${beyond}.`;
   }
+  if (net.isIPv4(hostname)) {
+    return isPrivateAddress(hostname) ? undefined : `${hostname} is a public IPv4 address, and ${beyond}.`;
+  }
+  const service = endpointServiceForHost(hostname);
+  if (service && policy.endpoints.includes(service)) return undefined;
   const addresses = await resolver.lookupAll(hostname);
   if (addresses.length > 0 && addresses.every(isPrivateAddress)) return undefined;
-  if (addresses.some((address) => net.isIPv6(address) && !isPrivateAddress(address))) return undefined;
-  if (await resolver.hasIpv6(hostname)) return undefined;
-  return `${hostname} has no IPv6 address, and only IPv6 leaves the VPC's private subnets.`;
+  if (policy.ipv6) {
+    if (addresses.some((address) => net.isIPv6(address) && !isPrivateAddress(address))) return undefined;
+    if (await resolver.hasIpv6(hostname)) return undefined;
+    return `${hostname} has no IPv6 address, and ${beyond}.`;
+  }
+  return `${hostname} is outside the VPC, and ${beyond}.`;
+}
+
+/** How to reach a host the guard refused, from where the Lambda runs. */
+export function egressFix(hostname: string, policy: EgressPolicy): string {
+  const service = endpointServiceForHost(hostname);
+  const endpoint = service === "s3" || service === "dynamodb"
+    ? `turn on gatewayEndpoints.${service} in framework-config/network.ts (free)`
+    : service
+      ? `add "${service}" to interfaceEndpoints in framework-config/network.ts (about ${formatMonthlyCost(NETWORK_PRICES.interfaceEndpointMonthlyPerZone)} a month per zone)`
+      : undefined;
+  const route = policy.subnet === "isolated"
+    ? `give it subnet: "private"`
+    : policy.ipv6
+      ? `give the private subnets IPv4 with natGateway: true in framework-config/network.ts (about $33 a month)`
+      : `turn on egressOnlyInternetGateway (free) or natGateway in framework-config/network.ts`;
+  return endpoint
+    ? `${endpoint[0]!.toUpperCase()}${endpoint.slice(1)}, or ${route}.`
+    : `Call it from a Lambda outside the VPC (subnet: "none"), or ${route}.`;
 }
 
 type LookupAll = (
@@ -75,10 +121,11 @@ const systemResolver = (lookup: typeof dns.lookup): EgressResolver => ({
 let installed = false;
 
 /**
- * Holds this process to IPv6-only egress. Installed once, before the handler
- * module is imported, so every client the handler builds goes through it.
+ * Holds this process to its subnet's egress. Installed once, before the
+ * handler module is imported, so every client the handler builds goes through
+ * it.
  */
-export function installIpv6EgressGuard(functionName: string): void {
+export function installEgressGuard(functionName: string, policy: EgressPolicy): void {
   if (installed) return;
   installed = true;
   const original = dns.lookup;
@@ -87,7 +134,7 @@ export function installIpv6EgressGuard(functionName: string): void {
   const verdict = (hostname: string): Promise<string | undefined> => {
     let pending = verdicts.get(hostname);
     if (!pending) {
-      pending = ipv6EgressRefusal(hostname, resolver);
+      pending = egressRefusal(hostname, policy, resolver);
       verdicts.set(hostname, pending);
     }
     return pending;
@@ -95,7 +142,7 @@ export function installIpv6EgressGuard(functionName: string): void {
   const refusal = (hostname: string, reason: string): NodeJS.ErrnoException =>
     Object.assign(
       new Error(
-        `${reason} ${functionName} runs in the VPC (vpc: true or database: true), so in AWS it is in the private subnets and cannot reach ${hostname}. Call it from a Lambda outside the VPC, or give the private subnets IPv4 with defineNetwork({ ..., nat: true }) in framework-config/network.ts (about $33 a month).`,
+        `${reason} ${functionName} has subnet: "${policy.subnet}", so in AWS it cannot reach ${hostname}. ${egressFix(hostname, policy)}`,
       ),
       { code: "ENETUNREACH", syscall: "getaddrinfo", hostname },
     );

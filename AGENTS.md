@@ -7,13 +7,13 @@ This is a TypeScript npm-workspace monorepo for AWS-backed applications. Start w
 
 | Area | Required guidance |
 | --- | --- |
-| Database -> GraphQL -> React Query | [Data features](docs/DATA-FEATURES.md) and the [automation contract](agents/typed-contract-propagation-agent.md) |
+| Database -> GraphQL -> React Query | [Data features](docs/DATA-FEATURES.md) and the [automation contract](docs/playbooks/typed-contract-propagation.md) |
 | Workload declarations, resources, CDK, local execution | [Framework](docs/FRAMEWORK.md) |
-| Features spanning workloads: routes, events, tasks, workflows, resources | [Feature build procedure](agents/feature-build-agent.md) and [Framework](docs/FRAMEWORK.md) |
-| Authentication or authorization | [Auth checklist](agents/auth.md) and its linked auth model |
+| Features spanning workloads: routes, events, tasks, workflows, resources | [Feature build procedure](docs/playbooks/feature-build.md) and [Framework](docs/FRAMEWORK.md) |
+| Authentication or authorization | [Auth checklist](docs/playbooks/auth.md) and its linked auth model |
 | AgentCore agents and tools | [AgentCore](docs/AGENTCORE.md) and [Framework](docs/FRAMEWORK.md) |
 | Development environment | [Development](docs/DEV-DEPLOYMENT.md) |
-| Production release | [Production](docs/PROD-DEPLOYMENT.md) and [deployment procedure](agents/prod-deployment-agent.md) |
+| Production release | [Production](docs/PROD-DEPLOYMENT.md) and [deployment procedure](docs/playbooks/prod-deployment.md) |
 
 ## Working rules
 
@@ -47,8 +47,10 @@ This is a TypeScript npm-workspace monorepo for AWS-backed applications. Start w
   and stack-prefixed output names; compare logical ids when moving infrastructure.
 - A workload reaches the database only by declaring `database: true` (framework.config.ts
   names the database); it logs in with IAM, so never give a workload a database password
-  or secret. A Lambda joins the network with `vpc: true` or `database: true`; never set
-  CDK vpc, subnets or security groups on a framework workload by hand.
+  or secret. A Lambda joins the network with `subnet: "private"` or `"isolated"`, or
+  `database: true`; a container's `cloud.subnet` is `"public"` or `"private"`. Never set
+  CDK vpc, subnets or security groups on a framework workload by hand. NAT, the
+  egress-only gateway and every endpoint are declared only in framework-config/network.ts.
   Application stacks build into the network with `frameworkVpc(this)`, which only a
   production deployment builds. Inside a Lambda in the VPC, an SDK client with a custom
   `endpoint` passes `useDualstackEndpoint: false`.
@@ -70,6 +72,13 @@ This is a TypeScript npm-workspace monorepo for AWS-backed applications. Start w
   over image dependencies. Preserve postgres_data. Keep the lockfile's native bindings for macOS arm64, Linux arm64
   and x64 (glibc), and Windows x64; `npm run verify` checks them. Change the lockfile only
   with npm 11, because npm 10 strips its `libc` fields.
+- Local images are reclaimed by reconciliation (Development, Local images): the runner keeps
+  each declared target's current image and anything in use, and dev:containers prunes its
+  Compose project's superseded images. Runner images are named `matts-framework-*`, its
+  containers `matts-task-*`/`matts-lambda-*`; both carry com.matts-aws-framework labels
+  (images: kind/project/target), and a new build or run path must too. Cleanup
+  stays scoped to labels and unforced. Never add `docker system prune`, an unfiltered
+  `image prune -a`, `--force` on image removal, or `builder prune` to automation.
 
 ## Verification and handoff
 

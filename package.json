@@ -41,7 +41,7 @@
     "cdk-app/ecs_containers/services/*",
     "cdk-app/ecs_containers/tasks/*",
     "packages/*",
-    "agentcore/*",
+    "agents/*",
     "ws-tester",
     "local-ws-dev-server"
   ],

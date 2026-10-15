@@ -21,9 +21,51 @@ Consumers import `getDatabase`, `disconnectDatabase`, and application types from
 `@repo/database`. They do not import generated Prisma files or construct ORM queries.
 `getDatabase(databaseConnection())` takes the settings `@repo/framework/runtime/database`
 resolves for a workload that declares `database: true`: the Compose Postgres locally, an IAM
-login that signs a token per connection in AWS. It reuses one `pg` pool across warm Lambda
-invocations and rejects a different database while that pool is active; disconnect before
-changing databases.
+login that signs a token per connection in AWS. Application writers use RDS Proxy when
+enabled; otherwise they connect directly. Each connection identity (host, port, database,
+login) has its own `pg` pool across warm Lambda invocations. Writer and reader pools coexist;
+changing settings for an active identity is refused. `disconnectDatabase()` closes all pools.
+
+## Writer and reader connections
+
+Ordinary operations, OAuth reconciliation and migrations use the writer. Declare reader
+access on workloads that have reads which tolerate asynchronous replication:
+
+```ts
+// framework-config/http/reports.ts
+database: { readers: true },
+
+// Handler: both repository handles can coexist.
+const writer = getDatabase(databaseConnection());
+const reader = getDatabase(databaseConnection({ role: "reader" }));
+```
+
+The reader helper requires that declaration. It picks one configured replica randomly on
+first use per execution environment and retains that endpoint and pool. With no replicas,
+it uses the writer; development uses Compose Postgres for both roles. Replica failures
+surface to the caller, without automatic writer fallback or query retries. Reads can be
+stale, including immediately after a successful write. Use the writer for read-after-write
+consistency, transactions and authentication. Replica connections bypass RDS Proxy.
+
+`database: { connection: "direct" }` bypasses Proxy for the writer. The existing `db-migrate`
+task uses this setting; `databaseUrl()` also resolves only the declared writer. Object
+options can combine, for example `{ readers: true, connection: "direct", pool: { maxConnections: 4 } }`.
+
+Configure `defaults.database.pool` and override it with workload `database.pool`:
+
+```ts
+defaults: { database: { pool: {
+  maxConnections: 10, connectionTimeoutMs: 20000, idleTimeoutMs: 30000,
+} } },
+```
+
+These settings reach both local and AWS pools through framework-owned
+`PRIMARY_DATABASE_POOL_OPTIONS`. Only declared readers receive `PRIMARY_DATABASE_READ_URLS`,
+a JSON URL array. Do not author either variable. Each writer/reader pool has its own limit;
+budget connections across concurrent Lambda environments, container replicas, migrations
+and administrative access. Proxy multiplexing depends on transaction/session behavior:
+session pinning can reduce its benefit. Keep TLS verification and IAM token signing per
+new connection; a token belongs to the selected endpoint.
 
 ## Records and writes
 

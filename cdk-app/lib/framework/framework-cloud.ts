@@ -22,7 +22,7 @@ import {
   type SecretHandle,
 } from "@repo/framework/config";
 import { frameworkLambda } from "./framework-lambda";
-import { isPlacedInNetwork, lambdaPlacement } from "./framework-network";
+import { lambdaNetworkEnvironment, lambdaPlacement } from "./framework-network";
 import { connectDatabase } from "./framework-database";
 import { appInvocationRegistry } from "./framework-tasks";
 import { FrameworkTargetRegistry } from "./framework-target-registry";
@@ -177,9 +177,7 @@ export function attachLambdaResources(scope: Construct, fn: lambda.Function, tar
       ...values.environment,
       ...resolveInvocationDescriptors(scope, target),
       ...connectDatabase(scope, fn, target),
-      // From the private subnets only IPv6 leaves, and several AWS APIs answer
-      // IPv6 only on their dual-stack hostnames. Set in both lanes.
-      ...(isPlacedInNetwork(scope, target) ? { AWS_USE_DUALSTACK_ENDPOINT: "true" } : {}),
+      ...lambdaNetworkEnvironment(scope, target),
     };
     assertLambdaEnvironmentBudget(target.id, environment);
     for (const [name, value] of Object.entries(environment)) fn.addEnvironment(name, value);

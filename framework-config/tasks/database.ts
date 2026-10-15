@@ -8,14 +8,14 @@ import type { TasksSection } from "../contracts";
  *   npm run db:migrate:cloud -- --profile <PROFILE>
  *
  * Cloud only: locally, Compose's prisma-migrate service migrates Postgres on
- * every start. In a public subnet, so it runs whether or not the network has a
- * NAT gateway. It applies them as the database's IAM login, which owns every
- * table they create.
+ * every start. In the default public subnet (defaults.container.subnet), so it
+ * starts whatever network.ts declares, and reaches the database as any
+ * workload that declares database: true does. It applies them as the
+ * database's IAM login, which owns every table they create.
  */
 export const databaseTasks = {
   "db-migrate": {
     deploy: "cloud-only",
-    database: true,
-    cloud: { subnet: "public" },
+    database: { connection: "direct" },
   },
 } satisfies TasksSection;

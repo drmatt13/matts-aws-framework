@@ -3,7 +3,6 @@ import test from "node:test";
 import {
   assertCloudEdgesResolvable,
   defineFrameworkConfig,
-  defineNetwork,
   defineResources,
   getCloudTargets,
   isTargetDeployed,
@@ -30,7 +29,6 @@ const routes = {
 const config = (overrides: Partial<FrameworkConfigInput> = {}, defaultRoute: Record<string, unknown> = {}): FrameworkConfig =>
   defineFrameworkConfig({
     defaults,
-    network: defineNetwork({ cidr: "10.0.0.0/16", zones: 2, nat: true }),
     http: [{ "/verify-session": { directory: "/lambda_functions/http_functions/verify-session", methods: ["GET"] } }],
     webSocket: [{ ...routes, $default: { ...routes.$default, ...defaultRoute } }],
     events: [],
@@ -66,11 +64,11 @@ test("a WebSocket handler a dev deployment builds may not need what the dev grap
     /declares runsTask\("invocation-test-task"\), which a dev deployment does not build.*Turn DEPLOY_PROD_WEBSOCKET_API off to serve it under Compose/,
   );
 
-  const inside = config({}, { vpc: true });
+  const inside = config({}, { subnet: "private" });
   assert.doesNotThrow(() => assertCloudEdgesResolvable(inside, "dev"));
   assert.throws(
     () => assertCloudEdgesResolvable(inside, "dev", { webSocketApi: true }),
-    /has vpc: true, but a dev deployment builds no network, and DEPLOY_PROD_WEBSOCKET_API builds this WebSocket handler in AWS/,
+    /has subnet: "private", but a dev deployment builds no network, and DEPLOY_PROD_WEBSOCKET_API builds this WebSocket handler in AWS/,
   );
 
   const catalog = defineResources({ rds: resource.stack<{ readonly database: { readonly connections: object; readonly node: { readonly id: string; readonly path: string } } }>() });

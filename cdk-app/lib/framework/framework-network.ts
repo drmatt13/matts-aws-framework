@@ -2,36 +2,46 @@ import * as cdk from "aws-cdk-lib";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import type { Construct, IConstruct } from "constructs";
 import {
-  defineNetwork,
+  formatMonthlyCost,
   getConnectsToBindings,
+  interfaceEndpointsMonthlyCost,
   isResourceAbsent,
+  NETWORK_PRICES,
   NETWORK_SUBNET_LAYOUT,
   resolveLambdaTarget,
+  resolveNetwork,
+  usesDualStackEndpoints,
   type ConnectsToBinding,
   type ContainerSubnet,
   type FrameworkNetwork,
+  type InterfaceEndpointService,
+  type NetworkSubnet,
   type NormalizedTarget,
 } from "@repo/framework/config";
-import { deferResourceAttachment, frameworkResourceOptions, linkedConstruct } from "./framework-resources";
+import { deferResourceAttachment, frameworkResourceOptions } from "./framework-resources";
+
+import { databaseConnectionTarget, type DatabaseEndpoint } from "./framework-database";
 
 /**
  * The application's network, built by a production deployment the first time
  * something needs it: an application stack calling `frameworkVpc(this)`, a
- * Lambda with `vpc: true`, a workload declaring `database: true`, or a
- * container.
+ * Lambda with `subnet: "private"` or `"isolated"`, a workload declaring
+ * `database: true`, or a container.
  *
  * A development deployment never builds it. The database is absent from the
  * dev graph and runs under Compose instead, where the local
  * lane enforces the same rules — which is why asking for the network in a dev
  * deployment is an error rather than a smaller network.
  *
- * Costs nothing unless framework-config/network.ts turns on its NAT gateway:
- * subnets, the internet and egress-only gateways, security groups and the S3
- * and DynamoDB gateway endpoints are all free.
+ * Everything about its way out is framework-config/network.ts: the
+ * egress-only internet gateway, the NAT gateway, and the gateway and interface
+ * endpoints. Subnets, the internet and egress-only gateways, security groups
+ * and the gateway endpoints are free; the NAT gateway and interface endpoints
+ * are what it costs.
  */
 export class NetworkStack extends cdk.Stack {
   public readonly vpc: ec2.Vpc;
-  public readonly nat: boolean;
+  public readonly network: FrameworkNetwork;
 
   public constructor(
     scope: Construct,
@@ -39,27 +49,88 @@ export class NetworkStack extends cdk.Stack {
     props: cdk.StackProps & { readonly network: FrameworkNetwork },
   ) {
     super(scope, id, props);
-    this.nat = props.network.nat;
+    const network = this.network = props.network;
     this.vpc = new ec2.Vpc(this, "Vpc", {
-      ipAddresses: ec2.IpAddresses.cidr(props.network.cidr),
+      ipAddresses: ec2.IpAddresses.cidr(network.cidr),
       ipProtocol: ec2.IpProtocol.DUAL_STACK,
-      maxAzs: props.network.zones,
-      // Private subnets route IPv6 to the egress-only gateway either way. A NAT
-      // gateway, and with it an IPv4 route out, exists only when the network
-      // declaration turns it on; the config check refuses a private container
-      // without one.
-      natGateways: this.nat ? 1 : 0,
+      maxAzs: network.zones,
+      // An IPv4 route out of the private subnets exists only when the network
+      // declaration turns its NAT gateway on.
+      natGateways: network.natGateway ? 1 : 0,
       subnetConfiguration: NETWORK_SUBNET_LAYOUT.map((layout) => ({
         name: layout.name,
         cidrMask: layout.cidrMask,
         subnetType: SUBNET_TYPE[layout.tier],
       })),
+      // Keyed S3 and DynamoDB, as they always have been: the key is the
+      // construct id, and so part of each endpoint's logical id.
       gatewayEndpoints: {
-        S3: { service: ec2.GatewayVpcEndpointAwsService.S3 },
-        DynamoDB: { service: ec2.GatewayVpcEndpointAwsService.DYNAMODB },
+        ...(network.gatewayEndpoints.s3 ? { S3: { service: ec2.GatewayVpcEndpointAwsService.S3 } } : {}),
+        ...(network.gatewayEndpoints.dynamodb ? { DynamoDB: { service: ec2.GatewayVpcEndpointAwsService.DYNAMODB } } : {}),
       },
     });
+
+    // CDK gives a dual-stack VPC's private subnets an egress-only internet
+    // gateway and an IPv6 default route to it, unasked. Without one, they keep
+    // no IPv6 way out.
+    if (!network.egressOnlyInternetGateway) {
+      for (const subnet of this.vpc.privateSubnets) {
+        if (!subnet.node.tryRemoveChild("DefaultRoute6")) {
+          throw new Error(`The private subnet ${subnet.node.path} has no IPv6 default route to remove: CDK has changed how it builds the egress-only internet gateway.`);
+        }
+      }
+      if (!this.vpc.node.tryRemoveChild("EIGW6")) {
+        throw new Error("The VPC has no egress-only internet gateway to remove: CDK has changed how it builds one.");
+      }
+    }
+
+    // One security group for every interface endpoint: HTTPS from anything in
+    // the VPC. The endpoints are IPv4, which every subnet has.
+    if (network.interfaceEndpoints.length > 0) {
+      const group = new ec2.SecurityGroup(this, "InterfaceEndpoints", {
+        vpc: this.vpc,
+        description: "Interface endpoints declared in framework-config/network.ts",
+        allowAllOutbound: false,
+      });
+      group.addIngressRule(ec2.Peer.ipv4(this.vpc.vpcCidrBlock), ec2.Port.tcp(443), "HTTPS from the VPC");
+      for (const name of network.interfaceEndpoints) {
+        // Named for the service, so listing endpoints in another order
+        // replaces none of them.
+        this.vpc.addInterfaceEndpoint(endpointConstructId(name), {
+          service: interfaceEndpointService(name),
+          subnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
+          privateDnsEnabled: true,
+          securityGroups: [group],
+          open: false,
+        });
+      }
+    }
   }
+}
+
+/** "secretsmanager" → "SecretsmanagerEndpoint", "ecr.dkr" → "EcrDkrEndpoint". */
+function endpointConstructId(name: string): string {
+  return `${name.split(/[.-]/).filter(Boolean).map((part) => part[0]!.toUpperCase() + part.slice(1)).join("")}Endpoint`;
+}
+
+let endpointServicesByName: ReadonlyMap<string, ec2.InterfaceVpcEndpointAwsService> | undefined;
+
+/** CDK's description of an interface endpoint service, by its endpoint name. */
+function interfaceEndpointService(name: InterfaceEndpointService): ec2.InterfaceVpcEndpointAwsService {
+  if (!endpointServicesByName) {
+    const byName = new Map<string, ec2.InterfaceVpcEndpointAwsService>();
+    for (const key of Object.getOwnPropertyNames(ec2.InterfaceVpcEndpointAwsService)) {
+      const value = (ec2.InterfaceVpcEndpointAwsService as unknown as Record<string, unknown>)[key];
+      // A few services have two names in CDK (EVENTBRIDGE, CLOUDWATCH_EVENTS); either is the same endpoint.
+      if (value instanceof ec2.InterfaceVpcEndpointAwsService && !byName.has(value.shortName)) byName.set(value.shortName, value);
+    }
+    endpointServicesByName = byName;
+  }
+  const service = endpointServicesByName.get(name);
+  if (!service) {
+    throw new Error(`aws-cdk-lib has no interface endpoint service "${name}". Run npm run framework:generate after changing aws-cdk-lib.`);
+  }
+  return service;
 }
 
 const SUBNET_TYPE = {
@@ -69,7 +140,7 @@ const SUBNET_TYPE = {
 } as const;
 
 /** Subnets of one tier of the framework network. */
-export function networkSubnets(tier: ContainerSubnet | "isolated"): ec2.SubnetSelection {
+export function networkSubnets(tier: NetworkSubnet): ec2.SubnetSelection {
   return { subnetType: SUBNET_TYPE[tier] };
 }
 
@@ -77,6 +148,9 @@ interface NetworkState {
   stack?: NetworkStack;
   /** The group the database admits, once a workload uses it. */
   databaseClients?: ec2.SecurityGroup;
+  databaseProxyClients?: ec2.SecurityGroup;
+  databaseReaderClients?: ec2.SecurityGroup;
+  readonly admissions: Set<string>;
   /** The group every other Lambda in the network shares. */
   vpcLambdas?: ec2.SecurityGroup;
   /** Workloads placed in the network, for the synth summary. */
@@ -87,7 +161,7 @@ function state(scope: IConstruct): NetworkState {
   const root = scope.node.root;
   let value = states.get(root);
   if (!value) {
-    value = { placed: [] };
+    value = { placed: [], admissions: new Set() };
     states.set(root, value);
   }
   return value;
@@ -111,7 +185,7 @@ function networkStack(scope: IConstruct, reason: string): NetworkStack {
     : { account: caller.account, region: caller.region };
   network.stack = new NetworkStack(scope.node.root as Construct, `${options.deployment}-NetworkStack`, {
     ...(env ? { env } : {}),
-    network: options.config.network ?? defineNetwork({ cidr: "10.0.0.0/16", zones: 2 }),
+    network: resolveNetwork(options.config),
   });
   return network.stack;
 }
@@ -139,35 +213,36 @@ export function frameworkVpc(scope: IConstruct): ec2.IVpc {
  * stack — never at a workload's stack, which already depends on the
  * database's for its IAM grant and would close a cycle.
  */
-function databaseClients(scope: IConstruct, binding: ConnectsToBinding, origin: string): ec2.SecurityGroup {
+function databaseClientGroup(scope: IConstruct, kind: DatabaseEndpoint["kind"], origin: string): ec2.SecurityGroup {
   const network = state(scope);
-  if (network.databaseClients) return network.databaseClients;
-  const stack = networkStack(scope, `${origin} declares database: true`);
-  const group = new ec2.SecurityGroup(stack, "DatabaseClients", {
-    vpc: stack.vpc,
-    description: "Workloads that declare database: true",
-    allowAllOutbound: true,
-    allowAllIpv6Outbound: true,
+  const field = kind === "proxy" ? "databaseProxyClients" : kind === "reader" ? "databaseReaderClients" : "databaseClients";
+  if (network[field]) return network[field]!;
+  const stack = networkStack(scope, `${origin} declares database access`);
+  const id = kind === "proxy" ? "DatabaseProxyClients" : kind === "reader" ? "DatabaseReaderClients" : "DatabaseClients";
+  return network[field] = new ec2.SecurityGroup(stack, id, {
+    vpc: stack.vpc, description: kind === "direct" ? "Workloads that declare database: true" : `Database ${kind} clients`,
+    allowAllOutbound: true, allowAllIpv6Outbound: true,
   });
-  network.databaseClients = group;
-  deferResourceAttachment(scope, () => admit(scope, binding, group, stack));
-  return group;
 }
 
-function admit(scope: IConstruct, binding: ConnectsToBinding, group: ec2.SecurityGroup, stack: NetworkStack): void {
-  const name = `resources.${binding.resource.path.join(".")}`;
-  const linked = linkedConstruct(scope, binding.resource);
-  if (!linked) {
-    throw new Error(`The config's database, ${name}, is linked by nothing. End its stack's constructor with linkResources(this, resources.${binding.resource.path[0]}).`);
+function databaseClientGroups(scope: IConstruct, binding: ConnectsToBinding, origin: string): ec2.SecurityGroup[] {
+  const target = databaseConnectionTarget(scope, binding);
+  const writer = binding.connection === "direct" ? target.directWriter : target.applicationWriter;
+  const endpoints = [writer, ...(binding.readers ? target.readers : [])];
+  const groups = new Set<ec2.SecurityGroup>();
+  for (const endpoint of endpoints) {
+    const group = databaseClientGroup(scope, endpoint.kind, origin);
+    groups.add(group);
+    const key = `${JSON.stringify(binding.resource.path)}:${endpoint.kind}:${endpoint.hostname}`;
+    if (!state(scope).admissions.has(key)) {
+      state(scope).admissions.add(key);
+      deferResourceAttachment(scope, () => {
+        if (endpoint.vpc !== networkStack(scope, origin).vpc) throw new Error("The database is built in another VPC. Build it with vpc: frameworkVpc(this).");
+        endpoint.connections.allowFrom(group, endpoint.connections.defaultPort ?? ec2.Port.tcp(typeof endpoint.port === "number" ? endpoint.port : cdk.Token.asNumber(endpoint.port)), "database: true");
+      });
+    }
   }
-  const construct = linked.construct as { readonly connections?: ec2.Connections; readonly vpc?: ec2.IVpc };
-  if (!construct.connections?.defaultPort || typeof construct.connections.allowDefaultPortFrom !== "function") {
-    throw new Error(`The config's database, ${name}, accepts no connections. It is an rds.DatabaseInstance.`);
-  }
-  if (construct.vpc && construct.vpc !== stack.vpc) {
-    throw new Error(`The config's database, ${name}, is built in another VPC. Build it with vpc: frameworkVpc(this).`);
-  }
-  construct.connections.allowDefaultPortFrom(group, "database: true");
+  return [...groups];
 }
 
 /** The database a target uses, when this deployment builds it. */
@@ -177,28 +252,55 @@ export function presentConnections(target: NormalizedTarget): readonly ConnectsT
 
 /**
  * Whether a Lambda runs inside the network in this deployment: when it uses a
- * database this deployment builds, or has `vpc: true` in a deployment that
+ * database this deployment builds, or declares a subnet in a deployment that
  * builds the network at all.
  */
 export function isPlacedInNetwork(scope: IConstruct, target: NormalizedTarget): boolean {
   if (target.kind !== "lambda") return false;
   if (presentConnections(target).length > 0) return true;
   const options = frameworkResourceOptions(scope);
-  return options !== undefined && options.mode !== "dev" && resolveLambdaTarget(options.config, target.id).vpc;
+  return options !== undefined && options.mode !== "dev" && resolveLambdaTarget(options.config, target.id).subnet !== "none";
 }
 
 /**
- * The one security group a Lambda with `vpc: true` and no database joins,
+ * The subnet a Lambda placed in the network runs in: the one it declares, or
+ * the private subnets for one whose database brought it in.
+ */
+function placedLambdaSubnet(scope: IConstruct, target: NormalizedTarget): "private" | "isolated" {
+  const options = frameworkResourceOptions(scope);
+  const subnet = options ? resolveLambdaTarget(options.config, target.id).subnet : "none";
+  return subnet === "isolated" ? "isolated" : "private";
+}
+
+/**
+ * `AWS_USE_DUALSTACK_ENDPOINT=true` for a function in the network's `subnet`
+ * when IPv6 leaves it, as several AWS APIs answer IPv6 only on their
+ * dual-stack hostnames; otherwise nothing, so the SDK calls the standard
+ * hostnames the network's interface endpoints answer. Set in both lanes.
+ */
+export function dualStackEnvironment(scope: IConstruct, subnet: "private" | "isolated"): Record<string, string> {
+  const options = frameworkResourceOptions(scope);
+  const network = resolveNetwork(options?.config ?? {});
+  return usesDualStackEndpoints(network, subnet) ? { AWS_USE_DUALSTACK_ENDPOINT: "true" } : {};
+}
+
+/** {@link dualStackEnvironment} for a Lambda, which is empty outside the network. */
+export function lambdaNetworkEnvironment(scope: IConstruct, target: NormalizedTarget): Record<string, string> {
+  return isPlacedInNetwork(scope, target) ? dualStackEnvironment(scope, placedLambdaSubnet(scope, target)) : {};
+}
+
+/**
+ * The one security group a Lambda in the network that uses no database joins,
  * created with the first of them. Shared, so the functions share their network
  * interfaces too; it admits nobody, and lets them out over both families.
  */
 function vpcLambdas(scope: IConstruct, origin: string): ec2.SecurityGroup {
   const network = state(scope);
   if (network.vpcLambdas) return network.vpcLambdas;
-  const stack = networkStack(scope, `${origin} has vpc: true`);
+  const stack = networkStack(scope, `${origin} runs in the VPC`);
   network.vpcLambdas = new ec2.SecurityGroup(stack, "VpcLambdas", {
     vpc: stack.vpc,
-    description: "Lambdas with vpc: true",
+    description: "Lambdas in the VPC",
     allowAllOutbound: true,
     allowAllIpv6Outbound: true,
   });
@@ -213,14 +315,19 @@ export interface LambdaPlacement {
 }
 
 /**
- * A function that reaches the database: the private subnets, the database's
- * clients group, IPv6 out through the egress-only gateway.
+ * A function that reaches the database: its subnet (private unless it declares
+ * isolated), the database's clients group, and whatever leaves that subnet.
  */
-export function databaseClientPlacement(scope: IConstruct, binding: ConnectsToBinding, origin: string): LambdaPlacement {
+export function databaseClientPlacement(
+  scope: IConstruct,
+  binding: ConnectsToBinding,
+  origin: string,
+  subnet: "private" | "isolated" = "private",
+): LambdaPlacement {
   return {
     vpc: networkStack(scope, `${origin} declares database: true`).vpc,
-    vpcSubnets: networkSubnets("private"),
-    securityGroups: [databaseClients(scope, binding, origin)],
+    vpcSubnets: networkSubnets(subnet),
+    securityGroups: databaseClientGroups(scope, binding, origin),
     ipv6AllowedForDualStack: true,
   };
 }
@@ -228,17 +335,18 @@ export function databaseClientPlacement(scope: IConstruct, binding: ConnectsToBi
 /**
  * Where a Lambda runs: outside the VPC unless {@link isPlacedInNetwork}. Inside,
  * one that uses the database goes where {@link databaseClientPlacement} says,
- * and any other joins the shared group in the same private subnets.
+ * and any other joins the shared group in the subnet it declares.
  */
 export function lambdaPlacement(scope: IConstruct, target: NormalizedTarget): LambdaPlacement | undefined {
   if (!isPlacedInNetwork(scope, target)) return undefined;
   state(scope).placed.push(target.reference);
   const origin = target.origins[0] ?? target.reference;
+  const subnet = placedLambdaSubnet(scope, target);
   const [binding] = presentConnections(target);
-  if (binding) return databaseClientPlacement(scope, binding, origin);
+  if (binding) return databaseClientPlacement(scope, binding, origin, subnet);
   return {
-    vpc: networkStack(scope, `${origin} has vpc: true`).vpc,
-    vpcSubnets: networkSubnets("private"),
+    vpc: networkStack(scope, `${origin} has subnet: "${subnet}"`).vpc,
+    vpcSubnets: networkSubnets(subnet),
     securityGroups: [vpcLambdas(scope, origin)],
     ipv6AllowedForDualStack: true,
   };
@@ -259,21 +367,39 @@ export function containerPlacement(scope: IConstruct, target: NormalizedTarget, 
     vpc: networkStack(scope, `${origin} is a container`).vpc,
     subnets: networkSubnets(subnet),
     assignPublicIp: subnet === "public",
-    connectionGroups: presentConnections(target).map((binding) => databaseClients(scope, binding, origin)),
+    connectionGroups: presentConnections(target).flatMap((binding) => databaseClientGroups(scope, binding, origin)),
   };
   state(scope).placed.push(target.reference);
   return placement;
 }
 
 /**
- * One line for the synth output: what was placed in the network, and what it
- * costs. Undefined when this deployment built no network.
+ * One line for the synth output: what was placed in the network, how its
+ * private subnets leave, and what that costs. Undefined when this deployment
+ * built no network.
  */
 export function describeFrameworkNetwork(scope: IConstruct): string | undefined {
-  const network = state(scope);
-  if (!network.stack) return undefined;
-  const placed = network.placed.length > 0 ? network.placed.join(", ") : "nothing yet";
-  return network.stack.nat
-    ? `Network: ${placed} run in the VPC. One NAT gateway, turned on in framework-config/network.ts: about $33 a month plus $0.045 per GB.`
-    : `Network: ${placed} run in the VPC. No NAT gateway: the private subnets leave over IPv6 only, which costs nothing.`;
+  const built = state(scope);
+  if (!built.stack) return undefined;
+  const { network } = built.stack;
+  const placed = built.placed.length > 0 ? built.placed.join(", ") : "nothing yet";
+  const egress = network.natGateway && network.egressOnlyInternetGateway
+    ? "The private subnets leave over IPv6 and IPv4"
+    : network.natGateway
+      ? "The private subnets leave over IPv4 only"
+      : network.egressOnlyInternetGateway
+        ? "The private subnets leave over IPv6 only"
+        : "The private subnets have no way out";
+  const gateways = [network.gatewayEndpoints.s3 ? "S3" : undefined, network.gatewayEndpoints.dynamodb ? "DynamoDB" : undefined].filter(Boolean);
+  const endpoints = [
+    ...(gateways.length > 0 ? [`gateway endpoints for ${gateways.join(" and ")}`] : []),
+    ...(network.interfaceEndpoints.length > 0 ? [`interface endpoints for ${network.interfaceEndpoints.join(", ")}`] : []),
+  ];
+  const costs = [
+    ...(network.natGateway ? [`one NAT gateway, about ${formatMonthlyCost(NETWORK_PRICES.natGatewayMonthly)} a month plus $0.045 per GB`] : []),
+    ...(network.interfaceEndpoints.length > 0
+      ? [`${network.interfaceEndpoints.length} interface endpoint${network.interfaceEndpoints.length === 1 ? "" : "s"} in ${network.zones} zones, about ${formatMonthlyCost(interfaceEndpointsMonthlyCost(network, network.interfaceEndpoints.length))} a month plus $0.01 per GB`]
+      : []),
+  ];
+  return `Network: ${placed} run in the VPC. ${egress}${endpoints.length > 0 ? `, with ${endpoints.join(" and ")}` : ""}. ${costs.length > 0 ? `It costs ${costs.join(", and ")}, as framework-config/network.ts declares.` : "It costs nothing."}`;
 }

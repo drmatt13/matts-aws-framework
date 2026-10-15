@@ -1,7 +1,7 @@
 # Auth change checklist
 
-Read [Framework's authentication model](../docs/FRAMEWORK.md#authentication) before
-changing auth or authorization. Read [Production](../docs/PROD-DEPLOYMENT.md) for provider,
+Read [Framework's authentication model](../FRAMEWORK.md#authentication) before
+changing auth or authorization. Read [Production](../PROD-DEPLOYMENT.md) for provider,
 domain, or rollout changes. These documents own the architecture and commands; this
 file is the agent's change checklist.
 
@@ -11,7 +11,7 @@ file is the agent's change checklist.
 2. Keep ID-token verification and request construction in shared helpers. Feature
    resolvers use the verified context and enforce record authorization separately.
 3. Test rejected access and verify zero unauthorized writes. For schema changes, follow
-   the [data-feature contract](typed-contract-propagation-agent.md), including a
+   the [data-feature contract](typed-contract-propagation.md), including a
    neighboring executable-schema test.
 4. Preserve refresh single-flight, 401-only expiry, transient-failure session retention,
    request replay, PKCE/state, same-origin cookies, and trusted-origin checks unless the

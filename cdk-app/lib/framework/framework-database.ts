@@ -1,15 +1,16 @@
 import path from "node:path";
 import * as cdk from "aws-cdk-lib";
+import type * as ec2 from "aws-cdk-lib/aws-ec2";
 import type * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as cr from "aws-cdk-lib/custom-resources";
 import { Construct, type IConstruct } from "constructs";
-import { DATABASE_LOGIN, type ConnectsToBinding, type NormalizedTarget } from "@repo/framework/config";
+import { DATABASE_LOGIN, type ConnectsToBinding, type NormalizedTarget, type CdkResourceSpec, DEFAULT_DATABASE_POOL } from "@repo/framework/config";
 import { findRepositoryRoot } from "@repo/framework/config/source";
-import { linkedConstruct } from "./framework-resources";
-import { databaseClientPlacement, presentConnections } from "./framework-network";
+import { linkedConstruct, deferResourceAttachment } from "./framework-resources";
+import { databaseClientPlacement, dualStackEnvironment, presentConnections } from "./framework-network";
 
 const LOGIN_HANDLER = path.join(
   findRepositoryRoot(__dirname),
@@ -34,13 +35,14 @@ const LOGIN_HANDLER = path.join(
 interface DatabaseState {
   readonly logins: Map<rds.DatabaseInstance, cdk.CustomResource>;
   readonly users: string[];
+  readonly targets: Map<string, DatabaseConnectionTarget>;
 }
 const states = new WeakMap<IConstruct, DatabaseState>();
 function state(scope: IConstruct): DatabaseState {
   const root = scope.node.root;
   let value = states.get(root);
   if (!value) {
-    value = { logins: new Map(), users: [] };
+    value = { logins: new Map(), users: [], targets: new Map() };
     states.set(root, value);
   }
   return value;
@@ -74,10 +76,85 @@ function linkedDatabase(scope: IConstruct, binding: ConnectsToBinding): { readon
   return { instance, databaseName: resource.dbName };
 }
 
+/** A CDK-only endpoint with native network and IAM attachment hooks. */
+export interface DatabaseEndpoint {
+  readonly hostname: string;
+  readonly port: string | number;
+  readonly connections: ec2.Connections;
+  readonly vpc: ec2.IVpc;
+  readonly kind: "direct" | "proxy" | "reader";
+  grantConnect(grantee: iam.IGrantable, login: string): unknown;
+}
+export interface DatabaseConnectionTarget {
+  readonly directWriter: DatabaseEndpoint;
+  readonly applicationWriter: DatabaseEndpoint;
+  readonly readers: readonly DatabaseEndpoint[];
+  readonly databaseName: string;
+  readonly login: string;
+  bootstrap(binding: ConnectsToBinding): cdk.CustomResource;
+}
+
+/** Attach a connection adapter beside an application construct, before finalization. */
+export function bindDatabaseConnectionTarget(scope: IConstruct, reference: CdkResourceSpec, target: DatabaseConnectionTarget): void {
+  const targets = state(scope).targets;
+  const key = JSON.stringify(reference.path);
+  if (targets.has(key)) throw new Error(`Database connections for resources.${reference.path.join(".")} were bound twice.`);
+  for (const endpoint of [target.directWriter, target.applicationWriter, ...target.readers]) {
+    if (endpoint.vpc !== target.directWriter.vpc) throw new Error("Database connection endpoints must share the writer's VPC.");
+  }
+  targets.set(key, target);
+}
+
+/** PostgreSQL provisioning is kept behind the connection adapter. */
+export function bindPostgresDatabase(scope: IConstruct, reference: CdkResourceSpec, options: {
+  readonly instance: rds.DatabaseInstance;
+  readonly proxy?: rds.DatabaseProxy;
+  readonly readReplicas?: readonly rds.DatabaseInstanceReadReplica[];
+}): void {
+  const { instance, proxy, readReplicas = [] } = options;
+  const resource = instance.node.defaultChild as rds.CfnDBInstance;
+  const endpoint = (database: rds.DatabaseInstance | rds.DatabaseInstanceReadReplica, kind: "direct" | "reader"): DatabaseEndpoint => ({
+    hostname: database.dbInstanceEndpointAddress, port: database.dbInstanceEndpointPort,
+    connections: database.connections, vpc: database.vpc, kind,
+    grantConnect: (grantee, login) => database.grantConnect(grantee, login),
+  });
+  const directWriter = endpoint(instance, "direct");
+  const target: DatabaseConnectionTarget = {
+    directWriter,
+    applicationWriter: proxy ? {
+      hostname: proxy.endpoint, port: 5432, connections: proxy.connections, vpc: instance.vpc, kind: "proxy",
+      grantConnect: (grantee, login) => proxy.grantConnect(grantee, login),
+    } : directWriter,
+    readers: readReplicas.map(replica => endpoint(replica, "reader")),
+    databaseName: resource.dbName!, login: DATABASE_LOGIN,
+    bootstrap: binding => {
+      const linked = linkedDatabase(scope, binding);
+      if (linked.instance !== instance) throw new Error("The bound PostgreSQL instance differs from the linked database resource.");
+      const login = databaseLogin(scope, binding, instance, linked.databaseName);
+      if (proxy) proxy.node.findChild("ProxyTargetGroup").node.addDependency(login);
+      return login;
+    },
+  };
+  bindDatabaseConnectionTarget(scope, reference, target);
+  if (proxy) deferResourceAttachment(scope, () => target.bootstrap({ capability: "connectsTo", resource: reference, connection: "direct" }));
+}
+
+/** Existing directly linked PostgreSQL instances receive the default adapter. */
+export function databaseConnectionTarget(scope: IConstruct, binding: ConnectsToBinding): DatabaseConnectionTarget {
+  const key = JSON.stringify(binding.resource.path);
+  let target = state(scope).targets.get(key);
+  if (!target) {
+    const { instance } = linkedDatabase(scope, binding);
+    bindPostgresDatabase(scope, binding.resource, { instance });
+    target = state(scope).targets.get(key)!;
+  }
+  return target;
+}
+
 /** The custom resource that creates the IAM login, built once per database. */
-function databaseLogin(scope: IConstruct, binding: ConnectsToBinding, instance: rds.DatabaseInstance, databaseName: string): void {
+function databaseLogin(scope: IConstruct, binding: ConnectsToBinding, instance: rds.DatabaseInstance, databaseName: string): cdk.CustomResource {
   const logins = state(scope).logins;
-  if (logins.has(instance)) return;
+  if (logins.has(instance)) return logins.get(instance)!;
   const owner = new Construct(cdk.Stack.of(instance), "FrameworkDatabaseLogin");
   const handler = new nodejs.NodejsFunction(owner, "Handler", {
     entry: LOGIN_HANDLER,
@@ -85,9 +162,10 @@ function databaseLogin(scope: IConstruct, binding: ConnectsToBinding, instance: 
     timeout: cdk.Duration.minutes(1),
     bundling: { externalModules: [], target: "node24" },
     // It reaches the database the way a workload does, and Secrets Manager
-    // over IPv6 from the private subnets.
-    ...databaseClientPlacement(scope, binding, "The database's IAM login"),
-    environment: { AWS_USE_DUALSTACK_ENDPOINT: "true" },
+    // the way the private subnets allow: over IPv6, through the NAT gateway,
+    // or through a "secretsmanager" interface endpoint.
+    ...databaseClientPlacement(scope, { ...binding, connection: "direct", readers: undefined }, "The database's IAM login"),
+    environment: dualStackEnvironment(scope, "private"),
   });
   instance.secret!.grantRead(handler);
   const provider = new cr.Provider(owner, "Provider", { onEventHandler: handler });
@@ -109,6 +187,7 @@ function databaseLogin(scope: IConstruct, binding: ConnectsToBinding, instance: 
   });
   login.node.addDependency(instance);
   logins.set(instance, login);
+  return login;
 }
 
 /**
@@ -119,17 +198,23 @@ function databaseLogin(scope: IConstruct, binding: ConnectsToBinding, instance: 
 export function connectDatabase(scope: IConstruct, grantee: iam.IGrantable, target: NormalizedTarget): Record<string, string> {
   const [binding] = presentConnections(target);
   if (!binding) return {};
-  const { instance, databaseName } = linkedDatabase(scope, binding);
-  databaseLogin(scope, binding, instance, databaseName);
-  instance.grantConnect(grantee, DATABASE_LOGIN);
+  const connection = databaseConnectionTarget(scope, binding);
+  connection.bootstrap(binding);
+  const writer = binding.connection === "direct" ? connection.directWriter : connection.applicationWriter;
+  writer.grantConnect(grantee, connection.login);
   state(scope).users.push(target.reference);
-  return {
-    PRIMARY_DATABASE_URL: cdk.Fn.join("", [
-      "postgresql://", DATABASE_LOGIN, "@",
-      instance.dbInstanceEndpointAddress, ":", instance.dbInstanceEndpointPort, "/", databaseName,
-    ]),
-    PRIMARY_DATABASE_AUTH: "iam",
+  const url = (endpoint: DatabaseEndpoint): string => cdk.Fn.join("", [
+    "postgresql://", connection.login, "@", endpoint.hostname, ":", String(endpoint.port), "/", connection.databaseName,
+  ]);
+  const environment: Record<string, string> = {
+    PRIMARY_DATABASE_URL: url(writer), PRIMARY_DATABASE_AUTH: "iam",
+    PRIMARY_DATABASE_POOL_OPTIONS: JSON.stringify(binding.pool ?? DEFAULT_DATABASE_POOL),
   };
+  if (binding.readers) {
+    for (const reader of connection.readers) reader.grantConnect(grantee, connection.login);
+    environment.PRIMARY_DATABASE_READ_URLS = cdk.Stack.of(scope).toJsonString(connection.readers.map(url));
+  }
+  return environment;
 }
 
 /** One line for the synth output, or undefined when nothing uses a database. */

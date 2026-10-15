@@ -926,15 +926,18 @@ export type Connectable = { readonly connections: object };
  * normalized into one, pointing at the config's `database`.
  *
  * Where `runsTask` derives IAM, this derives the network. In a production
- * deployment it places the workload in the private subnets, makes it a member
- * of the one security group the resource admits, and points its AWS SDK at
- * dual-stack endpoints. Locally it is what hands the workload the Compose
+ * deployment it places a Lambda in the private subnets (or the isolated ones
+ * it declares) and makes the workload a member of the one security group the
+ * resource admits. Locally it is what hands the workload the Compose
  * stand-in, so a workload that forgot it fails on a laptop exactly as it would
  * in AWS.
  */
 export interface ConnectsToBinding {
   readonly capability: "connectsTo";
   readonly resource: CdkResourceSpec;
+  readonly readers?: true;
+  readonly connection?: "application" | "direct";
+  readonly pool?: import("../database-pool").ResolvedDatabasePool;
 }
 
 /**

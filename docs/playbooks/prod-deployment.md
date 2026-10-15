@@ -1,8 +1,8 @@
 # Production deployment procedure
 
-Follow [Production](../docs/PROD-DEPLOYMENT.md), the single deployment runbook. Consult
-[Framework](../docs/FRAMEWORK.md#configuration-and-environment) for input/mode semantics
-and [Database](../docs/DATABASE.md#changing-storage) for migration operations.
+Follow [Production](../PROD-DEPLOYMENT.md), the single deployment runbook. Consult
+[Framework](../FRAMEWORK.md#configuration-and-environment) for input/mode semantics
+and [Database](../DATABASE.md#changing-storage) for migration operations.
 
 1. Establish the requested environment, account/profile/region, deployment name, and
    release scope from the user's request and existing context. Do not infer permission

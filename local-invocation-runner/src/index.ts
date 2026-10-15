@@ -20,13 +20,16 @@ import {
   createIntegrationClients,
   readWorkflowBindings,
   redactCallbackHandles,
+  TASK_CONTAINER_KIND_LABEL,
   TASK_CONTAINER_PROJECT_LABEL,
+  TASK_CONTAINER_TARGET_LABEL,
   LocalLambdaExecutor,
   loadToolManifest,
 } from "@repo/framework/local";
 import { registerAgentRoutes } from "./agent-routes";
 import { LocalAgentSupervisor } from "./agents";
-import { docker, dockerWithEnvironment, containerEnvironment, dockerBuild, composeIdentity, followContainerLogs, cancelDockerBuilds } from "./docker";
+import { docker, dockerWithEnvironment, containerEnvironment, dockerBuild, composeIdentity, followContainerLogs, cancelDockerBuilds, buildsInFlight } from "./docker";
+import { LocalImageJanitor } from "./images";
 import framework from "../../framework.config";
 import { LocalTaskSupervisor, TaskSubmissionError } from "./tasks";
 import { LocalWorkflowEngine } from "./workflows";
@@ -98,15 +101,36 @@ async function imagePresent(reference: string, platform: string): Promise<boolea
   );
 }
 
-async function ensureImage(target: LambdaTarget): Promise<string> {
+interface ContainerLambdaImage {
+  readonly tag: string;
+  readonly platform: string;
+  readonly directory: string;
+}
+
+/**
+ * The image a container Lambda's current source builds, named by that source.
+ *
+ * Read once per invocation, before anything is awaited, so the tag an
+ * invocation holds is the tag it runs.
+ */
+function containerLambdaImage(target: LambdaTarget): ContainerLambdaImage {
   const { id } = parseTargetReference(target);
   const directory = lambdaDirectory(target);
   const platform = dockerPlatform(target);
   const tag = `matts-framework-${id}:${hashDirectory(directory)}-${platform.endsWith("arm64") ? "arm64" : "amd64"}`;
-  if (!(await imagePresent(tag, platform))) {
-    await docker("build", "--platform", platform, "--label", runnerLabel, "--tag", tag, directory);
+  return { tag, platform, directory };
+}
+
+async function ensureImage(target: LambdaTarget, image: ContainerLambdaImage): Promise<string> {
+  if (!(await imagePresent(image.tag, image.platform))) {
+    const { id } = parseTargetReference(target);
+    await docker("build", "--platform", image.platform, "--label", runnerLabel,
+      "--label", `${TASK_CONTAINER_KIND_LABEL}=lambda`, "--label", `${TASK_CONTAINER_PROJECT_LABEL}=${projectName}`,
+      "--label", `${TASK_CONTAINER_TARGET_LABEL}=${id}`, "--tag", image.tag, image.directory);
+    // The image the previous source built is superseded from here.
+    void imageJanitor?.request();
   }
-  return tag;
+  return image.tag;
 }
 
 /**
@@ -121,16 +145,15 @@ async function ensureImage(target: LambdaTarget): Promise<string> {
  * `docker image rm` between invocations used to turn into a run failure that
  * never rebuilt; the presence check is what makes the next invocation recover.
  */
-async function prepareContainerImage(target: LambdaTarget): Promise<string> {
-  const platform = dockerPlatform(target);
-  const key = `${target}:${hashDirectory(lambdaDirectory(target))}:${platform}`;
+async function prepareContainerImage(target: LambdaTarget, image: ContainerLambdaImage): Promise<string> {
+  const key = image.tag;
   const cached = buildPromises.get(key);
   if (cached) {
-    const image = await cached;
-    if (await imagePresent(image, platform)) return image;
+    const reference = await cached;
+    if (await imagePresent(reference, image.platform)) return reference;
     buildPromises.delete(key);
   }
-  const build = ensureImage(target).catch((error: unknown) => {
+  const build = ensureImage(target, image).catch((error: unknown) => {
     buildPromises.delete(key);
     throw error;
   });
@@ -174,6 +197,12 @@ async function waitForRuntime(containerName: string, signal: AbortSignal): Promi
   throw new Error("Timed out waiting for the Lambda runtime to start.");
 }
 
+/**
+ * Container-Lambda image tags in use by an invocation right now, counted. The
+ * image janitor keeps them even after newer source has superseded them.
+ */
+const heldImages = new Map<string, number>();
+
 async function invokeContainer(
   target: LambdaTarget,
   event: unknown,
@@ -182,7 +211,24 @@ async function invokeContainer(
   // container that goes on running.
   cancel?: AbortSignal,
 ): Promise<unknown> {
-  const image = await prepareContainerImage(target);
+  const lambdaImage = containerLambdaImage(target);
+  heldImages.set(lambdaImage.tag, (heldImages.get(lambdaImage.tag) ?? 0) + 1);
+  try {
+    return await runContainerLambda(target, lambdaImage, event, cancel);
+  } finally {
+    const remaining = (heldImages.get(lambdaImage.tag) ?? 1) - 1;
+    if (remaining > 0) heldImages.set(lambdaImage.tag, remaining);
+    else heldImages.delete(lambdaImage.tag);
+  }
+}
+
+async function runContainerLambda(
+  target: LambdaTarget,
+  lambdaImage: ContainerLambdaImage,
+  event: unknown,
+  cancel?: AbortSignal,
+): Promise<unknown> {
+  const image = await prepareContainerImage(target, lambdaImage);
   if (closing) throw new Error("Local runner is shutting down.");
   const { id } = parseTargetReference(target);
   const containerName = `matts-lambda-${id}-${randomUUID().slice(0, 8)}`;
@@ -240,6 +286,28 @@ async function cleanupStaleContainers(): Promise<void> {
     .split(/\s+/)
     .filter(Boolean);
   if (ids.length > 0) await docker("rm", "--force", ...ids);
+}
+
+let imageJanitor: LocalImageJanitor | undefined;
+
+/**
+ * The images the janitor keeps: what each declared container Lambda's current
+ * source builds, what each declared task's next run reuses, and whatever an
+ * invocation is using now. Everything else this runner built is superseded or
+ * belongs to a target no longer declared.
+ */
+function currentImages(): Set<string> {
+  const keep = new Set(heldImages.keys());
+  for (const target of approvedTargets) {
+    if (resolveLambdaTarget(framework, parseTargetReference(target).id).packaging !== "container") continue;
+    try {
+      keep.add(containerLambdaImage(target).tag);
+    } catch {
+      // No Dockerfile: there is no current image, and nothing can be invoked.
+    }
+  }
+  for (const tag of taskSupervisor.currentImages()) keep.add(tag);
+  return keep;
 }
 
 /**
@@ -509,6 +577,7 @@ let shutdownPromise: Promise<void> | undefined;
 function shutdown(): Promise<void> {
   if (shutdownPromise) return shutdownPromise;
   closing = true;
+  imageJanitor?.close();
   cancelDockerBuilds();
   const deadline = setTimeout(() => {
     console.error("Runner cleanup exceeded 25 seconds; inspect project containers with docker ps.");
@@ -546,7 +615,9 @@ async function main(): Promise<void> {
     // run's build, and shutdown must not wait out a build nothing can launch.
     buildImage: dockerBuild,
     followLogs: followContainerLogs,
+    onImageBuilt: () => void imageJanitor?.request(),
   });
+  imageJanitor = new LocalImageJanitor({ docker, project: projectName, keep: currentImages, buildsInFlight });
   workflowEngine = new LocalWorkflowEngine({
     config: framework,
     repositoryRoot,
@@ -569,6 +640,9 @@ async function main(): Promise<void> {
   });
   await Promise.all([cleanupStaleContainers(), taskSupervisor.initialize()]);
   if (closing) return;
+  // After the sweep above, which frees the images of the containers it
+  // removed. In the background: listening does not wait on cleanup.
+  void imageJanitor.request();
   const port = Number(process.env.PORT ?? "8090");
   server = app.listen(port, () => console.log(`Local runner listening on ${port} (Compose project ${projectName})`));
 }

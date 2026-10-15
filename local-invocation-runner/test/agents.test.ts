@@ -14,7 +14,7 @@ const SESSION_HEADER = "x-amzn-bedrock-agentcore-runtime-session-id";
 function probe(idleSeconds = 60) {
   const root = findRepositoryRoot(__dirname);
   const name = `session-probe-${randomUUID().slice(0, 8)}`;
-  const directory = path.join(root, "agentcore", name);
+  const directory = path.join(root, "agents", name);
   mkdirSync(directory);
   const write = (start: number) =>
     writeFileSync(
@@ -34,7 +34,7 @@ function probe(idleSeconds = 60) {
     webSocket: [],
     events: [],
     services: [],
-    agents: [{ "session-probe": { directory: `/agentcore/${name}`, deploy: "local-only", cloud: { idleSeconds } } }],
+    agents: [{ "session-probe": { directory: `/agents/${name}`, deploy: "local-only", cloud: { idleSeconds } } }],
   });
   let now = Date.now();
   const supervisor = new LocalAgentSupervisor(config, root, "http://127.0.0.1:1", {

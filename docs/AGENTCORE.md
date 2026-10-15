@@ -35,7 +35,7 @@ import { resources } from "../resources";
 
 export const supportAgents = {
   "support-agent": {
-    directory: "/agentcore/support-agent",
+    directory: "/agents/support-agent",
     auth: true,
     route: "/chat/support",
     tools: ["lookup-case", "start-review"],
@@ -64,7 +64,7 @@ on agents.
 | --- | --- |
 | `tools.<id>` | A Lambda an agent may call. Lives in `/lambda_functions/tool_functions/<id>` unless it declares `directory`. Takes Lambda settings, `defaults.tools`, environment and bindings. Deployment follows its consuming agents. |
 | `tools.<id>.auth: true` | The tool acts as the signed-in user, and its handler is written with `authenticatedTool`. |
-| `agents.<id>` | An agent. Lives in `/agentcore/<id>` at the repository root unless it declares `directory`. |
+| `agents.<id>` | An agent. Lives in `/agents/<id>` at the repository root unless it declares `directory`. |
 | `agents.<id>.tools` | The tools it may call. They are its Gateway, and nothing else is. |
 | `agents.<id>.auth: true` | Calls carry the user's session, and its tools may act as that user. Authentication alone does not expose a browser route. |
 | `agents.<id>.route` | The exact same-origin browser path, e.g. `/chat/support`. No `/api` or `/agents` prefix is added. Requires `auth: true`; omit it for workload-only invocation. |
@@ -179,7 +179,7 @@ and writes its own `cloud.access`.
 ## Writing an agent
 
 ```ts
-// agentcore/support-agent/contract.ts
+// agents/support-agent/contract.ts
 export const contract = {
   request: z.object({ message: z.string() }),
   event: z.discriminatedUnion("type", [
@@ -188,7 +188,7 @@ export const contract = {
   ]),
 } as const;
 
-// agentcore/support-agent/index.ts
+// agents/support-agent/index.ts
 import { agent } from "@repo/framework/runtime/agentcore";
 import { contract } from "./contract";
 

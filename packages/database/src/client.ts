@@ -18,7 +18,7 @@ export type DatabaseConnection = pg.PoolConfig;
  * connection. Timeouts match the ones the runtime would have chosen.
  */
 export function createClient(connection: DatabaseConnection): { client: DatabaseClient; close(): Promise<void> } {
-  const pool = new pg.Pool({ connectionTimeoutMillis: 20_000, idleTimeoutMillis: 30_000, ...connection });
+  const pool = new pg.Pool({ max: 10, connectionTimeoutMillis: 20_000, idleTimeoutMillis: 30_000, ...connection });
   // An idle connection the server drops emits on the pool; unhandled, that
   // event would end the process. The next query opens a new connection.
   pool.on("error", (error) => console.warn("An idle database connection closed:", error.message));
