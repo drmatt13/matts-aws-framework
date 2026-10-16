@@ -133,6 +133,9 @@ export function Shell(props: { readonly children: ReactNode }) {
           <Link to="/lanes" search={(previous) => previous} className="tab" activeOptions={{ includeSearch: false }}>
             Lanes
           </Link>
+          <Link to="/isometric" search={(previous) => previous} className="tab" activeOptions={{ includeSearch: false }}>
+            Isometric
+          </Link>
         </nav>
         <span className="segmented" role="group" aria-label="Graph">
           {(["dev", "prod"] as const).map((candidate) => (

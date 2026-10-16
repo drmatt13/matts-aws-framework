@@ -13,6 +13,7 @@ import { createRoot } from "react-dom/client";
 import { useSnapshot } from "./api";
 import { StudioProvider } from "./studio";
 import { Board } from "./views/Board";
+import { Isometric } from "./views/Isometric";
 import { Lanes } from "./views/Lanes";
 import { Shell } from "./views/Shell";
 import "./styles.css";
@@ -49,7 +50,8 @@ const rootRoute = createRootRoute({
 });
 const boardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: Board });
 const lanesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/lanes", component: Lanes });
-const router = createRouter({ routeTree: rootRoute.addChildren([boardRoute, lanesRoute]) });
+const isometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/isometric", component: Isometric });
+const router = createRouter({ routeTree: rootRoute.addChildren([boardRoute, lanesRoute, isometricRoute]) });
 
 declare module "@tanstack/react-router" {
   interface Register {

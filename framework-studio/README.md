@@ -16,6 +16,8 @@ It runs on your machine beside your editor, not in Compose. When it writes a fil
 Compose Watch carries the change into the running dev servers, just as a save in your
 editor would.
 
+The design, history and roadmap are in [docs/framework-studio](../docs/framework-studio/README.md).
+
 ## What it shows, and where that comes from
 
 Every fact is the framework's own answer, never a second model:
@@ -35,6 +37,53 @@ Every fact is the framework's own answer, never a second model:
 Each graph is evaluated in its own child process, with a synthetic inputs file holding
 only `PROD_DEPLOYMENT`. The studio reads exactly two keys from `cdk-app/.env`:
 `PROD_DEPLOYMENT` and `DEPLOY_PROD_WEBSOCKET_API`.
+
+## The isometric view
+
+`/isometric` draws the same model as a landscape of floating islands, on a 2D canvas.
+It is a view, not a second model:
+
+- Every building is an entity the model names, under the model's own id.
+- Selecting a building selects that entity everywhere, and opens the same inspector, with
+  the same edits.
+- Positions, islands and colours are layout, computed from the model on every refresh.
+  Nothing about them is written to disk or read back as configuration.
+
+The regions mean something:
+
+| Region | What stands there |
+| --- | --- |
+| Entry islands | Routes, one island per gateway that serves them: HTTP API, WebSocket API, agent routes |
+| Compute | Lambdas outside the VPC; AgentCore agents and their tools; Step Functions workflows |
+| The VPC | A terraced mesa, stepping down from the public subnet to the private and isolated ones. Each workload stands on the terrace its production placement names |
+| Catalog | One island per `resource.stack<T>()`, its members on it, plus authored inputs and secrets |
+
+The Development/Production switch changes how each building is drawn, never where it
+stands:
+
+| Drawing | Meaning |
+| --- | --- |
+| Solid | That deployment builds it |
+| Amber hologram | Only Compose runs it |
+| Dashed ghost | It is absent from that graph, or runs nowhere |
+
+The VPC is drawn as a blueprint wherever no deployment builds it. Lane dots on each card
+always show all three lanes.
+
+| Input | Action |
+| --- | --- |
+| Drag | Pan (a press that moves less than 6 px is a click) |
+| Wheel or pinch | Zoom about the pointer |
+| Double-click | Fly to a building |
+| Arrow keys, `+` / `-`, `0`, `F`, Escape | Pan, zoom, fit, focus the selection, clear it |
+
+Edges are the model's typed relationships, in the Board's five categories, and can be
+filtered. Hovering an edge, a building, a gateway or the ground explains it. Packets move
+only along the selection's edges, and the Pause button or reduced-motion stops them. A
+still picture draws no frames.
+
+`window.__studioLandscape` exposes read-only camera, picking and frame statistics, for
+tests and the browser console.
 
 ## What it edits
 
@@ -76,6 +125,7 @@ separately, as Framework describes.
 | `server/edits/` | Field registry, text splices, planning, transactions |
 | `server/evaluator/` | The per-graph child processes |
 | `src/` | The page, with the board, the lanes, the inspector and the preview |
+| `src/scene/` | The isometric view: projection, layout, building shapes, the generated block atlas, camera, picking, the canvas renderer |
 | `shared/` | The types both halves share |
 
 Tests (`npm --workspace framework-studio test`) run against the real configuration in
