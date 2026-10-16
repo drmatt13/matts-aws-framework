@@ -26,7 +26,7 @@ import { vpcEndpointServicesModule } from "./vpc-endpoint-services";
 import {
   agentCoreModule,
   agentRouteDeclarations,
-  assertWorkflowAgentsRespond,
+  assertInvokedAgentsRespond,
   readAgentContract,
   readToolContract,
   type AgentContractFacts,
@@ -766,14 +766,24 @@ async function agentCoreProjection(
       );
     }
   }
-  assertWorkflowAgentsRespond(
-    framework
-      .getFrameworkTargets(config)
-      .filter((target) => target.kind === "workflow")
-      .map((workflow) => ({
-        origin: workflow.origins[0] ?? workflow.reference,
-        targets: framework.getWorkflowStepTargets(config, workflow.id),
-      })),
+  const targets = framework.getFrameworkTargets(config);
+  assertInvokedAgentsRespond(
+    [
+      ...targets
+        .filter((target) => target.kind === "workflow")
+        .map((workflow) => ({
+          origin: workflow.origins[0] ?? workflow.reference,
+          targets: framework.getWorkflowStepTargets(config, workflow.id),
+          via: "workflow" as const,
+        })),
+      ...targets
+        .filter((target) => target.kind !== "workflow")
+        .map((target) => ({
+          origin: target.origins[0] ?? target.reference,
+          targets: framework.getAgentInvocationBindings(target.cloud.bindings).map((binding) => `agent:${binding.agent}`),
+          via: "binding" as const,
+        })),
+    ],
     agents,
   );
   return agentCoreModule(tools, agents);
@@ -849,9 +859,9 @@ async function main(): Promise<void> {
       if (!produced.has(file)) removeGenerated(file);
     }
   }
-  // cdk-app/.env*.example are authored templates. Generation never writes them
-  // and --check never compares them, so a declared input or secret is added to
-  // them by hand.
+  // cdk-app/.env*.example are authored templates. Generation never writes them,
+  // so a declared input or secret is added to them by hand; check-local.ts
+  // refuses a required one they leave out.
   const { serviceEnvironmentExample } = await import("./env-examples");
   for (const target of framework.getFrameworkTargets(config)) {
     if (target.kind !== "service") continue;
@@ -864,6 +874,21 @@ async function main(): Promise<void> {
   // CDK or from local startup. Deliberately no per-task
   // authored .env file: a task is launched, not run by a developer, and a second
   // authored input file would be one more place its environment could disagree.
+
+  // Local service containers. docker-compose.yml is read, never written: a
+  // service declared there is the developer's, and the rest are generated from
+  // its x-framework-service. Checked here rather than at `docker compose up`,
+  // so a service with no container, or one nothing can reach, stops generation.
+  const compose = await import("./compose-services");
+  const composeFile = path.join(repositoryRoot, compose.COMPOSE_FILE);
+  if (existsSync(composeFile)) {
+    const authored = compose.parseCompose(readFileSync(composeFile, "utf8"));
+    const services = compose.composeServicesFile(config, authored, { repositoryRoot });
+    const generatedFile = path.join(repositoryRoot, compose.GENERATED_COMPOSE_FILE);
+    if (services !== undefined) stageGenerated(generatedFile, services);
+    else if (compose.isGeneratedCompose(currentContents(generatedFile))) removeGenerated(generatedFile);
+    compose.assertLocalServiceContainers(config, authored, services, { repositoryRoot });
+  }
   flushStaged();
 
   if (staleFiles.length > 0) {

@@ -13,8 +13,6 @@ import { resources } from "../resources";
  * a construct id from the target id and emits no outputs unless asked.
  */
 const authEndpointEnvironment = {
-  USER_POOL_ID: resources.cognito.userPool.userPoolId,
-  USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId,
   TRUSTED_FRONTEND_ORIGINS: resources.cognito.trustedOriginsCsv,
 };
 
@@ -22,6 +20,7 @@ export const authRoutes = {
   "/sign-in": {
     directory: "/lambda_functions/http_functions/sign-in",
     methods: "*",
+    userPool: true,
     environment: { ...authEndpointEnvironment },
     cloud: {
       outputs: { arn: { id: "SignInLambdaArn" } },
@@ -30,6 +29,7 @@ export const authRoutes = {
   "/sign-out": {
     directory: "/lambda_functions/http_functions/sign-out",
     methods: "*",
+    userPool: true,
     environment: { ...authEndpointEnvironment },
     cloud: {
       outputs: { arn: { id: "SignOutLambdaArn" } },
@@ -40,6 +40,7 @@ export const authRoutes = {
     methods: "*",
     memorySize: 512,
     timeoutSeconds: 30,
+    userPool: true,
     environment: {
       ...authEndpointEnvironment,
       COGNITO_DOMAIN_URL: resources.cognito.userPoolDomainUrl,
@@ -54,6 +55,7 @@ export const authRoutes = {
     directory: "/lambda_functions/http_functions/verify-session",
     methods: ["GET", "POST"],
     auth: true,
+    userPool: true,
     environment: { ...authEndpointEnvironment },
     cloud: {
       outputs: { arn: { id: "VerifySessionLambdaArn" } },
@@ -62,6 +64,7 @@ export const authRoutes = {
   "/refresh": {
     directory: "/lambda_functions/http_functions/refresh",
     methods: "*",
+    userPool: true,
     environment: { ...authEndpointEnvironment },
     cloud: {
       outputs: { arn: { id: "RefreshLambdaArn" } },
@@ -74,6 +77,7 @@ export const authRoutes = {
     directory: "/lambda_functions/http_functions/mfa",
     methods: ["POST"],
     auth: true,
+    userPool: true,
     environment: {
       ...authEndpointEnvironment,
       // The name an authenticator app shows beside the code.

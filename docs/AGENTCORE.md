@@ -14,16 +14,10 @@ deploy settings.
 // framework-config/tools/support.ts
 import { startsWorkflow } from "@repo/framework/config";
 import type { ToolsSection } from "../contracts";
-import { resources } from "../resources";
-
-const cognito = {
-  USER_POOL_ID: resources.cognito.userPool.userPoolId,
-  USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId,
-};
 
 export const supportTools = {
-  "lookup-case": { directory: "/lambda_functions/tool_functions/lookup-case", auth: true, environment: { ...cognito }, database: true },
-  "start-review": { directory: "/lambda_functions/tool_functions/start-review", auth: true, environment: { ...cognito }, cloud: { bindings: [startsWorkflow("case-review")] } },
+  "lookup-case": { directory: "/lambda_functions/tool_functions/lookup-case", auth: true, database: true },
+  "start-review": { directory: "/lambda_functions/tool_functions/start-review", auth: true, cloud: { bindings: [startsWorkflow("case-review")] } },
 } satisfies ToolsSection;
 ```
 
@@ -31,7 +25,6 @@ export const supportTools = {
 // framework-config/agents/support.ts
 import type { AgentsSection } from "../contracts";
 import { models } from "../models";
-import { resources } from "../resources";
 
 export const supportAgents = {
   "support-agent": {
@@ -40,11 +33,7 @@ export const supportAgents = {
     route: "/chat/support",
     tools: ["lookup-case", "start-review"],
     deploy: "both",
-    environment: {
-      USER_POOL_ID: resources.cognito.userPool.userPoolId,
-      USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId,
-      ...models.environment,
-    },
+    environment: { ...models.environment },
     cloud: { access: models.access, requirements: models.requirements, idleSeconds: 900 },
   },
 } satisfies AgentsSection;
@@ -76,8 +65,10 @@ its Runtime role may invoke that Gateway and no other. An agent cannot reach a t
 declare, whatever its model asks for — that is enforced by IAM, not by a list the agent is
 trusted to respect.
 
-`auth: true` needs `USER_POOL_ID` and `USER_POOL_CLIENT_ID` in the environment, as an
-authenticated route does, because the same verifier reads them. A tool with `auth: true` may be
+`auth: true` hands a tool or an agent the user pool framework.config.ts names as `userPool`
+(`USER_POOL_ID` and `USER_POOL_CLIENT_ID`), because its handler is the verifier that reads it;
+see [The user pool](FRAMEWORK.md#the-user-pool). One that names both variables itself keeps
+its own, and without a `userPool` in the config it must. A tool with `auth: true` may be
 listed only by an agent with `auth: true`; only that agent has a user to act as. An agent with
 `auth: true` may be invoked only by a caller that has a user to pass on: an `auth: true` route,
 service, tool or agent.
@@ -247,7 +238,8 @@ export const lambdaHandler = authenticated(async (event, session) => {
 });
 ```
 
-`invokeAgent` returns an agent's JSON `response`; a streaming agent is called from the browser.
+`invokeAgent` returns an agent's JSON `response`; a streaming agent is called from the browser,
+and generation refuses an `invokesAgent` binding to one, as it does a workflow step.
 An agent with users is called with the caller's `session` — its Runtime accepts only a user's
 token, so no IAM grant is written. A service agent is called with the caller's role, which the
 binding grants. The default timeout is 25 seconds, under the HTTP API's 30.

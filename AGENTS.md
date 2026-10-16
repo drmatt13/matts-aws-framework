@@ -20,8 +20,11 @@ This is a TypeScript npm-workspace monorepo for AWS-backed applications. Start w
 - Preserve unrelated working-tree changes. Use npm workspaces from the root and keep
   package-lock.json synchronized with manifest/dependency changes.
 - Never hand-edit client-app/src/api/generated/, packages/database/src/generated/,
-  packages/api-contract/src/generated/, packages/framework/src/generated/, or
-  client-app/src/routeTree.gen.ts. Change source and run its generator.
+  packages/api-contract/src/generated/, packages/framework/src/generated/,
+  docker-compose.services.yml, or client-app/src/routeTree.gen.ts. Change source and run
+  its generator. A service's local container comes from its declaration and
+  `x-framework-service` in docker-compose.yml; customize one in docker-compose.override.yml
+  or by declaring it in docker-compose.yml.
 - Treat auth, database access, uploads, secrets, and deployment as security-sensitive.
   Never commit env files, credentials, tokens, or CDK outputs. Avoid broad dependency
   upgrades or npm audit fix --force without the user's accepted scope.
@@ -58,9 +61,11 @@ This is a TypeScript npm-workspace monorepo for AWS-backed applications. Start w
   with webSocketConnections(event) from @repo/framework/runtime/websocket. Do not
   hand-author descriptor variables or branch on environment to select local versus AWS
   transport.
-- An HTTP handler that needs a user is `authenticated(async (event, session) => ...)`; an
+- An HTTP handler that needs a user is `authenticated(async (event, session) => ...)`, and
+  its declaration says `userPool: true` (an `auth: true` tool or agent needs neither); an
   event declared `localReplay: true` exports `withLocalReplay(handler)`. framework:check
-  enforces the second.
+  enforces both. Never hand-write USER_POOL_ID or USER_POOL_CLIENT_ID for the
+  application's own pool.
 - A workflow value is a reference, not a value. Branch with when/choose and compute with
   expr; never use a JavaScript condition, coercion, template literal, spread or await on a
   step's output. Bind integration references beside their construct in application CDK,

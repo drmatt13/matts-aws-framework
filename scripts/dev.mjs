@@ -1,4 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 let flagProfile;
 const args = process.argv.slice(2);
@@ -93,6 +95,22 @@ function reclaimComposeImages(env) {
 }
 
 const env = { ...process.env, LOCAL_AWS_PROFILE: profile };
+
+// Generated files follow framework.config.ts before anything starts, among
+// them docker-compose.services.yml, the container of each declared service. A
+// config that cannot boot, or a service with no container, stops here with its
+// own message rather than in every container at once.
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const generation = spawnSync(
+  process.execPath,
+  ["--import", "tsx", path.join("packages", "framework", "scripts", "generate-contracts.ts")],
+  { cwd: repositoryRoot, env, stdio: "inherit" },
+);
+if (generation.status !== 0) {
+  console.error("npm run framework:generate failed, so Compose was not started.");
+  process.exit(generation.status ?? 1);
+}
+
 try {
   reclaimComposeImages(env);
 } catch (error) {

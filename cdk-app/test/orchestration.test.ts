@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
 import test from "node:test";
 import * as cdk from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
@@ -16,11 +14,17 @@ import {
   type FrameworkConfig,
   type FrameworkConfigInput,
 } from "@repo/framework/config";
-import { findRepositoryRoot } from "@repo/framework/config/source";
 import { defaults } from "../../framework-config/defaults";
 import { finalizeFrameworkResources, initializeFrameworkResources } from "../lib/framework/framework-resources";
 import { hasOrchestrationCloudResources, OrchestrationStack, STACK_RESOURCE_LIMIT } from "../lib/framework/orchestration-stack";
 import { findCycle, reaches, resourceGraph, type TemplateJson } from "./support/template-graph";
+import {
+  agentFixtureDirectory,
+  fixtureAgentSource,
+  fixtureToolSource,
+  toolFixtureDirectory,
+  writeSourceFixtures,
+} from "./support/source-fixtures";
 
 /**
  * Workflows and agents in the one stack they share: both directions of
@@ -30,31 +34,27 @@ import { findCycle, reaches, resourceGraph, type TemplateJson } from "./support/
  */
 
 const env = { account: "111122223333", region: "us-east-1" };
-const root = findRepositoryRoot(__dirname);
 const step = invokeAgent as unknown as (agent: string, input: unknown) => Flow<unknown>;
 
-/** Agents and tools written for the test, each with a source directory, removed afterwards. */
+/**
+ * Agents and tools written for the test, each with a source directory, removed
+ * afterwards. `at.tool[id]` and `at.agent[id]` are the directories their declarations name.
+ */
 function fixtures(count: number) {
-  const suffix = randomUUID().slice(0, 6);
-  const ids = Array.from({ length: count }, (_, index) => ({ agent: `agent${index}-${suffix}`, tool: `tool${index}-${suffix}` }));
-  const directories: string[] = [];
-  for (const { agent, tool } of ids) {
-    const toolDirectory = path.join(root, "cdk-app", "lambda_functions", "tool_functions", tool);
-    const agentDirectory = path.join(root, "agents", agent);
-    mkdirSync(toolDirectory, { recursive: true });
-    mkdirSync(agentDirectory, { recursive: true });
-    writeFileSync(path.join(toolDirectory, "index.ts"), "export const lambdaHandler = async () => ({});");
-    writeFileSync(path.join(agentDirectory, "index.ts"), `export const handler = { kind: "framework-agent", id: ${JSON.stringify(agent)} };`);
-    directories.push(toolDirectory, agentDirectory);
-  }
+  const run = randomUUID().slice(0, 6);
+  const ids = Array.from({ length: count }, (_, index) => ({ agent: `agent${index}-${run}`, tool: `tool${index}-${run}` }));
+  const dispose = writeSourceFixtures(run, {
+    tools: Object.fromEntries(ids.map(({ tool }) => [tool, fixtureToolSource])),
+    agents: Object.fromEntries(ids.map(({ agent }) => [agent, fixtureAgentSource(agent)])),
+  });
+  const at = {
+    tool: Object.fromEntries(ids.map(({ tool }) => [tool, toolFixtureDirectory(run, tool)])),
+    agent: Object.fromEntries(ids.map(({ agent }) => [agent, agentFixtureDirectory(run, agent)])),
+  };
   const manifest = Object.fromEntries(
     ids.map(({ tool }) => [tool, { description: "Look up.", auth: false, inputSchema: { type: "object" }, outputSchema: { type: "object" } }]),
   );
-  return {
-    ids,
-    manifest,
-    dispose: () => directories.forEach((directory) => rmSync(directory, { recursive: true, force: true })),
-  };
+  return { ids, at, manifest, dispose };
 }
 
 const base = { defaults, http: [], webSocket: [], events: [], services: [] } satisfies FrameworkConfigInput;
@@ -85,13 +85,13 @@ function logicalId(template: TemplateJson, type: string, includes: string): stri
 }
 
 test("a workflow invokes an agent whose tool and Runtime start another workflow, in one acyclic stack", () => {
-  const { ids, manifest, dispose } = fixtures(1);
+  const { ids, at, manifest, dispose } = fixtures(1);
   const [{ agent, tool }] = ids;
   try {
     const config = defineFrameworkConfig({
       ...base,
-      tools: [{ [tool]: { cloud: { bindings: [startsWorkflow("intake")] } } }],
-      agents: [{ [agent]: { tools: [tool], cloud: { bindings: [startsWorkflow("intake")] } } }],
+      tools: [{ [tool]: { directory: at.tool[tool], cloud: { bindings: [startsWorkflow("intake")] } } }],
+      agents: [{ [agent]: { directory: at.agent[agent], tools: [tool], cloud: { bindings: [startsWorkflow("intake")] } } }],
       workflows: [{ ...intake, review: workflow(() => step(agent, { caseId: "x" }), { timeoutSeconds: 600 }) }],
     });
     const { app, template } = synthesize(config, manifest);
@@ -139,15 +139,15 @@ test("a workflow invokes an agent whose tool and Runtime start another workflow,
 });
 
 test("a genuine invocation cycle is still refused, naming the edges that form it", () => {
-  const { ids, dispose } = fixtures(1);
+  const { ids, at, dispose } = fixtures(1);
   const [{ agent, tool }] = ids;
   try {
     assert.throws(
       () =>
         defineFrameworkConfig({
           ...base,
-          tools: [{ [tool]: { cloud: { bindings: [startsWorkflow("review")] } } }],
-          agents: [{ [agent]: { tools: [tool] } }],
+          tools: [{ [tool]: { directory: at.tool[tool], cloud: { bindings: [startsWorkflow("review")] } } }],
+          agents: [{ [agent]: { directory: at.agent[agent], tools: [tool] } }],
           workflows: [{ review: workflow(() => step(agent, {}), { timeoutSeconds: 600 }) }],
         }),
       (error: Error) => {
@@ -161,7 +161,7 @@ test("a genuine invocation cycle is still refused, naming the edges that form it
       () =>
         defineFrameworkConfig({
           ...base,
-          agents: [{ [agent]: { cloud: { bindings: [startsWorkflow("review")] } } }],
+          agents: [{ [agent]: { directory: at.agent[agent], cloud: { bindings: [startsWorkflow("review")] } } }],
           workflows: [{ review: workflow(() => step(agent, {}), { timeoutSeconds: 600 }) }],
         }),
       /Invocation edges form a cycle: .*workflow:review.*agent:/,
@@ -172,7 +172,7 @@ test("a genuine invocation cycle is still refused, naming the edges that form it
 });
 
 test("what shares the stack cannot collide in it", () => {
-  const { ids, dispose } = fixtures(1);
+  const { ids, at, dispose } = fixtures(1);
   const [{ agent, tool }] = ids;
   try {
     assert.throws(
@@ -183,8 +183,8 @@ test("what shares the stack cannot collide in it", () => {
       () =>
         defineFrameworkConfig({
           ...base,
-          tools: [{ [tool]: { cloud: { outputs: { arn: { id: "ReviewArn" } } } } }],
-          agents: [{ [agent]: { tools: [tool], cloud: { outputs: { arn: { id: "ReviewArn" } } } } }],
+          tools: [{ [tool]: { directory: at.tool[tool], cloud: { outputs: { arn: { id: "ReviewArn" } } } } }],
+          agents: [{ [agent]: { directory: at.agent[agent], tools: [tool], cloud: { outputs: { arn: { id: "ReviewArn" } } } } }],
         }),
       /both declare the output id "ReviewArn"/,
     );
@@ -194,12 +194,12 @@ test("what shares the stack cannot collide in it", () => {
 });
 
 test("adding agents moves no workflow: its role, log group and state machine keep their logical ids", () => {
-  const { ids, manifest, dispose } = fixtures(1);
+  const { ids, at, manifest, dispose } = fixtures(1);
   const [{ agent, tool }] = ids;
   try {
     const workflowsOnly = synthesize(defineFrameworkConfig({ ...base, workflows: [intake] }), {}).template;
     const withAgents = synthesize(
-      defineFrameworkConfig({ ...base, tools: [{ [tool]: {} }], agents: [{ [agent]: { tools: [tool] } }], workflows: [intake] }),
+      defineFrameworkConfig({ ...base, tools: [{ [tool]: { directory: at.tool[tool] } }], agents: [{ [agent]: { directory: at.agent[agent], tools: [tool] } }], workflows: [intake] }),
       manifest,
     ).template;
     const workflowIds = (template: TemplateJson) =>
@@ -216,13 +216,13 @@ test("adding agents moves no workflow: its role, log group and state machine kee
 });
 
 test("one MMDSv2 provider serves every Runtime, each granted that Runtime alone", () => {
-  const { ids, manifest, dispose } = fixtures(2);
+  const { ids, at, manifest, dispose } = fixtures(2);
   try {
     const { template } = synthesize(
       defineFrameworkConfig({
         ...base,
-        tools: [Object.fromEntries(ids.map(({ tool }) => [tool, {}]))],
-        agents: [Object.fromEntries(ids.map(({ agent, tool }) => [agent, { tools: [tool] }]))],
+        tools: [Object.fromEntries(ids.map(({ tool }) => [tool, { directory: at.tool[tool] }]))],
+        agents: [Object.fromEntries(ids.map(({ agent, tool }) => [agent, { directory: at.agent[agent], tools: [tool] }]))],
       }),
       manifest,
     );
@@ -250,15 +250,15 @@ test("one MMDSv2 provider serves every Runtime, each granted that Runtime alone"
 });
 
 test("each agent costs a fixed number of resources, and the stack refuses to outgrow CloudFormation's quota", () => {
-  const { ids, manifest, dispose } = fixtures(2);
+  const { ids, at, manifest, dispose } = fixtures(2);
   try {
     const count = (agents: number) => {
       const used = ids.slice(0, agents);
       const { template } = synthesize(
         defineFrameworkConfig({
           ...base,
-          tools: [Object.fromEntries(used.map(({ tool }) => [tool, {}]))],
-          agents: [Object.fromEntries(used.map(({ agent, tool }) => [agent, { tools: [tool] }]))],
+          tools: [Object.fromEntries(used.map(({ tool }) => [tool, { directory: at.tool[tool] }]))],
+          agents: [Object.fromEntries(used.map(({ agent, tool }) => [agent, { directory: at.agent[agent], tools: [tool] }]))],
           workflows: [{ ...intake, ...Object.fromEntries(used.map(({ agent }) => [`call-${agent}`, workflow(() => step(agent, {}), { timeoutSeconds: 60 })])) }],
         }),
         manifest,
@@ -290,10 +290,10 @@ test("each agent costs a fixed number of resources, and the stack refuses to out
 });
 
 test("a dev deployment builds no orchestration stack: workflows and agents run locally", () => {
-  const { ids, dispose } = fixtures(1);
+  const { ids, at, dispose } = fixtures(1);
   const [{ agent, tool }] = ids;
   try {
-    const config = defineFrameworkConfig({ ...base, tools: [{ [tool]: {} }], agents: [{ [agent]: { tools: [tool] } }], workflows: [intake] });
+    const config = defineFrameworkConfig({ ...base, tools: [{ [tool]: { directory: at.tool[tool] } }], agents: [{ [agent]: { directory: at.agent[agent], tools: [tool] } }], workflows: [intake] });
     assert.equal(hasOrchestrationCloudResources(config, "dev"), false);
     assert.equal(hasOrchestrationCloudResources(config, "prod"), true);
     assert.equal(hasOrchestrationCloudResources(defineFrameworkConfig({ ...base, workflows: [intake] }), "prod"), true);

@@ -1,5 +1,4 @@
 import type { HttpSection } from "../contracts";
-import { resources } from "../resources";
 import { PROD_DEPLOYMENT } from "@repo/framework/config/source";
 
 /** The GraphQL API: one route in front of the Pothos schema and the database. */
@@ -18,9 +17,8 @@ export const graphqlRoutes = {
       // client with the API when it is on: a tab still running an older build
       // needs a reload once an operation it sends has changed.
       GRAPHQL_PERSISTED_DOCUMENTS_ONLY: "false",
-      USER_POOL_ID: resources.cognito.userPool.userPoolId,
-      USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId,
     },
+    userPool: true,
     database: true,
     cloud: { constructId: "GraphQLApi" },
   },

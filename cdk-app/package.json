@@ -10,7 +10,7 @@
     "build": "tsc",
     "watch": "tsc -w",
     "cdk": "cdk",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p lambda_functions",
     "test": "node --import tsx --test test/*.test.ts"
   },
   "devDependencies": {

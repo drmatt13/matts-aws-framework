@@ -23,6 +23,7 @@ import type {
 } from "./index";
 import { AGENT_SOURCE_ROOT, TOOL_SOURCE_ROOT } from "./conventions";
 import { isDeploySettingEnabled } from "./deploy";
+import { COGNITO_VERIFIER_ENVIRONMENT, USER_POOL_DECLARATION_EXAMPLE, userPoolDelivery } from "./user-pool";
 import { LAMBDA_SOURCE_DIRECTORY_BY_ID } from "../generated/target-ids";
 import type { ToolLambdaId } from "../generated/target-ids";
 
@@ -109,9 +110,6 @@ export const AGENT_LIFECYCLE_BOUNDS = { min: 60, max: 28_800 } as const;
 /** AgentCore's own defaults, used locally when an agent declares none. */
 export const AGENT_LIFECYCLE_DEFAULTS = { idleSeconds: 900, maxLifetimeSeconds: 28_800 } as const;
 
-/** The verifier `authenticated` and `authenticatedTool` share reads these. */
-export const COGNITO_VERIFIER_ENVIRONMENT = ["USER_POOL_ID", "USER_POOL_CLIENT_ID"] as const;
-
 /**
  * Where a `tools` entry that declares no `directory` lives. A handler filed
  * anywhere under the tool grouping is found by its id, as an event's is.
@@ -163,14 +161,24 @@ export function getAgentLifecycle(
   };
 }
 
+/**
+ * An `auth: true` tool or agent verifies its caller's token, so it needs the
+ * pool: handed over from the config's `userPool`, or declared by the workload
+ * itself, both names together.
+ */
 function assertCognitoInputs(
+  config: FrameworkConfig,
+  role: "tool" | "agent",
   origin: string,
-  environment: Readonly<Record<string, unknown>> | undefined,
+  declaration: { readonly auth?: true; readonly userPool?: true; readonly environment?: Readonly<Record<string, unknown>> },
 ): void {
-  const missing = COGNITO_VERIFIER_ENVIRONMENT.filter((name) => environment?.[name] === undefined);
+  if (userPoolDelivery(role, declaration, config.userPool) !== undefined) return;
+  const missing = COGNITO_VERIFIER_ENVIRONMENT.filter((name) => declaration.environment?.[name] === undefined);
   if (missing.length > 0) {
     throw new Error(
-      `${origin} declares auth: true without environment ${missing.join(", ")}. Its token verifier reads them; add them as an auth: true route does, e.g. USER_POOL_ID: resources.cognito.userPool.userPoolId.`,
+      config.userPool === undefined
+        ? `${origin} declares auth: true without environment ${missing.join(", ")}. Its token verifier reads them: name the application's pool once in framework.config.ts, as ${USER_POOL_DECLARATION_EXAMPLE}, and every auth: true tool and agent is handed it.`
+        : `${origin} declares auth: true without environment ${missing.join(", ")}. Its token verifier reads both: declare both to name a different pool, or neither to be handed the config's userPool.`,
     );
   }
 }
@@ -204,7 +212,7 @@ export function validateAgentCoreConfig(config: FrameworkConfig): void {
         `${origin} must be a Node zip Lambda. Its handler is written with tool() or authenticatedTool(), which validate against its contract in both lanes.`,
       );
     }
-    if (tool.auth === true) assertCognitoInputs(origin, tool.environment);
+    if (tool.auth === true) assertCognitoInputs(config, "tool", origin, tool);
   }
 
   for (const [id, agent] of Object.entries(config.agents ?? {})) {
@@ -217,7 +225,7 @@ export function validateAgentCoreConfig(config: FrameworkConfig): void {
         `${origin} declares secrets. AgentCore Runtime has no startup secret injection; write environment: { NAME: resources.<secret>.arn } and read the secret in the agent, which also grants the read.`,
       );
     }
-    if (agent.auth === true) assertCognitoInputs(origin, agent.environment);
+    if (agent.auth === true) assertCognitoInputs(config, "agent", origin, agent);
     if (Object.prototype.hasOwnProperty.call(agent.environment ?? {}, "PORT")) {
       throw new Error(`${origin} declares environment "PORT", which AgentCore Runtime owns. Remove it.`);
     }

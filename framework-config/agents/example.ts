@@ -1,6 +1,5 @@
 import type { AgentsSection } from "../contracts";
 import { models } from "../models";
-import { resources } from "../resources";
 
 /**
  * The AgentCore example: a LangGraph agent with users and a Gateway whose
@@ -19,9 +18,9 @@ export const exampleAgent = {
     route: "/chat/example",
     tools: ["add-numbers", "multiply-numbers"],
     deploy: "both",
+    // auth: true is handed framework.config.ts's userPool, which AgentCore and
+    // this agent's adapter both verify the caller against.
     environment: {
-      USER_POOL_ID: resources.cognito.userPool.userPoolId,
-      USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId,
       // The model: its variables, its IAM and its requirements, shared by
       // every agent built on @repo/models.
       ...models.environment,

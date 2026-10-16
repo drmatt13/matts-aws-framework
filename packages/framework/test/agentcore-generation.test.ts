@@ -4,7 +4,7 @@ import { z } from "zod";
 import {
   agentCoreModule,
   agentRouteDeclarations,
-  assertWorkflowAgentsRespond,
+  assertInvokedAgentsRespond,
   readAgentContract,
   readToolContract,
 } from "../scripts/agentcore-contracts";
@@ -69,7 +69,7 @@ test("contracts that cannot work as tools are refused naming the file's export",
   );
 });
 
-test("a workflow step may name only an agent that answers with one response", () => {
+test("a workflow step or an invokesAgent binding may name only an agent that answers with one response", () => {
   const respond = readAgentContract(
     { contract: { request: z.object({ caseId: z.string() }), response: z.object({ verdict: z.string() }) } },
     { id: "case-analysis", auth: false, tools: [] },
@@ -79,9 +79,16 @@ test("a workflow step may name only an agent that answers with one response", ()
     { id: "narrator", auth: false, tools: [] },
   );
   const workflows = (target: string) => [{ origin: 'workflows["review"]', targets: ["lambda:store", target] }];
-  assert.doesNotThrow(() => assertWorkflowAgentsRespond(workflows("agent:case-analysis"), [respond, stream]));
+  assert.doesNotThrow(() => assertInvokedAgentsRespond(workflows("agent:case-analysis"), [respond, stream]));
   assert.throws(
-    () => assertWorkflowAgentsRespond(workflows("agent:narrator"), [respond, stream]),
+    () => assertInvokedAgentsRespond(workflows("agent:narrator"), [respond, stream]),
     /workflows\["review"\] invokeAgent\("narrator"\) calls an agent whose contract streams events/,
+  );
+  // A workload's invokeAgent returns one response too; the browser is where a stream is read.
+  const binding = (target: string) => [{ origin: 'http["/ask"]', targets: [target], via: "binding" as const }];
+  assert.doesNotThrow(() => assertInvokedAgentsRespond(binding("agent:case-analysis"), [respond, stream]));
+  assert.throws(
+    () => assertInvokedAgentsRespond(binding("agent:narrator"), [respond, stream]),
+    /http\["\/ask"\] binds invokesAgent\("narrator"\), whose contract streams events, and invokeAgent returns one response\. Stream it from the browser with streamAgent/,
   );
 });

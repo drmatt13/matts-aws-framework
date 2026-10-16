@@ -1,10 +1,16 @@
-# Handwritten local containers. Routes, tasks and workflows stay in framework.config.ts.
+# Handwritten local containers. Routes, tasks and workflows stay in framework.config.ts,
+# and each service declared there gets a container generated from x-framework-service below.
 # npm run export:cdk-outputs, then npm run dev:containers (docker compose up --build --watch).
 # Postgres and pgAdmin publish on 127.0.0.1 only: their credentials are
 # placeholders, so nothing else on your network may reach them.
 # One Dockerfile with one stage: every container runs the same workspace, and
 # only local-invocation-runner is given the Docker socket that makes its CLI useful.
 # Compose tags one image per service; they share every layer.
+include:
+  # One container per service framework.config.ts runs locally, written by
+  # npm run framework:generate (npm run dev:containers runs it first). Never edited by hand.
+  - docker-compose.services.yml
+
 x-build: &build
   context: .
   dockerfile: Dockerfile.dev
@@ -106,6 +112,28 @@ x-database-ready: &database-ready
     condition: service_completed_successfully
   seed-test-user:
     condition: service_completed_successfully
+
+# The container a framework service runs in. framework:generate gives every
+# service framework.config.ts runs locally one of these in
+# docker-compose.services.yml, adding only what the declaration decides: the
+# container name (its id), the run-service command for its workspace's dev
+# script, PORT, and a probe of its healthCheckPath, timed as below. Everything
+# else here applies to all of them as written. A change here reaches them at the
+# next npm run framework:generate, which npm run dev:containers runs. To write
+# one service by hand instead, declare it under services below with its id.
+x-framework-service:
+  build: *build
+  init: true
+  develop: *watch
+  environment: *runtime-env
+  volumes: [*aws-mount, *resources-mount, *inputs-mount]
+  depends_on: *database-ready
+  healthcheck:
+    interval: 30s
+    timeout: 5s
+    retries: 3
+    start_period: 60s
+    start_interval: 1s
 
 services:
   postgres:
@@ -300,24 +328,6 @@ services:
       <<: *database-ready
       local-invocation-runner:
         condition: service_healthy
-
-  example-service:
-    build: *build
-    init: true
-    command: [node, --import, tsx, packages/framework/scripts/run-service.ts, example-service, --, npm, --workspace, '@repo/example-service', run, dev]
-    develop: *watch
-    environment:
-      <<: *runtime-env
-      PORT: '5000'
-    volumes: [*aws-mount, *resources-mount, *inputs-mount]
-    depends_on: *database-ready
-    healthcheck:
-      test: [CMD, node, -e, "require('node:http').get('http://127.0.0.1:5000/health',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 60s
-      start_interval: 1s
 
   ws-tester:
     build: *build

@@ -1,8 +1,10 @@
 import {
+  formatResourceReference,
   getAgentLifecycle,
   getAgentTools,
   getFrameworkTargets,
   isTargetDeployed,
+  userPoolDelivery,
   type FrameworkConfig,
 } from "@repo/framework/config";
 import framework from "../../../framework.config";
@@ -43,6 +45,14 @@ function describe(config: FrameworkConfig, id: string): string[] {
     }`,
     `  sessions    idle ${lifecycle.idleSeconds}s, at most ${lifecycle.maxLifetimeSeconds}s`,
   ];
+  if (declaration?.auth === true) {
+    // Where USER_POOL_ID comes from, since an auth: true agent never writes it.
+    lines.splice(4, 0, `  user pool   ${
+      config.userPool && userPoolDelivery("agent", declaration, config.userPool)
+        ? `framework.config.ts userPool, ${formatResourceReference(config.userPool.userPoolId)}`
+        : "the one its own environment names"
+    }`);
+  }
   const tools = getAgentTools(config, id);
   if (tools.length === 0) {
     lines.push(`  gateway     ${dim("none — the agent declares no tools")}`);

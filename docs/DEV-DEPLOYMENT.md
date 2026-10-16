@@ -141,7 +141,8 @@ dev script. Use the same profile for deployment and local execution when they
 must access the same AWS account.
 
 Compose runs postgres, migration, the local API/WebSocket servers, invocation runner,
-the example service, WebSocket tester, and pgAdmin. Postgres and pgAdmin listen on 127.0.0.1 only.
+the declared services (generated into docker-compose.services.yml; see
+[Framework](FRAMEWORK.md#local-service-containers)), WebSocket tester, and pgAdmin. Postgres and pgAdmin listen on 127.0.0.1 only.
 Each Node Lambda you call keeps a warm process for its next call, as a warm Lambda does, up
 to LOCAL_LAMBDA_WARM_MAX processes, each stopped after LOCAL_LAMBDA_WARM_IDLE_SECONDS idle;
 set LOCAL_LAMBDA_WARM=false in cdk-app/.env to start every call cold. See
@@ -162,6 +163,7 @@ image-owned dependencies. Only the invocation runner gets the Docker socket.
 | Ordinary handler/service/client source | Keep Watch and the client dev server running; the owning process reloads |
 | Task/container Lambda source or Dockerfile | Watch delivers it to the runner; the next invocation builds it |
 | Framework config or runner/framework source | Watch restarts affected processes; in-flight local work may stop |
+| A service added, removed, or given another port or healthCheckPath; `x-framework-service` | Restart `npm run dev:containers`: it regenerates docker-compose.services.yml first |
 | Manifests, lockfile, Dockerfile.dev, ignore rules, deleted files while Watch was off | Rebuild and restart with `npm run dev:containers` |
 | A captured event whose handler failed every replay | Fix the handler, then `npm run replay:redrive` (`npm run replay:list` shows what is waiting) |
 | Ports, outputs, local secrets | Edit cdk-app/.env, rerun export, recreate containers |

@@ -54,23 +54,28 @@ export function agentRouteDeclarations(agents: readonly { readonly id: string; r
 }
 
 /**
- * A workflow step's result is one document, so an `invokeAgent` step needs an
- * agent with a `response` contract. Whether an agent streams is a fact of its
- * contract, evaluated during generation and nowhere earlier, so this is where a
- * step naming a streaming agent is refused.
+ * Whoever calls an agent with `invokeAgent` gets one document back — a
+ * workflow step's result, or the value the runtime helper returns to a
+ * workload that declared `invokesAgent` — so the agent needs a `response`
+ * contract. There is no server-side stream to read, and a workload's call
+ * would otherwise fail only once the agent had started answering. Whether an
+ * agent streams is a fact of its contract, evaluated during generation and
+ * nowhere earlier, so this is where a caller naming a streaming agent is
+ * refused.
  */
-export function assertWorkflowAgentsRespond(
-  workflows: readonly { readonly origin: string; readonly targets: readonly string[] }[],
+export function assertInvokedAgentsRespond(
+  callers: readonly { readonly origin: string; readonly targets: readonly string[]; readonly via?: "workflow" | "binding" }[],
   agents: readonly AgentContractFacts[],
 ): void {
-  for (const workflow of workflows) {
-    for (const reference of workflow.targets) {
+  for (const caller of callers) {
+    for (const reference of caller.targets) {
       const agent = agents.find((candidate) => `agent:${candidate.id}` === reference);
-      if (agent?.streaming) {
-        throw new Error(
-          `${workflow.origin} invokeAgent("${agent.id}") calls an agent whose contract streams events, and a workflow step needs one response. Give the agent a response contract instead of an event one.`,
-        );
-      }
+      if (!agent?.streaming) continue;
+      throw new Error(
+        caller.via === "binding"
+          ? `${caller.origin} binds invokesAgent("${agent.id}"), whose contract streams events, and invokeAgent returns one response. Stream it from the browser with streamAgent, or give the agent a response contract instead of an event one.`
+          : `${caller.origin} invokeAgent("${agent.id}") calls an agent whose contract streams events, and a workflow step needs one response. Give the agent a response contract instead of an event one.`,
+      );
     }
   }
 }

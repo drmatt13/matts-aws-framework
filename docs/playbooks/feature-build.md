@@ -52,8 +52,9 @@ request to implement a feature.
    ```
 
 5. Implement handlers, with a self-contained `contract.ts` beside each handler
-   whose payload is shared. Use `authenticated(...)` for an HTTP handler needing
-   a user, and `withLocalReplay(...)` for an event declared `localReplay: true`.
+   whose payload is shared. Use `authenticated(...)`, with `userPool: true` on its
+   declaration, for an HTTP handler needing a user, and `withLocalReplay(...)` for an
+   event declared `localReplay: true`.
 6. Wire GraphQL and client operations using the data-feature contract, including
    explicit schema registration and neighboring executable-schema tests. Run
    `npm run codegen` before building consumers of new documents.
@@ -104,7 +105,8 @@ editing those files and handle expired callbacks in application behavior.
   `expr`, `when`, and `choose`, never JavaScript coercion or conditions.
 - AWS SDK utility packages use different version lines. Check `npm view` before
   pinning a new dependency, and preserve native lockfile bindings with npm 11.
-- A new Lambda workspace needs `npm install` and a Compose rebuild.
+- A Lambda that brings a new dependency gets its own `package.json`, which needs `npm install`
+  and a Compose rebuild; one that uses installed packages needs neither.
 - GraphQL results may contain null-prototype objects; compare their JSON values
   when object prototypes are irrelevant to the assertion.
 - Root scripts are CommonJS: put `await` inside `async function main()`.

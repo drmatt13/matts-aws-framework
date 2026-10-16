@@ -1,0 +1,20 @@
+{
+  // Every Lambda's source in one pass, whatever workspace it belongs to, run by
+  // cdk-app's typecheck. A handler that brings no dependency of its own needs no
+  // package.json or tsconfig.json: this is what typechecks it, and what an
+  // editor uses for it. Bundles are unaffected — esbuild bundles each handler
+  // from its own imports. A handler whose code needs other compiler settings
+  // keeps its own tsconfig.json and is added to "exclude" here.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["**/node_modules", "**/dist"]
+}

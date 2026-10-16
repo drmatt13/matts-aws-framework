@@ -98,7 +98,7 @@ const getCognitoAuthConfig = (): CognitoAuthConfig => {
     const missing = (["USER_POOL_ID", "USER_POOL_CLIENT_ID"] as const).filter((name) => !process.env[name]);
     throw new Error(
       missing.length > 0
-        ? `Cannot verify a Cognito token: ${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} not set. Declare both in this workload's environment: USER_POOL_ID: resources.cognito.userPool.userPoolId, USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId.`
+        ? `Cannot verify a Cognito token: ${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} not set. Add userPool: true to this workload's declaration in framework-config, which hands it the pool framework.config.ts names, or declare both variables in its environment to name another.`
         : `Cannot verify a Cognito token: no region for USER_POOL_ID "${process.env.USER_POOL_ID}". Set AWS_REGION, or use the pool id Cognito issued, which begins with its region.`,
     );
   }

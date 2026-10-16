@@ -79,6 +79,10 @@ const framework = defineFrameworkConfig({
   defaults,
   network,                          // framework-config/network.ts: the production VPC
   database: resources.rds.database, // what a workload's `database: true` reaches
+  userPool: {                       // what a workload's `userPool: true` is handed
+    userPoolId: resources.cognito.userPool.userPoolId,
+    userPoolClientId: resources.cognito.userPoolClient.userPoolClientId,
+  },
   http: [authRoutes, graphqlRoutes, exampleRoutes, invocationTestRoutes],
   webSocket: [webSocketRoutes],
   events: [cognitoEvents, invocationTestEvents],
@@ -142,8 +146,8 @@ export class CognitoStack extends cdk.Stack {
 cognito: resource.stack<CognitoStack>(),
 
 // 3. Any workload can now use its fields
-//    framework-config/services/example.ts
-environment: { USER_POOL_ID: resources.cognito.userPool.userPoolId },
+//    framework-config/http/auth.ts
+environment: { COGNITO_DOMAIN_URL: resources.cognito.userPoolDomainUrl },
 //    framework-config/events/cognito.ts
 environment: { FRONTEND_URL: resources.cognito.frontendUrl },
 ```
@@ -161,8 +165,8 @@ update every place that uses it.
 Handlers live in `cdk-app/lambda_functions/`. Wrap each handler in the matching helper:
 
 **`authenticated`**: an HTTP route that requires a signed-in user. Pair it with
-`auth: true` on the route, and give the route the two variables its token verifier
-reads:
+`auth: true`, which makes the gateway admit only signed-in callers, and `userPool: true`,
+which hands the handler the user pool its token verifier reads:
 
 ```ts
 // framework-config/http/hello.ts
@@ -170,10 +174,7 @@ reads:
   directory: "/lambda_functions/http_functions/hello",
   methods: ["GET"],
   auth: true,
-  environment: {
-    USER_POOL_ID: resources.cognito.userPool.userPoolId,
-    USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId,
-  },
+  userPool: true,
 },
 
 // cdk-app/lambda_functions/http_functions/hello/index.ts
@@ -185,7 +186,9 @@ export const lambdaHandler = authenticated(async (event, session) => {
 });
 ```
 
-`npm run framework:check` fails if a handler verifies a token without those variables.
+`npm run framework:check` fails if a handler verifies a token without the pool. A tool or
+agent with `auth: true` is handed the pool without asking, because its handler is the
+verifier.
 
 **`withLocalReplay`**: an AWS event (such as a Cognito trigger) that you want to run
 **on your machine** during dev. Set `localReplay: true` on the event declaration. AWS

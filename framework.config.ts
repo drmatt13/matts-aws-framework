@@ -41,6 +41,14 @@ const framework = defineFrameworkConfig({
   // What a workload reaches by declaring database: true. Built only by a
   // production deployment; locally, the Compose Postgres stands in for it.
   database: resources.rds.database,
+  // What a workload's userPool: true is handed, as USER_POOL_ID and
+  // USER_POOL_CLIENT_ID, and what an auth: true tool or agent verifies its
+  // caller against. The HTTP API's and AgentCore's authorizers check the same
+  // pool, which bin/cdk-app.ts hands them as cognitoStack.
+  userPool: {
+    userPoolId: resources.cognito.userPool.userPoolId,
+    userPoolClientId: resources.cognito.userPoolClient.userPoolClientId,
+  },
   http: [authRoutes, graphqlRoutes, exampleRoutes, invocationTestRoutes],
   webSocket: [webSocketRoutes],
   events: [cognitoEvents, invocationTestEvents],

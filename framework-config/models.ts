@@ -9,7 +9,7 @@ type AgentCloud = NonNullable<Agent["cloud"]>;
  * variables `getModel()` reads, the IAM its providers call with, and the input
  * the OpenAI provider cannot run without. Spread it beside the agent's own:
  *
- *   environment: { USER_POOL_ID: ..., ...models.environment },
+ *   environment: { ...models.environment, SUPPORT_QUEUE_URL: ... },
  *   cloud: { access: models.access, requirements: models.requirements },
  *
  * Written once because none of it is a fact about one agent — the providers

@@ -1,5 +1,4 @@
 import type { ServicesSection } from "../contracts";
-import { resources } from "../resources";
 
 /**
  * A minimal Express service on ECS. Local-only until its deploy setting
@@ -14,10 +13,7 @@ export const exampleService = {
     port: 5000,
     healthCheckPath: "/health",
     deploy: "local-only",
-    environment: {
-      USER_POOL_ID: resources.cognito.userPool.userPoolId,
-      USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId,
-    },
+    userPool: true,
     cloud: {
       constructId: "ExampleService",
       cpu: 256,

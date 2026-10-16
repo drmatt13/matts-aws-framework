@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import path from "node:path";
 import test from "node:test";
 import * as cdk from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
@@ -15,7 +13,6 @@ import {
   type Flow,
   type FrameworkConfig,
 } from "@repo/framework/config";
-import { findRepositoryRoot } from "@repo/framework/config/source";
 import { defaults } from "../../framework-config/defaults";
 import { models } from "../../framework-config/models";
 import { hasAgentCoreCloudResources } from "../lib/framework/framework-agentcore";
@@ -23,19 +20,25 @@ import { buildFrameworkLambdas } from "../lib/framework/framework-cloud";
 import { finalizeFrameworkResources, initializeFrameworkResources } from "../lib/framework/framework-resources";
 import { OrchestrationStack } from "../lib/framework/orchestration-stack";
 import { findCycle, reaches, resourceGraph, type TemplateJson } from "./support/template-graph";
+import {
+  agentFixtureDirectory,
+  fixtureAgentSource,
+  fixtureToolSource,
+  toolFixtureDirectory,
+  writeSourceFixtures,
+} from "./support/source-fixtures";
 
 const env = { account: "111122223333", region: "us-east-1" };
-const root = findRepositoryRoot(__dirname);
 const cognitoEnvironment = { USER_POOL_ID: "us-east-1_pool", USER_POOL_CLIENT_ID: "client" };
 
 /**
- * Where this run's `echo` user tool and `echo-agent` live. They stand in for an
- * agent with users and a tool that acts as them, which the repository's own
- * example does not have: its tools are service tools.
+ * The run a tool id belongs to: its suffix, which names the directory this
+ * run's fixtures are written under. The `echo` user tool and `echo-agent` stand
+ * in for an agent with users and a tool that acts as them, which the
+ * repository's own example does not have: its tools are service tools.
  */
-function userDirectories(toolId: string) {
-  const suffix = toolId.slice("lookup-".length);
-  return { tool: `echo-${suffix}`, agent: `echo-agent-${suffix}` };
+function runOf(toolId: string): string {
+  return toolId.slice("lookup-".length);
 }
 
 /**
@@ -44,36 +47,18 @@ function userDirectories(toolId: string) {
  * service agent and a service tool. Removed afterwards.
  */
 function fixtures() {
-  const suffix = randomUUID().slice(0, 8);
-  const toolId = `lookup-${suffix}`;
-  const agentId = `worker-${suffix}`;
-  const users = userDirectories(toolId);
-  const tools = [toolId, users.tool].map((id) => path.join(root, "cdk-app", "lambda_functions", "tool_functions", id));
-  const agents: [string, string][] = [
-    [agentId, path.join(root, "agents", agentId)],
-    ["echo-agent", path.join(root, "agents", users.agent)],
-  ];
-  for (const directory of tools) {
-    mkdirSync(directory, { recursive: true });
-    writeFileSync(path.join(directory, "index.ts"), "export const lambdaHandler = async () => ({});");
-  }
-  for (const [id, directory] of agents) {
-    mkdirSync(directory, { recursive: true });
-    writeFileSync(path.join(directory, "index.ts"), `export const handler = { kind: "framework-agent", id: ${JSON.stringify(id)} };`);
-  }
-  return {
-    toolId,
-    agentId,
-    dispose: () => {
-      for (const directory of [...tools, ...agents.map(([, directory]) => directory)]) {
-        rmSync(directory, { recursive: true, force: true });
-      }
-    },
-  };
+  const run = randomUUID().slice(0, 8);
+  const toolId = `lookup-${run}`;
+  const agentId = `worker-${run}`;
+  const dispose = writeSourceFixtures(run, {
+    tools: { [toolId]: fixtureToolSource, echo: fixtureToolSource },
+    agents: { [agentId]: fixtureAgentSource(agentId), "echo-agent": fixtureAgentSource("echo-agent") },
+  });
+  return { toolId, agentId, dispose };
 }
 
 function config(toolId: string, agentId: string, http = {}): FrameworkConfig {
-  const users = userDirectories(toolId);
+  const run = runOf(toolId);
   return defineFrameworkConfig({
     defaults,
     http: [http],
@@ -83,18 +68,18 @@ function config(toolId: string, agentId: string, http = {}): FrameworkConfig {
     tools: [
       {
         echo: {
-          directory: `/lambda_functions/tool_functions/${users.tool}`,
+          directory: toolFixtureDirectory(run, "echo"),
           auth: true,
           environment: cognitoEnvironment,
           cloud: { access: [{ actions: ["s3:GetObject"], resources: ["arn:{partition}:s3:::example-bucket/*"] }] },
         },
-        [toolId]: { directory: `/lambda_functions/tool_functions/${toolId}` },
+        [toolId]: { directory: toolFixtureDirectory(run, toolId) },
       },
     ],
     agents: [
       {
         "echo-agent": {
-          directory: `/agents/${users.agent}`,
+          directory: agentFixtureDirectory(run, "echo-agent"),
           auth: true,
           route: "/chat/echo",
           tools: ["echo"],
@@ -102,7 +87,7 @@ function config(toolId: string, agentId: string, http = {}): FrameworkConfig {
           environment: cognitoEnvironment,
           cloud: { idleSeconds: 600, access: [{ actions: ["bedrock:InvokeModel"], resources: ["arn:{partition}:bedrock:*::foundation-model/*"] }] },
         },
-        [agentId]: { directory: `/agents/${agentId}`, tools: [toolId], deploy: "both" },
+        [agentId]: { directory: agentFixtureDirectory(run, agentId), tools: [toolId], deploy: "both" },
       },
     ],
   });
@@ -305,7 +290,7 @@ test("a workflow's invokeAgent step calls the Runtime with the workflow's role, 
       webSocket: [],
       events: [],
       services: [],
-      tools: [{ [toolId]: { directory: `/lambda_functions/tool_functions/${toolId}` } }],
+      tools: [{ [toolId]: base.tools![toolId]! }],
       agents: [{ [agentId]: base.agents![agentId]! }],
       workflows: [
         {

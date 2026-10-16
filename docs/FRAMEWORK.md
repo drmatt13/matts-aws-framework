@@ -76,13 +76,21 @@ feature directory, and frontend operations without changing these package bounda
 | HTTP Lambda | Public path in http | Explicit directory under cdk-app | [graphql](../framework-config/http/graphql.ts) |
 | WebSocket Lambda | API Gateway route key in webSocket | Explicit directory; authorizer belongs to connect | [routes](../framework-config/websocket/routes.ts) |
 | Event Lambda | Stable target id in events | Defaults to /lambda_functions/event_functions/id | [Cognito](../framework-config/events/cognito.ts) |
-| Service | Public mount in services | /ecs_containers/services/id plus a Compose service | [example-service](../framework-config/services/example.ts) |
+| Service | Public mount in services | /ecs_containers/services/id; its Compose container is [generated](#local-service-containers) | [example-service](../framework-config/services/example.ts) |
 | Task | Stable target id in tasks | Defaults to /ecs_containers/tasks/id | [task](../framework-config/tasks/invocation-tests.ts) |
 | Workflow | Stable target id in workflows | Graph declaration; no implementation directory | [workflow](../framework-config/workflows/invocation-tests.ts) |
 | AgentCore tool | Stable target id in tools | Explicit directory under cdk-app, with contract.ts | [add-numbers](../framework-config/tools/example.ts) |
 | AgentCore agent | Stable target id in agents | Explicit directory under agents at the repository root, with contract.ts | [example-agent](../framework-config/agents/example.ts) |
 
-1. Add the implementation and its npm workspace manifest if appropriate.
+1. Add the implementation. A TypeScript Lambda is its `index.ts`: cdk-app's typecheck
+   checks every handler under `lambda_functions` in one pass
+   ([its tsconfig](../cdk-app/lambda_functions/tsconfig.json)), and Compose Watch delivers
+   the new directory to the running dev servers. Give a handler its own `package.json` only
+   when it brings a package the repository does not install, or needs a different version
+   of one: npm then nests that version under the handler and esbuild bundles it. That
+   manifest needs `npm install` (npm 11) and a restart of `npm run dev:containers`, because
+   the image installs it. Either way, each Lambda deploys as its own esbuild bundle of what
+   its handler imports, so a manifest changes neither bundle size nor cold start.
 2. Declare a literal entry in a section, using `satisfies HttpSection` (or the matching
    section type) imported type-only from `framework-config/contracts.ts` (for example,
    `import type { HttpSection } from "../contracts"` in framework-config/http/).
@@ -283,8 +291,11 @@ omitting the name derives the catalog path in SCREAMING_SNAKE_CASE. `-c` context
 over the file, and the declared default is last.
 
 cdk-app/.env.dev.example and cdk-app/.env.prod.example are hand-authored templates:
-`framework:generate` never writes them and `framework:check` never compares them. When
-you declare a new `fromEnv` or `secret` line, add it to both templates yourself.
+`framework:generate` never writes them. When you declare a new `fromEnv` or `secret` line,
+add it to both yourself, set (`NAME=`) or commented (`# NAME=<default>`) as you see fit.
+Catalog inputs are optional until a workload requires one, so `framework:check` demands only
+an input some workload names in `cloud.requirements`, and only in the template for the graph
+that runs that workload; it suggests the line, with the requirement's condition.
 
 cdk-app/.env is the file itself, not process.env: a variable exported in the shell, or
 one the generated repository-root .env carries, cannot stand in for a setting this file
@@ -407,6 +418,35 @@ client-app section of VITE_ settings; copy it into client-app/.env yourself. Roo
 mode; exporting production replaces the generated dev controls. The exporter determines mode
 from deployed metadata and never puts production resources in the development manifest. Existing
 cdk-app/.secret-bindings.json files are ignored and may be removed locally.
+
+### Local service containers
+
+A service needs nothing in Compose. `npm run framework:generate` (which `npm run
+dev:containers` runs before it starts Compose) writes docker-compose.services.yml, which
+docker-compose.yml includes: one container for each service that runs locally. The file
+names where each value came from. It is built from two sources:
+
+| From | What it decides |
+| --- | --- |
+| The declaration | Container name (the id, which the local API dev server proxies to); the run-service command for the `dev` script of the workspace in its directory; PORT (`port`, or the Dockerfile's one `EXPOSE`); a probe of `healthCheckPath` |
+| `x-framework-service` in docker-compose.yml | Everything else, applied as written: image build, Watch rules, platform environment, the read-only mounts, readiness (`depends_on`), and the timing of that probe |
+
+Generation reads docker-compose.yml and never writes it. Each change has one home:
+
+- **All services:** edit `x-framework-service` (for example a `depends_on` on a local cache).
+- **One service:** add to it in docker-compose.override.yml, which Compose merges over the
+  whole project, including `!reset` to remove a key.
+- **One service, entirely:** declare it under its id in docker-compose.yml; generation then
+  leaves it out. Use this for a different image, build or command.
+
+Generation refuses, before any container starts, a locally run service that has no
+container, and a generated one docker-compose.yml does not include. It also refuses a
+container that does not start through run-service or lacks its two read-only mounts. A
+service that cannot be generated is refused with the reason: no package.json, no `dev`
+script, or not a root workspace. So is a hand-written container whose PORT differs from the
+declaration, unless a container sets that service's `<ID>_SERVICE_URL` to send the dev
+server elsewhere. run-service sets PORT from the declaration when the container does not.
+The override file is plain Compose and is not checked.
 
 ## Network and database
 
@@ -668,8 +708,9 @@ ids are typed with the generated unions, so a misspelled task or workflow fails 
 
 Both runtime calls acknowledge submission. A runId or executionId is not completion.
 Tasks receive JSON input and run to exit; stdout is logging, not a business result channel.
-Use application storage for task results. Long-running services have individual Compose
-entries; tasks/workflows are launched dynamically by the invocation runner.
+Use application storage for task results. Long-running services each have a Compose
+container ([generated](#local-service-containers) from the declaration); tasks/workflows are
+launched dynamically by the invocation runner.
 
 A task's input travels in its container overrides together with its callback handle, and
 ECS caps the whole override at 8,192 characters. Pass identifiers and let the task read
@@ -876,7 +917,8 @@ from offline/local tests. Use a disposable fixture for deliberate failures.
 | client-app/.env | Browser-public VITE_ values from the deployment |
 | .framework/prod/outputs.json | Exported public production outputs, including frontend publishing identifiers |
 | Service .env.example | Generated input documentation; no authored per-service env files |
-| docker-compose.yml | Local containers, launchers, read-only mounts, ports, readiness, and Watch |
+| docker-compose.yml | Local containers, launchers, read-only mounts, ports, readiness, and Watch; `x-framework-service`, the container every generated service starts from |
+| docker-compose.services.yml | Generated: one container per service that runs locally, included by docker-compose.yml |
 | cdk-app/deployment.ts | Application deployment input validation, precedence, and compatibility aliases |
 
 The graph a synth builds is PROD_DEPLOYMENT in cdk-app/.env: the resource catalog reads it
@@ -923,8 +965,9 @@ GraphQL resolvers receive an authenticated session and separately enforce record
   unreachable Cognito signing keys answer 503, which the client treats as "try again"
   rather than as a signed-out session. `getAuthenticatedSession(event)` is the nullable
   form for a handler that decides for itself. Either one reads `USER_POOL_ID` and
-  `USER_POOL_CLIENT_ID`, which the route declares in its `environment`;
-  `framework:check` refuses a handler that verifies a token without them.
+  `USER_POOL_CLIENT_ID`, which the route is handed by declaring `userPool: true` (see
+  [The user pool](#the-user-pool)); `framework:check` refuses a handler that verifies a
+  token without them.
 - The client keeps the ID token in memory. `frameworkHttpApiFetch` refreshes when needed,
   retries once after 401, and preserves replayable request bodies. Refresh is single-flight
   across tabs; only 401 expires the session. Network/5xx failures retain it and surface an
@@ -949,6 +992,45 @@ GraphQL resolvers receive an authenticated session and separately enforce record
   which calls the `/mfa` route, and the login page answers the challenge.
 - Dev trusts the configured local origin; production does not inherit localhost/LAN origins.
   HTTP LAN origins may support native login/CORS but not Cognito hosted-UI redirects.
+
+### The user pool
+
+framework.config.ts names the application's user pool once, and a workload that reads it
+says so with one flag, as it does for the database:
+
+```ts
+// framework.config.ts
+userPool: {
+  userPoolId: resources.cognito.userPool.userPoolId,
+  userPoolClientId: resources.cognito.userPoolClient.userPoolClientId,
+},
+
+// any Lambda, WebSocket authorizer, event, service, task or tool
+"/reports": { directory: "...", methods: ["GET"], auth: true, userPool: true },
+```
+
+`userPool: true` hands the workload `USER_POOL_ID` and `USER_POOL_CLIENT_ID`, ahead of its
+own environment, in both lanes: they are written as the two entries the workload would
+otherwise declare, so AWS receives the stack's references and the local lane reads the
+development manifest, exactly as for any other input. Nothing else changes: no permission
+is granted (a Cognito API that needs IAM is still `resources.cognito.userPool.grant(...)`),
+the frontend receives nothing, and a workload that does not declare it is handed nothing.
+
+Two meanings of `auth: true` stay separate. On a route or a service it says who the
+gateway admits, and says nothing about the handler: declare `userPool: true` as well when
+the handler verifies the user itself (`authenticated`) or calls Cognito (`/sign-in`,
+`/refresh`), and leave it off a handler that trusts the gateway alone. On a tool or an
+agent, `auth: true` means its handler *is* the framework's verifier, so it is handed the
+pool without asking.
+
+A workload that names `USER_POOL_ID` and `USER_POOL_CLIENT_ID` in its own `environment`
+keeps them and is handed nothing: that is how one workload verifies against another pool.
+Naming one of them beside `userPool: true` is refused, as one name with two owners.
+`userPool` takes catalog string references only, so an imported pool is
+`resource.cdk<IUserPool>()` and another account's is `resource.fromEnv(...)`; a pool id
+never appears in source. The HTTP API's and AgentCore's authorizers are built from the
+pool bin/cdk-app.ts passes the framework factories (`cognito: cognitoStack`); keep it the
+pool `userPool` names.
 
 When changing auth, read [the agent checklist](playbooks/auth.md) and test all coupled
 paths. Do not log tokens, secrets, or cookies. Local browser checks and deployed sign-in,

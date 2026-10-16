@@ -1,5 +1,4 @@
 import type { WebSocketSection } from "../contracts";
-import { resources } from "../resources";
 
 export const webSocketRoutes = {
   $connect: {
@@ -10,10 +9,7 @@ export const webSocketRoutes = {
     },
     authorizer: {
       directory: "/lambda_functions/websocket_functions/ws-authorizer",
-      environment: {
-        USER_POOL_ID: resources.cognito.userPool.userPoolId,
-        USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId,
-      },
+      userPool: true,
       cloud: {
         constructId: "AuthorizerFunction",
         outputs: { arn: { id: "AuthorizerFunctionArn" } },

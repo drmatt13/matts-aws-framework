@@ -69,6 +69,6 @@ export function serviceEnvironmentExample(config: FrameworkConfig, target: Norma
   }
   lines.push("", "# Framework-owned environment:", `# PORT: ${port}`, "# AWS_REGION: deployment region in ECS; LOCAL_AWS_REGION in cdk-app/.env for local AWS facilities.");
   if (service.healthCheckPath) lines.push(comment(`HEALTH_CHECK_PATH: ${service.healthCheckPath} (local health probe).`));
-  lines.push("# Local facilities, environment mapping and health checks are authored in docker-compose.yml.");
+  lines.push("# Its local container is generated into docker-compose.services.yml from this declaration and x-framework-service in docker-compose.yml, unless docker-compose.yml declares it.");
   return `${lines.join("\n")}\n`;
 }

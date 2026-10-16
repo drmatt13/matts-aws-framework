@@ -1,11 +1,9 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { parse } from "yaml";
 import {
   getEventReplayManifest,
   getLambdaSection,
   getLambdaTargetIds,
-  getLocalTargets,
   isNodeLambdaRuntime,
   isResourceReference,
   resolveLambdaTarget,
@@ -16,6 +14,8 @@ import framework from "../../../framework.config";
 import { planLocalInvocation } from "../src/local/invocation";
 import { assertAgentCoreEntries } from "./check-agentcore";
 import { assertCognitoVerifierInputs } from "./check-auth";
+import { COMPOSE_FILE, GENERATED_COMPOSE_FILE, parseCompose } from "./compose-services";
+import { INPUT_TEMPLATES, undocumentedRequiredInputs } from "./check-repository";
 import { assertWorkflowAuthoringIsSupported } from "./check-workflow-authoring";
 import { LOCAL_HOST_PORT_NAMES } from "../../../scripts/local-export";
 
@@ -26,27 +26,17 @@ planLocalInvocation(framework, { repositoryRoot });
 // JavaScript condition compiles to a constant, and by the time a workflow runs
 // there is nothing left to notice.
 assertWorkflowAuthoringIsSupported(path.join(repositoryRoot, "framework-config"));
-// `merge: true` resolves the `<<:` anchors docker-compose.yml shares between
-// services, so a service's environment reads here the way Compose reads it.
-const compose = parse(readFileSync(path.join(repositoryRoot, "docker-compose.yml"), "utf8"), { merge: true });
-for (const target of getLocalTargets(framework, ["service"])) {
-  if (!compose.services?.[target.id]) {
-    throw new Error(`service:${target.id} is enabled locally. Add its container to docker-compose.yml using that service name.`);
-  }
-}
-
-// Every service uses the launcher; new references need no Compose interpolation.
-for (const target of getLocalTargets(framework, ["service"])) {
-  const service = compose.services[target.id];
-  if (!Array.isArray(service.command) || !service.command.includes("packages/framework/scripts/run-service.ts") || !service.command.includes(target.id)) {
-    throw new Error(`service:${target.id} must start through packages/framework/scripts/run-service.ts <id> -- <command>.`);
-  }
-  for (const location of ["/workspace/.framework/local", "/workspace/cdk-app/.env"]) {
-    if (!service.volumes?.some((mount: { target?: string; read_only?: boolean }) => mount.target === location && mount.read_only)) {
-      throw new Error(`service:${target.id} needs a read-only mount of ${location}.`);
-    }
-  }
-}
+// Each locally run service's container — declared in docker-compose.yml, or
+// generated into docker-compose.services.yml — is checked by framework:generate
+// (compose-services.ts), which `framework:check` runs before this file.
+const authored = parseCompose(readFileSync(path.join(repositoryRoot, COMPOSE_FILE), "utf8"));
+const generatedFile = path.join(repositoryRoot, GENERATED_COMPOSE_FILE);
+const compose = {
+  services: {
+    ...(existsSync(generatedFile) ? parseCompose(readFileSync(generatedFile, "utf8")).services : {}),
+    ...authored.services,
+  },
+};
 
 // Published host ports are authored in cdk-app/.env and interpolated by name, so
 // a service that publishes a literal cannot be moved off a port the developer's
@@ -73,6 +63,17 @@ for (const variable of portNames) {
     throw new Error(`${variable} is exported for a host port no docker-compose.yml service publishes. Remove it from LOCAL_HOST_PORT_NAMES in scripts/local-export.ts.`);
   }
 }
+
+// ---------------------------------------------------------------------------
+// An input a workload cannot run without is listed in the template for the
+// graph that runs it, so the next person to copy one learns it exists. See
+// check-repository.ts. A template that is not there is not demanded.
+// ---------------------------------------------------------------------------
+const templates = Object.entries(INPUT_TEMPLATES)
+  .filter(([file]) => existsSync(path.join(repositoryRoot, file)))
+  .map(([file, graph]) => ({ file, graph, text: readFileSync(path.join(repositoryRoot, file), "utf8") }));
+const undocumented = undocumentedRequiredInputs(framework, templates);
+if (undocumented.length > 0) throw new Error(undocumented.join("\n"));
 
 // ---------------------------------------------------------------------------
 // `localReplay: true` is the whole feature, so the handler half is checked.

@@ -36,6 +36,7 @@ import {
   resolveResourceReference,
 } from "./resources";
 import { isInvocationBinding } from "./resources";
+import { assertFrameworkUserPool, USER_POOL_DECLARATION_EXAMPLE, USER_POOL_ENVIRONMENT, userPoolDelivery, type FrameworkUserPool } from "./user-pool";
 import { resolveDatabasePool, type DatabasePoolSettings } from "../database-pool";
 import { assertRequirementsMet, describeRequirementFix } from "./requirements";
 import type { CloudRequirement, ResolvedCloudRequirement } from "./requirements";
@@ -95,6 +96,7 @@ export * from "./agentcore";
 export * from "./workflow-semantics";
 export * from "./workflow-asl";
 export * from "./network";
+export * from "./user-pool";
 // Named rather than `export *`: reading a deploy token is the framework's job,
 // so `isDeploySettingEnabled` stays internal to the package.
 export { DEPLOY_SETTINGS } from "./deploy";
@@ -495,7 +497,9 @@ export interface EventLambdaTargetDefinition<Catalog = AnyResourceCatalog>
 }
 
 // ---------------------------------------------------------------------------
-// Local task facilities. Service startup is handwritten in docker-compose.yml.
+// Local task facilities. A service's local container is Compose's: generated
+// from its declaration and docker-compose.yml's x-framework-service, or declared
+// there by hand.
 // ---------------------------------------------------------------------------
 
 /** Local facilities a service can ask for. Each one is an adapter, not a permission. */
@@ -764,6 +768,20 @@ export interface TargetEnvironment<Catalog = AnyResourceCatalog> {
    * unless it declares a `subnet`.
    */
   readonly database?: true | DatabaseAccess;
+  /**
+   * This workload is handed the application's user pool, the one
+   * framework.config.ts names as `userPool`: USER_POOL_ID and
+   * USER_POOL_CLIENT_ID, in both lanes, from the same references. Declare it on
+   * a handler that verifies a signed-in user — `authenticated()`,
+   * `getAuthenticatedSession()`, `verifyCognitoIdToken()` — or calls Cognito
+   * itself. Two identifiers and no permission: a Cognito API that needs IAM is
+   * still granted explicitly, as `resources.cognito.userPool.grant(...)`.
+   *
+   * Separate from a route's `auth: true`, which says who its gateway admits
+   * and nothing about its handler. A tool or agent with `auth: true` verifies
+   * the caller itself, so it is handed the pool without declaring this.
+   */
+  readonly userPool?: true;
 }
 
 /** Optional reader preference and direct writer access, never implicit query routing. */
@@ -1338,6 +1356,7 @@ export function resolveTargetSettings(
   containerDefaults: ContainerDefaults = {},
   database?: CdkResource<Connectable>,
   databasePoolDefaults?: DatabasePoolSettings,
+  userPool?: FrameworkUserPool,
 ): ResolvedTargetSettings {
   const cloud = declaration.cloud ?? {};
   for (const key of ["environment", "secrets"] as const) {
@@ -1378,6 +1397,34 @@ export function resolveTargetSettings(
   const environment: Record<string, string | ResourceReference> = {};
   /** ARN reads found in `environment`, which become this target's grants. */
   const secretReads: { readonly name: string; readonly secret: ResourceReference }[] = [];
+
+  // The user pool is written as the two entries a workload would otherwise
+  // declare itself, so every lane delivers it the way it delivers those: a
+  // token in AWS, the development manifest locally. First, because that is
+  // where a converted declaration almost always had them, and ECS renders a
+  // container's environment in order.
+  if (declaration.userPool !== undefined && declaration.userPool !== true) {
+    throw new Error(`${origin} declares userPool ${JSON.stringify(declaration.userPool)}. It is true or left out.`);
+  }
+  const userPoolSource = userPoolDelivery(role, declaration, userPool);
+  if (userPoolSource !== undefined) {
+    if (role === "workflow") {
+      throw new Error(`${origin} declares userPool: true. A workflow has no process of its own; declare it on the target the workflow invokes.`);
+    }
+    if (!userPool) {
+      throw new Error(`${origin} declares userPool: true, but the config names no userPool. Add ${USER_POOL_DECLARATION_EXAMPLE} to framework.config.ts.`);
+    }
+    for (const [field, name] of Object.entries(USER_POOL_ENVIRONMENT) as [keyof FrameworkUserPool, string][]) {
+      if (Object.prototype.hasOwnProperty.call(declaration.environment ?? {}, name)) {
+        throw new Error(
+          `${origin} declares environment "${name}" beside userPool: true, which supplies it. Remove it from environment, or drop userPool: true to name a different pool yourself.`,
+        );
+      }
+      claimName(name, "userPool");
+      environment[name] = userPool[field];
+    }
+  }
+
   for (const [name, value] of Object.entries(declaration.environment ?? {})) {
     claimName(name, "environment");
     if (name === "AWS_USE_DUALSTACK_ENDPOINT") {
@@ -1864,8 +1911,8 @@ export interface ServiceTargetDefinition<Catalog = AnyResourceCatalog>
   /**
    * How this service is deployed to ECS: sizing, networking, its runtime
    * environment, startup secrets and task-role permissions. Applies to the
-   * deployed service only — docker-compose.yml is what runs
-   * on a developer's machine.
+   * deployed service only — on a developer's machine it runs in the container
+   * docker-compose.yml's x-framework-service describes.
    */
   readonly cloud?: ServiceCloudSettings<Catalog>;
 }
@@ -2214,6 +2261,13 @@ export interface FrameworkConfig {
    * it with IAM, never with a password.
    */
   readonly database?: CdkResource<Connectable>;
+  /**
+   * The application's user pool: what a workload's `userPool: true` is handed,
+   * as USER_POOL_ID and USER_POOL_CLIENT_ID. Two catalog references, such as
+   * `{ userPoolId: resources.cognito.userPool.userPoolId, userPoolClientId:
+   * resources.cognito.userPoolClient.userPoolClientId }`.
+   */
+  readonly userPool?: FrameworkUserPool;
 }
 
 // ---------------------------------------------------------------------------
@@ -2250,6 +2304,7 @@ export interface FrameworkConfigInput {
   readonly agents?: SectionInput<FrameworkAgents>;
   readonly network?: FrameworkNetwork;
   readonly database?: CdkResource<Connectable>;
+  readonly userPool?: FrameworkUserPool;
 }
 
 type UnionToIntersection<Union> = (
@@ -2357,6 +2412,7 @@ export function defineFrameworkConfig<const Input extends FrameworkConfigInput>(
       "database takes the catalog construct workloads connect to, such as database: resources.rds.database.",
     );
   }
+  if (input.userPool !== undefined) assertFrameworkUserPool(input.userPool);
   if ("gateways" in input) {
     throw new Error(
       "gateways is no longer a section. An agent's Gateway is derived from its tools list: move each Gateway's tools onto the agents that used it, as agents.<id>.tools.",
@@ -3004,6 +3060,7 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
       config.defaults.container,
       config.database,
       config.defaults.database?.pool,
+      config.userPool,
     );
     const { cloud, environment, secrets } = settings;
     // Defaults are folded in before comparing, so two routes that reach one
@@ -3307,7 +3364,7 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
     }
     // Fails here rather than at generation, so an invalid local section is
     // reported against the entry that wrote it.
-    rejectObsoleteField(definition, "local", origin, "Local service startup belongs in docker-compose.yml.");
+    rejectObsoleteField(definition, "local", origin, "A service's local container is generated from this declaration and x-framework-service in docker-compose.yml; change one service in docker-compose.override.yml, or declare it in docker-compose.yml.");
     // Locally the dev server checks the token before proxying; in AWS only API
     // Gateway does, so a load balancer reachable around it would make
     // `auth: true` true in one lane and false in the other.

@@ -18,8 +18,6 @@ import { resources } from "../resources";
  * rather than assumed.
  */
 const invocationTestEnvironment = {
-  USER_POOL_ID: resources.cognito.userPool.userPoolId,
-  USER_POOL_CLIENT_ID: resources.cognito.userPoolClient.userPoolClientId,
   TRUSTED_FRONTEND_ORIGINS: resources.cognito.trustedOriginsCsv,
 };
 
@@ -32,6 +30,7 @@ export const invocationTestRoutes = {
     memorySize: 256,
     timeoutSeconds: 15,
     deploy: "both",
+    userPool: true,
     environment: { ...invocationTestEnvironment },
     cloud: {
       bindings: [runsTask("invocation-test-task")],
@@ -44,6 +43,7 @@ export const invocationTestRoutes = {
     memorySize: 256,
     timeoutSeconds: 15,
     deploy: "both",
+    userPool: true,
     environment: { ...invocationTestEnvironment },
     cloud: {
       bindings: [startsWorkflow("invocation-test-workflow")],
@@ -54,6 +54,7 @@ export const invocationTestRoutes = {
     methods: ["POST"],
     auth: true,
     deploy: "local-only",
+    userPool: true,
     environment: { ...invocationTestEnvironment },
     cloud: { bindings: [startsWorkflow("capability-check")] },
   },
