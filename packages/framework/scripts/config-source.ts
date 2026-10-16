@@ -35,6 +35,46 @@ export type CheckedSection = (typeof CHECKED_SECTIONS)[number];
 /** The keys each section declares, in the order the source declares them. */
 export type SectionKeys = Readonly<Record<CheckedSection, readonly string[]>>;
 
+/** A range of a file's text, as offsets: `text.slice(start, end)`. */
+export interface SourceSpan {
+  readonly start: number;
+  readonly end: number;
+}
+
+/** One section entry, and where it was written. */
+export interface LocatedSectionEntry {
+  readonly section: CheckedSection;
+  readonly key: string;
+  /** Absolute path of the module that declares the entry. */
+  readonly file: string;
+  /** The key as written, quotes included. */
+  readonly keySpan: SourceSpan;
+  /** The entry's value: an object literal, or the call or name that produces it. */
+  readonly valueSpan: SourceSpan;
+  /** One-based position of the key, for a message or an editor link. */
+  readonly line: number;
+  readonly column: number;
+  /** Which element of the section's module array declared it. */
+  readonly moduleIndex: number;
+}
+
+/** A configuration property other than a section, followed the way a section is. */
+export interface LocatedConfigProperty {
+  readonly name: string;
+  readonly file: string;
+  /** The resolved expression: `defineNetwork({...})`, an object literal, a reference. */
+  readonly span: SourceSpan;
+  readonly line: number;
+  readonly column: number;
+}
+
+/** Every section entry and configuration property, located. */
+export interface LocatedConfigSource {
+  readonly configFile: string;
+  readonly sections: Readonly<Record<CheckedSection, readonly LocatedSectionEntry[]>>;
+  readonly properties: Readonly<Partial<Record<string, LocatedConfigProperty>>>;
+}
+
 /** File access, injectable so the checker can be tested without a repository. */
 export interface ConfigSourceHost {
   readonly readFile: (file: string) => string;
@@ -215,12 +255,44 @@ export function readSectionKeys(
   configFile: string,
   options: AssertSectionModulesOptions = {},
 ): SectionKeys {
+  const { sections } = locateConfigSource(configFile, options);
+  return Object.fromEntries(
+    Object.entries(sections).map(([section, entries]) => [section, entries.map((entry) => entry.key)]),
+  ) as unknown as SectionKeys;
+}
+
+/**
+ * The same pass again, keeping where each thing was written.
+ *
+ * Normalization names a declaration by its logical place, `http["/graphql"]`,
+ * because the merged config no longer knows which module wrote it. This is the
+ * other half: the module, and the span of the key and of the value, so a tool
+ * can point at a line rather than a section key. It refuses exactly what the
+ * key reader refuses, with the same messages, because it is the key reader.
+ *
+ * The configuration's other properties (`defaults`, `network`, `resources`,
+ * `database`, `userPool`) are followed one hop the same way. They are not
+ * checked, so one that cannot be followed is simply left out.
+ */
+export function locateConfigSource(
+  configFile: string,
+  options: AssertSectionModulesOptions = {},
+): LocatedConfigSource {
   const host = options.host ?? nodeHost;
   const repositoryRoot = options.repositoryRoot ?? path.dirname(configFile);
   const source = new ConfigSource(host, repositoryRoot);
   const problems: string[] = [];
-  const keys: Record<CheckedSection, string[]> = {
+  const sections: Record<CheckedSection, LocatedSectionEntry[]> = {
     http: [], webSocket: [], events: [], services: [], tasks: [], workflows: [], tools: [], agents: [],
+  };
+  const properties: Record<string, LocatedConfigProperty> = {};
+
+  /** A node's offsets and one-based position in the file that holds it. */
+  const position = (file: string, node: ts.Node) => {
+    const sourceFile = source.parse(file);
+    const start = node.getStart(sourceFile);
+    const { line, character } = sourceFile.getLineAndCharacterOfPosition(start);
+    return { span: { start, end: node.end }, line: line + 1, column: character + 1 };
   };
 
   /** Every module composed into one section, flattening the array literal. */
@@ -264,7 +336,7 @@ export function readSectionKeys(
     // Where each key was declared, so a collision can name both modules.
     const declaredIn = new Map<string, string>();
 
-    for (const module of modulesOf(section, node)) {
+    for (const [moduleIndex, module] of modulesOf(section, node).entries()) {
       const resolved = source.resolve(module);
       if (typeof resolved === "string") {
         problems.push(resolved);
@@ -301,9 +373,33 @@ export function readSectionKeys(
           continue;
         }
         declaredIn.set(key, file);
-        keys[section as CheckedSection]?.push(key);
+        const value = ts.isPropertyAssignment(property)
+          ? property.initializer
+          : ts.isShorthandPropertyAssignment(property)
+            ? property.name
+            : property;
+        const at = position(resolved.file, property.name ?? property);
+        sections[section as CheckedSection]?.push({
+          section: section as CheckedSection,
+          key,
+          file: resolved.file,
+          keySpan: at.span,
+          valueSpan: position(resolved.file, value).span,
+          line: at.line,
+          column: at.column,
+          moduleIndex,
+        });
       }
     }
+  };
+
+  /** A property that is not a section: followed one hop, never refused. */
+  const locateProperty = (name: string, node: ts.Expression): void => {
+    const resolved = source.resolve({ file: configFile, expression: node });
+    if (typeof resolved === "string") return;
+    const expression = unwrap(resolved.expression);
+    const at = position(resolved.file, expression);
+    properties[name] = { name, file: resolved.file, span: at.span, line: at.line, column: at.column };
   };
 
   const visit = (node: ts.Node): void => {
@@ -330,17 +426,17 @@ export function readSectionKeys(
               continue;
             }
             const name = literalKey(property);
-            if (
-              name === undefined ||
-              !(CHECKED_SECTIONS as readonly string[]).includes(name)
-            ) {
+            if (name === undefined) continue;
+            const value = ts.isPropertyAssignment(property)
+              ? property.initializer
+              : ts.isShorthandPropertyAssignment(property)
+                ? property.name
+                : undefined;
+            if (!(CHECKED_SECTIONS as readonly string[]).includes(name)) {
+              if (value) locateProperty(name, value);
               continue;
             }
-            if (ts.isPropertyAssignment(property)) {
-              check(name, property.initializer);
-            } else if (ts.isShorthandPropertyAssignment(property)) {
-              check(name, property.name);
-            }
+            if (value) check(name, value);
           }
         }
       }
@@ -356,5 +452,5 @@ export function readSectionKeys(
     );
   }
 
-  return keys;
+  return { configFile, sections, properties };
 }

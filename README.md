@@ -20,6 +20,7 @@ The CDK CLI is installed in the workspace; a global installation is unnecessary.
 | Have an agent wire a data change through the application | [Data features](docs/DATA-FEATURES.md) |
 | Add an endpoint, service, task, workflow, or resource | [Framework](docs/FRAMEWORK.md) |
 | Add an AgentCore agent or the tools it calls | [AgentCore](docs/AGENTCORE.md) |
+| See where everything runs, and change a few settings with a validated preview | [Framework Studio](framework-studio/README.md) (`npm run studio`) |
 
 ## The two declarations you normally edit
 

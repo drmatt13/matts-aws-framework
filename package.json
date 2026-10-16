@@ -20,6 +20,7 @@
     "workflows:inspect": "tsx packages/framework/scripts/inspect-workflows.ts",
     "agents:inspect": "tsx packages/framework/scripts/inspect-agents.ts",
     "agents:smoke": "tsx scripts/agents-smoke.ts",
+    "studio": "node --import tsx framework-studio/server/index.ts",
     "codegen": "graphql-codegen --config codegen.ts",
     "codegen:check": "graphql-codegen --config codegen.ts --check",
     "typecheck": "npm run typecheck --workspaces --if-present",
@@ -43,7 +44,8 @@
     "packages/*",
     "agents/*",
     "ws-tester",
-    "local-ws-dev-server"
+    "local-ws-dev-server",
+    "framework-studio"
   ],
   "devDependencies": {
     "@graphql-codegen/cli": "^7.0.0",

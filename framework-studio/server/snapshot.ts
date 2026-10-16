@@ -1,0 +1,140 @@
+import type { ModeModel, ModelResource, Snapshot } from "../shared/model";
+import { EvaluatorPool, type Evaluation } from "./evaluator/pool";
+import { hashEditableFiles, sha256 } from "./files";
+import { readDeploymentSettings } from "./inputs";
+import { buildSourceIndex, type BuiltSourceIndex } from "./source";
+import type { CatalogEntrySource } from "./source/catalog";
+
+/**
+ * The studio's current understanding of the repository, rebuilt as a whole.
+ *
+ * A snapshot is never patched: a change anywhere evaluates both modes again,
+ * re-reads the source and replaces it. Refreshes are serialized, and one that
+ * is asked for while another runs is coalesced into a single follow-up.
+ */
+
+/** A stack's members as its class declares them, merged with the ones workloads read. */
+function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, CatalogEntrySource>): ModeModel {
+  const resources: ModelResource[] = [...model.resources];
+  const index = new Map(resources.map((resource, position) => [resource.id, position]));
+  for (const [catalogPath, entry] of catalog) {
+    if (!entry.stack) continue;
+    const stack = resources[index.get(`resource:${catalogPath}`) ?? -1];
+    for (const member of entry.stack.members) {
+      const id = `resource:${catalogPath}.${member.name}`;
+      const existing = index.get(id);
+      if (existing !== undefined) {
+        resources[existing] = { ...resources[existing]!, typeText: member.typeText, memberSource: "both" };
+        continue;
+      }
+      index.set(id, resources.length);
+      resources.push({
+        id,
+        path: [catalogPath, member.name],
+        kind: "member",
+        parent: `resource:${catalogPath}`,
+        absent: stack?.absent === true,
+        typeText: member.typeText,
+        memberSource: "class",
+      });
+    }
+    if (stack) resources[index.get(`resource:${catalogPath}`)!] = { ...stack, stackClass: entry.stack.className };
+  }
+  return { ...model, resources };
+}
+
+export interface StudioState {
+  readonly snapshot: Snapshot;
+  readonly evaluation: Evaluation;
+  readonly built: BuiltSourceIndex;
+}
+
+export class SnapshotBuilder {
+  private generation = 0;
+  private running: Promise<StudioState> | undefined;
+  private pending: Promise<StudioState> | undefined;
+  private latest: StudioState | undefined;
+  readonly pool: EvaluatorPool;
+
+  constructor(
+    readonly repositoryRoot: string,
+    log: (line: string) => void = () => {},
+  ) {
+    this.pool = new EvaluatorPool(repositoryRoot, log);
+  }
+
+  get current(): StudioState | undefined {
+    return this.latest;
+  }
+
+  /**
+   * Rebuilds. While a rebuild runs, every request joins one follow-up that
+   * starts when it finishes, so the last change is always seen and no more than
+   * one extra evaluation is ever queued.
+   */
+  refresh(): Promise<StudioState> {
+    if (this.pending) return this.pending;
+    if (this.running) {
+      this.pending = this.running
+        .catch(() => undefined)
+        .then(() => {
+          this.pending = undefined;
+          return this.start();
+        });
+      return this.pending;
+    }
+    return this.start();
+  }
+
+  private start(): Promise<StudioState> {
+    this.running = this.build().finally(() => {
+      this.running = undefined;
+    });
+    return this.running;
+  }
+
+  /**
+   * A mode that failed to load keeps showing its last good model, marked stale
+   * and carrying the new diagnostics, so a half-typed edit in an editor does
+   * not blank the view. A stale model is never edited against.
+   */
+  private lastGood(fresh: ModeModel): ModeModel {
+    const loaded = !(fresh.status === "error" && fresh.targets.length === 0);
+    const previous = this.latest?.snapshot.models[fresh.mode];
+    if (loaded || !previous || previous.targets.length === 0) return fresh;
+    return { ...previous, status: "error", stale: true, diagnostics: fresh.diagnostics, evaluatedInMs: fresh.evaluatedInMs };
+  }
+
+  private async build(): Promise<StudioState> {
+    const settings = readDeploymentSettings(this.repositoryRoot);
+    const files = hashEditableFiles(this.repositoryRoot);
+    const evaluation = await this.pool.evaluate(settings.webSocketApi);
+    const dev = this.lastGood(evaluation.dev);
+    const prod = this.lastGood(evaluation.prod);
+    const preferred = settings.currentMode === "prod" ? prod : dev;
+    const fallback = settings.currentMode === "prod" ? dev : prod;
+    const base = !preferred.stale && preferred.targets.length > 0 ? preferred : fallback;
+    const built = base.stale && this.latest ? this.latest.built : buildSourceIndex(this.repositoryRoot, base);
+    this.generation += 1;
+    const content = sha256(JSON.stringify({ files, settings }));
+    const snapshot: Snapshot = {
+      revision: `${this.generation}-${content.slice(0, 12)}`,
+      generatedAt: new Date().toISOString(),
+      currentMode: settings.currentMode,
+      webSocketApi: settings.webSocketApi,
+      repositoryRoot: this.repositoryRoot,
+      models: {
+        dev: dev.stale ? dev : withClassMembers(dev, built.catalog),
+        prod: prod.stale ? prod : withClassMembers(prod, built.catalog),
+      },
+      source: built.index,
+      files,
+    };
+    this.latest = { snapshot, evaluation, built };
+    return this.latest;
+  }
+
+  dispose(): Promise<void> {
+    return this.pool.dispose();
+  }
+}

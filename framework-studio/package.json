@@ -1,0 +1,31 @@
+{
+  "name": "framework-studio",
+  "author": "Matthew Sweeney",
+  "license": "UNLICENSED",
+  "private": true,
+  "description": "A local, source-linked view of framework.config.ts: what the config declares, where each declaration was written, and a narrow set of validated edits written back to it.",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@repo/framework": "*",
+    "@tanstack/react-query": "^5.99.0",
+    "@tanstack/react-router": "^1.170.41",
+    "express": "^5.2.1",
+    "lucide-react": "^0.545.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.12.4",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.2"
+  }
+}
