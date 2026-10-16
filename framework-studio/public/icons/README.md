@@ -1,6 +1,6 @@
 # Studio icons
 
-`aws/` contains unmodified 64 px SVGs from the official [AWS Architecture Icons](https://aws.amazon.com/architecture/icons/), release **July 31, 2026**.
+`aws/` contains unmodified 64 px service SVGs and 48 px VPC resource SVGs from the official [AWS Architecture Icons](https://aws.amazon.com/architecture/icons/), release **July 31, 2026**.
 
 Source package: https://d1.awsstatic.com/onedam/marketing-channels/website/public/shared/architecture-icon-release/Icon-package_07312026.5846e92413caa21490223536cc97f1269e44fa92.zip
 

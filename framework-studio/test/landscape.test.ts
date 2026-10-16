@@ -56,10 +56,25 @@ test("every edge is the model's own, with its relation", () => {
   );
 });
 
-test("every scene entity has a local SVG and a pickable plaque", () => {
-  for (const item of dev.nodes) {
+test("every scene entity and network fixture has a local SVG and a pickable plaque", () => {
+  for (const item of [...dev.nodes, ...dev.props]) {
     assert.ok(existsSync(path.join(repositoryRoot, "framework-studio/public/icons", `${ICONS[item.icon][0]}.svg`)));
     assert.ok(insidePolygon(item.geometry.top.x, item.geometry.top.y + 12, item.geometry.hull));
+  }
+});
+
+test("network plaques stand on their terraces with room between adjacent fixtures", () => {
+  const source = snapshot.models.prod;
+  assert.ok(source.network);
+  const scene = buildScene({ ...source, network: { ...source.network, natGateway: true, egressOnlyInternetGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "logs"] } });
+  for (const prop of scene.props) {
+    const tile = scene.tiles.find((tile) => tile.gx === prop.gx && tile.gy === prop.gy);
+    assert.ok(tile, `${prop.id} must stand on terrain`);
+    assert.equal(tile.h, prop.h);
+    for (const other of scene.props) {
+      if (prop === other || prop.h !== other.h) continue;
+      assert.ok(Math.abs(prop.gx - other.gx) + Math.abs(prop.gy - other.gy) >= 3, `${prop.id} overlaps ${other.id}`);
+    }
   }
 });
 
@@ -114,7 +129,7 @@ test("what a building shows of an entity follows the model's lanes and absence",
   assert.equal(node(dev, "task:db-migrate").presence, "other");
   assert.equal(node(prod, "service:example-service").presence, "other", "local-only execution belongs to Development");
   assert.equal(node(dev, "lambda:graphql-api").badge, undefined, "local development plus production needs no exception badge");
-  assert.equal(node(dev, "lambda:ws-disconnect-route").badge, undefined, "AWS-backed development is still Development");
+  assert.equal(node(dev, "lambda:ws-disconnect-route").badge, snapshot.webSocketApi ? undefined : "dev", "WebSocket availability accounts for whether its AWS API is enabled");
   assert.equal(node(dev, "service:example-service").badge, "dev");
   assert.equal(node(dev, "task:db-migrate").badge, "prod");
   assert.equal(node(dev, "resource:rds.database").badge, "prod");
@@ -149,6 +164,40 @@ test("compute stands where it runs, and the VPC is a blueprint where it is not b
   const heights = vpc(dev).bands.map((band) => band.h);
   assert.deepEqual([...heights].sort((a, b) => b - a), heights);
   assert.equal(dev.islands.find((island) => island.id === "island:resource:rds")!.ghost, "absent");
+});
+
+test("WebSocket terrain ghosts only when every route is disabled in the selected environment", () => {
+  const source = snapshot.models.prod;
+  const routeTargets = new Set(source.routes.filter((route) => route.kind === "webSocket").map((route) => route.target));
+  assert.ok(routeTargets.size > 1, "exercise a mix of enabled and disabled routes");
+  const firstTarget = [...routeTargets][0];
+  for (const availability of ["development", "off", "mixed", "both"] as const) {
+    const targets = source.targets.map((target) => routeTargets.has(target.ref)
+      ? { ...target, lanes: { ...target.lanes, local: availability !== "off", dev: false, prod: availability === "both" || (availability === "mixed" && target.ref === firstTarget) } }
+      : target);
+    for (const mode of ["dev", "prod"] as const) {
+      const scene = buildScene({ ...source, mode, targets });
+      const island = scene.islands.find((island) => island.id === "island:websocket-api")!;
+      const disabled = availability === "off" || (mode === "prod" && availability === "development");
+      assert.equal(island.ghost, disabled ? "disabled" : undefined, `${availability} in ${mode}`);
+      if (disabled) {
+        const terrain = new Set(scene.tiles.filter((tile) => tile.island === island.id).map((tile) => `${tile.gx},${tile.gy}`));
+        assert.ok(scene.decorations.every((decoration) => !terrain.has(`${decoration.gx},${decoration.gy}`)), "disabled terrain has no scenery");
+      }
+    }
+  }
+});
+
+test("ghosting applies to every island with only disabled nodes", () => {
+  const source = snapshot.models.prod;
+  const targets = source.targets.map((target) => ({ ...target, lanes: { ...target.lanes, local: false, dev: false, prod: false } }));
+  const scene = buildScene({ ...source, targets });
+  for (const island of scene.islands) {
+    const nodes = scene.nodes.filter((node) => node.island === island.id);
+    if (island.region === "catalog" || island.region === "network" || nodes.length === 0) continue;
+    assert.equal(island.ghost, "disabled", island.id);
+  }
+  assert.equal(scene.islands.find((island) => island.id === "island:resource:rds")!.ghost, undefined, "present resources keep their terrain");
 });
 
 test("walls show only where the ground falls away", () => {

@@ -371,7 +371,13 @@ export class SceneRenderer {
       if (box.maxX < view.minX || box.minX > view.maxX || box.maxY < view.minY || box.minY > view.maxY) continue;
       drawn += 1;
       if (item.kind === "tile") this.drawTile(item.tile, item.island, prepared, sheet);
-      else if (item.kind === "prop") this.drawFaces(item.prop.geometry.faces, item.prop.shape, undefined, 0.85);
+      else if (item.kind === "prop") {
+        this.drawFaces(item.prop.geometry.faces, item.prop.shape, undefined, 0.85);
+        if ("icon" in item.prop) {
+          const tile = project({ x: item.prop.gx, y: item.prop.gy, h: item.prop.h });
+          this.drawIconPlaque(tile, item.prop.icon, 0.85);
+        }
+      }
       else this.drawNode(item.node, state, dimmed(item.node.id), pulse);
     }
     this.drawnItems = drawn;
@@ -407,7 +413,7 @@ export class SceneRenderer {
   private drawTile(tile: Tile, island: Island, prepared: Prepared, sheet: HTMLCanvasElement): void {
     const context = this.context;
     const centre = project({ x: tile.gx, y: tile.gy, h: tile.h });
-    const alpha = island.ghost === "absent" ? 0.2 : island.ghost === "blueprint" ? 0.5 : 1;
+    const alpha = island.ghost === "blueprint" ? 0.5 : island.ghost ? 0.2 : 1;
     context.globalAlpha = alpha;
     const walls = prepared.walls.get(tile);
     const west = [centre.x - 32, centre.y];
@@ -500,7 +506,19 @@ export class SceneRenderer {
         break;
     }
     const ghost = node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
-    context.globalAlpha = factor * (ghost ? 0.32 : 1);
+    this.drawIconPlaque(tile, node.icon, factor * (ghost ? 0.32 : 1), selected, ghost);
+    if (selected || state.hovered === node.id) {
+      trace(context, node.geometry.hull);
+      context.strokeStyle = selected ? "rgba(255, 248, 230, 0.95)" : "rgba(255, 255, 255, 0.6)";
+      context.lineWidth = (selected ? 1.6 : 1.2) * pixel;
+      context.stroke();
+    }
+  }
+
+  private drawIconPlaque(tile: Point, key: IconKey, alpha: number, selected = false, ghost = false): void {
+    const context = this.context;
+    const pixel = this.pixel;
+    context.globalAlpha = alpha;
     context.fillStyle = "#111b29";
     context.strokeStyle = selected ? "#e6f1ff" : "#63758d";
     context.lineWidth = (selected ? 1.5 : 0.8) * pixel;
@@ -510,19 +528,13 @@ export class SceneRenderer {
     context.fill();
     context.stroke();
     context.setLineDash([]);
-    const icon = this.icons.get(node.icon);
+    const icon = this.icons.get(key);
     if (icon?.complete && icon.naturalWidth > 0) {
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
       context.drawImage(icon, tile.x - 20, tile.y - 50, 40, 40);
     }
     context.globalAlpha = 1;
-    if (selected || state.hovered === node.id) {
-      trace(context, node.geometry.hull);
-      context.strokeStyle = selected ? "rgba(255, 248, 230, 0.95)" : "rgba(255, 255, 255, 0.6)";
-      context.lineWidth = (selected ? 1.6 : 1.2) * pixel;
-      context.stroke();
-    }
   }
 
   private drawEdges(prepared: Prepared, state: RenderState): void {
@@ -763,11 +775,13 @@ export class SceneRenderer {
       const note =
         island.ghost === "absent"
           ? "absent in this graph"
-          : island.ghost === "blueprint"
-            ? scene.mode === "dev"
-              ? "not built by a development deployment"
-              : "not built: nothing is placed in it"
-            : undefined;
+          : island.ghost === "disabled"
+            ? `no nodes enabled in ${scene.mode === "dev" ? "development" : "production"}`
+            : island.ghost === "blueprint"
+              ? scene.mode === "dev"
+                ? "not built by a development deployment"
+                : "not built: nothing is placed in it"
+              : undefined;
       context.textBaseline = "middle";
       context.font = `600 ${15 * scale}px "Barlow Semi Condensed", Barlow, system-ui, sans-serif`;
       context.fillStyle = island.ghost ? "rgba(214, 222, 234, 0.6)" : "rgba(236, 239, 244, 0.94)";

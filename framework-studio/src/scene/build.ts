@@ -95,8 +95,8 @@ export interface Island {
   readonly title: string;
   readonly region: Region;
   readonly caption: readonly string[];
-  /** Drawn faded: a catalog stack absent in this graph, or a network this graph does not build. */
-  readonly ghost?: "absent" | "blueprint";
+  /** Drawn faded: an absent stack, an unbuilt network, or an island with no enabled nodes. */
+  readonly ghost?: "absent" | "blueprint" | "disabled";
   readonly gx0: number;
   readonly gy0: number;
   readonly gx1: number;
@@ -129,6 +129,7 @@ export interface SceneNode {
 /** Network furniture: drawn and explained, never selected — the model has no entity for it. */
 export interface Prop {
   readonly id: string;
+  readonly icon: IconKey;
   readonly shape: ShapeKind;
   readonly gx: number;
   readonly gy: number;
@@ -485,7 +486,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
           h: 5,
           groups: [vpc.public],
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
-          props: [{ id: "prop:internet-gateway", shape: "pylon", label: "Internet gateway", caption: ["IPv4 and IPv6 between the public subnets and the internet."] }],
+          props: [{ id: "prop:internet-gateway", icon: "internetGateway", shape: "pylon", label: "Internet gateway", caption: ["IPv4 and IPv6 between the public subnets and the internet."] }],
         },
         {
           id: "band:private",
@@ -497,10 +498,10 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
           props: [
             ...(network?.egressOnlyInternetGateway
-              ? [{ id: "prop:egress-only-gateway", shape: "pylon" as const, label: "Egress-only gateway", caption: ["IPv6 out of the private subnets, never in. Free."] }]
+              ? [{ id: "prop:egress-only-gateway", icon: "internetGateway" as const, shape: "pylon" as const, label: "Egress-only gateway", caption: ["IPv6 out of the private subnets, never in. Free."] }]
               : []),
             ...(network?.natGateway
-              ? [{ id: "prop:nat-gateway", shape: "construct" as const, label: "NAT gateway", caption: [`IPv4 out of the private subnets, about $${network.monthlyCost.natGateway.toFixed(2)} a month.`] }]
+              ? [{ id: "prop:nat-gateway", icon: "natGateway" as const, shape: "construct" as const, label: "NAT gateway", caption: [`IPv4 out of the private subnets, about $${network.monthlyCost.natGateway.toFixed(2)} a month.`] }]
               : []),
           ],
         },
@@ -514,6 +515,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
           props: captions.endpoints.slice(0, 4).map((endpoint) => ({
             id: `prop:endpoint:${endpoint}`,
+            icon: endpoint === "s3" ? "bucket" : endpoint === "dynamodb" ? "table" : "endpoint",
             shape: "input" as const,
             label: `${endpoint} endpoint`,
             caption: [
@@ -635,7 +637,7 @@ function measure(spec: IslandSpec, order?: (items: readonly Item[]) => readonly 
         columns += 1;
       }
     }
-    const width = Math.max(1, columns) * STEP;
+    const width = Math.max(1, columns, band.props?.length ?? 0) * STEP;
     bandWidths.push(width);
     x += width;
   });
@@ -714,6 +716,8 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
 
   function placeIsland(footprint: Footprint, gx0: number, gy0: number): void {
     const spec = footprint.spec;
+    const allDisabled = footprint.placed.length > 0 && footprint.placed.every(({ item }) => item.presence !== "built" && item.presence !== "present");
+    const ghost = spec.ghost ?? (allDisabled ? "disabled" : undefined);
     // The lattice, with a one-cell rim around it.
     const islandWidth = footprint.width + 2;
     const islandLength = footprint.length + 2;
@@ -771,14 +775,14 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
     // Furniture stands on the last lattice row, clear of the buildings and the worn corners.
     spec.bands.forEach((band, index) => {
       (band.props ?? []).forEach((prop, position) => {
-        const gx = gx0 + 1 + bandStarts[index]! + Math.min(position, footprint.bandWidths[index]! - 1);
+        const gx = gx0 + 1 + bandStarts[index]! + position * STEP;
         const gy = gy0 + footprint.length;
         const anchor = project({ x: gx, y: gy, h: band.h });
-        props.push({ ...prop, gx, gy, h: band.h, geometry: buildShape(prop.shape, anchor.x, anchor.y) });
+        props.push({ ...prop, gx, gy, h: band.h, geometry: buildIconShape(anchor.x, anchor.y) });
       });
     });
     // Scenery on a few empty interior cells, away from every building and prop.
-    if (!spec.ghost) {
+    if (!ghost) {
       const taken = new Set<string>();
       for (const { lx, ly } of footprint.placed) {
         for (let dx = -1; dx <= 1; dx += 1) for (let dy = -1; dy <= 1; dy += 1) taken.add(`${gx0 + 1 + lx + dx},${gy0 + 1 + ly + dy}`);
@@ -804,7 +808,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
       title: spec.title,
       region: spec.region,
       caption: spec.caption,
-      ...(spec.ghost ? { ghost: spec.ghost } : {}),
+      ...(ghost ? { ghost } : {}),
       gx0,
       gy0,
       gx1: gx0 + islandWidth - 1,

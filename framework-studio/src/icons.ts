@@ -4,6 +4,9 @@ import type { ModelResource, ModelRoute, ModelTarget } from "../shared/model";
 export const ICONS = {
   lambda: ["aws/lambda", "AWS Lambda"],
   gateway: ["aws/api-gateway", "Amazon API Gateway"],
+  internetGateway: ["aws/internet-gateway", "VPC internet gateway"],
+  natGateway: ["aws/nat-gateway", "VPC NAT gateway"],
+  endpoint: ["aws/vpc-endpoint", "VPC endpoint"],
   service: ["aws/ecs", "Amazon ECS"],
   task: ["aws/fargate", "AWS Fargate"],
   workflow: ["aws/step-functions", "AWS Step Functions"],
@@ -31,8 +34,8 @@ export function targetIcon(target: ModelTarget): IconKey {
   return target.kind;
 }
 
-export function routeIcon(route: ModelRoute): IconKey {
-  return route.kind === "agent" ? "agent" : route.kind === "service" ? "route" : "gateway";
+export function routeIcon(_route: ModelRoute): IconKey {
+  return "gateway";
 }
 
 export function resourceIcon(resource: ModelResource): IconKey {

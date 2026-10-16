@@ -115,6 +115,8 @@ means exposure: public is high ground, isolated is a sunken yard.
 - A route follows its target.
 - Islands are ghosted the same way:
   - a stack absent from this graph is drawn at 20 % opacity;
+  - an island with nodes but none enabled in the selected environment uses the same
+    20 % opacity and grid outline; an island with any enabled node stays solid;
   - the VPC is a translucent blueprint unless the graph is production and
     `network.builtInProd` is true.
 - Labels have no badge for entities available in both environments. A teal flask Dev
@@ -169,8 +171,13 @@ renderer; completion schedules a redraw even when motion is paused. Disposal cle
 their callbacks. Presence controls active versus ghost opacity and dashed outlines.
 Local execution is active in Development; local-only workloads are ghosted in Production.
 
-The procedural structures below remain available for network furniture, scenery and
-shape primitives; model entities no longer use the old building glyphs.
+Network gateways and endpoints use the same icon plaques: AWS VPC gateway icons,
+S3 and DynamoDB service icons for their endpoints, and the VPC endpoint icon for other
+services. They remain hover-only furniture. Furniture has its own lattice spacing so
+plaques do not overlap.
+
+The procedural structures below remain available for scenery and shape primitives;
+model entities and network furniture no longer use the old building glyphs.
 
 - **Primitives.** Cuboids, cylinders, pyramids, an octahedron crystal, rings, a vertical
   hoop, masts, and glyphs painted flat on a roof. They are scaled by `TALL = 1.35` and
