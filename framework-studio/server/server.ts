@@ -134,6 +134,13 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   api.post("/edits/plan", (request, response) =>
     send(response, () => edits.plan(readIntent(request.body), String((request.body as { revision?: unknown })?.revision ?? ""))),
   );
+  api.post("/cdk-links/refresh", (_request, response) =>
+    send(response, async () => {
+      const state = await refresh([]);
+      if (!state) throw new EditError(503, "CDK links could not be refreshed. See the studio server output.");
+      return { edges: state.snapshot.source.cdkLinks.edges.length, files: Object.keys(state.snapshot.source.cdkLinks.files).length };
+    }),
+  );
   api.post("/edits/apply", (request, response) =>
     send(response, async () => {
       const result = await edits.apply(String((request.body as { planId?: unknown })?.planId ?? ""));

@@ -7,10 +7,11 @@ import {
   type LocatedConfigSource,
   type LocatedSectionEntry,
 } from "../../../packages/framework/scripts/config-source";
-import type { Editability, EntitySource, FieldFact, ModeModel, SourceIndex, SourceLocation } from "../../shared/model";
+import type { CdkLinkIndex, Editability, EntitySource, FieldFact, ModeModel, SourceIndex, SourceLocation } from "../../shared/model";
 import { fieldById } from "../edits/fields";
 import { parseOrigin, type ParsedOrigin } from "../model/origin";
 import { readCatalogSource, readLinkSites, type CatalogEntrySource } from "./catalog";
+import { scanCdkLinks } from "./cdk-links";
 import { declarationObject, expressionAt, findProperty, lineAndColumn, literalValue, parse, propertyAt } from "./syntax";
 
 /**
@@ -209,8 +210,14 @@ export function buildSourceIndex(
     problems.push(`Application CDK could not be scanned for linkResources: ${error instanceof Error ? error.message : String(error)}`);
   }
 
+  let cdkLinks: CdkLinkIndex = { version: 1, files: {}, edges: [], notes: [] };
+  try {
+    cdkLinks = scanCdkLinks(repositoryRoot, catalog, links);
+  } catch (error) {
+    problems.push(`CDK resource links could not be read: ${error instanceof Error ? error.message : String(error)}`);
+  }
   return {
-    index: { entities, editability, links, catalog: catalogFacts, problems },
+    index: { entities, editability, links, catalog: catalogFacts, problems, cdkLinks },
     catalog,
     ...(located ? { located } : {}),
   };

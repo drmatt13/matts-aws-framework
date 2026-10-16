@@ -19,12 +19,23 @@ npm run studio -- --print # the whole model as JSON, then exit
 | View | Path | What it is for |
 | --- | --- | --- |
 | Board | `/` | Every route, workload and catalog entry in three columns, with typed relationship curves |
-| Lanes | `/lanes` | Where each workload runs: locally, in a development deployment, in a production deployment, and why |
+| Lanes | `/lanes` | Two tracks: Development and Production, with the execution location inside each environment |
 | Isometric | `/isometric` | The same application as a lit, navigable landscape: gateways, compute, the VPC's subnet terraces, catalog stacks |
 | Inspector | beside any view | One entity: source location, resolved settings and where they come from, relationships, and the editable fields |
 
 A Development/Production switch picks which deployment graph the views describe. Health
 indicators for both graphs, undo and redo, and a `framework:check` button sit in the top bar.
+
+The isometric view uses a thin world-anchored grid and local official AWS SVGs, with
+Lucide outlines for generic concepts. **Refresh CDK links** rebuilds an ignored JSON index
+from linked stack source; CDK edits also refresh it automatically. Source-inferred edges
+have a separate filter and source links, including the resource flow in `referenceExamples`.
+
+Deployment is presented as two environments throughout Studio. Board and Isometric omit
+badges for entities available in both; Dev (flask), Prod (diamond) and Off
+badges identify exceptions. The Inspector shows two environment cards. Development
+combines local execution and its AWS-managed workloads; it does not treat these as
+separate deployment states.
 
 ## Documents
 

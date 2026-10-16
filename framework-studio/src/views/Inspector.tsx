@@ -3,6 +3,10 @@ import { useEffect, useState } from "react";
 import type { Editability, FieldFact, ModelEdge, ModelResource, ModelRoute, ModelTarget, ModelWorkflow, Placement, SourceLocation } from "../../shared/model";
 import { describeValue, editorLink, RELATION_LABEL, ROLE_LABEL, titleOf } from "../lookup";
 import { useStudio } from "../studio";
+import { EntityIcon } from "./EntityIcon";
+import { resourceIcon, routeIcon, targetIcon } from "../icons";
+import { developmentLocation, deploymentSettingLabel, deploymentSummary, environments } from "../deployment";
+import { Code2, Diamond } from "lucide-react";
 
 function Written(props: { readonly location: SourceLocation | undefined; readonly label?: string }) {
   const { snapshot } = useStudio();
@@ -22,25 +26,23 @@ function Written(props: { readonly location: SourceLocation | undefined; readonl
 
 function LaneLines(props: { readonly target: ModelTarget }) {
   const { lanes } = props.target;
-  const line = (lane: "local" | "dev" | "prod", on: boolean, name: string) => (
+  const availability = environments(lanes);
+  const line = (lane: "dev" | "prod", on: boolean, name: string, location: string) => (
     <div className={`lane-line ${lane} ${on ? "" : "off"}`}>
-      <span>{name}</span>
-      <br />
-      <span className="small">{on ? "runs here" : "not here"}</span>
+      <span className="environment-name">{lane === "dev" ? <Code2 size={14} aria-hidden /> : <Diamond size={14} aria-hidden />}{name}</span>
+      <strong>{on ? "Enabled" : "Not enabled"}</strong>
+      {on ? <span className="small muted">{location}</span> : null}
     </div>
   );
   return (
     <section>
       <h3>Where it runs</h3>
       <div className="lane-lines">
-        {line("local", lanes.local, "Local")}
-        {line("dev", lanes.dev, "Dev AWS")}
-        {line("prod", lanes.prod, "Prod AWS")}
+        {line("dev", availability.dev, "Development", developmentLocation(lanes))}
+        {line("prod", availability.prod, "Production", "In AWS")}
       </div>
       <p className="small">
-        Deploy <code>{lanes.deploy}</code>
-        {lanes.origin === "declared" ? ", declared on the entry." : lanes.origin === "default" ? ", the framework's default." : "."}
-        {lanes.note ? ` ${lanes.note}` : ""}
+        {deploymentSummary(lanes)}
       </p>
     </section>
   );
@@ -82,7 +84,7 @@ function lockedReason(editability: Editability | undefined, fact: FieldFact): st
 const INHERIT = "\u0000inherit";
 
 function FieldRow(props: { readonly target: ModelTarget; readonly fact: FieldFact; readonly editability: Editability | undefined }) {
-  const { preview, live, model } = useStudio();
+  const { preview, live, model, snapshot } = useStudio();
   const { target, fact, editability } = props;
   const locked = model.stale ? "Editing is paused until the configuration loads again." : lockedReason(editability, fact);
   const current = fact.authored === undefined ? INHERIT : String(fact.authored);
@@ -90,7 +92,11 @@ function FieldRow(props: { readonly target: ModelTarget; readonly fact: FieldFac
   useEffect(() => setDraft(current), [current]);
   const changed = draft !== current;
   const unit = fact.domain.kind === "number" ? ` ${fact.domain.unit}` : "";
-  const inheritLabel = fact.inherited ? `Inherit (${fact.inherited.value}${unit} from ${fact.inherited.from})` : "Inherit";
+  const webSocketApi = target.role === "webSocket" || target.role === "webSocketAuthorizer" ? snapshot.webSocketApi : undefined;
+  const display = (value: unknown) => fact.field === "deploy" ? deploymentSettingLabel(String(value), webSocketApi) : String(value);
+  const inheritLabel = fact.inherited
+    ? fact.field === "deploy" ? `Use default (${display(fact.inherited.value)})` : `Inherit (${fact.inherited.value}${unit} from ${fact.inherited.from})`
+    : "Inherit";
 
   const submit = () => {
     if (draft === INHERIT) void preview({ target: target.ref, field: fact.field, inherit: true });
@@ -102,12 +108,12 @@ function FieldRow(props: { readonly target: ModelTarget; readonly fact: FieldFac
       <span className="name">{fact.label}</span>
       <span className="control">
         {locked ? (
-          <code>{String(fact.effective)}{unit}</code>
+          <code>{display(fact.effective)}{unit}</code>
         ) : fact.domain.kind === "enum" ? (
           <select value={draft} onChange={(event) => setDraft(event.target.value)} aria-label={fact.label}>
             {fact.domain.values.map((value) => (
               <option key={value} value={value}>
-                {value}
+                {display(value)}
               </option>
             ))}
             <option value={INHERIT}>{inheritLabel}</option>
@@ -136,7 +142,7 @@ function FieldRow(props: { readonly target: ModelTarget; readonly fact: FieldFac
         <span className="locked">{locked}</span>
       ) : (
         <span className="note">
-          {fact.authored === undefined
+          {fact.field === "deploy" ? fact.authored === undefined ? `Uses default: ${display(fact.effective)}.` : `Set to ${display(fact.authored)}.` : fact.authored === undefined
             ? `Not written here. Resolves to ${String(fact.effective)}${unit} from ${fact.provenance}.`
             : `Written as ${describeValue(fact.authored)}.`}
         </span>
@@ -159,12 +165,14 @@ function Relations(props: { readonly id: string }) {
           {titleOf(index, other)}
         </button>
         {edge.provenance === "derived" ? <span className="muted small"> (derived)</span> : null}
-        {edge.detail ? (
+        {edge.provenance === "source" ? <span className="muted small"> (CDK source)</span> : null}
+        {edge.detail && !edge.source ? (
           <>
             <br />
             <span className="small muted code">{edge.detail}</span>
           </>
         ) : null}
+        {edge.source ? <Written location={edge.source} label="Inferred from" /> : null}
       </span>
       <code className="small">{edge.label}</code>
     </li>
@@ -172,9 +180,10 @@ function Relations(props: { readonly id: string }) {
   return (
     <section>
       <h3>Relations</h3>
+      {edges.some((edge) => edge.provenance === "source") ? <p className="small muted">CDK links are inferred from direct source references. Helpers and conditional wiring may add connections this view cannot resolve.</p> : null}
       <ul className="relations">
         {outgoing.map((edge) => row(edge, edge.to, RELATION_LABEL[edge.relation]))}
-        {incoming.map((edge) => row(edge, edge.from, `${RELATION_LABEL[edge.relation]} from`))}
+        {incoming.map((edge) => row(edge, edge.from, edge.relation === "cdk" ? "CDK link from" : `${RELATION_LABEL[edge.relation]} from`))}
       </ul>
     </section>
   );
@@ -263,7 +272,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
     <>
       <header>
         <span className="kind">{ROLE_LABEL[target.role]}</span>
-        <h2>{target.title}</h2>
+        <h2><EntityIcon icon={targetIcon(target)} />{target.title}</h2>
         <code className="ref">{target.ref}</code>
         <Written location={snapshot.source.entities[target.ref]?.key} />
         <p className="small muted" style={{ marginTop: 6 }}>
@@ -344,7 +353,7 @@ function RouteView(props: { readonly route: ModelRoute }) {
     <>
       <header>
         <span className="kind">{route.kind === "http" ? "HTTP route" : route.kind === "service" ? "Service mount" : route.kind === "webSocket" ? "WebSocket route key" : "Agent route"}</span>
-        <h2>{route.browserPath ?? route.path}</h2>
+        <h2><EntityIcon icon={routeIcon(route)} />{route.browserPath ?? route.path}</h2>
         <code className="ref">{route.origin}</code>
         <Written location={snapshot.source.entities[route.id]?.key} />
       </header>
@@ -383,7 +392,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
     <>
       <header>
         <span className="kind">{kind}</span>
-        <h2>resources.{resource.path.join(".")}</h2>
+        <h2><EntityIcon icon={resourceIcon(resource)} />resources.{resource.path.join(".")}</h2>
         {resource.typeText ? <code className="ref">{resource.typeText}</code> : null}
         <Written location={snapshot.source.entities[resource.id]?.key} label={resource.kind === "member" ? "Declared on the stack in" : "Written in"} />
       </header>
@@ -402,7 +411,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
             {resource.kind === "secret" ? " Its value is uploaded to Secrets Manager and never appears here." : ""}
           </p>
         ) : null}
-        {resource.kind === "member" && resource.memberSource === "class" ? <p className="muted">Public on the stack, and nothing reads it yet.</p> : null}
+        {resource.kind === "member" && resource.memberSource === "class" ? <p className="muted">Declared by its stack; no workload references it.</p> : null}
         {facts?.stackClass ? <p>The stack class {facts.stackClass} is the declaration: each public field is an entry.</p> : null}
         {facts?.stackLocation ? <Written location={facts.stackLocation} label="Class in" /> : null}
         {links.map((link) => (

@@ -39,6 +39,7 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export const api = {
+  refreshCdkLinks: () => call<{ edges: number; files: number }>("/cdk-links/refresh", {}),
   plan: (intent: EditIntent, revision: string) => call<PlanResponse>("/edits/plan", { intent, revision }),
   apply: (planId: string) => call<ApplyResponse>("/edits/apply", { planId }),
   undo: () => call<ApplyResponse>("/edits/undo", {}),

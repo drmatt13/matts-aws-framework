@@ -218,7 +218,11 @@ These are ranked by value for effort. Each is a separate change with its own tes
 6. **Catalog authoring.** `resource.fromEnv` and `resource.secret` declarations, together
    with the `cdk-app/.env.*.example` lines AGENTS.md requires. Native CDK stays code-first,
    with links to the stack class and its `linkResources` site.
-7. **Isometric polish.**
+7. **Isometric polish.** The two-environment presentation (Development/Production), quiet
+   exception badges, thin background grid, official AWS SVG icons, quieter
+   terrain and source-inferred CDK resource links are now implemented. The link index is
+   disposable under `.cache/framework-studio/cdk-links.json`, rebuilt on refresh; see
+   [Architecture](architecture.md#the-source-index) before extending its inference rules.
    - **Layout overrides** in a separate, clearly non-configuration file (under `.cache`
      for personal use, or a checked-in editor file if a team should share it), keyed by
      entity id.

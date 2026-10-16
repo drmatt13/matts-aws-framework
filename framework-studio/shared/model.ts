@@ -5,7 +5,7 @@
  * evaluates a config. Every value here was projected by the server from the
  * framework's own normalization, and nothing here is a second declaration of
  * anything — identities are the framework's (`lambda:sign-in`, catalog paths),
- * and a fact the framework does not compute is not invented here.
+ * and source-derived CDK relationships carry their evidence separately.
  *
  * Sanitized by construction: resource *references* appear (a catalog path and
  * an attribute), resource *values* never do. Literal environment strings appear
@@ -263,7 +263,9 @@ export type Relation =
   /** A workflow step calls a managed service on a catalog construct. */
   | "integration"
   /** A worker completes a workflow callback. */
-  | "completesCallback";
+  | "completesCallback"
+  /** A relationship found in linked application CDK source, without executing it. */
+  | "cdk";
 
 export interface ModelEdge {
   /** `relation:from->to#n`, so two relations between one pair stay two edges. */
@@ -271,8 +273,9 @@ export interface ModelEdge {
   readonly relation: Relation;
   readonly from: string;
   readonly to: string;
-  /** Declared by the author, or derived by the framework from something else they declared. */
-  readonly provenance: "declared" | "derived";
+  /** Framework declarations/derivations, or separately identified CDK source inference. */
+  readonly provenance: "declared" | "derived" | "source";
+  readonly source?: SourceLocation;
   /** A short human label: the env name, the grant method, the operations. */
   readonly label: string;
   readonly detail?: string;
@@ -396,6 +399,8 @@ export interface FieldFact {
 }
 
 export interface SourceIndex {
+  /** Studio-only scan output; never consumed by framework configuration or CDK. */
+  readonly cdkLinks: CdkLinkIndex;
   /** Entity id (target ref, route id, resource id) to where it was written. */
   readonly entities: Readonly<Record<string, EntitySource>>;
   /** Target ref, then field id, to what the source allows for that field. */
@@ -408,6 +413,14 @@ export interface SourceIndex {
   >;
   /** Problems the index met, reported rather than thrown. */
   readonly problems: readonly string[];
+}
+
+export interface CdkLinkIndex {
+  readonly version: 1;
+  /** Only source hashes and relationships, never construct values or source text. */
+  readonly files: Readonly<Record<string, string>>;
+  readonly edges: readonly ModelEdge[];
+  readonly notes: readonly string[];
 }
 
 export interface Snapshot {

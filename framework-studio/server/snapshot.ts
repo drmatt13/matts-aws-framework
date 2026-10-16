@@ -1,4 +1,7 @@
 import type { ModeModel, ModelResource, Snapshot } from "../shared/model";
+import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import path from "node:path";
 import { EvaluatorPool, type Evaluation } from "./evaluator/pool";
 import { hashEditableFiles, sha256 } from "./files";
 import { readDeploymentSettings } from "./inputs";
@@ -14,7 +17,7 @@ import type { CatalogEntrySource } from "./source/catalog";
  */
 
 /** A stack's members as its class declares them, merged with the ones workloads read. */
-function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, CatalogEntrySource>): ModeModel {
+function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, CatalogEntrySource>, cdkEdges: ModeModel["edges"]): ModeModel {
   const resources: ModelResource[] = [...model.resources];
   const index = new Map(resources.map((resource, position) => [resource.id, position]));
   for (const [catalogPath, entry] of catalog) {
@@ -40,7 +43,8 @@ function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, Catalog
     }
     if (stack) resources[index.get(`resource:${catalogPath}`)!] = { ...stack, stackClass: entry.stack.className };
   }
-  return { ...model, resources };
+  const ids = new Set(resources.map((resource) => resource.id));
+  return { ...model, resources, edges: [...model.edges, ...cdkEdges.filter((edge) => ids.has(edge.from) && ids.has(edge.to))] };
 }
 
 export interface StudioState {
@@ -115,6 +119,16 @@ export class SnapshotBuilder {
     const fallback = settings.currentMode === "prod" ? dev : prod;
     const base = !preferred.stale && preferred.targets.length > 0 ? preferred : fallback;
     const built = base.stale && this.latest ? this.latest.built : buildSourceIndex(this.repositoryRoot, base);
+    // A disposable studio projection, never a configuration input. Replace atomically.
+    const directory = path.join(this.repositoryRoot, ".cache", "framework-studio");
+    mkdirSync(directory, { recursive: true });
+    const temporary = path.join(directory, `cdk-links-${randomUUID()}.tmp`);
+    try {
+      writeFileSync(temporary, `${JSON.stringify(built.index.cdkLinks, null, 2)}\n`, "utf8");
+      renameSync(temporary, path.join(directory, "cdk-links.json"));
+    } finally {
+      rmSync(temporary, { force: true });
+    }
     this.generation += 1;
     const content = sha256(JSON.stringify({ files, settings }));
     const snapshot: Snapshot = {
@@ -124,8 +138,8 @@ export class SnapshotBuilder {
       webSocketApi: settings.webSocketApi,
       repositoryRoot: this.repositoryRoot,
       models: {
-        dev: dev.stale ? dev : withClassMembers(dev, built.catalog),
-        prod: prod.stale ? prod : withClassMembers(prod, built.catalog),
+        dev: dev.stale ? dev : withClassMembers(dev, built.catalog, built.index.cdkLinks.edges),
+        prod: prod.stale ? prod : withClassMembers(prod, built.catalog, built.index.cdkLinks.edges),
       },
       source: built.index,
       files,

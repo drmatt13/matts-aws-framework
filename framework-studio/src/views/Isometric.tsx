@@ -1,4 +1,5 @@
-import { Crosshair, Maximize2, Minus, Pause, Play, Plus } from "lucide-react";
+import { Crosshair, Maximize2, Minus, Pause, Play, Plus, RefreshCw } from "lucide-react";
+import { api } from "../api";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CATEGORY_LABEL, RELATION_LABEL, titleOf, type EdgeCategory } from "../lookup";
 import { buildScene, type Scene, type SceneNode, type Tile } from "../scene/build";
@@ -17,7 +18,9 @@ import {
   type Viewport,
 } from "../scene/camera";
 import { arcControl, arcPoints, distanceToPolyline, insidePolygon, pickEntity, pickTile, type CardHit } from "../scene/picking";
-import { CATEGORY_COLORS, LANE_COLORS, SceneRenderer } from "../scene/render";
+import { CATEGORY_COLORS, SceneRenderer } from "../scene/render";
+import { catalogAvailability, deploymentSummary } from "../deployment";
+import { DeploymentLegend } from "./DeploymentBadge";
 import { useStudio } from "../studio";
 
 /**
@@ -52,12 +55,21 @@ const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("
 
 function laneText(node: SceneNode): string | undefined {
   if (!node.lanes) return undefined;
-  const lane = (on: boolean, name: string) => `${name} ${on ? "yes" : "no"}`;
-  return [lane(node.lanes.local, "Local"), lane(node.lanes.dev, "Dev AWS"), lane(node.lanes.prod, "Prod AWS")].join(", ");
+  return deploymentSummary(node.lanes);
 }
 
 export function Isometric() {
-  const { model, index, snapshot, selected, select } = useStudio();
+  const { model, index, snapshot, selected, select, toast, live: studioLive } = useStudio();
+  const [scanning, setScanning] = useState(false);
+  const refreshCdkLinks = async () => {
+    setScanning(true);
+    try {
+      const result = await api.refreshCdkLinks();
+      toast(`Found ${result.edges} CDK resource links in ${result.files} stack files.`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : String(error), "refuse");
+    } finally { setScanning(false); }
+  };
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SceneRenderer | undefined>(undefined);
@@ -70,7 +82,8 @@ export function Isometric() {
     () => Object.fromEntries(Object.entries(snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])),
     [snapshot.source.catalog],
   );
-  const scene = useMemo(() => buildScene(model, { webSocketApi: snapshot.webSocketApi, conditions }), [model, snapshot.webSocketApi, conditions]);
+  const resourceAvailability = useMemo(() => catalogAvailability(snapshot.models), [snapshot.models]);
+  const scene = useMemo(() => buildScene(model, { webSocketApi: snapshot.webSocketApi, conditions, resourceAvailability }), [model, snapshot.webSocketApi, conditions, resourceAvailability]);
   const nodes = useMemo(() => new Map(scene.nodes.map((node) => [node.id, node])), [scene]);
   const arcs = useMemo(
     () =>
@@ -178,7 +191,7 @@ export function Isometric() {
   useEffect(() => {
     const canvas = canvasRef.current!;
     const container = containerRef.current!;
-    rendererRef.current = new SceneRenderer(canvas);
+    rendererRef.current = new SceneRenderer(canvas, schedule);
     const resize = () => {
       const rect = container.getBoundingClientRect();
       const previous = live.current.viewport;
@@ -217,6 +230,7 @@ export function Isometric() {
       observer.disconnect();
       if (live.current.frame !== undefined) cancelAnimationFrame(live.current.frame);
       live.current.frame = undefined;
+      rendererRef.current?.dispose();
       rendererRef.current = undefined;
     };
   }, [schedule]);
@@ -474,6 +488,9 @@ export function Isometric() {
         </div>
         <span className="spacer" />
         <div className="landscape-tools">
+          <button className="refresh-cdk" onClick={() => void refreshCdkLinks()} disabled={scanning || studioLive.evaluating} title="Re-read linked CDK stacks and rebuild the studio link index. CDK source changes also refresh automatically.">
+            <RefreshCw size={14} aria-hidden />{scanning ? "Refreshing…" : "Refresh CDK links"}
+          </button>
           <button onClick={() => zoomBy(0.8)} aria-label="Zoom out" title="Zoom out (−)">
             <Minus size={16} aria-hidden />
           </button>
@@ -494,19 +511,12 @@ export function Isometric() {
       <div className="landscape-bar landscape-bottom">
         <div className="landscape-legend">
           <span>
-            <i className="swatch solid" /> Built by this {model.mode === "dev" ? "development" : "production"} deployment
+            <i className="swatch solid" /> Enabled in {model.mode === "dev" ? "Development" : "Production"}
           </span>
           <span>
-            <i className="swatch hologram" /> Runs locally under Compose
+            <i className="swatch ghost" /> Outside this environment
           </span>
-          <span>
-            <i className="swatch ghost" /> Not here
-          </span>
-          <span className="lanes-key">
-            <i className="lane" style={{ background: LANE_COLORS.local }} /> Local
-            <i className="lane" style={{ background: LANE_COLORS.dev }} /> Dev AWS
-            <i className="lane" style={{ background: LANE_COLORS.prod }} /> Prod AWS
-          </span>
+          <DeploymentLegend />
         </div>
         <span className="spacer" />
         <span className="landscape-stats">
@@ -545,7 +555,7 @@ function HoverCard(props: {
   } else if (current.kind === "edge") {
     const edge = props.scene.edges.find((candidate) => candidate.edge.id === current.id)!.edge;
     title = `${RELATION_LABEL[edge.relation]}: ${edge.label}`;
-    lines = [`${titleOf(index, edge.from)} to ${titleOf(index, edge.to)}`, edge.detail, edge.provenance === "derived" ? "Derived by the framework." : undefined];
+    lines = [`${titleOf(index, edge.from)} to ${titleOf(index, edge.to)}`, edge.detail, edge.provenance === "derived" ? "Derived by the framework." : edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
   } else if (current.kind === "prop") {
     const prop = props.scene.props.find((candidate) => candidate.id === current.id)!;
     title = prop.label;

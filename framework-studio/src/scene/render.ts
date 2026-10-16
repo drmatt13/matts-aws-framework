@@ -1,4 +1,7 @@
 import type { EdgeCategory } from "../lookup";
+import { ICONS, iconUrl, type IconKey } from "../icons";
+import { backgroundGrid } from "./grid";
+import { DEPLOYMENT_BADGES, type DeploymentBadgeKind } from "../deployment";
 import { atlasPixels, sideColor, spriteOrigin, SPRITE } from "./atlas";
 import type { Decoration, Island, Prop, Scene, SceneEdge, SceneNode, Tile } from "./build";
 import { worldToScreen, type Camera, type Point, type Viewport } from "./camera";
@@ -39,7 +42,7 @@ export interface FrameResult {
   readonly ms: number;
 }
 
-export const LANE_COLORS = { local: "#e0a43a", dev: "#2fb3bc", prod: "#8789ff" } as const;
+const BADGE_WIDTH: Readonly<Record<DeploymentBadgeKind, number>> = { dev: 43, prod: 48, off: 43 };
 
 export const CATEGORY_COLORS: Readonly<Record<EdgeCategory, string>> = {
   routes: "#ddd3bd",
@@ -47,6 +50,7 @@ export const CATEGORY_COLORS: Readonly<Record<EdgeCategory, string>> = {
   permissions: "#e59a86",
   invocations: "#c3b2ff",
   integrations: "#94d6b0",
+  cdk: "#67d7df",
 };
 
 type Rgb = readonly [number, number, number];
@@ -165,15 +169,32 @@ export class SceneRenderer {
   private readonly context: CanvasRenderingContext2D;
   private prepared: Prepared | undefined;
   private readonly widths = new Map<string, number>();
+  private readonly icons = new Map<IconKey, HTMLImageElement>();
+  private readonly badgePaths = new Map<DeploymentBadgeKind, readonly Path2D[]>();
+  private disposed = false;
   /** One screen pixel, in world units, for this frame. */
   private pixel = 1;
   /** How many tiles and buildings the last frame drew, after culling. */
   drawnItems = 0;
 
-  constructor(private readonly canvas: HTMLCanvasElement) {
+  constructor(private readonly canvas: HTMLCanvasElement, invalidate: () => void = () => {}) {
     const context = canvas.getContext("2d", { alpha: false });
     if (!context) throw new Error("This browser offers no 2D canvas.");
     this.context = context;
+    for (const kind of Object.keys(DEPLOYMENT_BADGES) as DeploymentBadgeKind[]) {
+      this.badgePaths.set(kind, DEPLOYMENT_BADGES[kind].paths.map((d) => new Path2D(d)));
+    }
+    for (const key of Object.keys(ICONS) as IconKey[]) {
+      const icon = new Image();
+      icon.onload = () => { if (!this.disposed) invalidate(); };
+      icon.src = iconUrl(key);
+      this.icons.set(key, icon);
+    }
+  }
+
+  dispose(): void {
+    this.disposed = true;
+    for (const icon of this.icons.values()) icon.onload = null;
   }
 
   /** Forget measured text, after web fonts arrive. */
@@ -308,6 +329,20 @@ export class SceneRenderer {
         dpr * (viewport.height / 2 - camera.y * zoom),
       );
     world();
+
+    // Hairlines follow the same lattice as the terrain, behind every island.
+    const grid = backgroundGrid(camera, viewport);
+    context.lineWidth = 0.65 / zoom;
+    for (const major of [false, true]) {
+      context.beginPath();
+      for (const line of grid) {
+        if (line.major !== major) continue;
+        context.moveTo(line.a.x, line.a.y);
+        context.lineTo(line.b.x, line.b.y);
+      }
+      context.strokeStyle = major ? "rgba(139, 170, 205, 0.14)" : "rgba(139, 170, 205, 0.065)";
+      context.stroke();
+    }
 
     const spotlight = new Set<string>();
     if (state.selected) {
@@ -460,14 +495,28 @@ export class SceneRenderer {
       case "present":
         this.drawFaces(node.geometry.faces, node.shape, node.glyph, factor);
         break;
-      case "local":
-        // A hologram: Compose runs it, the selected deployment does not.
-        this.drawFaces(node.geometry.faces, node.shape, node.glyph, 0.42 * factor, `rgba(224, 164, 58, ${0.85 * factor})`);
-        break;
       default:
         this.drawFaces(node.geometry.faces, node.shape, node.glyph, 0, `rgba(200, 210, 225, ${0.5 * factor})`, true);
         break;
     }
+    const ghost = node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
+    context.globalAlpha = factor * (ghost ? 0.32 : 1);
+    context.fillStyle = "#111b29";
+    context.strokeStyle = selected ? "#e6f1ff" : "#63758d";
+    context.lineWidth = (selected ? 1.5 : 0.8) * pixel;
+    context.setLineDash(ghost ? [3 * pixel, 3 * pixel] : []);
+    context.beginPath();
+    context.roundRect(tile.x - 24, tile.y - 54, 48, 48, 5);
+    context.fill();
+    context.stroke();
+    context.setLineDash([]);
+    const icon = this.icons.get(node.icon);
+    if (icon?.complete && icon.naturalWidth > 0) {
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(icon, tile.x - 20, tile.y - 50, 40, 40);
+    }
+    context.globalAlpha = 1;
     if (selected || state.hovered === node.id) {
       trace(context, node.geometry.hull);
       context.strokeStyle = selected ? "rgba(255, 248, 230, 0.95)" : "rgba(255, 255, 255, 0.6)";
@@ -493,7 +542,7 @@ export class SceneRenderer {
       const color = hex(CATEGORY_COLORS[edge.category]);
       context.strokeStyle = rgba(color, state.selected ? 0.06 : edge.edge.provenance === "derived" ? 0.14 : 0.24);
       context.lineWidth = 1.2 * pixel;
-      context.setLineDash(edge.edge.provenance === "derived" ? [4 * pixel, 4 * pixel] : []);
+      context.setLineDash(edge.edge.provenance !== "declared" ? [4 * pixel, 4 * pixel] : []);
       this.polyline(arc.points);
       context.stroke();
     }
@@ -505,7 +554,7 @@ export class SceneRenderer {
       context.shadowBlur = 10;
       context.strokeStyle = rgba(color, 0.95);
       context.lineWidth = 2.2 * pixel;
-      context.setLineDash(edge.edge.provenance === "derived" ? [5 * pixel, 4 * pixel] : []);
+      context.setLineDash(edge.edge.provenance !== "declared" ? [5 * pixel, 4 * pixel] : []);
       this.polyline(arc.points);
       context.stroke();
       context.setLineDash([]);
@@ -611,8 +660,8 @@ export class SceneRenderer {
       const anchor = worldToScreen(camera, viewport, { x: tile.x, y: tile.y - CARD_LIFT });
       const text = this.fit(node.label, font, CARD_MAX_TEXT * scale);
       const textWidth = this.measure(text, font);
-      const dots = node.lanes ? 30 * scale : node.auth ? 14 * scale : 0;
-      const width = textWidth + 14 * scale + dots;
+      const badge = node.badge ? (BADGE_WIDTH[node.badge] + 6) * scale : 0;
+      const width = textWidth + 14 * scale + badge + (node.auth ? 14 * scale : 0);
       const height = CARD_HEIGHT * scale;
       const x = anchor.x - width / 2;
       const y = anchor.y - height;
@@ -654,25 +703,10 @@ export class SceneRenderer {
       context.textBaseline = "middle";
       context.fillStyle = selected ? "#141922" : ghost ? "#9aa3ae" : "#e7eaef";
       context.fillText(text, x + padding, y + height / 2 + 0.5);
-      if (node.lanes) {
-        const lanes = [
-          [node.lanes.local, LANE_COLORS.local],
-          [node.lanes.dev, LANE_COLORS.dev],
-          [node.lanes.prod, LANE_COLORS.prod],
-        ] as const;
-        lanes.forEach(([on, color], index) => {
-          const cx = x + padding + textWidth + 8 * scale + index * 8.5 * scale;
-          context.beginPath();
-          context.arc(cx, y + height / 2, 3 * scale, 0, Math.PI * 2);
-          context.lineWidth = 1.5;
-          context.strokeStyle = color;
-          context.fillStyle = color;
-          if (on) context.fill();
-          else context.stroke();
-        });
-      } else if (node.auth) {
+      if (node.badge) this.drawDeploymentBadge(node.badge, x + padding + textWidth + 6 * scale, y + height / 2, scale);
+      if (node.auth) {
         // A padlock: the gateway admits signed-in users only.
-        const lx = x + padding + textWidth + 5 * scale;
+        const lx = x + padding + textWidth + 5 * scale + (node.badge ? (BADGE_WIDTH[node.badge] + 6) * scale : 0);
         const ly = y + height / 2;
         context.strokeStyle = selected ? "#141922" : "#cfd5dd";
         context.fillStyle = context.strokeStyle;
@@ -686,6 +720,34 @@ export class SceneRenderer {
       cards.push({ id: node.id, x, y, width, height });
     }
     return cards;
+  }
+
+  private drawDeploymentBadge(kind: DeploymentBadgeKind, x: number, y: number, scale: number): void {
+    const context = this.context;
+    const badge = DEPLOYMENT_BADGES[kind];
+    context.save();
+    context.translate(x, y);
+    context.scale(scale, scale);
+    context.fillStyle = badge.background;
+    context.strokeStyle = badge.color;
+    context.lineWidth = 0.6;
+    context.beginPath();
+    context.roundRect(0, -7.5, BADGE_WIDTH[kind], 15, 3);
+    context.fill();
+    context.stroke();
+    context.save();
+    context.translate(4, -5.5);
+    context.scale(11 / 24, 11 / 24);
+    context.lineWidth = 1.8;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    for (const icon of this.badgePaths.get(kind) ?? []) context.stroke(icon);
+    context.restore();
+    context.font = "600 9px Barlow, system-ui, sans-serif";
+    context.fillStyle = badge.color;
+    context.textBaseline = "middle";
+    context.fillText(badge.label.toUpperCase(), 19, 0.5);
+    context.restore();
   }
 
   private drawTitles(scene: Scene, state: RenderState): void {

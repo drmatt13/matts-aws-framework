@@ -3,7 +3,7 @@
 A local view of `framework.config.ts` that you can also edit, for a few fields. It shows:
 
 - what each declaration is;
-- where it runs: locally, in a development deployment, in a production deployment;
+- where it runs: Development and Production, with execution location shown inside each;
 - what it reads, grants and invokes;
 - where it was written.
 
@@ -20,7 +20,7 @@ The design, history and roadmap are in [docs/framework-studio](../docs/framework
 
 ## What it shows, and where that comes from
 
-Every fact is the framework's own answer, never a second model:
+Framework behavior comes from the framework's own answers. CDK links are separately marked source inferences:
 
 - **Targets, routes and relationships.** These come from `getFrameworkTargets` and
   normalization. Env references, grants, `database: true`, invocations, workflow steps and
@@ -33,6 +33,7 @@ Every fact is the framework's own answer, never a second model:
   `packages/framework/scripts/config-source.ts`, the same reader `framework:check` uses.
 - **Stack members.** These are read from each `resource.stack<T>()` class.
 - **Link sites.** These are `linkResources` calls found in `cdk-app/lib`.
+- **CDK resource links.** The studio parses linked stack constructors for direct public-member references, SNS SQS subscriptions and EventBridge rules. These edges have their own filter, source locations and inference label. No CDK code is executed by this scan.
 
 Each graph is evaluated in its own child process, with a synthetic inputs file holding
 only `PROD_DEPLOYMENT`. The studio reads exactly two keys from `cdk-app/.env`:
@@ -41,7 +42,13 @@ only `PROD_DEPLOYMENT`. The studio reads exactly two keys from `cdk-app/.env`:
 ## The isometric view
 
 `/isometric` draws the same model as a landscape of floating islands, on a 2D canvas.
-It is a view, not a second model:
+
+The backdrop is a thin isometric grid anchored to the terrain's world coordinates.
+Entities use locally bundled official AWS SVG service icons on small plinths, with Lucide
+SVGs for generic framework concepts. Board, Lanes and Inspector share the icon mapping.
+See [icon sources](public/icons/README.md).
+
+The view follows the model:
 
 - Every building is an entity the model names, under the model's own id.
 - Selecting a building selects that entity everywhere, and opens the same inspector, with
@@ -63,12 +70,20 @@ stands:
 
 | Drawing | Meaning |
 | --- | --- |
-| Solid | That deployment builds it |
-| Amber hologram | Only Compose runs it |
-| Dashed ghost | It is absent from that graph, or runs nowhere |
+| Solid | Enabled in the selected environment (Development includes local execution) |
+| Dashed ghost | Outside that environment, or disabled |
 
-The VPC is drawn as a blueprint wherever no deployment builds it. Lane dots on each card
-always show all three lanes.
+The VPC is drawn as a blueprint wherever no deployment builds it. Deployment labels are
+quiet by default: no badge means both environments. A teal flask **Dev** badge means
+Development only; a violet diamond **Prod** badge means Production only. **Off** marks
+disabled workloads. Board and Isometric share these badges, including catalog resource absence
+across the two mode models. Lanes uses exactly two tracks, and the Inspector uses two
+environment cards. Local and AWS are execution locations within Development, never a
+third environment. The framework's underlying deployment settings are unchanged.
+The Inspector's deploy selector labels those settings Dev + Prod, Dev only, Prod only
+and Off; edit intents retain the framework's source tokens.
+WebSocket options also account for whether its AWS API is enabled, so the labels do not
+claim a production deployment where no API exists, or hide its AWS-backed Development execution.
 
 | Input | Action |
 | --- | --- |
@@ -77,10 +92,18 @@ always show all three lanes.
 | Double-click | Fly to a building |
 | Arrow keys, `+` / `-`, `0`, `F`, Escape | Pan, zoom, fit, focus the selection, clear it |
 
-Edges are the model's typed relationships, in the Board's five categories, and can be
+Edges are the model's typed relationships, in the Board's six categories, and can be
 filtered. Hovering an edge, a building, a gateway or the ground explains it. Packets move
 only along the selection's edges, and the Pause button or reduced-motion stops them. A
 still picture draws no frames.
+
+**Refresh CDK links** re-reads the source and updates the ignored internal index at
+`.cache/framework-studio/cdk-links.json`. Startup and watched CDK changes also rebuild it.
+For example, `referenceExamples` shows bucket → topic (EventBridge), topic → queue (SNS),
+and queue → dead-letter queue. The index contains only source hashes, entity ids and
+relationship evidence. It is disposable; framework configuration and CDK never read it.
+The scan handles direct constructor statements and simple `const` aliases. Helpers,
+branches, loops, dynamic member names and runtime behavior remain unresolved.
 
 `window.__studioLandscape` exposes read-only camera, picking and frame statistics, for
 tests and the browser console.
@@ -112,7 +135,8 @@ separately, as Framework describes.
 - It answers only to `127.0.0.1:<port>` or `localhost:<port>` as the Host.
 - The API needs a per-process token that is served in the page.
 - Changes must come from the studio's own origin.
-- It writes only `framework.config.ts` and `framework-config/**/*.ts`.
+- Application edits write only `framework.config.ts` and `framework-config/**/*.ts`.
+  Disposable evaluation inputs and the CDK link index live under `.cache/framework-studio/`.
 - It runs two commands, `framework:check` and `framework:generate`, with fixed arguments
   and no shell. The generator runs only after you confirm it.
 

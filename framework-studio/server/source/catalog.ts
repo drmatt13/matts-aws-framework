@@ -186,8 +186,20 @@ export function readLinkSites(repositoryRoot: string): Map<string, SourceLocatio
     const text = readFileSync(file, "utf8");
     if (![...LINK_CALLS].some((call) => text.includes(call))) continue;
     const sourceFile = parse(file, text);
+    const callNames = new Set<string>();
+    for (const statement of sourceFile.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      const resolved = moduleFile(file, statement.moduleSpecifier.text);
+      const bindings = statement.importClause?.namedBindings;
+      if (!resolved || !bindings || !ts.isNamedImports(bindings)) continue;
+      for (const element of bindings.elements) {
+        const original = element.propertyName?.text ?? element.name.text;
+        const expected = original === "bindPostgresDatabase" ? "framework-database.ts" : "framework-resources.ts";
+        if (LINK_CALLS.has(original) && path.resolve(resolved) === path.resolve(repositoryRoot, "cdk-app", "lib", "framework", expected)) callNames.add(element.name.text);
+      }
+    }
     const visit = (node: ts.Node): void => {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && LINK_CALLS.has(node.expression.text)) {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && callNames.has(node.expression.text)) {
         const reference = node.arguments[1]?.getText(sourceFile);
         const match = reference ? /^resources\.([A-Za-z0-9_.]+)$/.exec(reference) : null;
         if (match) {

@@ -292,51 +292,33 @@ a {
 }
 
 /* --------------------------------------------------------------------------
-   Lane dots: the one recurring device. Filled means it runs there.
+   Deployment exceptions. Unmarked entities run in both environments.
    -------------------------------------------------------------------------- */
 
-.dots {
+.deployment-badge {
   display: inline-flex;
-  gap: 5px;
+  flex-shrink: 0;
+  gap: 4px;
   align-items: center;
+  padding: 2px 5px;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
-.dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  border: 2px solid currentColor;
-  display: inline-block;
-}
-
-.dot.on {
-  background: currentColor;
-}
-
-.dot.local {
-  color: var(--local);
-}
-
-.dot.dev {
-  color: var(--dev);
-}
-
-.dot.prod {
-  color: var(--prod);
-}
-
-.legend {
-  display: flex;
-  gap: 16px;
+.deployment-legend {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
   align-items: center;
   color: var(--graphite);
   font-size: var(--step--1);
-}
-
-.legend span {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
 }
 
 /* --------------------------------------------------------------------------
@@ -475,6 +457,15 @@ a {
   font-size: 0.75rem;
 }
 
+.node.member .type,
+.node.stack .type {
+  max-width: 40%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .node.unread .label {
   color: var(--graphite);
 }
@@ -525,7 +516,7 @@ a {
 
 .lanes-head {
   display: grid;
-  grid-template-columns: 1fr repeat(3, 72px) minmax(260px, 1.2fr);
+  grid-template-columns: minmax(180px, 1fr) repeat(2, 116px) minmax(240px, 1.2fr);
   align-items: end;
   gap: 0 8px;
   padding-bottom: 8px;
@@ -540,10 +531,6 @@ a {
   font-family: var(--condensed);
   font-weight: 600;
   text-align: center;
-}
-
-.lane-name.local {
-  color: var(--local);
 }
 
 .lane-name.dev {
@@ -563,10 +550,10 @@ a {
 
 .station {
   display: grid;
-  grid-template-columns: 1fr repeat(3, 72px) minmax(260px, 1.2fr);
+  grid-template-columns: minmax(180px, 1fr) repeat(2, 116px) minmax(240px, 1.2fr);
   gap: 0 8px;
   align-items: center;
-  min-height: 46px;
+  min-height: 60px;
   cursor: pointer;
   border-radius: var(--radius);
 }
@@ -599,7 +586,8 @@ a {
 
 .track {
   position: relative;
-  height: 46px;
+  height: 60px;
+  padding-bottom: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -617,8 +605,14 @@ a {
   opacity: 0.85;
 }
 
-.track.local {
-  color: var(--local);
+.track-detail {
+  position: absolute;
+  bottom: 2px;
+  padding: 1px 4px;
+  background: var(--paper);
+  color: var(--graphite);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
 .track.dev {
@@ -660,6 +654,25 @@ a {
    Isometric landscape: always night, whatever the page's theme, so the lit
    miniature reads the same in both. The chrome over it is dark glass.
    -------------------------------------------------------------------------- */
+
+.entity-icon {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  object-fit: contain;
+  vertical-align: middle;
+  border-radius: 3px;
+}
+
+.generic-icon {
+  background: #243244;
+  padding: 3px;
+}
+
+.node.member .entity-icon { width: 20px; height: 20px; flex-basis: 20px; }
+.station .who { position: relative; padding-left: 36px; }
+.station .who .entity-icon { position: absolute; left: 0; top: 4px; }
+.inspector h2 .entity-icon { float: left; margin: 3px 8px 0 0; }
 
 .landscape {
   position: relative;
@@ -775,6 +788,18 @@ a {
   border-left: 0;
 }
 
+.landscape-tools .refresh-cdk {
+  width: auto;
+  padding: 0 10px;
+  gap: 6px;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.landscape-top { align-items: flex-start; }
+.landscape-top .landscape-chips { max-width: 66%; }
+.landscape-tools { flex-shrink: 0; }
+
 .landscape-tools button:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.08);
 }
@@ -815,26 +840,11 @@ a {
   background: #d8d3c6;
 }
 
-.swatch.hologram {
-  background: rgba(216, 211, 198, 0.35);
-  box-shadow: inset 0 0 0 1px #e0a43a;
-}
-
 .swatch.ghost {
   border: 1px dashed rgba(200, 210, 225, 0.7);
 }
 
-.landscape-legend .lane {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-  margin-left: 6px;
-}
-
-.landscape-legend .lanes-key {
-  gap: 4px;
-}
+.landscape-legend .deployment-legend { color: #b9c1cc; gap: 8px; }
 
 .landscape-stats {
   font-size: var(--step--1);
@@ -947,24 +957,25 @@ a {
 
 .lane-lines {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 8px;
 }
 
 .lane-line {
-  border-top: 4px solid currentColor;
-  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  border: 1px solid var(--rule);
+  border-top: 2px solid currentColor;
+  border-radius: 6px;
+  padding: 10px;
   font-size: var(--step--1);
 }
 
 .lane-line.off {
   border-top-style: dotted;
   color: var(--faint);
-}
-
-.lane-line.local {
-  color: var(--local);
 }
 
 .lane-line.dev {
@@ -978,6 +989,10 @@ a {
 .lane-line span {
   color: var(--ink);
 }
+
+.lane-line .environment-name { display: flex; gap: 6px; align-items: center; color: inherit; font-weight: 500; }
+.lane-line strong { color: var(--ink); font-size: 13px; font-weight: 500; }
+.lane-line.off strong { color: var(--faint); }
 
 .lane-line.off span {
   color: var(--faint);
@@ -1344,7 +1359,7 @@ dialog.preview::backdrop {
 
   .lanes-head,
   .station {
-    grid-template-columns: 1fr repeat(3, 44px);
+    grid-template-columns: minmax(120px, 1fr) repeat(2, 96px);
   }
 
   .lanes-head > :last-child,

@@ -109,7 +109,8 @@ function surface(palette: Palette, u: number, v: number, px: number, py: number,
   // A bevel: the back edges catch the light, the front edges fall into shadow.
   if (u < 0.06 || v < 0.06) color = scale(color, 1.16);
   else if (u > 0.94 || v > 0.94) color = scale(color, 0.84);
-  return color;
+  // Quiet material variation keeps service icons and relationship lines in front.
+  return mix(palette.top, color, 0.24);
 }
 
 /** Side faces: the left lit, the right in shadow, banded like cut stone. */

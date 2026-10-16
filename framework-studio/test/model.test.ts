@@ -80,6 +80,26 @@ test("a stack's members come from its class, including ones nothing reads yet", 
   assert.ok(snapshot.source.links.referenceExamples?.[0]?.file.endsWith("reference-example-stack.ts"));
 });
 
+test("referenceExamples exposes source-backed CDK flow in both graphs", () => {
+  for (const mode of ["dev", "prod"] as const) {
+    const edges = snapshot.models[mode].edges.filter((edge) => edge.relation === "cdk");
+    for (const [from, to, label] of [
+      ["documentsBucket", "notificationsTopic", "EventBridge rule"],
+      ["notificationsTopic", "processingQueue", "SNS subscription"],
+      ["processingQueue", "deadLetterQueue", "Dead-letter queue"],
+    ]) {
+      const edge = edges.find((item) => item.from === `resource:referenceExamples.${from}` && item.to === `resource:referenceExamples.${to}`);
+      assert.equal(edge?.label, label);
+      assert.equal(edge?.provenance, "source");
+      assert.ok(edge?.source?.file.endsWith("reference-example-stack.ts"));
+    }
+  }
+  const cached = JSON.parse(readFileSync(path.join(repositoryRoot, ".cache/framework-studio/cdk-links.json"), "utf8"));
+  assert.equal(cached.version, 1);
+  assert.ok(cached.edges.length >= 3);
+  assert.ok(Object.keys(cached.files).includes("cdk-app/lib/app/reference-example-stack.ts"));
+});
+
 test("every target and route is located, and its key is what the source writes there", () => {
   const model = snapshot.models.dev;
   assert.deepEqual(snapshot.source.problems, []);

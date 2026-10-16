@@ -52,7 +52,7 @@ export const ROLE_GROUPS: readonly { readonly title: string; readonly roles: rea
   { title: "Workflows", roles: ["workflow"] },
 ];
 
-export type EdgeCategory = "routes" | "inputs" | "permissions" | "invocations" | "integrations";
+export type EdgeCategory = "routes" | "inputs" | "permissions" | "invocations" | "integrations" | "cdk";
 
 export const CATEGORY_LABEL: Readonly<Record<EdgeCategory, string>> = {
   routes: "Routes",
@@ -60,6 +60,7 @@ export const CATEGORY_LABEL: Readonly<Record<EdgeCategory, string>> = {
   permissions: "Grants and database",
   invocations: "Invocations",
   integrations: "Workflow integrations",
+  cdk: "CDK resource links",
 };
 
 export const RELATION_CATEGORY: Readonly<Record<Relation, EdgeCategory>> = {
@@ -76,6 +77,7 @@ export const RELATION_CATEGORY: Readonly<Record<Relation, EdgeCategory>> = {
   usesTool: "invocations",
   step: "invocations",
   integration: "integrations",
+  cdk: "cdk",
 };
 
 export const RELATION_LABEL: Readonly<Record<Relation, string>> = {
@@ -92,6 +94,7 @@ export const RELATION_LABEL: Readonly<Record<Relation, string>> = {
   step: "Workflow step",
   integration: "Calls service",
   completesCallback: "Completes callbacks on",
+  cdk: "CDK link to",
 };
 
 /** The name a person reads for any entity id. */

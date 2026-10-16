@@ -32,6 +32,8 @@ The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) a
 | `camera.ts` | yes | World↔screen transforms, pan, pointer-anchored zoom, wheel normalization, fit, tween |
 | `picking.ts` | yes | Point-in-polygon, entity picking, height-aware tile picking, arc geometry, card placement |
 | `render.ts` | no (canvas) | `SceneRenderer`: caches per scene, draws per frame |
+| `grid.ts` | yes | Viewport-bounded, world-anchored ground grid with zoom-dependent spacing |
+| `../icons.ts` | yes | Shared mapping from model entities to local AWS/Lucide SVG assets |
 | `views/Isometric.tsx` | no (React) | Mounting, input, the render loop, toolbar, legend, hover card, accessible list, debug hook |
 
 Everything marked pure runs under Node and is unit-tested in
@@ -104,9 +106,8 @@ means exposure: public is high ground, isolated is a sunken yard.
 
 | Presence | Meaning | Drawn as |
 | --- | --- | --- |
-| `built` | The selected deployment builds it (`lanes.dev` or `lanes.prod`) | Solid |
-| `local` | Not built there, but runs under Compose (`lanes.local`) | Translucent, amber outline (hologram) |
-| `other` | Only the other deployment builds it, and it does not run locally | Dashed outline (ghost) |
+| `built` | Enabled in the selected environment: Development is `lanes.local || lanes.dev`; Production is `lanes.prod` | Solid |
+| `other` | Enabled only in the other environment | Dashed outline (ghost) |
 | `nowhere` | Enabled in no lane | Ghost |
 | `absent` | A catalog entry this graph declares `undefined` | Ghost |
 | `present` | A catalog entry this graph holds | Solid |
@@ -116,7 +117,12 @@ means exposure: public is high ground, isolated is a sunken yard.
   - a stack absent from this graph is drawn at 20 % opacity;
   - the VPC is a translucent blueprint unless the graph is production and
     `network.builtInProd` is true.
-- Lane dots on every target's card always show all three lanes.
+- Labels have no badge for entities available in both environments. A teal flask Dev
+  badge marks Development only, a violet diamond Prod badge Production only, and Off
+  marks disabled workloads. Execution location never gets a separate deployment badge.
+  Badge paths, colors and semantics are shared by canvas and DOM views in `deployment.ts`.
+  Catalog badges use absence in both snapshot models; they are never guessed from types.
+  The drawing measures badge width only when one exists. Auth locks remain independent.
 
 ## Terrain ([atlas.ts](../../framework-studio/src/scene/atlas.ts))
 
@@ -142,7 +148,8 @@ means exposure: public is high ground, isolated is a sunken yard.
   | sand | inputs and secrets |
 
   Each has three variants, chosen by a hash of the cell, and eight elevation levels with
-  brightness baked in, so higher ground is lighter.
+  brightness baked in, so higher ground is lighter. Surface grain, seams and speckles
+  blend back toward the base material at 24% contrast so icons and arcs remain prominent.
 - **The atlas** is 24 × 11 cells of 34 × 34 pixels (816 × 374). Each sprite sits inside
   its cell with its edge pixels extruded one pixel outward, so sampling the inner 32 × 32
   never bleeds a neighbour in. It is generated once per page load and drawn with
@@ -152,6 +159,18 @@ means exposure: public is high ground, isolated is a sunken yard.
   vertical gradient. A terrace step is solid.
 
 ## Buildings ([shapes.ts](../../framework-studio/src/scene/shapes.ts))
+
+Entities now use `buildIconShape`: a low isometric plinth and an upright 48-unit plaque
+carrying a 40-unit SVG. The plaque is part of the picking hull and arcs anchor at its
+top. `icons.ts` maps target kinds, route surfaces and catalog member types to official AWS
+Architecture Icons (July 2026) or generic Lucide outlines. Assets and attribution live
+in `framework-studio/public/icons/`; all are served locally. SVGs are loaded once per
+renderer; completion schedules a redraw even when motion is paused. Disposal clears
+their callbacks. Presence controls active versus ghost opacity and dashed outlines.
+Local execution is active in Development; local-only workloads are ghosted in Production.
+
+The procedural structures below remain available for network furniture, scenery and
+shape primitives; model entities no longer use the old building glyphs.
 
 - **Primitives.** Cuboids, cylinders, pyramids, an octahedron crystal, rings, a vertical
   hoop, masts, and glyphs painted flat on a roof. They are scaled by `TALL = 1.35` and
@@ -182,7 +201,11 @@ means exposure: public is high ground, isolated is a sunken yard.
 
 `render` runs per frame:
 
-1. **The void.** A radial gradient, in screen space.
+1. **The void and grid.** A radial gradient in screen space, then hairlines on the ground
+   plane in world space. Grid slopes match the terrain (±0.5). Every fifth line is
+   slightly stronger; zooming out coarsens spacing to avoid moiré. Only lines crossing
+   the viewport are generated. Pan and pointer-anchored zoom keep the lattice attached
+   to the world.
 2. **Underglow.** A soft light under each island: a circle under a 1 : 0.5 squash, so the
    fade reaches its edge.
 3. **Terrain and buildings**, in the cached order. Items outside the viewport (plus a
@@ -191,7 +214,9 @@ means exposure: public is high ground, isolated is a sunken yard.
    dimmed.
 4. **Arcs.** Quadratic curves in the air, control point
    `(midpoint x, min(a.y, b.y) − 24 − 0.16 · length)`, coloured by the Board's five
-   categories and filterable with the same chips. Derived edges are dashed.
+   categories and filterable with the same chips. Derived edges and source-inferred
+   CDK links are dashed. The sixth category, CDK resource links, is cyan; its hover card
+   and Inspector expose source evidence and distinguish inference from evaluated facts.
    - **Lit arcs.** The selection's and the hovered arc's are bright, with an arrowhead.
    - **Packets.** With motion on, the selection's arcs carry one to three packets at
      60 world units a second.

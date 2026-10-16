@@ -9,6 +9,10 @@ import { fitBounds, pan, screenToWorld, wheelFactor, worldToScreen, zoomAt, MAX_
 import { project, unprojectAt } from "../src/scene/iso";
 import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickTile, tilePolygons } from "../src/scene/picking";
 import { buildShape, type ShapeKind } from "../src/scene/shapes";
+import { backgroundGrid } from "../src/scene/grid";
+import { ICONS } from "../src/icons";
+import { catalogAvailability } from "../src/deployment";
+import { existsSync } from "node:fs";
 
 /**
  * The landscape is a view, and these hold it to that: every entity of the real
@@ -26,8 +30,9 @@ let prod: Scene;
 before(async () => {
   builder = new SnapshotBuilder(repositoryRoot);
   snapshot = (await builder.refresh()).snapshot;
-  dev = buildScene(snapshot.models.dev, { webSocketApi: snapshot.webSocketApi });
-  prod = buildScene(snapshot.models.prod, { webSocketApi: snapshot.webSocketApi });
+  const resourceAvailability = catalogAvailability(snapshot.models);
+  dev = buildScene(snapshot.models.dev, { webSocketApi: snapshot.webSocketApi, resourceAvailability });
+  prod = buildScene(snapshot.models.prod, { webSocketApi: snapshot.webSocketApi, resourceAvailability });
 });
 after(() => builder.dispose());
 
@@ -49,6 +54,29 @@ test("every edge is the model's own, with its relation", () => {
     dev.edges.map((edge) => edge.edge.id).sort(),
     snapshot.models.dev.edges.filter((edge) => edge.from !== edge.to).map((edge) => edge.id).sort(),
   );
+});
+
+test("every scene entity has a local SVG and a pickable plaque", () => {
+  for (const item of dev.nodes) {
+    assert.ok(existsSync(path.join(repositoryRoot, "framework-studio/public/icons", `${ICONS[item.icon][0]}.svg`)));
+    assert.ok(insidePolygon(item.geometry.top.x, item.geometry.top.y + 12, item.geometry.hull));
+  }
+});
+
+test("background lattice follows the terrain projection and stays bounded at distant zooms", () => {
+  const viewport = { width: 1600, height: 900 };
+  for (const zoom of [0.18, 0.5, 1, 2.5]) {
+    const camera = { x: -317, y: 143, zoom };
+    const lines = backgroundGrid(camera, viewport);
+    assert.ok(lines.length > 0 && lines.length < 300);
+    for (const line of lines) {
+      assert.equal(Math.abs((line.b.y - line.a.y) / (line.b.x - line.a.x)), 0.5);
+      for (const point of [line.a, line.b]) {
+        const grid = unprojectAt(point, 0);
+        assert.ok(Number.isInteger(grid.x) && Number.isInteger(grid.y));
+      }
+    }
+  }
 });
 
 test("buildings stand on their island's ground, at its height", () => {
@@ -78,12 +106,20 @@ test("switching the graph changes what is shown, never where it stands", () => {
 test("what a building shows of an entity follows the model's lanes and absence", () => {
   const node = (scene: Scene, id: string) => scene.nodes.find((candidate) => candidate.id === id)!;
   // graphql-api runs under Compose in development and is built by production.
-  assert.equal(node(dev, "lambda:graphql-api").presence, "local");
+  assert.equal(node(dev, "lambda:graphql-api").presence, "built");
   assert.equal(node(prod, "lambda:graphql-api").presence, "built");
   // AWS invokes the Cognito triggers, so a development deployment builds them too.
   assert.equal(node(dev, "lambda:cognito-pre-signup-trigger").presence, "built");
   // db-migrate is cloud-only: absent from the local lane and from a development deployment.
   assert.equal(node(dev, "task:db-migrate").presence, "other");
+  assert.equal(node(prod, "service:example-service").presence, "other", "local-only execution belongs to Development");
+  assert.equal(node(dev, "lambda:graphql-api").badge, undefined, "local development plus production needs no exception badge");
+  assert.equal(node(dev, "lambda:ws-disconnect-route").badge, undefined, "AWS-backed development is still Development");
+  assert.equal(node(dev, "service:example-service").badge, "dev");
+  assert.equal(node(dev, "task:db-migrate").badge, "prod");
+  assert.equal(node(dev, "resource:rds.database").badge, "prod");
+  assert.equal(node(dev, "resource:workflowFixtures.fixtureTable").badge, "dev");
+  assert.equal(node(dev, "resource:referenceExamples.documentsBucket").badge, undefined);
   // The catalog says what each graph holds.
   assert.equal(node(dev, "resource:rds.database").presence, "absent");
   assert.equal(node(prod, "resource:rds.database").presence, "present");

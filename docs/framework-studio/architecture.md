@@ -62,7 +62,7 @@ decides nothing itself.
 | Routes | `normalizeFrameworkConfig().http` and `.webSocket`, `getAgentBrowserRoutes` | Ids `route:http:/x`, `route:service:/x/*`, `route:ws:$connect`, `route:agent:/x` |
 | Catalog | `config.resources`, walked | Stacks, constructs, inputs, secrets, groups. A stack's members come from what workloads read, plus its class (see Source) |
 | Edges | Environment references, secrets, `cloud.bindings`, agent tools, workflow steps and integrations | Id `relation:from->to#n`, so two relations between one pair stay two edges. `provenance` is `declared` or `derived` (for example a user-pool variable handed by `userPool: true`) |
-| Lanes | `isTargetEnabled`, `isTargetDeployed`, `getToolDeploySetting` | `local`, `cloud` (intent), `dev`, `prod` (outcome), with `origin` (declared, default, derived, aws-invoked) and a note explaining the answer |
+| Lanes | `isTargetEnabled`, `isTargetDeployed`, `getToolDeploySetting` | Raw `local`, `cloud` (intent), `dev`, `prod` (outcome) remain available for evaluation. The UI presents Development (`local || dev`) and Production (`prod`) with execution location as supporting detail |
 | Placement | `resolveLambdaTarget().subnet`, container `cloud.service/task.subnet`, `subnetEgress`, `usesDualStackEndpoints` | `outside`, `vpc` (with subnet and egress), or `managed` (Step Functions) |
 | Network | `resolveNetwork`, `endpointServices`, `NETWORK_PRICES` | Whether production builds the VPC: something is placed in it |
 | Workflows | `NormalizedWorkflow` | The IR as plain data, its generated state names, targets and integrations |
@@ -117,6 +117,23 @@ diagnostics attached. The UI greys it out and pauses editing until the config lo
     through a Proxy and cannot list them.
   - **Link sites.** The `linkResources`, `linkResource` and `bindPostgresDatabase` calls
     in `cdk-app/lib` and `cdk-app/bin`.
+  - **CDK resource links** ([cdk-links.ts](../../framework-studio/server/source/cdk-links.ts)).
+    Parse the constructors of catalog stack classes with a direct link site. Resolve
+    public-member references and simple const aliases, constructor property references,
+    SNS SQS subscriptions and EventBridge rules with explicit source/target references.
+    Import aliases for recognized CDK adapters are resolved. Skip branches, helpers,
+    loops and dynamic names rather than claiming their execution. No CDK is imported or
+    synthesized. Relationships carry `relation: "cdk"`, `provenance: "source"` and source
+    spans; they are merged into both graph models after class members are expanded.
+    Missing endpoints are omitted. These are source inferences, separate from the
+    framework's evaluated declarations.
+
+Each snapshot atomically replaces `.cache/framework-studio/cdk-links.json` with the
+versioned scan output (file hashes, relationships, limitations; no resource values or
+source snippets). This file is ignored, disposable and never used as configuration or
+as a cache input. `POST /api/cdk-links/refresh` uses the existing Host, token and origin
+guards, rebuilds the snapshot and broadcasts it. The isometric toolbar's **Refresh CDK
+links** calls it. The normal CDK source watcher also refreshes the index automatically.
 
 ## Editing
 
@@ -251,8 +268,10 @@ No CORS headers are sent. No AWS call is made. The snapshot carries catalog refe
   - [Shell](../../framework-studio/src/views/Shell.tsx): the top bar, the health and
     command drawers, and the toasts.
 - **Styles.** [styles.css](../../framework-studio/src/styles.css) holds the tokens. The
-  light theme is "drafting film and ink". The only saturated colours are the three lanes:
-  local `#b7791f`, dev `#0e7c86`, prod `#3b3dbf`, with dark-mode variants.
+  light theme is "drafting film and ink". Environment tracks use teal for Development and
+  violet for Production. Compact exception badges use teal for Dev and violet for Prod;
+  shared entities have no badge. `src/deployment.ts` supplies the same availability,
+  badge paths and descriptions to Board, Lanes, Inspector and the canvas renderer.
 
 ## API
 

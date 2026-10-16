@@ -31,6 +31,7 @@ export function watchRepository(
     { directory: path.join(repositoryRoot, "framework-config"), recursive: true },
     { directory: path.join(repositoryRoot, "packages", "framework", "src", "config"), recursive: true },
     { directory: path.join(repositoryRoot, "cdk-app", "lib"), recursive: true },
+    { directory: path.join(repositoryRoot, "cdk-app", "bin"), recursive: true },
     { directory: path.join(repositoryRoot, "cdk-app"), recursive: false, accept: (name) => name === ".env" },
   ];
   const pending = new Set<string>();

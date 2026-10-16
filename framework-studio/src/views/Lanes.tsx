@@ -1,28 +1,25 @@
-import type { Lanes as LaneFacts, ModelTarget } from "../../shared/model";
+import type { ModelTarget } from "../../shared/model";
 import { ROLE_GROUPS, ROLE_LABEL } from "../lookup";
 import { useStudio } from "../studio";
+import { EntityIcon } from "./EntityIcon";
+import { targetIcon } from "../icons";
+import { developmentLocation, deploymentSummary, environments } from "../deployment";
 
 /**
  * Where everything runs, drawn as a line diagram.
  *
- * Each lane is a line and each target a station on all three; a stop means the
+ * Each environment is a line and each target a station on both; a stop means the
  * framework would run it there. The right-hand column says why, in the
  * framework's own terms, because a lane is rarely just the deploy token: tools
  * follow their agents, events have no toggle, and a development deployment
  * builds only what AWS invokes.
  */
 
-const ORIGIN_TEXT: Readonly<Record<LaneFacts["origin"], string>> = {
-  declared: "declared",
-  default: "the default",
-  derived: "derived",
-  "aws-invoked": "AWS-invoked",
-};
-
-function Track(props: { readonly lane: "local" | "dev" | "prod"; readonly stops: boolean }) {
+function Track(props: { readonly lane: "dev" | "prod"; readonly stops: boolean; readonly location: string }) {
   return (
-    <span className={`track ${props.lane}`}>
+    <span className={`track ${props.lane}`} role="img" aria-label={`${props.lane === "dev" ? "Development" : "Production"}: ${props.location}`} title={props.location}>
       <span className={`stop ${props.stops ? "" : "skip"}`} />
+      <span className="track-detail" aria-hidden>{props.location}</span>
     </span>
   );
 }
@@ -31,6 +28,7 @@ function Station(props: { readonly target: ModelTarget }) {
   const { selected, select } = useStudio();
   const { target } = props;
   const lanes = target.lanes;
+  const availability = environments(lanes);
   return (
     <div
       className="station"
@@ -46,18 +44,18 @@ function Station(props: { readonly target: ModelTarget }) {
       }}
     >
       <span className="who">
+        <EntityIcon icon={targetIcon(target)} />
         <span className="label">{target.title}</span>
         <span className="sub">
           {ROLE_LABEL[target.role]}
           {target.title !== target.id ? `, ${target.id}` : ""}
         </span>
       </span>
-      <Track lane="local" stops={lanes.local} />
-      <Track lane="dev" stops={lanes.dev} />
-      <Track lane="prod" stops={lanes.prod} />
+      <Track lane="dev" stops={availability.dev} location={developmentLocation(lanes)} />
+      <Track lane="prod" stops={availability.prod} location={lanes.prod ? "In AWS" : "Not enabled"} />
       <span className="why">
-        <strong>{lanes.deploy}</strong>, {ORIGIN_TEXT[lanes.origin]}
-        {lanes.note ? `. ${lanes.note}` : "."}
+        {deploymentSummary(lanes)}
+        {lanes.origin === "derived" ? " Follows its agents." : null}
       </span>
     </div>
   );
@@ -69,12 +67,11 @@ export function Lanes() {
     <div className="lanes">
       <div className="lanes-head">
         <span className="muted small">
-          A stop means it runs there. {model.mode === "dev" ? "Development" : "Production"} graph shown.
+          Two environments. A stop means it runs there.
         </span>
-        <span className="lane-name local">Local</span>
-        <span className="lane-name dev">Dev AWS</span>
-        <span className="lane-name prod">Prod AWS</span>
-        <span className="muted small">Deploy setting, and why</span>
+        <span className="lane-name dev">Development</span>
+        <span className="lane-name prod">Production</span>
+        <span className="muted small">Execution</span>
       </div>
       {ROLE_GROUPS.map((group) => {
         const targets = model.targets.filter((target) => group.roles.includes(target.role));

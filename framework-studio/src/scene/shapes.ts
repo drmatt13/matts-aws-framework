@@ -65,6 +65,20 @@ export interface Shape {
   readonly height: number;
 }
 
+/** A service icon on a low isometric plinth. Hull includes the upright SVG plaque. */
+export function buildIconShape(x: number, y: number): Shape {
+  return {
+    faces: [
+      { points: [x - 25, y - 2, x, y + 10, x, y + 15, x - 25, y + 3], part: "body", shade: "left" },
+      { points: [x, y + 10, x + 25, y - 2, x + 25, y + 3, x, y + 15], part: "body", shade: "right" },
+      { points: [x, y - 14, x + 25, y - 2, x, y + 10, x - 25, y - 2], part: "body", shade: "top" },
+    ],
+    top: { x, y: y - 54 },
+    hull: [x - 24, y - 54, x + 24, y - 54, x + 25, y + 3, x, y + 15, x - 25, y + 3],
+    height: 54,
+  };
+}
+
 /** Buildings stand a little taller and wider than a literal reading of the tile would give, so they read as structures. */
 const TALL = 1.35;
 const FOOT = 1.12;

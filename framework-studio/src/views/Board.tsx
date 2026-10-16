@@ -4,7 +4,10 @@ import type { ModelResource, ModelTarget } from "../../shared/model";
 import { layoutBoard, type BoardNode } from "../layout";
 import { CATEGORY_LABEL, ROLE_LABEL, type EdgeCategory } from "../lookup";
 import { useStudio } from "../studio";
-import { LaneDots, LaneLegend } from "./LaneDots";
+import { DeploymentBadge, DeploymentLegend } from "./DeploymentBadge";
+import { availabilityBadge, catalogAvailability, deploymentBadge, type DeploymentBadgeKind } from "../deployment";
+import { EntityIcon } from "./EntityIcon";
+import { resourceIcon, routeIcon, targetIcon } from "../icons";
 
 const CATEGORIES = Object.keys(CATEGORY_LABEL) as EdgeCategory[];
 
@@ -19,12 +22,12 @@ function TargetNode(props: { readonly target: ModelTarget }) {
           {target.title !== target.id ? `, ${target.id}` : ""}
         </span>
       </span>
-      <LaneDots lanes={target.lanes} />
+      <DeploymentBadge kind={deploymentBadge(target.lanes)} />
     </>
   );
 }
 
-function ResourceNode(props: { readonly resource: ModelResource; readonly shape: BoardNode["shape"] }) {
+function ResourceNode(props: { readonly resource: ModelResource; readonly shape: BoardNode["shape"]; readonly badge?: DeploymentBadgeKind }) {
   const { resource, shape } = props;
   const name = shape === "member" ? resource.path[resource.path.length - 1] : resource.path.join(".");
   const kind =
@@ -34,12 +37,14 @@ function ResourceNode(props: { readonly resource: ModelResource; readonly shape:
       <span className="label">{name}</span>
       {shape === "member" && resource.typeText ? <span className="type">{resource.typeText}</span> : null}
       {shape !== "member" && kind ? <span className="type code muted">{kind}</span> : null}
+      <DeploymentBadge kind={props.badge} />
     </>
   );
 }
 
 export function Board() {
-  const { model, index, selected, select } = useStudio();
+  const { model, index, selected, select, snapshot } = useStudio();
+  const availability = useMemo(() => catalogAvailability(snapshot.models), [snapshot.models]);
   const layout = useMemo(() => layoutBoard(model), [model]);
   const [shown, setShown] = useState<ReadonlySet<EdgeCategory>>(() => new Set(CATEGORIES));
 
@@ -84,7 +89,7 @@ export function Board() {
           ))}
         </div>
         <span className="spacer" />
-        <LaneLegend />
+        <DeploymentLegend />
       </div>
       <div className="board" style={{ width: layout.width + 120, height: layout.height }} onClick={() => select(undefined)}>
         <svg className="edges" width={layout.width + 120} height={layout.height} aria-hidden>
@@ -99,12 +104,12 @@ export function Board() {
               <path
                 key={edge.edge.id}
                 d={edge.path}
-                className={`edge ${edge.edge.provenance === "derived" ? "derived" : ""} ${selected ? "faded" : ""}`}
+                className={`edge ${edge.edge.provenance !== "declared" ? "derived" : ""} ${selected ? "faded" : ""}`}
               />
             ))}
           {visible.filter(lit).map((edge) => (
             <g key={edge.edge.id} style={{ color: "var(--ink)" }}>
-              <path d={edge.path} className={`edge lit ${edge.edge.provenance === "derived" ? "derived" : ""}`} markerEnd="url(#arrow)" />
+              <path d={edge.path} className={`edge lit ${edge.edge.provenance !== "declared" ? "derived" : ""}`} markerEnd="url(#arrow)" />
               <text className="edge-label" x={edge.label.x} y={edge.label.y - 4} textAnchor="middle">
                 {edge.edge.label}
               </text>
@@ -143,14 +148,16 @@ export function Board() {
               }}
               title={resource?.absent ? `Absent in the ${model.mode === "dev" ? "development" : "production"} graph` : undefined}
             >
+              <EntityIcon icon={target ? targetIcon(target) : route ? routeIcon(route) : resourceIcon(resource!)} />
               {target ? <TargetNode target={target} /> : null}
               {route ? (
                 <>
                   <span className="label">{route.kind === "webSocket" ? route.path : route.browserPath ?? route.path}</span>
+                  <DeploymentBadge kind={index.targets.has(route.target) ? deploymentBadge(index.targets.get(route.target)!.lanes) : undefined} />
                   {route.auth ? <Lock size={13} aria-label="Requires a signed-in user" /> : null}
                 </>
               ) : null}
-              {resource ? <ResourceNode resource={resource} shape={node.shape} /> : null}
+              {resource ? <ResourceNode resource={resource} shape={node.shape} badge={availabilityBadge(availability[resource.id] ?? { dev: false, prod: false })} /> : null}
             </button>
           );
         })}

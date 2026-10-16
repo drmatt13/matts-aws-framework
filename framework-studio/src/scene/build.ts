@@ -1,7 +1,9 @@
 import type { Lanes, Mode, ModeModel, ModelEdge, ModelResource, ModelRoute, ModelTarget, NetworkModel } from "../../shared/model";
 import { RELATION_CATEGORY, ROLE_LABEL, type EdgeCategory } from "../lookup";
+import { resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
+import { availabilityBadge, deploymentBadge, developmentLocation, environments, type Availability, type DeploymentBadgeKind } from "../deployment";
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH, project } from "./iso";
-import { buildShape, lambdaGlyph, type Glyph, type Shape, type ShapeKind } from "./shapes";
+import { buildIconShape, buildShape, lambdaGlyph, type Glyph, type Shape, type ShapeKind } from "./shapes";
 import type { Bounds } from "./camera";
 
 /**
@@ -52,14 +54,13 @@ export const MATERIALS: readonly Material[] = [
 /**
  * What the selected graph holds of an entity.
  *
- * - built: the selected AWS deployment builds it.
- * - local: that deployment does not, and it runs under Compose instead.
- * - other: neither, and only the other deployment builds it.
+ * - built: enabled in the selected environment (development can execute locally).
+ * - other: enabled only in the other environment.
  * - nowhere: it runs in no lane at all.
  * - absent: a catalog entry this graph declares `undefined`.
  * - present: a catalog entry this graph holds (inputs and constructs have no lane).
  */
-export type Presence = "built" | "local" | "other" | "nowhere" | "absent" | "present";
+export type Presence = "built" | "other" | "nowhere" | "absent" | "present";
 
 export type Region = "entry" | "compute" | "network" | "agents" | "orchestration" | "catalog";
 
@@ -106,6 +107,8 @@ export interface Island {
 }
 
 export interface SceneNode {
+  readonly badge?: DeploymentBadgeKind;
+  readonly icon: IconKey;
   readonly id: string;
   readonly entity: "route" | "target" | "resource";
   readonly shape: ShapeKind;
@@ -163,6 +166,7 @@ export interface Scene {
 }
 
 export interface SceneOptions {
+  readonly resourceAvailability?: Readonly<Record<string, Availability>>;
   /** Whether this deployment builds the AWS WebSocket API (DEPLOY_PROD_WEBSOCKET_API). */
   readonly webSocketApi?: boolean;
   /** Catalog facts from the source index: the condition an entry is declared under. */
@@ -213,13 +217,10 @@ function hash(...parts: readonly (string | number)[]): number {
 // ---------------------------------------------------------------------------
 
 function targetPresence(lanes: Lanes, mode: Mode): { presence: Presence; text: string } {
-  const here = mode === "dev" ? lanes.dev : lanes.prod;
-  const there = mode === "dev" ? lanes.prod : lanes.dev;
-  const graph = mode === "dev" ? "development" : "production";
-  if (here) return { presence: "built", text: `Built by a ${graph} deployment.` };
-  if (lanes.local) return { presence: "local", text: `Not built by a ${graph} deployment; runs locally under Compose.` };
-  if (there) return { presence: "other", text: `Only a ${mode === "dev" ? "production" : "development"} deployment builds it, and it does not run locally.` };
-  return { presence: "nowhere", text: "Enabled in no lane: it runs nowhere." };
+  const availability = environments(lanes);
+  if (availability[mode]) return { presence: "built", text: mode === "dev" ? `Enabled in development · ${developmentLocation(lanes).toLowerCase()}.` : "Enabled in production · runs in AWS." };
+  if (availability[mode === "dev" ? "prod" : "dev"]) return { presence: "other", text: `Not enabled in ${mode === "dev" ? "development" : "production"}.` };
+  return { presence: "nowhere", text: "Not enabled in either environment." };
 }
 
 // ---------------------------------------------------------------------------
@@ -227,6 +228,8 @@ function targetPresence(lanes: Lanes, mode: Mode): { presence: Presence; text: s
 // ---------------------------------------------------------------------------
 
 interface Item {
+  readonly badge?: DeploymentBadgeKind;
+  readonly icon: IconKey;
   readonly id: string;
   readonly entity: SceneNode["entity"];
   readonly shape: ShapeKind;
@@ -264,6 +267,8 @@ interface IslandSpec {
 function targetItem(target: ModelTarget, mode: Mode): Item {
   const { presence, text } = targetPresence(target.lanes, mode);
   const base = {
+    badge: deploymentBadge(target.lanes),
+    icon: targetIcon(target),
     id: target.ref,
     entity: "target" as const,
     label: target.id,
@@ -293,6 +298,8 @@ function routeItem(route: ModelRoute, target: ModelTarget | undefined, mode: Mod
     route.kind === "http" ? "HTTP route" : route.kind === "service" ? "Service mount" : route.kind === "webSocket" ? "WebSocket route key" : "Agent route";
   return {
     id: route.id,
+    badge: target ? deploymentBadge(target.lanes) : undefined,
+    icon: routeIcon(route),
     entity: "route",
     shape,
     label: route.kind === "webSocket" ? route.path : route.browserPath ?? route.path,
@@ -332,7 +339,7 @@ export function resourceShape(resource: ModelResource): ShapeKind {
   }
 }
 
-function resourceItem(resource: ModelResource, mode: Mode): Item {
+function resourceItem(resource: ModelResource, mode: Mode, availability?: Availability): Item {
   const name = resource.path[resource.path.length - 1]!;
   const kindLabel =
     resource.kind === "stack"
@@ -349,6 +356,8 @@ function resourceItem(resource: ModelResource, mode: Mode): Item {
   const graph = mode === "dev" ? "development" : "production";
   return {
     id: resource.id,
+    badge: availability ? availabilityBadge(availability) : undefined,
+    icon: resourceIcon(resource),
     entity: "resource",
     shape: resourceShape(resource),
     label: resource.kind === "stack" ? resource.path.join(".") : name,
@@ -357,7 +366,7 @@ function resourceItem(resource: ModelResource, mode: Mode): Item {
     presenceText: resource.absent
       ? `Absent in the ${graph} graph: declared undefined here, so nothing that reads it sees a value.`
       : resource.kind === "member" && resource.memberSource === "class"
-        ? "Public on its stack; nothing reads it yet."
+        ? "Declared by its stack; no workload references it."
         : `Held by the ${graph} graph.`,
   };
 }
@@ -384,6 +393,7 @@ function networkCaptions(network: NetworkModel | undefined) {
 
 function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSpec[]; compute: IslandSpec[]; catalog: IslandSpec[] } {
   const mode = model.mode;
+  const catalogItem = (resource: ModelResource) => resourceItem(resource, mode, options.resourceAvailability?.[resource.id]);
   const targets = new Map(model.targets.map((target) => [target.ref, target]));
   const graph = mode === "dev" ? "development" : "production";
 
@@ -561,14 +571,14 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
             caption: [],
             material: "granite",
             h: 2 + (hash(resource.id) % 2),
-            groups: [[resourceItem(resource, mode)], (children.get(resource.id) ?? []).map((member) => resourceItem(member, mode))],
+            groups: [[catalogItem(resource)], (children.get(resource.id) ?? []).map(catalogItem)],
           },
         ],
       });
     } else if (resource.kind === "group") {
-      loose.push([resourceItem(resource, mode), ...(children.get(resource.id) ?? []).map((child) => resourceItem(child, mode))]);
+      loose.push([catalogItem(resource), ...(children.get(resource.id) ?? []).map(catalogItem)]);
     } else {
-      loose.push([resourceItem(resource, mode)]);
+      loose.push([catalogItem(resource)]);
     }
   }
   if (loose.length > 0) {
@@ -754,7 +764,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
       const gy = gy0 + 1 + ly;
       const h = spec.bands[band]!.h;
       const anchor = project({ x: gx, y: gy, h });
-      nodes.push({ ...item, gx, gy, h, island: spec.id, geometry: buildShape(item.shape, anchor.x, anchor.y, item.glyph) });
+      nodes.push({ ...item, gx, gy, h, island: spec.id, geometry: buildIconShape(anchor.x, anchor.y) });
       // Barycentres are taken down the screen, which is what lines columns up.
       placedY.set(item.id, gx + gy);
     }
