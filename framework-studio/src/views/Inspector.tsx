@@ -86,19 +86,30 @@ function lockedReason(editability: Editability | undefined, fact: FieldFact): st
 }
 
 function ApiAuthControl({ target }: { readonly target: ModelTarget }) {
-  const { snapshot, model, preview, live } = useStudio();
+  const { snapshot, model, preview, live, plan, landing } = useStudio();
   const fact = model.fields[target.ref]?.find((fact) => fact.field === "http.auth");
   const [checking, setChecking] = useState(false);
+  // Where the switch has slid to: it moves as soon as it is pressed, holds there while its
+  // preview is open and while a written edit waits for its snapshot, and slides back if the
+  // preview is cancelled or refused.
+  const [slid, setSlid] = useState<boolean | undefined>();
+  const ours = (edit: { readonly target: string; readonly field: string } | undefined) => edit?.target === target.ref && edit.field === "http.auth";
+  const holding = checking || ours(plan) || ours(landing);
+  useEffect(() => {
+    if (slid !== undefined && !holding) setSlid(undefined);
+  }, [slid, holding]);
   if (!fact) return null;
   const locked = model.stale ? "Editing is paused until the configuration loads again." : lockedReason(snapshot.source.editability[target.ref]?.[fact.field], fact);
   const enabled = fact.effective === true;
+  const shown = slid ?? enabled;
   const toggle = async () => {
+    setSlid(!enabled);
     setChecking(true);
     try { await preview(enabled ? { target: target.ref, field: fact.field, inherit: true } : { target: target.ref, field: fact.field, value: true }); }
     finally { setChecking(false); }
   };
   return <section className="api-auth">
-    <div className="auth-control"><span id={`auth-label-${target.ref}`}>API user-pool authorizer</span><button role="switch" aria-labelledby={`auth-label-${target.ref}`} aria-checked={enabled} className={`auth-switch ${enabled ? "on" : ""}`} disabled={!!locked || checking || live.evaluating} onClick={() => void toggle()}>{checking ? "Checking…" : enabled ? "On" : "Off"}</button></div>
+    <div className="auth-control"><span id={`auth-label-${target.ref}`}>API user-pool authorizer</span><button role="switch" aria-labelledby={`auth-label-${target.ref}`} aria-checked={shown} aria-busy={holding} aria-disabled={holding || undefined} className="auth-switch" disabled={!!locked || live.evaluating} onClick={() => { if (!holding) void toggle(); }}><span className="auth-switch-state" aria-hidden>{checking ? "Checking…" : shown ? "On" : "Off"}</span><span className="auth-switch-track" aria-hidden><span className="auth-switch-thumb" /></span></button></div>
     <p className="small muted">Uses the API's Cognito user pool to admit signed-in callers. Handler-side token checks still apply.</p>
     {locked ? <p className="locked">{locked}</p> : null}
   </section>;

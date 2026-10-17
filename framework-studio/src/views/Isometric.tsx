@@ -1,4 +1,4 @@
-import { Crosshair, Maximize2, Minus, Pause, Play, Plus, RefreshCw } from "lucide-react";
+import { Crosshair, Maximize2, Minus, Pause, Play, Plus, RefreshCw, Sparkles } from "lucide-react";
 import { api } from "../api";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CATEGORY_LABEL, RELATION_LABEL, titleOf, type EdgeCategory } from "../lookup";
@@ -19,6 +19,7 @@ import {
   type Viewport,
 } from "../scene/camera";
 import { arcControl, arcPoints, distanceToPolyline, insidePolygon, pickEntity, pickTile, type CardHit } from "../scene/picking";
+import { LOOK_STORAGE_KEY, type Look } from "../scene/look";
 import { CATEGORY_COLORS, SceneRenderer } from "../scene/render";
 import { catalogAvailability, deploymentSummary } from "../deployment";
 import { DeploymentLegend } from "./DeploymentBadge";
@@ -54,6 +55,23 @@ interface Tween {
 
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/** The look this browser last chose, if storage is readable; graphite otherwise. */
+function storedLook(): Look {
+  try {
+    return window.localStorage.getItem(LOOK_STORAGE_KEY) === "classic" ? "classic" : "graphite";
+  } catch {
+    return "graphite";
+  }
+}
+
+function storeLook(look: Look): void {
+  try {
+    window.localStorage.setItem(LOOK_STORAGE_KEY, look);
+  } catch {
+    // A private window or blocked storage: the choice lasts as long as the page.
+  }
+}
+
 function laneText(node: SceneNode): string | undefined {
   if (!node.lanes) return undefined;
   return deploymentSummary(node.lanes);
@@ -76,6 +94,7 @@ export function Isometric() {
   const rendererRef = useRef<SceneRenderer | undefined>(undefined);
   const [categories, setCategories] = useState<ReadonlySet<EdgeCategory>>(() => new Set(CATEGORIES));
   const [motion, setMotion] = useState(() => !reducedMotion());
+  const [look, setLook] = useState<Look>(storedLook);
   const [hover, setHover] = useState<Hover | undefined>();
   const [stats, setStats] = useState({ ms: 0 });
 
@@ -107,6 +126,7 @@ export function Isometric() {
     hoveredEdge: undefined as string | undefined,
     categories,
     motion,
+    look,
     tween: undefined as Tween | undefined,
     cards: [] as readonly CardHit[],
     frame: undefined as number | undefined,
@@ -119,6 +139,7 @@ export function Isometric() {
   live.current.selected = visibleSelected;
   live.current.categories = categories;
   live.current.motion = motion;
+  live.current.look = look;
 
   const draw = useCallback(() => {
     const state = live.current;
@@ -143,6 +164,7 @@ export function Isometric() {
       categories: state.categories,
       time: now / 1000,
       motion: state.motion,
+      look: state.look,
     });
     state.cards = result.cards;
     state.frames += 1;
@@ -241,7 +263,7 @@ export function Isometric() {
     };
   }, [schedule, resize]);
 
-  useEffect(schedule, [schedule, scene, selected, categories, motion]);
+  useEffect(schedule, [schedule, scene, selected, categories, motion, look]);
 
   // Opening/closing the inspector changes CSS layout during this commit. Resize and paint
   // now, rather than leaving a stretched frame until the observer's next animation callback.
@@ -445,6 +467,7 @@ export function Isometric() {
         drawn: rendererRef.current?.drawnItems,
         lastFrameMs: live.current.samples.at(-1),
         frames: live.current.frames,
+        look: live.current.look,
       }),
     };
     (window as unknown as { __studioLandscape?: typeof debug }).__studioLandscape = debug;
@@ -512,6 +535,19 @@ export function Isometric() {
           </button>
           <button onClick={() => focus(visibleSelected)} disabled={!selected} aria-label="Focus the selection" title="Focus the selection (F)">
             <Crosshair size={16} aria-hidden />
+          </button>
+          <button
+            onClick={() => setLook((current) => {
+              const next = current === "graphite" ? "classic" : "graphite";
+              storeLook(next);
+              return next;
+            })}
+            className="look-toggle"
+            aria-pressed={look === "graphite"}
+            aria-label="Graphite look"
+            title={look === "graphite" ? "Graphite look: on. Switch to the classic look" : "Graphite look: off. Switch from the classic look"}
+          >
+            <Sparkles size={16} aria-hidden />
           </button>
           <button onClick={() => setMotion((current) => !current)} aria-pressed={!motion} aria-label={motion ? "Pause motion" : "Resume motion"} title={motion ? "Pause motion" : "Resume motion"}>
             {motion ? <Pause size={16} aria-hidden /> : <Play size={16} aria-hidden />}

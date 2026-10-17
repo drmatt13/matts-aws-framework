@@ -4,13 +4,15 @@ import { after, before, test } from "node:test";
 import type { Snapshot } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
 import { atlasPixels, CELL, SPRITE, spriteOrigin, spritePixels } from "../src/scene/atlas";
-import { buildScene, MATERIALS, type Scene } from "../src/scene/build";
+import { buildScene, chamfered, chamferSize, MATERIALS, titleRoom, type Island, type Scene } from "../src/scene/build";
 import { fitBounds, pan, resizeCamera, screenToWorld, wheelFactor, worldToScreen, zoomAt, MAX_ZOOM, MIN_ZOOM, type Camera } from "../src/scene/camera";
 import { project, unprojectAt } from "../src/scene/iso";
 import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickTile, tilePolygons } from "../src/scene/picking";
 import { buildShape, type ShapeKind } from "../src/scene/shapes";
 import { backgroundGrid } from "../src/scene/grid";
 import { islandFrame } from "../src/scene/frame";
+import { BAND_TRIM, GRAPHITE, ICON_TINT, ISLAND_TRIM, trimColor } from "../src/scene/look";
+import { behind, islandDrawOrder, islandSlabs, polygonArea, type IslandSlab } from "../src/scene/slabs";
 import { ICONS } from "../src/icons";
 import { catalogAvailability } from "../src/deployment";
 import { existsSync } from "node:fs";
@@ -111,6 +113,29 @@ test("buildings stand on their island's ground, at its height", () => {
   }
 });
 
+test("islands pack into rows: small ones share a row when it fits, leave room for a title, and never overlap", () => {
+  // An island's box in the screen-aligned frame: sx = gx - gy across, sy = gx + gy down.
+  const box = (island: Island) => ({ left: island.gx0 - island.gy1 - 1, right: island.gx1 - island.gy0 + 1, top: island.gx0 + island.gy0 - 1, bottom: island.gx1 + island.gy1 + 1 });
+  for (const scene of [dev, prod]) {
+    for (const [a, b] of scene.islands.flatMap((one, at) => scene.islands.slice(at + 1).map((two) => [one, two] as const))) {
+      const one = box(a);
+      const two = box(b);
+      assert.ok(one.right <= two.left || two.right <= one.left || one.bottom <= two.top || two.bottom <= one.top, `${a.id} overlaps ${b.id}`);
+    }
+    const island = (id: string) => scene.islands.find((candidate) => candidate.id === id);
+    const compute = scene.islands.filter((candidate) => ["compute", "network", "agents", "orchestration", "local"].includes(candidate.region));
+    const width = Math.max(...compute.map((candidate) => box(candidate).right - box(candidate).left));
+    const agents = island("island:agentcore");
+    const flows = island("island:orchestration");
+    if (!agents || !flows) continue;
+    const size = (candidate: Island) => box(candidate).right - box(candidate).left;
+    if (size(agents) + titleRoom(flows.title) + size(flows) > width) continue;
+    // They fit one row, so they share it: level with each other, the second leaving room for its title.
+    assert.ok(Math.abs(box(agents).top + box(agents).bottom - box(flows).top - box(flows).bottom) <= 2, "Agents and Workflows share a row");
+    assert.ok(box(flows).left - box(agents).right >= titleRoom(flows.title) - 1, "room for the Workflows title");
+  }
+});
+
 test("switching the graph changes what is shown, never where it stands", () => {
   const place = (scene: Scene) => new Map(scene.nodes.map((node) => [node.id, `${node.gx},${node.gy},${node.h}`]));
   assert.deepEqual(place(prod), place(dev));
@@ -159,9 +184,9 @@ test("compute stands where it runs, and the VPC is a blueprint where it is not b
   const vpc = (scene: Scene) => scene.islands.find((island) => island.id === "island:vpc")!;
   assert.equal(vpc(dev).ghost, "blueprint");
   assert.equal(vpc(prod).ghost, snapshot.models.prod.network?.builtInProd ? undefined : "blueprint");
-  // The terraces step down from public to isolated, so each step's wall faces the viewer.
-  const heights = vpc(dev).bands.map((band) => band.h);
-  assert.deepEqual([...heights].sort((a, b) => b - a), heights);
+  // The subnets stand level, side by side: public, private, isolated.
+  assert.deepEqual(vpc(dev).bands.map((band) => band.id), ["band:public", "band:private", "band:isolated"]);
+  assert.equal(new Set(vpc(dev).bands.map((band) => band.h)).size, 1);
   assert.equal(dev.islands.find((island) => island.id === "island:stacks")!.ghost, undefined, "present stacks keep their shared island solid");
 });
 
@@ -490,15 +515,34 @@ test("all VPC gateways and endpoints ghost with the unbuilt network and stay in 
   }
 });
 
-test("HTTP, WebSocket and event Lambdas share one layer, while HTTP, WebSocket and agent APIs share another", () => {
-  for (const target of snapshot.models.dev.targets.filter((target) => target.kind === "lambda" && target.role !== "tool")) {
+test("every building knows its band, and each gateway or endpoint names the subnets whose traffic it carries", () => {
+  for (const scene of [dev, prod]) {
+    for (const node of scene.nodes) {
+      assert.equal(node.band, scene.tiles.find((tile) => tile.gx === node.gx && tile.gy === node.gy)!.band, node.id);
+    }
+  }
+  const network = snapshot.models.prod.network!;
+  const scene = buildScene({ ...snapshot.models.prod, network: { ...network, natGateway: true, egressOnlyInternetGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "logs"] } });
+  const serves = Object.fromEntries(scene.props.map((prop) => [prop.id, [...prop.serves].sort()]));
+  assert.deepEqual(serves["prop:internet-gateway"], ["band:public"]);
+  assert.deepEqual(serves["prop:egress-only-gateway"], ["band:private"]);
+  assert.deepEqual(serves["prop:nat-gateway"], ["band:private"]);
+  for (const id of Object.keys(serves).filter((id) => id.startsWith("prop:endpoint:"))) {
+    assert.deepEqual(serves[id], ["band:isolated", "band:private", "band:public"], id);
+  }
+});
+
+test("HTTP, WebSocket, event and tool Lambdas share one layer, while HTTP, WebSocket and agent APIs share another", () => {
+  const lambdas = snapshot.models.dev.targets.filter((target) => target.kind === "lambda");
+  assert.ok(lambdas.some((target) => target.role === "tool"), "the repository declares a tool Lambda");
+  for (const target of lambdas) {
     const node = dev.nodes.find((node) => node.id === target.ref)!;
     assert.equal(node.island, target.placement.kind === "vpc" ? "island:vpc" : "island:lambda", target.ref);
   }
   const apis = dev.nodes.filter((node) => node.entity === "route");
   assert.equal(apis.length, snapshot.models.dev.routes.length);
   assert.ok(apis.every((node) => node.island === "island:apis"));
-  assert.equal(dev.islands.find((island) => island.id === "island:lambda")?.title, "Lambda functions");
+  assert.equal(dev.islands.find((island) => island.id === "island:lambda")?.title, "Serverless compute");
   for (const id of ["island:lambda", "island:apis"]) assert.equal(dev.islands.find((island) => island.id === id)?.bands.length, 1);
 });
 
@@ -507,4 +551,163 @@ test("only the VPC has a boundary; API and Lambda panels have no group frame", (
     assert.deepEqual(scene.frames.map((frame) => frame.kind), ["network"]);
     assert.deepEqual(scene.frames[0]!.members, ["island:vpc"]);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Graphite slabs
+// ---------------------------------------------------------------------------
+
+/** The real scene plus a production network with every fixture, so terraces carry furniture. */
+function furnished(): Scene {
+  const source = snapshot.models.prod;
+  return buildScene({ ...source, network: { ...source.network!, builtInProd: true, natGateway: true, egressOnlyInternetGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "logs"] } });
+}
+
+const onEdge = (x: number, y: number, polygon: readonly number[]) => {
+  const closed = [...polygon, polygon[0]!, polygon[1]!];
+  return distanceToPolyline({ x, y }, Array.from({ length: closed.length / 2 }, (_, at) => ({ x: closed[at * 2]!, y: closed[at * 2 + 1]! }))) < 1e-9;
+};
+
+test("chamfers cut only rim cells: every building, fixture and terrace name keeps its ground, and tiles agree with the outline", () => {
+  for (const scene of [dev, prod, furnished()]) {
+    const tiles = new Set(scene.tiles.map((tile) => `${tile.gx},${tile.gy}`));
+    for (const slab of islandSlabs(scene)) {
+      const { island, outline } = slab;
+      const width = island.gx1 - island.gx0 + 1;
+      const length = island.gy1 - island.gy0 + 1;
+      for (let gx = island.gx0; gx <= island.gx1; gx += 1) {
+        for (let gy = island.gy0; gy <= island.gy1; gy += 1) {
+          const inside = insidePolygon(gx, gy, outline) || onEdge(gx, gy, outline);
+          assert.equal(tiles.has(`${gx},${gy}`), inside, `${island.id} cell ${gx},${gy}`);
+          assert.equal(chamfered(gx - island.gx0, gy - island.gy0, width, length), !inside);
+        }
+      }
+      for (const band of island.bands) assert.ok(tiles.has(`${band.gx},${band.gy}`), `${band.id}'s name stands on its rim`);
+    }
+    // A plinth's base stays on its terrace's drawn top.
+    const slabs = islandSlabs(scene);
+    for (const item of [...scene.nodes, ...scene.props]) {
+      const band = slabs.flatMap((slab) => slab.bands.map((band) => ({ band, island: slab.island }))).find(({ band, island }) => {
+        const meta = island.bands[band.index]!;
+        return item.gx >= meta.gx0 && item.gx <= meta.gx1 && item.gy >= island.gy0 && item.gy <= island.gy1;
+      });
+      assert.ok(band, `${item.id} stands on no band`);
+      const tile = project({ x: item.gx, y: item.gy, h: item.h });
+      for (const [x, y] of [[tile.x, tile.y - 9], [tile.x + 25, tile.y + 3], [tile.x, tile.y + 15], [tile.x - 25, tile.y + 3]] as const) {
+        assert.ok(insidePolygon(x, y, band.band.top), `${item.id}'s plinth overhangs its terrace`);
+      }
+    }
+  }
+});
+
+test("each island's slabs tile its outline but for a narrow seam between terraces, and its bands cover its columns", () => {
+  for (const slab of islandSlabs(furnished())) {
+    const { island } = slab;
+    const total = slab.bands.reduce((sum, band) => sum + polygonArea(band.region), 0);
+    // Each seam is a full-length column strip, clear of the chamfered corners.
+    const cut = chamferSize(island.gx1 - island.gx0 + 1, island.gy1 - island.gy0 + 1);
+    const seams = island.bands.slice(0, -1).map((band) => band.gx1 + 0.5);
+    for (const at of seams) assert.ok(at - GRAPHITE.terraceGap / 2 >= island.gx0 - 0.5 + cut && at + GRAPHITE.terraceGap / 2 <= island.gx1 + 0.5 - cut);
+    const gaps = seams.length * GRAPHITE.terraceGap * (island.gy1 - island.gy0 + 1);
+    assert.ok(Math.abs(total + gaps - polygonArea(slab.outline)) < 1e-9, island.id);
+    // Neighbouring slabs never touch.
+    const columns = slab.bands.map((band) => band.region.filter((_, at) => at % 2 === 0));
+    for (let index = 1; index < columns.length; index += 1) {
+      assert.ok(Math.min(...columns[index]!) - Math.max(...columns[index - 1]!) > GRAPHITE.terraceGap - 1e-9);
+    }
+    slab.island.bands.forEach((band, index) => {
+      assert.ok(band.gx0 <= band.gx1);
+      if (index === 0) assert.equal(band.gx0, slab.island.gx0);
+      else assert.equal(band.gx0, slab.island.bands[index - 1]!.gx1 + 1);
+      if (index === slab.island.bands.length - 1) assert.equal(band.gx1, slab.island.gx1);
+    });
+  }
+});
+
+test("walls face the viewer: rims fall to the floor from the front edges, and terraces step down to the next", () => {
+  for (const slab of islandSlabs(furnished())) {
+    const { island } = slab;
+    slab.bands.forEach((band, index) => {
+      const next = island.bands[index + 1];
+      const seamed = island.bands.length > 1 && GRAPHITE.terraceGap > 0;
+      const steps = band.walls.filter((wall) => !wall.rim);
+      if (next && next.h < band.h && !seamed) {
+        assert.equal(steps.length, 1, `${band.id} steps down once`);
+        assert.equal(steps[0]!.side, "right");
+        assert.equal(steps[0]!.depth, (band.h - next.h) * 16);
+      } else assert.equal(steps.length, 0, `${band.id} has no step`);
+      for (const wall of band.walls.filter((wall) => wall.rim)) {
+        assert.equal(wall.depth, (band.h - island.base) * 16);
+        // Its top edge lies on the island's front-left or front-right edge, or the front facet between them.
+        const [x0, y0, x1, y1] = wall.lip;
+        const a = unprojectAt({ x: x0, y: y0 }, band.h);
+        const b = unprojectAt({ x: x1, y: y1 }, band.h);
+        const onFrontLeft = Math.abs(a.y - (island.gy1 + 0.5)) < 1e-9 && Math.abs(b.y - (island.gy1 + 0.5)) < 1e-9;
+        // A band's right edge is the island's, or the near side of the seam to the next band.
+        const right = index === slab.bands.length - 1 ? island.gx1 + 0.5 : island.bands[index]!.gx1 + 0.5 - GRAPHITE.terraceGap / 2;
+        const onFrontRight = Math.abs(a.x - right) < 1e-9 && Math.abs(b.x - right) < 1e-9;
+        const onFacet = Math.abs(a.x + a.y - (b.x + b.y)) < 1e-9 && a.x + a.y > (island.gx0 + island.gy0 + island.gx1 + island.gy1) / 2;
+        assert.ok(onFrontLeft || onFrontRight || onFacet, `${band.id} has a rim wall off the front`);
+        assert.equal(wall.side, onFrontLeft ? "left" : onFrontRight ? "right" : "front");
+      }
+    });
+    // Exactly one front-left run per band; a right wall on the last band, and beside every seam.
+    slab.bands.forEach((band, index) => {
+      assert.equal(band.walls.filter((wall) => wall.rim && wall.side === "left").length, 1);
+      assert.equal(band.walls.filter((wall) => wall.rim && wall.side === "right").length, index === slab.bands.length - 1 || slab.bands.length > 1 ? 1 : 0);
+    });
+  }
+});
+
+test("a wall's gradient is constant along its top edge and reaches its foot", () => {
+  for (const slab of islandSlabs(furnished())) {
+    for (const band of slab.bands) {
+      for (const wall of band.walls) {
+        const [gx0, gy0, gx1, gy1] = wall.gradient;
+        const [lx0, ly0, lx1, ly1] = wall.lip;
+        const g = { x: gx1 - gx0, y: gy1 - gy0 };
+        const t = (x: number, y: number) => ((x - gx0) * g.x + (y - gy0) * g.y) / (g.x * g.x + g.y * g.y);
+        assert.ok(Math.abs(t(lx1, ly1)) < 1e-9, "the far end of the top edge is at 0");
+        assert.ok(Math.abs(t(lx0, ly0 + wall.depth) - 1) < 1e-9, "the foot is at 1");
+        assert.ok(Math.abs(t(lx1, ly1 + wall.depth) - 1) < 1e-9);
+      }
+    }
+  }
+});
+
+test("islands draw back to front: of two that overlap on screen, the one behind comes first", () => {
+  const overlaps = (a: IslandSlab, b: IslandSlab) =>
+    a.bounds.minX < b.bounds.maxX && b.bounds.minX < a.bounds.maxX && a.bounds.minY < b.bounds.maxY && b.bounds.minY < a.bounds.maxY;
+  for (const scene of [dev, prod, furnished()]) {
+    const ordered = islandDrawOrder(islandSlabs(scene));
+    assert.equal(ordered.length, scene.islands.length);
+    for (let a = 0; a < ordered.length; a += 1) {
+      for (let b = a + 1; b < ordered.length; b += 1) {
+        if (!overlaps(ordered[a]!, ordered[b]!)) continue;
+        assert.ok(behind(ordered[a]!.island, ordered[b]!.island), `${ordered[a]!.island.id} drew before ${ordered[b]!.island.id}, which it stands in front of`);
+      }
+    }
+    // Terraces keep their order: high ground behind, falling toward the viewer.
+    for (const slab of ordered) assert.deepEqual(slab.bands.map((band) => band.index), slab.bands.map((_, index) => index));
+  }
+});
+
+test("switching the graph changes how slabs are lit, never their shape", () => {
+  const shape = (scene: Scene) => islandSlabs(scene).map(({ island, outline, bands, shadow }) => ({ id: island.id, outline, bands, shadow }));
+  assert.deepEqual(shape(prod), shape(dev));
+});
+
+test("every island has a trim in its icons' colour family, and every icon a tint", () => {
+  for (const scene of [dev, prod, furnished()]) {
+    for (const island of scene.islands) {
+      assert.ok(island.id in ISLAND_TRIM, `${island.id} falls back to its region's trim`);
+      assert.match(trimColor(island), /^#[0-9a-f]{6}$/i);
+    }
+  }
+  for (const key of Object.keys(ICONS) as (keyof typeof ICONS)[]) assert.match(ICON_TINT[key], /^#[0-9a-f]{6}$/i);
+  // Subnets read by colour: public green, private blue, isolated purple, each unlike the VPC's own edge.
+  const vpc = dev.islands.find((island) => island.id === "island:vpc")!;
+  for (const band of vpc.bands) assert.ok(band.id in BAND_TRIM, band.id);
+  const colours = [...vpc.bands.map((band) => BAND_TRIM[band.id]), trimColor(vpc)];
+  assert.equal(new Set(colours).size, colours.length);
 });

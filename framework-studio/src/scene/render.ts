@@ -5,21 +5,26 @@ import { FRAME_COLORS } from "./frame";
 import { DEPLOYMENT_BADGES, type DeploymentBadgeKind } from "../deployment";
 import { atlasPixels, sideColor, spriteOrigin, SPRITE } from "./atlas";
 import type { Decoration, Island, Prop, Scene, SceneEdge, SceneNode, Tile } from "./build";
-import { worldToScreen, type Camera, type Point, type Viewport } from "./camera";
+import { worldToScreen, type Bounds, type Camera, type Point, type Viewport } from "./camera";
 import { ELEVATION_STEP, project } from "./iso";
+import { bandTrim, GRAPHITE, hexRgb, ICON_TINT, trimColor, type Look } from "./look";
 import { acceptCards, arcControl, arcPoints, type CardHit } from "./picking";
 import { ICON_BADGE, type Face, type Glyph, type Part, type Shade, type ShapeKind } from "./shapes";
+import { islandDrawOrder, islandSlabs, type BandSlab, type IslandSlab, type WallRun } from "./slabs";
 
 /**
  * Draws a {@link Scene} onto a 2D canvas.
  *
- * Passes, back to front: the void, light pooling under each island, terrain
- * and buildings interleaved by diagonal row (so raised ground hides what is
- * behind it), the relationship arcs in the air above, their moving packets,
- * the label cards, and the region names. Nothing here decides anything about
- * the application; it paints what the scene says.
+ * Passes, back to front: the void, then the terrain and buildings in the
+ * selected look, the relationship arcs in the air above, their moving packets,
+ * the label cards, and the region names. The classic look pools light under
+ * each island and interleaves atlas tiles and buildings by diagonal row (so
+ * raised ground hides what is behind it); the graphite look casts shadows,
+ * then draws whole lit slabs back to front, each terrace before what stands
+ * on it. Nothing here decides anything about the application; it paints what
+ * the scene says.
  *
- * Per scene, the draw order and every terrain gradient are built once.
+ * Per scene, both looks' draw orders, paths and gradients are built once.
  * Per frame, only the camera, the selection, hover and time change.
  */
 
@@ -33,6 +38,7 @@ export interface RenderState {
   readonly categories: ReadonlySet<EdgeCategory>;
   readonly time: number;
   readonly motion: boolean;
+  readonly look: Look;
 }
 
 export interface FrameResult {
@@ -64,6 +70,35 @@ function hex(value: string): Rgb {
 function rgba(color: Rgb, alpha = 1, factor = 1): string {
   const channel = (value: number) => Math.round(Math.max(0, Math.min(255, value * factor)));
   return `rgba(${channel(color[0])}, ${channel(color[1])}, ${channel(color[2])}, ${alpha})`;
+}
+
+function mixRgb(a: Rgb, b: Rgb, t: number): Rgb {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+}
+
+const WHITE: Rgb = [255, 255, 255];
+
+function toPath(points: readonly number[], close = true, into = new Path2D()): Path2D {
+  if (points.length < 4) return into;
+  into.moveTo(points[0]!, points[1]!);
+  for (let index = 2; index < points.length; index += 2) into.lineTo(points[index]!, points[index + 1]!);
+  if (close) into.closePath();
+  return into;
+}
+
+function segmentsPath(segments: readonly number[]): Path2D {
+  const path = new Path2D();
+  for (let index = 0; index < segments.length; index += 4) {
+    path.moveTo(segments[index]!, segments[index + 1]!);
+    path.lineTo(segments[index + 2]!, segments[index + 3]!);
+  }
+  return path;
+}
+
+function polylineLength(points: readonly number[]): number {
+  let length = 0;
+  for (let index = 2; index < points.length; index += 2) length += Math.hypot(points[index]! - points[index - 2]!, points[index + 1]! - points[index - 1]!);
+  return length;
 }
 
 interface PartColors {
@@ -152,6 +187,8 @@ type DrawItem =
   | { readonly kind: "node"; readonly node: SceneNode }
   | { readonly kind: "prop"; readonly prop: Prop | Decoration };
 
+type Standing = Exclude<DrawItem, { kind: "tile" }>;
+
 interface Prepared {
   readonly scene: Scene;
   readonly items: readonly DrawItem[];
@@ -160,7 +197,39 @@ interface Prepared {
   readonly anchors: ReadonlyMap<string, Point>;
   /** Each draw item's world bounding box, for culling. */
   readonly boxes: ReadonlyMap<DrawItem, { minX: number; minY: number; maxX: number; maxY: number }>;
+  /** The graphite look: whole islands, back to front. */
+  readonly graphite: readonly GraphiteIsland[];
 }
+
+/** One terrace of a graphite slab, as paths and gradients built once per scene. */
+interface GraphiteBand {
+  readonly slab: BandSlab;
+  readonly trim: Rgb;
+  readonly top: Path2D;
+  readonly topFill: CanvasGradient;
+  readonly grid: Path2D;
+  readonly pads: Path2D;
+  readonly walls: readonly { readonly run: WallRun; readonly path: Path2D; readonly fill: CanvasGradient }[];
+  readonly lips: Path2D;
+  /** The foot of each wall that falls to the floor. */
+  readonly feet: Path2D;
+  readonly front?: Path2D;
+  readonly frontLength: number;
+  readonly shade?: { readonly path: Path2D; readonly fill: CanvasGradient };
+  /** The wall a name can be written on: the left rim run's top-left corner, its length and its depth. */
+  readonly face?: { readonly x: number; readonly y: number; readonly length: number; readonly depth: number };
+  /** Buildings and fixtures standing on this terrace, in painter's order. */
+  readonly items: readonly Standing[];
+}
+
+interface GraphiteIsland {
+  readonly slab: IslandSlab;
+  readonly bands: readonly GraphiteBand[];
+  readonly shadow: readonly Path2D[];
+}
+
+const OUTSIDE = (box: Bounds | undefined, view: Bounds) =>
+  box !== undefined && (box.maxX < view.minX || box.minX > view.maxX || box.maxY < view.minY || box.minY > view.maxY);
 
 const CARD_HEIGHT = 22;
 const CARD_MAX_TEXT = 140;
@@ -175,6 +244,15 @@ export class SceneRenderer {
   private disposed = false;
   /** One screen pixel, in world units, for this frame. */
   private pixel = 1;
+  private zoom = 1;
+  private dpr = 1;
+  /** Graphite's shared unit gradients, drawn under a transform so one serves every building. */
+  private readonly tints = new Map<string, CanvasGradient>();
+  private contact: CanvasGradient | undefined;
+  private plaque: { readonly face: CanvasGradient; readonly glass: CanvasGradient } | undefined;
+  private atmosphere: { readonly width: number; readonly height: number; readonly base: CanvasGradient; readonly vignette: CanvasGradient; readonly blooms: readonly CanvasGradient[] } | undefined;
+  /** Islands and terraces whose names this frame wrote on a wall, so no flat title repeats them. */
+  private readonly walled = new Set<string>();
   /** How many tiles and buildings the last frame drew, after culling. */
   drawnItems = 0;
 
@@ -293,7 +371,79 @@ export class SceneRenderer {
         boxes.set(item, { minX: minX - 30, maxX: maxX + 30, minY: minY - 4, maxY: maxY + 18 });
       }
     }
-    this.prepared = { scene, items, walls, arcs, anchors, boxes };
+    this.prepared = { scene, items, walls, arcs, anchors, boxes, graphite: this.prepareGraphite(scene, items) };
+  }
+
+  /** The graphite look's islands: paths, gradients and who stands on each terrace. */
+  private prepareGraphite(scene: Scene, items: readonly DrawItem[]): GraphiteIsland[] {
+    const context = this.context;
+    const standing = items.filter((item): item is Standing => item.kind !== "tile");
+    const ghosts = new Set([
+      ...scene.nodes.filter((node) => node.presence === "other" || node.presence === "nowhere" || node.presence === "absent").map((node) => node.id),
+      ...scene.props.filter((prop) => prop.presence === "other").map((prop) => prop.id),
+    ]);
+    return islandDrawOrder(islandSlabs(scene)).map((slab) => {
+      const { island } = slab;
+      const north = project({ x: island.gx0 - 0.5, y: island.gy0 - 0.5, h: island.top });
+      const south = project({ x: island.gx1 + 0.5, y: island.gy1 + 0.5, h: island.top });
+      const bands = slab.bands.map((band): GraphiteBand => {
+        const meta = island.bands[band.index]!;
+        const trim = bandTrim(island, band.index);
+        const topFill = context.createLinearGradient(north.x, north.y, south.x, south.y);
+        topFill.addColorStop(0, rgba(mixRgb(GRAPHITE.top.light, trim, GRAPHITE.tint)));
+        topFill.addColorStop(1, rgba(mixRgb(GRAPHITE.top.dark, trim, GRAPHITE.tint)));
+        const walls = band.walls.map((run) => {
+          const colors = GRAPHITE.walls[run.side];
+          const fill = context.createLinearGradient(...run.gradient);
+          fill.addColorStop(0, rgba(mixRgb(colors.top, trim, GRAPHITE.tint * 0.6)));
+          fill.addColorStop(1, rgba(colors.bottom));
+          return { run, path: toPath(run.quad), fill };
+        });
+        const lips = new Path2D();
+        const feet = new Path2D();
+        for (const { run } of walls) {
+          toPath(run.lip, false, lips);
+          if (run.rim) toPath([run.quad[6]!, run.quad[7]!, run.quad[4]!, run.quad[5]!], false, feet);
+        }
+        // Etched pads under solid buildings only: a ghost stands on bare ground.
+        const pads = new Path2D();
+        for (const pad of band.pads) if (!ghosts.has(pad.id)) toPath(pad.points, true, pads);
+        let shade: GraphiteBand["shade"];
+        if (band.stepShade) {
+          const fill = context.createLinearGradient(...band.stepShade.gradient);
+          fill.addColorStop(0, "rgba(0, 0, 0, 0.42)");
+          fill.addColorStop(1, "rgba(0, 0, 0, 0)");
+          shade = { path: toPath(band.stepShade.polygon), fill };
+        }
+        const face = band.walls.find((run) => run.side === "left" && run.rim);
+        return {
+          slab: band,
+          trim,
+          top: toPath(band.top),
+          topFill,
+          grid: segmentsPath(band.grid),
+          pads,
+          walls,
+          lips,
+          feet,
+          ...(band.front.length >= 4 ? { front: toPath(band.front, false) } : {}),
+          frontLength: polylineLength(band.front),
+          ...(shade ? { shade } : {}),
+          ...(face ? { face: { x: face.lip[0], y: face.lip[1], length: face.lip[2] - face.lip[0], depth: face.depth } } : {}),
+          items: standing
+            .filter((item) => {
+              const at = item.kind === "node" ? item.node : item.prop;
+              return at.gx >= meta.gx0 && at.gx <= meta.gx1 && at.gy >= island.gy0 && at.gy <= island.gy1;
+            })
+            .sort((a, b) => {
+              const one = a.kind === "node" ? a.node : a.prop;
+              const two = b.kind === "node" ? b.node : b.prop;
+              return one.gx + one.gy - (two.gx + two.gy);
+            }),
+        };
+      });
+      return { slab, bands, shadow: slab.shadow.map((layer) => toPath(layer)) };
+    });
   }
 
   render(state: RenderState): FrameResult {
@@ -309,17 +459,26 @@ export class SceneRenderer {
     }
 
     // The void.
+    const graphite = state.look === "graphite";
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const sky = context.createRadialGradient(viewport.width * 0.5, viewport.height * 0.3, 0, viewport.width * 0.5, viewport.height * 0.3, Math.max(viewport.width, viewport.height) * 0.85);
-    sky.addColorStop(0, "#1b2330");
-    sky.addColorStop(1, "#0a0d13");
-    context.fillStyle = sky;
+    if (graphite) {
+      const atmosphere = this.atmosphereFor(viewport);
+      context.fillStyle = atmosphere.base;
+    } else {
+      const sky = context.createRadialGradient(viewport.width * 0.5, viewport.height * 0.3, 0, viewport.width * 0.5, viewport.height * 0.3, Math.max(viewport.width, viewport.height) * 0.85);
+      sky.addColorStop(0, "#1b2330");
+      sky.addColorStop(1, "#0a0d13");
+      context.fillStyle = sky;
+    }
     context.fillRect(0, 0, viewport.width, viewport.height);
+    this.walled.clear();
     if (!prepared) return { cards: [], animating: false, ms: performance.now() - started };
 
     const { scene } = prepared;
     const zoom = camera.zoom;
     this.pixel = 1 / zoom;
+    this.zoom = zoom;
+    this.dpr = dpr;
     const world = () =>
       context.setTransform(
         dpr * zoom,
@@ -341,8 +500,24 @@ export class SceneRenderer {
         context.moveTo(line.a.x, line.a.y);
         context.lineTo(line.b.x, line.b.y);
       }
-      context.strokeStyle = major ? "rgba(139, 170, 205, 0.14)" : "rgba(139, 170, 205, 0.065)";
+      context.strokeStyle = graphite
+        ? major ? GRAPHITE.grid.major : GRAPHITE.grid.minor
+        : major ? "rgba(139, 170, 205, 0.14)" : "rgba(139, 170, 205, 0.065)";
       context.stroke();
+    }
+    if (graphite) {
+      // The grid fades toward the edges under a vignette, and two soft blooms colour the air.
+      const atmosphere = this.atmosphereFor(viewport);
+      context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      context.fillStyle = atmosphere.vignette;
+      context.fillRect(0, 0, viewport.width, viewport.height);
+      context.globalCompositeOperation = "lighter";
+      for (const bloom of atmosphere.blooms) {
+        context.fillStyle = bloom;
+        context.fillRect(0, 0, viewport.width, viewport.height);
+      }
+      context.globalCompositeOperation = "source-over";
+      world();
     }
 
     const spotlight = new Set<string>();
@@ -356,9 +531,6 @@ export class SceneRenderer {
     }
     const dimmed = (id: string) => state.selected !== undefined && !spotlight.has(id);
 
-    this.drawUnderglow(scene);
-    this.drawFrames(prepared);
-    const sheet = atlas();
     const pulse = state.motion ? 0.5 + 0.5 * Math.sin(state.time * 3) : 0.7;
     // What the viewport can see, in world units, with room for walls and roofs.
     const view = {
@@ -367,23 +539,9 @@ export class SceneRenderer {
       minY: camera.y - viewport.height / 2 / zoom - 80,
       maxY: camera.y + viewport.height / 2 / zoom + 40,
     };
-    let drawn = 0;
-    for (const item of prepared.items) {
-      const box = prepared.boxes.get(item)!;
-      if (box.maxX < view.minX || box.minX > view.maxX || box.maxY < view.minY || box.minY > view.maxY) continue;
-      drawn += 1;
-      if (item.kind === "tile") this.drawTile(item.tile, item.island, prepared, sheet);
-      else if (item.kind === "prop") {
-        if ("icon" in item.prop) {
-          const ghost = item.prop.presence === "other";
-          this.drawFaces(item.prop.geometry.faces, "construct", undefined, ghost ? 0 : 0.85, ghost ? "rgba(200, 210, 225, 0.5)" : undefined, ghost);
-          const tile = project({ x: item.prop.gx, y: item.prop.gy, h: item.prop.h });
-          this.drawIconPlaque(tile, item.prop.icon, ghost ? 0.32 : 0.85, false, ghost);
-        } else this.drawFaces(item.prop.geometry.faces, item.prop.shape, undefined, 0.85);
-      }
-      else this.drawNode(item.node, state, dimmed(item.node.id), pulse);
-    }
-    this.drawnItems = drawn;
+    this.drawnItems = graphite
+      ? this.drawGraphite(prepared, state, spotlight, view)
+      : this.drawClassic(prepared, state, dimmed, pulse, view);
 
     this.drawEdges(prepared, state);
     const cards = this.drawCards(prepared, state, spotlight);
@@ -391,6 +549,475 @@ export class SceneRenderer {
 
     const animating = state.motion && state.selected !== undefined;
     return { cards, animating, ms: performance.now() - started };
+  }
+
+  /** The classic look: atlas tiles and buildings interleaved by diagonal row. Returns how many it drew. */
+  private drawClassic(prepared: Prepared, state: RenderState, dimmed: (id: string) => boolean, pulse: number, view: Bounds): number {
+    this.drawUnderglow(prepared.scene);
+    this.drawFrames(prepared);
+    const sheet = atlas();
+    let drawn = 0;
+    for (const item of prepared.items) {
+      if (OUTSIDE(prepared.boxes.get(item)!, view)) continue;
+      drawn += 1;
+      if (item.kind === "tile") this.drawTile(item.tile, item.island, prepared, sheet);
+      else if (item.kind === "prop") {
+        if ("icon" in item.prop) {
+          const factor = this.fixtureLight(item.prop, prepared.scene, state);
+          const ghost = item.prop.presence === "other";
+          this.drawFaces(item.prop.geometry.faces, "construct", undefined, ghost ? 0 : 0.85 * factor, ghost ? `rgba(200, 210, 225, ${0.5 * factor})` : undefined, ghost);
+          const tile = project({ x: item.prop.gx, y: item.prop.gy, h: item.prop.h });
+          this.drawIconPlaque(tile, item.prop.icon, (ghost ? 0.32 : 0.85) * factor, false, ghost);
+        } else this.drawFaces(item.prop.geometry.faces, item.prop.shape, undefined, 0.85);
+      }
+      else this.drawNode(item.node, state, dimmed(item.node.id), pulse);
+    }
+    return drawn;
+  }
+
+  /**
+   * A gateway or endpoint dims with a selection, like everything outside the
+   * spotlight, unless it carries the traffic of the selected building's subnet.
+   */
+  private fixtureLight(prop: Prop, scene: Scene, state: RenderState): number {
+    if (state.selected === undefined) return 1;
+    const band = scene.nodes.find((node) => node.id === state.selected)?.band;
+    return band !== undefined && prop.serves.includes(band) ? 1 : 0.32;
+  }
+
+  // -------------------------------------------------------------------------
+  // Graphite
+  // -------------------------------------------------------------------------
+
+  private atmosphereFor(viewport: Viewport): NonNullable<SceneRenderer["atmosphere"]> {
+    const cached = this.atmosphere;
+    if (cached && cached.width === viewport.width && cached.height === viewport.height) return cached;
+    const context = this.context;
+    const { width, height } = viewport;
+    const reach = Math.max(width, height);
+    const base = context.createLinearGradient(0, 0, 0, height);
+    base.addColorStop(0, GRAPHITE.void.top);
+    base.addColorStop(1, GRAPHITE.void.bottom);
+    const vignette = context.createRadialGradient(width / 2, height * 0.45, reach * 0.22, width / 2, height * 0.45, reach * 0.78);
+    vignette.addColorStop(0, rgba(GRAPHITE.void.vignette, 0));
+    vignette.addColorStop(1, rgba(GRAPHITE.void.vignette, 0.82));
+    const blooms = GRAPHITE.blooms.map((bloom) => {
+      const gradient = context.createRadialGradient(width * bloom.x, height * bloom.y, 0, width * bloom.x, height * bloom.y, reach * bloom.radius);
+      gradient.addColorStop(0, rgba(bloom.color, bloom.alpha));
+      gradient.addColorStop(1, rgba(bloom.color, 0));
+      return gradient;
+    });
+    this.atmosphere = { width, height, base, vignette, blooms };
+    return this.atmosphere;
+  }
+
+  /**
+   * The graphite look. Shadows on the floor far below, then the VPC
+   * foundation, then whole islands back to front: each terrace's slab, then
+   * whatever stands on it. Returns how many slabs and buildings it drew.
+   */
+  private drawGraphite(prepared: Prepared, state: RenderState, spotlight: ReadonlySet<string>, view: Bounds): number {
+    const context = this.context;
+    for (const { slab, shadow } of prepared.graphite) {
+      if (slab.island.ghost === "blueprint" || OUTSIDE(slab.shadowBounds, view)) continue;
+      context.fillStyle = "#000";
+      shadow.forEach((layer, index) => {
+        context.globalAlpha = GRAPHITE.shadow.layers[index]!.alpha * (slab.island.ghost ? 0.3 : 1);
+        context.fill(layer);
+      });
+    }
+    context.globalAlpha = 1;
+    this.drawFramesGraphite(prepared);
+
+    const islandOf = new Map(prepared.scene.nodes.map((node) => [node.id, node.island]));
+    const lit = new Set([...spotlight].map((id) => islandOf.get(id)));
+    const shimmering = state.motion && state.selected !== undefined ? islandOf.get(state.selected) : undefined;
+    let drawn = 0;
+    for (const island of prepared.graphite) {
+      const { id } = island.slab.island;
+      const focus = state.selected === undefined || lit.has(id) ? 1 : 0.4;
+      for (const band of island.bands) {
+        if (!OUTSIDE(band.slab.bounds, view)) {
+          this.drawBand(island, band, focus, state.time, shimmering === id);
+          drawn += 1;
+        }
+        for (const item of band.items) {
+          if (OUTSIDE(prepared.boxes.get(item), view)) continue;
+          drawn += 1;
+          if (item.kind === "node") {
+            const dimmed = state.selected !== undefined && !spotlight.has(item.node.id);
+            this.drawNodeGraphite(item.node, state, dimmed);
+          } else if ("icon" in item.prop) {
+            const factor = this.fixtureLight(item.prop, prepared.scene, state);
+            const ghost = item.prop.presence === "other";
+            const tile = project({ x: item.prop.gx, y: item.prop.gy, h: item.prop.h });
+            if (!ghost) this.drawStand(tile, item.prop.geometry.faces, item.prop.icon, factor);
+            this.drawPlaqueGraphite(tile, item.prop.icon, (ghost ? 0.32 : 0.9) * factor, false, ghost, false);
+          } else this.drawFaces(item.prop.geometry.faces, item.prop.shape, undefined, 0.85);
+        }
+      }
+    }
+    return drawn;
+  }
+
+  /** One terrace: its lit top, etched grid, pads and step shade, its walls and lips, its name, then the glowing trim. */
+  private drawBand(island: GraphiteIsland, band: GraphiteBand, focus: number, time: number, shimmer: boolean): void {
+    const context = this.context;
+    const pixel = this.pixel;
+    const ghost = island.slab.island.ghost;
+    const trim = band.trim;
+    context.lineJoin = "round";
+    context.lineCap = "round";
+    context.lineWidth = pixel;
+    if (ghost === "blueprint") {
+      // A drawing of a network this deployment does not build: glass, hairlines and dashes, in the terrace's colour.
+      const blueprint = trim;
+      context.fillStyle = rgba(blueprint, 0.05);
+      context.fill(band.top);
+      context.save();
+      context.clip(band.top);
+      context.strokeStyle = rgba(blueprint, 0.12);
+      context.stroke(band.grid);
+      context.restore();
+      for (const wall of band.walls) {
+        context.fillStyle = rgba(blueprint, 0.035);
+        context.fill(wall.path);
+      }
+      context.setLineDash([4 * pixel, 4 * pixel]);
+      context.strokeStyle = rgba(blueprint, 0.3);
+      for (const wall of band.walls) context.stroke(wall.path);
+      context.stroke(band.pads);
+      context.strokeStyle = rgba(blueprint, 0.62);
+      context.stroke(band.top);
+      context.setLineDash([]);
+      this.drawWallName(island, band, rgba(mixRgb(blueprint, WHITE, 0.3), 0.7));
+      return;
+    }
+    context.globalAlpha = ghost ? 0.3 : 1;
+    context.fillStyle = band.topFill;
+    context.fill(band.top);
+    context.save();
+    context.clip(band.top);
+    context.strokeStyle = `rgba(255, 255, 255, ${GRAPHITE.etch})`;
+    context.stroke(band.grid);
+    if (band.shade) {
+      context.fillStyle = band.shade.fill;
+      context.fill(band.shade.path);
+    }
+    context.restore();
+    context.fillStyle = "rgba(255, 255, 255, 0.03)";
+    context.fill(band.pads);
+    context.strokeStyle = rgba(trim, 0.34 * focus);
+    context.stroke(band.pads);
+    context.strokeStyle = `rgba(255, 255, 255, ${GRAPHITE.rim})`;
+    context.stroke(band.top);
+    for (const wall of band.walls) {
+      context.fillStyle = wall.fill;
+      context.fill(wall.path);
+    }
+    context.strokeStyle = `rgba(255, 255, 255, ${GRAPHITE.lip})`;
+    context.stroke(band.lips);
+    this.drawWallName(island, band, rgba(mixRgb(trim, WHITE, 0.35), 0.92 * focus), rgba(trim, 0.7 * focus));
+    // Light: the trim along the front edges, a faint line at the wall's foot, and the shimmer.
+    context.globalCompositeOperation = "lighter";
+    context.strokeStyle = rgba(trim, 0.22 * focus);
+    context.stroke(band.feet);
+    if (band.front) {
+      if (ghost) {
+        context.setLineDash([4 * pixel, 4 * pixel]);
+        context.strokeStyle = rgba(trim, 0.5);
+        context.stroke(band.front);
+        context.setLineDash([]);
+      } else {
+        for (const pass of GRAPHITE.glow) {
+          context.strokeStyle = rgba(trim, pass.alpha * focus);
+          context.lineWidth = pass.width * pixel;
+          context.stroke(band.front);
+        }
+        if (shimmer) {
+          const dash = 80;
+          const gap = Math.max(band.frontLength, 320);
+          context.setLineDash([dash, gap]);
+          context.lineDashOffset = -((time * 150) % (dash + gap));
+          context.strokeStyle = rgba(mixRgb(trim, WHITE, 0.4), 0.28);
+          context.lineWidth = 6 * pixel;
+          context.stroke(band.front);
+          context.strokeStyle = rgba(mixRgb(trim, WHITE, 0.6), 0.95);
+          context.lineWidth = 2 * pixel;
+          context.stroke(band.front);
+          context.setLineDash([]);
+          context.lineDashOffset = 0;
+        }
+      }
+    }
+    context.globalCompositeOperation = "source-over";
+    context.globalAlpha = 1;
+    context.lineWidth = pixel;
+  }
+
+  /**
+   * The island's name on its front-left wall, in the wall's own perspective,
+   * or a terrace's name on its stretch of a terraced island's wall. Only when
+   * it would be legible and fits; otherwise the flat title stands in for it.
+   */
+  private drawWallName(island: GraphiteIsland, band: GraphiteBand, color: string, glow?: string): void {
+    const face = band.face;
+    const terraced = island.slab.island.bands.length > 1;
+    const meta = island.slab.island.bands[band.slab.index]!;
+    if (!face) return;
+    const text = (terraced ? meta.title : island.slab.island.title).toUpperCase();
+    const size = Math.min(face.depth * (terraced ? 0.3 : 0.42), terraced ? 13 : 20);
+    if (size * this.zoom < 9) return;
+    const font = `600 ${size}px "Barlow Semi Condensed", Barlow, system-ui, sans-serif`;
+    const spacing = size * 0.14;
+    const width = this.measureSpaced(text, font, spacing);
+    const inset = size * 0.9;
+    if (width + inset * 2 > face.length) return;
+    const context = this.context;
+    context.save();
+    // Wall space: x runs along the wall's top edge, y straight down its face.
+    context.transform(1, 0.5, 0, 1, face.x, face.y);
+    context.font = font;
+    this.setSpacing(spacing);
+    context.textBaseline = "middle";
+    context.fillStyle = color;
+    if (glow) {
+      context.shadowColor = glow;
+      context.shadowBlur = 8 * this.dpr;
+    }
+    context.fillText(text, inset, Math.min(face.depth * 0.45, size * 1.1));
+    context.restore();
+    this.setSpacing(0);
+    this.walled.add(terraced ? meta.id : island.slab.island.id);
+  }
+
+  private setSpacing(spacing: number): void {
+    if ("letterSpacing" in this.context) this.context.letterSpacing = `${spacing}px`;
+  }
+
+  private measureSpaced(text: string, font: string, spacing: number): number {
+    const key = `${font}\u0000${spacing}\u0000${text}`;
+    let width = this.widths.get(key);
+    if (width === undefined) {
+      this.context.font = font;
+      this.setSpacing(spacing);
+      width = this.context.measureText(text).width;
+      this.setSpacing(0);
+      this.widths.set(key, width);
+    }
+    return width;
+  }
+
+  /** The VPC foundation, dark glass edged in its island's trim. */
+  private drawFramesGraphite(prepared: Prepared): void {
+    const context = this.context;
+    const pixel = this.pixel;
+    const islands = new Map(prepared.scene.islands.map((island) => [island.id, island]));
+    for (const { ghost, geometry, members } of prepared.scene.frames) {
+      const owner = islands.get(members[0]!);
+      const color = owner ? hexRgb(trimColor(owner)) : hex(FRAME_COLORS.network);
+      context.globalAlpha = ghost ? 0.5 : 1;
+      context.fillStyle = rgba(mixRgb([10, 10, 15], color, 0.1));
+      if (geometry.left.length) { trace(context, geometry.left); context.fill(); }
+      context.fillStyle = rgba(mixRgb([6, 6, 10], color, 0.07));
+      if (geometry.right.length) { trace(context, geometry.right); context.fill(); }
+      context.fillStyle = ghost ? rgba(color, 0.07) : rgba(mixRgb([12, 12, 18], color, 0.12), 0.92);
+      trace(context, geometry.top);
+      context.fill();
+      context.setLineDash(ghost ? [6 * pixel, 4 * pixel] : []);
+      context.strokeStyle = rgba(color, ghost ? 0.55 : 0.85);
+      context.lineWidth = 1.2 * pixel;
+      context.stroke();
+      if (!ghost) {
+        context.globalCompositeOperation = "lighter";
+        context.strokeStyle = rgba(color, 0.12);
+        context.lineWidth = 5 * pixel;
+        context.stroke();
+        context.globalCompositeOperation = "source-over";
+      }
+      context.setLineDash([]);
+      context.strokeStyle = rgba(color, 0.18);
+      context.lineWidth = 0.7 * pixel;
+      trace(context, geometry.inset);
+      context.stroke();
+    }
+    context.globalAlpha = 1;
+  }
+
+  /** A filled unit circle under a transform: one cached gradient serves every building. */
+  private blob(x: number, y: number, rx: number, ry: number, fill: CanvasGradient): void {
+    const context = this.context;
+    context.save();
+    context.translate(x, y);
+    context.scale(rx, ry);
+    context.fillStyle = fill;
+    context.beginPath();
+    context.arc(0, 0, 1, 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+  }
+
+  private contactShadow(): CanvasGradient {
+    if (!this.contact) {
+      this.contact = this.context.createRadialGradient(0, 0, 0, 0, 0, 1);
+      this.contact.addColorStop(0, "rgba(0, 0, 0, 0.55)");
+      this.contact.addColorStop(0.6, "rgba(0, 0, 0, 0.22)");
+      this.contact.addColorStop(1, "rgba(0, 0, 0, 0)");
+    }
+    return this.contact;
+  }
+
+  private spill(color: string): CanvasGradient {
+    let gradient = this.tints.get(color);
+    if (!gradient) {
+      const rgb = hex(color);
+      gradient = this.context.createRadialGradient(0, 0, 0, 0, 0, 1);
+      gradient.addColorStop(0, rgba(rgb, 0.26));
+      gradient.addColorStop(0.5, rgba(rgb, 0.08));
+      gradient.addColorStop(1, rgba(rgb, 0));
+      this.tints.set(color, gradient);
+    }
+    return gradient;
+  }
+
+  private plaqueFills(): NonNullable<SceneRenderer["plaque"]> {
+    if (!this.plaque) {
+      const face = this.context.createLinearGradient(0, -54, 0, -8);
+      face.addColorStop(0, "#1c2738");
+      face.addColorStop(1, "#0c121b");
+      const glass = this.context.createLinearGradient(0, -54, 0, -30);
+      glass.addColorStop(0, "rgba(255, 255, 255, 0.14)");
+      glass.addColorStop(1, "rgba(255, 255, 255, 0)");
+      this.plaque = { face, glass };
+    }
+    return this.plaque;
+  }
+
+  /**
+   * What an enabled building stands on: its contact shadow, the light its icon
+   * spills, and a raised graphite plinth. The plinth stays solid when a
+   * selection dims the building (only its plaque and light fade); a ghost,
+   * outside this environment, stands on nothing.
+   */
+  private drawStand(tile: Point, faces: readonly Face[], icon: IconKey, light: number): void {
+    const context = this.context;
+    const pixel = this.pixel;
+    context.globalAlpha = 0.9;
+    this.blob(tile.x + 3, tile.y + 5, 30, 14, this.contactShadow());
+    context.globalCompositeOperation = "lighter";
+    context.globalAlpha = light;
+    this.blob(tile.x, tile.y + 1, 46, 23, this.spill(ICON_TINT[icon]));
+    context.globalCompositeOperation = "source-over";
+    const [left, right, top] = faces;
+    context.globalAlpha = 1;
+    for (const [face, fill] of [[left, "#2c343f"], [right, "#1c222a"], [top, "#3a4452"]] as const) {
+      if (!face) continue;
+      trace(context, face.points);
+      context.fillStyle = fill;
+      context.fill();
+    }
+    if (top) {
+      // The plinth's front edges catch the light.
+      const [, , ex, ey, sx, sy, wx, wy] = top.points as [number, number, number, number, number, number, number, number];
+      context.strokeStyle = "rgba(255, 255, 255, 0.18)";
+      context.lineWidth = pixel;
+      trace(context, [wx, wy, sx, sy, ex, ey], false);
+      context.stroke();
+    }
+    context.globalAlpha = 1;
+  }
+
+  /** A service plaque with thickness: a depth edge, a glass face, a hairline in its icon's colour. */
+  private drawPlaqueGraphite(tile: Point, key: IconKey, alpha: number, selected: boolean, ghost: boolean, hovered: boolean): void {
+    const context = this.context;
+    const pixel = this.pixel;
+    const fills = this.plaqueFills();
+    const tint = hex(ICON_TINT[key]);
+    context.save();
+    context.translate(tile.x, tile.y);
+    context.globalAlpha = alpha;
+    if (!ghost) {
+      context.fillStyle = "#04070b";
+      context.beginPath();
+      context.roundRect(-22, -52, 46, 46, 5);
+      context.fill();
+    }
+    context.beginPath();
+    context.roundRect(-24, -54, 46, 46, 5);
+    context.fillStyle = ghost ? "#111b29" : fills.face;
+    context.fill();
+    if (!ghost) {
+      context.save();
+      context.clip();
+      context.fillStyle = fills.glass;
+      context.fillRect(-24, -54, 46, 24);
+      context.restore();
+    }
+    context.setLineDash(ghost ? [3 * pixel, 3 * pixel] : []);
+    context.strokeStyle = selected ? "#f2f6ff" : hovered ? "rgba(255, 255, 255, 0.75)" : ghost ? "#63758d" : rgba(tint, 0.72);
+    context.lineWidth = (selected ? 1.5 : 1) * pixel;
+    context.stroke();
+    context.setLineDash([]);
+    if (selected) {
+      context.globalCompositeOperation = "lighter";
+      context.strokeStyle = rgba(tint, 0.4);
+      context.lineWidth = 5 * pixel;
+      context.stroke();
+      context.globalCompositeOperation = "source-over";
+    }
+    const icon = this.icons.get(key);
+    if (icon?.complete && icon.naturalWidth > 0) {
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(icon, -21, -51, 40, 40);
+    }
+    context.restore();
+  }
+
+  private drawRoleIconGraphite(tile: Point, key: IconKey, alpha: number, ghost: boolean): void {
+    const context = this.context;
+    const { x, y, size, padding } = ICON_BADGE;
+    context.save();
+    context.translate(tile.x, tile.y);
+    context.globalAlpha = alpha;
+    context.fillStyle = "#04070b";
+    context.beginPath();
+    context.roundRect(x + 1.5, y + 1.5, size, size, 4);
+    context.fill();
+    context.beginPath();
+    context.roundRect(x, y, size, size, 4);
+    context.fillStyle = "#121b28";
+    context.fill();
+    context.setLineDash(ghost ? [3 * this.pixel, 3 * this.pixel] : []);
+    context.strokeStyle = ghost ? "#63758d" : rgba(hex(ICON_TINT[key]), 0.75);
+    context.lineWidth = this.pixel;
+    context.stroke();
+    context.setLineDash([]);
+    const icon = this.icons.get(key);
+    if (icon?.complete && icon.naturalWidth > 0) {
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(icon, x + padding, y + padding, size - padding * 2, size - padding * 2);
+    }
+    context.restore();
+  }
+
+  private drawNodeGraphite(node: SceneNode, state: RenderState, dimmed: boolean): void {
+    const context = this.context;
+    const tile = project({ x: node.gx, y: node.gy, h: node.h });
+    const selected = state.selected === node.id;
+    const hovered = state.hovered === node.id;
+    const ghost = node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
+    const factor = dimmed ? 0.32 : 1;
+    if (!ghost) this.drawStand(tile, node.geometry.faces, node.icon, factor);
+    this.drawPlaqueGraphite(tile, node.icon, factor * (ghost ? 0.32 : 1), selected, ghost, hovered);
+    if (node.roleIcon) this.drawRoleIconGraphite(tile, node.roleIcon, factor * (ghost ? 0.32 : 1), ghost);
+    if (selected || hovered) {
+      trace(context, node.geometry.hull);
+      context.strokeStyle = selected ? "rgba(255, 248, 230, 0.6)" : "rgba(255, 255, 255, 0.35)";
+      context.lineWidth = this.pixel;
+      context.stroke();
+    }
   }
 
   private drawFrames(prepared: Prepared): void {
@@ -822,13 +1449,15 @@ export class SceneRenderer {
     const scale = Math.max(0.8, Math.min(1.15, camera.zoom * 1.6));
     context.textAlign = "right";
     for (const island of scene.islands) {
+      if (this.walled.has(island.id)) continue;
       // On the island's left flank, level with its surface, like a map label.
       const flank = project({ x: island.gx0, y: island.gy1 + 0.5, h: island.top });
       const point = worldToScreen(camera, viewport, { x: flank.x - 32, y: flank.y });
       const x = point.x - 14;
       context.textBaseline = "middle";
       context.font = `600 ${15 * scale}px "Barlow Semi Condensed", Barlow, system-ui, sans-serif`;
-      context.fillStyle = island.ghost ? "rgba(214, 222, 234, 0.6)" : island.region === "network" ? "#a4ded3" : "rgba(236, 239, 244, 0.94)";
+      const network = state.look === "graphite" ? rgba(mixRgb(hexRgb(trimColor(island)), WHITE, 0.55)) : "#a4ded3";
+      context.fillStyle = island.ghost ? "rgba(214, 222, 234, 0.6)" : island.region === "network" ? network : "rgba(236, 239, 244, 0.94)";
       context.fillText(island.title, x, point.y);
     }
     context.textAlign = "center";
@@ -838,6 +1467,7 @@ export class SceneRenderer {
       for (const island of scene.islands) {
         if (island.bands.length < 2) continue;
         for (const band of island.bands) {
+          if (this.walled.has(band.id)) continue;
           const ground = project({ x: band.gx, y: band.gy - 0.2, h: band.h });
           const at = worldToScreen(camera, viewport, ground);
           context.fillStyle = "rgba(235, 240, 230, 0.72)";

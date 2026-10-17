@@ -856,6 +856,10 @@ a {
   cursor: default;
 }
 
+.landscape-tools .look-toggle[aria-pressed="true"] {
+  color: #ffc46b;
+}
+
 .landscape-legend {
   display: flex;
   flex-wrap: wrap;
@@ -1431,5 +1435,18 @@ dialog.preview::backdrop {
 .stack-members .relations li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; }
 
 .auth-control { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-weight: 600; }
-.auth-switch { min-width: 60px; border: 1px solid var(--rule-strong); border-radius: 20px; background: var(--wash); color: var(--ink); }
-.auth-switch.on { background: var(--accept-wash); color: var(--accept); border-color: var(--accept); }
+/* A sliding switch: the thumb travels right and the track fills when on; the word beside it says the state. */
+.auth-switch { display: inline-flex; align-items: center; gap: 10px; padding: 3px; border: 0; border-radius: 999px; background: none; color: var(--graphite); font: inherit; font-weight: 600; cursor: pointer; }
+.auth-switch-track { position: relative; flex-shrink: 0; width: 44px; height: 24px; border: 1px solid var(--rule-strong); border-radius: 999px; background: var(--wash); transition: background-color 0.18s ease, border-color 0.18s ease; }
+.auth-switch-thumb { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--faint); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); transition: transform 0.18s ease, background-color 0.18s ease; }
+.auth-switch[aria-checked="true"] { color: var(--accept); }
+.auth-switch[aria-checked="true"] .auth-switch-track { background: var(--accept); border-color: var(--accept); }
+.auth-switch[aria-checked="true"] .auth-switch-thumb { transform: translateX(20px); background: #fff; }
+.auth-switch:hover:not(:disabled) .auth-switch-track { border-color: var(--graphite); }
+.auth-switch[aria-checked="true"]:hover:not(:disabled) .auth-switch-track { border-color: var(--accept); filter: brightness(1.08); }
+.auth-switch:disabled { cursor: default; opacity: 0.55; }
+/* Waiting on its preview or its write: it stays bright where it slid, and ignores presses. */
+.auth-switch[aria-disabled="true"] { cursor: progress; }
+@media (prefers-reduced-motion: reduce) {
+  .auth-switch-track, .auth-switch-thumb { transition: none; }
+}

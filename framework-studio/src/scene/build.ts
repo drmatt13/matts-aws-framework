@@ -86,6 +86,9 @@ export interface Band {
   readonly title: string;
   readonly caption: readonly string[];
   readonly h: number;
+  /** The band's columns, inclusive grid cells; the island's rim belongs to the band beside it. */
+  readonly gx0: number;
+  readonly gx1: number;
   /** Where the band's name is painted: the middle of its front rim. */
   readonly gx: number;
   readonly gy: number;
@@ -125,6 +128,8 @@ export interface SceneNode {
   readonly lanes?: Lanes;
   readonly auth?: boolean;
   readonly island: string;
+  /** The band it stands on: on the VPC, its subnet. */
+  readonly band: string;
   readonly geometry: Shape;
 }
 
@@ -141,6 +146,8 @@ export interface Prop {
   readonly geometry: Shape;
   /** Gateways and endpoints follow whether this graph builds their VPC. */
   readonly presence: "built" | "other";
+  /** The subnet bands whose traffic it carries, so selecting a building there keeps it lit. */
+  readonly serves: readonly string[];
 }
 
 /** Scenery: deterministic, meaningless, never picked. */
@@ -192,7 +199,40 @@ const STEP = 3;
 /** Between columns, and between islands in a column, in screen-aligned tile units. */
 const COLUMN_GAP = 6;
 const ISLAND_GAP = 5;
+
+/**
+ * Room an island leaves on its left for its flat title when it shares a row:
+ * the title's width at the zoom a fitted scene is read at, in screen-aligned
+ * tile units (32 world units each), so a label never lands on its neighbour.
+ */
+export function titleRoom(title: string): number {
+  const READ_ZOOM = 0.45;
+  return Math.ceil((32 + (14 + title.length * 6.5) / READ_ZOOM) / 32);
+}
 const THICKNESS = 3;
+/** The VPC's subnets stand level, side by side: public, private, isolated. */
+const VPC_HEIGHT = 4;
+/** How far each corner is cut back, measured along the island's edges, in cells. */
+export const CHAMFER = 2;
+
+/** The chamfer an island of this many cells takes: never so deep that two cuts meet along an edge. */
+export function chamferSize(width: number, length: number): number {
+  return Math.min(CHAMFER, Math.min(width, length) / 3);
+}
+
+/**
+ * Whether a cell is cut away by the island's chamfered corners: its centre lies
+ * outside the straight cut across a corner. A cell the cut passes through the
+ * middle of stays, so tiles, walls and picking agree with the drawn outline.
+ */
+export function chamfered(lx: number, ly: number, width: number, length: number): boolean {
+  const cut = chamferSize(width, length);
+  const left = lx + 0.5;
+  const right = width - 0.5 - lx;
+  const back = ly + 0.5;
+  const front = length - 0.5 - ly;
+  return left + back < cut || right + back < cut || right + front < cut || left + front < cut;
+}
 
 function hash(...parts: readonly (string | number)[]): number {
   let value = 2166136261;
@@ -407,7 +447,8 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   }] : [];
 
   // Compute, by where it runs.
-  const lambdaGroups: Item[][] = [[], [], []];
+  // HTTP, WebSocket, event and AgentCore tool functions, a column group each.
+  const lambdaGroups: Item[][] = [[], [], [], []];
   const vpc: Record<"public" | "private" | "isolated", Item[]> = { public: [], private: [], isolated: [] };
   const agents: Item[] = [];
   const workflows: Item[] = [];
@@ -415,7 +456,8 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
     const item = targetItem(target, mode);
     if (target.placement.kind === "vpc") vpc[target.placement.subnet].push(item);
     else if (target.kind === "workflow") workflows.push(item);
-    else if (target.kind === "agent" || target.role === "tool") agents.push(item);
+    else if (target.kind === "agent") agents.push(item);
+    else if (target.role === "tool") lambdaGroups[3]!.push(item);
     else if (target.role === "event") lambdaGroups[2]!.push(item);
     else if (target.role === "webSocket" || target.role === "webSocketAuthorizer") lambdaGroups[1]!.push(item);
     else lambdaGroups[0]!.push(item);
@@ -435,9 +477,9 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
         }))] }],
     }] : []),
     {
-      id: "island:lambda", title: "Lambda functions", region: "compute",
-      caption: ["HTTP, WebSocket and event functions. VPC-attached functions remain on their subnet terraces."],
-      bands: [{ id: "band:lambda", title: "Lambda functions", caption: [], material: "circuit", h: 3, groups: lambdaGroups.filter((group) => group.length > 0) }],
+      id: "island:lambda", title: "Serverless compute", region: "compute",
+      caption: ["HTTP, WebSocket, event and AgentCore tool functions. VPC-attached functions remain on their subnet terraces.", "A tool runs wherever the agents that list it run."],
+      bands: [{ id: "band:lambda", title: "Serverless compute", caption: [], material: "circuit", h: 3, groups: lambdaGroups.filter((group) => group.length > 0) }],
     },
     {
       id: "island:vpc",
@@ -458,25 +500,25 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
           title: "Public subnet",
           caption: captions.public,
           material: "moss",
-          h: 5,
+          h: VPC_HEIGHT,
           groups: [vpc.public],
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
-          props: [{ id: "prop:internet-gateway", icon: "internetGateway", shape: "pylon", label: "Internet gateway", caption: ["IPv4 and IPv6 between the public subnets and the internet."] }],
+          props: [{ id: "prop:internet-gateway", icon: "internetGateway", shape: "pylon", label: "Internet gateway", caption: ["IPv4 and IPv6 between the public subnets and the internet."], serves: ["band:public"] }],
         },
         {
           id: "band:private",
           title: "Private subnet",
           caption: captions.private,
           material: "lichen",
-          h: 4,
+          h: VPC_HEIGHT,
           groups: [vpc.private],
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
           props: [
             ...(network?.egressOnlyInternetGateway
-              ? [{ id: "prop:egress-only-gateway", icon: "internetGateway" as const, shape: "pylon" as const, label: "Egress-only gateway", caption: ["IPv6 out of the private subnets, never in. Free."] }]
+              ? [{ id: "prop:egress-only-gateway", icon: "internetGateway" as const, shape: "pylon" as const, label: "Egress-only gateway", caption: ["IPv6 out of the private subnets, never in. Free."], serves: ["band:private"] }]
               : []),
             ...(network?.natGateway
-              ? [{ id: "prop:nat-gateway", icon: "natGateway" as const, shape: "construct" as const, label: "NAT gateway", caption: [`IPv4 out of the private subnets, about $${network.monthlyCost.natGateway.toFixed(2)} a month.`] }]
+              ? [{ id: "prop:nat-gateway", icon: "natGateway" as const, shape: "construct" as const, label: "NAT gateway", caption: [`IPv4 out of the private subnets, about $${network.monthlyCost.natGateway.toFixed(2)} a month.`], serves: ["band:private"] }]
               : []),
           ],
         },
@@ -485,7 +527,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
           title: "Isolated subnet",
           caption: captions.isolated,
           material: "shale",
-          h: 3,
+          h: VPC_HEIGHT,
           groups: [vpc.isolated],
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
           props: captions.endpoints.slice(0, 4).map((endpoint) => ({
@@ -498,23 +540,24 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
                 ? `Gateway endpoint for ${endpoint}, on every route table. Free.`
                 : `Interface endpoint for ${endpoint}, reachable from every subnet over IPv4.`,
             ],
+            serves: ["band:public", "band:private", "band:isolated"],
           })),
         },
       ],
     },
     {
       id: "island:agentcore",
-      title: "AgentCore",
+      title: "Agents",
       region: "agents",
-      caption: ["Agents on AgentCore Runtime, outside the VPC, and the tool Lambdas their Gateway calls.", "A tool runs wherever the agents that list it run."],
-      bands: [{ id: "band:agentcore", title: "AgentCore", caption: [], material: "plum", h: 3, groups: [agents] }],
+      caption: ["Agents on AgentCore Runtime, outside the VPC. The tool Lambdas their Gateway calls stand on Serverless compute."],
+      bands: [{ id: "band:agentcore", title: "Agents", caption: [], material: "plum", h: 3, groups: [agents] }],
     },
     {
       id: "island:orchestration",
-      title: "Step Functions",
+      title: "Workflows",
       region: "orchestration",
       caption: ["Workflow graphs: state machines in a deployment, and the same graph run by the local interpreter under Compose."],
-      bands: [{ id: "band:orchestration", title: "Step Functions", caption: [], material: "copper", h: 4, groups: [workflows] }],
+      bands: [{ id: "band:orchestration", title: "Workflows", caption: [], material: "copper", h: 4, groups: [workflows] }],
     },
   ];
   const compute = computeIslands.filter((island) => island.id === "island:vpc" || island.bands.some((band) => band.groups.some((group) => group.length > 0)));
@@ -638,9 +681,9 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
   const computeWidth = columnWidth(specs.compute);
   const catalogWidth = columnWidth(specs.catalog);
   const columns = [
-    { specs: specs.compute, centre: entryWidth + COLUMN_GAP + computeWidth / 2, align: false },
-    { specs: specs.entry, centre: entryWidth / 2, align: true },
-    { specs: specs.catalog, centre: entryWidth + COLUMN_GAP + computeWidth + COLUMN_GAP + catalogWidth / 2, align: true },
+    { specs: specs.compute, width: computeWidth, centre: entryWidth + COLUMN_GAP + computeWidth / 2, align: false },
+    { specs: specs.entry, width: entryWidth, centre: entryWidth / 2, align: true },
+    { specs: specs.catalog, width: catalogWidth, centre: entryWidth + COLUMN_GAP + computeWidth + COLUMN_GAP + catalogWidth / 2, align: true },
   ];
 
   let computeHeight = 0;
@@ -663,16 +706,35 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
           .map(({ spec }) => spec)
       : column.specs;
     const measured = ordered.map((spec) => measure(spec, column.align ? byConnection : undefined));
-    const height = measured.reduce((sum, footprint) => sum + extent(footprint), 0) + ISLAND_GAP * Math.max(0, measured.length - 1);
-    let sy = column.align ? Math.round(Math.max(0, (computeHeight - height) / 2)) : 0;
+    // Rows: an island joins the row above, in order, while the row still fits the column's
+    // width (set by its widest island), leaving room on its left for its title. So small
+    // islands sit side by side, and one that outgrows its row drops to a row of its own.
+    const rows: { islands: { footprint: Footprint; at: number }[]; width: number; height: number }[] = [];
     for (const footprint of measured) {
-      const width = footprint.width + 2;
-      const length = footprint.length + 2;
-      // Centre the island's diamond on the column: its sx runs from -length to +width about its origin.
-      let difference = Math.round(column.centre - (width - length) / 2);
-      if ((sy + difference) % 2 !== 0) difference += 1;
-      placeIsland(footprint, (sy + difference) / 2, (sy - difference) / 2);
-      sy += extent(footprint) + ISLAND_GAP;
+      const size = extent(footprint);
+      const row = rows[rows.length - 1];
+      const at = row ? row.width + titleRoom(footprint.spec.title) : 0;
+      if (row && at + size <= column.width) {
+        row.islands.push({ footprint, at });
+        row.width = at + size;
+        row.height = Math.max(row.height, size);
+      } else rows.push({ islands: [{ footprint, at: 0 }], width: size, height: size });
+    }
+    const height = rows.reduce((sum, row) => sum + row.height, 0) + ISLAND_GAP * Math.max(0, rows.length - 1);
+    let sy = column.align ? Math.round(Math.max(0, (computeHeight - height) / 2)) : 0;
+    for (const row of rows) {
+      const left = column.centre - row.width / 2;
+      for (const { footprint, at } of row.islands) {
+        const width = footprint.width + 2;
+        const length = footprint.length + 2;
+        // Centre the island's diamond on its place in the row, and its height in the row's:
+        // its sx runs from -length to +width about its origin.
+        const top = sy + Math.floor((row.height - extent(footprint)) / 2);
+        let difference = Math.round(left + at + (width + length) / 2 - (width - length) / 2);
+        if ((top + difference) % 2 !== 0) difference += 1;
+        placeIsland(footprint, (top + difference) / 2, (top - difference) / 2);
+      }
+      sy += row.height + ISLAND_GAP;
     }
     if (!column.align) computeHeight = sy - ISLAND_GAP;
   }
@@ -699,17 +761,10 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
       });
       return index;
     };
-    // Corners worn away, deterministically, so islands read as land rather than boards.
-    const corners = [
-      [0, 0],
-      [islandWidth - 1, 0],
-      [0, islandLength - 1],
-      [islandWidth - 1, islandLength - 1],
-    ].map(([x, y]) => ({ x: x!, y: y!, depth: hash(spec.id, x!, y!) % 3 }));
-    const bitten = (lx: number, ly: number) => corners.some((corner) => Math.abs(lx - corner.x) + Math.abs(ly - corner.y) < corner.depth);
+    // Corners cut back by one straight chamfer each, so islands read as built decks.
     for (let lx = 0; lx < islandWidth; lx += 1) {
       for (let ly = 0; ly < islandLength; ly += 1) {
-        if (bitten(lx, ly)) continue;
+        if (chamfered(lx, ly, islandWidth, islandLength)) continue;
         const band = spec.bands[bandAt(lx)]!;
         const gx = gx0 + lx;
         const gy = gy0 + ly;
@@ -731,11 +786,11 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
       const gy = gy0 + 1 + ly;
       const h = spec.bands[band]!.h;
       const anchor = project({ x: gx, y: gy, h });
-      nodes.push({ ...item, gx, gy, h, island: spec.id, geometry: buildIconShape(anchor.x, anchor.y, !!item.roleIcon) });
+      nodes.push({ ...item, gx, gy, h, island: spec.id, band: spec.bands[band]!.id, geometry: buildIconShape(anchor.x, anchor.y, !!item.roleIcon) });
       // Barycentres are taken down the screen, which is what lines columns up.
       placedY.set(item.id, gx + gy);
     }
-    // Furniture stands on the last lattice row, clear of the buildings and the worn corners.
+    // Furniture stands on the last lattice row, clear of the buildings and the chamfers.
     spec.bands.forEach((band, index) => {
       (band.props ?? []).forEach((prop, position) => {
         const gx = gx0 + 1 + bandStarts[index]! + position * STEP;
@@ -762,6 +817,8 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
         title: band.title,
         caption: band.caption,
         h: band.h,
+        gx0: gx0 + (index === 0 ? 0 : 1 + bandStarts[index]!),
+        gx1: gx0 + (index === spec.bands.length - 1 ? islandWidth - 1 : bandStarts[index + 1]!),
         gx: gx0 + 1 + bandStarts[index]! + Math.floor(footprint.bandWidths[index]! / 2),
         gy: gy0 + islandLength - 1,
       })),

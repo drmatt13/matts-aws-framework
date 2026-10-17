@@ -35,7 +35,7 @@ function Verdict(props: { readonly label: string; readonly result: PreflightResu
 }
 
 export function EditDialog(props: { readonly plan: PlanResponse }) {
-  const { closePreview, toast, index } = useStudio();
+  const { closePreview, landPreview, toast, index } = useStudio();
   const { plan } = props;
   const dialog = useRef<HTMLDialogElement>(null);
   const [writing, setWriting] = useState(false);
@@ -50,7 +50,8 @@ export function EditDialog(props: { readonly plan: PlanResponse }) {
     try {
       const outcome = await api.apply(plan.planId);
       toast(outcome.message, outcome.status === "applied" ? "plain" : "refuse");
-      closePreview();
+      if (outcome.status === "applied") landPreview();
+      else closePreview();
     } catch (error) {
       toast(error instanceof ApiError ? error.message : String(error), "refuse");
       closePreview();

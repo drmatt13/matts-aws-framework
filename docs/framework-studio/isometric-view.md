@@ -28,7 +28,9 @@ The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) a
 | `iso.ts` | yes | Projection, its inverse at a height, painter's depth, tile corners |
 | `build.ts` | yes | Model → `Scene`: islands, tiles with walls, buildings, gateways and endpoints, scenery, edges, bounds |
 | `shapes.ts` | yes | Building geometry as lit polygons, with a convex silhouette |
-| `atlas.ts` | yes | Procedural 32 × 32 block sprites and the edge-extruded atlas, as RGBA pixels |
+| `slabs.ts` | yes | Graphite look: each island as chamfered slabs per terrace, front walls with gradients, trim polylines, pads, cast shadows, island painter's order |
+| `look.ts` | yes | The two looks, graphite colour tokens, trim colour per island, icon tint per icon |
+| `atlas.ts` | yes | Classic look: procedural 32 × 32 block sprites and the edge-extruded atlas, as RGBA pixels |
 | `frame.ts` | yes | VPC foundation and frame colour |
 | `camera.ts` | yes | World↔screen transforms, pan, pointer-anchored zoom, wheel normalization, fit, tween |
 | `picking.ts` | yes | Point-in-polygon, entity picking, height-aware tile picking, arc geometry, card placement |
@@ -66,19 +68,20 @@ world.y = (gx + gy) * 16 - h * 16
 | Column (left to right) | Island | Holds | Height |
 | --- | --- | --- | --- |
 | Entry | APIs | HTTP routes, service mounts, WebSocket keys and agent browser paths on one layer | 2 |
-| Compute | Lambda functions | HTTP, WebSocket and event Lambdas outside the VPC on one layer | 3 |
+| Compute | Serverless compute | HTTP, WebSocket, event and AgentCore tool Lambdas outside the VPC on one layer, a column group each | 3 |
 | | Local development | The authored Compose PostgreSQL service; active in Development, ghosted in Production | 2 |
-| | VPC | Terraces `public` (5), `private` (4), `isolated` (3). Every target with `placement.kind === "vpc"` stands on its subnet's terrace. Gateways and endpoints from `network` stand on the terraces as hover-only furniture | 5 / 4 / 3 |
-| | AgentCore | Agents and tools not placed in the VPC | 3 |
-| | Step Functions | Workflows | 4 |
+| | VPC | Subnets `public`, `private` and `isolated`, side by side at one height. Every target with `placement.kind === "vpc"` stands on its subnet. Gateways and endpoints from `network` stand on the subnets as hover-only furniture | 4 |
+| | Agents | AgentCore agents not placed in the VPC | 3 |
+| | Workflows | Step Functions workflows | 4 |
 | Catalog | Stacks | All `resource.stack<T>()` entries together, one node per class; public fields expand in the inspector | 2 |
 | | Inputs and secrets | Root inputs, secrets, and groups (a group keeps its own column) | 1 |
 
-The terraces step down toward the catalog, so each step's wall faces the viewer. Height
-means exposure: public is high ground, isolated is a sunken yard.
+The subnets stand level, left to right from public to isolated. Exposure reads in colour
+rather than height: in the graphite look, public is green, private blue and isolated
+purple.
 
 Each network island has a shallow isometric foundation beneath all its terraces, with
-a teal perimeter and inset border. It groups the subnets as one VPC. Geometry comes
+a perimeter and inset border: teal in the classic look, VPC violet in the graphite one. It groups the subnets as one VPC. Geometry comes
 from each island's own footprint, ready for separate boundaries if multiple VPC islands
 are introduced. The foundation is dashed and faded with a blueprint VPC. It participates
 in camera bounds without adding an entity or moving workloads.
@@ -95,14 +98,25 @@ subnet terraces inside the VPC foundation.
   the same depth.
 - **Columns are screen-aligned.** Islands are placed in a frame where `sx = gx - gy` runs
   across and `sy = gx + gy` runs down, then converted back to grid cells. Islands therefore
-  stay grid rectangles, columns read left to right, and islands stack straight down.
+  stay grid rectangles, and columns read left to right.
+- **Rows within a column.** A column is as wide as its widest island. Taking islands in
+  order, each joins the row above while the row still fits that width; otherwise it starts
+  a new row. An island after the first in a row first leaves room on its left for its
+  flat title (`titleRoom`), so labels never land on a neighbour. Rows are centred in the
+  column, and islands in a row are centred on the row's height. So small islands such as
+  Agents and Workflows sit side by side, and one that outgrows its row drops to a
+  row of its own.
   - Gap between columns: 6 tile units.
-  - Gap between islands: 5 tile units.
+  - Gap between rows: 5 tile units.
 - **Alignment.** Compute is placed first. Entry and catalog islands, and the items inside
   them, are ordered by the barycentre (mean screen row) of what they connect to in
   compute, which keeps arcs short.
-- **Worn corners.** Each island loses up to two cells at each corner, chosen by a
-  deterministic hash, so it reads as land rather than a board.
+- **Chamfered corners.** Each corner is cut back by one straight chamfer (`CHAMFER = 2`
+  cells along each edge, at most a third of the island's shorter side). A cell is removed
+  exactly when its centre falls outside the cut (`chamfered`), so tiles, walls, picking
+  and the graphite outline agree. The cut never reaches a building, a fixture or a terrace
+  name. On screen the outline is an octagon: the front corner becomes a facet facing the
+  viewer, and the side cuts are vertical.
 - **Walls.** A tile's two front faces drop to a lower neighbour on the same island, or to
   the island's floor (lowest band height − 3) at the rim. Level neighbours get no internal
   wall.
@@ -137,7 +151,71 @@ subnet terraces inside the VPC foundation.
   Catalog badges use absence in both snapshot models; they are never guessed from types.
   The drawing measures badge width only when one exists. Auth locks remain independent.
 
-## Terrain ([atlas.ts](../../framework-studio/src/scene/atlas.ts))
+## Terrain: two looks
+
+A toolbar toggle (the sparkle button) switches between **Graphite**, the default, and
+**Classic**. The choice is remembered per browser in `localStorage`
+(`framework-studio:isometric-look`) and falls back to Graphite when storage is unavailable.
+A look changes how things are drawn, never where they stand, what they say, or what can be
+picked.
+
+### Graphite ([slabs.ts](../../framework-studio/src/scene/slabs.ts), [look.ts](../../framework-studio/src/scene/look.ts))
+
+Each island is drawn as continuous slabs, one per band, rather than a field of tiles:
+
+- **Geometry.** A band's top is its column strip (`Band.gx0`–`gx1`) of the island's
+  chamfered outline. Only edges facing the viewer get walls:
+  - the front-left edge, the front facet and the front-right edge fall to the island floor;
+  - on a terraced island such as the VPC, each band is its own slab, apart from the next
+    by a narrow seam (`terraceGap`, 0.3 cells). Its right edge along the seam falls to the
+    floor too.
+
+  Walls are built once per run, and each carries a linear gradient that stays constant
+  along its top edge, so one gradient follows a whole sloped wall.
+- **Light.** One key light from the upper left:
+  - tops have a soft gradient from the back corner to the front;
+  - left walls are brighter than front facets, which are brighter than right walls;
+  - every wall's top edge has a 1px bright lip;
+  - where a terrace stands higher than its neighbour, without a seam between them, it
+    steps down to it, and a darkening strip sits at the foot of the step.
+- **Identity through light.** Every island is graphite. Its region shows as an emissive
+  trim along its front top edges, drawn in three additive passes, in the AWS icon category
+  colour of what stands on it:
+
+  | Island | Trim |
+  | --- | --- |
+  | APIs | `#8C4FFF` (API Gateway) |
+  | Serverless compute (Lambda) | `#ED7100` |
+  | Workflows | `#E7157B` (Step Functions) |
+  | Agents | `#01A88D` (AgentCore) |
+  | VPC | Public `#5fc75a` green, private `#3d8bfd` blue, isolated `#b07cff` purple (`BAND_TRIM`); the foundation, its edge and its label in a VPC violet `#9d6bff` |
+  | Local development | `#2fb3bc` |
+  | Stacks | `#6f93c9` |
+  | Inputs and secrets | `#DD344C` (Secrets Manager) |
+
+  The tops take 7 % of the trim. Faint hairlines are etched along tile edges, and an
+  inset pad with a trim-coloured outline sits under every building and fixture.
+- **Atmosphere.** A navy void, the grid under a vignette so it fades outward, and two soft
+  additive blooms (teal upper left, violet lower right). Each island casts a soft
+  shadow, drawn as four inflated layers, onto a floor five steps below it.
+- **Names on walls.** An island's title is written in perspective along its front-left
+  wall, in uppercase with letter spacing and in its trim colour, sheared to the wall's
+  slope. A terraced island names each terrace on its own stretch of wall instead. A name
+  is written only when it would be at least 9 px tall and fits its wall; otherwise the
+  flat title from the classic look stands in for it.
+- **Ghosts.**
+  - An unbuilt VPC is a blueprint, in each subnet's own colour: a translucent top with
+    hairlines, dashed outlines and walls, no glow and no cast shadow.
+  - Disabled islands draw at 30 % with a dashed trim.
+- **Focus.** With a selection, islands holding nothing in the spotlight dim their trim to
+  40 %. While motion is on, a bright dash runs along the selected building's island trim.
+  This happens only while a selection exists, so a still picture still draws nothing, and
+  reduced motion disables it.
+- **Order.** Shadows, then the VPC foundation, then whole islands in `islandDrawOrder`.
+  Of two islands that overlap on screen, the one wholly behind on the grid draws first.
+  Within an island, each terrace's slab is drawn, then what stands on it.
+
+### Classic ([atlas.ts](../../framework-studio/src/scene/atlas.ts))
 
 - **Sprites** are 32 × 32 and generated in code:
   - the top diamond occupies rows 8–24 (corners (16, 8), (32, 16), (16, 24), (0, 16));
@@ -155,8 +233,8 @@ subnet terraces inside the VPC foundation.
   | moss | public subnet |
   | lichen | private subnet |
   | shale | isolated subnet |
-  | copper | Step Functions |
-  | plum | AgentCore |
+  | copper | Workflows |
+  | plum | Agents |
   | granite | catalog stacks |
   | sand | inputs and secrets |
 
@@ -172,6 +250,20 @@ subnet terraces inside the VPC foundation.
   vertical gradient. A terrace step is solid.
 
 ## Buildings ([shapes.ts](../../framework-studio/src/scene/shapes.ts))
+
+In the graphite look, each building also has:
+
+- a soft contact shadow;
+- an additive spill of its icon's colour on the ground (`ICON_TINT`);
+- a raised graphite plinth with a lit front edge, on an etched pad;
+- a plaque with a depth edge, a glass highlight and a hairline in the icon's colour. When
+  selected, its hairline turns white and glows in the icon's colour.
+
+A ghost (outside this environment) has no plinth, pad, shadow or spill: its translucent
+plaque stands on bare ground.
+
+All of it stays inside the existing plaque box, so `buildIconShape` and its picking hull
+are shared by both looks.
 
 Entities now use `buildIconShape`: a low isometric plinth and an upright 48-unit plaque
 carrying a 40-unit SVG. Every plinth uses the same neutral gray palette, with face shading
@@ -190,7 +282,11 @@ clickable silhouette. HTTP nodes keep their plain API Gateway or Lambda icon.
 
 Network gateways and endpoints use the same icon plaques: AWS VPC gateway icons,
 S3 and DynamoDB service icons for their endpoints, and the VPC endpoint icon for other
-services. They remain hover-only furniture. Furniture has its own lattice spacing so
+services. They remain hover-only furniture. Each names the subnets whose traffic it
+carries (`Prop.serves`): the internet gateway serves public, the egress-only and NAT
+gateways serve private, and endpoints serve all three. With a selection, a fixture dims
+with everything outside the spotlight unless it serves the selected building's subnet
+(`SceneNode.band`). Furniture has its own lattice spacing so
 plaques do not overlap. Gateways and endpoints use translucent icons and dashed plinths
 whenever the selected graph does not build their VPC, including Development.
 
@@ -275,6 +371,7 @@ tweening. A still picture draws nothing.
   | Click | Select; click again or click the ground to clear |
   | Double-click | Select and fly to the building (empty ground: zoom in) |
   | Arrow keys, `+` / `-`, `0`, `F`, Escape | Pan, zoom, fit, focus the selection, clear it |
+| Sparkle button | Switch between the graphite and classic looks |
 
 - **Resize** keeps the world's top-left corner fixed, so opening the inspector moves
   nothing. React layout effects resize and redraw the canvas before paint when the
@@ -314,15 +411,15 @@ whichever of the five is under the pointer.
 
 ## Performance
 
-These are measured in headless Chromium on the repository's real graph: 74 entities,
-1,222 tiles, 79 arcs.
+These were measured in headless Chrome at 1600 × 1100 on the repository's real graph: 53
+entities, 897 tiles, 69 arcs. Each figure is a single frame-time reading.
 
-| Case | Cost |
-| --- | --- |
-| Full overview, about 1,300 items drawn | 3.5–3.8 ms a frame |
-| Busiest selection (`cognito.userPool`) animating at overview | 2.9 ms median, 5.7 ms p95 |
-| Zoomed in | About 500–800 items after culling, 2–5 ms |
-| No selection, or motion paused | 0 frames |
+| Case | Graphite | Classic |
+| --- | --- | --- |
+| Full overview | 67 slabs and buildings, about 1 ms | 954 items, about 1.4 ms |
+| A selection animating at overview | about 2.4 ms | about 4.9 ms |
+| Zoomed to 1× | about 0.8 ms | about 1.2 ms |
+| No selection, or motion paused | 0 frames | 0 frames |
 
 The readout in the bottom right shows a moving average.
 
@@ -337,7 +434,7 @@ The readout in the bottom right shows a moving average.
 | `hullOf(id)` | Its silhouette in screen space |
 | `cards()` | The cards as last drawn |
 | `pickAt(x, y)` | What a point would pick |
-| `stats()` | Tiles, nodes, edges, items drawn, last frame time, frame count |
+| `stats()` | Tiles, nodes, edges, items drawn, last frame time, frame count, current look |
 
 Browser checks combine it with real mouse and keyboard input: find where something is
 drawn, then click there.
@@ -348,7 +445,8 @@ drawn, then click there.
 | --- | --- |
 | A building kind | `ShapeKind` and a case in `buildShape` (`shapes.ts`); a palette entry in `BUILDINGS` (`render.ts`); the mapping in `resourceShape` or `targetItem` (`build.ts`); the kind list in the silhouette test |
 | A material | `Material` and `MATERIALS`, `SCENERY` (`build.ts`); `PALETTES` (`atlas.ts`). The atlas grows by a row |
-| A region | A spec in `islandSpecs` (`build.ts`): its column, title, caption, bands, material and height. Keep captions to what the framework states |
+| A region | A spec in `islandSpecs` (`build.ts`): its column, title, caption, bands, material and height. Keep captions to what the framework states. Give its island a trim in `ISLAND_TRIM` (`look.ts`); a test holds that every island has one |
+| An icon | `ICONS` (`icons.ts`) and its spill colour in `ICON_TINT` (`look.ts`), which the type requires |
 | An edge category | `RELATION_CATEGORY` and `CATEGORY_LABEL` (`src/lookup.ts`), `CATEGORY_COLORS` (`render.ts`) |
 
 Stack fields remain in the underlying model and Inspector. The scene maps their edge

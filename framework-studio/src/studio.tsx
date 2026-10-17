@@ -32,7 +32,14 @@ export interface StudioContextValue {
   readonly preview: (intent: EditIntent) => Promise<void>;
   readonly previewRoute: (id: string, path: string) => Promise<void>;
   readonly closePreview: () => void;
+  /** Close the preview because its edit was written; `landing` holds it until the next snapshot. */
+  readonly landPreview: () => void;
+  /** A written edit whose snapshot has not arrived yet, so a control can keep showing where it is going. */
+  readonly landing: { readonly target: string; readonly field: string } | undefined;
 }
+
+/** How long a written edit may wait for its snapshot before controls show the last one again. */
+const LANDING_TIMEOUT = 20_000;
 
 const StudioContext = createContext<StudioContextValue | undefined>(undefined);
 
@@ -53,6 +60,7 @@ export function StudioProvider(props: {
   const [mode, setMode] = useState<Mode>(snapshot.currentMode);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [plan, setPlan] = useState<PlanResponse | undefined>();
+  const [landing, setLanding] = useState<StudioContextValue["landing"]>();
   const nextToast = useRef(1);
 
   const toast = useCallback((text: string, tone: Toast["tone"] = "plain") => {
@@ -65,11 +73,18 @@ export function StudioProvider(props: {
     toast(`${files.join(", ")} changed outside the studio. The view has been refreshed.`);
   });
 
-  // A refresh expires an open preview on the server; close it here too.
+  // A refresh expires an open preview on the server; close it here too. It also
+  // carries any written edit, so nothing is landing any more.
   const revision = snapshot.revision;
   useEffect(() => {
     setPlan((current) => (current ? undefined : current));
+    setLanding(undefined);
   }, [revision]);
+  useEffect(() => {
+    if (!landing) return;
+    const timer = window.setTimeout(() => setLanding(undefined), LANDING_TIMEOUT);
+    return () => window.clearTimeout(timer);
+  }, [landing]);
 
   const preview = useCallback(
     async (intent: EditIntent) => {
@@ -105,6 +120,11 @@ export function StudioProvider(props: {
     preview,
     previewRoute,
     closePreview: () => setPlan(undefined),
+    landPreview: () => {
+      if (plan) setLanding({ target: plan.target, field: plan.field });
+      setPlan(undefined);
+    },
+    landing,
   };
   return <StudioContext.Provider value={value}>{props.children}</StudioContext.Provider>;
 }
