@@ -1,6 +1,6 @@
 import type { Lanes, Mode, ModeModel, ModelEdge, ModelResource, ModelRoute, ModelTarget, NetworkModel } from "../../shared/model";
 import { RELATION_CATEGORY, ROLE_LABEL, type EdgeCategory } from "../lookup";
-import { resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
+import { endpointServiceIcon, resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
 import { availabilityBadge, deploymentBadge, developmentLocation, environments, type Availability, type DeploymentBadgeKind } from "../deployment";
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH, project } from "./iso";
 import { buildIconShape, lambdaGlyph, type Glyph, type Shape, type ShapeKind } from "./shapes";
@@ -137,6 +137,7 @@ export interface SceneNode {
 export interface Prop {
   readonly id: string;
   readonly icon: IconKey;
+  readonly roleIcon?: IconKey;
   readonly shape: ShapeKind;
   readonly gx: number;
   readonly gy: number;
@@ -530,9 +531,10 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
           h: VPC_HEIGHT,
           groups: [vpc.isolated],
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
-          props: captions.endpoints.slice(0, 4).map((endpoint) => ({
+          props: captions.endpoints.map((endpoint) => ({
             id: `prop:endpoint:${endpoint}`,
-            icon: endpoint === "s3" ? "bucket" : endpoint === "dynamodb" ? "table" : "endpoint",
+            icon: "endpoint" as const,
+            roleIcon: endpointServiceIcon(endpoint),
             shape: "input" as const,
             label: `${endpoint} endpoint`,
             caption: [
@@ -807,7 +809,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
         const gx = gx0 + 2 + bandStarts[index]! + position * STEP;
         const gy = gy0 + footprint.length - 1;
         const anchor = project({ x: gx, y: gy, h: band.h });
-        props.push({ ...prop, presence: ghost ? "other" : "built", gx, gy, h: band.h, geometry: buildIconShape(anchor.x, anchor.y) });
+        props.push({ ...prop, presence: ghost ? "other" : "built", gx, gy, h: band.h, geometry: buildIconShape(anchor.x, anchor.y, !!prop.roleIcon) });
       });
     });
     const heights = spec.bands.map((band) => band.h);

@@ -603,6 +603,7 @@ export class SceneRenderer {
           this.drawFaces(item.prop.geometry.faces, "construct", undefined, ghost ? 0 : 0.85 * factor, ghost ? `rgba(200, 210, 225, ${0.5 * factor})` : undefined, ghost);
           const tile = project({ x: item.prop.gx, y: item.prop.gy, h: item.prop.h });
           this.drawIconPlaque(tile, item.prop.icon, (ghost ? 0.32 : 0.85) * factor, false, ghost);
+          if (item.prop.roleIcon) this.drawRoleIcon(tile, item.prop.roleIcon, (ghost ? 0.32 : 0.85) * factor, ghost);
         } else this.drawFaces(item.prop.geometry.faces, item.prop.shape, undefined, 0.85);
       }
       else this.drawNode(item.node, state, dimmed(item.node.id), pulse);
@@ -690,6 +691,7 @@ export class SceneRenderer {
             const tile = project({ x: item.prop.gx, y: item.prop.gy, h: item.prop.h });
             if (!ghost) this.drawStand(tile, item.prop.geometry.faces, item.prop.icon, factor);
             this.drawPlaqueGraphite(tile, item.prop.icon, (ghost ? 0.32 : 0.9) * factor, false, ghost, false);
+            if (item.prop.roleIcon) this.drawRoleIconGraphite(tile, item.prop.roleIcon, (ghost ? 0.32 : 0.9) * factor, ghost);
           } else this.drawFaces(item.prop.geometry.faces, item.prop.shape, undefined, 0.85);
         }
       }

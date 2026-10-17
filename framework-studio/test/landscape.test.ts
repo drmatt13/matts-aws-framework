@@ -8,7 +8,7 @@ import { buildScene, chamfered, chamferSize, MATERIALS, titleRoom, type Island, 
 import { fitBounds, pan, resizeCamera, screenToWorld, wheelFactor, worldToScreen, zoomAt, MAX_ZOOM, MIN_ZOOM, type Camera } from "../src/scene/camera";
 import { project, unprojectAt } from "../src/scene/iso";
 import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickTile, surfaceOutline, tilePolygons } from "../src/scene/picking";
-import { buildShape, type ShapeKind } from "../src/scene/shapes";
+import { buildShape, ICON_BADGE, type ShapeKind } from "../src/scene/shapes";
 import { backgroundGrid } from "../src/scene/grid";
 import { islandFrame } from "../src/scene/frame";
 import { BAND_TRIM, GRAPHITE, ICON_TINT, ISLAND_TRIM, trimColor } from "../src/scene/look";
@@ -89,6 +89,34 @@ test("network plaques stand on their terraces with room between adjacent fixture
       assert.ok(Math.abs(prop.gx - other.gx) + Math.abs(prop.gy - other.gy) >= 3, `${prop.id} overlaps ${other.id}`);
     }
   }
+});
+
+test("every VPC endpoint has a service badge included in its hover silhouette", () => {
+  const source = snapshot.models.prod;
+  const network = { ...source.network!, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "lambda", "secretsmanager", "states", "logs"] };
+  const scene = buildScene({ ...source, network });
+  const endpoints = scene.props.filter((prop) => prop.id.startsWith("prop:endpoint:"));
+  assert.equal(endpoints.length, 7, "endpoints beyond the fourth remain visible");
+  assert.equal(endpoints.find((prop) => prop.id === "prop:endpoint:s3")!.roleIcon, "bucket");
+  assert.equal(endpoints.find((prop) => prop.id === "prop:endpoint:dynamodb")!.roleIcon, "table");
+  assert.equal(endpoints.find((prop) => prop.id === "prop:endpoint:ecs")!.roleIcon, "service");
+  assert.equal(endpoints.find((prop) => prop.id === "prop:endpoint:logs")!.roleIcon, "construct", "unmapped services keep a generic badge");
+  for (const prop of endpoints) {
+    assert.equal(prop.icon, "endpoint");
+    assert.ok(prop.roleIcon);
+    assert.ok(existsSync(path.join(repositoryRoot, "framework-studio/public/icons", `${ICONS[prop.roleIcon][0]}.svg`)));
+    const anchor = project({ x: prop.gx, y: prop.gy, h: prop.h });
+    // This point lies in the badge beyond the main plaque's right edge.
+    assert.ok(insidePolygon(anchor.x + ICON_BADGE.x + ICON_BADGE.size - ICON_BADGE.padding, anchor.y + ICON_BADGE.y + ICON_BADGE.size / 2, prop.geometry.hull));
+  }
+  const development = buildScene({ ...source, network, mode: "dev" });
+  for (const prop of endpoints) {
+    const ghost = development.props.find((item) => item.id === prop.id)!;
+    assert.equal(ghost.presence, "other");
+    assert.equal(ghost.roleIcon, prop.roleIcon);
+    assert.deepEqual(ghost.geometry, prop.geometry);
+  }
+  assert.ok(scene.props.filter((prop) => !prop.id.startsWith("prop:endpoint:")).every((prop) => prop.roleIcon === undefined), "gateway fixtures keep their plain plaques");
 });
 
 test("background lattice follows the terrain projection and stays bounded at distant zooms", () => {

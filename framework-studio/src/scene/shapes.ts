@@ -65,7 +65,7 @@ export interface Shape {
   readonly height: number;
 }
 
-/** Small invocation icon attached to the lower-right corner of a service plaque. */
+/** Small role or endpoint-service icon on the lower-right corner of a plaque. */
 export const ICON_BADGE = { x: 14, y: -30, size: 24, padding: 3 } as const;
 
 /** A service icon on a low isometric plinth. Hull includes the plaque and optional badge. */

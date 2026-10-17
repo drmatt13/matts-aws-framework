@@ -33,6 +33,18 @@ export const ICONS = {
 export type IconKey = keyof typeof ICONS;
 export const iconUrl = (key: IconKey): string => `/icons/${ICONS[key][0]}.svg`;
 
+/** Service badge on a VPC endpoint; reuse the same local service artwork as nodes. */
+export function endpointServiceIcon(service: string): IconKey {
+  const icons: Readonly<Record<string, IconKey>> = {
+    s3: "bucket", dynamodb: "table", lambda: "lambda", ecs: "service",
+    "ecs-agent": "service", "ecs-telemetry": "service",
+    sqs: "queue", sns: "topic", events: "bus", states: "workflow",
+    secretsmanager: "secret", rds: "database", "rds-data": "database",
+    "cognito-idp": "userpool", "bedrock-agentcore": "agent",
+  };
+  return icons[service] ?? icons[service.split(".")[0]!] ?? "construct";
+}
+
 export function targetIcon(target: ModelTarget): IconKey {
   return target.kind;
 }

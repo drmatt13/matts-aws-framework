@@ -286,8 +286,12 @@ the main icon's lower-right corner, share its disabled/dimmed opacity and belong
 clickable silhouette. HTTP nodes keep their plain API Gateway or Lambda icon.
 
 Network gateways and endpoints use the same icon plaques: AWS VPC gateway icons,
-S3 and DynamoDB service icons for their endpoints, and the VPC endpoint icon for other
-services. They remain hover-only furniture. Each names the subnets whose traffic it
+and a VPC endpoint icon with a small service badge at its lower-right corner. The badge
+reuses the Lambda role-badge renderer and picking silhouette, including ghost/dimmed
+opacity in both looks. S3, DynamoDB and other locally mapped services use their service
+artwork; unmapped services use a generic box and retain their service name in the hover
+card. Every declared endpoint is shown, with no four-endpoint display limit.
+They remain hover-only furniture. Each names the subnets whose traffic it
 carries (`Prop.serves`): the internet gateway serves public, the egress-only and NAT
 gateways serve private, and endpoints serve all three. With a selection, a fixture dims
 with everything outside the spotlight unless it serves the selected building's subnet
