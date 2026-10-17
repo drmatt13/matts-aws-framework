@@ -38,10 +38,17 @@ Break one of these and the studio stops being trustworthy:
    reads only the two deployment flags. The selected-resource endpoint can return the
    current `.env` value for a defined authored resource to its inspector, without caching.
    Snapshots, diffs, logs, printed models and disk journals never contain authored secrets.
-7. **The local boundary.** Loopback only, a Host check, the token, the origin check, and
-   two fixed commands with no shell. Do not add a generic command or file endpoint.
-8. **Nothing outward-facing.** No AWS calls, no synth or deploy, no secret upload, no
+   Deployment status, plans, logs and job records carry secret *names* only.
+7. **The local boundary.** Loopback only, a Host check, the token and the origin check.
+   Processes run only as typed registry operations: a fixed script, validated
+   parameters, no shell and an explicit working directory. Do not add a generic command
+   or file endpoint.
+8. **AWS only through the repository's scripts.** The studio holds no AWS SDK or
+   credentials. Observation (discover and status) is read-only. Cloud writes happen only
+   as an explicit Apply of a reviewed plan, through the same scripts the CLI uses. No
    database action from the studio.
+
+Invariants 6–8 were revised by [Deploy & Run](deploy-and-run.md).
 9. **Views are views.** Selecting, panning or laying out never writes. The isometric scene
    is a pure function of the model.
 10. **Graph switching shows facts, not new places.** Presence and ghosting change with the

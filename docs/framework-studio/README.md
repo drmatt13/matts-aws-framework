@@ -47,6 +47,7 @@ separate deployment states.
 | [Isometric view](isometric-view.md) | You are changing the landscape: layout, terrain, buildings, camera, picking or rendering |
 | [Lambda invocation design](lambda-invocations-design.md) | You are adding Lambda type conversion, resource-specific event triggers or function creation |
 | [Moving forward](moving-forward.md) | You are about to extend the studio: invariants, recipes, gotchas, known limits, the roadmap |
+| [Deploy & Run](deploy-and-run.md) | You are working on deployment discovery, planning, deploys, teardown or the local development lifecycle |
 
 The code lives in [framework-studio/](../../framework-studio/README.md). Its README is
 the short user-facing guide. These documents hold the design and the history.
