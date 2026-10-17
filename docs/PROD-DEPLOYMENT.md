@@ -275,7 +275,7 @@ possible; on initial setup, first obtain the public outputs needed by the build.
 - List/create/archive/delete a Project and reload to confirm persisted results. Test with two
   accounts when changing ownership behavior; one account must not mutate the other's records.
 - Run db:verify for the selected database. Check relevant Lambda/container logs.
-- For invocation changes, run the [task/workflow smoke checks](FRAMEWORK.md#invocation-smoke-checks)
+- For invocation changes, follow [task/workflow verification](FRAMEWORK.md#verifying-task-and-workflow-invocation)
   and record terminal results, not only submission acknowledgements.
 
 Offline verify, CDK synth, and successful deployment each check different things. Report

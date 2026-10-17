@@ -86,10 +86,9 @@ editing those files and handle expired callbacks in application behavior.
 
 ## Headless verification
 
-- `npm run workflows:smoke` checks the repository fixtures after dev setup.
 - `POST /workflows` on the local runner starts a graph with a declared caller
   holding `startsWorkflow(<id>)`; `GET /workflows/:id` reads its terminal status
-  and history. See [Invocation smoke checks](../FRAMEWORK.md#invocation-smoke-checks).
+  and history. See [Invocation verification](../FRAMEWORK.md#verifying-task-and-workflow-invocation).
 - Once the local test user is configured, `npm run dev:request -- <METHOD>
   </route> [json-body]` verifies authenticated routes and GraphQL. Never print
   the credentials, session token, or cookies.
@@ -116,7 +115,7 @@ editing those files and handle expired callbacks in application behavior.
 
 ## Completion checks and handoff
 
-Run `verify`, `workflows:inspect`, both required synths, `workflows:smoke`, a
+Run `verify`, `workflows:inspect`, both required synths, a
 headless run of the new graph, and `dev:request` against new routes where the
 authorized environment is available. Exercise requested browser behavior too.
 Report actual results and any check deferred by environment or authorization.
@@ -125,9 +124,9 @@ from offline tests or a successful synth.
 
 Working examples:
 
-- [Capabilities](../../framework-config/workflows/capabilities.ts): managed services,
-  an AWS-operation bridge, nested workflows, and a task callback; HTTP is excluded.
-- [Invocation workflow](../../framework-config/workflows/invocation-tests.ts): a
-  Lambda followed by a task.
+- [Managed-service adapter tests](../../packages/framework/test/workflow-service-steps.test.ts):
+  isolated service and bridge coverage without application demo resources.
+- [Workflow engine test](../../local-invocation-runner/test/workflow-engine.test.ts): a
+  test-only Lambda followed by a task lane stub.
 - [Project data feature](../DATA-FEATURES.md#project-is-the-reference): storage,
   repository, schema, client operations, and UI.

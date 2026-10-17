@@ -15,9 +15,8 @@ export const API_ROUTE = {
   "/mfa": "/mfa",
   "/graphql": "/graphql",
   "/examples/python": "/examples/python",
-  "/test/run-task": "/test/run-task",
   "/test/start-workflow": "/test/start-workflow",
-  "/test/capability-check": "/test/capability-check",
+  "/test/run-task": "/test/run-task",
   "/example-service/*": "/example-service",
 } as const;
 
@@ -35,9 +34,8 @@ export const AUTHENTICATED_API_ROUTES = [
   "/mfa",
   "/graphql",
   "/examples/python",
-  "/test/run-task",
   "/test/start-workflow",
-  "/test/capability-check",
+  "/test/run-task",
   "/example-service",
 ] as const;
 

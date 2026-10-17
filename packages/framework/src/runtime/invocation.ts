@@ -49,7 +49,7 @@ export interface StartWorkflowResult {
 
 export interface InvocationOptions {
   /**
-   * The calling target, such as `"lambda:test-run-task"`.
+   * The calling target, such as `"lambda:process-orders"`.
    *
    * Rarely needed. A local descriptor names the caller it was issued to, so
    * `runTask(id, input)` already tells the runner who is calling; this exists

@@ -7,8 +7,8 @@ import { authenticated } from "@repo/framework/runtime/auth";
 import { startWorkflow } from "@repo/framework/runtime/invocation";
 /**
  * The request this route accepts and the acknowledgement it returns. Declared
- * here for the same reason the direct starter declares its own: the body is one
- * string, and nothing outside this handler reads these shapes.
+ * here because the body is one string, and nothing outside this handler reads
+ * these shapes.
  *
  * 202 means the execution was accepted. The graph's terminal status is read
  * afterwards through native Step Functions APIs or the local runner's controls,
@@ -26,8 +26,7 @@ interface TestStartWorkflowResponse {
 }
 
 /**
- * `POST /test/start-workflow` — the orchestrated half of the invocation smoke
- * test.
+ * `POST /test/start-workflow` — starts the frontend's workflow.
  *
  * It starts a real Standard state machine in AWS and the same authored graph in
  * the local interpreter. It deliberately does *not* call the activity Lambda or

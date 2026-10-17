@@ -1,7 +1,7 @@
 import type { EventsSection } from "../contracts";
 
 /**
- * The workflow activity for the invocation smoke test.
+ * The validation step for the frontend's workflow.
  *
  * Declared here rather than under a handler section of its own: Step Functions
  * is one more native invoker of an ordinary event Lambda. `events` has no

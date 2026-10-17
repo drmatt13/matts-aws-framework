@@ -8,7 +8,7 @@ import type { Decoration, Island, Prop, Scene, SceneEdge, SceneNode, Tile } from
 import { worldToScreen, type Camera, type Point, type Viewport } from "./camera";
 import { ELEVATION_STEP, project } from "./iso";
 import { acceptCards, arcControl, arcPoints, type CardHit } from "./picking";
-import type { Face, Glyph, Part, Shade, ShapeKind } from "./shapes";
+import { ICON_BADGE, type Face, type Glyph, type Part, type Shade, type ShapeKind } from "./shapes";
 
 /**
  * Draws a {@link Scene} onto a 2D canvas.
@@ -536,6 +536,7 @@ export class SceneRenderer {
     }
     const ghost = node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
     this.drawIconPlaque(tile, node.icon, factor * (ghost ? 0.32 : 1), selected, ghost);
+    if (node.roleIcon) this.drawRoleIcon(tile, node.roleIcon, factor * (ghost ? 0.32 : 1), ghost);
     if (selected || state.hovered === node.id) {
       trace(context, node.geometry.hull);
       context.strokeStyle = selected ? "rgba(255, 248, 230, 0.95)" : "rgba(255, 255, 255, 0.6)";
@@ -562,6 +563,30 @@ export class SceneRenderer {
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
       context.drawImage(icon, tile.x - 20, tile.y - 50, 40, 40);
+    }
+    context.globalAlpha = 1;
+  }
+
+  private drawRoleIcon(tile: Point, key: IconKey, alpha: number, ghost: boolean): void {
+    const context = this.context;
+    const { x: dx, y: dy, size, padding } = ICON_BADGE;
+    const x = tile.x + dx;
+    const y = tile.y + dy;
+    context.globalAlpha = alpha;
+    context.fillStyle = "#111b29";
+    context.strokeStyle = "#63758d";
+    context.lineWidth = 0.8 * this.pixel;
+    context.setLineDash(ghost ? [3 * this.pixel, 3 * this.pixel] : []);
+    context.beginPath();
+    context.roundRect(x, y, size, size, 4);
+    context.fill();
+    context.stroke();
+    context.setLineDash([]);
+    const icon = this.icons.get(key);
+    if (icon?.complete && icon.naturalWidth > 0) {
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(icon, x + padding, y + padding, size - padding * 2, size - padding * 2);
     }
     context.globalAlpha = 1;
   }

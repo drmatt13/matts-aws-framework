@@ -58,10 +58,6 @@ test("an entry's spans point at its key and its declaration in the module that w
   assert.equal(slice(graphql.file, graphql.keySpan), '"/graphql"');
   assert.match(slice(graphql.file, graphql.valueSpan), /^\{\s*directory: "\/lambda_functions\/http_functions\/graphql-api"/);
 
-  const workflow = sections.workflows.find((entry) => entry.key === "invocation-test-workflow");
-  assert.ok(workflow);
-  assert.match(slice(workflow.file, workflow.valueSpan), /^workflow<InvocationTestStepEvent>\(/);
-
   for (const entries of Object.values(sections)) {
     for (const entry of entries) {
       const written = slice(entry.file, entry.keySpan).replace(/^["']|["']$/g, "");
@@ -69,6 +65,17 @@ test("an entry's spans point at its key and its declaration in the module that w
       assert.ok(entry.line >= 1 && entry.column >= 1);
     }
   }
+});
+
+test("workflow call spans are located in an isolated section module", () => {
+  const host = memoryHost({
+    "framework.config.ts": 'import { flows } from "./flows"; export default defineFrameworkConfig({ workflows: [flows] });',
+    "flows.ts": 'export const flows = { process: workflow<{ message: string }>(() => succeed({}), { timeoutSeconds: 60 }) };',
+  });
+  const located = locateConfigSource(path.resolve("/repo/framework.config.ts"), { repositoryRoot: "/repo", host });
+  const entry = located.sections.workflows[0]!;
+  assert.equal(entry.key, "process");
+  assert.match(host.readFile(entry.file).slice(entry.valueSpan.start, entry.valueSpan.end), /^workflow<\{ message: string \}>\(/);
 });
 
 test("the configuration's other properties resolve one hop, like the sections do", () => {

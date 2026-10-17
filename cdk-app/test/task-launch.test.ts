@@ -24,7 +24,7 @@ import { SynchronousLambdaFunctionsStack } from "../lib/framework/synchronous-la
  */
 
 const env = { account: "111122223333", region: "eu-west-2" };
-const TASK = "invocation-test-task";
+const TASK = "process-message";
 
 interface Template {
   readonly Resources: Record<string, { readonly Type: string; readonly Properties?: Record<string, unknown> }>;
@@ -39,13 +39,13 @@ function synthesize() {
     services: [],
     http: [{
       "/run": {
-        directory: "/lambda_functions/http_functions/test-run-task",
+        directory: "/test/fixtures/workload-handler",
         methods: ["POST"],
         deploy: "both",
         cloud: { bindings: [runsTask(TASK)] },
       },
     }],
-    tasks: [{ [TASK]: { deploy: "both", cloud: { subnet: "public" } } }],
+    tasks: [{ [TASK]: { directory: "/test/fixtures/task-worker", deploy: "both", cloud: { subnet: "public" } } }],
     workflows: [{ "runs-the-task": workflow(() => runTask(TASK), { deploy: "both", timeoutSeconds: 900 }) }],
   });
   const app = new cdk.App({ context: { "@aws-cdk/aws-lambda:useCdkManagedLogGroup": true } });

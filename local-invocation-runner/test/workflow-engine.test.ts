@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
-import { WORKFLOW_ERROR_NAMES } from "@repo/framework/config";
-import framework from "../../framework.config";
+import { attempt, defineFrameworkConfig, fail, invokeLambda, runTask, sequence, succeed, workflow, WORKFLOW_ERROR_NAMES } from "@repo/framework/config";
+import { defaults } from "../../framework-config/defaults";
 import {
   LocalWorkflowEngine,
   stepFailure,
@@ -18,13 +18,29 @@ import {
  * under a name a declared clause can match.
  *
  * Docker is not required: the task lane is a stub, and the only Lambda step in
- * the repository's fixture workflow is a Node zip handler.
+ * this test's workflow is a Node zip handler.
  */
 
 const repositoryRoot = path.resolve(__dirname, "..", "..");
 
 /** The declared fixture graph: validate, then run a container and wait. */
-const FIXTURE_WORKFLOW = "invocation-test-workflow";
+const FIXTURE_WORKFLOW = "validate-and-process";
+const framework = defineFrameworkConfig({
+  defaults, http: [], webSocket: [], services: [],
+  events: [{ "validate-message": { directory: "/test/fixtures/workload-handler" } }],
+  tasks: [{ "process-message": { directory: "/test/fixtures/task-worker", deploy: "both" } }],
+  workflows: [{
+    "validate-and-process": workflow<{ message: string }>(({ input }) => {
+      const validated = invokeLambda<{ validatedBy: string }, { message: string }>("validate-message", { payload: input });
+      return sequence(
+        validated,
+        attempt(runTask("process-message", { payload: validated.output, timeoutSeconds: 600 }),
+          () => fail({ error: "ProcessingFailed", cause: "The worker did not exit zero." })),
+        succeed(validated.output),
+      );
+    }, { deploy: "both", timeoutSeconds: 900 }),
+  }],
+});
 
 function engineWith(
   tasks: WorkflowTaskLane,
@@ -114,8 +130,8 @@ test("the fixture workflow runs its handler in a child process and its task in t
     const execution = await settle(engine, started.executionId);
 
     assert.equal(execution?.status, "succeeded");
-    assert.deepEqual(execution?.output, { validatedBy: "invocation-test-step" });
-    assert.deepEqual(tasks.submitted, ["invocation-test-task"]);
+    assert.deepEqual(execution?.output, { validatedBy: "validate-message" });
+    assert.deepEqual(tasks.submitted, ["process-message"]);
   } finally {
     await engine.shutdown();
   }
@@ -142,9 +158,9 @@ test("a non-zero container exit reaches the graph's own catch clause", async () 
     const started = engine.start(FIXTURE_WORKFLOW, { message: "hello" });
     const execution = await settle(engine, started.executionId);
 
-    // The fixture wraps its task in attempt(..., () => fail("InvocationTestTaskFailed")).
+    // The test graph wraps its task in attempt(..., () => fail("ProcessingFailed")).
     assert.equal(execution?.status, "failed");
-    assert.equal(execution?.error?.name, "InvocationTestTaskFailed");
+    assert.equal(execution?.error?.name, "ProcessingFailed");
   } finally {
     await engine.shutdown();
   }

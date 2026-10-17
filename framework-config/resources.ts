@@ -1,6 +1,5 @@
 // Type-only on purpose: a value import would carry the whole of aws-cdk-lib
 // into the dev servers and the invocation runner, which load this catalog.
-import type { WorkflowFixturesStack } from "../cdk-app/lib/app/workflow-fixtures-stack";
 import type { CognitoStack } from "../cdk-app/lib/app/cognito-stack";
 import type { RdsStack } from "../cdk-app/lib/app/rds-stack";
 import type { ReferenceExampleStack } from "../cdk-app/lib/app/reference-example-stack";
@@ -40,7 +39,6 @@ export const resources = defineResources({
   // class is the declaration; `linkResources(this, ...)` beside it is the whole
   // binding.
   referenceExamples: resource.stack<ReferenceExampleStack>(),
-  workflowFixtures: PROD_DEPLOYMENT ? undefined : resource.stack<WorkflowFixturesStack>(),
 
   // Constructs, plus this deployment's resolved frontend settings:
   // `userPoolDomainUrl`, `trustedOriginsCsv`, `frontendUrl` and

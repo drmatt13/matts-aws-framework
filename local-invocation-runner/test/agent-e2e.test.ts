@@ -79,7 +79,7 @@ test("a workload invokes an agent, which calls a tool through its emulated Gatew
     http: [
       {
         "/ask": {
-          directory: "/lambda_functions/http_functions/test-run-task",
+          directory: "/test/fixtures/workload-handler",
           id: "ask",
           methods: ["POST"],
           deploy: "local-only",

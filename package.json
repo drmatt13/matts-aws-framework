@@ -16,7 +16,6 @@
     "contract": "npm run framework:generate && npm --workspace @repo/database run generate && npm run codegen && npm run typecheck",
     "framework:generate": "tsx packages/framework/scripts/generate-contracts.ts",
     "framework:check": "tsx packages/framework/scripts/generate-contracts.ts --check && tsx packages/framework/scripts/check-local.ts",
-    "workflows:smoke": "tsx scripts/workflows-smoke.ts",
     "workflows:inspect": "tsx packages/framework/scripts/inspect-workflows.ts",
     "agents:inspect": "tsx packages/framework/scripts/inspect-agents.ts",
     "agents:smoke": "tsx scripts/agents-smoke.ts",

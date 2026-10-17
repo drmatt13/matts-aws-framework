@@ -77,8 +77,8 @@ feature directory, and frontend operations without changing these package bounda
 | WebSocket Lambda | API Gateway route key in webSocket | Explicit directory; authorizer belongs to connect | [routes](../framework-config/websocket/routes.ts) |
 | Event Lambda | Stable target id in events | Defaults to /lambda_functions/event_functions/id | [Cognito](../framework-config/events/cognito.ts) |
 | Service | Public mount in services | /ecs_containers/services/id; its Compose container is [generated](#local-service-containers) | [example-service](../framework-config/services/example.ts) |
-| Task | Stable target id in tasks | Defaults to /ecs_containers/tasks/id | [task](../framework-config/tasks/invocation-tests.ts) |
-| Workflow | Stable target id in workflows | Graph declaration; no implementation directory | [workflow](../framework-config/workflows/invocation-tests.ts) |
+| Task | Stable target id in tasks | Defaults to /ecs_containers/tasks/id | [database migration](../framework-config/tasks/database.ts) |
+| Workflow | Stable target id in workflows | Graph declaration; no implementation directory | [test-only graph](../local-invocation-runner/test/workflow-engine.test.ts) |
 | AgentCore tool | Stable target id in tools | Explicit directory under cdk-app, with contract.ts | [add-numbers](../framework-config/tools/example.ts) |
 | AgentCore agent | Stable target id in agents | Explicit directory under agents at the repository root, with contract.ts | [example-agent](../framework-config/agents/example.ts) |
 
@@ -728,12 +728,12 @@ Build graphs with the declarations from @repo/framework/config: `workflow`, `seq
 `fail`, and the steps `invokeLambda`, `runTask`, `runWorkflow`, `invokeAgent` (see
 [AgentCore](AGENTCORE.md#calling-an-agent)). Conditions are `eq`, `ne`,
 `gt`, `gte`, `lt`, `lte`, `contains`, `startsWith`, `endsWith`, `and`, `or`, `not`,
-`exists`, `isNull`. Follow the [working graph](../framework-config/workflows/invocation-tests.ts)
+`exists`, `isNull`. Follow the [test-only graph](../local-invocation-runner/test/workflow-engine.test.ts)
 and the typed API in [workflow definitions](../packages/framework/src/config/workflows.ts).
 
 An `invokeLambda` target is declared under `events`: a workflow is one more native invoker
-of an event Lambda, like the step in
-[events/invocation-tests.ts](../framework-config/events/invocation-tests.ts).
+of an event Lambda. Application event declarations live under `framework-config/events/`;
+the workflow engine's isolated test declares its own handler and graph.
 
 Creating a step does not schedule it; the returned graph establishes execution order.
 `map(items, ({ item, index }) => flow, { maxConcurrency })` runs a subgraph per element,
@@ -774,11 +774,10 @@ where each runs during development, and the bindings it needs. It is read-only a
 
 ### Managed-service steps
 
-The [capability fixture](../framework-config/workflows/capabilities.ts) exercises
-DynamoDB reads/writes, SQS, SNS, EventBridge, an AWS-operation bridge, nested
-workflows, map/wait, and a container callback. Its resources are created only in
-development. `http.request` needs an external endpoint and Connection and is not
-covered by this fixture.
+The [managed-service tests](../packages/framework/test/workflow-service-steps.test.ts)
+exercise DynamoDB, SQS, SNS, EventBridge, HTTP and AWS-operation adapters without
+declaring demo workloads or deploying fixture resources in the application.
+An application's `http.request` step needs its own endpoint and Connection.
 
 A workflow talks to a table, queue, topic or bus by naming the **catalog entry** that
 already holds it. There is no separate declaration and no separate binding: the construct
@@ -873,15 +872,18 @@ A Lambda step runs as a Node child process, or through the container-image lane 
 handler is packaged as a container. A Python zip handler has no local lane and is refused
 by name.
 
-### Invocation smoke checks
+### Verifying task and workflow invocation
 
-After the authorized dev deployment and Compose rebuild, run
-`npm run workflows:smoke`. Both fixture workflows must reach `succeeded`; the
-command fails on a refused submission, failed execution, or polling timeout.
+The frontend's **Start workflow** button calls the authenticated `/test/start-workflow`
+route. Its declared workflow validates input in an event Lambda, runs a container task
+to completion, and returns the validation result. The **Run test task** button calls the
+authenticated `/test/run-task` route, whose Lambda submits the same task directly and
+returns its run ID without waiting for completion. Each starter has only its own binding.
+Managed-service capability fixtures are not part of the application.
 
-After development setup, use the authenticated UI or POST JSON `{ "message": "hello" }`
-to /test/run-task and /test/start-workflow with a valid Cognito ID token. Through the
-frontend origin use /api/test/...; against the API directly omit /api.
+After an authorized development setup, exercise the frontend or its starter route and
+check terminal status through the runner controls below. Offline adapter and
+process-boundary tests run with `npm run verify`; they do not prove live AWS delivery.
 
 Locally, inspect the runner on the configured LOCAL_INVOCATION_RUNNER_HOST_PORT:
 

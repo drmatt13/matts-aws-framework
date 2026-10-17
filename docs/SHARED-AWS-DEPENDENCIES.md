@@ -22,8 +22,7 @@ deployment used for production-parity testing. See
 | **CloudWatch Logs** | Logs for deployed Lambdas and development integration bridges. Local application logs remain in Docker or the local processes. | Supporting observability, not a replacement for local logs. |
 
 For ordinary authenticated application development, the functional cloud base is
-**Cognito + event Lambdas + S3/SQS replay**, with AWS permissions. The current
-deployment also includes the workflow fixtures and bridge described below.
+**Cognito + event Lambdas + S3/SQS replay**, with AWS permissions.
 
 CloudFormation and the CDK bootstrap asset infrastructure support deploying and
 exporting this graph. They are setup/deployment dependencies, rather than services
@@ -74,7 +73,7 @@ Source: [replay stack](../cdk-app/lib/framework/dev-lambda-replay-stack.ts),
 | **DynamoDB, SQS, SNS, EventBridge** | A local workflow or workload uses a deployed table, queue, topic, or bus. Dedicated DSL integrations make real SDK calls using development credentials. These services are not emulated by the local workflow interpreter. |
 | **Step Functions** | A local workflow uses `aws.call()` or `http.request()`. Development creates a small Express integration bridge per referenced operation/connection; the local runner starts it synchronously. Ordinary local workflow orchestration runs in the interpreter. |
 | **EventBridge Connections** | An `http.request()` step uses a bound connection. AWS owns the connection's authentication and executes the request through its development bridge. An event bus alone does not require a Connection. |
-| **SSM Parameter Store** | A declared AWS operation reads or writes parameters; the current capability-check fixture reads one through a bridge. |
+| **SSM Parameter Store** | An application declares an AWS operation that reads or writes parameters. |
 | **Secrets Manager** | Deployment needs a declared cloud secret, or a local workload reads a stack-owned secret. Locally, raw `resource.secret("NAME")` contents injected through `secrets` come from authored `cdk-app/.env`; stack-owned secret contents, and any secret a workload reads itself by `.arn` (as the example agent reads its OpenAI key), are fetched from AWS. Local Postgres does not require an RDS credential secret. |
 | **Bedrock** | Application model calls select `bedrock` or `bedrock-mantle`. The example agent currently defaults to `bedrock-mantle`, so its AI calls need AWS model access unless configured for OpenAI. Running the agent locally does not run the model locally. |
 | **SES** | Cognito is configured with a custom SES sender. Otherwise it uses its built-in email sender; an independently configured SES identity is optional. |
@@ -90,24 +89,18 @@ Source: [local workflow execution](FRAMEWORK.md#local-execution-of-a-workflow),
 [example agent declaration](../framework-config/agents/example.ts), and
 [Cognito stack](../cdk-app/lib/app/cognito-stack.ts).
 
-## Extra resources in the current dev graph
+## Example resources and the deployed baseline
 
-The current CDK entry point always instantiates `WorkflowFixturesStack` in dev
-mode. It creates a **DynamoDB table, SQS queue, SNS topic, EventBridge bus, and SSM
-parameter** for `capability-check`. That workflow also uses a development Express
-bridge for `ssm:GetParameter`.
-
-These fixture resources exist in this checkout's dev deployment even if everyday
-UI development does not use them. They exercise framework capabilities; they are
-not universal requirements for every application built with the framework.
+Framework tests declare their own workloads and resource fixtures. They do not add
+tables, queues, topics, event buses, parameters or workflow bridges to the application's
+development deployment.
 
 `ReferenceExampleStack` is an example class and catalog entry, but the current CDK
 entry point does not instantiate it. Its document bucket, stream, schedule, and
 other example constructs therefore do not belong in the deployed baseline list.
 
-Source: [CDK entry point](../cdk-app/bin/cdk-app.ts),
-[fixture stack](../cdk-app/lib/app/workflow-fixtures-stack.ts), and
-[capability workflow](../framework-config/workflows/capabilities.ts).
+Source: [CDK entry point](../cdk-app/bin/cdk-app.ts) and
+[resource catalog](../framework-config/resources.ts).
 
 ## What development runs locally
 

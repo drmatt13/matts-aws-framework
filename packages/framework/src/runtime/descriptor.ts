@@ -59,7 +59,7 @@ export interface LocalTaskDescriptor {
   /** The private runner on the project's Compose network. Never a public route. */
   readonly runnerUrl: string;
   /**
-   * The target this descriptor was written for, such as `"lambda:test-run-task"`.
+   * The target this descriptor was written for, such as `"lambda:process-orders"`.
    *
    * The local projection derives a caller's descriptors from that caller's own
    * declared bindings, so it already knows who the document belongs to; writing

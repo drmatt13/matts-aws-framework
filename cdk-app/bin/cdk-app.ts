@@ -8,7 +8,6 @@ import {
   createFrameworkWorkloads,
 } from "../lib/framework/framework-composition";
 // lib/app: this application's own infrastructure.
-import { WorkflowFixturesStack } from "../lib/app/workflow-fixtures-stack";
 import { CognitoStack } from "../lib/app/cognito-stack";
 import { FrontendWebsiteS3Stack } from "../lib/app/frontend-website-s3-stack";
 import { FrontendRouting } from "../lib/app/frontend-routing";
@@ -188,10 +187,6 @@ const cognitoStack = new CognitoStack(app, stackId("CognitoStack"), {
 //
 //   new OrdersStack(app, stackId("OrdersStack"), { env: stackEnv });
 
-// Dev only: the resources the capability-check workflow exercises.
-if (mode === "dev") {
-  new WorkflowFixturesStack(app, stackId("WorkflowFixturesStack"), { env: stackEnv });
-}
 // ────────────────────────────────────────────────────────────────────────────
 
 // Workflows and agents come after the events and tasks their graphs name, and

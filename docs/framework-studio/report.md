@@ -137,8 +137,8 @@ creative freedom over art direction.
   - The board refreshed: prod AWS now holds it.
   - `framework:check`, run from the studio, passed in 2.1 s.
   - Undo restored the file byte for byte (`git diff` empty).
-- A refused edit: setting `invocation-test-task` to `local-only` was refused in both graphs,
-  with the framework's own message (`/test/run-task` still calls it from the cloud lane).
+- A refused edit: removing a task's cloud lane while a cloud caller still needs it.
+  This behavior is now covered with an isolated transaction-test fixture.
 - A broken file edited outside the studio: the health indicator named `database.ts:18:25`,
   the last good model stayed on screen with editing paused, and the studio recovered when
   the file was fixed.

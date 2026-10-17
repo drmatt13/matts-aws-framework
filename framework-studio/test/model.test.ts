@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { after, before, test } from "node:test";
-import { defineFrameworkConfig, defineNetwork, runsTask, type FrameworkConfig } from "@repo/framework/config";
+import { defineFrameworkConfig, defineNetwork, defineResources, dynamodb, invokeLambda, resource, runsTask, sequence, startsWorkflow, workflow, type FrameworkConfig } from "@repo/framework/config";
+import type { ITable } from "aws-cdk-lib/aws-dynamodb";
+import { defaults } from "../../framework-config/defaults";
 import type { Snapshot } from "../shared/model";
 import { projectModel } from "../server/model/project";
 import { SnapshotBuilder, type StudioState } from "../server/snapshot";
@@ -38,16 +40,31 @@ test("relationships are the framework's, with their own relation", () => {
   const edges = snapshot.models.dev.edges;
   const has = (relation: string, from: string, to: string) =>
     edges.some((edge) => edge.relation === relation && edge.from === from && edge.to === to);
-  assert.ok(has("routes", "route:http:/test/run-task", "lambda:test-run-task"));
-  assert.ok(has("runsTask", "lambda:test-run-task", "task:invocation-test-task"));
-  assert.ok(has("step", "workflow:invocation-test-workflow", "lambda:invocation-test-step"));
+  assert.ok(has("routes", "route:http:/graphql", "lambda:graphql-api"));
   assert.ok(has("usesTool", "agent:example-agent", "lambda:add-numbers"));
   assert.ok(has("database", "lambda:graphql-api", "local:postgres"));
   assert.ok(snapshot.models.prod.edges.some((edge) => edge.relation === "database" && edge.from === "lambda:graphql-api" && edge.to === "resource:rds.database"));
   assert.ok(has("grant", "lambda:mfa", "resource:cognito.userPool"));
-  assert.ok(has("integration", "workflow:capability-check", "resource:workflowFixtures.fixtureTable"));
   const userPool = edges.find((edge) => edge.from === "lambda:graphql-api" && edge.label === "USER_POOL_ID");
   assert.equal(userPool?.provenance, "derived", "handed by userPool: true, not written by the author");
+});
+
+test("task, workflow and integration relationships come from an isolated config", () => {
+  const catalog = defineResources({ data: resource.stack<{ readonly records: ITable }>() });
+  const config = defineFrameworkConfig({
+    resources: catalog, defaults, webSocket: [], services: [],
+    http: [{ "/process": { directory: "/test/fixtures/caller", methods: ["POST"], cloud: { bindings: [runsTask("worker"), startsWorkflow("process")] } } }],
+    events: [{ worker: { directory: "/test/fixtures/workload-handler" } }],
+    tasks: [{ worker: { directory: "/test/fixtures/task-worker", deploy: "both" } }],
+    workflows: [{ process: workflow(() => sequence(invokeLambda("worker"), dynamodb.put(catalog.data.records, { item: { pk: "example" } })), { timeoutSeconds: 60 }) }],
+  });
+  const model = projectModel(config as unknown as FrameworkConfig, { mode: "dev", webSocketApi: false });
+  for (const [relation, from, to] of [
+    ["runsTask", "lambda:caller", "task:worker"],
+    ["startsWorkflow", "lambda:caller", "workflow:process"],
+    ["step", "workflow:process", "lambda:worker"],
+    ["integration", "workflow:process", "resource:data.records"],
+  ]) assert.ok(model.edges.some((edge) => edge.relation === relation && edge.from === from && edge.to === to), relation);
 });
 
 test("lanes carry the framework's special rules", () => {
@@ -65,13 +82,37 @@ test("lanes carry the framework's special rules", () => {
   assert.deepEqual([http.lanes.local, http.lanes.dev, http.lanes.prod], [true, false, true]);
 });
 
+test("the frontend workflow has its authenticated starter and both execution steps", () => {
+  for (const model of Object.values(snapshot.models)) {
+    const route = model.routes.find((route) => route.path === "/test/start-workflow");
+    assert.equal(route?.target, "lambda:test-start-workflow");
+    assert.equal(route?.auth, true);
+    assert.equal(model.targets.find((target) => target.ref === route?.target)?.userPool, true);
+    for (const [relation, from, to] of [
+      ["startsWorkflow", "lambda:test-start-workflow", "workflow:invocation-test-workflow"],
+      ["step", "workflow:invocation-test-workflow", "lambda:invocation-test-step"],
+      ["step", "workflow:invocation-test-workflow", "task:invocation-test-task"],
+    ]) assert.ok(model.edges.some((edge) => edge.relation === relation && edge.from === from && edge.to === to), `${model.mode}: ${relation}`);
+  }
+});
+
+test("the frontend task starter invokes the shared task directly", () => {
+  for (const model of Object.values(snapshot.models)) {
+    const route = model.routes.find((route) => route.path === "/test/run-task");
+    assert.equal(route?.target, "lambda:test-run-task");
+    assert.equal(route?.auth, true);
+    assert.equal(model.targets.find((target) => target.ref === route?.target)?.userPool, true);
+    const bindings = model.edges.filter((edge) => edge.from === route?.target && ["runsTask", "startsWorkflow"].includes(edge.relation));
+    assert.deepEqual(bindings.map((edge) => [edge.relation, edge.to]), [["runsTask", "task:invocation-test-task"]]);
+    assert.equal(model.targets.filter((target) => target.ref === "task:invocation-test-task").length, 1);
+  }
+});
+
 test("an absent catalog entry is absent in the graph that leaves it out, and only there", () => {
   const absent = (mode: "dev" | "prod", id: string) =>
     snapshot.models[mode].resources.find((resource) => resource.id === id)?.absent;
   assert.equal(absent("dev", "resource:rds"), true);
   assert.equal(absent("prod", "resource:rds"), false);
-  assert.equal(absent("dev", "resource:workflowFixtures"), false);
-  assert.equal(absent("prod", "resource:workflowFixtures"), true);
   assert.equal(snapshot.source.catalog["resource:rds"]?.condition, "PROD_DEPLOYMENT");
 });
 
@@ -120,7 +161,6 @@ test("an editable literal is one the evaluated config agrees with", () => {
   assert.deepEqual(editability["service:example-service"]?.deploy, { kind: "literal", text: '"local-only"' });
   assert.deepEqual(editability["lambda:graphql-api"]?.["lambda.memorySize"], { kind: "literal", text: "512" });
   assert.deepEqual(editability["lambda:graphql-api"]?.deploy, { kind: "absent" });
-  assert.deepEqual(editability["workflow:capability-check"]?.deploy, { kind: "literal", text: '"local-only"' });
   assert.equal(editability["lambda:add-numbers"]?.deploy, undefined, "a tool's lane is derived, never edited");
 });
 

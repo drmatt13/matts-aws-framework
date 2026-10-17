@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import type { Snapshot } from "../shared/model";
@@ -7,6 +8,9 @@ import { fieldById } from "../server/edits/fields";
 import { planEdit, type EditIntent, type PlanOutcome } from "../server/edits/plan";
 import { SourceFiles } from "../server/source";
 import { SnapshotBuilder } from "../server/snapshot";
+import { defineFrameworkConfig, wait, workflow, type FrameworkConfig } from "@repo/framework/config";
+import { projectModel } from "../server/model/project";
+import { defaults } from "../../framework-config/defaults";
 
 /**
  * Planning against the real repository, in memory. Nothing here writes a file:
@@ -98,19 +102,30 @@ test("Lambda architecture, packaging and typed build options produce ordinary so
 });
 
 test("a workflow's fields are its options object", () => {
-  const edit = planned(plan({ target: "workflow:capability-child", field: "deploy", value: "both" }));
-  assert.equal(edit.relativeFile, "framework-config/workflows/capabilities.ts");
-  assert.equal(edit.after, edit.before.replace('{ deploy: "local-only", timeoutSeconds: 120 }', '{ deploy: "both", timeoutSeconds: 120 }'));
+  const root = path.join(repositoryRoot, ".cache/framework-studio", `workflow-plan-${randomUUID()}`);
+  mkdirSync(root, { recursive: true });
+  const source = 'export default defineFrameworkConfig({ workflows: [{ process: workflow(() => wait({ seconds: 1 }), { deploy: "local-only", timeoutSeconds: 120 }) }] });\n';
+  writeFileSync(path.join(root, "framework.config.ts"), source);
+  try {
+    const config = defineFrameworkConfig({ defaults, http: [], webSocket: [], events: [], services: [], workflows: [{ process: workflow(() => wait({ seconds: 1 }), { deploy: "local-only", timeoutSeconds: 120 }) }] });
+    const model = projectModel(config as unknown as FrameworkConfig, { mode: "dev", webSocketApi: false });
+    const fact = model.fields["workflow:process"]!.find((fact) => fact.field === "deploy")!;
+    const edit = planned(planEdit({ repositoryRoot: root, origin: 'workflows["process"]', field: fieldById("deploy")!, fact, intent: { target: "workflow:process", field: "deploy", value: "both" } }));
+    assert.equal(edit.relativeFile, "framework.config.ts");
+    assert.equal(edit.after, source.replace('deploy: "local-only"', 'deploy: "both"'));
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("inherit removes the property, unless the author commented it", () => {
-  const removed = planned(plan({ target: "lambda:test-start-workflow", field: "lambda.timeoutSeconds", inherit: true }));
+  const removed = planned(plan({ target: "lambda:graphql-api", field: "lambda.timeoutSeconds", inherit: true }));
   assert.deepEqual(
     removed.diff.lines.filter((line) => line.kind !== "context").map((line) => [line.kind, line.text, line.oldLine]),
-    [["remove", "    timeoutSeconds: 15,", 44]],
+    [["remove", "    timeoutSeconds: 30,", 11]],
   );
   assert.equal(removed.before.split("\n").length - 1, removed.after.split("\n").length);
-  const commented = plan({ target: "lambda:test-run-task", field: "lambda.memorySize", inherit: true });
+  const file = path.join(repositoryRoot, "framework-config/http/graphql.ts");
+  const overlay = readFileSync(file, "utf8").replace("    memorySize: 512,", "    // Keep the GraphQL memory allocation.\n    memorySize: 512,");
+  const commented = plan({ target: "lambda:graphql-api", field: "lambda.memorySize", inherit: true }, new SourceFiles(new Map([[file, overlay]])));
   assert.ok("refused" in commented && /comment/.test(commented.refused));
 });
 

@@ -65,8 +65,11 @@ export interface Shape {
   readonly height: number;
 }
 
-/** A service icon on a low isometric plinth. Hull includes the upright SVG plaque. */
-export function buildIconShape(x: number, y: number): Shape {
+/** Small invocation icon attached to the lower-right corner of a service plaque. */
+export const ICON_BADGE = { x: 14, y: -30, size: 24, padding: 3 } as const;
+
+/** A service icon on a low isometric plinth. Hull includes the plaque and optional badge. */
+export function buildIconShape(x: number, y: number, withBadge = false): Shape {
   return {
     faces: [
       { points: [x - 25, y - 2, x, y + 10, x, y + 15, x - 25, y + 3], part: "body", shade: "left" },
@@ -74,7 +77,10 @@ export function buildIconShape(x: number, y: number): Shape {
       { points: [x, y - 14, x + 25, y - 2, x, y + 10, x - 25, y - 2], part: "body", shade: "top" },
     ],
     top: { x, y: y - 54 },
-    hull: [x - 24, y - 54, x + 24, y - 54, x + 25, y + 3, x, y + 15, x - 25, y + 3],
+    hull: [x - 24, y - 54, x + 24, y - 54,
+      ...(withBadge ? [x + ICON_BADGE.x + ICON_BADGE.size + 1, y + ICON_BADGE.y - 1,
+        x + ICON_BADGE.x + ICON_BADGE.size + 1, y + ICON_BADGE.y + ICON_BADGE.size + 1] : []),
+      x + 25, y + 3, x, y + 15, x - 25, y + 3],
     height: 54,
   };
 }

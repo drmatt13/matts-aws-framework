@@ -29,7 +29,7 @@ interface TestRunTaskResponse {
 }
 
 /**
- * `POST /test/run-task` — the direct half of the invocation smoke test.
+ * `POST /test/run-task` — launches the task from the frontend's Tasks panel.
  *
  * It waits for ECS to accept the launch and nothing more. `runTask` resolves on
  * acknowledgement, so this returns 202 while the container is still running:

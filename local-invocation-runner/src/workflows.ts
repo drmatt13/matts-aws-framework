@@ -409,7 +409,7 @@ export class LocalWorkflowEngine {
   /**
    * What every line this execution emits is labelled with.
    *
-   * Deliberately the shape the task lane uses — `invocation-test-task #11` —
+   * Deliberately the shape the task lane uses — `process-orders #11` —
    * because the two interleave in one Compose terminal, and a reader scanning
    * that stream should not have to learn a second format. A task step's own
    * lines keep the task's prefix: the container is its own thing, and the

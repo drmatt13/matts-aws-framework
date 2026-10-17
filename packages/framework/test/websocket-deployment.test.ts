@@ -12,7 +12,6 @@ import {
   type FrameworkConfigInput,
 } from "../src/config/index";
 import { defaults } from "../../../framework-config/defaults";
-import { invocationTestTasks } from "../../../framework-config/tasks/invocation-tests";
 
 const cognito = { USER_POOL_ID: "us-east-1_pool", USER_POOL_CLIENT_ID: "client" };
 const webSocketRoles = ["webSocket", "webSocketAuthorizer"] as const;
@@ -55,13 +54,13 @@ test("a dev deployment holds the WebSocket handlers only when it builds the WebS
 });
 
 test("a WebSocket handler a dev deployment builds may not need what the dev graph lacks", () => {
-  const callsTask = config({ tasks: [invocationTestTasks] }, { cloud: { bindings: [runsTask("invocation-test-task")] } });
+  const callsTask = config({ tasks: [{ worker: { directory: "/test/fixtures/task-worker", deploy: "both" } }] }, { cloud: { bindings: [runsTask("worker")] } });
   // Served under Compose, it reaches the local task, as before.
   assert.doesNotThrow(() => assertCloudEdgesResolvable(callsTask, "dev"));
   assert.doesNotThrow(() => assertCloudEdgesResolvable(callsTask, "prod", { webSocketApi: true }));
   assert.throws(
     () => assertCloudEdgesResolvable(callsTask, "dev", { webSocketApi: true }),
-    /declares runsTask\("invocation-test-task"\), which a dev deployment does not build.*Turn DEPLOY_PROD_WEBSOCKET_API off to serve it under Compose/,
+    /declares runsTask\("worker"\), which a dev deployment does not build.*Turn DEPLOY_PROD_WEBSOCKET_API off to serve it under Compose/,
   );
 
   const inside = config({}, { subnet: "private" });

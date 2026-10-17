@@ -110,6 +110,7 @@ export interface Island {
 export interface SceneNode {
   readonly badge?: DeploymentBadgeKind;
   readonly icon: IconKey;
+  readonly roleIcon?: IconKey;
   readonly id: string;
   readonly entity: "route" | "target" | "resource" | "local";
   readonly shape: ShapeKind;
@@ -224,6 +225,7 @@ function targetPresence(lanes: Lanes, mode: Mode): { presence: Presence; text: s
 interface Item {
   readonly badge?: DeploymentBadgeKind;
   readonly icon: IconKey;
+  readonly roleIcon?: IconKey;
   readonly id: string;
   readonly entity: SceneNode["entity"];
   readonly shape: ShapeKind;
@@ -273,7 +275,11 @@ function targetItem(target: ModelTarget, mode: Mode): Item {
   };
   switch (target.kind) {
     case "lambda":
-      return { ...base, shape: "lambda", glyph: lambdaGlyph(target.role) };
+      return {
+        ...base, shape: "lambda", glyph: lambdaGlyph(target.role),
+        roleIcon: target.role === "webSocket" || target.role === "webSocketAuthorizer" ? "webSocket"
+          : target.role === "event" ? "event" : target.role === "tool" ? "agent" : undefined,
+      };
     case "service":
       return { ...base, shape: "service" };
     case "task":
@@ -294,6 +300,7 @@ function routeItem(route: ModelRoute, target: ModelTarget | undefined, mode: Mod
     id: route.id,
     badge: target ? deploymentBadge(target.lanes) : undefined,
     icon: routeIcon(route),
+    roleIcon: route.kind === "webSocket" ? "webSocket" : route.kind === "agent" ? "agent" : undefined,
     entity: "route",
     shape,
     label: route.kind === "webSocket" ? route.path : route.browserPath ?? route.path,
@@ -724,7 +731,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
       const gy = gy0 + 1 + ly;
       const h = spec.bands[band]!.h;
       const anchor = project({ x: gx, y: gy, h });
-      nodes.push({ ...item, gx, gy, h, island: spec.id, geometry: buildIconShape(anchor.x, anchor.y) });
+      nodes.push({ ...item, gx, gy, h, island: spec.id, geometry: buildIconShape(anchor.x, anchor.y, !!item.roleIcon) });
       // Barycentres are taken down the screen, which is what lines columns up.
       placedY.set(item.id, gx + gy);
     }

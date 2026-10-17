@@ -4,6 +4,8 @@ import type { ModelResource, ModelRoute, ModelTarget } from "../shared/model";
 export const ICONS = {
   lambda: ["aws/lambda", "AWS Lambda"],
   gateway: ["aws/api-gateway", "Amazon API Gateway"],
+  webSocket: ["generic/cable", "WebSocket"],
+  event: ["generic/zap", "Event invocation"],
   internetGateway: ["aws/internet-gateway", "VPC internet gateway"],
   natGateway: ["aws/nat-gateway", "VPC NAT gateway"],
   endpoint: ["aws/vpc-endpoint", "VPC endpoint"],

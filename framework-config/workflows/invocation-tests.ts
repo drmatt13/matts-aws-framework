@@ -14,7 +14,7 @@ import type {
 } from "../../cdk-app/lambda_functions/event_functions/invocation-test-step";
 
 /**
- * The framework's end-to-end workflow fixture: validate, then run a container
+ * The frontend's workflow: validate, then run a container
  * and wait for it.
  *
  * The graph lives here and nowhere else — a workflow has no source directory,

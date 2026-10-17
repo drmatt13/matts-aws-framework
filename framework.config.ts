@@ -5,14 +5,14 @@ import { network } from "./framework-config/network";
 import { authRoutes } from "./framework-config/http/auth";
 import { graphqlRoutes } from "./framework-config/http/graphql";
 import { exampleRoutes } from "./framework-config/http/examples";
-import { invocationTestRoutes } from "./framework-config/http/invocation-tests";
+import { workflowRoutes } from "./framework-config/http/workflows";
+import { taskRoutes } from "./framework-config/http/tasks";
 import { webSocketRoutes } from "./framework-config/websocket/routes";
 import { cognitoEvents } from "./framework-config/events/cognito";
 import { invocationTestEvents } from "./framework-config/events/invocation-tests";
 import { exampleService } from "./framework-config/services/example";
-import { invocationTestTasks } from "./framework-config/tasks/invocation-tests";
 import { databaseTasks } from "./framework-config/tasks/database";
-import { capabilityWorkflows } from "./framework-config/workflows/capabilities";
+import { invocationTestTasks } from "./framework-config/tasks/invocation-tests";
 import { invocationTestWorkflows } from "./framework-config/workflows/invocation-tests";
 import { exampleTools } from "./framework-config/tools/example";
 import { exampleAgent } from "./framework-config/agents/example";
@@ -49,12 +49,12 @@ const framework = defineFrameworkConfig({
     userPoolId: resources.cognito.userPool.userPoolId,
     userPoolClientId: resources.cognito.userPoolClient.userPoolClientId,
   },
-  http: [authRoutes, graphqlRoutes, exampleRoutes, invocationTestRoutes],
+  http: [authRoutes, graphqlRoutes, exampleRoutes, workflowRoutes, taskRoutes],
   webSocket: [webSocketRoutes],
   events: [cognitoEvents, invocationTestEvents],
   services: [exampleService],
   tasks: [invocationTestTasks, databaseTasks],
-  workflows: [invocationTestWorkflows, capabilityWorkflows],
+  workflows: [invocationTestWorkflows],
   tools: [exampleTools],
   agents: [exampleAgent],
 });

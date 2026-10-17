@@ -42,18 +42,18 @@ test("an image superseded by newer source is removed and the current one kept", 
 
 test("an image of a target no longer declared is removed", () => {
   const plan = planImageReclaim(
-    [task(["matts-framework-task-approval-analyst:arm64"]), task(["matts-framework-task-invocation-test-task:amd64"])],
-    { project: PROJECT, keep: new Set(["matts-framework-task-invocation-test-task:amd64"]) },
+    [task(["matts-framework-task-approval-analyst:arm64"]), task(["matts-framework-task-batch-worker:amd64"])],
+    { project: PROJECT, keep: new Set(["matts-framework-task-batch-worker:amd64"]) },
   );
   assert.deepEqual(plan, ["matts-framework-task-approval-analyst:arm64"]);
 });
 
 test("a task's image for an architecture it no longer declares is removed", () => {
   const plan = planImageReclaim(
-    [task(["matts-framework-task-invocation-test-task:amd64"]), task(["matts-framework-task-invocation-test-task:arm64"])],
-    { project: PROJECT, keep: new Set(["matts-framework-task-invocation-test-task:arm64"]) },
+    [task(["matts-framework-task-batch-worker:amd64"]), task(["matts-framework-task-batch-worker:arm64"])],
+    { project: PROJECT, keep: new Set(["matts-framework-task-batch-worker:arm64"]) },
   );
-  assert.deepEqual(plan, ["matts-framework-task-invocation-test-task:amd64"]);
+  assert.deepEqual(plan, ["matts-framework-task-batch-worker:amd64"]);
 });
 
 test("an image in use is kept even after newer source supersedes it", () => {
@@ -66,10 +66,10 @@ test("an image in use is kept even after newer source supersedes it", () => {
 
 test("a task build's private tag belongs to the task supervisor", () => {
   const plan = planImageReclaim(
-    [task(["matts-framework-task-invocation-test-task:amd64", "matts-framework-task-invocation-test-task:prepare-1a2b3c4d"])],
+    [task(["matts-framework-task-batch-worker:amd64", "matts-framework-task-batch-worker:prepare-1a2b3c4d"])],
     { project: PROJECT, keep: new Set() },
   );
-  assert.deepEqual(plan, ["matts-framework-task-invocation-test-task:amd64"]);
+  assert.deepEqual(plan, ["matts-framework-task-batch-worker:amd64"]);
 });
 
 test("another project's images are never touched", () => {

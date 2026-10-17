@@ -43,10 +43,6 @@ resource is discoverable without adding a separate Studio registration for each 
 | Catalog path | Public type | Candidate invocation | Availability / constraint |
 | --- | --- | --- | --- |
 | `cognito.userPool` | `UserPool` | Cognito lifecycle hook | Both modes; three hooks already occupied by native wiring |
-| `workflowFixtures.fixtureBus` | `EventBus` | EventBridge rule | Development deployment only |
-| `workflowFixtures.fixtureQueue` | `Queue` | SQS event source mapping | Development deployment only |
-| `workflowFixtures.fixtureTopic` | `Topic` | SNS subscription | Development deployment only |
-| `workflowFixtures.fixtureTable` | `TableV2` | DynamoDB stream | Development deployment only; stream is not enabled in its current declaration |
 | `referenceExamples.documentsBucket` | `Bucket` | S3 notification or EventBridge rule | Both modes; existing EventBridge notifications must be preserved |
 | `referenceExamples.recordsTable` | `TableV2` | DynamoDB stream | Both modes; `NEW_AND_OLD_IMAGES` stream is already enabled |
 | `referenceExamples.notificationsTopic` | `Topic` | SNS subscription | Both modes; existing subscribers must remain |
@@ -55,9 +51,10 @@ resource is discoverable without adding a separate Studio registration for each 
 
 The user-pool client, URLs, booleans, secrets, RDS cluster and database credentials do
 not become event sources because they are public. A future adapter can explicitly add
-a capability for another service. [WorkflowFixturesStack](../../cdk-app/lib/app/workflow-fixtures-stack.ts)
-and [ReferenceExampleStack](../../cdk-app/lib/app/reference-example-stack.ts) provide
-concrete examples for adapter fixtures.
+a capability for another service. [ReferenceExampleStack](../../cdk-app/lib/app/reference-example-stack.ts)
+provides source examples, but the CDK entry point does not instantiate it. Catalog
+declaration availability is not proof of deployed presence. The EventBridge adapter
+will need an isolated test bus; do not restore demo resources to the application.
 
 ## Model: function identity and invocation bindings
 

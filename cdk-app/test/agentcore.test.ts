@@ -259,7 +259,7 @@ test("invokesAgent: an agent with users is called with the caller's token, a ser
   const { toolId, agentId, dispose } = fixtures();
   const caller = {
     "/ask": {
-      directory: "/lambda_functions/http_functions/test-run-task",
+      directory: "/test/fixtures/workload-handler",
       methods: ["POST" as const],
       auth: true as const,
       deploy: "both" as const,

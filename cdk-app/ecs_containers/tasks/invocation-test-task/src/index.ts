@@ -19,8 +19,8 @@ console.log(`Task ID: ${taskId}`);
 console.log(`Invoked by: ${input.invokedBy ?? "unknown"}`);
 console.log("Task complete");
 
-// Started with completion: "callback" (the capability-check workflow), the task
-// reports its result; started to run to exit, it only exits.
+// A callback-enabled caller receives the result; the frontend workflow waits
+// for this task to exit.
 if (process.env[TASK_CALLBACK_ENVIRONMENT]) {
   await completeCallback(taskCallback(), { taskId, message: input.message ?? null });
 }

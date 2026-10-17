@@ -134,12 +134,10 @@ test("what a building shows of an entity follows the model's lanes and absence",
   assert.equal(node(dev, "service:example-service").badge, "dev");
   assert.equal(node(dev, "task:db-migrate").badge, "prod");
   assert.equal(node(dev, "resource:rds").badge, "prod");
-  assert.equal(node(dev, "resource:workflowFixtures").badge, "dev");
   assert.equal(node(dev, "resource:referenceExamples").badge, undefined);
   // The catalog says what each graph holds.
   assert.equal(node(dev, "resource:rds").presence, "absent");
   assert.equal(node(prod, "resource:rds").presence, "present");
-  assert.equal(node(prod, "resource:workflowFixtures").presence, "absent");
   // The route follows its target.
   assert.equal(node(dev, "route:http:/graphql").presence, node(dev, "lambda:graphql-api").presence);
 });

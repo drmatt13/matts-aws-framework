@@ -152,7 +152,7 @@ const withNat = defineNetwork({ cidr: "10.0.0.0/16", zones: 2, natGateway: true 
 
 test("only the network declaration builds a NAT gateway, never a container", () => {
   for (const [network, subnet, nat] of [[undefined, "public", 0], [withNat, "public", 1], [withNat, "private", 1]] as const) {
-    const built = config({ ...(network ? { network } : {}), tasks: [{ "invocation-test-task": { deploy: "both", cloud: { subnet } } }] });
+    const built = config({ ...(network ? { network } : {}), tasks: [{ "network-worker": { directory: "/test/fixtures/task-worker", deploy: "both", cloud: { subnet } } }] });
     const application = app(built);
     new EcsTasksStack(application, "Tasks", { env, config: built, cloud: { mode: "prod" } });
     finalizeFrameworkResources(application);

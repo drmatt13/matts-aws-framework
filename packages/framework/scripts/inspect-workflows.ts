@@ -149,6 +149,10 @@ function describeWorkflow(config: FrameworkConfig, workflow: NormalizedWorkflow)
 function main(): void {
   const requested = process.argv.slice(2).filter((argument) => !argument.startsWith("-"));
   const all = getWorkflows(framework as FrameworkConfig);
+  if (requested.length === 0 && all.length === 0) {
+    console.log("No workflows declared.");
+    return;
+  }
   const selected =
     requested.length === 0
       ? all

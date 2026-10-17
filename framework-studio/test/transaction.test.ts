@@ -17,7 +17,7 @@ import { SnapshotBuilder } from "../server/snapshot";
 const repositoryRoot = path.resolve(__dirname, "..", "..");
 const fixture = path.join(repositoryRoot, ".cache", "framework-studio", `fixture-${randomUUID()}`);
 const serviceFile = path.join(fixture, "framework-config", "services", "example.ts");
-const taskFile = path.join(fixture, "framework-config", "tasks", "invocation-tests.ts");
+const taskFile = path.join(fixture, "framework-config", "tasks", "worker.ts");
 let builder: SnapshotBuilder;
 let edits: EditService;
 
@@ -25,6 +25,15 @@ before(async () => {
   mkdirSync(path.join(fixture, "cdk-app", "lambda_functions"), { recursive: true });
   cpSync(path.join(repositoryRoot, "framework-config"), path.join(fixture, "framework-config"), { recursive: true });
   cpSync(path.join(repositoryRoot, "framework.config.ts"), path.join(fixture, "framework.config.ts"));
+  // Test-only binding: a cloud caller must prevent removing its worker's cloud lane.
+  writeFileSync(taskFile, 'export const worker = { "transaction-worker": { deploy: "both", } };\n');
+  writeFileSync(path.join(fixture, "framework-config/http/worker.ts"), `import { runsTask } from "@repo/framework/config";
+export const workerRoute = { "/worker": { directory: "/lambda_functions/worker", methods: ["POST"], cloud: { bindings: [runsTask("transaction-worker")] } } };
+`);
+  const configFile = path.join(fixture, "framework.config.ts");
+  writeFileSync(configFile, 'import { worker } from "./framework-config/tasks/worker";\nimport { workerRoute } from "./framework-config/http/worker";\n' + readFileSync(configFile, "utf8")
+    .replace(/http: \[([^\]]*)\]/, "http: [$1, workerRoute]")
+    .replace(/tasks: \[([^\]]*)\]/, "tasks: [$1, worker]"));
   builder = new SnapshotBuilder(fixture);
   edits = new EditService(fixture, builder);
   await builder.refresh();
@@ -72,7 +81,7 @@ test("a valid edit is written, reflected in the next snapshot, and undone to the
 
 test("a change the framework refuses is previewed with its reason and cannot be applied", async () => {
   const original = readFileSync(taskFile, "utf8");
-  const plan = await edits.plan({ target: "task:invocation-test-task", field: "deploy", value: "local-only" }, revision());
+  const plan = await edits.plan({ target: "task:transaction-worker", field: "deploy", value: "local-only" }, revision());
   assert.equal(plan.ok, false);
   assert.match(plan.preflight.dev.diagnostics[0]!.message, /removes from the cloud lane the caller still runs in/);
   await rejects(edits.apply(plan.planId), 422, /refuses/);
@@ -140,8 +149,8 @@ test("a config that stops loading keeps its last good model, refuses edits, and 
     const broken = (await builder.refresh()).snapshot;
     assert.equal(broken.models.dev.stale, true);
     assert.equal(broken.models.dev.diagnostics[0]?.stage, "load");
-    assert.match(broken.models.dev.diagnostics[0]!.message, /invocation-tests\.ts:\d+:\d+/);
-    assert.ok(broken.models.dev.targets.some((target) => target.ref === "task:invocation-test-task"), "the last good targets are still shown");
+    assert.match(broken.models.dev.diagnostics[0]!.message, /worker\.ts:\d+:\d+/);
+    assert.ok(broken.models.dev.targets.some((target) => target.ref === "task:transaction-worker"), "the last good targets are still shown");
     await rejects(
       edits.plan({ target: "service:example-service", field: "deploy", value: "both" }, broken.revision),
       422,

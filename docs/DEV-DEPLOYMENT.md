@@ -192,15 +192,14 @@ secrets. Never set them for a production deployment or commit their values.
 
 ```sh
 npm run dev:request -- POST /graphql '{"query":"{ currentUser { id email } }"}'
-npm run dev:request -- POST /test/run-task '{"message":"headless"}'
 ```
 
 The helper refuses production mode, signs in through the existing `/sign-in`
 route with the configured frontend origin, and uses the returned ID token for
 one request to the local API. It prints the status and route response, without
 printing the sign-in token or password. Expect HTTP 200 with the current user
-from GraphQL and HTTP 202 from the task starter; check the task's terminal exit
-code separately. Use it to verify authenticated routes and GraphQL headlessly.
+from GraphQL. For an application task starter, check the task's terminal exit
+code separately from submission acceptance. Use the helper to verify authenticated routes and GraphQL headlessly.
 The same dedicated user can sign in through browser automation to check the UI;
 headless requests do not replace browser verification.
 
@@ -213,7 +212,7 @@ docker compose logs -f local-api-dev-server local-invocation-runner
 
 The offline gate does not verify credentials, container startup, or live migrations.
 After startup, sign in, list/create/archive/delete a Project, reload the page, and check
-that the expected changes persist. Use the framework's [invocation smoke checks](FRAMEWORK.md#invocation-smoke-checks)
+that the expected changes persist. Use the framework's [invocation verification](FRAMEWORK.md#verifying-task-and-workflow-invocation)
 when changing tasks or workflows.
 
 | Symptom | Check |

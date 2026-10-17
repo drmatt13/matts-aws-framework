@@ -495,7 +495,7 @@ The UI must not silently normalize, reorder or remove source code just because t
 
 **Idea:** Rather than render a workflow as an opaque Lambda-like box, open its normalized graph with properly nested **sequence, branch, parallel, map, retry, callback, and agent** semantics. Execution overlays might show per-step status and outputs if the runner exposes them.
 
-**Inspect first:** `packages/framework/src/config/workflows.ts`; normalized workflow implementation; compiler; local interpreter; `framework-config/workflows/invocation-tests.ts`; `framework-config/workflows/capabilities.ts`; `npm run workflows:inspect` implementation/output.
+**Inspect first:** `packages/framework/src/config/workflows.ts`; normalized workflow implementation; compiler; local interpreter; `local-invocation-runner/test/workflow-engine.test.ts`; `packages/framework/test/workflow-service-steps.test.ts`; `npm run workflows:inspect` implementation/output.
 
 **Avoid:** converting all conditions into arbitrary JavaScript or flattening parallel/map scopes into edges that lose return-shape semantics. Determine whether workflow representation is structurally a tree/AST, DAG, or both before choosing an editor library.
 

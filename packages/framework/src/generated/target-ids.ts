@@ -20,7 +20,6 @@ export const LAMBDA_SOURCE_DIRECTORY_BY_ID = {
   "refresh": "/lambda_functions/http_functions/refresh",
   "sign-in": "/lambda_functions/http_functions/sign-in",
   "sign-out": "/lambda_functions/http_functions/sign-out",
-  "test-capability-check": "/lambda_functions/http_functions/test-capability-check",
   "test-run-task": "/lambda_functions/http_functions/test-run-task",
   "test-start-workflow": "/lambda_functions/http_functions/test-start-workflow",
   "verify-session": "/lambda_functions/http_functions/verify-session",
@@ -46,7 +45,6 @@ export const LAMBDA_TARGET_IDS = [
   "refresh",
   "sign-in",
   "sign-out",
-  "test-capability-check",
   "test-run-task",
   "test-start-workflow",
   "verify-session",
@@ -74,7 +72,6 @@ export const LAMBDA_SOURCE_DIRECTORIES = [
   "/lambda_functions/http_functions/refresh",
   "/lambda_functions/http_functions/sign-in",
   "/lambda_functions/http_functions/sign-out",
-  "/lambda_functions/http_functions/test-capability-check",
   "/lambda_functions/http_functions/test-run-task",
   "/lambda_functions/http_functions/test-start-workflow",
   "/lambda_functions/http_functions/verify-session",
@@ -150,8 +147,6 @@ export type TaskSourceDirectory = (typeof TASK_SOURCE_DIRECTORIES)[number];
  * same reason every other union here is - the config is typed against it.
  */
 export const WORKFLOW_TARGET_IDS = [
-  "capability-check",
-  "capability-child",
   "invocation-test-workflow",
 ] as const;
 

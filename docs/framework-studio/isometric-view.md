@@ -183,6 +183,11 @@ renderer; completion schedules a redraw even when motion is paused. Disposal cle
 their callbacks. Presence controls active versus ghost opacity and dashed outlines.
 Local execution is active in Development; local-only workloads are ghosted in Production.
 
+WebSocket routes and functions carry a small connection badge; agent routes and tool
+Lambdas carry an AgentCore badge; event Lambdas carry a lightning badge. These sit at
+the main icon's lower-right corner, share its disabled/dimmed opacity and belong to its
+clickable silhouette. HTTP nodes keep their plain API Gateway or Lambda icon.
+
 Network gateways and endpoints use the same icon plaques: AWS VPC gateway icons,
 S3 and DynamoDB service icons for their endpoints, and the VPC endpoint icon for other
 services. They remain hover-only furniture. Furniture has its own lattice spacing so
