@@ -7,7 +7,7 @@
   "scripts": {
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --conditions=development --import tsx --test test/*.test.ts"
   },
   "dependencies": {
     "@prisma/orm-framework": "8.0.0-rc.14",
@@ -21,11 +21,13 @@
     "yaml": "2.9.0"
   },
   "devDependencies": {
+    "@testing-library/react": "16.3.2",
     "@types/express": "^5.0.6",
     "@types/node": "^24.12.4",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "jsdom": "28.1.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vite": "^8.2.2"

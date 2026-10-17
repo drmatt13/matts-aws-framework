@@ -1,11 +1,12 @@
 {
-  // The studio's Node half: the server, the evaluator child and their tests.
+  // The Node test runner also imports browser components for DOM interaction tests.
   // Run through tsx, so extensionless imports and bundler resolution, as the
   // framework's own scripts are checked (packages/framework/tsconfig.tools.json).
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "types": ["node"],
     "strict": true,
     "noEmit": true,

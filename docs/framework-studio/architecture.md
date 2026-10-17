@@ -205,7 +205,45 @@ is generated or converted.
 Tools and events show their `deploy` as derived or AWS-invoked, read-only, which is what
 the framework says about them.
 
-A change follows one path:
+### Inspector sessions and batches
+
+`src/draft.ts` owns one observable `InspectorDraft` per `StudioProvider`. It captures the
+persisted snapshot, selected inspector and graph mode. All editable controls stage through
+it: typed fields, switches, routes, island default groups, and the resource declaration
+form. Entries are keyed by underlying target/field, retain invalid input text, and disappear
+when they match the authored baseline. Environment values never enter the draft.
+
+The inspector's scrolling content and sticky `DraftFooter` are separate flex children.
+Only explicit **Review Changes** requests a plan. It opens the review dialog immediately,
+with a checking state until validation returns. Planning errors stay in that dialog with
+a retry action. **Back to Editing** cancels a pending review and retains the session;
+**Discard All** clears it. Successful apply fetches the fresh snapshot and resets the
+baseline. Failed planning, refused configuration and failed writes preserve the draft.
+
+`StudioProvider` uses TanStack Router's blocker for selection search parameters, view
+links and history navigation. Graph-mode changes use the same session guard. Pending
+navigation retains its proceed/cancel callbacks, so **Discard and Continue** completes
+the requested action, **Keep Editing** cancels it, and **Review Changes** cancels navigation
+and opens review. A native `beforeunload` handler exists only while dirty. Live snapshots
+are tracked separately while dirty: a revision conflict freezes the editing baseline,
+preserves entered values and blocks applying until the user explicitly discards.
+
+`server/edits/batch.ts` composes the existing `planEdit` literal splices through `SourceFiles`
+overlays. HTTP key replacements follow the field splices and run together, allowing
+interdependent changes to be checked against the complete candidate source. Fresh
+evaluators load the overlays in both modes; target/construct identities and route
+destinations must remain stable. The review groups the final exact diff by file.
+
+Apply checks revisions and source hashes again, validates the complete candidate, uses
+the existing atomic file replacement primitive, then confirms the evaluated fields and
+routes from disk. On failure it restores files only while their bytes still match the
+write, preserving concurrent external edits. This is one logical transaction with
+per-file atomic replacement, rather than a filesystem-wide atomic commit. Batch entries
+join `EditService`'s existing undo/redo journal and restore all files together. Resource
+inspectors use the same draft/review UX and their existing multi-file resource transaction,
+TypeScript validation and resource undo history.
+
+The original single-field API remains available for compatibility:
 
 1. **Intent.** The browser sends `{ target, field, value | inherit }` with the revision it
    was looking at. It never sends source text.
@@ -306,7 +344,8 @@ No CORS headers are sent. No AWS call is made. The snapshot carries catalog refe
   by every view.
 - **State.** [studio.tsx](../../framework-studio/src/studio.tsx) is the context every view
   reads: the snapshot, the selected mode, the model and an index, the selection, live
-  state, toasts and the open preview.
+  state, toasts and the shared inspector draft/review. `draft.ts` holds the session's
+  transitions independently of React; `DraftControls.tsx` renders its footer and warning.
 - **Data.** [api.ts](../../framework-studio/src/api.ts) holds the TanStack Query snapshot,
   the SSE subscription and the edit and command calls.
 - **Views.**
@@ -332,6 +371,8 @@ No CORS headers are sent. No AWS call is made. The snapshot carries catalog refe
 | --- | --- | --- |
 | `GET /api/snapshot` | | `{ snapshot, history, evaluating, commands, busy }`; 503 until the first evaluation |
 | `GET /api/events?token=` | | Server-sent events, above |
+| `POST /api/edits/batch/plan` | `{ edits, revision }` | Combined per-file diffs, summaries, both complete-source validations |
+| `POST /api/edits/batch/apply` | `{ planId }` | One validated transaction and undo entry |
 | `POST /api/edits/plan` | `{ intent, revision }` | `PlanResponse`: diff, both preflights, `ok`, impact |
 | `POST /api/edits/apply` | `{ planId }` | `{ status: applied, reverted or unconfirmed, message, revision }` |
 | `POST /api/edits/undo`, `/redo` | `{}` | As apply |

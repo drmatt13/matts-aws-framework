@@ -1040,6 +1040,9 @@ dialog.preview::backdrop {
   background: color-mix(in srgb, var(--ink) 35%, transparent);
 }
 
+dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; }
+.preview header, .preview footer { flex: none; }
+
 .preview header {
   padding: 18px 22px 12px;
   border-bottom: 1px solid var(--rule);
@@ -1055,8 +1058,11 @@ dialog.preview::backdrop {
 .preview .body {
   padding: 16px 22px;
   overflow: auto;
-  max-height: calc(100vh - 220px);
+  flex: 1;
+  min-height: 0;
   display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: 16px;
 }
 
@@ -1302,3 +1308,12 @@ dialog.preview::backdrop {
 .island-members { padding: 0; list-style: none; }
 .island-members li { display: grid; gap: 3px; margin: 12px 0; }
 .island-members .linkish { justify-self: start; text-align: left; }
+
+.inspector { display: flex; flex-direction: column; overflow: hidden; }
+.inspector-content { flex: 1; min-height: 0; overflow: auto; }
+.draft-footer { flex: none; padding: 14px 20px; border-top: 1px solid var(--rule-strong); background: var(--paper); box-shadow: 0 -5px 16px rgb(0 0 0 / 10%); }
+.draft-footer > strong { display: block; font-size: 14px; }
+.draft-footer p { margin: 8px 0; font-size: 13px; }
+.draft-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+.field-dirty .name::after { content: " •"; color: var(--dev); }
+.unsaved-dialog { max-width: 580px; }

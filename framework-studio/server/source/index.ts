@@ -36,6 +36,10 @@ export class SourceFiles {
   private readonly parsed = new Map<string, ts.SourceFile>();
   constructor(private readonly overlay: ReadonlyMap<string, string> = new Map()) {}
 
+  withText(file: string, text: string): SourceFiles {
+    return new SourceFiles(new Map([...this.overlay, [path.resolve(file), text]]));
+  }
+
   text(file: string): string {
     return this.overlay.get(path.resolve(file)) ?? readFileSync(file, "utf8");
   }

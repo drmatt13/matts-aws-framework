@@ -1,15 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
-import path from "node:path";
-import type { ApplyResponse, HistoryState, PlanResponse, PreflightResult } from "../../shared/api";
+import { readFileSync } from "node:fs";
+import type { ApplyResponse, DraftEdit, HistoryState, PlanResponse, PreflightResult } from "../../shared/api";
 import type { FieldFact, Lanes, ModelTarget, Placement } from "../../shared/model";
 import { assertWritable, sha256 } from "../files";
-import { STUDIO_SCRATCH } from "../inputs";
+import { EditError, writeAtomically } from "./io";
+export { EditError, writeAtomically } from "./io";
 import type { SemanticPatch } from "../model/origin";
 import type { SnapshotBuilder, StudioState } from "../snapshot";
 import { fieldById } from "./fields";
 import { planEdit, type EditIntent } from "./plan";
 import { planHttpRoute, validateHttpRoute, type RouteChange } from "./route";
+import { BatchEditor, type BatchJournal } from "./batch";
 
 /**
  * Plans, writes, and takes back field edits — one at a time, and never over a
@@ -25,16 +26,6 @@ import { planHttpRoute, validateHttpRoute, type RouteChange } from "./route";
  */
 
 export type { ApplyResponse, HistoryState, PlanResponse };
-
-export class EditError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
 
 type EditMeaning = { readonly kind: "field"; readonly forward: SemanticPatch; readonly inverse: SemanticPatch } | { readonly kind: "route"; readonly change: RouteChange };
 
@@ -61,30 +52,6 @@ interface JournalEntry {
 }
 
 
-/** Replaces a file by renaming a sibling written outside the watched tree. */
-export function writeAtomically(repositoryRoot: string, file: string, text: string): void {
-  const directory = path.join(repositoryRoot, STUDIO_SCRATCH, "tmp");
-  mkdirSync(directory, { recursive: true });
-  const temporary = path.join(directory, `${path.basename(file)}.${process.pid}.${randomUUID()}.tmp`);
-  writeFileSync(temporary, text);
-  try {
-    if (existsSync(file)) chmodSync(temporary, statSync(file).mode);
-    for (let attempt = 0; ; attempt += 1) {
-      try {
-        renameSync(temporary, file);
-        return;
-      } catch (error) {
-        const code = (error as NodeJS.ErrnoException).code;
-        // An editor or virus scanner holding the file open on Windows.
-        if (attempt >= 9 || !["EPERM", "EBUSY", "EACCES"].includes(code ?? "")) throw error;
-        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * (attempt + 1));
-      }
-    }
-  } finally {
-    if (existsSync(temporary)) unlinkSync(temporary);
-  }
-}
-
 function impactOf(target: ModelTarget, fieldId: string, after: PreflightResult): string[] {
   const notes: string[] = [];
   if (fieldId === "http.auth") notes.push(after.predicted?.effective === true
@@ -109,20 +76,22 @@ function impactOf(target: ModelTarget, fieldId: string, after: PreflightResult):
 
 export class EditService {
   private plans = new Map<string, StoredPlan>();
-  private readonly undoStack: JournalEntry[] = [];
-  private readonly redoStack: JournalEntry[] = [];
+  private readonly undoStack: (JournalEntry | BatchJournal)[] = [];
+  private readonly redoStack: (JournalEntry | BatchJournal)[] = [];
   /** Files this service wrote, by relative path, with what it wrote: so the watcher can tell them apart. */
   readonly ownWrites = new Map<string, string>();
   private lock: Promise<unknown> = Promise.resolve();
+  private readonly batches: BatchEditor;
 
   constructor(
     private readonly repositoryRoot: string,
     private readonly builder: SnapshotBuilder,
-  ) {}
+  ) { this.batches = new BatchEditor(repositoryRoot, builder, this.ownWrites); }
 
   /** Every plan is offered against one snapshot; a new snapshot expires them all. */
   expirePlans(): void {
     this.plans.clear();
+    this.batches.expirePlans();
   }
 
   history(): HistoryState {
@@ -141,6 +110,11 @@ export class EditService {
     const state = this.builder.current;
     if (!state) throw new EditError(503, "The studio has not evaluated the repository yet.");
     return state;
+  }
+
+  planBatch(edits: readonly DraftEdit[], revision: string) { return this.exclusive(() => this.batches.plan(edits, revision)); }
+  applyBatch(planId: string): Promise<ApplyResponse> {
+    return this.exclusive(() => this.batches.apply(planId, (entry) => { this.undoStack.push(entry); this.redoStack.length = 0; this.plans.clear(); }));
   }
 
   plan(intent: EditIntent, baseRevision: string): Promise<PlanResponse> {
@@ -271,6 +245,9 @@ export class EditService {
     const stack = direction === "undo" ? this.undoStack : this.redoStack;
     const entry = stack.at(-1);
     if (!entry) throw new EditError(404, `Nothing to ${direction}.`);
+    if ("kind" in entry) return this.batches.replay(entry, direction === "undo", () => {
+      stack.pop(); (direction === "undo" ? this.redoStack : this.undoStack).push(entry); this.expirePlans();
+    });
     const [expected, replacement] = direction === "undo" ? [entry.after, entry.before] : [entry.before, entry.after];
     const edit: EditMeaning = entry.edit.kind === "route" && direction === "undo"
       ? { kind: "route", change: { ...entry.edit.change, before: entry.edit.change.after, after: entry.edit.change.before } } : entry.edit;

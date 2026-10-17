@@ -48,6 +48,80 @@ function revision(): string {
   return builder.current!.snapshot.revision;
 }
 
+test("five settings are reviewed together, persisted together and undone as one exact source change", async () => {
+  const target = "lambda:graphql-api";
+  const file = path.join(fixture, builder.current!.snapshot.source.entities[target].value.file);
+  const original = readFileSync(file, "utf8");
+  const values = [["lambda.memorySize", 768], ["lambda.timeoutSeconds", 25], ["lambda.architecture", "x86_64"], ["lambda.logRetentionDays", 14], ["lambda.bundling.minify", false]] as const;
+  const plan = await edits.planBatch(values.map(([field, value]) => ({ kind: "field", intent: { target, field, value } })), revision());
+  assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+  assert.equal(plan.summaries.length, 5);
+  assert.equal(plan.changes.length, 1, "same-file changes share one diff");
+  assert.equal(readFileSync(file, "utf8"), original, "review writes no source");
+  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  for (const [field, value] of values) assert.equal(builder.current!.snapshot.models.dev.fields[target].find((fact) => fact.field === field)!.authored, value);
+  const changed = readFileSync(file, "utf8");
+  assert.match(edits.history().undo!, /5 inspector changes/);
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), original);
+  assert.equal((await edits.redo()).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), changed);
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), original, "comments, imports and formatting return byte for byte");
+});
+
+test("a route and nested settings compose across files without losing prior splices", async () => {
+  const state = builder.current!.snapshot;
+  const target = state.models.dev.routes.find((route) => route.path === "/worker")!.target;
+  const file = path.join(fixture, state.source.entities[target].value.file);
+  const defaultsFile = path.join(fixture, "framework-config/defaults.ts");
+  const originals = [file, defaultsFile].map((file) => [file, readFileSync(file, "utf8")] as const);
+  const plan = await edits.planBatch([
+    { kind: "field", intent: { target, field: "lambda.memorySize", value: 256 } },
+    { kind: "field", intent: { target, field: "lambda.bundling.minify", value: false } },
+    { kind: "field", intent: { target: "defaults:http", field: "defaults.http.timeoutSeconds", value: 20 } },
+    { kind: "route", route: "route:http:/worker", value: "/batch-worker" },
+  ], revision());
+  assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+  assert.equal(plan.changes.length, 2);
+  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  const model = builder.current!.snapshot.models.dev;
+  assert.ok(model.routes.some((route) => route.path === "/batch-worker" && route.target === target));
+  assert.equal(model.fields[target].find((fact) => fact.field === "lambda.memorySize")!.effective, 256);
+  assert.equal(model.fields[target].find((fact) => fact.field === "lambda.bundling.minify")!.effective, false);
+  assert.equal((await edits.undo()).status, "applied");
+  for (const [file, original] of originals) assert.equal(readFileSync(file, "utf8"), original);
+});
+
+test("interdependent edits validate as a complete configuration and rejected drafts write nothing", async () => {
+  const route = builder.current!.snapshot.models.dev.routes.find((route) => route.path === "/worker")!;
+  const worker = { kind: "field", intent: { target: "task:transaction-worker", field: "deploy", value: "local-only" } } as const;
+  const invalid = await edits.planBatch([worker], revision());
+  assert.equal(invalid.ok, false, "the cloud caller still needs a cloud worker");
+  await rejects(edits.applyBatch(invalid.planId), 422, /rejected settings/);
+  const combined = await edits.planBatch([worker, { kind: "field", intent: { target: route.target, field: "deploy", value: "local-only" } }], revision());
+  assert.equal(combined.ok, true, JSON.stringify(combined.preflight));
+  assert.equal((await edits.applyBatch(combined.planId)).status, "applied");
+  assert.equal((await edits.undo()).status, "applied");
+});
+
+test("a concurrent change to one batch file prevents every batch write", async () => {
+  const defaultsFile = path.join(fixture, "framework-config/defaults.ts");
+  const original = readFileSync(defaultsFile, "utf8");
+  const originalService = readFileSync(serviceFile, "utf8");
+  const plan = await edits.planBatch([
+    { kind: "field", intent: { target: "defaults:lambda", field: "defaults.lambda.memorySize", value: 256 } },
+    { kind: "field", intent: { target: "service:example-service", field: "deploy", value: "both" } },
+  ], revision());
+  assert.equal(plan.ok, true);
+  writeFileSync(defaultsFile, original + "\n// External edit\n");
+  await rejects(edits.applyBatch(plan.planId), 409, /Source files changed/);
+  assert.equal(readFileSync(serviceFile, "utf8"), originalService);
+  assert.equal(readFileSync(defaultsFile, "utf8"), original + "\n// External edit\n");
+  writeFileSync(defaultsFile, original);
+  await builder.refresh();
+});
+
 test("island defaults insert a service group, preserve workload overrides, and undo/redo exact source", async () => {
   const file = path.join(fixture, "framework-config", "defaults.ts");
   const original = readFileSync(file, "utf8");

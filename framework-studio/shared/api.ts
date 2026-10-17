@@ -16,6 +16,19 @@ export interface EditIntent {
   readonly inherit?: true;
 }
 
+export type DraftEdit =
+  | { readonly kind: "field"; readonly intent: EditIntent }
+  | { readonly kind: "route"; readonly route: string; readonly value: string };
+
+export interface BatchPlanResponse {
+  readonly planId: string;
+  readonly summaries: readonly string[];
+  readonly changes: readonly { readonly file: string; readonly diff: PlanResponse["diff"] }[];
+  readonly preflight: { readonly dev: PreflightResult; readonly prod: PreflightResult };
+  readonly ok: boolean;
+  readonly impact: readonly string[];
+}
+
 export interface DiffLine {
   readonly kind: "context" | "remove" | "add";
   readonly text: string;

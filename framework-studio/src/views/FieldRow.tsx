@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import type { Editability, FieldFact, ModelTarget } from "../../shared/model";
 import { describeValue } from "../lookup";
 import { useStudio } from "../studio";
@@ -8,28 +7,20 @@ export function lockedReason(editability: Editability | undefined, fact: FieldFa
   if (fact.blocked) return fact.blocked;
   if (!editability) return "The source index has no answer for this field.";
   switch (editability.kind) {
-    case "literal":
-    case "absent":
-      return undefined;
-    case "computed":
-      return `Computed by ${editability.text}. Change it in your editor.`;
-    case "spread":
-      return `It may come from ${editability.text}. Change it in your editor.`;
-    case "unsupported":
-      return editability.reason;
+    case "literal": case "absent": return undefined;
+    case "computed": return `Computed by ${editability.text}. Change it in your editor.`;
+    case "spread": return `It may come from ${editability.text}. Change it in your editor.`;
+    case "unsupported": return editability.reason;
   }
 }
-
+interface Props { readonly target: { readonly ref: string; readonly role?: ModelTarget["role"] }; readonly fact: FieldFact; readonly editability: Editability | undefined; readonly allowInherit?: boolean }
 const INHERIT = "\u0000inherit";
 
-export function FieldRow(props: { readonly target: { readonly ref: string; readonly role?: ModelTarget["role"] }; readonly fact: FieldFact; readonly editability: Editability | undefined; readonly allowInherit?: boolean }) {
-  const { preview, live, model, snapshot } = useStudio();
-  const { target, fact, editability } = props;
+export function FieldRow({ target, fact, editability, allowInherit }: Props) {
+  const { draft, draftState, live, model, snapshot } = useStudio();
   const locked = model.stale ? "Editing is paused until the configuration loads again." : lockedReason(editability, fact);
-  const current = fact.authored === undefined ? INHERIT : String(fact.authored);
-  const [draft, setDraft] = useState(current);
-  useEffect(() => setDraft(current), [current]);
-  const changed = draft !== current;
+  const value = draft.value(target.ref, fact);
+  const entry = draft.field(target.ref, fact);
   const unit = fact.domain.kind === "number" ? ` ${fact.domain.unit}` : "";
   const webSocketApi = target.role === "webSocket" || target.role === "webSocketAuthorizer" ? snapshot.webSocketApi : undefined;
   const display = (value: unknown) => {
@@ -39,64 +30,32 @@ export function FieldRow(props: { readonly target: { readonly ref: string; reado
     if (typeof value === "boolean") return value ? "On" : "Off";
     return String(value);
   };
-  const inheritLabel = fact.inherited
-    ? fact.field === "deploy" ? `Use default (${display(fact.inherited.value)})` : `Inherit (${display(fact.inherited.value)}${unit} from ${fact.inherited.from})`
-    : "Inherit";
-
-  const submit = () => {
-    if (draft === INHERIT) void preview({ target: target.ref, field: fact.field, inherit: true });
-    else {
-      const value = fact.domain.kind === "number" ? Number(draft) : fact.domain.values.find((value) => String(value) === draft) ?? draft;
-      void preview({ target: target.ref, field: fact.field, value });
-    }
-  };
-
-  return (
-    <div className="field">
-      <span className="name">{fact.label}</span>
-      <span className="control">
-        {locked ? (
-          <code>{display(fact.effective)}{unit}</code>
-        ) : fact.domain.kind === "enum" ? (
-          <select value={draft} onChange={(event) => setDraft(event.target.value)} aria-label={fact.label}>
-            {fact.domain.values.map((value) => (
-              <option key={String(value)} value={String(value)}>
-                {display(value)}
-              </option>
-            ))}
-            {props.allowInherit !== false ? <option value={INHERIT}>{inheritLabel}</option> : null}
-          </select>
-        ) : (
-          <>
-            <input
-              type="number"
-              min={fact.domain.min}
-              max={fact.domain.max}
-              required={props.allowInherit === false}
-              value={draft === INHERIT ? "" : draft}
-              placeholder={fact.inherited ? String(fact.inherited.value) : ""}
-              onChange={(event) => setDraft(event.target.value === "" ? INHERIT : event.target.value)}
-              aria-label={`${fact.label} in ${fact.domain.unit}`}
-            />
-            <span className="muted small">{fact.domain.unit}</span>
-          </>
-        )}
-        {changed && !locked ? (
-          <button className="primary" onClick={submit} disabled={live.evaluating || (draft === INHERIT && props.allowInherit === false) || (draft !== INHERIT && fact.domain.kind === "number" && (!Number.isSafeInteger(Number(draft)) || Number(draft) < fact.domain.min || Number(draft) > fact.domain.max))}>
-            Preview change
-          </button>
-        ) : null}
-      </span>
-      {locked ? (
-        <span className="locked">{locked}</span>
-      ) : (
-        <span className="note">
-          {fact.field === "deploy" ? fact.authored === undefined ? `Uses default: ${display(fact.effective)}.` : `Set to ${display(fact.authored)}.` : fact.authored === undefined
-            ? `Not written here. Resolves to ${display(fact.effective)}${unit} from ${fact.provenance}.`
-            : `Written as ${describeValue(fact.authored)}.`}
-        </span>
-      )}
-    </div>
-  );
+  const inherited = draft.inherited(fact);
+  const inheritLabel = fact.inherited ? `Inherit (${display(inherited)}${unit} from ${fact.inherited.from})` : "Inherit";
+  return <div className={`field ${entry ? "field-dirty" : ""}`}>
+    <span className="name">{fact.label}</span>
+    <span className="control">
+      {locked ? <code>{display(fact.effective)}{unit}</code> : fact.domain.kind === "enum" ? <select value={value === undefined ? INHERIT : String(value)} onChange={(event) => draft.setField(target.ref, fact, event.target.value === INHERIT ? undefined : event.target.value)} aria-label={fact.label} disabled={!!draftState.busy || live.evaluating}>
+        {fact.domain.values.map((value) => <option key={String(value)} value={String(value)}>{display(value)}</option>)}
+        {allowInherit !== false ? <option value={INHERIT}>{inheritLabel}</option> : null}
+      </select> : <><input type="number" min={fact.domain.min} max={fact.domain.max} required={allowInherit === false} value={value === undefined ? "" : String(value)} placeholder={inherited === undefined ? "" : String(inherited)} onChange={(event) => draft.setField(target.ref, fact, event.target.validity.badInput ? "Invalid number" : event.target.value === "" ? undefined : event.target.value)} aria-label={`${fact.label} in ${fact.domain.unit}`} aria-invalid={!!entry?.error} aria-describedby={entry?.error ? `error-${target.ref}-${fact.field}` : undefined} disabled={!!draftState.busy || live.evaluating} /><span className="muted small">{fact.domain.unit}</span></>}
+    </span>
+    {entry?.error ? <span className="locked" role="alert" id={`error-${target.ref}-${fact.field}`}>{entry.error}</span> : null}
+    {locked ? <span className="locked">{locked}</span> : <span className="note">{entry ? `Unsaved: ${value === undefined ? inheritLabel : display(value) + unit}.` : fact.authored === undefined ? `Inherited: ${display(draft.effective(target.ref, fact))}${unit} from ${fact.provenance}.` : `Written as ${describeValue(fact.authored)}.`}</span>}
+  </div>;
 }
 
+/** Auth switches and shared-default switches stage through exactly the same control. */
+export function BooleanField({ target, fact, editability }: Props) {
+  const { draft, draftState, model, live } = useStudio();
+  const locked = model.stale ? "Editing is paused until the configuration loads again." : lockedReason(editability, fact);
+  const enabled = draft.effective(target.ref, fact) === true;
+  const entry = draft.field(target.ref, fact);
+  const label = `switch-${target.ref}-${fact.field}`;
+  return <div className={`field ${entry ? "field-dirty" : ""}`}>
+    <span className="name" id={label}>{fact.label}</span><span className="control"><button className="auth-switch" role="switch" aria-label={fact.label} aria-checked={enabled} disabled={!!locked || !!draftState.busy || live.evaluating} onClick={() => draft.toggleField(target.ref, fact)}><span className="auth-switch-state">{enabled ? "On" : "Off"}</span><span className="auth-switch-track" aria-hidden><span className="auth-switch-thumb" /></span></button></span>
+    <span className="note">{entry ? "Unsaved change." : fact.authored === undefined ? `Inherited from ${fact.provenance}.` : "Written in this configuration."}</span>
+    {draft.value(target.ref, fact) !== undefined && fact.inherited && !locked ? <span className="note"><button className="linkish small" disabled={!!draftState.busy || live.evaluating} onClick={() => draft.setField(target.ref, fact, undefined)}>Use inherited value ({draft.inherited(fact) ? "On" : "Off"})</button></span> : null}
+    {locked || entry?.error ? <span className="locked" role={entry?.error ? "alert" : undefined}>{locked ?? entry?.error}</span> : null}
+  </div>;
+}

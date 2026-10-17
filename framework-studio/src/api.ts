@@ -2,6 +2,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import type {
   ApplyResponse,
+  BatchPlanResponse,
+  DraftEdit,
   CommandResult,
   EditIntent,
   PlanResponse,
@@ -43,6 +45,9 @@ async function call<T>(path: string, body?: unknown, signal?: AbortSignal): Prom
 }
 
 export const api = {
+  snapshot: () => call<SnapshotResponse>("/snapshot"),
+  planBatch: (edits: readonly DraftEdit[], revision: string) => call<BatchPlanResponse>("/edits/batch/plan", { edits, revision }),
+  applyBatch: (planId: string) => call<ApplyResponse>("/edits/batch/apply", { planId }),
   resourceDetails: (id: string, mode: Mode, signal?: AbortSignal) => call<ResourceDetails>(`/resources/details?id=${encodeURIComponent(id)}&mode=${mode}`, undefined, signal),
   resourcePlan: (intent: ResourceIntent, revision: string, mode: Mode) => call<ResourcePlan>("/resources/plan", { intent, revision, mode }),
   resourceApply: (planId: string) => call<ResourceApply>("/resources/apply", { planId }),

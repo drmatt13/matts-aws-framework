@@ -1,5 +1,4 @@
 import { ExternalLink, X } from "lucide-react";
-import { useEffect, useState } from "react";
 import type { ModelEdge, ModelResource, ModelRoute, ModelTarget, ModelWorkflow, Placement, SourceLocation } from "../../shared/model";
 import { editorLink, RELATION_LABEL, ROLE_LABEL, titleOf } from "../lookup";
 import { useStudio } from "../studio";
@@ -12,7 +11,8 @@ import { SchemaDetails, SchemaLink } from "./Database";
 import { ResourceEditor } from "./ResourceEditor";
 import { HttpRoutes } from "./HttpRoutes";
 import { IslandInspector } from "./IslandInspector";
-import { FieldRow, lockedReason } from "./FieldRow";
+import { BooleanField, FieldRow } from "./FieldRow";
+import { DraftFooter } from "./DraftControls";
 
 function Written(props: { readonly location: SourceLocation | undefined; readonly label?: string }) {
   const { snapshot } = useStudio();
@@ -72,33 +72,10 @@ function PlacementText(props: { readonly placement: Placement }) {
 }
 
 function ApiAuthControl({ target }: { readonly target: ModelTarget }) {
-  const { snapshot, model, preview, live, plan, landing } = useStudio();
+  const { snapshot, model } = useStudio();
   const fact = model.fields[target.ref]?.find((fact) => fact.field === "http.auth");
-  const [checking, setChecking] = useState(false);
-  // Where the switch has slid to: it moves as soon as it is pressed, holds there while its
-  // preview is open and while a written edit waits for its snapshot, and slides back if the
-  // preview is cancelled or refused.
-  const [slid, setSlid] = useState<boolean | undefined>();
-  const ours = (edit: { readonly target: string; readonly field: string } | undefined) => edit?.target === target.ref && edit.field === "http.auth";
-  const holding = checking || ours(plan) || ours(landing);
-  useEffect(() => {
-    if (slid !== undefined && !holding) setSlid(undefined);
-  }, [slid, holding]);
   if (!fact) return null;
-  const locked = model.stale ? "Editing is paused until the configuration loads again." : lockedReason(snapshot.source.editability[target.ref]?.[fact.field], fact);
-  const enabled = fact.effective === true;
-  const shown = slid ?? enabled;
-  const toggle = async () => {
-    setSlid(!enabled);
-    setChecking(true);
-    try { await preview(enabled ? { target: target.ref, field: fact.field, inherit: true } : { target: target.ref, field: fact.field, value: true }); }
-    finally { setChecking(false); }
-  };
-  return <section className="api-auth">
-    <div className="auth-control"><span id={`auth-label-${target.ref}`}>API user-pool authorizer</span><button role="switch" aria-labelledby={`auth-label-${target.ref}`} aria-checked={shown} aria-busy={holding} aria-disabled={holding || undefined} className="auth-switch" disabled={!!locked || live.evaluating} onClick={() => { if (!holding) void toggle(); }}><span className="auth-switch-state" aria-hidden>{checking ? "Checking…" : shown ? "On" : "Off"}</span><span className="auth-switch-track" aria-hidden><span className="auth-switch-thumb" /></span></button></div>
-    <p className="small muted">Uses the API's Cognito user pool to admit signed-in callers. Handler-side token checks still apply.</p>
-    {locked ? <p className="locked">{locked}</p> : null}
-  </section>;
+  return <section className="api-auth"><BooleanField target={target} fact={fact} editability={snapshot.source.editability[target.ref]?.[fact.field]} /><p className="small muted">Uses the API's Cognito user pool to admit signed-in callers. Handler-side token checks still apply.</p></section>;
 }
 
 function Relations(props: { readonly id: string }) {
@@ -405,7 +382,7 @@ export function Inspector() {
   const island = selected.startsWith("island:");
   return (
     <aside className="inspector" aria-label="Inspector">
-      <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 8px 0" }}>
+      <div className="inspector-content"><div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 8px 0" }}>
         <button className="icon-button" onClick={() => select(undefined)} aria-label="Close the inspector">
           <X size={16} aria-hidden />
         </button>
@@ -417,6 +394,7 @@ export function Inspector() {
       {schemaEntity ? <SchemaDetails /> : null}
       {island ? <IslandInspector id={selected} key={selected} /> : null}
       {!target && !route && !resource && !localDatabase && !schemaEntity && !island ? <p className="empty">{selected} is not in this graph.</p> : null}
+      </div><DraftFooter />
     </aside>
   );
 }

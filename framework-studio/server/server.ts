@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
-import type { SnapshotResponse } from "../shared/api";
+import type { DraftEdit, SnapshotResponse } from "../shared/api";
 import { COMMANDS, CommandRunner } from "./commands";
 import { EditError, EditService } from "./edits/transaction";
 import { apiGuard, hostGuard } from "./guards";
@@ -159,6 +159,23 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   api.post("/edits/plan", (request, response) =>
     send(response, () => edits.plan(readIntent(request.body), String((request.body as { revision?: unknown })?.revision ?? ""))),
   );
+  api.post("/edits/batch/plan", (request, response) => send(response, () => {
+    const entries = request.body?.edits;
+    if (!Array.isArray(entries) || !entries.length || entries.length > 100) throw new EditError(400, "A draft contains between 1 and 100 setting changes.");
+    const parsed: DraftEdit[] = entries.map((edit: unknown) => {
+      const item = edit as Record<string, unknown> | undefined;
+      if (item?.kind === "field") return { kind: "field", intent: readIntent(item) };
+      if (item?.kind === "route" && typeof item.route === "string" && typeof item.value === "string") return { kind: "route", route: item.route, value: item.value };
+      throw new EditError(400, "A draft change names an editable field or HTTP route.");
+    });
+    return edits.planBatch(parsed, String(request.body?.revision ?? ""));
+  }));
+  api.post("/edits/batch/apply", (request, response) => send(response, async () => {
+    const result = await edits.applyBatch(String(request.body?.planId ?? ""));
+    resources.expirePlans();
+    broadcast("snapshot", { revision: result.revision, external: [], history: edits.history() });
+    return result;
+  }));
   api.post("/cdk-links/refresh", (_request, response) =>
     send(response, async () => {
       const state = await refresh([]);

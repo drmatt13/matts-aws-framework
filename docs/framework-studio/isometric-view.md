@@ -420,7 +420,9 @@ Island settings offer native shared defaults by service type: all Lambdas, HTTP,
 WebSocket, events, tools, containers and database pools, as relevant to the island.
 Boolean defaults use switches. Every field shows counts of current inheritors and
 overrides; defaults apply across islands and to future declarations. Existing overrides
-win. Edits use the same diff preview, validation and exact undo as workload fields.
+win. All service groups share the inspector's draft and pending-change count. Review
+validates the combined configuration, and Apply All creates one undoable edit. Selecting
+another icon or terrain island while dirty uses the shared unsaved-changes warning.
 Islands without shared framework defaults show links to their individual entries.
 Selecting an island lights its member nodes without forcing every label card to appear.
 

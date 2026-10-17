@@ -1,125 +1,29 @@
 import { AlertTriangle, Check } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import type { PlanResponse, PreflightResult } from "../../shared/api";
-import { api, ApiError } from "../api";
-import { titleOf } from "../lookup";
+import { useEffect, useRef } from "react";
+import type { Review } from "../draft";
 import { useStudio } from "../studio";
 
-function Verdict(props: { readonly label: string; readonly result: PreflightResult }) {
-  const { result } = props;
-  const errors = result.diagnostics.filter((diagnostic) => diagnostic.severity === "error");
-  const warnings = result.diagnostics.filter((diagnostic) => diagnostic.severity === "warning");
-  return (
-    <div className={`check ${result.ok ? "ok" : "refused"}`}>
-      <strong>
-        {result.ok ? <Check size={16} aria-hidden /> : <AlertTriangle size={16} aria-hidden />}
-        {props.label}: {result.ok ? "accepted" : "refused"}
-      </strong>
-      {errors.map((diagnostic, position) => (
-        <p key={position} className="message">
-          {diagnostic.message}
-        </p>
-      ))}
-      {warnings.map((diagnostic, position) => (
-        <p key={`w${position}`} className="message muted">
-          {diagnostic.message}
-        </p>
-      ))}
-      {result.ok && result.predicted ? (
-        <p className="message muted">
-          Resolves to {String(result.predicted.effective)}, {result.predicted.provenance}.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-export function EditDialog(props: { readonly plan: PlanResponse }) {
-  const { closePreview, landPreview, toast, index } = useStudio();
-  const { plan } = props;
+export function EditDialog({ review }: { readonly review: Review | undefined }) {
+  const { draft, draftState, applyDraft } = useStudio();
   const dialog = useRef<HTMLDialogElement>(null);
-  const [writing, setWriting] = useState(false);
-
-  useEffect(() => {
-    const element = dialog.current;
-    if (element && !element.open) element.showModal();
-  }, []);
-
-  const write = async () => {
-    setWriting(true);
-    try {
-      const outcome = await api.apply(plan.planId);
-      toast(outcome.message, outcome.status === "applied" ? "plain" : "refuse");
-      if (outcome.status === "applied") landPreview();
-      else closePreview();
-    } catch (error) {
-      toast(error instanceof ApiError ? error.message : String(error), "refuse");
-      closePreview();
-    } finally {
-      setWriting(false);
-    }
-  };
-
-  return (
-    <dialog
-      ref={dialog}
-      className="preview"
-      aria-labelledby="preview-title"
-      onClose={closePreview}
-      onCancel={(event) => {
-        event.preventDefault();
-        closePreview();
-      }}
-    >
-      <header>
-        <p className="muted small">{titleOf(index, plan.target)}</p>
-        <h2 id="preview-title">{plan.summary}</h2>
-      </header>
-      <div className="body">
-        <div className="checks">
-          <Verdict label="Development graph" result={plan.preflight.dev} />
-          <Verdict label="Production graph" result={plan.preflight.prod} />
-        </div>
-        {plan.impact.length > 0 ? (
-          <div>
-            <h3 style={{ margin: "0 0 6px", fontSize: "var(--step-0)" }}>What else changes</h3>
-            <ul className="impact">
-              {plan.impact.map((note) => (
-                <li key={note}>{note}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
-        <div className="diff" aria-label={`Change to ${plan.file}`}>
-          <div className="file">{plan.file}</div>
-          <table>
-            <tbody>
-              {plan.diff.lines.map((line, position) => (
-                <tr key={position} className={line.kind}>
-                  <td className="number">{line.oldLine ?? ""}</td>
-                  <td className="number">{line.newLine ?? ""}</td>
-                  <td>
-                    {line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}
-                    {line.text}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="small muted">
-          Only the lines shown change. Checked against the framework's own validation for both graphs, not against a CDK synth.
-        </p>
-      </div>
-      <footer>
-        {plan.ok ? null : <span className="reason">The framework refuses this change, so it cannot be written.</span>}
-        <button className="quiet" onClick={closePreview}>
-          Cancel
-        </button>
-        <button className="primary" onClick={() => void write()} disabled={!plan.ok || writing} autoFocus={plan.ok}>
-          {writing ? "Writing…" : `Write to ${plan.file}`}
-        </button>
-      </footer>
-    </dialog>
-  );
+  useEffect(() => { const element = dialog.current!; element.showModal(); return () => element.close(); }, []);
+  const diagnostics = review?.kind === "resource" ? review.plan.diagnostics : [];
+  const checking = draftState.busy === "review";
+  const writing = draftState.busy === "apply";
+  return <dialog ref={dialog} className="preview" aria-labelledby="preview-title" onCancel={(event) => { event.preventDefault(); if (!writing) draft.backToEditing(); }}>
+    <header><p className="muted small">Inspector draft</p><h2 id="preview-title">Review {draft.count} {draft.count === 1 ? "change" : "changes"}</h2></header>
+    <div className="body">
+      {checking ? <p role="status">Checking all changes… The review will appear here when validation finishes.</p> : null}
+      {draftState.error ? <p className="reason" role="alert">{draftState.error}</p> : null}
+      {!checking && !review && draftState.error ? <button className="quiet" disabled={draft.invalid || draft.conflict} onClick={() => void draft.review()}>Retry Review</button> : null}
+      {draft.conflict ? <p className="reason" role="alert">Source changed since this review. Your draft is preserved; discard it to load the latest configuration.</p> : null}
+      {review ? <>
+      <div className="checks">{review.kind === "batch" ? (["dev", "prod"] as const).map((mode) => <div key={mode} className={`check ${review.plan.preflight[mode].ok ? "ok" : "refused"}`}><strong>{review.plan.preflight[mode].ok ? <Check size={16} aria-hidden /> : <AlertTriangle size={16} aria-hidden />}{mode === "dev" ? "Development" : "Production"} graph: {review.plan.preflight[mode].ok ? "accepted" : "refused"}</strong>{review.plan.preflight[mode].diagnostics.map((item, at) => <p className="message" key={at}>{item.message}</p>)}</div>) : <div className={`check ${review.plan.ok ? "ok" : "refused"}`}><strong>{review.plan.ok ? <Check size={16} aria-hidden /> : <AlertTriangle size={16} aria-hidden />}{review.plan.ok ? "Both graphs and TypeScript accepted" : "Configuration refused"}</strong>{diagnostics.map((item, at) => <p className="message" key={at}>{item.message}</p>)}</div>}</div>
+      {review.kind === "batch" ? <><h3>Pending changes</h3><ul className="impact">{review.plan.summaries.map((summary, at) => <li key={at}>{summary}</li>)}</ul><ul className="impact">{review.plan.impact.map((note) => <li key={note}>{note}</li>)}</ul></> : null}
+      {review.plan.changes.map((change) => <div className="diff" key={change.file} aria-label={`Changes to ${change.file}`}><div className="file">{change.file}</div><table><tbody>{change.diff.lines.map((line, at) => <tr key={at} className={line.kind}><td className="number">{line.oldLine ?? ""}</td><td className="number">{line.newLine ?? ""}</td><td>{line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}{line.text}</td></tr>)}</tbody></table></div>)}
+      <p className="small muted">Only the reviewed source changes will be written. Validation covers the complete proposed configuration; deployment is a separate action.</p>
+      </> : null}
+    </div>
+    <footer>{review && !review.plan.ok ? <span className="reason">Resolve the rejected settings before applying.</span> : null}<button className="quiet" disabled={writing} autoFocus onClick={() => draft.backToEditing()}>Back to Editing</button><button className="quiet" disabled={writing} onClick={() => draft.discard()}>Discard All</button><button className="primary" disabled={!review?.plan.ok || checking || writing || draft.invalid || draft.conflict} onClick={() => void applyDraft()}>{writing ? "Applying…" : "Apply All"}</button></footer>
+  </dialog>;
 }

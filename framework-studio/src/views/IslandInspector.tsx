@@ -1,10 +1,9 @@
 import { useMemo, useState } from "react";
-import type { FieldFact, ModelDefaults } from "../../shared/model";
 import { catalogAvailability } from "../deployment";
 import { editorLink } from "../lookup";
 import { buildScene } from "../scene/build";
 import { useStudio } from "../studio";
-import { FieldRow, lockedReason } from "./FieldRow";
+import { BooleanField, FieldRow } from "./FieldRow";
 
 const LAMBDAS = ["lambda", "http", "webSocket", "events", "tools"];
 const GROUPS: Readonly<Record<string, readonly string[]>> = {
@@ -14,23 +13,6 @@ const GROUPS: Readonly<Record<string, readonly string[]>> = {
   "island:agentcore": ["tools"],
   "island:local": ["database"],
 };
-
-function BooleanDefault({ group, fact }: { readonly group: ModelDefaults; readonly fact: FieldFact }) {
-  const { model, snapshot, live, preview } = useStudio();
-  const [checking, setChecking] = useState(false);
-  const locked = model.stale ? "Editing is paused until the configuration loads again." : lockedReason(snapshot.source.editability[group.ref]?.[fact.field], fact);
-  const change = async (inherit = false) => {
-    setChecking(true);
-    try { await preview(inherit ? { target: group.ref, field: fact.field, inherit: true } : { target: group.ref, field: fact.field, value: !fact.effective }); }
-    finally { setChecking(false); }
-  };
-  return <div className="field">
-    <span className="name" id={fact.field}>{fact.label}</span><span className="control"><button className="auth-switch" role="switch" aria-labelledby={fact.field} aria-checked={fact.effective === true} disabled={!!locked || checking || live.evaluating} onClick={() => void change()}><span className="auth-switch-state">{checking ? "Checking…" : fact.effective ? "On" : "Off"}</span><span className="auth-switch-track" aria-hidden><span className="auth-switch-thumb" /></span></button></span>
-    <span className="note">{fact.authored === undefined ? `Inherited from ${fact.provenance}.` : "Written in this defaults group."}</span>
-    {fact.authored !== undefined && fact.inherited && !locked ? <span className="note"><button className="linkish small" disabled={checking || live.evaluating} onClick={() => void change(true)}>Use inherited value ({fact.inherited.value ? "On" : "Off"})</button></span> : null}
-    {locked ? <span className="locked">{locked}</span> : null}
-  </div>;
-}
 
 /** Island membership comes from the same layout as the canvas, never a second graph. */
 export function IslandInspector({ id }: { readonly id: string }) {
@@ -57,7 +39,7 @@ export function IslandInspector({ id }: { readonly id: string }) {
       {id === "island:local" ? <p className="small muted">Connection pool defaults configure database callers. The local database container is configured in Compose.</p> : null}
       <div className="fields" key={group.ref}>{(model.fields[group.ref] ?? []).map((fact) => <div key={fact.field}>
         {fact.domain.kind === "enum" && fact.domain.values.includes(true) && fact.domain.values.includes(false)
-          ? <BooleanDefault group={group} fact={fact} />
+          ? <BooleanField target={group} fact={fact} editability={snapshot.source.editability[group.ref]?.[fact.field]} />
           : <FieldRow target={group} fact={fact} allowInherit={!!fact.inherited} editability={snapshot.source.editability[group.ref]?.[fact.field]} />}
         {fact.usage ? <p className="small muted default-usage">{fact.usage.inherited} inherit · {fact.usage.overridden} overridden</p> : null}
       </div>)}</div>

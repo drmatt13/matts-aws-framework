@@ -89,8 +89,9 @@ function readBack(
   text: string,
   origin: string,
   field: FieldDefinition,
+  previousFiles?: SourceFiles,
 ): { readonly value?: LiteralValue; readonly absent?: true } | { readonly error: string } {
-  const files = new SourceFiles(new Map([[path.resolve(file), text]]));
+  const files = (previousFiles ?? new SourceFiles()).withText(file, text);
   let located;
   try {
     located = locateConfigSource(path.join(repositoryRoot, "framework.config.ts"), { repositoryRoot, host: files.host() });
@@ -167,7 +168,7 @@ export function planEdit(input: {
   if (syntax.length > 0) {
     return { refused: `The edit would not parse: ${ts.flattenDiagnosticMessageText(syntax[0]!.messageText, " ")}. Nothing was written.` };
   }
-  const readback = readBack(repositoryRoot, entry.file, after, origin, field);
+  const readback = readBack(repositoryRoot, entry.file, after, origin, field, files);
   if ("error" in readback) return { refused: `The edit could not be verified: ${readback.error}` };
   if (intent.inherit ? !readback.absent : readback.value !== intent.value) {
     return { refused: `The edit could not be verified: ${field.path.join(".")} reads ${display(readback.value)} afterwards.` };

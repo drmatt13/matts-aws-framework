@@ -7,6 +7,7 @@ import { api, ApiError } from "../api";
 import { useStudio } from "../studio";
 import { EditDialog } from "./EditDialog";
 import { Inspector } from "./Inspector";
+import { UnsavedChangesDialog } from "./DraftControls";
 
 function Verdict(props: { readonly label: string; readonly diagnostics: readonly Diagnostic[] }) {
   const errors = props.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
@@ -67,7 +68,8 @@ function DiagnosticsDrawer(props: { readonly onClose: () => void }) {
 }
 
 function CommandDrawer(props: { readonly result: CommandResult | undefined; readonly onClose: () => void; readonly onRun: (name: string, confirmed: boolean) => void }) {
-  const { live } = useStudio();
+  const studio = useStudio();
+  const { live } = studio;
   const result = props.result;
   const stale = result && result.exitCode !== 0 && /generat|stale|out of date|differs/i.test(result.output);
   return (
@@ -78,7 +80,7 @@ function CommandDrawer(props: { readonly result: CommandResult | undefined; read
           {stale ? (
             <p>
               Generated files no longer match the config.{" "}
-              <button className="quiet" onClick={() => props.onRun("framework:generate", true)} disabled={live.running !== null}>
+              <button className="quiet" onClick={() => props.onRun("framework:generate", true)} disabled={live.running !== null || studio.draft.dirty || !!studio.draftState.busy}>
                 Run framework:generate
               </button>{" "}
               <span className="small muted">It rewrites the generated files only.</span>
@@ -160,10 +162,10 @@ export function Shell(props: { readonly children: ReactNode }) {
           <Verdict label="Prod" diagnostics={snapshot.models.prod.diagnostics} />
           <span className="small muted">{snapshot.models.dev.evaluatedInMs + snapshot.models.prod.evaluatedInMs} ms</span>
         </button>
-        <button className="icon-button" onClick={() => void history("undo")} disabled={!response.history.undo} title={response.history.undo ? `Undo ${response.history.undo}` : "Nothing to undo"}>
+        <button className="icon-button" onClick={() => void history("undo")} disabled={!response.history.undo || studio.draft.dirty || !!studio.draftState.busy} title={response.history.undo ? `Undo ${response.history.undo}` : "Nothing to undo"}>
           <Undo2 size={16} aria-hidden /> Undo
         </button>
-        <button className="icon-button" onClick={() => void history("redo")} disabled={!response.history.redo} title={response.history.redo ? `Redo ${response.history.redo}` : "Nothing to redo"}>
+        <button className="icon-button" onClick={() => void history("redo")} disabled={!response.history.redo || studio.draft.dirty || !!studio.draftState.busy} title={response.history.redo ? `Redo ${response.history.redo}` : "Nothing to redo"}>
           <Redo2 size={16} aria-hidden /> Redo
         </button>
         <button className="icon-button" onClick={() => void run("framework:check", false)} disabled={live.running !== null} title={response.commands["framework:check"]?.description}>
@@ -184,7 +186,8 @@ export function Shell(props: { readonly children: ReactNode }) {
         </main>
         {selected ? <Inspector /> : null}
       </div>
-      {studio.plan ? <EditDialog plan={studio.plan} /> : null}
+      {studio.draftState.reviewOpen ? <EditDialog review={studio.draftState.review} /> : null}
+      <UnsavedChangesDialog />
       {drawer === "health" ? <DiagnosticsDrawer onClose={() => setDrawer(undefined)} /> : null}
       {drawer === "command" ? <CommandDrawer result={result} onClose={() => setDrawer(undefined)} onRun={(name, confirmed) => void run(name, confirmed)} /> : null}
       <div className="toasts" role="status" aria-live="polite">

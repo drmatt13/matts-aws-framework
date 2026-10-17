@@ -83,8 +83,8 @@ The view follows the model:
 - Hover empty terrain to highlight an island; click it to open island settings. Shared
   defaults have service-type menus (HTTP, WebSocket, events and tools), boolean switches,
   and counts of inheriting workloads versus overrides. Defaults apply across islands and
-  to future declarations; explicit node overrides win. Changes use the existing preview,
-  validation and undo flow. Islands without shared framework defaults link to their entries.
+  to future declarations; explicit node overrides win. Changes share the inspector's
+  draft, review and undo flow. Islands without shared framework defaults link to their entries.
 
 The regions mean something:
 
@@ -155,12 +155,12 @@ and resolved handler. All values use the framework's own resolution and default 
 
 Edits require a source literal, or an absent field whose parent is an object literal.
 Anything an expression computes is shown read-only. Architecture and runtime changes
-use the existing preview, validation, write, undo and redo flow; changing packaging does
+share the draft, validation, write, undo and redo flow; changing packaging does
 not create a Dockerfile or rewrite handler source.
 
 Selecting an HTTP route, service mount or its Lambda shows an **API user-pool authorizer**
 switch. Enabling writes `auth: true`; disabling removes `auth`, preserving the framework's
-`auth?: true` contract. Both use preview, validation and Undo/Redo. Handler token verification
+`auth?: true` contract. Both are staged with other inspector changes. Handler token verification
 and its separate `userPool: true` declaration keep their existing behavior.
 
 Selecting an HTTP Lambda also shows its editable route paths. Previewing a path change
@@ -191,17 +191,29 @@ resource edit** controls in the inspector. Group moves keep the environment vari
 and rewrite imported catalog references, including application CDK references when needed.
 They never edit generated files. No deployment or secret upload is performed.
 
-Every change goes through these steps:
+Every editable inspector is one draft session:
 
-1. **Plan.** It becomes a one-span text edit, never a re-print of the file. Before it is
-   offered, the new text must parse, and the locator must read the same entry back with
-   the new value.
-2. **Preview.** The framework's own validation runs for both graphs on the changed config.
-   You see its verdict, in its own words, beside the exact diff.
-3. **Write.** The write is refused if the file changed since the preview. Otherwise the
-   file is replaced atomically, re-evaluated from disk, and must resolve as predicted; if
-   it does not, the write is undone.
-4. **Undo and redo.** These restore exact bytes, and refuse if the file has changed since.
+1. **Edit freely.** Toggles, fields, route paths and resource controls stage changes in
+   memory. No preview opens and no source is written. Reverting a value removes that
+   pending change. Island service-group menus retain each group's changes.
+2. **Review Changes.** The sticky footer shows the pending count, Discard and Review
+   Changes. Review opens immediately while source splices are composed and the complete
+   candidate configuration is validated in both graphs, then shows one diff per affected
+   file. Planning errors remain in the dialog with Retry Review.
+   Resource edits also retain their existing TypeScript validation.
+3. **Back to Editing, Discard All or Apply All.** Returning keeps every draft value.
+   Invalid values are reported inline. Apply writes the whole accepted draft, confirms
+   its evaluated result and resets the baseline. A failure preserves the draft.
+4. **Undo and redo.** A workload/default/route batch is one entry in the existing global
+   history. Resource edits retain their existing resource history. Undo restores exact
+   source bytes and refuses concurrent source changes.
+
+Changing node, island, view or graph mode, closing the inspector, and browser back/forward
+offer **Keep Editing**, **Discard and Continue** or **Review Changes** when dirty. Browser
+refresh and tab closure use the native browser warning. Clean sessions have no warning.
+External source changes preserve the draft and block review/apply; discard explicitly
+to load the latest source. A stale review is also refused by server revision/hash checks.
+Drafts live only in the current tab and are not saved across a reload.
 
 The checks are config-level. They do not prove a CDK synth or a deployment: run those
 separately, as Framework describes.
@@ -229,7 +241,7 @@ separately, as Framework describes.
 | `server/source/` | Source locations, editability, stack members, link sites |
 | `server/edits/` | Field registry, text splices, planning, transactions |
 | `server/evaluator/` | The per-graph child processes |
-| `src/` | The page, with the board, the lanes, the inspector and the preview |
+| `src/` | The views, shared inspector draft, navigation guards and combined review |
 | `src/scene/` | The isometric view: projection, layout, building shapes, the generated block atlas, camera, picking, the canvas renderer |
 | `shared/` | The types both halves share |
 
