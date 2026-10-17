@@ -156,13 +156,17 @@ const getOption = (...names) => {
   return undefined;
 };
 
-const authoredEnvPath = resolve(process.cwd(), "cdk-app/.env");
+// The same inputs file the deploy wrapper and the CDK app read.
+const defaultAuthoredEnvPath = resolve(process.cwd(), "cdk-app/.env");
+const authoredEnvPath = process.env.FRAMEWORK_INPUTS_FILE
+  ? resolve(process.env.FRAMEWORK_INPUTS_FILE)
+  : defaultAuthoredEnvPath;
 const authoredEnv = existsSync(authoredEnvPath)
   ? parseEnv(readFileSync(authoredEnvPath, "utf8"))
   : {};
 const envPath = resolve(process.cwd(), getOption("env-file") ?? ".env");
-if (envPath.toLowerCase() === authoredEnvPath.toLowerCase()) {
-  throw new Error("The output file cannot be cdk-app/.env, which contains authored deployment inputs.");
+if ([authoredEnvPath, defaultAuthoredEnvPath].some((authored) => envPath.toLowerCase() === authored.toLowerCase())) {
+  throw new Error("The output file cannot be an authored inputs file such as cdk-app/.env.");
 }
 if (envPath.toLowerCase() === resolve(process.cwd(), RESOURCE_MANIFEST_FILE).toLowerCase()) {
   throw new Error("The environment output file cannot overwrite the resource manifest.");
