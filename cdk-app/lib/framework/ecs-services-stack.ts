@@ -7,6 +7,7 @@ import * as ecsPatterns from "aws-cdk-lib/aws-ecs-patterns";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as path from "path";
 import { FrameworkTargetRegistry } from "./framework-target-registry";
+import { markInfrastructure } from "./framework-inventory";
 import { containerPlacement, frameworkVpc, networkSubnets } from "./framework-network";
 import {
   attachContainerResources,
@@ -159,6 +160,9 @@ export class EcsServicesStack extends cdk.Stack {
         },
       },
     );
+
+    markInfrastructure(service, `service:${target.id}`, "supporting");
+    markInfrastructure(service.service, `service:${target.id}`);
 
     // A service with no `/` route — which is what the pattern health-checks by
     // default — would flap unhealthy and recycle its tasks.

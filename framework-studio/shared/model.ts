@@ -210,6 +210,8 @@ export interface ModelRoute {
 // ---------------------------------------------------------------------------
 
 export type ResourceKind =
+  /** Studio's read-only projection of a mode-specific CDK input file. */
+  | "envFile"
   /** `resource.stack<T>()`: the stack class is the declaration. */
   | "stack"
   /** A public field of a stack. */
@@ -241,6 +243,9 @@ export interface ModelResource {
   readonly memberSource?: "class" | "usage" | "both";
   /** For a stack: the class it reads. */
   readonly stackClass?: string;
+  readonly deploymentFile?: import("./deployment-inputs").DeploymentInputFile;
+  /** Assignment metadata for this catalog declaration; never dotenv values. */
+  readonly inputSources?: readonly { readonly file: string; readonly entry: import("./deployment-inputs").DeploymentInputEntry }[];
 }
 
 // ---------------------------------------------------------------------------
@@ -254,6 +259,8 @@ export type Relation =
   | "authorizes"
   /** An environment entry reads a catalog value. */
   | "env"
+  /** A local deployment input file supplies an authored parameter or secret name. */
+  | "supplies"
   /** A container is handed a secret at startup. */
   | "secret"
   /** A native CDK grant method on a catalog construct. */
@@ -280,7 +287,7 @@ export interface ModelEdge {
   readonly relation: Relation;
   readonly from: string;
   readonly to: string;
-  /** Framework declarations/derivations, or separately identified CDK source inference. */
+  /** Framework declarations/derivations, or separately identified CDK/input-file source evidence. */
   readonly provenance: "declared" | "derived" | "source";
   readonly source?: SourceLocation;
   /** A short human label: the env name, the grant method, the operations. */

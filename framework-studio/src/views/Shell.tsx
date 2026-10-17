@@ -8,6 +8,7 @@ import { useStudio } from "../studio";
 import { EditDialog } from "./EditDialog";
 import { Inspector } from "./Inspector";
 import { UnsavedChangesDialog } from "./DraftControls";
+import { InfrastructureNavigation, InfrastructurePanel } from "./Infrastructure";
 
 function Verdict(props: { readonly label: string; readonly diagnostics: readonly Diagnostic[] }) {
   const errors = props.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
@@ -98,7 +99,8 @@ function CommandDrawer(props: { readonly result: CommandResult | undefined; read
 export function Shell(props: { readonly children: ReactNode }) {
   const studio = useStudio();
   const { snapshot, response, mode, setMode, live, toast, toasts, selected } = studio;
-  const [drawer, setDrawer] = useState<"health" | "command" | undefined>();
+  const [drawer, setDrawer] = useState<"health" | "command" | "infrastructure" | undefined>();
+  const [infrastructureOwner, setInfrastructureOwner] = useState<string | undefined>();
   const [result, setResult] = useState<CommandResult | undefined>();
   const repository = snapshot.repositoryRoot.replaceAll("\\", "/").split("/").pop();
 
@@ -123,7 +125,7 @@ export function Shell(props: { readonly children: ReactNode }) {
   };
 
   return (
-    <div className="shell">
+    <InfrastructureNavigation.Provider value={(owner) => { setInfrastructureOwner(owner); setDrawer("infrastructure"); }}><div className="shell">
       <header className="bar">
         <span className="wordmark">
           AWS Studio<small>{repository}</small>
@@ -157,6 +159,7 @@ export function Shell(props: { readonly children: ReactNode }) {
         </span>
         <span className="spacer" />
         {live.evaluating ? <span className="evaluating">Re-evaluating…</span> : null}
+        <button className="icon-button" onClick={() => { setInfrastructureOwner(undefined); setDrawer(drawer === "infrastructure" ? undefined : "infrastructure"); }}>Infrastructure</button>
         <button className="health" onClick={() => setDrawer(drawer === "health" ? undefined : "health")} title="Configuration health">
           <Verdict label="Dev" diagnostics={snapshot.models.dev.diagnostics} />
           <Verdict label="Prod" diagnostics={snapshot.models.prod.diagnostics} />
@@ -190,6 +193,7 @@ export function Shell(props: { readonly children: ReactNode }) {
       <UnsavedChangesDialog />
       {drawer === "health" ? <DiagnosticsDrawer onClose={() => setDrawer(undefined)} /> : null}
       {drawer === "command" ? <CommandDrawer result={result} onClose={() => setDrawer(undefined)} onRun={(name, confirmed) => void run(name, confirmed)} /> : null}
+      {drawer === "infrastructure" ? <Drawer title="Infrastructure" onClose={() => setDrawer(undefined)}><InfrastructurePanel key={`${mode}:${infrastructureOwner ?? "all"}`} initialOwner={infrastructureOwner} onNavigate={(id) => { studio.select(id); setDrawer(undefined); }} /></Drawer> : null}
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((item) => (
           <div key={item.id} className={`toast ${item.tone === "refuse" ? "refuse" : ""}`}>
@@ -197,6 +201,6 @@ export function Shell(props: { readonly children: ReactNode }) {
           </div>
         ))}
       </div>
-    </div>
+    </div></InfrastructureNavigation.Provider>
   );
 }

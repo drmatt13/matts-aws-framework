@@ -44,6 +44,7 @@ export const ICON_TINT: Readonly<Record<IconKey, string>> = {
   secret: AWS.security,
   group: NEUTRAL,
   input: NEUTRAL,
+  envFile: NEUTRAL,
   value: NEUTRAL,
   construct: NEUTRAL,
   route: NEUTRAL,
@@ -59,6 +60,7 @@ export const ISLAND_TRIM: Readonly<Record<string, string>> = {
   "island:orchestration": AWS.integration,
   "island:stacks": "#6f93c9",
   "island:inputs": AWS.security,
+  "island:environment": "#2fb3bc",
 };
 
 const REGION_TRIM: Readonly<Record<Region, string>> = {

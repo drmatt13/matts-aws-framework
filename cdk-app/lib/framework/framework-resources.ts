@@ -3,6 +3,7 @@ import * as cdk from "aws-cdk-lib";
 import type { IConstruct } from "constructs";
 import type { IGrantable } from "aws-cdk-lib/aws-iam";
 import type { ISecret } from "aws-cdk-lib/aws-secretsmanager";
+import { markInfrastructure } from "./framework-inventory";
 import {
   assertRequirementsMet,
   formatResourceReference, frameworkSecretName, getFrameworkTargets, isCdkResource, isCdkResourceGroup,
@@ -125,6 +126,7 @@ export function linkResource(scope: IConstruct, reference: CdkResourceSpec | Sec
   const owner = value && typeof value === "object" && (value as IConstruct).node ? value as IConstruct : scope;
   if (owner.node.root !== scope.node.root) throw new Error("A resource must belong to the same CDK application as its link.");
   state.links.set(key, { scope: owner, value });
+  markInfrastructure(value, `resource:${reference.path.join(".")}`);
   return value;
 }
 
@@ -146,6 +148,7 @@ export function linkResources<T extends IConstruct>(scope: T, group: CdkResource
   if (!isCdkResourceGroup(group) || !group.path.length) {
     throw new Error("linkResources() takes a resource.stack() entry from defineResources().");
   }
+  markInfrastructure(scope, `resource:${group.path.join(".")}`);
   const linkable = (value: unknown): boolean =>
     value !== scope &&
     (typeof value === "string" ||

@@ -16,6 +16,7 @@ import { ICONS } from "../src/icons";
 import { catalogAvailability } from "../src/deployment";
 import { existsSync } from "node:fs";
 import { landscapeFocus, searchOpacity, searchScene, SEARCH_FADE } from "../src/scene/focus";
+import { layoutIslands, type IslandFootprint } from "../src/scene/layout";
 
 /**
  * The landscape is a view, and these hold it to that: every entity of the real
@@ -257,11 +258,63 @@ test("the desktop overview fills a 1080p monitor, with Local development between
       assert.ok(centre(lower[at - 1]!).x < centre(lower[at]!).x, "lower row reads Agents, Workflows, Local development, Stacks");
       assert.ok(Math.abs(centre(lower[at - 1]!).y - centre(lower[at]!).y) <= 1, "supporting islands share a row");
     }
-    const core = scene.islands.filter((island) => !lower.includes(island));
+    const core = scene.islands.filter((island) => !lower.includes(island) && island.id !== "island:environment");
     assert.ok(Math.min(...lower.map((island) => island.gx0 + island.gy0)) > Math.max(...core.map((island) => island.gx1 + island.gy1)), "local development is below the main islands");
     const fitted = fitBounds(scene.bounds, viewport, 48);
     assert.ok((scene.bounds.maxX - scene.bounds.minX) * fitted.zoom > viewport.width * 0.8, "uses the monitor's width");
     assert.ok((scene.bounds.maxY - scene.bounds.minY) * fitted.zoom > viewport.height * 0.8, "uses the monitor's height");
+  }
+});
+
+test("environment files stay beside and left of catalog inputs as either island grows and shrinks", () => {
+  const source = snapshot.models.dev;
+  const environment = source.resources.find((resource) => resource.id === "envfile:dev")!;
+  const input = source.resources.find((resource) => resource.kind === "input" && resource.fromEnv)!;
+  for (const count of [1, 4, 16, 49, 100, 4]) {
+    const extra = Array.from({ length: count }, (_, at) => ({ ...input, id: `resource:layout-input-${at}`, path: [`layoutInput${at}`], fromEnv: `LAYOUT_INPUT_${at}` }));
+    const files = Array.from({ length: Math.max(1, Math.floor(count / 3)) }, (_, at) => ({ ...environment, id: `envfile:layout-${at}`, path: [`.env.layout${at}`] }));
+    const scene = buildScene({ ...source, resources: [...source.resources.filter((resource) => resource.kind !== "input" && resource.kind !== "secret" && !resource.deploymentFile), ...extra, ...files] });
+    const parameters = scene.islands.find((island) => island.id === "island:inputs")!;
+    const env = scene.islands.find((island) => island.id === "island:environment")!;
+    const rightEdge = (island: Island) => island.gx1 - island.gy0;
+    const leftEdge = (island: Island) => island.gx0 - island.gy1;
+    assert.ok(rightEdge(env) + titleRoom(parameters.title) - 1 <= leftEdge(parameters), "measured boundaries leave room for the input title");
+    assert.ok(Math.abs(env.gx0 + env.gx1 + env.gy0 + env.gy1 - parameters.gx0 - parameters.gx1 - parameters.gy0 - parameters.gy1) <= 2, "the pair stays vertically aligned");
+    const vpc = scene.islands.find((island) => island.region === "network")!;
+    assert.ok(leftEdge(vpc) > rightEdge(parameters), "the network remains right of the input cluster");
+  }
+});
+
+test("multiple differently sized VPC footprints form one compact, non-overlapping group on the right", () => {
+  const main: IslandFootprint[] = [
+    { id: "island:apis", title: "APIs", region: "entry", size: 26 },
+    { id: "island:inputs", title: "Input parameters and secrets", region: "catalog", size: 20 },
+    { id: "island:environment", title: "CDK environment files", region: "catalog", size: 11 },
+    { id: "island:lambda", title: "Serverless compute", region: "compute", size: 29 },
+    { id: "island:agentcore", title: "Agents", region: "agents", size: 8 },
+    { id: "island:orchestration", title: "Workflows", region: "orchestration", size: 8 },
+    { id: "island:local", title: "Local development", region: "local", size: 8 },
+    { id: "island:stacks", title: "Stacks", region: "catalog", size: 14 },
+  ];
+  for (const count of [1, 2, 3, 5, 9, 16]) {
+    const networks: IslandFootprint[] = Array.from({ length: count }, (_, at) => ({ id: `network:dynamic-${at}`, title: `VPC ${at}`, region: "network", size: 18 + at % 4 * 7 }));
+    const footprints = [...main, ...networks];
+    const positions = layoutIslands(footprints);
+    assert.equal(positions.length, footprints.length);
+    assert.equal(new Set(positions.map((item) => item.id)).size, footprints.length);
+    const box = (id: string) => { const position = positions.find((item) => item.id === id)!; const size = footprints.find((item) => item.id === id)!.size; return { ...position, right: position.left + size, bottom: position.top + size }; };
+    const leftBoundary = Math.max(...["island:apis", "island:inputs", "island:environment"].map((id) => box(id).right));
+    for (const network of networks) assert.ok(box(network.id).left > leftBoundary, "all network identities use the right-hand zone");
+    for (const [at, a] of footprints.entries()) for (const b of footprints.slice(at + 1)) {
+      const aa = box(a.id), bb = box(b.id);
+      assert.ok(aa.right <= bb.left || bb.right <= aa.left || aa.bottom <= bb.top || bb.bottom <= aa.top, `${a.id} clears ${b.id} at ${count} VPCs`);
+    }
+    const networkWidth = Math.max(...networks.map((item) => box(item.id).right)) - Math.min(...networks.map((item) => box(item.id).left));
+    const networkHeight = Math.max(...networks.map((item) => box(item.id).bottom)) - Math.min(...networks.map((item) => box(item.id).top));
+    const area = networks.reduce((sum, item) => sum + item.size ** 2, 0);
+    assert.ok(networkWidth * networkHeight < area * 3, "VPCs stay clustered rather than occupying unrelated slots");
+    if (count >= 5) { assert.ok(new Set(networks.map((item) => box(item.id).left)).size > 1); assert.ok(new Set(networks.map((item) => box(item.id).top)).size > 1, "larger groups wrap into rows"); }
+    assert.deepEqual(layoutIslands([...main, ...[...networks].reverse()]), positions, "network input order does not reshuffle the cluster");
   }
 });
 

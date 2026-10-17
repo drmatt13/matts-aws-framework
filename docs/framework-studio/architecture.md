@@ -19,8 +19,9 @@ Studio server (host process: node --import tsx framework-studio/server/index.ts)
   ├─ Source index: locateConfigSource + TypeScript syntax (spans, editability,
   │     stack-class members, linkResources sites)
   ├─ EditService: plan → preflight → preview → atomic write → confirm → journal
+  ├─ InfrastructureService: explicit synthesis → assembly inventory, per-mode last-good state
   ├─ Watcher: framework.config.ts, framework-config/, packages/framework/src/config/,
-  │     cdk-app/lib/, and cdk-app/.env (two flags for graph evaluation)
+  │     cdk-app/lib/, .env/.env.dev/.env.prod and their references (input metadata/flags)
   └─ CommandRunner: framework:check, framework:generate (fixed argv, no shell)
 ```
 
@@ -41,10 +42,10 @@ children produce, the parsed source, and the edit journal.
 - `FRAMEWORK_INPUTS_FILE` points at `.cache/framework-studio/inputs-<mode>.env`, which
   holds one line, `PROD_DEPLOYMENT=true|false`. The framework reads authored inputs only
   from that file, so an evaluator never parses a secret. Graph evaluation reads two keys
-  of `cdk-app/.env`: `PROD_DEPLOYMENT`, for the current mode, and
-  `DEPLOY_PROD_WEBSOCKET_API`, which decides whether a dev graph holds WebSocket handlers.
+  of the selected mode's inputs: `PROD_DEPLOYMENT`, for the current mode, and
+  `DEPLOY_PROD_WEBSOCKET_API`, which decides whether that graph holds WebSocket handlers.
   See [server/inputs.ts](../../framework-studio/server/inputs.ts).
-- The selected-resource endpoint separately reads `cdk-app/.env` for one declared input
+- The selected-resource endpoint separately reads the selected mode's input file for one declared input
   or secret. Its no-store response goes only to the selected inspector; secrets start
   masked. Values never enter graph evaluation, snapshots, diffs, caches or disk journals.
 - Resource previews send source overlays over IPC to fresh evaluator processes. Their
@@ -302,6 +303,7 @@ Every refresh expires outstanding previews. Writes are serialized through one lo
   | `status` | `evaluating` |
   | `snapshot` | The revision, external files, undo and redo labels |
   | `command` | Which command is running |
+  | `infrastructure` | Inventory lifecycle changed; refresh the selected mode state |
 
   The browser invalidates its query on `snapshot` and shows a toast for external changes.
 
@@ -318,6 +320,79 @@ Each runs through the repository's `tsx`, with `shell: false`. Nothing from a re
 reaches argv. One command runs at a time, output is capped at 256 KB, and a command is
 killed after 5 minutes.
 
+## Infrastructure inventory
+
+`server/deployment-inputs.ts` projects fixed local `.env.dev`/`.env.prod` files into
+the snapshot after framework evaluation. `envfile:dev` and `envfile:prod` share one island;
+Only catalog `fromEnv` declarations become input/secret nodes, retaining their existing
+IDs. Other dotenv names remain file metadata. `supplies` edges carry names, presence and assignment locations,
+never values. Multiline contents cannot introduce false parameter names. The file
+inspector loads the selected file's values through a guarded, no-store endpoint, outside
+snapshots, query caches and evaluator processes. `server/deployment-input-edits.ts` accepts
+typed variable edits for only `.env.dev` or `.env.prod`; it does not expand the config
+writer's allowlist. Edits join the inspector draft and navigation guards. Reviews redact
+all values, including unrecognized keys, and private plans stay in memory. Apply checks
+the file hash and snapshot revision again, writes by private sibling/atomic rename, and
+refreshes the snapshot. Unchanged assignments and comments are preserved; changed duplicate
+keys are consolidated and every value must round-trip through Node's dotenv parser.
+Saving inputs does not run infrastructure synthesis or claim complete CDK validation.
+Missing files expose one typed creation operation using the corresponding example, with
+exclusive creation and same-mode legacy preservation. Reads never create files. Watchers
+refresh both source projections, while inventory fingerprints track the selected mode's
+file. These projections are not framework declarations or a second configuration store.
+
+`scripts/cloud-assembly.ts` extends the deployment assembly reader into a shared
+manifest traversal. It follows listed stacks and nested cloud assemblies, validates
+real paths within the selected assembly, and reads listed metadata/tree artifacts.
+Inventory inspection also follows local nested-stack template assets when the template
+metadata or asset manifest provides unambiguous evidence. Deployment selection continues
+to use only independently deployable stack artifacts.
+
+`scripts/infrastructure-inventory.ts` projects a values-free model from that reader:
+stack identity/environment, logical ID, type, construct path, condition and explicit
+framework owners. IDs combine AWS environment, manifest-relative stack identity and
+logical ID; temporary directories and timestamps do not affect them. Versioned metadata
+from `framework-inventory.ts` identifies primary constructs, supporting descendants,
+catalog stacks and explicit imported references. It changes no CloudFormation properties,
+tags, scopes or logical IDs. Missing ownership remains unknown. Studio attaches captured
+owner declaration locations, labeled as such rather than claiming construct source locations.
+
+CloudFormation `DependsOn`, `Ref`, `GetAtt`, `Sub` and resolvable static cross-stack imports
+form a separate dependency list, scoped to the same AWS environment. They do not modify
+the logical map's framework relationships. Dynamic exports, remote nested templates and
+unmarked imports remain unresolved. No deployed status or resource properties are queried.
+
+`scripts/cdk-synthesis.ts` runs only the local CDK CLI with a bounded timeout/output and
+no shell. Its caller supplies context, environment and profile; it has no dev/prod policy
+or deployment orchestration. Future Deploy & Run can reuse it and the shared assembly
+reader without importing Studio or its UI.
+
+`server/infrastructure.ts` owns Studio's mode adapter and in-memory last-good states.
+The current adapter copies `cdk-app/.env.dev` or `.env.prod` privately (legacy `.env`
+fallback when absent), overrides `PROD_DEPLOYMENT` in that
+copy and the child environment, and supplies matching `useLocalDevStack` context. The
+active inputs are never written. This one adapter is the migration point for future
+context-only mode selection. Normal production guards
+remain active; the adapter does not silently override development-only security settings.
+Normal CDK credential/context lookups and local asset bundling can occur during synthesis.
+There is no deployment, secret upload or new selected-secret read/edit API.
+
+GET reads state without starting work. POST explicitly runs one synthesis at a time in
+an isolated assembly, then deletes its temporary inputs and templates. Input values and
+their encoded forms are redacted from returned errors. Inventories exclude template
+properties, outputs and arbitrary metadata. Fingerprints of relevant authored sources,
+inputs, context and dependency versions detect stale results, including edits during a
+run. Errors retain the last successful inventory, timestamp and configuration. A server
+restart clears inventory history; this milestone does not persist raw assemblies.
+
+`src/views/Infrastructure.tsx` is a single drawer shared by the header and existing
+inspectors. It filters by stack, logical owner and resource type, supports text search,
+and navigates back through Studio's guarded logical selection. A catalog stack owner
+matches its entire stack collection, including resources with unknown individual owners.
+No generated infrastructure nodes are added to the map. Synthesis is disabled while an
+inspector draft is dirty and never starts from view/mode changes. Deployment Inputs,
+creation wizards and deployment comparisons remain subsequent milestones.
+
 ## Security model
 
 The studio is a local tool that can write source, so the browser is treated as untrusted.
@@ -330,10 +405,12 @@ The studio is a local tool that can write source, so the browser is treated as u
 | State-changing requests need `Origin: http://<host>` | Cross-site requests | `apiGuard` |
 | Writes only to `framework.config.ts` and `framework-config/**/*.ts`, by real path, no symlinks | Writes anywhere else | `files.ts` (`assertWritable`) |
 | Two fixed commands, no shell | Command execution | `commands.ts` |
+| Separate synthesis-only CLI runner; validated mode/profile; private isolated assembly | Arbitrary command/input-path execution | `infrastructure.ts`, `scripts/cdk-synthesis.ts` |
 | Evaluators read a synthetic inputs file | Secrets in memory, logs or the snapshot | `inputs.ts` |
 
-No CORS headers are sent. No AWS call is made. The snapshot carries catalog references
-(paths and attributes), never resolved values.
+No CORS headers are sent. Logical graph evaluation makes no AWS call. Explicit CDK
+synthesis may perform credential/context lookups but never deploys. The snapshot and
+infrastructure inventory carry references and identifiers, never resolved input values.
 
 ## The browser
 
@@ -377,6 +454,8 @@ No CORS headers are sent. No AWS call is made. The snapshot carries catalog refe
 | `POST /api/edits/apply` | `{ planId }` | `{ status: applied, reverted or unconfirmed, message, revision }` |
 | `POST /api/edits/undo`, `/redo` | `{}` | As apply |
 | `POST /api/commands/:name` | `{ confirmed? }` | `{ command, exitCode, output, durationMs }` |
+| `GET /api/infrastructure?mode=dev\|prod` | | Mode state, freshness, last-good inventory and generation evidence |
+| `POST /api/infrastructure/synthesize` | `{ mode, profile? }` | Explicit synthesis result; last-good inventory retained on failure |
 
 The types are in [shared/api.ts](../../framework-studio/shared/api.ts).
 
@@ -392,6 +471,8 @@ The types are in [shared/api.ts](../../framework-studio/shared/api.ts).
 | `server/source/` | `index.ts` (spans and editability), `syntax.ts`, `catalog.ts` |
 | `server/edits/` | `fields.ts`, `splice.ts`, `plan.ts`, `transaction.ts` |
 | `server/snapshot.ts`, `server/watch.ts`, `server/commands.ts` | Snapshot builder, watcher, command runner |
+| `server/infrastructure.ts`, `shared/infrastructure.ts` | Synthesis lifecycle, mode/input adapter and HTTP state contract |
+| `scripts/cloud-assembly.ts`, `scripts/infrastructure-inventory.ts`, `scripts/cdk-synthesis.ts` (repository root) | Shared manifest reader, values-free inventory and synthesis-only runner |
 | `shared/` | `model.ts` (snapshot types), `api.ts` (HTTP contract) |
 | `src/` | The page: views, lookups, the Board layout |
 | `src/scene/` | The isometric engine, see [Isometric view](isometric-view.md) |

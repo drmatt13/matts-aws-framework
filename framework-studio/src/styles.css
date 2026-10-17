@@ -590,6 +590,30 @@ a {
   outline: none;
 }
 
+.infrastructure-panel { display: grid; gap: 14px; }
+.input-file-entries { list-style: none; padding: 0; }
+.input-file-entries li { display: grid; gap: 5px; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.input-file-entries code { overflow-wrap: anywhere; }
+.input-file-entries li > span:last-child { display: flex; flex-wrap: wrap; gap: 10px; }
+.env-value-control { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.env-value-control input, .env-value-control textarea { min-width: 0; width: 100%; padding: 8px; border: 1px solid var(--rule); border-radius: 5px; background: var(--paper); color: inherit; font: 12px/1.5 var(--mono); resize: vertical; }
+.env-value-control button { flex: none; padding-top: 8px; }
+.environment-editor > .resource-control { margin-top: 12px; }
+.infrastructure-panel p { margin: 0; }
+.infrastructure-panel label { display: grid; gap: 5px; font-size: 13px; min-width: 0; }
+.infrastructure-panel input, .infrastructure-panel select { width: 100%; min-width: 0; }
+.infrastructure-run { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+.infrastructure-run label { flex: 1; }
+.infrastructure-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.infrastructure-resource { border-top: 1px solid var(--rule); padding: 10px 0; }
+.infrastructure-resource summary { cursor: pointer; overflow-wrap: anywhere; }
+.infrastructure-resource summary span { display: block; margin-top: 3px; }
+.infrastructure-detail { padding: 12px 0; overflow-wrap: anywhere; }
+.infrastructure-detail dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 7px; font-size: 13px; }
+.infrastructure-detail dd { margin: 0; }
+.infrastructure-detail p { margin-top: 8px; }
+.infrastructure-error { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; padding: 10px; background: rgba(220,80,60,.1); }
+.infrastructure-stale { padding: 10px; border: 1px solid #b48335; border-radius: var(--radius); }
 .landscape-canvas:focus-visible {
   box-shadow: inset 0 0 0 2px rgba(135, 137, 255, 0.8);
 }

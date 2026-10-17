@@ -3,6 +3,7 @@ import type { IGrantable } from "aws-cdk-lib/aws-iam";
 import type { IFunction } from "aws-cdk-lib/aws-lambda";
 import type { TaskDefinition } from "aws-cdk-lib/aws-ecs";
 import type { IStateMachine } from "aws-cdk-lib/aws-stepfunctions";
+import { markInfrastructure } from "./framework-inventory";
 import {
   getLambdaTargetIds,
   getFrameworkTargets,
@@ -107,6 +108,8 @@ export class FrameworkTargetRegistry {
   private readonly targetMap = new Map<TargetReference, FrameworkCdkTarget>();
 
   public lambda<T extends IFunction>(id: string, fn: T): T {
+    markInfrastructure(fn, `lambda:${id}`);
+    markInfrastructure(fn.role, `lambda:${id}`, "supporting");
     this.register(`lambda:${id}`, { kind: "lambda", function: fn });
     return fn;
   }
@@ -117,6 +120,9 @@ export class FrameworkTargetRegistry {
   }
 
   public task(id: string, target: Omit<FrameworkTaskTarget, "kind">): void {
+    markInfrastructure(target.taskDefinition, `task:${id}`);
+    markInfrastructure(target.taskDefinition.taskRole, `task:${id}`, "supporting");
+    markInfrastructure(target.taskDefinition.executionRole, `task:${id}`, "supporting");
     this.register(`task:${id}`, { kind: "task", ...target });
   }
 
@@ -124,6 +130,8 @@ export class FrameworkTargetRegistry {
     id: string,
     target: Omit<FrameworkWorkflowTarget, "kind">,
   ): void {
+    markInfrastructure(target.stateMachine, `workflow:${id}`);
+    markInfrastructure((target.stateMachine as unknown as { role?: unknown }).role, `workflow:${id}`, "supporting");
     this.register(`workflow:${id}`, { kind: "workflow", ...target });
   }
 

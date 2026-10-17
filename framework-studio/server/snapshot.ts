@@ -8,6 +8,7 @@ import { readDeploymentSettings } from "./inputs";
 import { buildSourceIndex, type BuiltSourceIndex } from "./source";
 import type { CatalogEntrySource } from "./source/catalog";
 import { readDeclaredSchema, readLocalDatabases, withLocalDatabases } from "./database";
+import { withDeploymentInputs } from "./deployment-inputs";
 
 /**
  * The studio's current understanding of the repository, rebuilt as a whole.
@@ -143,8 +144,8 @@ export class SnapshotBuilder {
       webSocketApi: settings.webSocketApi,
       repositoryRoot: this.repositoryRoot,
       models: {
-        dev: withLocalDatabases(dev.stale ? dev : withClassMembers(dev, built.catalog, built.index.cdkLinks.edges), localDatabase.services),
-        prod: withLocalDatabases(prod.stale ? prod : withClassMembers(prod, built.catalog, built.index.cdkLinks.edges), localDatabase.services),
+        dev: withDeploymentInputs(this.repositoryRoot, withLocalDatabases(dev.stale ? dev : withClassMembers(dev, built.catalog, built.index.cdkLinks.edges), localDatabase.services)),
+        prod: withDeploymentInputs(this.repositoryRoot, withLocalDatabases(prod.stale ? prod : withClassMembers(prod, built.catalog, built.index.cdkLinks.edges), localDatabase.services)),
       },
       source: built.index,
       files,

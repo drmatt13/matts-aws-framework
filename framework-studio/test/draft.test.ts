@@ -21,6 +21,8 @@ function fixture() {
     resourcePlan: async (intent) => { resourceRequests++; return { planId: "resource-review", ok: true, resource: intent.resource, nextResource: intent.resource, changes: [], diagnostics: [] }; },
     applyBatch: async () => { applies++; return { status: "applied", revision: "saved", message: "Applied all changes." }; },
     resourceApply: async () => { applies++; return { status: "applied", resource: "resource:updated", revision: "saved", message: "Applied resource changes.", history: {} }; },
+    inputPlan: async (_mode, edits) => ({ planId: "input-review", ok: true, summaries: edits.map((edit) => edit.name), changes: [] }),
+    inputApply: async () => { applies++; return { status: "applied", revision: "saved", message: "Saved inputs." }; },
     snapshot: async () => ({ ...baseline, revision: "saved" }),
   };
   const draft = new InspectorDraft(baseline, target, "dev", transport);

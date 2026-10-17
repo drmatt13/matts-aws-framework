@@ -2,7 +2,7 @@ import { fork, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Mode, ModeModel } from "../../shared/model";
-import { writeModeInputs } from "../inputs";
+import { writeModeInputs, readModeWebSocketApi } from "../inputs";
 import type { PreflightRequest, PreflightResult } from "../model/preflight";
 import { failedModel } from "../model/project";
 
@@ -133,8 +133,8 @@ export class EvaluatorPool {
   async evaluate(webSocketApi: boolean, overrides: Readonly<Record<string, string>> = {}): Promise<Evaluation> {
     void this.dispose();
     const pair = {
-      dev: new Evaluator("dev", this.repositoryRoot, webSocketApi, this.log, overrides),
-      prod: new Evaluator("prod", this.repositoryRoot, webSocketApi, this.log, overrides),
+      dev: new Evaluator("dev", this.repositoryRoot, readModeWebSocketApi(this.repositoryRoot, "dev", webSocketApi), this.log, overrides),
+      prod: new Evaluator("prod", this.repositoryRoot, readModeWebSocketApi(this.repositoryRoot, "prod", webSocketApi), this.log, overrides),
     };
     this.current = pair;
     const [dev, prod] = await Promise.all([pair.dev.model, pair.prod.model]);

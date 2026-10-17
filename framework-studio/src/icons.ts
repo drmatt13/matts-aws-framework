@@ -25,6 +25,7 @@ export const ICONS = {
   secret: ["aws/secrets-manager", "AWS Secrets Manager"],
   group: ["generic/folder-tree", "Resource group"],
   input: ["generic/sliders-horizontal", "Configuration input"],
+  envFile: ["generic/file-code", "Deployment environment file"],
   value: ["generic/braces", "Stack value"],
   construct: ["generic/box", "CDK construct"],
   route: ["generic/route", "Framework route"],

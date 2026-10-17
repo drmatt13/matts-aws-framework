@@ -31,6 +31,7 @@ The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) a
 | `slabs.ts` | yes | Each island as chamfered slabs per terrace, front walls with gradients, trim polylines, pads, cast shadows, island painter's order |
 | `look.ts` | yes | Graphite colour tokens, trim colour per island, icon tint per icon |
 | `focus.ts` | yes | Metadata search, selection precedence and shared focus/opacity state |
+| `layout.ts` | yes | Measured island row packing, environment/input pairing and compact right-hand network grouping |
 | `frame.ts` | yes | VPC foundation and frame colour |
 | `camera.ts` | yes | World↔screen transforms, pan, pointer-anchored zoom, wheel normalization, fit, tween |
 | `picking.ts` | yes | Point-in-polygon, entity picking, painted-slab picking, arc geometry, card placement |
@@ -68,13 +69,14 @@ world.y = (gx + gy) * 16 - h * 16
 | Placement | Island | Holds | Height |
 | --- | --- | --- | --- |
 | Upper left | APIs | HTTP routes, service mounts, WebSocket keys and agent browser paths on one layer | 2 |
-| Lower left | Inputs and secrets | Root inputs, secrets, and groups on one shared lattice | 1 |
+| Lower left | Input parameters and secrets | Only catalog-declared inputs, secrets and groups on one shared lattice; other dotenv keys stay in the file inspectors | 1 |
 | Upper right | Serverless compute | HTTP, WebSocket, event and AgentCore tool Lambdas outside the VPC on one shared lattice | 3 |
-| Lower right | VPC | Subnets `public`, `private` and `isolated`, side by side at one height. Every target with `placement.kind === "vpc"` stands on its subnet. Gateways and endpoints from `network` stand on the subnets as hover-only furniture | 4 |
+| Right-hand network cluster | VPC | Subnets `public`, `private` and `isolated`, side by side at one height. Every target with `placement.kind === "vpc"` stands on its subnet. Gateways and endpoints from `network` stand on the subnets as hover-only furniture | 4 |
 | Shared lower row, first | Agents | AgentCore agents not placed in the VPC | 3 |
 | Shared lower row, second | Workflows | Step Functions workflows | 4 |
 | Shared lower row, third | Local development | The authored Compose PostgreSQL service; active in Development, ghosted in Production | 2 |
 | Shared lower row, fourth | Stacks | All `resource.stack<T>()` entries together, one node per class; public fields expand in the inspector | 2 |
+| Immediately left of input parameters and secrets | CDK environment files | `.env.dev` and `.env.prod`; file-to-parameter links use assignment names and source locations, with no values | 1 |
 
 The subnets stand level, left to right from public to isolated. Exposure reads in colour
 rather than height: public is green, private blue and isolated
@@ -101,18 +103,30 @@ subnet terraces inside the VPC foundation.
   the existing row packer shifts neighbours and wraps growing islands automatically.
 - **Columns are screen-aligned.** Islands are placed in a frame where `sx = gx - gy` runs
   across and `sy = gx + gy` runs down, then converted back to grid cells. Islands therefore
-  stay grid rectangles. The two main columns plus a shared lower row give the current
+  stay grid rectangles. The left input/entry cluster, right compute/network cluster and shared lower row give the current
   application a roughly 16:9 footprint for desktop monitors.
 - **Rows within a column.** A column is as wide as its widest island. Taking islands in
   order, each joins the row above while the row still fits that width; otherwise it starts
   a new row. An island after the first in a row first leaves room on its left for its
   flat title (`titleRoom`), so labels never land on a neighbour. Rows are centred in the
-  column, and islands in a row are centred on the row's height. The same packing places
+  column, and islands in a row are centred on the row's height. Environment files and
+  input parameters form one measured row, with files on the left and a reserved gap
+  for the input island's title. Their vertical centres stay aligned as either grows;
+  if inputs are absent, files still belong to the left cluster. The same packing places
   Agents, Workflows, Local development and Stacks, in that order, across the full width
   below the main columns. A compact supporting row can widen the main gutter, up to 1.5×
   the natural column width; a supporting island that outgrows that row wraps to the next.
-  - Gap between columns: 6 tile units.
+  - Minimum gap between columns: 6 tile units, widened for network/compute titles.
   - Gap between rows: 5 tile units.
+  - Before the shared supporting row: 10 tile units.
+- **Networks stay together on the right.** Network islands are classified by region,
+  not one VPC ID. The packer evaluates row widths derived from their measured footprints
+  and favours a compact landscape-shaped group; growing groups wrap into nearby rows.
+  Network footprints include measured foundation overhang, keeping adjacent frames clear.
+  A stable ID order keeps input-array reordering from reshuffling them. The network
+  group stays below outside compute in the right cluster and reserves a title gutter
+  from inputs on the left. This supports future multiple network islands in the layout;
+  the current declaration model still supplies the application's single VPC.
 - **Alignment.** Compute is placed first. Items inside APIs and Inputs and secrets follow
   the barycentre (mean screen row) of what they connect to in compute. Island order stays
   fixed, so Local development does not move to the top based on its connections.

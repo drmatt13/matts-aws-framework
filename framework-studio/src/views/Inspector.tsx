@@ -13,6 +13,8 @@ import { HttpRoutes } from "./HttpRoutes";
 import { IslandInspector } from "./IslandInspector";
 import { BooleanField, FieldRow } from "./FieldRow";
 import { DraftFooter } from "./DraftControls";
+import { EntityInfrastructure } from "./Infrastructure";
+import { EnvironmentFileView, InputSources } from "./DeploymentInputs";
 
 function Written(props: { readonly location: SourceLocation | undefined; readonly label?: string }) {
   const { snapshot } = useStudio();
@@ -94,14 +96,14 @@ function Relations(props: { readonly id: string }) {
           {titleOf(index, other)}
         </button>
         {edge.provenance === "derived" ? <span className="muted small"> (derived)</span> : null}
-        {edge.provenance === "source" ? <span className="muted small"> (CDK source)</span> : null}
+        {edge.provenance === "source" ? <span className="muted small"> ({edge.relation === "supplies" ? "input file" : "CDK source"})</span> : null}
         {edge.detail && !edge.source ? (
           <>
             <br />
             <span className="small muted code">{edge.detail}</span>
           </>
         ) : null}
-        {edge.source ? <Written location={edge.source} label="Inferred from" /> : null}
+        {edge.source ? <Written location={edge.source} label={edge.relation === "supplies" ? "Authored in" : "Inferred from"} /> : null}
       </span>
       <code className="small">{edge.label}</code>
     </li>
@@ -109,10 +111,10 @@ function Relations(props: { readonly id: string }) {
   return (
     <section>
       <h3>Relations</h3>
-      {edges.some((edge) => edge.provenance === "source") ? <p className="small muted">CDK links are inferred from direct source references. Helpers and conditional wiring may add connections this view cannot resolve.</p> : null}
+      {edges.some((edge) => edge.relation === "cdk" && edge.provenance === "source") ? <p className="small muted">CDK links are inferred from direct source references. Helpers and conditional wiring may add connections this view cannot resolve.</p> : null}
       <ul className="relations">
         {outgoing.map((edge) => row(edge, edge.to, RELATION_LABEL[edge.relation]))}
-        {incoming.map((edge) => row(edge, edge.from, edge.relation === "cdk" ? "CDK link from" : `${RELATION_LABEL[edge.relation]} from`))}
+        {incoming.map((edge) => row(edge, edge.from, edge.relation === "cdk" ? "CDK link from" : edge.relation === "supplies" ? "Supplied by" : `${RELATION_LABEL[edge.relation]} from`))}
       </ul>
     </section>
   );
@@ -323,6 +325,7 @@ function RouteView(props: { readonly route: ModelRoute }) {
 function ResourceView(props: { readonly resource: ModelResource }) {
   const { snapshot, model, select } = useStudio();
   const { resource } = props;
+  if (resource.deploymentFile) return <EnvironmentFileView key={resource.id} resource={resource} />;
   const members = model.resources.filter((item) => item.parent === resource.id);
   const facts = snapshot.source.catalog[resource.id];
   const root = resource.path[0]!;
@@ -355,6 +358,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         ))}
       </section>
       {resource.kind === "stack" ? <section><details className="stack-members" open><summary>Public fields <span className="muted">({members.length})</span></summary><ul className="relations">{members.map((member) => <li key={member.id}><button className="linkish" onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className="small muted">{member.typeText ?? member.kind}</code></li>)}</ul><p className="small muted">Read-only. Declared by the stack class.</p></details></section> : null}
+      <InputSources resource={resource} />
       {resource.kind === "input" || resource.kind === "secret" ? <ResourceEditor key={`${resource.id}:${model.mode}`} resource={resource} /> : null}
       <Relations id={resource.id} />
     </>
@@ -393,6 +397,7 @@ export function Inspector() {
       {localDatabase ? <LocalDatabaseView database={localDatabase} /> : null}
       {schemaEntity ? <SchemaDetails /> : null}
       {island ? <IslandInspector id={selected} key={selected} /> : null}
+      {target || (resource && !resource.deploymentFile) || route || (island && selected !== "island:environment") ? <EntityInfrastructure id={route?.target ?? selected} /> : null}
       {!target && !route && !resource && !localDatabase && !schemaEntity && !island ? <p className="empty">{selected} is not in this graph.</p> : null}
       </div><DraftFooter />
     </aside>

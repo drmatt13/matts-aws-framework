@@ -581,7 +581,7 @@ function HoverCard(props: {
     const edge = props.scene.edges.find((candidate) => candidate.edge.id === current.id)?.edge;
     if (!edge) return null;
     title = `${RELATION_LABEL[edge.relation]}: ${edge.label}`;
-    lines = [`${titleOf(index, edge.from)} to ${titleOf(index, edge.to)}`, edge.detail, edge.provenance === "derived" ? "Derived by the framework." : edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
+    lines = [`${titleOf(index, edge.from)} to ${titleOf(index, edge.to)}`, edge.detail, edge.relation === "supplies" ? "Authored input-file assignment. Values stay outside the map." : edge.provenance === "derived" ? "Derived by the framework." : edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
   } else if (current.kind === "prop") {
     const prop = props.scene.props.find((candidate) => candidate.id === current.id);
     if (!prop) return null;

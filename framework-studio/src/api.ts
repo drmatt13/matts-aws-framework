@@ -12,6 +12,8 @@ import type {
 } from "../shared/api";
 import type { ResourceDetails, ResourceIntent, ResourcePlan, ResourceApply } from "../shared/resources";
 import type { Mode } from "../shared/model";
+import type { InfrastructureState } from "../shared/infrastructure";
+import type { DeploymentInputDetails, DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
 
 /**
  * The studio's server, from the page's side.
@@ -44,8 +46,23 @@ async function call<T>(path: string, body?: unknown, signal?: AbortSignal): Prom
   return payload as T;
 }
 
+async function callInfrastructure(path: string, body?: unknown): Promise<InfrastructureState> {
+  const state = await call<InfrastructureState>(path, body);
+  // An older server can serve the SPA's HTML for an unknown GET API route with status 200.
+  if (!["dev", "prod"].includes(state.mode) || !["empty", "running", "ready", "failed"].includes(state.status) || typeof state.stale !== "boolean") {
+    throw new ApiError(404, "The infrastructure endpoint is unavailable in the running Studio server.");
+  }
+  return state;
+}
+
 export const api = {
   snapshot: () => call<SnapshotResponse>("/snapshot"),
+  createDeploymentInput: (mode: Mode) => call<{ file: string; created: boolean }>("/deployment-inputs/create", { mode }),
+  inputDetails: (mode: Mode, signal?: AbortSignal) => call<DeploymentInputDetails>(`/deployment-inputs/details?mode=${mode}`, undefined, signal),
+  inputPlan: (mode: Mode, edits: readonly DeploymentInputEdit[], hash: string, revision: string) => call<DeploymentInputPlan>("/deployment-inputs/plan", { mode, edits, hash, revision }),
+  inputApply: (planId: string) => call<ApplyResponse>("/deployment-inputs/apply", { planId }),
+  infrastructure: (mode: Mode) => callInfrastructure(`/infrastructure?mode=${mode}`),
+  synthesize: (mode: Mode, profile?: string) => callInfrastructure("/infrastructure/synthesize", { mode, ...(profile ? { profile } : {}) }),
   planBatch: (edits: readonly DraftEdit[], revision: string) => call<BatchPlanResponse>("/edits/batch/plan", { edits, revision }),
   applyBatch: (planId: string) => call<ApplyResponse>("/edits/batch/apply", { planId }),
   resourceDetails: (id: string, mode: Mode, signal?: AbortSignal) => call<ResourceDetails>(`/resources/details?id=${encodeURIComponent(id)}&mode=${mode}`, undefined, signal),
@@ -97,8 +114,10 @@ export function useLiveUpdates(onExternal: (files: readonly string[]) => void): 
     source.addEventListener("snapshot", (event) => {
       const data = JSON.parse((event as MessageEvent<string>).data) as SnapshotEvent;
       void queryClient.invalidateQueries({ queryKey: ["snapshot"] });
+      void queryClient.invalidateQueries({ queryKey: ["infrastructure"] });
       if (data.external.length > 0) reportExternal.current(data.external);
     });
+    source.addEventListener("infrastructure", () => void queryClient.invalidateQueries({ queryKey: ["infrastructure"] }));
     source.onerror = () => setState((current) => ({ ...current, connected: false }));
     return () => source.close();
   }, [queryClient]);

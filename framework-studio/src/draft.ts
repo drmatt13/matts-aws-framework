@@ -1,13 +1,16 @@
 import type { ApplyResponse, BatchPlanResponse, DraftEdit, EditIntent, LiteralValue } from "../shared/api";
 import type { FieldFact, Mode, ModelResource, Snapshot } from "../shared/model";
 import type { ResourceApply, ResourceIntent, ResourcePlan } from "../shared/resources";
+import type { DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
 
-export type Review = { readonly kind: "batch"; readonly plan: BatchPlanResponse } | { readonly kind: "resource"; readonly plan: ResourcePlan };
+export type Review = { readonly kind: "batch"; readonly plan: BatchPlanResponse } | { readonly kind: "resource"; readonly plan: ResourcePlan } | { readonly kind: "environment"; readonly plan: DeploymentInputPlan };
+export interface EnvironmentEdit extends DeploymentInputEdit { readonly key: string; readonly original?: string }
+interface EnvironmentEntry { readonly kind: "environment"; readonly key: string; readonly mode: Mode; readonly hash: string; readonly edits: readonly EnvironmentEdit[]; readonly error?: string }
 export interface ResourceForm { readonly secret: boolean; readonly hasDefault: boolean; readonly fallback: string; readonly group: string; readonly requirements: ResourceIntent["requirements"] }
 interface FieldEntry { readonly kind: "field"; readonly key: string; readonly raw: LiteralValue | undefined; readonly intent: EditIntent; readonly error?: string }
 interface RouteEntry { readonly kind: "route"; readonly key: string; readonly route: string; readonly value: string; readonly error?: string }
 interface ResourceEntry { readonly kind: "resource"; readonly key: string; readonly intent: ResourceIntent; readonly form: ResourceForm; readonly count: number; readonly error?: string }
-export type DraftEntry = FieldEntry | RouteEntry | ResourceEntry;
+export type DraftEntry = FieldEntry | RouteEntry | ResourceEntry | EnvironmentEntry;
 export interface DraftState {
   readonly baseline: Snapshot;
   readonly latest: Snapshot;
@@ -25,12 +28,15 @@ export interface DraftTransport {
   resourcePlan(intent: ResourceIntent, revision: string, mode: Mode): Promise<ResourcePlan>;
   applyBatch(id: string): Promise<ApplyResponse>;
   resourceApply(id: string): Promise<ResourceApply>;
+  inputPlan(mode: Mode, edits: readonly DeploymentInputEdit[], hash: string, revision: string): Promise<DeploymentInputPlan>;
+  inputApply(id: string): Promise<ApplyResponse>;
   snapshot(): Promise<Snapshot>;
 }
 export const fieldKey = (target: string, field: string) => `field:${target}:${field}`;
 export const initialResourceForm = (resource: ModelResource): ResourceForm => ({ secret: resource.kind === "secret", hasDefault: resource.default !== undefined, fallback: resource.default ?? "", group: resource.path.length > 1 ? resource.path[0]! : "", requirements: {} });
 
-/** One in-memory inspector transaction. No values from .env enter this store.
+/** One in-memory inspector transaction. Only edited dotenv values enter this store;
+ * they are never persisted to storage or included in graph snapshots.
  * React controls, navigation guards and tests all use these same transitions. */
 export class InspectorDraft {
   private state: DraftState;
@@ -42,7 +48,7 @@ export class InspectorDraft {
   }
   readonly subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   readonly getSnapshot = () => this.state;
-  get count(): number { return this.state.entries.reduce((sum, entry) => sum + (entry.kind === "resource" ? entry.count : 1), 0); }
+  get count(): number { return this.state.entries.reduce((sum, entry) => sum + (entry.kind === "resource" ? entry.count : entry.kind === "environment" ? entry.edits.length : 1), 0); }
   get dirty(): boolean { return this.count > 0; }
   get conflict(): boolean { return this.dirty && this.state.baseline.revision !== this.state.latest.revision; }
   get invalid(): boolean { return this.state.entries.some((entry) => !!entry.error); }
@@ -123,6 +129,21 @@ export class InspectorDraft {
     const error = !form.secret && form.hasDefault && !form.fallback.trim() ? "Enter a default value or turn Default value off." : intent.group && !/^[A-Za-z_$][\w$]*$/.test(intent.group) ? "Use a single valid group name." : undefined;
     this.put(`resource:${resource.id}`, count ? { kind: "resource", key: `resource:${resource.id}`, form: { ...form, requirements }, intent, count, ...(error ? { error } : {}) } : undefined);
   }
+  environment(mode: Mode): EnvironmentEntry | undefined { return this.state.entries.find((entry): entry is EnvironmentEntry => entry.kind === "environment" && entry.mode === mode); }
+  setEnvironment(mode: Mode, hash: string, edits: readonly EnvironmentEdit[], existingNames: readonly string[]): void {
+    const changed = edits.filter((edit) => edit.create || edit.value !== edit.original);
+    const names = new Set<string>();
+    let error: string | undefined;
+    for (const edit of changed) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(edit.name)) error = "Enter a variable name using letters, digits and underscores, starting with a letter or underscore.";
+      else if (names.has(edit.name) || (edit.create && existingNames.includes(edit.name))) error = "Each environment variable must have a unique name.";
+      else if (edit.value.includes("\0")) error = "Environment values cannot contain null characters.";
+      else if (edit.name === "PROD_DEPLOYMENT" && edit.value !== String(mode === "prod")) error = "PROD_DEPLOYMENT must match the environment file's mode.";
+      names.add(edit.name);
+    }
+    const key = `environment:${mode}`;
+    this.put(key, changed.length ? { kind: "environment", key, mode, hash, edits: changed, ...(error ? { error } : {}) } : undefined);
+  }
   requestNavigation(proceed: () => void, cancel = () => {}): void {
     if (this.state.busy === "apply") { cancel(); return; }
     if (!this.dirty) { proceed(); return; }
@@ -157,8 +178,11 @@ export class InspectorDraft {
     this.publish({ ...state, reviewOpen: true, review: undefined, busy: "review", error: undefined });
     try {
       const resource = state.entries.find((entry): entry is ResourceEntry => entry.kind === "resource");
-      if (resource && state.entries.length !== 1) throw new Error("Review resource configuration in its own inspector session.");
-      const review: Review = resource
+      const environment = state.entries.find((entry): entry is EnvironmentEntry => entry.kind === "environment");
+      if ((resource || environment) && state.entries.length !== 1) throw new Error("Review this configuration in its own inspector session.");
+      const review: Review = environment
+        ? { kind: "environment", plan: await this.transport.inputPlan(environment.mode, environment.edits.map(({ name, value, create }) => ({ name, value, ...(create ? { create } : {}) })), environment.hash, state.baseline.revision) }
+        : resource
         ? { kind: "resource", plan: await this.transport.resourcePlan(resource.intent, state.baseline.revision, state.mode) }
         : { kind: "batch", plan: await this.transport.planBatch(state.entries.map((entry): DraftEdit => entry.kind === "field" ? { kind: "field", intent: entry.intent } : { kind: "route", route: (entry as RouteEntry).route, value: (entry as RouteEntry).value }), state.baseline.revision) };
       if (serial === this.serial) this.publish({ ...this.state, busy: undefined, review });
@@ -169,7 +193,7 @@ export class InspectorDraft {
     if (!review?.plan.ok || this.state.busy || this.invalid || this.conflict) return;
     this.publish({ ...this.state, busy: "apply", error: undefined });
     try {
-      const result = await (review.kind === "batch" ? this.transport.applyBatch(review.plan.planId) : this.transport.resourceApply(review.plan.planId));
+      const result = await (review.kind === "batch" ? this.transport.applyBatch(review.plan.planId) : review.kind === "environment" ? this.transport.inputApply(review.plan.planId) : this.transport.resourceApply(review.plan.planId));
       if (result.status !== "applied") throw new Error(result.message);
       const latest = await this.transport.snapshot().catch(() => this.state.latest);
       ++this.serial;

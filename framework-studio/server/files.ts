@@ -6,8 +6,9 @@ import path from "node:path";
  * The files the studio may write, and how it recognizes them unchanged.
  *
  * Exactly the composition root and the section modules beside it. Anything
- * else — CDK, handlers, generated output, env files — is refused before a
- * write is attempted, whatever a request asks for.
+ * else — CDK, handlers, generated output, env files — is refused by this config writer before a
+ * write is attempted, whatever a request asks for. The separate deployment-input
+ * service permits typed edits to just the two fixed mode-specific dotenv files.
  */
 
 export function sha256(text: string): string {

@@ -2,16 +2,15 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseEnv } from "node:util";
 import type { Mode } from "../shared/model";
+import { selectedDeploymentInput } from "./deployment-inputs";
 
 /**
  * The two deployment settings used for graph evaluation.
  *
- * `@repo/framework/config/source` reads the whole of cdk-app/.env when it is
- * imported, which is right for synthesis but would send authored values into graph
- * evaluation. So the server does not import it: it keeps the lines that
- * set PROD_DEPLOYMENT and DEPLOY_PROD_WEBSOCKET_API, parses only those, and
- * hands each evaluator a file of its own holding one line. Evaluators therefore never receive authored secrets. The separate selected-resource
- * endpoint in resources.ts reads values only for the input inspector.
+ * The server reads dotenv privately but sends only flags to graph evaluators.
+ * Each evaluator receives a synthetic file holding PROD_DEPLOYMENT, never authored
+ * values. Parse complete dotenv syntax so multiline secret contents cannot be
+ * mistaken for flag assignments. Selected value reads remain separately guarded.
  */
 
 export const STUDIO_SCRATCH = path.join(".cache", "framework-studio");
@@ -34,8 +33,6 @@ export interface DeploymentSettings {
   readonly webSocketApi: boolean;
 }
 
-const WANTED = /^\s*(?:export\s+)?(PROD_DEPLOYMENT|DEPLOY_PROD_WEBSOCKET_API)\s*=/;
-
 /** Strictly "true" is true, as cdk-app/deployment.ts and config/source.ts read it. */
 function flag(value: string | undefined): boolean {
   return value?.trim().toLowerCase() === "true";
@@ -43,16 +40,18 @@ function flag(value: string | undefined): boolean {
 
 export function readDeploymentSettings(repositoryRoot: string): DeploymentSettings {
   const file = path.join(repositoryRoot, "cdk-app", ".env");
-  if (!existsSync(file)) return { currentMode: "dev", webSocketApi: false };
-  const kept = readFileSync(file, "utf8")
-    .split(/\r?\n/)
-    .filter((line) => WANTED.test(line))
-    .join("\n");
-  const values = parseEnv(kept);
+  const values = parseEnv(existsSync(file) ? readFileSync(file, "utf8") : "");
   return {
     currentMode: flag(values.PROD_DEPLOYMENT) ? "prod" : "dev",
-    webSocketApi: flag(values.DEPLOY_PROD_WEBSOCKET_API),
+    webSocketApi: readModeWebSocketApi(repositoryRoot, "dev", flag(values.DEPLOY_PROD_WEBSOCKET_API)),
   };
+}
+
+/** Evaluators receive flags only, never the selected file's authored values. */
+export function readModeWebSocketApi(root: string, mode: Mode, fallback: boolean): boolean {
+  const selected = selectedDeploymentInput(root, mode);
+  if (selected === "cdk-app/.env") return fallback;
+  return flag(parseEnv(readFileSync(path.join(root, selected), "utf8")).DEPLOY_PROD_WEBSOCKET_API);
 }
 
 /** The inputs file one mode's evaluator loads in place of cdk-app/.env. */

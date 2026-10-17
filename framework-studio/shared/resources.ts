@@ -8,6 +8,7 @@ export interface RequirementRule {
 }
 
 export interface ResourceDetails {
+  readonly file?: string;
   /** Only the selected, declared key is returned. Never included in a snapshot. */
   readonly value?: string;
   readonly configured: boolean;

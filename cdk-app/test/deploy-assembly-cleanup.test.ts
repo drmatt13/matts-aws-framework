@@ -15,7 +15,7 @@ function withDeployFixture(body: (fixture: string, deploy: (...args: string[]) =
   try {
     mkdirSync(path.join(fixture, "scripts"));
     mkdirSync(path.join(fixture, "cdk-app"));
-    for (const name of ["deploy.ts", "deployment-assembly.ts", "deployment-secrets.ts"]) {
+    for (const name of ["deploy.ts", "deployment-assembly.ts", "deployment-secrets.ts", "cloud-assembly.ts"]) {
       copyFileSync(path.join(root, "scripts", name), path.join(fixture, "scripts", name));
     }
     writeFileSync(path.join(fixture, "framework.config.ts"), `export { default } from "../../../framework.config";\n`);

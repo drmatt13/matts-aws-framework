@@ -58,9 +58,79 @@ Framework behavior comes from the framework's own answers. CDK links are separat
 - **Link sites.** These are `linkResources` calls found in `cdk-app/lib`.
 - **CDK resource links.** The studio parses linked stack constructors for direct public-member references, SNS SQS subscriptions and EventBridge rules. These edges have their own category, source locations and inference label. No CDK code is executed by this scan.
 
-Each graph is evaluated in its own child process, with a synthetic inputs file holding
-only `PROD_DEPLOYMENT`. The studio reads exactly two keys from `cdk-app/.env`:
-`PROD_DEPLOYMENT` and `DEPLOY_PROD_WEBSOCKET_API`.
+Each logical graph is evaluated in its own child process, with a synthetic inputs file holding
+only `PROD_DEPLOYMENT`. Graph evaluation receives only deployment-mode and WebSocket flags;
+the server reads each mode's WebSocket flag from its selected inputs file. Authored values
+never enter evaluator processes.
+
+## CDK environment files and input parameters
+
+**Input parameters and secrets** contains only inputs and secrets declared in
+`framework-config/resources.ts`. **CDK environment files** is a separate island with `.env.dev` and
+`.env.prod`. File-to-parameter links come from actual assignments, including empty ones;
+missing entries stay visible in the inspector without pretending to supply a value.
+Catalog identities are reused, preserving their workload and secret-consumer links.
+
+Selecting a file opens an editor for all of that file's variables, including settings
+such as `PGADMIN_HOST_PORT` that have no catalog declaration. Edit multiple values or
+add variables, then **Review Changes** and **Apply All**, or discard the draft. Navigation
+and browser exit use the same unsaved-change guards as other inspectors. Existing secrets
+are masked with an explicit reveal control; new values are masked initially. The review
+lists changed keys with values redacted. File revisions are checked before review and
+again before applying, so another editor's save is preserved. Only the selected mode's
+file is written; saving does not synthesize or deploy. Dotenv syntax and value round trips
+are checked; infrastructure validation remains a separate synthesis action.
+
+File-to-resource links use catalog declarations only. Other variables stay inside the
+file inspector. Names, configured/empty/missing status and declaration-default use remain
+available without values in the map. Values load only into the selected inspector and its
+in-memory draft, outside graph/search data and query caches. Missing example/catalog keys
+can be added from **Not set in this file**. `PROD_DEPLOYMENT` follows the file's mode.
+
+If a file is missing, **Create from reference** creates it without overwriting an existing
+file. It preserves active inputs only when `cdk-app/.env` belongs to that same mode, and
+fills missing entries from the matching example. Production never copies development
+secrets. Both files are ignored by Git; the active `.env` is preserved.
+
+Studio synthesis prefers `cdk-app/.env.dev` or `cdk-app/.env.prod` for its selected mode,
+falling back to the legacy `cdk-app/.env` while the mode-specific file is absent. File
+changes refresh the map and stale the matching inventory. Ordinary CLI commands retain
+their existing active-input behavior; creating these files does not deploy or switch it.
+
+## Synthesized infrastructure
+
+Open **Infrastructure** in the header, or **Inspect infrastructure** in a node or stack
+inspector. Choose Development or Production, optionally enter an AWS profile, then run
+**Synthesize**. Opening the panel, switching modes and editing source never synthesize
+automatically. Apply or discard a pending inspector draft first; synthesis reads saved source.
+
+This runs the app configured in `cdk-app/cdk.json` (`bin/cdk-app.ts`), so it includes
+application stacks and resources that have no `framework-config` declaration. Only
+resources that the selected configuration actually constructs appear. A node inspector
+starts with an owner filter; **Show all infrastructure** clears that scope. No existing
+CloudFormation deployment is required.
+
+The searchable inventory groups resources by stack, with owner and CloudFormation-type
+filters. Stack inspectors include their complete resource collection, including unknown
+owners. Resource details show logical IDs, construct paths, explicit ownership evidence,
+owner declaration links and separate CloudFormation dependencies. Generated roles,
+policies and log groups stay in this panel rather than adding map nodes. Imported references
+are listed only where CDK explicitly identifies them; this is not deployed-resource discovery.
+
+Synthesis uses a private disposable copy of the selected mode's input file with matching mode/context,
+and an isolated assembly. It can bundle assets and perform normal CDK context lookups
+using the selected credentials. It never deploys, uploads secrets or changes the active
+inputs file. Production validation still applies: development-only inputs must be resolved
+before a production synthesis succeeds. A named AWS profile is optional, available under
+**AWS connection options**. Account/region resolution and uncached CDK context lookups
+can still need configured AWS credentials; generating templates does not deploy anything.
+
+Each mode retains its last successful inventory in the running Studio server. Source,
+input or context changes mark it stale; a failed synthesis retains it with a visible error.
+Generation time, input origin and profile are shown. Restarting Studio clears these
+in-memory inventories. Raw template properties, outputs and input values are excluded
+from the inventory. See [architecture](../docs/framework-studio/architecture.md#infrastructure-inventory)
+for the reusable reader, runner and current limits.
 
 ## The isometric view
 
@@ -237,6 +307,10 @@ separately, as Framework describes.
   Disposable evaluation inputs and the CDK link index live under `.cache/framework-studio/`.
 - It runs two commands, `framework:check` and `framework:generate`, with fixed arguments
   and no shell. The generator runs only after you confirm it.
+- Explicit infrastructure synthesis uses the local CDK CLI through a separate runner,
+  without a shell. Requests can select a mode and validated profile name, not arbitrary
+  commands, context keys or input paths. Its temporary inputs and assembly are removed
+  after inspection; only the values-free inventory is retained in memory.
 
 ## Layout
 
@@ -246,6 +320,8 @@ separately, as Framework describes.
 | `server/source/` | Source locations, editability, stack members, link sites |
 | `server/edits/` | Field registry, text splices, planning, transactions |
 | `server/evaluator/` | The per-graph child processes |
+| `server/infrastructure.ts` | Explicit synthesis, framework mode/input adapter, freshness and last-good inventories |
+| `../scripts/cloud-assembly.ts`, `../scripts/infrastructure-inventory.ts`, `../scripts/cdk-synthesis.ts` | Reusable assembly reader, inventory extraction and synthesis-only runner |
 | `src/` | The views, shared inspector draft, navigation guards and combined review |
 | `src/scene/` | The isometric view: projection, layout, icon shapes, slabs, search/focus, camera, picking, the canvas renderer |
 | `shared/` | The types both halves share |

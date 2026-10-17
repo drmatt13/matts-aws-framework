@@ -52,7 +52,8 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
       <div className="resource-value">
         <code>{resource.fromEnv}</code>
         {resource.absent ? <p className="muted">Not declared in this graph.</p> : details ? <>
-          <pre className="env-value">{details.configured ? resource.kind === "secret" && !revealed ? "••••••••••••" : details.value === "" ? "(empty)" : details.value : "Not set in cdk-app/.env"}</pre>
+          <p className="small muted">Source: {details.file ?? "cdk-app/.env"}</p>
+          <pre className="env-value">{details.configured ? resource.kind === "secret" && !revealed ? "••••••••••••" : details.value === "" ? "(empty)" : details.value : `Not set in ${details.file ?? "cdk-app/.env"}`}</pre>
           {resource.kind === "secret" && details.configured ? <button className="quiet" onClick={() => setRevealed(!revealed)} aria-pressed={revealed}>{revealed ? "Hide value" : "Reveal value"}</button> : null}
           {!details.configured && resource.default !== undefined ? <p className="small muted">Using default: <code>{resource.default}</code></p> : null}
         </> : <p className="small muted" role="status">{model.stale ? "Unavailable until the configuration loads." : "Reading cdk-app/.env…"}</p>}

@@ -11,7 +11,7 @@ test("deploy reports both conflicting route owners before synth or secret synchr
   const fixture = mkdtempSync(path.join(artifacts, "agent-route-preflight-"));
   try {
     mkdirSync(path.join(fixture, "scripts"));
-    for (const name of ["deploy.ts", "deployment-assembly.ts", "deployment-secrets.ts"]) {
+    for (const name of ["deploy.ts", "deployment-assembly.ts", "deployment-secrets.ts", "cloud-assembly.ts"]) {
       copyFileSync(path.join(root, "scripts", name), path.join(fixture, "scripts", name));
     }
     writeFileSync(path.join(fixture, "framework.config.ts"), `

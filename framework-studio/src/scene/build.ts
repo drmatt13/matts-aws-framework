@@ -6,6 +6,8 @@ import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH, project } from "./iso";
 import { buildIconShape, type Shape } from "./shapes";
 import type { Bounds } from "./camera";
 import { islandFrame, type SceneFrame } from "./frame";
+import { layoutIslands } from "./layout";
+export { titleRoom } from "./layout";
 
 /**
  * The landscape: one mode's model laid out as islands of terrain with
@@ -148,19 +150,6 @@ export interface SceneOptions {
 
 /** Buildings stand every third cell, so every label card has its own space. */
 const STEP = 3;
-/** Between columns, and between islands in a column, in screen-aligned tile units. */
-const COLUMN_GAP = 6;
-const ISLAND_GAP = 5;
-
-/**
- * Room an island leaves on its left for its flat title when it shares a row:
- * the title's width at the zoom a fitted scene is read at, in screen-aligned
- * tile units (32 world units each), so a label never lands on its neighbour.
- */
-export function titleRoom(title: string): number {
-  const READ_ZOOM = 0.45;
-  return Math.ceil((32 + (14 + title.length * 6.5) / READ_ZOOM) / 32);
-}
 const THICKNESS = 3;
 /** The VPC's subnets stand level, side by side: public, private, isolated. */
 const VPC_HEIGHT = 4;
@@ -278,7 +267,7 @@ function routeItem(route: ModelRoute, target: ModelTarget | undefined, mode: Mod
 function resourceItem(resource: ModelResource, mode: Mode, availability?: Availability): Item {
   const name = resource.path[resource.path.length - 1]!;
   const kindLabel =
-    resource.kind === "stack"
+    resource.deploymentFile ? `CDK ${resource.deploymentFile.mode === "dev" ? "development" : "production"} environment file` : resource.kind === "stack"
       ? `Stack, ${resource.stackClass ?? "stack"}`
       : resource.kind === "member"
         ? `Stack member, ${resource.typeText ?? "unknown type"}`
@@ -451,7 +440,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
       bands: [{ id: "band:orchestration", title: "Workflows", caption: [], h: 4, groups: [workflows] }],
     },
   ];
-  const compute = computeIslands.filter((island) => island.id === "island:vpc" || island.bands.some((band) => band.groups.some((group) => group.length > 0)));
+  const compute = computeIslands.filter((island) => island.region === "network" || island.bands.some((band) => band.groups.some((group) => group.length > 0)));
 
   // Catalog stacks share an island; their public fields stay in the inspector.
   const children = new Map<string, ModelResource[]>();
@@ -461,9 +450,13 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   const catalog: IslandSpec[] = [];
   const loose: Item[][] = [];
   const stacks: Item[] = [];
+  const environmentFiles: Item[] = [];
   for (const resource of model.resources) {
     if (resource.parent) continue;
-    if (resource.kind === "stack") {
+    if (resource.deploymentFile) {
+      environmentFiles.push({ ...catalogItem(resource), badge: resource.deploymentFile.mode,
+        presenceText: `${resource.deploymentFile.path}: ${resource.deploymentFile.exists ? "local file" : "not created"}. Values stay outside the graph.` });
+    } else if (resource.kind === "stack") {
       stacks.push({ ...catalogItem(resource), label: resource.stackClass ?? resource.path.join(".") });
     } else if (resource.kind === "group") {
       loose.push([catalogItem(resource), ...(children.get(resource.id) ?? []).map(catalogItem)]);
@@ -486,12 +479,15 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
     const groups = loose.filter((group) => group.length > 1);
     catalog.push({
       id: "island:inputs",
-      title: "Inputs and secrets",
+      title: "Input parameters and secrets",
       region: "catalog",
-      caption: ["Inputs and secrets authored in cdk-app/.env. Select an input to inspect its value and declaration."],
-      bands: [{ id: "band:inputs", title: "Inputs and secrets", caption: [], h: 1, groups: [singles, ...groups].filter((group) => group.length > 0) }],
+      caption: ["Input parameters and secrets declared in framework-config/resources.ts. Environment file links carry names and presence, never secret values."],
+      bands: [{ id: "band:inputs", title: "Input parameters and secrets", caption: [], h: 1, groups: [singles, ...groups].filter((group) => group.length > 0) }],
     });
   }
+  if (environmentFiles.length) catalog.push({ id: "island:environment", title: "CDK environment files", region: "catalog",
+    caption: ["Separate development and production inputs. Select a file to edit or add environment variables in a draft. Values stay outside the graph."],
+    bands: [{ id: "band:environment", title: "CDK environment files", caption: [], h: 1, groups: [environmentFiles] }] });
   return { entry, compute, catalog };
 }
 
@@ -562,83 +558,44 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
   const tiles = new Map<string, Tile>();
   const placedY = new Map<string, number>();
 
-  // Two main columns and one shared lower row make a desktop-sized landscape.
-  // APIs and inputs sit beside compute; the smaller supporting islands share
-  // the lower row, with local development between workflows and stacks.
-  // Placement happens in a screen-aligned frame (sx = gx - gy across,
-  // sy = gx + gy down) and is then
-  // turned back into grid cells, so islands stay grid rectangles. Compute is
-  // placed first, so connected items in the other column can follow its order.
-  const extent = (footprint: Footprint) => footprint.width + 2 + footprint.length + 2;
-  const columnWidth = (list: readonly IslandSpec[]) => Math.max(0, ...list.map((spec) => extent(measure(spec))));
-  const lowerOrder: readonly string[] = ["island:agentcore", "island:orchestration", "island:local", "island:stacks"];
+  // The row packer places measured islands in the screen-aligned frame
+  // (sx = gx - gy, sy = gx + gy); only this final step maps them to grid cells.
   const all = [...specs.entry, ...specs.compute, ...specs.catalog];
-  const lower = lowerOrder.flatMap((id) => all.filter((spec) => spec.id === id));
-  const compute = specs.compute.filter((spec) => !lowerOrder.includes(spec.id));
-  const entry = [...specs.entry, ...specs.catalog.filter((spec) => !lowerOrder.includes(spec.id))];
-  const entryWidth = columnWidth(entry);
-  const computeWidth = columnWidth(compute);
-  const lowerFootprints = lower.map((spec) => measure(spec));
-  const lowerWidth = lowerFootprints.reduce((sum, footprint, index) => sum + extent(footprint) + (index ? titleRoom(footprint.spec.title) : 0), 0);
-  const naturalWidth = entryWidth + COLUMN_GAP + computeWidth;
-  // Let a compact supporting row widen the column gutter, rather than
-  // wrapping merely because the main islands lost a few nodes. Large rows
-  // still wrap as they grow beyond the desktop's useful aspect ratio.
-  const mainWidth = Math.max(naturalWidth, Math.min(lowerWidth, Math.ceil(naturalWidth * 1.5)));
-  const columns = [
-    { specs: compute, width: computeWidth, centre: mainWidth - computeWidth / 2, align: false },
-    { specs: entry, width: entryWidth, centre: entryWidth / 2, align: true },
-  ];
-
   const byConnection = (items: readonly Item[]) =>
     [...items]
       .map((item, position) => ({ item, position, y: barycentre(item.id, model.edges, placedY) }))
       .sort((a, b) => a.y - b.y || a.position - b.position)
       .map(({ item }) => item);
-  const packRows = (measured: readonly Footprint[], width: number) => {
-    // Keep title room between neighbours, and wrap an island that outgrows its row.
-    const rows: { islands: { footprint: Footprint; at: number }[]; width: number; height: number }[] = [];
-    for (const footprint of measured) {
-      const size = extent(footprint);
-      const row = rows[rows.length - 1];
-      const at = row ? row.width + titleRoom(footprint.spec.title) : 0;
-      if (row && at + size <= width) {
-        row.islands.push({ footprint, at });
-        row.width = at + size;
-        row.height = Math.max(row.height, size);
-      } else rows.push({ islands: [{ footprint, at: 0 }], width: size, height: size });
+  const specsById = new Map(all.map((spec) => [spec.id, spec]));
+  const footprints = all.map((spec) => {
+    const measured = measure(spec);
+    const width = measured.width + 2, length = measured.length + 2;
+    let inset = 0;
+    if (spec.region === "network") {
+      const base = Math.min(...spec.bands.map((band) => band.h)) - THICKNESS;
+      const top = Math.max(...spec.bands.map((band) => band.h));
+      const frame = islandFrame({ ...spec, gx0: 0, gy0: 0, gx1: width, gy1: length, base, top, bands: [] }).bounds;
+      // Reserve the visible foundation as well as terrain. Its measured overhang
+      // becomes padding around the grid footprint; the island geometry stays intact.
+      inset = Math.ceil(Math.max(0,
+        (-length * TILE_WIDTH / 2 - frame.minX) / (TILE_WIDTH / 2),
+        (frame.maxX - width * TILE_WIDTH / 2) / (TILE_WIDTH / 2),
+        (-top * ELEVATION_STEP - frame.minY) / (TILE_HEIGHT / 2),
+        (frame.maxY - ((width + length) * TILE_HEIGHT / 2 - base * ELEVATION_STEP)) / (TILE_HEIGHT / 2)));
     }
-    return rows;
-  };
-  const rowsHeight = (rows: ReturnType<typeof packRows>) => rows.reduce((sum, row) => sum + row.height, 0) + ISLAND_GAP * Math.max(0, rows.length - 1);
-  const placeRows = (rows: ReturnType<typeof packRows>, centre: number, top: number) => {
-    let sy = top;
-    for (const row of rows) {
-      const left = centre - row.width / 2;
-      for (const { footprint, at } of row.islands) {
-        const width = footprint.width + 2;
-        const length = footprint.length + 2;
-        // Centre the island's diamond on its place in the row, and its height in the row's:
-        // its sx runs from -length to +width about its origin.
-        const top = sy + Math.floor((row.height - extent(footprint)) / 2);
-        let difference = Math.round(left + at + (width + length) / 2 - (width - length) / 2);
-        if ((top + difference) % 2 !== 0) difference += 1;
-        placeIsland(footprint, (top + difference) / 2, (top - difference) / 2);
-      }
-      sy += row.height + ISLAND_GAP;
-    }
-  };
-  let computeHeight = 0;
-  let mainHeight = 0;
-  for (const column of columns) {
-    const rows = packRows(column.specs.map((spec) => measure(spec, column.align ? byConnection : undefined)), column.width);
-    const height = rowsHeight(rows);
-    const top = column.align ? Math.round(Math.max(0, (computeHeight - height) / 2)) : 0;
-    placeRows(rows, column.centre, top);
-    if (!column.align) computeHeight = height;
-    mainHeight = Math.max(mainHeight, top + height);
+    return { id: spec.id, title: spec.title, region: spec.region, size: width + length + inset * 2, inset };
+  });
+  const insets = new Map(footprints.map((footprint) => [footprint.id, footprint.inset]));
+  for (const position of layoutIslands(footprints)) {
+    const spec = specsById.get(position.id)!;
+    const footprint = measure(spec, spec.region === "entry" || spec.region === "catalog" ? byConnection : undefined);
+    const width = footprint.width + 2, length = footprint.length + 2;
+    const inset = insets.get(position.id)!;
+    const top = Math.round(position.top + inset);
+    let difference = Math.round(position.left + inset + length);
+    if ((top + difference) % 2 !== 0) difference += 1;
+    placeIsland(footprint, (top + difference) / 2, (top - difference) / 2);
   }
-  placeRows(packRows(lowerFootprints, Math.max(mainWidth, ...lowerFootprints.map(extent))), mainWidth / 2, mainHeight + ISLAND_GAP);
 
   function placeIsland(footprint: Footprint, gx0: number, gy0: number): void {
     const spec = footprint.spec;

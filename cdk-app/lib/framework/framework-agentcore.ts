@@ -2,6 +2,7 @@ import * as cdk from "aws-cdk-lib";
 import * as agentcore from "aws-cdk-lib/aws-bedrockagentcore";
 import type * as lambda from "aws-cdk-lib/aws-lambda";
 import { Construct } from "constructs";
+import { markInfrastructure } from "./framework-inventory";
 import { buildSync } from "esbuild";
 import path from "node:path";
 import {
@@ -200,6 +201,7 @@ export class FrameworkAgentCore extends Construct {
           }
         : {}),
     });
+    markInfrastructure(runtime, `agent:${target.id}`);
     appInvocationRegistry(this).agent(target.id, {
       arn: runtime.agentRuntimeArn,
       region: stack.region,

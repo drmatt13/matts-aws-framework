@@ -914,6 +914,7 @@ from offline/local tests. Use a disposable fixture for deliberate failures.
 | File/source | Owner and purpose |
 | --- | --- |
 | cdk-app/.env | Authored deployment settings and local inputs. Deployment flags may be overridden by the shell or `-c`; PROD_DEPLOYMENT and resource inputs are read from the file itself |
+| cdk-app/.env.dev, cdk-app/.env.prod | Ignored per-mode inputs selected by Studio synthesis through an isolated `FRAMEWORK_INPUTS_FILE` copy. Matching `.env.*.example` files are references. Studio's file inspectors edit/add variables through draft review; creating or editing them does not replace the active CLI `.env` |
 | Root .env | Exported dev Compose/auth/replay/port controls, or public production outputs; either ends with a client-app block of VITE_ settings to copy manually |
 | .framework/local/resources.json | Discovered development resource and workflow identifiers; never raw secrets |
 | client-app/.env | Browser-public VITE_ values from the deployment |

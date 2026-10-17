@@ -21,6 +21,7 @@ import {
 import { deferResourceAttachment, frameworkResourceOptions } from "./framework-resources";
 
 import { databaseConnectionTarget, type DatabaseEndpoint } from "./framework-database";
+import { markInfrastructure } from "./framework-inventory";
 
 /**
  * The application's network, built by a production deployment the first time
@@ -69,6 +70,7 @@ export class NetworkStack extends cdk.Stack {
         ...(network.gatewayEndpoints.dynamodb ? { DynamoDB: { service: ec2.GatewayVpcEndpointAwsService.DYNAMODB } } : {}),
       },
     });
+    markInfrastructure(this.vpc, "island:vpc");
 
     // CDK gives a dual-stack VPC's private subnets an egress-only internet
     // gateway and an IPv6 default route to it, unasked. Without one, they keep

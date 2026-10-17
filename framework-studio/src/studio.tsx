@@ -44,6 +44,7 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
   }, []);
   const [draft] = useState(() => new InspectorDraft(response.snapshot, props.selected, mode, {
     planBatch: api.planBatch, resourcePlan: api.resourcePlan, applyBatch: api.applyBatch, resourceApply: api.resourceApply,
+    inputPlan: api.inputPlan, inputApply: api.inputApply,
     snapshot: async () => { const next = await api.snapshot(); query.setQueryData(["snapshot"], next); return next.snapshot; },
   }));
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);

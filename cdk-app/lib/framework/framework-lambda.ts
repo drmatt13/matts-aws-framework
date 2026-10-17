@@ -21,6 +21,7 @@ import {
   resolveFrameworkDirectory,
 } from "@repo/framework/config/source";
 import type { LambdaPlacement } from "./framework-network";
+import { markInfrastructure } from "./framework-inventory";
 
 /**
  * Builds a Lambda from framework defaults plus target-specific overrides.
@@ -170,6 +171,8 @@ export function frameworkLambda(
     loggingFormat: lambda.LoggingFormat.JSON,
     applicationLogLevelV2: lambda.ApplicationLogLevel.TRACE,
   };
+  // Tag an existing group only; Function.logGroup can create a retention custom resource.
+  if ("logGroup" in shared) markInfrastructure(shared.logGroup, `lambda:${spec.id}`, "supporting");
 
   const retained = <T extends lambda.Function>(fn: T): T => {
     if (cdkManagesLogGroup) applyLogRetention(fn, spec);

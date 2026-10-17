@@ -8,7 +8,8 @@ import path from "node:path";
  * framework's config machinery (which decides what that source means), the
  * application stacks (whose classes are the catalog's members and whose
  * `linkResources` calls bind them), and cdk-app/.env. Graph evaluation uses
- * only two deployment flags; the input inspector loads its selected key separately. Directories are watched rather than files: a file replaced by a
+ * only two deployment flags; inspectors load selected keys or a selected file privately.
+ * Directories are watched rather than files: a file replaced by a
  * rename — the studio's own atomic write, or an editor's — keeps being seen.
  *
  * Changes are collected for a short quiet period and reported together, as
@@ -33,7 +34,7 @@ export function watchRepository(
     { directory: path.join(repositoryRoot, "packages", "framework", "src", "config"), recursive: true },
     { directory: path.join(repositoryRoot, "cdk-app", "lib"), recursive: true },
     { directory: path.join(repositoryRoot, "cdk-app", "bin"), recursive: true },
-    { directory: path.join(repositoryRoot, "cdk-app"), recursive: false, accept: (name) => name === ".env" },
+    { directory: path.join(repositoryRoot, "cdk-app"), recursive: false, accept: (name) => [".env", ".env.dev", ".env.prod", ".env.dev.example", ".env.prod.example"].includes(name) },
   ];
   const pending = new Set<string>();
   let timer: NodeJS.Timeout | undefined;

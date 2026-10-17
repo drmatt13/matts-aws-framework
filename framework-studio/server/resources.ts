@@ -11,6 +11,7 @@ import { diffOf } from "./edits/plan";
 import { hashEditableFiles, sha256, toRelative } from "./files";
 import type { SnapshotBuilder, StudioState } from "./snapshot";
 import { assertResourceFile, consumesResource, planResourceSource, resourceTypeErrors } from "./resources-source";
+import { selectedDeploymentInput } from "./deployment-inputs";
 
 interface Change { file: string; before: string; after: string }
 interface Plan { response: ResourcePlan; revision: string; hashes: Record<string, string>; changes: readonly Change[] }
@@ -55,12 +56,12 @@ export class ResourceService {
   expirePlans(): void { this.plans.clear(); }
   details(id: string, mode: Mode): ResourceDetails {
     const resource = this.resource(id, mode);
-    const file = path.join(this.root, "cdk-app", ".env");
+    const file = path.join(this.root, selectedDeploymentInput(this.root, mode));
     const values = existsSync(file) ? parseEnv(readFileSync(file, "utf8")) : {};
     const value = values[resource.fromEnv!];
     // Configuration presence (even NAME=) is distinct from the framework's non-blank requirement.
     const consumers = this.state().snapshot.models[mode].targets.filter((target) => consumesResource(target, id)).map((target) => ({ target: target.ref, title: target.title, rules: target.requirementRules ?? [] }));
-    return { configured: value !== undefined, ...(value !== undefined ? { value } : {}), consumers, history: this.history() };
+    return { file: selectedDeploymentInput(this.root, mode), configured: value !== undefined, ...(value !== undefined ? { value } : {}), consumers, history: this.history() };
   }
   plan(intent: ResourceIntent, revision: string, mode: Mode): Promise<ResourcePlan> {
     return this.exclusive(async () => {

@@ -12,6 +12,9 @@ import { sha256 } from "./files";
 import { ResourceService, readResourceIntent } from "./resources";
 import { SnapshotBuilder, type StudioState } from "./snapshot";
 import { watchRepository } from "./watch";
+import { InfrastructureService } from "./infrastructure";
+import { createDeploymentInput } from "./deployment-inputs";
+import { DeploymentInputService, inputMode, readInputEdits } from "./deployment-input-edits";
 
 /**
  * The studio's HTTP surface: one origin, on the loopback interface only.
@@ -60,6 +63,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   const builder = new SnapshotBuilder(repositoryRoot, log);
   const edits = new EditService(repositoryRoot, builder);
   const resources = new ResourceService(repositoryRoot, builder);
+  const inputs = new DeploymentInputService(repositoryRoot, builder);
   const commands = new CommandRunner(repositoryRoot);
   const clients = new Set<Response>();
 
@@ -67,6 +71,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const client of clients) client.write(message);
   };
+  const infrastructure = new InfrastructureService(repositoryRoot, () => builder.current?.snapshot, undefined, () => broadcast("infrastructure", {}));
   let evaluating = false;
   const refresh = async (external: readonly string[]): Promise<StudioState | undefined> => {
     evaluating = true;
@@ -75,6 +80,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
       const state = await builder.refresh();
       edits.expirePlans();
       resources.expirePlans();
+      inputs.expirePlans();
       broadcast("snapshot", { revision: state.snapshot.revision, external, history: edits.history() });
       return state;
     } catch (error) {
@@ -133,6 +139,33 @@ export async function startServer(repositoryRoot: string, args: readonly string[
       clients.delete(response);
     });
   });
+
+  api.get("/infrastructure", (request, response) => send(response, async () => infrastructure.get(request.query.mode === "prod" ? "prod" : "dev")));
+  api.post("/deployment-inputs/create", (request, response) => send(response, async () => {
+    if (request.body?.mode !== "dev" && request.body?.mode !== "prod") throw new EditError(400, "Choose development or production inputs.");
+    const result = createDeploymentInput(repositoryRoot, request.body.mode);
+    await refresh([result.file]);
+    return result;
+  }));
+  api.get("/deployment-inputs/details", (request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    send(response, async () => inputs.details(inputMode(request.query.mode)));
+  });
+  api.post("/deployment-inputs/plan", (request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    send(response, async () => inputs.plan(inputMode(request.body?.mode), readInputEdits(request.body?.edits), String(request.body?.hash ?? ""), String(request.body?.revision ?? "")));
+  });
+  api.post("/deployment-inputs/apply", (request, response) => send(response, async () => {
+    const result = await inputs.apply(String(request.body?.planId ?? ""));
+    edits.expirePlans(); resources.expirePlans();
+    broadcast("snapshot", { revision: result.revision, external: [], history: edits.history() });
+    return result;
+  }));
+  api.post("/infrastructure/synthesize", (request, response) => send(response, async () => {
+    if (request.body?.mode !== "dev" && request.body?.mode !== "prod") throw new EditError(400, "Choose development or production synthesis.");
+    if (request.body.profile !== undefined && typeof request.body.profile !== "string") throw new EditError(400, "An AWS profile is a name.");
+    return infrastructure.synthesize(request.body.mode, request.body.profile || undefined);
+  }));
 
   api.get("/resources/details", (request, response) => send(response, async () => resources.details(String(request.query.id ?? ""), request.query.mode === "prod" ? "prod" : "dev")));
   api.post("/resources/plan", (request, response) => send(response, () => resources.plan(readResourceIntent(request.body), String(request.body?.revision ?? ""), request.body?.mode === "prod" ? "prod" : "dev")));
@@ -248,7 +281,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     // A file this studio just wrote, still holding exactly what it wrote, is
     // its own change; anything else was changed by someone else.
     const external = files.filter((file) => {
-      const owner = resources.ownWrites.has(file) ? resources.ownWrites : edits.ownWrites;
+      const owner = inputs.ownWrites.has(file) ? inputs.ownWrites : resources.ownWrites.has(file) ? resources.ownWrites : edits.ownWrites;
       const written = owner.get(file);
       if (written === undefined) return true;
       try {
