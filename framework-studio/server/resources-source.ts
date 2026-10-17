@@ -250,7 +250,7 @@ function ruleText(rule: RequirementRule, alias: string): string {
 function writeRequirements(root: string, state: StudioState, overrides: Record<string, string>, target: ModelTarget, resource: string, policy: "required" | "optional"): void {
   const origin = target.origins[0] && parseOrigin(target.origins[0]);
   const locatedSource = locateConfigSource(path.join(root, "framework.config.ts"), { repositoryRoot: root, host: new SourceFiles(new Map(Object.entries(overrides))).host() });
-  const located = origin && locatedSource.sections[origin.section].find((item) => item.key === origin.key);
+  const located = origin && origin.section !== "defaults" && locatedSource.sections[origin.section].find((item) => item.key === origin.key);
   if (!origin || !located) return fail(`Cannot locate ${target.ref} in source.`);
   const file = located.file;
   let text = overrides[file] ?? readFileSync(file, "utf8");

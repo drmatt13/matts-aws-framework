@@ -124,20 +124,20 @@ export function Shell(props: { readonly children: ReactNode }) {
     <div className="shell">
       <header className="bar">
         <span className="wordmark">
-          Framework Studio<small>{repository}</small>
+          AWS Studio<small>{repository}</small>
         </span>
         <nav className="tabs" aria-label="Views">
           <Link to="/" search={(previous) => previous} className="tab" activeOptions={{ exact: true, includeSearch: false }}>
             Board
-          </Link>
-          <Link to="/lanes" search={(previous) => previous} className="tab" activeOptions={{ includeSearch: false }}>
-            Lanes
           </Link>
           <Link to="/isometric" search={(previous) => previous} className="tab" activeOptions={{ includeSearch: false }}>
             Isometric
           </Link>
           <Link to="/database" search={{}} className="tab" activeOptions={{ includeSearch: false }}>
             Database
+          </Link>
+          <Link to="/deploy" search={{}} className="tab" activeOptions={{ includeSearch: false }}>
+            Deploy
           </Link>
         </nav>
         <span className="segmented" role="group" aria-label="Graph">

@@ -5,7 +5,7 @@ verify a change, the traps already found, its known limits, and where it could g
 
 ## Where things stand
 
-- Phase 1 (Board, Lanes, Inspector, edit loop) is committed in `d1e3d1d`.
+- Phase 1 (Board, Inspector, edit loop) is committed in `d1e3d1d`.
 - Phase 2 (the isometric view) is in the working tree: `src/scene/*`,
   `src/views/Isometric.tsx`, `test/landscape.test.ts`, and edits to `main.tsx`,
   `Shell.tsx`, `styles.css`, `scene/iso.ts` and the README. It passes `npm run verify`. It is

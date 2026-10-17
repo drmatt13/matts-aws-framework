@@ -21,7 +21,7 @@ export const SECTIONS = [
 export type Section = (typeof SECTIONS)[number];
 
 export interface ParsedOrigin {
-  readonly section: Section;
+  readonly section: Section | "defaults";
   readonly key: string;
   /** Properties below the entry, e.g. `["authorizer"]` for a `$connect` authorizer. */
   readonly chain: readonly string[];
@@ -30,6 +30,7 @@ export interface ParsedOrigin {
 const ORIGIN = /^(http|webSocket|events|services|tasks|workflows|tools|agents)\["(.+?)"\]((?:\.[A-Za-z]+)*)$/;
 
 export function parseOrigin(origin: string): ParsedOrigin | undefined {
+  if (origin === "defaults") return { section: "defaults", key: "defaults", chain: [] };
   const match = ORIGIN.exec(origin);
   if (!match) return undefined;
   return {
@@ -52,6 +53,7 @@ export function originInMessage(message: string): string | undefined {
  * it is the entry itself, or the nested object the chain names.
  */
 export function declarationOf(config: FrameworkConfig, origin: ParsedOrigin): Record<string, unknown> | undefined {
+  if (origin.section === "defaults") return config.defaults as unknown as Record<string, unknown>;
   const section = (config as unknown as Record<string, Record<string, unknown> | undefined>)[origin.section];
   let current: unknown = section?.[origin.key];
   for (const link of origin.chain) {
@@ -114,6 +116,7 @@ function replaceIn(
 export function applyPatch(config: FrameworkConfig, patch: SemanticPatch): FrameworkConfig {
   const origin = parseOrigin(patch.origin);
   if (!origin) throw new Error(`"${patch.origin}" is not a declaration the studio can change.`);
+  if (origin.section === "defaults") return { ...config, defaults: replaceIn(config.defaults as unknown as Record<string, unknown>, patch.path, patch) } as unknown as FrameworkConfig;
   const section = (config as unknown as Record<string, Record<string, unknown>>)[origin.section] ?? {};
   const entry = section[origin.key];
   if (!entry || typeof entry !== "object") throw new Error(`${patch.origin} is not declared.`);

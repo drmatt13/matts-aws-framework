@@ -43,6 +43,7 @@ function display(value: unknown): string {
 
 /** The value, checked against the field's domain. */
 function checkValue(field: FieldDefinition, intent: EditIntent): string | undefined {
+  if (intent.inherit && field.required) return `${field.label} is a required baseline default and cannot be removed.`;
   if (intent.inherit) return undefined;
   const value = intent.value;
   if (field.domain.kind === "enum") {

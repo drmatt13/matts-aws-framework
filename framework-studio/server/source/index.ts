@@ -66,12 +66,18 @@ function location(repositoryRoot: string, sourceFile: ts.SourceFile, start: numb
   return { file: relative(repositoryRoot, sourceFile.fileName), ...lineAndColumn(sourceFile, start), start, end };
 }
 
-export function findEntry(located: LocatedConfigSource, origin: ParsedOrigin): LocatedSectionEntry | undefined {
+type LocatedDeclaration = Pick<LocatedSectionEntry, "file" | "key" | "keySpan" | "valueSpan">;
+
+export function findEntry(located: LocatedConfigSource, origin: ParsedOrigin): LocatedDeclaration | undefined {
+  if (origin.section === "defaults") {
+    const property = located.properties.defaults;
+    return property ? { file: property.file, key: "defaults", keySpan: property.span, valueSpan: property.span } : undefined;
+  }
   return located.sections[origin.section].find((entry) => entry.key === origin.key);
 }
 
 /** The value expression of a located entry, parsed. */
-export function entryValue(files: SourceFiles, entry: LocatedSectionEntry): ts.Expression | undefined {
+export function entryValue(files: SourceFiles, entry: LocatedDeclaration): ts.Expression | undefined {
   return expressionAt(files.get(entry.file), entry.valueSpan.start, entry.valueSpan.end);
 }
 
@@ -177,6 +183,11 @@ export function buildSourceIndex(
     for (const route of model.routes) {
       const source = locateOrigin(repositoryRoot, files, located, route.origin);
       if (source) entities[route.id] = source;
+    }
+    for (const group of model.defaults ?? []) {
+      const source = locateOrigin(repositoryRoot, files, located, group.origin);
+      if (source) entities[group.ref] = source;
+      editability[group.ref] = Object.fromEntries((model.fields[group.ref] ?? []).map((fact) => [fact.field, fieldEditability(files, located!, group.origin, fact)]));
     }
   }
 

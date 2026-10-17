@@ -15,7 +15,10 @@ zoom and fit help with larger diagrams. It reads the authored contract using Pri
 syntax parser, without running generation or querying a database. Contract edits refresh
 the view automatically. This is a read-only declaration view, not live migration status.
 
-Local PostgreSQL appears in Board, Lanes and Isometric as the Compose `postgres`
+The **Deploy** tab (`/deploy`), after Database, is a placeholder for future deployment
+controls.
+
+Local PostgreSQL appears in Board and Isometric as the Compose `postgres`
 service. Its own **Local development** island is active in Development and faded in
 Production; RDS keeps its production grouping. Database edges from local execution
 reach PostgreSQL, while AWS bindings retain their catalog destination. Both databases
@@ -45,7 +48,7 @@ Framework behavior comes from the framework's own answers. CDK links are separat
 - **Targets, routes and relationships.** These come from `getFrameworkTargets` and
   normalization. Env references, grants, `database: true`, invocations, workflow steps and
   integrations, and agent tools are all shown.
-- **Lanes.** These come from `isTargetEnabled` and `isTargetDeployed`, for both graphs,
+- **Deployment availability.** This comes from `isTargetEnabled` and `isTargetDeployed`, for both graphs,
   including the special rules: a tool follows its agents, an event has no toggle, and a
   development deployment builds only what AWS invokes.
 - **Production placement.** This comes from `resolveLambdaTarget` and the network helpers.
@@ -65,7 +68,7 @@ only `PROD_DEPLOYMENT`. The studio reads exactly two keys from `cdk-app/.env`:
 
 The backdrop is a thin isometric grid anchored to the terrain's world coordinates.
 Entities use locally bundled official AWS SVG service icons on small plinths, with Lucide
-SVGs for generic framework concepts. Board, Lanes and Inspector share the icon mapping.
+SVGs for generic framework concepts. Board and Inspector share the icon mapping.
 See [icon sources](public/icons/README.md).
 
 The view follows the model:
@@ -75,6 +78,13 @@ The view follows the model:
   the same edits.
 - Positions, islands and colours are layout, computed from the model on every refresh.
   Nothing about them is written to disk or read back as configuration.
+- Nodes share a three-cell lattice within each layer, including across service types.
+  Islands shrink, grow and shift through the same row packer as declarations change.
+- Hover empty terrain to highlight an island; click it to open island settings. Shared
+  defaults have service-type menus (HTTP, WebSocket, events and tools), boolean switches,
+  and counts of inheriting workloads versus overrides. Defaults apply across islands and
+  to future declarations; explicit node overrides win. Changes use the existing preview,
+  validation and undo flow. Islands without shared framework defaults link to their entries.
 
 The regions mean something:
 
@@ -103,7 +113,7 @@ endpoints are translucent with dashed plinths in those environments, including D
 quiet by default: no badge means both environments. A teal flask **Dev** badge means
 Development only; a violet diamond **Prod** badge means Production only. **Off** marks
 disabled workloads. Board and Isometric share these badges, including catalog resource absence
-across the two mode models. Lanes uses exactly two tracks, and the Inspector uses two
+across the two mode models. The Inspector uses two
 environment cards. Local and AWS are execution locations within Development, never a
 third environment. The framework's underlying deployment settings are unchanged.
 The Inspector's deploy selector labels those settings Dev + Prod, Dev only, Prod only

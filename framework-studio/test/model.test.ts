@@ -9,6 +9,7 @@ import type { Snapshot } from "../shared/model";
 import { projectModel } from "../server/model/project";
 import { SnapshotBuilder, type StudioState } from "../server/snapshot";
 import { fieldEditability, SourceFiles } from "../server/source";
+import { locateConfigSource } from "../../packages/framework/scripts/config-source";
 
 /**
  * The model is the framework's answers, reshaped. These tests hold it to the
@@ -162,6 +163,25 @@ test("an editable literal is one the evaluated config agrees with", () => {
   assert.deepEqual(editability["lambda:graphql-api"]?.["lambda.memorySize"], { kind: "literal", text: "512" });
   assert.deepEqual(editability["lambda:graphql-api"]?.deploy, { kind: "absent" });
   assert.equal(editability["lambda:add-numbers"]?.deploy, undefined, "a tool's lane is derived, never edited");
+});
+
+test("shared defaults locate imported source and keep computed defaults read-only", () => {
+  const group = "defaults:lambda";
+  const fact = snapshot.models.dev.fields[group].find((fact) => fact.field === "defaults.lambda.bundling.minify")!;
+  const source = snapshot.source.entities[group].value;
+  assert.equal(source.file, "framework-config/defaults.ts");
+  assert.equal(snapshot.source.editability[group][fact.field].kind, "literal");
+  assert.ok(fact.usage!.inherited > 0);
+  assert.equal(snapshot.models.dev.fields["defaults:webSocket"].find((fact) => fact.field.endsWith("timeoutSeconds"))!.effective, 3);
+  assert.equal(snapshot.models.dev.fields["defaults:database"].find((fact) => fact.field.endsWith("maxConnections"))!.effective, 10);
+  const file = path.join(repositoryRoot, source.file);
+  const original = readFileSync(file, "utf8");
+  assert.ok(original.includes("minify: true"));
+  const files = new SourceFiles(new Map([[file, original.replace("minify: true", "minify: true && true")]]));
+  assert.ok(state.built.located);
+  const located = locateConfigSource(path.join(repositoryRoot, "framework.config.ts"), { repositoryRoot, host: files.host() });
+  const result = fieldEditability(files, located, "defaults", fact);
+  assert.equal(result.kind, "computed");
 });
 
 test("Lambda build details and editable fields distinguish TypeScript bundles from Dockerfile images", () => {

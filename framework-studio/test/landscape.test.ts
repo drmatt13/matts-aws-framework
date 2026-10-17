@@ -7,7 +7,7 @@ import { atlasPixels, CELL, SPRITE, spriteOrigin, spritePixels } from "../src/sc
 import { buildScene, chamfered, chamferSize, MATERIALS, titleRoom, type Island, type Scene } from "../src/scene/build";
 import { fitBounds, pan, resizeCamera, screenToWorld, wheelFactor, worldToScreen, zoomAt, MAX_ZOOM, MIN_ZOOM, type Camera } from "../src/scene/camera";
 import { project, unprojectAt } from "../src/scene/iso";
-import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickTile, tilePolygons } from "../src/scene/picking";
+import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickTile, surfaceOutline, tilePolygons } from "../src/scene/picking";
 import { buildShape, type ShapeKind } from "../src/scene/shapes";
 import { backgroundGrid } from "../src/scene/grid";
 import { islandFrame } from "../src/scene/frame";
@@ -38,6 +38,16 @@ before(async () => {
   prod = buildScene(snapshot.models.prod, { webSocketApi: snapshot.webSocketApi, resourceAvailability });
 });
 after(() => builder.dispose());
+
+test("island highlights omit shared tile and wall edges", () => {
+  const faces = [[0, 0, 1, 0, 1, 1, 0, 1], [1, 0, 2, 0, 2, 1, 1, 1], [0, 1, 1, 1, 1, 2, 0, 2], [1, 1, 2, 1, 2, 2, 1, 2]];
+  const segments = surfaceOutline(faces);
+  assert.equal(segments.length / 4, 8, "only the outer perimeter remains");
+  for (let at = 0; at < segments.length; at += 4) {
+    const [x0, y0, x1, y1] = segments.slice(at, at + 4);
+    assert.ok((x0 === x1 && (x0 === 0 || x0 === 2)) || (y0 === y1 && (y0 === 0 || y0 === 2)));
+  }
+});
 
 // ---------------------------------------------------------------------------
 // The scene, from the real repository
@@ -142,6 +152,63 @@ test("switching the graph changes what is shown, never where it stands", () => {
   assert.deepEqual(prod.bounds, dev.bounds);
   // Deterministic: the same model lays out the same way twice.
   assert.deepEqual(buildScene(snapshot.models.dev, { webSocketApi: snapshot.webSocketApi }).nodes.map((node) => [node.id, node.gx, node.gy]), dev.nodes.map((node) => [node.id, node.gx, node.gy]));
+});
+
+test("the desktop overview fills a 1080p monitor, with Local development between Workflows and Stacks", () => {
+  const viewport = { width: 1920, height: 1080 - 52 };
+  for (const scene of [dev, prod]) {
+    const lower = ["island:agentcore", "island:orchestration", "island:local", "island:stacks"].map((id) => scene.islands.find((island) => island.id === id)!);
+    const centre = (island: Island) => ({
+      x: (island.gx0 + island.gx1 - island.gy0 - island.gy1) / 2,
+      y: (island.gx0 + island.gx1 + island.gy0 + island.gy1) / 2,
+    });
+    for (let at = 1; at < lower.length; at += 1) {
+      assert.ok(centre(lower[at - 1]!).x < centre(lower[at]!).x, "lower row reads Agents, Workflows, Local development, Stacks");
+      assert.ok(Math.abs(centre(lower[at - 1]!).y - centre(lower[at]!).y) <= 1, "supporting islands share a row");
+    }
+    const core = scene.islands.filter((island) => !lower.includes(island));
+    assert.ok(Math.min(...lower.map((island) => island.gx0 + island.gy0)) > Math.max(...core.map((island) => island.gx1 + island.gy1)), "local development is below the main islands");
+    const fitted = fitBounds(scene.bounds, viewport, 48);
+    assert.ok((scene.bounds.maxX - scene.bounds.minX) * fitted.zoom > viewport.width * 0.8, "uses the monitor's width");
+    assert.ok((scene.bounds.maxY - scene.bounds.minY) * fitted.zoom > viewport.height * 0.8, "uses the monitor's height");
+  }
+});
+
+test("mixed service groups share a regular lattice as islands grow and shrink", () => {
+  const model = snapshot.models.dev;
+  const template = model.targets.find((target) => target.kind === "lambda" && target.placement.kind === "outside")!;
+  assert.ok(template);
+  let previousExtent = 0;
+  for (const count of [1, 2, 3, 5, 9, 16, 25, 40, 64]) {
+    const targets = Array.from({ length: count }, (_, at) => ({ ...template, ref: `lambda:packing-${at}`, id: `packing-${at}`, role: (["http", "webSocket", "event", "tool"] as const)[at % 4]! }));
+    const input = { ...model, targets: [...model.targets.filter((target) => target.kind !== "lambda" || target.placement.kind !== "outside"), ...targets], routes: [], edges: [] };
+    const scene = buildScene(input);
+    const island = scene.islands.find((island) => island.id === "island:lambda")!;
+    const nodes = scene.nodes.filter((node) => node.island === island.id);
+    const columns = [...new Set(nodes.map((node) => node.gx))].sort((a, b) => a - b);
+    const rows = [...new Set(nodes.map((node) => node.gy))].sort((a, b) => a - b);
+    for (const line of [columns, rows]) for (let at = 1; at < line.length; at += 1) assert.equal(line[at]! - line[at - 1]!, 3, "no extra gap at a service-group boundary");
+    assert.equal(columns.length, Math.ceil(count / rows.length), "no reserved role columns");
+    for (const node of nodes) {
+      assert.ok(node.gx >= island.gx0 + 2 && node.gx <= island.gx1 - 2);
+      assert.ok(node.gy >= island.gy0 + 2 && node.gy <= island.gy1 - 2);
+      assert.ok(scene.tiles.some((tile) => tile.gx === node.gx && tile.gy === node.gy && tile.island === island.id));
+    }
+    const extent = island.gx1 - island.gx0 + island.gy1 - island.gy0;
+    assert.ok(extent >= previousExtent, "growth does not shrink the footprint");
+    previousExtent = extent;
+    assert.equal(new Set(scene.nodes.map((node) => `${node.gx},${node.gy}`)).size, scene.nodes.length);
+    for (const a of scene.islands) for (const b of scene.islands) {
+      if (a.id >= b.id) continue;
+      const box = (island: Island) => ({ left: island.gx0 - island.gy1, right: island.gx1 - island.gy0, top: island.gx0 + island.gy0, bottom: island.gx1 + island.gy1 });
+      const aa = box(a), bb = box(b);
+      assert.ok(aa.right < bb.left || bb.right < aa.left || aa.bottom < bb.top || bb.bottom < aa.top, `${a.id} clears ${b.id} at ${count} nodes`);
+    }
+    assert.deepEqual(buildScene(input).nodes.map(({ id, gx, gy }) => [id, gx, gy]), scene.nodes.map(({ id, gx, gy }) => [id, gx, gy]));
+  }
+  for (const scene of [dev, prod]) for (const prop of scene.props) for (const node of scene.nodes.filter((node) => prop.serves.includes(node.band))) {
+    assert.ok(Math.max(Math.abs(prop.gx - node.gx), Math.abs(prop.gy - node.gy)) >= 3, "network fixtures reserve their own lattice row");
+  }
 });
 
 test("what a building shows of an entity follows the model's lanes and absence", () => {

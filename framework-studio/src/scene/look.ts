@@ -17,15 +17,15 @@ export const LOOK_STORAGE_KEY = "framework-studio:isometric-look";
 type Rgb = readonly [number, number, number];
 
 /**
- * AWS Architecture Icon category colours, as the local SVGs fill them, so a
- * trim and the icons standing on it read as one system.
+ * Service colours matching the local SVGs, including Studio's blue database
+ * backgrounds, so a trim and its icons read as one system.
  */
 const AWS = {
   compute: "#ED7100",
   networking: "#8C4FFF",
   integration: "#E7157B",
   ai: "#01A88D",
-  database: "#C925D1",
+  database: "#3B82F6",
   storage: "#7AA116",
   security: "#DD344C",
 } as const;

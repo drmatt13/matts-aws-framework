@@ -13,6 +13,7 @@ import {
 } from "@repo/framework/config";
 import type { FieldDomain, FieldFact } from "../../shared/model";
 import { declarationOf, parseOrigin, readPath } from "../model/origin";
+import { makeDefaultFields } from "./defaults";
 
 /**
  * The fields the studio can change, and nothing else.
@@ -24,6 +25,8 @@ import { declarationOf, parseOrigin, readPath } from "../model/origin";
  */
 
 export interface FieldDefinition {
+  /** Required baseline defaults cannot be removed. */
+  readonly required?: boolean;
   readonly id: string;
   readonly label: string;
   /** Property path inside the declaration object. */
@@ -221,8 +224,10 @@ export const FIELDS: readonly FieldDefinition[] = [
   },
 ];
 
+export const DEFAULT_FIELDS = makeDefaultFields(FIELDS);
+
 export function fieldById(id: string): FieldDefinition | undefined {
-  return FIELDS.find((field) => field.id === id);
+  return FIELDS.find((field) => field.id === id) ?? DEFAULT_FIELDS.find((field) => field.id === id);
 }
 
 function primitive(value: unknown): string | number | boolean | null | undefined {

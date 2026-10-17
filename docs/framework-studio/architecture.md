@@ -7,7 +7,7 @@ The isometric landscape has [its own document](isometric-view.md).
 
 ```text
 Browser (React 19, TanStack Router + Query)
-  Board · Lanes · Isometric · Database · Inspector · Edit preview
+  Board · Isometric · Database · Deploy · Inspector · Edit preview
         │  JSON over /api, server-sent events on /api/events
         │  per-process token, same origin, Host = 127.0.0.1|localhost:<port>
         ▼
@@ -69,7 +69,7 @@ decides nothing itself.
 | Routes | `normalizeFrameworkConfig().http` and `.webSocket`, `getAgentBrowserRoutes` | Ids `route:http:/x`, `route:service:/x/*`, `route:ws:$connect`, `route:agent:/x` |
 | Catalog | `config.resources`, walked | Stacks, constructs, inputs, secrets, groups. A stack's members come from what workloads read, plus its class (see Source) |
 | Edges | Environment references, secrets, `cloud.bindings`, agent tools, workflow steps and integrations | Id `relation:from->to#n`, so two relations between one pair stay two edges. `provenance` is `declared` or `derived` (for example a user-pool variable handed by `userPool: true`) |
-| Lanes | `isTargetEnabled`, `isTargetDeployed`, `getToolDeploySetting` | Raw `local`, `cloud` (intent), `dev`, `prod` (outcome) remain available for evaluation. The UI presents Development (`local || dev`) and Production (`prod`) with execution location as supporting detail |
+| Deployment availability | `isTargetEnabled`, `isTargetDeployed`, `getToolDeploySetting` | Raw `local`, `cloud` (intent), `dev`, `prod` (outcome) remain available for evaluation. The UI presents Development (`local || dev`) and Production (`prod`) with execution location as supporting detail |
 | Placement | `resolveLambdaTarget().subnet`, container `cloud.service/task.subnet`, `subnetEgress`, `usesDualStackEndpoints` | `outside`, `vpc` (with subnet and egress), or `managed` (Step Functions) |
 | Network | `resolveNetwork`, `endpointServices`, `NETWORK_PRICES` | Whether production builds the VPC: something is placed in it |
 | Local database | Authored Compose `services.postgres`, using the framework's Compose parser | Separate `local:postgres` identity; only image, named volumes and source are projected. Local database bindings point here; AWS bindings retain the catalog reference |
@@ -165,6 +165,20 @@ links** calls it. The normal CDK source watcher also refreshes the index automat
 [server/edits/](../../framework-studio/server/edits)
 
 The field registry is the only place that decides what is editable:
+
+`defaults.ts` derives shared Lambda fields from that registry, with explicit container
+and database-pool fields. `ModeModel.defaults` groups them under `defaults:<type>`;
+`FieldFact.usage` counts current inheritors and overrides. These are projections of
+native `FrameworkDefaults`, not additional configuration. Island inspectors choose
+relevant groups; the canvas still derives membership and geometry from `buildScene`.
+Workflows, stacks and inputs have no shared framework default group and expose their
+individual entries instead.
+
+Default edits use the existing plan, preflight, atomic write, confirmation and journal.
+The locator follows the root `defaults` object into its authored module. Field paths
+include the service group, so absent groups can be inserted without reprinting the file.
+Required Lambda baselines cannot be removed. A shared default changes only inheritance;
+individual workload overrides are preserved. Both environment graphs must validate.
 
 | Field id | Path | Applies to | Domain |
 | --- | --- | --- | --- |
@@ -288,7 +302,7 @@ No CORS headers are sent. No AWS call is made. The snapshot carries catalog refe
 [src/](../../framework-studio/src)
 
 - **Routing.** [main.tsx](../../framework-studio/src/main.tsx) declares the routes `/`,
-  `/lanes` and `/isometric`. The selection is the `?select=<id>` search parameter, shared
+  `/isometric`, `/database` and `/deploy`. The selection is the `?select=<id>` search parameter, shared
   by every view.
 - **State.** [studio.tsx](../../framework-studio/src/studio.tsx) is the context every view
   reads: the snapshot, the selected mode, the model and an index, the selection, live
@@ -299,18 +313,18 @@ No CORS headers are sent. No AWS call is made. The snapshot carries catalog refe
   - [Board](../../framework-studio/src/views/Board.tsx), laid out by
     [layout.ts](../../framework-studio/src/layout.ts): absolutely positioned DOM nodes
     over an SVG of curves.
-  - [Lanes](../../framework-studio/src/views/Lanes.tsx).
   - [Isometric](../../framework-studio/src/views/Isometric.tsx).
+  - [Database](../../framework-studio/src/views/Database.tsx).
+  - [Deploy](../../framework-studio/src/views/Deploy.tsx): placeholder for deployment controls.
   - [Inspector](../../framework-studio/src/views/Inspector.tsx) and the
     [edit dialog](../../framework-studio/src/views/EditDialog.tsx), in React DOM, never on
     a canvas.
   - [Shell](../../framework-studio/src/views/Shell.tsx): the top bar, the health and
     command drawers, and the toasts.
 - **Styles.** [styles.css](../../framework-studio/src/styles.css) holds the tokens. The
-  light theme is "drafting film and ink". Environment tracks use teal for Development and
-  violet for Production. Compact exception badges use teal for Dev and violet for Prod;
+  light theme is "drafting film and ink". Compact exception badges use teal for Dev and violet for Prod;
   shared entities have no badge. `src/deployment.ts` supplies the same availability,
-  badge paths and descriptions to Board, Lanes, Inspector and the canvas renderer.
+  badge paths and descriptions to Board, Inspector and the canvas renderer.
 
 ## API
 

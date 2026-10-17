@@ -1,6 +1,24 @@
 import { ELEVATION_STEP, project } from "./iso";
 import type { Point } from "./camera";
 
+/** Boundary segments of joined surface faces; shared tile edges are internal. */
+export function surfaceOutline(polygons: readonly (readonly number[])[]): readonly number[] {
+  const edges = new Map<string, { points: readonly number[]; count: number }>();
+  for (const polygon of polygons) {
+    for (let at = 0; at < polygon.length; at += 2) {
+      const next = (at + 2) % polygon.length;
+      const points = [polygon[at]!, polygon[at + 1]!, polygon[next]!, polygon[next + 1]!];
+      const a = `${points[0]!.toFixed(6)},${points[1]!.toFixed(6)}`;
+      const b = `${points[2]!.toFixed(6)},${points[3]!.toFixed(6)}`;
+      const key = a < b ? `${a}:${b}` : `${b}:${a}`;
+      const edge = edges.get(key);
+      if (edge) edge.count += 1;
+      else edges.set(key, { points, count: 1 });
+    }
+  }
+  return [...edges.values()].flatMap((edge) => edge.count === 1 ? [...edge.points] : []);
+}
+
 /**
  * What is under the pointer.
  *
@@ -31,6 +49,81 @@ export interface CardHit {
   readonly y: number;
   readonly width: number;
   readonly height: number;
+}
+
+/** Horizontal extent of a projected polygon within a screen-space horizontal band. */
+function polygonStrip(polygon: readonly number[], top: number, bottom: number): { left: number; right: number } {
+  let left = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  const include = (x: number) => { left = Math.min(left, x); right = Math.max(right, x); };
+  for (let at = 0, previous = polygon.length - 2; at < polygon.length; previous = at, at += 2) {
+    const x = polygon[at]!;
+    const y = polygon[at + 1]!;
+    const px = polygon[previous]!;
+    const py = polygon[previous + 1]!;
+    if (y >= top && y <= bottom) include(x);
+    if (y === py) continue;
+    for (const edge of [top, bottom]) {
+      const t = (edge - py) / (y - py);
+      if (t >= 0 && t <= 1) include(px + (x - px) * t);
+    }
+  }
+  return { left, right };
+}
+
+/**
+ * A right-aligned island title, just outside its actual projected left flank.
+ * All inputs and the gap are CSS pixels. Use the whole ink height against the
+ * outline, including walls, so a sloping edge cannot cut through the text.
+ * A collision slides the title along that same flank, never farther into the void.
+ */
+export function placeIslandTitle(
+  polygons: readonly (readonly number[])[],
+  size: { readonly width: number; readonly height: number },
+  obstacles: readonly (readonly number[])[],
+  gap = 10,
+): Omit<CardHit, "id"> | undefined {
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  let flankTop = Number.POSITIVE_INFINITY;
+  let flankBottom = Number.NEGATIVE_INFINITY;
+  for (const polygon of polygons) {
+    for (let at = 0; at < polygon.length; at += 2) {
+      const x = polygon[at]!;
+      const y = polygon[at + 1]!;
+      top = Math.min(top, y);
+      bottom = Math.max(bottom, y);
+      // Projected vertices on the same flank can differ by floating-point noise.
+      // Treat them as one edge so a pan cannot switch the anchor between its ends.
+      if (x < left - 1e-7) { left = x; flankTop = y; flankBottom = y; }
+      else if (x <= left + 1e-7) {
+        left = Math.min(left, x);
+        flankTop = Math.min(flankTop, y);
+        flankBottom = Math.max(flankBottom, y);
+      }
+    }
+  }
+  if (!Number.isFinite(left)) return undefined;
+  const preferred = (flankTop + flankBottom) / 2;
+  const reach = Math.max(preferred - top, bottom - preferred);
+  for (let distance = 0; distance <= reach + 4; distance += 4) {
+    for (const centre of distance === 0 ? [preferred] : [preferred - distance, preferred + distance]) {
+      if (centre < top || centre > bottom) continue;
+      const y = centre - size.height / 2;
+      const edge = Math.min(...polygons.map((polygon) => polygonStrip(polygon, y, y + size.height).left));
+      if (!Number.isFinite(edge)) continue;
+      const x = edge - gap - size.width;
+      const margin = 2;
+      const clash = obstacles.some((polygon) => {
+        const span = polygonStrip(polygon, y - margin, y + size.height + margin);
+        return span.left < x + size.width + margin && span.right > x - margin;
+      });
+      if (!clash) return { x, y, ...size };
+    }
+  }
+  // As with entity cards, leave out a title only when no clear flank position exists.
+  return undefined;
 }
 
 /**

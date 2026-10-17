@@ -14,7 +14,7 @@ It was built in two phases:
 
 | Phase | Contents | State |
 | --- | --- | --- |
-| 1, Studio v0 | Model projection, source map, Board, Lanes, Inspector, validated edit loop, live refresh | Committed in `d1e3d1d` ("10/16-framework-studio") |
+| 1, Studio v0 | Model projection, source map, Board, Inspector, validated edit loop, live refresh | Committed in `d1e3d1d` ("10/16-framework-studio") |
 | 2, Isometric view | A Canvas2D landscape of the same model, wired to the same selection and inspector | In the working tree, not yet committed |
 
 Both phases pass `npm run verify`, which runs the studio's 60 tests alongside the rest of
@@ -39,7 +39,7 @@ The investigation found that most of what an editor needs already exists in the 
 | Composition merges section arrays by key and normalizes eagerly. `normalize()` is recomputed on every call, so a patched in-memory config can be validated freely | `packages/framework/src/config/index.ts` (`defineFrameworkConfig`, `normalizeFrameworkConfig`) |
 | Identity is canonical and separate from routes: a target is `kind:id`, routes are keys, construct ids are derived or pinned. Normalized targets carry logical origins such as `http["/graphql"]` | `NormalizedTarget`, `origins` |
 | Every relationship worth drawing is already typed data: environment references, `cloud.bindings` (native grants, `runsTask`, `startsWorkflow`, `invokesAgent`, `completesCallback`), `database: true` as `connectsTo`, startup secrets | `resolveTargetSettings` |
-| Lanes are computed, not guessable from `deploy`: tools follow their agents, events have no toggle, a development deployment builds only what AWS invokes, and the WebSocket API flag changes that | `isTargetEnabled`, `isTargetDeployed`, `getToolDeploySetting` |
+| Deployment availability is computed, not guessable from `deploy`: tools follow their agents, events have no toggle, a development deployment builds only what AWS invokes, and the WebSocket API flag changes that | `isTargetEnabled`, `isTargetDeployed`, `getToolDeploySetting` |
 | Network placement and egress are computed | `resolveLambdaTarget().subnet`, `subnetEgress`, `hasEndpoint` |
 | The workflow IR is a pure-data tree with generated state names, and the local runner's history names states the same way | `workflow-ast.ts`, `workflow-normalize.ts`, `local-invocation-runner` |
 | Static source resolution exists: `framework:check` already follows the composition root into each section module with the TypeScript compiler API | `packages/framework/scripts/config-source.ts` |
@@ -80,8 +80,6 @@ creative freedom over art direction.
   yet, and the `linkResources` call sites that bind them.
 - **Board.** Entry points, compute and catalog in three columns, with relationship curves
   you can filter by category.
-- **Lanes.** A transit-map diagram of local, dev AWS and prod AWS for every workload,
-  with the framework's reason for each answer.
 - **Inspector.** For one entity:
   - lanes, and its production placement;
   - each field's authored value and its resolved value, with where that comes from

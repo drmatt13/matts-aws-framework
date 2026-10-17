@@ -1,8 +1,9 @@
-import type { ModeModel, ModelEdge, ModelResource, ModelRoute, ModelTarget, Relation, SourceLocation, TargetRole } from "../shared/model";
+import type { ModeModel, ModelDefaults, ModelEdge, ModelResource, ModelRoute, ModelTarget, Relation, SourceLocation, TargetRole } from "../shared/model";
 import type { LocalDatabase } from "../shared/database";
 
 /** Lookups over one mode's model, built once per snapshot. */
 export interface ModelIndex {
+  readonly defaults: ReadonlyMap<string, ModelDefaults>;
   readonly localServices: ReadonlyMap<string, LocalDatabase>;
   readonly targets: ReadonlyMap<string, ModelTarget>;
   readonly routes: ReadonlyMap<string, ModelRoute>;
@@ -23,6 +24,7 @@ export function indexModel(model: ModeModel): ModelIndex {
     if (edge.to !== edge.from) add(edge.to, edge);
   }
   return {
+    defaults: new Map((model.defaults ?? []).map((group) => [group.ref, group])),
     localServices: new Map((model.localServices ?? []).map((service) => [service.id, service])),
     targets: new Map(model.targets.map((target) => [target.ref, target])),
     routes: new Map(model.routes.map((route) => [route.id, route])),
@@ -43,7 +45,7 @@ export const ROLE_LABEL: Readonly<Record<TargetRole, string>> = {
   workflow: "Workflow",
 };
 
-/** How compute is grouped, on the board and in the lanes. */
+/** How compute is grouped on the board. */
 export const ROLE_GROUPS: readonly { readonly title: string; readonly roles: readonly TargetRole[] }[] = [
   { title: "HTTP Lambdas", roles: ["http"] },
   { title: "WebSocket Lambdas", roles: ["webSocket", "webSocketAuthorizer"] },
@@ -102,6 +104,8 @@ export const RELATION_LABEL: Readonly<Record<Relation, string>> = {
 
 /** The name a person reads for any entity id. */
 export function titleOf(index: ModelIndex, id: string): string {
+  const defaults = index.defaults.get(id);
+  if (defaults) return `${defaults.title} defaults`;
   const localService = index.localServices.get(id);
   if (localService) return localService.title;
   const target = index.targets.get(id);

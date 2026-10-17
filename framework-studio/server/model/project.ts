@@ -42,7 +42,8 @@ import type {
   Placement,
   Relation,
 } from "../../shared/model";
-import { fieldFacts } from "../edits/fields";
+import { DEFAULT_FIELDS, fieldFacts } from "../edits/fields";
+import { projectDefaults } from "../edits/defaults";
 import { declarationOf, originInMessage, parseOrigin } from "./origin";
 
 /**
@@ -595,6 +596,7 @@ export function projectModel(
   const routes = routesOf(config);
   const { edges, readPaths } = edgesOf(config, targets, routes);
   const diagnostics = validateForMode(config, options, targets);
+  const defaults = projectDefaults(config, targets, DEFAULT_FIELDS);
   return {
     mode: options.mode,
     status: diagnostics.some((diagnostic) => diagnostic.severity === "error") ? "error" : "ok",
@@ -603,8 +605,9 @@ export function projectModel(
     resources: catalogModel(config, readPaths),
     edges,
     workflows: targets.map(workflowModel).filter((workflow): workflow is ModelWorkflow => workflow !== undefined),
+    defaults: defaults.groups,
     network: networkModel(config, targets),
-    fields: Object.fromEntries(targets.map((target) => [target.reference, fieldFacts(config, target)])),
+    fields: { ...Object.fromEntries(targets.map((target) => [target.reference, fieldFacts(config, target)])), ...defaults.fields },
     diagnostics,
     evaluatedInMs,
   };

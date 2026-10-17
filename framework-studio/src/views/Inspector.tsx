@@ -1,16 +1,18 @@
 import { ExternalLink, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { Editability, FieldFact, ModelEdge, ModelResource, ModelRoute, ModelTarget, ModelWorkflow, Placement, SourceLocation } from "../../shared/model";
-import { describeValue, editorLink, RELATION_LABEL, ROLE_LABEL, titleOf } from "../lookup";
+import type { ModelEdge, ModelResource, ModelRoute, ModelTarget, ModelWorkflow, Placement, SourceLocation } from "../../shared/model";
+import { editorLink, RELATION_LABEL, ROLE_LABEL, titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
 import { resourceIcon, routeIcon, targetIcon } from "../icons";
-import { developmentLocation, deploymentSettingLabel, deploymentSummary, environments } from "../deployment";
+import { developmentLocation, deploymentSummary, environments } from "../deployment";
 import { Code2, Diamond } from "lucide-react";
 import type { LocalDatabase } from "../../shared/database";
 import { SchemaDetails, SchemaLink } from "./Database";
 import { ResourceEditor } from "./ResourceEditor";
 import { HttpRoutes } from "./HttpRoutes";
+import { IslandInspector } from "./IslandInspector";
+import { FieldRow, lockedReason } from "./FieldRow";
 
 function Written(props: { readonly location: SourceLocation | undefined; readonly label?: string }) {
   const { snapshot } = useStudio();
@@ -69,22 +71,6 @@ function PlacementText(props: { readonly placement: Placement }) {
   );
 }
 
-function lockedReason(editability: Editability | undefined, fact: FieldFact): string | undefined {
-  if (fact.blocked) return fact.blocked;
-  if (!editability) return "The source index has no answer for this field.";
-  switch (editability.kind) {
-    case "literal":
-    case "absent":
-      return undefined;
-    case "computed":
-      return `Computed by ${editability.text}. Change it in your editor.`;
-    case "spread":
-      return `It may come from ${editability.text}. Change it in your editor.`;
-    case "unsupported":
-      return editability.reason;
-  }
-}
-
 function ApiAuthControl({ target }: { readonly target: ModelTarget }) {
   const { snapshot, model, preview, live, plan, landing } = useStudio();
   const fact = model.fields[target.ref]?.find((fact) => fact.field === "http.auth");
@@ -113,85 +99,6 @@ function ApiAuthControl({ target }: { readonly target: ModelTarget }) {
     <p className="small muted">Uses the API's Cognito user pool to admit signed-in callers. Handler-side token checks still apply.</p>
     {locked ? <p className="locked">{locked}</p> : null}
   </section>;
-}
-
-const INHERIT = "\u0000inherit";
-
-function FieldRow(props: { readonly target: ModelTarget; readonly fact: FieldFact; readonly editability: Editability | undefined }) {
-  const { preview, live, model, snapshot } = useStudio();
-  const { target, fact, editability } = props;
-  const locked = model.stale ? "Editing is paused until the configuration loads again." : lockedReason(editability, fact);
-  const current = fact.authored === undefined ? INHERIT : String(fact.authored);
-  const [draft, setDraft] = useState(current);
-  useEffect(() => setDraft(current), [current]);
-  const changed = draft !== current;
-  const unit = fact.domain.kind === "number" ? ` ${fact.domain.unit}` : "";
-  const webSocketApi = target.role === "webSocket" || target.role === "webSocketAuthorizer" ? snapshot.webSocketApi : undefined;
-  const display = (value: unknown) => {
-    if (fact.field === "deploy") return deploymentSettingLabel(String(value), webSocketApi);
-    if (fact.field === "lambda.packaging") return value === "container" ? "Container image (Dockerfile)" : "Source bundle (ZIP)";
-    if (fact.field === "lambda.logRetentionDays") return `${value} days`;
-    if (typeof value === "boolean") return value ? "On" : "Off";
-    return String(value);
-  };
-  const inheritLabel = fact.inherited
-    ? fact.field === "deploy" ? `Use default (${display(fact.inherited.value)})` : `Inherit (${display(fact.inherited.value)}${unit} from ${fact.inherited.from})`
-    : "Inherit";
-
-  const submit = () => {
-    if (draft === INHERIT) void preview({ target: target.ref, field: fact.field, inherit: true });
-    else {
-      const value = fact.domain.kind === "number" ? Number(draft) : fact.domain.values.find((value) => String(value) === draft) ?? draft;
-      void preview({ target: target.ref, field: fact.field, value });
-    }
-  };
-
-  return (
-    <div className="field">
-      <span className="name">{fact.label}</span>
-      <span className="control">
-        {locked ? (
-          <code>{display(fact.effective)}{unit}</code>
-        ) : fact.domain.kind === "enum" ? (
-          <select value={draft} onChange={(event) => setDraft(event.target.value)} aria-label={fact.label}>
-            {fact.domain.values.map((value) => (
-              <option key={String(value)} value={String(value)}>
-                {display(value)}
-              </option>
-            ))}
-            <option value={INHERIT}>{inheritLabel}</option>
-          </select>
-        ) : (
-          <>
-            <input
-              type="number"
-              min={fact.domain.min}
-              max={fact.domain.max}
-              value={draft === INHERIT ? "" : draft}
-              placeholder={fact.inherited ? String(fact.inherited.value) : ""}
-              onChange={(event) => setDraft(event.target.value === "" ? INHERIT : event.target.value)}
-              aria-label={`${fact.label} in ${fact.domain.unit}`}
-            />
-            <span className="muted small">{fact.domain.unit}</span>
-          </>
-        )}
-        {changed && !locked ? (
-          <button className="primary" onClick={submit} disabled={live.evaluating}>
-            Preview change
-          </button>
-        ) : null}
-      </span>
-      {locked ? (
-        <span className="locked">{locked}</span>
-      ) : (
-        <span className="note">
-          {fact.field === "deploy" ? fact.authored === undefined ? `Uses default: ${display(fact.effective)}.` : `Set to ${display(fact.authored)}.` : fact.authored === undefined
-            ? `Not written here. Resolves to ${display(fact.effective)}${unit} from ${fact.provenance}.`
-            : `Written as ${describeValue(fact.authored)}.`}
-        </span>
-      )}
-    </div>
-  );
 }
 
 function Relations(props: { readonly id: string }) {
@@ -495,6 +402,7 @@ export function Inspector() {
   const resource = index.resources.get(selected);
   const localDatabase = index.localServices.get(selected);
   const schemaEntity = snapshot.schema.tables.some((table) => table.id === selected) || snapshot.schema.relations.some((relation) => relation.id === selected);
+  const island = selected.startsWith("island:");
   return (
     <aside className="inspector" aria-label="Inspector">
       <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 8px 0" }}>
@@ -507,7 +415,8 @@ export function Inspector() {
       {resource ? <ResourceView resource={resource} /> : null}
       {localDatabase ? <LocalDatabaseView database={localDatabase} /> : null}
       {schemaEntity ? <SchemaDetails /> : null}
-      {!target && !route && !resource && !localDatabase && !schemaEntity ? <p className="empty">{selected} is not in this graph.</p> : null}
+      {island ? <IslandInspector id={selected} key={selected} /> : null}
+      {!target && !route && !resource && !localDatabase && !schemaEntity && !island ? <p className="empty">{selected} is not in this graph.</p> : null}
     </aside>
   );
 }

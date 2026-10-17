@@ -65,16 +65,16 @@ world.y = (gx + gy) * 16 - h * 16
 
 ### Regions
 
-| Column (left to right) | Island | Holds | Height |
+| Placement | Island | Holds | Height |
 | --- | --- | --- | --- |
-| Entry | APIs | HTTP routes, service mounts, WebSocket keys and agent browser paths on one layer | 2 |
-| Compute | Serverless compute | HTTP, WebSocket, event and AgentCore tool Lambdas outside the VPC on one layer, a column group each | 3 |
-| | Local development | The authored Compose PostgreSQL service; active in Development, ghosted in Production | 2 |
-| | VPC | Subnets `public`, `private` and `isolated`, side by side at one height. Every target with `placement.kind === "vpc"` stands on its subnet. Gateways and endpoints from `network` stand on the subnets as hover-only furniture | 4 |
-| | Agents | AgentCore agents not placed in the VPC | 3 |
-| | Workflows | Step Functions workflows | 4 |
-| Catalog | Stacks | All `resource.stack<T>()` entries together, one node per class; public fields expand in the inspector | 2 |
-| | Inputs and secrets | Root inputs, secrets, and groups (a group keeps its own column) | 1 |
+| Upper left | APIs | HTTP routes, service mounts, WebSocket keys and agent browser paths on one layer | 2 |
+| Lower left | Inputs and secrets | Root inputs, secrets, and groups on one shared lattice | 1 |
+| Upper right | Serverless compute | HTTP, WebSocket, event and AgentCore tool Lambdas outside the VPC on one shared lattice | 3 |
+| Lower right | VPC | Subnets `public`, `private` and `isolated`, side by side at one height. Every target with `placement.kind === "vpc"` stands on its subnet. Gateways and endpoints from `network` stand on the subnets as hover-only furniture | 4 |
+| Shared lower row, first | Agents | AgentCore agents not placed in the VPC | 3 |
+| Shared lower row, second | Workflows | Step Functions workflows | 4 |
+| Shared lower row, third | Local development | The authored Compose PostgreSQL service; active in Development, ghosted in Production | 2 |
+| Shared lower row, fourth | Stacks | All `resource.stack<T>()` entries together, one node per class; public fields expand in the inspector | 2 |
 
 The subnets stand level, left to right from public to isolated. Exposure reads in colour
 rather than height: in the graphite look, public is green, private blue and isolated
@@ -93,24 +93,29 @@ subnet terraces inside the VPC foundation.
 
 - **The lattice.** Buildings stand every third cell (`STEP = 3`), so every label card has
   its own space at normal zoom. An island is its lattice plus a one-cell rim.
-- **Near-square islands.** Each band packs about √n items per lattice column (2–6). A
-  group (for example HTTP Lambdas) always starts a new column. The VPC gives every terrace
-  the same depth.
+- **Near-square islands.** Each band packs about √n items per lattice column (2–6).
+  Service groups keep their order but continue into the same columns, without reserving
+  empty cells between groups. Bands with fewer nodes are centred in the available depth.
+  Network fixtures reserve a separate front row on the same three-cell lattice. The VPC
+  gives every terrace the same depth. Footprints are measured again on every model change;
+  the existing row packer shifts neighbours and wraps growing islands automatically.
 - **Columns are screen-aligned.** Islands are placed in a frame where `sx = gx - gy` runs
   across and `sy = gx + gy` runs down, then converted back to grid cells. Islands therefore
-  stay grid rectangles, and columns read left to right.
+  stay grid rectangles. The two main columns plus a shared lower row give the current
+  application a roughly 16:9 footprint for desktop monitors.
 - **Rows within a column.** A column is as wide as its widest island. Taking islands in
   order, each joins the row above while the row still fits that width; otherwise it starts
   a new row. An island after the first in a row first leaves room on its left for its
   flat title (`titleRoom`), so labels never land on a neighbour. Rows are centred in the
-  column, and islands in a row are centred on the row's height. So small islands such as
-  Agents and Workflows sit side by side, and one that outgrows its row drops to a
-  row of its own.
+  column, and islands in a row are centred on the row's height. The same packing places
+  Agents, Workflows, Local development and Stacks, in that order, across the full width
+  below the main columns. A compact supporting row can widen the main gutter, up to 1.5×
+  the natural column width; a supporting island that outgrows that row wraps to the next.
   - Gap between columns: 6 tile units.
   - Gap between rows: 5 tile units.
-- **Alignment.** Compute is placed first. Entry and catalog islands, and the items inside
-  them, are ordered by the barycentre (mean screen row) of what they connect to in
-  compute, which keeps arcs short.
+- **Alignment.** Compute is placed first. Items inside APIs and Inputs and secrets follow
+  the barycentre (mean screen row) of what they connect to in compute. Island order stays
+  fixed, so Local development does not move to the top based on its connections.
 - **Chamfered corners.** Each corner is cut back by one straight chamfer (`CHAMFER = 2`
   cells along each edge, at most a third of the island's shorter side). A cell is removed
   exactly when its centre falls outside the cut (`chamfered`), so tiles, walls, picking
@@ -342,8 +347,13 @@ model entities and network furniture no longer use the old building glyphs.
    - **Packets.** With motion on, the selection's arcs carry one to three packets at
      60 world units a second.
 5. **Label cards** in screen space, with leader lines to their roofs (see Labels).
-6. **Titles.** Island titles sit on each island's left flank. Terrace names are painted on
-   the VPC's front rim.
+6. **Titles.** Flat island titles sit 10 CSS pixels outside the projected left flank,
+   measured against the visible tops and walls (including a VPC's foundation), without
+   shadow or culling padding. Both looks use their own painted geometry and the text's ink
+   bounds. Collisions with islands, buildings, cards or other titles move a title along
+   the same flank; if no clear position exists, it is omitted like an entity card.
+   Placement is recomputed with the camera, keeping the gap fixed through zoom and pan.
+   Terrace names and perspective wall names keep their existing placement.
 
 The loop draws on demand. A camera change, hover, selection or new data schedules one
 frame. Frames continue only while the selection animates (motion on) or the camera is
@@ -368,7 +378,9 @@ tweening. A still picture draws nothing.
   | Input | Action |
   | --- | --- |
   | Drag | Pan. A press that moves less than 6 px is a click |
-  | Click | Select; click again or click the ground to clear |
+  | Click icon | Select that entity; click again to clear |
+  | Click empty island terrain | Open island settings; click again to clear |
+  | Click void | Clear the selection |
   | Double-click | Select and fly to the building (empty ground: zoom in) |
   | Arrow keys, `+` / `-`, `0`, `F`, Escape | Pan, zoom, fit, focus the selection, clear it |
 | Sparkle button | Switch between the graphite and classic looks |
@@ -390,13 +402,23 @@ The order follows what is painted on top, front first:
 1. **Label cards.** Screen rectangles from the last frame, last painted first.
 2. **Buildings.** World silhouettes, frontmost first.
 3. **Gateway and endpoint furniture.** Hover only.
-4. **Arcs.** Within 6 screen pixels of the sampled curve, hover only.
-5. **Terrain.** Each tile's top diamond and visible walls at its own height, frontmost
-   first.
+4. **Terrain.** The painted slab tops and walls in Graphite, or tile tops and walls in
+   Classic, plus the VPC foundation. Picking uses the camera inverse and each surface's
+   actual height. Empty terrain takes precedence over arcs so it remains clickable.
+5. **Arcs in the void.** Within 6 screen pixels of the sampled curve, hover only.
 
 A ground-plane inverse is never used for picking, because it would return the tile behind
-a raised one. Clicking terrain or the void clears the selection. The hover card explains
-whichever of the five is under the pointer.
+a raised one. Hover highlights the island and explains its terrace. Clicking empty
+terrain opens its settings; clicking the void clears selection. Icons retain their
+individual inspectors. The accessible entity list includes island settings buttons.
+
+Island settings offer native shared defaults by service type: all Lambdas, HTTP,
+WebSocket, events, tools, containers and database pools, as relevant to the island.
+Boolean defaults use switches. Every field shows counts of current inheritors and
+overrides; defaults apply across islands and to future declarations. Existing overrides
+win. Edits use the same diff preview, validation and exact undo as workload fields.
+Islands without shared framework defaults show links to their individual entries.
+Selecting an island lights its member nodes without forcing every label card to appear.
 
 ## Labels
 

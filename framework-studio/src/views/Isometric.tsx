@@ -2,7 +2,8 @@ import { Crosshair, Maximize2, Minus, Pause, Play, Plus, RefreshCw, Sparkles } f
 import { api } from "../api";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CATEGORY_LABEL, RELATION_LABEL, titleOf, type EdgeCategory } from "../lookup";
-import { buildScene, type Scene, type SceneNode, type Tile } from "../scene/build";
+import { buildScene, type Scene, type SceneNode } from "../scene/build";
+import { islandDrawOrder, islandSlabs } from "../scene/slabs";
 import {
   DRAG_THRESHOLD,
   fitBounds,
@@ -40,10 +41,11 @@ const CATEGORIES = Object.keys(CATEGORY_LABEL) as EdgeCategory[];
 let rememberedCamera: Camera | undefined;
 
 interface Hover {
-  readonly kind: "node" | "edge" | "tile" | "prop";
+  readonly kind: "node" | "edge" | "island" | "prop";
   readonly id: string;
   readonly x: number;
   readonly y: number;
+  readonly band?: string;
 }
 
 interface Tween {
@@ -106,6 +108,7 @@ export function Isometric() {
   const scene = useMemo(() => buildScene(model, { webSocketApi: snapshot.webSocketApi, conditions, resourceAvailability }), [model, snapshot.webSocketApi, conditions, resourceAvailability]);
   const visibleSelected = selected ? scene.representatives[selected] ?? selected : undefined;
   const nodes = useMemo(() => new Map(scene.nodes.map((node) => [node.id, node])), [scene]);
+  const slabs = useMemo(() => islandDrawOrder(islandSlabs(scene)), [scene]);
   const arcs = useMemo(
     () =>
       scene.edges.map((edge) => {
@@ -124,6 +127,7 @@ export function Isometric() {
     selected: visibleSelected,
     hovered: undefined as string | undefined,
     hoveredEdge: undefined as string | undefined,
+    hoveredIsland: undefined as string | undefined,
     categories,
     motion,
     look,
@@ -161,6 +165,7 @@ export function Isometric() {
       ...(state.selected ? { selected: state.selected } : {}),
       ...(state.hovered ? { hovered: state.hovered } : {}),
       ...(state.hoveredEdge ? { hoveredEdge: state.hoveredEdge } : {}),
+      ...(state.hoveredIsland ? { hoveredIsland: state.hoveredIsland } : {}),
       categories: state.categories,
       time: now / 1000,
       motion: state.motion,
@@ -204,7 +209,11 @@ export function Isometric() {
   const focus = useCallback(
     (id: string | undefined, zoom?: number) => {
       const node = id ? live.current.scene.nodes.find((candidate) => candidate.id === id) : undefined;
-      if (!node) return;
+      if (!node) {
+        const island = islandSlabs(live.current.scene).find((slab) => slab.island.id === id);
+        if (island) moveCamera(fitBounds(island.bounds, live.current.viewport, 60));
+        return;
+      }
       const camera = live.current.camera;
       moveCamera({ x: node.geometry.top.x, y: node.geometry.top.y, zoom: zoom ?? Math.max(camera.zoom, 0.9) });
     },
@@ -275,7 +284,7 @@ export function Isometric() {
     if (node && !alreadyFocusing && !isVisible(state.camera, state.viewport, node.geometry.top, 60)) focus(node.id);
   }, [visibleSelected, nodes, focus, resize]);
 
-  /** What is under a canvas point, front to back: cards, buildings, furniture, arcs, terrain. */
+  /** Icons keep their inspector; empty terrain opens island defaults, even beneath an arc. */
   const pick = useCallback(
     (screen: Point): Hover | undefined => {
       const state = live.current;
@@ -285,6 +294,18 @@ export function Isometric() {
       for (let position = scene.props.length - 1; position >= 0; position -= 1) {
         if (insidePolygon(world.x, world.y, scene.props[position]!.geometry.hull)) return { kind: "prop", id: scene.props[position]!.id, ...screen };
       }
+      if (state.look === "graphite") {
+        for (const slab of [...slabs].reverse()) {
+          const band = [...slab.bands].reverse().find((band) => [band.top, ...band.walls.map((wall) => wall.quad)].some((polygon) => insidePolygon(world.x, world.y, polygon)));
+          if (band) return { kind: "island", id: slab.island.id, band: band.id, ...screen };
+        }
+      } else {
+        const tile = pickTile(world, scene.tiles);
+        if (tile) return { kind: "island", id: tile.island, ...(tile.band ? { band: tile.band } : {}), ...screen };
+      }
+      for (const frame of scene.frames) {
+        if ([frame.geometry.top, frame.geometry.left, frame.geometry.right].some((polygon) => insidePolygon(world.x, world.y, polygon))) return { kind: "island", id: frame.members[0]!, ...screen };
+      }
       const tolerance = 6 / state.camera.zoom;
       let best: { id: string; distance: number } | undefined;
       for (const arc of arcs) {
@@ -293,11 +314,9 @@ export function Isometric() {
         if (distance < tolerance && (!best || distance < best.distance)) best = { id: arc.edge.edge.id, distance };
       }
       if (best) return { kind: "edge", id: best.id, ...screen };
-      const tile = pickTile(world, scene.tiles);
-      if (tile) return { kind: "tile", id: `${tile.gx},${tile.gy}`, ...screen };
       return undefined;
     },
-    [scene, arcs],
+    [scene, slabs, arcs],
   );
 
   const setHovered = useCallback(
@@ -305,9 +324,11 @@ export function Isometric() {
       const state = live.current;
       const hovered = next?.kind === "node" ? next.id : undefined;
       const hoveredEdge = next?.kind === "edge" ? next.id : undefined;
-      if (hovered !== state.hovered || hoveredEdge !== state.hoveredEdge) {
+      const hoveredIsland = next?.kind === "island" ? next.id : undefined;
+      if (hovered !== state.hovered || hoveredEdge !== state.hoveredEdge || hoveredIsland !== state.hoveredIsland) {
         state.hovered = hovered;
         state.hoveredEdge = hoveredEdge;
+        state.hoveredIsland = hoveredIsland;
         schedule();
       }
       setHover(next);
@@ -374,8 +395,8 @@ export function Isometric() {
     gesture.current = undefined;
     if (!current || current.dragging) return;
     const hit = pick(local(event));
-    if (hit?.kind === "node") select(selected === hit.id ? undefined : hit.id);
-    else if (!hit || hit.kind === "tile") select(undefined);
+    if (hit?.kind === "node" || hit?.kind === "island") select(selected === hit.id ? undefined : hit.id);
+    else if (!hit) select(undefined);
   };
 
   const onPointerCancel = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -496,7 +517,7 @@ export function Isometric() {
         }}
         onDoubleClick={onDoubleClick}
         onKeyDown={onKeyDown}
-        style={{ cursor: hover?.kind === "node" ? "pointer" : gesture.current?.dragging ? "grabbing" : "grab" }}
+        style={{ cursor: gesture.current?.dragging ? "grabbing" : hover?.kind === "node" || hover?.kind === "island" ? "pointer" : "grab" }}
       />
       <div className="landscape-bar landscape-top">
         <div className="landscape-chips" role="group" aria-label="Relations shown">
@@ -571,6 +592,7 @@ export function Isometric() {
       </div>
       {hover ? <HoverCard hover={hover} scene={scene} nodes={nodes} index={index} viewport={live.current.viewport} /> : null}
       <ul className="sr-only" aria-label="Entities in the landscape">
+        {scene.islands.map((island) => <li key={island.id}><button onClick={() => select(island.id)} aria-current={visibleSelected === island.id}>{island.title} island settings</button></li>)}
         {scene.nodes.map((node) => (
           <li key={node.id}>
             <button onClick={() => select(node.id)} aria-current={visibleSelected === node.id}>
@@ -595,25 +617,26 @@ function HoverCard(props: {
   let title: string;
   let lines: (string | undefined)[] = [];
   if (current.kind === "node") {
-    const node = props.nodes.get(current.id)!;
+    const node = props.nodes.get(current.id);
+    if (!node) return null;
     title = node.label;
     lines = [node.kindLabel, node.presenceText, laneText(node), "Click to inspect, double-click to fly to it."];
   } else if (current.kind === "edge") {
-    const edge = props.scene.edges.find((candidate) => candidate.edge.id === current.id)!.edge;
+    const edge = props.scene.edges.find((candidate) => candidate.edge.id === current.id)?.edge;
+    if (!edge) return null;
     title = `${RELATION_LABEL[edge.relation]}: ${edge.label}`;
     lines = [`${titleOf(index, edge.from)} to ${titleOf(index, edge.to)}`, edge.detail, edge.provenance === "derived" ? "Derived by the framework." : edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
   } else if (current.kind === "prop") {
-    const prop = props.scene.props.find((candidate) => candidate.id === current.id)!;
+    const prop = props.scene.props.find((candidate) => candidate.id === current.id);
+    if (!prop) return null;
     title = prop.label;
     lines = [...prop.caption];
   } else {
-    const [gx, gy] = current.id.split(",").map(Number);
-    const tile = props.scene.tiles.find((candidate: Tile) => candidate.gx === gx && candidate.gy === gy);
-    const island = props.scene.islands.find((candidate) => candidate.id === tile?.island);
-    const band = island?.bands.find((candidate) => candidate.id === tile?.band);
-    const terraced = island !== undefined && island.bands.length > 1;
-    title = band && terraced ? `${island.title}: ${band.title}` : island?.title ?? "";
-    lines = [...(island?.caption ?? []), ...(band && terraced ? band.caption : [])];
+    const island = props.scene.islands.find((candidate) => candidate.id === current.id);
+    if (!island) return null;
+    const band = island?.bands.length && island.bands.length > 1 ? island.bands.find((band) => band.id === current.band) : undefined;
+    title = island ? `${island.title}${band ? `: ${band.title}` : ""}` : "";
+    lines = [...(island?.caption ?? []), ...(band?.caption ?? []), "Click empty terrain for island settings and service defaults."];
   }
   // Stay inside the canvas: flip to the pointer's other side near an edge.
   const left = current.x + 340 > props.viewport.width ? Math.max(8, current.x - 336) : current.x + 16;

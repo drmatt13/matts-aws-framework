@@ -48,6 +48,71 @@ function revision(): string {
   return builder.current!.snapshot.revision;
 }
 
+test("island defaults insert a service group, preserve workload overrides, and undo/redo exact source", async () => {
+  const file = path.join(fixture, "framework-config", "defaults.ts");
+  const original = readFileSync(file, "utf8");
+  const model = () => builder.current!.snapshot.models.dev;
+  const facts = () => model().fields["defaults:http"];
+  const field = facts().find((fact) => fact.field === "defaults.http.memorySize")!;
+  assert.equal(field.authored, undefined);
+  assert.equal(field.effective, 128);
+  assert.ok(field.usage!.inherited > 0);
+  assert.equal(builder.current!.snapshot.source.editability["defaults:http"][field.field].kind, "absent");
+  const before = new Map(model().targets.filter((target) => target.role === "http").map((target) => [target.ref, model().fields[target.ref].find((fact) => fact.field === "lambda.memorySize")!]));
+  const plan = await edits.plan({ target: "defaults:http", field: field.field, value: 384 }, revision());
+  assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+  assert.equal(plan.file, "framework-config/defaults.ts");
+  assert.equal(readFileSync(file, "utf8"), original, "preview never writes");
+  assert.equal((await edits.apply(plan.planId)).status, "applied");
+  assert.equal(facts().find((fact) => fact.field === field.field)!.authored, 384);
+  for (const [ref, old] of before) {
+    const next = model().fields[ref].find((fact) => fact.field === "lambda.memorySize")!;
+    assert.equal(next.authored, old.authored, "individual source overrides stay intact");
+    assert.equal(next.effective, old.authored === undefined ? 384 : old.effective);
+  }
+  const authored = readFileSync(file, "utf8");
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), original);
+  assert.equal((await edits.redo()).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), authored);
+  const inherit = await edits.plan({ target: "defaults:http", field: field.field, inherit: true }, revision());
+  assert.equal((await edits.apply(inherit.planId)).status, "applied");
+  assert.equal(facts().find((fact) => fact.field === field.field)!.effective, 128);
+  // Return the disposable file to its original bytes for neighboring tests.
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), original);
+});
+
+test("shared default switches, required baselines and numeric domains use the existing edit safeguards", async () => {
+  await rejects(edits.plan({ target: "defaults:lambda", field: "defaults.lambda.memorySize", inherit: true }, revision()), 422, /required baseline/);
+  await rejects(edits.plan({ target: "defaults:database", field: "defaults.database.pool.maxConnections", value: 0 }, revision()), 422, /whole number/);
+  const file = path.join(fixture, "framework-config", "defaults.ts");
+  const original = readFileSync(file, "utf8");
+  const plan = await edits.plan({ target: "defaults:lambda", field: "defaults.lambda.bundling.minify", value: false }, revision());
+  assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+  assert.equal((await edits.apply(plan.planId)).status, "applied");
+  assert.equal(builder.current!.snapshot.models.dev.fields["defaults:lambda"].find((fact) => fact.field === plan.field)!.effective, false);
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), original);
+});
+
+test("container and database pool defaults retain their own nested source paths", async () => {
+  const file = path.join(fixture, "framework-config", "defaults.ts");
+  const original = readFileSync(file, "utf8");
+  for (const [target, field, value] of [
+    ["defaults:container", "defaults.container.architecture", "arm64"],
+    ["defaults:database", "defaults.database.pool.maxConnections", 11],
+  ] as const) {
+    const plan = await edits.plan({ target, field, value }, revision());
+    assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+    assert.equal((await edits.apply(plan.planId)).status, "applied");
+    assert.equal(builder.current!.snapshot.models.dev.fields[target].find((fact) => fact.field === field)!.effective, value);
+    assert.equal((await edits.undo()).status, "applied");
+    assert.equal(readFileSync(file, "utf8"), original);
+  }
+});
+
 async function rejects(promise: Promise<unknown>, status: number, message: RegExp): Promise<void> {
   await assert.rejects(promise, (error: unknown) => {
     assert.ok(error instanceof EditError, String(error));

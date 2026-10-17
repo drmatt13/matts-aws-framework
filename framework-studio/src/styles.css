@@ -1,10 +1,8 @@
 /*
- * Framework Studio.
+ * AWS Studio.
  *
- * Drafting film and ink, with three line colours borrowed from a transit map:
- * the framework's lanes. Local, development AWS and production AWS are the
- * only saturated colours on the page, so wherever one appears it means a lane.
- * Everything else is ink, graphite and rule.
+ * Drafting film and ink, with colour reserved for execution locations and
+ * deployment environments. Everything else is ink, graphite and rule.
  */
 
 :root {
@@ -326,8 +324,7 @@ a {
   border-bottom: 1px solid color-mix(in srgb, var(--refuse) 35%, transparent);
 }
 
-.canvas.stale .board,
-.canvas.stale .lanes {
+.canvas.stale .board {
   opacity: 0.55;
   filter: grayscale(0.6);
 }
@@ -553,151 +550,6 @@ a {
 }
 
 /* --------------------------------------------------------------------------
-   Lanes: the line diagram
-   -------------------------------------------------------------------------- */
-
-.lanes {
-  margin: 24px;
-  max-width: 1100px;
-}
-
-.lanes-head {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) repeat(2, 116px) minmax(240px, 1.2fr);
-  align-items: end;
-  gap: 0 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--rule);
-  position: sticky;
-  top: 0;
-  background: var(--paper);
-  z-index: 2;
-}
-
-.lanes-head .lane-name {
-  font-family: var(--condensed);
-  font-weight: 600;
-  text-align: center;
-}
-
-.lane-name.dev {
-  color: var(--dev);
-}
-
-.lane-name.prod {
-  color: var(--prod);
-}
-
-.lane-group {
-  font-family: var(--condensed);
-  font-weight: 600;
-  font-size: var(--step-1);
-  margin: 22px 0 4px;
-}
-
-.station {
-  display: grid;
-  grid-template-columns: minmax(180px, 1fr) repeat(2, 116px) minmax(240px, 1.2fr);
-  gap: 0 8px;
-  align-items: center;
-  min-height: 60px;
-  cursor: pointer;
-  border-radius: var(--radius);
-}
-
-.station:hover {
-  background: var(--wash);
-}
-
-.station[aria-current="true"] {
-  background: var(--wash);
-  box-shadow: inset 3px 0 0 var(--ink);
-}
-
-.station .who {
-  padding: 4px 10px;
-  min-width: 0;
-}
-
-.station .who .label {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.station .who .sub {
-  color: var(--graphite);
-  font-size: var(--step--1);
-}
-
-.track {
-  position: relative;
-  height: 60px;
-  padding-bottom: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.track::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  width: 4px;
-  transform: translateX(-50%);
-  background: currentColor;
-  opacity: 0.85;
-}
-
-.track-detail {
-  position: absolute;
-  bottom: 2px;
-  padding: 1px 4px;
-  background: var(--paper);
-  color: var(--graphite);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.track.dev {
-  color: var(--dev);
-}
-
-.track.prod {
-  color: var(--prod);
-}
-
-.stop {
-  position: relative;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--paper);
-  border: 4px solid currentColor;
-}
-
-.stop.skip {
-  width: 8px;
-  height: 8px;
-  border: 0;
-  background: var(--paper);
-}
-
-.station .why {
-  color: var(--graphite);
-  font-size: var(--step--1);
-  padding-right: 10px;
-}
-
-.station .why strong {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-/* --------------------------------------------------------------------------
    Isometric landscape: always night, whatever the page's theme, so the lit
    miniature reads the same in both. The chrome over it is dark glass.
    -------------------------------------------------------------------------- */
@@ -717,8 +569,6 @@ a {
 }
 
 .node.member .entity-icon { width: 20px; height: 20px; flex-basis: 20px; }
-.station .who { position: relative; padding-left: 36px; }
-.station .who .entity-icon { position: absolute; left: 0; top: 4px; }
 .inspector h2 .entity-icon { float: left; margin: 3px 8px 0 0; }
 
 .landscape {
@@ -1407,16 +1257,6 @@ dialog.preview::backdrop {
     border-top: 1px solid var(--rule);
     max-height: 45vh;
   }
-
-  .lanes-head,
-  .station {
-    grid-template-columns: minmax(120px, 1fr) repeat(2, 96px);
-  }
-
-  .lanes-head > :last-child,
-  .station .why {
-    display: none;
-  }
 }
 
 .resource-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
@@ -1450,3 +1290,15 @@ dialog.preview::backdrop {
 @media (prefers-reduced-motion: reduce) {
   .auth-switch-track, .auth-switch-thumb { transition: none; }
 }
+
+.placeholder-page { min-height: 100%; display: grid; place-content: center; justify-items: center; padding: 48px 24px; text-align: center; }
+.placeholder-page > svg { color: var(--dev); }
+.placeholder-page h1 { margin: 18px 0 8px; font: 600 30px var(--condensed); }
+.placeholder-page p { margin: 0; color: var(--graphite); }
+
+.island-default-group { display: grid; gap: 6px; margin: 18px 0; font-size: 13px; }
+.island-default-group select { width: 100%; }
+.default-usage { margin: -4px 0 14px; }
+.island-members { padding: 0; list-style: none; }
+.island-members li { display: grid; gap: 3px; margin: 12px 0; }
+.island-members .linkish { justify-self: start; text-align: left; }

@@ -47,8 +47,8 @@ export interface PlanResponse {
   readonly ok: boolean;
   /** What else happens when this is written, beyond the field. */
   readonly impact: readonly string[];
-  readonly lanesBefore: Lanes;
-  readonly placementBefore: Placement;
+  readonly lanesBefore?: Lanes;
+  readonly placementBefore?: Placement;
 }
 
 export interface ApplyResponse {

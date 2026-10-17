@@ -1,6 +1,7 @@
 import { getFrameworkTargets, type FrameworkConfig } from "@repo/framework/config";
 import type { PreflightResult } from "../../shared/api";
-import { fieldFacts } from "../edits/fields";
+import { DEFAULT_FIELDS, fieldFacts } from "../edits/fields";
+import { projectDefaults } from "../edits/defaults";
 import { applyPatch, type SemanticPatch } from "./origin";
 import { targetLanes, targetPlacement, validateForMode, type ProjectionOptions } from "./project";
 
@@ -49,7 +50,9 @@ export function preflight(
   const diagnostics = validateForMode(patched, options, targets);
   const target = targets.find((candidate) => candidate.reference === request.target);
   const ok = !diagnostics.some((diagnostic) => diagnostic.severity === "error");
-  const predicted = target && ok ? fieldFacts(patched, target).find((fact) => fact.field === request.field) : undefined;
+  const predicted = ok ? request.target.startsWith("defaults:")
+    ? projectDefaults(patched, targets, DEFAULT_FIELDS).fields[request.target]?.find((fact) => fact.field === request.field)
+    : target ? fieldFacts(patched, target).find((fact) => fact.field === request.field) : undefined : undefined;
   return {
     mode: options.mode,
     ok,

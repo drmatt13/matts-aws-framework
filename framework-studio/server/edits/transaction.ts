@@ -155,30 +155,34 @@ export class EditService {
         throw new EditError(422, "The configuration does not load right now, so no change can be checked against it. Fix it in your editor first.");
       }
       const target = model.targets.find((candidate) => candidate.ref === intent.target);
+      const defaults = model.defaults?.find((candidate) => candidate.ref === intent.target);
       const field = fieldById(intent.field);
       const fact: FieldFact | undefined = model.fields[intent.target]?.find((candidate) => candidate.field === intent.field);
-      if (!target || !field || !fact) throw new EditError(404, `${intent.target} has no field ${intent.field}.`);
+      if ((!target && !defaults) || !field || !fact) throw new EditError(404, `${intent.target} has no field ${intent.field}.`);
 
-      const outcome = planEdit({ repositoryRoot: this.repositoryRoot, origin: target.origins[0]!, field, fact, intent });
+      const outcome = planEdit({ repositoryRoot: this.repositoryRoot, origin: defaults?.origin ?? target!.origins[0]!, field, fact, intent });
       if ("refused" in outcome) throw new EditError(422, outcome.refused);
       const planned = outcome.planned;
       assertWritable(this.repositoryRoot, planned.relativeFile);
-      const preflight = await evaluation.preflight({ target: target.ref, field: field.id, patch: planned.forward });
+      if (sha256(readFileSync(planned.file, "utf8")) !== snapshot.files[planned.relativeFile]) throw new EditError(409, "The setting's source changed. Wait for refresh and preview again.");
+      const preflight = await evaluation.preflight({ target: intent.target, field: field.id, patch: planned.forward });
       const ok = preflight.dev.ok && preflight.prod.ok;
       const current = snapshot.currentMode === "prod" ? preflight.prod : preflight.dev;
-      const placementBefore = target.placement;
       const response: PlanResponse = {
         planId: randomUUID(),
-        target: target.ref,
+        target: intent.target,
         field: field.id,
         summary: planned.summary,
         file: planned.relativeFile,
         diff: planned.diff,
         preflight,
         ok,
-        impact: ok ? impactOf(target, field.id, current) : [],
-        lanesBefore: target.lanes,
-        placementBefore,
+        impact: ok ? target ? impactOf(target, field.id, current) : [
+          `${fact.usage?.inherited ?? 0} current workloads inherit this setting; ${fact.usage?.overridden ?? 0} have overrides.`,
+          "Applies to matching workloads on every island and to future declarations. Individual overrides are preserved.",
+          "Compose Watch restarts affected local workloads when the defaults file changes.",
+        ] : [],
+        ...(target ? { lanesBefore: target.lanes, placementBefore: target.placement } : {}),
       };
       this.plans.set(response.planId, {
         response,
@@ -308,6 +312,7 @@ export class EditService {
     const mismatch = (["dev", "prod"] as const).flatMap((mode) => {
       const model = state.snapshot.models[mode];
       if (model.status === "error" && model.targets.length === 0) return [`the ${mode} configuration no longer loads`];
+      if (written.target.startsWith("defaults:") && model.status === "error") return [`the ${mode} configuration rejects the shared defaults`];
       if (written.edit.kind === "route") {
         const change = written.edit.change;
         return model.status === "error" || !model.routes.some((route) => route.kind === "http" && route.path === change.after && route.target === change.target)

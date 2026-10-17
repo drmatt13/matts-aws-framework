@@ -14,9 +14,9 @@ import { useSnapshot } from "./api";
 import { StudioProvider } from "./studio";
 import { Board } from "./views/Board";
 import { Isometric } from "./views/Isometric";
-import { Lanes } from "./views/Lanes";
 import { Shell } from "./views/Shell";
 import { Database } from "./views/Database";
+import { Deploy } from "./views/Deploy";
 import "./styles.css";
 
 interface Search {
@@ -50,10 +50,10 @@ const rootRoute = createRootRoute({
     typeof search.select === "string" ? { select: search.select } : {},
 });
 const boardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: Board });
-const lanesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/lanes", component: Lanes });
 const isometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/isometric", component: Isometric });
 const databaseRoute = createRoute({ getParentRoute: () => rootRoute, path: "/database", component: Database });
-const router = createRouter({ routeTree: rootRoute.addChildren([boardRoute, lanesRoute, isometricRoute, databaseRoute]) });
+const deployRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deploy", component: Deploy });
+const router = createRouter({ routeTree: rootRoute.addChildren([boardRoute, isometricRoute, databaseRoute, deployRoute]) });
 
 declare module "@tanstack/react-router" {
   interface Register {

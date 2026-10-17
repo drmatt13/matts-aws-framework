@@ -328,6 +328,8 @@ export interface Diagnostic {
 // ---------------------------------------------------------------------------
 
 export interface ModeModel {
+  /** Shared framework defaults, separate from workload declarations. */
+  readonly defaults?: readonly ModelDefaults[];
   readonly localServices?: readonly LocalDatabase[];
   readonly mode: Mode;
   readonly status: "ok" | "error";
@@ -404,6 +406,16 @@ export interface FieldFact {
   readonly inherited?: { readonly value: string | number | boolean; readonly from: string };
   /** Why the field is shown but cannot be changed by the studio. */
   readonly blocked?: string;
+  /** Current workloads inheriting or overriding a shared default. */
+  readonly usage?: { readonly inherited: number; readonly overridden: number };
+}
+
+export interface ModelDefaults {
+  readonly ref: string;
+  readonly title: string;
+  readonly group: string;
+  readonly origin: "defaults";
+  readonly targets: readonly string[];
 }
 
 export interface SourceIndex {

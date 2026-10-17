@@ -8,7 +8,7 @@ import type { Decoration, Island, Prop, Scene, SceneEdge, SceneNode, Tile } from
 import { worldToScreen, type Bounds, type Camera, type Point, type Viewport } from "./camera";
 import { ELEVATION_STEP, project } from "./iso";
 import { bandTrim, GRAPHITE, hexRgb, ICON_TINT, trimColor, type Look } from "./look";
-import { acceptCards, arcControl, arcPoints, type CardHit } from "./picking";
+import { acceptCards, arcControl, arcPoints, placeIslandTitle, surfaceOutline, tilePolygons, type CardHit } from "./picking";
 import { ICON_BADGE, type Face, type Glyph, type Part, type Shade, type ShapeKind } from "./shapes";
 import { islandDrawOrder, islandSlabs, type BandSlab, type IslandSlab, type WallRun } from "./slabs";
 
@@ -35,6 +35,7 @@ export interface RenderState {
   readonly selected?: string;
   readonly hovered?: string;
   readonly hoveredEdge?: string;
+  readonly hoveredIsland?: string;
   readonly categories: ReadonlySet<EdgeCategory>;
   readonly time: number;
   readonly motion: boolean;
@@ -199,6 +200,9 @@ interface Prepared {
   readonly boxes: ReadonlyMap<DrawItem, { minX: number; minY: number; maxX: number; maxY: number }>;
   /** The graphite look: whole islands, back to front. */
   readonly graphite: readonly GraphiteIsland[];
+  /** The geometry actually painted in each look, without culling headroom or shadows. */
+  readonly titleSurfaces: Readonly<Record<Look, ReadonlyMap<string, readonly (readonly number[])[]>>>;
+  readonly outlines: Readonly<Record<Look, ReadonlyMap<string, Path2D>>>;
 }
 
 /** One terrace of a graphite slab, as paths and gradients built once per scene. */
@@ -371,7 +375,27 @@ export class SceneRenderer {
         boxes.set(item, { minX: minX - 30, maxX: maxX + 30, minY: minY - 4, maxY: maxY + 18 });
       }
     }
-    this.prepared = { scene, items, walls, arcs, anchors, boxes, graphite: this.prepareGraphite(scene, items) };
+    const graphite = this.prepareGraphite(scene, items);
+    const classicSurfaces = new Map(scene.islands.map((island) => [island.id, [] as (readonly number[])[]]));
+    for (const tile of scene.tiles) classicSurfaces.get(tile.island)!.push(...tilePolygons(tile));
+    const graphiteSurfaces = new Map(graphite.map(({ slab }) => [slab.island.id, slab.bands.flatMap((band) => [band.top, ...band.walls.map((wall) => wall.quad)])]));
+    for (const frame of scene.frames) {
+      for (const member of frame.members) {
+        const surfaces = [frame.geometry.top, frame.geometry.left, frame.geometry.right];
+        classicSurfaces.get(member)!.push(...surfaces);
+        graphiteSurfaces.get(member)!.push(...surfaces);
+      }
+    }
+    const outlines = (surfaces: ReadonlyMap<string, readonly (readonly number[])[]>) => new Map([...surfaces].map(([id, polygons]) => {
+      const outline = new Path2D();
+      const segments = surfaceOutline(polygons);
+      for (let at = 0; at < segments.length; at += 4) {
+        outline.moveTo(segments[at]!, segments[at + 1]!);
+        outline.lineTo(segments[at + 2]!, segments[at + 3]!);
+      }
+      return [id, outline];
+    }));
+    this.prepared = { scene, items, walls, arcs, anchors, boxes, graphite, titleSurfaces: { classic: classicSurfaces, graphite: graphiteSurfaces }, outlines: { classic: outlines(classicSurfaces), graphite: outlines(graphiteSurfaces) } };
   }
 
   /** The graphite look's islands: paths, gradients and who stands on each terrace. */
@@ -523,6 +547,7 @@ export class SceneRenderer {
     const spotlight = new Set<string>();
     if (state.selected) {
       spotlight.add(state.selected);
+      for (const node of scene.nodes) if (node.island === state.selected) spotlight.add(node.id);
       for (const edge of scene.edges) {
         if (!state.categories.has(edge.category)) continue;
         if (edge.from === state.selected) spotlight.add(edge.to);
@@ -543,11 +568,21 @@ export class SceneRenderer {
       ? this.drawGraphite(prepared, state, spotlight, view)
       : this.drawClassic(prepared, state, dimmed, pulse, view);
 
+    for (const id of new Set([state.hoveredIsland, state.selected?.startsWith("island:") ? state.selected : undefined])) {
+      if (!id) continue;
+      context.save();
+      context.strokeStyle = id === state.selected ? "rgba(167, 215, 255, 0.85)" : "rgba(207, 229, 248, 0.6)";
+      context.lineWidth = (id === state.selected ? 2 : 1.5) / zoom;
+      const outline = prepared.outlines[state.look].get(id);
+      if (outline) context.stroke(outline);
+      context.restore();
+    }
+
     this.drawEdges(prepared, state);
     const cards = this.drawCards(prepared, state, spotlight);
-    this.drawTitles(scene, state);
+    this.drawTitles(prepared, state, cards);
 
-    const animating = state.motion && state.selected !== undefined;
+    const animating = state.motion && state.selected !== undefined && !state.selected.startsWith("island:");
     return { cards, animating, ms: performance.now() - started };
   }
 
@@ -581,6 +616,7 @@ export class SceneRenderer {
    */
   private fixtureLight(prop: Prop, scene: Scene, state: RenderState): number {
     if (state.selected === undefined) return 1;
+    if (scene.islands.find((island) => island.id === state.selected)?.bands.some((band) => prop.serves.includes(band.id))) return 1;
     const band = scene.nodes.find((node) => node.id === state.selected)?.band;
     return band !== undefined && prop.serves.includes(band) ? 1 : 0.32;
   }
@@ -631,6 +667,7 @@ export class SceneRenderer {
 
     const islandOf = new Map(prepared.scene.nodes.map((node) => [node.id, node.island]));
     const lit = new Set([...spotlight].map((id) => islandOf.get(id)));
+    if (state.selected?.startsWith("island:")) lit.add(state.selected);
     const shimmering = state.motion && state.selected !== undefined ? islandOf.get(state.selected) : undefined;
     let drawn = 0;
     for (const island of prepared.graphite) {
@@ -1344,7 +1381,7 @@ export class SceneRenderer {
     }
     const candidates: Placed[] = [];
     prepared.scene.nodes.forEach((node, order) => {
-      const emphasised = node.id === state.selected || node.id === state.hovered || (state.selected !== undefined && spotlight.has(node.id));
+      const emphasised = node.id === state.selected || node.id === state.hovered || (state.selected !== undefined && !state.selected.startsWith("island:") && spotlight.has(node.id));
       if (!showAll && !emphasised) return;
       // What the selection touches stays readable however far out you are.
       const scale = emphasised ? Math.max(0.9, zoomScale) : zoomScale;
@@ -1443,22 +1480,41 @@ export class SceneRenderer {
     context.restore();
   }
 
-  private drawTitles(scene: Scene, state: RenderState): void {
+  private drawTitles(prepared: Prepared, state: RenderState, cards: readonly CardHit[]): void {
     const context = this.context;
     const { camera, viewport } = state;
+    const { scene } = prepared;
+    const screenPolygon = (polygon: readonly number[]) => {
+      const points: number[] = [];
+      for (let at = 0; at < polygon.length; at += 2) {
+        const point = worldToScreen(camera, viewport, { x: polygon[at]!, y: polygon[at + 1]! });
+        points.push(point.x, point.y);
+      }
+      return points;
+    };
+    const rectangle = ({ x, y, width, height }: Omit<CardHit, "id">) => [x, y, x + width, y, x + width, y + height, x, y + height];
+    const surfaces = new Map([...prepared.titleSurfaces[state.look]].map(([id, polygons]) => [id, polygons.map(screenPolygon)]));
+    const obstacles = [
+      ...[...surfaces.values()].flat(),
+      ...[...scene.nodes, ...scene.props, ...scene.decorations].map((item) => screenPolygon(item.geometry.hull)),
+      ...cards.map(rectangle),
+    ];
     const scale = Math.max(0.8, Math.min(1.15, camera.zoom * 1.6));
     context.textAlign = "right";
+    context.textBaseline = "middle";
+    context.font = `600 ${15 * scale}px "Barlow Semi Condensed", Barlow, system-ui, sans-serif`;
     for (const island of scene.islands) {
       if (this.walled.has(island.id)) continue;
-      // On the island's left flank, level with its surface, like a map label.
-      const flank = project({ x: island.gx0, y: island.gy1 + 0.5, h: island.top });
-      const point = worldToScreen(camera, viewport, { x: flank.x - 32, y: flank.y });
-      const x = point.x - 14;
-      context.textBaseline = "middle";
-      context.font = `600 ${15 * scale}px "Barlow Semi Condensed", Barlow, system-ui, sans-serif`;
+      const ink = context.measureText(island.title);
+      const placed = placeIslandTitle(surfaces.get(island.id)!, {
+        width: ink.actualBoundingBoxLeft + ink.actualBoundingBoxRight,
+        height: ink.actualBoundingBoxAscent + ink.actualBoundingBoxDescent,
+      }, obstacles);
+      if (!placed) continue;
+      obstacles.push(rectangle(placed));
       const network = state.look === "graphite" ? rgba(mixRgb(hexRgb(trimColor(island)), WHITE, 0.55)) : "#a4ded3";
       context.fillStyle = island.ghost ? "rgba(214, 222, 234, 0.6)" : island.region === "network" ? network : "rgba(236, 239, 244, 0.94)";
-      context.fillText(island.title, x, point.y);
+      context.fillText(island.title, placed.x + placed.width - ink.actualBoundingBoxRight, placed.y + ink.actualBoundingBoxAscent);
     }
     context.textAlign = "center";
     if (camera.zoom >= 0.45) {

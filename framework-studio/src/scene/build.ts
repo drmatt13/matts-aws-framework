@@ -627,23 +627,25 @@ interface Footprint {
 function measure(spec: IslandSpec, order?: (items: readonly Item[]) => readonly Item[]): Footprint {
   const placed: PlacedItem[] = [];
   const bandWidths: number[] = [];
+  const bands = spec.bands.map((band) => {
+    // Roles retain their order, but share the lattice: a small service group
+    // must not strand the rest of its column when declarations change.
+    const items = band.groups.flatMap((group) => order ? [...order(group)] : [...group]);
+    const perColumn = band.perColumn ?? Math.min(6, Math.max(2, Math.ceil(Math.sqrt(items.length))));
+    const columns = Math.max(1, Math.ceil(items.length / perColumn), band.props?.length ?? 0);
+    const rows = Math.ceil(items.length / columns);
+    return { items, columns, rows, furniture: !!band.props?.length };
+  });
   let x = 0;
-  let rows = 1;
-  spec.bands.forEach((band, bandIndex) => {
-    let columns = 0;
-    const total = band.groups.reduce((sum, group) => sum + group.length, 0);
-    const perColumn = band.perColumn ?? Math.min(6, Math.max(2, Math.ceil(Math.sqrt(total))));
-    for (const group of band.groups) {
-      const items = order ? order(group) : group;
-      for (let start = 0; start < items.length; start += perColumn) {
-        items.slice(start, start + perColumn).forEach((item, row) => {
-          placed.push({ item, lx: x + 1 + columns * STEP, ly: 1 + row * STEP, band: bandIndex });
-          rows = Math.max(rows, row + 1);
-        });
-        columns += 1;
-      }
-    }
-    const width = Math.max(1, columns, band.props?.length ?? 0) * STEP;
+  const rows = Math.max(1, ...bands.map((band) => band.rows + Number(band.furniture)));
+  bands.forEach((band, bandIndex) => {
+    const itemColumns = Math.ceil(band.items.length / Math.max(1, band.rows));
+    const insetX = Math.floor((band.columns - itemColumns) * STEP / 2);
+    const insetY = Math.floor((rows - Number(band.furniture) - band.rows) * STEP / 2);
+    band.items.forEach((item, index) => {
+      placed.push({ item, lx: x + 1 + insetX + Math.floor(index / band.rows) * STEP, ly: 1 + insetY + index % band.rows * STEP, band: bandIndex });
+    });
+    const width = band.columns * STEP;
     bandWidths.push(width);
     x += width;
   });
@@ -670,60 +672,59 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
   const tiles = new Map<string, Tile>();
   const placedY = new Map<string, number>();
 
-  // The columns read left to right on screen — entry, compute, catalog — and
-  // each column's islands stack straight down it. Placement happens in a
-  // screen-aligned frame (sx = gx - gy across, sy = gx + gy down) and is then
+  // Two main columns and one shared lower row make a desktop-sized landscape.
+  // APIs and inputs sit beside compute; the smaller supporting islands share
+  // the lower row, with local development between workflows and stacks.
+  // Placement happens in a screen-aligned frame (sx = gx - gy across,
+  // sy = gx + gy down) and is then
   // turned back into grid cells, so islands stay grid rectangles. Compute is
-  // placed first, so the columns either side can line up with what they serve.
+  // placed first, so connected items in the other column can follow its order.
   const extent = (footprint: Footprint) => footprint.width + 2 + footprint.length + 2;
   const columnWidth = (list: readonly IslandSpec[]) => Math.max(0, ...list.map((spec) => extent(measure(spec))));
-  const entryWidth = columnWidth(specs.entry);
-  const computeWidth = columnWidth(specs.compute);
-  const catalogWidth = columnWidth(specs.catalog);
+  const lowerOrder: readonly string[] = ["island:agentcore", "island:orchestration", "island:local", "island:stacks"];
+  const all = [...specs.entry, ...specs.compute, ...specs.catalog];
+  const lower = lowerOrder.flatMap((id) => all.filter((spec) => spec.id === id));
+  const compute = specs.compute.filter((spec) => !lowerOrder.includes(spec.id));
+  const entry = [...specs.entry, ...specs.catalog.filter((spec) => !lowerOrder.includes(spec.id))];
+  const entryWidth = columnWidth(entry);
+  const computeWidth = columnWidth(compute);
+  const lowerFootprints = lower.map((spec) => measure(spec));
+  const lowerWidth = lowerFootprints.reduce((sum, footprint, index) => sum + extent(footprint) + (index ? titleRoom(footprint.spec.title) : 0), 0);
+  const naturalWidth = entryWidth + COLUMN_GAP + computeWidth;
+  // Let a compact supporting row widen the column gutter, rather than
+  // wrapping merely because the main islands lost a few nodes. Large rows
+  // still wrap as they grow beyond the desktop's useful aspect ratio.
+  const mainWidth = Math.max(naturalWidth, Math.min(lowerWidth, Math.ceil(naturalWidth * 1.5)));
   const columns = [
-    { specs: specs.compute, width: computeWidth, centre: entryWidth + COLUMN_GAP + computeWidth / 2, align: false },
-    { specs: specs.entry, width: entryWidth, centre: entryWidth / 2, align: true },
-    { specs: specs.catalog, width: catalogWidth, centre: entryWidth + COLUMN_GAP + computeWidth + COLUMN_GAP + catalogWidth / 2, align: true },
+    { specs: compute, width: computeWidth, centre: mainWidth - computeWidth / 2, align: false },
+    { specs: entry, width: entryWidth, centre: entryWidth / 2, align: true },
   ];
 
-  let computeHeight = 0;
-  for (const column of columns) {
-    const byConnection = (items: readonly Item[]) =>
-      [...items]
-        .map((item, position) => ({ item, position, y: barycentre(item.id, model.edges, placedY) }))
-        .sort((a, b) => a.y - b.y || a.position - b.position)
-        .map(({ item }) => item);
-    const ordered = column.align
-      ? [...column.specs]
-          .map((spec, position) => {
-            const ys = spec.bands
-              .flatMap((band) => band.groups.flat())
-              .map((item) => barycentre(item.id, model.edges, placedY))
-              .filter(Number.isFinite);
-            return { spec, position, y: ys.length ? ys.reduce((sum, y) => sum + y, 0) / ys.length : Number.POSITIVE_INFINITY };
-          })
-          .sort((a, b) => a.y - b.y || a.position - b.position)
-          .map(({ spec }) => spec)
-      : column.specs;
-    const measured = ordered.map((spec) => measure(spec, column.align ? byConnection : undefined));
-    // Rows: an island joins the row above, in order, while the row still fits the column's
-    // width (set by its widest island), leaving room on its left for its title. So small
-    // islands sit side by side, and one that outgrows its row drops to a row of its own.
+  const byConnection = (items: readonly Item[]) =>
+    [...items]
+      .map((item, position) => ({ item, position, y: barycentre(item.id, model.edges, placedY) }))
+      .sort((a, b) => a.y - b.y || a.position - b.position)
+      .map(({ item }) => item);
+  const packRows = (measured: readonly Footprint[], width: number) => {
+    // Keep title room between neighbours, and wrap an island that outgrows its row.
     const rows: { islands: { footprint: Footprint; at: number }[]; width: number; height: number }[] = [];
     for (const footprint of measured) {
       const size = extent(footprint);
       const row = rows[rows.length - 1];
       const at = row ? row.width + titleRoom(footprint.spec.title) : 0;
-      if (row && at + size <= column.width) {
+      if (row && at + size <= width) {
         row.islands.push({ footprint, at });
         row.width = at + size;
         row.height = Math.max(row.height, size);
       } else rows.push({ islands: [{ footprint, at: 0 }], width: size, height: size });
     }
-    const height = rows.reduce((sum, row) => sum + row.height, 0) + ISLAND_GAP * Math.max(0, rows.length - 1);
-    let sy = column.align ? Math.round(Math.max(0, (computeHeight - height) / 2)) : 0;
+    return rows;
+  };
+  const rowsHeight = (rows: ReturnType<typeof packRows>) => rows.reduce((sum, row) => sum + row.height, 0) + ISLAND_GAP * Math.max(0, rows.length - 1);
+  const placeRows = (rows: ReturnType<typeof packRows>, centre: number, top: number) => {
+    let sy = top;
     for (const row of rows) {
-      const left = column.centre - row.width / 2;
+      const left = centre - row.width / 2;
       for (const { footprint, at } of row.islands) {
         const width = footprint.width + 2;
         const length = footprint.length + 2;
@@ -736,8 +737,18 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
       }
       sy += row.height + ISLAND_GAP;
     }
-    if (!column.align) computeHeight = sy - ISLAND_GAP;
+  };
+  let computeHeight = 0;
+  let mainHeight = 0;
+  for (const column of columns) {
+    const rows = packRows(column.specs.map((spec) => measure(spec, column.align ? byConnection : undefined)), column.width);
+    const height = rowsHeight(rows);
+    const top = column.align ? Math.round(Math.max(0, (computeHeight - height) / 2)) : 0;
+    placeRows(rows, column.centre, top);
+    if (!column.align) computeHeight = height;
+    mainHeight = Math.max(mainHeight, top + height);
   }
+  placeRows(packRows(lowerFootprints, Math.max(mainWidth, ...lowerFootprints.map(extent))), mainWidth / 2, mainHeight + ISLAND_GAP);
 
   function placeIsland(footprint: Footprint, gx0: number, gy0: number): void {
     const spec = footprint.spec;
@@ -793,8 +804,8 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
     // Furniture stands on the last lattice row, clear of the buildings and the chamfers.
     spec.bands.forEach((band, index) => {
       (band.props ?? []).forEach((prop, position) => {
-        const gx = gx0 + 1 + bandStarts[index]! + position * STEP;
-        const gy = gy0 + footprint.length;
+        const gx = gx0 + 2 + bandStarts[index]! + position * STEP;
+        const gy = gy0 + footprint.length - 1;
         const anchor = project({ x: gx, y: gy, h: band.h });
         props.push({ ...prop, presence: ghost ? "other" : "built", gx, gy, h: band.h, geometry: buildIconShape(anchor.x, anchor.y) });
       });
