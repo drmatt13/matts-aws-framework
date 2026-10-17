@@ -9,6 +9,7 @@ import { EditError, EditService } from "./edits/transaction";
 import { apiGuard, hostGuard } from "./guards";
 import type { EditIntent } from "./edits/plan";
 import { sha256 } from "./files";
+import { ResourceService, readResourceIntent } from "./resources";
 import { SnapshotBuilder, type StudioState } from "./snapshot";
 import { watchRepository } from "./watch";
 
@@ -38,15 +39,15 @@ function portFrom(args: readonly string[]): number {
   return port;
 }
 
-function readIntent(body: unknown): EditIntent {
+export function readIntent(body: unknown): EditIntent {
   const record = (body ?? {}) as Record<string, unknown>;
   const intent = record.intent as Record<string, unknown> | undefined;
   if (!intent || typeof intent.target !== "string" || typeof intent.field !== "string") {
     throw new EditError(400, "An edit names a target and a field.");
   }
   if (intent.inherit === true) return { target: intent.target, field: intent.field, inherit: true };
-  if (typeof intent.value !== "string" && typeof intent.value !== "number") {
-    throw new EditError(400, "An edit gives a string or number value, or inherit: true.");
+  if (typeof intent.value !== "string" && typeof intent.value !== "number" && typeof intent.value !== "boolean") {
+    throw new EditError(400, "An edit gives a string, number or boolean value, or inherit: true.");
   }
   return { target: intent.target, field: intent.field, value: intent.value };
 }
@@ -58,6 +59,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
 
   const builder = new SnapshotBuilder(repositoryRoot, log);
   const edits = new EditService(repositoryRoot, builder);
+  const resources = new ResourceService(repositoryRoot, builder);
   const commands = new CommandRunner(repositoryRoot);
   const clients = new Set<Response>();
 
@@ -72,6 +74,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     try {
       const state = await builder.refresh();
       edits.expirePlans();
+      resources.expirePlans();
       broadcast("snapshot", { revision: state.snapshot.revision, external, history: edits.history() });
       return state;
     } catch (error) {
@@ -130,6 +133,28 @@ export async function startServer(repositoryRoot: string, args: readonly string[
       clients.delete(response);
     });
   });
+
+  api.get("/resources/details", (request, response) => send(response, async () => resources.details(String(request.query.id ?? ""), request.query.mode === "prod" ? "prod" : "dev")));
+  api.post("/resources/plan", (request, response) => send(response, () => resources.plan(readResourceIntent(request.body), String(request.body?.revision ?? ""), request.body?.mode === "prod" ? "prod" : "dev")));
+  api.post("/resources/apply", (request, response) => send(response, async () => {
+    const result = await resources.apply(String(request.body?.planId ?? ""));
+    edits.expirePlans();
+    broadcast("snapshot", { revision: result.revision, external: [], history: edits.history() });
+    return result;
+  }));
+  for (const direction of ["undo", "redo"] as const) {
+    api.post(`/resources/${direction}`, (_request, response) => send(response, async () => {
+      const result = await resources.replay(direction);
+      edits.expirePlans();
+      broadcast("snapshot", { revision: result.revision, external: [], history: edits.history() });
+      return result;
+    }));
+  }
+
+  api.post("/routes/plan", (request, response) => send(response, async () => {
+    if (typeof request.body?.route !== "string" || typeof request.body?.value !== "string") throw new EditError(400, "A route edit names a route and its new path.");
+    return edits.planRoute(request.body.route, request.body.value, String(request.body.revision ?? ""));
+  }));
 
   api.post("/edits/plan", (request, response) =>
     send(response, () => edits.plan(readIntent(request.body), String((request.body as { revision?: unknown })?.revision ?? ""))),
@@ -206,11 +231,12 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     // A file this studio just wrote, still holding exactly what it wrote, is
     // its own change; anything else was changed by someone else.
     const external = files.filter((file) => {
-      const written = edits.ownWrites.get(file);
+      const owner = resources.ownWrites.has(file) ? resources.ownWrites : edits.ownWrites;
+      const written = owner.get(file);
       if (written === undefined) return true;
       try {
         if (sha256(readFileSync(path.join(repositoryRoot, file), "utf8")) === written) {
-          edits.ownWrites.delete(file);
+          owner.delete(file);
           return false;
         }
       } catch {

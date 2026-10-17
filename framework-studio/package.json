@@ -10,13 +10,15 @@
     "test": "node --import tsx --test test/*.test.ts"
   },
   "dependencies": {
+    "@prisma/orm-framework": "8.0.0-rc.14",
     "@repo/framework": "*",
     "@tanstack/react-query": "^5.99.0",
     "@tanstack/react-router": "^1.170.41",
     "express": "^5.2.1",
     "lucide-react": "^0.545.0",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "yaml": "2.9.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

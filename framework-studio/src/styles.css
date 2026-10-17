@@ -43,6 +43,53 @@
   color-scheme: light;
 }
 
+/* The declared database contract: table cards and selectable FK connections. */
+.database-view { display: flex; flex-direction: column; min-height: 100%; padding: 28px; gap: 18px; }
+.schema-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.schema-heading h1 { font: 600 30px var(--condensed); margin: 4px 0 8px; }
+.schema-heading p { margin: 5px 0; }
+.schema-heading .kind { color: var(--dev); font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px; }
+.schema-zoom, .schema-toolbar, .schema-toolbar label, .schema-link { display: flex; align-items: center; gap: 10px; }
+.schema-zoom { flex-shrink: 0; font-size: 12px; }
+.schema-toolbar { flex-wrap: wrap; justify-content: space-between; }
+.schema-toolbar label { border: 1px solid var(--rule); background: var(--sheet); border-radius: 5px; padding: 7px 10px; }
+.schema-toolbar input { border: 0; background: transparent; width: 220px; color: var(--ink); }
+.schema-viewport { overflow: auto; min-height: 350px; height: clamp(350px, 55vh, 800px); border: 1px solid var(--rule); border-radius: 8px; background: radial-gradient(circle, var(--rule) 1px, transparent 1px) 0 0 / 20px 20px, var(--paper); }
+.schema-stage { position: relative; transform-origin: top left; }
+.schema-connectors { position: absolute; inset: 0; overflow: visible; }
+.schema-connector path { fill: none; stroke: var(--dev); stroke-width: 1.8; }
+.schema-connector.active path { stroke-width: 3; }
+.schema-connector text { fill: var(--dev); font: 600 12px var(--mono); paint-order: stroke; stroke: var(--paper); stroke-width: 6px; }
+.schema-connector .schema-edge-hit { stroke: transparent; stroke-width: 18; cursor: pointer; pointer-events: stroke; }
+.schema-connector.faded, .schema-table.faded { opacity: 0.25; }
+.schema-table { position: absolute; background: var(--sheet); border: 1px solid var(--rule-strong); border-radius: 8px; overflow: hidden; box-shadow: 0 4px 14px #0000000a; }
+.schema-table.active { border-color: var(--dev); box-shadow: 0 0 0 2px color-mix(in srgb, var(--dev) 22%, transparent); }
+.schema-table-heading { border: 0; border-radius: 0; background: var(--wash); width: 100%; height: 69px; display: flex; align-items: center; justify-content: space-between; text-align: left; padding: 12px 16px; }
+.schema-table-heading strong { display: block; font: 600 20px var(--condensed); margin-bottom: 3px; }
+.schema-table-heading .small { display: block; font-size: 11px; }
+.schema-column { display: flex; align-items: center; gap: 8px; height: 30px; width: 100%; padding: 0 12px; border: 0; border-top: 1px solid var(--rule); border-radius: 0; background: transparent; text-align: left; }
+.schema-column.highlighted { background: color-mix(in srgb, var(--dev) 15%, var(--sheet)); }
+.schema-column code { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.schema-key { width: 31px; flex-shrink: 0; font: 600 9px var(--mono); color: var(--dev); }
+.schema-type { margin-left: auto; max-width: 155px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--graphite); font: 10px var(--mono); }
+.schema-table footer { border-top: 1px solid var(--rule); height: 34px; padding: 9px 14px; font-size: 10px; color: var(--graphite); }
+.schema-relationships h2, .schema-enums h2 { font: 600 18px var(--condensed); margin: 0 0 10px; }
+.schema-relationships button { display: flex; align-items: center; gap: 20px; text-align: left; width: 100%; margin-bottom: 6px; padding: 12px 16px; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); }
+.schema-relationships button[aria-pressed="true"] { border-color: var(--dev); }
+.schema-relationships button > span:first-child { flex: 1; }
+.schema-link { font-weight: 600; width: fit-content; }
+.schema-column-details { margin: 0; }
+.schema-column-details > div { padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.schema-column-details dt { display: flex; justify-content: space-between; gap: 8px; }
+.schema-column-details dd { margin: 6px 0 0; color: var(--graphite); font-size: 12px; }
+.schema-column-details a { display: block; margin-top: 6px; overflow-wrap: anywhere; }
+.schema-index { display: grid; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
+.schema-problems { border-left: 3px solid var(--refuse); padding: 6px 14px; background: var(--refuse-wash); }
+.schema-problems p { margin: 5px 0; }
+.lambda-build { display: grid; grid-template-columns: 95px minmax(0, 1fr); gap: 8px 12px; margin: 0 0 14px; font-size: var(--step--1); }
+.lambda-build dt { color: var(--graphite); }
+.lambda-build dd { margin: 0; overflow-wrap: anywhere; }
+
 @media (prefers-color-scheme: dark) {
   :root {
     --paper: #12161c;
@@ -1367,3 +1414,22 @@ dialog.preview::backdrop {
     display: none;
   }
 }
+
+.resource-editor fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.resource-editor h4 { margin: 24px 0 12px; }
+.resource-check { display: flex; align-items: center; gap: 10px; margin: 16px 0 10px; font-weight: 600; }
+.resource-check input { width: auto; accent-color: var(--dev); }
+.resource-control { display: grid; gap: 7px; margin: 14px 0; }
+.resource-control input, .resource-control select { width: 100%; min-width: 0; }
+.resource-value { padding: 12px; border: 1px solid var(--rule); border-radius: 6px; }
+.env-value { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--step--1); font-family: var(--mono); }
+.resource-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.resource-diff { overflow: auto; padding: 12px; font-size: 11px; background: rgba(0,0,0,.2); max-height: 350px; }
+.resource-diff .add { background: var(--added); color: var(--ink); }
+.resource-diff .remove { background: var(--removed); color: var(--ink); }
+.resource-preview summary, .stack-members summary { cursor: pointer; padding: 8px 0; }
+.stack-members .relations li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; }
+
+.auth-control { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-weight: 600; }
+.auth-switch { min-width: 60px; border: 1px solid var(--rule-strong); border-radius: 20px; background: var(--wash); color: var(--ink); }
+.auth-switch.on { background: var(--accept-wash); color: var(--accept); border-color: var(--accept); }

@@ -2,7 +2,8 @@ import type { ModelTarget } from "../../shared/model";
 import { ROLE_GROUPS, ROLE_LABEL } from "../lookup";
 import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
-import { targetIcon } from "../icons";
+import { resourceIcon, targetIcon } from "../icons";
+import { catalogAvailability } from "../deployment";
 import { developmentLocation, deploymentSummary, environments } from "../deployment";
 
 /**
@@ -62,7 +63,12 @@ function Station(props: { readonly target: ModelTarget }) {
 }
 
 export function Lanes() {
-  const { model } = useStudio();
+  const { model, snapshot, selected, select } = useStudio();
+  const availability = catalogAvailability(snapshot.models);
+  const databases = [
+    ...(model.localServices ?? []).map((service) => ({ id: service.id, title: service.title, icon: "postgres" as const, dev: true, prod: false, location: "Compose on your machine" })),
+    ...model.resources.filter((resource) => resourceIcon(resource) === "database").map((resource) => ({ id: resource.id, title: resource.path.join("."), icon: "database" as const, dev: availability[resource.id]?.dev ?? false, prod: availability[resource.id]?.prod ?? false, location: "In AWS" })),
+  ];
   return (
     <div className="lanes">
       <div className="lanes-head">
@@ -73,6 +79,15 @@ export function Lanes() {
         <span className="lane-name prod">Production</span>
         <span className="muted small">Execution</span>
       </div>
+      {databases.length ? <section>
+        <h2 className="lane-group">Databases</h2>
+        {databases.map((database) => <button key={database.id} className="station" aria-current={selected === database.id} onClick={() => select(database.id)}>
+          <span className="who"><EntityIcon icon={database.icon} /><span className="label">{database.title}</span></span>
+          <Track lane="dev" stops={database.dev} location={database.dev ? database.location : "Not enabled"} />
+          <Track lane="prod" stops={database.prod} location={database.prod ? "In AWS" : "Not enabled"} />
+          <span className="why">{database.dev ? database.prod ? "Development and production." : "Development only." : "Production only."}</span>
+        </button>)}
+      </section> : null}
       {ROLE_GROUPS.map((group) => {
         const targets = model.targets.filter((target) => group.roles.includes(target.role));
         if (targets.length === 0) return null;

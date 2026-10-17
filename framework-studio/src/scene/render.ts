@@ -1,6 +1,7 @@
 import type { EdgeCategory } from "../lookup";
 import { ICONS, iconUrl, type IconKey } from "../icons";
 import { backgroundGrid } from "./grid";
+import { FRAME_COLORS } from "./frame";
 import { DEPLOYMENT_BADGES, type DeploymentBadgeKind } from "../deployment";
 import { atlasPixels, sideColor, spriteOrigin, SPRITE } from "./atlas";
 import type { Decoration, Island, Prop, Scene, SceneEdge, SceneNode, Tile } from "./build";
@@ -263,8 +264,8 @@ export class SceneRenderer {
     const anchors = new Map(scene.nodes.map((node) => [node.id, node.geometry.top]));
     const arcs = new Map<SceneEdge, { points: Point[]; length: number }>();
     for (const edge of scene.edges) {
-      const a = anchors.get(edge.edge.from)!;
-      const b = anchors.get(edge.edge.to)!;
+      const a = anchors.get(edge.from)!;
+      const b = anchors.get(edge.to)!;
       const points = arcPoints(a, arcControl(a, b), b);
       let length = 0;
       for (let index = 1; index < points.length; index += 1) length += Math.hypot(points[index]!.x - points[index - 1]!.x, points[index]!.y - points[index - 1]!.y);
@@ -349,13 +350,14 @@ export class SceneRenderer {
       spotlight.add(state.selected);
       for (const edge of scene.edges) {
         if (!state.categories.has(edge.category)) continue;
-        if (edge.edge.from === state.selected) spotlight.add(edge.edge.to);
-        if (edge.edge.to === state.selected) spotlight.add(edge.edge.from);
+        if (edge.from === state.selected) spotlight.add(edge.to);
+        if (edge.to === state.selected) spotlight.add(edge.from);
       }
     }
     const dimmed = (id: string) => state.selected !== undefined && !spotlight.has(id);
 
     this.drawUnderglow(scene);
+    this.drawFrames(prepared);
     const sheet = atlas();
     const pulse = state.motion ? 0.5 + 0.5 * Math.sin(state.time * 3) : 0.7;
     // What the viewport can see, in world units, with room for walls and roofs.
@@ -372,11 +374,12 @@ export class SceneRenderer {
       drawn += 1;
       if (item.kind === "tile") this.drawTile(item.tile, item.island, prepared, sheet);
       else if (item.kind === "prop") {
-        this.drawFaces(item.prop.geometry.faces, item.prop.shape, undefined, 0.85);
         if ("icon" in item.prop) {
+          const ghost = item.prop.presence === "other";
+          this.drawFaces(item.prop.geometry.faces, "construct", undefined, ghost ? 0 : 0.85, ghost ? "rgba(200, 210, 225, 0.5)" : undefined, ghost);
           const tile = project({ x: item.prop.gx, y: item.prop.gy, h: item.prop.h });
-          this.drawIconPlaque(tile, item.prop.icon, 0.85);
-        }
+          this.drawIconPlaque(tile, item.prop.icon, ghost ? 0.32 : 0.85, false, ghost);
+        } else this.drawFaces(item.prop.geometry.faces, item.prop.shape, undefined, 0.85);
       }
       else this.drawNode(item.node, state, dimmed(item.node.id), pulse);
     }
@@ -388,6 +391,32 @@ export class SceneRenderer {
 
     const animating = state.motion && state.selected !== undefined;
     return { cards, animating, ms: performance.now() - started };
+  }
+
+  private drawFrames(prepared: Prepared): void {
+    const context = this.context;
+    context.save();
+    for (const { ghost, geometry } of prepared.scene.frames) {
+      const color = FRAME_COLORS.network;
+      context.globalAlpha = ghost ? 0.4 : 1;
+      context.fillStyle = "#102329";
+      if (geometry.left.length) { trace(context, geometry.left); context.fill(); }
+      context.fillStyle = "#0b1b22";
+      if (geometry.right.length) { trace(context, geometry.right); context.fill(); }
+      context.fillStyle = ghost ? "rgba(40, 68, 77, 0.25)" : "rgba(27, 53, 59, 0.94)";
+      trace(context, geometry.top);
+      context.fill();
+      context.setLineDash(ghost ? [6 * this.pixel, 4 * this.pixel] : []);
+      context.strokeStyle = ghost ? "#87b7c6" : color;
+      context.lineWidth = 1.8 * this.pixel;
+      context.stroke();
+      context.setLineDash([]);
+      context.strokeStyle = `${color}3d`;
+      context.lineWidth = 0.7 * this.pixel;
+      trace(context, geometry.inset);
+      context.stroke();
+    }
+    context.restore();
   }
 
   private drawUnderglow(scene: Scene): void {
@@ -499,10 +528,10 @@ export class SceneRenderer {
     switch (node.presence) {
       case "built":
       case "present":
-        this.drawFaces(node.geometry.faces, node.shape, node.glyph, factor);
+        this.drawFaces(node.geometry.faces, "construct", undefined, factor);
         break;
       default:
-        this.drawFaces(node.geometry.faces, node.shape, node.glyph, 0, `rgba(200, 210, 225, ${0.5 * factor})`, true);
+        this.drawFaces(node.geometry.faces, "construct", undefined, 0, `rgba(200, 210, 225, ${0.5 * factor})`, true);
         break;
     }
     const ghost = node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
@@ -545,7 +574,7 @@ export class SceneRenderer {
       if (!state.categories.has(edge.category)) continue;
       const active =
         state.hoveredEdge === edge.edge.id ||
-        (state.selected !== undefined && (edge.edge.from === state.selected || edge.edge.to === state.selected));
+        (state.selected !== undefined && (edge.from === state.selected || edge.to === state.selected));
       if (active) {
         lit.push(edge);
         continue;
@@ -772,25 +801,10 @@ export class SceneRenderer {
       const flank = project({ x: island.gx0, y: island.gy1 + 0.5, h: island.top });
       const point = worldToScreen(camera, viewport, { x: flank.x - 32, y: flank.y });
       const x = point.x - 14;
-      const note =
-        island.ghost === "absent"
-          ? "absent in this graph"
-          : island.ghost === "disabled"
-            ? `no nodes enabled in ${scene.mode === "dev" ? "development" : "production"}`
-            : island.ghost === "blueprint"
-              ? scene.mode === "dev"
-                ? "not built by a development deployment"
-                : "not built: nothing is placed in it"
-              : undefined;
       context.textBaseline = "middle";
       context.font = `600 ${15 * scale}px "Barlow Semi Condensed", Barlow, system-ui, sans-serif`;
-      context.fillStyle = island.ghost ? "rgba(214, 222, 234, 0.6)" : "rgba(236, 239, 244, 0.94)";
-      context.fillText(island.title, x, note ? point.y - 8 * scale : point.y);
-      if (note) {
-        context.font = `400 ${12 * scale}px Barlow, system-ui, sans-serif`;
-        context.fillStyle = "rgba(190, 200, 214, 0.75)";
-        context.fillText(note, x, point.y + 10 * scale);
-      }
+      context.fillStyle = island.ghost ? "rgba(214, 222, 234, 0.6)" : island.region === "network" ? "#a4ded3" : "rgba(236, 239, 244, 0.94)";
+      context.fillText(island.title, x, point.y);
     }
     context.textAlign = "center";
     if (camera.zoom >= 0.45) {

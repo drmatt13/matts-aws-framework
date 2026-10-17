@@ -7,6 +7,10 @@ import { EntityIcon } from "./EntityIcon";
 import { resourceIcon, routeIcon, targetIcon } from "../icons";
 import { developmentLocation, deploymentSettingLabel, deploymentSummary, environments } from "../deployment";
 import { Code2, Diamond } from "lucide-react";
+import type { LocalDatabase } from "../../shared/database";
+import { SchemaDetails, SchemaLink } from "./Database";
+import { ResourceEditor } from "./ResourceEditor";
+import { HttpRoutes } from "./HttpRoutes";
 
 function Written(props: { readonly location: SourceLocation | undefined; readonly label?: string }) {
   const { snapshot } = useStudio();
@@ -81,6 +85,25 @@ function lockedReason(editability: Editability | undefined, fact: FieldFact): st
   }
 }
 
+function ApiAuthControl({ target }: { readonly target: ModelTarget }) {
+  const { snapshot, model, preview, live } = useStudio();
+  const fact = model.fields[target.ref]?.find((fact) => fact.field === "http.auth");
+  const [checking, setChecking] = useState(false);
+  if (!fact) return null;
+  const locked = model.stale ? "Editing is paused until the configuration loads again." : lockedReason(snapshot.source.editability[target.ref]?.[fact.field], fact);
+  const enabled = fact.effective === true;
+  const toggle = async () => {
+    setChecking(true);
+    try { await preview(enabled ? { target: target.ref, field: fact.field, inherit: true } : { target: target.ref, field: fact.field, value: true }); }
+    finally { setChecking(false); }
+  };
+  return <section className="api-auth">
+    <div className="auth-control"><span id={`auth-label-${target.ref}`}>API user-pool authorizer</span><button role="switch" aria-labelledby={`auth-label-${target.ref}`} aria-checked={enabled} className={`auth-switch ${enabled ? "on" : ""}`} disabled={!!locked || checking || live.evaluating} onClick={() => void toggle()}>{checking ? "Checking…" : enabled ? "On" : "Off"}</button></div>
+    <p className="small muted">Uses the API's Cognito user pool to admit signed-in callers. Handler-side token checks still apply.</p>
+    {locked ? <p className="locked">{locked}</p> : null}
+  </section>;
+}
+
 const INHERIT = "\u0000inherit";
 
 function FieldRow(props: { readonly target: ModelTarget; readonly fact: FieldFact; readonly editability: Editability | undefined }) {
@@ -93,14 +116,23 @@ function FieldRow(props: { readonly target: ModelTarget; readonly fact: FieldFac
   const changed = draft !== current;
   const unit = fact.domain.kind === "number" ? ` ${fact.domain.unit}` : "";
   const webSocketApi = target.role === "webSocket" || target.role === "webSocketAuthorizer" ? snapshot.webSocketApi : undefined;
-  const display = (value: unknown) => fact.field === "deploy" ? deploymentSettingLabel(String(value), webSocketApi) : String(value);
+  const display = (value: unknown) => {
+    if (fact.field === "deploy") return deploymentSettingLabel(String(value), webSocketApi);
+    if (fact.field === "lambda.packaging") return value === "container" ? "Container image (Dockerfile)" : "Source bundle (ZIP)";
+    if (fact.field === "lambda.logRetentionDays") return `${value} days`;
+    if (typeof value === "boolean") return value ? "On" : "Off";
+    return String(value);
+  };
   const inheritLabel = fact.inherited
-    ? fact.field === "deploy" ? `Use default (${display(fact.inherited.value)})` : `Inherit (${fact.inherited.value}${unit} from ${fact.inherited.from})`
+    ? fact.field === "deploy" ? `Use default (${display(fact.inherited.value)})` : `Inherit (${display(fact.inherited.value)}${unit} from ${fact.inherited.from})`
     : "Inherit";
 
   const submit = () => {
     if (draft === INHERIT) void preview({ target: target.ref, field: fact.field, inherit: true });
-    else void preview({ target: target.ref, field: fact.field, value: fact.domain.kind === "number" ? Number(draft) : draft });
+    else {
+      const value = fact.domain.kind === "number" ? Number(draft) : fact.domain.values.find((value) => String(value) === draft) ?? draft;
+      void preview({ target: target.ref, field: fact.field, value });
+    }
   };
 
   return (
@@ -112,7 +144,7 @@ function FieldRow(props: { readonly target: ModelTarget; readonly fact: FieldFac
         ) : fact.domain.kind === "enum" ? (
           <select value={draft} onChange={(event) => setDraft(event.target.value)} aria-label={fact.label}>
             {fact.domain.values.map((value) => (
-              <option key={value} value={value}>
+              <option key={String(value)} value={String(value)}>
                 {display(value)}
               </option>
             ))}
@@ -143,7 +175,7 @@ function FieldRow(props: { readonly target: ModelTarget; readonly fact: FieldFac
       ) : (
         <span className="note">
           {fact.field === "deploy" ? fact.authored === undefined ? `Uses default: ${display(fact.effective)}.` : `Set to ${display(fact.authored)}.` : fact.authored === undefined
-            ? `Not written here. Resolves to ${String(fact.effective)}${unit} from ${fact.provenance}.`
+            ? `Not written here. Resolves to ${display(fact.effective)}${unit} from ${fact.provenance}.`
             : `Written as ${describeValue(fact.authored)}.`}
         </span>
       )}
@@ -153,10 +185,12 @@ function FieldRow(props: { readonly target: ModelTarget; readonly fact: FieldFac
 
 function Relations(props: { readonly id: string }) {
   const { index, select } = useStudio();
-  const edges = index.edges.get(props.id) ?? [];
+  const stack = index.resources.get(props.id)?.kind === "stack";
+  const owns = (id: string) => id === props.id || (stack && id.startsWith(`${props.id}.`));
+  const edges = [...new Map([...index.edges.entries()].filter(([id]) => owns(id)).flatMap(([, edges]) => edges).map((edge) => [edge.id, edge])).values()];
   if (edges.length === 0) return null;
-  const outgoing = edges.filter((edge) => edge.from === props.id);
-  const incoming = edges.filter((edge) => edge.to === props.id && edge.from !== props.id);
+  const outgoing = edges.filter((edge) => owns(edge.from));
+  const incoming = edges.filter((edge) => owns(edge.to) && !owns(edge.from));
   const row = (edge: ModelEdge, other: string, verb: string) => (
     <li key={`${edge.id}:${verb}`}>
       <span>
@@ -268,6 +302,8 @@ function TargetView(props: { readonly target: ModelTarget }) {
   const editability = snapshot.source.editability[target.ref] ?? {};
   const workflow = model.workflows.find((candidate) => candidate.ref === target.ref);
   const compute = target.compute;
+  const buildFields = new Set(["lambda.architecture", "lambda.packaging", "lambda.runtime", "lambda.bundling.minify", "lambda.bundling.sourceMap"]);
+  const settings = facts.filter((fact) => !buildFields.has(fact.field) && fact.field !== "http.auth");
   return (
     <>
       <header>
@@ -280,11 +316,23 @@ function TargetView(props: { readonly target: ModelTarget }) {
           {target.constructIdPinned ? ", pinned by cloud.constructId. Changing it would replace the deployed resource." : ", derived from its id."}
         </p>
       </header>
+      <ApiAuthControl target={target} />
+      <HttpRoutes target={target} />
       <LaneLines target={target} />
-      {facts.length > 0 ? (
+      {compute.kind === "lambda" ? <section>
+        <h3>Build and runtime</h3>
+        <dl className="lambda-build">
+          <dt>Implementation</dt><dd>{compute.implementation === "container" ? "Container image" : compute.implementation === "python" ? "Python" : "TypeScript"}</dd>
+          <dt>Source</dt><dd><code>{target.directory}</code></dd>
+          <dt>Handler</dt><dd><code>{compute.packaging === "container" ? "Dockerfile CMD" : compute.handler}</code></dd>
+          {compute.packaging === "container" ? <><dt>Runtime</dt><dd>Defined by the Dockerfile</dd></> : null}
+        </dl>
+        {facts.filter((fact) => buildFields.has(fact.field)).map((fact) => <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />)}
+      </section> : null}
+      {settings.length > 0 ? (
         <section>
           <h3>Settings</h3>
-          {facts.map((fact) => (
+          {settings.map((fact) => (
             <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />
           ))}
         </section>
@@ -292,11 +340,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
       <section>
         <h3>Production placement</h3>
         <PlacementText placement={target.placement} />
-        {compute.kind === "lambda" ? (
-          <p className="small muted">
-            {compute.packaging === "zip" ? compute.runtime : "Container image"}, {compute.architecture}, {compute.memorySize} MB, {compute.timeoutSeconds}s timeout.
-          </p>
-        ) : compute.kind === "container" ? (
+        {compute.kind === "container" ? (
           <p className="small muted">
             {compute.cpu} CPU units, {compute.memoryMiB} MiB, {compute.architecture}
             {compute.port ? `, port ${compute.port}` : ""}.
@@ -375,40 +419,37 @@ function RouteView(props: { readonly route: ModelRoute }) {
         </p>
         <p className="muted small">The public name is separate from the target, so renaming it does not rename what is deployed.</p>
       </section>
+      {(route.kind === "http" || route.kind === "service") && index.targets.get(route.target) ? <ApiAuthControl target={index.targets.get(route.target)!} /> : null}
       <Relations id={route.id} />
     </>
   );
 }
 
 function ResourceView(props: { readonly resource: ModelResource }) {
-  const { snapshot, model } = useStudio();
+  const { snapshot, model, select } = useStudio();
   const { resource } = props;
+  const members = model.resources.filter((item) => item.parent === resource.id);
   const facts = snapshot.source.catalog[resource.id];
   const root = resource.path[0]!;
   const links = snapshot.source.links[resource.path.join(".")] ?? snapshot.source.links[root] ?? [];
   const kind =
     resource.kind === "stack" ? "Stack in the catalog" : resource.kind === "member" ? "Stack member" : resource.kind === "secret" ? "Authored secret" : resource.kind === "input" ? "Authored input" : resource.kind === "group" ? "Group of inputs" : "Construct";
+  const database = [snapshot.models.dev, snapshot.models.prod].some((model) => model.edges.some((edge) => edge.relation === "database" && (edge.to === resource.id || edge.to.startsWith(`${resource.id}.`))));
   return (
     <>
       <header>
         <span className="kind">{kind}</span>
-        <h2><EntityIcon icon={resourceIcon(resource)} />resources.{resource.path.join(".")}</h2>
+        <h2><EntityIcon icon={resourceIcon(resource)} />{resource.kind === "stack" ? resource.stackClass ?? resource.path.join(".") : `resources.${resource.path.join(".")}`}</h2>
         {resource.typeText ? <code className="ref">{resource.typeText}</code> : null}
+        {resource.kind === "member" && resource.parent ? <button className="linkish small" onClick={() => select(resource.parent)}>Back to {model.resources.find((item) => item.id === resource.parent)?.stackClass ?? "stack"}</button> : null}
         <Written location={snapshot.source.entities[resource.id]?.key} label={resource.kind === "member" ? "Declared on the stack in" : "Written in"} />
       </header>
+      {database ? <section><SchemaLink /><p className="small muted">The application contract is shared with local PostgreSQL.</p></section> : null}
       <section>
         {resource.absent ? (
           <p>
             Absent in the {model.mode === "dev" ? "development" : "production"} graph
             {facts?.condition ? <>, because the catalog writes it under <code>{facts.condition}</code></> : ""}. Anything that reads it never sees the value.
-          </p>
-        ) : null}
-        {resource.kind === "input" || resource.kind === "secret" ? (
-          <p>
-            Read from <code>{resource.fromEnv}</code> in cdk-app/.env
-            {resource.default !== undefined ? <>, falling back to <code>{JSON.stringify(resource.default)}</code></> : ""}
-            {resource.values ? <>, one of {resource.values.map((value) => <code key={value}>{value} </code>)}</> : ""}.
-            {resource.kind === "secret" ? " Its value is uploaded to Secrets Manager and never appears here." : ""}
           </p>
         ) : null}
         {resource.kind === "member" && resource.memberSource === "class" ? <p className="muted">Declared by its stack; no workload references it.</p> : null}
@@ -418,17 +459,31 @@ function ResourceView(props: { readonly resource: ModelResource }) {
           <Written key={`${link.file}:${link.line}`} location={link} label="Linked in" />
         ))}
       </section>
+      {resource.kind === "stack" ? <section><details className="stack-members" open><summary>Public fields <span className="muted">({members.length})</span></summary><ul className="relations">{members.map((member) => <li key={member.id}><button className="linkish" onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className="small muted">{member.typeText ?? member.kind}</code></li>)}</ul><p className="small muted">Read-only. Declared by the stack class.</p></details></section> : null}
+      {resource.kind === "input" || resource.kind === "secret" ? <ResourceEditor key={`${resource.id}:${model.mode}`} resource={resource} /> : null}
       <Relations id={resource.id} />
     </>
   );
 }
 
+function LocalDatabaseView({ database }: { readonly database: LocalDatabase }) {
+  return <>
+    <header><span className="kind">Local development service</span><h2><EntityIcon icon="postgres" />{database.title}</h2><code className="ref">{database.service} · {database.image}</code><Written location={database.source} /></header>
+    <section><h3>Where it runs</h3><div className="lane-lines"><div className="lane-line dev"><span>Development</span><strong>On your machine</strong></div><div className="lane-line prod off"><span>Production</span><strong>Not enabled</strong></div></div><p className="small muted">Declared by Compose. Container health and running state are not monitored.</p></section>
+    <section><SchemaLink /><p className="small muted">Shares the application contract with production RDS.</p></section>
+    {database.volumes.length ? <section><h3>Persistent storage</h3>{database.volumes.map((volume) => <p key={volume}><code>{volume}</code></p>)}</section> : null}
+    <Relations id={database.id} />
+  </>;
+}
+
 export function Inspector() {
-  const { index, selected, select } = useStudio();
+  const { index, snapshot, selected, select } = useStudio();
   if (!selected) return null;
   const target = index.targets.get(selected);
   const route = index.routes.get(selected);
   const resource = index.resources.get(selected);
+  const localDatabase = index.localServices.get(selected);
+  const schemaEntity = snapshot.schema.tables.some((table) => table.id === selected) || snapshot.schema.relations.some((relation) => relation.id === selected);
   return (
     <aside className="inspector" aria-label="Inspector">
       <div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 8px 0" }}>
@@ -439,7 +494,9 @@ export function Inspector() {
       {target ? <TargetView target={target} /> : null}
       {route ? <RouteView route={route} /> : null}
       {resource ? <ResourceView resource={resource} /> : null}
-      {!target && !route && !resource ? <p className="empty">{selected} is not in this graph.</p> : null}
+      {localDatabase ? <LocalDatabaseView database={localDatabase} /> : null}
+      {schemaEntity ? <SchemaDetails /> : null}
+      {!target && !route && !resource && !localDatabase && !schemaEntity ? <p className="empty">{selected} is not in this graph.</p> : null}
     </aside>
   );
 }

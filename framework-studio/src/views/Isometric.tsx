@@ -1,6 +1,6 @@
 import { Crosshair, Maximize2, Minus, Pause, Play, Plus, RefreshCw } from "lucide-react";
 import { api } from "../api";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CATEGORY_LABEL, RELATION_LABEL, titleOf, type EdgeCategory } from "../lookup";
 import { buildScene, type Scene, type SceneNode, type Tile } from "../scene/build";
 import {
@@ -9,6 +9,7 @@ import {
   interpolate,
   isVisible,
   pan,
+  resizeCamera,
   screenToWorld,
   wheelFactor,
   worldToScreen,
@@ -84,12 +85,13 @@ export function Isometric() {
   );
   const resourceAvailability = useMemo(() => catalogAvailability(snapshot.models), [snapshot.models]);
   const scene = useMemo(() => buildScene(model, { webSocketApi: snapshot.webSocketApi, conditions, resourceAvailability }), [model, snapshot.webSocketApi, conditions, resourceAvailability]);
+  const visibleSelected = selected ? scene.representatives[selected] ?? selected : undefined;
   const nodes = useMemo(() => new Map(scene.nodes.map((node) => [node.id, node])), [scene]);
   const arcs = useMemo(
     () =>
       scene.edges.map((edge) => {
-        const a = nodes.get(edge.edge.from)!.geometry.top;
-        const b = nodes.get(edge.edge.to)!.geometry.top;
+        const a = nodes.get(edge.from)!.geometry.top;
+        const b = nodes.get(edge.to)!.geometry.top;
         return { edge, points: arcPoints(a, arcControl(a, b), b, 16) };
       }),
     [scene, nodes],
@@ -100,7 +102,7 @@ export function Isometric() {
     scene,
     camera: rememberedCamera ?? { x: 0, y: 0, zoom: 1 },
     viewport: { width: 1, height: 1 } as Viewport,
-    selected,
+    selected: visibleSelected,
     hovered: undefined as string | undefined,
     hoveredEdge: undefined as string | undefined,
     categories,
@@ -114,7 +116,7 @@ export function Isometric() {
     frames: 0,
   });
   live.current.scene = scene;
-  live.current.selected = selected;
+  live.current.selected = visibleSelected;
   live.current.categories = categories;
   live.current.motion = motion;
 
@@ -187,35 +189,39 @@ export function Isometric() {
     [moveCamera],
   );
 
-  // Mount: the renderer, the canvas's size, and web fonts arriving late.
-  useEffect(() => {
+  const resize = useCallback(() => {
+    const container = containerRef.current;
+    if (!container || !rendererRef.current) return;
+    const state = live.current;
+    const rect = container.getBoundingClientRect();
+    const previous = state.viewport;
+    const next = { width: Math.max(1, rect.width), height: Math.max(1, rect.height) };
+    if (state.fitted && next.width === previous.width && next.height === previous.height) return;
+    state.viewport = next;
+    if (!state.fitted) {
+      state.fitted = true;
+      state.camera = fitBounds(state.scene.bounds, next, 40);
+    } else if (previous.width > 1) {
+      state.camera = resizeCamera(state.camera, previous, next);
+      // An in-flight focus starts from the resized camera, without jumping back to its old origin.
+      if (state.tween) state.tween = { ...state.tween, from: state.camera, start: performance.now() };
+      const node = state.selected ? state.scene.nodes.find((candidate) => candidate.id === state.selected) : undefined;
+      if (node && !isVisible(state.camera, next, node.geometry.top, 60)) {
+        state.tween = { from: state.camera, to: { ...state.camera, zoom: state.tween?.to.zoom ?? state.camera.zoom, x: node.geometry.top.x, y: node.geometry.top.y }, start: performance.now(), duration: reducedMotion() ? 0 : 450 };
+      }
+    }
+    // A ResizeObserver runs before paint but after animation callbacks. Waiting for another
+    // animation frame would let CSS stretch the old bitmap for one frame when the panel opens.
+    if (state.frame !== undefined) cancelAnimationFrame(state.frame);
+    state.frame = undefined;
+    draw();
+  }, [draw]);
+
+  // Mount before paint: the renderer, the canvas's size, and web fonts arriving late.
+  useLayoutEffect(() => {
     const canvas = canvasRef.current!;
     const container = containerRef.current!;
     rendererRef.current = new SceneRenderer(canvas, schedule);
-    const resize = () => {
-      const rect = container.getBoundingClientRect();
-      const previous = live.current.viewport;
-      const next = { width: Math.max(1, rect.width), height: Math.max(1, rect.height) };
-      live.current.viewport = next;
-      if (!live.current.fitted) {
-        live.current.fitted = true;
-        live.current.camera = fitBounds(live.current.scene.bounds, next, 40);
-      } else if (previous.width > 1) {
-        // The inspector opening or the window resizing keeps the top-left of
-        // the world where it was, so nothing you were looking at jumps.
-        const camera = live.current.camera;
-        live.current.camera = {
-          ...camera,
-          x: camera.x + (next.width - previous.width) / (2 * camera.zoom),
-          y: camera.y + (next.height - previous.height) / (2 * camera.zoom),
-        };
-        const node = live.current.selected ? live.current.scene.nodes.find((candidate) => candidate.id === live.current.selected) : undefined;
-        if (node && !isVisible(live.current.camera, next, node.geometry.top, 60)) {
-          live.current.tween = { from: live.current.camera, to: { ...live.current.camera, x: node.geometry.top.x, y: node.geometry.top.y }, start: performance.now(), duration: reducedMotion() ? 0 : 450 };
-        }
-      }
-      schedule();
-    };
     const observer = new ResizeObserver(resize);
     observer.observe(container);
     resize();
@@ -233,15 +239,19 @@ export function Isometric() {
       rendererRef.current?.dispose();
       rendererRef.current = undefined;
     };
-  }, [schedule]);
+  }, [schedule, resize]);
 
   useEffect(schedule, [schedule, scene, selected, categories, motion]);
 
-  // A selection made elsewhere — the inspector, a link — brings its building into view.
-  useEffect(() => {
-    const node = selected ? nodes.get(selected) : undefined;
-    if (node && !isVisible(live.current.camera, live.current.viewport, node.geometry.top, 60)) focus(node.id);
-  }, [selected, nodes, focus]);
+  // Opening/closing the inspector changes CSS layout during this commit. Resize and paint
+  // now, rather than leaving a stretched frame until the observer's next animation callback.
+  useLayoutEffect(() => {
+    resize();
+    const node = visibleSelected ? nodes.get(visibleSelected) : undefined;
+    const state = live.current;
+    const alreadyFocusing = node && state.tween?.to.x === node.geometry.top.x && state.tween.to.y === node.geometry.top.y;
+    if (node && !alreadyFocusing && !isVisible(state.camera, state.viewport, node.geometry.top, 60)) focus(node.id);
+  }, [visibleSelected, nodes, focus, resize]);
 
   /** What is under a canvas point, front to back: cards, buildings, furniture, arcs, terrain. */
   const pick = useCallback(
@@ -397,7 +407,7 @@ export function Isometric() {
     } else if (event.key === "+" || event.key === "=") zoomBy(1.25);
     else if (event.key === "-" || event.key === "_") zoomBy(0.8);
     else if (event.key === "0") fit();
-    else if (event.key === "f" || event.key === "F") focus(selected);
+    else if (event.key === "f" || event.key === "F") focus(visibleSelected);
     else if (event.key === "Escape") select(undefined);
     else return;
     event.preventDefault();
@@ -500,7 +510,7 @@ export function Isometric() {
           <button onClick={() => fit()} aria-label="Fit the whole application" title="Fit everything (0)">
             <Maximize2 size={16} aria-hidden />
           </button>
-          <button onClick={() => focus(selected)} disabled={!selected} aria-label="Focus the selection" title="Focus the selection (F)">
+          <button onClick={() => focus(visibleSelected)} disabled={!selected} aria-label="Focus the selection" title="Focus the selection (F)">
             <Crosshair size={16} aria-hidden />
           </button>
           <button onClick={() => setMotion((current) => !current)} aria-pressed={!motion} aria-label={motion ? "Pause motion" : "Resume motion"} title={motion ? "Pause motion" : "Resume motion"}>
@@ -527,7 +537,7 @@ export function Isometric() {
       <ul className="sr-only" aria-label="Entities in the landscape">
         {scene.nodes.map((node) => (
           <li key={node.id}>
-            <button onClick={() => select(node.id)} aria-current={selected === node.id}>
+            <button onClick={() => select(node.id)} aria-current={visibleSelected === node.id}>
               {node.label}, {node.kindLabel}. {node.presenceText}
             </button>
           </li>

@@ -60,6 +60,15 @@ export function pan(camera: Camera, dx: number, dy: number): Camera {
   return { ...camera, x: camera.x - dx / camera.zoom, y: camera.y - dy / camera.zoom };
 }
 
+/** Resize the viewport while keeping every world point at the same position from its top-left. */
+export function resizeCamera(camera: Camera, previous: Viewport, next: Viewport): Camera {
+  return {
+    ...camera,
+    x: camera.x + (next.width - previous.width) / (2 * camera.zoom),
+    y: camera.y + (next.height - previous.height) / (2 * camera.zoom),
+  };
+}
+
 /**
  * Zooms by `factor` about a screen point, keeping the world point under it
  * where it was: find it before, zoom, find it after, and move the camera by

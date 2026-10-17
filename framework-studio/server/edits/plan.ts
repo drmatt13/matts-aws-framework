@@ -46,7 +46,7 @@ function checkValue(field: FieldDefinition, intent: EditIntent): string | undefi
   if (intent.inherit) return undefined;
   const value = intent.value;
   if (field.domain.kind === "enum") {
-    return typeof value === "string" && field.domain.values.includes(value)
+    return value !== undefined && field.domain.values.includes(value)
       ? undefined
       : `${field.label} takes one of ${field.domain.values.join(", ")}.`;
   }

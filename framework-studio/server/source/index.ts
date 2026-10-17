@@ -113,10 +113,13 @@ export function fieldEditability(
 ): Editability {
   if (fact.blocked) return { kind: "unsupported", reason: fact.blocked };
   const definition = fieldById(fact.field);
+  if (!definition) {
+    return { kind: "unsupported", reason: `This Studio server has not loaded the edit control for ${fact.field}. Restart Studio to load updated settings.` };
+  }
   const parsed = parseOrigin(origin);
   const entry = parsed ? findEntry(located, parsed) : undefined;
   const value = entry ? entryValue(files, entry) : undefined;
-  if (!definition || !parsed || !entry || !value) {
+  if (!parsed || !entry || !value) {
     return { kind: "unsupported", reason: `${origin} could not be found in source.` };
   }
   const declaration = declarationObject(value, parsed.section, parsed.chain);

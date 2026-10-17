@@ -7,7 +7,7 @@ The isometric landscape has [its own document](isometric-view.md).
 
 ```text
 Browser (React 19, TanStack Router + Query)
-  Board · Lanes · Isometric · Inspector · Edit preview
+  Board · Lanes · Isometric · Database · Inspector · Edit preview
         │  JSON over /api, server-sent events on /api/events
         │  per-process token, same origin, Host = 127.0.0.1|localhost:<port>
         ▼
@@ -20,7 +20,7 @@ Studio server (host process: node --import tsx framework-studio/server/index.ts)
   │     stack-class members, linkResources sites)
   ├─ EditService: plan → preflight → preview → atomic write → confirm → journal
   ├─ Watcher: framework.config.ts, framework-config/, packages/framework/src/config/,
-  │     cdk-app/lib/, and cdk-app/.env, of which only two keys are read
+  │     cdk-app/lib/, and cdk-app/.env (two flags for graph evaluation)
   └─ CommandRunner: framework:check, framework:generate (fixed argv, no shell)
 ```
 
@@ -40,10 +40,17 @@ children produce, the parsed source, and the edit journal.
   `"type": "module"`.
 - `FRAMEWORK_INPUTS_FILE` points at `.cache/framework-studio/inputs-<mode>.env`, which
   holds one line, `PROD_DEPLOYMENT=true|false`. The framework reads authored inputs only
-  from that file, so an evaluator never parses a secret. The server reads exactly two keys
+  from that file, so an evaluator never parses a secret. Graph evaluation reads two keys
   of `cdk-app/.env`: `PROD_DEPLOYMENT`, for the current mode, and
   `DEPLOY_PROD_WEBSOCKET_API`, which decides whether a dev graph holds WebSocket handlers.
   See [server/inputs.ts](../../framework-studio/server/inputs.ts).
+- The selected-resource endpoint separately reads `cdk-app/.env` for one declared input
+  or secret. Its no-store response goes only to the selected inspector; secrets start
+  masked. Values never enter graph evaluation, snapshots, diffs, caches or disk journals.
+- Resource previews send source overlays over IPC to fresh evaluator processes. Their
+  private compilation hook loads candidate modules without changing authored files.
+  Both graphs and TypeScript must accept a preview before applying it. Multi-file moves
+  update imported catalog references, retain env names and preserve concurrent edits.
 - Messages travel over the IPC channel, because the config may print to stdout.
 - A child that does not answer within 60 s (load) or 30 s (preflight), or that exits,
   becomes a failed model, never a stale one.
@@ -65,6 +72,7 @@ decides nothing itself.
 | Lanes | `isTargetEnabled`, `isTargetDeployed`, `getToolDeploySetting` | Raw `local`, `cloud` (intent), `dev`, `prod` (outcome) remain available for evaluation. The UI presents Development (`local || dev`) and Production (`prod`) with execution location as supporting detail |
 | Placement | `resolveLambdaTarget().subnet`, container `cloud.service/task.subnet`, `subnetEgress`, `usesDualStackEndpoints` | `outside`, `vpc` (with subnet and egress), or `managed` (Step Functions) |
 | Network | `resolveNetwork`, `endpointServices`, `NETWORK_PRICES` | Whether production builds the VPC: something is placed in it |
+| Local database | Authored Compose `services.postgres`, using the framework's Compose parser | Separate `local:postgres` identity; only image, named volumes and source are projected. Local database bindings point here; AWS bindings retain the catalog reference |
 | Workflows | `NormalizedWorkflow` | The IR as plain data, its generated state names, targets and integrations |
 | Fields | [server/edits/fields.ts](../../framework-studio/server/edits/fields.ts) | Each editable field's authored, effective and inherited value, and provenance |
 | Diagnostics | `validateFrameworkConfig` (warnings captured), `assertCloudEdgesResolvable(mode)` | The framework's messages, verbatim, tied to an entity when a message names an origin |
@@ -72,6 +80,7 @@ decides nothing itself.
 The snapshot ([server/snapshot.ts](../../framework-studio/server/snapshot.ts)) holds:
 
 - both mode models;
+- the declared Prisma schema and sanitized local-database projection problems;
 - one source index;
 - a sha256 of every editable file;
 - the two deployment settings;
@@ -79,6 +88,22 @@ The snapshot ([server/snapshot.ts](../../framework-studio/server/snapshot.ts)) h
 
 Snapshots are rebuilt whole, never patched. Refreshes are serialized: requests made while
 one runs share a single follow-up.
+
+`server/database.ts` reads the authored `packages/database/prisma/contract.prisma` with
+Prisma's installed PSL syntax parser. It projects models/namespaces, mapped columns,
+declared types/defaults, primary and unique keys, indexes, enums and owning `@relation`
+foreign keys. Cardinality uses unconditional unique keys; partial indexes do not imply
+one-to-one. Composite keys and self references are supported. External model references
+and undisplayed declaration kinds produce notes. Syntax errors suppress the incomplete
+diagram. This projection does not replace Prisma semantic validation or inspect live
+database state. Generated artifacts, migrations and connection settings are not read.
+
+The watcher also observes the authored Compose file and contract source, including
+atomic replacements. Their hashes/facts contribute to snapshot revisions. The schema
+view has deterministic table geometry, column connectors, selection, search and zoom;
+schema selections open source/details in the shared inspector. Both database inspectors
+link to it. Local PostgreSQL visibility is based on the authored Compose service rather
+than a Docker health check; Compose runtime overrides are outside this source projection.
 
 When a graph stops loading, its last good model is kept, marked `stale`, with the new
 diagnostics attached. The UI greys it out and pauses editing until the config loads again.
@@ -147,7 +172,21 @@ The field registry is the only place that decides what is editable:
 | `lambda.subnet` | `subnet` | Lambdas | `LAMBDA_SUBNETS` |
 | `lambda.memorySize` | `memorySize` | Lambdas | 128–10240 MB |
 | `lambda.timeoutSeconds` | `timeoutSeconds` | Lambdas | 1–900 s |
+| `lambda.architecture` | `architecture` | Lambdas | `LAMBDA_ARCHITECTURES` |
+| `lambda.packaging` | `packaging` | Lambdas | `LAMBDA_PACKAGING` |
+| `lambda.runtime` | `runtime` | ZIP Lambdas | `LAMBDA_RUNTIMES` |
+| `lambda.logRetentionDays` | `logRetentionDays` | Lambdas | `CLOUDWATCH_LOG_RETENTION_DAYS` |
+| `lambda.bundling.minify` / `lambda.bundling.sourceMap` | `bundling.minify` / `bundling.sourceMap` | Node ZIP Lambdas | Booleans |
 | `container.subnet` | `cloud.subnet` | services, tasks | `CONTAINER_SUBNETS` |
+
+Enum domains retain their primitive value types: retention is a number, bundling flags
+are booleans, and architecture/packaging/runtime are strings. Values are checked before
+planning and serialized as their real TypeScript literals. Field applicability follows
+`resolveLambdaTarget`; container images have no managed-runtime or esbuild controls.
+The inspector's Build and runtime section also shows implementation type, source and
+handler, all projected from the resolved spec. Runtime and handler remain Dockerfile-owned
+for an image. Packaging previews validate the existing declaration; no handler/Dockerfile
+is generated or converted.
 
 Tools and events show their `deploy` as derived or AWS-invoked, read-only, which is what
 the framework says about them.

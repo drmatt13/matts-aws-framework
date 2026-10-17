@@ -29,6 +29,7 @@ The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) a
 | `build.ts` | yes | Model → `Scene`: islands, tiles with walls, buildings, gateways and endpoints, scenery, edges, bounds |
 | `shapes.ts` | yes | Building geometry as lit polygons, with a convex silhouette |
 | `atlas.ts` | yes | Procedural 32 × 32 block sprites and the edge-extruded atlas, as RGBA pixels |
+| `frame.ts` | yes | VPC foundation and frame colour |
 | `camera.ts` | yes | World↔screen transforms, pan, pointer-anchored zoom, wheel normalization, fit, tween |
 | `picking.ts` | yes | Point-in-polygon, entity picking, height-aware tile picking, arc geometry, card placement |
 | `render.ts` | no (canvas) | `SceneRenderer`: caches per scene, draws per frame |
@@ -64,18 +65,26 @@ world.y = (gx + gy) * 16 - h * 16
 
 | Column (left to right) | Island | Holds | Height |
 | --- | --- | --- | --- |
-| Entry | HTTP API | `http` routes and service mounts | 2 |
-| | WebSocket API | WebSocket route keys | 2 |
-| | Agent routes | Agent browser paths | 2 |
-| Compute | Lambda, outside the VPC | Lambdas with `placement.kind === "outside"`, columns grouped by HTTP, WebSocket and events | 3 |
+| Entry | APIs | HTTP routes, service mounts, WebSocket keys and agent browser paths on one layer | 2 |
+| Compute | Lambda functions | HTTP, WebSocket and event Lambdas outside the VPC on one layer | 3 |
+| | Local development | The authored Compose PostgreSQL service; active in Development, ghosted in Production | 2 |
 | | VPC | Terraces `public` (5), `private` (4), `isolated` (3). Every target with `placement.kind === "vpc"` stands on its subnet's terrace. Gateways and endpoints from `network` stand on the terraces as hover-only furniture | 5 / 4 / 3 |
 | | AgentCore | Agents and tools not placed in the VPC | 3 |
 | | Step Functions | Workflows | 4 |
-| Catalog | One per `resource.stack<T>()` | The stack's monument, then its members | 2–3 |
+| Catalog | Stacks | All `resource.stack<T>()` entries together, one node per class; public fields expand in the inspector | 2 |
 | | Inputs and secrets | Root inputs, secrets, and groups (a group keeps its own column) | 1 |
 
 The terraces step down toward the catalog, so each step's wall faces the viewer. Height
 means exposure: public is high ground, isolated is a sunken yard.
+
+Each network island has a shallow isometric foundation beneath all its terraces, with
+a teal perimeter and inset border. It groups the subnets as one VPC. Geometry comes
+from each island's own footprint, ready for separate boundaries if multiple VPC islands
+are introduced. The foundation is dashed and faded with a blueprint VPC. It participates
+in camera bounds without adding an entity or moving workloads.
+
+API and Lambda panels have no group perimeter. VPC-attached Lambdas remain on
+subnet terraces inside the VPC foundation.
 
 ### Packing
 
@@ -97,8 +106,7 @@ means exposure: public is high ground, isolated is a sunken yard.
 - **Walls.** A tile's two front faces drop to a lower neighbour on the same island, or to
   the island's floor (lowest band height − 3) at the rim. Level neighbours get no internal
   wall.
-- **Scenery.** About 6 % of empty interior cells get a lamp, shrub, rock or shard matched
-  to the ground. It is deterministic, never on a ghost island, and never picked.
+- **Clear terrain.** No decorative rocks, lamps, shrubs or shards are placed on tiles.
 
 ### Presence
 
@@ -113,8 +121,11 @@ means exposure: public is high ground, isolated is a sunken yard.
 | `present` | A catalog entry this graph holds | Solid |
 
 - A route follows its target.
+- The local PostgreSQL service follows its execution environment. Locally executing
+  database consumers connect to it; AWS database bindings keep their resource destination.
+  It is a Compose service (`local:postgres`), not an AWS catalog resource or VPC member.
 - Islands are ghosted the same way:
-  - a stack absent from this graph is drawn at 20 % opacity;
+  - absent stacks have ghost nodes on the shared Stacks island;
   - an island with nodes but none enabled in the selected environment uses the same
     20 % opacity and grid outline; an island with any enabled node stays solid;
   - the VPC is a translucent blueprint unless the graph is production and
@@ -163,7 +174,8 @@ means exposure: public is high ground, isolated is a sunken yard.
 ## Buildings ([shapes.ts](../../framework-studio/src/scene/shapes.ts))
 
 Entities now use `buildIconShape`: a low isometric plinth and an upright 48-unit plaque
-carrying a 40-unit SVG. The plaque is part of the picking hull and arcs anchor at its
+carrying a 40-unit SVG. Every plinth uses the same neutral gray palette, with face shading
+for depth; service identity comes from the SVG. The plaque is part of the picking hull and arcs anchor at its
 top. `icons.ts` maps target kinds, route surfaces and catalog member types to official AWS
 Architecture Icons (July 2026) or generic Lucide outlines. Assets and attribution live
 in `framework-studio/public/icons/`; all are served locally. SVGs are loaded once per
@@ -174,7 +186,8 @@ Local execution is active in Development; local-only workloads are ghosted in Pr
 Network gateways and endpoints use the same icon plaques: AWS VPC gateway icons,
 S3 and DynamoDB service icons for their endpoints, and the VPC endpoint icon for other
 services. They remain hover-only furniture. Furniture has its own lattice spacing so
-plaques do not overlap.
+plaques do not overlap. Gateways and endpoints use translucent icons and dashed plinths
+whenever the selected graph does not build their VPC, including Development.
 
 The procedural structures below remain available for scenery and shape primitives;
 model entities and network furniture no longer use the old building glyphs.
@@ -259,7 +272,10 @@ tweening. A still picture draws nothing.
   | Arrow keys, `+` / `-`, `0`, `F`, Escape | Pan, zoom, fit, focus the selection, clear it |
 
 - **Resize** keeps the world's top-left corner fixed, so opening the inspector moves
-  nothing. If the selection ends up hidden, the camera flies to it. A selection made
+  nothing. React layout effects resize and redraw the canvas before paint when the
+  inspector opens or closes; browser resize observations also redraw synchronously,
+  keeping CSS dimensions, bitmap dimensions and camera projection in step. If the
+  selection ends up hidden, the camera flies to it once at its current zoom. A selection made
   elsewhere (the inspector, the Board) that is off screen also brings its building into
   view.
 - **Memory.** The camera is kept in module memory across view switches, for the life of the
@@ -329,3 +345,9 @@ drawn, then click there.
 | A material | `Material` and `MATERIALS`, `SCENERY` (`build.ts`); `PALETTES` (`atlas.ts`). The atlas grows by a row |
 | A region | A spec in `islandSpecs` (`build.ts`): its column, title, caption, bands, material and height. Keep captions to what the framework states |
 | An edge category | `RELATION_CATEGORY` and `CATEGORY_LABEL` (`src/lookup.ts`), `CATEGORY_COLORS` (`render.ts`) |
+
+Stack fields remain in the underlying model and Inspector. The scene maps their edge
+endpoints and selection highlight to the owning stack through `Scene.representatives`;
+the original edge remains attached as evidence. Connections internal to one stack are
+omitted from the landscape. The input inspector loads selected `.env` values separately
+from the scene and offers validated catalog edits.

@@ -4,14 +4,14 @@ import { parseEnv } from "node:util";
 import type { Mode } from "../shared/model";
 
 /**
- * The two deployment settings the studio reads, and nothing else.
+ * The two deployment settings used for graph evaluation.
  *
  * `@repo/framework/config/source` reads the whole of cdk-app/.env when it is
- * imported, which is right for synthesis and wrong for a tool that never needs
- * an authored value. So the server does not import it: it keeps the lines that
+ * imported, which is right for synthesis but would send authored values into graph
+ * evaluation. So the server does not import it: it keeps the lines that
  * set PROD_DEPLOYMENT and DEPLOY_PROD_WEBSOCKET_API, parses only those, and
- * hands each evaluator a file of its own holding one line. A secret authored in
- * cdk-app/.env is therefore never parsed, held, or sent anywhere by the studio.
+ * hands each evaluator a file of its own holding one line. Evaluators therefore never receive authored secrets. The separate selected-resource
+ * endpoint in resources.ts reads values only for the input inspector.
  */
 
 export const STUDIO_SCRATCH = path.join(".cache", "framework-studio");

@@ -11,6 +11,7 @@ import {
   isCdkResource,
   isCdkResourceGroup,
   isResourceReference,
+  isNodeLambdaRuntime,
   isTargetDeployed,
   isTargetEnabled,
   normalizeFrameworkConfig,
@@ -130,8 +131,11 @@ function compute(config: FrameworkConfig, target: NormalizedTarget): Compute {
     const spec = resolveLambdaTarget(config, target.id);
     return {
       kind: "lambda",
+      implementation: spec.packaging === "container" ? "container" : isNodeLambdaRuntime(spec.runtime) ? "typescript" : "python",
       packaging: spec.packaging,
-      ...(spec.packaging === "zip" ? { runtime: spec.runtime } : {}),
+      ...(spec.packaging === "zip" ? { runtime: spec.runtime, handler: spec.handler,
+        ...(isNodeLambdaRuntime(spec.runtime) ? { bundling: { ...spec.bundling } } : {}),
+      } : {}),
       architecture: spec.architecture,
       memorySize: spec.memorySize,
       timeoutSeconds: spec.timeoutSeconds,
@@ -529,6 +533,11 @@ function targetModel(config: FrameworkConfig, target: NormalizedTarget, options:
     })),
     access: target.cloud.access.map((statement) => ({ actions: [...statement.actions], resources: [...statement.resources] })),
     requirements: target.cloud.requirements.length,
+    requirementRules: target.cloud.requirements.map((rule) => ({
+      require: rule.require.map((reference) => resourceId(reference.path)),
+      ...(rule.when ? { when: { resource: resourceId(rule.when.resource.path), equals: rule.when.equals } } : {}),
+      ...(rule.message ? { message: rule.message } : {}),
+    })),
     outputs: Object.values(target.cloud.outputs).map((output) => output.id),
   };
 }

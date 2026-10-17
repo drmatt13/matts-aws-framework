@@ -7,8 +7,8 @@ import path from "node:path";
  * The composition root and its section modules (the editable source), the
  * framework's config machinery (which decides what that source means), the
  * application stacks (whose classes are the catalog's members and whose
- * `linkResources` calls bind them), and cdk-app/.env, of which only two keys
- * are read. Directories are watched rather than files: a file replaced by a
+ * `linkResources` calls bind them), and cdk-app/.env. Graph evaluation uses
+ * only two deployment flags; the input inspector loads its selected key separately. Directories are watched rather than files: a file replaced by a
  * rename — the studio's own atomic write, or an editor's — keeps being seen.
  *
  * Changes are collected for a short quiet period and reported together, as
@@ -27,7 +27,8 @@ export function watchRepository(
   quietMs = 200,
 ): () => void {
   const targets: Watched[] = [
-    { directory: repositoryRoot, recursive: false, accept: (name) => name === "framework.config.ts" },
+    { directory: repositoryRoot, recursive: false, accept: (name) => name === "framework.config.ts" || name === "docker-compose.yml" },
+    { directory: path.join(repositoryRoot, "packages", "database", "prisma"), recursive: false, accept: (name) => name === "contract.prisma" },
     { directory: path.join(repositoryRoot, "framework-config"), recursive: true },
     { directory: path.join(repositoryRoot, "packages", "framework", "src", "config"), recursive: true },
     { directory: path.join(repositoryRoot, "cdk-app", "lib"), recursive: true },

@@ -6,6 +6,7 @@ import { after, before, test } from "node:test";
 import express from "express";
 import { assertWritable } from "../server/files";
 import { apiGuard, hostGuard } from "../server/guards";
+import { readIntent } from "../server/server";
 
 /**
  * The guards over real HTTP, with the headers a hostile page or a rebinding
@@ -68,5 +69,14 @@ test("only framework.config.ts and framework-config/*.ts are writable", () => {
   assert.ok(assertWritable(repositoryRoot, "framework.config.ts").endsWith("framework.config.ts"));
   for (const file of ["cdk-app/.env", "package.json", "framework-config/../package.json", "cdk-app/bin/cdk-app.ts", "framework-config/missing.ts"]) {
     assert.throws(() => assertWritable(repositoryRoot, file), Error, file);
+  }
+});
+
+test("edit requests retain boolean and numeric values and reject structured values", () => {
+  for (const value of [false, true, 14, "arm64"]) {
+    assert.equal(readIntent({ intent: { target: "lambda:graphql-api", field: "lambda.bundling.minify", value } }).value, value);
+  }
+  for (const value of [null, undefined, {}, []]) {
+    assert.throws(() => readIntent({ intent: { target: "lambda:graphql-api", field: "lambda.bundling.minify", value } }), /string, number or boolean/);
   }
 });

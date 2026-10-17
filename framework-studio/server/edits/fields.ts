@@ -1,7 +1,12 @@
 import {
   CONTAINER_SUBNETS,
+  CLOUDWATCH_LOG_RETENTION_DAYS,
   DEPLOY_SETTINGS,
+  LAMBDA_ARCHITECTURES,
+  LAMBDA_PACKAGING,
+  LAMBDA_RUNTIMES,
   LAMBDA_SUBNETS,
+  isNodeLambdaRuntime,
   resolveLambdaTarget,
   type FrameworkConfig,
   type NormalizedTarget,
@@ -28,7 +33,7 @@ export interface FieldDefinition {
   readonly after: readonly string[];
   /** …else before the first of these, else at the end. */
   readonly before: readonly string[];
-  readonly applies: (target: NormalizedTarget) => boolean;
+  readonly applies: (target: NormalizedTarget, config: FrameworkConfig) => boolean;
   readonly resolve: (
     config: FrameworkConfig,
     target: NormalizedTarget,
@@ -46,7 +51,7 @@ function lambdaSectionDefaults(config: FrameworkConfig, target: NormalizedTarget
 function lambdaInherited(
   config: FrameworkConfig,
   target: NormalizedTarget,
-  key: "memorySize" | "timeoutSeconds" | "subnet",
+  key: "memorySize" | "timeoutSeconds" | "subnet" | "architecture" | "packaging" | "runtime" | "logRetentionDays",
   fallback: string | number,
 ): { value: string | number; from: string } {
   const section = lambdaSectionDefaults(config, target)?.[key] as string | number | undefined;
@@ -61,7 +66,70 @@ const LAMBDA_BUILD_ANCHORS = {
   before: ["bundling", "localReplay", "deploy", "userPool", "environment", "secrets", "database", "cloud", "authorizer"],
 } as const;
 
+function lambdaSetting(
+  key: "architecture" | "packaging" | "runtime" | "logRetentionDays",
+  label: string,
+  values: readonly (string | number)[],
+  fallback: string | number,
+): FieldDefinition {
+  return {
+    id: `lambda.${key}`, label, path: [key], domain: { kind: "enum", values }, ...LAMBDA_BUILD_ANCHORS,
+    applies: (target, config) => target.kind === "lambda" && (key !== "runtime" || resolveLambdaTarget(config, target.id).packaging === "zip"),
+    resolve: (config, target, declaration) => {
+      const spec = resolveLambdaTarget(config, target.id);
+      const inherited = lambdaInherited(config, target, key, fallback);
+      return {
+        effective: key === "runtime" ? spec.packaging === "zip" ? spec.runtime : "Dockerfile" : spec[key],
+        provenance: readPath(declaration, [key]) !== undefined ? DECLARED : inherited.from,
+        inherited,
+      };
+    },
+  };
+}
+
+function bundlingSetting(key: "minify" | "sourceMap", label: string): FieldDefinition {
+  return {
+    id: `lambda.bundling.${key}`, label, path: ["bundling", key], domain: { kind: "enum", values: [true, false] }, ...LAMBDA_BUILD_ANCHORS,
+    applies: (target, config) => {
+      if (target.kind !== "lambda") return false;
+      const spec = resolveLambdaTarget(config, target.id);
+      return spec.packaging === "zip" && isNodeLambdaRuntime(spec.runtime);
+    },
+    resolve: (config, target, declaration) => {
+      const spec = resolveLambdaTarget(config, target.id);
+      const section = readPath(lambdaSectionDefaults(config, target), ["bundling", key]);
+      const base = config.defaults.lambda.bundling[key];
+      const inherited = typeof section === "boolean" ? { value: section, from: `defaults.${target.section}.bundling.${key}` }
+        : typeof base === "boolean" ? { value: base, from: `defaults.lambda.bundling.${key}` }
+          : { value: true, from: "the framework's default" };
+      return {
+        effective: spec.packaging === "zip" ? spec.bundling[key] : inherited.value,
+        provenance: readPath(declaration, ["bundling", key]) !== undefined ? DECLARED : inherited.from,
+        inherited,
+      };
+    },
+  };
+}
+
 export const FIELDS: readonly FieldDefinition[] = [
+  {
+    id: "http.auth", label: "API user-pool authorizer", path: ["auth"],
+    // The framework declares auth?: true. Off removes the property instead of writing false.
+    domain: { kind: "enum", values: [true] },
+    after: ["methods", "directory"], before: ["userPool", "environment", "cloud"],
+    applies: (target) => target.role === "http" || target.role === "service",
+    resolve: (_config, _target, declaration) => ({
+      effective: declaration?.auth === true,
+      provenance: declaration?.auth === true ? DECLARED : "the framework's default",
+      inherited: { value: false, from: "the framework's default" },
+    }),
+  },
+  lambdaSetting("architecture", "Architecture", LAMBDA_ARCHITECTURES, "arm64"),
+  lambdaSetting("packaging", "Packaging", LAMBDA_PACKAGING, "zip"),
+  lambdaSetting("runtime", "Runtime", LAMBDA_RUNTIMES, "nodejs24"),
+  lambdaSetting("logRetentionDays", "Log retention", CLOUDWATCH_LOG_RETENTION_DAYS, 30),
+  bundlingSetting("minify", "Minify"),
+  bundlingSetting("sourceMap", "Source maps"),
   {
     id: "deploy",
     label: "Deploy",
@@ -171,7 +239,7 @@ export function fieldFacts(config: FrameworkConfig, target: NormalizedTarget): r
     target.origins.length > 1
       ? `Declared by ${target.origins.join(" and ")}, which must agree. Change it in source so they stay in step.`
       : undefined;
-  return FIELDS.filter((field) => field.applies(target)).map((field) => {
+  return FIELDS.filter((field) => field.applies(target, config)).map((field) => {
     const authored = readPath(declaration, field.path);
     const resolved = field.resolve(config, target, declaration);
     return {

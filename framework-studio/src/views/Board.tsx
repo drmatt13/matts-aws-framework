@@ -129,11 +129,12 @@ export function Board() {
           const target = index.targets.get(node.id);
           const route = index.routes.get(node.id);
           const resource = index.resources.get(node.id);
+          const localService = index.localServices.get(node.id);
           const classes = [
             "node",
             node.shape,
             neighbours && !neighbours.has(node.id) ? "dimmed" : "",
-            resource?.absent ? "absent" : "",
+            resource?.absent || (localService && !localService.enabled) ? "absent" : "",
             resource && node.shape === "member" && !read.has(node.id) ? "unread" : "",
           ].join(" ");
           return (
@@ -148,7 +149,8 @@ export function Board() {
               }}
               title={resource?.absent ? `Absent in the ${model.mode === "dev" ? "development" : "production"} graph` : undefined}
             >
-              <EntityIcon icon={target ? targetIcon(target) : route ? routeIcon(route) : resourceIcon(resource!)} />
+              <EntityIcon icon={localService ? "postgres" : target ? targetIcon(target) : route ? routeIcon(route) : resourceIcon(resource!)} />
+              {localService ? <><span className="label">{localService.title}<span className="sub">{localService.image} · Compose</span></span><DeploymentBadge kind="dev" /></> : null}
               {target ? <TargetNode target={target} /> : null}
               {route ? (
                 <>

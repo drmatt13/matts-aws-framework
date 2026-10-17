@@ -26,16 +26,18 @@ Break one of these and the studio stops being trustworthy:
    `route:<kind>:<path>`, resources are `resource:<catalog path>`. Layout positions and
    workflow node ordinals are not identities, and must not be persisted against.
 3. **Source is the only authority.** The studio edits `framework.config.ts` and
-   `framework-config/**/*.ts`, and nothing else (`assertWritable`). Each edit is a minimal
+   `framework-config/**/*.ts` (`assertWritable`). Catalog moves may additionally update
+   imported references in authored TypeScript, through the resource planner. Each edit is a minimal
    span: never re-print a file, never reorder, never drop a comment.
 4. **Validate before writing; confirm after.** Every write is previewed against both
    graphs, checked against the file's hash, written atomically, re-evaluated from disk, and
    reverted if it does not resolve as predicted.
 5. **Never overwrite someone else's change.** A stale revision or a changed file refuses
    the write. Undo refuses if the file moved on.
-6. **No secrets.** Evaluators read a synthetic inputs file. The server reads only
-   `PROD_DEPLOYMENT` and `DEPLOY_PROD_WEBSOCKET_API` from `cdk-app/.env`. The snapshot
-   carries references, never resolved values.
+6. **Keep values out of the graph.** Evaluators read synthetic inputs. Graph refresh
+   reads only the two deployment flags. The selected-resource endpoint can return the
+   current `.env` value for a defined authored resource to its inspector, without caching.
+   Snapshots, diffs, logs, printed models and disk journals never contain authored secrets.
 7. **The local boundary.** Loopback only, a Host check, the token, the origin check, and
    two fixed commands with no shell. Do not add a generic command or file endpoint.
 8. **Nothing outward-facing.** No AWS calls, no synth or deploy, no secret upload, no

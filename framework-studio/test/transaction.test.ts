@@ -79,6 +79,42 @@ test("a change the framework refuses is previewed with its reason and cannot be 
   assert.equal(readFileSync(taskFile, "utf8"), original);
 });
 
+test("Lambda build controls round-trip architecture, numeric retention and boolean bundling through validated writes", async () => {
+  const file = path.join(fixture, "framework-config/http/graphql.ts");
+  const original = readFileSync(file, "utf8");
+  for (const [field, value] of [["lambda.architecture", "x86_64"], ["lambda.runtime", "nodejs22"], ["lambda.logRetentionDays", 14], ["lambda.bundling.minify", false], ["lambda.bundling.sourceMap", true]] as const) {
+    const plan = await edits.plan({ target: "lambda:graphql-api", field, value }, revision());
+    assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+    assert.equal(plan.preflight.dev.predicted?.effective, value);
+    assert.equal((await edits.apply(plan.planId)).status, "applied");
+    assert.equal(builder.current!.snapshot.models.dev.fields["lambda:graphql-api"]!.find((fact) => fact.field === field)?.effective, value);
+    assert.equal((await edits.undo()).status, "applied");
+    assert.equal(readFileSync(file, "utf8"), original);
+  }
+  const refused = await edits.plan({ target: "lambda:graphql-api", field: "lambda.packaging", value: "container" }, revision());
+  assert.equal(refused.ok, false, "a database Lambda cannot switch to an image outside the supported database runtime");
+  await rejects(edits.apply(refused.planId), 422, /refuses/);
+  assert.equal(readFileSync(file, "utf8"), original);
+});
+
+test("Cognito event Lambda settings can be previewed, written and undone in their section module", async () => {
+  const file = path.join(fixture, "framework-config/events/cognito.ts");
+  const original = readFileSync(file, "utf8");
+  const target = "lambda:cognito-pre-signup-trigger";
+  for (const [field, value] of [["lambda.architecture", "x86_64"], ["lambda.runtime", "nodejs22"], ["lambda.bundling.minify", false], ["lambda.bundling.sourceMap", false], ["lambda.logRetentionDays", 14]] as const) {
+    const plan = await edits.plan({ target, field, value }, revision());
+    assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+    assert.equal(plan.file, "framework-config/events/cognito.ts");
+    assert.equal((await edits.apply(plan.planId)).status, "applied");
+    assert.equal(builder.current!.snapshot.models.dev.fields[target]!.find((fact) => fact.field === field)?.effective, value);
+    assert.equal((await edits.undo()).status, "applied");
+    assert.equal(readFileSync(file, "utf8"), original);
+  }
+  const packaging = await edits.plan({ target, field: "lambda.packaging", value: "container" }, revision());
+  assert.equal(packaging.ok, true, JSON.stringify(packaging.preflight));
+  assert.equal(readFileSync(file, "utf8"), original, "a preview alone never changes the app's declaration");
+});
+
 test("a file edited after the preview is never overwritten", async () => {
   const plan = await edits.plan({ target: "service:example-service", field: "container.subnet", value: "private" }, revision());
   const theirs = readFileSync(serviceFile, "utf8").replace("cpu: 256", "cpu: 512");
@@ -125,4 +161,83 @@ test("an atomic write leaves no temporary file behind", () => {
   writeAtomically(fixture, target, "after");
   assert.equal(readFileSync(target, "utf8"), "after");
   assert.deepEqual(readdirSync(path.join(fixture, ".cache", "framework-studio", "tmp")), []);
+});
+
+test("an HTTP route rename updates its gateway and preserves the Lambda identity through undo and redo", async () => {
+  const file = path.join(fixture, "framework-config/http/examples.ts");
+  const original = readFileSync(file, "utf8");
+  const identity = (mode: "dev" | "prod") => builder.current!.snapshot.models[mode].targets.map((target) => [target.ref, target.constructId]);
+  const before = { dev: identity("dev"), prod: identity("prod") };
+  const plan = await edits.planRoute("route:http:/examples/python", "/examples/renamed", revision());
+  assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+  assert.equal(readFileSync(file, "utf8"), original);
+  assert.equal((await edits.apply(plan.planId)).status, "applied");
+  for (const mode of ["dev", "prod"] as const) {
+    assert.deepEqual(identity(mode), before[mode]);
+    const model = builder.current!.snapshot.models[mode];
+    assert.equal(model.routes.find((route) => route.id === "route:http:/examples/renamed")?.target, "lambda:python-example");
+    assert.equal(model.routes.find((route) => route.id === "route:http:/examples/renamed")?.browserPath, "/api/examples/renamed");
+    assert.ok(!model.routes.some((route) => route.id === "route:http:/examples/python"));
+  }
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), original);
+  assert.equal((await edits.redo()).status, "applied");
+  await edits.undo();
+  assert.equal(readFileSync(file, "utf8"), original);
+});
+
+test("route renames reject duplicate and invalid paths and preserve concurrent edits", async () => {
+  await rejects(edits.planRoute("route:http:/examples/python", "/graphql", revision()), 422, /already uses/);
+  await rejects(edits.planRoute("route:http:/examples/python", "no-leading-slash", revision()), 422, /beginning with/);
+  const invalid = await edits.planRoute("route:http:/examples/python", "/examples/:id", revision());
+  assert.equal(invalid.ok, false);
+  await rejects(edits.apply(invalid.planId), 422, /refuses/);
+  const file = path.join(fixture, "framework-config/http/examples.ts");
+  const original = readFileSync(file, "utf8");
+  const plan = await edits.planRoute("route:http:/examples/python", "/examples/another", revision());
+  const theirs = `${original}\n// concurrent edit\n`;
+  writeFileSync(file, theirs);
+  await rejects(edits.apply(plan.planId), 409, /changed since this preview/);
+  assert.equal(readFileSync(file, "utf8"), theirs);
+  writeFileSync(file, original);
+  await builder.refresh();
+});
+
+test("HTTP authorizer auth can be switched off and on without changing handler user-pool access", async () => {
+  const file = path.join(fixture, "framework-config/http/graphql.ts");
+  const original = readFileSync(file, "utf8");
+  const before = builder.current!.snapshot.models.dev.targets.find((target) => target.ref === "lambda:graphql-api")!;
+  const disabled = await edits.plan({ target: before.ref, field: "http.auth", inherit: true }, revision());
+  assert.equal(disabled.ok, true, JSON.stringify(disabled.preflight));
+  assert.equal(disabled.preflight.dev.predicted?.effective, false);
+  assert.equal((await edits.apply(disabled.planId)).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), original.replace("    auth: true,\n", ""));
+  const model = builder.current!.snapshot.models.dev;
+  assert.equal(model.routes.find((route) => route.id === "route:http:/graphql")?.auth, false);
+  const target = model.targets.find((target) => target.ref === before.ref)!;
+  assert.equal(target.constructId, before.constructId);
+  assert.equal(target.userPool, true);
+  assert.deepEqual(target.environment, before.environment);
+  const enabled = await edits.plan({ target: before.ref, field: "http.auth", value: true }, revision());
+  assert.equal(enabled.ok, true, JSON.stringify(enabled.preflight));
+  assert.equal((await edits.apply(enabled.planId)).status, "applied");
+  assert.equal(builder.current!.snapshot.models.prod.routes.find((route) => route.id === "route:http:/graphql")?.auth, true);
+  assert.ok(!readFileSync(file, "utf8").includes("auth: false"));
+  await edits.undo();
+  await edits.undo();
+  assert.equal(readFileSync(file, "utf8"), original);
+  await rejects(edits.plan({ target: before.ref, field: "http.auth", value: false }, revision()), 422, /takes one of true/);
+});
+
+test("HTTP service mounts expose the same API authorizer control and event Lambdas do not", async () => {
+  const original = readFileSync(serviceFile, "utf8");
+  const model = builder.current!.snapshot.models.dev;
+  assert.ok(model.fields["service:example-service"]!.some((field) => field.field === "http.auth"));
+  assert.ok(!model.fields["lambda:cognito-pre-signup-trigger"]!.some((field) => field.field === "http.auth"));
+  const plan = await edits.plan({ target: "service:example-service", field: "http.auth", inherit: true }, revision());
+  assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+  assert.equal((await edits.apply(plan.planId)).status, "applied");
+  assert.equal(builder.current!.snapshot.models.dev.routes.find((route) => route.id === "route:service:/example-service/*")?.auth, false);
+  await edits.undo();
+  assert.equal(readFileSync(serviceFile, "utf8"), original);
 });

@@ -7,6 +7,7 @@ import { hashEditableFiles, sha256 } from "./files";
 import { readDeploymentSettings } from "./inputs";
 import { buildSourceIndex, type BuiltSourceIndex } from "./source";
 import type { CatalogEntrySource } from "./source/catalog";
+import { readDeclaredSchema, readLocalDatabases, withLocalDatabases } from "./database";
 
 /**
  * The studio's current understanding of the repository, rebuilt as a whole.
@@ -119,6 +120,8 @@ export class SnapshotBuilder {
     const fallback = settings.currentMode === "prod" ? dev : prod;
     const base = !preferred.stale && preferred.targets.length > 0 ? preferred : fallback;
     const built = base.stale && this.latest ? this.latest.built : buildSourceIndex(this.repositoryRoot, base);
+    const schema = readDeclaredSchema(this.repositoryRoot);
+    const localDatabase = readLocalDatabases(this.repositoryRoot);
     // A disposable studio projection, never a configuration input. Replace atomically.
     const directory = path.join(this.repositoryRoot, ".cache", "framework-studio");
     mkdirSync(directory, { recursive: true });
@@ -130,16 +133,18 @@ export class SnapshotBuilder {
       rmSync(temporary, { force: true });
     }
     this.generation += 1;
-    const content = sha256(JSON.stringify({ files, settings }));
+    const content = sha256(JSON.stringify({ files, settings, schema: schema.hash, localDatabase }));
     const snapshot: Snapshot = {
+      schema,
+      databaseProblems: localDatabase.problems,
       revision: `${this.generation}-${content.slice(0, 12)}`,
       generatedAt: new Date().toISOString(),
       currentMode: settings.currentMode,
       webSocketApi: settings.webSocketApi,
       repositoryRoot: this.repositoryRoot,
       models: {
-        dev: dev.stale ? dev : withClassMembers(dev, built.catalog, built.index.cdkLinks.edges),
-        prod: prod.stale ? prod : withClassMembers(prod, built.catalog, built.index.cdkLinks.edges),
+        dev: withLocalDatabases(dev.stale ? dev : withClassMembers(dev, built.catalog, built.index.cdkLinks.edges), localDatabase.services),
+        prod: withLocalDatabases(prod.stale ? prod : withClassMembers(prod, built.catalog, built.index.cdkLinks.edges), localDatabase.services),
       },
       source: built.index,
       files,

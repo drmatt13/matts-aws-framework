@@ -1,7 +1,9 @@
 import type { ModeModel, ModelEdge, ModelResource, ModelRoute, ModelTarget, Relation, SourceLocation, TargetRole } from "../shared/model";
+import type { LocalDatabase } from "../shared/database";
 
 /** Lookups over one mode's model, built once per snapshot. */
 export interface ModelIndex {
+  readonly localServices: ReadonlyMap<string, LocalDatabase>;
   readonly targets: ReadonlyMap<string, ModelTarget>;
   readonly routes: ReadonlyMap<string, ModelRoute>;
   readonly resources: ReadonlyMap<string, ModelResource>;
@@ -21,6 +23,7 @@ export function indexModel(model: ModeModel): ModelIndex {
     if (edge.to !== edge.from) add(edge.to, edge);
   }
   return {
+    localServices: new Map((model.localServices ?? []).map((service) => [service.id, service])),
     targets: new Map(model.targets.map((target) => [target.ref, target])),
     routes: new Map(model.routes.map((route) => [route.id, route])),
     resources: new Map(model.resources.map((resource) => [resource.id, resource])),
@@ -99,6 +102,8 @@ export const RELATION_LABEL: Readonly<Record<Relation, string>> = {
 
 /** The name a person reads for any entity id. */
 export function titleOf(index: ModelIndex, id: string): string {
+  const localService = index.localServices.get(id);
+  if (localService) return localService.title;
   const target = index.targets.get(id);
   if (target) return target.title;
   const route = index.routes.get(id);

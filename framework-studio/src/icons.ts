@@ -19,6 +19,7 @@ export const ICONS = {
   bus: ["aws/eventbridge", "Amazon EventBridge"],
   userpool: ["aws/cognito", "Amazon Cognito"],
   database: ["aws/rds", "Amazon RDS"],
+  postgres: ["generic/database", "Local PostgreSQL"],
   secret: ["aws/secrets-manager", "AWS Secrets Manager"],
   group: ["generic/folder-tree", "Resource group"],
   input: ["generic/sliders-horizontal", "Configuration input"],

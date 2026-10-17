@@ -16,6 +16,7 @@ import { Board } from "./views/Board";
 import { Isometric } from "./views/Isometric";
 import { Lanes } from "./views/Lanes";
 import { Shell } from "./views/Shell";
+import { Database } from "./views/Database";
 import "./styles.css";
 
 interface Search {
@@ -51,7 +52,8 @@ const rootRoute = createRootRoute({
 const boardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: Board });
 const lanesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/lanes", component: Lanes });
 const isometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/isometric", component: Isometric });
-const router = createRouter({ routeTree: rootRoute.addChildren([boardRoute, lanesRoute, isometricRoute]) });
+const databaseRoute = createRoute({ getParentRoute: () => rootRoute, path: "/database", component: Database });
+const router = createRouter({ routeTree: rootRoute.addChildren([boardRoute, lanesRoute, isometricRoute, databaseRoute]) });
 
 declare module "@tanstack/react-router" {
   interface Register {

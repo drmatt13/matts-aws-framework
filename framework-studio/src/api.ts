@@ -8,6 +8,8 @@ import type {
   SnapshotEvent,
   SnapshotResponse,
 } from "../shared/api";
+import type { ResourceDetails, ResourceIntent, ResourcePlan, ResourceApply } from "../shared/resources";
+import type { Mode } from "../shared/model";
 
 /**
  * The studio's server, from the page's side.
@@ -27,9 +29,11 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(path: string, body?: unknown): Promise<T> {
+async function call<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method: body === undefined ? "GET" : "POST",
+    cache: "no-store",
+    signal,
     headers: { "x-studio-token": token, ...(body === undefined ? {} : { "content-type": "application/json" }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
@@ -39,6 +43,11 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export const api = {
+  resourceDetails: (id: string, mode: Mode, signal?: AbortSignal) => call<ResourceDetails>(`/resources/details?id=${encodeURIComponent(id)}&mode=${mode}`, undefined, signal),
+  resourcePlan: (intent: ResourceIntent, revision: string, mode: Mode) => call<ResourcePlan>("/resources/plan", { intent, revision, mode }),
+  resourceApply: (planId: string) => call<ResourceApply>("/resources/apply", { planId }),
+  resourceHistory: (direction: "undo" | "redo") => call<ResourceApply>(`/resources/${direction}`, {}),
+  planRoute: (route: string, value: string, revision: string) => call<PlanResponse>("/routes/plan", { route, value, revision }),
   refreshCdkLinks: () => call<{ edges: number; files: number }>("/cdk-links/refresh", {}),
   plan: (intent: EditIntent, revision: string) => call<PlanResponse>("/edits/plan", { intent, revision }),
   apply: (planId: string) => call<ApplyResponse>("/edits/apply", { planId }),

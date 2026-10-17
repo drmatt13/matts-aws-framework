@@ -5,18 +5,19 @@ import type { Snapshot } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
 import { atlasPixels, CELL, SPRITE, spriteOrigin, spritePixels } from "../src/scene/atlas";
 import { buildScene, MATERIALS, type Scene } from "../src/scene/build";
-import { fitBounds, pan, screenToWorld, wheelFactor, worldToScreen, zoomAt, MAX_ZOOM, MIN_ZOOM, type Camera } from "../src/scene/camera";
+import { fitBounds, pan, resizeCamera, screenToWorld, wheelFactor, worldToScreen, zoomAt, MAX_ZOOM, MIN_ZOOM, type Camera } from "../src/scene/camera";
 import { project, unprojectAt } from "../src/scene/iso";
 import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickTile, tilePolygons } from "../src/scene/picking";
 import { buildShape, type ShapeKind } from "../src/scene/shapes";
 import { backgroundGrid } from "../src/scene/grid";
+import { islandFrame } from "../src/scene/frame";
 import { ICONS } from "../src/icons";
 import { catalogAvailability } from "../src/deployment";
 import { existsSync } from "node:fs";
 
 /**
  * The landscape is a view, and these hold it to that: every entity of the real
- * repository stands in it exactly once under its own id, it stands still when
+ * repository stands in it under its own id (stack fields use their parent), it stands still when
  * the graph changes mode, what it shows of each entity is what the model says,
  * and the camera and picker put the pointer where the eye does.
  */
@@ -40,9 +41,9 @@ after(() => builder.dispose());
 // The scene, from the real repository
 // ---------------------------------------------------------------------------
 
-test("every route, target and catalog entry stands exactly once, under its own id", () => {
+test("every route, target and top-level catalog entry stands exactly once, with stack fields in the inspector", () => {
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
-    const expected = [...model.routes.map((route) => route.id), ...model.targets.map((target) => target.ref), ...model.resources.map((resource) => resource.id)].sort();
+    const expected = [...model.routes.map((route) => route.id), ...model.targets.map((target) => target.ref), ...model.resources.filter((resource) => resource.kind !== "member").map((resource) => resource.id), ...(model.localServices ?? []).map((service) => service.id)].sort();
     assert.deepEqual(scene.nodes.map((node) => node.id).sort(), expected);
     const cells = new Set(scene.nodes.map((node) => `${node.gx},${node.gy}`));
     assert.equal(cells.size, scene.nodes.length, "two buildings share a cell");
@@ -52,7 +53,7 @@ test("every route, target and catalog entry stands exactly once, under its own i
 test("every edge is the model's own, with its relation", () => {
   assert.deepEqual(
     dev.edges.map((edge) => edge.edge.id).sort(),
-    snapshot.models.dev.edges.filter((edge) => edge.from !== edge.to).map((edge) => edge.id).sort(),
+    snapshot.models.dev.edges.filter((edge) => (dev.representatives[edge.from] ?? edge.from) !== (dev.representatives[edge.to] ?? edge.to)).map((edge) => edge.id).sort(),
   );
 });
 
@@ -132,13 +133,13 @@ test("what a building shows of an entity follows the model's lanes and absence",
   assert.equal(node(dev, "lambda:ws-disconnect-route").badge, snapshot.webSocketApi ? undefined : "dev", "WebSocket availability accounts for whether its AWS API is enabled");
   assert.equal(node(dev, "service:example-service").badge, "dev");
   assert.equal(node(dev, "task:db-migrate").badge, "prod");
-  assert.equal(node(dev, "resource:rds.database").badge, "prod");
-  assert.equal(node(dev, "resource:workflowFixtures.fixtureTable").badge, "dev");
-  assert.equal(node(dev, "resource:referenceExamples.documentsBucket").badge, undefined);
+  assert.equal(node(dev, "resource:rds").badge, "prod");
+  assert.equal(node(dev, "resource:workflowFixtures").badge, "dev");
+  assert.equal(node(dev, "resource:referenceExamples").badge, undefined);
   // The catalog says what each graph holds.
-  assert.equal(node(dev, "resource:rds.database").presence, "absent");
-  assert.equal(node(prod, "resource:rds.database").presence, "present");
-  assert.equal(node(prod, "resource:workflowFixtures.fixtureTable").presence, "absent");
+  assert.equal(node(dev, "resource:rds").presence, "absent");
+  assert.equal(node(prod, "resource:rds").presence, "present");
+  assert.equal(node(prod, "resource:workflowFixtures").presence, "absent");
   // The route follows its target.
   assert.equal(node(dev, "route:http:/graphql").presence, node(dev, "lambda:graphql-api").presence);
 });
@@ -163,29 +164,33 @@ test("compute stands where it runs, and the VPC is a blueprint where it is not b
   // The terraces step down from public to isolated, so each step's wall faces the viewer.
   const heights = vpc(dev).bands.map((band) => band.h);
   assert.deepEqual([...heights].sort((a, b) => b - a), heights);
-  assert.equal(dev.islands.find((island) => island.id === "island:resource:rds")!.ghost, "absent");
+  assert.equal(dev.islands.find((island) => island.id === "island:stacks")!.ghost, undefined, "present stacks keep their shared island solid");
 });
 
-test("WebSocket terrain ghosts only when every route is disabled in the selected environment", () => {
-  const source = snapshot.models.prod;
-  const routeTargets = new Set(source.routes.filter((route) => route.kind === "webSocket").map((route) => route.target));
-  assert.ok(routeTargets.size > 1, "exercise a mix of enabled and disabled routes");
-  const firstTarget = [...routeTargets][0];
-  for (const availability of ["development", "off", "mixed", "both"] as const) {
-    const targets = source.targets.map((target) => routeTargets.has(target.ref)
-      ? { ...target, lanes: { ...target.lanes, local: availability !== "off", dev: false, prod: availability === "both" || (availability === "mixed" && target.ref === firstTarget) } }
-      : target);
-    for (const mode of ["dev", "prod"] as const) {
-      const scene = buildScene({ ...source, mode, targets });
-      const island = scene.islands.find((island) => island.id === "island:websocket-api")!;
-      const disabled = availability === "off" || (mode === "prod" && availability === "development");
-      assert.equal(island.ghost, disabled ? "disabled" : undefined, `${availability} in ${mode}`);
-      if (disabled) {
-        const terrain = new Set(scene.tiles.filter((tile) => tile.island === island.id).map((tile) => `${tile.gx},${tile.gy}`));
-        assert.ok(scene.decorations.every((decoration) => !terrain.has(`${decoration.gx},${decoration.gy}`)), "disabled terrain has no scenery");
-      }
+test("each VPC foundation encloses every terrace and stays fixed across environments", () => {
+  const island = prod.islands.find((island) => island.region === "network")!;
+  const frame = islandFrame(island);
+  assert.deepEqual(frame, islandFrame(dev.islands.find((candidate) => candidate.id === island.id)!));
+  for (const tile of prod.tiles.filter((tile) => tile.island === island.id)) {
+    for (const dx of [-0.5, 0.5]) for (const dy of [-0.5, 0.5]) {
+      const point = project({ x: tile.gx + dx, y: tile.gy + dy, h: island.base });
+      assert.ok(insidePolygon(point.x, point.y, frame.top), "the foundation must enclose every subnet's base");
     }
   }
+  assert.ok(frame.bounds.minX >= prod.bounds.minX && frame.bounds.maxX <= prod.bounds.maxX);
+  assert.ok(frame.bounds.minY >= prod.bounds.minY && frame.bounds.maxY <= prod.bounds.maxY);
+  const second = islandFrame({ ...island, id: "island:another-vpc", gx0: island.gx0 + 50, gx1: island.gx1 + 50 });
+  assert.ok(second.bounds.minX > frame.bounds.maxX, "another network island gets its own boundary");
+});
+
+test("the shared API layer stays solid with active HTTP routes when its WebSocket routes are disabled", () => {
+  const source = snapshot.models.prod;
+  const routeTargets = new Set(source.routes.filter((route) => route.kind === "webSocket").map((route) => route.target));
+  const targets = source.targets.map((target) => routeTargets.has(target.ref)
+    ? { ...target, lanes: { ...target.lanes, local: false, dev: false, prod: false } } : target);
+  const scene = buildScene({ ...source, targets });
+  assert.equal(scene.islands.find((island) => island.id === "island:apis")!.ghost, undefined);
+  assert.ok(scene.nodes.filter((node) => source.routes.some((route) => route.kind === "webSocket" && route.id === node.id)).every((node) => node.presence === "nowhere"));
 });
 
 test("ghosting applies to every island with only disabled nodes", () => {
@@ -197,7 +202,7 @@ test("ghosting applies to every island with only disabled nodes", () => {
     if (island.region === "catalog" || island.region === "network" || nodes.length === 0) continue;
     assert.equal(island.ghost, "disabled", island.id);
   }
-  assert.equal(scene.islands.find((island) => island.id === "island:resource:rds")!.ghost, undefined, "present resources keep their terrain");
+  assert.equal(scene.islands.find((island) => island.id === "island:stacks")!.ghost, undefined, "present resources keep their terrain");
 });
 
 test("walls show only where the ground falls away", () => {
@@ -225,6 +230,30 @@ test("painter's order: tiles and buildings by diagonal row, back to front", () =
 test("unprojecting at a tile's height returns the tile", () => {
   for (const point of [{ x: 3, y: 1, h: 4 }, { x: -2.5, y: 7, h: 1 }, { x: 0, y: 0, h: 0 }]) {
     assert.deepEqual(unprojectAt(project(point), point.h), point);
+  }
+});
+
+test("inspector and window resizes preserve screen positions without cumulative camera drift", () => {
+  const wide = { width: 1600, height: 950 };
+  const points = [{ x: -317, y: 143 }, { x: 900, y: 600 }];
+  for (const zoom of [MIN_ZOOM, 0.43, 1, MAX_ZOOM]) {
+    const initial = { x: 1350, y: 937, zoom };
+    let camera = initial;
+    let viewport = wide;
+    const positions = points.map((point) => worldToScreen(initial, wide, point));
+    for (let repetition = 0; repetition < 100; repetition += 1) {
+      for (const next of [{ width: 1200, height: 950 }, { width: 760, height: 520 }, wide]) {
+        camera = resizeCamera(camera, viewport, next);
+        viewport = next;
+        points.forEach((point, index) => {
+          const at = worldToScreen(camera, viewport, point);
+          assert.ok(Math.abs(at.x - positions[index]!.x) < 1e-7);
+          assert.ok(Math.abs(at.y - positions[index]!.y) < 1e-7);
+        });
+      }
+    }
+    assert.equal(camera.zoom, zoom);
+    assert.ok(Math.abs(camera.x - initial.x) < 1e-7 && Math.abs(camera.y - initial.y) < 1e-7);
   }
 });
 
@@ -411,5 +440,73 @@ test("every building's silhouette contains everything it paints, and rises from 
         assert.ok(insidePolygon(point.x, point.y, shape.hull) || edge < 1e-6, `${kind} paints outside its silhouette`);
       }
     }
+  }
+});
+
+test("stack fields stay in the model and use their stack as the visible edge endpoint", () => {
+  const member = "resource:cognito.userPool";
+  const stack = "resource:cognito";
+  assert.ok(snapshot.models.dev.resources.some((resource) => resource.id === member));
+  assert.ok(!dev.nodes.some((node) => node.id === member));
+  assert.equal(dev.representatives[member], stack);
+  assert.equal(dev.nodes.find((node) => node.id === stack)?.label, "CognitoStack");
+  assert.equal(dev.islands.find((island) => island.id === "island:stacks")?.title, "Stacks");
+  const bindings = dev.edges.filter((edge) => edge.edge.to === member);
+  assert.ok(bindings.length > 0);
+  for (const edge of bindings) assert.equal(edge.to, stack);
+  const ids = new Set(dev.nodes.map((node) => node.id));
+  for (const edge of dev.edges) {
+    assert.ok(ids.has(edge.from) && ids.has(edge.to));
+    assert.notEqual(edge.from, edge.to);
+  }
+});
+
+test("catalog stacks share one island while keeping their own availability and inspector identities", () => {
+  for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
+    const stacks = model.resources.filter((resource) => resource.kind === "stack");
+    assert.ok(stacks.length > 1);
+    const island = scene.islands.find((island) => island.id === "island:stacks")!;
+    assert.equal(island.title, "Stacks");
+    assert.deepEqual(scene.nodes.filter((node) => node.island === island.id).map((node) => node.id).sort(), stacks.map((stack) => stack.id).sort());
+    assert.ok(!scene.islands.some((island) => island.id.startsWith("island:resource:")));
+    for (const stack of stacks) {
+      const node = scene.nodes.find((node) => node.id === stack.id)!;
+      assert.equal(node.presence, stack.absent ? "absent" : "present");
+      assert.equal(node.label, stack.stackClass ?? stack.path.join("."));
+    }
+  }
+});
+
+test("all VPC gateways and endpoints ghost with the unbuilt network and stay in the same positions", () => {
+  const network = snapshot.models.prod.network!;
+  assert.ok(network);
+  for (const builtInProd of [true, false]) {
+    const source = { ...snapshot.models.prod, network: { ...network, builtInProd, natGateway: true, egressOnlyInternetGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "logs"] } };
+    const development = buildScene({ ...source, mode: "dev" });
+    const production = buildScene({ ...source, mode: "prod" });
+    assert.equal(development.props.length, 7, "internet, egress-only, NAT and four endpoint plaques");
+    assert.ok(development.props.every((prop) => prop.presence === "other"));
+    assert.ok(production.props.every((prop) => prop.presence === (builtInProd ? "built" : "other")));
+    const positions = (scene: Scene) => scene.props.map((prop) => [prop.id, prop.gx, prop.gy, prop.h]);
+    assert.deepEqual(positions(development), positions(production));
+  }
+});
+
+test("HTTP, WebSocket and event Lambdas share one layer, while HTTP, WebSocket and agent APIs share another", () => {
+  for (const target of snapshot.models.dev.targets.filter((target) => target.kind === "lambda" && target.role !== "tool")) {
+    const node = dev.nodes.find((node) => node.id === target.ref)!;
+    assert.equal(node.island, target.placement.kind === "vpc" ? "island:vpc" : "island:lambda", target.ref);
+  }
+  const apis = dev.nodes.filter((node) => node.entity === "route");
+  assert.equal(apis.length, snapshot.models.dev.routes.length);
+  assert.ok(apis.every((node) => node.island === "island:apis"));
+  assert.equal(dev.islands.find((island) => island.id === "island:lambda")?.title, "Lambda functions");
+  for (const id of ["island:lambda", "island:apis"]) assert.equal(dev.islands.find((island) => island.id === id)?.bands.length, 1);
+});
+
+test("only the VPC has a boundary; API and Lambda panels have no group frame", () => {
+  for (const scene of [dev, prod]) {
+    assert.deepEqual(scene.frames.map((frame) => frame.kind), ["network"]);
+    assert.deepEqual(scene.frames[0]!.members, ["island:vpc"]);
   }
 });

@@ -5,12 +5,15 @@
  * evaluates a config. Every value here was projected by the server from the
  * framework's own normalization, and nothing here is a second declaration of
  * anything — identities are the framework's (`lambda:sign-in`, catalog paths),
- * and source-derived CDK relationships carry their evidence separately.
+ * and source-derived CDK relationships carry their evidence separately. Local
+ * services use Compose identities; the declared schema is read from authored PSL.
  *
  * Sanitized by construction: resource *references* appear (a catalog path and
  * an attribute), resource *values* never do. Literal environment strings appear
  * because they are already written in the repository's source.
  */
+
+import type { DeclaredSchema, LocalDatabase } from "./database";
 
 export type Mode = "dev" | "prod";
 export type DeploySetting = "both" | "cloud-only" | "local-only" | "none";
@@ -115,8 +118,11 @@ export interface NetworkModel {
 export type Compute =
   | {
       readonly kind: "lambda";
+      readonly implementation: "typescript" | "python" | "container";
       readonly packaging: "zip" | "container";
       readonly runtime?: string;
+      readonly handler?: string;
+      readonly bundling?: { readonly minify: boolean; readonly sourceMap: boolean };
       readonly architecture: string;
       readonly memorySize: number;
       readonly timeoutSeconds: number;
@@ -177,6 +183,7 @@ export interface ModelTarget {
   readonly secrets: readonly { readonly name: string; readonly resource: string; readonly display: string }[];
   readonly access: readonly { readonly actions: readonly string[]; readonly resources: readonly string[] }[];
   readonly requirements: number;
+  readonly requirementRules?: readonly import("./resources").RequirementRule[];
   readonly outputs: readonly string[];
 }
 
@@ -321,6 +328,7 @@ export interface Diagnostic {
 // ---------------------------------------------------------------------------
 
 export interface ModeModel {
+  readonly localServices?: readonly LocalDatabase[];
   readonly mode: Mode;
   readonly status: "ok" | "error";
   /**
@@ -370,7 +378,7 @@ export interface EntitySource {
 }
 
 export type FieldDomain =
-  | { readonly kind: "enum"; readonly values: readonly string[] }
+  | { readonly kind: "enum"; readonly values: readonly (string | number | boolean)[] }
   | { readonly kind: "number"; readonly min: number; readonly max: number; readonly unit: string };
 
 /**
@@ -387,13 +395,13 @@ export interface FieldFact {
   readonly path: readonly string[];
   readonly domain: FieldDomain;
   /** The value the framework resolved, after defaults. */
-  readonly effective: string | number;
+  readonly effective: string | number | boolean;
   /** Where the effective value came from, in words. */
   readonly provenance: string;
   /** The value the evaluated declaration holds at `path`, before defaults; undefined when absent. */
   readonly authored?: string | number | boolean | null;
   /** What removing the property would resolve to, when removal is offered. */
-  readonly inherited?: { readonly value: string | number; readonly from: string };
+  readonly inherited?: { readonly value: string | number | boolean; readonly from: string };
   /** Why the field is shown but cannot be changed by the studio. */
   readonly blocked?: string;
 }
@@ -424,6 +432,8 @@ export interface CdkLinkIndex {
 }
 
 export interface Snapshot {
+  readonly schema: DeclaredSchema;
+  readonly databaseProblems: readonly string[];
   /** Changes whenever any watched file or input changes. */
   readonly revision: string;
   readonly generatedAt: string;

@@ -78,6 +78,25 @@ test("a nested field goes into the object that already holds its siblings", () =
   assert.deepEqual(created.inverse, { origin: 'tasks["db-migrate"]', path: ["cloud"], remove: true });
 });
 
+test("Lambda architecture, packaging and typed build options produce ordinary source edits", () => {
+  const architecture = planned(plan({ target: "lambda:graphql-api", field: "lambda.architecture", value: "x86_64" }));
+  assert.match(architecture.after, /architecture: "x86_64"/);
+  assert.deepEqual(architecture.forward.path, ["architecture"]);
+  const packaging = planned(plan({ target: "lambda:python-example", field: "lambda.packaging", value: "zip" }));
+  assert.equal(packaging.after, packaging.before.replace('packaging: "container"', 'packaging: "zip"'));
+  const retention = planned(plan({ target: "lambda:graphql-api", field: "lambda.logRetentionDays", value: 14 }));
+  assert.match(retention.after, /logRetentionDays: 14/);
+  assert.equal(retention.forward.value, 14);
+  const minify = planned(plan({ target: "lambda:graphql-api", field: "lambda.bundling.minify", value: false }));
+  assert.match(minify.after, /minify: false/);
+  assert.match(minify.after, /sourceMap: false/);
+  assert.deepEqual(minify.inverse, { origin: 'http["/graphql"]', path: ["bundling", "minify"], remove: true });
+  assert.equal(minify.forward.value, false);
+  for (const [field, value] of [["lambda.architecture", "amd64"], ["lambda.logRetentionDays", "14"], ["lambda.logRetentionDays", 2], ["lambda.bundling.minify", "false"]] as const) {
+    assert.ok("refused" in plan({ target: "lambda:graphql-api", field, value }), `${field} rejects ${JSON.stringify(value)}`);
+  }
+});
+
 test("a workflow's fields are its options object", () => {
   const edit = planned(plan({ target: "workflow:capability-child", field: "deploy", value: "both" }));
   assert.equal(edit.relativeFile, "framework-config/workflows/capabilities.ts");

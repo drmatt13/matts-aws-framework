@@ -35,6 +35,7 @@ class Evaluator {
     repositoryRoot: string,
     webSocketApi: boolean,
     log: (line: string) => void,
+    overrides: Readonly<Record<string, string>> = {},
   ) {
     this.model = new Promise<ModeModel>((resolve) => {
       const started = Date.now();
@@ -51,6 +52,7 @@ class Evaluator {
         stdio: ["ignore", "pipe", "pipe", "ipc"],
       });
       this.child = child;
+      child.send({ type: "load", overrides });
       const relay = (chunk: Buffer) => {
         for (const line of chunk.toString("utf8").split(/\r?\n/)) if (line.trim()) log(`[${mode}] ${line}`);
       };
@@ -128,11 +130,11 @@ export class EvaluatorPool {
     private readonly log: (line: string) => void = () => {},
   ) {}
 
-  async evaluate(webSocketApi: boolean): Promise<Evaluation> {
+  async evaluate(webSocketApi: boolean, overrides: Readonly<Record<string, string>> = {}): Promise<Evaluation> {
     void this.dispose();
     const pair = {
-      dev: new Evaluator("dev", this.repositoryRoot, webSocketApi, this.log),
-      prod: new Evaluator("prod", this.repositoryRoot, webSocketApi, this.log),
+      dev: new Evaluator("dev", this.repositoryRoot, webSocketApi, this.log, overrides),
+      prod: new Evaluator("prod", this.repositoryRoot, webSocketApi, this.log, overrides),
     };
     this.current = pair;
     const [dev, prod] = await Promise.all([pair.dev.model, pair.prod.model]);

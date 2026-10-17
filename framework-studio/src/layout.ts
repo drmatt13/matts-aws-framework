@@ -14,7 +14,7 @@ import { RELATION_CATEGORY, ROLE_GROUPS, type EdgeCategory } from "./lookup";
  * beside the average height of what reads them.
  */
 
-export type NodeShape = "route" | "target" | "stack" | "member" | "resource";
+export type NodeShape = "route" | "target" | "stack" | "member" | "resource" | "local";
 
 export interface BoardNode {
   readonly id: string;
@@ -50,7 +50,7 @@ const TOP = 44;
 const GROUP_TITLE = 22;
 const GROUP_GAP = 22;
 const GAP = 8;
-const HEIGHT: Readonly<Record<NodeShape, number>> = { route: 30, target: 48, stack: 30, member: 30, resource: 30 };
+const HEIGHT: Readonly<Record<NodeShape, number>> = { route: 30, target: 48, stack: 30, member: 30, resource: 30, local: 48 };
 
 function mean(values: readonly number[]): number {
   return values.length === 0 ? Number.POSITIVE_INFINITY : values.reduce((sum, value) => sum + value, 0) / values.length;
@@ -131,6 +131,12 @@ export function layoutBoard(model: ModeModel): BoardLayout {
     } else {
       y = place(resource.id, "resource", 2, y);
     }
+  }
+  if (model.localServices?.length) {
+    y += GROUP_GAP;
+    titles.push({ text: "Local development", x: COLUMNS[2].x, y, kind: "group" });
+    y += GROUP_TITLE;
+    for (const service of model.localServices) y = place(service.id, "local", 2, y);
   }
   const catalogHeight = y;
 

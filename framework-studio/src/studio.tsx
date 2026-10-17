@@ -30,6 +30,7 @@ export interface StudioContextValue {
   readonly toasts: readonly Toast[];
   readonly plan: PlanResponse | undefined;
   readonly preview: (intent: EditIntent) => Promise<void>;
+  readonly previewRoute: (id: string, path: string) => Promise<void>;
   readonly closePreview: () => void;
 }
 
@@ -81,6 +82,11 @@ export function StudioProvider(props: {
     [snapshot.revision, toast],
   );
 
+  const previewRoute = useCallback(async (id: string, path: string) => {
+    try { setPlan(await api.planRoute(id, path, snapshot.revision)); }
+    catch (error) { toast(error instanceof Error ? error.message : String(error), "refuse"); }
+  }, [snapshot.revision, toast]);
+
   const model = snapshot.models[mode];
   const index = useMemo(() => indexModel(model), [model]);
   const value: StudioContextValue = {
@@ -97,6 +103,7 @@ export function StudioProvider(props: {
     toasts,
     plan,
     preview,
+    previewRoute,
     closePreview: () => setPlan(undefined),
   };
   return <StudioContext.Provider value={value}>{props.children}</StudioContext.Provider>;

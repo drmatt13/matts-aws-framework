@@ -21,6 +21,7 @@ npm run studio -- --print # the whole model as JSON, then exit
 | Board | `/` | Every route, workload and catalog entry in three columns, with typed relationship curves |
 | Lanes | `/lanes` | Two tracks: Development and Production, with the execution location inside each environment |
 | Isometric | `/isometric` | The same application as a lit, navigable landscape: gateways, compute, the VPC's subnet terraces, catalog stacks |
+| Database | `/database` | Read-only tables and foreign-key relationships from the authored Prisma contract, shared by local PostgreSQL and RDS |
 | Inspector | beside any view | One entity: source location, resolved settings and where they come from, relationships, and the editable fields |
 
 A Development/Production switch picks which deployment graph the views describe. Health
@@ -44,6 +45,7 @@ separate deployment states.
 | [Report](report.md) | You want to know what exists, why it was built this way, and what was verified |
 | [Architecture](architecture.md) | You are changing the server, the model, source editing, or the browser's data flow |
 | [Isometric view](isometric-view.md) | You are changing the landscape: layout, terrain, buildings, camera, picking or rendering |
+| [Lambda invocation design](lambda-invocations-design.md) | You are adding Lambda type conversion, resource-specific event triggers or function creation |
 | [Moving forward](moving-forward.md) | You are about to extend the studio: invariants, recipes, gotchas, known limits, the roadmap |
 
 The code lives in [framework-studio/](../../framework-studio/README.md). Its README is

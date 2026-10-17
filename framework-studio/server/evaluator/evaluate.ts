@@ -1,4 +1,6 @@
 import path from "node:path";
+import Module from "node:module";
+import ts from "typescript";
 import { performance } from "node:perf_hooks";
 import type { FrameworkConfig } from "@repo/framework/config";
 import type { Mode } from "../../shared/model";
@@ -44,15 +46,31 @@ function frameworkFrom(loaded: Record<string, unknown>): FrameworkConfig {
 
 const started = performance.now();
 let config: FrameworkConfig | undefined;
-try {
-  // `require`, as tsx gives this CommonJS module, so the config and this
-  // process share one instance of @repo/framework/config.
-  const loaded = require(path.join(repositoryRoot, "framework.config.ts")) as Record<string, unknown>;
-  config = frameworkFrom(loaded);
-  send({ type: "model", model: projectModel(config, { mode, webSocketApi }, Math.round(performance.now() - started)) });
-} catch (error) {
-  send({ type: "model", model: failedModel(mode, error, Math.round(performance.now() - started)) });
-}
+// Source previews travel over IPC and never touch authored files or module caches in
+// the live evaluators. tsx ultimately uses _compile for these CommonJS config modules.
+process.once("message", (message: { type?: string; overrides?: Record<string, string> }) => {
+  if (message.type !== "load") throw new Error("Expected evaluator initialization.");
+  const overrides = message.overrides ?? {};
+  const prototype = Module.prototype as unknown as { _compile: (code: string, filename: string) => unknown };
+  const compile = prototype._compile;
+  prototype._compile = function (code: string, filename: string) {
+    const replacement = overrides[path.resolve(filename)];
+    return compile.call(this, replacement === undefined ? code : ts.transpileModule(replacement, {
+      fileName: filename,
+      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+    }).outputText, filename);
+  };
+  try {
+    // `require`, as tsx gives this CommonJS module, so the config and this
+    // process share one instance of @repo/framework/config.
+    const loaded = require(path.join(repositoryRoot, "framework.config.ts")) as Record<string, unknown>;
+    config = frameworkFrom(loaded);
+    send({ type: "model", model: projectModel(config, { mode, webSocketApi }, Math.round(performance.now() - started)) });
+  } catch (error) {
+    send({ type: "model", model: failedModel(mode, error, Math.round(performance.now() - started)) });
+  }
+
+});
 
 process.on("message", (message: { readonly type?: string; readonly id?: number; readonly request?: PreflightRequest }) => {
   if (message?.type !== "preflight" || typeof message.id !== "number" || !message.request) return;

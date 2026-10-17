@@ -6,6 +6,7 @@ import { defineFrameworkConfig, defineNetwork, runsTask, type FrameworkConfig } 
 import type { Snapshot } from "../shared/model";
 import { projectModel } from "../server/model/project";
 import { SnapshotBuilder, type StudioState } from "../server/snapshot";
+import { fieldEditability, SourceFiles } from "../server/source";
 
 /**
  * The model is the framework's answers, reshaped. These tests hold it to the
@@ -41,7 +42,8 @@ test("relationships are the framework's, with their own relation", () => {
   assert.ok(has("runsTask", "lambda:test-run-task", "task:invocation-test-task"));
   assert.ok(has("step", "workflow:invocation-test-workflow", "lambda:invocation-test-step"));
   assert.ok(has("usesTool", "agent:example-agent", "lambda:add-numbers"));
-  assert.ok(has("database", "lambda:graphql-api", "resource:rds.database"));
+  assert.ok(has("database", "lambda:graphql-api", "local:postgres"));
+  assert.ok(snapshot.models.prod.edges.some((edge) => edge.relation === "database" && edge.from === "lambda:graphql-api" && edge.to === "resource:rds.database"));
   assert.ok(has("grant", "lambda:mfa", "resource:cognito.userPool"));
   assert.ok(has("integration", "workflow:capability-check", "resource:workflowFixtures.fixtureTable"));
   const userPool = edges.find((edge) => edge.from === "lambda:graphql-api" && edge.label === "USER_POOL_ID");
@@ -120,6 +122,65 @@ test("an editable literal is one the evaluated config agrees with", () => {
   assert.deepEqual(editability["lambda:graphql-api"]?.deploy, { kind: "absent" });
   assert.deepEqual(editability["workflow:capability-check"]?.deploy, { kind: "literal", text: '"local-only"' });
   assert.equal(editability["lambda:add-numbers"]?.deploy, undefined, "a tool's lane is derived, never edited");
+});
+
+test("Lambda build details and editable fields distinguish TypeScript bundles from Dockerfile images", () => {
+  const model = snapshot.models.dev;
+  const node = model.targets.find((target) => target.ref === "lambda:graphql-api")!;
+  assert.equal(node.compute.kind, "lambda");
+  if (node.compute.kind !== "lambda") return;
+  assert.equal(node.compute.implementation, "typescript");
+  assert.equal(node.compute.runtime, "nodejs24");
+  assert.equal(node.compute.handler, "lambdaHandler");
+  assert.deepEqual(node.compute.bundling, { minify: true, sourceMap: false });
+  const architecture = model.fields[node.ref]!.find((fact) => fact.field === "lambda.architecture")!;
+  assert.equal(architecture.effective, "arm64");
+  assert.equal(architecture.provenance, "defaults.lambda.architecture");
+  const container = model.targets.find((target) => target.ref === "lambda:python-example")!;
+  assert.equal(container.compute.kind === "lambda" && container.compute.implementation, "container");
+  assert.ok(container.compute.kind === "lambda" && container.compute.runtime === undefined && container.compute.handler === undefined);
+  assert.ok(model.fields[container.ref]!.some((fact) => fact.field === "lambda.architecture"));
+  assert.ok(!model.fields[container.ref]!.some((fact) => fact.field === "lambda.runtime" || fact.field.startsWith("lambda.bundling.")));
+});
+
+test("Cognito event Lambda build settings are editable and an outdated registry has a distinct diagnostic", () => {
+  const ref = "lambda:cognito-pre-signup-trigger";
+  for (const field of ["lambda.architecture", "lambda.packaging", "lambda.runtime", "lambda.bundling.minify", "lambda.bundling.sourceMap", "lambda.logRetentionDays"]) {
+    assert.deepEqual(snapshot.source.editability[ref]?.[field], { kind: "absent" }, field);
+  }
+  assert.equal(snapshot.source.entities[ref]?.key.file, "framework-config/events/cognito.ts");
+  assert.ok(state.built.located);
+  const fact = snapshot.models.dev.fields[ref]![0]!;
+  const result = fieldEditability(new SourceFiles(), state.built.located, 'events["cognito-pre-signup-trigger"]', { ...fact, field: "lambda.unloadedSetting" });
+  assert.equal(result.kind, "unsupported");
+  if (result.kind === "unsupported") assert.match(result.reason, /Restart Studio/);
+});
+
+test("Lambda settings inherit section defaults and Python has no Node bundling controls", () => {
+  const config = defineFrameworkConfig({
+    defaults: {
+      lambda: { runtime: "nodejs24", packaging: "zip", architecture: "arm64", memorySize: 128, timeoutSeconds: 10, bundling: { minify: true } },
+      http: { architecture: "x86_64", runtime: "nodejs22", logRetentionDays: 14, bundling: { minify: false } },
+    },
+    http: {
+      "/node": { directory: "/lambda_functions/http_functions/node", methods: ["POST"], bundling: { sourceMap: false } },
+      "/python": { directory: "/lambda_functions/http_functions/python", methods: ["POST"], runtime: "python3.13", handler: "app.handle" },
+    },
+    webSocket: {}, events: {}, services: {}, tasks: {},
+  }) as unknown as FrameworkConfig;
+  const model = projectModel(config, { mode: "dev", webSocketApi: false });
+  const facts = model.fields["lambda:node"]!;
+  assert.equal(facts.find((fact) => fact.field === "lambda.architecture")?.provenance, "defaults.http.architecture");
+  assert.equal(facts.find((fact) => fact.field === "lambda.runtime")?.effective, "nodejs22");
+  assert.equal(facts.find((fact) => fact.field === "lambda.logRetentionDays")?.effective, 14);
+  assert.equal(facts.find((fact) => fact.field === "lambda.bundling.minify")?.effective, false);
+  const sourceMap = facts.find((fact) => fact.field === "lambda.bundling.sourceMap")!;
+  assert.equal(sourceMap.effective, false);
+  assert.deepEqual(sourceMap.inherited, { value: true, from: "the framework's default" });
+  const python = model.targets.find((target) => target.ref === "lambda:python")!;
+  assert.equal(python.compute.kind === "lambda" && python.compute.implementation, "python");
+  assert.equal(python.compute.kind === "lambda" && python.compute.handler, "app.handle");
+  assert.ok(!model.fields[python.ref]!.some((fact) => fact.field.startsWith("lambda.bundling.")));
 });
 
 test("the projection follows the framework's rules on a config of its own", () => {
