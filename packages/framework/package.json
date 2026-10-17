@@ -6,6 +6,7 @@
   "exports": {
     "./config": "./src/config/index.ts",
     "./config/source": "./src/config/source.ts",
+    "./deploy": "./src/deploy/index.ts",
     "./runtime/invocation": "./src/runtime/invocation.ts",
     "./runtime/agentcore": "./src/runtime/agentcore.ts",
     "./runtime/tools": "./src/runtime/tools.ts",
