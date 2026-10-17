@@ -56,7 +56,7 @@ Framework behavior comes from the framework's own answers. CDK links are separat
   `packages/framework/scripts/config-source.ts`, the same reader `framework:check` uses.
 - **Stack members.** These are read from each `resource.stack<T>()` class.
 - **Link sites.** These are `linkResources` calls found in `cdk-app/lib`.
-- **CDK resource links.** The studio parses linked stack constructors for direct public-member references, SNS SQS subscriptions and EventBridge rules. These edges have their own filter, source locations and inference label. No CDK code is executed by this scan.
+- **CDK resource links.** The studio parses linked stack constructors for direct public-member references, SNS SQS subscriptions and EventBridge rules. These edges have their own category, source locations and inference label. No CDK code is executed by this scan.
 
 Each graph is evaluated in its own child process, with a synthetic inputs file holding
 only `PROD_DEPLOYMENT`. The studio reads exactly two keys from `cdk-app/.env`:
@@ -70,6 +70,11 @@ The backdrop is a thin isometric grid anchored to the terrain's world coordinate
 Entities use locally bundled official AWS SVG service icons on small plinths, with Lucide
 SVGs for generic framework concepts. Board and Inspector share the icon mapping.
 See [icon sources](public/icons/README.md).
+
+Search at the top of the map highlights matching names, services, paths, input keys,
+stack fields and network fixtures, fading nonmatches. Clicking a node or island temporarily
+shows its normal selection view; clearing the selection restores the retained search.
+Clearing the query restores the overview. The isometric map uses one graphite style.
 
 The view follows the model:
 
@@ -92,7 +97,7 @@ The regions mean something:
 | --- | --- |
 | Entry islands | One shared APIs layer for HTTP, WebSocket and agent routes |
 | Compute | One shared layer for HTTP, WebSocket and event Lambdas outside the VPC; AgentCore agents and their tools; Step Functions workflows |
-| The VPC | A terraced mesa, stepping down from the public subnet to the private and isolated ones. Each workload stands on the terrace its production placement names |
+| The VPC | Level public, private and isolated subnet terraces. Each workload stands on the terrace its production placement names |
 | Local development | Compose PostgreSQL, outside the AWS VPC; the same declared application schema as RDS |
 | Catalog | One shared Stacks island with a node per stack class and public fields in the inspector; a separate island for individually selectable inputs and secrets |
 
@@ -128,10 +133,10 @@ claim a production deployment where no API exists, or hide its AWS-backed Develo
 | Double-click | Fly to a building |
 | Arrow keys, `+` / `-`, `0`, `F`, Escape | Pan, zoom, fit, focus the selection, clear it |
 
-Edges are the model's typed relationships, in the Board's six categories, and can be
-filtered. Hovering an edge, a building, a gateway or the ground explains it. Packets move
-only along the selection's edges, and the Pause button or reduced-motion stops them. A
-still picture draws no frames.
+Edges are the model's typed relationships, in the Board's six categories. All categories
+remain visible in the isometric map. Hovering an edge, a building, a gateway or the ground
+explains it. Packets move only along the selection's edges, and the Pause button or
+reduced-motion stops them. A still picture draws no frames.
 
 **Refresh CDK links** re-reads the source and updates the ignored internal index at
 `.cache/framework-studio/cdk-links.json`. Startup and watched CDK changes also rebuild it.
@@ -242,7 +247,7 @@ separately, as Framework describes.
 | `server/edits/` | Field registry, text splices, planning, transactions |
 | `server/evaluator/` | The per-graph child processes |
 | `src/` | The views, shared inspector draft, navigation guards and combined review |
-| `src/scene/` | The isometric view: projection, layout, building shapes, the generated block atlas, camera, picking, the canvas renderer |
+| `src/scene/` | The isometric view: projection, layout, icon shapes, slabs, search/focus, camera, picking, the canvas renderer |
 | `shared/` | The types both halves share |
 
 Tests (`npm --workspace framework-studio test`) run against the real configuration in

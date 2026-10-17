@@ -1,7 +1,7 @@
-import { Crosshair, Maximize2, Minus, Pause, Play, Plus, RefreshCw, Sparkles } from "lucide-react";
+import { Crosshair, Maximize2, Minus, Pause, Play, Plus, RefreshCw, Search, X } from "lucide-react";
 import { api } from "../api";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { CATEGORY_LABEL, RELATION_LABEL, titleOf, type EdgeCategory } from "../lookup";
+import { RELATION_LABEL, titleOf } from "../lookup";
 import { buildScene, type Scene, type SceneNode } from "../scene/build";
 import { islandDrawOrder, islandSlabs } from "../scene/slabs";
 import {
@@ -19,9 +19,9 @@ import {
   type Point,
   type Viewport,
 } from "../scene/camera";
-import { arcControl, arcPoints, distanceToPolyline, insidePolygon, pickEntity, pickTile, type CardHit } from "../scene/picking";
-import { LOOK_STORAGE_KEY, type Look } from "../scene/look";
-import { CATEGORY_COLORS, SceneRenderer } from "../scene/render";
+import { arcControl, arcPoints, distanceToPolyline, insidePolygon, pickEntity, pickIsland, type CardHit } from "../scene/picking";
+import { landscapeFocus, searchOpacity, searchScene } from "../scene/focus";
+import { SceneRenderer } from "../scene/render";
 import { catalogAvailability, deploymentSummary } from "../deployment";
 import { DeploymentLegend } from "./DeploymentBadge";
 import { useStudio } from "../studio";
@@ -34,8 +34,6 @@ import { useStudio } from "../studio";
  * inspector beside the canvas is the same one, with the same edits. Moving the
  * camera changes nothing on disk.
  */
-
-const CATEGORIES = Object.keys(CATEGORY_LABEL) as EdgeCategory[];
 
 /** Where the camera was, so leaving the view and coming back keeps your place. */
 let rememberedCamera: Camera | undefined;
@@ -57,23 +55,6 @@ interface Tween {
 
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-/** The look this browser last chose, if storage is readable; graphite otherwise. */
-function storedLook(): Look {
-  try {
-    return window.localStorage.getItem(LOOK_STORAGE_KEY) === "classic" ? "classic" : "graphite";
-  } catch {
-    return "graphite";
-  }
-}
-
-function storeLook(look: Look): void {
-  try {
-    window.localStorage.setItem(LOOK_STORAGE_KEY, look);
-  } catch {
-    // A private window or blocked storage: the choice lasts as long as the page.
-  }
-}
-
 function laneText(node: SceneNode): string | undefined {
   if (!node.lanes) return undefined;
   return deploymentSummary(node.lanes);
@@ -94,9 +75,8 @@ export function Isometric() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SceneRenderer | undefined>(undefined);
-  const [categories, setCategories] = useState<ReadonlySet<EdgeCategory>>(() => new Set(CATEGORIES));
   const [motion, setMotion] = useState(() => !reducedMotion());
-  const [look, setLook] = useState<Look>(storedLook);
+  const [query, setQuery] = useState("");
   const [hover, setHover] = useState<Hover | undefined>();
   const [stats, setStats] = useState({ ms: 0 });
 
@@ -107,6 +87,8 @@ export function Isometric() {
   const resourceAvailability = useMemo(() => catalogAvailability(snapshot.models), [snapshot.models]);
   const scene = useMemo(() => buildScene(model, { webSocketApi: snapshot.webSocketApi, conditions, resourceAvailability }), [model, snapshot.webSocketApi, conditions, resourceAvailability]);
   const visibleSelected = selected ? scene.representatives[selected] ?? selected : undefined;
+  const matches = useMemo(() => searchScene(scene, model, query), [scene, model, query]);
+  const focusState = useMemo(() => landscapeFocus(scene, visibleSelected, matches), [scene, visibleSelected, matches]);
   const nodes = useMemo(() => new Map(scene.nodes.map((node) => [node.id, node])), [scene]);
   const slabs = useMemo(() => islandDrawOrder(islandSlabs(scene)), [scene]);
   const arcs = useMemo(
@@ -128,9 +110,8 @@ export function Isometric() {
     hovered: undefined as string | undefined,
     hoveredEdge: undefined as string | undefined,
     hoveredIsland: undefined as string | undefined,
-    categories,
     motion,
-    look,
+    focus: focusState,
     tween: undefined as Tween | undefined,
     cards: [] as readonly CardHit[],
     frame: undefined as number | undefined,
@@ -141,9 +122,8 @@ export function Isometric() {
   });
   live.current.scene = scene;
   live.current.selected = visibleSelected;
-  live.current.categories = categories;
   live.current.motion = motion;
-  live.current.look = look;
+  live.current.focus = focusState;
 
   const draw = useCallback(() => {
     const state = live.current;
@@ -166,10 +146,9 @@ export function Isometric() {
       ...(state.hovered ? { hovered: state.hovered } : {}),
       ...(state.hoveredEdge ? { hoveredEdge: state.hoveredEdge } : {}),
       ...(state.hoveredIsland ? { hoveredIsland: state.hoveredIsland } : {}),
-      categories: state.categories,
       time: now / 1000,
       motion: state.motion,
-      look: state.look,
+      focus: state.focus,
     });
     state.cards = result.cards;
     state.frames += 1;
@@ -272,7 +251,7 @@ export function Isometric() {
     };
   }, [schedule, resize]);
 
-  useEffect(schedule, [schedule, scene, selected, categories, motion, look]);
+  useEffect(schedule, [schedule, scene, selected, motion, focusState]);
 
   // Opening/closing the inspector changes CSS layout during this commit. Resize and paint
   // now, rather than leaving a stretched frame until the observer's next animation callback.
@@ -294,22 +273,14 @@ export function Isometric() {
       for (let position = scene.props.length - 1; position >= 0; position -= 1) {
         if (insidePolygon(world.x, world.y, scene.props[position]!.geometry.hull)) return { kind: "prop", id: scene.props[position]!.id, ...screen };
       }
-      if (state.look === "graphite") {
-        for (const slab of [...slabs].reverse()) {
-          const band = [...slab.bands].reverse().find((band) => [band.top, ...band.walls.map((wall) => wall.quad)].some((polygon) => insidePolygon(world.x, world.y, polygon)));
-          if (band) return { kind: "island", id: slab.island.id, band: band.id, ...screen };
-        }
-      } else {
-        const tile = pickTile(world, scene.tiles);
-        if (tile) return { kind: "island", id: tile.island, ...(tile.band ? { band: tile.band } : {}), ...screen };
-      }
+      const island = pickIsland(world, slabs);
+      if (island) return { kind: "island", ...island, ...screen };
       for (const frame of scene.frames) {
         if ([frame.geometry.top, frame.geometry.left, frame.geometry.right].some((polygon) => insidePolygon(world.x, world.y, polygon))) return { kind: "island", id: frame.members[0]!, ...screen };
       }
       const tolerance = 6 / state.camera.zoom;
       let best: { id: string; distance: number } | undefined;
       for (const arc of arcs) {
-        if (!state.categories.has(arc.edge.category)) continue;
         const distance = distanceToPolyline(world, arc.points);
         if (distance < tolerance && (!best || distance < best.distance)) best = { id: arc.edge.edge.id, distance };
       }
@@ -488,7 +459,13 @@ export function Isometric() {
         drawn: rendererRef.current?.drawnItems,
         lastFrameMs: live.current.samples.at(-1),
         frames: live.current.frames,
-        look: live.current.look,
+        focus: live.current.focus.kind,
+      }),
+      search: () => ({
+        active: live.current.focus.kind === "search",
+        nodes: [...live.current.focus.nodes],
+        props: [...live.current.focus.props],
+        opacityOf: (id: string) => searchOpacity(live.current.focus, "nodes", id),
       }),
     };
     (window as unknown as { __studioLandscape?: typeof debug }).__studioLandscape = debug;
@@ -520,25 +497,17 @@ export function Isometric() {
         style={{ cursor: gesture.current?.dragging ? "grabbing" : hover?.kind === "node" || hover?.kind === "island" ? "pointer" : "grab" }}
       />
       <div className="landscape-bar landscape-top">
-        <div className="landscape-chips" role="group" aria-label="Relations shown">
-          {CATEGORIES.map((category) => (
-            <button
-              key={category}
-              className="landscape-chip"
-              aria-pressed={categories.has(category)}
-              style={{ "--swatch": CATEGORY_COLORS[category] } as React.CSSProperties}
-              onClick={() =>
-                setCategories((current) => {
-                  const next = new Set(current);
-                  if (next.has(category)) next.delete(category);
-                  else next.add(category);
-                  return next;
-                })
-              }
-            >
-              {CATEGORY_LABEL[category]}
-            </button>
-          ))}
+        <div className="landscape-search-panel">
+          <div className="landscape-search">
+            <Search size={16} aria-hidden />
+            <input type="search" aria-label="Search isometric map" placeholder="Search the map…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              if (selected) select(undefined); else setQuery("");
+              event.preventDefault();
+            }} />
+            {query ? <button className="icon-button" aria-label="Clear map search" onClick={() => setQuery("")}><X size={14} aria-hidden /></button> : null}
+          </div>
+          {matches ? <span className="landscape-search-status" role="status">{matches.nodes.size + matches.props.size} {matches.nodes.size + matches.props.size === 1 ? "match" : "matches"}{selected ? " · Search resumes when selection clears" : ""}</span> : null}
         </div>
         <span className="spacer" />
         <div className="landscape-tools">
@@ -556,19 +525,6 @@ export function Isometric() {
           </button>
           <button onClick={() => focus(visibleSelected)} disabled={!selected} aria-label="Focus the selection" title="Focus the selection (F)">
             <Crosshair size={16} aria-hidden />
-          </button>
-          <button
-            onClick={() => setLook((current) => {
-              const next = current === "graphite" ? "classic" : "graphite";
-              storeLook(next);
-              return next;
-            })}
-            className="look-toggle"
-            aria-pressed={look === "graphite"}
-            aria-label="Graphite look"
-            title={look === "graphite" ? "Graphite look: on. Switch to the classic look" : "Graphite look: off. Switch from the classic look"}
-          >
-            <Sparkles size={16} aria-hidden />
           </button>
           <button onClick={() => setMotion((current) => !current)} aria-pressed={!motion} aria-label={motion ? "Pause motion" : "Resume motion"} title={motion ? "Pause motion" : "Resume motion"}>
             {motion ? <Pause size={16} aria-hidden /> : <Play size={16} aria-hidden />}

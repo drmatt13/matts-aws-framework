@@ -45,11 +45,9 @@ export function islandFrame(island: Island): IslandFrame {
   };
 }
 
-export const FRAME_COLORS = { network: "#71c5b6" } as const;
-
 export interface SceneFrame {
   readonly id: string;
-  readonly kind: keyof typeof FRAME_COLORS;
+  readonly kind: "network";
   readonly members: readonly string[];
   readonly ghost: boolean;
   readonly geometry: IslandFrame;

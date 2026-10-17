@@ -1,4 +1,4 @@
-import { ELEVATION_STEP, project } from "./iso";
+import type { IslandSlab } from "./slabs";
 import type { Point } from "./camera";
 
 /** Boundary segments of joined surface faces; shared tile edges are internal. */
@@ -24,9 +24,8 @@ export function surfaceOutline(polygons: readonly (readonly number[])[]): readon
  *
  * Everything is tested in the order it is painted, from the front: label
  * cards first (they are drawn over everything), then buildings by their
- * silhouettes, then terrain tiles by their top faces and front walls at their
- * own heights — never by a ground-plane inverse, which would pick the tile
- * behind a raised one.
+ * silhouettes, then painted slabs by their top faces and front walls — never
+ * by a ground-plane inverse, which would pick the ground behind raised terrain.
  */
 
 /** Even-odd point-in-polygon over a flat [x, y, ...] list. */
@@ -176,41 +175,14 @@ export function pickEntity(
   return undefined;
 }
 
-export interface TileShape {
-  readonly gx: number;
-  readonly gy: number;
-  readonly h: number;
-  readonly wallLeft?: number;
-  readonly wallRight?: number;
-}
-
-/** A tile's top face and the front walls it shows, as world polygons. */
-export function tilePolygons(tile: TileShape): number[][] {
-  const centre = project({ x: tile.gx, y: tile.gy, h: tile.h });
-  const north = [centre.x, centre.y - 16];
-  const east = [centre.x + 32, centre.y];
-  const south = [centre.x, centre.y + 16];
-  const west = [centre.x - 32, centre.y];
-  const polygons = [[...north, ...east, ...south, ...west]];
-  if (tile.wallLeft !== undefined) {
-    const drop = (tile.h - tile.wallLeft) * ELEVATION_STEP;
-    polygons.push([...west, ...south, south[0]!, south[1]! + drop, west[0]!, west[1]! + drop]);
-  }
-  if (tile.wallRight !== undefined) {
-    const drop = (tile.h - tile.wallRight) * ELEVATION_STEP;
-    polygons.push([...south, ...east, east[0]!, east[1]! + drop, south[0]!, south[1]! + drop]);
-  }
-  return polygons;
-}
-
-/** The frontmost tile whose top or visible walls contain a world point. Tiles in painter's order. */
-export function pickTile<T extends TileShape>(world: Point, tiles: readonly T[]): T | undefined {
-  for (let index = tiles.length - 1; index >= 0; index -= 1) {
-    const tile = tiles[index]!;
-    const centre = project({ x: tile.gx, y: tile.gy, h: tile.h });
-    // Cheap rejection: nothing of a tile lies outside its column.
-    if (Math.abs(world.x - centre.x) > 32 || world.y < centre.y - 16) continue;
-    if (tilePolygons(tile).some((polygon) => insidePolygon(world.x, world.y, polygon))) return tile;
+/** The frontmost painted slab face under a world point, using the actual island geometry. */
+export function pickIsland(world: Point, slabs: readonly IslandSlab[]): { id: string; band: string } | undefined {
+  for (let index = slabs.length - 1; index >= 0; index -= 1) {
+    const slab = slabs[index]!;
+    for (let at = slab.bands.length - 1; at >= 0; at -= 1) {
+      const band = slab.bands[at]!;
+      if ([band.top, ...band.walls.map((wall) => wall.quad)].some((polygon) => insidePolygon(world.x, world.y, polygon))) return { id: slab.island.id, band: band.id };
+    }
   }
   return undefined;
 }

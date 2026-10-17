@@ -26,14 +26,14 @@ The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) a
 | Module | Pure | Responsibility |
 | --- | --- | --- |
 | `iso.ts` | yes | Projection, its inverse at a height, painter's depth, tile corners |
-| `build.ts` | yes | Model → `Scene`: islands, tiles with walls, buildings, gateways and endpoints, scenery, edges, bounds |
-| `shapes.ts` | yes | Building geometry as lit polygons, with a convex silhouette |
-| `slabs.ts` | yes | Graphite look: each island as chamfered slabs per terrace, front walls with gradients, trim polylines, pads, cast shadows, island painter's order |
-| `look.ts` | yes | The two looks, graphite colour tokens, trim colour per island, icon tint per icon |
-| `atlas.ts` | yes | Classic look: procedural 32 × 32 block sprites and the edge-extruded atlas, as RGBA pixels |
+| `build.ts` | yes | Model → `Scene`: islands, footprint tiles, buildings, gateways and endpoints, edges, bounds |
+| `shapes.ts` | yes | Icon plinth and plaque geometry, with a picking silhouette |
+| `slabs.ts` | yes | Each island as chamfered slabs per terrace, front walls with gradients, trim polylines, pads, cast shadows, island painter's order |
+| `look.ts` | yes | Graphite colour tokens, trim colour per island, icon tint per icon |
+| `focus.ts` | yes | Metadata search, selection precedence and shared focus/opacity state |
 | `frame.ts` | yes | VPC foundation and frame colour |
 | `camera.ts` | yes | World↔screen transforms, pan, pointer-anchored zoom, wheel normalization, fit, tween |
-| `picking.ts` | yes | Point-in-polygon, entity picking, height-aware tile picking, arc geometry, card placement |
+| `picking.ts` | yes | Point-in-polygon, entity picking, painted-slab picking, arc geometry, card placement |
 | `render.ts` | no (canvas) | `SceneRenderer`: caches per scene, draws per frame |
 | `grid.ts` | yes | Viewport-bounded, world-anchored ground grid with zoom-dependent spacing |
 | `../icons.ts` | yes | Shared mapping from model entities to local AWS/Lucide SVG assets |
@@ -77,11 +77,11 @@ world.y = (gx + gy) * 16 - h * 16
 | Shared lower row, fourth | Stacks | All `resource.stack<T>()` entries together, one node per class; public fields expand in the inspector | 2 |
 
 The subnets stand level, left to right from public to isolated. Exposure reads in colour
-rather than height: in the graphite look, public is green, private blue and isolated
+rather than height: public is green, private blue and isolated
 purple.
 
 Each network island has a shallow isometric foundation beneath all its terraces, with
-a perimeter and inset border: teal in the classic look, VPC violet in the graphite one. It groups the subnets as one VPC. Geometry comes
+a perimeter and inset border in VPC violet. It groups the subnets as one VPC. Geometry comes
 from each island's own footprint, ready for separate boundaries if multiple VPC islands
 are introduced. The foundation is dashed and faded with a blueprint VPC. It participates
 in camera bounds without adding an entity or moving workloads.
@@ -122,9 +122,8 @@ subnet terraces inside the VPC foundation.
   and the graphite outline agree. The cut never reaches a building, a fixture or a terrace
   name. On screen the outline is an octagon: the front corner becomes a facet facing the
   viewer, and the side cuts are vertical.
-- **Walls.** A tile's two front faces drop to a lower neighbour on the same island, or to
-  the island's floor (lowest band height − 3) at the rim. Level neighbours get no internal
-  wall.
+- **Walls.** Continuous slab walls drop to the island's floor (lowest band height − 3)
+  at the rim. Level ground has no internal walls.
 - **Clear terrain.** No decorative rocks, lamps, shrubs or shards are placed on tiles.
 
 ### Presence
@@ -156,15 +155,7 @@ subnet terraces inside the VPC foundation.
   Catalog badges use absence in both snapshot models; they are never guessed from types.
   The drawing measures badge width only when one exists. Auth locks remain independent.
 
-## Terrain: two looks
-
-A toolbar toggle (the sparkle button) switches between **Graphite**, the default, and
-**Classic**. The choice is remembered per browser in `localStorage`
-(`framework-studio:isometric-look`) and falls back to Graphite when storage is unavailable.
-A look changes how things are drawn, never where they stand, what they say, or what can be
-picked.
-
-### Graphite ([slabs.ts](../../framework-studio/src/scene/slabs.ts), [look.ts](../../framework-studio/src/scene/look.ts))
+## Terrain ([slabs.ts](../../framework-studio/src/scene/slabs.ts), [look.ts](../../framework-studio/src/scene/look.ts))
 
 Each island is drawn as continuous slabs, one per band, rather than a field of tiles:
 
@@ -207,7 +198,7 @@ Each island is drawn as continuous slabs, one per band, rather than a field of t
   wall, in uppercase with letter spacing and in its trim colour, sheared to the wall's
   slope. A terraced island names each terrace on its own stretch of wall instead. A name
   is written only when it would be at least 9 px tall and fits its wall; otherwise the
-  flat title from the classic look stands in for it.
+  flat title stands in for it.
 - **Ghosts.**
   - An unbuilt VPC is a blueprint, in each subnet's own colour: a translucent top with
     hairlines, dashed outlines and walls, no glow and no cast shadow.
@@ -220,43 +211,9 @@ Each island is drawn as continuous slabs, one per band, rather than a field of t
   Of two islands that overlap on screen, the one wholly behind on the grid draws first.
   Within an island, each terrace's slab is drawn, then what stands on it.
 
-### Classic ([atlas.ts](../../framework-studio/src/scene/atlas.ts))
-
-- **Sprites** are 32 × 32 and generated in code:
-  - the top diamond occupies rows 8–24 (corners (16, 8), (32, 16), (16, 24), (0, 16));
-  - a one-step side skirt sits below it, the left face lighter than the right;
-  - each is drawn at 2× into a 64 × 64 quad, so the top covers exactly one tile and the
-    skirt one elevation step. A sprite is scaled whole, never squashed.
-- **Materials.** There are 11:
-
-  | Material | Island |
-  | --- | --- |
-  | limestone | HTTP API |
-  | basalt | WebSocket API |
-  | quartz | agent routes |
-  | circuit | Lambda |
-  | moss | public subnet |
-  | lichen | private subnet |
-  | shale | isolated subnet |
-  | copper | Workflows |
-  | plum | Agents |
-  | granite | catalog stacks |
-  | sand | inputs and secrets |
-
-  Each has three variants, chosen by a hash of the cell, and eight elevation levels with
-  brightness baked in, so higher ground is lighter. Surface grain, seams and speckles
-  blend back toward the base material at 24% contrast so icons and arcs remain prominent.
-- **The atlas** is 24 × 11 cells of 34 × 34 pixels (816 × 374). Each sprite sits inside
-  its cell with its edge pixels extruded one pixel outward, so sampling the inner 32 × 32
-  never bleeds a neighbour in. It is generated once per page load and drawn with
-  `imageSmoothingEnabled = false`, with half a pixel of overdraw to close seams that
-  scaling would open.
-- **Walls** below the skirt are polygons. A rim wall fades into the void through a cached
-  vertical gradient. A terrace step is solid.
-
 ## Buildings ([shapes.ts](../../framework-studio/src/scene/shapes.ts))
 
-In the graphite look, each building also has:
+Each building has:
 
 - a soft contact shadow;
 - an additive spill of its icon's colour on the ground (`ICON_TINT`);
@@ -267,8 +224,7 @@ In the graphite look, each building also has:
 A ghost (outside this environment) has no plinth, pad, shadow or spill: its translucent
 plaque stands on bare ground.
 
-All of it stays inside the existing plaque box, so `buildIconShape` and its picking hull
-are shared by both looks.
+All of it stays inside the plaque box, which `buildIconShape` includes in its picking hull.
 
 Entities now use `buildIconShape`: a low isometric plinth and an upright 48-unit plaque
 carrying a 40-unit SVG. Every plinth uses the same neutral gray palette, with face shading
@@ -288,7 +244,7 @@ clickable silhouette. HTTP nodes keep their plain API Gateway or Lambda icon.
 Network gateways and endpoints use the same icon plaques: AWS VPC gateway icons,
 and a VPC endpoint icon with a small service badge at its lower-right corner. The badge
 reuses the Lambda role-badge renderer and picking silhouette, including ghost/dimmed
-opacity in both looks. S3, DynamoDB and other locally mapped services use their service
+opacity. S3, DynamoDB and other locally mapped services use their service
 artwork; unmapped services use a generic box and retain their service name in the hover
 card. Every declared endpoint is shown, with no four-endpoint display limit.
 They remain hover-only furniture. Each names the subnets whose traffic it
@@ -299,35 +255,17 @@ with everything outside the spotlight unless it serves the selected building's s
 plaques do not overlap. Gateways and endpoints use translucent icons and dashed plinths
 whenever the selected graph does not build their VPC, including Development.
 
-The procedural structures below remain available for scenery and shape primitives;
-model entities and network furniture no longer use the old building glyphs.
-
-- **Primitives.** Cuboids, cylinders, pyramids, an octahedron crystal, rings, a vertical
-  hoop, masts, and glyphs painted flat on a roof. They are scaled by `TALL = 1.35` and
-  `FOOT = 1.12`, so buildings read as structures. Each face carries a part (body, accent,
-  dark, glow) and a shading (top, left, right, flat). The renderer lights each part from a
-  per-kind palette.
-- **Kinds:**
-
-  | Entity | Kind |
-  | --- | --- |
-  | Routes | `gate`; `mount` for service mounts; `pylon` for WebSocket keys; `portal` for agent routes |
-  | Workloads | `lambda` (roof glyph: λ HTTP, ⇄ WebSocket, check for an authorizer, bolt for events, plus for tools); `service` (tower); `task` (crate); `workflow` (ziggurat); `agent` (floating crystal) |
-  | Catalog | `stack` (monument); `group`; `table`; `bucket`; `queue`; `topic`; `bus`; `userpool`; `database`; `value` (a stack's string field); `secret`; `input`; `construct` |
-  | Scenery | `shrub`, `lamp`, `rock`, `shard` |
-
-  A stack member's kind comes from its declared type text (`resourceShape`).
-- **Anchors.** Every shape returns its faces in paint order, a convex silhouette (`hull`)
-  for picking, and a `top` point where arcs attach.
+Every icon shape returns its faces in paint order, a silhouette (`hull`) for picking,
+and a `top` point where arcs attach. Unused procedural buildings and sprite terrain have
+been removed; the renderer has one visual style.
 
 ## Rendering ([render.ts](../../framework-studio/src/scene/render.ts))
 
 `SceneRenderer.setScene` runs once per scene:
 
-- it merges tiles, buildings, furniture and scenery into one painter's-order list (tiles
-  of a diagonal row before what stands on it);
-- it caches every rim-wall gradient, each arc's sampled points and length, and each draw
-  item's world bounding box.
+- it builds the standing-item list, continuous slabs and their painter's order;
+- it caches slab paths and wall gradients, each arc's sampled points and length, and
+  each draw item's world bounding box.
 
 `render` runs per frame:
 
@@ -336,15 +274,16 @@ model entities and network furniture no longer use the old building glyphs.
    slightly stronger; zooming out coarsens spacing to avoid moiré. Only lines crossing
    the viewport are generated. Pan and pointer-anchored zoom keep the lattice attached
    to the world.
-2. **Underglow.** A soft light under each island: a circle under a 1 : 0.5 squash, so the
-   fade reaches its edge.
+2. **Atmosphere.** Soft screen-space blooms and a vignette, with cast shadows under
+   solid islands.
 3. **Terrain and buildings**, in the cached order. Items outside the viewport (plus a
    margin) are culled. Buildings are drawn by presence, and the selection gets a pulsing
    ring on its tile. When a selection exists, everything outside its neighbourhood is
-   dimmed.
+   dimmed. Search applies the shared focus opacity to all paint layers (see Search).
 4. **Arcs.** Quadratic curves in the air, control point
-   `(midpoint x, min(a.y, b.y) − 24 − 0.16 · length)`, coloured by the Board's five
-   categories and filterable with the same chips. Derived edges and source-inferred
+   `(midpoint x, min(a.y, b.y) − 24 − 0.16 · length)`, coloured by the Board's six
+   categories, with every category visible by default and no visibility toggles.
+   Derived edges and source-inferred
    CDK links are dashed. The sixth category, CDK resource links, is cyan; its hover card
    and Inspector expose source evidence and distinguish inference from evaluated facts.
    - **Lit arcs.** The selection's and the hovered arc's are bright, with an arrowhead.
@@ -353,13 +292,13 @@ model entities and network furniture no longer use the old building glyphs.
 5. **Label cards** in screen space, with leader lines to their roofs (see Labels).
 6. **Titles.** Flat island titles sit 10 CSS pixels outside the projected left flank,
    measured against the visible tops and walls (including a VPC's foundation), without
-   shadow or culling padding. Both looks use their own painted geometry and the text's ink
+   shadow or culling padding. Placement uses the painted geometry and the text's ink
    bounds. Collisions with islands, buildings, cards or other titles move a title along
    the same flank; if no clear position exists, it is omitted like an entity card.
    Placement is recomputed with the camera, keeping the gap fixed through zoom and pan.
    Terrace names and perspective wall names keep their existing placement.
 
-The loop draws on demand. A camera change, hover, selection or new data schedules one
+The loop draws on demand. A camera change, hover, selection, search or new data schedules one
 frame. Frames continue only while the selection animates (motion on) or the camera is
 tweening. A still picture draws nothing.
 
@@ -387,7 +326,9 @@ tweening. A still picture draws nothing.
   | Click void | Clear the selection |
   | Double-click | Select and fly to the building (empty ground: zoom in) |
   | Arrow keys, `+` / `-`, `0`, `F`, Escape | Pan, zoom, fit, focus the selection, clear it |
-| Sparkle button | Switch between the graphite and classic looks |
+  | Search field | Highlight matches and fade everything else; a selection temporarily overrides search |
+  | Search field Escape | Clear the selection first, or clear the query if nothing is selected |
+  | Clear search button | Restore the unfiltered view (or the current selection) |
 
 - **Resize** keeps the world's top-left corner fixed, so opening the inspector moves
   nothing. React layout effects resize and redraw the canvas before paint when the
@@ -406,8 +347,8 @@ The order follows what is painted on top, front first:
 1. **Label cards.** Screen rectangles from the last frame, last painted first.
 2. **Buildings.** World silhouettes, frontmost first.
 3. **Gateway and endpoint furniture.** Hover only.
-4. **Terrain.** The painted slab tops and walls in Graphite, or tile tops and walls in
-   Classic, plus the VPC foundation. Picking uses the camera inverse and each surface's
+4. **Terrain.** The painted slab tops and walls, plus the VPC foundation.
+   Picking uses the camera inverse and each surface's
    actual height. Empty terrain takes precedence over arcs so it remains clickable.
 5. **Arcs in the void.** Within 6 screen pixels of the sampled curve, hover only.
 
@@ -426,12 +367,32 @@ another icon or terrain island while dirty uses the shared unsaved-changes warni
 Islands without shared framework defaults show links to their individual entries.
 Selecting an island lights its member nodes without forcing every label card to appear.
 
+## Search ([focus.ts](../../framework-studio/src/scene/focus.ts))
+
+The search field at the top of the map matches names, service kinds, route paths,
+source directories, construct ids, input/environment key names, stack fields and network
+fixtures. It is case-insensitive; every whitespace-separated term must occur in the
+entity's metadata. Searching an island or subnet name includes its members. A matching
+stack field highlights the owning stack. Resolved input and secret values are never
+searched.
+
+Matches receive the highlighted icon treatment and prioritised label cards, even at
+overview zoom. Their containing islands remain visible. Nonmatching nodes, fixtures,
+terrain and titles draw at 8 % of their usual opacity; unrelated arcs become faint.
+No matches fades the entire map. Empty or whitespace-only input restores the overview.
+
+Faded entities remain pickable. Clicking a node or island opens the usual inspector and
+temporarily restores its normal selection spotlight, while preserving the query. Clearing
+selection by clicking the void, closing the inspector or pressing Escape restores the
+search. Existing unsaved-change guards still apply. Search changes only presentation;
+the query lives in the mounted isometric view and never writes configuration or layout.
+
 ## Labels
 
 - **Cards hang at a fixed height.** Each card sits 64 world units above its building's
   tile, so a row of cards reads as a row, and a leader line runs from the card to the roof.
 - **Size.** Cards scale with zoom between 0.8 and 1.2. Below 0.55× only emphasised cards
-  show: the selection, the hovered building, and what the selection touches. Emphasised
+  show: the selection, the hovered building, what the selection touches, and search matches. Emphasised
   cards stay at least 0.9 scale.
 - **Placement.** `acceptCards` lets the selection, then the hover, then the spotlight,
   then the rest from the front claim space. A card that would land on one already placed
@@ -439,17 +400,11 @@ Selecting an island lights its member nodes without forcing every label card to 
 
 ## Performance
 
-These were measured in headless Chrome at 1600 × 1100 on the repository's real graph: 53
-entities, 897 tiles, 69 arcs. Each figure is a single frame-time reading.
-
-| Case | Graphite | Classic |
-| --- | --- | --- |
-| Full overview | 67 slabs and buildings, about 1 ms | 954 items, about 1.4 ms |
-| A selection animating at overview | about 2.4 ms | about 4.9 ms |
-| Zoomed to 1× | about 0.8 ms | about 1.2 ms |
-| No selection, or motion paused | 0 frames | 0 frames |
-
-The readout in the bottom right shows a moving average.
+Continuous slabs and cached icon geometry avoid drawing one sprite per terrain tile.
+Slabs and standing items outside the viewport are culled. Search matches are computed
+when the scene, model or query changes, independently of camera motion. Static search
+does not run animation frames; selected-node motion and camera tweens do.
+The readout in the bottom right shows a moving average of frame time.
 
 ## Debug hook
 
@@ -462,7 +417,8 @@ The readout in the bottom right shows a moving average.
 | `hullOf(id)` | Its silhouette in screen space |
 | `cards()` | The cards as last drawn |
 | `pickAt(x, y)` | What a point would pick |
-| `stats()` | Tiles, nodes, edges, items drawn, last frame time, frame count, current look |
+| `stats()` | Tiles, nodes, edges, items drawn, last frame time, frame count, current focus kind |
+| `search()` | Whether search is currently active, focused node/fixture ids, and `opacityOf(id)` |
 
 Browser checks combine it with real mouse and keyboard input: find where something is
 drawn, then click there.
@@ -471,9 +427,8 @@ drawn, then click there.
 
 | To add | Change |
 | --- | --- |
-| A building kind | `ShapeKind` and a case in `buildShape` (`shapes.ts`); a palette entry in `BUILDINGS` (`render.ts`); the mapping in `resourceShape` or `targetItem` (`build.ts`); the kind list in the silhouette test |
-| A material | `Material` and `MATERIALS`, `SCENERY` (`build.ts`); `PALETTES` (`atlas.ts`). The atlas grows by a row |
-| A region | A spec in `islandSpecs` (`build.ts`): its column, title, caption, bands, material and height. Keep captions to what the framework states. Give its island a trim in `ISLAND_TRIM` (`look.ts`); a test holds that every island has one |
+| A building kind | Its model-to-icon mapping in `icons.ts` and scene placement in `build.ts`; all kinds share `buildIconShape` and its picking silhouette |
+| A region | A spec in `islandSpecs` (`build.ts`): its column, title, caption, bands and height. Keep captions to what the framework states. Give its island a trim in `ISLAND_TRIM` (`look.ts`); a test holds that every island has one |
 | An icon | `ICONS` (`icons.ts`) and its spill colour in `ICON_TINT` (`look.ts`), which the type requires |
 | An edge category | `RELATION_CATEGORY` and `CATEGORY_LABEL` (`src/lookup.ts`), `CATEGORY_COLORS` (`render.ts`) |
 

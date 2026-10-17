@@ -3,7 +3,7 @@ import { RELATION_CATEGORY, ROLE_LABEL, type EdgeCategory } from "../lookup";
 import { endpointServiceIcon, resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
 import { availabilityBadge, deploymentBadge, developmentLocation, environments, type Availability, type DeploymentBadgeKind } from "../deployment";
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH, project } from "./iso";
-import { buildIconShape, lambdaGlyph, type Glyph, type Shape, type ShapeKind } from "./shapes";
+import { buildIconShape, type Shape } from "./shapes";
 import type { Bounds } from "./camera";
 import { islandFrame, type SceneFrame } from "./frame";
 
@@ -20,37 +20,9 @@ import { islandFrame, type SceneFrame } from "./frame";
  * The regions mean what they say. Entry points are grouped by the gateway that
  * serves them; compute by where it runs (outside the VPC, on a subnet terrace
  * inside it, on AgentCore, or as a state machine); catalog stacks share one
- * island, separate from authored inputs and secrets. The VPC's terraces step down from public to isolated,
- * toward the catalog, and stand on their own: a subnet is a place, not a
- * permission.
+ * island, separate from authored inputs and secrets. The VPC's level terraces
+ * stand on their own: a subnet is a place, not a permission.
  */
-
-export type Material =
-  | "limestone"
-  | "basalt"
-  | "quartz"
-  | "circuit"
-  | "moss"
-  | "lichen"
-  | "shale"
-  | "copper"
-  | "plum"
-  | "granite"
-  | "sand";
-
-export const MATERIALS: readonly Material[] = [
-  "limestone",
-  "basalt",
-  "quartz",
-  "circuit",
-  "moss",
-  "lichen",
-  "shale",
-  "copper",
-  "plum",
-  "granite",
-  "sand",
-];
 
 /**
  * What the selected graph holds of an entity.
@@ -69,16 +41,8 @@ export interface Tile {
   readonly gx: number;
   readonly gy: number;
   readonly h: number;
-  readonly material: Material;
-  readonly variant: number;
   readonly island: string;
   readonly band?: string;
-  /** Where each front wall reaches down to, in elevation steps; absent when no wall shows. */
-  readonly wallLeft?: number;
-  readonly wallRight?: number;
-  /** The tile sits on the island's rim, where its wall falls into the void. */
-  readonly rimLeft: boolean;
-  readonly rimRight: boolean;
 }
 
 export interface Band {
@@ -116,8 +80,6 @@ export interface SceneNode {
   readonly roleIcon?: IconKey;
   readonly id: string;
   readonly entity: "route" | "target" | "resource" | "local";
-  readonly shape: ShapeKind;
-  readonly glyph?: Glyph;
   readonly gx: number;
   readonly gy: number;
   readonly h: number;
@@ -138,7 +100,6 @@ export interface Prop {
   readonly id: string;
   readonly icon: IconKey;
   readonly roleIcon?: IconKey;
-  readonly shape: ShapeKind;
   readonly gx: number;
   readonly gy: number;
   readonly h: number;
@@ -149,15 +110,6 @@ export interface Prop {
   readonly presence: "built" | "other";
   /** The subnet bands whose traffic it carries, so selecting a building there keeps it lit. */
   readonly serves: readonly string[];
-}
-
-/** Scenery: deterministic, meaningless, never picked. */
-export interface Decoration {
-  readonly gx: number;
-  readonly gy: number;
-  readonly h: number;
-  readonly shape: ShapeKind;
-  readonly geometry: Shape;
 }
 
 export interface SceneEdge {
@@ -178,7 +130,6 @@ export interface Scene {
   /** Every building, in painter's order. */
   readonly nodes: readonly SceneNode[];
   readonly props: readonly Prop[];
-  readonly decorations: readonly Decoration[];
   readonly edges: readonly SceneEdge[];
   readonly bounds: Bounds;
 }
@@ -235,19 +186,6 @@ export function chamfered(lx: number, ly: number, width: number, length: number)
   return left + back < cut || right + back < cut || right + front < cut || left + front < cut;
 }
 
-function hash(...parts: readonly (string | number)[]): number {
-  let value = 2166136261;
-  for (const part of parts) {
-    const text = String(part);
-    for (let index = 0; index < text.length; index += 1) {
-      value ^= text.charCodeAt(index);
-      value = Math.imul(value, 16777619);
-    }
-    value ^= 0x9e3779b9;
-  }
-  return value >>> 0;
-}
-
 // ---------------------------------------------------------------------------
 // Presence: what the selected graph holds
 // ---------------------------------------------------------------------------
@@ -269,8 +207,6 @@ interface Item {
   readonly roleIcon?: IconKey;
   readonly id: string;
   readonly entity: SceneNode["entity"];
-  readonly shape: ShapeKind;
-  readonly glyph?: Glyph;
   readonly label: string;
   readonly kindLabel: string;
   readonly presence: Presence;
@@ -283,7 +219,6 @@ interface BandSpec {
   readonly id: string;
   readonly title: string;
   readonly caption: readonly string[];
-  readonly material: Material;
   readonly h: number;
   /** Each group starts a new column. */
   readonly groups: readonly (readonly Item[])[];
@@ -314,27 +249,16 @@ function targetItem(target: ModelTarget, mode: Mode): Item {
     presenceText: text,
     lanes: target.lanes,
   };
-  switch (target.kind) {
-    case "lambda":
-      return {
-        ...base, shape: "lambda", glyph: lambdaGlyph(target.role),
-        roleIcon: target.role === "webSocket" || target.role === "webSocketAuthorizer" ? "webSocket"
-          : target.role === "event" ? "event" : target.role === "tool" ? "agent" : undefined,
-      };
-    case "service":
-      return { ...base, shape: "service" };
-    case "task":
-      return { ...base, shape: "task" };
-    case "workflow":
-      return { ...base, shape: "workflow" };
-    case "agent":
-      return { ...base, shape: "agent" };
-  }
+  if (target.kind !== "lambda") return base;
+  return {
+    ...base,
+    roleIcon: target.role === "webSocket" || target.role === "webSocketAuthorizer" ? "webSocket"
+      : target.role === "event" ? "event" : target.role === "tool" ? "agent" : undefined,
+  };
 }
 
 function routeItem(route: ModelRoute, target: ModelTarget | undefined, mode: Mode): Item {
   const presence = target ? targetPresence(target.lanes, mode) : { presence: "nowhere" as const, text: "Its target is not in this graph." };
-  const shape: ShapeKind = route.kind === "service" ? "mount" : route.kind === "webSocket" ? "pylon" : route.kind === "agent" ? "portal" : "gate";
   const kindLabel =
     route.kind === "http" ? "HTTP route" : route.kind === "service" ? "Service mount" : route.kind === "webSocket" ? "WebSocket route key" : "Agent route";
   return {
@@ -343,42 +267,12 @@ function routeItem(route: ModelRoute, target: ModelTarget | undefined, mode: Mod
     icon: routeIcon(route),
     roleIcon: route.kind === "webSocket" ? "webSocket" : route.kind === "agent" ? "agent" : undefined,
     entity: "route",
-    shape,
     label: route.kind === "webSocket" ? route.path : route.browserPath ?? route.path,
     kindLabel,
     presence: presence.presence,
     presenceText: `Follows ${target?.id ?? route.target}: ${presence.text.charAt(0).toLowerCase()}${presence.text.slice(1)}`,
     ...(route.auth ? { auth: true } : {}),
   };
-}
-
-/** The building a catalog entry is drawn as, from what its declaration says it holds. */
-export function resourceShape(resource: ModelResource): ShapeKind {
-  switch (resource.kind) {
-    case "stack":
-      return "stack";
-    case "group":
-      return "group";
-    case "secret":
-      return "secret";
-    case "input":
-      return "input";
-    case "construct":
-      return "construct";
-    case "member": {
-      const type = resource.typeText ?? "";
-      if (/UserPool/.test(type)) return "userpool";
-      if (/Table/.test(type)) return "table";
-      if (/Bucket/.test(type)) return "bucket";
-      if (/Queue/.test(type)) return "queue";
-      if (/Topic/.test(type)) return "topic";
-      if (/EventBus/.test(type)) return "bus";
-      if (/Database|Cluster/.test(type)) return "database";
-      if (/Secret/.test(type)) return "secret";
-      if (type === "string") return "value";
-      return "construct";
-    }
-  }
 }
 
 function resourceItem(resource: ModelResource, mode: Mode, availability?: Availability): Item {
@@ -401,7 +295,6 @@ function resourceItem(resource: ModelResource, mode: Mode, availability?: Availa
     badge: availability ? availabilityBadge(availability) : undefined,
     icon: resourceIcon(resource),
     entity: "resource",
-    shape: resourceShape(resource),
     label: resource.kind === "stack" ? resource.path.join(".") : name,
     kindLabel,
     presence: resource.absent ? "absent" : "present",
@@ -444,7 +337,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   const entry: IslandSpec[] = apiGroups.length ? [{
     id: "island:apis", title: "APIs", region: "entry",
     caption: ["HTTP routes, WebSocket route keys and agent browser paths. Select a route to inspect its protocol and target."],
-    bands: [{ id: "band:apis", title: "APIs", caption: [], material: "limestone", h: 2, groups: apiGroups }],
+    bands: [{ id: "band:apis", title: "APIs", caption: [], h: 2, groups: apiGroups }],
   }] : [];
 
   // Compute, by where it runs.
@@ -470,9 +363,9 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
     ...((model.localServices?.length ?? 0) > 0 ? [{
       id: "island:local", title: "Local development", region: "local" as const,
       caption: ["Support services declared in docker-compose.yml, running on your machine during development."],
-      bands: [{ id: "band:local", title: "Local development", caption: [], material: "circuit" as const, h: 2,
+      bands: [{ id: "band:local", title: "Local development", caption: [], h: 2,
         groups: [model.localServices!.map((service): Item => ({
-          id: service.id, entity: "local", icon: "postgres", shape: "database", label: service.title,
+          id: service.id, entity: "local", icon: "postgres", label: service.title,
           kindLabel: "Compose database", badge: "dev", presence: service.enabled ? "built" : "other",
           presenceText: service.enabled ? "Development database, declared in docker-compose.yml. Container status is not monitored." : "Used during development on your machine.",
         }))] }],
@@ -480,7 +373,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
     {
       id: "island:lambda", title: "Serverless compute", region: "compute",
       caption: ["HTTP, WebSocket, event and AgentCore tool functions. VPC-attached functions remain on their subnet terraces.", "A tool runs wherever the agents that list it run."],
-      bands: [{ id: "band:lambda", title: "Serverless compute", caption: [], material: "circuit", h: 3, groups: lambdaGroups.filter((group) => group.length > 0) }],
+      bands: [{ id: "band:lambda", title: "Serverless compute", caption: [], h: 3, groups: lambdaGroups.filter((group) => group.length > 0) }],
     },
     {
       id: "island:vpc",
@@ -500,26 +393,24 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
           id: "band:public",
           title: "Public subnet",
           caption: captions.public,
-          material: "moss",
           h: VPC_HEIGHT,
           groups: [vpc.public],
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
-          props: [{ id: "prop:internet-gateway", icon: "internetGateway", shape: "pylon", label: "Internet gateway", caption: ["IPv4 and IPv6 between the public subnets and the internet."], serves: ["band:public"] }],
+          props: [{ id: "prop:internet-gateway", icon: "internetGateway", label: "Internet gateway", caption: ["IPv4 and IPv6 between the public subnets and the internet."], serves: ["band:public"] }],
         },
         {
           id: "band:private",
           title: "Private subnet",
           caption: captions.private,
-          material: "lichen",
           h: VPC_HEIGHT,
           groups: [vpc.private],
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
           props: [
             ...(network?.egressOnlyInternetGateway
-              ? [{ id: "prop:egress-only-gateway", icon: "internetGateway" as const, shape: "pylon" as const, label: "Egress-only gateway", caption: ["IPv6 out of the private subnets, never in. Free."], serves: ["band:private"] }]
+              ? [{ id: "prop:egress-only-gateway", icon: "internetGateway" as const, label: "Egress-only gateway", caption: ["IPv6 out of the private subnets, never in. Free."], serves: ["band:private"] }]
               : []),
             ...(network?.natGateway
-              ? [{ id: "prop:nat-gateway", icon: "natGateway" as const, shape: "construct" as const, label: "NAT gateway", caption: [`IPv4 out of the private subnets, about $${network.monthlyCost.natGateway.toFixed(2)} a month.`], serves: ["band:private"] }]
+              ? [{ id: "prop:nat-gateway", icon: "natGateway" as const, label: "NAT gateway", caption: [`IPv4 out of the private subnets, about $${network.monthlyCost.natGateway.toFixed(2)} a month.`], serves: ["band:private"] }]
               : []),
           ],
         },
@@ -527,7 +418,6 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
           id: "band:isolated",
           title: "Isolated subnet",
           caption: captions.isolated,
-          material: "shale",
           h: VPC_HEIGHT,
           groups: [vpc.isolated],
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
@@ -535,7 +425,6 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
             id: `prop:endpoint:${endpoint}`,
             icon: "endpoint" as const,
             roleIcon: endpointServiceIcon(endpoint),
-            shape: "input" as const,
             label: `${endpoint} endpoint`,
             caption: [
               network?.gatewayEndpoints.includes(endpoint)
@@ -552,14 +441,14 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
       title: "Agents",
       region: "agents",
       caption: ["Agents on AgentCore Runtime, outside the VPC. The tool Lambdas their Gateway calls stand on Serverless compute."],
-      bands: [{ id: "band:agentcore", title: "Agents", caption: [], material: "plum", h: 3, groups: [agents] }],
+      bands: [{ id: "band:agentcore", title: "Agents", caption: [], h: 3, groups: [agents] }],
     },
     {
       id: "island:orchestration",
       title: "Workflows",
       region: "orchestration",
       caption: ["Workflow graphs: state machines in a deployment, and the same graph run by the local interpreter under Compose."],
-      bands: [{ id: "band:orchestration", title: "Workflows", caption: [], material: "copper", h: 4, groups: [workflows] }],
+      bands: [{ id: "band:orchestration", title: "Workflows", caption: [], h: 4, groups: [workflows] }],
     },
   ];
   const compute = computeIslands.filter((island) => island.id === "island:vpc" || island.bands.some((band) => band.groups.some((group) => group.length > 0)));
@@ -588,7 +477,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
       title: "Stacks",
       region: "catalog",
       caption: ["Application resource stacks. Select a stack to inspect its public fields and relationships."],
-      bands: [{ id: "band:stacks", title: "Stacks", caption: [], material: "granite", h: 2, groups: [stacks] }],
+      bands: [{ id: "band:stacks", title: "Stacks", caption: [], h: 2, groups: [stacks] }],
     });
   }
   if (loose.length > 0) {
@@ -600,7 +489,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
       title: "Inputs and secrets",
       region: "catalog",
       caption: ["Inputs and secrets authored in cdk-app/.env. Select an input to inspect its value and declaration."],
-      bands: [{ id: "band:inputs", title: "Inputs and secrets", caption: [], material: "sand", h: 1, groups: [singles, ...groups].filter((group) => group.length > 0) }],
+      bands: [{ id: "band:inputs", title: "Inputs and secrets", caption: [], h: 1, groups: [singles, ...groups].filter((group) => group.length > 0) }],
     });
   }
   return { entry, compute, catalog };
@@ -669,7 +558,6 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
   const specs = islandSpecs(model, options);
   const nodes: SceneNode[] = [];
   const props: Prop[] = [];
-  const decorations: Decoration[] = [];
   const islands: Island[] = [];
   const tiles = new Map<string, Tile>();
   const placedY = new Map<string, number>();
@@ -785,12 +673,8 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
           gx,
           gy,
           h: band.h,
-          material: band.material,
-          variant: hash(gx, gy) % 3,
           island: spec.id,
           band: band.id,
-          rimLeft: false,
-          rimRight: false,
         });
       }
     }
@@ -838,26 +722,8 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
     });
   }
 
-  // Walls: down to a lower neighbour, or to the island's floor at its rim.
-  const islandBase = new Map(islands.map((island) => [island.id, island.base]));
-  const finished: Tile[] = [];
-  for (const tile of tiles.values()) {
-    const left = tiles.get(`${tile.gx},${tile.gy + 1}`);
-    const right = tiles.get(`${tile.gx + 1},${tile.gy}`);
-    const floor = islandBase.get(tile.island)!;
-    const leftOwn = left && left.island === tile.island ? left : undefined;
-    const rightOwn = right && right.island === tile.island ? right : undefined;
-    const wallLeft = leftOwn ? (leftOwn.h < tile.h ? leftOwn.h : undefined) : floor;
-    const wallRight = rightOwn ? (rightOwn.h < tile.h ? rightOwn.h : undefined) : floor;
-    finished.push({
-      ...tile,
-      ...(wallLeft === undefined ? {} : { wallLeft }),
-      ...(wallRight === undefined ? {} : { wallRight }),
-      rimLeft: !leftOwn,
-      rimRight: !rightOwn,
-    });
-  }
-  finished.sort((a, b) => a.gx + a.gy - (b.gx + b.gy) || a.h - b.h || a.gx - b.gx);
+  // Retain the footprint lattice for bounds, counts and layout inspection.
+  const finished = [...tiles.values()].sort((a, b) => a.gx + a.gy - (b.gx + b.gy) || a.h - b.h || a.gx - b.gx);
   nodes.sort((a, b) => a.gx + a.gy - (b.gx + b.gy) || a.h - b.h || a.gx - b.gx);
 
   const ids = new Set(nodes.map((node) => node.id));
@@ -868,7 +734,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
 
   const frames: SceneFrame[] = islands.filter((island) => island.region === "network").map((island) => ({ id: `frame:${island.id}`, kind: "network", members: [island.id], ghost: !!island.ghost, geometry: islandFrame(island) }));
 
-
+  const islandBase = new Map(islands.map((island) => [island.id, island.base]));
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
@@ -903,7 +769,6 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
     islands,
     nodes,
     props,
-    decorations,
     edges,
     bounds: Number.isFinite(minX) ? { minX, minY, maxX, maxY } : { minX: -100, minY: -100, maxX: 100, maxY: 100 },
   };

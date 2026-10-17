@@ -1,19 +1,6 @@
 import type { IconKey } from "../icons";
 import type { Island, Region } from "./build";
 
-/**
- * How the landscape is dressed. "classic" is the procedural block atlas;
- * "graphite" draws each island as one lit graphite slab whose emissive trim
- * carries its region's colour. A look changes how things are drawn, never
- * where they stand or what they say.
- */
-export type Look = "classic" | "graphite";
-
-export const LOOKS: readonly Look[] = ["graphite", "classic"];
-
-/** Where the viewer's choice is remembered: a per-browser convenience, nothing more. */
-export const LOOK_STORAGE_KEY = "framework-studio:isometric-look";
-
 type Rgb = readonly [number, number, number];
 
 /**

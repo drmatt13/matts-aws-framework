@@ -621,44 +621,6 @@ a {
   align-items: flex-end;
 }
 
-.landscape-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.landscape-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(14, 19, 27, 0.78);
-  color: #aab3bf;
-  border-radius: 999px;
-  padding: 3px 11px 3px 9px;
-  font-size: var(--step--1);
-  cursor: pointer;
-  backdrop-filter: blur(6px);
-}
-
-.landscape-chip::before {
-  content: "";
-  width: 14px;
-  height: 2px;
-  border-radius: 1px;
-  background: var(--swatch);
-  opacity: 0.35;
-}
-
-.landscape-chip[aria-pressed="true"] {
-  color: #eef1f5;
-  border-color: rgba(255, 255, 255, 0.3);
-}
-
-.landscape-chip[aria-pressed="true"]::before {
-  opacity: 1;
-}
-
 .landscape-tools {
   display: inline-flex;
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -694,7 +656,13 @@ a {
 }
 
 .landscape-top { align-items: flex-start; }
-.landscape-top .landscape-chips { max-width: 66%; }
+.landscape-search-panel { display: grid; gap: 8px; min-width: 0; width: min(360px, 66%); }
+.landscape-search { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 10px; border: 1px solid rgba(255,255,255,.2); border-radius: var(--radius); background: rgba(14,19,27,.9); color: #cbd5e1; backdrop-filter: blur(6px); }
+.landscape-search:focus-within { border-color: #a7d7ff; }
+.landscape-search input { min-width: 0; width: 100%; padding: 3px 0; border: 0; outline: none; background: transparent; color: #eef1f5; font: inherit; font-size: 13px; }
+.landscape-search input::-webkit-search-cancel-button { display: none; }
+.landscape-search .icon-button { padding: 2px; color: inherit; }
+.landscape-search-status { font-size: 12px; color: #cbd5e1; text-shadow: 0 1px 4px #05070b; }
 .landscape-tools { flex-shrink: 0; }
 
 .landscape-tools button:hover:not(:disabled) {
@@ -704,10 +672,6 @@ a {
 .landscape-tools button:disabled {
   opacity: 0.35;
   cursor: default;
-}
-
-.landscape-tools .look-toggle[aria-pressed="true"] {
-  color: #ffc46b;
 }
 
 .landscape-legend {

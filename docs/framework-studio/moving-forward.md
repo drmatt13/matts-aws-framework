@@ -112,7 +112,7 @@ npm run studio -- --print                        # the snapshot as JSON, for a q
 | `plan.test.ts` | Planning against the real repository: no-op round trips, inserts, nested fields, workflow options, refusals |
 | `transaction.test.ts` | Writes on a disposable copy under `.cache/framework-studio/`: apply, refuse, conflicts, expiry, stale config, atomicity |
 | `guards.test.ts` | The Host, token and origin checks, and the write allowlist |
-| `iso.test.ts`, `landscape.test.ts` | Projection, scene layout against the real repository, presence, walls, camera, picking, card placement, atlas, silhouettes |
+| `iso.test.ts`, `landscape.test.ts`, `isometric-ui.test.ts` | Projection, scene layout against the real repository, presence, walls, camera, picking, card placement, icon silhouettes, metadata search and selection override/restore |
 
 Tests do not prove what a browser does. For a UI change, run the studio and use it:
 

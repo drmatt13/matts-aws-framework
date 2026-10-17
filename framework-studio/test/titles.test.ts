@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { Island } from "../src/scene/build";
 import { pan, worldToScreen, type Camera } from "../src/scene/camera";
 import { islandFrame } from "../src/scene/frame";
-import { placeIslandTitle, tilePolygons } from "../src/scene/picking";
+import { placeIslandTitle } from "../src/scene/picking";
 import { islandSlabs } from "../src/scene/slabs";
 
 const rectangle = (x: number, y: number, width: number, height: number) => [x, y, x + width, y, x + width, y + height, x, y + height];
@@ -35,7 +35,6 @@ test("titles keep a 10 CSS pixel gap from actual small and large outlines throug
     const frame = islandFrame(owner);
     outlines.push([...surfaces, frame.top, frame.left, frame.right]);
   }
-  outlines.push(tilePolygons({ gx: 4, gy: 3, h: 1, wallLeft: -2, wallRight: -2 }));
   for (const outline of outlines) {
     for (const zoom of [0.18, 0.45, 1, 2.5]) {
       const camera = { x: -317, y: 143, zoom };

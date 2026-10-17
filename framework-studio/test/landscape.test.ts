@@ -3,12 +3,11 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import type { Snapshot } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
-import { atlasPixels, CELL, SPRITE, spriteOrigin, spritePixels } from "../src/scene/atlas";
-import { buildScene, chamfered, chamferSize, MATERIALS, titleRoom, type Island, type Scene } from "../src/scene/build";
+import { buildScene, chamfered, chamferSize, titleRoom, type Island, type Scene } from "../src/scene/build";
 import { fitBounds, pan, resizeCamera, screenToWorld, wheelFactor, worldToScreen, zoomAt, MAX_ZOOM, MIN_ZOOM, type Camera } from "../src/scene/camera";
 import { project, unprojectAt } from "../src/scene/iso";
-import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickTile, surfaceOutline, tilePolygons } from "../src/scene/picking";
-import { buildShape, ICON_BADGE, type ShapeKind } from "../src/scene/shapes";
+import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickIsland, surfaceOutline } from "../src/scene/picking";
+import { buildIconShape, ICON_BADGE } from "../src/scene/shapes";
 import { backgroundGrid } from "../src/scene/grid";
 import { islandFrame } from "../src/scene/frame";
 import { BAND_TRIM, GRAPHITE, ICON_TINT, ISLAND_TRIM, trimColor } from "../src/scene/look";
@@ -16,6 +15,7 @@ import { behind, islandDrawOrder, islandSlabs, polygonArea, type IslandSlab } fr
 import { ICONS } from "../src/icons";
 import { catalogAvailability } from "../src/deployment";
 import { existsSync } from "node:fs";
+import { landscapeFocus, searchOpacity, searchScene, SEARCH_FADE } from "../src/scene/focus";
 
 /**
  * The landscape is a view, and these hold it to that: every entity of the real
@@ -38,6 +38,69 @@ before(async () => {
   prod = buildScene(snapshot.models.prod, { webSocketApi: snapshot.webSocketApi, resourceAvailability });
 });
 after(() => builder.dispose());
+
+test("map search matches names and multiple case-insensitive terms without changing scene geometry", () => {
+  assert.equal(searchScene(dev, snapshot.models.dev, "  "), undefined);
+  const before = JSON.stringify(dev);
+  const result = searchScene(dev, snapshot.models.dev, "  GRAPHQL  ")!;
+  assert.ok(result.nodes.has("lambda:graphql-api"));
+  assert.ok(result.nodes.has("route:http:/graphql"));
+  assert.ok(!result.nodes.has("lambda:sign-in"));
+  assert.ok(searchScene(dev, snapshot.models.dev, "HTTP graphql")!.nodes.has("lambda:graphql-api"));
+  assert.equal(searchScene(dev, snapshot.models.dev, "graphql nonexistentword")!.nodes.size, 0);
+  assert.equal(JSON.stringify(dev), before);
+});
+
+test("map search includes input environment names, stack fields and workload source identities", () => {
+  const model = snapshot.models.dev;
+  assert.ok(searchScene(dev, model, "LANGGRAPH_OPENAI_MODEL_ID")!.nodes.has("resource:langgraph.openaiModelId"));
+  const member = model.resources.find((resource) => resource.kind === "member" && /UserPool$/.test(resource.typeText ?? ""))!;
+  assert.ok(member.parent);
+  assert.ok(searchScene(dev, model, member.typeText!)!.nodes.has(member.parent));
+  assert.ok(searchScene(dev, model, "/lambda_functions/http_functions/graphql-api")!.nodes.has("lambda:graphql-api"));
+});
+
+test("island and subnet searches highlight their members, while endpoint searches include service badges", () => {
+  const matches = searchScene(dev, snapshot.models.dev, "Serverless compute")!;
+  assert.ok(matches.islands.has("island:lambda"));
+  assert.ok(dev.nodes.filter((node) => node.island === "island:lambda").every((node) => matches.nodes.has(node.id)));
+  assert.ok(!matches.islands.has("island:apis"));
+  const model = snapshot.models.prod;
+  const withEndpoints = { ...model, network: { ...model.network!, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["lambda"] } };
+  const scene = buildScene(withEndpoints);
+  const endpoint = searchScene(scene, withEndpoints, "dynamodb")!;
+  assert.ok(endpoint.props.has("prop:endpoint:dynamodb"));
+  const subnet = searchScene(scene, withEndpoints, "Private subnet")!;
+  assert.ok(scene.nodes.filter((node) => node.band === "band:private").every((node) => subnet.nodes.has(node.id)));
+});
+
+test("selection overrides search and clearing it restores the original matching view", () => {
+  const matches = searchScene(dev, snapshot.models.dev, "graphql")!;
+  const filtered = landscapeFocus(dev, undefined, matches);
+  assert.equal(filtered.kind, "search");
+  assert.equal(searchOpacity(filtered, "nodes", "lambda:graphql-api"), 1);
+  assert.equal(searchOpacity(filtered, "nodes", "lambda:sign-in"), SEARCH_FADE);
+  const selected = landscapeFocus(dev, "lambda:sign-in", matches);
+  assert.equal(selected.kind, "selection");
+  assert.ok(selected.nodes.has("lambda:sign-in"));
+  assert.equal(searchOpacity(selected, "nodes", "lambda:sign-in"), 1);
+  const restored = landscapeFocus(dev, undefined, matches);
+  assert.equal(restored.kind, "search");
+  assert.equal(restored.nodes, matches.nodes);
+  assert.equal(searchOpacity(restored, "nodes", "lambda:sign-in"), SEARCH_FADE);
+  assert.equal(landscapeFocus(dev).kind, "all");
+});
+
+test("a zero-result search fades all layers and an island selection still overrides it", () => {
+  const matches = searchScene(dev, snapshot.models.dev, "no-such-entity-987654")!;
+  const focus = landscapeFocus(dev, undefined, matches);
+  for (const node of dev.nodes) assert.equal(searchOpacity(focus, "nodes", node.id), SEARCH_FADE);
+  for (const prop of dev.props) assert.equal(searchOpacity(focus, "props", prop.id), SEARCH_FADE);
+  for (const island of dev.islands) assert.equal(searchOpacity(focus, "islands", island.id), SEARCH_FADE);
+  const selected = landscapeFocus(dev, "island:lambda", matches);
+  assert.equal(selected.kind, "selection");
+  assert.ok(dev.nodes.filter((node) => node.island === "island:lambda").every((node) => selected.nodes.has(node.id)));
+});
 
 test("island highlights omit shared tile and wall edges", () => {
   const faces = [[0, 0, 1, 0, 1, 1, 0, 1], [1, 0, 2, 0, 2, 1, 1, 1], [0, 1, 1, 1, 1, 2, 0, 2], [1, 1, 2, 1, 2, 2, 1, 2]];
@@ -323,16 +386,6 @@ test("ghosting applies to every island with only disabled nodes", () => {
   assert.equal(scene.islands.find((island) => island.id === "island:stacks")!.ghost, undefined, "present resources keep their terrain");
 });
 
-test("walls show only where the ground falls away", () => {
-  const tiles = new Map(dev.tiles.map((tile) => [`${tile.gx},${tile.gy}`, tile]));
-  for (const tile of dev.tiles) {
-    const left = tiles.get(`${tile.gx},${tile.gy + 1}`);
-    if (left && left.island === tile.island && left.h === tile.h) assert.equal(tile.wallLeft, undefined, "an internal wall between level tiles");
-    if (left && left.island === tile.island && left.h < tile.h) assert.equal(tile.wallLeft, left.h);
-    if (!left || left.island !== tile.island) assert.ok(tile.rimLeft && tile.wallLeft !== undefined && tile.wallLeft < tile.h);
-  }
-});
-
 test("painter's order: tiles and buildings by diagonal row, back to front", () => {
   for (const list of [dev.tiles, dev.nodes]) {
     for (let index = 1; index < list.length; index += 1) {
@@ -458,9 +511,9 @@ test("label cards never overlap, and the selection always keeps its card", () =>
 
 test("buildings overlapping on screen pick the one in front, by silhouette", () => {
   // Two buildings a diagonal row apart: the front one's roof covers the back one's base.
-  const back = buildShape("service", project({ x: 4, y: 4, h: 2 }).x, project({ x: 4, y: 4, h: 2 }).y);
+  const back = buildIconShape( project({ x: 4, y: 4, h: 2 }).x, project({ x: 4, y: 4, h: 2 }).y);
   const frontAnchor = project({ x: 5, y: 4, h: 4 });
-  const front = buildShape("service", frontAnchor.x, frontAnchor.y);
+  const front = buildIconShape( frontAnchor.x, frontAnchor.y);
   const both = [
     { id: "back", hull: back.hull },
     { id: "front", hull: front.hull },
@@ -478,18 +531,19 @@ test("buildings overlapping on screen pick the one in front, by silhouette", () 
   assert.equal(pickEntity(overlap, overlap, [], both), "front");
 });
 
-test("terrain is picked at its own height: a raised tile in front hides the ground behind it", () => {
-  const behind = { gx: 3, gy: 3, h: 0 };
-  const raised = { gx: 4, gy: 4, h: 3, wallLeft: 0, wallRight: 0 };
-  // A point on the raised tile's top face, which a ground-plane inverse would place behind it.
-  const onTop = project({ x: 4, y: 4, h: 3 });
-  const ground = unprojectAt(onTop, 0);
-  assert.ok(ground.x < 4 && ground.y < 4, "the ground-plane inverse lands behind the raised tile");
-  assert.equal(pickTile(onTop, [behind, raised]), raised);
-  // And on its wall.
-  const wall = tilePolygons(raised)[1]!;
+test("terrain picking uses the raised island's projected top and wall ahead of the island behind it", () => {
+  const owner = dev.islands[0]!;
+  const behind: Island = { ...owner, id: "behind", gx0: 0, gy0: 0, gx1: 4, gy1: 4, base: -2, top: 0,
+    bands: [{ ...owner.bands[0]!, gx0: 0, gx1: 4, h: 0 }] };
+  const raised: Island = { ...owner, id: "raised", gx0: 4, gy0: 4, gx1: 8, gy1: 8, base: 0, top: 3,
+    bands: [{ ...owner.bands[0]!, gx0: 4, gx1: 8, h: 3 }] };
+  const slabs = islandDrawOrder(islandSlabs({ islands: [behind, raised], nodes: [], props: [] }));
+  const onTop = project({ x: 5, y: 5, h: 3 });
+  assert.ok(unprojectAt(onTop, 0).x < 4);
+  assert.equal(pickIsland(onTop, slabs)?.id, "raised");
+  const wall = slabs.find((slab) => slab.island.id === "raised")!.bands[0]!.walls[0]!.quad;
   const onWall = { x: (wall[0]! + wall[2]! + wall[4]! + wall[6]!) / 4, y: (wall[1]! + wall[3]! + wall[5]! + wall[7]!) / 4 };
-  assert.equal(pickTile(onWall, [behind, raised]), raised);
+  assert.equal(pickIsland(onWall, slabs)?.id, "raised");
 });
 
 test("picking a real building through the camera finds the entity at the pointer", () => {
@@ -521,41 +575,17 @@ test("picking a real building through the camera finds the entity at the pointer
 // Sprites and shapes
 // ---------------------------------------------------------------------------
 
-test("a block sprite is a diamond top over a one-step skirt, scaled, never squashed", () => {
-  const sprite = spritePixels("granite", 0, 3);
-  const alpha = (x: number, y: number) => sprite[(y * SPRITE + x) * 4 + 3];
-  assert.equal(alpha(16, 16), 255, "the top's centre");
-  assert.equal(alpha(15, 8), 255, "the north corner, row 8");
-  assert.equal(alpha(0, 0), 0, "outside the block");
-  assert.equal(alpha(16, 6), 0, "above the north corner");
-  assert.equal(alpha(15, 30), 255, "the skirt, below the south corner");
-  assert.equal(alpha(31, 31), 0, "below the east corner's skirt");
-});
-
-test("the atlas extrudes each sprite's edge into its cell, so sampling never bleeds", () => {
-  const { width, pixels } = atlasPixels();
-  for (const material of [MATERIALS[0]!, MATERIALS[MATERIALS.length - 1]!]) {
-    const origin = spriteOrigin(material, 2, 5);
-    const at = (x: number, y: number) => pixels.slice((y * width + x) * 4, (y * width + x) * 4 + 4).join(",");
-    // The pixel left of the sprite repeats the sprite's own first column.
-    assert.equal(at(origin.x - 1, origin.y + 16), at(origin.x, origin.y + 16));
-    assert.equal(at(origin.x + SPRITE, origin.y + 16), at(origin.x + SPRITE - 1, origin.y + 16));
-    assert.equal((origin.x - 1) % CELL, 0);
-  }
-});
-
 test("every building's silhouette contains everything it paints, and rises from its tile", () => {
-  const kinds: ShapeKind[] = ["gate", "mount", "pylon", "portal", "lambda", "service", "task", "workflow", "agent", "stack", "group", "table", "bucket", "queue", "topic", "bus", "userpool", "database", "value", "secret", "input", "construct"];
-  for (const kind of kinds) {
-    const shape = buildShape(kind, 100, 200, "lambda");
-    assert.ok(shape.top.y < 200, kind);
+  for (const badge of [false, true]) {
+    const shape = buildIconShape(100, 200, badge);
+    assert.ok(shape.top.y < 200);
     for (const face of shape.faces) {
       for (let index = 0; index < face.points.length; index += 2) {
         const point = { x: face.points[index]!, y: face.points[index + 1]! };
         // Inside, or on the silhouette's edge.
         const outline = [...shape.hull, shape.hull[0]!, shape.hull[1]!];
         const edge = distanceToPolyline(point, Array.from({ length: outline.length / 2 }, (_, at) => ({ x: outline[at * 2]!, y: outline[at * 2 + 1]! })));
-        assert.ok(insidePolygon(point.x, point.y, shape.hull) || edge < 1e-6, `${kind} paints outside its silhouette`);
+        assert.ok(insidePolygon(point.x, point.y, shape.hull) || edge < 1e-6, `plinth paints outside its silhouette (badge: ${badge})`);
       }
     }
   }
