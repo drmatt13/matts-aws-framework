@@ -168,3 +168,62 @@ test("missing required connections paint red X markers and clicking the marker s
     assert.equal(debug().stats().focus, "selection");
   } finally { response = original; }
 });
+
+interface Pointing { screenOf(id: string): { building: { x: number; y: number }; card?: { x: number; y: number } } | undefined; pickAt(x: number, y: number): { kind: string; id: string } | undefined }
+const pointing = () => (dom.window as unknown as { __studioLandscape: Pointing }).__studioLandscape;
+
+/** Moves the pointer onto an entity's label card, where the real picker finds it. */
+async function hoverOver(id: string) {
+  await draw();
+  const at = pointing().screenOf(id);
+  assert.ok(at, `${id} stands in the landscape`);
+  const point = at.card ?? at.building;
+  assert.equal(pointing().pickAt(point.x, point.y)?.id, id, "the pointer is over the entity");
+  ui.fireEvent.pointerMove(document.querySelector("canvas")!, { pointerId: 1, clientX: point.x, clientY: point.y });
+  return ui.screen.findByRole("tooltip");
+}
+
+const tagsOf = (card: HTMLElement) => [...card.querySelectorAll(".hover-tag")].map((tag) => [tag.className, tag.textContent]);
+
+/** The visible words of a pill; the hidden text after the colon says where, for assistive technology. */
+const visibleTags = (card: HTMLElement) => [...card.querySelectorAll(".hover-tag")].map((tag) => [tag.className, tag.firstChild?.textContent]);
+
+test("hovering a node shows its authored description and a Dev and a Prod pill", async () => {
+  await mount();
+  const card = await hoverOver("lambda:sign-out");
+  const text = card.textContent ?? "";
+  assert.ok(text.includes(response.snapshot.descriptions.values["lambda:sign-out"]!), "the authored description");
+  assert.deepEqual(visibleTags(card), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
+  assert.deepEqual(tagsOf(card), [["hover-tag dev", "Dev: Your machine"], ["hover-tag prod", "Prod: AWS Lambda · outside the VPC"]]);
+  assert.ok(!text.includes("Runs in development and production."), "the generic lane line is gone");
+  assert.ok(!text.includes("Enabled in development"), "the generic presence line is gone");
+});
+
+test("an environment that does not deploy the item keeps its pill, dark", async () => {
+  await mount();
+  const devOnly = await hoverOver("lambda:ws-authorizer");
+  assert.deepEqual(visibleTags(devOnly), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
+  assert.equal(tagsOf(devOnly)[1]![1], "Prod: not deployed");
+  const prodOnly = await hoverOver("task:db-migrate");
+  assert.deepEqual(visibleTags(prodOnly), [["hover-tag off", "Dev"], ["hover-tag prod", "Prod"]]);
+});
+
+test("hovering a framework-managed resource labels it, and an undescribed node asks for a description", async () => {
+  await mount();
+  const card = await hoverOver("resource:rds");
+  assert.deepEqual(visibleTags(card), [["hover-tag off", "Dev"], ["hover-tag prod", "Prod"], ["hover-tag managed", "Framework-managed"]]);
+  const unused = await hoverOver("resource:referenceExamples");
+  assert.deepEqual(visibleTags(unused), [["hover-tag off", "Dev"], ["hover-tag off", "Prod"]], "both go dark");
+  assert.equal(unused.querySelector(".landscape-hover-note")?.textContent, "Not added to the CDK app");
+
+  const original = response;
+  const { ["lambda:sign-out"]: _removed, ...descriptions } = response.snapshot.descriptions.values;
+  response = { ...response, snapshot: { ...response.snapshot, descriptions: { values: descriptions } } };
+  try {
+    ui.cleanup(); frames.clear();
+    await mount();
+    const bare = await hoverOver("lambda:sign-out");
+    assert.ok(bare.textContent?.includes("No description yet."), "an undescribed node says so");
+    assert.equal(bare.querySelectorAll(".hover-tag").length, 2, "the deployment labels stay");
+  } finally { response = original; }
+});

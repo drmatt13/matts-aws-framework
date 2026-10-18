@@ -1,7 +1,7 @@
 import { Crosshair, LayoutGrid, Maximize2, Minus, Pause, Play, Plus, RefreshCw, Search, X } from "lucide-react";
 import { api } from "../api";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { RELATION_LABEL, titleOf } from "../lookup";
+import { RELATION_LABEL, indexModel, titleOf } from "../lookup";
 import { buildScene, type Scene, type SceneNode } from "../scene/build";
 import { islandDrawOrder, islandSlabs } from "../scene/slabs";
 import {
@@ -25,7 +25,8 @@ import { fitScene } from "../scene/fit";
 import { connectionMidpoint } from "../scene/routing";
 import { landscapeFocus, searchOpacity, searchScene } from "../scene/focus";
 import { SceneRenderer } from "../scene/render";
-import { catalogAvailability, deploymentSummary } from "../deployment";
+import { nodeHoverFacts, propHoverFacts, type HoverFacts } from "../scene/hover";
+import { catalogAvailability } from "../deployment";
 import { AddMenu } from "./AddMenu";
 import { useStudio } from "../studio";
 
@@ -58,10 +59,9 @@ interface Tween {
 
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-function laneText(node: SceneNode): string | undefined {
-  if (!node.lanes) return undefined;
-  return deploymentSummary(node.lanes);
-}
+const HOVER_HINT = "Click to inspect, double-click to fly to it.";
+const ENVIRONMENTS = [["dev", "Dev"], ["prod", "Prod"]] as const;
+const NO_DESCRIPTION = "No description yet. Select it to write one.";
 
 export function Isometric() {
   const { model, index, snapshot, selected, select, toast, live: studioLive } = useStudio();
@@ -589,13 +589,23 @@ function HoverCard(props: {
   readonly viewport: Viewport;
 }) {
   const { hover: current, index } = props;
+  const { draft, snapshot } = useStudio();
+  // Both environments, so the label reads the same whichever the map is showing.
+  const indexes = useMemo(() => ({ dev: indexModel(snapshot.models.dev), prod: indexModel(snapshot.models.prod) }), [snapshot.models]);
   let title: string;
+  let subtitle: string | undefined;
   let lines: (string | undefined)[] = [];
+  let facts: HoverFacts | undefined;
+  let description = "";
   if (current.kind === "node") {
     const node = props.nodes.get(current.id);
     if (!node) return null;
     title = node.label;
-    lines = [node.kindLabel, node.presenceText, laneText(node), "Click to inspect, double-click to fly to it."];
+    facts = nodeHoverFacts(node, indexes);
+    // The draft's value, so an unsaved edit previews here as it does in the inspector.
+    description = draft.description(node.id).trim();
+    subtitle = node.kindLabel;
+    lines = [...(description ? [] : [NO_DESCRIPTION]), HOVER_HINT];
   } else if (current.kind === "edge") {
     const edge = props.scene.edges.find((candidate) => candidate.edge.id === current.id)?.edge;
     if (!edge) return null;
@@ -605,7 +615,9 @@ function HoverCard(props: {
     const prop = props.scene.props.find((candidate) => candidate.id === current.id);
     if (!prop) return null;
     title = prop.label;
-    lines = [...prop.caption];
+    facts = propHoverFacts(snapshot.models);
+    description = draft.description(prop.id).trim();
+    lines = description ? [] : [...prop.caption];
   } else {
     const island = props.scene.islands.find((candidate) => candidate.id === current.id);
     if (!island) return null;
@@ -613,12 +625,31 @@ function HoverCard(props: {
     title = island ? `${island.title}${band ? `: ${band.title}` : ""}` : "";
     lines = [...(island?.caption ?? []), ...(band?.caption ?? []), "Click empty terrain for island settings and service defaults."];
   }
-  // Stay inside the canvas: flip to the pointer's other side near an edge.
-  const left = current.x + 340 > props.viewport.width ? Math.max(8, current.x - 336) : current.x + 16;
-  const top = current.y + 180 > props.viewport.height ? Math.max(8, current.y - 150) : current.y + 16;
+  // Stay inside the canvas: near an edge, anchor the card to the pointer's other side.
+  const { width, height } = props.viewport;
+  const placement = {
+    ...(current.x + 340 > width ? { right: Math.max(8, width - current.x + 16) } : { left: current.x + 16 }),
+    ...(current.y + 260 > height ? { bottom: Math.max(8, height - current.y + 16) } : { top: current.y + 16 }),
+  };
   return (
-    <div className="landscape-hover" style={{ left, top }} role="tooltip">
+    <div className="landscape-hover" style={placement} role="tooltip">
       <strong>{title}</strong>
+      {subtitle ? <span>{subtitle}</span> : null}
+      {facts ? (
+        <>
+          <span className="landscape-hover-tags">
+            {ENVIRONMENTS.map(([env, label]) => {
+              const place = facts.places.find((candidate) => candidate.env === env);
+              // Both pills always stand; the one an environment does not deploy goes dark. The dot's fill and the
+              // hidden text carry the state too, so it never rests on colour alone.
+              return <span key={env} className={`hover-tag ${place ? env : "off"}`}>{label}<span className="sr-only">: {place?.where ?? "not deployed"}</span></span>;
+            })}
+            {facts.frameworkManaged ? <span className="hover-tag managed">Framework-managed</span> : null}
+          </span>
+          {facts.notDeployed ? <span className="landscape-hover-note">{facts.notDeployed}</span> : null}
+        </>
+      ) : null}
+      {description ? <span className="landscape-hover-description">{description}</span> : null}
       {lines.filter(Boolean).map((line) => (
         <span key={line}>{line}</span>
       ))}

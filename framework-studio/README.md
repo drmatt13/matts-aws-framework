@@ -258,7 +258,11 @@ claim a production deployment where no API exists, or hide its AWS-backed Develo
 
 Edges are the model's typed relationships, in the Board's six categories. All categories
 remain visible in the isometric map. Hovering an edge, a building, a gateway or the ground
-explains it. Packets move only along the selection's edges, and the Pause button or
+explains it. A building's hover card shows its authored description (including an unsaved
+draft), always a **Dev** and a **Prod** pill (lit when that environment deploys it, dark
+when it does not, so a missing environment is as visible as a present one), and a
+**Framework-managed** pill for stacks and resources the framework owns. Both environments
+are always read, so the Dev/Prod switch does not change the pills. Packets move only along the selection's edges, and the Pause button or
 reduced-motion stops them. A still picture draws no frames.
 
 **Refresh CDK links** re-reads the source and updates the ignored internal index at

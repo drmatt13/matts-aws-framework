@@ -36,6 +36,7 @@ The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) a
 | `slabs.ts` | yes | Each island as chamfered slabs per terrace, front walls with gradients, trim polylines, pads, cast shadows, island painter's order |
 | `look.ts` | yes | Graphite colour tokens, trim colour per island, icon tint per icon |
 | `focus.ts` | yes | Metadata search, selection precedence and shared focus/opacity state |
+| `hover.ts` | yes | Hover-card facts read from both models: which environments deploy an item (with where, for assistive technology) and the framework-managed flag (tested in [test/hover.test.ts](../../framework-studio/test/hover.test.ts)) |
 | `layout.ts` | yes | Measured island row packing, environment/input pairing and compact right-hand network grouping |
 | `frame.ts` | yes | VPC foundation and frame colour |
 | `camera.ts` | yes | World↔screen transforms, pan, pointer-anchored zoom, wheel normalization, fit, tween |

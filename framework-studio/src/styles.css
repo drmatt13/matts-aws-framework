@@ -751,6 +751,60 @@ a {
   overflow-wrap: anywhere;
 }
 
+.landscape-hover-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0;
+}
+
+/*
+ * Short, single-line pills: Dev and Prod are always there. Colours follow the deployment badges (teal
+ * for development, violet for production); an environment that does not deploy the item goes dark and
+ * colourless, with a hollow dot where the lit ones have a filled one.
+ */
+.hover-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.hover-tag.dev::before,
+.hover-tag.prod::before,
+.hover-tag.off::before {
+  content: "";
+  flex: none;
+  box-sizing: border-box;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.hover-tag.dev { color: #78d1ce; background: #163331; }
+.hover-tag.prod { color: #b7a8ff; background: #302746; }
+.hover-tag.off { color: #5f6978; background: rgba(255, 255, 255, 0.03); border-color: rgba(255, 255, 255, 0.08); }
+.hover-tag.off::before { background: none; border: 1px solid currentColor; }
+.hover-tag.managed { color: #9ec1ff; background: #1b2b45; }
+
+.landscape-hover-note { color: #8d97a6; }
+
+/* An authored description can run to thousands of characters; the inspector holds the rest. */
+.landscape-hover-description {
+  color: #dfe5ec;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 7;
+  line-clamp: 7;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;
