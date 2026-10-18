@@ -17,6 +17,7 @@ export interface EditIntent {
 }
 
 export type DraftEdit =
+  | { readonly kind: "description"; readonly entity: string; readonly value: string }
   | { readonly kind: "field"; readonly intent: EditIntent }
   | { readonly kind: "route"; readonly route: string; readonly value: string };
 

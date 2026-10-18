@@ -2,6 +2,7 @@ import type { ApplyResponse, BatchPlanResponse, DraftEdit, EditIntent, LiteralVa
 import type { FieldFact, Mode, ModelResource, Snapshot } from "../shared/model";
 import type { ResourceApply, ResourceIntent, ResourcePlan } from "../shared/resources";
 import type { DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
+import { descriptionError } from "../shared/descriptions";
 
 export type Review = { readonly kind: "batch"; readonly plan: BatchPlanResponse } | { readonly kind: "resource"; readonly plan: ResourcePlan } | { readonly kind: "environment"; readonly plan: DeploymentInputPlan };
 export interface EnvironmentEdit extends DeploymentInputEdit { readonly key: string; readonly original?: string }
@@ -9,8 +10,9 @@ interface EnvironmentEntry { readonly kind: "environment"; readonly key: string;
 export interface ResourceForm { readonly required?: boolean; readonly secret: boolean; readonly hasDefault: boolean; readonly fallback: string; readonly group: string; readonly requirements: ResourceIntent["requirements"] }
 interface FieldEntry { readonly kind: "field"; readonly key: string; readonly raw: LiteralValue | undefined; readonly intent: EditIntent; readonly error?: string }
 interface RouteEntry { readonly kind: "route"; readonly key: string; readonly route: string; readonly value: string; readonly error?: string }
+interface DescriptionEntry { readonly kind: "description"; readonly key: string; readonly entity: string; readonly value: string; readonly error?: string }
 interface ResourceEntry { readonly kind: "resource"; readonly key: string; readonly intent: ResourceIntent; readonly form: ResourceForm; readonly count: number; readonly error?: string }
-export type DraftEntry = FieldEntry | RouteEntry | ResourceEntry | EnvironmentEntry;
+export type DraftEntry = FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry;
 export interface DraftState {
   readonly baseline: Snapshot;
   readonly latest: Snapshot;
@@ -117,6 +119,14 @@ export class InspectorDraft {
     const error = !value.startsWith("/") || value.trim() !== value || /[\r\n\0]/.test(value) ? "Use a path beginning with / and no surrounding whitespace." : undefined;
     this.put(`route:${id}`, value === baseline ? undefined : { kind: "route", key: `route:${id}`, route: id, value, ...(error ? { error } : {}) });
   }
+  description(entity: string): string {
+    return this.state.entries.find((entry): entry is DescriptionEntry => entry.kind === "description" && entry.entity === entity)?.value ?? this.state.baseline.descriptions.values[entity] ?? "";
+  }
+  setDescription(entity: string, value: string): void {
+    const key = `description:${entity}`;
+    const error = descriptionError(value);
+    this.put(key, value === (this.state.baseline.descriptions.values[entity] ?? "") ? undefined : { kind: "description", key, entity, value, ...(error ? { error } : {}) });
+  }
   resourceForm(resource: ModelResource): ResourceForm { return this.state.entries.find((entry): entry is ResourceEntry => entry.kind === "resource" && entry.intent.resource === resource.id)?.form ?? initialResourceForm(resource); }
   setResource(resource: ModelResource, form: ResourceForm): void {
     const requirements: Record<string, "required" | "optional"> = {};
@@ -184,7 +194,12 @@ export class InspectorDraft {
         ? { kind: "environment", plan: await this.transport.inputPlan(environment.mode, environment.edits.map(({ name, value, create }) => ({ name, value, ...(create ? { create } : {}) })), environment.hash, state.baseline.revision) }
         : resource
         ? { kind: "resource", plan: await this.transport.resourcePlan(resource.intent, state.baseline.revision, state.mode) }
-        : { kind: "batch", plan: await this.transport.planBatch(state.entries.map((entry): DraftEdit => entry.kind === "field" ? { kind: "field", intent: entry.intent } : { kind: "route", route: (entry as RouteEntry).route, value: (entry as RouteEntry).value }), state.baseline.revision) };
+        : { kind: "batch", plan: await this.transport.planBatch(state.entries.map((entry): DraftEdit => {
+          if (entry.kind === "field") return { kind: "field", intent: entry.intent };
+          if (entry.kind === "description") return { kind: "description", entity: entry.entity, value: entry.value };
+          if (entry.kind === "route") return { kind: "route", route: entry.route, value: entry.value };
+          throw new Error("Review this configuration in its own inspector session.");
+        }), state.baseline.revision) };
       if (serial === this.serial) this.publish({ ...this.state, busy: undefined, review });
     } catch (error) { if (serial === this.serial) this.publish({ ...this.state, busy: undefined, error: error instanceof Error ? error.message : String(error) }); }
   }

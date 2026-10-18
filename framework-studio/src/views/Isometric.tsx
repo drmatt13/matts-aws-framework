@@ -390,7 +390,7 @@ export function Isometric() {
     gesture.current = undefined;
     if (!current || current.dragging) return;
     const hit = pick(local(event));
-    if (hit?.kind === "node" || hit?.kind === "island" || hit?.kind === "edge") select(selected === hit.id ? undefined : hit.id);
+    if (hit?.kind === "node" || hit?.kind === "island" || hit?.kind === "edge" || hit?.kind === "prop") select(selected === hit.id ? undefined : hit.id);
     else if (!hit) select(undefined);
   };
 
@@ -567,6 +567,7 @@ export function Isometric() {
       <ul className="sr-only" aria-label="Entities in the landscape">
         {scene.edges.filter((edge) => edge.edge.inputRequirement).map(({ edge }) => <li key={edge.id}><button onClick={() => select(edge.id)} aria-current={visibleSelected === edge.id}>{edge.inputRequirement!.status === "missing" ? "Missing required value" : "Input connection"}: {edge.label} in .env.{edge.inputRequirement!.mode}</button></li>)}
         {scene.islands.map((island) => <li key={island.id}><button onClick={() => select(island.id)} aria-current={visibleSelected === island.id}>{island.title} island settings</button></li>)}
+        {scene.props.map((prop) => <li key={prop.id}><button onClick={() => select(prop.id)} aria-current={visibleSelected === prop.id}>{prop.label}</button></li>)}
         {scene.nodes.map((node) => (
           <li key={node.id}>
             <button onClick={() => select(node.id)} aria-current={visibleSelected === node.id}>

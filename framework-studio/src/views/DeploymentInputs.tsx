@@ -8,6 +8,7 @@ import { EntityIcon } from "./EntityIcon";
 import type { DeploymentInputDetails } from "../../shared/deployment-inputs";
 import type { EnvironmentEdit } from "../draft";
 import { RequirementNotice } from "./InputRequirement";
+import { Description } from "./Description";
 
 function ValueControl({ name, value, sensitive, disabled, onChange }: { name: string; value: string; sensitive: boolean; disabled: boolean; onChange: (value: string) => void }) {
   const [revealed, setRevealed] = useState(false);
@@ -39,7 +40,8 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   const [filter, setFilter] = useState("");
   const pending = draft.environment(file.mode);
   const edits = pending?.edits ?? [];
-  const disabled = !!draftState.busy || draft.conflict || live.evaluating || !details;
+  const descriptionPending = draftState.entries.some((entry) => entry.kind === "description");
+  const disabled = !!draftState.busy || draft.conflict || live.evaluating || !details || descriptionPending;
   const requirements = file.entries.flatMap((entry) => entry.requirements ?? []).filter((item) => item.required);
   useEffect(() => {
     if (draft.dirty) return;
@@ -60,6 +62,8 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   };
   return <>
     <header><span className="kind">CDK {file.mode === "dev" ? "development" : "production"} inputs</span><h2><EntityIcon icon="envFile" />{resource.path[0]}</h2><code className="ref">{file.path}</code></header>
+    <Description entity={resource.id} />
+    {descriptionPending ? <p className="small muted">Apply or discard the description before editing environment variables.</p> : null}
     <section><h3>Source</h3><p>{file.exists ? "Local inputs file exists." : "This inputs file has not been created."} {file.mode === mode ? "Used for synthesis in the selected graph." : "Switch the graph to use this environment for synthesis."}</p>
       {file.exists ? <p><a href={editorLink(snapshot.repositoryRoot, location(file.path))}>Open file in editor</a></p> : <button className="button" disabled={busy || draft.dirty} onClick={() => void create()}>{busy ? "Creating…" : `Create .env.${file.mode} from reference`}</button>}
       <p className="small"><a href={editorLink(snapshot.repositoryRoot, location(file.example))}>Reference: {file.example}</a></p>

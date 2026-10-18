@@ -101,7 +101,7 @@ export interface SceneNode {
   readonly geometry: Shape;
 }
 
-/** Network furniture: drawn and explained, never selected — the model has no entity for it. */
+/** Network fixtures use stable prop IDs for selection and authored descriptions. */
 export interface Prop {
   readonly id: string;
   readonly icon: IconKey;

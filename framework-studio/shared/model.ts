@@ -468,6 +468,7 @@ export interface CdkLinkIndex {
 }
 
 export interface Snapshot {
+  readonly descriptions: { readonly values: Readonly<Record<string, string>>; readonly problem?: string };
   readonly schema: DeclaredSchema;
   readonly databaseProblems: readonly string[];
   /** Changes whenever any watched file or input changes. */

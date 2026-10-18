@@ -36,7 +36,8 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
   const setGroup = (group: string) => update({ group });
   const setRequirements = (change: (current: ResourceIntent["requirements"]) => ResourceIntent["requirements"]) => update({ requirements: change(requirements) });
   const entry = draftState.entries.find((entry) => entry.kind === "resource" && entry.intent.resource === resource.id);
-  const disabled = busy || !!draftState.busy || live.evaluating || live.running !== null || model.stale || resource.absent;
+  const descriptionPending = draftState.entries.some((entry) => entry.kind === "description");
+  const disabled = busy || !!draftState.busy || live.evaluating || live.running !== null || model.stale || resource.absent || descriptionPending;
   const write = async (direction: "undo" | "redo") => {
     setBusy(true); setError(undefined);
     try {
@@ -64,6 +65,7 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
     </section>
     <section className="resource-editor">
       <h3>Configuration</h3>
+      {descriptionPending ? <p className="small muted">Apply or discard the description before editing input settings.</p> : null}
       <fieldset disabled={disabled}>
         <label className="resource-check"><input type="checkbox" checked={form.required ?? !!resource.required} onChange={(event) => update({ required: event.target.checked })} />Required input</label>
         <p className="small muted">Every enabled consumer must receive a value. A non-blank environment value{secret ? " is required for a secret" : " or parameter default satisfies it"}. This flag also marks unfilled catalog inputs on the map.</p>

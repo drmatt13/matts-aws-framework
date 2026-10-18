@@ -53,6 +53,49 @@ function revision(): string {
   return builder.current!.snapshot.revision;
 }
 
+test("descriptions review without writing, persist with settings and undo/redo together", async () => {
+  const file = path.join(fixture, "framework-config/descriptions.ts");
+  const before = readFileSync(file, "utf8");
+  const entity = "lambda:graphql-api";
+  const value = 'GraphQL notes\nQuotes " and a backslash \\ remain text.';
+  const plan = await edits.planBatch([{ kind: "description", entity, value }, { kind: "field", intent: { target: entity, field: "lambda.memorySize", value: 768 } }], revision());
+  assert.equal(plan.ok, true);
+  assert.equal(plan.changes.length, 2);
+  assert.equal(readFileSync(file, "utf8"), before);
+  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  assert.equal(builder.current!.snapshot.descriptions.values[entity], value);
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), before);
+  assert.equal((await edits.redo()).status, "applied");
+  assert.equal(builder.current!.snapshot.descriptions.values[entity], value);
+  await edits.undo();
+  const newNode = await edits.planBatch([{ kind: "description", entity: "task:transaction-worker", value: "New node notes" }], revision());
+  assert.equal((await edits.applyBatch(newNode.planId)).status, "applied");
+  assert.equal(builder.current!.snapshot.descriptions.values["task:transaction-worker"], "New node notes");
+  await edits.undo();
+  const pending = await edits.planBatch([{ kind: "description", entity, value }], revision());
+  writeFileSync(file, `${before}\n// Concurrent description edit\n`);
+  await assert.rejects(edits.applyBatch(pending.planId), /changed/);
+  assert.ok(readFileSync(file, "utf8").endsWith("// Concurrent description edit\n"));
+  writeFileSync(file, before);
+  await builder.refresh();
+  await assert.rejects(edits.planBatch([{ kind: "description", entity: "../../outside", value }], revision()), /managed map item/);
+});
+
+test("batch HTTP renames move description keys and undo restores both files", async () => {
+  const file = path.join(fixture, "framework-config/descriptions.ts");
+  const before = readFileSync(file, "utf8");
+  const route = "route:http:/examples/python";
+  const value = builder.current!.snapshot.descriptions.values[route];
+  const plan = await edits.planBatch([{ kind: "route", route, value: "/examples/documented" }], revision());
+  assert.equal(plan.ok, true);
+  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  assert.equal(builder.current!.snapshot.descriptions.values["route:http:/examples/documented"], value);
+  assert.equal(builder.current!.snapshot.descriptions.values[route], undefined);
+  await edits.undo();
+  assert.equal(readFileSync(file, "utf8"), before);
+});
+
 test("local replay reviews config and handler together, restores both exactly, and preserves concurrent handler edits", async () => {
   const target = "lambda:cognito-custom-message";
   const config = path.join(fixture, "framework-config/events/cognito.ts");

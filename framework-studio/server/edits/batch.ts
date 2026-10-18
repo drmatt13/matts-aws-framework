@@ -14,6 +14,8 @@ import { diffOf, planEdit } from "./plan";
 import { formatLiteral } from "./splice";
 import { replayHandlerFile, rewriteReplayHandler } from "./local-replay";
 import type { RouteChange } from "./route";
+import { DESCRIPTION_FILE, descriptionEntityIds } from "../../shared/descriptions";
+import { parseDescriptions, renameRouteDescriptions, rewriteDescription } from "../descriptions";
 
 interface Change { readonly file: string; readonly before: string; readonly after: string }
 export interface BatchJournal {
@@ -54,9 +56,16 @@ export class BatchEditor {
     const replayTargets: string[] = [];
     const handlerBefore = new Map<string, string>();
     for (const edit of edits) {
-      const key = edit.kind === "field" ? `${edit.intent.target}:${edit.intent.field}` : edit.route;
+      const key = edit.kind === "field" ? `${edit.intent.target}:${edit.intent.field}` : edit.kind === "description" ? `description:${edit.entity}` : edit.route;
       if (seen.has(key)) throw new EditError(400, "A draft can change each setting only once.");
       seen.add(key);
+      if (edit.kind === "description") {
+        if (!descriptionEntityIds(Object.values(state.snapshot.models)).has(edit.entity)) throw new EditError(404, "Select a managed map item to edit its description.");
+        const file = assertWritable(this.root, DESCRIPTION_FILE);
+        try { overrides.set(file, rewriteDescription(new SourceFiles(overrides).text(file), edit.entity, edit.value)); }
+        catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
+        summaries.push(`${edit.entity} — update description`);
+      }
       if (edit.kind !== "field") continue;
       const { intent } = edit;
       const field = fieldById(intent.field);
@@ -107,6 +116,15 @@ export class BatchEditor {
       for (const edit of edits.sort((a, b) => b.start - a.start)) text = text.slice(0, edit.start) + edit.value + text.slice(edit.end);
       overrides.set(file, text);
     }
+    const descriptionFile = path.join(this.root, DESCRIPTION_FILE);
+    if (routes.length && state.snapshot.files[DESCRIPTION_FILE]) {
+      assertWritable(this.root, DESCRIPTION_FILE);
+      try {
+        const before = new SourceFiles(overrides).text(descriptionFile);
+        const after = renameRouteDescriptions(before, routes);
+        if (after !== before) overrides.set(descriptionFile, after);
+      } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
+    }
     const changes = [...overrides].map(([file, after]) => ({ file, before: handlerBefore.get(file) ?? readFileSync(file, "utf8"), after })).filter((change) => change.before !== change.after);
     if (!changes.length) throw new EditError(422, "This draft has no source changes.");
     const checked = await this.validate(Object.fromEntries(overrides), state, routes);
@@ -131,6 +149,8 @@ export class BatchEditor {
     return response;
   }
   private async validate(overrides: Record<string, string>, state: StudioState, routes: readonly RouteChange[]) {
+    const descriptions = overrides[path.join(this.root, DESCRIPTION_FILE)];
+    if (descriptions !== undefined) parseDescriptions(descriptions);
     const pool = new EvaluatorPool(this.root);
     try {
       const models = await pool.evaluate(state.snapshot.webSocketApi, overrides);
@@ -177,6 +197,8 @@ export class BatchEditor {
         this.ownWrites.set(toRelative(this.root, change.file), sha256(change.after));
       }
       const actual = await this.builder.refresh();
+      const descriptionChange = changes.find((change) => change.file === path.join(this.root, DESCRIPTION_FILE));
+      if (descriptionChange && (actual.snapshot.descriptions.problem || JSON.stringify(actual.snapshot.descriptions.values) !== JSON.stringify(parseDescriptions(descriptionChange.after).values))) throw new Error("The descriptions did not match the review.");
       for (const mode of ["dev", "prod"] as const) {
         const model = actual.snapshot.models[mode];
         const expected = checked.models[mode];

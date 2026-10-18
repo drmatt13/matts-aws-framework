@@ -1303,3 +1303,5 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .missing-connection { pointer-events: all; cursor: pointer; }
 .missing-connection:focus circle { stroke-width: 3px; }
 
+.node-description textarea { width: 100%; resize: vertical; min-height: 100px; padding: 9px 10px; font: inherit; line-height: 1.5; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); color: inherit; box-sizing: border-box; }
+.node-description textarea:focus { outline: 2px solid var(--dev); outline-offset: 1px; }

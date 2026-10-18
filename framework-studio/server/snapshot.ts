@@ -10,6 +10,7 @@ import type { CatalogEntrySource } from "./source/catalog";
 import { readDeclaredSchema, readLocalDatabases, withLocalDatabases } from "./database";
 import { withDeploymentInputs } from "./deployment-inputs";
 import { withExportStacks } from "./source/export-stacks";
+import { readDescriptions } from "./descriptions";
 
 /**
  * The studio's current understanding of the repository, rebuilt as a whole.
@@ -147,6 +148,7 @@ export class SnapshotBuilder {
     this.generation += 1;
     const content = sha256(JSON.stringify({ files, settings, schema: schema.hash, localDatabase }));
     const snapshot: Snapshot = {
+      descriptions: readDescriptions(this.repositoryRoot),
       schema,
       databaseProblems: localDatabase.problems,
       revision: `${this.generation}-${content.slice(0, 12)}`,

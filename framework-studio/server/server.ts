@@ -201,8 +201,9 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     const parsed: DraftEdit[] = entries.map((edit: unknown) => {
       const item = edit as Record<string, unknown> | undefined;
       if (item?.kind === "field") return { kind: "field", intent: readIntent(item) };
+      if (item?.kind === "description" && typeof item.entity === "string" && typeof item.value === "string") return { kind: "description", entity: item.entity, value: item.value };
       if (item?.kind === "route" && typeof item.route === "string" && typeof item.value === "string") return { kind: "route", route: item.route, value: item.value };
-      throw new EditError(400, "A draft change names an editable field or HTTP route.");
+      throw new EditError(400, "A draft change names an editable field, description or HTTP route.");
     });
     return edits.planBatch(parsed, String(request.body?.revision ?? ""));
   }));

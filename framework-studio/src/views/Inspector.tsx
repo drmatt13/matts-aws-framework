@@ -18,6 +18,9 @@ import { EnvironmentFileView, InputSources } from "./DeploymentInputs";
 import { ConnectionView } from "./InputRequirement";
 import { ResourceStatus } from "./ResourceStatus";
 import { RouteStatus } from "./RouteStatus";
+import { Description } from "./Description";
+import { networkFixtureIds } from "../../shared/descriptions";
+import { buildScene } from "../scene/build";
 
 function Written(props: { readonly location: SourceLocation | undefined; readonly label?: string }) {
   const { snapshot } = useStudio();
@@ -223,6 +226,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
           {target.constructIdPinned ? ", pinned by cloud.constructId. Changing it would replace the deployed resource." : ", derived from its id."}
         </p>
       </header>
+      <Description entity={target.ref} />
       <ApiAuthControl target={target} />
       <LocalReplayControl target={target} />
       <HttpRoutes target={target} />
@@ -310,6 +314,7 @@ function RouteView(props: { readonly route: ModelRoute }) {
         <code className="ref">{route.origin}</code>
         <Written location={snapshot.source.entities[route.id]?.key} />
       </header>
+      <Description entity={route.id} />
       <section>
         <p>
           Reaches{" "}
@@ -358,6 +363,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         {resource.kind === "member" && resource.parent ? <button className="linkish small" onClick={() => select(resource.parent)}>Back to {model.resources.find((item) => item.id === resource.parent)?.stackClass ?? "stack"}</button> : null}
         <Written location={snapshot.source.entities[resource.id]?.key} label={resource.frameworkStack ? "Class in" : resource.kind === "member" ? "Declared on the stack in" : "Written in"} />
       </header>
+      <Description entity={resource.id} />
       {resource.stackOutputs?.length ? <section className="stack-outputs"><h3>CloudFormation outputs</h3><p className="small muted">Symbolic source values mapped by the root .env exporter.</p><ul>{resource.stackOutputs.map((output) => <li key={output.name}>
         <span className="stack-output-name">{output.name}</span>
         <code className="stack-output-value"><span>$</span>{output.symbol}</code>
@@ -389,10 +395,22 @@ function ResourceView(props: { readonly resource: ModelResource }) {
 function LocalDatabaseView({ database }: { readonly database: LocalDatabase }) {
   return <>
     <header><span className="kind">Local development service</span><h2><EntityIcon icon="postgres" />{database.title}</h2><code className="ref">{database.service} · {database.image}</code><Written location={database.source} /></header>
+    <Description entity={database.id} />
     <section><h3>Where it runs</h3><div className="lane-lines"><div className="lane-line dev"><span>Development</span><strong>On your machine</strong></div><div className="lane-line prod off"><span>Production</span><strong>Not enabled</strong></div></div><p className="small muted">Declared by Compose. Container health and running state are not monitored.</p></section>
     <section><SchemaLink /><p className="small muted">Shares the application contract with production RDS.</p></section>
     {database.volumes.length ? <section><h3>Persistent storage</h3>{database.volumes.map((volume) => <p key={volume}><code>{volume}</code></p>)}</section> : null}
     <Relations id={database.id} />
+  </>;
+}
+
+function NetworkFixtureView({ id }: { readonly id: string }) {
+  const { model } = useStudio();
+  const fixture = buildScene(model).props.find((prop) => prop.id === id);
+  if (!fixture) return null;
+  return <>
+    <header><span className="kind">Network fixture</span><h2><EntityIcon icon={fixture.icon} />{fixture.label}</h2><code className="ref">{id}</code><Written location={{ file: "framework-config/network.ts", line: 1, column: 1, start: 0, end: 0 }} /></header>
+    <Description entity={id} />
+    <section>{fixture.caption.map((line) => <p key={line}>{line}</p>)}<p className="small muted">{model.mode === "prod" && model.network?.builtInProd ? "Built with the production VPC." : "Blueprint: this environment does not build the VPC."}</p></section>
   </>;
 }
 
@@ -406,6 +424,7 @@ export function Inspector() {
   const connection = model.edges.find((edge) => edge.id === selected);
   const schemaEntity = snapshot.schema.tables.some((table) => table.id === selected) || snapshot.schema.relations.some((relation) => relation.id === selected);
   const island = selected.startsWith("island:");
+  const fixture = networkFixtureIds(model.network).includes(selected);
   return (
     <aside className="inspector" aria-label="Inspector">
       <div className="inspector-content"><div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 8px 0" }}>
@@ -420,8 +439,9 @@ export function Inspector() {
       {localDatabase ? <LocalDatabaseView database={localDatabase} /> : null}
       {schemaEntity ? <SchemaDetails /> : null}
       {island ? <IslandInspector id={selected} key={selected} /> : null}
+      {fixture ? <NetworkFixtureView id={selected} /> : null}
       {resource?.kind === "stack" && !resource.frameworkStack ? <StackInfrastructure id={resource.id} /> : null}
-      {!target && !route && !resource && !connection && !localDatabase && !schemaEntity && !island ? <p className="empty">{selected} is not in this graph.</p> : null}
+      {!target && !route && !resource && !connection && !localDatabase && !schemaEntity && !island && !fixture ? <p className="empty">{selected} is not in this graph.</p> : null}
       </div><DraftFooter />
     </aside>
   );

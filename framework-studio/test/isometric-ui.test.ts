@@ -136,6 +136,16 @@ test("zero-result searches fade the whole map and whitespace restores the overvi
   assert.equal(debug().stats().focus, "all");
 });
 
+test("network fixtures can be selected from the map's accessible item list", async () => {
+  await mount();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "s3 endpoint" }));
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "prop:endpoint:s3"));
+  await draw();
+  assert.equal(debug().stats().focus, "selection");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Internet gateway" }));
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "prop:internet-gateway"));
+});
+
 test("missing required connections paint red X markers and clicking the marker selects its guidance", async () => {
   const original = response;
   const edge = response.snapshot.models.dev.edges.find((edge) => edge.relation === "supplies" && edge.from === "envfile:dev")!;

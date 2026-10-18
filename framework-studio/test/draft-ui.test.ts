@@ -60,7 +60,9 @@ beforeEach(() => {
       if (edit?.kind !== "field") return fact;
       return { ...fact, authored: edit.intent.inherit ? undefined : edit.intent.value, effective: edit.intent.inherit ? fact.inherited?.value : edit.intent.value };
     })]));
-    persisted = { ...baseline, revision: "saved", models: { dev: { ...baseline.models.dev, fields: fields("dev") }, prod: { ...baseline.models.prod, fields: fields("prod") } } } as Snapshot;
+    const descriptions = { ...baseline.descriptions.values };
+    for (const edit of planCalls.at(-1) ?? []) if (edit.kind === "description") descriptions[edit.entity] = edit.value;
+    persisted = { ...baseline, revision: "saved", descriptions: { values: descriptions }, models: { dev: { ...baseline.models.dev, fields: fields("dev") }, prod: { ...baseline.models.prod, fields: fields("prod") } } } as Snapshot;
     return { status: "applied", message: "Applied all changes.", revision: persisted.revision };
   });
   mock.method(apiModule.api, "snapshot", async () => response());
@@ -98,6 +100,45 @@ const memory = () => ui.screen.getByRole("spinbutton", { name: "Memory in MB" })
 const changeMemory = () => ui.fireEvent.change(memory(), { target: { value: "768" } });
 const count = () => ui.screen.getByLabelText("Pending inspector changes").textContent!;
 const waitDialog = (name: string) => ui.waitFor(() => assert.equal(document.querySelector("dialog[open] h2")?.textContent, name));
+
+test("node descriptions stage with workload settings, review, save and reload in the inspector", async () => {
+  await mount();
+  const description = ui.screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement;
+  assert.equal(description.value, baseline.descriptions.values[target]);
+  const value = "Updated GraphQL notes\nSecond paragraph.";
+  ui.fireEvent.change(description, { target: { value } });
+  changeMemory();
+  assert.equal(planCalls.length, 0);
+  assert.match(count(), /2 unsaved changes/);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 2 changes");
+  await ui.waitFor(() => assert.ok(planCalls[0]?.some((edit) => edit.kind === "description" && edit.entity === target && edit.value === value)));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Apply All" }));
+  await ui.waitFor(() => assert.ok(ui.screen.queryByLabelText("Pending inspector changes") === null));
+  assert.equal(persisted.descriptions.values[target], value);
+  assert.equal((ui.screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement).value, value);
+});
+
+test("all selectable item kinds expose their authored description", async () => {
+  for (const id of ["route:http:/graphql", "resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "framework-stack:DevLambdaReplayStack", "envfile:dev", "local:postgres", "island:vpc", "prop:endpoint:s3"]) {
+    await mount(id);
+    const description = ui.screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement;
+    assert.equal(description.value, baseline.descriptions.values[id], id);
+    assert.equal(description.disabled, false, id);
+    ui.cleanup();
+  }
+});
+
+test("description edits use navigation guards and discard restores the authored text", async () => {
+  await mount();
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Description" }), { target: { value: "Unsaved notes" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Open node B" }));
+  await waitDialog("Unsaved changes");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Keep Editing" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard" }));
+  assert.equal((ui.screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement).value, baseline.descriptions.values[target]);
+  assert.equal(planCalls.length, 0);
+});
 
 test("stack inspectors surface unattached status and the database's framework ownership in their headers", async () => {
   await mount("resource:referenceExamples");

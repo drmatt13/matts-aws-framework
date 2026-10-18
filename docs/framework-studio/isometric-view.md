@@ -12,6 +12,11 @@ The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) a
   own id (`lambda:graphql-api`, `route:http:/graphql`, `resource:cognito.userPool`).
   Selecting one sets `?select=` like every other view, so the inspector and its edits are
   the existing ones.
+- **Everything selectable is described.** Each building, island, gateway and endpoint has
+  an authored **Description** in its inspector, saved as a literal string in
+  [framework-config/descriptions.ts](../../framework-config/descriptions.ts) under the
+  same entity id. Descriptions are shared by both graphs, edited through the usual
+  review-and-apply draft, and a test requires one for every id the scene can draw.
 - **Layout is computed.** Positions, islands and colours are a pure, deterministic
   function of the model. Nothing about them is written anywhere or read back as
   configuration.
@@ -93,7 +98,7 @@ stability, shared routing, viewport adaptation and measured before/after results
 | Upper left | APIs | HTTP routes, service mounts, WebSocket keys and agent browser paths on one layer | 2 |
 | Lower left | Input parameters and secrets | Only catalog-declared inputs, secrets and groups on one shared lattice; other dotenv keys stay in the file inspectors | 1 |
 | Upper right | Serverless compute | HTTP, WebSocket, event and AgentCore tool Lambdas outside the VPC on one shared lattice | 3 |
-| Right-hand network cluster | VPC | Subnets `public`, `private` and `isolated`, side by side at one height. Every target with `placement.kind === "vpc"` stands on its subnet. Gateways and endpoints from `network` stand on the subnets as hover-only furniture | 4 |
+| Right-hand network cluster | VPC | Subnets `public`, `private` and `isolated`, side by side at one height. Every target with `placement.kind === "vpc"` stands on its subnet. Gateways and endpoints from `network` stand on the subnets as selectable furniture | 4 |
 | Shared lower row, first | Agents | AgentCore agents not placed in the VPC | 3 |
 | Shared lower row, second | Workflows | Step Functions workflows | 4 |
 | Shared lower row, third | Local development | The authored Compose PostgreSQL service; active in Development, ghosted in Production | 2 |
@@ -285,7 +290,8 @@ reuses the Lambda role-badge renderer and picking silhouette, including ghost/di
 opacity. S3, DynamoDB and other locally mapped services use their service
 artwork; unmapped services use a generic box and retain their service name in the hover
 card. Every declared endpoint is shown, with no four-endpoint display limit.
-They remain hover-only furniture. Each names the subnets whose traffic it
+They are furniture, not model entities: clicking one selects its stable `prop:` id so
+the inspector can show its description. Each names the subnets whose traffic it
 carries (`Prop.serves`): the internet gateway serves public, the egress-only and NAT
 gateways serve private, and endpoints serve all three. With a selection, a fixture dims
 with everything outside the spotlight unless it serves the selected building's subnet
@@ -362,7 +368,7 @@ tweening. A still picture draws nothing.
   | Input | Action |
   | --- | --- |
   | Drag | Pan. A press that moves less than 6 px is a click |
-  | Click icon | Select that entity; click again to clear |
+  | Click icon, gateway or endpoint | Select that entity or fixture; click again to clear |
   | Click empty island terrain | Open island settings; click again to clear |
   | Click void | Clear the selection |
   | Double-click | Select and fly to the building (empty ground: zoom in) |
@@ -387,7 +393,7 @@ The order follows what is painted on top, front first:
 
 1. **Label cards.** Screen rectangles from the last frame, last painted first.
 2. **Buildings.** World silhouettes, frontmost first.
-3. **Gateway and endpoint furniture.** Hover only.
+3. **Gateway and endpoint furniture.** Hover and click (selects the `prop:` fixture).
 4. **Terrain.** The painted slab tops and walls, plus the VPC foundation.
    Picking uses the camera inverse and each surface's
    actual height. Empty terrain takes precedence over arcs so it remains clickable.

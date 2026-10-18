@@ -6,6 +6,7 @@ import { useStudio } from "../studio";
 import { BooleanField, FieldRow } from "./FieldRow";
 import { ResourceStatus } from "./ResourceStatus";
 import { RouteStatus } from "./RouteStatus";
+import { Description } from "./Description";
 
 const LAMBDAS = ["lambda", "http", "webSocket", "events", "tools"];
 const GROUPS: Readonly<Record<string, readonly string[]>> = {
@@ -33,6 +34,7 @@ export function IslandInspector({ id }: { readonly id: string }) {
   const source = group && snapshot.source.entities[group.ref]?.value;
   return <>
     <header><span className="kind">Island settings</span><h2>{island.title}</h2><p className="small muted">{members.length} {members.length === 1 ? "entry" : "entries"}</p></header>
+    <Description entity={id} />
     {group ? <section>
       <h3>Shared defaults</h3>
       <p className="small">Defaults apply to this service type across all islands, including future nodes. Individual overrides take precedence.</p>

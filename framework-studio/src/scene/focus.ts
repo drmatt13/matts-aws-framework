@@ -73,6 +73,11 @@ export function landscapeFocus(scene: Scene, selected?: string, matches?: Search
   const band = scene.nodes.find((node) => node.id === selected)?.band;
   const island = scene.islands.find((island) => island.id === selected);
   const props = new Set(scene.props.filter((prop) => (band && prop.serves.includes(band)) || island?.bands.some((band) => prop.serves.includes(band.id))).map((prop) => prop.id));
+  const fixture = scene.props.find((prop) => prop.id === selected);
+  if (fixture) {
+    props.add(fixture.id);
+    for (const island of scene.islands) if (island.bands.some((band) => fixture.serves.includes(band.id))) islands.add(island.id);
+  }
   return { kind: "selection", nodes, props, islands };
 }
 
