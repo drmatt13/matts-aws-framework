@@ -30,6 +30,10 @@ async function main(): Promise<void> {
   const selection = deploymentArguments(args);
   // The same file the CDK app and the resource catalog read.
   const inputFile = process.env.FRAMEWORK_INPUTS_FILE ? resolve(process.env.FRAMEWORK_INPUTS_FILE) : resolve(root, "cdk-app/.env");
+  // Hand every child the path this process read, absolute: synth runs in cdk-app/
+  // and would resolve a relative path elsewhere, or read an empty one literally.
+  if (process.env.FRAMEWORK_INPUTS_FILE) process.env.FRAMEWORK_INPUTS_FILE = inputFile;
+  else delete process.env.FRAMEWORK_INPUTS_FILE;
   const authored = existsSync(inputFile) ? parseEnv(readFileSync(inputFile, "utf8")) : {};
   // An explicit flag or AWS_PROFILE selects named credentials. Otherwise the
   // AWS CLI and SDK use their standard default credential chain.

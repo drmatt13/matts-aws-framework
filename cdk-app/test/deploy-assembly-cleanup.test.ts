@@ -22,7 +22,7 @@ function withDeployFixture(body: (fixture: string, deploy: Deploy, deployWith: D
       copyFileSync(path.join(root, "scripts", name), path.join(fixture, "scripts", name));
     }
     writeFileSync(path.join(fixture, "framework.config.ts"), `export { default } from "../../../framework.config";\n`);
-    writeFileSync(path.join(fixture, "failing-app.js"), "console.error(`app-profile=${process.env.AWS_PROFILE}`);\nprocess.exit(3);\n");
+    writeFileSync(path.join(fixture, "failing-app.js"), "console.error(`app-profile=${process.env.AWS_PROFILE}`);\nconsole.error(`app-inputs=${process.env.FRAMEWORK_INPUTS_FILE}`);\nprocess.exit(3);\n");
     const app = `node "${path.join(fixture, "failing-app.js")}"`;
     const deployWith: DeployWith = (env, ...args) => spawnSync(process.execPath, ["--import", "tsx", path.join(fixture, "scripts", "deploy.ts"), "--all", "--no-notices", "--app", app, ...args], {
       cwd: root, encoding: "utf8", timeout: 60_000, env: { ...process.env, ...env },
@@ -74,5 +74,18 @@ test("deploy reads its authored inputs from FRAMEWORK_INPUTS_FILE when set", () 
     const result = deployWith({ FRAMEWORK_INPUTS_FILE: inputs, AWS_PROFILE: undefined });
     assert.equal(result.status, 1, `${result.stdout}${result.stderr}`);
     assert.match(`${result.stdout}${result.stderr}`, /app-profile=fixture-profile-from-inputs/);
+  });
+});
+
+test("the synth child reads the same inputs file deploy read, and none when it is unset", () => {
+  withDeployFixture((fixture, _deploy, deployWith) => {
+    const inputs = path.join(fixture, "relative-inputs.env");
+    writeFileSync(inputs, "AWS_PROFILE=fixture-profile-from-relative\n");
+    const relative = deployWith({ FRAMEWORK_INPUTS_FILE: path.relative(root, inputs), AWS_PROFILE: undefined });
+    const output = `${relative.stdout}${relative.stderr}`;
+    assert.match(output, /app-profile=fixture-profile-from-relative/);
+    assert.ok(output.includes(`app-inputs=${inputs}`), output);
+    const empty = deployWith({ FRAMEWORK_INPUTS_FILE: "", AWS_PROFILE: undefined });
+    assert.match(`${empty.stdout}${empty.stderr}`, /app-inputs=undefined/);
   });
 });
