@@ -13,7 +13,8 @@
  * Exits with the container's exit code.
  */
 import { execFileSync } from "node:child_process";
-import { readAuthoredInputs } from "@repo/framework/config/source";
+import { findRepositoryRoot, readAuthoredInputs } from "@repo/framework/config/source";
+import { contextFromArgs, resolveRepositoryTarget } from "@repo/framework/deploy/node";
 import { encodeInvocationInput, parseInvocationDescriptor, type AwsTaskDescriptor } from "../packages/framework/src/runtime/descriptor";
 
 const TASK_LAUNCH_OUTPUT_PREFIX = "framework:task-launch:v1:";
@@ -27,9 +28,19 @@ async function main(): Promise<void> {
   const taskId = process.argv.slice(2).find((argument, index, all) => !argument.startsWith("--") && !all[index - 1]?.startsWith("--"));
   if (!taskId) throw new Error("Usage: npm run task:cloud -- <task-id> [--profile <PROFILE>] [--region <REGION>]");
   const inputs = readAuthoredInputs();
+  // Cloud tasks exist only in production deployments: the named one, or the
+  // production target cdk.json declares.
+  const argumentContext = contextFromArgs(process.argv.slice(2));
+  const { target } = resolveRepositoryTarget({
+    root: findRepositoryRoot(),
+    get: (key) => (key === "prodDeployment" ? "true" : argumentContext[key]),
+    env: process.env,
+    requireInputs: false,
+  });
+  const deployment = option("deployment") ?? target.name;
   const profile = option("profile") ?? process.env.AWS_PROFILE;
-  const region = option("region") ?? process.env.AWS_REGION ?? inputs.CDK_DEFAULT_REGION;
-  const stack = `${inputs.CDK_APP_NAME ?? "my-aws-app"}-EcsTasksStack`;
+  const region = option("region") ?? process.env.AWS_REGION ?? target.region ?? inputs.CDK_DEFAULT_REGION;
+  const stack = `${deployment}-EcsTasksStack`;
   if (profile) process.env.AWS_PROFILE = profile;
 
   const cli = ["cloudformation", "describe-stacks", "--stack-name", stack, "--output", "json", ...(profile ? ["--profile", profile] : []), ...(region ? ["--region", region] : [])];

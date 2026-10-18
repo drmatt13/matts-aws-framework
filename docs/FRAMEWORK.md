@@ -313,10 +313,11 @@ rds: PROD_DEPLOYMENT ? resource.stack<RdsStack>() : undefined,
 the entry simply never sees it — which is what lets the Compose Postgres stand in for the
 database rather than a handler branching on a deployment mode it cannot see. No
 resource carries a mode; there is no `.prodOnly()` or `.devOnly()`. `PROD_DEPLOYMENT` is
-imported from `@repo/framework/config/source`, which reads the same cdk-app/.env, so
-synthesis, the local runner and the generator all read one answer. `bin/cdk-app.ts`
-refuses a `-c` override that disagrees with it, because a catalog built from the file
-cannot be re-decided after it was imported.
+imported from `@repo/framework/config/source`. It is the graph the command stated as CDK
+context (`-c prodDeployment=true`): `bin/main.ts` resolves it before the catalog is imported
+and hands it over as FRAMEWORK_MODE, and every process not started by a synth (the local
+runner, the generator, export) reads development. `bin/cdk-app.ts` refuses to load any other
+way, because a catalog built for one graph cannot be re-decided after it was imported.
 
 ### Secrets
 
@@ -349,9 +350,10 @@ Use cloud.requirements on the consuming workload for conditional inputs. An unus
 optional secret imposes no requirement. The canonical command is:
 
 ```powershell
-npm run deploy:resources -- --all -c useLocalDevStack=true --profile <PROFILE>
+npm run deploy:resources -- --all --profile <PROFILE>
 ```
 
+That deploys your development deployment; add `-c prodDeployment=true` for production.
 It accepts CDK deployment switches, including stack patterns, profile, context, parameters
 and output paths. CDK watch remains a separate command; it cannot refresh secret inputs
 from a completed assembly. It synthesizes and validates first, collects managed secret requirements for the selected
@@ -913,21 +915,26 @@ from offline/local tests. Use a disposable fixture for deliberate failures.
 
 | File/source | Owner and purpose |
 | --- | --- |
-| cdk-app/.env | Authored deployment settings and local inputs. Deployment flags may be overridden by the shell or `-c`; PROD_DEPLOYMENT and resource inputs are read from the file itself |
-| cdk-app/.env.dev, cdk-app/.env.prod | Ignored per-mode inputs selected by Studio synthesis through an isolated `FRAMEWORK_INPUTS_FILE` copy. Matching `.env.*.example` files are references. Studio's file inspectors edit/add variables through draft review; creating or editing them does not replace the active CLI `.env` |
-| Root .env | Exported dev Compose/auth/replay/port controls, or public production outputs; either ends with a client-app block of VITE_ settings to copy manually |
+| cdk-app/cdk.json `framework:targets` | Committed deployment targets: name, mode, pinned account and region, inputs file. Production targets must pin their account |
+| cdk-app/.env | Your development inputs, and the file Compose reads; CDK_APP_NAME names your own development deployment. Deployment flags may be overridden by the shell or `-c`; resource inputs are read from the file itself |
+| cdk-app/.env.dev, cdk-app/.env.prod | Ignored per-mode inputs: a mode reads `cdk-app/.env.<mode>` when it exists, otherwise `cdk-app/.env`, unless its target names an inputs file. Matching `.env.*.example` files are references. Studio's file inspectors edit/add variables through draft review |
+| Root .env | Exported development Compose/auth/replay/port controls. A production export never writes it |
+| client-app/.env.development.local, client-app/.env.production.local | Exported client settings that `vite dev` and `vite build` read over the authored client-app/.env |
 | .framework/local/resources.json | Discovered development resource and workflow identifiers; never raw secrets |
-| client-app/.env | Browser-public VITE_ values from the deployment |
+| client-app/.env | Authored browser-public VITE_ settings |
 | .framework/prod/outputs.json | Exported public production outputs, including frontend publishing identifiers |
 | Service .env.example | Generated input documentation; no authored per-service env files |
 | docker-compose.yml | Local containers, launchers, read-only mounts, ports, readiness, and Watch; `x-framework-service`, the container every generated service starts from |
 | docker-compose.services.yml | Generated: one container per service that runs locally, included by docker-compose.yml |
 | cdk-app/deployment.ts | Application deployment input validation, precedence, and compatibility aliases |
 
-The graph a synth builds is PROD_DEPLOYMENT in cdk-app/.env: the resource catalog reads it
-when it is imported. `-c useLocalDevStack` or `-c prodDeployment` may state the same answer,
-and the CDK app refuses one that disagrees with the file. Ordinary settings use context,
-environment, then fallback. New deployment-wide flags belong in deployment.ts plus tests;
+Each command states the graph it builds as CDK context: development unless it says
+`-c prodDeployment=true` (the deprecated `-c useLocalDevStack` is its inverse). The deployment
+is a target: `-c deployment=<name>`, the only production target when production is stated,
+or your own development deployment (CDK_APP_NAME). A declared target's mode must agree with
+the stated one, a production target is never implied, and a pinned account or region is never
+synthesized for another. A leftover PROD_DEPLOYMENT line that agrees is a warning; one that
+disagrees stops the synth. Ordinary settings use context, environment, then fallback. New deployment-wide flags belong in deployment.ts plus tests;
 workload inputs belong in the resource catalog instead.
 
 What a stack belongs to is recorded in AWS, not inferred from its name. Every stack carries
@@ -938,8 +945,8 @@ turns that classification into refusals. A stack without the output (a failed fi
 create, or one from before the output existed) is identified from its deployed template,
 or refused.
 
-The principal deployment settings are CDK_APP_NAME, PROD_DEPLOYMENT,
-RETAIN_STATEFUL_RESOURCES, DATABASE_BACKUP_RETENTION_DAYS, DEPLOY_PROD_WEBSOCKET_API,
+The principal deployment settings are the target (`-c prodDeployment`, `-c deployment`,
+`framework:targets`, CDK_APP_NAME), RETAIN_STATEFUL_RESOURCES, DATABASE_BACKUP_RETENTION_DAYS, DEPLOY_PROD_WEBSOCKET_API,
 COGNITO_SES_FROM_EMAIL (with optional COGNITO_SES_FROM_NAME and COGNITO_SES_REGION),
 SKIP_EMAIL_VERIFICATION (development only), frontend/Cognito custom-domain toggles and
 certificate pairs, and optional Google credentials. USE_CUSTOM_WS_AUTHORIZER is retired: the
@@ -1061,23 +1068,16 @@ JavaScript cannot honour it — a condition, a coercion, a template literal, a s
 `contract` also emits Prisma and GraphQL artifacts and typechecks. `verify` checks framework
 projections and GraphQL drift, restores database artifacts, and runs workspace and schema
 tests. It does not run CDK synth or prove deployed behavior. After infrastructure/config
-changes, synth both graphs using a configured AWS account. The graph follows
-PROD_DEPLOYMENT in cdk-app/.env; for the other one, point FRAMEWORK_INPUTS_FILE at a copy of
-the file with the other value, and state the same mode with `-c`:
+changes, synth both graphs using a configured AWS account. Each states its mode, and each
+reads its own target's inputs file:
 
 ```powershell
-npm --workspace cdk-app exec -- cdk synth -c useLocalDevStack=true --quiet
-$env:FRAMEWORK_INPUTS_FILE = "<PROD_COPY_OF_CDK_APP_ENV>"
-npm --workspace cdk-app exec -- cdk synth -c useLocalDevStack=false -c deployProdWebSocketApi=true --quiet
-Remove-Item Env:FRAMEWORK_INPUTS_FILE
+npm --workspace cdk-app exec -- cdk synth --quiet
+npm --workspace cdk-app exec -- cdk synth -c prodDeployment=true -c deployProdWebSocketApi=true --quiet
 ```
 
-On macOS or Linux, an inline assignment scopes the variable to the one command:
-
-```sh
-npm --workspace cdk-app exec -- cdk synth -c useLocalDevStack=true --quiet
-FRAMEWORK_INPUTS_FILE="<PROD_COPY_OF_CDK_APP_ENV>" npm --workspace cdk-app exec -- cdk synth -c useLocalDevStack=false -c deployProdWebSocketApi=true --quiet
-```
+`cdk-app/test/deployment-isolation.test.ts` synthesizes both through the same entry point,
+offline, and checks that they share no stack, physical name or export.
 
 Review logical ids when moving constructs. The prod graph exposes cycles and resources
 absent from dev.

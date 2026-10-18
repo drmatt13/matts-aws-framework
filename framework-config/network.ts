@@ -3,7 +3,7 @@ import { defineNetwork } from "@repo/framework/config";
 /**
  * The application's VPC, and the one place its way out is decided.
  *
- * Built only by a production deployment (PROD_DEPLOYMENT=true), and only once a
+ * Built only by a production deployment (-c prodDeployment=true), and only once a
  * workload is placed in it: a Lambda with subnet: "private" or "isolated" (see
  * defaults.lambda.subnet) or database: true, or any container. A dev deployment
  * never builds it: the database runs under Compose, where the local lane

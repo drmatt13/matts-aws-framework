@@ -5,7 +5,7 @@ container services/tasks, workflow orchestration, and agents/tools execute local
 Authentication and real AWS event delivery remain in AWS. Managed AWS resources
 used by application logic also remain in AWS.
 
-This describes the current `PROD_DEPLOYMENT=false` graph, not a full cloud
+This describes the development graph (no `-c prodDeployment=true`), not a full cloud
 deployment used for production-parity testing. See
 [Development](DEV-DEPLOYMENT.md) for setup and
 [Shared functions](SHARED-FUNCTIONS.md) for the APIs that use these resources.

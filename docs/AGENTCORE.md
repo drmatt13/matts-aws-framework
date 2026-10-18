@@ -341,7 +341,7 @@ lifetime, and the Gateway derived from its tools.
 
 ## Deployment
 
-`npm run deploy:resources` with `PROD_DEPLOYMENT=true` builds, beside the workflows:
+`npm run deploy:resources -- -c prodDeployment=true` builds, beside the workflows:
 
 | Resource | From |
 | --- | --- |
@@ -406,11 +406,11 @@ an application splits into deployments; the framework does not shard the stack.
 
 ```sh
 # a separate checkout or worktree, so the main cdk-app/.env is untouched
-# cdk-app/.env: PROD_DEPLOYMENT=true, CDK_APP_NAME=agents-smoke-<you>,
-#   DATABASE_BACKUP_RETENTION_DAYS=0, optionally FRONTEND_URL + certificate
+# cdk-app/cdk.json framework:targets: agents-smoke-<you> as a prod target pinned to your account,
+#   with an inputs file holding DATABASE_BACKUP_RETENTION_DAYS=0, optionally FRONTEND_URL + certificate
 # framework-config/agents/example.ts: the agent deploys "both"
 # the example agent's tools follow its deployment automatically
-npm run deploy:resources -- --all -c useLocalDevStack=false --profile <PROFILE>
+npm run deploy:resources -- --all -c prodDeployment=true -c deployment=agents-smoke-<you> --profile <PROFILE>
 npm run agents:smoke -- --app agents-smoke-<you> --profile <PROFILE> [--frontend <FRONTEND_URL>] [--include-expiry]
 ```
 

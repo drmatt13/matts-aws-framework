@@ -105,7 +105,8 @@ function cognitoDirectory(
 }
 
 async function main(): Promise<void> {
-  const configured = testUserSettings(readAuthoredInputs());
+  // Compose passes LOCAL_FRAMEWORK_DEPLOYMENT from root .env: set only by a development export.
+  const configured = testUserSettings(readAuthoredInputs(), process.env.LOCAL_FRAMEWORK_DEPLOYMENT);
   if (configured.status === "skipped") {
     console.log(`No local test user: ${configured.reason}`);
     return;

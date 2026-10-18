@@ -9,6 +9,7 @@ import { DeploymentInterrupt } from "./deployment-interrupt";
 import { synchronizeDeploymentSecrets } from "./deployment-secrets";
 import { acquireDeploymentLock, sweepStaleAssemblies } from "./deployment-workspace";
 import { readDeploymentStackPages } from "./resource-export";
+import { contextFromArgs, readCdkContext, resolveRepositoryTarget } from "@repo/framework/deploy/node";
 
 const root = resolve(__dirname, "..");
 const cdk = require.resolve("aws-cdk/bin/cdk");
@@ -28,12 +29,18 @@ async function main(): Promise<void> {
   const { validateFrameworkConfig } = await import("@repo/framework/config");
   validateFrameworkConfig(framework);
   const selection = deploymentArguments(args);
-  // The same file the CDK app and the resource catalog read.
-  const inputFile = process.env.FRAMEWORK_INPUTS_FILE ? resolve(process.env.FRAMEWORK_INPUTS_FILE) : resolve(root, "cdk-app/.env");
+  // The target the CDK app will build for these arguments, resolved the same way
+  // (bin/app.ts): -c prodDeployment / -c deployment and framework:targets. Its
+  // inputs file is where secret values come from.
+  if (!process.env.FRAMEWORK_INPUTS_FILE?.trim()) delete process.env.FRAMEWORK_INPUTS_FILE;
+  const argumentContext = contextFromArgs(args);
+  const projectContext = readCdkContext(root);
+  const target = resolveRepositoryTarget({ root, get: (key) => argumentContext[key] ?? projectContext[key], env: process.env });
+  target.warnings.forEach((warning) => console.warn(warning));
+  const inputFile = target.inputsFile;
   // Hand every child the path this process read, absolute: synth runs in cdk-app/
-  // and would resolve a relative path elsewhere, or read an empty one literally.
-  if (process.env.FRAMEWORK_INPUTS_FILE) process.env.FRAMEWORK_INPUTS_FILE = inputFile;
-  else delete process.env.FRAMEWORK_INPUTS_FILE;
+  // and would otherwise resolve the target again from its own working directory.
+  process.env.FRAMEWORK_INPUTS_FILE = inputFile;
   const authored = existsSync(inputFile) ? parseEnv(readFileSync(inputFile, "utf8")) : {};
   // An explicit flag or AWS_PROFILE selects named credentials. Otherwise the
   // AWS CLI and SDK use their standard default credential chain.
@@ -53,6 +60,9 @@ async function main(): Promise<void> {
     try {
       await run(cdk, ["synth", ...selection.forwarded, ...(selection.app ? ["--app", selection.app] : []), "--quiet", "--output", assembly], resolve(root, "cdk-app"));
       graph = inspectDeploymentAssembly(assembly, selection);
+      if (graph.identity.deployment !== target.target.name || graph.identity.mode !== target.mode) {
+        throw new Error(`The synthesized assembly is ${graph.identity.deployment} (${graph.identity.mode}), but these arguments select ${target.target.name} (${target.mode}). Check -c deployment, -c prodDeployment and framework:targets. Nothing was changed.`);
+      }
       const region = graph.identity.region;
       if (selection.region && selection.region !== region) throw new Error("--region differs from the synthesized deployment region.");
       release = acquireDeploymentLock(cache, graph.identity.deployment);

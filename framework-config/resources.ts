@@ -45,8 +45,8 @@ export const resources = defineResources({
   // `skipEmailVerification` are all fields on CognitoStack.
   cognito: resource.stack<CognitoStack>(),
 
-  // Only a full deployment builds a database, and `bin/cdk-app.ts` branches on
-  // the same value. Without it, `resources.rds.database` still compiles where
+  // Only a production deployment builds a database, and `bin/cdk-app.ts`
+  // branches on the same mode (`-c prodDeployment=true`). Without it, `resources.rds.database` still compiles where
   // framework.config.ts names it, and a workload's `database: true` places
   // nothing in AWS: the local Postgres container stands in for it.
   rds: PROD_DEPLOYMENT ? resource.stack<RdsStack>() : undefined,

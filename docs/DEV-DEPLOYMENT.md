@@ -21,7 +21,8 @@ aws sts get-caller-identity
 Create `cdk-app/.env` from [the dev example](../cdk-app/.env.dev.example) if it does
 not already exist. Preserve existing values when switching configurations. Set:
 
-- PROD_DEPLOYMENT=false and a distinct CDK_APP_NAME for this deployment.
+- A distinct CDK_APP_NAME for your own development deployment. It may not be the name of a
+  target declared in `cdk-app/cdk.json` (`framework:targets`), such as the production one.
 - LOCAL_DEV_URL, LOCAL_AWS_REGION, and every host port in the example. Leave
   LOCAL_AWS_PROFILE blank to use your AWS default profile.
 - Any workload settings, such as the example agent's LangGraph model provider. With
@@ -38,8 +39,8 @@ it is derived during export. Never put backend secrets in a VITE_ variable.
 
 Deploy the AWS portion of development. The deploy command synthesizes the dev
 graph and exports the root `.env` and local resource manifest after deployment.
-`PROD_DEPLOYMENT=false` in `cdk-app/.env` selects the dev graph, so no mode flag
-is needed:
+Commands build your development deployment unless they say `-c prodDeployment=true`,
+so no mode flag is needed:
 
 ```powershell
 npm run deploy:resources -- --all
@@ -71,7 +72,8 @@ deployment's name and refuses to change stacks it does not own:
 Each refusal names the stacks and a remedy, and nothing is changed. Two deploys of the same
 name on one machine cannot run at once (`.cache/deploy/<name>.lock`). Assemblies that an
 interrupted run left in `.cache/deploy` are removed after a day. Deploy and export read
-authored inputs from `FRAMEWORK_INPUTS_FILE` when it is set, otherwise from `cdk-app/.env`.
+authored inputs from `FRAMEWORK_INPUTS_FILE` when it is set, otherwise from the target's
+inputs file: `cdk-app/.env.dev` or `cdk-app/.env` for development.
 
 The dev graph holds Cognito, AWS-invoked event handlers, and replay resources. Routed
 HTTP handlers, services, tasks, and workflows run locally; no ECS image is published by a
@@ -88,9 +90,10 @@ with discovered development resource identifiers. It does not rewrite authored
 settings to cdk-app/.env and rerun it. The generated manifest directory and authored input
 file are mounted read-only; neither is copied into images.
 
-Create `client-app/.env` from [its example](../client-app/.env.example), then paste in the
-client-app block that ends root .env: the Cognito settings, the Vite proxy target derived
-from the local API host port, and the WebSocket tester URL. Two WebSocket names are
+Export also writes `client-app/.env.development.local`, which `vite dev` reads over
+`client-app/.env`: the Cognito settings, the Vite proxy target derived from the local API
+host port, and the WebSocket tester URL. Nothing is copied by hand; keep your own client
+settings in `client-app/.env` (from [its example](../client-app/.env.example)). Two WebSocket names are
 written independently: VITE_LOCAL_WS_URL is always local-ws-dev-server on its host port,
 because Compose runs it whatever DEPLOY_PROD_WEBSOCKET_API says; VITE_API_GATEWAY_WS_URL is
 the deployment's WebSocketApiStack endpoint when DEPLOY_PROD_WEBSOCKET_API=true built one,
@@ -199,8 +202,9 @@ and every `npm run dev:containers` makes them a working account. Its seed-test-u
 step creates the user in the dev pool if it is missing, with the email marked verified
 and no invitation sent, sets its password to `LOCAL_TEST_USER_PASSWORD`, and writes
 its local users row. An existing row is kept, with any name edited in the app. The
-password must meet the pool's policy (12 characters). It runs only while
-`PROD_DEPLOYMENT` is not true; without both settings, or if Cognito rejects a call,
+password must meet the pool's policy (12 characters). It runs only for the pool a
+development export wrote to root `.env` (`LOCAL_FRAMEWORK_DEPLOYMENT`, which a production
+export never writes); without both settings, or if Cognito rejects a call,
 it says so in `docker compose logs seed-test-user` and changes nothing. Sign in as
 this user in the browser or headlessly. Use an address you control: the account is
 marked verified, so a password reset mails a code there.

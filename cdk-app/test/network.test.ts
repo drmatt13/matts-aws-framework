@@ -188,7 +188,7 @@ test("a service joins its connections' groups without opening them to its load b
 test("a dev deployment never builds the network", () => {
   const application = app(config({}), "dev");
   const stack = new cdk.Stack(application, "Data", { env });
-  assert.throws(() => frameworkVpc(stack), /a dev deployment \(PROD_DEPLOYMENT=false\) never builds the network/);
+  assert.throws(() => frameworkVpc(stack), /a dev deployment never builds the network.*-c prodDeployment=true/);
 });
 
 test("database: true places nothing when the deployment builds no database", () => {

@@ -7,11 +7,23 @@ intended account/profile/region. [Framework](FRAMEWORK.md) explains configuratio
 
 ## Before deployment
 
-Install dependencies with npm ci, verify the account with aws sts get-caller-identity,
-and create cdk-app/.env from [the production example](../cdk-app/.env.prod.example).
-Preserve existing configuration rather than blindly overwriting it. Set:
+Install dependencies with npm ci and verify the account with aws sts get-caller-identity.
+A production deployment is a target declared in `cdk-app/cdk.json`, with its name, the
+account it is pinned to, and its own inputs file:
 
-- PROD_DEPLOYMENT=true and the environment's stable CDK_APP_NAME.
+```json
+"framework:targets": {
+  "my-aws-app-prod": { "mode": "prod", "account": "<12-digit id>", "region": "us-east-1", "inputs": "cdk-app/.env.prod" }
+}
+```
+
+Every command states production with `-c prodDeployment=true`; with one production target
+declared it is selected automatically, and `-c deployment=<name>` picks among several. A synth
+for any other account than the pin is refused. Create the inputs file from
+[the production example](../cdk-app/.env.prod.example), preserving existing configuration
+rather than blindly overwriting it. Development keeps its own file (`cdk-app/.env`), so the
+two never share settings or secret values. Set:
+
 - USE_FRONTEND_CUSTOM_DOMAIN=false to use the generated HTTPS CloudFront hostname,
   or true with FRONTEND_URL and FRONTEND_CLOUDFRONT_CERTIFICATE_ARN for a custom domain.
 - Optional Cognito custom-domain/certificate pair and Google credentials.
@@ -33,14 +45,14 @@ no domain name or ACM certificate is required. Use the website stack's CloudFron
 to open the deployed client after publishing it. A generated-domain deployment populates
 CloudFront's routing store automatically during deployment; there is no separate setup command.
 
-Do not switch an existing production deployment to dev mode as a local-development shortcut:
-it can remove resources from that stack graph. Use a separate deployment name/account for dev.
+A deployment never changes mode: deploy refuses a dev synth over a production deployment's
+stacks (and the reverse), so development always runs under its own name.
 
 ```powershell
 npm --workspace client-app run build
 npm run verify
-npm --workspace cdk-app exec -- cdk synth -c useLocalDevStack=false --profile <PROFILE> --quiet
-npm --workspace cdk-app exec -- cdk diff -c useLocalDevStack=false --profile <PROFILE>
+npm --workspace cdk-app exec -- cdk synth -c prodDeployment=true --profile <PROFILE> --quiet
+npm --workspace cdk-app exec -- cdk diff -c prodDeployment=true --profile <PROFILE>
 ```
 
 Review resource replacements, IAM, networking, and retention before deploying. The
@@ -137,7 +149,7 @@ For a new domain whose parent/apex does not resolve, bootstrap the frontend dist
 2. Deploy the production resources with USE_COGNITO_CUSTOM_DOMAIN=false too:
 
    ```powershell
-   npm run deploy:resources -- --all -c useLocalDevStack=false --profile <PROFILE>
+   npm run deploy:resources -- --all -c prodDeployment=true --profile <PROFILE>
    ```
 
 3. Read its CloudFrontDomainName output and point the apex to it with your provider's
@@ -168,7 +180,7 @@ federated identity checks. Auth implementation details live in [Framework](FRAME
 ## Deploy
 
 ```powershell
-npm run deploy:resources -- --all -c useLocalDevStack=false --profile <PROFILE>
+npm run deploy:resources -- --all -c prodDeployment=true --profile <PROFILE>
 ```
 
 The command validates the synthesized graph and target account, resolves existing managed
@@ -207,17 +219,15 @@ development manifest. To export production frontend settings and public deployme
 without starting containers, run:
 
 ```powershell
-npm run export:cdk-outputs -- --profile <PROFILE>
+npm run export:cdk-outputs -- --deployment <NAME> --profile <PROFILE>
 ```
 
-The command detects the mode from deployed metadata. In production it writes root .env
-with public deployment outputs in the same sections as development, including the frontend
-bucket and distribution used for publishing, and ends with a client-app block to copy into
-client-app/.env. It also refreshes
-.framework/prod/outputs.json. The generated root .env block replaces any previous dev
-export block, while unrelated authored entries are preserved. It does not generate files
-inside client-app or change the development resource manifest. Both output files are
-ignored by Git; no secrets are exported.
+The command detects the mode from deployed metadata. In production it writes
+`.framework/prod/outputs.json` (public outputs, including the frontend bucket and
+distribution used for publishing) and `client-app/.env.production.local`, which
+`vite build` reads over `client-app/.env`. It never touches root `.env` or the development
+resource manifest, which belong to local development. Both output files are ignored by Git;
+no secrets are exported.
 
 For custom DNS, use the deployment output targets:
 
@@ -263,8 +273,8 @@ for reviewing a production migration.
 
 ## Publish the client
 
-Export, then copy the client-app block at the end of root .env into client-app/.env before
-building. It holds the production Cognito region, pool, client and domain; the CloudFront
+Export, then build: `vite build` reads `client-app/.env.production.local`, which export
+wrote. It holds the production Cognito region, pool, client and domain; the CloudFront
 URL as VITE_API_GATEWAY_URL, which only the Vite dev server's proxy reads; the deployed
 WebSocket endpoint as VITE_API_GATEWAY_WS_URL when DEPLOY_PROD_WEBSOCKET_API is on; and empty
 VITE_LOCAL_WS_URL and tester URLs, since neither Compose service runs. Empty values
@@ -272,8 +282,7 @@ clear local defaults that do not apply. A browser always calls same-origin /api;
 deployed cross-origin API URL is needed.
 
 ```powershell
-npm run export:cdk-outputs -- --profile <PROFILE>
-# Copy the exported client-app block into client-app/.env before the build.
+npm run export:cdk-outputs -- --deployment <NAME> --profile <PROFILE>
 npm --workspace client-app run build
 aws s3 sync client-app/dist s3://<FRONTEND_WEBSITE_BUCKET_NAME> --delete --profile <PROFILE>
 aws cloudfront create-invalidation --distribution-id <CLOUDFRONT_ID> --paths "/*" --profile <PROFILE>
@@ -326,9 +335,9 @@ retention before executing. Without RETAIN_STATEFUL_RESOURCES the database is de
 final snapshot, and its automated backups are kept for their retention window:
 
 ```powershell
-npm run destroy:resources -- --all -c useLocalDevStack=false --profile <PROFILE>
+npm run destroy:resources -- --all -c prodDeployment=true --profile <PROFILE>
 ```
 
-Review CDK's confirmation list. Use useLocalDevStack=true for a dev graph. Retained resources
+Review CDK's confirmation list. Omit `-c prodDeployment=true` for your development deployment. Retained resources
 can remain after stacks disappear; inspect CloudFormation and resource state. Avoid custom
 Cognito domains for disposable deployment tests when domain lifecycle is not under test.

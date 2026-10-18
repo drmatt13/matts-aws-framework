@@ -69,7 +69,7 @@ test("generated blocks omit empty sections, keep empty values, quote literals, a
   assert.deepEqual(names, ["LOCAL_BROWSER_ORIGINS", "PRICE", "VITE_WS_TESTER_URL"]);
   assert.doesNotMatch(block, /Absent|NOT_DEPLOYED/);
   assert.match(block, /^# BEGIN GENERATED CDK OUTPUTS\n# Header line\.\n\n# Controls\n/);
-  assert.match(block, /\n\n# Client app: copy this block into client-app\/\.env\nVITE_WS_TESTER_URL=\n# END GENERATED CDK OUTPUTS\n$/);
+  assert.match(block, /\n\n# Client app: also written to client-app\/\.env\.development\.local\nVITE_WS_TESTER_URL=\n# END GENERATED CDK OUTPUTS\n$/);
   assert.equal(parseEnv(block).LOCAL_BROWSER_ORIGINS, "http://localhost:3000,http://localhost:3001");
   assert.match(block, /^PRICE="\\\$5"$/m);
   assert.throws(() => renderGeneratedBlock([], [

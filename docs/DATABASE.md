@@ -148,7 +148,7 @@ Then seed-test-user makes `LOCAL_TEST_USER_EMAIL` a working account: it creates 
 user in the dev pool if needed, sets its password from cdk-app/.env, and writes its
 users row through `ensureCognitoUser`. An admin-created account never fires the
 post-confirmation trigger, so this step writes the row itself. It keeps an existing
-row, refuses `PROD_DEPLOYMENT=true`, and has the same database guard. See
+row, runs only for a pool a development export wrote, and has the same database guard. See
 [Development](DEV-DEPLOYMENT.md#verification-and-troubleshooting).
 
 Database contract/generated files are excluded from Watch. Rebuild the development

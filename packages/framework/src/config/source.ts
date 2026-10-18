@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "n
 import * as path from "node:path";
 import { parseEnv } from "node:util";
 import { AGENT_SOURCE_ROOT } from "./conventions";
+import { frameworkMode } from "../deploy/node";
 import {
   parseSecretBindings,
   SECRET_BINDINGS_FILE,
@@ -98,30 +99,16 @@ export function readAuthoredInputs(
 }
 
 /**
- * `PROD_DEPLOYMENT` as authored in cdk-app/.env: whether this repository is
- * currently pointed at a full cloud deployment.
+ * Whether the catalog is being evaluated for a production graph.
  *
  * A constant rather than a function, because the resource catalog branches on
- * it while it is being declared. Every process that loads the catalog reads the
- * same line of the same file — CDK synthesis on the host, and the four Compose
- * services, which bind-mount cdk-app/.env read-only — so a dev server and a
- * deployment cannot disagree about which graph this is.
- *
- * Parsed strictly, for the reason `cdk-app/deployment.ts` parses it strictly: a
- * typo must not coerce to a mode nobody asked for. Anything other than "true"
- * is false, and absence is false.
- *
- * Defensive about the repository root: nothing that imports the catalog runs
- * outside the repository today, and an import should not be the thing that
- * discovers otherwise.
+ * it while it is being declared. The mode is chosen per command as CDK context
+ * (`-c prodDeployment=true`): the CDK app's entry point (cdk-app/bin/main.ts)
+ * resolves it before the catalog is imported and hands it over as
+ * FRAMEWORK_MODE. Every other process that loads the catalog — the Compose
+ * servers, the generator, export — runs development, so it reads dev.
  */
-export const PROD_DEPLOYMENT: boolean = (() => {
-  try {
-    return readAuthoredInputs().PROD_DEPLOYMENT?.trim().toLowerCase() === "true";
-  } catch {
-    return false;
-  }
-})();
+export const PROD_DEPLOYMENT: boolean = frameworkMode() === "prod";
 
 /** The directory a framework path's leading slash refers to. */
 export function getFrameworkSourceRoot(options: FrameworkRootOptions = {}): string {

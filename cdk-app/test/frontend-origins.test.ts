@@ -11,14 +11,15 @@ import { HttpApiGatewayStack } from "../lib/framework/http-api-gateway-stack";
 import { FrameworkTargetRegistry } from "../lib/framework/framework-target-registry";
 
 const env = { account: "111122223333", region: "us-east-1" };
+// Production unless a case says PROD_DEPLOYMENT=false, stated as CDK context.
 function inputs(overrides: Record<string, string> = {}) {
+  const { PROD_DEPLOYMENT = "true", ...rest } = overrides;
   return resolveDeploymentInputs({
-    getContext: () => undefined,
+    getContext: (key) => (key === "prodDeployment" ? PROD_DEPLOYMENT : undefined),
     env: {
       CDK_DEFAULT_ACCOUNT: env.account,
       CDK_DEFAULT_REGION: env.region,
-      PROD_DEPLOYMENT: "true",
-      ...overrides,
+      ...rest,
     },
   });
 }

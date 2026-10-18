@@ -17,11 +17,11 @@ function synth(settings: Record<string, string>): Assembly {
   try {
     const inputs = path.join(directory, "inputs.env");
     const output = path.join(directory, "templates.json");
-    writeFileSync(inputs, "PROD_DEPLOYMENT=true\nCDK_APP_NAME=example\n");
+    writeFileSync(inputs, "CDK_APP_NAME=example\n");
     // Start from public fixture inputs, independent of the developer's authored env.
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("DATABASE_") && key !== "RETAIN_STATEFUL_RESOURCES"));
     const run = spawnSync(process.execPath, ["--import", "tsx", path.join(__dirname, "fixtures/database-synth.ts"), output], {
-      env: { ...env, FRAMEWORK_INPUTS_FILE: inputs, ...settings }, encoding: "utf8", timeout: 90_000,
+      env: { ...env, FRAMEWORK_INPUTS_FILE: inputs, FRAMEWORK_MODE: "prod", ...settings }, encoding: "utf8", timeout: 90_000,
     });
     assert.equal(run.status, 0, run.stderr);
     return JSON.parse(readFileSync(output, "utf8"));

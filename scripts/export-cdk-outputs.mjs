@@ -9,10 +9,11 @@ import { parseEnv } from "node:util";
 // actual exports rather than relying on Node's inferred ESM named exports.
 const require = createRequire(import.meta.url);
 const { localClientEndpoints, localExportValues, replaceGeneratedEnvironment } = require("./local-export.ts");
-const { CLIENT_SECTION_HEADING, clientEnvironment, renderGeneratedBlock } = require("./environment-export.ts");
+const { CLIENT_ENVIRONMENT_FILES, CLIENT_SECTION_HEADING, clientEnvironment, renderClientEnvironmentFile, renderGeneratedBlock } = require("./environment-export.ts");
 const { collectDeploymentStacks, collectDevelopmentResources, readDeploymentStackPages, writeDevelopmentFiles } = require("./resource-export.ts");
-const { collectProductionOutputs, renderProductionEnvironment } = require("./production-export.ts");
+const { collectProductionOutputs, renderProductionClientFile } = require("./production-export.ts");
 const { RESOURCE_MANIFEST_FILE } = require("@repo/framework/config");
+const { contextFromArgs, deploymentInputsFile, resolveRepositoryTarget } = require("@repo/framework/deploy/node");
 const { default: framework } = require("../framework.config.ts");
 
 const BASE_STACK_OUTPUT_MAPPINGS = {
@@ -156,11 +157,12 @@ const getOption = (...names) => {
   return undefined;
 };
 
-// The same inputs file the deploy wrapper and the CDK app read.
+// Local development's inputs (host ports, origins): the development inputs file
+// the deploy wrapper and the CDK app read, or FRAMEWORK_INPUTS_FILE.
 const defaultAuthoredEnvPath = resolve(process.cwd(), "cdk-app/.env");
 const authoredEnvPath = process.env.FRAMEWORK_INPUTS_FILE
   ? resolve(process.env.FRAMEWORK_INPUTS_FILE)
-  : defaultAuthoredEnvPath;
+  : deploymentInputsFile(process.cwd(), "dev");
 const authoredEnv = existsSync(authoredEnvPath)
   ? parseEnv(readFileSync(authoredEnvPath, "utf8"))
   : {};
@@ -173,15 +175,22 @@ if (envPath.toLowerCase() === resolve(process.cwd(), RESOURCE_MANIFEST_FILE).toL
 }
 const profile = getOption("profile") ?? process.env.AWS_PROFILE ?? authoredEnv.AWS_PROFILE;
 const region = getOption("region") ?? process.env.AWS_REGION ?? authoredEnv.AWS_REGION;
+// Which deployment: named (--deployment, or the older --cdk-app-name), or the
+// target the same CDK context would select (your development deployment by
+// default). The mode is read from the deployment itself, below.
 const deploymentName =
+  getOption("deployment") ??
   getOption("cdkAppName", "cdk-app-name") ??
   process.env.CDK_APP_NAME ??
-  authoredEnv.CDK_APP_NAME ??
-  "matts-aws-framework";
+  resolveRepositoryTarget({
+    root: process.cwd(),
+    get: (key) => contextFromArgs(process.argv.slice(2))[key],
+    env: process.env,
+  }).target.name;
 
 if (!/^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(deploymentName)) {
   throw new Error(
-    `--cdkAppName/--cdk-app-name/CDK_APP_NAME must be 1-63 lowercase letters, numbers, or hyphens, start with a letter, and not end with a hyphen. Received: ${deploymentName}`,
+    `--deployment/--cdk-app-name/CDK_APP_NAME must be 1-63 lowercase letters, numbers, or hyphens, start with a letter, and not end with a hyphen. Received: ${deploymentName}`,
   );
 }
 
@@ -211,13 +220,14 @@ catch { throw new Error("Unable to read deployment stacks. Check AWS credentials
 const { identity } = collectDeploymentStacks(listed, deploymentName);
 if (region && identity.region !== region) throw new Error("The requested region differs from the deployed resources.");
 if (identity.mode === "prod") {
+  // Root .env belongs to local development (Compose reads it), so a production
+  // export leaves it alone: its outputs and the client build settings live apart.
   const result = collectProductionOutputs(listed, deploymentName);
-  const contents = renderProductionEnvironment(result, existsSync(envPath) ? readFileSync(envPath, "utf8") : "");
   writeDevelopmentFiles([
-    { path: envPath, contents },
     { path: resolve(process.cwd(), ".framework/prod/outputs.json"), contents: JSON.stringify(result.document, null, 2) + "\n" },
+    { path: resolve(process.cwd(), CLIENT_ENVIRONMENT_FILES.prod), contents: renderProductionClientFile(result) },
   ]);
-  console.log(`Wrote public production settings to ${envPath} and .framework/prod/outputs.json for ${deploymentName}. Copy its client-app block to client-app/.env before building.`);
+  console.log(`Wrote public production outputs to .framework/prod/outputs.json and the client build settings to ${CLIENT_ENVIRONMENT_FILES.prod} for ${deploymentName}.`);
   process.exit(0);
 }
 const { manifest, stacks: deploymentStacks } = collectDevelopmentResources(listed, deploymentName, framework);
@@ -293,5 +303,6 @@ const contents = replaceGeneratedEnvironment(existsSync(envPath) ? readFileSync(
 writeDevelopmentFiles([
   { path: resolve(process.cwd(), RESOURCE_MANIFEST_FILE), contents: JSON.stringify(manifest, null, 2) + "\n" },
   { path: envPath, contents },
+  { path: resolve(process.cwd(), CLIENT_ENVIRONMENT_FILES.dev), contents: renderClientEnvironmentFile(client, { deployment: deploymentName, mode: "dev" }) },
 ]);
-console.log(`Wrote development Compose settings and resource identifiers for ${deploymentName}. Copy the client-app block in ${envPath} to client-app/.env.`);
+console.log(`Wrote development Compose settings, resource identifiers and ${CLIENT_ENVIRONMENT_FILES.dev} for ${deploymentName}.`);

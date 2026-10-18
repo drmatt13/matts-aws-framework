@@ -2,6 +2,7 @@ import * as cdk from "aws-cdk-lib";
 import { createHash } from "crypto";
 import * as fs from "fs";
 import type { CloudMode } from "@repo/framework/config";
+import { modeFromContext, type DeploymentTarget } from "@repo/framework/deploy";
 import { resolveDatabaseSettings } from "./database-settings";
 
 /** Application-owned deployment policy. See docs/FRAMEWORK.md#configuration-and-environment.
@@ -10,9 +11,11 @@ import { resolveDatabaseSettings } from "./database-settings";
 export interface DeploymentSources {
   getContext: (key: string) => unknown;
   env: Readonly<Record<string, string | undefined>>;
+  /** The deployment target bin/app.ts resolved from context. */
+  target?: Pick<DeploymentTarget, "name" | "mode" | "account" | "region">;
 }
 
-export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) {
+export function resolveDeploymentInputs({ getContext, env, target }: DeploymentSources) {
   const warnings: string[] = [];
   // New ordinary flags use these readers: context, environment, then fallback.
   const stringFlag = (context: string, envKey: string) =>
@@ -37,53 +40,43 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
     region,
   };
 
-  const useLocalDevStackContext = optionalBoolean(
-    getContext("useLocalDevStack"),
-    "-c useLocalDevStack",
-  );
-  const prodDeploymentContext = optionalBoolean(
-    getContext("prodDeployment"),
-    "-c prodDeployment",
-  );
-  const prodDeploymentEnv = optionalBoolean(
-    env.PROD_DEPLOYMENT,
-    "PROD_DEPLOYMENT",
-  );
-
-  const useLocalDevStack =
-    useLocalDevStackContext ??
-    (prodDeploymentContext !== undefined
-      ? !prodDeploymentContext
-      : prodDeploymentEnv !== undefined
-        ? !prodDeploymentEnv
-        : true);
-
   // The one derived value the graph is built from. Resolved here so no stack has
   // to re-answer "which deployment is this" from something else it can see -
-  // whether an RDS stack happened to be created, say.
-  const mode: CloudMode = useLocalDevStack ? "dev" : "prod";
+  // whether an RDS stack happened to be created, say. It comes from CDK context:
+  // the target bin/app.ts resolved, or `-c prodDeployment` when a caller (a
+  // test) supplies none.
+  const stated = modeFromContext(getContext);
+  if (!target) warnings.push(...stated.warnings);
+  const mode: CloudMode = target?.mode ?? stated.mode ?? "dev";
 
-  // Name the ignored input rather than mutating it: reporting "PROD_DEPLOYMENT is
-  // now false" would contradict the value still sitting in .env.
-  //
-  // prodDeployment=P asks for useLocalDevStack=!P, so P === L is the
-  // disagreement, not P === !L.
-  const warnOverriddenBy = (ignoredInput: string) => {
-    warnings.push(
-      `[cdk-app] ${ignoredInput} is overridden by -c useLocalDevStack=${useLocalDevStackContext}. Deploying in ${mode} mode.`,
+  // PROD_DEPLOYMENT used to live in cdk-app/.env. A leftover line that agrees is
+  // only noise; one that disagrees is someone expecting the file to decide, and
+  // building the other graph silently would be the worst answer.
+  const legacyMode = optionalBoolean(env.PROD_DEPLOYMENT, "PROD_DEPLOYMENT");
+  if (legacyMode !== undefined && legacyMode !== (mode === "prod")) {
+    throw new Error(
+      `PROD_DEPLOYMENT=${legacyMode} in the inputs file disagrees with this ${mode} synth. The mode is chosen per command now: pass -c prodDeployment=${legacyMode} to build ${legacyMode ? "production" : "development"}, and remove PROD_DEPLOYMENT from the inputs file.`,
     );
-  };
-
-  if (useLocalDevStackContext !== undefined) {
-    if (prodDeploymentContext === useLocalDevStackContext) {
-      warnOverriddenBy(`-c prodDeployment=${prodDeploymentContext}`);
-    } else if (prodDeploymentEnv === useLocalDevStackContext) {
-      warnOverriddenBy(
-        `PROD_DEPLOYMENT=${prodDeploymentEnv} in cdk-app/.env`,
-      );
-    }
+  }
+  if (legacyMode !== undefined) {
+    warnings.push("[cdk-app] PROD_DEPLOYMENT in the inputs file is no longer read; the mode comes from -c prodDeployment. Remove the line.");
   }
 
+  // A production target is named by cdk.json; a CDK_APP_NAME beside it in the
+  // inputs file is someone expecting it to name the deployment.
+  if (target?.mode === "prod" && env.CDK_APP_NAME?.trim() && env.CDK_APP_NAME.trim() !== target.name) {
+    warnings.push(`[cdk-app] CDK_APP_NAME=${env.CDK_APP_NAME.trim()} in the inputs file is ignored: this production deployment is the target ${target.name}. Remove the line.`);
+  }
+
+  // A target pinned to an account or region is never synthesized for another:
+  // the selected profile is a credential source, not a statement about where
+  // production lives.
+  if (target?.account && target.account !== account) {
+    throw new Error(`${target.name} is pinned to account ${target.account} in framework:targets, but the selected credentials are for ${account}. Choose the profile for ${target.account}.`);
+  }
+  if (target?.region && target.region !== region) {
+    throw new Error(`${target.name} is pinned to ${target.region} in framework:targets, but this synth is for ${region}. Select ${target.region} (--region or the profile's region).`);
+  }
 
   // Development convenience: the pre-signup trigger confirms new users itself
   // instead of mailing them a code. Never derived from anything else, and
@@ -219,6 +212,7 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
   }
 
   const deploymentName =
+    target?.name ??
     stringFlag("cdkAppName", "CDK_APP_NAME") ??
     "matts-aws-framework";
 
@@ -310,7 +304,7 @@ export function resolveDeploymentInputs({ getContext, env }: DeploymentSources) 
 
   const cognitoDomainPrefix = getGeneratedCognitoDomainPrefix(deploymentName, account, region);
 
-  // Deliberately independent of PROD_DEPLOYMENT: a dev-stack deploy can
+  // Deliberately independent of the mode: a dev-stack deploy can
   // legitimately use the custom auth domain, which is why this is not folded into
   // the production DNS gate above. Defaults to using the values when they are
   // present, so existing deployments are unaffected; set it false to park the
@@ -533,8 +527,8 @@ const optionalString = (value: unknown) => {
   return stringValue.trim() ? stringValue : undefined;
 };
 
-// PROD_DEPLOYMENT decides whether real cloud infrastructure is created, so a
-// typo must not quietly coerce to a mode nobody asked for. Anything other than
+// These flags decide what real cloud infrastructure is created, so a
+// typo must not quietly coerce to a value nobody asked for. Anything other than
 // "true"/"false" is an error rather than a truthiness test.
 const optionalBoolean = (value: unknown, label: string) => {
   const stringValue = optionalString(value);

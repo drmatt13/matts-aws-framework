@@ -178,7 +178,7 @@ function networkStack(scope: IConstruct, reason: string): NetworkStack {
   }
   if (options.mode === "dev") {
     throw new Error(
-      `${reason}, but a dev deployment (PROD_DEPLOYMENT=false) never builds the network. What lives in it runs under Compose in development: build it only when PROD_DEPLOYMENT=true, and declare its catalog entry PROD_DEPLOYMENT ? resource.stack<...>() : undefined.`,
+      `${reason}, but a dev deployment never builds the network. What lives in it runs under Compose in development: build it only in a production deployment (-c prodDeployment=true), and declare its catalog entry PROD_DEPLOYMENT ? resource.stack<...>() : undefined.`,
     );
   }
   const caller = cdk.Stack.of(scope);

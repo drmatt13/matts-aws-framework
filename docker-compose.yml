@@ -196,14 +196,16 @@ services:
   # Makes LOCAL_TEST_USER_EMAIL / LOCAL_TEST_USER_PASSWORD from cdk-app/.env a
   # working account: created in the dev pool if missing, its password reset to
   # the authored one, and its local row written. After the prune, so a row left
-  # by an earlier pool is gone first. Refuses PROD_DEPLOYMENT=true; without the
-  # two settings, or if Cognito fails, it says so and changes nothing.
+  # by an earlier pool is gone first. Runs only for a pool a development export
+  # wrote (LOCAL_FRAMEWORK_DEPLOYMENT); without the two settings, or if Cognito
+  # fails, it says so and changes nothing.
   seed-test-user:
     build: *build
     working_dir: /workspace/packages/database
     environment:
       <<: *aws-env
       USER_POOL_ID: ${USER_POOL_ID}
+      LOCAL_FRAMEWORK_DEPLOYMENT: ${LOCAL_FRAMEWORK_DEPLOYMENT:-}
       DATABASE_URL: postgresql://admin:password@postgres:5432/app_db
     command: [npm, run, db:seed-test-user]
     volumes: [*aws-mount, *inputs-mount]

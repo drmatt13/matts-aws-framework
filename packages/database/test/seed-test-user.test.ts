@@ -66,42 +66,40 @@ function fakeDirectory(existing?: CognitoTestUser) {
   };
 }
 
+// What a development export wrote to root .env and Compose hands the service.
+const exported = "my-aws-app";
+
 test("settings come from cdk-app/.env, with the email normalized", () => {
   assert.deepEqual(
     testUserSettings({
       LOCAL_TEST_USER_EMAIL: "  TestUser@Example.com ",
       LOCAL_TEST_USER_PASSWORD: "a-long-password",
-    }),
+    }, exported),
     { status: "ready", settings },
   );
 });
 
-test("a production deployment never gets a test user", () => {
+test("only a development export's pool ever gets a test user", () => {
+  const configured = { LOCAL_TEST_USER_EMAIL: settings.email, LOCAL_TEST_USER_PASSWORD: settings.password };
+  // root .env not written by a development export: its pool could be anyone's.
+  for (const deployment of [undefined, "", "  "]) {
+    const outcome = testUserSettings(configured, deployment);
+    assert.equal(outcome.status, "skipped");
+    assert.match(outcome.status === "skipped" ? outcome.reason : "", /development export/);
+  }
+  // A leftover PROD_DEPLOYMENT=true still refuses, whatever was exported.
   for (const PROD_DEPLOYMENT of ["true", " TRUE "]) {
-    const outcome = testUserSettings({
-      PROD_DEPLOYMENT,
-      LOCAL_TEST_USER_EMAIL: settings.email,
-      LOCAL_TEST_USER_PASSWORD: settings.password,
-    });
+    const outcome = testUserSettings({ ...configured, PROD_DEPLOYMENT }, exported);
     assert.equal(outcome.status, "skipped");
     assert.match(outcome.status === "skipped" ? outcome.reason : "", /PROD_DEPLOYMENT=true/);
   }
-
-  // Parsed as the framework parses it: anything but "true" is a dev deployment.
-  assert.equal(
-    testUserSettings({
-      PROD_DEPLOYMENT: "false",
-      LOCAL_TEST_USER_EMAIL: settings.email,
-      LOCAL_TEST_USER_PASSWORD: settings.password,
-    }).status,
-    "ready",
-  );
+  assert.equal(testUserSettings({ ...configured, PROD_DEPLOYMENT: "false" }, exported).status, "ready");
 });
 
 test("without both settings there is nothing to create", () => {
-  assert.equal(testUserSettings({}).status, "skipped");
-  assert.equal(testUserSettings({ LOCAL_TEST_USER_EMAIL: settings.email }).status, "skipped");
-  assert.equal(testUserSettings({ LOCAL_TEST_USER_PASSWORD: "x" }).status, "skipped");
+  assert.equal(testUserSettings({}, exported).status, "skipped");
+  assert.equal(testUserSettings({ LOCAL_TEST_USER_EMAIL: settings.email }, exported).status, "skipped");
+  assert.equal(testUserSettings({ LOCAL_TEST_USER_PASSWORD: "x" }, exported).status, "skipped");
 });
 
 test("creates the Cognito account and its row on a fresh deployment", async () => {

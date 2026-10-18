@@ -77,7 +77,7 @@ test("deploy reads its authored inputs from FRAMEWORK_INPUTS_FILE when set", () 
   });
 });
 
-test("the synth child reads the same inputs file deploy read, and none when it is unset", () => {
+test("the synth child reads the same inputs file deploy read, and the development default when it is unset", () => {
   withDeployFixture((fixture, _deploy, deployWith) => {
     const inputs = path.join(fixture, "relative-inputs.env");
     writeFileSync(inputs, "AWS_PROFILE=fixture-profile-from-relative\n");
@@ -86,6 +86,7 @@ test("the synth child reads the same inputs file deploy read, and none when it i
     assert.match(output, /app-profile=fixture-profile-from-relative/);
     assert.ok(output.includes(`app-inputs=${inputs}`), output);
     const empty = deployWith({ FRAMEWORK_INPUTS_FILE: "", AWS_PROFILE: undefined });
-    assert.match(`${empty.stdout}${empty.stderr}`, /app-inputs=undefined/);
+    const emptyOutput = `${empty.stdout}${empty.stderr}`;
+    assert.ok(emptyOutput.includes(`app-inputs=${path.join(fixture, "cdk-app", ".env")}`), emptyOutput);
   });
 });

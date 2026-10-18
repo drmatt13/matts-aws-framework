@@ -1,6 +1,7 @@
-#!/usr/bin/env node
-import * as cdk from "aws-cdk-lib";
+// The application: framework composition and your own stacks. Loaded by
+// bin/main.ts, which resolves the deployment target from CDK context first.
 import * as path from "path";
+import { frameworkApp } from "./app";
 import {
   createFrameworkFoundation,
   createFrameworkTasks,
@@ -28,16 +29,18 @@ import {
 
 const repositoryRoot = path.join(__dirname, "..", "..");
 
-// Deployment flags — which account, which domain, which optional stacks — are
-// read from the process environment with cdk-app/.env loaded behind it. The
-// graph itself (PROD_DEPLOYMENT) is decided by that file alone; see the check
-// below.
-loadDeploymentEnvironment(process.env.FRAMEWORK_INPUTS_FILE ?? path.join(__dirname, "..", ".env"));
-const app = new cdk.App();
+// Which deployment and graph this is was decided from CDK context before this
+// file loaded (bin/app.ts): `-c prodDeployment`, `-c deployment`, and the
+// targets in cdk.json. Deployment flags — which domain, which optional stacks —
+// are read from the process environment with that target's inputs file loaded
+// behind it.
+const { app, selection } = frameworkApp();
+selection.warnings.forEach((warning) => console.warn(warning));
+loadDeploymentEnvironment(selection.inputsFile);
 
 // Declared resource inputs are *not* read from the process environment. Every
-// `.fromEnv()` in framework-config/resources.ts resolves against cdk-app/.env
-// itself, which is the same file and the same line `docker compose up` reads,
+// `.fromEnv()` in framework-config/resources.ts resolves against the target's
+// inputs file itself (cdk-app/.env for development, the file `docker compose up` reads),
 // so a deployment and a local run cannot disagree about a model id. `-c` still
 // overrides one, because an override you typed is not an override you inherited.
 const readers = {
@@ -48,18 +51,17 @@ validateFrameworkConfig(framework);
 const deployment = resolveDeploymentInputs({
   getContext: (key) => app.node.tryGetContext(key),
   env: process.env,
+  target: selection.target,
 });
 deployment.warnings.forEach((warning) => console.warn(warning));
 const { stackEnv, mode } = deployment;
 
-// The catalog branched on PROD_DEPLOYMENT while it was being imported, and a
-// `-c` override cannot reach back into that decision. Refused here rather than
-// left to surface as a resource nothing linked: a graph whose stacks and whose
-// catalog disagree about whether there is a database is not a graph worth
-// synthesizing.
+// The catalog branched on the mode while it was being imported. bin/main.ts
+// decides it before that import; loading this file any other way would build a
+// catalog for one graph and stacks for another, so it is refused.
 if ((mode === "prod") !== PROD_DEPLOYMENT) {
   throw new Error(
-    `This deployment resolved to ${mode} mode, but framework-config/resources.ts was built with PROD_DEPLOYMENT=${PROD_DEPLOYMENT} from cdk-app/.env. The catalog is read from that file and a -c override cannot change it. Set PROD_DEPLOYMENT=${mode === "prod"} in cdk-app/.env.`,
+    `This deployment resolved to ${mode} mode, but framework-config/resources.ts was evaluated for ${PROD_DEPLOYMENT ? "prod" : "dev"}. Run the app through bin/main.ts (cdk.json does), which sets the mode before the catalog loads.`,
   );
 }
 const stackId = (name: string) => `${deployment.deploymentName}-${name}`;
@@ -105,7 +107,7 @@ const frontend = resolveFrontendSettings(
 
 const foundation = createFrameworkFoundation(app, composition);
 
-// Created only by a full deployment (PROD_DEPLOYMENT=true).
+// Created only by a production deployment (-c prodDeployment=true).
 const rdsStack = mode === "prod"
   ? new RdsStack(app, stackId("RdsStack"), {
       env: stackEnv,
@@ -206,8 +208,8 @@ const orchestration = createFrameworkOrchestration(app, {
 // so an event-owning application stack adds nothing here. Resource-only stacks
 // supply catalog values above and need no entry either.
 //
-// `readers` is where declared deployment inputs are read from: cdk-app/.env,
-// resolved once at the top of this file.
+// `readers` is where declared deployment inputs are read from: the target's
+// inputs file, resolved once at the top of this file.
 const workloads = createFrameworkWorkloads(app, {
   env: stackEnv,
   stackId,
@@ -229,7 +231,7 @@ const workloads = createFrameworkWorkloads(app, {
 });
 // Reported by reason, because the two are fixed in different places: the first
 // by editing the target's `deploy`, the second by deploying with
-// PROD_DEPLOYMENT=true. This is where a developer finds out why the thing they
+// -c prodDeployment=true. This is where a developer finds out why the thing they
 // declared is not in AWS.
 if (workloads.skippedTargets.disabled.length > 0) {
   console.warn(
@@ -243,7 +245,7 @@ if (workloads.skippedTargets.withoutWebSocketApi.length > 0) {
 }
 if (workloads.skippedTargets.notInThisDeployment.length > 0) {
   console.warn(
-    `Not built by this ${mode} deployment, which holds only what AWS invokes: ${workloads.skippedTargets.notInThisDeployment.join(", ")}. Run them locally with npm run dev:containers, or deploy with PROD_DEPLOYMENT=true.`,
+    `Not built by this ${mode} deployment, which holds only what AWS invokes: ${workloads.skippedTargets.notInThisDeployment.join(", ")}. Run them locally with npm run dev:containers, or deploy a production target with -c prodDeployment=true.`,
   );
 }
 

@@ -35,12 +35,12 @@ The CDK CLI is installed in the workspace; a global installation is unnecessary.
 Resources live in `framework-config/resources.ts`. Declare a stack there with
 `resource.stack<MyStack>()`, end the stack's constructor with `linkResources(this, resources.myStack)`,
 then reference its fields, attributes and grants in workloads.
-`npm run deploy:resources -- --all -c useLocalDevStack=true --profile <PROFILE>` handles secret
-synchronization, deployment, and development export. Root `.env` contains Compose controls in dev;
-workload identifiers use the ignored `.framework/local/resources.json` manifest.
-For production, `npm run export:cdk-outputs -- --profile <PROFILE>` writes public deployment
-outputs to root `.env`. Either mode ends root `.env` with a client-app block of `VITE_*`
-settings to copy into `client-app/.env`.
+`npm run deploy:resources -- --all --profile <PROFILE>` handles secret synchronization,
+deployment, and development export of your development deployment (`CDK_APP_NAME`); add
+`-c prodDeployment=true` for the production target declared in `cdk-app/cdk.json`. Root `.env`
+contains Compose controls in dev; workload identifiers use the ignored
+`.framework/local/resources.json` manifest. Export writes the client settings Vite reads,
+`client-app/.env.development.local` or `client-app/.env.production.local`; nothing is copied by hand.
 
 Application authorization, validation, public fields, and screen selections remain
 explicit source. Generators and agents handle the surrounding mechanics.

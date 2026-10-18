@@ -1,5 +1,5 @@
 {
-  "app": "npx tsx bin/cdk-app.ts",
+  "app": "npx tsx bin/main.ts",
   "build": "npm run generate --prefix ../packages/database",
   "watch": {
     "include": [
@@ -18,6 +18,14 @@
     ]
   },
   "context": {
+    "framework:targets": {
+      "my-aws-app-prod": {
+        "mode": "prod",
+        "account": "734849394764",
+        "region": "us-east-1",
+        "inputs": "cdk-app/.env.prod"
+      }
+    },
     "@aws-cdk/aws-signer:signingProfileNamePassedToCfn": true,
     "@aws-cdk/aws-ecs-patterns:secGroupsDisablesImplicitOpenListener": true,
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,

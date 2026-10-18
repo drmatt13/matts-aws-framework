@@ -77,10 +77,14 @@ test("never links while email verification is skipped", async () => {
 // Deployment inputs
 // ---------------------------------------------------------------------------
 
+// The mode is CDK context now; these cases still read most naturally as the
+// old PROD_DEPLOYMENT input, which the helper states as -c prodDeployment.
 function inputs(env: Record<string, string>, context: Record<string, unknown> = {}) {
+  const { PROD_DEPLOYMENT, ...rest } = env;
+  const merged: Record<string, unknown> = { ...(PROD_DEPLOYMENT === undefined ? {} : { prodDeployment: PROD_DEPLOYMENT }), ...context };
   return resolveDeploymentInputs({
-    getContext: (key) => context[key],
-    env: { CDK_DEFAULT_ACCOUNT: "111122223333", CDK_DEFAULT_REGION: "us-east-1", ...env },
+    getContext: (key) => merged[key],
+    env: { CDK_DEFAULT_ACCOUNT: "111122223333", CDK_DEFAULT_REGION: "us-east-1", ...rest },
   });
 }
 
@@ -138,4 +142,13 @@ test("production warns without an SES sender, and backups default to a week", ()
     () => inputs({ PROD_DEPLOYMENT: "true", DATABASE_BACKUP_RETENTION_DAYS: "40" }),
     /DATABASE_BACKUP_RETENTION_DAYS must be a whole number from 0 to 35/,
   );
+});
+
+test("a production target ignores CDK_APP_NAME in its inputs file, and says so", () => {
+  const target = { name: "my-aws-app-prod", mode: "prod" as const, account: "111122223333" };
+  const resolved = resolveDeploymentInputs({ getContext: () => undefined, env: { CDK_DEFAULT_ACCOUNT: "111122223333", CDK_DEFAULT_REGION: "us-east-1", CDK_APP_NAME: "my-aws-app" }, target });
+  assert.equal(resolved.deploymentName, "my-aws-app-prod");
+  assert.ok(resolved.warnings.some((warning) => /CDK_APP_NAME=my-aws-app in the inputs file is ignored/.test(warning)));
+  assert.throws(() => resolveDeploymentInputs({ getContext: () => undefined, env: { CDK_DEFAULT_ACCOUNT: "999999999999", CDK_DEFAULT_REGION: "us-east-1" }, target }), /pinned to account 111122223333/);
+  assert.throws(() => resolveDeploymentInputs({ getContext: () => undefined, env: { CDK_DEFAULT_ACCOUNT: "111122223333", CDK_DEFAULT_REGION: "us-east-1", PROD_DEPLOYMENT: "false" }, target }), /PROD_DEPLOYMENT=false in the inputs file disagrees with this prod synth/);
 });

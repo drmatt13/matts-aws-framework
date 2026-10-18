@@ -8,11 +8,18 @@
  *
  *   npm run dev:request -- POST /graphql '{"query":"{ currentUser { id email } }"}'
  */
-import { PROD_DEPLOYMENT, readAuthoredInputs } from "@repo/framework/config/source";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { parseEnv } from "node:util";
+import { findRepositoryRoot, readAuthoredInputs } from "@repo/framework/config/source";
 
 async function main(): Promise<void> {
-  if (PROD_DEPLOYMENT) {
-    throw new Error("dev:request refuses to run while cdk-app/.env says PROD_DEPLOYMENT=true.");
+  // Only a development export writes LOCAL_FRAMEWORK_DEPLOYMENT to root .env:
+  // without it, the Cognito pool this would sign in to could be anyone's.
+  const exportedFile = path.join(findRepositoryRoot(), ".env");
+  const exported = existsSync(exportedFile) ? parseEnv(readFileSync(exportedFile, "utf8")) : {};
+  if (!exported.LOCAL_FRAMEWORK_DEPLOYMENT?.trim()) {
+    throw new Error("dev:request runs only against a development deployment: root .env was not written by a development export. Run npm run export:cdk-outputs for your development deployment first.");
   }
   const inputs = readAuthoredInputs();
   const email = inputs.LOCAL_TEST_USER_EMAIL;

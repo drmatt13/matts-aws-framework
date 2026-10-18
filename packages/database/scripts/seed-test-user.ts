@@ -52,13 +52,23 @@ export type SeedOutcome =
   | { status: "ready"; createdInCognito: boolean; createdRow: boolean; user: UserRecord };
 
 /**
- * Reads the test user from cdk-app/.env. PROD_DEPLOYMENT is parsed as the
- * framework parses it: only "true" is true. A known password is acceptable in
- * a dev pool and never in a production one.
+ * Reads the test user from cdk-app/.env. A known password is acceptable in a
+ * dev pool and never in a production one, so the pool must be a development
+ * export's: `exportedDeployment` is LOCAL_FRAMEWORK_DEPLOYMENT from root .env,
+ * which only `npm run export:cdk-outputs` of a development deployment writes.
+ * A leftover PROD_DEPLOYMENT=true still refuses.
  */
 export function testUserSettings(
   inputs: Readonly<Record<string, string | undefined>>,
+  exportedDeployment: string | undefined,
 ): SettingsOutcome {
+  if (!exportedDeployment?.trim()) {
+    return {
+      status: "skipped",
+      reason:
+        "root .env was not written by a development export (LOCAL_FRAMEWORK_DEPLOYMENT is unset); the test user is created only for a dev deployment. Run npm run export:cdk-outputs for your development deployment.",
+    };
+  }
   if (inputs.PROD_DEPLOYMENT?.trim().toLowerCase() === "true") {
     return {
       status: "skipped",
