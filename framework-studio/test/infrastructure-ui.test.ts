@@ -93,7 +93,8 @@ test("managed handler/API stacks stay out of browsing and RDS is marked as frame
   for (const name of names) assert.equal(ui.screen.queryByText(name), null);
   assert.equal(ui.screen.queryByRole("option", { name: "AWS::Hidden::Fixture" }), null);
   assert.ok(ui.screen.getByRole("option", { name: "my-app-RdsStack · Framework managed" }));
-  assert.ok(ui.screen.getByText("Framework managed · Database"));
+  const rdsSection = ui.screen.getByRole("heading", { name: "my-app-RdsStack" }).closest("section")!;
+  assert.ok(ui.within(rdsSection).getByText("Framework managed"));
   assert.ok(ui.screen.getByText("4 of 4 resources · 2 stacks"));
 });
 

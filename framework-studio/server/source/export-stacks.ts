@@ -87,5 +87,15 @@ export function withExportStacks(model: ModeModel, stacks: readonly ExportStackS
     const updated = { ...item, frameworkManaged: item.frameworkManaged ?? ("outputs" as const), stackOutputs: stack.outputs };
     if (existing >= 0) resources[existing] = updated; else resources.push(updated);
   }
-  return { ...model, resources };
+  const replay = resources.find((item) => item.kind === "stack" && item.stackClass === "DevLambdaReplayStack");
+  const edges = model.edges.filter((edge) => edge.relation !== "localReplay");
+  if (replay) for (const target of model.targets) {
+    if (target.role !== "event" || target.compute.kind !== "lambda" || !target.compute.localReplay) continue;
+    edges.push({
+      id: `localReplay:${target.ref}->${replay.id}`, relation: "localReplay", from: target.ref, to: replay.id,
+      provenance: "derived", label: "Local replay",
+      detail: "localReplay: true captures AWS invocations through the development replay stack for local execution. Production invokes the handler directly.",
+    });
+  }
+  return { ...model, resources, edges };
 }

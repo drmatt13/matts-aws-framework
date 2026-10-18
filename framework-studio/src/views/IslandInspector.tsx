@@ -5,6 +5,7 @@ import { buildScene } from "../scene/build";
 import { useStudio } from "../studio";
 import { BooleanField, FieldRow } from "./FieldRow";
 import { ResourceStatus } from "./ResourceStatus";
+import { RouteStatus } from "./RouteStatus";
 
 const LAMBDAS = ["lambda", "http", "webSocket", "events", "tools"];
 const GROUPS: Readonly<Record<string, readonly string[]>> = {
@@ -46,6 +47,9 @@ export function IslandInspector({ id }: { readonly id: string }) {
       </div>)}</div>
       {source ? <a className="small" href={editorLink(snapshot.repositoryRoot, source)}>Open shared defaults in VS Code</a> : null}
     </section> : <section><h3>Settings</h3><p className="small">The framework has no shared defaults for this island. Select an entry below to configure it.</p></section>}
-    <section><h3>Island entries</h3><ul className="island-members">{members.map((node) => <li key={node.id}><button className="linkish" onClick={() => select(node.id)}>{node.label}</button><span className="small muted">{node.kindLabel}</span><ResourceStatus resource={index.resources.get(node.id)} /></li>)}</ul></section>
+    <section><h3>Island entries</h3><ul className="island-members">{members.map((node) => {
+      const route = index.routes.get(node.id);
+      return <li key={node.id}><button className="linkish" onClick={() => select(node.id)}>{node.label}</button><span className="small muted">{node.kindLabel}</span><ResourceStatus resource={index.resources.get(node.id)} />{route ? <RouteStatus route={route} /> : null}</li>;
+    })}</ul></section>
   </>;
 }

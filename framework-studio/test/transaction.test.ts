@@ -23,6 +23,11 @@ let edits: EditService;
 
 before(async () => {
   mkdirSync(path.join(fixture, "cdk-app", "lambda_functions"), { recursive: true });
+  for (const id of ["cognito-custom-message", "cognito-post-confirmation-trigger"]) {
+    const relative = `cdk-app/lambda_functions/event_functions/${id}`;
+    mkdirSync(path.join(fixture, relative), { recursive: true });
+    cpSync(path.join(repositoryRoot, relative, "index.ts"), path.join(fixture, relative, "index.ts"));
+  }
   cpSync(path.join(repositoryRoot, "framework-config"), path.join(fixture, "framework-config"), { recursive: true });
   cpSync(path.join(repositoryRoot, "framework.config.ts"), path.join(fixture, "framework.config.ts"));
   // Test-only binding: a cloud caller must prevent removing its worker's cloud lane.
@@ -47,6 +52,50 @@ after(async () => {
 function revision(): string {
   return builder.current!.snapshot.revision;
 }
+
+test("local replay reviews config and handler together, restores both exactly, and preserves concurrent handler edits", async () => {
+  const target = "lambda:cognito-custom-message";
+  const config = path.join(fixture, "framework-config/events/cognito.ts");
+  const handler = path.join(fixture, "cdk-app/lambda_functions/event_functions/cognito-custom-message/index.ts");
+  const beforeConfig = readFileSync(config, "utf8");
+  const beforeHandler = readFileSync(handler, "utf8");
+  const intent = { target, field: "events.localReplay", value: true } as const;
+  const plan = await edits.planBatch([{ kind: "field", intent }], revision());
+  assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+  assert.equal(plan.changes.length, 2);
+  assert.equal(readFileSync(handler, "utf8"), beforeHandler, "review writes nothing");
+  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  const enabledHandler = readFileSync(handler, "utf8");
+  const enabledConfig = readFileSync(config, "utf8");
+  assert.match(enabledHandler, /lambdaHandler = withLocalReplay\(async/);
+  assert.equal(builder.current!.snapshot.models.dev.fields[target].find((fact) => fact.field === "events.localReplay")?.effective, true);
+  const off = await edits.planBatch([{ kind: "field", intent: { target, field: "events.localReplay", inherit: true } }], revision());
+  assert.equal(off.ok, true, JSON.stringify(off.preflight));
+  assert.equal((await edits.applyBatch(off.planId)).status, "applied");
+  assert.ok(!readFileSync(handler, "utf8").includes("withLocalReplay(async"));
+  assert.equal(builder.current!.snapshot.models.dev.fields[target].find((fact) => fact.field === "events.localReplay")?.effective, false);
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(handler, "utf8"), enabledHandler);
+  assert.equal(readFileSync(config, "utf8"), enabledConfig);
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(handler, "utf8"), beforeHandler);
+  assert.equal(readFileSync(config, "utf8"), beforeConfig);
+  assert.equal((await edits.redo()).status, "applied");
+  assert.equal(readFileSync(handler, "utf8"), enabledHandler);
+  await edits.undo();
+  const conflicting = await edits.planBatch([{ kind: "field", intent }], revision());
+  writeFileSync(handler, `${beforeHandler}\n// Concurrent author edit\n`);
+  await assert.rejects(edits.applyBatch(conflicting.planId), /handler changed/);
+  assert.equal(readFileSync(config, "utf8"), beforeConfig);
+  assert.ok(readFileSync(handler, "utf8").endsWith("// Concurrent author edit\n"));
+  writeFileSync(handler, beforeHandler);
+  await builder.refresh();
+  const required = await edits.planBatch([{ kind: "field", intent: { target: "lambda:cognito-post-confirmation-trigger", field: "events.localReplay", inherit: true } }], revision());
+  assert.equal(required.ok, false, "an event using the database still needs local replay");
+  await assert.rejects(edits.applyBatch(required.planId), /rejected settings/);
+  assert.equal(readFileSync(config, "utf8"), beforeConfig);
+  await assert.rejects(edits.plan(intent, revision()), /configuration and handler wrapper/);
+});
 
 test("five settings are reviewed together, persisted together and undone as one exact source change", async () => {
   const target = "lambda:graphql-api";

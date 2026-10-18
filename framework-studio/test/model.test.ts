@@ -11,6 +11,7 @@ import { SnapshotBuilder, type StudioState } from "../server/snapshot";
 import { fieldEditability, SourceFiles } from "../server/source";
 import { locateConfigSource } from "../../packages/framework/scripts/config-source";
 import { ROOT_ENV_STACK_OUTPUTS } from "../../scripts/root-env-outputs";
+import { withExportStacks } from "../server/source/export-stacks";
 
 /**
  * The model is the framework's answers, reshaped. These tests hold it to the
@@ -47,11 +48,42 @@ test("managed output stacks match the root exporter, reuse catalog ids, and carr
   }
 });
 
+test("declaring a displayed framework stack in the catalog reuses its resource id and clears the missing-catalog flag", () => {
+  const model = snapshot.models.dev;
+  const original = model.resources.find((item) => item.stackClass === "DevLambdaReplayStack")!;
+  assert.equal(original.frameworkStack, true);
+  const { frameworkStack: _origin, ...catalogFields } = original;
+  const catalogEntry = { ...catalogFields, id: "resource:replay", path: ["replay"] };
+  const projected = withExportStacks({ ...model, resources: model.resources.map((item) => item.id === original.id ? catalogEntry : item) }, state.built.exportStacks);
+  const matches = projected.resources.filter((item) => item.stackClass === "DevLambdaReplayStack");
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0]!.id, "resource:replay");
+  assert.equal(matches[0]!.frameworkStack, undefined);
+  assert.equal(matches[0]!.stackUsage?.status, "referenced", "CDK construction is independent of catalog membership");
+  assert.equal(model.resources.find((item) => item.stackClass === "RdsStack")?.frameworkStack, undefined, "a development-absent database is still declared in the catalog");
+});
+
 test("both modes of the real repository evaluate without a diagnostic", () => {
   for (const mode of ["dev", "prod"] as const) {
     const model = snapshot.models[mode];
     assert.equal(model.status, "ok", JSON.stringify(model.diagnostics));
     assert.ok(model.targets.length > 0);
+  }
+});
+
+test("only replay-enabled event Lambdas connect to the replay stack, including catalog stack identities", () => {
+  for (const model of Object.values(snapshot.models)) {
+    const replay = model.resources.find((item) => item.stackClass === "DevLambdaReplayStack")!;
+    const enabled = model.targets.filter((target) => target.role === "event" && target.compute.kind === "lambda" && target.compute.localReplay);
+    const edges = model.edges.filter((edge) => edge.relation === "localReplay");
+    assert.deepEqual(edges.map((edge) => edge.from).sort(), enabled.map((target) => target.ref).sort());
+    assert.ok(edges.length > 0);
+    assert.ok(edges.every((edge) => edge.to === replay.id && edge.provenance === "derived"));
+    assert.equal(replay.absent, model.mode !== "dev");
+    for (const target of model.targets) assert.equal(!!model.fields[target.ref]?.some((fact) => fact.field === "events.localReplay"), target.role === "event");
+    const projected = withExportStacks({ ...model, resources: model.resources.map((item) => item.id === replay.id ? { ...item, id: "resource:replay", frameworkStack: undefined } : item) }, state.built.exportStacks);
+    assert.equal(projected.edges.filter((edge) => edge.relation === "localReplay").length, edges.length);
+    assert.ok(projected.edges.filter((edge) => edge.relation === "localReplay").every((edge) => edge.to === "resource:replay"));
   }
 });
 

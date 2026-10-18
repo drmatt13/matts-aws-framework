@@ -178,8 +178,26 @@ stacks are omitted. Each inspector lists only mapped outputs, with a `$` symboli
 value and its destination environment variable; literals, dotenv values and deployed
 output values are never loaded into this projection. Complex expressions use an output-name
 token. Environment availability follows the framework lifecycle and WebSocket AWS lanes.
+Stacks projected from CDK without a catalog declaration also show **Not defined in
+resources**, independently of **Framework managed** and **Not added to CDK app**.
+This status appears in stack inspectors, the Stacks island list and map hover guidance.
+Adding a matching `resource.stack<T>()` catalog entry reuses its catalog identity and
+removes the missing-declaration flag on refresh; Studio does not add entries automatically.
 The RDS database also appears on the VPC terrace selected by its literal `vpcSubnets`
 configuration (isolated in this app), with database connections reaching that node.
+
+API node inspectors and the APIs island list show **Managed by framework-config/…**
+for the HTTP, services, WebSocket or agents section that derives each route. The
+existing source link points to its declaration.
+
+Event Lambda inspectors offer **Local replay** through the shared switch and review
+flow. Review includes both `localReplay: true` (or its removal) and the selected
+TypeScript handler's `withLocalReplay` wrapper. Apply, undo and redo keep the files
+together and preserve concurrent handler edits. Unsupported handler patterns require
+source edits; framework validation refuses disabling replay while the event requires
+local execution. Run `npm run framework:generate` after applying to refresh the replay
+manifest. Only replay-enabled events connect to `DevLambdaReplayStack`; production
+retains the relationship with the development-only stack faded out.
 
 The view follows the model:
 

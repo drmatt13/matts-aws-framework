@@ -289,6 +289,13 @@ function resourceItem(resource: ModelResource, mode: Mode, availability?: Availa
               ? "Group of inputs"
               : "Construct";
   const graph = mode === "dev" ? "development" : "production";
+  const presenceText = resource.stackUsage?.status === "unreferenced" ? "Not added to CDK app: no constructor reference found in the app's runtime imports."
+    : resource.frameworkManaged ? `Framework-managed ${resource.frameworkManaged === "database" ? "database" : "stack exporting root .env values"}${resource.absent ? `; absent in the ${graph} graph` : ""}.`
+    : resource.absent
+      ? `Absent in the ${graph} graph: declared undefined here, so nothing that reads it sees a value.`
+      : resource.kind === "member" && resource.memberSource === "class"
+        ? "Declared by its stack; no workload references it."
+        : `Held by the ${graph} graph.`;
   return {
     id: resource.id,
     badge: availability ? availabilityBadge(availability) : undefined,
@@ -298,13 +305,7 @@ function resourceItem(resource: ModelResource, mode: Mode, availability?: Availa
     label: resource.kind === "stack" ? resource.path.join(".") : name,
     kindLabel,
     presence: resource.absent ? "absent" : "present",
-    presenceText: resource.stackUsage?.status === "unreferenced" ? "Not added to CDK app: no constructor reference found in the app's runtime imports."
-      : resource.frameworkManaged ? `Framework-managed ${resource.frameworkManaged === "database" ? "database" : "stack exporting root .env values"}${resource.absent ? `; absent in the ${graph} graph` : ""}.`
-      : resource.absent
-      ? `Absent in the ${graph} graph: declared undefined here, so nothing that reads it sees a value.`
-      : resource.kind === "member" && resource.memberSource === "class"
-        ? "Declared by its stack; no workload references it."
-        : `Held by the ${graph} graph.`,
+    presenceText: resource.frameworkStack ? `${presenceText} Not defined in resources.` : presenceText,
   };
 }
 

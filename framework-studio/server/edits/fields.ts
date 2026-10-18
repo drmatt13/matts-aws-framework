@@ -116,6 +116,17 @@ function bundlingSetting(key: "minify" | "sourceMap", label: string): FieldDefin
 
 export const FIELDS: readonly FieldDefinition[] = [
   {
+    id: "events.localReplay", label: "Local replay", path: ["localReplay"],
+    domain: { kind: "enum", values: [true] },
+    after: ["bundling", "timeoutSeconds", "memorySize", "directory"], before: ["database", "userPool", "environment", "cloud"],
+    applies: (target) => target.role === "event",
+    resolve: (_config, _target, declaration) => ({
+      effective: declaration?.localReplay === true,
+      provenance: declaration?.localReplay === true ? DECLARED : "the framework's default",
+      inherited: { value: false, from: "the framework's default" },
+    }),
+  },
+  {
     id: "http.auth", label: "API user-pool authorizer", path: ["auth"],
     // The framework declares auth?: true. Off removes the property instead of writing false.
     domain: { kind: "enum", values: [true] },
@@ -247,6 +258,9 @@ export function fieldFacts(config: FrameworkConfig, target: NormalizedTarget): r
   return FIELDS.filter((field) => field.applies(target, config)).map((field) => {
     const authored = readPath(declaration, field.path);
     const resolved = field.resolve(config, target, declaration);
+    const replaySpec = field.id === "events.localReplay" ? resolveLambdaTarget(config, target.id) : undefined;
+    const replayBlocked = replaySpec && (replaySpec.packaging !== "zip" || !isNodeLambdaRuntime(replaySpec.runtime))
+      ? "Studio pairs local replay with TypeScript ZIP handlers. Configure this implementation in source." : undefined;
     return {
       field: field.id,
       label: field.label,
@@ -254,7 +268,7 @@ export function fieldFacts(config: FrameworkConfig, target: NormalizedTarget): r
       domain: field.domain,
       ...resolved,
       ...(authored === undefined ? {} : { authored: primitive(authored) ?? null }),
-      ...(origin ? (shared ? { blocked: shared } : {}) : { blocked: "Its declaration could not be located." }),
+      ...(origin ? (shared || replayBlocked ? { blocked: shared ?? replayBlocked } : {}) : { blocked: "Its declaration could not be located." }),
     };
   });
 }

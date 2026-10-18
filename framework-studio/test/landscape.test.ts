@@ -40,6 +40,20 @@ before(async () => {
 });
 after(() => builder.dispose());
 
+test("replay-enabled event connections reach the displayed replay stack through the shared router", () => {
+  for (const scene of [dev, prod]) {
+    const replay = scene.nodes.find((node) => node.id === "framework-stack:DevLambdaReplayStack")!;
+    assert.ok(replay);
+    const edges = scene.edges.filter((edge) => edge.edge.relation === "localReplay");
+    assert.ok(edges.length);
+    for (const edge of edges) {
+      assert.equal(edge.to, replay.id);
+      assert.ok(scene.nodes.some((node) => node.id === edge.from));
+      assert.ok(scene.routes[edge.edge.id]);
+    }
+  }
+});
+
 test("map search matches names and multiple case-insensitive terms without changing scene geometry", () => {
   assert.equal(searchScene(dev, snapshot.models.dev, "  "), undefined);
   const before = JSON.stringify(dev);

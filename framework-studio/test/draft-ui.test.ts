@@ -105,19 +105,70 @@ test("stack inspectors surface unattached status and the database's framework ow
   assert.ok(ui.within(panel.querySelector("header")!).getByText("Not added to CDK app"));
   ui.cleanup();
   await mount("resource:rds");
-  assert.ok(ui.within(ui.screen.getByRole("complementary", { name: "Inspector" }).querySelector("header")!).getByText("Framework managed · Database"));
+  assert.ok(ui.within(ui.screen.getByRole("complementary", { name: "Inspector" }).querySelector("header")!).getByText("Framework managed"));
 });
 
 test("an exported framework stack shows symbolic CfnOutputs and root env names without generic infrastructure controls", async () => {
   await mount("framework-stack:DevLambdaReplayStack");
   assert.ok(ui.screen.getByRole("heading", { name: "DevLambdaReplayStack" }));
-  assert.ok(ui.screen.getByText("Framework managed · Environment exports"));
+  assert.ok(ui.screen.getByText("Framework managed"));
+  assert.ok(ui.screen.getByText("Not defined in resources"));
   assert.ok(ui.screen.getByRole("heading", { name: "CloudFormation outputs" }));
   assert.ok(ui.screen.getByText((_text, element) => element?.tagName === "CODE" && element.textContent === "$queue.queueArn"));
   assert.ok(ui.screen.getByText("DEV_LAMBDA_REPLAY_QUEUE_ARN", { selector: "code" }));
   assert.equal(ui.screen.queryByText("ReplayDeadLetterQueueUrl"), null);
   assert.equal(ui.screen.queryByRole("button", { name: "Inspect stack infrastructure" }), null);
   assert.equal(ui.screen.queryByRole("heading", { name: "Infrastructure" }), null);
+});
+
+test("the stacks island distinguishes missing catalog declarations from missing CDK constructors", async () => {
+  await mount("island:stacks");
+  for (const name of ["FrontendWebsiteS3Stack", "DevLambdaReplayStack", "WebSocketApiStack", "HttpApiGatewayStack"]) {
+    const row = ui.screen.getByRole("button", { name }).closest("li")!;
+    assert.ok(ui.within(row).getByText("Framework managed"));
+    assert.ok(ui.within(row).getByText("Not defined in resources"));
+    assert.equal(ui.within(row).queryByText("Not added to CDK app"), null);
+  }
+  for (const name of ["CognitoStack", "RdsStack", "ReferenceExampleStack"]) {
+    const row = ui.screen.getByRole("button", { name }).closest("li")!;
+    assert.equal(ui.within(row).queryByText("Not defined in resources"), null);
+    if (name === "ReferenceExampleStack") assert.ok(ui.within(row).getByText("Not added to CDK app"));
+  }
+});
+
+test("API node and island details identify the framework config managing each route", async () => {
+  const sections = { http: "http", service: "services", webSocket: "websocket", agent: "agents" } as const;
+  for (const [kind, section] of Object.entries(sections)) {
+    const route = baseline.models.dev.routes.find((route) => route.kind === kind)!;
+    assert.ok(route, `the repository has a ${kind} route`);
+    await mount(route.id);
+    const header = ui.screen.getByRole("complementary", { name: "Inspector" }).querySelector("header")!;
+    assert.ok(ui.within(header).getByText(`Managed by framework-config/${section}`));
+    assert.ok(ui.within(header).getByText(route.origin));
+    ui.cleanup();
+  }
+  await mount("island:apis");
+  for (const section of Object.values(sections)) assert.ok(ui.screen.getAllByText(`Managed by framework-config/${section}`).length);
+});
+
+test("event Lambda local replay switches stage true or property removal through the shared draft", async () => {
+  for (const [id, enabled] of [["cognito-custom-message", false], ["cognito-post-confirmation-trigger", true]] as const) {
+    await mount(`lambda:${id}`);
+    const control = ui.screen.getByRole("switch", { name: "Local replay" });
+    assert.equal(control.getAttribute("aria-checked"), String(enabled));
+    assert.equal(ui.screen.queryByRole("switch", { name: "API user-pool authorizer" }), null);
+    ui.fireEvent.click(control);
+    assert.equal(control.getAttribute("aria-checked"), String(!enabled));
+    assert.match(count(), /1 unsaved change/);
+    await ui.act(async () => { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); });
+    await waitDialog("Review 1 change");
+    assert.deepEqual(planCalls.at(-1), [{ kind: "field", intent: enabled
+      ? { target: `lambda:${id}`, field: "events.localReplay", inherit: true }
+      : { target: `lambda:${id}`, field: "events.localReplay", value: true } }]);
+    ui.cleanup();
+  }
+  await mount();
+  assert.equal(ui.screen.queryByRole("switch", { name: "Local replay" }), null);
 });
 
 test("required flags stage quietly and the connection inspector guides missing values into the file draft", async () => {

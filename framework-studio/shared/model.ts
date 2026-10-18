@@ -281,6 +281,8 @@ export type Relation =
   | "grant"
   /** `database: true`: IAM login, network placement and the connection URL. */
   | "database"
+  /** An opted-in event captures invocations through the development replay stack. */
+  | "localReplay"
   | "runsTask"
   | "startsWorkflow"
   | "invokesAgent"

@@ -194,6 +194,12 @@ as a symbolic token. Existing catalog nodes are reused; other selected classes g
 `framework-stack:<Class>` identities and lock badges. These nodes use the declared
 framework stack lifecycle, with WebSocket availability taken from actual model AWS lanes.
 Their inspectors expose outputs without adding generic infrastructure controls.
+The projection's `frameworkStack` origin flag also identifies a missing resource-catalog
+declaration. `ResourceStatus` displays **Not defined in resources** alongside the separate
+managed/constructor statuses, including island lists. Catalog lookup happens before adding
+a projected stack, so declaring that class as a resource automatically clears this flag
+and reuses the authored resource id. Environment absence never implies missing catalog
+membership.
 
 Default edits use the existing plan, preflight, atomic write, confirmation and journal.
 The locator follows the root `defaults` object into its authored module. Field paths
@@ -254,6 +260,22 @@ overlays. HTTP key replacements follow the field splices and run together, allow
 interdependent changes to be checked against the complete candidate source. Fresh
 evaluators load the overlays in both modes; target/construct identities and route
 destinations must remain stable. The review groups the final exact diff by file.
+
+`events.localReplay` uses the same switch/draft but adds a paired source edit through
+`server/edits/local-replay.ts`. Its separate write authority resolves only the selected
+event's Node ZIP `index.ts` and declared export; the generic config allowlist stays
+unchanged. A recognized exported handler constant is wrapped/unwrapped without rewriting
+its body. Imports are reused, or a collision-free import is added. Unsupported capture
+patterns and wrapper comments that would be lost are refused. Handler contents are
+checked during review, apply, undo and redo, including when the wrapper already matches.
+Both changes share the batch journal and rollback. The legacy single-file edit API
+refuses this field. Both-mode framework validation still enforces replay for events
+requiring local execution. Regenerate the replay manifest before deployment.
+
+The selected output-stack projection derives a `localReplay` edge from each enabled
+event to the displayed replay stack, reusing catalog stack identities. Disabled events
+have no replay edge. The relationship stays inspectable in Production, where the
+development-only stack is absent, and uses the existing shared connection router.
 
 Apply checks revisions and source hashes again, validates the complete candidate, uses
 the existing atomic file replacement primitive, then confirms the evaluated fields and
@@ -427,7 +449,7 @@ The studio is a local tool that can write source, so the browser is treated as u
 | Host must be `127.0.0.1:<port>` or `localhost:<port>` (else 421) | DNS rebinding | `guards.ts` (`hostGuard`) |
 | Per-process token, served inside the page, required on every API call (SSE takes it as a query parameter) | Other origins and processes | `guards.ts` (`apiGuard`) |
 | State-changing requests need `Origin: http://<host>` | Cross-site requests | `apiGuard` |
-| Writes only to `framework.config.ts` and `framework-config/**/*.ts`, by real path, no symlinks | Writes anywhere else | `files.ts` (`assertWritable`) |
+| Generic edits write only to `framework.config.ts` and `framework-config/**/*.ts`, by real path, no symlinks; paired replay edits resolve only the selected event's TypeScript entry point | Arbitrary source writes | `files.ts` (`assertWritable`), `edits/local-replay.ts` |
 | Two fixed commands, no shell | Command execution | `commands.ts` |
 | Separate synthesis-only CLI runner; validated mode/profile; private isolated assembly | Arbitrary command/input-path execution | `infrastructure.ts`, `scripts/cdk-synthesis.ts` |
 | Evaluators read a synthetic inputs file | Secrets in memory, logs or the snapshot | `inputs.ts` |

@@ -17,6 +17,7 @@ import { StackInfrastructure } from "./Infrastructure";
 import { EnvironmentFileView, InputSources } from "./DeploymentInputs";
 import { ConnectionView } from "./InputRequirement";
 import { ResourceStatus } from "./ResourceStatus";
+import { RouteStatus } from "./RouteStatus";
 
 function Written(props: { readonly location: SourceLocation | undefined; readonly label?: string }) {
   const { snapshot } = useStudio();
@@ -80,6 +81,13 @@ function ApiAuthControl({ target }: { readonly target: ModelTarget }) {
   const fact = model.fields[target.ref]?.find((fact) => fact.field === "http.auth");
   if (!fact) return null;
   return <section className="api-auth"><BooleanField target={target} fact={fact} editability={snapshot.source.editability[target.ref]?.[fact.field]} /><p className="small muted">Uses the API's Cognito user pool to admit signed-in callers. Handler-side token checks still apply.</p></section>;
+}
+
+function LocalReplayControl({ target }: { readonly target: ModelTarget }) {
+  const { snapshot, model } = useStudio();
+  const fact = model.fields[target.ref]?.find((fact) => fact.field === "events.localReplay");
+  if (!fact) return null;
+  return <section className="api-auth"><BooleanField target={target} fact={fact} editability={snapshot.source.editability[target.ref]?.[fact.field]} /><p className="small muted">Captures AWS invocations in development through DevLambdaReplayStack and replays them against the local handler. Production runs the handler in AWS. Review Changes updates the config and handler wrapper together.</p></section>;
 }
 
 function Relations(props: { readonly id: string }) {
@@ -202,7 +210,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
   const workflow = model.workflows.find((candidate) => candidate.ref === target.ref);
   const compute = target.compute;
   const buildFields = new Set(["lambda.architecture", "lambda.packaging", "lambda.runtime", "lambda.bundling.minify", "lambda.bundling.sourceMap"]);
-  const settings = facts.filter((fact) => !buildFields.has(fact.field) && fact.field !== "http.auth");
+  const settings = facts.filter((fact) => !buildFields.has(fact.field) && fact.field !== "http.auth" && fact.field !== "events.localReplay");
   return (
     <>
       <header>
@@ -216,6 +224,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
         </p>
       </header>
       <ApiAuthControl target={target} />
+      <LocalReplayControl target={target} />
       <HttpRoutes target={target} />
       <LaneLines target={target} />
       {compute.kind === "lambda" ? <section>
@@ -297,6 +306,7 @@ function RouteView(props: { readonly route: ModelRoute }) {
       <header>
         <span className="kind">{route.kind === "http" ? "HTTP route" : route.kind === "service" ? "Service mount" : route.kind === "webSocket" ? "WebSocket route key" : "Agent route"}</span>
         <h2><EntityIcon icon={routeIcon(route)} />{route.browserPath ?? route.path}</h2>
+        <RouteStatus route={route} />
         <code className="ref">{route.origin}</code>
         <Written location={snapshot.source.entities[route.id]?.key} />
       </header>
@@ -341,6 +351,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         <span className="kind">{kind}</span>
         <h2><EntityIcon icon={resourceIcon(resource)} />{resource.kind === "stack" ? resource.stackClass ?? resource.path.join(".") : `resources.${resource.path.join(".")}`}</h2>
         <ResourceStatus resource={resource} />
+        {resource.frameworkStack ? <p className="small muted">No <code>resource.stack&lt;{resource.stackClass}&gt;()</code> entry in <code>framework-config/resources.ts</code>. Declare and link one if workloads should reference this stack's public fields.</p> : null}
         {resource.stackUsage?.status === "unreferenced" ? <p className="small muted">Declared in the catalog, with no constructor reference in the CDK app's runtime imports. Add it to the app to include it in synthesis.</p> : null}
         {resource.frameworkManaged === "database" ? <p className="small muted">The framework owns this database and its connections. Dedicated database configuration options are coming later.</p> : resource.frameworkManaged ? <p className="small muted">The framework manages this stack and its generated environment outputs.</p> : null}
         {resource.typeText ? <code className="ref">{resource.typeText}</code> : null}

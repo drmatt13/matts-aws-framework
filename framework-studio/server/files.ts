@@ -9,6 +9,8 @@ import path from "node:path";
  * else — CDK, handlers, generated output, env files — is refused by this config writer before a
  * write is attempted, whatever a request asks for. The separate deployment-input
  * service permits typed edits to just the two fixed mode-specific dotenv files.
+ * Local replay has its own authority for the selected event's resolved handler;
+ * it does not expand this configuration-file allowlist.
  */
 
 export function sha256(text: string): string {

@@ -119,6 +119,7 @@ export class EditService {
 
   plan(intent: EditIntent, baseRevision: string): Promise<PlanResponse> {
     return this.exclusive(async () => {
+      if (intent.field === "events.localReplay") throw new EditError(422, "Use Review Changes for local replay so the configuration and handler wrapper are updated together.");
       const state = this.state();
       const { snapshot, evaluation } = state;
       if (baseRevision !== snapshot.revision) {
