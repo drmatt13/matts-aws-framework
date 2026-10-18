@@ -93,6 +93,14 @@ test("development and production deployments in one account and region are disjo
 
     const shared = [...physicalNames(dev.templates)].filter((name) => physicalNames(prod.templates).has(name));
     assert.deepEqual(shared, [], "no stack, physical name or export is shared");
+
+    // Contract 2: every stack also records its identity as template metadata.
+    for (const [templates, deployment, mode] of [[dev.templates, "my-aws-app", "dev"], [prod.templates, "my-aws-app-prod", "prod"]] as const) {
+      for (const [stack, template] of Object.entries(templates)) {
+        const metadata = template.Metadata?.["framework:deployment"];
+        assert.deepEqual([metadata?.contract, metadata?.owner, metadata?.deployment, metadata?.mode, metadata?.stack], [2, "matts-aws-framework", deployment, mode, stack.slice(deployment.length + 1)], stack);
+      }
+    }
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 

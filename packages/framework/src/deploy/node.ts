@@ -78,6 +78,18 @@ export function resolveRepositoryTarget(input: {
   return { ...selection, inputsFile };
 }
 
+/**
+ * Every deployment this repository intends: the targets cdk.json declares, and
+ * the developer's own development deployment (CDK_APP_NAME) unless it is one.
+ */
+export function repositoryTargets(root: string, env: Readonly<Record<string, string | undefined>> = process.env): DeploymentTarget[] {
+  const declared = parseTargets(readCdkContext(root)[TARGETS_CONTEXT_KEY]);
+  const developmentInputs = env.FRAMEWORK_INPUTS_FILE ? path.resolve(env.FRAMEWORK_INPUTS_FILE) : deploymentInputsFile(root, "dev");
+  const personal = readInputs(developmentInputs).CDK_APP_NAME?.trim();
+  if (!personal || declared.some((target) => target.name === personal)) return declared;
+  return [{ name: personal, mode: "dev", origin: "personal", inputs: path.relative(root, developmentInputs).replaceAll("\\", "/") }, ...declared];
+}
+
 /** The graph the catalog is evaluated for, as the CDK app's entry point resolved it. */
 export function frameworkMode(env: Readonly<Record<string, string | undefined>> = process.env): DeploymentMode {
   const value = env.FRAMEWORK_MODE;

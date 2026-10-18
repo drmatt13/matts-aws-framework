@@ -83,7 +83,11 @@ function remedy(stack: ClassifiedStack): string {
 }
 const listed = (stacks: readonly ClassifiedStack[]) => stacks.map((stack) => `${stack.name} (${stack.status}): ${remedy(stack)}`).join("; ");
 
-export function assertDeploymentAllowed(identity: DeploymentIdentity, args: readonly string[], readers: GuardReaders): DeploymentState {
+export function assertDeploymentAllowed(
+  identity: DeploymentIdentity, args: readonly string[], readers: GuardReaders,
+  /** Stacks a reviewed plan created to hold its change sets: expected to be awaiting review, and nothing else. */
+  plannedReviews: ReadonlySet<string> = new Set(),
+): DeploymentState {
   if (identity.mode === "prod") {
     const flags = unsafeProductionFlags(args);
     if (flags.length) {
@@ -92,7 +96,7 @@ export function assertDeploymentAllowed(identity: DeploymentIdentity, args: read
   }
   let stacks: ObservedStack[];
   try {
-    stacks = readers.readStacks();
+    stacks = readers.readStacks().filter((stack) => !(stack.StackStatus === "REVIEW_IN_PROGRESS" && plannedReviews.has(stack.StackName ?? "")));
   } catch {
     throw new Error(`Unable to read deployed stacks to verify ${identity.deployment} in ${identity.account}/${identity.region}. Check the selected credentials and cloudformation:DescribeStacks access. Nothing was changed.`);
   }

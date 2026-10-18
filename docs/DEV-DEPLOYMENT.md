@@ -69,6 +69,19 @@ deployment's name and refuses to change stacks it does not own:
 - **Busy or stuck deployments.** It refuses a deployment that CloudFormation is still
   changing, or that needs recovery.
 
+To see what an account holds, read-only:
+
+```powershell
+npm run deploy:status -- discover --profile <PROFILE>
+npm run deploy:status -- status --profile <PROFILE>
+```
+
+`discover` lists every framework deployment in the profile's account and region, with its mode as
+its own stacks record it, and matches this repository's targets against them. `status` adds recent
+events, pending change sets, and whether local development can run against the deployment and its
+exported files are current. `--plan <dir>` / `--apply <dir>` review a deployment before it changes
+anything; see [Production](PROD-DEPLOYMENT.md#deploy).
+
 Each refusal names the stacks and a remedy, and nothing is changed. Two deploys of the same
 name on one machine cannot run at once (`.cache/deploy/<name>.lock`). Assemblies that an
 interrupted run left in `.cache/deploy` are removed after a day. Deploy and export read

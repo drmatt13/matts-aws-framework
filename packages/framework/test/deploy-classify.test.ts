@@ -106,3 +106,17 @@ test("identity that contradicts the stack's own ARN, names another deployment, o
   assert.equal(state.kind === "conflict" && state.reason, "inconsistent");
   assert.match(state.kind === "conflict" ? state.message : "", /Invalid deployment metadata in app-CognitoStack/);
 });
+
+test("a contract-2 stack is identified by its tags, even with no outputs", () => {
+  const tagged: ObservedStack = {
+    StackName: "app-CognitoStack", StackStatus: "ROLLBACK_COMPLETE",
+    StackId: `arn:aws:cloudformation:${query.region}:${query.account}:stack/app-CognitoStack/1`,
+    Tags: [{ Key: "framework:owner", Value: "matts-aws-framework" }, { Key: "framework:deployment", Value: "app" }, { Key: "framework:mode", Value: "dev" }, { Key: "framework:contract", Value: "2" }],
+  };
+  const state = classifyDeployment([tagged, stack("app-EventsStack")], query);
+  assert.equal(state.kind, "failed");
+  assert.equal(state.kind === "failed" && state.stacks.find((item) => item.name === "app-CognitoStack")?.evidence, "tags");
+  assert.equal(state.kind === "failed" && state.stacks.find((item) => item.name === "app-CognitoStack")?.identity?.contract, 2);
+  // Tags name the deployment, so an unusual stack name still counts toward it.
+  assert.deepEqual(deploymentCandidates([{ ...tagged, StackName: "renamed" }], "app").map((item) => item.StackName), ["renamed"]);
+});

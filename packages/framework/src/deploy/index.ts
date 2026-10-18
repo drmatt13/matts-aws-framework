@@ -2,3 +2,4 @@
 export * from "./identity";
 export * from "./classify";
 export * from "./targets";
+export * from "./discovery";

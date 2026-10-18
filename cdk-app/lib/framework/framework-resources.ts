@@ -4,6 +4,7 @@ import type { IConstruct } from "constructs";
 import type { IGrantable } from "aws-cdk-lib/aws-iam";
 import type { ISecret } from "aws-cdk-lib/aws-secretsmanager";
 import { markInfrastructure } from "./framework-inventory";
+import { DEPLOYMENT_METADATA_KEY, FRAMEWORK_OWNER, IDENTITY_TAGS } from "@repo/framework/deploy";
 import {
   assertRequirementsMet,
   formatResourceReference, frameworkSecretName, getFrameworkTargets, isCdkResource, isCdkResourceGroup,
@@ -367,10 +368,25 @@ export function finalizeFrameworkResources(scope: IConstruct): void {
     }
   }
   for (const stack of stacks) {
+    // Contract 1, kept for every reader that predates contract 2.
     new cdk.CfnOutput(stack, "FrameworkDeployment", {
       value: cdk.Stack.of(stack).toJsonString({ version: 1, deployment, mode, account: stack.account, region: stack.region }),
       description: DEPLOYMENT_OUTPUT_DESCRIPTION,
     });
+    // Contract 2: the same identity where CloudFormation keeps it for every
+    // stack, outputs or not (template metadata), and where describe-stacks and
+    // the tagging API find it (stack tags, which CloudFormation also puts on the
+    // stack's resources, so what survives a teardown can be found). Never a
+    // revision: these change only when the identity does.
+    const role = stack.stackName.startsWith(`${deployment}-`) ? stack.stackName.slice(deployment.length + 1) : stack.stackName;
+    stack.templateOptions.metadata = {
+      ...stack.templateOptions.metadata,
+      [DEPLOYMENT_METADATA_KEY]: { contract: 2, owner: FRAMEWORK_OWNER, deployment, mode, account: stack.account, region: stack.region, stack: role },
+    };
+    stack.tags.setTag(IDENTITY_TAGS.owner, FRAMEWORK_OWNER);
+    stack.tags.setTag(IDENTITY_TAGS.deployment, deployment);
+    stack.tags.setTag(IDENTITY_TAGS.mode, mode);
+    stack.tags.setTag(IDENTITY_TAGS.contract, "2");
   }
   const active = new Set<cdk.Stack>();
   const done = new Set<cdk.Stack>();

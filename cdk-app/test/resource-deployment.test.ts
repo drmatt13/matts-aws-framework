@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { CreateSecretCommand, DescribeSecretCommand, GetSecretValueCommand, PutSecretValueCommand } from "@aws-sdk/client-secrets-manager";
-import { synchronizeDeploymentSecrets, type SecretRequirement } from "../../scripts/deployment-secrets";
+import { planDeploymentSecrets, synchronizeDeploymentSecrets, type SecretRequirement } from "../../scripts/deployment-secrets";
 import { deploymentArguments, inspectDeploymentAssembly } from "../../scripts/deployment-assembly";
 import { collectDevelopmentResources, readDeploymentStackPages, writeDevelopmentFiles, type DeploymentStack } from "../../scripts/resource-export";
 import { defaults } from "../../framework-config/defaults";
@@ -111,4 +111,18 @@ test("deployment discovers generated parameters in the selected assembly, includ
   assert.equal(inspectDeploymentAssembly(assembly.directory, deploymentArguments(["Consumer", "--exclusively"])).requirements.length, 0);
   assert.equal(deploymentArguments(["--app", "other", "--all"]).app, "other");
   assert.deepEqual(deploymentArguments(["--output", "out", "--all"]).forwarded, ["--all"]);
+});
+
+test("a secret plan reports names and actions only, and writes nothing until applied", async () => {
+  const changed = fake(true, "old");
+  const plan = await planDeploymentSecrets([requirement], { KEY: raw }, identity, changed.client);
+  assert.deepEqual(plan.entries, [{ name: requirement.name, variable: "KEY", action: "update" }]);
+  assert.deepEqual(plan.arns, { [requirement.name]: arn });
+  assert.doesNotMatch(JSON.stringify(plan.entries) + JSON.stringify(plan.arns), new RegExp(raw));
+  assert.equal(changed.calls.some((call) => call instanceof PutSecretValueCommand || call instanceof CreateSecretCommand), false);
+  await plan.apply();
+  assert.equal(changed.calls.filter((call) => call instanceof PutSecretValueCommand).length, 1);
+  const fresh = fake(false);
+  assert.deepEqual((await planDeploymentSecrets([requirement], { KEY: raw }, identity, fresh.client)).entries.map((entry) => entry.action), ["create"]);
+  assert.deepEqual((await planDeploymentSecrets([requirement], {}, identity, fake(true).client)).entries.map((entry) => entry.action), ["unchanged"]);
 });

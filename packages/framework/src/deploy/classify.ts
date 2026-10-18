@@ -1,16 +1,17 @@
 import {
   DEPLOYMENT_OUTPUT_DESCRIPTION,
-  identityFromOutputs,
-  identityFromTemplate,
+  IDENTITY_TAGS,
+  stackEvidence,
   stackLocation,
   type DeploymentIdentity,
   type ObservedStack,
+  type StackIdentity,
 } from "./identity";
 
 /**
  * Whether a deployment may be changed, from what CloudFormation says about it.
  *
- * A stack counts toward a deployment when its identity output names it, or when
+ * A stack counts toward a deployment when its tags or identity output name it, or when
  * its name follows the deployment's pattern (`<deployment>-<Suffix>`). The
  * second rule is what keeps a stack with no outputs (a failed first create, a
  * change set awaiting review, a stack from before the identity output existed)
@@ -40,8 +41,8 @@ export interface ClassifiedStack {
   readonly name: string;
   readonly status: string;
   readonly health: StackHealth;
-  readonly identity?: DeploymentIdentity;
-  readonly evidence: "output" | "template" | "none";
+  readonly identity?: StackIdentity;
+  readonly evidence: "tags" | "output" | "template" | "none";
 }
 
 export type DeploymentQuery = DeploymentIdentity;
@@ -57,8 +58,10 @@ export type DeploymentState =
       readonly message: string;
     };
 
-/** The deployment an identity output names, even when the rest of it does not parse. */
-function namedDeployment(stack: ObservedStack): string | undefined {
+/** The deployment a stack's tags or identity output name, even when the rest does not parse. */
+export function namedDeployment(stack: ObservedStack): string | undefined {
+  const tagged = stack.Tags?.find((tag) => tag.Key === IDENTITY_TAGS.deployment)?.Value;
+  if (tagged) return tagged;
   const raw = stack.Outputs?.find((output) => output.Description === DEPLOYMENT_OUTPUT_DESCRIPTION)?.OutputValue;
   try {
     const value: unknown = raw === undefined ? undefined : JSON.parse(raw);
@@ -90,19 +93,12 @@ export function classifyDeployment(
   const classified: ClassifiedStack[] = deploymentCandidates(stacks, query.deployment).map((stack) => {
     const name = stack.StackName ?? stack.StackId ?? "an unnamed stack";
     const status = stack.StackStatus ?? "UNKNOWN";
-    let identity: DeploymentIdentity | undefined;
-    let evidence: ClassifiedStack["evidence"] = "none";
-    try {
-      identity = identityFromOutputs(stack);
-      if (identity) evidence = "output";
-    } catch (error) {
-      report(name, error instanceof Error ? error.message : `Invalid deployment metadata in ${name}.`);
-      return { name, status, health: stackHealth(stack.StackStatus), evidence };
+    const found = stackEvidence(stack, templates.get(name));
+    if (found.problem) {
+      report(name, found.problem);
+      return { name, status, health: stackHealth(stack.StackStatus), evidence: "none" as const };
     }
-    if (!identity) {
-      identity = identityFromTemplate(templates.get(name));
-      if (identity) evidence = "template";
-    }
+    const { identity, evidence } = found;
     if (identity) {
       const location = stackLocation(stack.StackId);
       if (identity.deployment !== query.deployment) {

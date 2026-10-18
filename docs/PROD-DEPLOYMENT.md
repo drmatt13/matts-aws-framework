@@ -203,8 +203,24 @@ See [Development](DEV-DEPLOYMENT.md#first-setup) for the rules.
 A production deploy also refuses `--hotswap`, `--hotswap-fallback`, `--no-rollback` (`-R`),
 `--express`, `--yes` (`-y`) and `--require-approval never`. Hotswap, express and no-rollback
 deploys skip CloudFormation's safety. The approval flags would accept IAM and security
-changes nobody reviewed. Keep the interactive approval for production until reviewed plans
-are available (see [Deploy & Run](framework-studio/deploy-and-run.md)).
+changes nobody reviewed. For a reviewed production deployment, plan first and apply exactly what was reviewed:
+
+```powershell
+npm run deploy:resources -- --all -c prodDeployment=true --profile <PROFILE> --plan .cache/plans/prod
+npm run deploy:resources -- --apply .cache/plans/prod --confirm <NAME> --profile <PROFILE>
+```
+
+`--plan` synthesizes into the plan directory, runs every check, and prepares CloudFormation change
+sets (which modify no resource) so the review shows CloudFormation's own replacement decisions. It
+writes `plan.json`: per-resource changes, secrets by name, IAM broadening, exports other stacks still
+import, container images, and what the review cannot know. A stack that imports from a stack the plan
+creates is deferred until that stack exists. Planning needs every managed secret to exist: when one is
+new, plan again with `--create-secrets`. `--apply` refuses a plan older than a day, a plan whose stacks
+changed since the review, an obsolete change set, or secret values that changed; consequential
+production changes (removals, replacements, stateful resources, IAM broadening, exports in use, a first
+deployment) need `--confirm <NAME>`. After deploying, AWS is checked: every stack must have completed
+with this deployment's identity and the reviewed template. `--discard <dir>` removes a plan's change
+sets and the empty stacks it created. [Deploy & Run](framework-studio/deploy-and-run.md) has the design.
 
 Production deployment does not automatically export root .env or a local resource manifest. Retrieve
 public deployment outputs directly from CloudFormation or the CDK deployment output:
@@ -330,14 +346,23 @@ and dependent resources. Custom-domain CloudFront creation/deletion can take tim
 
 ## Teardown
 
-Teardown is a separate deliberate action. Confirm account, mode, deployment name, and
-retention before executing. Without RETAIN_STATEFUL_RESOURCES the database is deleted with a
-final snapshot, and its automated backups are kept for their retention window:
+Teardown is a separate deliberate action. Without RETAIN_STATEFUL_RESOURCES the database is
+deleted with a final snapshot, and its automated backups are kept for their retention window.
+First see what would be deleted, in which order, and what would remain:
 
 ```powershell
-npm run destroy:resources -- --all -c prodDeployment=true --profile <PROFILE>
+npm run destroy:resources -- --deployment <NAME> -c prodDeployment=true --profile <PROFILE> --plan
+npm run destroy:resources -- --deployment <NAME> -c prodDeployment=true --profile <PROFILE> --confirm <NAME>
 ```
 
-Review CDK's confirmation list. Omit `-c prodDeployment=true` for your development deployment. Retained resources
-can remain after stacks disappear; inspect CloudFormation and resource state. Avoid custom
+The stacks are the ones whose own records name the deployment, found in AWS rather than by
+synthesizing the current source, so a renamed or removed stack is still deleted and no Docker
+is needed. The mode must be stated and must match what is deployed; omit `-c prodDeployment=true`
+for a development deployment. Importers are deleted before the stacks they import from.
+Termination protection is switched off only after the typed confirmation. Stacks named like
+the deployment's but without its identity are left in place. A stack that fails to delete
+stops the teardown and names the resources CloudFormation could not remove; `--retain-failed`
+keeps those and deletes the rest. Managed secrets are kept (a returning deployment reuses them),
+the deployment record is removed, and anything still tagged `framework:deployment=<NAME>`
+afterwards is listed. Avoid custom
 Cognito domains for disposable deployment tests when domain lifecycle is not under test.

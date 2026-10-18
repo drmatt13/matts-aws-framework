@@ -44,3 +44,28 @@ test("stackLocation reads the account and region from a stack ARN", () => {
   assert.equal(stackLocation("not-an-arn"), undefined);
   assert.equal(stackLocation(undefined), undefined);
 });
+
+test("contract 2: the identity is read from stack tags, metadata or outputs, and they must agree", async () => {
+  const { DEPLOYMENT_METADATA_KEY, FRAMEWORK_OWNER, identityFromMetadata, identityFromTags, stackEvidence } = await import("@repo/framework/deploy");
+  const arn = "arn:aws:cloudformation:eu-west-2:111122223333:stack/app-CognitoStack/id";
+  const tags = [
+    { Key: "framework:owner", Value: FRAMEWORK_OWNER }, { Key: "framework:deployment", Value: "app" },
+    { Key: "framework:mode", Value: "dev" }, { Key: "framework:contract", Value: "2" },
+  ];
+  assert.deepEqual(identityFromTags({ StackId: arn, Tags: tags }), { ...identity, contract: 2 });
+  assert.equal(identityFromTags({ StackId: arn, Tags: tags.slice(1) }), undefined, "tags without the framework owner are not ours");
+  assert.equal(identityFromTags({ StackId: arn }), undefined);
+  const metadata = { contract: 2, owner: FRAMEWORK_OWNER, deployment: "app", mode: "dev", account: "111122223333", region: "eu-west-2", stack: "CognitoStack" };
+  assert.deepEqual(identityFromMetadata(metadata), { ...identity, contract: 2, stack: "CognitoStack" });
+  assert.equal(identityFromMetadata({ ...metadata, owner: "someone-else" }), undefined);
+  assert.deepEqual(identityFromTemplate({ Metadata: { [DEPLOYMENT_METADATA_KEY]: metadata } }), { ...identity, contract: 2, stack: "CognitoStack" });
+
+  const output = [{ Description: DEPLOYMENT_OUTPUT_DESCRIPTION, OutputValue: raw({}) }];
+  assert.deepEqual(stackEvidence({ StackName: "app-CognitoStack", StackId: arn, Tags: tags, Outputs: output }), { identity: { ...identity, contract: 2 }, evidence: "tags" });
+  assert.deepEqual(stackEvidence({ StackName: "app-CognitoStack", StackId: arn, Outputs: output }), { identity: { ...identity, contract: 1 }, evidence: "output" });
+  assert.deepEqual(stackEvidence({ StackName: "app-CognitoStack", StackId: arn }, { Metadata: { [DEPLOYMENT_METADATA_KEY]: metadata } }), { identity: { ...identity, contract: 2, stack: "CognitoStack" }, evidence: "template" });
+  assert.deepEqual(stackEvidence({ StackName: "app-CognitoStack", StackId: arn }), { evidence: "none" });
+  const disagreeing = stackEvidence({ StackName: "app-CognitoStack", StackId: arn, Tags: tags, Outputs: [{ Description: DEPLOYMENT_OUTPUT_DESCRIPTION, OutputValue: raw({ mode: "prod" }) }] });
+  assert.equal(disagreeing.evidence, "none");
+  assert.match(disagreeing.problem ?? "", /tags say app \(dev\) but its identity output says app \(prod\)/);
+});

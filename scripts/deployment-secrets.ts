@@ -17,12 +17,26 @@ export interface SecretDeploymentResult {
   readonly updated: readonly string[];
 }
 
-/** Every read and ownership check completes before the first write. Values stay in memory. */
-export async function synchronizeDeploymentSecrets(
+/** What synchronizing would do, by name: no value ever leaves the plan. */
+export interface SecretPlanEntry {
+  readonly name: string;
+  readonly variable: string;
+  readonly action: "create" | "update" | "unchanged";
+}
+
+export interface SecretPlan {
+  readonly entries: readonly SecretPlanEntry[];
+  /** The complete ARN of each existing secret, by name: what a change set can be planned against. */
+  readonly arns: Readonly<Record<string, string>>;
+  /** Performs the plan's writes. Values stay in this closure. */
+  apply(onUpdate?: (name: string) => void): Promise<SecretDeploymentResult>;
+}
+
+/** Every read and ownership check, and no write. Values are compared in memory and never returned. */
+export async function planDeploymentSecrets(
   requirements: readonly SecretRequirement[], authored: Readonly<Record<string, string | undefined>>,
   identity: { account: string; region: string }, client: Pick<SecretsManagerClient, "send">,
-  onUpdate: (name: string) => void = () => {},
-): Promise<SecretDeploymentResult> {
+): Promise<SecretPlan> {
   const plans = new Map<string, { requirement: SecretRequirement; value?: string; arn?: string; changed: boolean }>();
   for (const requirement of requirements) {
     if (requirement.account !== identity.account || requirement.region !== identity.region) throw new Error("Selected AWS credentials/account or region do not match the synthesized secret requirements.");
@@ -54,6 +68,27 @@ export async function synchronizeDeploymentSecrets(
     }
     plans.set(requirement.name, { requirement, value, arn: existing?.ARN, changed });
   }
+  const entries = [...plans.values()].map(({ requirement, arn, changed }): SecretPlanEntry => ({
+    name: requirement.name, variable: requirement.variable, action: !arn ? "create" : changed ? "update" : "unchanged",
+  }));
+  const arns = Object.fromEntries([...plans.values()].flatMap(({ requirement, arn }) => (arn ? [[requirement.name, arn]] : [])));
+  return { entries, arns, apply: (onUpdate = () => {}) => applySecretPlan(plans, requirements, identity, client, onUpdate) };
+}
+
+/** Every read and ownership check completes before the first write. Values stay in memory. */
+export async function synchronizeDeploymentSecrets(
+  requirements: readonly SecretRequirement[], authored: Readonly<Record<string, string | undefined>>,
+  identity: { account: string; region: string }, client: Pick<SecretsManagerClient, "send">,
+  onUpdate: (name: string) => void = () => {},
+): Promise<SecretDeploymentResult> {
+  return (await planDeploymentSecrets(requirements, authored, identity, client)).apply(onUpdate);
+}
+
+async function applySecretPlan(
+  plans: Map<string, { requirement: SecretRequirement; value?: string; arn?: string; changed: boolean }>,
+  requirements: readonly SecretRequirement[], identity: { account: string; region: string },
+  client: Pick<SecretsManagerClient, "send">, onUpdate: (name: string) => void,
+): Promise<SecretDeploymentResult> {
   const updated: string[] = [];
   for (const plan of plans.values()) {
     const { requirement } = plan;

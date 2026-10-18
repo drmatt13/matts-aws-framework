@@ -30,7 +30,8 @@
     "task:cloud": "tsx scripts/run-cloud-task.ts",
     "db:migrate:cloud": "tsx scripts/run-cloud-task.ts db-migrate",
     "deploy:resources": "tsx scripts/deploy.ts",
-    "destroy:resources": "npm --workspace cdk-app exec -- cdk destroy"
+    "deploy:status": "tsx scripts/deployment-status.ts",
+    "destroy:resources": "tsx scripts/destroy.ts"
   },
   "workspaces": [
     "client-app",

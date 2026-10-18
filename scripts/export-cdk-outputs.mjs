@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createRequire } from "node:module";
@@ -14,6 +13,7 @@ const { collectDeploymentStacks, collectDevelopmentResources, readDeploymentStac
 const { collectProductionOutputs, renderProductionClientFile } = require("./production-export.ts");
 const { RESOURCE_MANIFEST_FILE } = require("@repo/framework/config");
 const { contextFromArgs, deploymentInputsFile, resolveRepositoryTarget } = require("@repo/framework/deploy/node");
+const { runAwsSync } = require("./aws-cli.ts");
 const { default: framework } = require("../framework.config.ts");
 
 const BASE_STACK_OUTPUT_MAPPINGS = {
@@ -196,26 +196,12 @@ if (!/^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(deploymentName)) {
 
 const stackName = (baseName) => `${deploymentName}-${baseName}`;
 
-const awsArgsBase = [];
-if (profile) {
-  awsArgsBase.push("--profile", profile);
-}
-if (region) {
-  awsArgsBase.push("--region", region);
-}
-
-const runAws = (args) => {
-  const output = execFileSync("aws", [...awsArgsBase, ...args], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-
-  return JSON.parse(output);
-};
+// The deployment scripts' one AWS CLI runner (it honors FRAMEWORK_AWS_CLI, as the tests use).
+const runAws = (args) => runAwsSync(args, { ...(profile ? { profile } : {}), ...(region ? { region } : {}) });
 
 // Discover every deployed stack; no application stack list is maintained.
 let listed;
-try { listed = readDeploymentStackPages(token => runAws(["cloudformation", "describe-stacks", "--no-paginate", "--output", "json", ...(token ? ["--next-token", token] : [])])); }
+try { listed = readDeploymentStackPages(token => runAws(["cloudformation", "describe-stacks", "--no-paginate", ...(token ? ["--next-token", token] : [])])); }
 catch { throw new Error("Unable to read deployment stacks. Check AWS credentials and permissions; existing local files were preserved."); }
 const { identity } = collectDeploymentStacks(listed, deploymentName);
 if (region && identity.region !== region) throw new Error("The requested region differs from the deployed resources.");
