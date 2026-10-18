@@ -56,7 +56,6 @@ export const ICON_TINT: Readonly<Record<IconKey, string>> = {
 export const ISLAND_TRIM: Readonly<Record<string, string>> = {
   "island:apis": AWS.networking,
   "island:lambda": AWS.compute,
-  "island:local": "#2fb3bc",
   "island:vpc": "#9d6bff",
   "island:agentcore": AWS.ai,
   "island:orchestration": AWS.integration,
@@ -68,7 +67,6 @@ export const ISLAND_TRIM: Readonly<Record<string, string>> = {
 const REGION_TRIM: Readonly<Record<Region, string>> = {
   entry: AWS.networking,
   compute: AWS.compute,
-  local: "#2fb3bc",
   network: "#9d6bff",
   agents: AWS.ai,
   orchestration: AWS.integration,

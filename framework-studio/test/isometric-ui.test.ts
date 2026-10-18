@@ -197,6 +197,7 @@ test("hovering a node shows its authored description and a Dev and a Prod pill",
   assert.deepEqual(tagsOf(card), [["hover-tag dev", "Dev: Your machine"], ["hover-tag prod", "Prod: AWS Lambda · outside the VPC"]]);
   assert.ok(!text.includes("Runs in development and production."), "the generic lane line is gone");
   assert.ok(!text.includes("Enabled in development"), "the generic presence line is gone");
+  assert.ok(!text.includes("Click to inspect"), "no how-to caption under the description");
 });
 
 test("an environment that does not deploy the item keeps its pill, dark", async () => {

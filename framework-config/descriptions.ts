@@ -100,7 +100,6 @@ export const descriptions = {
   "island:apis": "Public HTTP routes, container service mounts, WebSocket route keys and agent browser paths. Each entry has its own identity and declared target.",
   "island:lambda": "Lambda compute outside the VPC, grouped across HTTP, WebSocket, events and agent tools. Shared defaults apply by service type; individual workload overrides take precedence.",
   "island:vpc": "Application VPC with public, private and isolated subnet terraces. Production workloads follow their declared placement; gateway and endpoint settings control egress.",
-  "island:local": "Support services running on your machine during development, including Compose PostgreSQL.",
   "island:agentcore": "Conversational agents running on AgentCore Runtime or the local agent lane. Declared tool bindings determine which Lambda tools each agent can call.",
   "island:orchestration": "Declared workflow graphs interpreted locally or compiled to AWS Step Functions. Steps invoke only the targets and integrations declared by the workflow.",
   "island:stacks": "Application catalog stacks and framework output stacks. Inspect a stack to see public fields, source relationships and mapped CloudFormation outputs.",

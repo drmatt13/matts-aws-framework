@@ -239,7 +239,7 @@ test("islands pack into rows: small ones share a row when it fits, leave room fo
       assert.ok(one.right <= two.left || two.right <= one.left || one.bottom <= two.top || two.bottom <= one.top, `${a.id} overlaps ${b.id}`);
     }
     const island = (id: string) => scene.islands.find((candidate) => candidate.id === id);
-    const compute = scene.islands.filter((candidate) => ["compute", "network", "agents", "orchestration", "local"].includes(candidate.region));
+    const compute = scene.islands.filter((candidate) => ["compute", "network", "agents", "orchestration"].includes(candidate.region));
     const width = Math.max(...compute.map((candidate) => box(candidate).right - box(candidate).left));
     const agents = island("island:agentcore");
     const flows = island("island:orchestration");
@@ -259,20 +259,21 @@ test("switching the graph changes what is shown, never where it stands", () => {
   assert.deepEqual(buildScene(snapshot.models.dev, { webSocketApi: snapshot.webSocketApi, layoutModels: Object.values(snapshot.models) }).nodes.map((node) => [node.id, node.gx, node.gy]), dev.nodes.map((node) => [node.id, node.gx, node.gy]));
 });
 
-test("the desktop overview fills a 1080p monitor, with Local development between Workflows and Stacks", () => {
+test("the desktop overview fills a 1080p monitor, with Workflows before Stacks", () => {
   const viewport = { width: 1920, height: 1080 - 52 };
   for (const scene of [dev, prod]) {
-    const lower = ["island:agentcore", "island:orchestration", "island:local", "island:stacks"].map((id) => scene.islands.find((island) => island.id === id)!);
+    const lower = ["island:agentcore", "island:orchestration", "island:stacks"].map((id) => scene.islands.find((island) => island.id === id)!);
     const centre = (island: Island) => ({
       x: (island.gx0 + island.gx1 - island.gy0 - island.gy1) / 2,
       y: (island.gx0 + island.gx1 + island.gy0 + island.gy1) / 2,
     });
     for (let at = 1; at < lower.length; at += 1) {
-      assert.ok(centre(lower[at - 1]!).x < centre(lower[at]!).x, "lower row reads Agents, Workflows, Local development, Stacks");
+      assert.ok(centre(lower[at - 1]!).x < centre(lower[at]!).x, "lower row reads Agents, Workflows, Stacks");
     }
     const core = scene.islands.filter((island) => !lower.includes(island) && island.id !== "island:environment");
     const fitted = fitBounds(scene.bounds, viewport, 48);
-    assert.ok((scene.bounds.maxX - scene.bounds.minX) * fitted.zoom > viewport.width * 0.8, "uses the monitor's width");
+    // Seven islands pack to a map that is height-bound on a 16:9 monitor (about 0.79 wide, 0.91 tall).
+    assert.ok((scene.bounds.maxX - scene.bounds.minX) * fitted.zoom > viewport.width * 0.75, "uses the monitor's width");
     assert.ok((scene.bounds.maxY - scene.bounds.minY) * fitted.zoom > viewport.height * 0.8, "uses the monitor's height");
   }
 });
@@ -304,7 +305,6 @@ test("multiple differently sized VPC footprints form one compact, non-overlappin
     { id: "island:lambda", title: "Serverless compute", region: "compute", size: 29 },
     { id: "island:agentcore", title: "Agents", region: "agents", size: 8 },
     { id: "island:orchestration", title: "Workflows", region: "orchestration", size: 8 },
-    { id: "island:local", title: "Local development", region: "local", size: 8 },
     { id: "island:stacks", title: "Stacks", region: "catalog", size: 14 },
   ];
   for (const count of [1, 2, 3, 5, 9, 16]) {
@@ -697,6 +697,28 @@ test("stack constructor evidence produces an unattached badge, while the managed
     if (model.mode === "prod") assert.ok(bindings.length > 0);
     for (const edge of bindings) assert.equal(edge.to, database.id);
   }
+});
+
+test("the local database stands in the isolated subnet right beside RDS, solid in development and ghosted in production", () => {
+  for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
+    assert.ok(!scene.islands.some((island) => island.id === "island:local" || island.title === "Local development"), "it has no island of its own");
+    const local = scene.nodes.find((item) => item.id === "local:postgres")!;
+    const rds = scene.nodes.find((item) => item.id === "resource:rds.database")!;
+    assert.equal(local.island, "island:vpc");
+    assert.equal(local.band, "band:isolated");
+    assert.equal(local.entity, "local");
+    assert.equal(local.presence, model.mode === "dev" ? "built" : "other");
+    assert.equal(local.h, rds.h, "on the same terrace");
+    assert.equal(Math.abs(local.gx - rds.gx) + Math.abs(local.gy - rds.gy), 3, "one lattice step from RDS");
+    const isolated = scene.islands.find((island) => island.id === "island:vpc")!.bands.find((band) => band.id === "band:isolated")!;
+    assert.ok(isolated.caption.some((line) => line.includes("Local PostgreSQL")), "the subnet says it is not an AWS resource");
+  }
+});
+
+test("without a local database the isolated subnet says nothing about one", () => {
+  const scene = buildScene({ ...snapshot.models.dev, localServices: [] });
+  assert.ok(!scene.nodes.some((node) => node.entity === "local"));
+  assert.ok(!scene.islands.find((island) => island.id === "island:vpc")!.bands.some((band) => band.caption.some((line) => line.includes("Local PostgreSQL"))));
 });
 
 test("catalog and selected output stacks share one island while keeping their availability and inspector identities", () => {

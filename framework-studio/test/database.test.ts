@@ -147,7 +147,7 @@ test("local execution connects to PostgreSQL; production retains its RDS binding
     assert.ok(layoutBoard(model).nodes.some((node) => node.id === "local:postgres"));
     const scene = buildScene(model);
     assert.equal(scene.nodes.find((node) => node.id === "local:postgres")?.presence, model.mode === "dev" ? "built" : "other");
-    assert.equal(scene.islands.find((island) => island.id === "island:local")?.ghost, model.mode === "dev" ? undefined : "disabled");
+    assert.equal(scene.islands.some((island) => island.id === "island:local"), false, "the local database has no island of its own");
   }
   assert.deepEqual(withLocalDatabases(dev, dev.localServices!).edges, dev.edges, "stale model reprojection keeps stable edge ids");
 });

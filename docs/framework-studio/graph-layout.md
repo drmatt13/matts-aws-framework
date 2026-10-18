@@ -36,8 +36,7 @@ References: [ELK's layered phases](https://eclipse.dev/elk/blog/posts/2025/25-08
    barycentric ordering sweeps, considers semantic and dependency-ordered multi-row
    seeds, then refines through deterministic moves, neighbour pulls and swaps.
    Environment files stay left of inputs; network islands stay in the right-hand
-   zone; Local development retains its horizontal position between Workflows and
-   Stacks. Other islands may follow connections instead of sharing a prescribed row.
+   zone; Workflows stay left of Stacks. Other islands may follow connections instead of sharing a prescribed row.
 4. `layout-quality.ts` scores projected anchor paths, weighted crossings/length,
    island and label rectangles, unrelated-island intersections, viewport utilization,
    negative space and movement. Overlaps dominate the cost. Crossing reduction and

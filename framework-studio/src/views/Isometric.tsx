@@ -59,7 +59,6 @@ interface Tween {
 
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const HOVER_HINT = "Click to inspect, double-click to fly to it.";
 const ENVIRONMENTS = [["dev", "Dev"], ["prod", "Prod"]] as const;
 const NO_DESCRIPTION = "No description yet. Select it to write one.";
 
@@ -605,7 +604,7 @@ function HoverCard(props: {
     // The draft's value, so an unsaved edit previews here as it does in the inspector.
     description = draft.description(node.id).trim();
     subtitle = node.kindLabel;
-    lines = [...(description ? [] : [NO_DESCRIPTION]), HOVER_HINT];
+    lines = description ? [] : [NO_DESCRIPTION];
   } else if (current.kind === "edge") {
     const edge = props.scene.edges.find((candidate) => candidate.edge.id === current.id)?.edge;
     if (!edge) return null;

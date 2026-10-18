@@ -19,8 +19,8 @@ The **Deploy** tab (`/deploy`), after Database, is a placeholder for future depl
 controls.
 
 Local PostgreSQL appears in Board and Isometric as the Compose `postgres`
-service. Its own **Local development** island is active in Development and faded in
-Production; RDS keeps its production grouping. Database edges from local execution
+service. In Isometric it stands in the VPC's isolated subnet right beside RDS, solid in
+Development and faded in Production (it runs on your machine, not in AWS). Database edges from local execution
 reach PostgreSQL, while AWS bindings retain their catalog destination. Both databases
 offer **View schema** in the inspector. Image, named volumes and source come from
 the authored `docker-compose.yml`; connection credentials, container health and Compose
@@ -220,8 +220,7 @@ The regions mean something:
 | --- | --- |
 | Entry islands | One shared APIs layer for HTTP, WebSocket and agent routes |
 | Compute | One shared layer for HTTP, WebSocket and event Lambdas outside the VPC; AgentCore agents and their tools; Step Functions workflows |
-| The VPC | Level public, private and isolated subnet terraces. Each workload stands on the terrace its production placement names |
-| Local development | Compose PostgreSQL, outside the AWS VPC; the same declared application schema as RDS |
+| The VPC | Level public, private and isolated subnet terraces. Each workload stands on the terrace its production placement names; Compose PostgreSQL stands on the isolated terrace beside RDS, with the same declared application schema |
 | Catalog | One shared Stacks island with a node per stack class and public fields in the inspector; a separate island for individually selectable inputs and secrets |
 
 HTTP, WebSocket and event Lambdas share one layer. HTTP, WebSocket and agent APIs

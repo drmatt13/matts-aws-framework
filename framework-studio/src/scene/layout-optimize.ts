@@ -54,8 +54,8 @@ function preferences(islands: readonly IslandFootprint[], positions: readonly Is
   if (env && input && Math.abs(env.top + sizes.get(env.id)! / 2 - input.top - sizes.get(input.id)! / 2) > 1) return false;
   const left = islands.filter((item) => item.id === "island:inputs" || item.region === "entry" || item.id === "island:environment");
   for (const network of islands.filter((item) => item.region === "network")) for (const item of left) if (byId.get(network.id)!.left < byId.get(item.id)!.left + item.size) return false;
-  const workflow = byId.get("island:orchestration"), local = byId.get("island:local"), stacks = byId.get("island:stacks");
-  if (workflow && local && stacks && !(workflow.left < local.left && local.left < stacks.left)) return false;
+  const workflow = byId.get("island:orchestration"), stacks = byId.get("island:stacks");
+  if (workflow && stacks && !(workflow.left < stacks.left)) return false;
   return true;
 }
 const cache = new Map<string, LayoutResult>();

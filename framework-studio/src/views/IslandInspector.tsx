@@ -14,7 +14,6 @@ const GROUPS: Readonly<Record<string, readonly string[]>> = {
   "island:lambda": LAMBDAS,
   "island:vpc": [...LAMBDAS, "container", "database"],
   "island:agentcore": ["tools"],
-  "island:local": ["database"],
 };
 
 /** Island membership comes from the same layout as the canvas, never a second graph. */
@@ -40,7 +39,7 @@ export function IslandInspector({ id }: { readonly id: string }) {
       <p className="small">Defaults apply to this service type across all islands, including future nodes. Individual overrides take precedence.</p>
       <label className="island-default-group">Service type<select aria-label="Default service type" value={group.ref} onChange={(event) => setChosen(event.target.value)}>{groups.map((item) => <option key={item.ref} value={item.ref}>{item.title}</option>)}</select></label>
       {id === "island:agentcore" ? <p className="small muted">These defaults configure Lambda tools used by agents. AgentCore runtimes have individual settings.</p> : null}
-      {id === "island:local" ? <p className="small muted">Connection pool defaults configure database callers. The local database container is configured in Compose.</p> : null}
+      {id === "island:vpc" && group.group === "database" ? <p className="small muted">Connection pool defaults configure database callers. The local database container is configured in Compose.</p> : null}
       <div className="fields" key={group.ref}>{(model.fields[group.ref] ?? []).map((fact) => <div key={fact.field}>
         {fact.domain.kind === "enum" && fact.domain.values.includes(true) && fact.domain.values.includes(false)
           ? <BooleanField target={group} fact={fact} editability={snapshot.source.editability[group.ref]?.[fact.field]} />

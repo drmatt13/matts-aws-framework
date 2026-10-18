@@ -99,11 +99,10 @@ stability, shared routing, viewport adaptation and measured before/after results
 | Upper left | APIs | HTTP routes, service mounts, WebSocket keys and agent browser paths on one layer | 2 |
 | Lower left | Input parameters and secrets | Only catalog-declared inputs, secrets and groups on one shared lattice; other dotenv keys stay in the file inspectors | 1 |
 | Upper right | Serverless compute | HTTP, WebSocket, event and AgentCore tool Lambdas outside the VPC on one shared lattice | 3 |
-| Right-hand network cluster | VPC | Subnets `public`, `private` and `isolated`, side by side at one height. Every target with `placement.kind === "vpc"` stands on its subnet. Gateways and endpoints from `network` stand on the subnets as selectable furniture | 4 |
+| Right-hand network cluster | VPC | Subnets `public`, `private` and `isolated`, side by side at one height. Every target with `placement.kind === "vpc"` stands on its subnet. Gateways and endpoints from `network` stand on the subnets as selectable furniture. The Compose PostgreSQL service stands in the isolated subnet right beside the managed RDS database, as its development counterpart: solid in Development and ghosted in Production, and not an AWS resource | 4 |
 | Shared lower row, first | Agents | AgentCore agents not placed in the VPC | 3 |
 | Shared lower row, second | Workflows | Step Functions workflows | 4 |
-| Shared lower row, third | Local development | The authored Compose PostgreSQL service; active in Development, ghosted in Production | 2 |
-| Shared lower row, fourth | Stacks | All `resource.stack<T>()` entries together, one node per class; public fields expand in the inspector | 2 |
+| Shared lower row, third | Stacks | All `resource.stack<T>()` entries together, one node per class; public fields expand in the inspector | 2 |
 | Immediately left of input parameters and secrets | CDK environment files | `.env.dev` and `.env.prod`; file-to-parameter links use assignment names and source locations, with no values | 1 |
 
 The subnets stand level, left to right from public to isolated. Exposure reads in colour
@@ -141,7 +140,7 @@ subnet terraces inside the VPC foundation.
   input parameters form one measured row, with files on the left and a reserved gap
   for the input island's title. Their vertical centres stay aligned as either grows;
   if inputs are absent, files still belong to the left cluster. The same packing places
-  Agents, Workflows, Local development and Stacks, in that order, across the full width
+  Agents, Workflows and Stacks, in that order, across the full width
   below the main columns. A compact supporting row can widen the main gutter, up to 1.5×
   the natural column width; a supporting island that outgrows that row wraps to the next.
   - Minimum gap between columns: 6 tile units, widened for network/compute titles.
@@ -157,8 +156,7 @@ subnet terraces inside the VPC foundation.
   the current declaration model still supplies the application's single VPC.
 - **Graph-aware refinement.** Node slots remain on their measured lattice. Island
   dependencies guide layered/barycentric seeds and bounded moves and swaps. The lower
-  islands need not share one row; Local development retains its horizontal place
-  between Workflows and Stacks. The previous one-sided node barycentre is retained
+  islands need not share one row; Workflows stay left of Stacks. The previous one-sided node barycentre is retained
   only in the explicit benchmark baseline.
 - **Chamfered corners.** Each corner is cut back by one straight chamfer (`CHAMFER = 2`
   cells along each edge, at most a third of the island's shorter side). A cell is removed
@@ -229,7 +227,6 @@ Each island is drawn as continuous slabs, one per band, rather than a field of t
   | Workflows | `#E7157B` (Step Functions) |
   | Agents | `#01A88D` (AgentCore) |
   | VPC | Public `#5fc75a` green, private `#3d8bfd` blue, isolated `#b07cff` purple (`BAND_TRIM`); the foundation, its edge and its label in a VPC violet `#9d6bff` |
-  | Local development | `#2fb3bc` |
   | Stacks | `#6f93c9` |
   | Inputs and secrets | `#DD344C` (Secrets Manager) |
 

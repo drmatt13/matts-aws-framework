@@ -41,7 +41,7 @@ export { titleRoom } from "./layout";
  */
 export type Presence = "built" | "other" | "nowhere" | "absent" | "present";
 
-export type Region = "entry" | "compute" | "network" | "agents" | "orchestration" | "catalog" | "local";
+export type Region = "entry" | "compute" | "network" | "agents" | "orchestration" | "catalog";
 
 export interface Tile {
   readonly gx: number;
@@ -354,6 +354,13 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
       vpc[resource.networkPlacement].push({ ...catalogItem(resource), label: "RDS database", kindLabel: "Framework-managed Amazon RDS" });
     }
   }
+  // The local database stands beside RDS, as its development counterpart: workloads bind to one or the other.
+  const localServices = model.localServices ?? [];
+  vpc.isolated.push(...localServices.map((service): Item => ({
+    id: service.id, entity: "local", icon: "postgres", label: service.title,
+    kindLabel: "Compose database", badge: "dev", presence: service.enabled ? "built" : "other",
+    presenceText: service.enabled ? "Development database, declared in docker-compose.yml. Container status is not monitored." : "Used during development on your machine.",
+  })));
   for (const target of model.targets) {
     const item = targetItem(target, mode);
     if (target.placement.kind === "vpc") vpc[target.placement.subnet].push(item);
@@ -368,16 +375,6 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   const vpcBuilt = mode === "prod" && model.network?.builtInProd === true;
   const network = model.network;
   const computeIslands: IslandSpec[] = [
-    ...((model.localServices?.length ?? 0) > 0 ? [{
-      id: "island:local", title: "Local development", region: "local" as const,
-      caption: ["Support services declared in docker-compose.yml, running on your machine during development."],
-      bands: [{ id: "band:local", title: "Local development", caption: [], h: 2,
-        groups: [model.localServices!.map((service): Item => ({
-          id: service.id, entity: "local", icon: "postgres", label: service.title,
-          kindLabel: "Compose database", badge: "dev", presence: service.enabled ? "built" : "other",
-          presenceText: service.enabled ? "Development database, declared in docker-compose.yml. Container status is not monitored." : "Used during development on your machine.",
-        }))] }],
-    }] : []),
     {
       id: "island:lambda", title: "Serverless compute", region: "compute",
       caption: ["HTTP, WebSocket, event and AgentCore tool functions. VPC-attached functions remain on their subnet terraces.", "A tool runs wherever the agents that list it run."],
@@ -425,7 +422,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
         {
           id: "band:isolated",
           title: "Isolated subnet",
-          caption: captions.isolated,
+          caption: [...captions.isolated, ...(localServices.length ? ["Local PostgreSQL stands beside RDS as its development counterpart. It runs in Compose on your machine, not in AWS."] : [])],
           h: VPC_HEIGHT,
           groups: [vpc.isolated],
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),

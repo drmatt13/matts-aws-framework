@@ -66,7 +66,7 @@ function networkRows(blocks: readonly Block[]): Row[] {
 /** Semantic placement preferences over the same measured footprint/row packing.
  * Recomputed for every scene; no saved coordinates or model/config mutations. */
 export function layoutIslands(islands: readonly IslandFootprint[]): readonly IslandPosition[] {
-  const lowerOrder = ["island:agentcore", "island:orchestration", "island:local", "island:stacks"];
+  const lowerOrder = ["island:agentcore", "island:orchestration", "island:stacks"];
   const lower = lowerOrder.flatMap((id) => islands.filter((island) => island.id === id)).map(blockOf);
   const environment = islands.find((island) => island.id === "island:environment");
   const inputs = islands.find((island) => island.id === "island:inputs");
