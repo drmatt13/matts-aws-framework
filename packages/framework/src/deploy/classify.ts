@@ -18,11 +18,17 @@ import {
  * its template, or it is refused: nothing is adopted on a name alone.
  */
 
-export type StackHealth = "complete" | "rolled-back" | "in-progress" | "review" | "failed-create" | "failed";
+/**
+ * `failed-create` and `paused` are failures the CDK CLI recovers from itself:
+ * it deletes and recreates a stack whose first create failed, and it retries or
+ * rolls back a stack `--no-rollback` paused. Only `failed` needs a person.
+ */
+export type StackHealth = "complete" | "rolled-back" | "in-progress" | "review" | "failed-create" | "paused" | "failed";
 
 export function stackHealth(status: string | undefined): StackHealth {
   if (!status) return "failed";
-  if (status === "ROLLBACK_COMPLETE") return "failed-create";
+  if (status === "ROLLBACK_COMPLETE" || status === "ROLLBACK_FAILED") return "failed-create";
+  if (status === "CREATE_FAILED" || status === "UPDATE_FAILED") return "paused";
   if (status === "UPDATE_ROLLBACK_COMPLETE" || status === "IMPORT_ROLLBACK_COMPLETE") return "rolled-back";
   if (status === "REVIEW_IN_PROGRESS") return "review";
   if (status.endsWith("_IN_PROGRESS")) return "in-progress";
@@ -137,15 +143,15 @@ export function classifyDeployment(
   if (existing.mode !== query.mode) {
     return {
       kind: "conflict", reason: "mode", stacks: classified,
-      message: `${query.deployment} is a ${existing.mode} deployment in ${where} (${names(classified)}). Deploying ${query.mode} over it would change or remove those stacks. Delete it first with npm run destroy:resources, or deploy under another name.`,
+      message: `${query.deployment} is a ${existing.mode} deployment in ${where} (${names(classified)}). Deploying ${query.mode} over it would change or remove those stacks. To keep it, deploy under another name (CDK_APP_NAME, or -c cdkAppName). To replace it, tear it down first from a ${existing.mode}-mode configuration, so the teardown selects its own stacks, and check the list of stacks before you confirm.`,
     };
   }
 
   if (classified.some((stack) => stack.health === "in-progress" || stack.health === "review")) {
     return { kind: "in-progress", stacks: classified, deployable: false };
   }
-  const failed = classified.filter((stack) => stack.health === "failed" || stack.health === "failed-create");
-  if (failed.length) return { kind: "failed", stacks: classified, deployable: failed.every((stack) => stack.health === "failed-create") };
+  const failed = classified.filter((stack) => stack.health === "failed" || stack.health === "failed-create" || stack.health === "paused");
+  if (failed.length) return { kind: "failed", stacks: classified, deployable: failed.every((stack) => stack.health !== "failed") };
   if (classified.some((stack) => stack.health === "rolled-back")) return { kind: "rolled-back", stacks: classified };
   return { kind: "ready", stacks: classified };
 }

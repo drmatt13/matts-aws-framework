@@ -2,6 +2,7 @@ import {
   classifyDeployment,
   deploymentCandidates,
   identityFromOutputs,
+  type ClassifiedStack,
   type DeploymentIdentity,
   type DeploymentState,
   type ObservedStack,
@@ -51,7 +52,20 @@ export function unsafeProductionFlags(args: readonly string[]): string[] {
   return found;
 }
 
-const listed = (stacks: readonly { name: string; status: string }[]) => stacks.map((stack) => `${stack.name} (${stack.status})`).join(", ");
+/** What a person can do about a stack in this status: the CDK CLI handles the rest itself. */
+function remedy(stack: ClassifiedStack): string {
+  switch (stack.status) {
+    case "REVIEW_IN_PROGRESS":
+      return "holds no resources: a change set was created for it and never executed. Execute that change set, or delete the stack in CloudFormation, which removes nothing";
+    case "UPDATE_ROLLBACK_FAILED":
+      return `continue its rollback with npm --workspace cdk-app exec -- cdk rollback ${stack.name}, or Continue update rollback in the CloudFormation console`;
+    case "DELETE_FAILED":
+      return "retry the delete in CloudFormation, retaining or first removing the resources it reports";
+    default:
+      return stack.health === "in-progress" ? "wait for it to finish" : "inspect it in CloudFormation";
+  }
+}
+const listed = (stacks: readonly ClassifiedStack[]) => stacks.map((stack) => `${stack.name} (${stack.status}): ${remedy(stack)}`).join("; ");
 
 export function assertDeploymentAllowed(identity: DeploymentIdentity, args: readonly string[], readers: GuardReaders): DeploymentState {
   if (identity.mode === "prod") {
@@ -81,9 +95,9 @@ export function assertDeploymentAllowed(identity: DeploymentIdentity, args: read
       return state;
     case "failed":
       if (state.deployable) return state;
-      throw new Error(`${identity.deployment} needs recovery before it can be deployed: ${listed(state.stacks.filter((stack) => stack.health === "failed"))}. Resolve it in CloudFormation (continue an UPDATE_ROLLBACK_FAILED rollback, or retry a DELETE_FAILED delete), then deploy again. Nothing was changed.`);
+      throw new Error(`${identity.deployment} needs recovery before it can be deployed: ${listed(state.stacks.filter((stack) => stack.health === "failed"))}. Then deploy again. Nothing was changed.`);
     case "in-progress":
-      throw new Error(`${identity.deployment} has a CloudFormation operation in progress: ${listed(state.stacks.filter((stack) => stack.health === "in-progress" || stack.health === "review"))}. Wait for it to finish, or resolve the pending change set, then deploy again. Nothing was changed.`);
+      throw new Error(`${identity.deployment} has a CloudFormation operation in progress or pending: ${listed(state.stacks.filter((stack) => stack.health === "in-progress" || stack.health === "review"))}. Then deploy again. Nothing was changed.`);
     case "conflict":
       throw new Error(`${state.message} Nothing was changed.`);
   }

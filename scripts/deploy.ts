@@ -65,7 +65,7 @@ async function main(): Promise<void> {
         readTemplate: name => runAws(["cloudformation", "get-template", "--stack-name", name, "--template-stage", "Original"]).TemplateBody,
       });
       if (deployed.kind === "rolled-back") console.log(`The last update of ${graph.identity.deployment} was rolled back; this deployment replaces it.`);
-      if (deployed.kind === "failed") console.log(`${graph.identity.deployment} has stacks whose first create failed; CloudFormation removes and recreates them.`);
+      if (deployed.kind === "failed") console.log(`${graph.identity.deployment} has failed stacks the CDK CLI recovers itself: it recreates a stack whose first create failed, and retries or first rolls back one that --no-rollback paused.`);
       // Users cannot override framework-owned parameters with a hand-authored ARN map.
       if (args.some(arg => graph.requirements.some(requirement => arg.includes(requirement.parameter)))) throw new Error("Managed secret parameters are supplied automatically; remove their --parameters overrides.");
       // A Ctrl+C during the synchronous checks above lands here: write nothing.

@@ -27,7 +27,8 @@ test("stackHealth maps every CloudFormation status class", () => {
     ["CREATE_COMPLETE", "complete"], ["UPDATE_COMPLETE", "complete"], ["IMPORT_COMPLETE", "complete"],
     ["UPDATE_ROLLBACK_COMPLETE", "rolled-back"], ["REVIEW_IN_PROGRESS", "review"],
     ["UPDATE_IN_PROGRESS", "in-progress"], ["DELETE_IN_PROGRESS", "in-progress"], ["UPDATE_COMPLETE_CLEANUP_IN_PROGRESS", "in-progress"],
-    ["ROLLBACK_COMPLETE", "failed-create"], ["UPDATE_ROLLBACK_FAILED", "failed"], ["DELETE_FAILED", "failed"], ["ROLLBACK_FAILED", "failed"], [undefined, "failed"],
+    ["ROLLBACK_COMPLETE", "failed-create"], ["ROLLBACK_FAILED", "failed-create"], ["CREATE_FAILED", "paused"], ["UPDATE_FAILED", "paused"],
+    ["IMPORT_ROLLBACK_COMPLETE", "rolled-back"], ["UPDATE_ROLLBACK_FAILED", "failed"], ["DELETE_FAILED", "failed"], ["IMPORT_ROLLBACK_FAILED", "failed"], [undefined, "failed"],
   ];
   for (const [status, health] of cases) assert.equal(stackHealth(status), health, String(status));
 });
@@ -66,6 +67,9 @@ test("a failed first create identified by its template is deployable; a failed r
   assert.equal(created.kind === "failed" && created.stacks[0]?.evidence, "template");
   const stuck = classifyDeployment([stack("app-CognitoStack", "UPDATE_ROLLBACK_FAILED")], query);
   assert.equal(stuck.kind === "failed" && stuck.deployable, false);
+  // Paused by --no-rollback: CDK retries or rolls back first, so it stays deployable.
+  const paused = classifyDeployment([stack("app-CognitoStack", "UPDATE_FAILED")], query);
+  assert.equal(paused.kind === "failed" && paused.deployable, true);
 });
 
 test("deploying the other mode over an existing deployment is a conflict with a remedy", () => {
@@ -76,7 +80,9 @@ test("deploying the other mode over an existing deployment is a conflict with a 
   assert.match(message, /prod deployment/);
   assert.match(message, /app-CognitoStack/);
   assert.match(message, /111122223333/);
-  assert.match(message, /destroy:resources/);
+  assert.match(message, /another name/);
+  assert.match(message, /prod-mode configuration/);
+  assert.doesNotMatch(message, /npm run destroy:resources/);
 });
 
 test("stacks that disagree with each other are mixed", () => {

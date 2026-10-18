@@ -50,7 +50,7 @@ test("a development deploy over a production deployment is refused with its reme
   const { value } = readers([stack("app-CognitoStack", "UPDATE_COMPLETE", prod)]);
   assert.throws(() => assertDeploymentAllowed(dev, ["--all"], value), (error: Error) => {
     assert.match(error.message, /prod deployment/);
-    assert.match(error.message, /destroy:resources/);
+    assert.match(error.message, /another name/);
     assert.doesNotMatch(error.message, new RegExp(sentinel));
     return true;
   });
@@ -77,6 +77,12 @@ test("an unreadable template counts as no identity", () => {
 
 test("a deployment that is changing, or stuck, is not deployed over", () => {
   assert.throws(() => assertDeploymentAllowed(dev, ["--all"], readers([stack("app-CognitoStack", "UPDATE_IN_PROGRESS", dev)]).value), /in progress.*app-CognitoStack \(UPDATE_IN_PROGRESS\)/s);
-  assert.throws(() => assertDeploymentAllowed(dev, ["--all"], readers([stack("app-CognitoStack", "UPDATE_ROLLBACK_FAILED", dev)]).value), /needs recovery.*app-CognitoStack \(UPDATE_ROLLBACK_FAILED\)/s);
+  assert.throws(() => assertDeploymentAllowed(dev, ["--all"], readers([stack("app-CognitoStack", "UPDATE_ROLLBACK_FAILED", dev)]).value), /needs recovery.*app-CognitoStack \(UPDATE_ROLLBACK_FAILED\).*cdk rollback/s);
+  assert.throws(() => assertDeploymentAllowed(dev, ["--all"], readers([stack("app-CognitoStack", "DELETE_FAILED", dev)]).value), /app-CognitoStack \(DELETE_FAILED\).*retry the delete/s);
+  const review: ObservedStack = { ...stack("app-CognitoStack", "REVIEW_IN_PROGRESS", null), Outputs: undefined };
+  const reviewTemplate = { Outputs: { FrameworkDeployment: { Description: DEPLOYMENT_OUTPUT_DESCRIPTION, Value: JSON.stringify({ version: 1, ...dev }) } } };
+  assert.throws(() => assertDeploymentAllowed(dev, ["--all"], readers([review], { "app-CognitoStack": reviewTemplate }).value), /app-CognitoStack \(REVIEW_IN_PROGRESS\).*holds no resources/s);
+  // Paused by --no-rollback: CDK retries or rolls back first.
+  assert.equal(assertDeploymentAllowed(dev, ["--all"], readers([stack("app-CognitoStack", "UPDATE_FAILED", dev)]).value).kind, "failed");
   assert.equal(assertDeploymentAllowed(dev, ["--all"], readers([stack("app-CognitoStack", "UPDATE_ROLLBACK_COMPLETE", dev)]).value).kind, "rolled-back");
 });
