@@ -1,10 +1,11 @@
-import { spawn, execFileSync, type ChildProcess } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseEnv } from "node:util";
 import { SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { deploymentArguments, inspectDeploymentAssembly } from "./deployment-assembly";
 import { assertDeploymentAllowed } from "./deployment-guard";
+import { DeploymentInterrupt } from "./deployment-interrupt";
 import { synchronizeDeploymentSecrets } from "./deployment-secrets";
 import { acquireDeploymentLock, sweepStaleAssemblies } from "./deployment-workspace";
 import { readDeploymentStackPages } from "./resource-export";
@@ -12,40 +13,15 @@ import { readDeploymentStackPages } from "./resource-export";
 const root = resolve(__dirname, "..");
 const cdk = require.resolve("aws-cdk/bin/cdk");
 
-// What an interrupted run must still undo: the temporary assembly and the lock.
-// The first Ctrl+C lets the running CDK command stop, so the finally blocks run;
-// a second one cleans up immediately and exits.
-const cleanups = new Set<() => void>();
-let interrupted = false;
-let current: ChildProcess | undefined;
-function onSignal(signal: NodeJS.Signals): void {
-  if (!interrupted) {
-    interrupted = true;
-    console.error("Interrupted. CloudFormation operations that already started continue in AWS; check the stacks before deploying again.");
-    current?.kill(signal);
-    return;
-  }
-  for (const cleanup of cleanups) { try { cleanup(); } catch { /* Best effort on the way out. */ } }
-  process.exit(130);
-}
-
-function run(file: string, args: string[], cwd = root): Promise<void> {
-  return new Promise((accept, reject) => {
-    const child = spawn(process.execPath, [file, ...args], { cwd, stdio: "inherit", env: process.env });
-    current = child;
-    child.once("error", () => { current = undefined; reject(new Error("Unable to start deployment tooling.")); });
-    child.once("exit", code => {
-      current = undefined;
-      if (code === 0) accept();
-      else reject(new Error(interrupted ? "Deployment was interrupted." : `Deployment tooling exited with status ${code}.`));
-    });
-  });
-}
+// Ctrl+C stops the running step and refuses to start another: see deployment-interrupt.ts.
+const interrupt = new DeploymentInterrupt();
+const cleanups = interrupt.cleanups;
+const run = (file: string, args: string[], cwd = root) => interrupt.run(file, args, cwd);
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.includes("--help") || args.includes("-h")) { await run(cdk, ["deploy", "--help"]); return; }
-  process.on("SIGINT", onSignal);
-  process.on("SIGTERM", onSignal);
+  process.on("SIGINT", signal => interrupt.handle(signal));
+  process.on("SIGTERM", signal => interrupt.handle(signal));
   // Validate inside main so declaration errors name their owners cleanly,
   // before synth, identity checks, secret synchronization or AWS deployment.
   const { default: framework } = await import("../framework.config");
@@ -92,6 +68,8 @@ async function main(): Promise<void> {
       if (deployed.kind === "failed") console.log(`${graph.identity.deployment} has stacks whose first create failed; CloudFormation removes and recreates them.`);
       // Users cannot override framework-owned parameters with a hand-authored ARN map.
       if (args.some(arg => graph.requirements.some(requirement => arg.includes(requirement.parameter)))) throw new Error("Managed secret parameters are supplied automatically; remove their --parameters overrides.");
+      // A Ctrl+C during the synchronous checks above lands here: write nothing.
+      interrupt.assertContinuing();
       const client = new SecretsManagerClient({ region });
       let result;
       try {
@@ -109,6 +87,7 @@ async function main(): Promise<void> {
       try {
         await run(require.resolve("tsx/cli"), [resolve(root, "scripts/export-cdk-outputs.mjs"), "--cdk-app-name", graph.identity.deployment, "--region", graph.identity.region, ...(profile ? ["--profile", profile] : [])]);
       } catch {
+        if (interrupt.isInterrupted) throw new Error("Interrupted after the infrastructure deployment, before the development export. Run npm run export:cdk-outputs with the same profile and region.");
         console.error("Infrastructure deployment succeeded, but development export failed. Previous local files were preserved. Run npm run export:cdk-outputs with the same profile and region after resolving the export error.");
         process.exitCode = 2;
       }
