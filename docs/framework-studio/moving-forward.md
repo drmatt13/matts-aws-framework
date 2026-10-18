@@ -47,14 +47,14 @@ Break one of these and the studio stops being trustworthy:
    credentials. Observation (discover and status) is read-only. Cloud writes happen only
    as an explicit Apply of a reviewed plan, through the same scripts the CLI uses. No
    database action from the studio.
-
-Invariants 6–8 were revised by [Deploy & Run](deploy-and-run.md).
 9. **Views are views.** Selecting, panning or laying out never writes. The isometric scene
    is a pure function of the model.
 10. **Graph switching shows facts, not new places.** Presence and ghosting change with the
     mode, and positions never do.
 11. **The framework stays usable without the studio.** Changes to `packages/framework` must
     be additive and covered by `framework:check` (as `locateConfigSource` is).
+
+Invariants 6–8 were revised by [Deploy & Run](deploy-and-run.md).
 
 ## Recipes
 
