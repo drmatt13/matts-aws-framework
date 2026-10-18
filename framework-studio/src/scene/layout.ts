@@ -1,4 +1,5 @@
 import type { Region } from "./build";
+import type { Bounds } from "./camera";
 
 const COLUMN_GAP = 6;
 const ISLAND_GAP = 5;
@@ -9,6 +10,7 @@ export interface IslandFootprint {
   readonly title: string;
   readonly region: Region;
   readonly size: number;
+  readonly bounds?: Bounds;
 }
 export interface IslandPosition { readonly id: string; readonly left: number; readonly top: number }
 

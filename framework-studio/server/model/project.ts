@@ -303,6 +303,7 @@ function catalogModel(config: FrameworkConfig, readPaths: readonly (readonly str
           ...parent,
           ...(entry.fromEnv ? { fromEnv: entry.fromEnv } : {}),
           ...(entry.default !== undefined ? { default: entry.default } : {}),
+          ...(entry.required ? { required: true } : {}),
           ...(entry.values ? { values: [...entry.values] } : {}),
           ...(entry.note ? { note: entry.note } : {}),
         });

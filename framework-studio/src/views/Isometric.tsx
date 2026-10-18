@@ -1,4 +1,4 @@
-import { Crosshair, Maximize2, Minus, Pause, Play, Plus, RefreshCw, Search, X } from "lucide-react";
+import { Crosshair, LayoutGrid, Maximize2, Minus, Pause, Play, Plus, RefreshCw, Search, X } from "lucide-react";
 import { api } from "../api";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { RELATION_LABEL, titleOf } from "../lookup";
@@ -19,7 +19,10 @@ import {
   type Point,
   type Viewport,
 } from "../scene/camera";
-import { arcControl, arcPoints, distanceToPolyline, insidePolygon, pickEntity, pickIsland, type CardHit } from "../scene/picking";
+import { distanceToPolyline, insidePolygon, pickEntity, pickIsland, type CardHit } from "../scene/picking";
+import { layoutAspect, type LayoutResult } from "../scene/layout-optimize";
+import { fitScene } from "../scene/fit";
+import { connectionMidpoint } from "../scene/routing";
 import { landscapeFocus, searchOpacity, searchScene } from "../scene/focus";
 import { SceneRenderer } from "../scene/render";
 import { catalogAvailability, deploymentSummary } from "../deployment";
@@ -79,13 +82,21 @@ export function Isometric() {
   const [query, setQuery] = useState("");
   const [hover, setHover] = useState<Hover | undefined>();
   const [stats, setStats] = useState({ ms: 0 });
+  const [aspect, setAspect] = useState(16 / 9);
+  const previousLayout = useRef<LayoutResult | undefined>(undefined);
+  const [arrangement, setArrangement] = useState(0);
+  const pendingArrangeFit = useRef(false);
+  const aspectTimer = useRef<number | undefined>(undefined);
+  const appliedAspect = useRef(16 / 9);
 
   const conditions = useMemo(
     () => Object.fromEntries(Object.entries(snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])),
     [snapshot.source.catalog],
   );
   const resourceAvailability = useMemo(() => catalogAvailability(snapshot.models), [snapshot.models]);
-  const scene = useMemo(() => buildScene(model, { webSocketApi: snapshot.webSocketApi, conditions, resourceAvailability }), [model, snapshot.webSocketApi, conditions, resourceAvailability]);
+  const scene = useMemo(() => buildScene(model, { webSocketApi: snapshot.webSocketApi, conditions, resourceAvailability,
+    layoutModels: [snapshot.models.dev, snapshot.models.prod], layoutSettings: { aspect, previous: previousLayout.current?.positions, previousKey: previousLayout.current?.topologyKey } }), [model, snapshot.models, snapshot.webSocketApi, conditions, resourceAvailability, aspect, arrangement]);
+  useLayoutEffect(() => { previousLayout.current = scene.layout; }, [scene]);
   const visibleSelected = selected ? scene.representatives[selected] ?? selected : undefined;
   const matches = useMemo(() => searchScene(scene, model, query), [scene, model, query]);
   const focusState = useMemo(() => landscapeFocus(scene, visibleSelected, matches), [scene, visibleSelected, matches]);
@@ -94,11 +105,9 @@ export function Isometric() {
   const arcs = useMemo(
     () =>
       scene.edges.map((edge) => {
-        const a = nodes.get(edge.from)!.geometry.top;
-        const b = nodes.get(edge.to)!.geometry.top;
-        return { edge, points: arcPoints(a, arcControl(a, b), b, 16) };
+        return { edge, points: scene.routes[edge.edge.id]!.points };
       }),
-    [scene, nodes],
+    [scene],
   );
 
   // Everything the frame loop reads, without re-subscribing it on every render.
@@ -181,7 +190,7 @@ export function Isometric() {
   );
 
   const fit = useCallback(
-    (animate = true) => moveCamera(fitBounds(live.current.scene.bounds, live.current.viewport, 40), animate),
+    (animate = true) => moveCamera(fitScene(live.current.scene, live.current.viewport), animate),
     [moveCamera],
   );
 
@@ -206,11 +215,20 @@ export function Isometric() {
     const rect = container.getBoundingClientRect();
     const previous = state.viewport;
     const next = { width: Math.max(1, rect.width), height: Math.max(1, rect.height) };
+    // Selection and the inspector are presentation; use the containing workspace
+    // width so opening a node does not relayout the architecture.
+    const workspaceWidth = container.closest(".workspace")?.getBoundingClientRect().width ?? next.width;
+    const nextAspect = layoutAspect(workspaceWidth, next.height);
+    window.clearTimeout(aspectTimer.current);
+    aspectTimer.current = window.setTimeout(() => {
+      if (appliedAspect.current === nextAspect) return;
+      appliedAspect.current = nextAspect; previousLayout.current = undefined; pendingArrangeFit.current = true; setAspect(nextAspect);
+    }, 180);
     if (state.fitted && next.width === previous.width && next.height === previous.height) return;
     state.viewport = next;
     if (!state.fitted) {
       state.fitted = true;
-      state.camera = fitBounds(state.scene.bounds, next, 40);
+      state.camera = fitScene(state.scene, next);
     } else if (previous.width > 1) {
       state.camera = resizeCamera(state.camera, previous, next);
       // An in-flight focus starts from the resized camera, without jumping back to its old origin.
@@ -243,6 +261,7 @@ export function Isometric() {
     });
     return () => {
       disposed = true;
+      window.clearTimeout(aspectTimer.current);
       observer.disconnect();
       if (live.current.frame !== undefined) cancelAnimationFrame(live.current.frame);
       live.current.frame = undefined;
@@ -252,6 +271,7 @@ export function Isometric() {
   }, [schedule, resize]);
 
   useEffect(schedule, [schedule, scene, selected, motion, focusState]);
+  useEffect(() => { if (pendingArrangeFit.current) { pendingArrangeFit.current = false; fit(); } }, [scene, fit]);
 
   // Opening/closing the inspector changes CSS layout during this commit. Resize and paint
   // now, rather than leaving a stretched frame until the observer's next animation callback.
@@ -270,6 +290,10 @@ export function Isometric() {
       const world = screenToWorld(state.camera, state.viewport, screen);
       const entity = pickEntity(screen, world, state.cards, scene.nodes.map((node) => ({ id: node.id, hull: node.geometry.hull })));
       if (entity) return { kind: "node", id: entity, ...screen };
+      for (const arc of arcs) if (arc.edge.edge.inputRequirement?.status === "missing") {
+        const marker = worldToScreen(state.camera, state.viewport, connectionMidpoint(arc.points));
+        if (Math.hypot(marker.x - screen.x, marker.y - screen.y) <= 12) return { kind: "edge", id: arc.edge.edge.id, ...screen };
+      }
       for (let position = scene.props.length - 1; position >= 0; position -= 1) {
         if (insidePolygon(world.x, world.y, scene.props[position]!.geometry.hull)) return { kind: "prop", id: scene.props[position]!.id, ...screen };
       }
@@ -366,7 +390,7 @@ export function Isometric() {
     gesture.current = undefined;
     if (!current || current.dragging) return;
     const hit = pick(local(event));
-    if (hit?.kind === "node" || hit?.kind === "island") select(selected === hit.id ? undefined : hit.id);
+    if (hit?.kind === "node" || hit?.kind === "island" || hit?.kind === "edge") select(selected === hit.id ? undefined : hit.id);
     else if (!hit) select(undefined);
   };
 
@@ -511,6 +535,7 @@ export function Isometric() {
         </div>
         <span className="spacer" />
         <div className="landscape-tools">
+          <button aria-label="Auto-arrange islands" title="Rebuild the layout from current connections, then fit the map" disabled={studioLive.evaluating} onClick={() => { previousLayout.current = undefined; pendingArrangeFit.current = true; setArrangement((value) => value + 1); }}><LayoutGrid size={16} aria-hidden /></button>
           <button className="refresh-cdk" onClick={() => void refreshCdkLinks()} disabled={scanning || studioLive.evaluating} title="Re-read linked CDK stacks and rebuild the studio link index. CDK source changes also refresh automatically.">
             <RefreshCw size={14} aria-hidden />{scanning ? "Refreshing…" : "Refresh CDK links"}
           </button>
@@ -548,6 +573,7 @@ export function Isometric() {
       </div>
       {hover ? <HoverCard hover={hover} scene={scene} nodes={nodes} index={index} viewport={live.current.viewport} /> : null}
       <ul className="sr-only" aria-label="Entities in the landscape">
+        {scene.edges.filter((edge) => edge.edge.inputRequirement).map(({ edge }) => <li key={edge.id}><button onClick={() => select(edge.id)} aria-current={visibleSelected === edge.id}>{edge.inputRequirement!.status === "missing" ? "Missing required value" : "Input connection"}: {edge.label} in .env.{edge.inputRequirement!.mode}</button></li>)}
         {scene.islands.map((island) => <li key={island.id}><button onClick={() => select(island.id)} aria-current={visibleSelected === island.id}>{island.title} island settings</button></li>)}
         {scene.nodes.map((node) => (
           <li key={node.id}>
@@ -581,7 +607,7 @@ function HoverCard(props: {
     const edge = props.scene.edges.find((candidate) => candidate.edge.id === current.id)?.edge;
     if (!edge) return null;
     title = `${RELATION_LABEL[edge.relation]}: ${edge.label}`;
-    lines = [`${titleOf(index, edge.from)} to ${titleOf(index, edge.to)}`, edge.detail, edge.relation === "supplies" ? "Authored input-file assignment. Values stay outside the map." : edge.provenance === "derived" ? "Derived by the framework." : edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
+    lines = [`${titleOf(index, edge.from)} to ${titleOf(index, edge.to)}`, edge.inputRequirement?.status === "missing" ? `Required in ${edge.inputRequirement.mode === "dev" ? "Development" : "Production"}: no non-blank value or default. Click to resolve.` : undefined, edge.detail, edge.relation === "supplies" ? "Input-file presence and requirement guidance. Values stay outside the map." : edge.provenance === "derived" ? "Derived by the framework." : edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
   } else if (current.kind === "prop") {
     const prop = props.scene.props.find((candidate) => candidate.id === current.id);
     if (!prop) return null;

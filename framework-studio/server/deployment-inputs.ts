@@ -3,6 +3,7 @@ import path from "node:path";
 import { parseEnv } from "node:util";
 import type { DeploymentInputFile } from "../shared/deployment-inputs";
 import type { Mode, ModeModel, ModelEdge, ModelResource, SourceLocation } from "../shared/model";
+import { inputRequirements } from "./input-requirements";
 
 export const deploymentInputPath = (mode: Mode) => `cdk-app/.env.${mode}`;
 export const deploymentInputExample = (mode: Mode) => `${deploymentInputPath(mode)}.example`;
@@ -66,7 +67,7 @@ function assignmentLines(text: string): Map<string, number> {
 
 export const sensitiveName = (name: string) => /SECRET|PASSWORD|TOKEN|CREDENTIAL|PRIVATE_KEY|ACCESS_KEY|API_KEY/i.test(name);
 
-export function withDeploymentInputs(root: string, model: ModeModel): ModeModel {
+export function withDeploymentInputs(root: string, model: ModeModel, models?: Readonly<Record<Mode, ModeModel>>): ModeModel {
   const catalog = model.resources.filter((resource) => !resource.deploymentFile);
   const expected = new Map<string, ModelResource[]>();
   for (const resource of catalog) if (resource.fromEnv) expected.set(resource.fromEnv, [...(expected.get(resource.fromEnv) ?? []), resource]);
@@ -77,25 +78,31 @@ export function withDeploymentInputs(root: string, model: ModeModel): ModeModel 
       const parsed = parseEnv(text ?? "");
       const template = parseEnv(inputText(root, deploymentInputExample(mode)) ?? "");
       const locations = assignmentLines(text ?? "");
+      const synthesisSource = selectedDeploymentInput(root, mode);
+      const effectiveValues = synthesisSource === file ? parsed : parseEnv(inputText(root, synthesisSource) ?? "");
+      const requirements = inputRequirements(models?.[mode] ?? model, effectiveValues, mode, synthesisSource);
       return { mode, path: file, example: deploymentInputExample(mode), exists: text !== undefined,
-        synthesisSource: selectedDeploymentInput(root, mode), entries: [...new Set([...Object.keys(parsed), ...Object.keys(template), ...expected.keys()])].sort().map((name) => {
+        synthesisSource, entries: [...new Set([...Object.keys(parsed), ...Object.keys(template), ...expected.keys()])].sort().map((name) => {
           const targets = expected.get(name) ?? [];
           const value = parsed[name];
           const line = locations.get(name);
           const source: SourceLocation | undefined = line ? { file, line, column: 1, start: 0, end: 0 } : undefined;
           return { name, status: value === undefined ? "missing" as const : value.trim() === "" ? "empty" as const : "configured" as const,
             sensitive: targets.some((target) => target.kind === "secret") || sensitiveName(name), defaulted: !value?.trim() && targets.some((target) => target.default !== undefined),
-            targets: targets.map((target) => target.id), ...(source ? { source } : {}) };
+            targets: targets.map((target) => target.id), requirements: targets.flatMap((target) => requirements.get(target.id) ? [requirements.get(target.id)!] : []), ...(source ? { source } : {}) };
         }) };
     } catch {
       return { mode, path: file, example: deploymentInputExample(mode), exists: false, synthesisSource: file, entries: [], problem: `Could not read ${file}. Check that it is a regular local dotenv file.` };
     }
   });
-  const resources: ModelResource[] = catalog.map((resource) => resource.fromEnv ? { ...resource, inputSources: files.flatMap((file) => file.entries.filter((entry) => entry.name === resource.fromEnv).map((entry) => ({ file: file.path, entry }))) } : resource);
+  const resources: ModelResource[] = catalog.map((resource) => resource.fromEnv ? { ...resource,
+    inputRequirement: files.find((file) => file.mode === model.mode)?.entries.find((entry) => entry.name === resource.fromEnv)?.requirements?.find((requirement) => requirement.resource === resource.id),
+    inputSources: files.flatMap((file) => file.entries.filter((entry) => entry.name === resource.fromEnv).map((entry) => ({ file: file.path, entry }))) } : resource);
   for (const file of files) resources.push({ id: `envfile:${file.mode}`, path: [`.env.${file.mode}`], kind: "envFile", absent: false, deploymentFile: file });
-  const edges: ModelEdge[] = files.flatMap((file) => file.entries.filter((entry) => entry.status !== "missing").flatMap((entry) => entry.targets.map((to) => ({
+  const edges: ModelEdge[] = files.flatMap((file) => file.entries.flatMap((entry) => entry.targets.filter((to) => entry.status !== "missing" || entry.requirements?.some((item) => item.resource === to && item.required)).map((to) => ({
     id: `input-source:${file.mode}:${entry.name}:${to}`, relation: "supplies" as const, from: `envfile:${file.mode}`, to, provenance: "source" as const,
-    label: entry.name, source: entry.source, detail: `${file.path}: ${entry.status}${entry.defaulted ? "; declaration default applies" : ""}. Names and presence only; values are excluded.`,
+    inputRequirement: entry.requirements?.find((item) => item.resource === to),
+    label: entry.name, source: entry.source, detail: `${file.path}: ${entry.status}${entry.defaulted ? "; declaration default applies" : ""}. Required links can represent an unfilled input; values are excluded.`,
   }))));
   return { ...model, resources, edges: [...model.edges.filter((edge) => edge.relation !== "supplies"), ...edges] };
 }

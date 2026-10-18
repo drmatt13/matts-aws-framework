@@ -1305,3 +1305,9 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .draft-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .field-dirty .name::after { content: " •"; color: var(--dev); }
 .unsaved-dialog { max-width: 580px; }
+
+.input-requirement { border-left: 3px solid var(--muted); padding: 10px 12px; margin: 10px 0; background: rgba(141, 159, 183, .06); }
+.input-requirement.missing { border-color: #ff5f6d; background: rgba(255, 95, 109, .08); }
+.input-requirement.missing > strong { color: #ff929b; }
+.input-requirement p { margin: 5px 0; }
+

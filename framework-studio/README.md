@@ -41,6 +41,12 @@ does not reload the server's edit registry.
 
 The design, history and roadmap are in [docs/framework-studio](../docs/framework-studio/README.md).
 
+The isometric map arranges islands using weighted dependencies and projected crossing,
+length, obstacle and viewport costs. Small edits retain nearby positions; major workspace
+aspect changes reflow automatically. **Auto-arrange islands** releases that stability
+preference and fits a fresh layout. Pan, zoom, search, selection and the mode switch keep
+the current arrangement. See [graph-aware layout and measurements](../docs/framework-studio/graph-layout.md).
+
 ## What it shows, and where that comes from
 
 Framework behavior comes from the framework's own answers. CDK links are separately marked source inferences:

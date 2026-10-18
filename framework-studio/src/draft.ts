@@ -6,7 +6,7 @@ import type { DeploymentInputEdit, DeploymentInputPlan } from "../shared/deploym
 export type Review = { readonly kind: "batch"; readonly plan: BatchPlanResponse } | { readonly kind: "resource"; readonly plan: ResourcePlan } | { readonly kind: "environment"; readonly plan: DeploymentInputPlan };
 export interface EnvironmentEdit extends DeploymentInputEdit { readonly key: string; readonly original?: string }
 interface EnvironmentEntry { readonly kind: "environment"; readonly key: string; readonly mode: Mode; readonly hash: string; readonly edits: readonly EnvironmentEdit[]; readonly error?: string }
-export interface ResourceForm { readonly secret: boolean; readonly hasDefault: boolean; readonly fallback: string; readonly group: string; readonly requirements: ResourceIntent["requirements"] }
+export interface ResourceForm { readonly required?: boolean; readonly secret: boolean; readonly hasDefault: boolean; readonly fallback: string; readonly group: string; readonly requirements: ResourceIntent["requirements"] }
 interface FieldEntry { readonly kind: "field"; readonly key: string; readonly raw: LiteralValue | undefined; readonly intent: EditIntent; readonly error?: string }
 interface RouteEntry { readonly kind: "route"; readonly key: string; readonly route: string; readonly value: string; readonly error?: string }
 interface ResourceEntry { readonly kind: "resource"; readonly key: string; readonly intent: ResourceIntent; readonly form: ResourceForm; readonly count: number; readonly error?: string }
@@ -124,8 +124,8 @@ export class InspectorDraft {
       const rules = this.state.baseline.models[this.state.mode].targets.find((item) => item.ref === target)?.requirementRules?.filter((rule) => rule.require.includes(resource.id)) ?? [];
       if (policy === "optional" ? rules.length > 0 : !rules.some((rule) => !rule.when)) requirements[target] = policy;
     }
-    const intent: ResourceIntent = { resource: resource.id, kind: form.secret ? "secret" : "input", default: form.secret || !form.hasDefault ? null : form.fallback, group: form.group.trim(), requirements };
-    const count = Number(intent.kind !== resource.kind) + Number(intent.default !== (resource.default ?? null)) + Number(intent.group !== (resource.path.length > 1 ? resource.path[0] : "")) + Object.keys(requirements).length;
+    const intent: ResourceIntent = { resource: resource.id, required: form.required ?? !!resource.required, kind: form.secret ? "secret" : "input", default: form.secret || !form.hasDefault ? null : form.fallback, group: form.group.trim(), requirements };
+    const count = Number(intent.required !== !!resource.required) + Number(intent.kind !== resource.kind) + Number(intent.default !== (resource.default ?? null)) + Number(intent.group !== (resource.path.length > 1 ? resource.path[0] : "")) + Object.keys(requirements).length;
     const error = !form.secret && form.hasDefault && !form.fallback.trim() ? "Enter a default value or turn Default value off." : intent.group && !/^[A-Za-z_$][\w$]*$/.test(intent.group) ? "Use a single valid group name." : undefined;
     this.put(`resource:${resource.id}`, count ? { kind: "resource", key: `resource:${resource.id}`, form: { ...form, requirements }, intent, count, ...(error ? { error } : {}) } : undefined);
   }

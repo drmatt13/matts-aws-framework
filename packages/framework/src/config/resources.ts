@@ -106,6 +106,8 @@ export interface ResourceReference<
    * a setting the workload never sees, not a setting that is blank.
    */
   readonly optional: Optional;
+  /** Every enabled consumer must supply this authored input. */
+  readonly required?: true;
   /**
    * The environment variable this value is read from, when the application does
    * not supply it. Absent means the composition root owns the value.
@@ -343,6 +345,7 @@ export interface EnvStringBuilder<
   ): EnvStringBuilder<FromEnv, Optional, Values[number]>;
   default(value: Value): EnvStringBuilder<FromEnv, false, Value>;
   note(text: string): EnvStringBuilder<FromEnv, Optional, Value>;
+  required(): EnvStringBuilder<FromEnv, Optional, Value>;
 }
 
 /**
@@ -362,6 +365,7 @@ export interface EnvSecretBuilder<FromEnv extends string>
     ResourceReference<"secret", readonly [], true, FromEnv>
   > {
   note(text: string): EnvSecretBuilder<FromEnv>;
+  required(): EnvSecretBuilder<FromEnv>;
 }
 
 /** Runtime brand. A declaration is recognized by this, never by shape alone. */
@@ -397,6 +401,9 @@ function declarationPayload(value: ResourceDeclaration): DeclarationPayload {
 }
 
 const BUILDER_PROTOTYPE = {
+  required(this: BuilderData): BuilderData {
+    return rebuild(this, { required: true });
+  },
   enum(this: BuilderData, ...values: string[]): BuilderData {
     if (
       values.length === 0 ||

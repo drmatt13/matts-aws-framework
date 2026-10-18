@@ -7,8 +7,9 @@ import { worldToScreen, type Bounds, type Camera, type Point, type Viewport } fr
 import { project } from "./iso";
 import { searchOpacity, type LandscapeFocus } from "./focus";
 import { bandTrim, GRAPHITE, hexRgb, ICON_TINT, trimColor } from "./look";
-import { acceptCards, arcControl, arcPoints, placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
+import { acceptCards, placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
 import { ICON_BADGE, type Face } from "./shapes";
+import { connectionMidpoint } from "./routing";
 import { islandDrawOrder, islandSlabs, type BandSlab, type IslandSlab, type WallRun } from "./slabs";
 
 /**
@@ -205,12 +206,9 @@ export class SceneRenderer {
       ...scene.props.map((prop): Standing => ({ kind: "prop", prop })),
     ];
 
-    const anchors = new Map(scene.nodes.map((node) => [node.id, node.geometry.top]));
     const arcs = new Map<SceneEdge, { points: Point[]; length: number }>();
     for (const edge of scene.edges) {
-      const a = anchors.get(edge.from)!;
-      const b = anchors.get(edge.to)!;
-      const points = arcPoints(a, arcControl(a, b), b);
+      const points = [...scene.routes[edge.edge.id]!.points];
       let length = 0;
       for (let index = 1; index < points.length; index += 1) length += Math.hypot(points[index]!.x - points[index - 1]!.x, points[index]!.y - points[index - 1]!.y);
       arcs.set(edge, { points, length });
@@ -866,15 +864,16 @@ export class SceneRenderer {
     for (const edge of prepared.scene.edges) {
       const active =
         state.focus.kind === "search" ? state.focus.nodes.has(edge.from) && state.focus.nodes.has(edge.to) :
-        state.hoveredEdge === edge.edge.id ||
+        state.hoveredEdge === edge.edge.id || state.selected === edge.edge.id ||
         (state.selected !== undefined && (edge.from === state.selected || edge.to === state.selected));
       if (active) {
         lit.push(edge);
         continue;
       }
       const arc = prepared.arcs.get(edge)!;
-      const color = hex(CATEGORY_COLORS[edge.category]);
-      context.strokeStyle = rgba(color, state.focus.kind === "search" ? 0.025 : state.selected ? 0.06 : edge.edge.provenance === "derived" ? 0.14 : 0.24);
+      const missing = edge.edge.inputRequirement?.status === "missing";
+      const color = hex(missing ? "#ff5f6d" : CATEGORY_COLORS[edge.category]);
+      context.strokeStyle = rgba(color, state.focus.kind === "search" ? 0.025 : missing ? state.selected ? 0.35 : 0.9 : state.selected ? 0.06 : edge.edge.provenance === "derived" ? 0.14 : 0.24);
       context.lineWidth = 1.2 * pixel;
       context.setLineDash(edge.edge.provenance !== "declared" ? [4 * pixel, 4 * pixel] : []);
       this.polyline(arc.points);
@@ -883,7 +882,8 @@ export class SceneRenderer {
     context.setLineDash([]);
     for (const edge of lit) {
       const arc = prepared.arcs.get(edge)!;
-      const color = hex(CATEGORY_COLORS[edge.category]);
+      const missing = edge.edge.inputRequirement?.status === "missing";
+      const color = hex(missing ? "#ff5f6d" : CATEGORY_COLORS[edge.category]);
       context.shadowColor = rgba(color, 0.8);
       context.shadowBlur = 10;
       context.strokeStyle = rgba(color, 0.95);
@@ -904,7 +904,7 @@ export class SceneRenderer {
       context.lineTo(end.x - Math.cos(angle + 0.45) * size, end.y - Math.sin(angle + 0.45) * size);
       context.closePath();
       context.fill();
-      if (state.motion && state.focus.kind !== "search") {
+      if (state.motion && state.focus.kind !== "search" && !missing) {
         // A few packets, travelling at a steady 60 world units a second.
         const count = Math.max(1, Math.min(3, Math.round(arc.length / 220)));
         for (let index = 0; index < count; index += 1) {
@@ -918,6 +918,20 @@ export class SceneRenderer {
       }
       context.shadowBlur = 0;
     }
+    // Fixed screen-size markers remain readable and clickable at overview zoom.
+    context.setLineDash([]);
+    for (const edge of prepared.scene.edges) if (edge.edge.inputRequirement?.status === "missing") {
+      const at = connectionMidpoint(prepared.arcs.get(edge)!.points);
+      const radius = 8 * pixel, inset = 3 * pixel;
+      const matches = state.focus.kind !== "search" || state.focus.nodes.has(edge.from) && state.focus.nodes.has(edge.to);
+      context.globalAlpha = matches ? 1 : 0.08;
+      context.fillStyle = "#191c25";
+      context.strokeStyle = "#ff5f6d";
+      context.lineWidth = 1.8 * pixel;
+      context.beginPath(); context.arc(at.x, at.y, radius, 0, Math.PI * 2); context.fill(); context.stroke();
+      context.beginPath(); context.moveTo(at.x - inset, at.y - inset); context.lineTo(at.x + inset, at.y + inset); context.moveTo(at.x - inset, at.y + inset); context.lineTo(at.x + inset, at.y - inset); context.stroke();
+    }
+    context.globalAlpha = 1;
   }
 
   private polyline(points: readonly Point[]): void {

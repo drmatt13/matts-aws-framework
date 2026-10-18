@@ -61,6 +61,8 @@ export function landscapeFocus(scene: Scene, selected?: string, matches?: Search
     kind: "all", nodes: new Set(scene.nodes.map((node) => node.id)), props: new Set(scene.props.map((prop) => prop.id)), islands: new Set(scene.islands.map((island) => island.id)),
   };
   const nodes = new Set([selected]);
+  const selectedEdge = scene.edges.find((edge) => edge.edge.id === selected);
+  if (selectedEdge) { nodes.add(selectedEdge.from); nodes.add(selectedEdge.to); }
   for (const node of scene.nodes) if (node.island === selected) nodes.add(node.id);
   for (const edge of scene.edges) {
     if (edge.from === selected) nodes.add(edge.to);

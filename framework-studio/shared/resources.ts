@@ -21,6 +21,8 @@ export interface ResourceDetails {
 }
 
 export interface ResourceIntent {
+  /** Omitted by older clients to preserve the declaration. */
+  readonly required?: boolean;
   readonly resource: string;
   readonly kind: "input" | "secret";
   /** null removes the fallback. Secrets never have a source-code fallback. */

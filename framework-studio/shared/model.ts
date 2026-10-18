@@ -235,6 +235,8 @@ export interface ModelResource {
   readonly absent: boolean;
   readonly fromEnv?: string;
   readonly default?: string;
+  readonly required?: boolean;
+  readonly inputRequirement?: import("./deployment-inputs").InputRequirement;
   readonly values?: readonly string[];
   readonly note?: string;
   /** For a stack member: the field's declared type, read from the stack class. */
@@ -282,6 +284,7 @@ export type Relation =
   | "cdk";
 
 export interface ModelEdge {
+  readonly inputRequirement?: import("./deployment-inputs").InputRequirement;
   /** `relation:from->to#n`, so two relations between one pair stay two edges. */
   readonly id: string;
   readonly relation: Relation;

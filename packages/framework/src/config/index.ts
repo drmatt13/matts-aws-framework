@@ -1719,7 +1719,10 @@ export function resolveTargetSettings(
         origin,
       ),
       requirements: assertRequirements(
-        (cloud as CloudTargetSettings).requirements ?? [],
+        [...((cloud as CloudTargetSettings).requirements ?? []),
+          ...[...Object.values(environment), ...Object.values(secrets)]
+            .filter((value): value is ResourceReference => isResourceReference(value) && value.required === true)
+            .map((reference) => ({ require: [reference] }))],
         origin,
       ),
       outputs,

@@ -15,6 +15,7 @@ import { BooleanField, FieldRow } from "./FieldRow";
 import { DraftFooter } from "./DraftControls";
 import { EntityInfrastructure } from "./Infrastructure";
 import { EnvironmentFileView, InputSources } from "./DeploymentInputs";
+import { ConnectionView } from "./InputRequirement";
 
 function Written(props: { readonly location: SourceLocation | undefined; readonly label?: string }) {
   const { snapshot } = useStudio();
@@ -376,12 +377,13 @@ function LocalDatabaseView({ database }: { readonly database: LocalDatabase }) {
 }
 
 export function Inspector() {
-  const { index, snapshot, selected, select } = useStudio();
+  const { index, snapshot, selected, select, model } = useStudio();
   if (!selected) return null;
   const target = index.targets.get(selected);
   const route = index.routes.get(selected);
   const resource = index.resources.get(selected);
   const localDatabase = index.localServices.get(selected);
+  const connection = model.edges.find((edge) => edge.id === selected);
   const schemaEntity = snapshot.schema.tables.some((table) => table.id === selected) || snapshot.schema.relations.some((relation) => relation.id === selected);
   const island = selected.startsWith("island:");
   return (
@@ -394,11 +396,12 @@ export function Inspector() {
       {target ? <TargetView target={target} /> : null}
       {route ? <RouteView route={route} /> : null}
       {resource ? <ResourceView resource={resource} /> : null}
+      {connection ? <ConnectionView edge={connection} /> : null}
       {localDatabase ? <LocalDatabaseView database={localDatabase} /> : null}
       {schemaEntity ? <SchemaDetails /> : null}
       {island ? <IslandInspector id={selected} key={selected} /> : null}
       {target || (resource && !resource.deploymentFile) || route || (island && selected !== "island:environment") ? <EntityInfrastructure id={route?.target ?? selected} /> : null}
-      {!target && !route && !resource && !localDatabase && !schemaEntity && !island ? <p className="empty">{selected} is not in this graph.</p> : null}
+      {!target && !route && !resource && !connection && !localDatabase && !schemaEntity && !island ? <p className="empty">{selected} is not in this graph.</p> : null}
       </div><DraftFooter />
     </aside>
   );

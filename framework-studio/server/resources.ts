@@ -19,6 +19,7 @@ interface Journal { resource: string; nextResource: string; changes: readonly Ch
 
 export function readResourceIntent(body: unknown): ResourceIntent {
   const intent = (body as { intent?: unknown } | undefined)?.intent as Record<string, unknown> | undefined;
+  if (intent?.required !== undefined && typeof intent.required !== "boolean") throw new EditError(400, "Required must be a boolean.");
   if (!intent || typeof intent.resource !== "string" || !["input", "secret"].includes(String(intent.kind)) || typeof intent.group !== "string" || !(intent.default === null || typeof intent.default === "string") || !intent.requirements || typeof intent.requirements !== "object" || Array.isArray(intent.requirements) || Object.values(intent.requirements).some((value) => value !== "required" && value !== "optional")) throw new EditError(400, "A resource edit names its kind, group, default and workload requirements.");
   return intent as unknown as ResourceIntent;
 }

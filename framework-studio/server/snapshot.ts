@@ -144,8 +144,8 @@ export class SnapshotBuilder {
       webSocketApi: settings.webSocketApi,
       repositoryRoot: this.repositoryRoot,
       models: {
-        dev: withDeploymentInputs(this.repositoryRoot, withLocalDatabases(dev.stale ? dev : withClassMembers(dev, built.catalog, built.index.cdkLinks.edges), localDatabase.services)),
-        prod: withDeploymentInputs(this.repositoryRoot, withLocalDatabases(prod.stale ? prod : withClassMembers(prod, built.catalog, built.index.cdkLinks.edges), localDatabase.services)),
+        dev: withDeploymentInputs(this.repositoryRoot, withLocalDatabases(dev.stale ? dev : withClassMembers(dev, built.catalog, built.index.cdkLinks.edges), localDatabase.services), { dev, prod }),
+        prod: withDeploymentInputs(this.repositoryRoot, withLocalDatabases(prod.stale ? prod : withClassMembers(prod, built.catalog, built.index.cdkLinks.edges), localDatabase.services), { dev, prod }),
       },
       source: built.index,
       files,

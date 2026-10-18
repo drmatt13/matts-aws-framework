@@ -1,6 +1,17 @@
 import type { Mode, SourceLocation } from "./model";
 import type { ApplyResponse, DiffLine } from "./api";
 
+/** Requirement resolution metadata only. Never contains an authored value. */
+export interface InputRequirement {
+  readonly resource: string;
+  readonly name: string;
+  readonly mode: Mode;
+  readonly file: string;
+  readonly required: boolean;
+  readonly status: "configured" | "default" | "missing" | "optional" | "unknown";
+  readonly reasons: readonly string[];
+}
+
 export interface DeploymentInputEntry {
   readonly name: string;
   readonly status: "configured" | "empty" | "missing";
@@ -8,6 +19,7 @@ export interface DeploymentInputEntry {
   readonly defaulted: boolean;
   readonly targets: readonly string[];
   readonly source?: SourceLocation;
+  readonly requirements?: readonly InputRequirement[];
 }
 
 /** Names, presence and source locations only. Values never enter the graph. */

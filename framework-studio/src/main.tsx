@@ -5,6 +5,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   useNavigate,
   useSearch,
 } from "@tanstack/react-router";
@@ -13,7 +14,6 @@ import { createRoot } from "react-dom/client";
 import { useSnapshot } from "./api";
 import { StudioProvider } from "./studio";
 import { Board } from "./views/Board";
-import { Isometric } from "./views/Isometric";
 import { Shell } from "./views/Shell";
 import { Database } from "./views/Database";
 import { Deploy } from "./views/Deploy";
@@ -50,7 +50,7 @@ const rootRoute = createRootRoute({
     typeof search.select === "string" ? { select: search.select } : {},
 });
 const boardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: Board });
-const isometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/isometric", component: Isometric });
+const isometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/isometric", component: lazyRouteComponent(() => import("./views/Isometric"), "Isometric") });
 const databaseRoute = createRoute({ getParentRoute: () => rootRoute, path: "/database", component: Database });
 const deployRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deploy", component: Deploy });
 const router = createRouter({ routeTree: rootRoute.addChildren([boardRoute, isometricRoute, databaseRoute, deployRoute]) });

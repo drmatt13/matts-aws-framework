@@ -7,6 +7,7 @@ import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
 import type { DeploymentInputDetails } from "../../shared/deployment-inputs";
 import type { EnvironmentEdit } from "../draft";
+import { RequirementNotice } from "./InputRequirement";
 
 function ValueControl({ name, value, sensitive, disabled, onChange }: { name: string; value: string; sensitive: boolean; disabled: boolean; onChange: (value: string) => void }) {
   const [revealed, setRevealed] = useState(false);
@@ -39,6 +40,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   const pending = draft.environment(file.mode);
   const edits = pending?.edits ?? [];
   const disabled = !!draftState.busy || draft.conflict || live.evaluating || !details;
+  const requirements = file.entries.flatMap((entry) => entry.requirements ?? []).filter((item) => item.required);
   useEffect(() => {
     if (draft.dirty) return;
     const controller = new AbortController();
@@ -65,6 +67,13 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
       <p className="small muted">Edit local values below, then review and apply the complete draft. Values stay outside the graph; sensitive fields are masked. Production is never populated from development inputs.</p>
       {file.problem || error ? <p role="alert">{file.problem || error}</p> : null}
     </section>
+    {requirements.length ? <section><h3>Required inputs ({requirements.length})</h3><p className="small muted">Required values must be non-blank or supplied by a parameter default. Secret values belong only in the environment file.</p>
+      {requirements.map((requirement) => <div key={requirement.resource}>
+        <RequirementNotice requirement={requirement} />
+        {requirement.status === "missing" && file.exists ? <button className="linkish small" disabled={disabled || edits.some((edit) => edit.create && edit.name === requirement.name)} onClick={() => { if (details?.entries.some((entry) => entry.name === requirement.name)) setFilter(requirement.name); else add(requirement.name); }}>Set {requirement.name}</button> : null}
+        <button className="linkish small" onClick={() => select(requirement.resource)}>Open {requirement.name} settings</button>
+      </div>)}
+    </section> : null}
     {file.exists ? <section className="environment-editor"><h3>Environment variables{details ? ` (${details.entries.length + edits.filter((edit) => edit.create).length})` : ""}</h3>
       <button className="quiet" disabled={disabled} onClick={() => add()}>Add environment variable</button>
       <label className="resource-control"><span className="sr-only">Filter environment variables</span><input type="search" aria-label="Filter environment variables" placeholder="Find a variable…" value={filter} onChange={(event) => setFilter(event.target.value)} /></label>
@@ -74,6 +83,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
         {edits.filter((edit) => edit.create).map((edit, at) => <li key={edit.key}>
           <label className="resource-control"><span>New variable name</span><input autoFocus={at === edits.filter((item) => item.create).length - 1} aria-label={`New variable name ${at + 1}`} disabled={disabled} autoComplete="off" spellCheck={false} value={edit.name} placeholder="VARIABLE_NAME" onChange={(event) => change(edit.key, { name: event.target.value })} /></label>
           <ValueControl name={edit.name || `new variable ${at + 1}`} value={edit.value} sensitive={true} disabled={disabled} onChange={(value) => change(edit.key, { value })} />
+          {requirements.some((item) => item.name === edit.name) ? <p className="small reason">Required{!edit.value.trim() ? " · A blank value will not satisfy this requirement." : " · This value is staged until you review and apply."}</p> : null}
           <button className="linkish small" disabled={!!draftState.busy} onClick={() => update(edits.filter((item) => item.key !== edit.key))}>Remove new variable</button>
         </li>)}
         {details?.entries.filter((entry) => entry.name.toLowerCase().includes(filter.toLowerCase())).map((entry) => {
@@ -81,6 +91,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
           const metadata = file.entries.find((item) => item.name === entry.name);
           return <li key={entry.name}>
             <code>{entry.name}</code><span className="small muted">{edit ? "Modified · " : ""}{metadata?.status ?? "configured"}{metadata?.defaulted ? " · declaration default applies" : ""}{entry.sensitive ? " · sensitive" : ""}</span>
+            {metadata?.requirements?.some((item) => item.required) ? <p className="small reason">Required{!(edit?.value ?? entry.value).trim() && !metadata.defaulted ? " · A blank value will not satisfy this requirement." : ""}</p> : null}
             <ValueControl name={entry.name} value={edit?.value ?? entry.value} sensitive={entry.sensitive} disabled={disabled || entry.name === "PROD_DEPLOYMENT"} onChange={(value) => update([...edits.filter((item) => item.key !== entry.name), { key: entry.name, name: entry.name, value, original: entry.value }])} />
             {entry.name === "PROD_DEPLOYMENT" ? <span className="small muted">Determined by this file's environment.</span> : null}
             <span>{metadata?.targets.map((id) => <button key={id} className="linkish small" onClick={() => select(id)}>{titleOf(index, id)}</button>)}</span>

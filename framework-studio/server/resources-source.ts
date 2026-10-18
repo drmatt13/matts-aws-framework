@@ -73,9 +73,9 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
     }
     current = receiver;
   }
-  if (!calls.length || !["fromEnv", "secret"].includes(calls[0]!.name) || calls.some((call) => !["fromEnv", "secret", "enum", "default", "note"].includes(call.name))) return fail("This resource is computed. Edit its declaration in source.");
+  if (!calls.length || !["fromEnv", "secret"].includes(calls[0]!.name) || calls.some((call) => !["fromEnv", "secret", "enum", "default", "note", "required"].includes(call.name)) || calls.some((call) => call.name === "required" && call.args.length)) return fail("This resource is computed. Edit its declaration in source.");
   for (const call of calls) for (const argument of call.args) if (typeof literalValue(argument)?.value !== "string") return fail("This resource uses computed arguments. Edit it in source.");
-  if (intent.kind === resource.kind && intent.default === (resource.default ?? null)) {
+  if (intent.kind === resource.kind && intent.default === (resource.default ?? null) && (intent.required ?? !!resource.required) === !!resource.required) {
     const original = outer.getText();
     if (calls[0]!.args.length) return original;
     const base = calls[0]!.node;
@@ -86,6 +86,7 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
   for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) if (kind === ts.SyntaxKind.SingleLineCommentTrivia || kind === ts.SyntaxKind.MultiLineCommentTrivia) return fail("This resource declaration contains comments. Edit it in source to preserve them.");
   // Always keep the resolved env name explicit when moving between groups.
   let result = `resource.${intent.kind === "secret" ? "secret" : "fromEnv"}(${JSON.stringify(resource.fromEnv)})`;
+  if (intent.required ?? resource.required) result += ".required()";
   if (intent.kind === "input") {
     const choices = calls.find((call) => call.name === "enum");
     if (choices) result += `.enum(${choices.args.map((argument) => argument.getText()).join(", ")})`;
@@ -142,7 +143,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
   const found = entry(object, resource.path);
   const nextPath = [...(intent.group ? [intent.group] : []), resource.path.at(-1)!];
   const moved = nextPath.join(".") !== resource.path.join(".");
-  const metadataChanged = intent.kind !== resource.kind || intent.default !== (resource.default ?? null);
+  const metadataChanged = intent.kind !== resource.kind || intent.default !== (resource.default ?? null) || (intent.required ?? !!resource.required) !== !!resource.required;
   let text = original;
   if (metadataChanged || moved) {
     const expression = builderExpression(found.property.initializer, resource, intent);

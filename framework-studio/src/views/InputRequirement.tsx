@@ -1,0 +1,33 @@
+import type { InputRequirement } from "../../shared/deployment-inputs";
+import type { ModelEdge } from "../../shared/model";
+import { titleOf } from "../lookup";
+import { useStudio } from "../studio";
+
+export function RequirementNotice({ requirement }: { requirement?: InputRequirement }) {
+  if (!requirement?.required) return null;
+  const missing = requirement.status === "missing";
+  return <div className={`input-requirement ${missing ? "missing" : ""}`} role={missing ? "alert" : "note"}>
+    <strong>{missing ? "Required value missing" : "Required input"}</strong>
+    <p><code>{requirement.name}</code> is required for {requirement.mode === "dev" ? "Development" : "Production"}.
+      {missing ? " No non-blank environment value or declaration default supplies it." : requirement.status === "default" ? " A declaration default currently supplies it." : requirement.status === "unknown" ? " Its value could not be checked. Fix the configuration or file read error first." : ` Supplied by ${requirement.file}.`}</p>
+    {requirement.reasons.map((reason) => <p className="small muted" key={reason}>{reason}</p>)}
+  </div>;
+}
+
+export function ConnectionView({ edge }: { edge: ModelEdge }) {
+  const { index, select, snapshot, mode, setMode } = useStudio();
+  const requirement = edge.inputRequirement;
+  const resource = requirement ? snapshot.models[requirement.mode].resources.find((item) => item.id === requirement.resource) : undefined;
+  return <>
+    <header><span className="kind">{requirement ? "Input connection" : "Connection"}</span><h2>{edge.label}</h2><p className="small muted">{titleOf(index, edge.from)} → {titleOf(index, edge.to)}</p></header>
+    <section><RequirementNotice requirement={requirement} />
+      {requirement ? <>
+        <h3>{requirement.status === "missing" ? "Resolve this requirement" : "Manage this input"}</h3>
+        <p>Set a non-blank value in <code>{requirement.file}</code>{resource?.kind === "secret" ? ". Secret values stay in the local environment file and never belong in a source-code default." : ", or define a default on the parameter."}</p>
+        <div className="resource-actions"><button onClick={() => select(`envfile:${requirement.mode}`)}>Edit .env.{requirement.mode}</button>
+          <button onClick={() => { if (mode !== requirement.mode) setMode(requirement.mode); select(requirement.resource); }}>{resource?.kind === "secret" ? "Open secret settings" : "Set a parameter default"}</button></div>
+        <p className="small muted">Review and apply your draft to update this connection. Saving does not deploy infrastructure or upload a secret.</p>
+      </> : <p>{edge.detail ?? "This relationship comes from the framework graph."}</p>}
+    </section>
+  </>;
+}

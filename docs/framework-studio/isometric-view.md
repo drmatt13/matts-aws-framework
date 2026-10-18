@@ -64,6 +64,12 @@ world.y = (gx + gy) * 16 - h * 16
 
 ## Layout ([build.ts](../../framework-studio/src/scene/build.ts))
 
+The measured packer below supplies a semantic seed. The graph-aware optimizer can
+move islands away from those starting rows to reduce projected crossings and wire
+length, while retaining environment-left/input-next and right-hand network constraints.
+See [graph-aware layout](graph-layout.md) for graph extraction, scoring, incremental
+stability, shared routing, viewport adaptation and measured before/after results.
+
 ### Regions
 
 | Placement | Island | Holds | Height |
@@ -127,9 +133,11 @@ subnet terraces inside the VPC foundation.
   group stays below outside compute in the right cluster and reserves a title gutter
   from inputs on the left. This supports future multiple network islands in the layout;
   the current declaration model still supplies the application's single VPC.
-- **Alignment.** Compute is placed first. Items inside APIs and Inputs and secrets follow
-  the barycentre (mean screen row) of what they connect to in compute. Island order stays
-  fixed, so Local development does not move to the top based on its connections.
+- **Graph-aware refinement.** Node slots remain on their measured lattice. Island
+  dependencies guide layered/barycentric seeds and bounded moves and swaps. The lower
+  islands need not share one row; Local development retains its horizontal place
+  between Workflows and Stacks. The previous one-sided node barycentre is retained
+  only in the explicit benchmark baseline.
 - **Chamfered corners.** Each corner is cut back by one straight chamfer (`CHAMFER = 2`
   cells along each edge, at most a third of the island's shorter side). A cell is removed
   exactly when its centre falls outside the cut (`chamfered`), so tiles, walls, picking
