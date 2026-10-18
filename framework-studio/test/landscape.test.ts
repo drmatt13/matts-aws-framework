@@ -3,6 +3,7 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import type { Snapshot } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
+import { offLens, restingAlpha } from "../src/scene/connections";
 import { buildScene, chamfered, chamferSize, titleRoom, type Island, type Scene } from "../src/scene/build";
 import { fitBounds, pan, resizeCamera, screenToWorld, wheelFactor, worldToScreen, zoomAt, MAX_ZOOM, MIN_ZOOM, type Camera } from "../src/scene/camera";
 import { project, unprojectAt } from "../src/scene/iso";
@@ -140,11 +141,15 @@ test("every route, target, catalog entry and managed database stands exactly onc
   }
 });
 
-test("every edge is the model's own, with its relation", () => {
-  assert.deepEqual(
-    dev.edges.map((edge) => edge.edge.id).sort(),
-    snapshot.models.dev.edges.filter((edge) => (dev.representatives[edge.from] ?? edge.from) !== (dev.representatives[edge.to] ?? edge.to)).map((edge) => edge.id).sort(),
-  );
+test("every edge is a model's own, with its relation: the viewed model's, or the other environment's marked as such", () => {
+  // Scene edges are the viewed model's, in order, followed by the connections only the other environment holds.
+  const visible = (model: typeof snapshot.models.dev, scene: Scene) => model.edges.filter((edge) => (scene.representatives[edge.from] ?? edge.from) !== (scene.representatives[edge.to] ?? edge.to)).map((edge) => edge.id).sort();
+  assert.deepEqual(dev.edges.filter((edge) => !edge.otherLens).map((edge) => edge.edge.id).sort(), visible(snapshot.models.dev, dev));
+  assert.deepEqual(prod.edges.filter((edge) => !edge.otherLens).map((edge) => edge.edge.id).sort(), visible(snapshot.models.prod, prod));
+  for (const [scene, other] of [[dev, snapshot.models.prod], [prod, snapshot.models.dev]] as const) {
+    const held = new Map(other.edges.map((edge) => [edge.id, edge]));
+    for (const edge of scene.edges.filter((candidate) => candidate.otherLens)) assert.deepEqual(edge.edge, held.get(edge.edge.id), edge.edge.id);
+  }
 });
 
 test("every scene entity and network fixture has a local SVG and a pickable plaque", () => {
@@ -766,6 +771,77 @@ test("a permission grant is red and dashed, unlike a parameter being read", () =
   assert.deepEqual(drawn(grant.id), { color: GUARD_EDGE_COLOR, dashed: true });
   assert.deepEqual(drawn(read.id), { color: READ_EDGE_COLOR, dashed: true });
   assert.notEqual(drawn(grant.id).color, drawn(read.id).color);
+});
+
+test("a connection outside the viewed environment rests at half the strength it has inside it", () => {
+  assert.equal(restingAlpha("declared", false), 0.3);
+  assert.equal(restingAlpha("source", false), 0.3);
+  assert.equal(restingAlpha("derived", false), 0.18);
+  assert.equal(restingAlpha("declared", true), 0.15);
+  assert.equal(restingAlpha("derived", true), 0.09);
+  for (const provenance of ["declared", "derived", "source"] as const) assert.equal(restingAlpha(provenance, true) * 2, restingAlpha(provenance, false), `${provenance}: the same ratio for every connection`);
+  assert.ok(restingAlpha("declared", false) > 0.24, "easier to see than the old resting strength");
+  // Either end enabled only elsewhere, in neither environment, or absent here puts it outside the lens.
+  for (const presence of ["other", "nowhere", "absent"] as const) {
+    assert.equal(offLens({}, { presence }, { presence: "built" }), true, `${presence} at the start`);
+    assert.equal(offLens({}, { presence: "present" }, { presence }), true, `${presence} at the end`);
+  }
+  assert.equal(offLens({}, { presence: "built" }, { presence: "present" }), false);
+  assert.equal(offLens({ otherLens: "prod" }, { presence: "built" }, { presence: "built" }), true, "a connection only the other environment holds");
+});
+
+test("switching Development and Production moves which connections recede", () => {
+  const nodesOf = (scene: Scene) => new Map(scene.nodes.map((node) => [node.id, node]));
+  const outside = (scene: Scene) => {
+    const nodeOf = nodesOf(scene);
+    return new Set(scene.edges.filter((edge) => offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to))).map((edge) => edge.edge.id));
+  };
+  const touching = (scene: Scene, id: string) => scene.edges.filter((edge) => edge.from === id || edge.to === id);
+  const devOut = outside(dev), prodOut = outside(prod);
+  assert.ok(devOut.size > 0 && prodOut.size > 0, "each lens leaves some connections out");
+  assert.notDeepEqual([...devOut].sort(), [...prodOut].sort(), "what recedes moves with the lens");
+  // Production-only workload, seen from Development: its own connections recede; from Production they read clearly.
+  const migrate = touching(dev, "task:db-migrate");
+  assert.ok(migrate.length > 0);
+  for (const edge of migrate) { assert.ok(devOut.has(edge.edge.id), `dev: ${edge.edge.id}`); assert.ok(!prodOut.has(edge.edge.id), `prod: ${edge.edge.id}`); }
+  // Development-only workload, seen from Production: the other way round.
+  const authorizer = touching(prod, "lambda:ws-authorizer");
+  assert.ok(authorizer.length > 0);
+  for (const edge of authorizer) { assert.ok(prodOut.has(edge.edge.id), `prod: ${edge.edge.id}`); assert.ok(!devOut.has(edge.edge.id), `dev: ${edge.edge.id}`); }
+  // A resource the viewed graph declares undefined is outside the lens too: RDS in Development.
+  const rds = touching(dev, "resource:rds.database");
+  assert.ok(rds.length > 0);
+  for (const edge of rds) assert.ok(devOut.has(edge.edge.id), `dev: ${edge.edge.id}`);
+  // Two connections between solid nodes are never dimmed.
+  const nodeOf = nodesOf(dev);
+  assert.ok(dev.edges.filter((edge) => !devOut.has(edge.edge.id)).every((edge) => ["built", "present"].includes(nodeOf.get(edge.from)!.presence) && ["built", "present"].includes(nodeOf.get(edge.to)!.presence)));
+});
+
+test("an enabled connection reads clearly in its own view and recedes where it is disabled", () => {
+  const strength = (scene: Scene) => {
+    const nodeOf = new Map(scene.nodes.map((node) => [node.id, node]));
+    const edge = scene.edges.find((candidate) => candidate.edge.from === "route:service:/example-service/*" && candidate.edge.to === "service:example-service")!;
+    assert.ok(edge, "the example service's route reaches its service");
+    return restingAlpha(edge.edge.provenance, offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)));
+  };
+  assert.equal(strength(dev), 0.3, "enabled in Development");
+  assert.equal(strength(prod), 0.15, "disabled in Production");
+});
+
+test("both views draw the same connections; the other environment's own are marked and dimmed", () => {
+  const ids = (scene: Scene) => scene.edges.map((edge) => edge.edge.id).sort();
+  assert.deepEqual(ids(dev), ids(prod), "switching the view never makes a connection appear or vanish");
+  const marked = (scene: Scene) => scene.edges.filter((edge) => edge.otherLens).map((edge) => `${edge.otherLens}: ${edge.edge.from} -> ${edge.edge.to}`).sort();
+  assert.deepEqual(marked(dev), ["prod: lambda:graphql-api -> resource:rds.database", "prod: lambda:oauth-callback -> resource:rds.database"]);
+  assert.deepEqual(marked(prod), ["dev: lambda:cognito-post-confirmation-trigger -> local:postgres", "dev: lambda:graphql-api -> local:postgres", "dev: lambda:oauth-callback -> local:postgres"]);
+  // A connection a lens does not hold itself is one the lens dims, and the model's own edges are never marked.
+  for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
+    const own = new Set(model.edges.map((edge) => edge.id));
+    for (const edge of scene.edges) assert.equal(edge.otherLens !== undefined, !own.has(edge.edge.id), edge.edge.id);
+  }
+  // Without the other environment's model there is nothing to add: the viewed model alone is drawn as it always was.
+  const alone = buildScene(snapshot.models.dev, { webSocketApi: snapshot.webSocketApi });
+  assert.ok(alone.edges.every((edge) => edge.otherLens === undefined));
 });
 
 test("without a local database the isolated subnet says nothing about one", () => {

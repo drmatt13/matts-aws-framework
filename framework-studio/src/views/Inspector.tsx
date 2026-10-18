@@ -422,6 +422,8 @@ export function Inspector() {
   const resource = index.resources.get(selected);
   const localDatabase = index.localServices.get(selected);
   const connection = model.edges.find((edge) => edge.id === selected);
+  // The map also draws the other environment's own connections, faintly marked; selecting one opens it here.
+  const otherLens = connection ? undefined : ((["dev", "prod"] as const).filter((candidate) => candidate !== model.mode).map((candidate) => ({ mode: candidate, edge: snapshot.models[candidate].edges.find((edge) => edge.id === selected) })).find((entry) => entry.edge));
   const schemaEntity = snapshot.schema.tables.some((table) => table.id === selected) || snapshot.schema.relations.some((relation) => relation.id === selected);
   const island = selected.startsWith("island:");
   const fixture = networkFixtureIds(model.network).includes(selected);
@@ -435,13 +437,13 @@ export function Inspector() {
       {target ? <TargetView target={target} /> : null}
       {route ? <RouteView route={route} /> : null}
       {resource ? <ResourceView resource={resource} /> : null}
-      {connection ? <ConnectionView edge={connection} /> : null}
+      {connection ? <ConnectionView edge={connection} /> : otherLens?.edge ? <ConnectionView edge={otherLens.edge} onlyIn={otherLens.mode} /> : null}
       {localDatabase ? <LocalDatabaseView database={localDatabase} /> : null}
       {schemaEntity ? <SchemaDetails /> : null}
       {island ? <IslandInspector id={selected} key={selected} /> : null}
       {fixture ? <NetworkFixtureView id={selected} /> : null}
       {resource?.kind === "stack" && !resource.frameworkStack ? <StackInfrastructure id={resource.id} /> : null}
-      {!target && !route && !resource && !connection && !localDatabase && !schemaEntity && !island && !fixture ? <p className="empty">{selected} is not in this graph.</p> : null}
+      {!target && !route && !resource && !connection && !otherLens && !localDatabase && !schemaEntity && !island && !fixture ? <p className="empty">{selected} is not in this graph.</p> : null}
       </div><DraftFooter />
     </aside>
   );

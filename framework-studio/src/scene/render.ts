@@ -6,6 +6,7 @@ import { worldToScreen, type Bounds, type Camera, type Point, type Viewport } fr
 import { project } from "./iso";
 import { searchOpacity, type LandscapeFocus } from "./focus";
 import { bandTrim, GRAPHITE, hexRgb, ICON_TINT, trimColor } from "./look";
+import { offLens, restingAlpha } from "./connections";
 import { acceptCards, placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
 import { ICON_BADGE, type Face } from "./shapes";
 import { connectionMidpoint } from "./routing";
@@ -100,7 +101,7 @@ type Standing =
 
 interface Prepared {
   readonly scene: Scene;
-  readonly arcs: ReadonlyMap<SceneEdge, { readonly points: readonly Point[]; readonly length: number; readonly color: Rgb }>;
+  readonly arcs: ReadonlyMap<SceneEdge, { readonly points: readonly Point[]; readonly length: number; readonly color: Rgb; readonly offLens: boolean }>;
   /** Each draw item's world bounding box, for culling. */
   readonly boxes: ReadonlyMap<Standing, { minX: number; minY: number; maxX: number; maxY: number }>;
   /** Whole islands, back to front. */
@@ -199,12 +200,13 @@ export class SceneRenderer {
       ...scene.props.map((prop): Standing => ({ kind: "prop", prop })),
     ];
 
-    const arcs = new Map<SceneEdge, { points: Point[]; length: number; color: Rgb }>();
+    const arcs = new Map<SceneEdge, { points: Point[]; length: number; color: Rgb; offLens: boolean }>();
+    const nodeOf = new Map(scene.nodes.map((node) => [node.id, node]));
     for (const edge of scene.edges) {
       const points = [...scene.routes[edge.edge.id]!.points];
       let length = 0;
       for (let index = 1; index < points.length; index += 1) length += Math.hypot(points[index]!.x - points[index - 1]!.x, points[index]!.y - points[index - 1]!.y);
-      arcs.set(edge, { points, length, color: hex(edge.style.color) });
+      arcs.set(edge, { points, length, color: hex(edge.style.color), offLens: offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)) });
     }
     const boxes = new Map<Standing, { minX: number; minY: number; maxX: number; maxY: number }>();
     for (const item of items) {
@@ -855,10 +857,13 @@ export class SceneRenderer {
     const pixel = this.pixel;
     const lit: SceneEdge[] = [];
     for (const edge of prepared.scene.edges) {
+      // A connection only the other environment holds lights up when it is hovered or selected itself, never
+      // because a node it touches is: the viewed environment's selection tells the viewed environment's story.
+      const own = edge.otherLens === undefined;
       const active =
-        state.focus.kind === "search" ? state.focus.nodes.has(edge.from) && state.focus.nodes.has(edge.to) :
+        state.focus.kind === "search" ? own && state.focus.nodes.has(edge.from) && state.focus.nodes.has(edge.to) :
         state.hoveredEdge === edge.edge.id || state.selected === edge.edge.id ||
-        (state.selected !== undefined && (edge.from === state.selected || edge.to === state.selected));
+        (own && state.selected !== undefined && (edge.from === state.selected || edge.to === state.selected));
       if (active) {
         lit.push(edge);
         continue;
@@ -866,7 +871,7 @@ export class SceneRenderer {
       const arc = prepared.arcs.get(edge)!;
       const missing = edge.edge.inputRequirement?.status === "missing";
       const color = missing ? MISSING_EDGE : arc.color;
-      context.strokeStyle = rgba(color, state.focus.kind === "search" ? 0.025 : missing ? state.selected ? 0.35 : 0.9 : state.selected ? 0.06 : edge.edge.provenance === "derived" ? 0.14 : 0.24);
+      context.strokeStyle = rgba(color, state.focus.kind === "search" ? 0.025 : missing ? state.selected ? 0.35 : 0.9 : state.selected ? 0.06 : restingAlpha(edge.edge.provenance, arc.offLens));
       context.lineWidth = 1.2 * pixel;
       context.setLineDash(edge.style.dashed ? [4 * pixel, 4 * pixel] : []);
       this.polyline(arc.points);

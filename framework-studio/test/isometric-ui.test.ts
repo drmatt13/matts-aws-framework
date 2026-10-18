@@ -183,6 +183,16 @@ test("the real renderer strokes connections leaving the APIs island in purple an
   assert.ok(strokes.includes("rgba(163, 116, 255, 0.95)"), "a selected API connection lights in the same purple");
 });
 
+test("the real renderer draws resting connections a little stronger, and those outside the viewed environment at half of that", async () => {
+  await mount();
+  await draw();
+  const alphas = new Set(strokes.flatMap((style) => { const match = /^rgba\(\d+, \d+, \d+, ([\d.]+)\)$/.exec(style); return match ? [Number(match[1])] : []; }));
+  assert.ok(alphas.has(0.3), "a resting connection in this environment");
+  assert.ok(alphas.has(0.15), "a resting connection the environment leaves out, at half the strength");
+  assert.ok(!alphas.has(0.6), "nothing is emphasised above the resting strength");
+  assert.ok(!alphas.has(0.24), "the old resting strength is gone");
+});
+
 interface Pointing {
   screenOf(id: string): { building: { x: number; y: number }; card?: { x: number; y: number } } | undefined;
   hullOf(id: string): { x: number; y: number }[] | undefined;

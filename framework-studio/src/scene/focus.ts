@@ -65,6 +65,7 @@ export function landscapeFocus(scene: Scene, selected?: string, matches?: Search
   if (selectedEdge) { nodes.add(selectedEdge.from); nodes.add(selectedEdge.to); }
   for (const node of scene.nodes) if (node.island === selected) nodes.add(node.id);
   for (const edge of scene.edges) {
+    if (edge.otherLens) continue;
     if (edge.from === selected) nodes.add(edge.to);
     if (edge.to === selected) nodes.add(edge.from);
   }

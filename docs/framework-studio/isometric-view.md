@@ -344,7 +344,20 @@ been removed; the renderer has one visual style.
      in its category colour.
 
    A missing required input is still red, with its X marker. Derived edges are fainter,
-   and a derived or source-inferred connection says so in its hover card. The sixth
+   and a derived or source-inferred connection says so in its hover card.
+
+   **The lens.** An idle connection rests at 0.30 opacity (0.18 when derived), so what is
+   part of the environment being viewed reads clearly. A connection outside it rests at
+   half that: either end is enabled only in the other environment, enabled in neither, or
+   a catalog entry the viewed graph declares undefined, or the other environment alone
+   holds the connection (`offLens` in `connections.ts`, `EDGE_ALPHA.outOfLens`). Every
+   connection keeps the same two-to-one ratio between its enabled and disabled views, so
+   switching Development and Production dims what the new view leaves out and brightens
+   what it brings in. Both views draw the same set of connections: one only the other
+   environment holds (a Lambda's database binding to Local PostgreSQL in Development, to
+   RDS in Production) is drawn dimmed rather than left out, says so in its hover card and
+   Inspector, and lights up only when hovered or selected itself, never because a node it
+   touches is selected. Selection, hover and search keep their own strengths. The sixth
    category, CDK resource links, is cyan; its hover card
    and Inspector expose source evidence and distinguish inference from evaluated facts.
    - **Lit arcs.** The selection's and the hovered arc's are bright, with an arrowhead.

@@ -1,4 +1,4 @@
-import type { ModelEdge, ModelResource, Relation, TargetKind } from "../../shared/model";
+import type { Mode, ModelEdge, ModelResource, Relation, TargetKind } from "../../shared/model";
 import { API_EDGE_COLOR, COMPUTE_EDGE_COLOR, EDGE_COLORS, GUARD_EDGE_COLOR, READ_EDGE_COLOR, STEP_EDGE_COLOR, TOOL_EDGE_COLOR } from "./look";
 import type { SceneNode } from "./build";
 import type { EdgeCategory } from "../lookup";
@@ -48,4 +48,28 @@ export function connectionStyle(
   if (source?.island === "island:apis") return { color: API_EDGE_COLOR, dashed: false };
   if (source?.targetKind && COMPUTE_TARGETS.has(source.targetKind)) return { color: COMPUTE_EDGE_COLOR, dashed: false };
   return { color: EDGE_COLORS[category], dashed: true };
+}
+
+/**
+ * How strongly an idle connection is drawn (the selected, hovered and searched states have their own).
+ *
+ * What is part of the environment being viewed reads clearly; what is not recedes. A connection outside the
+ * viewed environment rests at half the strength it has inside it, so switching the view dims what the new
+ * view leaves out and brightens what it brings in, and every connection keeps the same ratio between the two.
+ */
+export const EDGE_ALPHA = { declared: 0.3, derived: 0.18, outOfLens: 0.5 } as const;
+
+/** A node belongs to the environment being viewed when it is built or held there. */
+const inLens = (node: Pick<SceneNode, "presence"> | undefined): boolean => !node || node.presence === "built" || node.presence === "present";
+
+/**
+ * Whether a connection is outside the environment being viewed: the other environment alone holds it, or
+ * either end is enabled only there, in neither, or a catalog entry the viewed graph declares undefined.
+ */
+export function offLens(edge: { readonly otherLens?: Mode }, from: Pick<SceneNode, "presence"> | undefined, to: Pick<SceneNode, "presence"> | undefined): boolean {
+  return edge.otherLens !== undefined || !inLens(from) || !inLens(to);
+}
+
+export function restingAlpha(provenance: ModelEdge["provenance"], outOfLens: boolean): number {
+  return (provenance === "derived" ? EDGE_ALPHA.derived : EDGE_ALPHA.declared) * (outOfLens ? EDGE_ALPHA.outOfLens : 1);
 }

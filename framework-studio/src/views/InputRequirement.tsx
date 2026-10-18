@@ -1,5 +1,5 @@
 import type { InputRequirement } from "../../shared/deployment-inputs";
-import type { ModelEdge } from "../../shared/model";
+import type { Mode, ModelEdge } from "../../shared/model";
 import { titleOf } from "../lookup";
 import { useStudio } from "../studio";
 
@@ -14,12 +14,12 @@ export function RequirementNotice({ requirement }: { requirement?: InputRequirem
   </div>;
 }
 
-export function ConnectionView({ edge }: { edge: ModelEdge }) {
+export function ConnectionView({ edge, onlyIn }: { edge: ModelEdge; onlyIn?: Mode }) {
   const { index, select, snapshot, mode, setMode } = useStudio();
   const requirement = edge.inputRequirement;
   const resource = requirement ? snapshot.models[requirement.mode].resources.find((item) => item.id === requirement.resource) : undefined;
   return <>
-    <header><span className="kind">{requirement ? "Input connection" : "Connection"}</span><h2>{edge.label}</h2><p className="small muted">{titleOf(index, edge.from)} → {titleOf(index, edge.to)}</p></header>
+    <header><span className="kind">{requirement ? "Input connection" : "Connection"}</span><h2>{edge.label}</h2><p className="small muted">{titleOf(index, edge.from)} → {titleOf(index, edge.to)}</p>{onlyIn ? <p className="small muted">Only in {onlyIn === "dev" ? "Development" : "Production"}: this environment does not hold it. Switch the view to see it with the rest of that environment.</p> : null}</header>
     <section><RequirementNotice requirement={requirement} />
       {requirement && !requirement.required ? <p className="small muted">Optional in this environment.{requirement.status === "default" ? " A parameter default supplies it." : requirement.status === "configured" ? " An environment value is configured." : ""}</p> : null}
       {requirement ? <>

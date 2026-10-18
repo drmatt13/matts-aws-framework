@@ -606,10 +606,12 @@ function HoverCard(props: {
     subtitle = node.kindLabel;
     lines = description ? [] : [NO_DESCRIPTION];
   } else if (current.kind === "edge") {
-    const edge = props.scene.edges.find((candidate) => candidate.edge.id === current.id)?.edge;
+    const sceneEdge = props.scene.edges.find((candidate) => candidate.edge.id === current.id);
+    const edge = sceneEdge?.edge;
     if (!edge) return null;
     title = `${RELATION_LABEL[edge.relation]}: ${edge.label}`;
-    lines = [`${titleOf(index, edge.from)} to ${titleOf(index, edge.to)}`, edge.inputRequirement?.status === "missing" ? `Required in ${edge.inputRequirement.mode === "dev" ? "Development" : "Production"}: no non-blank value or default. Click to resolve.` : undefined, edge.detail, edge.relation === "supplies" ? "Input-file presence and requirement guidance. Values stay outside the map." : edge.provenance === "derived" ? "Derived by the framework." : edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
+    const onlyIn = sceneEdge.otherLens ? `Only in ${sceneEdge.otherLens === "dev" ? "Development" : "Production"}. Switch the view to see it with the rest of that environment.` : undefined;
+    lines = [onlyIn, `${titleOf(index, edge.from)} to ${titleOf(index, edge.to)}`, edge.inputRequirement?.status === "missing" ? `Required in ${edge.inputRequirement.mode === "dev" ? "Development" : "Production"}: no non-blank value or default. Click to resolve.` : undefined, edge.detail, edge.relation === "supplies" ? "Input-file presence and requirement guidance. Values stay outside the map." : edge.provenance === "derived" ? "Derived by the framework." : edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
   } else if (current.kind === "prop") {
     const prop = props.scene.props.find((candidate) => candidate.id === current.id);
     if (!prop) return null;
