@@ -698,42 +698,18 @@ a {
   cursor: default;
 }
 
-.landscape-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  align-items: center;
-  padding: 7px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: var(--radius);
-  background: rgba(14, 19, 27, 0.78);
-  backdrop-filter: blur(6px);
-  font-size: var(--step--1);
-  color: #b9c1cc;
-}
-
-.landscape-legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.landscape-legend .swatch {
-  width: 14px;
-  height: 10px;
-  border-radius: 2px;
-  display: inline-block;
-}
-
-.swatch.solid {
-  background: #d8d3c6;
-}
-
-.swatch.ghost {
-  border: 1px dashed rgba(200, 210, 225, 0.7);
-}
-
-.landscape-legend .deployment-legend { color: #b9c1cc; gap: 8px; }
+.landscape-add { position: relative; flex-shrink: 0; z-index: 5; margin: 0 12px 12px 0; }
+.landscape-add-trigger { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 1px solid #ffffff24; border-radius: 50%; background: linear-gradient(145deg, #29313ecc, #151c28e6); backdrop-filter: blur(12px); color: #cbd5e1; box-shadow: 0 3px 12px #0004, inset 0 1px 0 #ffffff0a; cursor: pointer; transition: border-color 150ms, color 150ms; }
+.landscape-add-trigger:hover, .landscape-add-trigger[aria-expanded="true"] { background: linear-gradient(145deg, #343f50e6, #202b3be6); border-color: #ffffff45; color: #f1f5f9; }
+.landscape-add button:focus-visible { outline: 2px solid #a7d7ff; outline-offset: 3px; }
+.landscape-add-menu { position: absolute; right: 0; bottom: 52px; width: min(320px, calc(100vw - 48px)); max-height: calc(100dvh - 180px); overflow-y: auto; padding: 16px; border: 1px solid #3c485a; border-radius: 12px; background: #131b27; color: #e4e8ee; box-shadow: 0 12px 36px #0008; }
+.landscape-add-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.landscape-add-heading h2 { margin: 0; font: 600 19px var(--condensed); }
+.landscape-add-close { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; background: transparent; color: #b9c7d8; cursor: pointer; }
+.landscape-add-close:hover { background: #ffffff12; }
+.landscape-add-menu p { margin: 8px 0 16px; font-size: 12px; line-height: 1.5; color: #a3b1c4; }
+.landscape-add-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.landscape-add-options button { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; padding: 12px; border: 1px solid #2c394b; border-radius: 7px; background: #1a2534; color: #9aadc5; opacity: 1; text-align: left; font-size: 12px; }
 
 .landscape-stats {
   font-size: var(--step--1);

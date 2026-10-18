@@ -38,10 +38,15 @@ The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) a
 | `render.ts` | no (canvas) | `SceneRenderer`: caches per scene, draws per frame |
 | `grid.ts` | yes | Viewport-bounded, world-anchored ground grid with zoom-dependent spacing |
 | `../icons.ts` | yes | Shared mapping from model entities to local AWS/Lucide SVG assets |
-| `views/Isometric.tsx` | no (React) | Mounting, input, the render loop, toolbar, legend, hover card, accessible list, debug hook |
+| `views/Isometric.tsx` | no (React) | Mounting, input, the render loop, toolbar, add menu, hover card, accessible list, debug hook |
 
 Everything marked pure runs under Node and is unit-tested in
 [test/landscape.test.ts](../../framework-studio/test/landscape.test.ts).
+
+The circular plus button at the bottom right opens an **Add to application** menu.
+Its function, stack, VPC, workflow, container service/task, API route, agent, input
+parameter and secret options are placeholders until creation tools are implemented.
+Close the menu with its close button, Escape, or by clicking outside it.
 
 ## Coordinates
 

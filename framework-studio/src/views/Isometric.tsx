@@ -26,7 +26,7 @@ import { connectionMidpoint } from "../scene/routing";
 import { landscapeFocus, searchOpacity, searchScene } from "../scene/focus";
 import { SceneRenderer } from "../scene/render";
 import { catalogAvailability, deploymentSummary } from "../deployment";
-import { DeploymentLegend } from "./DeploymentBadge";
+import { AddMenu } from "./AddMenu";
 import { useStudio } from "../studio";
 
 /**
@@ -557,19 +557,11 @@ export function Isometric() {
         </div>
       </div>
       <div className="landscape-bar landscape-bottom">
-        <div className="landscape-legend">
-          <span>
-            <i className="swatch solid" /> Enabled in {model.mode === "dev" ? "Development" : "Production"}
-          </span>
-          <span>
-            <i className="swatch ghost" /> Outside this environment
-          </span>
-          <DeploymentLegend />
-        </div>
-        <span className="spacer" />
         <span className="landscape-stats">
           {scene.nodes.length} entities on {scene.tiles.length} tiles, {stats.ms.toFixed(1)} ms a frame
         </span>
+        <span className="spacer" />
+        <AddMenu />
       </div>
       {hover ? <HoverCard hover={hover} scene={scene} nodes={nodes} index={index} viewport={live.current.viewport} /> : null}
       <ul className="sr-only" aria-label="Entities in the landscape">
