@@ -178,6 +178,22 @@ preserved and removed declarations never delete secrets. A failed deployment rep
 secret updates already performed. Synthesis and diff require no secret-binding file and
 perform no uploads.
 
+Before the first secret upload, deploy also checks what CloudFormation holds under the
+deployment's name, and it refuses:
+
+- a deployment that is currently dev mode;
+- stacks without a framework identity;
+- stacks whose identities disagree;
+- a deployment still changing or awaiting recovery.
+
+See [Development](DEV-DEPLOYMENT.md#first-setup) for the rules.
+
+A production deploy also refuses `--hotswap`, `--hotswap-fallback`, `--no-rollback` (`-R`),
+`--express`, `--yes` (`-y`) and `--require-approval never`. Hotswap, express and no-rollback
+deploys skip CloudFormation's safety. The approval flags would accept IAM and security
+changes nobody reviewed. Keep the interactive approval for production until reviewed plans
+are available (see [Deploy & Run](framework-studio/deploy-and-run.md)).
+
 Production deployment does not automatically export root .env or a local resource manifest. Retrieve
 public deployment outputs directly from CloudFormation or the CDK deployment output:
 

@@ -930,6 +930,14 @@ and the CDK app refuses one that disagrees with the file. Ordinary settings use 
 environment, then fallback. New deployment-wide flags belong in deployment.ts plus tests;
 workload inputs belong in the resource catalog instead.
 
+What a stack belongs to is recorded in AWS, not inferred from its name. Every stack carries
+the `framework:deployment:v1` output (deployment, mode, account, region), and
+`npm run deploy:resources` checks it before uploading secrets or deploying.
+`@repo/framework/deploy` classifies the deployed stacks; `scripts/deployment-guard.ts`
+turns that classification into refusals. A stack without the output (a failed first
+create, or one from before the output existed) is identified from its deployed template,
+or refused.
+
 The principal deployment settings are CDK_APP_NAME, PROD_DEPLOYMENT,
 RETAIN_STATEFUL_RESOURCES, DATABASE_BACKUP_RETENTION_DAYS, DEPLOY_PROD_WEBSOCKET_API,
 COGNITO_SES_FROM_EMAIL (with optional COGNITO_SES_FROM_NAME and COGNITO_SES_REGION),

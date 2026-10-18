@@ -56,6 +56,23 @@ are reused when no local value is supplied; unchanged values create no version. 
 diff perform no secret uploads and do not require a secret-binding file. For a standalone
 refresh, run `npm run export:cdk-outputs -- --profile <PROFILE> --region <REGION>`.
 
+Before any secret is uploaded, deploy reads what CloudFormation already holds under the
+deployment's name and refuses to change stacks it does not own:
+
+- **The other mode.** It refuses a deployment that is currently the other mode, such as a
+  dev deploy over a prod deployment of the same `CDK_APP_NAME`.
+- **Unidentified stacks.** It refuses stacks that follow the deployment's names but carry
+  no framework identity; they are never adopted on their name alone.
+- **Stacks that disagree.** It refuses stacks whose identities disagree with each other or
+  with their own account and region.
+- **Busy or stuck deployments.** It refuses a deployment that CloudFormation is still
+  changing, or that needs recovery.
+
+Each refusal names the stacks and a remedy, and nothing is changed. Two deploys of the same
+name on one machine cannot run at once (`.cache/deploy/<name>.lock`). Assemblies that an
+interrupted run left in `.cache/deploy` are removed after a day. Deploy and export read
+authored inputs from `FRAMEWORK_INPUTS_FILE` when it is set, otherwise from `cdk-app/.env`.
+
 The dev graph holds Cognito, AWS-invoked event handlers, and replay resources. Routed
 HTTP handlers, services, tasks, and workflows run locally; no ECS image is published by a
 dev deployment. The one exception is DEPLOY_PROD_WEBSOCKET_API=true: it builds the AWS
