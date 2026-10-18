@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
@@ -11,7 +11,8 @@ test("deploy reports both conflicting route owners before synth or secret synchr
   const fixture = mkdtempSync(path.join(artifacts, "agent-route-preflight-"));
   try {
     mkdirSync(path.join(fixture, "scripts"));
-    for (const name of ["deploy.ts", "deployment-assembly.ts", "deployment-secrets.ts", "cloud-assembly.ts"]) {
+    // Every script, so the copy keeps working as deploy.ts gains helpers.
+    for (const name of readdirSync(path.join(root, "scripts")).filter((entry) => /\.(ts|mjs)$/.test(entry))) {
       copyFileSync(path.join(root, "scripts", name), path.join(fixture, "scripts", name));
     }
     writeFileSync(path.join(fixture, "framework.config.ts"), `
