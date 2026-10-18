@@ -7,7 +7,7 @@ import { useStudio } from "../studio";
 import { DeploymentBadge, DeploymentLegend } from "./DeploymentBadge";
 import { availabilityBadge, catalogAvailability, deploymentBadge, type DeploymentBadgeKind } from "../deployment";
 import { EntityIcon } from "./EntityIcon";
-import { resourceIcon, routeIcon, targetIcon } from "../icons";
+import { resourceBadge, resourceIcon, routeIcon, targetIcon } from "../icons";
 
 const CATEGORIES = Object.keys(CATEGORY_LABEL) as EdgeCategory[];
 
@@ -156,7 +156,7 @@ export function Board() {
               }}
               title={resource?.absent ? `Absent in the ${model.mode === "dev" ? "development" : "production"} graph` : undefined}
             >
-              <EntityIcon icon={localService ? "postgres" : target ? targetIcon(target) : route ? routeIcon(route) : resourceIcon(resource!)} />
+              <EntityIcon icon={localService ? "postgres" : target ? targetIcon(target) : route ? routeIcon(route) : resourceIcon(resource!)} badge={resource ? resourceBadge(resource) : undefined} />
               {localService ? <><span className="label">{localService.title}<span className="sub">{localService.image} · Compose</span></span><DeploymentBadge kind="dev" /></> : null}
               {target ? <TargetNode target={target} /> : null}
               {route ? (

@@ -13,9 +13,10 @@ import { HttpRoutes } from "./HttpRoutes";
 import { IslandInspector } from "./IslandInspector";
 import { BooleanField, FieldRow } from "./FieldRow";
 import { DraftFooter } from "./DraftControls";
-import { EntityInfrastructure } from "./Infrastructure";
+import { StackInfrastructure } from "./Infrastructure";
 import { EnvironmentFileView, InputSources } from "./DeploymentInputs";
 import { ConnectionView } from "./InputRequirement";
+import { ResourceStatus } from "./ResourceStatus";
 
 function Written(props: { readonly location: SourceLocation | undefined; readonly label?: string }) {
   const { snapshot } = useStudio();
@@ -115,7 +116,7 @@ function Relations(props: { readonly id: string }) {
       {edges.some((edge) => edge.relation === "cdk" && edge.provenance === "source") ? <p className="small muted">CDK links are inferred from direct source references. Helpers and conditional wiring may add connections this view cannot resolve.</p> : null}
       <ul className="relations">
         {outgoing.map((edge) => row(edge, edge.to, RELATION_LABEL[edge.relation]))}
-        {incoming.map((edge) => row(edge, edge.from, edge.relation === "cdk" ? "CDK link from" : edge.relation === "supplies" ? "Supplied by" : `${RELATION_LABEL[edge.relation]} from`))}
+          {incoming.map((edge) => row(edge, edge.from, edge.relation === "contains" ? "Contained by" : edge.relation === "cdk" ? "CDK link from" : edge.relation === "supplies" ? "Supplied by" : `${RELATION_LABEL[edge.relation]} from`))}
       </ul>
     </section>
   );
@@ -332,33 +333,41 @@ function ResourceView(props: { readonly resource: ModelResource }) {
   const root = resource.path[0]!;
   const links = snapshot.source.links[resource.path.join(".")] ?? snapshot.source.links[root] ?? [];
   const kind =
-    resource.kind === "stack" ? "Stack in the catalog" : resource.kind === "member" ? "Stack member" : resource.kind === "secret" ? "Authored secret" : resource.kind === "input" ? "Authored input" : resource.kind === "group" ? "Group of inputs" : "Construct";
+    resource.frameworkStack ? "Framework stack" : resource.kind === "stack" ? "Stack in the catalog" : resource.kind === "member" ? "Stack member" : resource.kind === "secret" ? "Authored secret" : resource.kind === "input" ? "Authored input" : resource.kind === "group" ? "Group of inputs" : "Construct";
   const database = [snapshot.models.dev, snapshot.models.prod].some((model) => model.edges.some((edge) => edge.relation === "database" && (edge.to === resource.id || edge.to.startsWith(`${resource.id}.`))));
   return (
     <>
       <header>
         <span className="kind">{kind}</span>
         <h2><EntityIcon icon={resourceIcon(resource)} />{resource.kind === "stack" ? resource.stackClass ?? resource.path.join(".") : `resources.${resource.path.join(".")}`}</h2>
+        <ResourceStatus resource={resource} />
+        {resource.stackUsage?.status === "unreferenced" ? <p className="small muted">Declared in the catalog, with no constructor reference in the CDK app's runtime imports. Add it to the app to include it in synthesis.</p> : null}
+        {resource.frameworkManaged === "database" ? <p className="small muted">The framework owns this database and its connections. Dedicated database configuration options are coming later.</p> : resource.frameworkManaged ? <p className="small muted">The framework manages this stack and its generated environment outputs.</p> : null}
         {resource.typeText ? <code className="ref">{resource.typeText}</code> : null}
         {resource.kind === "member" && resource.parent ? <button className="linkish small" onClick={() => select(resource.parent)}>Back to {model.resources.find((item) => item.id === resource.parent)?.stackClass ?? "stack"}</button> : null}
-        <Written location={snapshot.source.entities[resource.id]?.key} label={resource.kind === "member" ? "Declared on the stack in" : "Written in"} />
+        <Written location={snapshot.source.entities[resource.id]?.key} label={resource.frameworkStack ? "Class in" : resource.kind === "member" ? "Declared on the stack in" : "Written in"} />
       </header>
+      {resource.stackOutputs?.length ? <section className="stack-outputs"><h3>CloudFormation outputs</h3><p className="small muted">Symbolic source values mapped by the root .env exporter.</p><ul>{resource.stackOutputs.map((output) => <li key={output.name}>
+        <span className="stack-output-name">{output.name}</span>
+        <code className="stack-output-value"><span>$</span>{output.symbol}</code>
+        <span className="small muted">Root .env · <code>{output.envName}</code></span>
+      </li>)}</ul></section> : null}
       {database ? <section><SchemaLink /><p className="small muted">The application contract is shared with local PostgreSQL.</p></section> : null}
       <section>
-        {resource.absent ? (
+        {resource.absent && resource.frameworkStack ? <p>Not enabled in the {model.mode === "dev" ? "development" : "production"} environment.</p> : resource.absent ? (
           <p>
             Absent in the {model.mode === "dev" ? "development" : "production"} graph
             {facts?.condition ? <>, because the catalog writes it under <code>{facts.condition}</code></> : ""}. Anything that reads it never sees the value.
           </p>
         ) : null}
         {resource.kind === "member" && resource.memberSource === "class" ? <p className="muted">Declared by its stack; no workload references it.</p> : null}
-        {facts?.stackClass ? <p>The stack class {facts.stackClass} is the declaration: each public field is an entry.</p> : null}
-        {facts?.stackLocation ? <Written location={facts.stackLocation} label="Class in" /> : null}
+        {facts?.stackClass && !resource.frameworkStack ? <p>The stack class {facts.stackClass} is the declaration: each public field is an entry.</p> : null}
+        {facts?.stackLocation && !resource.frameworkStack ? <Written location={facts.stackLocation} label="Class in" /> : null}
         {links.map((link) => (
           <Written key={`${link.file}:${link.line}`} location={link} label="Linked in" />
         ))}
       </section>
-      {resource.kind === "stack" ? <section><details className="stack-members" open><summary>Public fields <span className="muted">({members.length})</span></summary><ul className="relations">{members.map((member) => <li key={member.id}><button className="linkish" onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className="small muted">{member.typeText ?? member.kind}</code></li>)}</ul><p className="small muted">Read-only. Declared by the stack class.</p></details></section> : null}
+      {resource.kind === "stack" && members.length ? <section><details className="stack-members" open><summary>Public fields <span className="muted">({members.length})</span></summary><ul className="relations">{members.map((member) => <li key={member.id}><button className="linkish" onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className="small muted">{member.typeText ?? member.kind}</code></li>)}</ul><p className="small muted">Read-only. Declared by the stack class.</p></details></section> : null}
       <InputSources resource={resource} />
       {resource.kind === "input" || resource.kind === "secret" ? <ResourceEditor key={`${resource.id}:${model.mode}`} resource={resource} /> : null}
       <Relations id={resource.id} />
@@ -400,7 +409,7 @@ export function Inspector() {
       {localDatabase ? <LocalDatabaseView database={localDatabase} /> : null}
       {schemaEntity ? <SchemaDetails /> : null}
       {island ? <IslandInspector id={selected} key={selected} /> : null}
-      {target || (resource && !resource.deploymentFile) || route || (island && selected !== "island:environment") ? <EntityInfrastructure id={route?.target ?? selected} /> : null}
+      {resource?.kind === "stack" && !resource.frameworkStack ? <StackInfrastructure id={resource.id} /> : null}
       {!target && !route && !resource && !connection && !localDatabase && !schemaEntity && !island ? <p className="empty">{selected} is not in this graph.</p> : null}
       </div><DraftFooter />
     </aside>

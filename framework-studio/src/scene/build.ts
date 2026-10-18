@@ -1,6 +1,6 @@
 import type { Lanes, Mode, ModeModel, ModelEdge, ModelResource, ModelRoute, ModelTarget, NetworkModel } from "../../shared/model";
 import { RELATION_CATEGORY, ROLE_LABEL, type EdgeCategory } from "../lookup";
-import { endpointServiceIcon, resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
+import { endpointServiceIcon, resourceBadge, resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
 import { availabilityBadge, deploymentBadge, developmentLocation, environments, type Availability, type DeploymentBadgeKind } from "../deployment";
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH, project } from "./iso";
 import { buildIconShape, type Shape } from "./shapes";
@@ -293,11 +293,14 @@ function resourceItem(resource: ModelResource, mode: Mode, availability?: Availa
     id: resource.id,
     badge: availability ? availabilityBadge(availability) : undefined,
     icon: resourceIcon(resource),
+    roleIcon: resourceBadge(resource),
     entity: "resource",
     label: resource.kind === "stack" ? resource.path.join(".") : name,
     kindLabel,
     presence: resource.absent ? "absent" : "present",
-    presenceText: resource.absent
+    presenceText: resource.stackUsage?.status === "unreferenced" ? "Not added to CDK app: no constructor reference found in the app's runtime imports."
+      : resource.frameworkManaged ? `Framework-managed ${resource.frameworkManaged === "database" ? "database" : "stack exporting root .env values"}${resource.absent ? `; absent in the ${graph} graph` : ""}.`
+      : resource.absent
       ? `Absent in the ${graph} graph: declared undefined here, so nothing that reads it sees a value.`
       : resource.kind === "member" && resource.memberSource === "class"
         ? "Declared by its stack; no workload references it."
@@ -345,6 +348,11 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   const vpc: Record<"public" | "private" | "isolated", Item[]> = { public: [], private: [], isolated: [] };
   const agents: Item[] = [];
   const workflows: Item[] = [];
+  for (const resource of model.resources) {
+    if (resource.kind === "member" && resource.frameworkManaged === "database" && resource.networkPlacement) {
+      vpc[resource.networkPlacement].push({ ...catalogItem(resource), label: "RDS database", kindLabel: "Framework-managed Amazon RDS" });
+    }
+  }
   for (const target of model.targets) {
     const item = targetItem(target, mode);
     if (target.placement.kind === "vpc") vpc[target.placement.subnet].push(item);
@@ -597,7 +605,8 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
       return { id: item.id, island: spec.id, ...buildIconShape(p.x, p.y).top };
     });
   });
-  const members = Object.fromEntries(model.resources.filter((resource) => resource.kind === "member" && resource.parent).map((resource) => [resource.id, resource.parent!]));
+  const visibleMembers = new Set(anchors.map((anchor) => anchor.id));
+  const members = Object.fromEntries(model.resources.filter((resource) => resource.kind === "member" && resource.parent && !visibleMembers.has(resource.id)).map((resource) => [resource.id, resource.parent!]));
   const graph = extractLayoutGraph(anchors, topologyEdges(options.layoutModels ?? [model]), members);
   const layout = optimizeLayout(footprints, graph, { ...options.layoutSettings, ...(options.semanticLayout ? { budget: 1 } : {}) });
   const positions = options.semanticLayout ? layoutIslands(footprints) : layout.positions;
@@ -699,7 +708,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
   nodes.sort((a, b) => a.gx + a.gy - (b.gx + b.gy) || a.h - b.h || a.gx - b.gx);
 
   const ids = new Set(nodes.map((node) => node.id));
-  const representatives = Object.fromEntries(model.resources.filter((resource) => resource.kind === "member" && resource.parent && ids.has(resource.parent)).map((resource) => [resource.id, resource.parent!]));
+  const representatives = Object.fromEntries(model.resources.filter((resource) => resource.kind === "member" && resource.parent && !ids.has(resource.id) && ids.has(resource.parent)).map((resource) => [resource.id, resource.parent!]));
   const edges = model.edges
     .map((edge) => ({ edge, from: representatives[edge.from] ?? edge.from, to: representatives[edge.to] ?? edge.to, category: RELATION_CATEGORY[edge.relation] }))
     .filter((edge) => ids.has(edge.from) && ids.has(edge.to) && edge.from !== edge.to);

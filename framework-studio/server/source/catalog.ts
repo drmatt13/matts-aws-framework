@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
-import type { SourceLocation } from "../../shared/model";
+import type { ModelResource, SourceLocation } from "../../shared/model";
 import { expressionAt, lineAndColumn, literalKey, parse, unwrap } from "./syntax";
 
 /**
@@ -19,6 +19,7 @@ export interface StackMember {
   readonly typeText: string;
   readonly category: "construct" | "value" | "secret";
   readonly location: SourceLocation;
+  readonly networkPlacement?: ModelResource["networkPlacement"];
 }
 
 export interface CatalogEntrySource {
@@ -29,6 +30,7 @@ export interface CatalogEntrySource {
   readonly condition?: string;
   /** For `resource.stack<T>()`, the class and its public members. */
   readonly stack?: { readonly className: string; readonly location?: SourceLocation; readonly members: readonly StackMember[] };
+  readonly stackUsage?: ModelResource["stackUsage"];
 }
 
 function relative(repositoryRoot: string, file: string): string {
@@ -90,12 +92,25 @@ function categorize(typeText: string): StackMember["category"] {
 }
 
 /** A stack class's public fields and getters: the members `StackResourceKeys<T>` would read. */
-function stackMembers(repositoryRoot: string, file: string, className: string) {
+export function stackMembers(repositoryRoot: string, file: string, className: string) {
   const sourceFile = parse(file, readFileSync(file, "utf8"));
   const declaration = sourceFile.statements.find(
     (statement): statement is ts.ClassDeclaration => ts.isClassDeclaration(statement) && statement.name?.text === className,
   );
   if (!declaration) return undefined;
+  const placements = new Map<string, ModelResource["networkPlacement"]>();
+  const readPlacement = (node: ts.Node): void => {
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isPropertyAccessExpression(node.left) && node.left.expression.kind === ts.SyntaxKind.ThisKeyword && ts.isNewExpression(node.right)) {
+      const options = node.right.arguments?.[2];
+      const property = (value: ts.Node | undefined, name: string) => value && ts.isObjectLiteralExpression(value) ? value.properties.find((item): item is ts.PropertyAssignment => ts.isPropertyAssignment(item) && literalKey(item) === name)?.initializer : undefined;
+      const selection = property(property(options, "vpcSubnets"), "subnetType");
+      const subnetTypes: Readonly<Record<string, NonNullable<ModelResource["networkPlacement"]>>> = { PUBLIC: "public", PRIVATE_WITH_EGRESS: "private", PRIVATE_ISOLATED: "isolated" };
+      const subnet = selection && ts.isPropertyAccessExpression(selection) ? subnetTypes[selection.name.text] : undefined;
+      if (subnet) placements.set(node.left.name.text, subnet);
+    }
+    ts.forEachChild(node, readPlacement);
+  };
+  readPlacement(declaration);
   const members: StackMember[] = [];
   for (const member of declaration.members) {
     if (!ts.isPropertyDeclaration(member) && !ts.isGetAccessorDeclaration(member)) continue;
@@ -104,7 +119,7 @@ function stackMembers(repositoryRoot: string, file: string, className: string) {
       continue;
     }
     const typeText = member.type?.getText(sourceFile) ?? "unknown";
-    members.push({ name: member.name.text, typeText, category: categorize(typeText), location: locate(repositoryRoot, sourceFile, member.name) });
+    members.push({ name: member.name.text, typeText, category: categorize(typeText), location: locate(repositoryRoot, sourceFile, member.name), networkPlacement: placements.get(member.name.text) });
   }
   return { className, location: locate(repositoryRoot, sourceFile, declaration.name ?? declaration), members };
 }
@@ -157,7 +172,7 @@ export function readCatalogSource(
 
 const LINK_CALLS = new Set(["linkResources", "linkResource", "bindPostgresDatabase"]);
 
-function typeScriptFiles(directory: string): string[] {
+export function typeScriptFiles(directory: string): string[] {
   if (!existsSync(directory)) return [];
   const files: string[] = [];
   for (const entry of readdirSync(directory, { withFileTypes: true })) {

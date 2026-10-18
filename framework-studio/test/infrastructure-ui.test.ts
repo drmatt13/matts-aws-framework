@@ -82,6 +82,21 @@ test("inventory search, type/owner filters and owner navigation use synthesis ev
   assert.equal(selected, "lambda:graphql-api"); assert.equal(runs, 0);
 });
 
+test("managed handler/API stacks stay out of browsing and RDS is marked as framework managed", async () => {
+  const names = ["my-app-AsynchronousLambdaFunctionsStack", "my-app-WebSocketLambdaFunctionsStack", "my-app-WebSocketApiStack"];
+  const inventory = ready.inventory!;
+  const stacks = names.map((name) => ({ id: name, name, environment: "local", dependencies: [], owners: [] }));
+  mock.method(api.api, "infrastructure", async () => ({ ...ready, inventory: { ...inventory, stacks: [...inventory.stacks, ...stacks, { id: "Rds", name: "my-app-RdsStack", environment: "local", dependencies: [], owners: ["resource:rds"] }], resources: [...inventory.resources, ...names.map((name) => ({ id: name, logicalId: name, stack: name, type: "AWS::Hidden::Fixture", classification: "unowned" as const, owners: [] })), { id: "database", logicalId: "Database", stack: "Rds", type: "AWS::RDS::DBInstance", classification: "framework" as const, owners: ["resource:rds.database"] }] } }));
+  await mount(); await ui.screen.findByRole("searchbox");
+  assert.equal(ui.screen.queryByText("AWS connection options (optional)"), null);
+  assert.equal(ui.screen.queryByRole("textbox", { name: "Synthesis AWS profile" }), null);
+  for (const name of names) assert.equal(ui.screen.queryByText(name), null);
+  assert.equal(ui.screen.queryByRole("option", { name: "AWS::Hidden::Fixture" }), null);
+  assert.ok(ui.screen.getByRole("option", { name: "my-app-RdsStack · Framework managed" }));
+  assert.ok(ui.screen.getByText("Framework managed · Database"));
+  assert.ok(ui.screen.getByText("4 of 4 resources · 2 stacks"));
+});
+
 test("a failed explicit synthesis keeps prior resources and shows the stale/error state", async () => {
   mock.method(api.api, "infrastructure", async () => ready);
   mock.method(api.api, "synthesize", async () => ({ ...ready, status: "failed", stale: true, error: "CDK configuration validation failed." } as InfrastructureState));

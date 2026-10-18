@@ -33,6 +33,8 @@ export const ICON_TINT: Readonly<Record<IconKey, string>> = {
   workflow: AWS.integration,
   agent: AWS.ai,
   stack: AWS.integration,
+  unattached: "#f0b96b",
+  managed: "#a9c5e8",
   table: AWS.database,
   bucket: AWS.storage,
   queue: AWS.integration,

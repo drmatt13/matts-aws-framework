@@ -11,6 +11,8 @@ import type { CdkLinkIndex, Editability, EntitySource, FieldFact, ModeModel, Sou
 import { fieldById } from "../edits/fields";
 import { parseOrigin, type ParsedOrigin } from "../model/origin";
 import { readCatalogSource, readLinkSites, type CatalogEntrySource } from "./catalog";
+import { readStackUsage } from "./stack-usage";
+import { readExportStacks, type ExportStackSource } from "./export-stacks";
 import { scanCdkLinks } from "./cdk-links";
 import { declarationObject, expressionAt, findProperty, lineAndColumn, literalValue, parse, propertyAt } from "./syntax";
 
@@ -28,6 +30,7 @@ import { declarationObject, expressionAt, findProperty, lineAndColumn, literalVa
 export interface BuiltSourceIndex {
   readonly index: SourceIndex;
   readonly catalog: ReadonlyMap<string, CatalogEntrySource>;
+  readonly exportStacks: readonly ExportStackSource[];
   readonly located?: LocatedConfigSource;
 }
 
@@ -204,6 +207,8 @@ export function buildSourceIndex(
       problems.push(`The resource catalog could not be read: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+  const stackUsage = readStackUsage(repositoryRoot, catalog);
+  for (const [key, entry] of catalog) catalog.set(key, { ...entry, stackUsage: stackUsage.get(key) });
   for (const [catalogPath, entry] of catalog) {
     const id = `resource:${catalogPath}`;
     entities[id] = { origin: `resources.${catalogPath}`, key: entry.key, value: entry.value };
@@ -221,6 +226,17 @@ export function buildSourceIndex(
     }
   }
 
+  let exportStacks: readonly ExportStackSource[] = [];
+  try {
+    exportStacks = readExportStacks(repositoryRoot);
+    for (const stack of exportStacks) {
+      const entry = [...catalog].find(([, item]) => item.stack?.className === stack.className);
+      const id = entry ? `resource:${entry[0]}` : `framework-stack:${stack.className}`;
+      entities[id] ??= { origin: stack.className, key: stack.location, value: stack.location };
+      catalogFacts[id] ??= { stackClass: stack.className, stackLocation: stack.location };
+    }
+  } catch (error) { problems.push(`Root environment export stacks could not be read: ${error instanceof Error ? error.message : String(error)}`); }
+
   let links: Record<string, SourceLocation[]> = {};
   try {
     links = Object.fromEntries(readLinkSites(repositoryRoot));
@@ -237,6 +253,7 @@ export function buildSourceIndex(
   return {
     index: { entities, editability, links, catalog: catalogFacts, problems, cdkLinks },
     catalog,
+    exportStacks,
     ...(located ? { located } : {}),
   };
 }

@@ -48,6 +48,17 @@ Its function, stack, VPC, workflow, container service/task, API route, agent, in
 parameter and secret options are placeholders until creation tools are implemented.
 Close the menu with its close button, Escape, or by clicking outside it.
 
+Stack plaques carry an unplug badge when the configured CDK app has no constructor
+reference for their class in its local runtime import graph. A lock badge marks the
+framework's configured database, its stack and the selected root `.env` export stacks.
+The export stacks are selected by the same public-output mapping used by the exporter;
+they are not a complete framework stack inventory. Their inspector outputs use styled
+`$` symbolic source values. The database member has its own RDS
+plaque on the subnet selected by its literal constructor options, connected to its
+owning stack by a derived containment relationship; other stack members
+remain represented by their stack. Database edges reach the RDS plaque. Catalog absence
+still ghosts RDS in Development, and both modes share identical geometry.
+
 ## Coordinates
 
 Screen y grows downward everywhere: terrain, buildings, edges, camera and picking share one

@@ -117,14 +117,14 @@ their existing active-input behavior; creating these files does not deploy or sw
 
 ## Synthesized infrastructure
 
-Open **Infrastructure** in the header, or **Inspect infrastructure** in a node or stack
-inspector. Choose Development or Production, optionally enter an AWS profile, then run
+Open **Infrastructure** in the header, or **Inspect stack infrastructure** in a catalog stack
+inspector. Choose Development or Production, then run
 **Synthesize**. Opening the panel, switching modes and editing source never synthesize
 automatically. Apply or discard a pending inspector draft first; synthesis reads saved source.
 
 This runs the app configured in `cdk-app/cdk.json` (`bin/cdk-app.ts`), so it includes
 application stacks and resources that have no `framework-config` declaration. Only
-resources that the selected configuration actually constructs appear. A node inspector
+resources that the selected configuration actually constructs appear. A stack inspector
 starts with an owner filter; **Show all infrastructure** clears that scope. No existing
 CloudFormation deployment is required.
 
@@ -134,13 +134,15 @@ owners. Resource details show logical IDs, construct paths, explicit ownership e
 owner declaration links and separate CloudFormation dependencies. Generated roles,
 policies and log groups stay in this panel rather than adding map nodes. Imported references
 are listed only where CDK explicitly identifies them; this is not deployed-resource discovery.
+The asynchronous Lambda, WebSocket Lambda and WebSocket API stacks are hidden from
+this browser because their declarations are managed through framework config. The
+database stack is labeled **Framework managed** and remains visible.
 
 Synthesis uses a private disposable copy of the selected mode's input file with matching mode/context,
 and an isolated assembly. It can bundle assets and perform normal CDK context lookups
-using the selected credentials. It never deploys, uploads secrets or changes the active
+using configured credentials. It never deploys, uploads secrets or changes the active
 inputs file. Production validation still applies: development-only inputs must be resolved
-before a production synthesis succeeds. A named AWS profile is optional, available under
-**AWS connection options**. Account/region resolution and uncached CDK context lookups
+before a production synthesis succeeds. Account/region resolution and uncached CDK context lookups
 can still need configured AWS credentials; generating templates does not deploy anything.
 
 Each mode retains its last successful inventory in the running Studio server. Source,
@@ -163,6 +165,21 @@ Search at the top of the map highlights matching names, services, paths, input k
 stack fields and network fixtures, fading nonmatches. Clicking a node or island temporarily
 shows its normal selection view; clearing the selection restores the retained search.
 Clearing the query restores the overview. The isometric map uses one graphite style.
+
+Catalog stacks without a constructor reference in the CDK app's runtime imports carry
+an unplug badge and **Not added to CDK app** in their inspector. This is source evidence:
+conditional constructors are references, and deployment status is not queried. Unreadable
+entry points or unresolved local imports leave usage unknown instead of marking stacks
+unused. The configured database and its stack carry a **Framework managed** lock badge.
+The Stacks island also includes the stack classes whose public `CfnOutput` declarations
+match the root `.env` export mapping: Cognito, development replay, frontend website,
+HTTP API, WebSocket API and RDS. Existing catalog identities are reused. Other managed
+stacks are omitted. Each inspector lists only mapped outputs, with a `$` symbolic source
+value and its destination environment variable; literals, dotenv values and deployed
+output values are never loaded into this projection. Complex expressions use an output-name
+token. Environment availability follows the framework lifecycle and WebSocket AWS lanes.
+The RDS database also appears on the VPC terrace selected by its literal `vpcSubnets`
+configuration (isolated in this app), with database connections reaching that node.
 
 The view follows the model:
 

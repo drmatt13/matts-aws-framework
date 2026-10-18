@@ -40,7 +40,10 @@ export function routeConnections(links: readonly LayoutLink[], obstacles: readon
     const direction = dx < 0 || dx === 0 && dy < 0 ? -1 : 1;
     const normal = { x: dy / length * direction, y: -dx / length * direction };
     const lift = 24 + length * 0.16 + lane;
-    const controls = [0, 80, 180, 320].map((extra) => ({ x: middle.x + normal.x * (lift + extra), y: middle.y + normal.y * (lift + extra) }));
+    // Nearby endpoints need a nearby detour. Retain the established candidates
+    // for long connections while smoothly reducing their extra bow on short ones.
+    const avoidanceScale = Math.min(1, (length / 800) ** 2);
+    const controls = [0, 80, 180, 320].map((extra) => ({ x: middle.x + normal.x * (lift + extra * avoidanceScale), y: middle.y + normal.y * (lift + extra * avoidanceScale) }));
     let best: readonly Point[] = [], score = Infinity;
     for (const control of controls) {
       const points = arcPoints(a, control, b, 8);

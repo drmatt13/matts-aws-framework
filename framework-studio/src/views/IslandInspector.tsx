@@ -4,6 +4,7 @@ import { editorLink } from "../lookup";
 import { buildScene } from "../scene/build";
 import { useStudio } from "../studio";
 import { BooleanField, FieldRow } from "./FieldRow";
+import { ResourceStatus } from "./ResourceStatus";
 
 const LAMBDAS = ["lambda", "http", "webSocket", "events", "tools"];
 const GROUPS: Readonly<Record<string, readonly string[]>> = {
@@ -16,7 +17,7 @@ const GROUPS: Readonly<Record<string, readonly string[]>> = {
 
 /** Island membership comes from the same layout as the canvas, never a second graph. */
 export function IslandInspector({ id }: { readonly id: string }) {
-  const { model, snapshot, select } = useStudio();
+  const { model, snapshot, select, index } = useStudio();
   const scene = useMemo(() => buildScene(model, {
     webSocketApi: snapshot.webSocketApi,
     resourceAvailability: catalogAvailability(snapshot.models),
@@ -45,6 +46,6 @@ export function IslandInspector({ id }: { readonly id: string }) {
       </div>)}</div>
       {source ? <a className="small" href={editorLink(snapshot.repositoryRoot, source)}>Open shared defaults in VS Code</a> : null}
     </section> : <section><h3>Settings</h3><p className="small">The framework has no shared defaults for this island. Select an entry below to configure it.</p></section>}
-    <section><h3>Island entries</h3><ul className="island-members">{members.map((node) => <li key={node.id}><button className="linkish" onClick={() => select(node.id)}>{node.label}</button><span className="small muted">{node.kindLabel}</span></li>)}</ul></section>
+    <section><h3>Island entries</h3><ul className="island-members">{members.map((node) => <li key={node.id}><button className="linkish" onClick={() => select(node.id)}>{node.label}</button><span className="small muted">{node.kindLabel}</span><ResourceStatus resource={index.resources.get(node.id)} /></li>)}</ul></section>
   </>;
 }

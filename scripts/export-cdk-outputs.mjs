@@ -16,37 +16,7 @@ const { contextFromArgs, deploymentInputsFile, resolveRepositoryTarget } = requi
 const { runAwsSync } = require("./aws-cli.ts");
 const { default: framework } = require("../framework.config.ts");
 
-const BASE_STACK_OUTPUT_MAPPINGS = {
-  CognitoStack: {
-    UserPoolId: "USER_POOL_ID",
-    UserPoolClientId: "USER_POOL_CLIENT_ID",
-    UserPoolDomainUrl: "COGNITO_DOMAIN_URL",
-    UserPoolDomainCloudFrontEndpoint: "COGNITO_DOMAIN_CLOUDFRONT_ENDPOINT",
-    OAuthProviderRedirectUri: "OAUTH_PROVIDER_REDIRECT_URI",
-  },
-  DevLambdaReplayStack: {
-    ReplayBucketName: "DEV_LAMBDA_REPLAY_BUCKET_NAME",
-    ReplayQueueUrl: "DEV_LAMBDA_REPLAY_QUEUE_URL",
-    ReplayQueueArn: "DEV_LAMBDA_REPLAY_QUEUE_ARN",
-  },
-  FrontendWebsiteS3Stack: {
-    FrontendWebsiteBucketName: "FRONTEND_WEBSITE_BUCKET_NAME",
-    CloudFrontUrl: "CLOUDFRONT_URL",
-    FrontendWebsiteUrl: "CLOUDFRONT_URL",
-    CloudFrontDomainName: "CLOUDFRONT_DOMAIN_NAME",
-    CloudFrontId: "CLOUDFRONT_ID",
-    FrontendDistributionId: "CLOUDFRONT_ID",
-  },
-  HttpApiGatewayStack: {
-    HttpApiUrl: "HTTP_API_URL",
-  },
-  WebSocketApiStack: {
-    WebSocketAPIEndpoint: "WEBSOCKET_API_URL",
-  },
-  RdsStack: {
-    RdsDatabaseEndpoint: "RDS_DATABASE_ENDPOINT",
-  },
-};
+const { ROOT_ENV_STACK_OUTPUTS: BASE_STACK_OUTPUT_MAPPINGS } = require("./root-env-outputs.ts");
 
 const BASE_STACK_NAME_ENV_NAMES = {
   CognitoStack: "COGNITO_STACK_NAME",

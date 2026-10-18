@@ -4,6 +4,7 @@ import type { InfrastructureInventory, InfrastructureResource } from "../../shar
 import { api, ApiError } from "../api";
 import { editorLink, titleOf } from "../lookup";
 import { useStudio } from "../studio";
+import { ResourceStatus } from "./ResourceStatus";
 
 export const InfrastructureNavigation = createContext<(owner?: string) => void>(() => {});
 
@@ -36,10 +37,9 @@ function ResourceDetails({ resource, inventory, navigate }: { resource: Infrastr
   </div>;
 }
 
-export function EntityInfrastructure({ id }: { id: string }) {
+export function StackInfrastructure({ id }: { id: string }) {
   const open = useContext(InfrastructureNavigation);
-  return <section><h3>Infrastructure</h3><p className="small muted">Inspect synthesized resources for this declaration and its stack. Synthesis is separate from deployment.</p>
-    <button className="button secondary" onClick={() => open(id)}>Inspect infrastructure</button></section>;
+  return <section><button className="button secondary" onClick={() => open(id)}>Inspect stack infrastructure</button></section>;
 }
 
 /** Same inventory and mode as node inspectors; this panel never creates map nodes or edits source. */
@@ -51,11 +51,18 @@ export function InfrastructurePanel({ initialOwner, onNavigate }: { initialOwner
   const [stack, setStack] = useState("");
   const [type, setType] = useState("");
   const [owner, setOwner] = useState(initialOwner ?? "");
-  const [profile, setProfile] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const state = query.data;
-  const inventory = state?.inventory;
+  const inventory = useMemo(() => {
+    if (!state?.inventory) return undefined;
+    const stacks = state.inventory.stacks.filter((item) => !/(?:^|-)(?:AsynchronousLambdaFunctionsStack|WebSocketLambdaFunctionsStack|WebSocketApiStack)$/i.test(item.name));
+    const stackIds = new Set(stacks.map((item) => item.id));
+    const resources = state.inventory.resources.filter((item) => stackIds.has(item.stack));
+    const resourceIds = new Set(resources.map((item) => item.id));
+    return { ...state.inventory, stacks, resources, dependencies: state.inventory.dependencies.filter((item) => resourceIds.has(item.from) && resourceIds.has(item.to)) };
+  }, [state?.inventory]);
+  const managedStack = (item: InfrastructureInventory["stacks"][number]) => item.owners.map((id) => index.resources.get(id)).find((resource) => resource?.frameworkManaged);
   const inputFile = index.resources.get(`envfile:${mode}`)?.deploymentFile?.synthesisSource ?? "cdk-app/.env";
   const ownerIds = useMemo(() => [...new Set([...(inventory?.resources.flatMap((resource) => resource.owners) ?? []), ...(inventory?.stacks.flatMap((stack) => stack.owners) ?? []), ...(initialOwner ? [initialOwner] : [])])].sort(), [inventory, initialOwner]);
   const visible = inventory?.resources.filter((resource) => {
@@ -66,7 +73,7 @@ export function InfrastructurePanel({ initialOwner, onNavigate }: { initialOwner
   }) ?? [];
   const synthesize = async () => {
     setPending(true); setError("");
-    try { client.setQueryData(["infrastructure", mode], await api.synthesize(mode, profile.trim() || undefined)); }
+    try { client.setQueryData(["infrastructure", mode], await api.synthesize(mode)); }
     catch (error) { setError(infrastructureError(error)); }
     finally { setPending(false); }
   };
@@ -74,7 +81,6 @@ export function InfrastructurePanel({ initialOwner, onNavigate }: { initialOwner
     <p>Infrastructure for <strong>{mode === "dev" ? "Development" : "Production"}</strong>. Lists resources synthesized by the full CDK app, including application CDK outside framework-config. Nothing needs to be deployed.</p>
     <div className="infrastructure-run"><button className="button" disabled={query.isPending || !!query.error || pending || state?.status === "running" || draft.dirty} onClick={() => void synthesize()}>{pending || state?.status === "running" ? "Synthesizing…" : `Synthesize ${mode === "dev" ? "development" : "production"}`}</button></div>
     <p className="small muted">Uses an isolated copy of {inputFile}. Creates templates and may bundle assets locally; it does not deploy or change the inputs file.</p>
-    <details><summary>AWS connection options (optional)</summary><p className="small muted">A named profile is not required. CDK can use configured credentials to resolve the target account or uncached context lookups.</p><label>AWS profile (optional)<input aria-label="Synthesis AWS profile" value={profile} placeholder="Use configured credentials" onChange={(event) => setProfile(event.target.value)} /></label></details>
     {draft.dirty ? <p role="status">Apply or discard the current draft before synthesizing saved source.</p> : null}
     {query.isPending ? <p>Loading inventory…</p> : null}
     {query.error ? <p role="alert">{infrastructureError(query.error)}</p> : null}
@@ -85,13 +91,14 @@ export function InfrastructurePanel({ initialOwner, onNavigate }: { initialOwner
     {inventory ? <>
       <label>Search infrastructure<input type="search" aria-label="Search infrastructure" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Resource type, logical ID, path or owner" /></label>
       <div className="infrastructure-filters">
-        <label>Stack<select aria-label="Infrastructure stack" value={stack} onChange={(event) => setStack(event.target.value)}><option value="">All stacks</option>{inventory.stacks.map((stack) => <option key={stack.id} value={stack.id}>{stack.name}</option>)}</select></label>
+        <label>Stack<select aria-label="Infrastructure stack" value={stack} onChange={(event) => setStack(event.target.value)}><option value="">All stacks</option>{inventory.stacks.map((stack) => <option key={stack.id} value={stack.id}>{stack.name}{managedStack(stack) ? " · Framework managed" : ""}</option>)}</select></label>
         <label>Logical owner<select aria-label="Infrastructure owner" value={owner} onChange={(event) => setOwner(event.target.value)}><option value="">All owners</option><option value="__unknown">Unknown owner</option>{ownerIds.map((id) => <option key={id} value={id}>{titleOf(index, id)}</option>)}</select></label>
         <label>Resource type<select aria-label="Infrastructure resource type" value={type} onChange={(event) => setType(event.target.value)}><option value="">All types</option>{[...new Set(inventory.resources.map((resource) => resource.type))].sort().map((type) => <option key={type}>{type}</option>)}</select></label>
       </div>
       <p role="status">{visible.length} of {inventory.resources.length} resources · {inventory.stacks.length} stacks</p>
       {owner && initialOwner === owner ? <p className="small">Filtered to {titleOf(index, owner)}. <button className="linkish" onClick={() => { setOwner(""); setStack(""); setType(""); setSearch(""); }}>Show all infrastructure</button></p> : null}
       {inventory.stacks.filter((item) => (!stack || item.id === stack) && visible.some((resource) => resource.stack === item.id)).map((stack) => <section key={stack.id} className="infrastructure-stack"><h3>{stack.name}</h3><p className="small muted">{stack.environment}</p>
+        <ResourceStatus resource={managedStack(stack)} />
         {visible.filter((resource) => resource.stack === stack.id).map((resource) => <details key={resource.id} className="infrastructure-resource"><summary><strong>{resource.logicalId ?? resource.constructPath}</strong><span className="small muted">{resource.type} · {classification[resource.classification]}</span></summary><ResourceDetails resource={resource} inventory={inventory} navigate={onNavigate} /></details>)}
       </section>)}
       {!visible.length ? <p>No matching resources. This declaration may run locally, be absent from this environment, or have no reliable ownership metadata.</p> : null}

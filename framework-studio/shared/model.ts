@@ -226,7 +226,7 @@ export type ResourceKind =
   | "group";
 
 export interface ModelResource {
-  /** `resource:cognito.userPool`: the catalog path, which is the identity. */
+  /** Catalog paths or `framework-stack:<Class>` for selected export-only stacks. */
   readonly id: string;
   readonly path: readonly string[];
   readonly kind: ResourceKind;
@@ -245,6 +245,16 @@ export interface ModelResource {
   readonly memberSource?: "class" | "usage" | "both";
   /** For a stack: the class it reads. */
   readonly stackClass?: string;
+  /** Source evidence only; this never queries CloudFormation deployment status. */
+  readonly stackUsage?: { readonly status: "referenced" | "unreferenced" | "unknown"; readonly sites: readonly SourceLocation[] };
+  /** The configured database/owner, or a public root-environment export stack. */
+  readonly frameworkManaged?: "database" | "outputs";
+  /** Public CfnOutput names and their root .env mappings, never resolved values. */
+  readonly stackOutputs?: readonly { readonly name: string; readonly envName: string; readonly symbol: string; readonly source: SourceLocation }[];
+  /** Framework stack projected from source rather than declared in the resource catalog. */
+  readonly frameworkStack?: boolean;
+  /** Literal subnet selection read from the stack member's constructor. */
+  readonly networkPlacement?: "public" | "private" | "isolated";
   readonly deploymentFile?: import("./deployment-inputs").DeploymentInputFile;
   /** Assignment metadata for this catalog declaration; never dotenv values. */
   readonly inputSources?: readonly { readonly file: string; readonly entry: import("./deployment-inputs").DeploymentInputEntry }[];
@@ -255,6 +265,8 @@ export interface ModelResource {
 // ---------------------------------------------------------------------------
 
 export type Relation =
+  /** A stack owns a resource shown independently on the map. */
+  | "contains"
   /** A route reaches its target. */
   | "routes"
   /** A WebSocket authorizer guards `$connect`. */

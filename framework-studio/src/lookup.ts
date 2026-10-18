@@ -69,6 +69,7 @@ export const CATEGORY_LABEL: Readonly<Record<EdgeCategory, string>> = {
 };
 
 export const RELATION_CATEGORY: Readonly<Record<Relation, EdgeCategory>> = {
+  contains: "cdk",
   routes: "routes",
   authorizes: "routes",
   env: "inputs",
@@ -87,6 +88,7 @@ export const RELATION_CATEGORY: Readonly<Record<Relation, EdgeCategory>> = {
 };
 
 export const RELATION_LABEL: Readonly<Record<Relation, string>> = {
+  contains: "Contains",
   routes: "Routes to",
   authorizes: "Authorizes",
   env: "Reads",

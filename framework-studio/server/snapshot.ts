@@ -9,6 +9,7 @@ import { buildSourceIndex, type BuiltSourceIndex } from "./source";
 import type { CatalogEntrySource } from "./source/catalog";
 import { readDeclaredSchema, readLocalDatabases, withLocalDatabases } from "./database";
 import { withDeploymentInputs } from "./deployment-inputs";
+import { withExportStacks } from "./source/export-stacks";
 
 /**
  * The studio's current understanding of the repository, rebuilt as a whole.
@@ -29,7 +30,7 @@ function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, Catalog
       const id = `resource:${catalogPath}.${member.name}`;
       const existing = index.get(id);
       if (existing !== undefined) {
-        resources[existing] = { ...resources[existing]!, typeText: member.typeText, memberSource: "both" };
+        resources[existing] = { ...resources[existing]!, typeText: member.typeText, memberSource: "both", networkPlacement: member.networkPlacement };
         continue;
       }
       index.set(id, resources.length);
@@ -41,12 +42,22 @@ function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, Catalog
         absent: stack?.absent === true,
         typeText: member.typeText,
         memberSource: "class",
+        networkPlacement: member.networkPlacement,
       });
     }
-    if (stack) resources[index.get(`resource:${catalogPath}`)!] = { ...stack, stackClass: entry.stack.className };
+    if (stack) resources[index.get(`resource:${catalogPath}`)!] = { ...stack, stackClass: entry.stack.className, stackUsage: entry.stackUsage };
   }
   const ids = new Set(resources.map((resource) => resource.id));
-  return { ...model, resources, edges: [...model.edges, ...cdkEdges.filter((edge) => ids.has(edge.from) && ids.has(edge.to))] };
+  const ownership = resources.filter((resource) => resource.frameworkManaged && resource.networkPlacement && resource.parent && ids.has(resource.parent)).map((resource): ModeModel["edges"][number] => ({
+    id: `contains:${resource.parent}->${resource.id}`,
+    relation: "contains",
+    from: resource.parent!,
+    to: resource.id,
+    provenance: "derived",
+    label: "Database in stack",
+    detail: "This stack declares the application's framework-managed database.",
+  }));
+  return { ...model, resources, edges: [...model.edges, ...ownership, ...cdkEdges.filter((edge) => ids.has(edge.from) && ids.has(edge.to))] };
 }
 
 export interface StudioState {
@@ -144,8 +155,8 @@ export class SnapshotBuilder {
       webSocketApi: settings.webSocketApi,
       repositoryRoot: this.repositoryRoot,
       models: {
-        dev: withDeploymentInputs(this.repositoryRoot, withLocalDatabases(dev.stale ? dev : withClassMembers(dev, built.catalog, built.index.cdkLinks.edges), localDatabase.services), { dev, prod }),
-        prod: withDeploymentInputs(this.repositoryRoot, withLocalDatabases(prod.stale ? prod : withClassMembers(prod, built.catalog, built.index.cdkLinks.edges), localDatabase.services), { dev, prod }),
+        dev: withDeploymentInputs(this.repositoryRoot, withLocalDatabases(dev.stale ? dev : withExportStacks(withClassMembers(dev, built.catalog, built.index.cdkLinks.edges), built.exportStacks), localDatabase.services), { dev, prod }),
+        prod: withDeploymentInputs(this.repositoryRoot, withLocalDatabases(prod.stale ? prod : withExportStacks(withClassMembers(prod, built.catalog, built.index.cdkLinks.edges), built.exportStacks), localDatabase.services), { dev, prod }),
       },
       source: built.index,
       files,

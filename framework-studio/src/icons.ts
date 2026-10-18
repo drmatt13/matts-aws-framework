@@ -14,6 +14,8 @@ export const ICONS = {
   workflow: ["aws/step-functions", "AWS Step Functions"],
   agent: ["aws/agentcore", "Amazon Bedrock AgentCore"],
   stack: ["aws/cloudformation", "AWS CloudFormation stack"],
+  unattached: ["generic/unplug", "Not added to CDK app"],
+  managed: ["generic/lock-keyhole", "Framework managed"],
   table: ["aws/dynamodb", "Amazon DynamoDB"],
   bucket: ["aws/s3", "Amazon S3"],
   queue: ["aws/sqs", "Amazon SQS"],
@@ -67,4 +69,10 @@ export function resourceIcon(resource: ModelResource): IconKey {
   if (/Secret/.test(type)) return "secret";
   if (type === "string") return "value";
   return "construct";
+}
+
+export function resourceBadge(resource: ModelResource): IconKey | undefined {
+  if (resource.stackUsage?.status === "unreferenced") return "unattached";
+  if (resource.frameworkManaged) return "managed";
+  return undefined;
 }

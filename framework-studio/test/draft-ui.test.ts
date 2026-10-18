@@ -99,6 +99,27 @@ const changeMemory = () => ui.fireEvent.change(memory(), { target: { value: "768
 const count = () => ui.screen.getByLabelText("Pending inspector changes").textContent!;
 const waitDialog = (name: string) => ui.waitFor(() => assert.equal(document.querySelector("dialog[open] h2")?.textContent, name));
 
+test("stack inspectors surface unattached status and the database's framework ownership in their headers", async () => {
+  await mount("resource:referenceExamples");
+  const panel = ui.screen.getByRole("complementary", { name: "Inspector" });
+  assert.ok(ui.within(panel.querySelector("header")!).getByText("Not added to CDK app"));
+  ui.cleanup();
+  await mount("resource:rds");
+  assert.ok(ui.within(ui.screen.getByRole("complementary", { name: "Inspector" }).querySelector("header")!).getByText("Framework managed · Database"));
+});
+
+test("an exported framework stack shows symbolic CfnOutputs and root env names without generic infrastructure controls", async () => {
+  await mount("framework-stack:DevLambdaReplayStack");
+  assert.ok(ui.screen.getByRole("heading", { name: "DevLambdaReplayStack" }));
+  assert.ok(ui.screen.getByText("Framework managed · Environment exports"));
+  assert.ok(ui.screen.getByRole("heading", { name: "CloudFormation outputs" }));
+  assert.ok(ui.screen.getByText((_text, element) => element?.tagName === "CODE" && element.textContent === "$queue.queueArn"));
+  assert.ok(ui.screen.getByText("DEV_LAMBDA_REPLAY_QUEUE_ARN", { selector: "code" }));
+  assert.equal(ui.screen.queryByText("ReplayDeadLetterQueueUrl"), null);
+  assert.equal(ui.screen.queryByRole("button", { name: "Inspect stack infrastructure" }), null);
+  assert.equal(ui.screen.queryByRole("heading", { name: "Infrastructure" }), null);
+});
+
 test("required flags stage quietly and the connection inspector guides missing values into the file draft", async () => {
   const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv)!;
   const requirement = { resource: resource.id, name: resource.fromEnv!, mode: "dev" as const, file: "cdk-app/.env.dev", required: true, status: "missing" as const, reasons: ["Marked required in the resource declaration."] };

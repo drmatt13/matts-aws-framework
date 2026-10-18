@@ -117,9 +117,9 @@ test("island highlights omit shared tile and wall edges", () => {
 // The scene, from the real repository
 // ---------------------------------------------------------------------------
 
-test("every route, target and top-level catalog entry stands exactly once, with stack fields in the inspector", () => {
+test("every route, target, catalog entry and managed database stands exactly once", () => {
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
-    const expected = [...model.routes.map((route) => route.id), ...model.targets.map((target) => target.ref), ...model.resources.filter((resource) => resource.kind !== "member").map((resource) => resource.id), ...(model.localServices ?? []).map((service) => service.id)].sort();
+    const expected = [...model.routes.map((route) => route.id), ...model.targets.map((target) => target.ref), ...model.resources.filter((resource) => resource.kind !== "member" || (resource.frameworkManaged && resource.networkPlacement)).map((resource) => resource.id), ...(model.localServices ?? []).map((service) => service.id)].sort();
     assert.deepEqual(scene.nodes.map((node) => node.id).sort(), expected);
     const cells = new Set(scene.nodes.map((node) => `${node.gx},${node.gy}`));
     assert.equal(cells.size, scene.nodes.length, "two buildings share a cell");
@@ -659,7 +659,33 @@ test("stack fields stay in the model and use their stack as the visible edge end
   }
 });
 
-test("catalog stacks share one island while keeping their own availability and inspector identities", () => {
+test("stack constructor evidence produces an unattached badge, while the managed database sits in isolated subnets", () => {
+  const node = (scene: Scene, id: string) => scene.nodes.find((item) => item.id === id)!;
+  for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
+    const example = model.resources.find((resource) => resource.id === "resource:referenceExamples")!;
+    assert.equal(example.stackUsage?.status, "unreferenced");
+    assert.equal(node(scene, example.id).roleIcon, "unattached");
+    assert.equal(model.resources.find((resource) => resource.id === "resource:cognito")?.stackUsage?.status, "referenced");
+    const database = node(scene, "resource:rds.database");
+    assert.equal(database.island, "island:vpc");
+    assert.equal(database.band, "band:isolated");
+    assert.equal(database.icon, "database");
+    assert.equal(database.roleIcon, "managed");
+    assert.equal(database.presence, model.mode === "dev" ? "absent" : "present");
+    assert.equal(node(scene, "resource:rds").roleIcon, "managed");
+    assert.equal(scene.representatives[database.id], undefined);
+    const ownership = scene.edges.find((edge) => edge.edge.relation === "contains" && edge.edge.to === database.id);
+    assert.ok(ownership);
+    assert.equal(ownership.from, "resource:rds");
+    assert.equal(ownership.to, database.id);
+    assert.ok(scene.routes[ownership.edge.id]?.points.length);
+    const bindings = scene.edges.filter((edge) => edge.edge.relation === "database" && edge.edge.to === database.id);
+    if (model.mode === "prod") assert.ok(bindings.length > 0);
+    for (const edge of bindings) assert.equal(edge.to, database.id);
+  }
+});
+
+test("catalog and selected output stacks share one island while keeping their availability and inspector identities", () => {
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
     const stacks = model.resources.filter((resource) => resource.kind === "stack");
     assert.ok(stacks.length > 1);
@@ -671,6 +697,7 @@ test("catalog stacks share one island while keeping their own availability and i
       const node = scene.nodes.find((node) => node.id === stack.id)!;
       assert.equal(node.presence, stack.absent ? "absent" : "present");
       assert.equal(node.label, stack.stackClass ?? stack.path.join("."));
+      if (stack.frameworkManaged) assert.equal(node.roleIcon, "managed");
     }
   }
 });

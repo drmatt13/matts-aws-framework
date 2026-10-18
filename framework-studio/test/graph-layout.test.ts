@@ -126,9 +126,36 @@ test("connections keep a visible bow for short, long, diagonal and vertical endp
   }
 });
 
+test("nearby connections retain compact arcs even when crossings or obstacles favor a larger detour", () => {
+  for (const [x, y] of [[30, 0], [200, 0], [250, 200], [0, 320]]) {
+    const from = { id: "a", island: "left", x: 0, y: 0 }, to = { id: "b", island: "right", x: x!, y: y! };
+    const chord = Math.hypot(to.x, to.y);
+    const obstacle = { id: "middle", bounds: { minX: -400, maxX: 400, minY: -300, maxY: 300 } };
+    const links = Array.from({ length: 7 }, (_, at) => ({ id: `wire-${at}`, from, to, weight: 2, category: "permissions" }));
+    for (const route of Object.values(routeConnections(links, [obstacle]))) {
+      const bow = Math.max(...route.points.map((p) => Math.abs(to.x * p.y - to.y * p.x) / chord));
+      assert.ok(bow >= 12, "the shared visible bow is preserved");
+      assert.ok(bow <= Math.max(30, chord * 0.35), `short connection stays compact: ${bow} for ${chord}`);
+      assert.deepEqual(route.points[0], { x: from.x, y: from.y });
+      assert.deepEqual(route.points.at(-1), { x: to.x, y: to.y });
+    }
+  }
+});
+
 let builder: SnapshotBuilder, snapshot: Snapshot;
 before(async () => { builder = new SnapshotBuilder(path.resolve(__dirname, "../..")); snapshot = (await builder.refresh()).snapshot; });
 after(() => builder.dispose());
+test("the real migration-to-RDS connection stays proportional to its nearby endpoints", () => {
+  for (const model of Object.values(snapshot.models)) {
+    const scene = buildScene(model, { layoutModels: Object.values(snapshot.models) });
+    const edge = scene.edges.find((item) => item.edge.from === "task:db-migrate" && item.edge.to === "resource:rds.database");
+    assert.ok(edge);
+    const points = scene.routes[edge.edge.id]!.points, a = points[0]!, b = points.at(-1)!;
+    const dx = b.x - a.x, dy = b.y - a.y, chord = Math.hypot(dx, dy);
+    const bow = Math.max(...points.map((point) => Math.abs(dx * (point.y - a.y) - dy * (point.x - a.x)) / chord));
+    assert.ok(bow <= chord * 0.25, `migration-to-RDS arc is too tall: ${bow} across ${chord}`);
+  }
+});
 test("real development and production graphs improve actual full-resolution wires against the previous layout", () => {
   for (const model of Object.values(snapshot.models)) {
     const options = { layoutModels: Object.values(snapshot.models) };

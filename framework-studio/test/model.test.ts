@@ -10,6 +10,7 @@ import { projectModel } from "../server/model/project";
 import { SnapshotBuilder, type StudioState } from "../server/snapshot";
 import { fieldEditability, SourceFiles } from "../server/source";
 import { locateConfigSource } from "../../packages/framework/scripts/config-source";
+import { ROOT_ENV_STACK_OUTPUTS } from "../../scripts/root-env-outputs";
 
 /**
  * The model is the framework's answers, reshaped. These tests hold it to the
@@ -28,6 +29,23 @@ before(async () => {
   snapshot = state.snapshot;
 });
 after(() => builder.dispose());
+
+test("managed output stacks match the root exporter, reuse catalog ids, and carry only public symbolic outputs", () => {
+  for (const model of Object.values(snapshot.models)) {
+    const stacks = model.resources.filter((item) => item.kind === "stack" && item.stackOutputs?.length);
+    assert.deepEqual(stacks.map((item) => item.stackClass).sort(), Object.keys(ROOT_ENV_STACK_OUTPUTS).sort());
+    assert.equal(stacks.find((item) => item.stackClass === "CognitoStack")?.id, "resource:cognito");
+    assert.equal(stacks.find((item) => item.stackClass === "RdsStack")?.id, "resource:rds");
+    assert.equal(stacks.find((item) => item.stackClass === "DevLambdaReplayStack")?.absent, model.mode !== "dev");
+    assert.equal(stacks.find((item) => item.stackClass === "FrontendWebsiteS3Stack")?.absent, model.mode !== "prod");
+    assert.equal(stacks.find((item) => item.stackClass === "HttpApiGatewayStack")?.absent, model.mode !== "prod");
+    const webSocketBuilt = model.targets.some((target) => (target.role === "webSocket" || target.role === "webSocketAuthorizer") && (model.mode === "dev" ? target.lanes.dev : target.lanes.prod));
+    assert.equal(stacks.find((item) => item.stackClass === "WebSocketApiStack")?.absent, !webSocketBuilt);
+    assert.ok(stacks.every((item) => item.frameworkManaged && snapshot.source.entities[item.id]?.key));
+    assert.ok(!model.resources.some((item) => item.stackClass === "AsynchronousLambdaFunctionsStack" || item.stackClass === "EcsTasksStack"));
+    assert.ok(!stacks.flatMap((item) => item.stackOutputs!).some((output) => output.name === "ReplayDeadLetterQueueUrl" || output.name === "FrontendWebsiteBucketArn"));
+  }
+});
 
 test("both modes of the real repository evaluate without a diagnostic", () => {
   for (const mode of ["dev", "prod"] as const) {

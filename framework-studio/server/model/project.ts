@@ -318,7 +318,7 @@ function catalogModel(config: FrameworkConfig, readPaths: readonly (readonly str
   // A stack's members exist only in its class, so the members listed here are
   // the ones something reads. The server adds the rest from the class source.
   const known = new Set(resources.map((resource) => resource.id));
-  for (const path of readPaths) {
+  for (const path of [...readPaths, ...(config.database ? [config.database.path] : [])]) {
     const [stack, member] = path;
     if (stack === undefined || member === undefined || !stacks.has(stack)) continue;
     const id = resourceId([stack, member]);
@@ -332,6 +332,13 @@ function catalogModel(config: FrameworkConfig, readPaths: readonly (readonly str
       absent: stacks.get(stack) === true,
       memberSource: "usage",
     });
+  }
+  if (config.database) {
+    const database = resourceId(config.database.path);
+    const owner = resourceId(config.database.path.slice(0, -1));
+    for (let index = 0; index < resources.length; index++) {
+      if (resources[index]!.id === database || resources[index]!.id === owner) resources[index] = { ...resources[index]!, frameworkManaged: "database" };
+    }
   }
   return resources;
 }

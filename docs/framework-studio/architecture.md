@@ -175,6 +175,26 @@ relevant groups; the canvas still derives membership and geometry from `buildSce
 Workflows, stacks and inputs have no shared framework default group and expose their
 individual entries instead.
 
+Catalog stack usage is separate from catalog presence. `source/stack-usage.ts` follows
+local runtime imports from the entry point named by `cdk-app/cdk.json`, resolving direct,
+aliased, default and namespace constructor references and local barrel exports. It skips
+type-only imports and never executes constructors or conditions. Missing imports or an
+unsupported entry point leave unreferenced usage unknown. Constructor sites are source
+evidence, not live deployment status. The database named by the evaluated config marks
+itself and its owning stack as framework managed. A literal member constructor's subnet
+selection is read alongside its public fields; this places the RDS member in the VPC
+without adding a second logical entity.
+
+`source/export-stacks.ts` reads the public stack-output mapping shared with the root
+environment exporter in `scripts/root-env-outputs.ts`. Only matching `CfnOutput`
+declarations in these stack classes are projected. The snapshot retains output names,
+destination variable names, source locations and safe identifier paths; literals,
+templates, calls and resolved values never enter it. Complex values use the output name
+as a symbolic token. Existing catalog nodes are reused; other selected classes get stable
+`framework-stack:<Class>` identities and lock badges. These nodes use the declared
+framework stack lifecycle, with WebSocket availability taken from actual model AWS lanes.
+Their inspectors expose outputs without adding generic infrastructure controls.
+
 Default edits use the existing plan, preflight, atomic write, confirmation and journal.
 The locator follows the root `defaults` object into its authored module. Field paths
 include the service group, so absent groups can be inserted without reprinting the file.
@@ -386,9 +406,13 @@ run. Errors retain the last successful inventory, timestamp and configuration. A
 restart clears inventory history; this milestone does not persist raw assemblies.
 
 `src/views/Infrastructure.tsx` is a single drawer shared by the header and existing
-inspectors. It filters by stack, logical owner and resource type, supports text search,
+stack inspectors. Workload, route, input, member and island inspectors omit this action.
+It filters by stack, logical owner and resource type, supports text search,
 and navigates back through Studio's guarded logical selection. A catalog stack owner
 matches its entire stack collection, including resources with unknown individual owners.
+The asynchronous Lambda and WebSocket handler/API stacks are omitted from the browse
+view; the underlying synthesis inventory remains complete. RDS remains visible with a
+framework-managed label. Synthesis has no profile-entry control in Studio.
 No generated infrastructure nodes are added to the map. Synthesis is disabled while an
 inspector draft is dirty and never starts from view/mode changes. Deployment Inputs,
 creation wizards and deployment comparisons remain subsequent milestones.
