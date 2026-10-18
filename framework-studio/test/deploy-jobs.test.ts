@@ -141,3 +141,16 @@ test("in-process steps share the job's log and can skip with a reason", async ()
     assert.ok(jobs.log(job.id).lines.some((line) => line.text === "Apply skipped: Review needed: production"));
   } finally { await jobs.dispose(); rmSync(directory, { recursive: true, force: true }); }
 });
+
+test("an exclusive job (installing dependencies) runs alone, whichever starts first", async () => {
+  const directory = scratch();
+  const jobs = new JobManager({ directory, emit: () => {} });
+  try {
+    const deploy = jobs.start({ kind: "deploy-apply", title: "Apply", params: {}, locks: ["deployment:a"], steps: [{ label: "Wait", command: () => node("setTimeout(() => {}, 800)") }] });
+    assert.throws(() => jobs.start({ kind: "deps-install", title: "Install dependencies", params: {}, locks: ["deps"], exclusive: true, steps: [] }), (error: Error & { status?: number }) => error.status === 409 && /Apply is still running/.test(error.message));
+    await jobs.wait(deploy.id);
+    const install = jobs.start({ kind: "deps-install", title: "Install dependencies", params: {}, locks: ["deps"], exclusive: true, steps: [{ label: "Wait", command: () => node("setTimeout(() => {}, 800)") }] });
+    assert.throws(() => jobs.start({ kind: "export", title: "Export", params: {}, locks: ["exports"], steps: [] }), (error: Error & { status?: number }) => error.status === 409 && /Install dependencies is still running/.test(error.message));
+    await jobs.wait(install.id);
+  } finally { await jobs.dispose(); rmSync(directory, { recursive: true, force: true }); }
+});

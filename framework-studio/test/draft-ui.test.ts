@@ -99,6 +99,38 @@ const changeMemory = () => ui.fireEvent.change(memory(), { target: { value: "768
 const count = () => ui.screen.getByLabelText("Pending inspector changes").textContent!;
 const waitDialog = (name: string) => ui.waitFor(() => assert.equal(document.querySelector("dialog[open] h2")?.textContent, name));
 
+test("required flags stage quietly and the connection inspector guides missing values into the file draft", async () => {
+  const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv)!;
+  const requirement = { resource: resource.id, name: resource.fromEnv!, mode: "dev" as const, file: "cdk-app/.env.dev", required: true, status: "missing" as const, reasons: ["Marked required in the resource declaration."] };
+  const fileResource = baseline.models.dev.resources.find((item) => item.id === "envfile:dev")!;
+  const entry = { name: resource.fromEnv!, status: "missing" as const, sensitive: false, defaulted: false, targets: [resource.id], requirements: [requirement] };
+  const edge = { id: "required-fixture", from: "envfile:dev", to: resource.id, relation: "supplies" as const, provenance: "source" as const, label: resource.fromEnv!, inputRequirement: requirement };
+  persisted = { ...baseline, models: { ...baseline.models, dev: { ...baseline.models.dev,
+    resources: baseline.models.dev.resources.map((item) => item.id === resource.id ? { ...item, required: true, default: undefined, inputRequirement: requirement } : item.id === fileResource.id ? { ...item, deploymentFile: { ...fileResource.deploymentFile!, exists: true, entries: [entry] } } : item), edges: [...baseline.models.dev.edges, edge] } } };
+  mock.method(apiModule.api, "inputDetails", async () => ({ file: "cdk-app/.env.dev", hash: "fixture", entries: [] }));
+  await mount(edge.id);
+  assert.ok(ui.screen.getByText("Required value missing"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Edit .env.dev" }));
+  await ui.screen.findByRole("heading", { name: ".env.dev" });
+  assert.ok(ui.screen.getByRole("heading", { name: "Required inputs (1)" }));
+  const set = await ui.screen.findByRole("button", { name: `Set ${resource.fromEnv}` });
+  await ui.waitFor(() => assert.equal((set as HTMLButtonElement).disabled, false));
+  ui.fireEvent.click(set);
+  assert.ok(ui.screen.getByText(/A blank value will not satisfy this requirement/));
+  assert.equal(planCalls.length + resourceCalls.length, 0, "guided editing does not force review");
+});
+
+test("the catalog-wide required checkbox participates in the unified resource draft", async () => {
+  const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv)!;
+  await mount(resource.id);
+  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Required input" }));
+  assert.equal(resourceCalls.length, 0);
+  assert.match(count(), /1 unsaved change/);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await ui.waitFor(() => assert.equal(resourceCalls.length, 1));
+  assert.equal((resourceCalls[0] as { required: boolean }).required, true);
+});
+
 test("actual switches stage immediately, five controls share one review, and Apply All commits once", async () => {
   await mount();
   ui.fireEvent.click(ui.screen.getByRole("switch", { name: "API user-pool authorizer" }));

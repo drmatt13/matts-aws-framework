@@ -355,9 +355,9 @@ export interface EnvStringBuilder<
  * copies it into Secrets Manager and supplies the ARN — never the value, which
  * reaches no template and no generated file.
  *
- * Always optional at the catalog: whether a deployment actually needs it is a
- * question about the workloads that read it, answered by `cloud.requirements`
- * on each of them. A key one service needs for one model provider must not
+ * Optional by default: `.required()` adds a requirement to every consumer;
+ * conditional needs belong in `cloud.requirements` on each workload.
+ * A key one service needs for one model provider must not
  * block a deployment that chose another, or that does not build the service.
  */
 export interface EnvSecretBuilder<FromEnv extends string>

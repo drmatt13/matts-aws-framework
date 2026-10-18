@@ -21,6 +21,7 @@ export function ConnectionView({ edge }: { edge: ModelEdge }) {
   return <>
     <header><span className="kind">{requirement ? "Input connection" : "Connection"}</span><h2>{edge.label}</h2><p className="small muted">{titleOf(index, edge.from)} → {titleOf(index, edge.to)}</p></header>
     <section><RequirementNotice requirement={requirement} />
+      {requirement && !requirement.required ? <p className="small muted">Optional in this environment.{requirement.status === "default" ? " A parameter default supplies it." : requirement.status === "configured" ? " An environment value is configured." : ""}</p> : null}
       {requirement ? <>
         <h3>{requirement.status === "missing" ? "Resolve this requirement" : "Manage this input"}</h3>
         <p>Set a non-blank value in <code>{requirement.file}</code>{resource?.kind === "secret" ? ". Secret values stay in the local environment file and never belong in a source-code default." : ", or define a default on the parameter."}</p>

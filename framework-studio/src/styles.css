@@ -1311,3 +1311,8 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .input-requirement.missing > strong { color: #ff929b; }
 .input-requirement p { margin: 5px 0; }
 
+
+.edge.missing { stroke: #ff5f6d; opacity: .95; }
+.missing-connection { pointer-events: all; cursor: pointer; }
+.missing-connection:focus circle { stroke-width: 3px; }
+

@@ -135,6 +135,7 @@ test("operations are validated before anything runs", async () => {
   assert.match((await post<{ error: string }>("/operations", { kind: "deploy-plan", params: { deployment: "my-aws-app-prod", profile: "dev", autoApply: true } })).body.error, /applied only after its review/);
   assert.equal((await post("/operations", { kind: "destroy", params: { deployment: "alex-dev", mode: "dev", profile: "dev", confirm: "alex" } })).status, 428);
   assert.equal((await post("/operations", { kind: "rm -rf", params: {} })).status, 404);
+  for (const kind of ["constructor", "toString", "__proto__"]) assert.equal((await post("/operations", { kind, params: {} })).status, 404, kind);
   assert.equal((await post("/operations", { kind: "local-start", params: { deployment: "my-aws-app-prod", profile: "dev" } })).status, 400);
 });
 
@@ -176,6 +177,24 @@ test("a production plan waits for review, and applying it needs the typed name",
   const discarded = await operate("deploy-discard", { plan: plan.key, profile: "dev" });
   assert.equal(discarded.status, "succeeded", logOf(discarded));
   assert.equal((await get(`/plans/${plan.key}`)).status, 404);
+});
+
+test("a production plan that fails part-way stays listed, unfinished, until it is discarded", async () => {
+  account.write({ ...account.read(), fakeCdk: { failPrepare: ["my-aws-app-prod-NetworkStack"] } });
+  try {
+    const job = await operate("deploy-plan", { deployment: "my-aws-app-prod", profile: "dev" });
+    assert.equal(job.status, "failed");
+    const plans = (await get<{ key: string; status: string }[]>("/plans")).body;
+    const unfinished = plans.find((plan) => plan.key === job.planId);
+    assert.equal(unfinished?.status, "unfinished", "what it prepared in AWS is not forgotten");
+    assert.ok(account.read().regions[REGION].stacks.some((stack: any) => stack.StackStatus === "REVIEW_IN_PROGRESS"));
+    const discarded = await operate("deploy-discard", { plan: job.planId, profile: "dev" });
+    assert.equal(discarded.status, "succeeded", logOf(discarded));
+    assert.equal((await get<{ key: string }[]>("/plans")).body.some((plan) => plan.key === job.planId), false);
+    assert.equal(account.read().regions[REGION].stacks.some((stack: any) => stack.StackStatus === "REVIEW_IN_PROGRESS"), false, "the empty stacks it created are gone");
+  } finally {
+    account.write({ ...account.read(), fakeCdk: {} });
+  }
 });
 
 test("starting development needs Docker, starts the stack detached, then watches it; stopping stops all of it", async () => {

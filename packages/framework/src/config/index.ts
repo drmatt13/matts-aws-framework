@@ -1722,7 +1722,11 @@ export function resolveTargetSettings(
         [...((cloud as CloudTargetSettings).requirements ?? []),
           ...[...Object.values(environment), ...Object.values(secrets)]
             .filter((value): value is ResourceReference => isResourceReference(value) && value.required === true)
-            .map((reference) => ({ require: [reference] }))],
+            .map((reference) => {
+              if (!reference.secretArn) return { require: [reference] };
+              const { secretArn: _projection, ...secret } = reference;
+              return { require: [{ ...secret, kind: "secret" as const }] };
+            })],
         origin,
       ),
       outputs,

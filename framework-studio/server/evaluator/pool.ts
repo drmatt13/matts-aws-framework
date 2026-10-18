@@ -45,6 +45,7 @@ class Evaluator {
         env: {
           ...process.env,
           FRAMEWORK_INPUTS_FILE: writeModeInputs(repositoryRoot, mode),
+          FRAMEWORK_MODE: mode,
           STUDIO_MODE: mode,
           STUDIO_WEBSOCKET_API: webSocketApi ? "true" : "false",
           STUDIO_REPOSITORY_ROOT: repositoryRoot,

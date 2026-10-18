@@ -68,7 +68,20 @@ export class PlanStore {
     };
   }
 
-  list(): PlanSummary[] {
+  /** A plan that stopped part-way: what it had prepared in AWS, recorded by deploy:resources as it went. */
+  unfinished(key: string): { readonly planId: string; readonly createdAt: string; readonly identity: PlanView["identity"]; readonly profile?: string } | undefined {
+    const file = path.join(this.path(key), "preparing.json");
+    if (existsSync(path.join(this.path(key), "plan.json")) || !existsSync(file)) return undefined;
+    try {
+      const record = JSON.parse(readFileSync(file, "utf8"));
+      return { planId: record.planId, createdAt: record.createdAt, identity: record.identity, ...(record.profile ? { profile: record.profile } : {}) };
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Every plan. `active` names plans a running job is still writing, which are never cleared away. */
+  list(active: (key: string) => boolean = () => false): PlanSummary[] {
     if (!existsSync(this.directory)) return [];
     const summaries: PlanSummary[] = [];
     for (const key of readdirSync(this.directory)) {
@@ -76,8 +89,13 @@ export class PlanStore {
       try {
         const plan = this.read(key);
         if (!plan) {
-          // Planning failed or was cancelled before plan.json: an hour later it is litter.
-          if (Date.now() - statSync(this.path(key)).mtimeMs > 60 * 60 * 1000) rmSync(this.path(key), { recursive: true, force: true });
+          const stopped = this.unfinished(key);
+          if (stopped && !active(key)) {
+            summaries.push({ key, deployment: stopped.identity.deployment, mode: stopped.identity.mode, status: "unfinished", createdAt: stopped.createdAt, expired: false });
+          } else if (!stopped && !active(key) && Date.now() - statSync(this.path(key)).mtimeMs > 60 * 60 * 1000) {
+            // Planning failed before preparing anything in AWS: an hour later it is litter.
+            rmSync(this.path(key), { recursive: true, force: true });
+          }
           continue;
         }
         summaries.push({
@@ -91,8 +109,9 @@ export class PlanStore {
     return summaries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }
 
-  /** Removes a plan directory deploy:resources did not finish (no plan.json). */
+  /** Removes a plan directory deploy:resources did not finish, unless it prepared something in AWS that discarding must remove. */
   removeUnfinished(key: string): void {
-    if (!existsSync(path.join(this.path(key), "plan.json"))) rmSync(this.path(key), { recursive: true, force: true });
+    const directory = this.path(key);
+    if (!existsSync(path.join(directory, "plan.json")) && !existsSync(path.join(directory, "preparing.json"))) rmSync(directory, { recursive: true, force: true });
   }
 }

@@ -112,6 +112,12 @@ if (command === "deploy") {
         existing = { StackName: stack.name, StackId: `arn:aws:cloudformation:${stack.region}:${stack.account}:stack/${stack.name}/${Date.now()}`, StackStatus: "REVIEW_IN_PROGRESS", CreationTime: now, ChangeSets: [], Tags: Object.entries(stack.tags).map(([Key, Value]) => ({ Key, Value })) };
         account.stacks.push(existing);
       }
+      if (state.fakeCdk?.failPrepare?.includes(stack.name)) {
+        // CloudFormation keeps the stack it created to hold the change set, awaiting review.
+        save(state);
+        process.stderr.write(`❌ ${stack.name} failed: simulated change set failure\n`);
+        process.exit(1);
+      }
       const changes = changesOf(existing.Template, stack.template);
       existing.ChangeSets = [...(existing.ChangeSets ?? []).filter((set) => set.ChangeSetName !== name), changes.length
         ? { ChangeSetName: name, ChangeSetId: `arn:changeset/${name}/${stack.name}`, Status: "CREATE_COMPLETE", ExecutionStatus: "AVAILABLE", Changes: changes, CreationTime: now }

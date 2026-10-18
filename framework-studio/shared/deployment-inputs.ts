@@ -10,6 +10,7 @@ export interface InputRequirement {
   readonly required: boolean;
   readonly status: "configured" | "default" | "missing" | "optional" | "unknown";
   readonly reasons: readonly string[];
+  readonly consumers?: readonly string[];
 }
 
 export interface DeploymentInputEntry {

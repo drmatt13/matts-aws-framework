@@ -16,6 +16,11 @@ let page: typeof import("../src/views/Deploy");
 const clients: import("@tanstack/react-query").QueryClient[] = [];
 let answers: Record<string, unknown>;
 let posted: { path: string; body: any }[];
+const requested: string[] = [];
+const sources: { listeners: Map<string, ((event: { data: string }) => void)[]> }[] = [];
+function emit(name: string, data: unknown) {
+  for (const source of sources) for (const listener of source.listeners.get(name) ?? []) listener({ data: JSON.stringify(data) });
+}
 
 const context = { profile: "dev", account: "734849394764", region: "us-east-1", arn: "arn:aws:sts::734849394764:assumed-role/Dev/matthew" };
 const stack = (name: string, deployment: string, mode: "dev" | "prod") => ({ name, status: "UPDATE_COMPLETE", health: "complete" as const, evidence: "tags" as const, identity: { deployment, mode, contract: 2 as const } });
@@ -52,7 +57,13 @@ before(async () => {
   const { JSDOM } = require("jsdom");
   dom = new JSDOM("<!doctype html><html><head><meta name=\"studio-token\" content=\"t\"></head><body></body></html>", { url: "http://localhost/", pretendToBeVisual: true });
   for (const name of ["window", "self", "document", "navigator", "HTMLElement", "Node", "MutationObserver", "getComputedStyle"] as const) Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] });
-  Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} close() {} } });
+  // The studio's event stream, which a test can speak through: emit(event, data).
+  Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class {
+    readonly listeners = new Map<string, ((event: { data: string }) => void)[]>();
+    constructor() { sources.push(this); }
+    addEventListener(name: string, listener: (event: { data: string }) => void) { this.listeners.set(name, [...(this.listeners.get(name) ?? []), listener]); }
+    close() { sources.splice(sources.indexOf(this), 1); }
+  } });
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   Object.defineProperty(globalThis, "fetch", {
@@ -60,6 +71,7 @@ before(async () => {
     value: async (input: string, init?: { method?: string; body?: string }) => {
       const url = new URL(input, "http://localhost");
       const path = url.pathname.replace(/^\/api/, "");
+      requested.push(`${path}${url.search}`);
       if (init?.method === "POST") {
         const body = init.body ? JSON.parse(init.body) : {};
         posted.push({ path, body });
@@ -149,4 +161,50 @@ test("deleting shows what AWS holds and what stays, and needs the typed name", a
   ui.fireEvent.change(ui.screen.getByLabelText("Type my-aws-app to delete it"), { target: { value: "my-aws-app" } });
   ui.fireEvent.click(remove);
   await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "destroy", params: { deployment: "my-aws-app", mode: "dev", profile: "dev", confirm: "my-aws-app" } }));
+});
+
+test("a plan job finishing while another plan is under review does not replace it", async () => {
+  const plan = (key: string, stackName: string): PlanView => ({
+    key, planId: `plan-${key}`, createdAt: "2026-10-17T12:00:00Z", expiresAt: "2099-01-01T00:00:00Z", expired: false, status: "ready", review: "change-set", profile: "dev",
+    identity: { deployment: "my-aws-app-prod", mode: "prod", account: context.account, region: context.region }, guard: "ready",
+    stacks: [{ name: `my-aws-app-prod-${stackName}`, fingerprint: { exists: true }, changes: [{ logicalId: "Thing", type: "AWS::SQS::Queue", action: "modify", replacement: "False", stateful: false }], exportsInUse: [], noChanges: false }],
+    secrets: [], dockerImages: [], iamBroadening: false, confirmation: { level: "click", reasons: [] }, uncertainties: [],
+  });
+  const reviewed: PlanSummaryView = { key: "my-aws-app-prod-yyyyyy", deployment: "my-aws-app-prod", mode: "prod", status: "ready", createdAt: "2026-10-17T12:00:00Z", expired: false };
+  render({
+    "/deploy/overview": overview({ preferences: { profiles: {}, profile: "dev", deployment: "my-aws-app-prod" } }),
+    "/deploy/discover": { ok: true, value: discovery([deployed("my-aws-app-prod", "prod")]) },
+    "/deploy/status": { ok: true, value: { ...discovery([deployed("my-aws-app-prod", "prod")]), deployment: "my-aws-app-prod" } },
+    "/deploy/plans": [reviewed],
+    [`/deploy/plans/${reviewed.key}`]: plan(reviewed.key, "CognitoStack"),
+    "/deploy/plans/my-aws-app-prod-xxxxxx": plan("my-aws-app-prod-xxxxxx", "RdsStack"),
+  });
+  // A second plan is started from this page; then the waiting one is opened for review.
+  const planItem = await ui.screen.findByRole("menuitem", { name: "Plan changes for review…" }, { timeout: 3000 });
+  await ui.waitFor(() => assert.equal((planItem as HTMLButtonElement).disabled, false), { timeout: 3000 });
+  ui.fireEvent.click(planItem);
+  await ui.waitFor(() => assert.equal(operations().length, 1));
+  const started = `job-${posted.findIndex((entry) => entry.path === "/deploy/operations") + 1}`;
+  ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }));
+  const review = () => ui.within(document.querySelector("dialog.plan-review") as HTMLElement);
+  await ui.waitFor(() => assert.ok(review().queryByText("CognitoStack")));
+  // The second plan finishes while the first is under review.
+  ui.act(() => emit("deploy-job", { id: started, kind: "deploy-plan", title: "Plan my-aws-app-prod", params: {}, status: "succeeded", startedAt: "2026-10-17T12:00:00Z", endedAt: "2026-10-17T12:01:00Z", lastSeq: 3, planId: "my-aws-app-prod-xxxxxx", deployment: "my-aws-app-prod", steps: [{ label: "Plan", status: "done" }] }));
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.ok(review().queryByText("CognitoStack"), "the plan under review stays");
+  assert.equal(review().queryByText("RdsStack"), null, "the other plan does not take its place");
+});
+
+test("a target pinned to another region is read, and shown, from that region", async () => {
+  const west = { ...context, region: "us-west-2" };
+  const westDeployment: DiscoveredDeploymentView = { ...deployed("my-aws-app", "dev"), region: "us-west-2" };
+  const westDiscovery: DiscoveryView = { ...discovery([westDeployment]), context: west, targets: [{ name: "my-aws-app", mode: "dev", origin: "personal", region: "us-west-2", status: "deployed" }] };
+  render({
+    "/deploy/overview": overview({ targets: [{ name: "my-aws-app", mode: "dev", origin: "personal", region: "us-west-2" }] }),
+    "/deploy/discover": { ok: true, value: { ...discovery(), targets: [{ name: "my-aws-app", mode: "dev", origin: "personal", region: "us-west-2", status: "elsewhere", detail: "Pinned elsewhere." }] } },
+    "/deploy/status": { ok: true, value: { ...westDiscovery, deployment: "my-aws-app", detail: { ...westDeployment, events: [], changeSets: [], local: { compatible: true, exported: { client: false, fresh: false } } } } },
+  });
+  assert.ok(await ui.screen.findByText("Deployed · 1 stack", {}, { timeout: 3000 }));
+  assert.equal(ui.screen.queryByText("Not deployed here"), null);
+  assert.ok(requested.some((url) => url.startsWith("/deploy/status") && url.includes("region=us-west-2")), requested.join(" "));
 });

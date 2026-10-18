@@ -68,6 +68,8 @@ export function Deploy() {
   // status are read side by side: status carries a full discovery too, so the
   // page shows whichever answers first.
   const selectedName = selected ?? overview?.targets[0]?.name;
+  // A target pinned to a region is read from that region, as deploying it would use.
+  const selectedRegion = overview?.targets.find((target) => target.name === selectedName)?.region;
   const discoveryQuery = useQuery({
     queryKey: ["deploy", "discover", profile],
     queryFn: () => deployApi.discover(profile!),
@@ -77,8 +79,8 @@ export function Deploy() {
   });
   const busySelected = Boolean(runningFor(selectedName));
   const statusQuery = useQuery({
-    queryKey: ["deploy", "status", profile, selectedName],
-    queryFn: () => deployApi.status(profile!, selectedName!),
+    queryKey: ["deploy", "status", profile, selectedName, selectedRegion],
+    queryFn: () => deployApi.status(profile!, selectedName!, false, selectedRegion),
     enabled: Boolean(profile && selectedName),
     staleTime: 3_000,
     refetchInterval: (query) => {
@@ -92,7 +94,11 @@ export function Deploy() {
 
   const rows: RailRow[] = useMemo(() => {
     const targets = overview?.targets ?? [];
-    const repository = targets.map((target): RailRow => ({
+    // The selected target as its own status read it (its pinned region); the others as discovery saw them.
+    const repository = targets.map((target): RailRow => (status && target.name === status.deployment ? {
+      name: target.name, mode: target.mode, section: "repository", target,
+      match: status.targets.find((entry) => entry.name === target.name), deployment: status.detail,
+    } : {
       name: target.name, mode: target.mode, section: "repository", target,
       match: discovery?.targets.find((entry) => entry.name === target.name),
       deployment: discovery?.deployments.find((entry) => entry.name === target.name),
@@ -100,7 +106,7 @@ export function Deploy() {
     const others = (discovery?.deployments ?? []).filter((entry) => !targets.some((target) => target.name === entry.name))
       .map((deployment): RailRow => ({ name: deployment.name, mode: deployment.mode, section: "discovered", deployment }));
     return [...repository, ...others];
-  }, [overview?.targets, discovery]);
+  }, [overview?.targets, discovery, status]);
   const row = rows.find((entry) => entry.name === selectedName) ?? rows[0];
   const plansQuery = useQuery({ queryKey: ["deploy", "plans"], queryFn: () => deployApi.plans() });
   const driftQuery = useQuery({ queryKey: ["deploy", "drift", row?.name], queryFn: () => deployApi.drift(row!.name), enabled: Boolean(row) });
@@ -113,7 +119,8 @@ export function Deploy() {
       if (then && job.status === "succeeded") then();
       if (startedHere.current.has(job.id) && job.status === "succeeded" && job.kind === "deploy-plan" && job.planId) {
         const applied = job.params.autoApply && job.steps?.[1]?.status === "done";
-        if (!applied) setReviewKey(job.planId);
+        // Opened for review, unless another plan is already being reviewed: never swapped under the reader.
+        if (!applied) setReviewKey((current) => current ?? job.planId);
       }
       if (startedHere.current.has(job.id) && job.status === "failed") toast(`${job.title} failed: ${job.summary ?? "see Activity"}`);
       if (startedHere.current.has(job.id) && job.status === "succeeded" && job.summary && job.summary !== "Done." && job.kind !== "deploy-plan") toast(job.summary, "info");
@@ -139,15 +146,17 @@ export function Deploy() {
   const refreshAll = () => {
     void deployApi.overview(true).then((value) => queryClient.setQueryData(["deploy", "overview"], value)).catch(() => {});
     if (profile) void deployApi.discover(profile, true).then((value) => queryClient.setQueryData(["deploy", "discover", profile], value)).catch(() => {});
-    if (profile && row) void deployApi.status(profile, row.name, true).then((value) => queryClient.setQueryData(["deploy", "status", profile, row.name], value)).catch(() => {});
+    if (profile && row) void deployApi.status(profile, row.name, true, row.target?.region).then((value) => queryClient.setQueryData(["deploy", "status", profile, row.name, row.target?.region], value)).catch(() => {});
     void queryClient.invalidateQueries({ queryKey: ["deploy", "plans"] });
   };
 
   // Until AWS has answered (or refused), nothing is said about what it holds.
   const awsKnown = Boolean(discovery || problem);
   const findings = useMemo(() => (row && overview && awsKnown ? deploymentFindings({
-    name: row.name, target: row.target, match: row.match, deployment: status?.detail ?? row.deployment, detail: status?.detail,
-    context: discovery?.context, profile, problem,
+    // The selected deployment as its own status read it (in its pinned region), else as discovery saw it.
+    name: row.name, target: row.target, match: status ? status.targets.find((entry) => entry.name === row.name) : row.match,
+    deployment: status ? status.detail : row.deployment, detail: status?.detail,
+    context: status?.context ?? discovery?.context, profile, problem,
     profileKind: overview.profiles.find((entry) => entry.name === profile)?.kind,
     local: overview.local, plans: plansQuery.data ?? [], jobs,
   }) : []), [row, overview, awsKnown, status, discovery, profile, problem, plansQuery.data, jobs]);
@@ -221,7 +230,7 @@ export function Deploy() {
           {row ? (
             <Detail
               row={row}
-              context={discovery?.context}
+              context={status?.context ?? discovery?.context}
               problem={problem}
               status={status}
               statusLoading={statusQuery.isPending || discoveryQuery.isPending}
@@ -250,6 +259,7 @@ export function Deploy() {
       />
       {reviewKey ? (
         <PlanReview
+          key={reviewKey}
           planKey={reviewKey}
           busy={reviewBusy}
           onClose={() => setReviewKey(undefined)}

@@ -101,6 +101,25 @@ test("a production change-set review needs the typed name, and a stale plan is r
   } finally { account.dispose(); }
 });
 
+test("a change-set plan that fails part-way can still be discarded: what it prepared is recorded as it goes", () => {
+  const { account, prodInputs, deploy } = setup({ fakeCdk: { failPrepare: ["my-aws-app-prod-NetworkStack"] } });
+  const planDirectory = path.join(account.directory, "failed-plan");
+  try {
+    const planned = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--all", "-c", "prodDeployment=true", "--profile", "dev", "--plan", planDirectory);
+    assert.notEqual(planned.status, 0);
+    assert.equal(existsSync(path.join(planDirectory, "plan.json")), false, "no plan was finished");
+    const preparing = JSON.parse(readFileSync(path.join(planDirectory, "preparing.json"), "utf8"));
+    assert.deepEqual(preparing.stacks.map((stack: any) => stack.name), ["my-aws-app-prod-FrontendWebsiteS3Stack", "my-aws-app-prod-NetworkStack"]);
+    const before = account.read().regions[REGION].stacks;
+    assert.ok(before.some((stack: any) => stack.StackName === "my-aws-app-prod-FrontendWebsiteS3Stack" && stack.ChangeSets?.length), "the first stack's change set exists");
+
+    const discarded = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--discard", planDirectory, "--profile", "dev");
+    assert.equal(discarded.status, 0, discarded.output);
+    assert.ok(account.read().regions[REGION].stacks.every((stack: any) => stack.StackStatus === "DELETE_COMPLETE"), "the empty stacks it created are removed");
+    assert.equal(existsSync(planDirectory), false);
+  } finally { account.dispose(); }
+});
+
 test("discarding a change-set plan removes its change sets and the empty stacks it created", () => {
   const { account, prodInputs, deploy } = setup();
   const planDirectory = path.join(account.directory, "discard-plan");

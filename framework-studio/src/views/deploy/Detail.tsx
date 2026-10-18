@@ -61,7 +61,8 @@ export function Detail(props: {
   readonly onServiceLogs: (service: string) => void;
 }) {
   const { row, context, status, record, local } = props;
-  const deployment = status?.detail ?? row.deployment;
+  // Once status has answered (from the deployment's own region), it is the authority, even when it found nothing.
+  const deployment = status ? status.detail : row.deployment;
   const exists = Boolean(deployment && deployment.state.kind !== "absent");
   const origin = row.target?.origin === "declared" ? "Declared in cdk-app/cdk.json" : row.target?.origin === "personal" ? "Your development deployment" : row.target ? "Named target" : "Discovered in this account";
   const contracts = deployment?.contracts.length ? deployment.contracts.map((value) => `contract ${value}`).join(" + ") : undefined;

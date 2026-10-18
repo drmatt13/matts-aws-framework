@@ -1,6 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import type { AwsProblem, AwsProfileInfo, DiscoveryView, DriftView, StatusView, TeardownPlanView } from "../../shared/deploy";
-import { lineSplitter, start, stopTree, studioEnvironment, type Runner, type Tools } from "./process";
+import { lineSplitter, start, stopTree, studioEnvironment, tethered, type Runner, type Tools } from "./process";
 
 /**
  * What AWS holds, read only through the repository's own commands:
@@ -92,7 +92,8 @@ export class AwsObserver {
   watch(profile: string, deployment: string, region: string | undefined, onLine: (line: WatchLine) => void): { stop(): void } {
     const spec = this.tools.script(STATUS_SCRIPT, ["watch", "--deployment", deployment, "--profile", profile, ...(region ? ["--region", region] : []), "--follow", "--json", "--interval", this.baseEnv.FRAMEWORK_POLL_MS ?? "3000"], studioEnvironment(this.baseEnv, { profile }));
     let child: ChildProcess;
-    try { child = start(spec); } catch { return { stop() {} }; }
+    // Tethered: a watch never keeps polling AWS after Studio is gone.
+    try { child = start(tethered(spec)); } catch { return { stop() {} }; }
     this.watches.add(child);
     const lines = lineSplitter((line) => {
       try {

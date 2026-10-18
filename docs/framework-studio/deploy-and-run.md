@@ -508,6 +508,13 @@ own guards stay in the scripts.
   deletion.
 - Secret values never reach Studio: plans, logs and events carry names only (tested with a
   sentinel value through a full deploy).
+- A change-set plan records each change set before preparing it (`preparing.json` in the
+  plan directory). If planning fails or is cancelled part-way, `--discard` still removes
+  what it prepared, and Studio lists the plan as unfinished with Discard as its only action.
+- A target pinned to a region is read from that region, as deploying it would use; a plan
+  under review is never replaced by another that finishes meanwhile; installing
+  dependencies runs alone; a verified development apply holds the exports lock, since it
+  rewrites this machine's settings.
 
 ### Local processes and restarts
 

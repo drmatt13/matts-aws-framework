@@ -56,7 +56,7 @@ export function deployRouter(service: DeployService): express.Router {
     return service.teardown(await service.requireProfile(request.query.profile), deployment(request.query.deployment), mode, region(request.query.region));
   }));
 
-  router.get("/plans", (_request, response) => send(response, () => service.plans.list()));
+  router.get("/plans", (_request, response) => send(response, () => service.listPlans()));
   router.get("/plans/:key", (request, response) => send(response, () => {
     const plan = service.plans.read(String(request.params.key));
     if (!plan) throw new OperationError(404, "That plan no longer exists.");

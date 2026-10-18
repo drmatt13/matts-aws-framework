@@ -52,19 +52,21 @@ export function Board() {
   const neighbours = useMemo(() => {
     if (!selected) return undefined;
     const ids = new Set([selected]);
+    const connection = model.edges.find((edge) => edge.id === selected);
+    if (connection) { ids.add(connection.from); ids.add(connection.to); }
     for (const edge of index.edges.get(selected) ?? []) {
       ids.add(edge.from);
       ids.add(edge.to);
     }
     return ids;
-  }, [index, selected]);
+  }, [index, model.edges, selected]);
 
   if (model.targets.length === 0) {
     return <p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p>;
   }
 
   const visible = layout.edges.filter((edge) => shown.has(edge.category));
-  const lit = (edge: (typeof visible)[number]) => selected !== undefined && (edge.edge.from === selected || edge.edge.to === selected);
+  const lit = (edge: (typeof visible)[number]) => selected !== undefined && (edge.edge.id === selected || edge.edge.from === selected || edge.edge.to === selected);
 
   return (
     <>
@@ -92,7 +94,7 @@ export function Board() {
         <DeploymentLegend />
       </div>
       <div className="board" style={{ width: layout.width + 120, height: layout.height }} onClick={() => select(undefined)}>
-        <svg className="edges" width={layout.width + 120} height={layout.height} aria-hidden>
+        <svg className="edges" width={layout.width + 120} height={layout.height} aria-label="Resource connections">
           <defs>
             <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M 0 0 L 8 4 L 0 8 z" fill="currentColor" />
@@ -104,17 +106,22 @@ export function Board() {
               <path
                 key={edge.edge.id}
                 d={edge.path}
-                className={`edge ${edge.edge.provenance !== "declared" ? "derived" : ""} ${selected ? "faded" : ""}`}
+                className={`edge ${edge.edge.inputRequirement?.status === "missing" ? "missing" : ""} ${edge.edge.provenance !== "declared" ? "derived" : ""} ${selected ? "faded" : ""}`}
               />
             ))}
           {visible.filter(lit).map((edge) => (
             <g key={edge.edge.id} style={{ color: "var(--ink)" }}>
-              <path d={edge.path} className={`edge lit ${edge.edge.provenance !== "declared" ? "derived" : ""}`} markerEnd="url(#arrow)" />
+              <path d={edge.path} className={`edge lit ${edge.edge.inputRequirement?.status === "missing" ? "missing" : ""} ${edge.edge.provenance !== "declared" ? "derived" : ""}`} markerEnd="url(#arrow)" />
               <text className="edge-label" x={edge.label.x} y={edge.label.y - 4} textAnchor="middle">
                 {edge.edge.label}
               </text>
             </g>
           ))}
+          {visible.filter(({ edge }) => edge.inputRequirement?.status === "missing").map(({ edge, path, label }) => <g key={`missing:${edge.id}`} role="button" tabIndex={0} aria-label={`Resolve required ${edge.label} in .env.${edge.inputRequirement!.mode}`} className="missing-connection" onClick={(event) => { event.stopPropagation(); select(edge.id); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(edge.id); } }}>
+            <path d={path} fill="none" stroke="transparent" strokeWidth={14} style={{ pointerEvents: "stroke" }} />
+            <circle cx={label.x} cy={label.y} r={9} fill="var(--paper)" stroke="#ff5f6d" />
+            <path d={`M ${label.x - 3} ${label.y - 3} l 6 6 m -6 0 l 6 -6`} stroke="#ff5f6d" strokeWidth={2} />
+          </g>)}
         </svg>
         {layout.titles.map((title) => (
           <span

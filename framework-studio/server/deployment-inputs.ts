@@ -88,11 +88,14 @@ export function withDeploymentInputs(root: string, model: ModeModel, models?: Re
           const line = locations.get(name);
           const source: SourceLocation | undefined = line ? { file, line, column: 1, start: 0, end: 0 } : undefined;
           return { name, status: value === undefined ? "missing" as const : value.trim() === "" ? "empty" as const : "configured" as const,
-            sensitive: targets.some((target) => target.kind === "secret") || sensitiveName(name), defaulted: !value?.trim() && targets.some((target) => target.default !== undefined),
+            sensitive: targets.some((target) => target.kind === "secret") || sensitiveName(name), defaulted: !effectiveValues[name]?.trim() && targets.some((target) => target.default !== undefined),
             targets: targets.map((target) => target.id), requirements: targets.flatMap((target) => requirements.get(target.id) ? [requirements.get(target.id)!] : []), ...(source ? { source } : {}) };
         }) };
     } catch {
-      return { mode, path: file, example: deploymentInputExample(mode), exists: false, synthesisSource: file, entries: [], problem: `Could not read ${file}. Check that it is a regular local dotenv file.` };
+      const requirements = inputRequirements(models?.[mode] ?? model, {}, mode, file, false);
+      return { mode, path: file, example: deploymentInputExample(mode), exists: false, synthesisSource: file,
+        entries: [...expected].map(([name, targets]) => ({ name, status: "missing" as const, sensitive: targets.some((target) => target.kind === "secret") || sensitiveName(name), defaulted: false, targets: targets.map((target) => target.id), requirements: targets.flatMap((target) => requirements.get(target.id) ? [requirements.get(target.id)!] : []) })),
+        problem: `Could not read ${file}. Check that it is a regular local dotenv file.` };
     }
   });
   const resources: ModelResource[] = catalog.map((resource) => resource.fromEnv ? { ...resource,
@@ -104,5 +107,14 @@ export function withDeploymentInputs(root: string, model: ModeModel, models?: Re
     inputRequirement: entry.requirements?.find((item) => item.resource === to),
     label: entry.name, source: entry.source, detail: `${file.path}: ${entry.status}${entry.defaulted ? "; declaration default applies" : ""}. Required links can represent an unfilled input; values are excluded.`,
   }))));
-  return { ...model, resources, edges: [...model.edges.filter((edge) => edge.relation !== "supplies"), ...edges] };
+  const byResource = new Map(resources.map((resource) => [resource.id, resource]));
+  const reads = model.edges.filter((edge) => edge.relation !== "supplies").map((edge) => {
+    if (edge.relation !== "env" && edge.relation !== "secret") return edge;
+    const { inputRequirement: _previous, ...plain } = edge;
+    const resource = byResource.get(edge.to) ?? byResource.get(edge.from);
+    const requirement = resource?.inputRequirement;
+    const consumer = edge.to === resource?.id ? edge.from : edge.to;
+    return requirement?.status === "missing" && (resource?.required || requirement.consumers?.includes(consumer)) ? { ...plain, inputRequirement: requirement } : plain;
+  });
+  return { ...model, resources, edges: [...reads, ...edges] };
 }

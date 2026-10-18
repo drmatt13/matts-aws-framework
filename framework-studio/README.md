@@ -77,6 +77,18 @@ never enter evaluator processes.
 missing entries stay visible in the inspector without pretending to supply a value.
 Catalog identities are reused, preserving their workload and secret-consumer links.
 
+**Required input** in a parameter or secret inspector stages a catalog `.required()`
+flag through the normal review/apply flow. Existing conditional and per-workload
+requirements are also evaluated. Missing or whitespace-only effective values create a
+red connection with an X, including when the variable has no assignment yet. Select the
+connection to see the environment, why it is required, and actions to edit the environment
+file or parameter default. Parameters can use non-blank declaration defaults; secrets
+must be supplied in the local environment file and never get source-code defaults.
+File inspectors summarize required inputs and offer **Set NAME** actions. Requirements
+are checked against each mode's selected file, including the legacy `.env` fallback;
+example values are references only. Unknown reads are reported separately from missing
+values. The graph carries presence and requirement metadata, never authored values.
+
 Selecting a file opens an editor for all of that file's variables, including settings
 such as `PGADMIN_HOST_PORT` that have no catalog declaration. Edit multiple values or
 add variables, then **Review Changes** and **Apply All**, or discard the draft. Navigation

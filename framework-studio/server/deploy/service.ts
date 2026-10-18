@@ -135,6 +135,12 @@ export class DeployService {
     return this.observer.teardown(profile, deployment, mode, region);
   }
 
+  /** Plans, with any a running job is still writing kept out of the clean-up. */
+  listPlans() {
+    const active = new Set(this.jobs.running().map((job) => job.planId).filter((key): key is string => Boolean(key)));
+    return this.plans.list((key) => active.has(key));
+  }
+
   driftReport(deployment: string): DriftView | null {
     return this.drift.get(deployment) ?? null;
   }

@@ -110,7 +110,9 @@ export function deploymentFindings(input: FindingsInput): Finding[] {
     return findings;
   }
   if (input.match?.status === "elsewhere") {
-    findings.push({ code: "ELSEWHERE", severity: "info", scope: "aws", title: "Deployed elsewhere", detail: input.match.detail, actions: [] });
+    // What this region holds says nothing about the account or region the target is pinned to.
+    findings.push({ code: "ELSEWHERE", severity: "info", scope: "aws", title: "Pinned to another account or region", detail: input.match.detail, actions: [] });
+    return findings;
   }
 
   const deployLabel = (exists: boolean) => (mode === "dev" ? (exists ? "Update development" : "Deploy development") : exists ? "Plan changes" : "Plan production deployment");
@@ -119,7 +121,13 @@ export function deploymentFindings(input: FindingsInput): Finding[] {
   // Reviewed plans come first: one was made to be applied (unless it is being applied now).
   const ours = input.plans.filter((entry) => entry.deployment === name);
   for (const plan of ours.filter((entry) => !entry.applied && entry.key !== running?.planId)) {
-    if (plan.expired) {
+    if (plan.status === "unfinished") {
+      findings.push({
+        code: "PLAN_UNFINISHED", severity: "attention", scope: "aws", title: "A plan stopped part-way",
+        detail: "It had prepared change sets (and may have created empty stacks to hold them) before it stopped. Discard it to remove them.",
+        actions: [cloud({ id: "discard-plan", label: "Discard", plan: plan.key, tone: "primary" })],
+      });
+    } else if (plan.expired) {
       findings.push({ code: "PLAN_EXPIRED", severity: "info", scope: "aws", title: "An expired plan", detail: "Discarding it removes any change sets it prepared.", actions: [cloud({ id: "discard-plan", label: "Discard", plan: plan.key, tone: "quiet" })] });
     } else if (plan.status !== "no-changes") {
       findings.push({

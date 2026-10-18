@@ -329,6 +329,10 @@ async function plan(wrapper: Wrapper): Promise<void> {
       }
       const deferred = new Set<string>();
       const created = new Set(reviewed.filter((item) => !item.fingerprint.exists).map((item) => item.entry.id));
+      // Written before each change set is prepared: a plan that stops part-way
+      // (a failure, Ctrl+C, a killed process) can still be discarded.
+      const preparing = { version: PLAN_VERSION, planId, createdAt: new Date().toISOString(), identity: graph.identity, ...(prepared.profile ? { profile: prepared.profile } : {}), stacks: [] as { name: string; createdByPlan: boolean }[] };
+      const recordPreparing = () => writeFileSync(resolve(directory, "preparing.json"), `${JSON.stringify(preparing, null, 2)}\n`);
       for (const { entry, fingerprint, changes, exportsInUse } of reviewed) {
         // Imports resolve when a change set is created, so a stack that imports
         // from one this plan creates (or defers) can only be planned after it runs.
@@ -344,6 +348,8 @@ async function plan(wrapper: Wrapper): Promise<void> {
           continue;
         }
         const parameters = graph.requirements.filter((requirement) => requirement.stack === entry.name).map((requirement) => `${entry.name}:${requirement.parameter}=${arns[requirement.name]}`);
+        preparing.stacks.push({ name: entry.name, createdByPlan: !fingerprint.exists });
+        recordPreparing();
         await run(cdk, ["deploy", "--app", assembly, entry.name, "--exclusively", "--method", "prepare-change-set", "--change-set-name", planId, "--require-approval", "never", ...parameters.flatMap((value) => ["--parameters", value])], cdkDirectory);
         const set = describeChangeSet(aws, entry.name, planId);
         if (set.noChanges) {
@@ -380,6 +386,7 @@ async function plan(wrapper: Wrapper): Promise<void> {
       assemblyDigest: digestOf(prepared.stacks),
     };
     writeFileSync(resolve(directory, "plan.json"), `${JSON.stringify(document, null, 2)}\n`);
+    rmSync(resolve(directory, "preparing.json"), { force: true });
     console.log(`Plan ${planId} for ${graph.identity.deployment} (${graph.identity.mode}, ${graph.identity.account}/${graph.identity.region}): ${status}.`);
     for (const stack of stacks) {
       const counts = ["add", "modify", "remove"].map((action) => `${stack.changes.filter((change) => change.action === action).length} ${action}`).join(", ");
@@ -472,12 +479,28 @@ async function apply(wrapper: Wrapper): Promise<void> {
   }
 }
 
+/** What a plan directory prepared in AWS: from plan.json, or from the record of a plan that stopped part-way. */
+function preparedByPlan(directory: string): { planId: string; region: string; profile?: string; stacks: { name: string; createdByPlan: boolean }[] } {
+  if (existsSync(resolve(directory, "plan.json"))) {
+    const document = readPlan(directory);
+    return {
+      planId: document.planId, region: document.identity.region, ...(document.profile ? { profile: document.profile } : {}),
+      stacks: document.stacks.filter((entry) => entry.changeSet && !entry.changeSet.noChanges).map((entry) => ({ name: entry.name, createdByPlan: Boolean(entry.createdByPlan) })),
+    };
+  }
+  const file = resolve(directory, "preparing.json");
+  if (!existsSync(file)) throw new Error(`${directory} holds no plan.`);
+  const unfinished = JSON.parse(readFileSync(file, "utf8"));
+  if (unfinished.version !== PLAN_VERSION) throw new Error(`${directory} holds a plan from another version of this tool.`);
+  return { planId: unfinished.planId, region: unfinished.identity.region, ...(unfinished.profile ? { profile: unfinished.profile } : {}), stacks: unfinished.stacks };
+}
+
 async function discard(wrapper: Wrapper): Promise<void> {
   const directory = resolve(wrapper.discard!);
-  const document = readPlan(directory);
+  const document = preparedByPlan(directory);
   const profile = deploymentArguments(wrapper.rest).profile ?? document.profile;
-  const aws: AwsTarget = { region: document.identity.region, ...(profile ? { profile } : {}) };
-  for (const stack of document.stacks.filter((entry) => entry.changeSet && !entry.changeSet.noChanges)) {
+  const aws: AwsTarget = { region: document.region, ...(profile ? { profile } : {}) };
+  for (const stack of document.stacks) {
     try { runAwsSync(["cloudformation", "delete-change-set", "--stack-name", stack.name, "--change-set-name", document.planId], aws); console.log(`Deleted change set ${document.planId} on ${stack.name}.`); }
     catch { /* Already executed, expired or removed. */ }
     if (stack.createdByPlan && describeStack(aws, stack.name)?.StackStatus === "REVIEW_IN_PROGRESS") {

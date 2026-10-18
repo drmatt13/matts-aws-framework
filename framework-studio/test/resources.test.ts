@@ -134,9 +134,28 @@ test("a concurrent edit expires a preview without overwriting it", async () => {
 });
 
 test("resource API rejects malformed policies and secret values never enter any preview", () => {
+  assert.throws(() => readResourceIntent({ intent: { ...intent(), required: "yes" } }));
   assert.throws(() => readResourceIntent({ intent: { ...intent(), requirements: { bad: "unknown" } } }));
   assert.deepEqual(readResourceIntent({ intent: intent() }), intent());
   assert.ok(existsSync(path.join(fixture, "cdk-app/.env")));
+});
+
+test("catalog required flags persist through review and can be removed without rewriting consumers", async () => {
+  for (const resource of ["resource:setting", "resource:key"]) {
+    const secret = resource === "resource:key";
+    const change = intent({ resource, kind: secret ? "secret" : "input", default: secret ? null : "initial", required: true });
+    const plan = await service.plan(change, revision(), "dev");
+    assert.equal(plan.ok, true, JSON.stringify(plan.diagnostics));
+    assert.equal(readFileSync(catalog, "utf8"), original, "review does not write");
+    await service.apply(plan.planId);
+    assert.equal(builder.current!.snapshot.models.dev.resources.find((item) => item.id === resource)?.required, true);
+    assert.ok(builder.current!.snapshot.models.dev.targets.some((target) => target.requirementRules?.some((rule) => !rule.when && rule.require.includes(resource))));
+    const remove = await service.plan({ ...change, required: false }, revision(), "dev");
+    assert.equal(remove.ok, true);
+    await service.apply(remove.planId);
+    assert.equal(readFileSync(catalog, "utf8"), original);
+    assert.equal(readFileSync(route, "utf8"), http);
+  }
 });
 
 test("a secret flag can be changed when consumers support the new kind", async () => {

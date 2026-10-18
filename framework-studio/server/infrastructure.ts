@@ -87,7 +87,7 @@ export class InfrastructureService {
       await this.run({ repositoryRoot: this.root, outputDirectory: path.join(directory, "assembly"), context: inputs.context,
         environment: { FRAMEWORK_INPUTS_FILE: inputs.file, ...(profile || values.AWS_PROFILE ? { AWS_PROFILE: profile || values.AWS_PROFILE } : {}),
           // A parent shell must not make the deployment resolver disagree with the isolated catalog.
-          PROD_DEPLOYMENT: mode === "prod" ? "true" : "false" }, profile: profile || values.AWS_PROFILE });
+          PROD_DEPLOYMENT: mode === "prod" ? "true" : "false", FRAMEWORK_MODE: mode }, profile: profile || values.AWS_PROFILE });
       const inventory = inspectInfrastructureAssembly(path.join(directory, "assembly"));
       if (snapshot) for (const resource of inventory.resources) {
         if (resource.owners.length !== 1) continue;

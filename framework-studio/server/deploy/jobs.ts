@@ -40,6 +40,8 @@ export interface JobSpec {
   readonly planId?: string;
   readonly locks: readonly string[];
   readonly steps: readonly JobStep[];
+  /** Runs alone: refused while any job runs, and refuses any job while it runs (npm install replaces programs others use). */
+  readonly exclusive?: boolean;
   /** Said in the log when the job is cancelled: what stopping the process does not stop. */
   readonly cancelNote?: string;
   /** Called once the job has ended, whatever the outcome. */
@@ -161,7 +163,16 @@ export class JobManager {
     return job.settled;
   }
 
+  /** Every job running now, however many there are. */
+  running(): JobView[] {
+    return [...this.jobs.values()].filter((job) => job.view.status === "running").map((job) => job.view);
+  }
+
   start(spec: JobSpec): JobView {
+    const running = [...this.jobs.values()].filter((job) => job.view.status === "running");
+    const exclusive = running.find((job) => job.spec?.exclusive);
+    if (exclusive) throw new JobError(409, `${exclusive.view.title} is still running. Wait for it to finish.`);
+    if (spec.exclusive && running.length) throw new JobError(409, `${running[0]!.view.title} is still running. Installing replaces programs it uses; wait for it to finish, or stop it.`);
     for (const lock of spec.locks) {
       const holder = this.holder(lock);
       if (holder) throw new JobError(409, `${holder.title} is still running. Wait for it to finish, or cancel it.`);

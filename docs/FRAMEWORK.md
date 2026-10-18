@@ -297,6 +297,14 @@ Catalog inputs are optional until a workload requires one, so `framework:check` 
 an input some workload names in `cloud.requirements`, and only in the template for the graph
 that runs that workload; it suggests the line, with the requirement's condition.
 
+Use `resource.fromEnv("NAME").required()` or `resource.secret("NAME").required()`
+when every enabled consumer must receive the value. Normalization adds an unconditional
+requirement to each consuming workload, using the same synthesis and local-runner checks
+as `cloud.requirements`. An unused catalog entry does not block an unrelated workload.
+Use workload `cloud.requirements` instead for conditional or per-consumer requirements.
+A parameter's non-blank `.default(...)` satisfies presence; secrets never have defaults in
+source. AWS Studio also guides missing catalog-wide requirements before any consumer exists.
+
 cdk-app/.env is the file itself, not process.env: a variable exported in the shell, or
 one the generated repository-root .env carries, cannot stand in for a setting this file
 owns, so a deployment and `docker compose up` read the same line.

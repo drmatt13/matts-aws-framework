@@ -117,7 +117,7 @@ function readJson(file: string): any {
 export async function buildOperation(context: OperationContext, request: OperationRequest): Promise<JobSpec> {
   const params = request.params ?? {};
   if (typeof params !== "object" || Array.isArray(params)) throw new OperationError(400, "An operation's parameters are named values.");
-  const builder = BUILDERS[request.kind];
+  const builder = Object.hasOwn(BUILDERS, request.kind) ? BUILDERS[request.kind] : undefined;
   if (!builder) throw new OperationError(404, `${String(request.kind)} is not an operation Studio performs.`);
   return builder(context, params);
 }
@@ -177,8 +177,8 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     }
     return {
       kind: "deploy-plan", title: `${autoApply ? "Deploy" : "Plan"} ${name}`, params: { deployment: name, profile: credentials.name, ...(review ? { review } : {}), ...(createSecrets ? { createSecrets } : {}), ...(autoApply ? { autoApply } : {}) },
-      deployment: name, planId: key, locks: [`deployment:${name}`], steps,
-      cancelNote: "Stopped planning. If change sets were being prepared, discard the plan to remove them.",
+      deployment: name, planId: key, locks: [`deployment:${name}`, ...(autoApply ? ["exports"] : [])], steps,
+      cancelNote: "Stopped planning. Change sets it had already prepared stay listed as an unfinished plan: discard it to remove them.",
       onSettled: (job) => {
         stopFollowing?.();
         if (job.status !== "succeeded") context.plans.removeUnfinished(key);
@@ -206,7 +206,7 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     let stopFollowing: (() => void) | undefined;
     return {
       kind: "deploy-apply", title: `Apply plan to ${name}`, params: { plan: key, deployment: name, profile: credentials.name },
-      deployment: name, planId: key, locks: [`deployment:${name}`], cancelNote: CLOUD_CANCEL_NOTE,
+      deployment: name, planId: key, locks: [`deployment:${name}`, ...(plan.identity.mode === "dev" ? ["exports"] : [])], cancelNote: CLOUD_CANCEL_NOTE,
       steps: [{
         label: plan.review === "change-set" ? "Execute change sets and verify" : "Deploy and verify",
         run: async (step) => { stopFollowing = context.followStacks(step.job, credentials.name, name, plan.identity.region); },
@@ -223,7 +223,8 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
   async "deploy-discard"(context, params) {
     const key = text(params, "plan");
     if (!key) throw new OperationError(400, "Name the plan to discard.");
-    const plan = context.plans.read(key);
+    // A finished plan, or one that stopped after preparing change sets.
+    const plan = context.plans.read(key) ?? context.plans.unfinished(key);
     if (!plan) throw new OperationError(404, "That plan no longer exists.");
     const credentials = await profile(context, { ...params, profile: text(params, "profile") ?? plan.profile });
     const name = plan.identity.deployment;
@@ -332,7 +333,7 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
           label: "Stop containers",
           run: async (step) => {
             const ids = await context.local.containerIds();
-            if (!ids.length) return "No containers are running.";
+            if (!ids.length) { context.local.clearRunRecord(); return "No containers are running."; }
             const result = await context.run(context.tools.docker(["stop", ...ids], studioEnvironment(context.env)), { timeoutMs: 120_000 });
             if (result.code !== 0) throw new Error(result.stderr.trim().split(/\r?\n/).pop() || "docker stop failed.");
             step.log(`Stopped ${ids.length} container${ids.length === 1 ? "" : "s"}.`);
@@ -373,12 +374,10 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
   },
 
   async "deps-install"(context) {
-    const busy = context.jobs.list().find((job) => job.status === "running");
-    if (busy) throw new OperationError(409, `${busy.title} is running. Installing replaces programs it is using; wait for it to finish.`);
     const command = context.tools.npm(["install", "--no-audit", "--no-fund"], studioEnvironment(context.env));
     if (!command) throw new OperationError(500, "npm was not found beside Node.");
     return {
-      kind: "deps-install", title: "Install dependencies", params: {}, locks: ["deps", "local"],
+      kind: "deps-install", title: "Install dependencies", params: {}, locks: ["deps", "local"], exclusive: true,
       steps: [{ label: "npm install", command: () => command, after: (_result, step) => step.setSummary("Dependencies installed.") }],
       onSettled: () => context.changed(undefined, undefined),
     };

@@ -165,3 +165,22 @@ test("when the watch has stopped on its own, the finding says why", () => {
   const value = input({ deployment: deployed(), detail: ready, local: local({ startedBy: "studio", exported: { deployment: "my-aws-app", client: true }, watch: { running: false, exitCode: 1, summary: "no such service: api" }, client: { running: true } }) });
   assert.match(deploymentFindings(value).find((finding) => finding.code === "WATCH_DETACHED")?.detail ?? "", /The watch stopped: no such service: api/);
 });
+
+test("a plan that stopped after preparing change sets is offered for discarding", () => {
+  const value = input({
+    name: "my-aws-app-prod", target: { name: "my-aws-app-prod", mode: "prod", origin: "declared", account: context.account },
+    plans: [{ key: "my-aws-app-prod-abc123", deployment: "my-aws-app-prod", mode: "prod", status: "unfinished", createdAt: "2026-10-17T10:00:00Z", expired: false }],
+  });
+  const unfinished = deploymentFindings(value).find((finding) => finding.code === "PLAN_UNFINISHED");
+  assert.deepEqual(unfinished?.actions.map((action) => [action.id, action.plan]), [["discard-plan", "my-aws-app-prod-abc123"]]);
+  assert.equal(codes(value).includes("PLAN_WAITING"), false, "there is nothing to review");
+});
+
+test("a deployment read from another region than its pin offers nothing to do there", () => {
+  const value = input({
+    target: { name: "my-aws-app", mode: "dev", origin: "personal", region: "us-west-2" },
+    match: { name: "my-aws-app", mode: "dev", origin: "personal", region: "us-west-2", status: "elsewhere", detail: "Pinned to 734849394764/us-west-2; the selected profile is 734849394764/us-east-1." },
+  });
+  assert.equal(codes(value).includes("TARGET_ABSENT"), false, "absence in this region says nothing about the pinned one");
+  assert.equal(deploymentFindings(value).flatMap((finding) => finding.actions).some((action) => action.id === "deploy" || action.id === "delete"), false);
+});

@@ -3,11 +3,13 @@ import type { Mode, ModeModel, ModelResource } from "../shared/model";
 
 /** Resolve presence and conditional requirements privately, then discard values.
  * The public result contains names and reasons only, including for selectors. */
-export function inputRequirements(model: ModeModel, values: Record<string, string>, mode: Mode, file: string, readable = true): ReadonlyMap<string, InputRequirement> {
+export function inputRequirements(model: ModeModel, values: Record<string, string | undefined>, mode: Mode, file: string, readable = true): ReadonlyMap<string, InputRequirement> {
   const resources = new Map(model.resources.map((resource) => [resource.id, resource]));
   const reasons = new Map<string, Set<string>>();
-  const need = (id: string, reason: string) => {
+  const consumers = new Map<string, Set<string>>();
+  const need = (id: string, reason: string, target?: string) => {
     const list = reasons.get(id) ?? new Set<string>(); list.add(reason); reasons.set(id, list);
+    if (target) { const ids = consumers.get(id) ?? new Set<string>(); ids.add(target); consumers.set(id, ids); }
   };
   const valueOf = (resource: ModelResource | undefined) => {
     if (!resource || resource.absent || !resource.fromEnv) return undefined;
@@ -23,12 +25,12 @@ export function inputRequirements(model: ModeModel, values: Record<string, strin
         const selector = resources.get(rule.when.resource);
         const current = valueOf(selector);
         if (current === undefined) {
-          need(rule.when.resource, `Needed to evaluate the requirement for ${target.title}.`);
+          need(rule.when.resource, `Needed to evaluate the requirement for ${target.title}.`, target.ref);
           continue;
         }
         if (current !== rule.when.equals) continue;
       }
-      for (const id of rule.require) need(id, `Required by ${target.title}.${rule.message ? ` ${rule.message}` : ""}`);
+      for (const id of rule.require) need(id, `Required by ${target.title}.${rule.message ? ` ${rule.message}` : ""}`, target.ref);
     }
   }
   return new Map([...resources.values()].filter((resource) => resource.fromEnv && ["input", "secret"].includes(resource.kind)).map((resource) => {
@@ -36,6 +38,6 @@ export function inputRequirements(model: ModeModel, values: Record<string, strin
     const configured = !!values[resource.fromEnv!]?.trim();
     const defaulted = resource.kind === "input" && !!resource.default?.trim();
     const status = !readable || model.stale || resource.absent ? "unknown" : configured ? "configured" : defaulted ? "default" : required ? "missing" : "optional";
-    return [resource.id, { resource: resource.id, name: resource.fromEnv!, mode, file, required, status, reasons: [...(reasons.get(resource.id) ?? [])] }];
+    return [resource.id, { resource: resource.id, name: resource.fromEnv!, mode, file, required, status, reasons: [...(reasons.get(resource.id) ?? [])], consumers: [...(consumers.get(resource.id) ?? [])] }];
   }));
 }

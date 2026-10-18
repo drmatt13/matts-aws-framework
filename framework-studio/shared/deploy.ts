@@ -284,7 +284,8 @@ export interface PlanSummaryView {
   readonly key: string;
   readonly deployment: string;
   readonly mode: DeployMode;
-  readonly status: PlanView["status"];
+  /** unfinished: planning stopped after preparing change sets; only discarding it is possible. */
+  readonly status: PlanView["status"] | "unfinished";
   readonly createdAt: string;
   readonly expired: boolean;
   readonly applied?: "succeeded" | "partial" | "unverified";
