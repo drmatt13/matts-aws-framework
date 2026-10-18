@@ -169,15 +169,35 @@ test("missing required connections paint red X markers and clicking the marker s
   } finally { response = original; }
 });
 
-interface Pointing { screenOf(id: string): { building: { x: number; y: number }; card?: { x: number; y: number } } | undefined; pickAt(x: number, y: number): { kind: string; id: string } | undefined }
+test("the real renderer strokes connections leaving the APIs island in purple and those leaving a Lambda or container in orange", async () => {
+  await mount();
+  await draw();
+  assert.ok(strokes.some((style) => style.startsWith("rgba(255, 154, 61,")), "orange connections out of compute");
+  const purple = strokes.filter((style) => style.startsWith("rgba(163, 116, 255,"));
+  const leaving = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
+    resourceAvailability: catalogAvailability(response.snapshot.models) }).edges.filter((edge) => edge.from.startsWith("route:")).length;
+  assert.ok(purple.length >= leaving, `${purple.length} purple strokes for ${leaving} route connections`);
+  strokes.length = 0;
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^\/api\/graphql, HTTP route/ }));
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "route:http:/graphql")); await draw();
+  assert.ok(strokes.includes("rgba(163, 116, 255, 0.95)"), "a selected API connection lights in the same purple");
+});
+
+interface Pointing {
+  screenOf(id: string): { building: { x: number; y: number }; card?: { x: number; y: number } } | undefined;
+  hullOf(id: string): { x: number; y: number }[] | undefined;
+  pickAt(x: number, y: number): { kind: string; id: string } | undefined;
+}
 const pointing = () => (dom.window as unknown as { __studioLandscape: Pointing }).__studioLandscape;
 
-/** Moves the pointer onto an entity's label card, where the real picker finds it. */
+/** Moves the pointer onto an entity's label card, or the middle of its silhouette when no card is drawn, where the real picker finds it. */
 async function hoverOver(id: string) {
   await draw();
   const at = pointing().screenOf(id);
   assert.ok(at, `${id} stands in the landscape`);
-  const point = at.card ?? at.building;
+  const hull = pointing().hullOf(id) ?? [];
+  const middle = hull.length ? { x: hull.reduce((sum, p) => sum + p.x, 0) / hull.length, y: hull.reduce((sum, p) => sum + p.y, 0) / hull.length } : undefined;
+  const point = at.card ?? middle ?? at.building;
   assert.equal(pointing().pickAt(point.x, point.y)?.id, id, "the pointer is over the entity");
   ui.fireEvent.pointerMove(document.querySelector("canvas")!, { pointerId: 1, clientX: point.x, clientY: point.y });
   return ui.screen.findByRole("tooltip");

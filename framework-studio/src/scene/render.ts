@@ -1,4 +1,3 @@
-import type { EdgeCategory } from "../lookup";
 import { ICONS, iconUrl, type IconKey } from "../icons";
 import { backgroundGrid } from "./grid";
 import { DEPLOYMENT_BADGES, type DeploymentBadgeKind } from "../deployment";
@@ -44,21 +43,15 @@ export interface FrameResult {
 
 const BADGE_WIDTH: Readonly<Record<DeploymentBadgeKind, number>> = { dev: 43, prod: 48, off: 43 };
 
-const CATEGORY_COLORS: Readonly<Record<EdgeCategory, string>> = {
-  routes: "#ddd3bd",
-  inputs: "#8fb7d9",
-  permissions: "#e59a86",
-  invocations: "#c3b2ff",
-  integrations: "#94d6b0",
-  cdk: "#67d7df",
-};
-
 type Rgb = readonly [number, number, number];
 
 function hex(value: string): Rgb {
   const number = Number.parseInt(value.slice(1), 16);
   return [(number >> 16) & 255, (number >> 8) & 255, number & 255];
 }
+
+/** A required connection with no value: red wherever it runs. */
+const MISSING_EDGE: Rgb = hex("#ff5f6d");
 
 function rgba(color: Rgb, alpha = 1, factor = 1): string {
   const channel = (value: number) => Math.round(Math.max(0, Math.min(255, value * factor)));
@@ -107,7 +100,7 @@ type Standing =
 
 interface Prepared {
   readonly scene: Scene;
-  readonly arcs: ReadonlyMap<SceneEdge, { readonly points: readonly Point[]; readonly length: number }>;
+  readonly arcs: ReadonlyMap<SceneEdge, { readonly points: readonly Point[]; readonly length: number; readonly color: Rgb }>;
   /** Each draw item's world bounding box, for culling. */
   readonly boxes: ReadonlyMap<Standing, { minX: number; minY: number; maxX: number; maxY: number }>;
   /** Whole islands, back to front. */
@@ -206,12 +199,12 @@ export class SceneRenderer {
       ...scene.props.map((prop): Standing => ({ kind: "prop", prop })),
     ];
 
-    const arcs = new Map<SceneEdge, { points: Point[]; length: number }>();
+    const arcs = new Map<SceneEdge, { points: Point[]; length: number; color: Rgb }>();
     for (const edge of scene.edges) {
       const points = [...scene.routes[edge.edge.id]!.points];
       let length = 0;
       for (let index = 1; index < points.length; index += 1) length += Math.hypot(points[index]!.x - points[index - 1]!.x, points[index]!.y - points[index - 1]!.y);
-      arcs.set(edge, { points, length });
+      arcs.set(edge, { points, length, color: hex(edge.style.color) });
     }
     const boxes = new Map<Standing, { minX: number; minY: number; maxX: number; maxY: number }>();
     for (const item of items) {
@@ -872,10 +865,10 @@ export class SceneRenderer {
       }
       const arc = prepared.arcs.get(edge)!;
       const missing = edge.edge.inputRequirement?.status === "missing";
-      const color = hex(missing ? "#ff5f6d" : CATEGORY_COLORS[edge.category]);
+      const color = missing ? MISSING_EDGE : arc.color;
       context.strokeStyle = rgba(color, state.focus.kind === "search" ? 0.025 : missing ? state.selected ? 0.35 : 0.9 : state.selected ? 0.06 : edge.edge.provenance === "derived" ? 0.14 : 0.24);
       context.lineWidth = 1.2 * pixel;
-      context.setLineDash(edge.edge.provenance !== "declared" ? [4 * pixel, 4 * pixel] : []);
+      context.setLineDash(edge.style.dashed ? [4 * pixel, 4 * pixel] : []);
       this.polyline(arc.points);
       context.stroke();
     }
@@ -883,12 +876,12 @@ export class SceneRenderer {
     for (const edge of lit) {
       const arc = prepared.arcs.get(edge)!;
       const missing = edge.edge.inputRequirement?.status === "missing";
-      const color = hex(missing ? "#ff5f6d" : CATEGORY_COLORS[edge.category]);
+      const color = missing ? MISSING_EDGE : arc.color;
       context.shadowColor = rgba(color, 0.8);
       context.shadowBlur = 10;
       context.strokeStyle = rgba(color, 0.95);
       context.lineWidth = 2.2 * pixel;
-      context.setLineDash(edge.edge.provenance !== "declared" ? [5 * pixel, 4 * pixel] : []);
+      context.setLineDash(edge.style.dashed ? [5 * pixel, 4 * pixel] : []);
       this.polyline(arc.points);
       context.stroke();
       context.setLineDash([]);

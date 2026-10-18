@@ -327,9 +327,25 @@ been removed; the renderer has one visual style.
    offset from the midpoint by at least `24 + 0.16 · length` world units; shared lanes
    and obstacle avoidance can increase the bow, keeping every connection visibly curved.
    They are coloured by the Board's six
-   categories, with every category visible by default and no visibility toggles.
-   Derived edges and source-inferred
-   CDK links are dashed. The sixth category, CDK resource links, is cyan; its hover card
+   categories, with every category visible by default and no visibility toggles. Dashed is
+   the default; solid lines are the named exceptions (below), so a connection's line tells
+   you what kind it is as well as its colour. Every connection points the way the model
+   records it (a workload to what it references), and `connections.ts` decides colour and
+   dash for each edge:
+   - **What a workload references decides its colour.** Reading a stack field or an input
+     parameter takes exactly the look of an environment file supplying an input (the
+     Environment and secrets colour); referencing a secret and a native grant are red, so
+     a parameter being read never looks like a permission being given. What is referenced
+     decides this, even when the map shows a stack field as its owning stack.
+   - **Everything else.** Solid: an API route (purple, out of the APIs island), a Lambda
+     or container leaving for another workload (orange), a WebSocket authorizer's link to
+     the route it guards (red), an agent calling a tool (teal) and a workflow step (pink).
+     Dashed: an environment file supplying a secret (red), and every remaining connection
+     in its category colour.
+
+   A missing required input is still red, with its X marker. Derived edges are fainter,
+   and a derived or source-inferred connection says so in its hover card. The sixth
+   category, CDK resource links, is cyan; its hover card
    and Inspector expose source evidence and distinguish inference from evaluated facts.
    - **Lit arcs.** The selection's and the hovered arc's are bright, with an arrowhead.
    - **Packets.** With motion on, the selection's arcs carry one to three packets at

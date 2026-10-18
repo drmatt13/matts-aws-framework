@@ -10,7 +10,7 @@ import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickIsland,
 import { buildIconShape, ICON_BADGE } from "../src/scene/shapes";
 import { backgroundGrid } from "../src/scene/grid";
 import { islandFrame } from "../src/scene/frame";
-import { BAND_TRIM, GRAPHITE, ICON_TINT, ISLAND_TRIM, trimColor } from "../src/scene/look";
+import { API_EDGE_COLOR, BAND_TRIM, COMPUTE_EDGE_COLOR, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, trimColor } from "../src/scene/look";
 import { behind, islandDrawOrder, islandSlabs, polygonArea, type IslandSlab } from "../src/scene/slabs";
 import { ICONS } from "../src/icons";
 import { catalogAvailability } from "../src/deployment";
@@ -713,6 +713,59 @@ test("the local database stands in the isolated subnet right beside RDS, solid i
     const isolated = scene.islands.find((island) => island.id === "island:vpc")!.bands.find((band) => band.id === "band:isolated")!;
     assert.ok(isolated.caption.some((line) => line.includes("Local PostgreSQL")), "the subnet says it is not an AWS resource");
   }
+});
+
+test("a connection is drawn by what it references and where it starts, solid only where named", () => {
+  const colours = [API_EDGE_COLOR, COMPUTE_EDGE_COLOR, GUARD_EDGE_COLOR, TOOL_EDGE_COLOR, STEP_EDGE_COLOR, ...Object.values(EDGE_COLORS)];
+  assert.equal(new Set(colours).size, colours.length, "each rule has a colour of its own");
+  assert.equal(READ_EDGE_COLOR, EDGE_COLORS.inputs, "a value being read looks like an environment file supplying an input");
+  const startsAt = (edge: { from: string }, ...prefixes: string[]) => prefixes.some((prefix) => edge.from.startsWith(prefix));
+  for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
+    const kindOf = new Map(model.resources.map((resource) => [resource.id, resource.kind]));
+    const seen = { stack: 0, input: 0, secret: 0, authorizer: 0, secretFile: 0, tool: 0, step: 0, api: 0, compute: 0, other: 0 };
+    for (const { edge, from, category, style } of scene.edges) {
+      const referenced = kindOf.get(edge.to);
+      const reads = (edge.relation === "env" || edge.relation === "secret") && referenced !== undefined;
+      const expect = (color: string, dashed: boolean) => assert.deepEqual(style, { color, dashed }, `${edge.id} (${edge.relation})`);
+      if (edge.relation === "authorizes") { seen.authorizer += 1; expect(GUARD_EDGE_COLOR, false); }
+      else if (edge.relation === "grant") expect(GUARD_EDGE_COLOR, true);
+      else if (reads && (edge.relation === "secret" || referenced === "secret")) { seen.secret += 1; expect(GUARD_EDGE_COLOR, true); }
+      else if (reads) { seen[referenced === "input" || referenced === "group" ? "input" : "stack"] += 1; expect(READ_EDGE_COLOR, true); }
+      else if (edge.relation === "supplies" && referenced === "secret") { seen.secretFile += 1; expect(GUARD_EDGE_COLOR, true); }
+      else if (edge.relation === "usesTool") { seen.tool += 1; expect(TOOL_EDGE_COLOR, false); }
+      else if (edge.relation === "step") { seen.step += 1; expect(STEP_EDGE_COLOR, false); }
+      else if (startsAt({ from }, "route:")) { seen.api += 1; expect(API_EDGE_COLOR, false); }
+      else if (startsAt({ from }, "lambda:", "service:", "task:")) { seen.compute += 1; expect(COMPUTE_EDGE_COLOR, false); }
+      else { seen.other += 1; expect(EDGE_COLORS[category], true); }
+      // A reference points the way the model records it: from the workload to what it references.
+      if (reads || edge.relation === "grant") assert.ok(startsAt({ from }, "lambda:", "service:", "task:", "agent:"), `${edge.id} starts at the workload`);
+    }
+    for (const [name, count] of Object.entries(seen)) assert.ok(count > 0, `${model.mode}: no ${name} connection to judge (${JSON.stringify(seen)})`);
+    // Reads of an input parameter and an environment file feeding a plain input share one look.
+    const plainSupplies = scene.edges.filter((edge) => edge.edge.relation === "supplies" && kindOf.get(edge.edge.to) !== "secret");
+    assert.ok(plainSupplies.length > 0);
+    for (const edge of plainSupplies) assert.deepEqual(edge.style, { color: READ_EDGE_COLOR, dashed: true }, edge.edge.id);
+  }
+});
+
+test("the WebSocket authorizer's link to the API is red and solid", () => {
+  for (const scene of [dev, prod]) {
+    const link = scene.edges.find((edge) => edge.edge.relation === "authorizes" && edge.edge.from === "lambda:ws-authorizer" && edge.edge.to === "route:ws:$connect");
+    assert.ok(link, "the authorizer guards $connect");
+    assert.deepEqual(link.style, { color: GUARD_EDGE_COLOR, dashed: false });
+    assert.deepEqual([link.from, link.to], ["lambda:ws-authorizer", "route:ws:$connect"], "it runs authorizer to route");
+  }
+});
+
+test("a permission grant is red and dashed, unlike a parameter being read", () => {
+  const read = snapshot.models.prod.edges.find((edge) => edge.relation === "env" && edge.to.startsWith("resource:cognito"))!;
+  assert.ok(read, "a workload reads a Cognito field");
+  const grant = { ...read, id: "edge:test-grant", relation: "grant" as const, label: "grantRead()" };
+  const scene = buildScene({ ...snapshot.models.prod, edges: [...snapshot.models.prod.edges, grant] }, { webSocketApi: snapshot.webSocketApi });
+  const drawn = (id: string) => scene.edges.find((edge) => edge.edge.id === id)!.style;
+  assert.deepEqual(drawn(grant.id), { color: GUARD_EDGE_COLOR, dashed: true });
+  assert.deepEqual(drawn(read.id), { color: READ_EDGE_COLOR, dashed: true });
+  assert.notEqual(drawn(grant.id).color, drawn(read.id).color);
 });
 
 test("without a local database the isolated subnet says nothing about one", () => {

@@ -1,4 +1,4 @@
-import type { Lanes, Mode, ModeModel, ModelEdge, ModelResource, ModelRoute, ModelTarget, NetworkModel } from "../../shared/model";
+import type { Lanes, Mode, ModeModel, ModelEdge, ModelResource, ModelRoute, ModelTarget, NetworkModel, TargetKind } from "../../shared/model";
 import { RELATION_CATEGORY, ROLE_LABEL, type EdgeCategory } from "../lookup";
 import { endpointServiceIcon, resourceBadge, resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
 import { availabilityBadge, deploymentBadge, developmentLocation, environments, type Availability, type DeploymentBadgeKind } from "../deployment";
@@ -10,6 +10,7 @@ import { layoutIslands, type IslandFootprint } from "./layout";
 import { extractLayoutGraph, topologyEdges, type LayoutAnchor, type LayoutLink } from "./layout-graph";
 import { optimizeLayout, type LayoutSettings, type LayoutResult } from "./layout-optimize";
 import { layoutLabels, layoutObstacles } from "./layout-quality";
+import { connectionStyle, type ConnectionStyle } from "./connections";
 import { routeConnections, legacyRoute, type ConnectionRoutes } from "./routing";
 export { titleRoom } from "./layout";
 
@@ -95,6 +96,8 @@ export interface SceneNode {
   readonly presenceText: string;
   readonly lanes?: Lanes;
   readonly auth?: boolean;
+  /** What a workload is (Lambda, container service or task, workflow, agent); absent on routes, resources and local services. */
+  readonly targetKind?: TargetKind;
   readonly island: string;
   /** The band it stands on: on the VPC, its subnet. */
   readonly band: string;
@@ -124,6 +127,8 @@ export interface SceneEdge {
   readonly from: string;
   readonly to: string;
   readonly category: EdgeCategory;
+  /** Colour and dash; presentation only, decided in `connections.ts`. */
+  readonly style: ConnectionStyle;
 }
 
 export interface Scene {
@@ -212,6 +217,7 @@ interface Item {
   readonly presenceText: string;
   readonly lanes?: Lanes;
   readonly auth?: boolean;
+  readonly targetKind?: TargetKind;
 }
 
 interface BandSpec {
@@ -247,6 +253,7 @@ function targetItem(target: ModelTarget, mode: Mode): Item {
     presence,
     presenceText: text,
     lanes: target.lanes,
+    targetKind: target.kind,
   };
   if (target.kind !== "lambda") return base;
   return {
@@ -707,9 +714,13 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
 
   const ids = new Set(nodes.map((node) => node.id));
   const representatives = Object.fromEntries(model.resources.filter((resource) => resource.kind === "member" && resource.parent && !ids.has(resource.id) && ids.has(resource.parent)).map((resource) => [resource.id, resource.parent!]));
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const resourceById = new Map(model.resources.map((resource) => [resource.id, resource]));
   const edges = model.edges
     .map((edge) => ({ edge, from: representatives[edge.from] ?? edge.from, to: representatives[edge.to] ?? edge.to, category: RELATION_CATEGORY[edge.relation] }))
-    .filter((edge) => ids.has(edge.from) && ids.has(edge.to) && edge.from !== edge.to);
+    .filter((edge) => ids.has(edge.from) && ids.has(edge.to) && edge.from !== edge.to)
+    // What an edge references decides its style, even when the map draws a stack field as its owning stack.
+    .map((edge): SceneEdge => ({ ...edge, style: connectionStyle(edge.edge, edge.category, nodeById.get(edge.from), resourceById.get(edge.edge.to)) }));
 
   const frames: SceneFrame[] = islands.filter((island) => island.region === "network").map((island) => ({ id: `frame:${island.id}`, kind: "network", members: [island.id], ghost: !!island.ghost, geometry: islandFrame(island) }));
 
