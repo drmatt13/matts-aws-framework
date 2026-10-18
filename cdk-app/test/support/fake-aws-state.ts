@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 /** Builds the JSON account fake-aws.mjs serves, and reads back the calls it saw. */
@@ -82,7 +82,7 @@ export function fakeAccount(state: Record<string, unknown>): FakeAccount {
     directory, statePath, env,
     read: () => JSON.parse(readFileSync(statePath, "utf8")),
     write: (next) => writeFileSync(statePath, JSON.stringify(next, null, 2)),
-    calls: () => JSON.parse(readFileSync(statePath, "utf8")).calls ?? [],
+    calls: () => existsSync(`${statePath}.calls.jsonl`) ? readFileSync(`${statePath}.calls.jsonl`, "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line)) : [],
     dispose: () => rmSync(directory, { recursive: true, force: true }),
   };
 }

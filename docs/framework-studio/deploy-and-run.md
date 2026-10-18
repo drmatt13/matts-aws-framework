@@ -1,6 +1,6 @@
 # Deploy & Run
 
-> Status: approved design (2026-10-17). Implementation proceeds in milestones; see [the M0–M1 plan](../superpowers/plans/2026-10-17-deploy-run-m0-m1.md). Statements about "today" describe the repository as it stood when the design was approved.
+> Status: approved design (2026-10-17), implemented through M8; see [As built](#as-built-m2m8) for what exists and where it departs from this plan. The [M0–M1 plan](../superpowers/plans/2026-10-17-deploy-run-m0-m1.md) covers the first milestones. Statements about "today" describe the repository as it stood when the design was approved.
 
 ## Context
 
@@ -465,3 +465,93 @@ Both are planned as included unless you say otherwise. My other calls, all rever
 - Studio checks on `--port 4591` only, never touching the owner's 4590. Playwright covers the rail, detail, review and findings states, with fixtures for failures.
 - Opt-in live runs on disposable names: a dev cycle (deploy → verify → export → start → stop → delete) and a prod-mode change-set cycle in the dev account. Afterwards, check CloudFormation and the tag-based leftover scan. Actions on real production are left to the owner.
 - Report which checks actually ran. Offline tests don't prove deployment, Docker or browser behaviour.
+
+## As built (M2–M8)
+
+What exists now, where it lives, and where it departs from the plan above.
+
+### The page
+
+Framework Studio's **Deploy** tab (`framework-studio/src/views/Deploy.tsx`, components in
+`src/views/deploy/`) has four parts:
+
+| Part | What it shows and does |
+| --- | --- |
+| Account bar | The chosen profile resolved through the AWS CLI to account, region and caller, or a classified problem (expired session → **Sign in**). Below it, this machine's tools: Node, npm, AWS CLI, dependency freshness, Docker engine, Compose, each with its remedy (Install, Start). |
+| Rail | This repository's targets, other framework deployments in the account (read-only), and unrecognized lookalike stacks. Which deployment this machine's settings point at, and whether local development is running. |
+| Detail | Findings, most pressing first, with one primary action. Three panels: Repository (intent, mode, inputs, pins), AWS (stacks, pending change sets), This machine (Docker, settings, watch, web client, containers with logs). CloudFormation events, live during operations. |
+| Activity | Every operation as a job: its steps, a live numbered log, Cancel. The watch and the web client are jobs too, until stopped. |
+
+The findings rules are pure and tested: `framework-studio/shared/deploy-findings.ts`.
+They live in Studio rather than `packages/framework`, because no CLI uses them; the CLI's
+own guards stay in the scripts.
+
+### The server
+
+| Module (`framework-studio/server/deploy/`) | Responsibility |
+| --- | --- |
+| `routes.ts` | `/api/deploy`: GET overview, discover, status, teardown, plans, drift, job logs, container logs; POST operations, cancel, preferences. Behind the existing token, host and origin guards. |
+| `registry.ts` | The only operations: `deploy-plan` (optionally `autoApply` for dev), `deploy-apply`, `deploy-discard`, `destroy`, `export`, `local-start`, `local-stop`, `local-restart`, `local-attach-watch`, `deps-install`, `docker-start`, `aws-login`, `drift`. Parameters are validated (profile must be configured, names match the deployment pattern, plans are Studio's own); argv is fixed; no shell. |
+| `jobs.ts` | Attached children, numbered log lines (memory plus JSONL on disk), a lock per deployment and for local work, process-tree cancellation, records that survive a restart (a job that was running is reported interrupted, never resumed). |
+| `observe.ts` | AWS reads only through `deploy:status` (profiles, discover, status, watch) and `destroy:resources --plan`, with short caches and shared in-flight reads. |
+| `prereqs.ts`, `local.ts`, `local-commands.ts` | Tool probes; containers by Compose label; exported files; the direct commands for the web client and the watch. |
+| `process.ts`, `tether.mjs` | Spawning with a curated environment (static AWS keys, `AWS_PROFILE`, `PROD_DEPLOYMENT` and `FRAMEWORK_MODE` dropped; `FRAMEWORK_DEPLOY_VIA=studio`), and the tether that stops a program when Studio's pipe closes. |
+
+### Safety, as enforced
+
+- Every rule in §9 is still enforced by the scripts; Studio adds checks in front of them,
+  never instead. Production is only planned from Studio: one-click apply is refused for it,
+  and its apply needs the typed name when the plan says so (428 otherwise).
+- Deletion always needs the typed name, for development too, and shows the teardown plan
+  (order, termination protection, what is retained or snapshotted, managed secrets) first.
+- A deployment discovered in the account but not declared here is read-only, except for
+  deletion.
+- Secret values never reach Studio: plans, logs and events carry names only (tested with a
+  sentinel value through a full deploy).
+
+### Local processes and restarts
+
+Containers outlive Studio on purpose. The watch and the web client must not, however Studio
+ends. On Windows a Node parent takes its Node descendants with it, but not past another
+program: `npm run dev` puts `cmd.exe` before Vite, and `docker compose` runs Compose as a
+plugin of `docker.exe`. So Studio runs client-app's dev script's program directly with Node,
+and the Compose plugin binary directly (`docker-compose --project-directory <root> watch
+--no-up`). On macOS and Linux the tether stops them. After a restart Studio finds the
+containers by label and offers **Resume watching**.
+
+### Departures from the plan
+
+- **Restart reconciliation** reports interrupted jobs and rereads AWS; it does not keep a
+  separate intent record per operation. The job record is the record.
+- **Reconcile** is not a separate plan type: the findings name the next step, and every
+  step is an ordinary operation. Development's one click is plan-then-apply in one job, and
+  continues to apply only when the plan needs no confirmation.
+- **Adoption, orphan-stack removal and recovery operations** (continue-update-rollback,
+  deleting a failed stack on its own) are not built. Failed first creates and paused updates
+  recover by deploying again (the CDK CLI handles both); a stuck rollback is shown with
+  console guidance and the delete action.
+- **Termination protection** for production is not switched on by deploys.
+- **Drift** runs CloudFormation drift detection (it changes no resource, but it is not a
+  read); it is offered, never run automatically.
+
+### Test seams
+
+| Variable | Replaces |
+| --- | --- |
+| `FRAMEWORK_AWS_CLI`, `FAKE_AWS_STATE` | The AWS CLI (`cdk-app/test/support/fake-aws.mjs`) |
+| `FRAMEWORK_CDK_CLI` | The CDK CLI (`cdk-app/test/support/fake-cdk.mjs`) |
+| `FRAMEWORK_DOCKER_CLI`, `FAKE_DOCKER_STATE` | Docker, in Studio and `dev.mjs` (`framework-studio/test/support/fake-docker.mjs`) |
+| `FRAMEWORK_EXPORT_DIRECTORY` | Where export writes, and where status and Studio read exported files |
+| `FRAMEWORK_STUDIO_STATE_DIRECTORY` | Studio's jobs, plans, preferences and run record (default `.cache/framework-studio`) |
+| `FRAMEWORK_POLL_MS` | Poll intervals |
+
+`framework-studio/test/deploy-service.test.ts` drives the real routes and scripts against
+these: discover, a development deploy with verification and export, a production change-set
+plan that first needs its secret created, local start and stop, teardown.
+`deploy-ui.test.ts` drives the page in a DOM.
+
+### Not verified here
+
+A deploy, apply or teardown against real AWS, and starting the real Docker stack, need your
+authorization and were not run. Read-only discovery and status were run with the `dev`
+profile against 734849394764/us-east-1.

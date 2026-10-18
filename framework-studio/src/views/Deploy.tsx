@@ -1,11 +1,287 @@
-import { CloudUpload } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { JobView, OperationKind, OperationRequest, PlanView, StackEventView } from "../../shared/deploy";
+import { deploymentFindings, nextAction, type Action } from "../../shared/deploy-findings";
+import { ApiError } from "../api";
+import { deployApi, useDeployLive } from "../deploy/api";
+import { AccountBar } from "./deploy/AccountBar";
+import { Activity } from "./deploy/Activity";
+import { Detail, type MoreAction } from "./deploy/Detail";
+import { PlanReview } from "./deploy/PlanReview";
+import { Rail, type RailRow } from "./deploy/Rail";
+import { ServiceLogs, Teardown } from "./deploy/Teardown";
+import "./deploy/deploy.css";
 
+/**
+ * Deploy & Run: what this repository intends, what the chosen account holds,
+ * and what this machine runs, side by side, with the next step offered.
+ *
+ * Every read goes through the repository's own deploy:status; every change is
+ * an operation the studio server runs as a job, whose progress streams below.
+ */
 export function Deploy() {
+  const queryClient = useQueryClient();
+  const overviewQuery = useQuery({ queryKey: ["deploy", "overview"], queryFn: () => deployApi.overview(), refetchInterval: 15_000 });
+  const overview = overviewQuery.data;
+  const [profile, setProfileState] = useState<string>();
+  const [selected, setSelected] = useState<string>();
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [activityJob, setActivityJob] = useState<string>();
+  const [reviewKey, setReviewKey] = useState<string>();
+  const [teardown, setTeardown] = useState<{ deployment: string; mode: "dev" | "prod"; region?: string }>();
+  const [serviceLogs, setServiceLogs] = useState<string>();
+  const [toasts, setToasts] = useState<{ id: number; text: string; tone: "refuse" | "info" }[]>([]);
+  const [liveEvents, setLiveEvents] = useState<Record<string, StackEventView[]>>({});
+  const startedHere = useRef(new Set<string>());
+  /** What to do once a job this page started succeeds: one operation after another. */
+  const afterSuccess = useRef(new Map<string, () => void>());
+
+  const toast = useCallback((text: string, tone: "refuse" | "info" = "refuse") => {
+    const id = Date.now() + Math.random();
+    setToasts((current) => [...current, { id, text, tone }]);
+    setTimeout(() => setToasts((current) => current.filter((entry) => entry.id !== id)), 7000);
+  }, []);
+
+  // The remembered profile and deployment, once the overview has them.
+  useEffect(() => {
+    if (!overview) return;
+    setProfileState((current) => current ?? overview.preferences.profile ?? overview.profiles.find((entry) => entry.region)?.name ?? overview.profiles[0]?.name);
+    setSelected((current) => current ?? overview.preferences.deployment ?? overview.targets[0]?.name);
+  }, [overview]);
+
+  const setProfile = (name: string) => {
+    setProfileState(name);
+    void deployApi.preferences({ profile: name, ...(selected ? { deployment: selected } : {}) }).catch(() => {});
+  };
+
+  const select = (name: string) => {
+    setSelected(name);
+    const remembered = overview?.preferences.profiles[name];
+    if (remembered && remembered !== profile && overview?.profiles.some((entry) => entry.name === remembered)) setProfileState(remembered);
+    void deployApi.preferences({ deployment: name, ...(remembered ?? profile ? { profile: remembered ?? profile } : {}) }).catch(() => {});
+  };
+
+  const jobs = overview?.jobs ?? [];
+  const runningFor = (name: string | undefined) => jobs.find((job) => job.status === "running" && job.deployment === name && job.kind !== "local-watch" && job.kind !== "local-client");
+
+  // Discovery (every deployment in the account) and the selected deployment's
+  // status are read side by side: status carries a full discovery too, so the
+  // page shows whichever answers first.
+  const selectedName = selected ?? overview?.targets[0]?.name;
+  const discoveryQuery = useQuery({
+    queryKey: ["deploy", "discover", profile],
+    queryFn: () => deployApi.discover(profile!),
+    enabled: Boolean(profile),
+    staleTime: 20_000,
+    refetchInterval: 60_000,
+  });
+  const busySelected = Boolean(runningFor(selectedName));
+  const statusQuery = useQuery({
+    queryKey: ["deploy", "status", profile, selectedName],
+    queryFn: () => deployApi.status(profile!, selectedName!),
+    enabled: Boolean(profile && selectedName),
+    staleTime: 3_000,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return busySelected || (data?.ok && data.value.detail?.state.kind === "in-progress") ? 4_000 : 60_000;
+    },
+  });
+  const status = statusQuery.data?.ok ? statusQuery.data.value : undefined;
+  const discovery = discoveryQuery.data?.ok ? discoveryQuery.data.value : status;
+  const problem = discoveryQuery.data && !discoveryQuery.data.ok ? discoveryQuery.data.problem : statusQuery.data && !statusQuery.data.ok ? statusQuery.data.problem : undefined;
+
+  const rows: RailRow[] = useMemo(() => {
+    const targets = overview?.targets ?? [];
+    const repository = targets.map((target): RailRow => ({
+      name: target.name, mode: target.mode, section: "repository", target,
+      match: discovery?.targets.find((entry) => entry.name === target.name),
+      deployment: discovery?.deployments.find((entry) => entry.name === target.name),
+    }));
+    const others = (discovery?.deployments ?? []).filter((entry) => !targets.some((target) => target.name === entry.name))
+      .map((deployment): RailRow => ({ name: deployment.name, mode: deployment.mode, section: "discovered", deployment }));
+    return [...repository, ...others];
+  }, [overview?.targets, discovery]);
+  const row = rows.find((entry) => entry.name === selectedName) ?? rows[0];
+  const plansQuery = useQuery({ queryKey: ["deploy", "plans"], queryFn: () => deployApi.plans() });
+  const driftQuery = useQuery({ queryKey: ["deploy", "drift", row?.name], queryFn: () => deployApi.drift(row!.name), enabled: Boolean(row) });
+
+  useDeployLive({
+    onJob: (job) => {
+      if (job.status === "running") return;
+      const then = afterSuccess.current.get(job.id);
+      afterSuccess.current.delete(job.id);
+      if (then && job.status === "succeeded") then();
+      if (startedHere.current.has(job.id) && job.status === "succeeded" && job.kind === "deploy-plan" && job.planId) {
+        const applied = job.params.autoApply && job.steps?.[1]?.status === "done";
+        if (!applied) setReviewKey(job.planId);
+      }
+      if (startedHere.current.has(job.id) && job.status === "failed") toast(`${job.title} failed: ${job.summary ?? "see Activity"}`);
+      if (startedHere.current.has(job.id) && job.status === "succeeded" && job.summary && job.summary !== "Done." && job.kind !== "deploy-plan") toast(job.summary, "info");
+    },
+    onEvent: (deployment, event) => setLiveEvents((current) => ({ ...current, [deployment]: [event, ...(current[deployment] ?? []).filter((entry) => entry.id !== event.id)].slice(0, 100) })),
+  });
+
+  const operate = useCallback(async (kind: OperationKind, params: Record<string, string | boolean | undefined>): Promise<JobView | undefined> => {
+    try {
+      const job = await deployApi.operate(kind, params);
+      startedHere.current.add(job.id);
+      setActivityJob(job.id);
+      setActivityOpen(true);
+      // The live stream may already have reported this job further along: keep that.
+      queryClient.setQueryData(["deploy", "overview"], (current: typeof overview) => current && (current.jobs.some((entry) => entry.id === job.id) ? current : { ...current, jobs: [job, ...current.jobs] }));
+      return job;
+    } catch (error) {
+      toast(error instanceof ApiError || error instanceof Error ? error.message : String(error));
+      return undefined;
+    }
+  }, [queryClient, toast]);
+
+  const refreshAll = () => {
+    void deployApi.overview(true).then((value) => queryClient.setQueryData(["deploy", "overview"], value)).catch(() => {});
+    if (profile) void deployApi.discover(profile, true).then((value) => queryClient.setQueryData(["deploy", "discover", profile], value)).catch(() => {});
+    if (profile && row) void deployApi.status(profile, row.name, true).then((value) => queryClient.setQueryData(["deploy", "status", profile, row.name], value)).catch(() => {});
+    void queryClient.invalidateQueries({ queryKey: ["deploy", "plans"] });
+  };
+
+  // Until AWS has answered (or refused), nothing is said about what it holds.
+  const awsKnown = Boolean(discovery || problem);
+  const findings = useMemo(() => (row && overview && awsKnown ? deploymentFindings({
+    name: row.name, target: row.target, match: row.match, deployment: status?.detail ?? row.deployment, detail: status?.detail,
+    context: discovery?.context, profile, problem,
+    profileKind: overview.profiles.find((entry) => entry.name === profile)?.kind,
+    local: overview.local, plans: plansQuery.data ?? [], jobs,
+  }) : []), [row, overview, awsKnown, status, discovery, profile, problem, plansQuery.data, jobs]);
+  const next = nextAction(findings);
+
+  const act = (action: Action) => {
+    if (!row || !profile) return;
+    const name = row.name;
+    switch (action.id) {
+      case "sign-in": void operate("aws-login", { profile }); break;
+      case "refresh": refreshAll(); break;
+      case "deploy": void operate("deploy-plan", { deployment: name, profile, autoApply: row.mode === "dev" }); break;
+      case "plan": void operate("deploy-plan", { deployment: name, profile }); break;
+      case "review-plan": setReviewKey(action.plan); break;
+      case "discard-plan": void operate("deploy-discard", { plan: action.plan, profile }); break;
+      case "export": void operate("export", { deployment: name, profile }); break;
+      case "start": void operate("local-start", { deployment: name, profile }); break;
+      case "start-exported": void operate("local-start", { deployment: name, profile, export: true }); break;
+      case "stop": void operate("local-stop", {}); break;
+      case "apply-changes": void operate("local-restart", { profile }); break;
+      case "resume-watch": void operate("local-attach-watch", { profile }); break;
+      case "start-docker": void operate("docker-start", {}); break;
+      case "delete": setTeardown({ deployment: name, mode: row.mode, region: row.target?.region }); break;
+    }
+  };
+
+  const more = (action: MoreAction) => {
+    if (!row || !profile) return;
+    if (action === "plan") void operate("deploy-plan", { deployment: row.name, profile });
+    if (action === "export") void operate("export", { deployment: row.name, profile });
+    if (action === "drift") void operate("drift", { deployment: row.name, profile });
+    if (action === "delete") setTeardown({ deployment: row.name, mode: row.mode, region: row.target?.region });
+  };
+
+  const remedy = (request: OperationRequest) => void operate(request.kind, { ...request.params });
+
+  const events = useMemo(() => {
+    if (!row) return [];
+    const merged = new Map<string, StackEventView>();
+    for (const event of [...(liveEvents[row.name] ?? []), ...(status?.detail?.events ?? [])]) if (!merged.has(event.id)) merged.set(event.id, event);
+    return [...merged.values()].sort((a, b) => b.time.localeCompare(a.time));
+  }, [row, liveEvents, status]);
+
+  const reviewBusy = reviewKey ? runningFor(plansQuery.data?.find((plan) => plan.key === reviewKey)?.deployment)?.title : undefined;
+
+  if (overviewQuery.error) return <p className="empty">Deploy & Run could not be read: {overviewQuery.error instanceof Error ? overviewQuery.error.message : String(overviewQuery.error)}</p>;
+  if (!overview) return <p className="empty">Reading this machine and its AWS profiles…</p>;
+
   return (
-    <section className="placeholder-page" aria-labelledby="deploy-heading">
-      <CloudUpload size={36} aria-hidden />
-      <h1 id="deploy-heading">Deploy</h1>
-      <p>Deployment controls are coming soon.</p>
-    </section>
+    <div className="deploy-view">
+      <AccountBar
+        profiles={overview.profiles}
+        profile={profile}
+        onProfile={setProfile}
+        context={discovery?.context}
+        problem={problem}
+        loading={discoveryQuery.isFetching || statusQuery.isFetching}
+        onRefresh={refreshAll}
+        onSignIn={() => profile && void operate("aws-login", { profile })}
+        prerequisites={overview.prerequisites}
+        onRemedy={remedy}
+      />
+      {overview.profiles.length === 0 ? (
+        <div className="deploy-empty">
+          <h1>No AWS profiles on this machine</h1>
+          <p>Studio reads AWS through named profiles in ~/.aws/config. Create one with <code>aws configure sso</code> (or <code>aws configure</code>), then refresh.</p>
+        </div>
+      ) : (
+        <div className="deploy-body">
+          <Rail rows={rows} unrecognized={discovery?.unrecognized ?? []} selected={row?.name} onSelect={select} known={Boolean(discovery)} local={overview.local} />
+          {row ? (
+            <Detail
+              row={row}
+              context={discovery?.context}
+              problem={problem}
+              status={status}
+              statusLoading={statusQuery.isPending || discoveryQuery.isPending}
+              record={discovery?.records[row.name]}
+              findings={findings}
+              awsKnown={awsKnown}
+              next={next}
+              local={overview.local}
+              events={events}
+              drift={driftQuery.data}
+              busy={Boolean(runningFor(row.name))}
+              onAction={act}
+              onMore={more}
+              onServiceLogs={setServiceLogs}
+            />
+          ) : <p className="empty">No deployments are declared in this repository.</p>}
+        </div>
+      )}
+      <Activity
+        jobs={jobs}
+        selected={activityJob}
+        onSelect={setActivityJob}
+        open={activityOpen}
+        onToggle={() => setActivityOpen(!activityOpen)}
+        onCancel={(id) => void deployApi.cancel(id).catch((error) => toast(error instanceof Error ? error.message : String(error)))}
+      />
+      {reviewKey ? (
+        <PlanReview
+          planKey={reviewKey}
+          busy={reviewBusy}
+          onClose={() => setReviewKey(undefined)}
+          onApply={(plan: PlanView, confirm) => { setReviewKey(undefined); void operate("deploy-apply", { plan: plan.key, profile: plan.profile ?? profile, ...(confirm ? { confirm } : {}) }); }}
+          onDiscard={(plan) => { setReviewKey(undefined); void operate("deploy-discard", { plan: plan.key, profile: plan.profile ?? profile }); }}
+          onReplan={(plan, createSecrets) => {
+            setReviewKey(undefined);
+            void operate("deploy-discard", { plan: plan.key, profile: plan.profile ?? profile }).then((job) => {
+              if (job) afterSuccess.current.set(job.id, () => void operate("deploy-plan", { deployment: plan.identity.deployment, profile: plan.profile ?? profile, ...(createSecrets ? { createSecrets: true } : {}) }));
+            });
+          }}
+        />
+      ) : null}
+      {teardown && profile ? (
+        <Teardown
+          deployment={teardown.deployment}
+          mode={teardown.mode}
+          profile={profile}
+          region={teardown.region}
+          busy={runningFor(teardown.deployment)?.title}
+          onClose={() => setTeardown(undefined)}
+          onDelete={({ confirm, retainFailed }) => {
+            const target = teardown;
+            setTeardown(undefined);
+            void operate("destroy", { deployment: target.deployment, mode: target.mode, profile, confirm, ...(target.region ? { region: target.region } : {}), ...(retainFailed ? { retainFailed: true } : {}) });
+          }}
+        />
+      ) : null}
+      {serviceLogs ? <ServiceLogs service={serviceLogs} onClose={() => setServiceLogs(undefined)} /> : null}
+      <div className="toasts" role="status" aria-live="polite">
+        {toasts.map((entry) => <div key={entry.id} className={`toast ${entry.tone === "refuse" ? "refuse" : ""}`}>{entry.text}</div>)}
+      </div>
+    </div>
   );
 }

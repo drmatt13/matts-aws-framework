@@ -12,7 +12,7 @@
  * Every call is appended to state.cdkCalls.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const statePath = process.env.FAKE_AWS_STATE;
@@ -21,7 +21,18 @@ const [command] = args;
 const value = (name) => { const index = args.indexOf(`--${name}`); return index >= 0 ? args[index + 1] : undefined; };
 const values = (name) => args.flatMap((arg, index) => (arg === `--${name}` ? [args[index + 1]] : []));
 const load = () => JSON.parse(readFileSync(statePath, "utf8"));
-const save = (state) => writeFileSync(statePath, JSON.stringify(state, null, 2));
+/** Replaces the state file whole, so a concurrent reader never sees half of it. */
+function writeAtomic(file, text) {
+  const temporary = `${file}.${process.pid}.tmp`;
+  writeFileSync(temporary, text);
+  for (let attempt = 0; ; attempt++) {
+    try { renameSync(temporary, file); return; } catch (error) {
+      if (attempt > 100 || !["EPERM", "EBUSY", "EACCES"].includes(error.code)) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+}
+const save = (state) => writeAtomic(statePath, JSON.stringify(state, null, 2));
 { const state = load(); state.cdkCalls = [...(state.cdkCalls ?? []), args]; save(state); }
 
 if (command === "synth") {
@@ -49,7 +60,8 @@ function assemblyStacks(directory) {
     account: /aws:\/\/(\d+)\//.exec(artifact.environment ?? "")?.[1],
   }));
 }
-const selectors = args.slice(1).filter((arg, index, all) => !arg.startsWith("-") && !all[index - 1]?.startsWith("--"));
+// A value after an option (--app dir, -c key=value) is not a stack selector.
+const selectors = args.slice(1).filter((arg, index, all) => !arg.startsWith("-") && !all[index - 1]?.startsWith("--") && all[index - 1] !== "-c");
 
 function outputsOf(state, stack) {
   return Object.entries(stack.template.Outputs ?? {}).map(([key, output]) => ({

@@ -63,6 +63,14 @@ test("a development plan deploys only when applied, then verifies, records and e
     assert.equal(JSON.parse(record.Value).planId, plan.planId);
     assert.ok(existsSync(path.join(exportDirectory, "client-app", ".env.development.local")), "export wrote the client settings");
     assert.match(readFileSync(path.join(exportDirectory, ".env"), "utf8"), /LOCAL_FRAMEWORK_DEPLOYMENT=my-aws-app/);
+
+    // Status reads the exported files where export wrote them, and finds them current.
+    const status = spawnSync(process.execPath, ["--import", "tsx", "scripts/deployment-status.ts", "status", "--deployment", "my-aws-app", "--profile", "dev", "--json"], {
+      cwd: root, encoding: "utf8", timeout: 120_000,
+      env: { ...account.env, FRAMEWORK_EXPORT_DIRECTORY: exportDirectory },
+    });
+    assert.equal(status.status, 0, `${status.stdout}${status.stderr}`);
+    assert.deepEqual(JSON.parse(status.stdout).detail.local.exported, { deployment: "my-aws-app", manifest: "my-aws-app", client: true, fresh: true });
   } finally { account.dispose(); }
 });
 

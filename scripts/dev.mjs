@@ -3,9 +3,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 let flagProfile;
+let detach = false;
 const args = process.argv.slice(2);
 for (let index = 0; index < args.length; index += 1) {
   const arg = args[index];
+  if (arg === "--detach") {
+    // Start the stack in the background and return: Framework Studio runs it
+    // this way, then watches the running stack with docker compose watch --no-up.
+    detach = true;
+    continue;
+  }
   if (arg === "--profile") {
     flagProfile = args[++index];
   } else if (arg.startsWith("--profile=")) {
@@ -28,6 +35,14 @@ if (!profile.trim()) {
   process.exit(1);
 }
 
+// FRAMEWORK_DOCKER_CLI names a Node script to run in place of docker: the
+// tests' simulated engine. Everything here runs from the repository root, where
+// docker-compose.yml is, whatever directory the command was started in.
+const dockerCommand = process.env.FRAMEWORK_DOCKER_CLI
+  ? { file: process.execPath, prefix: [process.env.FRAMEWORK_DOCKER_CLI] }
+  : { file: "docker", prefix: [] };
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
 /**
  * Removes the development images this Compose project no longer runs.
  *
@@ -45,7 +60,7 @@ if (!profile.trim()) {
  */
 function reclaimComposeImages(env) {
   const docker = (...args) => {
-    const result = spawnSync("docker", args, { env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+    const result = spawnSync(dockerCommand.file, [...dockerCommand.prefix, ...args], { cwd: repositoryRoot, env, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
     return result.status === 0 ? result.stdout : undefined;
   };
   const lines = (output) => (output ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
@@ -100,7 +115,6 @@ const env = { ...process.env, LOCAL_AWS_PROFILE: profile };
 // them docker-compose.services.yml, the container of each declared service. A
 // config that cannot boot, or a service with no container, stops here with its
 // own message rather than in every container at once.
-const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const generation = spawnSync(
   process.execPath,
   ["--import", "tsx", path.join("packages", "framework", "scripts", "generate-contracts.ts")],
@@ -120,7 +134,11 @@ try {
 // --remove-orphans: a container of a service this file no longer declares is
 // removed rather than left running beside the stack. The runner's own task and
 // Lambda containers carry no Compose labels, so Compose never counts them.
-const child = spawn("docker", ["compose", "up", "--build", "--watch", "--remove-orphans"], {
+// --detach returns once the containers are started (one-shot services such as
+// migrations have run, as their dependents wait on them).
+const compose = detach ? ["compose", "up", "--detach", "--build", "--remove-orphans"] : ["compose", "up", "--build", "--watch", "--remove-orphans"];
+const child = spawn(dockerCommand.file, [...dockerCommand.prefix, ...compose], {
+  cwd: repositoryRoot,
   stdio: "inherit",
   env,
 });

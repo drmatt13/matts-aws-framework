@@ -64,13 +64,17 @@ test("status adds events, pending change sets and whether local development can 
   const account = fakeAccount({ regions: { [REGION]: { stacks: [frameworkStack("my-aws-app", "CognitoStack", "dev")] } } });
   try {
     const state = account.read();
-    state.regions[REGION].stacks[0].ChangeSets = [{ ChangeSetName: "framework-plan-1", Status: "CREATE_COMPLETE", ExecutionStatus: "AVAILABLE" }];
+    // deploy:resources --plan names its change sets by plan id (plan-<time>-<hash>).
+    state.regions[REGION].stacks[0].ChangeSets = [
+      { ChangeSetName: "plan-mvd99k1j-b0059e", Status: "CREATE_COMPLETE", ExecutionStatus: "AVAILABLE" },
+      { ChangeSetName: "manual-console-edit", Status: "CREATE_COMPLETE", ExecutionStatus: "AVAILABLE" },
+    ];
     account.write(state);
     const result = status(account.env, "status", "--profile", "dev", "--json");
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.json.deployment, "my-aws-app");
     assert.equal(result.json.detail.events[0].stack, "my-aws-app-CognitoStack");
-    assert.deepEqual(result.json.detail.changeSets.map((set: any) => [set.name, set.ours]), [["framework-plan-1", true]]);
+    assert.deepEqual(result.json.detail.changeSets.map((set: any) => [set.name, set.ours]), [["plan-mvd99k1j-b0059e", true], ["manual-console-edit", false]]);
     assert.equal(typeof result.json.detail.local.compatible, "boolean");
     assert.equal(result.json.detail.local.compatible, false, "a deployment missing required control outputs cannot back local development");
     assert.deepEqual(account.calls().filter((call) => !READ_VERB.test(call.key)), []);

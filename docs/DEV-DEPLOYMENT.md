@@ -148,7 +148,16 @@ git ls-files --eol   # every text file should show w/lf
 
 ## Start development
 
-In one root terminal:
+The shortest path is Framework Studio (`npm run studio`), **Deploy** tab. Choose your AWS
+profile, select your development deployment, and press the action it offers: Deploy
+development, then Start development. Studio exports the outputs when this machine's
+settings are missing or out of date, starts Docker Desktop if it is installed and stopped,
+starts the containers in the background (`npm run dev:containers -- --detach`), then runs
+the source watch (`docker compose watch --no-up`) and the web client for you. Containers
+keep running if Studio closes; the watch and the web client stop with it, and Studio offers
+to resume them when it opens again. See [Deploy & Run](framework-studio/deploy-and-run.md).
+
+From the command line, in one root terminal:
 
 ```powershell
 npm run dev:containers
@@ -161,6 +170,8 @@ npm run dev:client
 ```
 
 `npm run dev:containers` runs `docker compose up --build --watch`; `npm run dev:client` is the Vite dev server.
+`npm run dev:containers -- --detach` starts the same stack in the background and returns
+(watch it with `docker compose watch --no-up`; stop it with `docker compose stop`).
 It uses the AWS `default` profile unless you pass a profile for this run or set
 `AWS_PROFILE` in the shell:
 

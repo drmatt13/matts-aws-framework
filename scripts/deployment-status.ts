@@ -122,13 +122,16 @@ async function recentEvents(aws: AwsTarget, deployment: DiscoveredDeployment, li
   return events.flat().sort((a, b) => String(b.time).localeCompare(String(a.time))).slice(0, 60);
 }
 
+/** A change set deploy:resources --plan prepared: named by its plan id (plan-<time>-<hash>), or framework-<…>. */
+const OUR_CHANGE_SET = /^(framework-|plan-[0-9a-z]+-[0-9a-f]{6}$)/;
+
 async function pendingChangeSets(aws: AwsTarget, deployment: DiscoveredDeployment) {
   const sets = await Promise.all(deployment.stacks.map(async (stack) => {
     try {
       const page = await runAws(["cloudformation", "list-change-sets", "--stack-name", stack.name], aws);
       return (page.Summaries ?? []).map((summary: any) => ({
         stack: stack.name, name: summary.ChangeSetName, status: summary.Status, executionStatus: summary.ExecutionStatus,
-        created: summary.CreationTime, ours: /^framework-/.test(String(summary.ChangeSetName ?? "")),
+        created: summary.CreationTime, ours: OUR_CHANGE_SET.test(String(summary.ChangeSetName ?? "")),
       }));
     } catch {
       return [];
@@ -154,11 +157,13 @@ function localState(deployment: DiscoveredDeployment, stacks: readonly ObservedS
     problem = error instanceof Error ? error.message : String(error);
   }
   const { RESOURCE_MANIFEST_FILE } = require("@repo/framework/config") as typeof import("@repo/framework/config");
-  const manifestFile = path.join(root, RESOURCE_MANIFEST_FILE);
+  // Where export writes: the repository root, unless FRAMEWORK_EXPORT_DIRECTORY says otherwise (as for deploy.ts).
+  const exported = process.env.FRAMEWORK_EXPORT_DIRECTORY ? path.resolve(process.env.FRAMEWORK_EXPORT_DIRECTORY) : root;
+  const manifestFile = path.join(exported, RESOURCE_MANIFEST_FILE);
   const exportedManifest = existsSync(manifestFile) ? (() => { try { return JSON.parse(readFileSync(manifestFile, "utf8")); } catch { return undefined; } })() : undefined;
-  const rootEnvFile = path.join(root, ".env");
+  const rootEnvFile = path.join(exported, ".env");
   const rootEnv = existsSync(rootEnvFile) ? parseEnv(readFileSync(rootEnvFile, "utf8")) : {};
-  const clientFile = path.join(root, "client-app", ".env.development.local");
+  const clientFile = path.join(exported, "client-app", ".env.development.local");
   return {
     compatible, ...(problem ? { problem } : {}),
     exported: {

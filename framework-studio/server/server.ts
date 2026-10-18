@@ -15,6 +15,8 @@ import { watchRepository } from "./watch";
 import { InfrastructureService } from "./infrastructure";
 import { createDeploymentInput } from "./deployment-inputs";
 import { DeploymentInputService, inputMode, readInputEdits } from "./deployment-input-edits";
+import { DeployService } from "./deploy/service";
+import { deployRouter } from "./deploy/routes";
 
 /**
  * The studio's HTTP surface: one origin, on the loopback interface only.
@@ -72,6 +74,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     for (const client of clients) client.write(message);
   };
   const infrastructure = new InfrastructureService(repositoryRoot, () => builder.current?.snapshot, undefined, () => broadcast("infrastructure", {}));
+  const deploy = new DeployService(repositoryRoot, broadcast);
   let evaluating = false;
   const refresh = async (external: readonly string[]): Promise<StudioState | undefined> => {
     evaluating = true;
@@ -244,6 +247,8 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     }),
   );
 
+  api.use("/deploy", deployRouter(deploy));
+
   app.use("/api", api);
 
   const server = createServer(app);
@@ -308,6 +313,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   const shutdown = async () => {
     stopWatching();
     for (const client of clients) client.end();
+    await deploy.dispose();
     await vite.close();
     await builder.dispose();
     server.close();

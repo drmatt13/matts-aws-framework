@@ -22,7 +22,7 @@ import type { DeploymentInputDetails, DeploymentInputEdit, DeploymentInputPlan }
  * read, and goes back on every call.
  */
 
-const token = document.querySelector<HTMLMetaElement>('meta[name="studio-token"]')?.content ?? "";
+export const token = document.querySelector<HTMLMetaElement>('meta[name="studio-token"]')?.content ?? "";
 
 export class ApiError extends Error {
   constructor(
@@ -33,7 +33,7 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+export async function call<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method: body === undefined ? "GET" : "POST",
     cache: "no-store",

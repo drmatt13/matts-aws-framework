@@ -3,12 +3,28 @@
  * A simulated AWS CLI for tests: FRAMEWORK_AWS_CLI points the deployment
  * scripts here, and FAKE_AWS_STATE names a JSON file holding the account.
  *
- * Every call is appended to state.calls. Unless state.allowWrites is true, any
+ * Every call is appended to <state>.calls.jsonl. Unless state.allowWrites is true, any
  * verb that is not a read fails, which is how tests prove a command only
  * observes. state.failures maps "<service> <operation>" to an error kind
  * (expired, denied, no-credentials, profile, not-found) to simulate failures.
+ *
+ * A read never writes the state file, and a write replaces it whole: the
+ * scripts run several of these at once (a watch beside a deployment).
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+
+/** Replaces the state file whole, so a concurrent reader never sees half of it. */
+function writeAtomic(file, text) {
+  const temporary = `${file}.${process.pid}.tmp`;
+  writeFileSync(temporary, text);
+  for (let attempt = 0; ; attempt++) {
+    try { renameSync(temporary, file); return; } catch (error) {
+      if (attempt > 100 || !["EPERM", "EBUSY", "EACCES"].includes(error.code)) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+}
+
 
 const statePath = process.env.FAKE_AWS_STATE;
 if (!statePath) { process.stderr.write("FAKE_AWS_STATE is not set\n"); process.exit(2); }
@@ -20,12 +36,17 @@ for (let index = 2; index < args.length; index++) {
   const arg = args[index];
   if (!arg.startsWith("--")) continue;
   const next = args[index + 1];
-  if (next === undefined || next.startsWith("--")) options[arg.slice(2)] = true;
-  else { options[arg.slice(2)] = options[arg.slice(2)] === undefined ? next : [].concat(options[arg.slice(2)], next); index++; }
+  if (next === undefined || next.startsWith("--")) { options[arg.slice(2)] = true; continue; }
+  // An option may take several values (--filters a b, --stack-resource-drift-status-filters X Y).
+  const values = [];
+  while (args[index + 1] !== undefined && !args[index + 1].startsWith("--")) values.push(args[++index]);
+  const previous = options[arg.slice(2)];
+  options[arg.slice(2)] = previous === undefined && values.length === 1 ? values[0] : [].concat(previous ?? [], values);
 }
 const key = `${service} ${operation}`;
-state.calls = [...(state.calls ?? []), { key, options }];
-const save = () => writeFileSync(statePath, JSON.stringify(state, null, 2));
+appendFileSync(`${statePath}.calls.jsonl`, `${JSON.stringify({ key, options })}\n`);
+const read = /^(get-|describe-|list-)/.test(operation ?? "") || key === "sts get-caller-identity";
+const save = () => { if (!read) writeAtomic(statePath, JSON.stringify(state, null, 2)); };
 const region = options.region ?? state.defaultRegion ?? "us-east-1";
 const account = (state.regions ??= {})[region] ??= {};
 account.stacks ??= [];
@@ -38,14 +59,12 @@ const STDERR = {
   "not-found": `An error occurred (ValidationError) when calling the ${operation} operation: Stack with id ${options["stack-name"] ?? "x"} does not exist`,
 };
 function fail(kind, message) {
-  save();
   process.stderr.write(`${message ?? STDERR[kind] ?? kind}\n`);
   process.exit(254);
 }
 const reply = (value) => { save(); process.stdout.write(JSON.stringify(value)); process.exit(0); };
 
 if (state.failures?.[key]) fail(state.failures[key]);
-const read = /^(get-|describe-|list-)/.test(operation ?? "") || key === "sts get-caller-identity";
 if (!read && !state.allowWrites) fail("write", `fake-aws: refused write ${key} (the test allows reads only)`);
 
 const live = () => account.stacks.filter((stack) => stack.StackStatus !== "DELETE_COMPLETE");
@@ -99,8 +118,15 @@ switch (key) {
     const path = options.path ?? "/";
     reply({ Parameters: (account.parameters ?? []).filter((parameter) => parameter.Name.startsWith(path)) });
   }
-  case "secretsmanager list-secrets":
-    reply({ SecretList: (account.secrets ?? []).map(({ SecretString, ...secret }) => secret) });
+  case "secretsmanager list-secrets": {
+    // --filters Key=tag-key,Values=... Key=tag-value,Values=...: every filter must match, as in AWS.
+    const filters = [].concat(options.filters ?? []).map((filter) => Object.fromEntries(String(filter).split(",").map((pair) => pair.split("="))));
+    const matches = (secret) => filters.every(({ Key, Values }) =>
+      Key === "tag-key" ? (secret.Tags ?? []).some((tag) => tag.Key === Values)
+        : Key === "tag-value" ? (secret.Tags ?? []).some((tag) => tag.Value === Values)
+          : Key === "name" ? secret.Name.startsWith(Values) : true);
+    reply({ SecretList: (account.secrets ?? []).filter(matches).map(({ SecretString, ...secret }) => secret) });
+  }
   case "secretsmanager describe-secret": {
     const secret = (account.secrets ?? []).find((entry) => entry.Name === options["secret-id"] || entry.ARN === options["secret-id"]);
     if (!secret) fail("not-found", "An error occurred (ResourceNotFoundException) when calling the DescribeSecret operation: Secrets Manager can't find the specified secret.");
@@ -114,7 +140,7 @@ switch (key) {
   }
   case "secretsmanager create-secret": {
     const arnOf = `arn:aws:secretsmanager:${region}:${state.identity?.Account ?? "111122223333"}:secret:${options.name}-AbCdEf`;
-    account.secrets = [...(account.secrets ?? []), { Name: options.name, ARN: arnOf, SecretString: options["secret-string"], Tags: [] }];
+    account.secrets = [...(account.secrets ?? []), { Name: options.name, ARN: arnOf, SecretString: options["secret-string"], Tags: options.tags ? JSON.parse(options.tags) : [] }];
     reply({ ARN: arnOf, Name: options.name });
   }
   case "secretsmanager put-secret-value": {

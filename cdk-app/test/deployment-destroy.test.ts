@@ -23,7 +23,10 @@ function productionAccount(extra: Record<string, unknown> = {}) {
     regions: { [REGION]: {
       stacks: [{ ...cognito, EnableTerminationProtection: true }, api, rds, frameworkStack("my-aws-app", "CognitoStack", "dev")],
       imports: { "my-aws-app-prod-CognitoStack:UserPoolId": ["my-aws-app-prod-HttpApiGatewayStack"] },
-      secrets: [{ Name: "my-aws-app-prod/secret/OPENAI_API_KEY", ARN: "arn:aws:secretsmanager:us-east-1:734849394764:secret:x-AbCdEf", SecretString: "sentinel" }],
+      secrets: [
+        { Name: "my-aws-app-prod/secret/OPENAI_API_KEY", ARN: "arn:aws:secretsmanager:us-east-1:734849394764:secret:x-AbCdEf", SecretString: "sentinel", Tags: [{ Key: "framework:deployment", Value: "my-aws-app-prod" }] },
+        { Name: "my-aws-app/secret/OPENAI_API_KEY", ARN: "arn:aws:secretsmanager:us-east-1:734849394764:secret:y-AbCdEf", SecretString: "sentinel", Tags: [{ Key: "framework:deployment", Value: "my-aws-app" }] },
+      ],
       parameters: [{ Name: "/framework/deployments/my-aws-app-prod", Value: "{}" }],
     } },
     ...extra,
