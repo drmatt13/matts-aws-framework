@@ -26,15 +26,22 @@ export interface GuardReaders {
 
 const ENABLING = new Set(["hotswap", "hotswap-fallback", "express", "yes"]);
 
-/** Deploy flags that bypass CloudFormation's safety or unreviewed approval, as they were written. */
+/**
+ * Deploy flags that bypass CloudFormation's safety or unreviewed approval, as they were written.
+ * The CDK CLI's parser also accepts camelCase names and grouped short flags (`-Ry`).
+ */
 export function unsafeProductionFlags(args: readonly string[]): string[] {
   const found: string[] = [];
   for (let index = 0; index < args.length; index++) {
     const arg = args[index]!;
-    if (arg === "-R" || arg === "-y") { found.push(arg); continue; }
     if (arg === "-c" || arg === "--context") { index++; continue; }
+    if (/^-[A-Za-z]+$/.test(arg)) {
+      if (/[Ry]/.test(arg)) found.push(arg);
+      continue;
+    }
     if (!arg.startsWith("--")) continue;
-    const [key, inline] = arg.slice(2).split(/=(.*)/s, 2) as [string, string | undefined];
+    const [written, inline] = arg.slice(2).split(/=(.*)/s, 2) as [string, string | undefined];
+    const key = written.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
     if (key === "no-rollback") { found.push(arg); continue; }
     if (key === "require-approval") {
       const value = inline ?? args[++index];
@@ -43,13 +50,22 @@ export function unsafeProductionFlags(args: readonly string[]): string[] {
     }
     if (!ENABLING.has(key) && key !== "rollback") continue;
     let value = inline;
-    let written = arg;
+    let shown = arg;
     const next = args[index + 1];
-    if (value === undefined && (next === "true" || next === "false")) { value = next; written = `${arg} ${next}`; index++; }
+    if (value === undefined && (next === "true" || next === "false")) { value = next; shown = `${arg} ${next}`; index++; }
     const enabled = value !== "false";
-    if (key === "rollback" ? !enabled : enabled) found.push(written);
+    if (key === "rollback" ? !enabled : enabled) found.push(shown);
   }
   return found;
+}
+
+/**
+ * The deploy arguments for this mode. Production always asks for approval of
+ * broadening changes: the flag outranks a `requireApproval` in cdk.json or
+ * ~/.cdk.json, which the argument check above cannot see.
+ */
+export function productionDeployArguments(identity: DeploymentIdentity, forwarded: readonly string[]): string[] {
+  return identity.mode === "prod" ? [...forwarded, "--require-approval", "broadening"] : [...forwarded];
 }
 
 /** What a person can do about a stack in this status: the CDK CLI handles the rest itself. */

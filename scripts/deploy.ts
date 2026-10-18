@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { parseEnv } from "node:util";
 import { SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { deploymentArguments, inspectDeploymentAssembly } from "./deployment-assembly";
-import { assertDeploymentAllowed } from "./deployment-guard";
+import { assertDeploymentAllowed, productionDeployArguments } from "./deployment-guard";
 import { DeploymentInterrupt } from "./deployment-interrupt";
 import { synchronizeDeploymentSecrets } from "./deployment-secrets";
 import { acquireDeploymentLock, sweepStaleAssemblies } from "./deployment-workspace";
@@ -80,7 +80,7 @@ async function main(): Promise<void> {
         result = await synchronizeDeploymentSecrets(graph.requirements, authored, graph.identity, client, name => console.log(`Updated managed secret ${name}.`));
       } finally { client.destroy(); }
       try {
-        await run(cdk, ["deploy", ...selection.forwarded, "--app", assembly, ...result.parameters.flatMap(value => ["--parameters", value])], resolve(root, "cdk-app"));
+        await run(cdk, ["deploy", ...productionDeployArguments(graph.identity, selection.forwarded), "--app", assembly, ...result.parameters.flatMap(value => ["--parameters", value])], resolve(root, "cdk-app"));
       } catch (error) {
         throw new Error(`${error instanceof Error ? error.message : "Infrastructure deployment failed."} Secret updates already performed: ${result.updated.join(", ") || "none"}.`);
       }

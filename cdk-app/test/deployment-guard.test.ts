@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DEPLOYMENT_OUTPUT_DESCRIPTION, type DeploymentIdentity, type ObservedStack } from "@repo/framework/deploy";
-import { assertDeploymentAllowed, unsafeProductionFlags, type GuardReaders } from "../../scripts/deployment-guard";
+import { assertDeploymentAllowed, productionDeployArguments, unsafeProductionFlags, type GuardReaders } from "../../scripts/deployment-guard";
 
 const dev: DeploymentIdentity = { deployment: "app", mode: "dev", account: "111122223333", region: "eu-west-2" };
 const prod: DeploymentIdentity = { ...dev, mode: "prod" };
@@ -30,9 +30,20 @@ test("unsafe production flags are recognised however they are written", () => {
   for (const args of [["--hotswap"], ["--hotswap-fallback"], ["--no-rollback"], ["--rollback=false"], ["--rollback", "false"], ["-R"], ["--express"], ["--yes"], ["-y"], ["--require-approval", "never"], ["--require-approval=never"], ["--hotswap=true"]]) {
     assert.notDeepEqual(unsafeProductionFlags(args), [], args.join(" "));
   }
-  for (const args of [["--all", "--require-approval", "broadening", "--rollback", "true"], ["--all", "--profile", "yes"], ["--hotswap=false"], ["-c", "rollback=false"]]) {
+  for (const args of [["--all", "--require-approval", "broadening", "--rollback", "true"], ["--all", "--profile", "yes"], ["--hotswap=false"], ["-c", "rollback=false"], ["-v"]]) {
     assert.deepEqual(unsafeProductionFlags(args), [], args.join(" "));
   }
+});
+
+test("the CLI's camelCase and grouped spellings are recognised too", () => {
+  for (const args of [["--requireApproval", "never"], ["--requireApproval=never"], ["--hotswapFallback"], ["--noRollback"], ["-Ry"], ["-vy"]]) {
+    assert.notDeepEqual(unsafeProductionFlags(args), [], args.join(" "));
+  }
+});
+
+test("production deploys always ask for broadening approval, whatever cdk.json says", () => {
+  assert.deepEqual(productionDeployArguments(prod, ["--all"]), ["--all", "--require-approval", "broadening"]);
+  assert.deepEqual(productionDeployArguments(dev, ["--all", "--yes"]), ["--all", "--yes"]);
 });
 
 test("production refuses unsafe flags before reading anything", () => {
