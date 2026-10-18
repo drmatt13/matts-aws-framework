@@ -103,6 +103,27 @@ test("routing avoids an unrelated island and retains separate paths for parallel
   const routes = routeConnections(links, [obstacle]);
   assert.deepEqual(Object.keys(routes).sort(), ["one", "two"]);
   for (const route of Object.values(routes)) assert.equal(pathHits(route.points, obstacle.bounds), false);
+  assert.notDeepEqual(routes.one!.points, routes.two!.points);
+});
+
+test("connections keep a visible bow for short, long, diagonal and vertical endpoints in either direction", () => {
+  const from = { id: "a", island: "left", x: 0, y: 0 };
+  for (const [x, y] of [[30, 0], [800, 0], [400, 400], [-400, 400], [1, 800], [-1, 800], [0, 800], [0, -800]]) {
+    const to = { id: "b", island: "right", x: x!, y: y! };
+    const link = { id: "wire", from, to, weight: 2, category: "routes" };
+    const points = routeConnections([link], []).wire!.points;
+    const reverse = routeConnections([{ ...link, from: to, to: from }], []).wire!.points;
+    const chord = Math.hypot(to.x, to.y);
+    const midpoint = points[12]!;
+    const bow = Math.abs(to.x * midpoint.y - to.y * midpoint.x) / chord;
+    assert.ok(bow >= Math.max(12, chord * 0.075), `visible bow for (${to.x}, ${to.y}): ${bow}`);
+    assert.deepEqual(points[0], { x: 0, y: 0 });
+    assert.deepEqual(points.at(-1), { x: to.x, y: to.y });
+    for (let at = 0; at < points.length; at++) {
+      const other = reverse[points.length - 1 - at]!;
+      assert.ok(Math.hypot(points[at]!.x - other.x, points[at]!.y - other.y) < 1e-8, "reversing the arrow retains the curve");
+    }
+  }
 });
 
 let builder: SnapshotBuilder, snapshot: Snapshot;

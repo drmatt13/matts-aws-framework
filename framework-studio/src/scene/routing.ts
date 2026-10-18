@@ -30,10 +30,17 @@ export function routeConnections(links: readonly LayoutLink[], obstacles: readon
     const { from: a, to: b } = link;
     const group = `${a.island}>${b.island}:${link.category}`;
     const index = lanes.get(group) ?? 0; lanes.set(group, index + 1);
-    const lane = ((index % 7) - 3) * 5;
+    const lane = (index % 7) * 5;
     const dx = b.x - a.x, dy = b.y - a.y, length = Math.max(1, Math.hypot(dx, dy));
     const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const controls = [arcControl(a, b), ...[lane, -80 + lane, 80 + lane, -180 + lane, 180 + lane].map((offset) => ({ x: middle.x - dy / length * offset, y: middle.y + dx / length * offset }))];
+    // Bend perpendicular to the chord so even vertical connections visibly arc.
+    // Prefer the upward normal, with a rightward bend for exactly vertical links.
+    // Every candidate has the same minimum bow; obstacle scoring may raise it,
+    // but cannot replace it with a cheaper straight or nearly straight route.
+    const direction = dx < 0 || dx === 0 && dy < 0 ? -1 : 1;
+    const normal = { x: dy / length * direction, y: -dx / length * direction };
+    const lift = 24 + length * 0.16 + lane;
+    const controls = [0, 80, 180, 320].map((extra) => ({ x: middle.x + normal.x * (lift + extra), y: middle.y + normal.y * (lift + extra) }));
     let best: readonly Point[] = [], score = Infinity;
     for (const control of controls) {
       const points = arcPoints(a, control, b, 8);

@@ -302,8 +302,11 @@ been removed; the renderer has one visual style.
    margin) are culled. Buildings are drawn by presence, and the selection gets a pulsing
    ring on its tile. When a selection exists, everything outside its neighbourhood is
    dimmed. Search applies the shared focus opacity to all paint layers (see Search).
-4. **Arcs.** Quadratic curves in the air, control point
-   `(midpoint x, min(a.y, b.y) − 24 − 0.16 · length)`, coloured by the Board's six
+4. **Arcs.** Quadratic curves in the air, bowed perpendicular to their endpoint chord
+   toward the upward side (rightward for vertical connections). The control point is
+   offset from the midpoint by at least `24 + 0.16 · length` world units; shared lanes
+   and obstacle avoidance can increase the bow, keeping every connection visibly curved.
+   They are coloured by the Board's six
    categories, with every category visible by default and no visibility toggles.
    Derived edges and source-inferred
    CDK links are dashed. The sixth category, CDK resource links, is cyan; its hover card

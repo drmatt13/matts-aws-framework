@@ -48,6 +48,9 @@ References: [ELK's layered phases](https://eclipse.dev/elk/blog/posts/2025/25-08
    endpoints, provenance, colour and arrow direction. This is corridor/lane routing,
    not merged bus edges. Candidates consider unrelated islands, icon silhouettes
    and estimated overview title envelopes.
+   Every candidate uses an upward-bowing quadratic arc with a distance-scaled minimum
+   bend perpendicular to its endpoints (rightward for vertical connections). Lane
+   offsets and obstacle avoidance increase that bend instead of flattening the wire.
    Drawing, packet animation and hover picking use the same 24-segment cached path.
 
 Projection uses the map's existing `(gx-gy)*32`, `(gx+gy)*16-h*16` transform. Search
