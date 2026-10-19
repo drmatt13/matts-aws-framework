@@ -19,13 +19,23 @@ const AWS = {
 } as const;
 
 const NEUTRAL = "#9fb3c8";
+const EVENT_YELLOW = "#facc15";
+
+/** The dark plate behind a role badge's glyph, unless the badge has a backdrop of its own. */
+export const ROLE_BADGE_PLATE = "#121b28";
+
+/** Role badges with their own backdrop and artwork: an event Lambda's black bolt on yellow. Every other badge keeps the dark plate and its own icon. */
+export const ROLE_BADGE: Readonly<Partial<Record<IconKey, { readonly fill: string; readonly artwork?: IconKey }>>> = {
+  event: { fill: EVENT_YELLOW, artwork: "eventBadge" },
+};
 
 /** The colour each icon spills onto the ground beneath it. */
 export const ICON_TINT: Readonly<Record<IconKey, string>> = {
   lambda: AWS.compute,
   gateway: AWS.networking,
   webSocket: "#6cc9d6",
-  event: "#ead46c",
+  event: EVENT_YELLOW,
+  eventBadge: EVENT_YELLOW,
   internetGateway: AWS.networking,
   natGateway: AWS.networking,
   endpoint: AWS.networking,

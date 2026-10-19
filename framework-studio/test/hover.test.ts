@@ -82,8 +82,44 @@ test("framework-managed resources are flagged and application declarations are n
 
 test("an item no environment deploys gives its specific reason", () => {
   assert.deepEqual(factsOf("resource:referenceExamples"), { places: [], notDeployed: "Not added to the CDK app", frameworkManaged: false });
-  assert.deepEqual(factsOf("envfile:dev"), { places: [], notDeployed: "Local file · cdk-app/.env.dev", frameworkManaged: false });
-  assert.deepEqual(factsOf("resource:langgraph.modelProvider"), { places: [], notDeployed: "CDK input, not deployed", frameworkManaged: false });
+});
+
+test("an environment file lights only the environment it belongs to", () => {
+  for (const mode of ["dev", "prod"] as const) {
+    const file = snapshot.models[mode].resources.find((resource) => resource.id === `envfile:${mode}`)!.deploymentFile!;
+    assert.deepEqual(factsOf(`envfile:${mode}`), { places: [{ env: mode, where: `Local file · ${file.path}` }], frameworkManaged: false });
+    // Each graph carries both files; the other environment's file never lights this one's pill.
+    assert.deepEqual(factsOf(`envfile:${mode}`, mode === "dev" ? "prod" : "dev"), factsOf(`envfile:${mode}`));
+  }
+});
+
+test("an input or input group lights every environment whose graph declares it", () => {
+  const modes = ["dev", "prod"] as const;
+  const inputs = snapshot.models.dev.resources.filter((resource) => resource.kind === "input" || resource.kind === "group");
+  assert.ok(inputs.length > 0);
+  for (const resource of inputs) {
+    const held = modes.filter((mode) => snapshot.models[mode].resources.some((candidate) => candidate.id === resource.id && !candidate.absent));
+    const facts = factsOf(resource.id);
+    assert.deepEqual(facts.places.map((place) => place.env), held, resource.id);
+    assert.equal(facts.notDeployed, undefined, resource.id);
+  }
+  const modelProvider = factsOf("resource:langgraph.modelProvider");
+  assert.ok(modelProvider.places.length > 0, "a declared input is no longer shown as deployed nowhere");
+});
+
+test("every resource's pills follow the graphs that hold it, whatever its kind", () => {
+  const modes = ["dev", "prod"] as const;
+  const seen = new Set<string>();
+  for (const mode of modes) for (const node of sceneOf(mode).nodes.filter((candidate) => candidate.entity === "resource")) {
+    // A stack nothing in the CDK app references is held by its graph but deployed by neither.
+    const deployed = modes.filter((each) => {
+      const resource = snapshot.models[each].resources.find((candidate) => candidate.id === node.id);
+      return !!resource && !resource.absent && !(resource.kind === "stack" && resource.stackUsage?.status === "unreferenced");
+    });
+    assert.deepEqual(factsOf(node.id, mode).places.map((place) => place.env), deployed, `${mode}: ${node.id}`);
+    seen.add(snapshot.models[mode].resources.find((candidate) => candidate.id === node.id)?.kind ?? "?");
+  }
+  for (const kind of ["stack", "member", "secret", "input", "group", "envFile"]) assert.ok(seen.has(kind), `the sweep reaches a ${kind}`);
 });
 
 test("a workload no environment deploys has no environment labels and no extra reason", () => {

@@ -1,11 +1,11 @@
-import { ICONS, iconUrl, type IconKey } from "../icons";
+import { carriesOwnTile, ICONS, iconUrl, type IconKey } from "../icons";
 import { backgroundGrid } from "./grid";
 import { DEPLOYMENT_BADGES, type DeploymentBadgeKind } from "../deployment";
 import type { Prop, Scene, SceneEdge, SceneNode } from "./build";
 import { worldToScreen, type Bounds, type Camera, type Point, type Viewport } from "./camera";
 import { project } from "./iso";
 import { searchOpacity, type LandscapeFocus } from "./focus";
-import { bandTrim, DECK, GRAPHITE, hexRgb, ICON_TINT, trimColor } from "./look";
+import { bandTrim, DECK, GRAPHITE, hexRgb, ICON_TINT, ROLE_BADGE, ROLE_BADGE_PLATE, trimColor } from "./look";
 import { offLens, restingAlpha } from "./connections";
 import { acceptCards, placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
 import { ICON_BADGE, type Face } from "./shapes";
@@ -848,6 +848,8 @@ export class SceneRenderer {
   private drawRoleIconGraphite(tile: Point, key: IconKey, alpha: number, ghost: boolean): void {
     const context = this.context;
     const { x, y, size, padding } = ICON_BADGE;
+    const badge = ROLE_BADGE[key];
+    const artwork = badge?.artwork ?? key;
     context.save();
     context.translate(tile.x, tile.y);
     context.globalAlpha = this.opacity * alpha;
@@ -857,19 +859,29 @@ export class SceneRenderer {
     context.fill();
     context.beginPath();
     context.roundRect(x, y, size, size, 4);
-    context.fillStyle = "#121b28";
+    context.fillStyle = badge?.fill ?? ROLE_BADGE_PLATE;
     context.fill();
+    const icon = this.icons.get(artwork);
+    if (icon?.complete && icon.naturalWidth > 0) {
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      if (carriesOwnTile(artwork)) {
+        // The service's own tile fills the badge, clipped to its corners, so no plate shows around it as a border.
+        context.save();
+        context.clip();
+        context.drawImage(icon, x, y, size, size);
+        context.restore();
+      } else {
+        context.drawImage(icon, x + padding, y + padding, size - padding * 2, size - padding * 2);
+      }
+    }
+    context.beginPath();
+    context.roundRect(x, y, size, size, 4);
     context.setLineDash(ghost ? [3 * this.pixel, 3 * this.pixel] : []);
     context.strokeStyle = ghost ? "#63758d" : rgba(hex(ICON_TINT[key]), 0.75);
     context.lineWidth = this.pixel;
     context.stroke();
     context.setLineDash([]);
-    const icon = this.icons.get(key);
-    if (icon?.complete && icon.naturalWidth > 0) {
-      context.imageSmoothingEnabled = true;
-      context.imageSmoothingQuality = "high";
-      context.drawImage(icon, x + padding, y + padding, size - padding * 2, size - padding * 2);
-    }
     context.restore();
   }
 

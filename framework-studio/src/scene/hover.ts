@@ -61,10 +61,9 @@ function frameworkManaged(resource: ModelResource, index: ModelIndex): boolean {
   return false;
 }
 
-function resourceWhere(resource: ModelResource | undefined, index: ModelIndex): Where {
-  if (!resource) return { reason: NOT_DEPLOYED };
-  if (resource.deploymentFile) return { reason: `Local file · ${resource.deploymentFile.path}` };
-  if (resource.absent) return { reason: NOT_DEPLOYED };
+function resourceWhere(resource: ModelResource | undefined, index: ModelIndex, mode: Mode): Where {
+  if (!resource || resource.absent) return { reason: NOT_DEPLOYED };
+  if (resource.deploymentFile) return { where: `Local file · ${resource.deploymentFile.path}` };
   switch (resource.kind) {
     case "stack":
       return resource.stackUsage?.status === "unreferenced" ? { reason: "Not added to the CDK app" } : { where: "CloudFormation stack" };
@@ -75,7 +74,10 @@ function resourceWhere(resource: ModelResource | undefined, index: ModelIndex): 
     }
     case "secret": return { where: "AWS Secrets Manager" };
     case "construct": return { where: "CDK construct" };
-    default: return { reason: "CDK input, not deployed" };
+    // An input is supplied wherever its graph declares it, from the file that environment's synthesis reads.
+    case "input": return { where: `CDK input · ${index.resources.get(`envfile:${mode}`)?.deploymentFile?.synthesisSource ?? "environment file"}` };
+    case "group": return { where: "CDK input group" };
+    default: return { reason: "Not deployed" };
   }
 }
 
@@ -103,7 +105,7 @@ export function nodeHoverFacts(node: SceneNode, indexes: ModelIndexes): HoverFac
         return route && target ? laneWhere(target.lanes, mode, routeHome(route, target)) : { reason: NOT_DEPLOYED };
       }), false);
     case "resource":
-      return combine(eachMode((mode) => resourceWhere(indexes[mode].resources.get(node.id), indexes[mode])),
+      return combine(eachMode((mode) => resourceWhere(indexes[mode].resources.get(node.id), indexes[mode], mode)),
         MODES.some((mode) => { const resource = indexes[mode].resources.get(node.id); return !!resource && frameworkManaged(resource, indexes[mode]); }));
     case "local":
       return combine(eachMode((mode) => {

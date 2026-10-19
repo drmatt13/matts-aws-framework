@@ -6,4 +6,4 @@ Source package: https://d1.awsstatic.com/onedam/marketing-channels/website/publi
 
 AWS permits these assets in architecture diagrams. AWS names and icons belong to Amazon Web Services. Preserve the service artwork and Studio's documented color choices when updating the subset.
 
-`generic/` uses Lucide icons (ISC license, see `LICENSE` there). These describe framework concepts, without assigning them an AWS service. All icons are served locally; the studio makes no runtime requests to an icon CDN.
+`generic/` uses Lucide icons (ISC license, see `LICENSE` there). These describe framework concepts, without assigning them an AWS service. `generic/zap-dark.svg` is the same bolt as `zap.svg` in dark ink, for the yellow event badge. All icons are served locally; the studio makes no runtime requests to an icon CDN.

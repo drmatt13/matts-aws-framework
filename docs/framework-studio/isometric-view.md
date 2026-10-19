@@ -177,8 +177,8 @@ subnet terraces inside the VPC foundation.
 | `built` | Enabled in the selected environment: Development is `lanes.local || lanes.dev`; Production is `lanes.prod` | Solid |
 | `other` | Enabled only in the other environment | Dashed outline (ghost) |
 | `nowhere` | Enabled in no lane | Ghost |
-| `absent` | A catalog entry this graph declares `undefined` | Ghost |
-| `present` | A catalog entry this graph holds | Solid |
+| `absent` | The graph does not hold it: a catalog entry it declares `undefined`, or the other environment's file | Ghost |
+| `present` | A catalog entry or file this graph holds | Solid |
 
 - A route follows its target.
 - The local PostgreSQL service follows its execution environment. Locally executing
@@ -283,9 +283,14 @@ their callbacks. Presence controls active versus ghost opacity and dashed outlin
 Local execution is active in Development; local-only workloads are ghosted in Production.
 
 WebSocket routes and functions carry a small connection badge; agent routes and tool
-Lambdas carry an AgentCore badge; event Lambdas carry a lightning badge. These sit at
-the main icon's lower-right corner, share its disabled/dimmed opacity and belong to its
-clickable silhouette. HTTP nodes keep their plain API Gateway or Lambda icon.
+Lambdas carry an AgentCore badge; event Lambdas carry a black lightning bolt on yellow.
+These sit at the main icon's lower-right corner, share its disabled/dimmed opacity and
+belong to its clickable silhouette. HTTP nodes keep their plain API Gateway or Lambda icon.
+A badge is a dark plate round a glyph, except where the glyph is AWS service artwork:
+that is a full-bleed coloured tile already (`carriesOwnTile` in `icons.ts`, any `aws/`
+icon), so it fills the badge, clipped to the corners, rather than sitting inside a
+plate that would read as a thick border. A badge with a backdrop of its own, such as the
+event bolt's yellow, is one entry in `ROLE_BADGE` (`look.ts`).
 
 Network gateways and endpoints use the same icon plaques: AWS VPC gateway icons,
 and a VPC endpoint icon with a small service badge at its lower-right corner. The badge
@@ -364,7 +369,20 @@ been removed; the renderer has one visual style.
    holds the connection (`offLens` in `connections.ts`, `EDGE_ALPHA.outOfLens`). Every
    connection keeps the same two-to-one ratio between its enabled and disabled views, so
    switching Development and Production dims what the new view leaves out and brightens
-   what it brings in. Both views draw the same set of connections: one only the other
+   what it brings in.
+
+   **The standard for new resources.** A resource scoped to one environment says so
+   once, at the producer that builds the model: it sets `ModelResource.absent` per graph.
+   Nothing downstream names a kind. The node's presence, its Dev/Prod badge
+   (`catalogAvailability`), its hover pills (`resourceWhere`) and the strength of every
+   connection touching it (`offLens`) all follow that flag, so a new resource type gets
+   the same lens behaviour with no view change. The two environment files are the worked
+   example: `.env.dev` is absent from the Production graph and `.env.prod` from
+   Development, so each file's connections read clearly in its own view and recede in
+   the other. `test/landscape.test.ts` and `test/hover.test.ts` sweep every resource of
+   every kind against this rule.
+
+   Both views draw the same set of connections: one only the other
    environment holds (a Lambda's database binding to Local PostgreSQL in Development, to
    RDS in Production) is drawn dimmed rather than left out, says so in its hover card and
    Inspector, and lights up only when hovered or selected itself, never because a node it

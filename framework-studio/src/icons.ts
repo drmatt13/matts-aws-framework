@@ -6,6 +6,8 @@ export const ICONS = {
   gateway: ["aws/api-gateway", "Amazon API Gateway"],
   webSocket: ["generic/cable", "WebSocket"],
   event: ["generic/zap", "Event invocation"],
+  /** The event glyph in dark ink, for the yellow badge on an event Lambda's plaque. */
+  eventBadge: ["generic/zap-dark", "Event invocation"],
   internetGateway: ["aws/internet-gateway", "VPC internet gateway"],
   natGateway: ["aws/nat-gateway", "VPC NAT gateway"],
   endpoint: ["aws/vpc-endpoint", "VPC endpoint"],
@@ -35,6 +37,9 @@ export const ICONS = {
 
 export type IconKey = keyof typeof ICONS;
 export const iconUrl = (key: IconKey): string => `/icons/${ICONS[key][0]}.svg`;
+
+/** AWS service artwork is a full-bleed coloured tile already, so a badge lets it fill the badge instead of framing it in a plate. */
+export const carriesOwnTile = (key: IconKey): boolean => ICONS[key][0].startsWith("aws/");
 
 /** Service badge on a VPC endpoint; reuse the same local service artwork as nodes. */
 export function endpointServiceIcon(service: string): IconKey {

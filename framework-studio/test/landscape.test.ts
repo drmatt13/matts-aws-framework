@@ -11,11 +11,11 @@ import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickIsland,
 import { buildIconShape, ICON_BADGE } from "../src/scene/shapes";
 import { backgroundGrid } from "../src/scene/grid";
 import { islandFrame } from "../src/scene/frame";
-import { API_EDGE_COLOR, BAND_TRIM, COMPUTE_EDGE_COLOR, DECK, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, TRIGGER_EDGE_COLOR, trimColor } from "../src/scene/look";
+import { API_EDGE_COLOR, BAND_TRIM, COMPUTE_EDGE_COLOR, DECK, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, ROLE_BADGE, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, TRIGGER_EDGE_COLOR, trimColor } from "../src/scene/look";
 import { behind, islandDrawOrder, islandSlabs, polygonArea, type IslandSlab } from "../src/scene/slabs";
-import { ICONS } from "../src/icons";
+import { carriesOwnTile, ICONS } from "../src/icons";
 import { catalogAvailability } from "../src/deployment";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { landscapeFocus, searchOpacity, searchScene, SEARCH_FADE } from "../src/scene/focus";
 import { layoutIslands, type IslandFootprint } from "../src/scene/layout";
 
@@ -818,6 +818,42 @@ test("switching Development and Production moves which connections recede", () =
   assert.ok(dev.edges.filter((edge) => !devOut.has(edge.edge.id)).every((edge) => ["built", "present"].includes(nodeOf.get(edge.from)!.presence) && ["built", "present"].includes(nodeOf.get(edge.to)!.presence)));
 });
 
+test("whatever a graph does not hold is absent in that view and its connections recede, whatever kind of resource it is", () => {
+  const modes = ["dev", "prod"] as const;
+  for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
+    const nodeOf = new Map(scene.nodes.map((node) => [node.id, node]));
+    for (const resource of model.resources) {
+      const node = nodeOf.get(resource.id);
+      if (node) assert.equal(node.presence, resource.absent ? "absent" : "present", `${model.mode}: ${resource.id}`);
+    }
+    for (const edge of scene.edges) {
+      if ([edge.from, edge.to].some((id) => nodeOf.get(id)?.presence === "absent")) assert.ok(offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)), `${model.mode}: ${edge.edge.id}`);
+    }
+  }
+  // A resource that belongs to one environment is how every producer says so: absent in the other graph.
+  for (const mode of modes) for (const file of snapshot.models[mode].resources.filter((resource) => resource.deploymentFile)) {
+    assert.equal(file.absent, file.deploymentFile!.mode !== mode, `${file.id} in the ${mode} graph`);
+  }
+});
+
+test("an environment file's connections read clearly in its own view and recede in the other", () => {
+  const supplies = (file: "dev" | "prod") => ({ id: `lens-fixture:${file}`, from: `envfile:${file}`, to: "resource:langgraph.modelProvider", relation: "supplies" as const, provenance: "source" as const, label: "LANGGRAPH_MODEL_PROVIDER" });
+  for (const viewed of ["dev", "prod"] as const) {
+    const other = viewed === "dev" ? "prod" : "dev";
+    const model = snapshot.models[viewed];
+    const scene = buildScene({ ...model, edges: [...model.edges, supplies("dev"), supplies("prod")] }, { webSocketApi: snapshot.webSocketApi });
+    const nodeOf = new Map(scene.nodes.map((node) => [node.id, node]));
+    assert.equal(nodeOf.get(`envfile:${viewed}`)!.presence, "present", `${viewed} file in the ${viewed} view`);
+    assert.equal(nodeOf.get(`envfile:${other}`)!.presence, "absent", `${other} file in the ${viewed} view`);
+    const strength = (file: "dev" | "prod") => {
+      const edge = scene.edges.find((candidate) => candidate.edge.id === `lens-fixture:${file}`)!;
+      return restingAlpha(edge.edge.provenance, offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)));
+    };
+    assert.equal(strength(viewed), 0.3, `${viewed} file's connection in the ${viewed} view`);
+    assert.equal(strength(other), 0.15, `${other} file's connection in the ${viewed} view`);
+  }
+});
+
 test("an enabled connection reads clearly in its own view and recedes where it is disabled", () => {
   const strength = (scene: Scene) => {
     const nodeOf = new Map(scene.nodes.map((node) => [node.id, node]));
@@ -1114,4 +1150,32 @@ test("every island has a trim in its icons' colour family, and every icon a tint
   for (const band of vpc.bands) assert.ok(band.id in BAND_TRIM, band.id);
   const colours = [...vpc.bands.map((band) => BAND_TRIM[band.id]), trimColor(vpc)];
   assert.equal(new Set(colours).size, colours.length);
+});
+
+test("an event badge is a black bolt on yellow, and every other role badge keeps the dark plate", () => {
+  const luminance = (hexColor: string) => { const [r, g, b] = [1, 3, 5].map((at) => parseInt(hexColor.slice(at, at + 2), 16)); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  const event = ROLE_BADGE.event!;
+  assert.ok(luminance(event.fill) > 160 && /^#f/i.test(event.fill), "an event badge is yellow");
+  assert.equal(event.artwork, "eventBadge");
+  const bolt = readFileSync(path.join(repositoryRoot, "framework-studio/public/icons", `${ICONS.eventBadge[0]}.svg`), "utf8");
+  assert.ok(!/#d9e6f2/i.test(bolt) && /stroke="#0b0f14"/.test(bolt), "the bolt on yellow is dark ink");
+  assert.deepEqual(Object.keys(ROLE_BADGE), ["event"], "the WebSocket plug and the agent badge keep the plate");
+  for (const [key, badge] of Object.entries(ROLE_BADGE)) {
+    assert.ok(badge.artwork === undefined || badge.artwork in ICONS, key);
+    assert.ok(existsSync(path.join(repositoryRoot, "framework-studio/public/icons", `${ICONS[(badge.artwork ?? key) as keyof typeof ICONS][0]}.svg`)), key);
+  }
+  // Lambdas of those roles still stand with those role icons, so the badges reach the map.
+  const roleIcons = new Set(dev.nodes.map((node) => node.roleIcon));
+  assert.ok(roleIcons.has("event") && roleIcons.has("webSocket") && roleIcons.has("agent"));
+  assert.equal(ICONS.webSocket[0], "generic/cable");
+});
+
+test("a badge lets an AWS service tile fill it, so no plate shows round it as a border", () => {
+  for (const key of ["agent", "bucket", "table", "lambda", "service", "queue", "topic", "bus", "workflow", "secret", "database", "userpool"] as const) {
+    assert.equal(carriesOwnTile(key), true, key);
+    const svg = readFileSync(path.join(repositoryRoot, "framework-studio/public/icons", `${ICONS[key][0]}.svg`), "utf8");
+    assert.match(svg, /<rect[^>]*width="80"[^>]*height="80"|<rect[^>]*height="80"[^>]*width="80"/, `${key} paints its own 80 by 80 tile`);
+  }
+  // Generic glyphs are bare strokes and still need the plate behind them.
+  for (const key of ["event", "eventBadge", "webSocket", "unattached", "managed", "construct"] as const) assert.equal(carriesOwnTile(key), false, key);
 });

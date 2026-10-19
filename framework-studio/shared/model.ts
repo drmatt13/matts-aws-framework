@@ -231,7 +231,12 @@ export interface ModelResource {
   readonly path: readonly string[];
   readonly kind: ResourceKind;
   readonly parent?: string;
-  /** Declared `undefined` for the graph being built (e.g. `PROD_DEPLOYMENT ? … : undefined`). */
+  /**
+   * The graph being built does not hold this resource: a catalog entry declared `undefined` (e.g.
+   * `PROD_DEPLOYMENT ? … : undefined`), or a resource that belongs to the other environment, such as the other
+   * environment's file. This one flag drives every view: its node's presence, its Dev/Prod badge and hover pills,
+   * and the strength of its connections. A producer of any new resource scoped to an environment sets it per graph.
+   */
   readonly absent: boolean;
   readonly fromEnv?: string;
   readonly default?: string;
