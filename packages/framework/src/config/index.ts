@@ -98,7 +98,7 @@ export * from "./workflow-asl";
 export * from "./network";
 export * from "./user-pool";
 export * from "./triggers";
-import { normalizeTriggers, type EventTrigger, type NormalizedTrigger } from "./triggers";
+import { normalizeFailureDestinations, normalizeTriggers, type EventFailureDestination, type EventTrigger, type NormalizedFailureDestination, type NormalizedTrigger } from "./triggers";
 // Named rather than `export *`: reading a deploy token is the framework's job,
 // so `isDeploySettingEnabled` stays internal to the package.
 export { DEPLOY_SETTINGS } from "./deploy";
@@ -497,6 +497,8 @@ export interface EventLambdaTargetDefinition<Catalog = AnyResourceCatalog>
   /** Capture AWS invocations for local replay under this target's own id. */
   readonly localReplay?: true;
   readonly triggers?: readonly EventTrigger[];
+  /** Where failed asynchronous invocations go once Lambda stops retrying them. */
+  readonly onFailure?: EventFailureDestination;
 }
 
 // ---------------------------------------------------------------------------
@@ -2703,6 +2705,7 @@ export function isSourcedTarget(target: NormalizedTarget): target is SourcedTarg
 
 export interface NormalizedFrameworkConfig {
   readonly triggers: readonly NormalizedTrigger[];
+  readonly failureDestinations: readonly NormalizedFailureDestination[];
   readonly targets: ReadonlyMap<TargetReference, NormalizedTarget>;
   readonly http: readonly HttpRouteDefinition[];
   readonly webSocket: readonly WebSocketRouteDefinition[];
@@ -3514,7 +3517,7 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
   assertInvocationEdges(config, targets);
   assertNetworkEdges(config, targets);
 
-  return { targets, http, webSocket, triggers: normalizeTriggers(config.events, config.resources ?? {}) };
+  return { targets, http, webSocket, triggers: normalizeTriggers(config.events, config.resources ?? {}), failureDestinations: normalizeFailureDestinations(config.events, config.resources ?? {}) };
 }
 
 /**

@@ -311,10 +311,17 @@ export interface ModelEdge {
   readonly source?: SourceLocation;
   readonly evidence?: readonly ConnectionEvidence[];
   readonly attachment?: string;
+  /** Native trigger wiring Studio can delete exactly, or why it must be edited in source. */
+  readonly removal?: NativeRemoval;
   /** A short human label: the env name, the grant method, the operations. */
   readonly label: string;
   readonly detail?: string;
 }
+
+/** A syntax span in the stack file: a lambdaTriggers entry, a constructor statement or a rule target. */
+export type NativeRemoval =
+  | { readonly kind: "property" | "statement" | "element"; readonly start: number; readonly end: number }
+  | { readonly refused: string };
 
 /** Source references only; excerpts are sanitized TypeScript, never evaluated values. */
 export interface ConnectionEvidence {
@@ -365,6 +372,8 @@ export interface Diagnostic {
 export interface ModeModel {
   readonly triggers?: readonly import("./triggers").TriggerBinding[];
   readonly triggerAdapters?: readonly import("./triggers").TriggerAdapterMetadata[];
+  /** Each event's declared onFailure destination. */
+  readonly failureDestinations?: readonly import("./triggers").FailureDestination[];
   /** Shared framework defaults, separate from workload declarations. */
   readonly defaults?: readonly ModelDefaults[];
   readonly localServices?: readonly LocalDatabase[];

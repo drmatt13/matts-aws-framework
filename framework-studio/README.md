@@ -278,13 +278,27 @@ tests and the browser console.
 ## What it edits
 
 Event Lambdas and compatible public stack fields have a collapsed **Triggers** section.
-Select a public resource (optionally filter by stack), an event Lambda, the invocation
-and its options. The picker resolves canonical CDK types, including aliases and inherited
-fields. Unavailable fields show their reason (a missing stream, a FIFO topic, a native
-consumer or notification, a short queue visibility); native hooks stay occupied. Acknowledge
-the handler's required payload/response contract, then use **Review Changes** and
-**Apply All**. Changes, reassignments and removals share exact undo/redo and source-conflict
-checks. Preview checks both graphs and TypeScript; it never executes CDK or deploys.
+**Add trigger** walks three steps. **Source**: every service that can invoke the event, then
+that service's stack fields (from a field's inspector, the event Lambda instead). Only
+choices that work for this Lambda can be picked; the rest say why beside their source line
+(a missing stream, a FIFO topic, a native consumer, a short queue visibility, local replay
+that cannot answer a synchronous source). A service with no field shows the code to add
+one. **Settings**: defaults are filled in (the first free Cognito hook, the bucket's own
+S3 delivery, `LATEST` for streams); EventBridge takes a source and detail type, S3 takes
+Object created/removed, a schedule takes an interval or a daily time, and tuning sits under
+**Advanced options**. **Confirm**: a checklist of everything still missing, all at once,
+plus warnings (a stack not yet in the CDK app) and AWS advice; acknowledge the handler
+contract and **Add trigger** stages it. A **Schedule** needs no resource. A Lambda with an
+asynchronous trigger also shows **When a run fails**, which stages its `onFailure` queue or
+topic. Then use **Review Changes** and **Apply All**. Changes, reassignments and removals
+share exact undo/redo and source-conflict checks. Preview checks both graphs and
+TypeScript; it never executes CDK or deploys.
+
+Every trigger row has a delete button. A removed row stays struck through with **Restore**
+until you review. Native wiring Studio recognizes exactly (a `lambdaTriggers` entry, a
+constructor `addEventSource`/`addSubscription`/`addEventNotification`/`addTrigger` statement,
+or an EventBridge rule target) is deleted from its stack file, and unused imports go with
+it. Anything nested or computed says why and links to the line instead.
 
 Every map node, public stack field, island, gateway and endpoint has a **Description**
 in its inspector. Descriptions are shared by Development and Production and saved as

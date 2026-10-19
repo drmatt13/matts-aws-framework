@@ -206,3 +206,26 @@ test("a capability source change after review expires the trigger plan", async (
   finally { writeFileSync(stackFile, original); await builder.refresh(); }
   assert.doesNotMatch(readFileSync(firstFile, "utf8"), /trigger/);
 });
+
+test("an event's failure destination writes onFailure with the catalog reference, reads back, and is removed exactly", async () => {
+  const original = readFileSync(firstFile, "utf8");
+  const plan = await edits.planBatch([{ kind: "onFailure", event: "first", value: { destination: "resource:storage.dlq", retryAttempts: 1 } }], builder.current!.snapshot.revision);
+  assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+  assert.ok(plan.impact.some((line) => line.includes("go to resource:storage.dlq after 1 retries")));
+  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  assert.match(readFileSync(firstFile, "utf8"), /onFailure: \{ destination: resources\.storage\.dlq, retryAttempts: 1 \}/, "reuses the file's catalog import");
+  for (const model of Object.values(builder.current!.snapshot.models)) {
+    assert.deepEqual(model.failureDestinations, [{ event: "first", destination: "resource:storage.dlq", retryAttempts: 1 }]);
+    assert.ok(model.edges.some((edge) => edge.relation === "grant" && edge.label === "onFailure" && edge.from === "lambda:first" && edge.to === "resource:storage.dlq"));
+  }
+  const refuse = (value: Record<string, unknown>, pattern: RegExp) => assert.rejects(edits.planBatch([{ kind: "onFailure", event: "first", value: value as never }], builder.current!.snapshot.revision), pattern);
+  await refuse({ destination: "resource:storage.fifoQueue" }, /not FIFO/);
+  await refuse({ destination: "resource:storage.table" }, /SQS queue or SNS topic/);
+  await refuse({ destination: "resource:storage.dlq", maxEventAgeSeconds: 30 }, /from 60 to 21600/);
+  const removal = await edits.planBatch([{ kind: "onFailure", event: "first", value: null }], builder.current!.snapshot.revision);
+  assert.equal(removal.ok, true, JSON.stringify(removal.preflight));
+  assert.equal((await edits.applyBatch(removal.planId)).status, "applied");
+  assert.equal(readFileSync(firstFile, "utf8"), original, "no property or dead import remains");
+  assert.equal((await edits.undo()).status, "applied"); assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(firstFile, "utf8"), original);
+});

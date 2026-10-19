@@ -89,8 +89,26 @@ test("trigger additions, multi-file reassignment and removals preview both graph
   await edits.undo(); await edits.undo();
 });
 
+test("a schedule writes trigger.schedule without a catalog import and reads back resourceless in both graphs", async () => {
+  const original = readFileSync(eventFile, "utf8");
+  const schedule: TriggerBinding = { event: "first", id: "nightly", key: "schedule/nightly", adapter: "schedule", resource: "", accepts: "schedule", options: { expression: "cron(0 2 * * ? *)" } };
+  const plan = await edits.planBatch([{ kind: "triggers", event: "first", bindings: [schedule] }], builder.current!.snapshot.revision);
+  assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  const written = readFileSync(eventFile, "utf8");
+  assert.match(written, /studioTrigger\.schedule\(\{ id: "nightly", accepts: "schedule", expression: "cron\(0 2 \* \* \? \*\)" \}\)/);
+  assert.doesNotMatch(written, /resources/, "a schedule needs no catalog import");
+  for (const model of Object.values(builder.current!.snapshot.models)) assert.deepEqual(model.triggers?.map((item) => [item.key, item.resource]), [["schedule/nightly", ""]]);
+  await assert.rejects(edits.planBatch([{ kind: "triggers", event: "first", bindings: [{ ...schedule, resource: "resource:identity.pool" }] }], builder.current!.snapshot.revision), /takes no resource/);
+  await assert.rejects(edits.planBatch([{ kind: "triggers", event: "first", bindings: [{ ...schedule, options: { expression: "rate(1 minutes)" } }] }], builder.current!.snapshot.revision), /rate\(1 minute\)/);
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(eventFile, "utf8"), original);
+});
+
 test("duplicate slots, stale CDK source, unknown types and manual ownership cannot be applied", async () => {
-  const duplicate = await edits.planBatch([{ kind: "triggers", event: "first", bindings: [binding(), binding("first", "preAuthentication", "different-id")] }], builder.current!.snapshot.revision);
+  // One list: refused with the form's reason. Across events: the graph preflight refuses it.
+  await assert.rejects(edits.planBatch([{ kind: "triggers", event: "first", bindings: [binding(), binding("first", "preAuthentication", "different-id")] }], builder.current!.snapshot.revision), /preAuthentication is already used by another trigger/);
+  const duplicate = await edits.planBatch([{ kind: "triggers", event: "first", bindings: [binding()] }, { kind: "triggers", event: "second", bindings: [binding("second", "preAuthentication", "different-id")] }], builder.current!.snapshot.revision);
   assert.equal(duplicate.ok, false);
   await assert.rejects(edits.applyBatch(duplicate.planId), /rejected/);
   const before = readFileSync(stackFile, "utf8");

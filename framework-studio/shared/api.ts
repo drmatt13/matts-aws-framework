@@ -18,6 +18,10 @@ export interface EditIntent {
 
 export type DraftEdit =
   | { readonly kind: "triggers"; readonly event: string; readonly bindings: readonly import("./triggers").TriggerBinding[] }
+  /** Delete one recognized native trigger (a source edge id) from its CDK stack file. */
+  | { readonly kind: "nativeTrigger"; readonly edge: string }
+  /** Set an event's onFailure destination, or remove it with null. */
+  | { readonly kind: "onFailure"; readonly event: string; readonly value: import("./triggers").FailureDestinationSettings | null }
   | { readonly kind: "description"; readonly entity: string; readonly value: string }
   | { readonly kind: "field"; readonly intent: EditIntent }
   | { readonly kind: "route"; readonly route: string; readonly value: string };

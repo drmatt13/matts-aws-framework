@@ -361,10 +361,17 @@ function edgesOf(
   };
   const memberPath = (reference: { readonly path: readonly string[] }) => reference.path;
   for (const binding of normalizeFrameworkConfig(config).triggers) {
+    // A resourceless trigger (a schedule) has no catalog node to draw from.
+    if (!binding.resource) continue;
     readPaths.push(binding.resource.path);
     add("trigger", resourceId(binding.resource.path), `lambda:${binding.event}`, {
       provenance: "declared", label: String(binding.options.operation ?? binding.adapter), detail: `${binding.adapter} · ${binding.id}`, attachment: binding.key,
     });
+  }
+  // The destination's send permission is granted to the function, so it reads as a grant.
+  for (const failure of normalizeFrameworkConfig(config).failureDestinations) {
+    readPaths.push(failure.destination.path);
+    add("grant", `lambda:${failure.event}`, resourceId(failure.destination.path), { provenance: "declared", label: "onFailure", detail: "Receives runs Lambda stopped retrying." });
   }
 
   for (const route of routes) {
@@ -615,7 +622,8 @@ export function projectModel(
   return {
     mode: options.mode,
     triggerAdapters: triggerAdapters(),
-    triggers: normalizeFrameworkConfig(config).triggers.map((binding) => ({ ...binding, resource: resourceId(binding.resource.path) })),
+    triggers: normalizeFrameworkConfig(config).triggers.map((binding) => ({ ...binding, resource: binding.resource ? resourceId(binding.resource.path) : "" })),
+    failureDestinations: normalizeFrameworkConfig(config).failureDestinations.map(({ event, destination, retryAttempts, maxEventAgeSeconds }) => ({ event, destination: resourceId(destination.path), ...(retryAttempts !== undefined ? { retryAttempts } : {}), ...(maxEventAgeSeconds !== undefined ? { maxEventAgeSeconds } : {}) })),
     status: diagnostics.some((diagnostic) => diagnostic.severity === "error") ? "error" : "ok",
     targets: targets.map((target) => targetModel(config, target, options)),
     routes,

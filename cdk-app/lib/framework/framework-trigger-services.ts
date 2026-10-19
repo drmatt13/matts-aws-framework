@@ -165,7 +165,7 @@ export function registerServiceTriggerAdapters(): void {
         // two owning stacks could deploy concurrently and drop each other's entries.
         const owners = notificationOwners.get(bucket.node.root) ?? new Map<string, string>();
         notificationOwners.set(bucket.node.root, owners);
-        const key = context.binding.resource.path.join("."), stack = cdk.Stack.of(context.fn).node.path;
+        const key = context.binding.resource!.path.join("."), stack = cdk.Stack.of(context.fn).node.path;
         if ((owners.get(key) ?? stack) !== stack) throw new Error(`${context.binding.origin}: S3 notifications for one bucket must target event functions in one owning stack.`);
         owners.set(key, stack);
       }
@@ -184,7 +184,7 @@ export function registerServiceTriggerAdapters(): void {
       } else {
         // An imported reference keeps the notification custom resource in the function's
         // existing owner and uses CDK's unmanaged merge, preserving other subscribers.
-        const sourceId = `FrameworkNotifications-${createHash("sha256").update(context.binding.resource.path.join(".")).digest("hex").slice(0, 16)}`;
+        const sourceId = `FrameworkNotifications-${createHash("sha256").update(context.binding.resource!.path.join(".")).digest("hex").slice(0, 16)}`;
         const reference = stack.node.tryFindChild(sourceId) as s3.IBucket | undefined ?? s3.Bucket.fromBucketAttributes(stack, sourceId, { bucketArn: bucket.bucketArn, bucketName: bucket.bucketName });
         for (const event of options.eventTypes as string[]) reference.addEventNotification(event as s3.EventType, new notifications.LambdaDestination(context.fn), ...(prefix || suffix ? [{ ...(prefix ? { prefix } : {}), ...(suffix ? { suffix } : {}) }] : []));
       }

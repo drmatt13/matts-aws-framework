@@ -3,12 +3,16 @@ import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import type * as lambda from "aws-cdk-lib/aws-lambda";
+import * as scheduler from "aws-cdk-lib/aws-scheduler";
+import * as schedulerTargets from "aws-cdk-lib/aws-scheduler-targets";
+import * as destinations from "aws-cdk-lib/aws-lambda-destinations";
+import type * as sns from "aws-cdk-lib/aws-sns";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as kms from "aws-cdk-lib/aws-kms";
 import type { IConstruct } from "constructs";
 import { createHash } from "node:crypto";
-import { COGNITO_TRIGGER_OPERATIONS, normalizeFrameworkConfig, type CdkResourceSpec, type FrameworkConfig, type NormalizedTrigger } from "@repo/framework/config";
+import { COGNITO_TRIGGER_OPERATIONS, normalizeFrameworkConfig, type CdkResourceSpec, type FrameworkConfig, type NormalizedFailureDestination, type NormalizedTrigger } from "@repo/framework/config";
 import { eventFunction } from "./framework-events";
 import { linkedConstruct } from "./framework-resources";
 import { registerServiceTriggerAdapters } from "./framework-trigger-services";
@@ -28,7 +32,7 @@ export function triggerOptionResource(context: TriggerAttachmentContext, name: s
 }
 
 export function triggerAttachmentId(binding: NormalizedTrigger): string {
-  const source = createHash("sha256").update(`${binding.adapter}:${binding.resource.path.join(".")}`).digest("hex").slice(0, 16);
+  const source = createHash("sha256").update(`${binding.adapter}:${binding.resource?.path.join(".") ?? ""}`).digest("hex").slice(0, 16);
   return `FrameworkTrigger-${source}-${binding.id}`;
 }
 export interface CdkTriggerAdapter {
@@ -103,20 +107,58 @@ registerCdkTriggerAdapter({
   },
 });
 
+registerCdkTriggerAdapter({
+  kind: "schedule",
+  validate({ fn, binding }) {
+    if (cdk.Stack.of(fn).node.tryFindChild(triggerAttachmentId(binding))) throw new Error(`${binding.origin}: attachment identity is occupied; unknown native ownership requires review.`);
+  },
+  attach({ fn, binding }) {
+    const options = binding.options;
+    new scheduler.Schedule(cdk.Stack.of(fn), triggerAttachmentId(binding), {
+      schedule: scheduler.ScheduleExpression.expression(String(options.expression), typeof options.timezone === "string" ? cdk.TimeZone.of(options.timezone) : undefined),
+      target: new schedulerTargets.LambdaInvoke(fn, options.input ? { input: scheduler.ScheduleTargetInput.fromObject(options.input) } : {}),
+      enabled: options.enabled as boolean | undefined,
+      description: `${binding.event}: ${binding.id}`,
+    });
+  },
+});
+
 registerServiceTriggerAdapters();
 
 /** The composition root finalizes resources only after every native owner has finished. */
 export function attachFrameworkTriggers(scope: IConstruct, config: FrameworkConfig): void {
-  const prepared = normalizeFrameworkConfig(config).triggers.map((binding) => {
+  const normalized = normalizeFrameworkConfig(config);
+  const prepared = normalized.triggers.map((binding) => {
     const adapter = adapters.get(binding.adapter);
     if (!adapter) throw new Error(`${binding.origin}: no CDK adapter registered for ${binding.adapter}.`);
-    const linked = linkedConstruct(scope, binding.resource);
-    const resource = linked?.construct as IConstruct | undefined;
-    if (!resource?.node) throw new Error(`${binding.origin}: resources.${binding.resource.path.join(".")} is not linked in this graph.`);
     const fn = eventFunction(scope, binding.event);
+    // A resourceless trigger creates its own source beside the function.
+    const resource = binding.resource ? linkedConstruct(scope, binding.resource)?.construct as IConstruct | undefined : fn;
+    if (!resource?.node) throw new Error(`${binding.origin}: resources.${binding.resource!.path.join(".")} is not linked in this graph.`);
     const context = { resource, fn, binding };
     adapter.validate(context);
     return { adapter, context };
   });
   for (const { adapter, context } of prepared) adapter.attach(context);
+  attachFailureDestinations(scope, normalized.failureDestinations);
+}
+
+/** Each event's onFailure: a standard queue or topic that receives runs Lambda stopped retrying. */
+function attachFailureDestinations(scope: IConstruct, failures: readonly NormalizedFailureDestination[]): void {
+  for (const failure of failures) {
+    const fn = eventFunction(scope, failure.event);
+    const destination = linkedConstruct(scope, failure.destination)?.construct as IConstruct | undefined;
+    if (!destination?.node) throw new Error(`${failure.origin}: resources.${failure.destination.path.join(".")} is not linked in this graph.`);
+    const queue = destination as sqs.IQueue, topic = destination as sns.ITopic;
+    const onFailure = typeof queue.queueArn === "string" && typeof queue.grantSendMessages === "function" ? (queue.fifo ? undefined : new destinations.SqsDestination(queue))
+      : typeof topic.topicArn === "string" && typeof topic.grantPublish === "function" ? (topic.fifo ? undefined : new destinations.SnsDestination(topic))
+      : undefined;
+    if (!onFailure) throw new Error(`${failure.origin}: the destination must be a standard SQS queue or SNS topic.`);
+    if (fn.node.tryFindChild("EventInvokeConfig")) throw new Error(`${failure.origin}: ${fn.node.path} already configures asynchronous invocation natively; keep one of them.`);
+    fn.configureAsyncInvoke({
+      onFailure,
+      ...(failure.retryAttempts !== undefined ? { retryAttempts: failure.retryAttempts } : {}),
+      ...(failure.maxEventAgeSeconds !== undefined ? { maxEventAge: cdk.Duration.seconds(failure.maxEventAgeSeconds) } : {}),
+    });
+  }
 }

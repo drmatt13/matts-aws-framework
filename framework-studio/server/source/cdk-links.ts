@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
-import type { CdkLinkIndex, ModelEdge, SourceLocation } from "../../shared/model";
+import type { CdkLinkIndex, ModelEdge, NativeRemoval, SourceLocation } from "../../shared/model";
 import { sha256 } from "../files";
 import type { CatalogEntrySource } from "./catalog";
 import { lineAndColumn, literalKey, parse, unwrap } from "./syntax";
@@ -12,6 +12,8 @@ export function scanCdkLinks(
   repositoryRoot: string,
   catalog: ReadonlyMap<string, CatalogEntrySource>,
   links: Readonly<Record<string, readonly SourceLocation[]>>,
+  /** Reads a stack file; edit validation scans proposed text before anything is written. */
+  read: (file: string) => string = (file) => readFileSync(path.join(repositoryRoot, file), "utf8"),
 ): CdkLinkIndex {
   const files: Record<string, string> = {};
   const edges: ModelEdge[] = [];
@@ -21,7 +23,7 @@ export function scanCdkLinks(
     const stack = entry.stack;
     if (!stack?.location) continue;
     const file = stack.location.file;
-    const text = readFileSync(path.join(repositoryRoot, file), "utf8");
+    const text = read(file);
     files[file] = sha256(text);
     const source = parse(file, text);
     if ((source as ts.SourceFile & { parseDiagnostics: readonly unknown[] }).parseDiagnostics.length) {
@@ -86,13 +88,13 @@ export function scanCdkLinks(
       const location = locate(node);
       if (!manualWiring.some((item) => item.resource === (resource ?? `resource:${catalogPath}`) && item.source.start === location.start)) manualWiring.push({ resource: resource ?? `resource:${catalogPath}`, source: location, reason });
     };
-    const add = (from: string, to: string, label: string, node: ts.Node, relation: "cdk" | "trigger" = "cdk"): void => {
+    const add = (from: string, to: string, label: string, node: ts.Node, relation: "cdk" | "trigger" = "cdk", removal?: NativeRemoval): void => {
       if (from === to) return;
       const start = node.getStart(source);
       const location = { file, ...lineAndColumn(source, start), start, end: node.end };
       const id = `${relation}:${from}->${to}#${file}:${start}:${label}`;
       if (edges.some((edge) => edge.id === id)) return;
-      edges.push({ id, relation, from, to, label, provenance: "source", source: location, detail: `${relation === "trigger" ? "Native trigger" : "Inferred from CDK source"} · ${file}:${location.line}` });
+      edges.push({ id, relation, from, to, label, provenance: "source", source: location, detail: `${relation === "trigger" ? "Native trigger" : "Inferred from CDK source"} · ${file}:${location.line}`, ...(removal ? { removal } : {}) });
     };
     const properties = (expression: ts.Expression | undefined): readonly ts.ObjectLiteralElementLike[] => {
       const value = expression && unwrap(expression);
@@ -116,9 +118,13 @@ export function scanCdkLinks(
       }
     }
     const resolve = (node: ts.Expression): ts.Expression => ts.isIdentifier(unwrap(node)) ? variables.get((unwrap(node) as ts.Identifier).text) ?? node : node;
-    const trigger = (from: string | undefined, expression: ts.Expression | undefined, label: string, node: ts.Node) => {
+    const direct = new Set(constructor.body.statements);
+    // Only a span whose deletion removes exactly this wiring is offered; anything else is edited in source.
+    const span = (kind: "property" | "statement" | "element", node: ts.Node): NativeRemoval => ({ kind, start: node.getStart(source), end: node.end });
+    const statementOf = (node: ts.Node): NativeRemoval => ts.isExpressionStatement(node.parent) && direct.has(node.parent) ? span("statement", node.parent) : { refused: "This wiring is part of a larger expression or assignment; edit it in source." };
+    const trigger = (from: string | undefined, expression: ts.Expression | undefined, label: string, node: ts.Node, removal: NativeRemoval = statementOf(node)) => {
       const to = expression && eventRef(expression);
-      if (from && to) add(from, to, label, node, "trigger");
+      if (from && to) add(from, to, label, node, "trigger", removal);
       else manual(from, node);
     };
     const inspect = (expression: ts.Expression, owner?: string): void => {
@@ -134,7 +140,7 @@ export function scanCdkLinks(
           const entries = properties(resolve(hooks));
           if (!owner || !entries.length) manual(owner, hooks);
           for (const hook of entries) {
-            if (ts.isPropertyAssignment(hook) && literalKey(hook)) trigger(owner, hook.initializer, literalKey(hook)!, hook);
+            if (ts.isPropertyAssignment(hook) && literalKey(hook)) trigger(owner, hook.initializer, literalKey(hook)!, hook, ts.isObjectLiteralExpression(unwrap(hooks)) ? span("property", hook) : { refused: "These hooks come from a variable; edit them in source." });
             else manual(owner, hook);
           }
         }
@@ -153,7 +159,10 @@ export function scanCdkLinks(
           const targetList = targets && unwrap(resolve(targets));
           if (targetList && ts.isArrayLiteralExpression(targetList)) for (const item of targetList.elements) {
             const target = unwrap(resolve(item));
-            if (ts.isNewExpression(target) && isConstructor(target, "aws-events-targets", "LambdaFunction")) trigger(bus && ref(bus), target.arguments?.[0], "EventBridge rule", value);
+            const literal = targetList === unwrap(targets);
+            // Another target keeps the rule; a sole target removes only a standalone rule.
+            const removal = !literal ? { refused: "These targets come from a variable; edit them in source." } : targetList.elements.length > 1 ? span("element", item) : ts.isExpressionStatement(value.parent) && direct.has(value.parent) ? span("statement", value.parent) : { refused: "The rule is assigned or referenced; edit it in source." };
+            if (ts.isNewExpression(target) && isConstructor(target, "aws-events-targets", "LambdaFunction")) trigger(bus && ref(bus), target.arguments?.[0], "EventBridge rule", value, removal);
           }
         }
       }
@@ -175,7 +184,7 @@ export function scanCdkLinks(
           const type = eventSource && ts.isNewExpression(eventSource) ? types.find(([name]) => isConstructor(eventSource, "aws-lambda-event-sources", name)) : undefined;
           const resource = type && ts.isNewExpression(eventSource!) ? eventSource.arguments?.[0] : undefined;
           const sourceId = resource && ref(resource);
-          if (sourceId && fn) add(sourceId, fn, type![1], value, "trigger"); else manual(sourceId, value);
+          if (sourceId && fn) add(sourceId, fn, type![1], value, "trigger", statementOf(value)); else manual(sourceId, value);
         }
         if (method === "addEventNotification" || method === "addObjectCreatedNotification" || method === "addObjectRemovedNotification") {
           const notification = value.arguments[method === "addEventNotification" ? 1 : 0];
@@ -212,7 +221,6 @@ export function scanCdkLinks(
       else inspect(value);
     }
     // Unknown/conditional wiring is occupied conservatively; it never authorizes an edit.
-    const direct = new Set(constructor.body.statements);
     const findManual = (node: ts.Node, nested = false): void => {
       const indirect = nested || (ts.isStatement(node) && node !== constructor.body && !direct.has(node));
       if (indirect && ((ts.isPropertyAssignment(node) && literalKey(node) === "lambdaTriggers") || (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ["addTrigger", "addSubscription", "addEventSource", "addEventNotification"].includes(node.expression.name.text)))) {

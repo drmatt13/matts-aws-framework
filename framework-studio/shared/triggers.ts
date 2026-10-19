@@ -10,6 +10,16 @@ export interface TriggerBinding {
   readonly options: Readonly<Record<string, unknown>>;
 }
 
+/** Where an event's failed asynchronous runs go: a catalog queue or topic (`resource:` id). */
+export interface FailureDestinationSettings {
+  readonly destination: string;
+  readonly retryAttempts?: number;
+  readonly maxEventAgeSeconds?: number;
+}
+export interface FailureDestination extends FailureDestinationSettings {
+  readonly event: string;
+}
+
 export interface TriggerCapability {
   readonly resource: string;
   readonly stack: string;

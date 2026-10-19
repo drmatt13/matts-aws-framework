@@ -1,113 +1,281 @@
-import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, Check, CircleAlert, Info, Pencil, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
+import { Fragment, useEffect, useState } from "react";
 import type { ModelResource, ModelTarget } from "../../shared/model";
-import type { TriggerBinding } from "../../shared/triggers";
-import { triggerTiming, triggerUnavailable } from "../../shared/trigger-availability";
+import type { TriggerBinding, TriggerField } from "../../shared/triggers";
+import { blockingProblems, eventUnavailable, triggerProblems, triggerUnavailable, type TriggerProblem } from "../../shared/trigger-availability";
+import { enumChoices, eventPatternBasics, eventPatternFrom, fieldGroups, initialOptions, nextAttachmentId, S3_BASIC_EVENTS, scheduleBasics, scheduleExpression, type ScheduleBasics } from "../../shared/trigger-presets";
 import { useStudio } from "../studio";
 import { titleOf } from "../lookup";
 import { Written } from "./Written";
+import { TriggerSourcePicker } from "./TriggerGuide";
+import { FailureDestination } from "./FailureDestination";
+
+type Step = "source" | "settings" | "confirm";
 
 interface Form {
+  readonly step: Step;
+  /** The service whose resources step one is showing. */
+  readonly service?: string;
   readonly event: string;
   readonly resource: string;
   readonly adapter: string;
   readonly id: string;
   readonly accepts: boolean;
-  readonly fields: Readonly<Record<string, string>>;
+  readonly options: Readonly<Record<string, unknown>>;
+  /** Input text as typed, for fields whose value is parsed. */
+  readonly text: Readonly<Record<string, string>>;
+  readonly unparsed: Readonly<Record<string, string>>;
+  /** Fields switched from their guided inputs to the JSON editor. */
+  readonly json: Readonly<Record<string, boolean>>;
+  /** The staged binding this form replaces. */
+  readonly editing?: { readonly event: string; readonly key: string };
 }
+
+const PROBLEM_ICONS = { form: CircleAlert, source: CircleAlert, warning: TriangleAlert, advice: Info } as const;
 
 export function Triggers({ resource, target }: { readonly resource?: ModelResource; readonly target?: ModelTarget }) {
   const { snapshot, model, index, draft, draftState, select } = useStudio();
   const [form, setForm] = useState<Form>();
-  const [error, setError] = useState<string>();
-  const [advice, setAdvice] = useState<string>();
-  const [stack, setStack] = useState("");
-  const original = useRef(new Map<string, readonly TriggerBinding[]>());
-  const previous = useRef<{ event: string; key: string } | undefined>(undefined);
-  useEffect(() => { if (!draft.dirty) { setForm(undefined); setError(undefined); setAdvice(undefined); previous.current = undefined; original.current.clear(); } }, [draftState.entries]);
+  const [open, setOpen] = useState(false);
+  // Nothing is staged until the trigger is added, so only a saved or discarded draft closes the form.
+  useEffect(() => { if (!draft.dirty) setForm(undefined); }, [draftState.entries]);
   const events = model.targets.filter((item) => item.role === "event");
   const capabilities = snapshot.source.triggerCapabilities ?? [];
   const capability = resource && capabilities.find((item) => item.resource === resource.id);
   if (resource && !capability) return null;
+  const adapters = model.triggerAdapters ?? [];
   const all = events.flatMap((event) => draft.triggers(event.id));
   const owns = (binding: TriggerBinding) => resource ? binding.resource === resource.id : binding.event === target?.id;
   const managed = all.filter(owns);
+  // Removed but not yet reviewed: kept visible so the developer can restore it.
+  const pendingRemovals = (model.triggers ?? []).filter(owns).filter((binding) => !all.some((item) => item.event === binding.event && item.key === binding.key));
   const native = model.edges.filter((edge) => edge.relation === "trigger" && edge.provenance === "source" && (resource ? edge.from === resource.id : edge.to === target?.ref));
-  const metadata = model.triggerAdapters?.find((item) => item.kind === form?.adapter);
-  const selectedCapability = capabilities.find((item) => item.resource === form?.resource);
   const resourceReason = resource ? capability?.adapters.some((item) => !triggerUnavailable(snapshot, resource.id, item.kind)) ? undefined : capability?.adapters[0] ? triggerUnavailable(snapshot, resource.id, capability.adapters[0].kind) : "Unknown public type; no compatible trigger adapter." : undefined;
-  const occupied = (operation: string) => metadata?.exclusive && [...snapshot.source.cdkLinks.edges.filter((edge) => edge.relation === "trigger" && edge.from === form?.resource).map((edge) => edge.label), ...all.filter((binding) => binding.resource === form?.resource && binding.key !== previous.current?.key).map((binding) => String(binding.options[metadata.exclusive!]))].includes(operation);
-  const candidateReason = (resource: string) => {
-    const capability = capabilities.find((item) => item.resource === resource);
-    if (!capability?.adapters.length) return "Unknown type; no trigger adapter";
-    const reasons = capability.adapters.map((adapter) => triggerUnavailable(snapshot, resource, adapter.kind));
-    return reasons.every(Boolean) ? reasons[0] : undefined;
+  const others = all.filter((binding) => !(form?.editing && binding.event === form.editing.event && binding.key === form.editing.key));
+  const metadata = adapters.find((item) => item.kind === form?.adapter);
+  const problems: readonly TriggerProblem[] = form && metadata && form.step !== "source"
+    ? triggerProblems(snapshot, { event: form.event, resource: form.resource, adapter: form.adapter, id: form.id, accepts: form.accepts ? metadata.contract : "", options: form.options, unparsed: form.unparsed }, others)
+    : [];
+  const blocking = blockingProblems(problems);
+  const groups = metadata ? fieldGroups(metadata) : undefined;
+
+  const fresh = (patch: Partial<Form>): Form => ({ step: "source", event: target?.id ?? "", resource: resource?.id ?? "", adapter: resource ? capability?.adapters.find((item) => !triggerUnavailable(snapshot, resource.id, item.kind))?.kind ?? "" : "", id: "", accepts: false, options: {}, text: {}, unparsed: {}, json: {}, ...patch });
+  const start = () => { setOpen(true); setForm(fresh({})); };
+  // A newly chosen source starts again from its defaults.
+  const choose = (base: Form, patch: Partial<Form>) => {
+    const next = { ...base, ...patch };
+    const resourceless = adapters.find((item) => item.kind === next.adapter)?.resourceless === true;
+    if (!next.event || !next.adapter || (!resourceless && !next.resource)) { setForm({ ...next, step: "source" }); return; }
+    const context = { event: next.event, resource: next.resource, adapter: next.adapter, others };
+    setForm({ ...next, step: "settings", options: initialOptions(snapshot, context), id: nextAttachmentId(snapshot, context), accepts: false, text: {}, unparsed: {}, json: {} });
   };
-  const remember = (event: string) => { if (!original.current.has(event)) original.current.set(event, draft.triggers(event)); };
-  const start = (binding?: TriggerBinding) => {
-    original.current.clear(); previous.current = binding && { event: binding.event, key: binding.key };
-    setError(undefined); setAdvice(undefined);
-    setForm(binding ? { event: binding.event, resource: binding.resource, adapter: binding.adapter, id: binding.id, accepts: true, fields: Object.fromEntries(Object.entries(binding.options).map(([key, value]) => [key, typeof value === "object" ? JSON.stringify(value, null, model.triggerAdapters?.find((item) => item.kind === binding.adapter)?.fields.find((field) => field.name === key)?.kind === "resource" ? undefined : 2) : String(value)])) } : { event: target?.id ?? "", resource: resource?.id ?? "", adapter: capability?.adapters[0]?.kind ?? "", id: "", accepts: false, fields: {} });
+  const edit = (binding: TriggerBinding) => {
+    setOpen(true);
+    setForm({ step: "settings", event: binding.event, resource: binding.resource, adapter: binding.adapter, id: binding.id, accepts: true, options: binding.options, text: {}, unparsed: {}, json: {}, editing: { event: binding.event, key: binding.key } });
   };
-  const update = (patch: Partial<Form>) => {
-    if (!form) return;
-    const next = { ...form, ...patch };
-    const adapter = model.triggerAdapters?.find((item) => item.kind === next.adapter);
-    if (!next.id && adapter) {
-      const base = `${adapter.kind}-trigger`;
-      let id = base, count = 2;
-      while (all.some((binding) => binding.resource === next.resource && binding.id === id && binding.key !== previous.current?.key)) id = `${base}-${count++}`;
-      next.id = id;
-    }
-    setForm(next);
-    if (!next.event || !next.resource || !adapter) {
-      if (previous.current) draft.setTriggers(previous.current.event, draft.triggers(previous.current.event), "Choose an event Lambda and compatible public resource.");
-      return;
-    }
-    remember(next.event);
-    if (previous.current) {
-      remember(previous.current.event);
-      draft.setTriggers(previous.current.event, draft.triggers(previous.current.event).filter((binding) => binding.key !== previous.current!.key));
-    }
-    let problem = triggerUnavailable(snapshot, next.resource, next.adapter);
-    const options: Record<string, unknown> = {};
-    for (const field of adapter.fields) {
-      const raw = next.fields[field.name];
-      if (!raw?.trim()) { if (field.required) problem ??= `Choose ${field.label.toLowerCase()}.`; continue; }
-      try { options[field.name] = field.kind === "json" || field.kind === "resource" ? JSON.parse(raw) : field.kind === "number" ? Number(raw) : field.kind === "boolean" ? raw === "true" : raw; }
-      catch { problem ??= `${field.label} must be valid JSON.`; }
-    }
-    if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(next.id)) problem ??= "Use a stable kebab-case attachment id.";
-    if (!next.accepts) problem ??= "Acknowledge the handler contract.";
-    problem ??= triggerUnavailable(snapshot, next.resource, next.adapter, options);
-    const timing = triggerTiming(snapshot, { event: next.event, resource: next.resource, adapter: next.adapter, options });
-    problem ??= timing.problem;
-    setAdvice(timing.recommendation);
-    const eventTarget = events.find((event) => event.id === next.event);
-    if (eventTarget?.compute.kind === "lambda" && eventTarget.compute.localReplay && !adapter.replay && !adapter.replayOperations?.includes(String(options[adapter.exclusive ?? ""]))) problem ??= "Local replay cannot provide this source's required response.";
-    if (adapter.exclusive && snapshot.source.cdkLinks.edges.some((edge) => edge.relation === "trigger" && edge.from === next.resource && edge.label === options[adapter.exclusive!])) problem ??= "This hook is occupied by native wiring.";
-    const binding: TriggerBinding = { event: next.event, resource: next.resource, adapter: next.adapter, id: next.id, key: `${next.resource.replace(/^resource:/, "")}/${next.id}`, accepts: next.accepts ? adapter.contract : "", options };
-    draft.setTriggers(next.event, [...draft.triggers(next.event), binding], problem);
-    previous.current = { event: next.event, key: binding.key };
-    setError(problem);
+  const close = () => setForm(undefined);
+  const commit = () => {
+    if (!form || !metadata || blocking.length) return;
+    const key = metadata.resourceless ? `${form.adapter}/${form.id}` : `${form.resource.replace(/^resource:/, "")}/${form.id}`;
+    const binding: TriggerBinding = { event: form.event, resource: form.resource, adapter: form.adapter, id: form.id, key, accepts: metadata.contract, options: form.options };
+    if (form.editing) draft.setTriggers(form.editing.event, draft.triggers(form.editing.event).filter((item) => item.key !== form.editing!.key));
+    draft.setTriggers(form.event, [...draft.triggers(form.event), binding]);
+    close();
   };
-  const cancel = () => { for (const [event, bindings] of original.current) draft.setTriggers(event, bindings); setForm(undefined); setError(undefined); setAdvice(undefined); };
-  const stacks = [...new Set(capabilities.map((item) => item.stack))];
-  return <section className="trigger-editor"><details><summary>Triggers <span className="muted">{managed.length + native.length || ""}</span></summary>
-    {native.map((edge) => <div className="trigger-row" key={edge.id}><button className="linkish" onClick={() => select(edge.id)}>{edge.label}</button><span className="small muted">Native · occupied</span><Written location={edge.source} label="Wired in" /></div>)}
-    {managed.filter((binding) => !form || binding.key !== previous.current?.key).map((binding) => <div className="trigger-row" key={`${binding.event}:${binding.key}`}><span className="small">{resource ? titleOf(index, `lambda:${binding.event}`) : binding.resource.replace(/^resource:/, "")} · {String(binding.options.operation ?? binding.adapter)}</span><button className="linkish small" aria-label={`Edit trigger ${binding.id}`} onClick={() => start(binding)}>Edit</button><button className="linkish small" aria-label={`Remove trigger ${binding.id}`} onClick={() => draft.setTriggers(binding.event, draft.triggers(binding.event).filter((item) => item.key !== binding.key))}>Remove</button></div>)}
-    {resourceReason ? <p className="small muted">{resourceReason}</p> : !form ? <button className="quiet small" onClick={() => start()}>Add trigger</button> : <div className="trigger-form">
-      {resource ? <label>Event Lambda<select aria-label="Trigger event Lambda" value={form.event} onChange={(event) => update({ event: event.target.value })}><option value="">Choose event Lambda</option>{events.map((event) => <option key={event.id} value={event.id}>{event.id}</option>)}</select></label> : <>
-        <label>Stack<select aria-label="Trigger stack" value={stack} onChange={(event) => { setStack(event.target.value); update({ resource: "", adapter: "", fields: {} }); }}><option value="">All stacks</option>{stacks.map((id) => <option key={id} value={id}>{titleOf(index, id)}</option>)}</select></label>
-        <label>Public resource<select aria-label="Trigger public resource" value={form.resource} onChange={(event) => { const chosen = capabilities.find((item) => item.resource === event.target.value); update({ resource: event.target.value, adapter: chosen?.adapters[0]?.kind ?? "", fields: {} }); }}><option value="">Choose public field</option>{stacks.filter((id) => !stack || id === stack).map((id) => <optgroup key={id} label={titleOf(index, id)}>{capabilities.filter((item) => item.stack === id).map((item) => { const reason = candidateReason(item.resource); return <option key={item.resource} value={item.resource} disabled={!!reason}>{item.name}{reason ? ` — ${reason}` : ""}</option>; })}</optgroup>)}</select></label>
+  const removeEditing = () => {
+    if (form?.editing) draft.setTriggers(form.editing.event, draft.triggers(form.editing.event).filter((item) => item.key !== form.editing!.key));
+    close();
+  };
+
+  const nativeLabel = (edge: (typeof native)[number]) => `${edge.label} · ${resource ? titleOf(index, edge.to) : titleOf(index, edge.from)}`;
+  const describe = (binding: TriggerBinding) => `${resource ? titleOf(index, `lambda:${binding.event}`) : binding.resource ? binding.resource.replace(/^resource:/, "") : adapters.find((item) => item.kind === binding.adapter)?.label ?? binding.adapter} · ${String(binding.options.operation ?? binding.options.expression ?? binding.adapter)}`;
+
+  return <section className="trigger-editor"><details open={open} onToggle={(event) => setOpen(event.currentTarget.open)}><summary>Triggers <span className="muted">{managed.length + native.length || ""}</span></summary>
+    {native.map((edge) => {
+      const removed = draft.nativeRemoved(edge.id);
+      const refused = !edge.removal ? "This wiring must be removed in source." : "refused" in edge.removal ? edge.removal.refused : undefined;
+      return <div className={`trigger-row${removed ? " removed" : ""}`} key={edge.id}>
+        <button className="linkish" onClick={() => select(edge.id)}>{nativeLabel(edge)}</button>
+        <span className="small muted">{removed ? "Will be removed" : "Native"}</span>
+        {removed ? <button className="quiet small" aria-label={`Restore native trigger ${edge.label}`} onClick={() => draft.restoreNative(edge.id)}><RotateCcw size={13} aria-hidden />Restore</button>
+          : <button className="icon-button" aria-label={`Remove native trigger ${edge.label}`} title={refused ?? `Remove from ${edge.source?.file}`} aria-disabled={!!refused} onClick={() => { if (!refused) draft.removeNative(edge.id); }}><Trash2 size={14} aria-hidden /></button>}
+        <Written location={edge.source} label="Wired in" />
+      </div>;
+    })}
+    {managed.filter((binding) => !form?.editing || binding.key !== form.editing.key || binding.event !== form.editing.event).map((binding) => <div className="trigger-row" key={`${binding.event}:${binding.key}`}><span className="small">{describe(binding)}</span>
+      <button className="icon-button" aria-label={`Edit trigger ${binding.id}`} title="Edit" onClick={() => edit(binding)}><Pencil size={14} aria-hidden /></button>
+      <button className="icon-button" aria-label={`Remove trigger ${binding.id}`} title="Remove" onClick={() => draft.setTriggers(binding.event, draft.triggers(binding.event).filter((item) => item.key !== binding.key))}><Trash2 size={14} aria-hidden /></button></div>)}
+    {pendingRemovals.map((binding) => <div className="trigger-row removed" key={`removed:${binding.event}:${binding.key}`}><span className="small">{describe(binding)}</span><span className="small muted">Will be removed</span>
+      <button className="quiet small" aria-label={`Restore trigger ${binding.id}`} onClick={() => draft.setTriggers(binding.event, [...draft.triggers(binding.event), binding])}><RotateCcw size={13} aria-hidden />Restore</button></div>)}
+    {resourceReason ? <p className="small muted">{resourceReason}</p> : !form ? <button className="quiet small" onClick={start}>Add trigger</button> : <div className="trigger-form">
+      <ol className="trigger-steps" aria-label="Trigger setup">
+        {(["source", "settings", "confirm"] as const).map((step, position) => <li key={step} aria-current={form.step === step ? "step" : undefined}>{position + 1}. {step === "source" ? resource ? "Lambda" : "Source" : step === "settings" ? "Settings" : "Confirm"}</li>)}
+      </ol>
+      {form.step === "source" ? renderSource() : <>
+        {renderRoute()}
+        {form.step === "settings" ? renderSettings() : renderConfirm()}
       </>}
-      {(selectedCapability?.adapters.length ?? 0) > 1 ? <label>Invocation<select aria-label="Trigger invocation" value={form.adapter} onChange={(event) => update({ adapter: event.target.value, fields: {} })}>{selectedCapability!.adapters.map((item) => <option key={item.kind} value={item.kind} disabled={!!triggerUnavailable(snapshot, form.resource, item.kind)}>{model.triggerAdapters?.find((adapter) => adapter.kind === item.kind)?.label ?? item.kind}</option>)}</select></label> : null}
-      {metadata ? <>
-        <label>Attachment id<input aria-label="Trigger attachment id" value={form.id} onChange={(event) => update({ id: event.target.value })} /></label>
-        {metadata.fields.map((field) => <label key={field.name}>{field.label}{field.kind === "enum" || field.kind === "boolean" ? <select aria-label={`Trigger ${field.label}`} value={form.fields[field.name] ?? ""} onChange={(event) => update({ fields: { ...form.fields, [field.name]: event.target.value } })}><option value="">{field.required ? "Choose" : "Default"}</option>{(field.values ?? ["true", "false"]).map((value) => <option key={value} value={value} disabled={!!occupied(value)}>{value}{occupied(value) ? " · occupied" : ""}</option>)}</select> : field.kind === "resource" ? <select aria-label={`Trigger ${field.label}`} value={form.fields[field.name] ?? ""} onChange={(event) => update({ fields: { ...form.fields, [field.name]: event.target.value } })}><option value="">None</option>{capabilities.filter((item) => item.canonicalTypes.includes(`${field.resourceType?.module}:${field.resourceType?.name}`)).map((item) => { const value = JSON.stringify({ $cdk: "@repo/framework/cdk-resource", path: model.resources.find((resource) => resource.id === item.resource)!.path, optional: false }); const unavailable = field.resourceType?.owned && !item.owned; return <option key={item.resource} value={value} disabled={!!unavailable}>{item.resource.replace(/^resource:/, "")}{unavailable ? " · imported" : ""}</option>; })}</select> : field.kind === "json" ? <textarea aria-label={`Trigger ${field.label}`} rows={4} value={form.fields[field.name] ?? ""} onChange={(event) => update({ fields: { ...form.fields, [field.name]: event.target.value } })} /> : <input aria-label={`Trigger ${field.label}`} type={field.kind === "number" ? "number" : "text"} min={field.min} max={field.max} value={form.fields[field.name] ?? ""} onChange={(event) => update({ fields: { ...form.fields, [field.name]: event.target.value } })} />}</label>)}
-        <label className="small"><input type="checkbox" aria-label="Acknowledge trigger handler contract" checked={form.accepts} onChange={(event) => update({ accepts: event.target.checked })} />Handler supports {metadata.contract}: {metadata.delivery}.</label>
-      </> : null}
-      {error ? <p className="reason small" role="alert">{error}</p> : advice ? <p className="small muted">{advice}</p> : null}
-      <div className="resource-actions"><button className="quiet small" disabled={!previous.current || !!error || !!draftState.busy} onClick={() => setForm(undefined)}>Done</button><button className="quiet small" onClick={cancel}>Cancel</button></div>
     </div>}
+    {target && (managed.some((binding) => adapters.find((item) => item.kind === binding.adapter)?.asyncInvoke) || draft.failure(target.id)) ? <FailureDestination event={target.id} /> : null}
   </details></section>;
+
+  function renderSource() {
+    const current = form!;
+    if (!resource) return <>
+      <TriggerSourcePicker event={current.event} kind={current.service} onKind={(service) => setForm({ ...current, service })} onChoose={(chosen, adapter) => choose(current, { resource: chosen, adapter, service: adapter })} />
+      <div className="resource-actions"><button className="quiet small" onClick={close}>Cancel</button></div>
+    </>;
+    return <>
+      {(capability?.adapters.length ?? 0) > 1 ? <label>Invocation<select aria-label="Trigger invocation" value={current.adapter} onChange={(event) => setForm({ ...current, adapter: event.target.value })}>{capability!.adapters.map((item) => { const reason = triggerUnavailable(snapshot, resource.id, item.kind); return <option key={item.kind} value={item.kind} disabled={!!reason} title={reason}>{adapters.find((adapter) => adapter.kind === item.kind)?.label ?? item.kind}</option>; })}</select></label> : null}
+      <label>Event Lambda<select aria-label="Trigger event Lambda" value={current.event} onChange={(event) => choose(current, { event: event.target.value })}>
+        <option value="">Choose event Lambda</option>
+        {events.map((event) => { const reason = current.adapter ? eventUnavailable(snapshot, event.id, current.adapter) : undefined; return <option key={event.id} value={event.id} disabled={!!reason} title={reason}>{event.id}{reason ? " · not available" : ""}</option>; })}
+      </select></label>
+      <div className="resource-actions"><button className="quiet small" onClick={close}>Cancel</button></div>
+    </>;
+  }
+
+  function renderRoute() {
+    const current = form!;
+    const source = metadata?.resourceless ? metadata.label : `${metadata?.label ?? current.adapter} · ${titleOf(index, current.resource)}`;
+    return <p className="trigger-route small">
+      <span><strong>{source}</strong> → {current.event}</span>
+      <button className="linkish small" onClick={() => setForm({ ...current, step: "source" })}>Change</button>
+    </p>;
+  }
+
+  function renderSettings() {
+    const current = form!;
+    const id = problems.find((problem) => problem.field === "id" && problem.kind === "form")?.message;
+    return <>
+      {groups!.basic.length ? groups!.basic.map((field) => <Fragment key={field.name}>{renderField(field)}</Fragment>) : <p className="small muted">Nothing to set; the defaults suit most {metadata!.label} triggers.</p>}
+      <details className="trigger-advanced" open={!!id || groups!.advanced.some((field) => problems.some((problem) => problem.field === field.name && problem.kind === "form"))}>
+        <summary>Advanced options</summary>
+        <label>Attachment id<input aria-label="Trigger attachment id" value={current.id} onChange={(event) => setForm({ ...current, id: event.target.value })} />{id ? <span className="reason small">{id}</span> : null}</label>
+        {groups!.advanced.map((field) => <Fragment key={field.name}>{renderField(field)}</Fragment>)}
+      </details>
+      <div className="resource-actions">
+        <button className="quiet small" onClick={() => setForm({ ...current, step: "source" })}><ArrowLeft size={13} aria-hidden />Back</button>
+        <button className="primary compact" onClick={() => setForm({ ...current, step: "confirm" })}>Next</button>
+        <button className="quiet small" onClick={close}>Cancel</button>
+        {current.editing ? <button className="quiet small danger" onClick={removeEditing}><Trash2 size={13} aria-hidden />Remove trigger</button> : null}
+      </div>
+    </>;
+  }
+
+  function renderConfirm() {
+    const current = form!;
+    const confirmations = new Set(["accepts", ...groups!.confirm.map((field) => field.name)]);
+    const dropped: TriggerProblem[] = metadata!.asyncInvoke && !draft.failure(current.event) ? [{ kind: "advice", message: `Failed runs are dropped after Lambda's two retries. Once this trigger is added, set where they go under "When a run fails" on ${current.event}.` }] : [];
+    const listed = [...problems.filter((problem) => !problem.field || !confirmations.has(problem.field)), ...dropped];
+    const left = blocking.length;
+    return <>
+      <ul className="trigger-checklist" aria-label="Trigger checklist">
+        {listed.map((problem) => { const Icon = PROBLEM_ICONS[problem.kind]; return <li key={`${problem.kind}:${problem.field ?? ""}:${problem.message}`} className={problem.kind}>
+          <Icon size={14} aria-hidden /><span>{problem.message}</span>
+          {problem.kind === "form" ? <button className="linkish small" onClick={() => setForm({ ...current, step: "settings" })}>Fix</button> : null}
+        </li>; })}
+        {!listed.some((problem) => problem.kind === "form" || problem.kind === "source") ? <li className="ready"><Check size={14} aria-hidden /><span>Source and settings check out.</span></li> : null}
+      </ul>
+      <label className="trigger-ack"><input type="checkbox" aria-label="Acknowledge trigger handler contract" checked={current.accepts} onChange={(event) => setForm({ ...current, accepts: event.target.checked })} />
+        <span>My handler accepts this event: {metadata!.delivery}. <span className="muted">Contract <code>{metadata!.contract}</code>.</span></span></label>
+      {groups!.confirm.map((field) => <label key={field.name} className="trigger-ack"><input type="checkbox" aria-label={`Trigger ${field.label}`} checked={current.options[field.name] === true} onChange={(event) => setOption(field.name, event.target.checked ? true : undefined)} /><span>{field.label}</span></label>)}
+      <div className="resource-actions">
+        <button className="quiet small" onClick={() => setForm({ ...current, step: "settings" })}><ArrowLeft size={13} aria-hidden />Back</button>
+        <button className="primary compact" disabled={!!left || !!draftState.busy} onClick={commit}>{current.editing ? "Save trigger" : "Add trigger"}</button>
+        <button className="quiet small" onClick={close}>Cancel</button>
+        {current.editing ? <button className="quiet small danger" onClick={removeEditing}><Trash2 size={13} aria-hidden />Remove trigger</button> : null}
+      </div>
+      {left ? <p className="small muted" role="status">{left === 1 ? "1 item left" : `${left} items left`} before this trigger can be {current.editing ? "saved" : "added"}.</p> : null}
+    </>;
+  }
+
+  function setOption(name: string, value: unknown) {
+    const current = form!;
+    const options = { ...current.options }, text = { ...current.text }, unparsed = { ...current.unparsed };
+    if (value === undefined) delete options[name]; else options[name] = value;
+    delete text[name]; delete unparsed[name];
+    setForm({ ...current, options, text, unparsed });
+  }
+
+  function setRaw(field: TriggerField, raw: string) {
+    const current = form!;
+    const options = { ...current.options }, unparsed = { ...current.unparsed };
+    delete unparsed[field.name];
+    if (!raw.trim()) delete options[field.name];
+    else if (field.kind === "number") { const value = Number(raw); if (Number.isFinite(value)) options[field.name] = value; else { delete options[field.name]; unparsed[field.name] = raw; } }
+    else if (field.kind === "json") { try { options[field.name] = JSON.parse(raw); } catch { delete options[field.name]; unparsed[field.name] = raw; } }
+    else options[field.name] = raw;
+    setForm({ ...current, options, unparsed, text: { ...current.text, [field.name]: raw } });
+  }
+
+  function renderField(field: TriggerField) {
+    const current = form!;
+    const label = `Trigger ${field.label}`;
+    const value = current.options[field.name];
+    const error = problems.find((problem) => problem.field === field.name && (problem.kind === "form" || problem.kind === "source"))?.message;
+    const note = error ? <span className="reason small">{error}</span> : null;
+    const raw = current.text[field.name] ?? (value === undefined ? "" : field.kind === "json" ? JSON.stringify(value, null, 2) : String(value));
+    const toJson = () => setForm({ ...current, json: { ...current.json, [field.name]: true }, text: { ...current.text, [field.name]: value === undefined ? "" : JSON.stringify(value, null, 2) } });
+    const basics = current.adapter === "eventbridge" && field.name === "eventPattern" && !current.json[field.name] ? eventPatternBasics(value) : undefined;
+    if (basics) {
+      const part = (name: "source" | "detailType") => current.text[`eventPattern.${name}`] ?? basics[name];
+      const change = (name: "source" | "detailType", text: string) => {
+        const next = { source: part("source"), detailType: part("detailType"), [name]: text };
+        setForm({ ...current, text: { ...current.text, "eventPattern.source": next.source, "eventPattern.detailType": next.detailType }, options: { ...current.options, eventPattern: eventPatternFrom(next.source, next.detailType) } });
+      };
+      return <fieldset className="trigger-fieldset"><legend>Match events</legend>
+        <label>Source<input aria-label="Trigger event source" placeholder="my.app.orders" value={part("source")} onChange={(event) => change("source", event.target.value)} /></label>
+        <label>Detail type<input aria-label="Trigger detail type" placeholder="OrderPlaced" value={part("detailType")} onChange={(event) => change("detailType", event.target.value)} /></label>
+        <span className="small muted">Separate several values with commas. <button className="linkish small" onClick={toJson}>Edit full pattern as JSON</button></span>
+        {note}
+      </fieldset>;
+    }
+    const scheduled = current.adapter === "schedule" && field.name === "expression" && !current.json[field.name] ? scheduleBasics(value ?? field.default) : undefined;
+    if (scheduled) {
+      const set = (next: ScheduleBasics) => setOption(field.name, scheduleExpression(next));
+      return <fieldset className="trigger-fieldset"><legend>Run</legend>
+        <label>Repeat<select aria-label="Trigger repeat" value={scheduled.kind} onChange={(event) => set(event.target.value === "daily" ? { kind: "daily", time: "09:00" } : { kind: "rate", count: 1, unit: "hours" })}>
+          <option value="rate">Every…</option><option value="daily">Daily at…</option>
+        </select></label>
+        {scheduled.kind === "rate" ? <div className="trigger-inline">
+          <input aria-label="Trigger every" type="number" min={1} value={scheduled.count} onChange={(event) => set({ ...scheduled, count: Math.max(1, Math.floor(Number(event.target.value) || 1)) })} />
+          <select aria-label="Trigger unit" value={scheduled.unit} onChange={(event) => set({ ...scheduled, unit: event.target.value as "minutes" | "hours" | "days" })}>
+            <option value="minutes">minutes</option><option value="hours">hours</option><option value="days">days</option>
+          </select>
+        </div> : <label>Time{typeof current.options.timezone === "string" ? ` (${current.options.timezone})` : " (UTC)"}<input aria-label="Trigger time" type="time" value={scheduled.time} onChange={(event) => set({ kind: "daily", time: event.target.value || "00:00" })} /></label>}
+        <span className="small muted"><code>{String(value ?? field.default)}</code> · <button className="linkish small" onClick={() => setForm({ ...current, json: { ...current.json, [field.name]: true } })}>Write a cron expression</button></span>
+        {note}
+      </fieldset>;
+    }
+    const s3Basic = current.adapter === "s3" && field.name === "eventTypes" && !current.json[field.name] && Array.isArray(value) && value.every((item) => S3_BASIC_EVENTS.some((basic) => basic.value === item));
+    if (s3Basic) return <fieldset className="trigger-fieldset"><legend>When objects are</legend>
+      {S3_BASIC_EVENTS.map((basic) => <label key={basic.value} className="trigger-check"><input type="checkbox" aria-label={`Trigger on ${basic.label.toLowerCase()}`} checked={(value as string[]).includes(basic.value)} onChange={(event) => setOption(field.name, event.target.checked ? [...(value as string[]), basic.value] : (value as string[]).filter((item) => item !== basic.value))} />{basic.label}</label>)}
+      {current.options.delivery !== "eventbridge" ? <span className="small muted"><button className="linkish small" onClick={toJson}>Choose specific S3 events</button></span> : null}
+      {note}
+    </fieldset>;
+    if (field.kind === "enum") {
+      const choices = enumChoices(snapshot, field, { event: current.event, resource: current.resource, adapter: current.adapter, others });
+      const workable = choices.filter((choice) => !choice.reason);
+      // One workable value of a required choice is a fact about the source, not a decision.
+      if (field.required && !field.advanced && choices.length > 1 && workable.length === 1 && value === workable[0]!.value) return <p className="small trigger-fact"><strong>{field.label}:</strong> {String(value)} <span className="muted">{choices.filter((choice) => choice.reason).map((choice) => choice.reason).join(" ")}</span></p>;
+      return <label>{field.label}<select aria-label={label} value={typeof value === "string" ? value : ""} onChange={(event) => setOption(field.name, event.target.value || undefined)}>
+        {value === undefined || !field.required ? <option value="">{field.required ? "Choose" : "Default"}</option> : null}
+        {choices.map((choice) => <option key={choice.value} value={choice.value} disabled={!!choice.reason} title={choice.reason}>{choice.value}{choice.short ? ` · ${choice.short}` : ""}</option>)}
+      </select>{note}</label>;
+    }
+    if (field.kind === "boolean") return <label>{field.label}<select aria-label={label} value={value === undefined ? "" : String(value)} onChange={(event) => setOption(field.name, event.target.value === "" ? undefined : event.target.value === "true")}>
+      <option value="">Default</option><option value="true">On</option><option value="false">Off</option>
+    </select>{note}</label>;
+    if (field.kind === "resource") {
+      const type = `${field.resourceType?.module}:${field.resourceType?.name}`;
+      const chosen = (value as { readonly path?: readonly string[] } | undefined)?.path;
+      return <label>{field.label}<select aria-label={label} value={chosen ? `resource:${chosen.join(".")}` : ""} onChange={(event) => setOption(field.name, event.target.value ? { $cdk: "@repo/framework/cdk-resource", path: model.resources.find((item) => item.id === event.target.value)!.path, optional: false } : undefined)}>
+        <option value="">None</option>
+        {capabilities.filter((item) => item.canonicalTypes.includes(type)).map((item) => { const imported = field.resourceType?.owned && !item.owned; return <option key={item.resource} value={item.resource} disabled={!!imported}>{item.resource.replace(/^resource:/, "")}{imported ? " · imported" : ""}</option>; })}
+      </select>{note}</label>;
+    }
+    if (field.kind === "json") return <label>{field.label}<textarea aria-label={label} rows={4} value={raw} onChange={(event) => setRaw(field, event.target.value)} />{note}</label>;
+    return <label>{field.label}<input aria-label={label} type={field.kind === "number" ? "number" : "text"} min={field.min} max={field.max} value={raw} onChange={(event) => setRaw(field, event.target.value)} />{note}</label>;
+  }
 }

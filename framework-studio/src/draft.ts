@@ -3,7 +3,7 @@ import type { FieldFact, Mode, ModelResource, Snapshot } from "../shared/model";
 import type { ResourceApply, ResourceIntent, ResourcePlan } from "../shared/resources";
 import type { DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
 import { descriptionError } from "../shared/descriptions";
-import { triggerBindingsEqual, type TriggerBinding } from "../shared/triggers";
+import { triggerBindingsEqual, type FailureDestinationSettings, type TriggerBinding } from "../shared/triggers";
 
 export type Review = { readonly kind: "batch"; readonly plan: BatchPlanResponse } | { readonly kind: "resource"; readonly plan: ResourcePlan } | { readonly kind: "environment"; readonly plan: DeploymentInputPlan };
 export interface EnvironmentEdit extends DeploymentInputEdit { readonly key: string; readonly original?: string }
@@ -14,7 +14,9 @@ interface RouteEntry { readonly kind: "route"; readonly key: string; readonly ro
 interface DescriptionEntry { readonly kind: "description"; readonly key: string; readonly entity: string; readonly value: string; readonly error?: string }
 interface ResourceEntry { readonly kind: "resource"; readonly key: string; readonly intent: ResourceIntent; readonly form: ResourceForm; readonly count: number; readonly error?: string }
 interface TriggerEntry { readonly kind: "triggers"; readonly key: string; readonly event: string; readonly bindings: readonly TriggerBinding[]; readonly error?: string }
-export type DraftEntry = FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry;
+interface NativeEntry { readonly kind: "native"; readonly key: string; readonly edge: string; readonly error?: string }
+interface FailureEntry { readonly kind: "failure"; readonly key: string; readonly event: string; readonly value: FailureDestinationSettings | null; readonly error?: string }
+export type DraftEntry = FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry;
 export interface DraftState {
   readonly baseline: Snapshot;
   readonly latest: Snapshot;
@@ -128,6 +130,24 @@ export class InspectorDraft {
     const baseline = this.state.baseline.models[this.state.mode].triggers?.filter((binding) => binding.event === event) ?? [];
     this.put(`triggers:${event}`, !error && triggerBindingsEqual(bindings, baseline) ? undefined : { kind: "triggers", key: `triggers:${event}`, event, bindings, ...(error ? { error } : {}) });
   }
+  /** The event's failure destination: staged, else declared; undefined when it has none. */
+  failure(event: string): FailureDestinationSettings | undefined {
+    const entry = this.state.entries.find((item): item is FailureEntry => item.kind === "failure" && item.event === event);
+    if (entry) return entry.value ?? undefined;
+    const declared = this.state.baseline.models[this.state.mode].failureDestinations?.find((item) => item.event === event);
+    return declared && { destination: declared.destination, ...(declared.retryAttempts !== undefined ? { retryAttempts: declared.retryAttempts } : {}), ...(declared.maxEventAgeSeconds !== undefined ? { maxEventAgeSeconds: declared.maxEventAgeSeconds } : {}) };
+  }
+  setFailure(event: string, value: FailureDestinationSettings | null): void {
+    const declared = this.state.baseline.models[this.state.mode].failureDestinations?.find((item) => item.event === event);
+    const canonical = (item: FailureDestinationSettings | null | undefined) => item ? JSON.stringify([item.destination, item.retryAttempts ?? null, item.maxEventAgeSeconds ?? null]) : "";
+    this.put(`failure:${event}`, canonical(value) === canonical(declared) ? undefined : { kind: "failure", key: `failure:${event}`, event, value });
+  }
+  /** A native trigger staged for deletion from its CDK stack file. */
+  nativeRemoved(edge: string): boolean {
+    return this.state.entries.some((entry) => entry.kind === "native" && entry.edge === edge);
+  }
+  removeNative(edge: string): void { this.put(`native:${edge}`, { kind: "native", key: `native:${edge}`, edge }); }
+  restoreNative(edge: string): void { this.put(`native:${edge}`, undefined); }
   description(entity: string): string {
     return this.state.entries.find((entry): entry is DescriptionEntry => entry.kind === "description" && entry.entity === entity)?.value ?? this.state.baseline.descriptions.values[entity] ?? "";
   }
@@ -208,6 +228,8 @@ export class InspectorDraft {
           if (entry.kind === "description") return { kind: "description", entity: entry.entity, value: entry.value };
           if (entry.kind === "route") return { kind: "route", route: entry.route, value: entry.value };
           if (entry.kind === "triggers") return { kind: "triggers", event: entry.event, bindings: entry.bindings };
+          if (entry.kind === "native") return { kind: "nativeTrigger", edge: entry.edge };
+          if (entry.kind === "failure") return { kind: "onFailure", event: entry.event, value: entry.value };
           throw new Error("Review this configuration in its own inspector session.");
         }), state.baseline.revision) };
       if (serial === this.serial) this.publish({ ...this.state, busy: undefined, review });

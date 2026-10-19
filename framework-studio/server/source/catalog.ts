@@ -192,14 +192,14 @@ export function typeScriptFiles(directory: string): string[] {
  * resources.cognito)` binds `cognito`; `linkResource(this,
  * resources.jobs, queue)` binds `jobs`.
  */
-export function readLinkSites(repositoryRoot: string): Map<string, SourceLocation[]> {
+export function readLinkSites(repositoryRoot: string, read: (file: string) => string = (file) => readFileSync(file, "utf8")): Map<string, SourceLocation[]> {
   const sites = new Map<string, SourceLocation[]>();
   const files = [
     ...typeScriptFiles(path.join(repositoryRoot, "cdk-app", "lib")),
     ...typeScriptFiles(path.join(repositoryRoot, "cdk-app", "bin")),
   ];
   for (const file of files) {
-    const text = readFileSync(file, "utf8");
+    const text = read(file);
     if (![...LINK_CALLS].some((call) => text.includes(call))) continue;
     const sourceFile = parse(file, text);
     const callNames = new Set<string>();

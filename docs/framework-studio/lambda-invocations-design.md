@@ -320,6 +320,12 @@ The current layout-only implementation does not alter infrastructure or deploy a
     refused. CDK's L2 `eventBridgeEnabled`/`addEventNotification` custom resource is
     unclassified native wiring for both modes. A recursive-write acknowledgement is
     required, and review flags an event that holds a write grant on the bucket.
+- Removing native wiring is an explicit, reviewed source deletion, not a migration. Nothing is
+  attached in its place. Synchronous Cognito hooks carry a review warning that their
+  validation stops on the next deploy. Each adapter publishes a pure `guide` (requirements,
+  a typed field example, imports and documentation) for Studio's "What can trigger this"
+  panel. Its candidate list is the same static discovery and availability reasoning the
+  picker uses.
 - Handler compatibility requires an explicit descriptor acknowledgement of the adapter's
   payload/response contract. Studio previews that acknowledgement with source edits;
   it cannot infer compatibility from TypeScript, Python or container packaging. Existing

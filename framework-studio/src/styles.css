@@ -859,6 +859,64 @@ a {
 .trigger-form { display: grid; gap: 10px; margin-top: 12px; }
 .trigger-form label { display: grid; gap: 4px; font-size: var(--step--1); }
 .trigger-form input:not([type=checkbox]), .trigger-form select, .trigger-form textarea { width: 100%; }
+.trigger-editor .icon-button { padding: 3px 5px; color: var(--graphite); }
+.trigger-editor .icon-button:hover { color: var(--ink); }
+.trigger-editor .icon-button[aria-disabled=true] { opacity: 0.45; cursor: not-allowed; }
+.trigger-steps { display: flex; gap: 12px; margin: 0; padding: 0; list-style: none; font-size: var(--step--1); color: var(--faint); }
+.trigger-steps [aria-current=step] { color: var(--ink); font-weight: 600; }
+.trigger-route { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0; padding: 6px 8px; background: var(--wash); border-radius: var(--radius); }
+.trigger-route > span { min-width: 0; overflow-wrap: anywhere; }
+.trigger-route > button { flex: none; white-space: nowrap; }
+.trigger-fieldset { display: grid; gap: 6px; margin: 0; padding: 8px 10px; border: 1px solid var(--rule); border-radius: var(--radius); }
+.trigger-fieldset legend { padding: 0 4px; font-size: var(--step--1); font-weight: 600; }
+.trigger-form label.trigger-check, .trigger-form label.trigger-ack { display: flex; align-items: flex-start; gap: 8px; }
+.trigger-ack { padding: 8px 10px; border: 1px solid var(--rule-strong); border-radius: var(--radius); background: var(--sheet); }
+.trigger-ack input { margin-top: 2px; }
+.trigger-fact { margin: 0; }
+.trigger-inline { display: flex; gap: 6px; }
+.trigger-form .trigger-inline input { width: 6em; }
+.trigger-advanced { display: grid; gap: 8px; }
+.trigger-advanced summary { font-size: var(--step--1); color: var(--graphite); }
+.trigger-advanced[open] > :not(summary) { margin-top: 8px; }
+.trigger-checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--step--1); }
+.trigger-checklist li { display: flex; align-items: flex-start; gap: 6px; }
+.trigger-checklist li > svg { flex: none; margin-top: 2px; }
+.trigger-checklist li > span { flex: 1; }
+.trigger-checklist .form, .trigger-checklist .source { color: var(--refuse); }
+.trigger-checklist .warning, .trigger-warning { color: var(--local); }
+.trigger-checklist .advice { color: var(--graphite); }
+.trigger-checklist .ready { color: var(--accept); }
+.trigger-warning { display: flex; align-items: center; gap: 4px; margin: 2px 0 0 24px; }
+.failure-destination { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--rule); }
+.failure-destination h5 { margin: 0 0 4px; font-size: var(--step--1); color: var(--graphite); text-transform: uppercase; letter-spacing: .04em; }
+.failure-destination p { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin: 0; }
+.failure-destination .linkish { display: inline-flex; align-items: center; gap: 3px; }
+.trigger-row.removed > :first-child { text-decoration: line-through; color: var(--faint); }
+.trigger-row .quiet, .trigger-form .quiet { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; }
+.quiet.danger { color: var(--refuse); border-color: var(--refuse); }
+.trigger-guide { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--sheet); padding: 10px 12px; margin: 10px 0; display: grid; gap: 8px; }
+.trigger-guide-heading { display: flex; align-items: center; gap: 6px; }
+.trigger-guide-heading h4 { margin: 0; font-size: var(--step-0); flex: 1; }
+.trigger-guide h5 { margin: 4px 0 0; font-size: var(--step--1); color: var(--graphite); text-transform: uppercase; letter-spacing: .04em; }
+.trigger-guide-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.trigger-guide-service { display: grid; justify-items: center; gap: 3px; padding: 8px 4px; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--paper); cursor: pointer; font-size: var(--step--1); }
+.trigger-guide-service:hover, .trigger-guide-service:focus-visible { border-color: var(--ink); }
+.trigger-guide-service img { width: 28px; height: 28px; }
+.trigger-guide-service.unavailable { opacity: 0.55; }
+.trigger-guide h4 { margin: 0; font-size: var(--step-0); }
+.trigger-guide-count { font-family: var(--mono); font-size: 11px; color: var(--accept); }
+.trigger-guide-count.muted { color: var(--faint); }
+.trigger-guide-rules { margin: 0; padding-left: 18px; display: grid; gap: 3px; }
+.trigger-guide-candidates { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.trigger-guide-candidates li.unavailable strong { color: var(--graphite); }
+.trigger-guide-candidate { display: flex; align-items: center; gap: 6px; }
+.trigger-guide-candidate img { width: 18px; height: 18px; }
+.trigger-guide-candidate > span { flex: 1; overflow-wrap: anywhere; }
+.trigger-guide-candidates .reason { margin: 2px 0 0 24px; }
+.trigger-guide-candidates .written { margin-left: 24px; }
+.guide-code { position: relative; }
+.guide-code pre { margin: 0; padding: 32px 10px 8px;background: var(--wash); border-radius: var(--radius); font-family: var(--mono); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.guide-code button { position: absolute; top: 4px; right: 4px; padding: 2px 8px; background: var(--sheet); }
 .evidence-line { display: block; font-size: 11px; overflow-wrap: anywhere; color: var(--muted); }
 .inspector .connection-evidence .written { margin-bottom: 3px; }
 .inspector .written {

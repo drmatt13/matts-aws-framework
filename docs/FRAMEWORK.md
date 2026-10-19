@@ -706,6 +706,21 @@ delivery architecture and refuses overlapping filters. Any existing native mappi
 queue or stream, a native subscription to the same function, or native bucket notification
 configuration is reported for review instead of attached over.
 
+`trigger.schedule({ id, accepts: "schedule", expression, timezone?, enabled?, input? })`
+needs no catalog resource: it creates an EventBridge Scheduler schedule in the function's
+stack. The expression is `rate(N minutes|hours|days)` (singular for 1) or a six-field
+`cron(...)` with `?` in day-of-month or day-of-week. Its attachment key is `schedule/<id>`,
+so an id is unique across all events. An adapter declares `resourceless: true` to take no
+resource.
+
+An event's `onFailure: { destination, retryAttempts?, maxEventAgeSeconds? }` sends its
+failed asynchronous runs (EventBridge, SNS, S3 and schedule triggers: adapters marked
+`asyncInvoke`) to a standard catalog SQS queue or SNS topic once Lambda stops retrying;
+retries are 0 to 2 and age 60 to 21600 seconds. It configures the function's
+EventInvokeConfig, which grants the send, and refuses FIFO destinations and a function
+that already configures asynchronous invocation natively. Queue and stream triggers keep
+their own dead-letter settings.
+
 Resource finalization validates the entire attachment list before applying adapters,
 resolves each function through `eventFunction`. Cognito retains native source ownership;
 EventBridge rules belong to the function's existing stack so reading a bus does not add a

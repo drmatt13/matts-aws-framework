@@ -11,7 +11,7 @@ import * as subscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as kms from "aws-cdk-lib/aws-kms";
 import { Annotations, Match, Template } from "aws-cdk-lib/assertions";
-import { defineFrameworkConfig, defineResources, resource, trigger, type CdkResource, type EventTrigger, type FrameworkConfig } from "@repo/framework/config";
+import { defineFrameworkConfig, defineResources, resource, trigger, type CdkResource, type EventFailureDestination, type EventTrigger, type FrameworkConfig } from "@repo/framework/config";
 import { defaults } from "../../framework-config/defaults";
 import { initializeFrameworkResources, linkResource, finalizeFrameworkResources } from "../lib/framework/framework-resources";
 import { appEventRegistry } from "../lib/framework/framework-events";
@@ -25,9 +25,9 @@ const catalog = defineResources({
   dlq: resource.cdk<sqs.IQueue>(),
 });
 type Native = "sqs" | "dynamodb" | "sns" | "s3" | "s3-cfn";
-function setup(triggers: readonly EventTrigger[] = [], options: { mode?: "dev" | "prod"; native?: Native; second?: readonly EventTrigger[] } = {}) {
+function setup(triggers: readonly EventTrigger[] = [], options: { mode?: "dev" | "prod"; native?: Native; second?: readonly EventTrigger[]; onFailure?: EventFailureDestination } = {}) {
   const config = defineFrameworkConfig({ resources: catalog, defaults, http: [], services: [], webSocket: [], events: [{
-    event: { directory: "/test/fixtures/workload-handler", triggers },
+    event: { directory: "/test/fixtures/workload-handler", triggers, ...(options.onFailure ? { onFailure: options.onFailure } : {}) },
     second: { directory: "/test/fixtures/caller", triggers: options.second ?? [] },
   }] }) as unknown as FrameworkConfig;
   const app = new App();
@@ -289,4 +289,28 @@ test("S3 notifications for one bucket cannot be split across function owners", (
   }] }) as unknown as FrameworkConfig;
   assert.throws(() => attachFrameworkTriggers(current.app, config), /one owning stack/);
   assert.equal(current.app.node.findAll().filter((node) => node instanceof CfnResource && node.cfnResourceType === "Custom::S3BucketNotifications").length, 1, "only the fixture's own L2 notification resource exists");
+});
+
+test("a schedule creates an EventBridge Scheduler schedule beside the function in both modes, leaving resource owners untouched", () => {
+  for (const mode of ["dev", "prod"] as const) {
+    const current = setup([trigger.schedule({ id: "nightly", accepts: "schedule", expression: "cron(0 2 * * ? *)", timezone: "Europe/London", input: { job: "report" } })], { mode });
+    finalizeFrameworkResources(current.app);
+    const template = Template.fromStack(current.compute);
+    template.resourceCountIs("AWS::Scheduler::Schedule", 1);
+    template.hasResourceProperties("AWS::Scheduler::Schedule", { ScheduleExpression: "cron(0 2 * * ? *)", ScheduleExpressionTimezone: "Europe/London", Target: Match.objectLike({ Input: Match.stringLikeRegexp("report") }) });
+    ownerUnchanged(current);
+  }
+});
+
+test("onFailure sends failed asynchronous runs to a standard queue or topic, and refuses FIFO or a native async configuration", () => {
+  const current = setup([snsTrigger()], { onFailure: { destination: catalog.dlq, retryAttempts: 1, maxEventAgeSeconds: 3600 } });
+  finalizeFrameworkResources(current.app);
+  Template.fromStack(current.compute).hasResourceProperties("AWS::Lambda::EventInvokeConfig", { MaximumRetryAttempts: 1, MaximumEventAgeInSeconds: 3600, DestinationConfig: { OnFailure: { Destination: Match.anyValue() } } });
+  const topic = setup([], { onFailure: { destination: catalog.topic } });
+  finalizeFrameworkResources(topic.app);
+  Template.fromStack(topic.compute).resourceCountIs("AWS::Lambda::EventInvokeConfig", 1);
+  assert.throws(() => finalizeFrameworkResources(setup([], { onFailure: { destination: catalog.fifo } }).app), /standard SQS queue or SNS topic/);
+  const native = setup([], { onFailure: { destination: catalog.topic } });
+  native.fn.configureAsyncInvoke({ retryAttempts: 0 });
+  assert.throws(() => finalizeFrameworkResources(native.app), /already configures asynchronous invocation natively/);
 });

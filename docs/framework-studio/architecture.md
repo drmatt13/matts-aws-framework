@@ -190,6 +190,17 @@ capability hashes, and use its atomic apply/rollback/undo journal. Computed/spre
 and commented lists remain source edits. Review identifies changed edges and delivery
 semantics. Synthesis and deployment remain separate checks/actions.
 
+Native trigger removal is the one batch edit that writes CDK source. The scanner gives each
+recognized native edge an exact removal span (a `lambdaTriggers` entry, a direct constructor
+statement, or one EventBridge rule target) or a refusal reason. The planner re-locates the
+span in the current snapshot and writes only the linked catalog stack's own file
+(`assertStackFile`). It prunes only the imports the deletion made unused. Validation
+type-checks the proposed text and re-scans it, including the offset-matched link sites. The
+result must lose exactly the selected triggers and change no other native edge or manual
+wiring. The refreshed snapshot must match that scan before the journal records the change,
+which undoes and redoes through the same checks. A trigger list emptied in framework config
+removes its `triggers` property and the Studio-added imports.
+
 [server/edits/](../../framework-studio/server/edits)
 
 The field registry is the only place that decides what is editable:
