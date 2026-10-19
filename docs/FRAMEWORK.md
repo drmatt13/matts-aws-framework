@@ -290,7 +290,7 @@ chain `.enum(...)` to restrict what it may say, `.default(...)` for the fallback
 omitting the name derives the catalog path in SCREAMING_SNAKE_CASE. `-c` context wins
 over the file, and the declared default is last.
 
-cdk-app/.env.dev.example and cdk-app/.env.prod.example are hand-authored templates:
+cdk-app/.env.dev.template and cdk-app/.env.prod.template are hand-authored templates:
 `framework:generate` never writes them. When you declare a new `fromEnv` or `secret` line,
 add it to both yourself, set (`NAME=`) or commented (`# NAME=<default>`) as you see fit.
 Catalog inputs are optional until a workload requires one, so `framework:check` demands only
@@ -305,7 +305,7 @@ Use workload `cloud.requirements` instead for conditional or per-consumer requir
 A parameter's non-blank `.default(...)` satisfies presence; secrets never have defaults in
 source. AWS Studio also guides missing catalog-wide requirements before any consumer exists.
 
-cdk-app/.env is the file itself, not process.env: a variable exported in the shell, or
+cdk-app/.env.<mode> is the file itself, not process.env: a variable exported in the shell, or
 one the generated repository-root .env carries, cannot stand in for a setting this file
 owns, so a deployment and `docker compose up` read the same line.
 
@@ -331,7 +331,7 @@ way, because a catalog built for one graph cannot be re-decided after it was imp
 
 A secret has two sources and three deliveries. The sources:
 
-- `resource.secret("NAME")` — a value authored only in cdk-app/.env, which
+- `resource.secret("NAME")` — a value authored only in cdk-app/.env.<mode>, which
   `npm run deploy:resources` uploads to Secrets Manager and supplies the ARN for.
 - A public `ISecret` field on a `resource.stack<T>()` entry — one the stack created with
   `new secretsmanager.Secret(...)`, or one imported from another account with
@@ -388,7 +388,7 @@ previous files. The fixed Cognito, replay and port exports remain in root .env f
 
 Services start through packages/framework/scripts/run-service.ts <id> -- <command>.
 All local compute lanes share the same environment resolver. It reads literals, defaults,
-authored cdk-app/.env inputs and deployed resource attributes under each workload's chosen
+authored cdk-app/.env.<mode> inputs and deployed resource attributes under each workload's chosen
 names. New references need no Compose interpolation entry. Node handlers run in isolated
 child processes, with environment installed before handler imports. Tasks and container
 Lambdas receive their own environment at launch; secret values never appear in Docker argv.
@@ -410,7 +410,7 @@ the client sent (no parser in between, up to Lambda's 6 MB invocation limit), co
 one per entry, authorizer claims arrive as strings, and failures answer with API Gateway's
 own JSON bodies (`{"message":"Unauthorized"}`, `{"message":"Internal Server Error"}`).
 
-Compose mounts .framework/local and cdk-app/.env read-only into the launchers. They stay
+Compose mounts .framework/local and cdk-app/.env.dev read-only into the launchers. They stay
 outside images and Watch synchronization. Workload configuration changes restart the
 launchers. Recreate affected containers after changing authored inputs; restart after an
 export to refresh long-running services/workflow integration bindings. Local secrets from
@@ -586,7 +586,7 @@ new rds.DatabaseInstance(this, "PostgresDatabase", {
 });
 ```
 
-Infrastructure settings live in [the production template](../cdk-app/.env.prod.example):
+Infrastructure settings live in [the production template](../cdk-app/.env.prod.template):
 instance/engine, storage, availability, backup/maintenance, replicas, Proxy and log exports.
 Their resolver uses camelCase CDK context, then environment, then defaults. Development
 builds none of these resources. Database naming and specialized parameter groups remain
@@ -985,8 +985,9 @@ from offline/local tests. Use a disposable fixture for deliberate failures.
 | File/source | Owner and purpose |
 | --- | --- |
 | cdk-app/cdk.json `framework:targets` | Committed deployment targets: name, mode, pinned account and region, inputs file. Production targets must pin their account |
-| cdk-app/.env | Your development inputs, and the file Compose reads; CDK_APP_NAME names your own development deployment. Deployment flags may be overridden by the shell or `-c`; resource inputs are read from the file itself |
-| cdk-app/.env.dev, cdk-app/.env.prod | Ignored per-mode inputs: a mode reads `cdk-app/.env.<mode>` when it exists, otherwise `cdk-app/.env`, unless its target names an inputs file. Matching `.env.*.example` files are references. Studio's file inspectors edit/add variables through draft review |
+| cdk-app/.env.dev | Your development inputs, and the file Compose reads; CDK_APP_NAME names your own development deployment. Deployment flags may be overridden by the shell or `-c`; resource inputs are read from the file itself |
+| cdk-app/.env.prod | Production inputs, read by `-c prodDeployment=true` commands unless the target names another inputs file |
+| cdk-app/.env.dev.template, cdk-app/.env.prod.template | Tracked references the two ignored files are generated from. There is no mode-less `cdk-app/.env`: the mode picks the file. Studio's CDK environment files island generates a missing file from its template, and its file inspectors edit/add variables through draft review |
 | Root .env | Exported development Compose/auth/replay/port controls. A production export never writes it |
 | client-app/.env.development.local, client-app/.env.production.local | Exported client settings that `vite dev` and `vite build` read over the authored client-app/.env |
 | .framework/local/resources.json | Discovered development resource and workflow identifiers; never raw secrets |
@@ -1127,7 +1128,7 @@ refresh, and sign-out checks are separate from unit tests.
 
 `framework:generate` validates inventory, emits route/target/payload projections, and
 writes each service's documentation-only .env.example; it leaves the authored
-cdk-app/.env*.example templates alone. Adjacent contract.ts or contract.schema.json files
+cdk-app/.env.*.template templates alone. Adjacent contract.ts or contract.schema.json files
 provide optional workload payload contracts; TypeScript contracts must be self-contained
 apart from Zod imports. No custom handler-import arrays are needed.
 

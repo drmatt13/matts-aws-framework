@@ -504,8 +504,6 @@ export interface Snapshot {
   /** Changes whenever any watched file or input changes. */
   readonly revision: string;
   readonly generatedAt: string;
-  /** What cdk-app/.env says this repository is pointed at. */
-  readonly currentMode: Mode;
   /** DEPLOY_PROD_WEBSOCKET_API as authored, which decides whether a dev graph holds WebSocket handlers. */
   readonly webSocketApi: boolean;
   readonly repositoryRoot: string;

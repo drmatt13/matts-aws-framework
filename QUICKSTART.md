@@ -13,11 +13,13 @@ Run every command from the **repository root**.
 
 ## 1. Get it running
 
-**1. Create the CDK env file.** Copy `cdk-app/.env.dev.example` to `cdk-app/.env`.
-You don't need to change anything in it.
+**1. Create the CDK env file.** Copy `cdk-app/.env.dev.template` to `cdk-app/.env.dev`
+(development commands read `.env.dev`, `-c prodDeployment=true` commands read `.env.prod`;
+there is no `cdk-app/.env.dev`). You don't need to change anything in it. Studio's
+**CDK environment files** island can generate the file for you.
 
 ```bash
-cp cdk-app/.env.dev.example cdk-app/.env
+cp cdk-app/.env.dev.template cdk-app/.env.dev
 ```
 
 **2. Install dependencies.**
@@ -40,7 +42,7 @@ npm run deploy:resources -- --all --profile=<profile> --yes
 then replace its values with the last section of the root `.env` that step 3 generated,
 headed `# Client app: copy this block into client-app/.env`. It already holds every
 `VITE_*` setting the client reads, including `VITE_LOCAL_WS_URL` for the local
-WebSocket server. Set `DEPLOY_PROD_WEBSOCKET_API=true` in `cdk-app/.env` before step 3
+WebSocket server. Set `DEPLOY_PROD_WEBSOCKET_API=true` in `cdk-app/.env.dev` before step 3
 to also deploy the AWS WebSocket API, whose URL is `VITE_API_GATEWAY_WS_URL`.
 
 **5. Start the backend** (Docker containers). Leave this terminal running.
@@ -102,13 +104,13 @@ infrastructure from these declarations.
 
 This file can provide three kinds of input.
 
-**1. Plain env variables.** Set the value in `cdk-app/.env`, then declare it here:
+**1. Plain env variables.** Set the value in `cdk-app/.env.dev`, then declare it here:
 
 ```ts
 bedrockModelId: resource.fromEnv("LANGGRAPH_BEDROCK_MODEL_ID").default("global.amazon.nova-2-lite-v1:0"),
 ```
 
-**2. Secrets.** Set the raw value in `cdk-app/.env`, then declare it here.
+**2. Secrets.** Set the raw value in `cdk-app/.env.dev`, then declare it here.
 `npm run deploy:resources` uploads the value to Secrets Manager for you.
 
 ```ts

@@ -75,8 +75,8 @@ test("storage validation follows PostgreSQL gp3 and io2 requirements", () => {
 });
 
 test("both authored templates document all resolver settings with production defaults", () => {
-  const prod = readFileSync(path.join(__dirname, "../.env.prod.example"), "utf8");
-  const dev = readFileSync(path.join(__dirname, "../.env.dev.example"), "utf8");
+  const prod = readFileSync(path.join(__dirname, "../.env.prod.template"), "utf8");
+  const dev = readFileSync(path.join(__dirname, "../.env.dev.template"), "utf8");
   const source = readFileSync(path.join(__dirname, "../database-settings.ts"), "utf8");
   const names = new Set(source.match(/DATABASE_[A-Z_]+/g));
   for (const name of names) {

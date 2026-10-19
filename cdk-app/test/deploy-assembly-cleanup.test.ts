@@ -87,6 +87,6 @@ test("the synth child reads the same inputs file deploy read, and the developmen
     assert.ok(output.includes(`app-inputs=${inputs}`), output);
     const empty = deployWith({ FRAMEWORK_INPUTS_FILE: "", AWS_PROFILE: undefined });
     const emptyOutput = `${empty.stdout}${empty.stderr}`;
-    assert.ok(emptyOutput.includes(`app-inputs=${path.join(fixture, "cdk-app", ".env")}`), emptyOutput);
+    assert.ok(emptyOutput.includes(`app-inputs=${path.join(fixture, "cdk-app", ".env.dev")}`), emptyOutput);
   });
 });

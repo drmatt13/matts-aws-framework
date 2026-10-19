@@ -21,7 +21,7 @@ Studio server (host process: node --import tsx framework-studio/server/index.ts)
   ├─ EditService: plan → preflight → preview → atomic write → confirm → journal
   ├─ InfrastructureService: explicit synthesis → assembly inventory, per-mode last-good state
   ├─ Watcher: framework.config.ts, framework-config/, packages/framework/src/config/,
-  │     cdk-app/lib/, .env/.env.dev/.env.prod and their references (input metadata/flags)
+  │     cdk-app/lib/, .env.dev/.env.prod and their templates (input metadata/flags)
   └─ CommandRunner: framework:check, framework:generate (fixed argv, no shell)
 ```
 
@@ -416,8 +416,10 @@ the file hash and snapshot revision again, writes by private sibling/atomic rena
 refreshes the snapshot. Unchanged assignments and comments are preserved; changed duplicate
 keys are consolidated and every value must round-trip through Node's dotenv parser.
 Saving inputs does not run infrastructure synthesis or claim complete CDK validation.
-Missing files expose one typed creation operation using the corresponding example, with
-exclusive creation and same-mode legacy preservation. Reads never create files. Watchers
+Missing files expose one typed generation operation that copies the corresponding
+`.template` (`cdk-app/.env.<mode>.template`) with exclusive creation; there is no legacy
+`cdk-app/.env`. The environment-files island inspector offers it for every missing file, and a
+missing file's node wears a red cross. Reads never create files. Watchers
 refresh both source projections, while inventory fingerprints track the selected mode's
 file. These projections are not framework declarations or a second configuration store.
 
@@ -448,8 +450,7 @@ or deployment orchestration. Future Deploy & Run can reuse it and the shared ass
 reader without importing Studio or its UI.
 
 `server/infrastructure.ts` owns Studio's mode adapter and in-memory last-good states.
-The current adapter copies `cdk-app/.env.dev` or `.env.prod` privately (legacy `.env`
-fallback when absent), overrides `PROD_DEPLOYMENT` in that
+The current adapter copies `cdk-app/.env.dev` or `.env.prod` privately, overrides `PROD_DEPLOYMENT` in that
 copy and the child environment, and supplies matching `useLocalDevStack` context. The
 active inputs are never written. This one adapter is the migration point for future
 context-only mode selection. Normal production guards

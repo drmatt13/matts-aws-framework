@@ -29,7 +29,7 @@ This is a TypeScript npm-workspace monorepo for AWS-backed applications. Start w
   Never commit env files, credentials, tokens, or CDK outputs. Avoid broad dependency
   upgrades or npm audit fix --force without the user's accepted scope.
 - Every secret is one entry in framework-config/resources.ts: resource.secret("NAME") for
-  a raw value authored only in cdk-app/.env, or a public ISecret field on a
+  a raw value authored only in cdk-app/.env.<mode>, or a public ISecret field on a
   resource.stack<T>() entry for one a stack created, generated or imported. A container
   takes the contents with secrets: { NAME: resources.x.value } or .field("key"); a Lambda
   takes the ARN with environment: { NAME: resources.x.arn }, which also grants the read.

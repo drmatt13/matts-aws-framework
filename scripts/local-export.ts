@@ -4,7 +4,7 @@ import { getFrameworkTargets, isTargetEnabled, isResourceReference } from "@repo
 import framework from "../framework.config";
 
 /**
- * Every host port Docker Compose publishes, authored in cdk-app/.env.
+ * Every host port Docker Compose publishes, authored in cdk-app/.env.dev.
  *
  * Compose interpolates these by name, and packages/framework/scripts/check-local.ts
  * asserts the two lists agree, so a service that publishes a port nobody can move
@@ -26,14 +26,14 @@ const LOCALHOST_DEV_URL = "http://localhost:3000";
  * A URL reduced to the origin an allowlist can hold.
  *
  * getLocalBrowserOrigins() in @repo/framework/local/origins rejects a value carrying
- * a path, query or fragment, so a trailing slash authored in cdk-app/.env would
+ * a path, query or fragment, so a trailing slash authored in cdk-app/.env.dev would
  * otherwise fail at container start rather than here.
  */
 function toOrigin(value: string, name: string): string {
   try {
     return new URL(value.trim()).origin;
   } catch {
-    throw new Error(`${name}="${value}" in cdk-app/.env is not a URL.`);
+    throw new Error(`${name}="${value}" in cdk-app/.env.dev is not a URL.`);
   }
 }
 
@@ -51,7 +51,7 @@ export function localExportValues(
     if (authored[override]) values.set(override, authored[override]);
   }
   if (authored.LOCAL_BROWSER_ORIGINS !== undefined) {
-    throw new Error("LOCAL_BROWSER_ORIGINS in cdk-app/.env is no longer read: the local allowlist is derived from LOCAL_DEV_URL and the WebSocket tester's host port. Remove it, and set LOCAL_DEV_URL if you need a different frontend origin.");
+    throw new Error("LOCAL_BROWSER_ORIGINS in cdk-app/.env.dev is no longer read: the local allowlist is derived from LOCAL_DEV_URL and the WebSocket tester's host port. Remove it, and set LOCAL_DEV_URL if you need a different frontend origin.");
   }
 
   // Host ports are authored, not defaulted: a port is a fact about this machine,
@@ -62,10 +62,10 @@ export function localExportValues(
   for (const name of LOCAL_HOST_PORT_NAMES) {
     const port = authored[name];
     if (port === undefined) {
-      throw new Error(`${name} is missing from cdk-app/.env. Every published host port is authored there; copy the block from cdk-app/.env.dev.example.`);
+      throw new Error(`${name} is missing from cdk-app/.env.dev. Every published host port is authored there; copy the block from cdk-app/.env.dev.template.`);
     }
     if (!/^[1-9][0-9]*$/.test(port) || Number(port) > 65535) {
-      throw new Error(`${name}=${port} in cdk-app/.env is not a port number between 1 and 65535.`);
+      throw new Error(`${name}=${port} in cdk-app/.env.dev is not a port number between 1 and 65535.`);
     }
     const first = claimedBy.get(port);
     if (first) {
@@ -156,7 +156,7 @@ export function replaceGeneratedEnvironment(existing: string, block: string, nam
   const collisions = [...(before + after).matchAll(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=/gm)]
     .map((match) => match[1]).filter((key) => keys.has(key));
   if (collisions.length) {
-    throw new Error(`Root .env contains authored keys now owned by export: ${[...new Set(collisions)].join(", ")}. Move local settings into cdk-app/.env and remove these root assignments before exporting.`);
+    throw new Error(`Root .env contains authored keys now owned by export: ${[...new Set(collisions)].join(", ")}. Move local settings into cdk-app/.env.dev and remove these root assignments before exporting.`);
   }
   return before + (before && !before.endsWith("\n") ? "\n" : "") + block + after;
 }

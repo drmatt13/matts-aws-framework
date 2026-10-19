@@ -103,7 +103,7 @@ stability, shared routing, viewport adaptation and measured before/after results
 | Shared lower row, first | Agents | AgentCore agents not placed in the VPC | 3 |
 | Shared lower row, second | Workflows | Step Functions workflows | 4 |
 | Shared lower row, third | Stacks | All `resource.stack<T>()` entries together, one node per class; public fields expand in the inspector | 2 |
-| Immediately left of input parameters and secrets | CDK environment files | `.env.dev` and `.env.prod`; file-to-parameter links use assignment names and source locations, with no values | 1 |
+| Immediately left of input parameters and secrets | CDK environment files | `.env.dev` and `.env.prod`; file-to-parameter links use assignment names and source locations, with no values. A file that has not been generated wears a red cross, and the island inspector generates it from its `.template` | 1 |
 
 The subnets stand level, left to right from public to isolated. Exposure reads in colour
 rather than height: public is green, private blue and isolated

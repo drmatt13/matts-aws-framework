@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { api } from "../api";
 import { catalogAvailability } from "../deployment";
 import { editorLink } from "../lookup";
 import { buildScene } from "../scene/build";
@@ -15,6 +17,38 @@ const GROUPS: Readonly<Record<string, readonly string[]>> = {
   "island:vpc": [...LAMBDAS, "container", "database"],
   "island:agentcore": ["tools"],
 };
+
+/**
+ * The CDK environment files island: which of `.env.dev` and `.env.prod` exist,
+ * and one action to generate the missing ones from their tracked templates.
+ * Generation is explicit and exclusive; it never overwrites a file or reads one.
+ */
+function EnvironmentFiles() {
+  const { model, select, draft } = useStudio();
+  const client = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const files = model.resources.flatMap((resource) => resource.deploymentFile ? [resource.deploymentFile] : []);
+  const missing = files.filter((file) => !file.exists);
+  const name = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+  const generate = async () => {
+    setBusy(true); setError("");
+    try { for (const file of missing) await api.createDeploymentInput(file.mode); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Could not generate the inputs files."); }
+    finally { await client.invalidateQueries({ queryKey: ["snapshot"] }); setBusy(false); }
+  };
+  return <section><h3>Files</h3>
+    <ul className="island-members">{files.map((file) => <li key={file.mode}>
+      <button className="linkish" onClick={() => select(`envfile:${file.mode}`)}>{file.path}</button>
+      <span className="small muted">{file.exists ? "exists" : "not generated"}</span>
+    </li>)}</ul>
+    {missing.length ? <>
+      <p className="small">{missing.map((file) => name(file.path)).join(" and ")} {missing.length === 1 ? "does" : "do"} not exist, so commands for {missing.length === 1 ? "that environment" : "those environments"} run on the declared defaults. Generate copies {missing.length === 1 ? "it" : "each"} from {missing.map((file) => name(file.template)).join(" and ")}; an existing file is never overwritten.</p>
+      <button className="button" disabled={busy || draft.dirty} onClick={() => void generate()}>{busy ? "Generating…" : `Generate ${missing.map((file) => name(file.path)).join(" and ")}`}</button>
+    </> : <p className="small muted">Both files exist. Select one to edit its variables.</p>}
+    {error ? <p role="alert">{error}</p> : null}
+  </section>;
+}
 
 /** Island membership comes from the same layout as the canvas, never a second graph. */
 export function IslandInspector({ id }: { readonly id: string }) {
@@ -34,6 +68,7 @@ export function IslandInspector({ id }: { readonly id: string }) {
   return <>
     <header><span className="kind">Island settings</span><h2>{island.title}</h2><p className="small muted">{members.length} {members.length === 1 ? "entry" : "entries"}</p></header>
     <Description entity={id} />
+    {id === "island:environment" ? <EnvironmentFiles /> : null}
     {group ? <section>
       <h3>Shared defaults</h3>
       <p className="small">Defaults apply to this service type across all islands, including future nodes. Individual overrides take precedence.</p>
@@ -47,7 +82,7 @@ export function IslandInspector({ id }: { readonly id: string }) {
         {fact.usage ? <p className="small muted default-usage">{fact.usage.inherited} inherit · {fact.usage.overridden} overridden</p> : null}
       </div>)}</div>
       {source ? <a className="small" href={editorLink(snapshot.repositoryRoot, source)}>Open shared defaults in VS Code</a> : null}
-    </section> : <section><h3>Settings</h3><p className="small">The framework has no shared defaults for this island. Select an entry below to configure it.</p></section>}
+    </section> : id === "island:environment" ? null : <section><h3>Settings</h3><p className="small">The framework has no shared defaults for this island. Select an entry below to configure it.</p></section>}
     <section><h3>Island entries</h3><ul className="island-members">{members.map((node) => {
       const route = index.routes.get(node.id);
       return <li key={node.id}><button className="linkish" onClick={() => select(node.id)}>{node.label}</button><span className="small muted">{node.kindLabel}</span><ResourceStatus resource={index.resources.get(node.id)} />{route ? <RouteStatus route={route} /> : null}</li>;

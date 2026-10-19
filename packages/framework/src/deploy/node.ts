@@ -44,10 +44,14 @@ export function readCdkContext(root: string): Record<string, unknown> {
   }
 }
 
-/** `cdk-app/.env.<mode>` when it exists, otherwise `cdk-app/.env`: the rule Studio's inputs editor uses. */
+/**
+ * `cdk-app/.env.dev` or `cdk-app/.env.prod`, whichever the mode (`-c
+ * prodDeployment`) selects. There is no mode-less `cdk-app/.env`, and the path is
+ * returned whether or not the file exists: a missing file is the caller's to
+ * report, and Studio's CDK environment files island generates it.
+ */
 export function deploymentInputsFile(root: string, mode: DeploymentMode): string {
-  const own = path.join(root, "cdk-app", `.env.${mode}`);
-  return existsSync(own) ? own : path.join(root, "cdk-app", ".env");
+  return path.join(root, "cdk-app", `.env.${mode}`);
 }
 
 function readInputs(file: string): Record<string, string | undefined> {
@@ -72,7 +76,7 @@ export function resolveRepositoryTarget(input: {
   else if (selection.target.inputs) {
     inputsFile = path.resolve(input.root, selection.target.inputs);
     if (input.requireInputs !== false && !existsSync(inputsFile)) {
-      throw new Error(`${selection.target.name} reads ${selection.target.inputs}, which does not exist. Create ${selection.target.inputs} from cdk-app/.env.${selection.mode}.example.`);
+      throw new Error(`${selection.target.name} reads ${selection.target.inputs}, which does not exist. Create ${selection.target.inputs} from cdk-app/.env.${selection.mode}.template.`);
     }
   } else inputsFile = deploymentInputsFile(input.root, selection.mode);
   return { ...selection, inputsFile };

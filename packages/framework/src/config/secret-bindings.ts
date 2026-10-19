@@ -3,7 +3,7 @@
  * used to record it.
  *
  * Such a secret is declared once in the catalog and its value authored once, in
- * cdk-app/.env. Locally that is the whole story: Compose passes the value to
+ * cdk-app/.env.<mode>. Locally that is the whole story: Compose passes the value to
  * the container. A deployment cannot read your laptop, and both ways of
  * delivering a secret name it by ARN — ECS injects one, and a Lambda reads one
  * — so `npm run deploy:resources` copies the value into Secrets Manager and hands the CDK

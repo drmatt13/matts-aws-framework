@@ -57,17 +57,16 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   const create = async () => {
     setBusy(true); setError("");
     try { await api.createDeploymentInput(file.mode); await client.invalidateQueries({ queryKey: ["snapshot"] }); }
-    catch (error) { setError(error instanceof Error ? error.message : "Could not create the inputs file."); }
+    catch (error) { setError(error instanceof Error ? error.message : "Could not generate the inputs file."); }
     finally { setBusy(false); }
   };
   return <>
     <header><span className="kind">CDK {file.mode === "dev" ? "development" : "production"} inputs</span><h2><EntityIcon icon="envFile" />{resource.path[0]}</h2><code className="ref">{file.path}</code></header>
     <Description entity={resource.id} />
     {descriptionPending ? <p className="small muted">Apply or discard the description before editing environment variables.</p> : null}
-    <section><h3>Source</h3><p>{file.exists ? "Local inputs file exists." : "This inputs file has not been created."} {file.mode === mode ? "Used for synthesis in the selected graph." : "Switch the graph to use this environment for synthesis."}</p>
-      {file.exists ? <p><a href={editorLink(snapshot.repositoryRoot, location(file.path))}>Open file in editor</a></p> : <button className="button" disabled={busy || draft.dirty} onClick={() => void create()}>{busy ? "Creating…" : `Create .env.${file.mode} from reference`}</button>}
-      <p className="small"><a href={editorLink(snapshot.repositoryRoot, location(file.example))}>Reference: {file.example}</a></p>
-      {file.synthesisSource !== file.path ? <p className="small">Until this file exists, synthesis uses the legacy {file.synthesisSource}.</p> : null}
+    <section><h3>Source</h3><p>{file.exists ? "Local inputs file exists." : "This inputs file has not been generated."} {file.mode === mode ? "Used for synthesis in the selected graph." : "Switch the graph to use this environment for synthesis."}</p>
+      {file.exists ? <p><a href={editorLink(snapshot.repositoryRoot, location(file.path))}>Open file in editor</a></p> : <button className="button" disabled={busy || draft.dirty} onClick={() => void create()}>{busy ? "Generating…" : `Generate .env.${file.mode} from template`}</button>}
+      <p className="small"><a href={editorLink(snapshot.repositoryRoot, location(file.template))}>Template: {file.template}</a></p>
       <p className="small muted">Edit local values below, then review and apply the complete draft. Values stay outside the graph; sensitive fields are masked. Production is never populated from development inputs.</p>
       {file.problem || error ? <p role="alert">{file.problem || error}</p> : null}
     </section>

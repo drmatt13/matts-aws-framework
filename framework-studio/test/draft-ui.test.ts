@@ -556,7 +556,7 @@ test("invalid values are inline, failed applies preserve drafts, and beforeunloa
 test("resource controls and island service groups participate in the same shared session", async () => {
   const resource = baseline.models.dev.resources.find((resource) => resource.kind === "input" && !resource.absent)!;
   await mount(resource.id);
-  await ui.waitFor(() => assert.ok(ui.screen.queryByText("Reading cdk-app/.env…") === null));
+  await ui.waitFor(() => assert.ok(ui.screen.queryByText("Reading the inputs file…") === null));
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Resource group" }), { target: { value: "draftGroup" } });
   ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Secret" }));
   assert.equal(resourceCalls.length, 0); assert.ok(ui.screen.getByLabelText("Pending inspector changes"));

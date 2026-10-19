@@ -110,11 +110,12 @@ test("synthesis isolates both modes, preserves authored inputs, and never runs f
   try {
     mkdirSync(path.join(root, "cdk-app"));
     const text = 'PROD_DEPLOYMENT=false\nMODEL="two lines\nhere"\nAPI_KEY=never-export-me\n';
-    writeFileSync(path.join(root, "cdk-app/.env"), text);
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), text);
+    writeFileSync(path.join(root, "cdk-app/.env.prod"), text);
     let calls = 0;
     const service = new InfrastructureService(root, () => undefined, async (request) => {
       calls++;
-      assert.ok(request.environment?.FRAMEWORK_INPUTS_FILE !== path.join(root, "cdk-app/.env"));
+      assert.ok(request.environment?.FRAMEWORK_INPUTS_FILE !== path.join(root, "cdk-app/.env.dev"));
       const input = parseEnv(readFileSync(request.environment!.FRAMEWORK_INPUTS_FILE!, "utf8"));
       assert.equal(input.PROD_DEPLOYMENT, String(!request.context.useLocalDevStack));
       assert.equal(input.MODEL, "two lines\nhere");
@@ -124,7 +125,7 @@ test("synthesis isolates both modes, preserves authored inputs, and never runs f
     const dev = await service.synthesize("dev");
     const prod = await service.synthesize("prod");
     assert.equal(calls, 2); assert.equal(dev.stale, false); assert.equal(prod.stale, false);
-    assert.equal(readFileSync(path.join(root, "cdk-app/.env"), "utf8"), text);
+    assert.equal(readFileSync(path.join(root, "cdk-app/.env.dev"), "utf8"), text);
     assert.ok(!JSON.stringify([dev, prod]).includes("never-export-me"));
     assert.equal(dev.mode, "dev"); assert.equal(prod.mode, "prod");
   } finally { remove(root); }
@@ -151,7 +152,7 @@ test("ambiguous exports remain unresolved and shared workload source changes inv
 test("failed synthesis retains the last successful assembly and its configuration, redacts inputs, and marks only that attempt stale", async () => {
   const root = fixture();
   try {
-    mkdirSync(path.join(root, "cdk-app")); writeFileSync(path.join(root, "cdk-app/.env"), "SECRET=never-export-me\n");
+    mkdirSync(path.join(root, "cdk-app")); writeFileSync(path.join(root, "cdk-app/.env.dev"), "SECRET=never-export-me\n");
     let fail = false;
     const service = new InfrastructureService(root, () => undefined, async (request) => {
       if (fail) throw new Error("Validation failed: never-export-me");

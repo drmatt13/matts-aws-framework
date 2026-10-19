@@ -45,6 +45,7 @@ export const ICON_TINT: Readonly<Record<IconKey, string>> = {
   agent: AWS.ai,
   stack: AWS.integration,
   unattached: "#f0b96b",
+  missingFile: "#ef4444",
   managed: "#a9c5e8",
   table: AWS.database,
   bucket: AWS.storage,

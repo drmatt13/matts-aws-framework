@@ -34,7 +34,7 @@ export function useStudio(): StudioContextValue {
 export function StudioProvider(props: { readonly response: SnapshotResponse; readonly selected: string | undefined; readonly select: (id: string | undefined) => void; readonly children: ReactNode }) {
   const { response } = props;
   const query = useQueryClient();
-  const [mode, setMode] = useState<Mode>(response.snapshot.currentMode);
+  const [mode, setMode] = useState<Mode>("dev");
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextToast = useRef(1);
   const toast = useCallback((text: string, tone: Toast["tone"] = "plain") => {

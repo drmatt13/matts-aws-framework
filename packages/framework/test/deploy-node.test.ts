@@ -32,10 +32,19 @@ test("cdk.json context is read, and absent or broken files read as none", () => 
   withRepository({ "cdk-app/cdk.json": "{ not json" }, (root) => assert.throws(() => readCdkContext(root), /cdk-app\/cdk.json/));
 });
 
-test("each mode reads its own inputs file, falling back to cdk-app/.env", () => {
-  withRepository({ "cdk-app/.env": "CDK_APP_NAME=mine\n", "cdk-app/.env.prod": "X=1\n" }, (root) => {
-    assert.equal(deploymentInputsFile(root, "dev"), path.join(root, "cdk-app", ".env"));
-    assert.equal(deploymentInputsFile(root, "prod"), path.join(root, "cdk-app", ".env.prod"));
+test("each mode reads its own inputs file, and never cdk-app/.env, whether or not the file exists", () => {
+  for (const files of [{}, { "cdk-app/.env": "CDK_APP_NAME=mine\n", "cdk-app/.env.prod": "X=1\n" }] as Record<string, string>[]) {
+    withRepository(files, (root) => {
+      assert.equal(deploymentInputsFile(root, "dev"), path.join(root, "cdk-app", ".env.dev"));
+      assert.equal(deploymentInputsFile(root, "prod"), path.join(root, "cdk-app", ".env.prod"));
+    });
+  }
+});
+
+test("a development command with no declared target reads cdk-app/.env.dev", () => {
+  withRepository({ "cdk-app/.env.dev": "CDK_APP_NAME=mine\n" }, (root) => {
+    const dev = resolveRepositoryTarget({ root, get: () => undefined, env: {} });
+    assert.deepEqual([dev.mode, dev.inputsFile], ["dev", path.join(root, "cdk-app", ".env.dev")]);
   });
 });
 
@@ -47,7 +56,7 @@ test("a repository resolves the personal development target from CDK_APP_NAME", 
 });
 
 test("a production target uses its declared inputs file, which must exist", () => {
-  const files = { "cdk-app/cdk.json": cdkJson({ "framework:targets": prodTarget }), "cdk-app/.env": "CDK_APP_NAME=my-aws-app\n" };
+  const files = { "cdk-app/cdk.json": cdkJson({ "framework:targets": prodTarget }), "cdk-app/.env.dev": "CDK_APP_NAME=my-aws-app\n" };
   withRepository(files, (root) => {
     assert.throws(() => resolveRepositoryTarget({ root, get: (key) => ({ prodDeployment: "true" } as Record<string, unknown>)[key], env: {} }), /Create cdk-app\/\.env\.prod/);
   });
@@ -58,7 +67,7 @@ test("a production target uses its declared inputs file, which must exist", () =
 });
 
 test("FRAMEWORK_INPUTS_FILE overrides the inputs file, relative to the working directory", () => {
-  withRepository({ "cdk-app/.env": "CDK_APP_NAME=from-default\n", "fixture.env": "CDK_APP_NAME=from-override\n" }, (root) => {
+  withRepository({ "cdk-app/.env.dev": "CDK_APP_NAME=from-default\n", "fixture.env": "CDK_APP_NAME=from-override\n" }, (root) => {
     const relative = path.relative(process.cwd(), path.join(root, "fixture.env"));
     const selection = resolveRepositoryTarget({ root, get: () => undefined, env: { FRAMEWORK_INPUTS_FILE: relative } });
     assert.deepEqual([selection.target.name, selection.inputsFile], ["from-override", path.join(root, "fixture.env")]);

@@ -64,7 +64,7 @@ export async function planDeploymentSecrets(
       if (current.SecretString === undefined && value === undefined) throw new Error(`${requirement.name} has no usable string value.`);
       changed = value !== undefined && current.SecretString !== value;
     } else if (value === undefined) {
-      throw new Error(`${requirement.variable} is required by the selected deployment. Supply it in cdk-app/.env or restore its existing managed secret.`);
+      throw new Error(`${requirement.variable} is required by the selected deployment. Supply it in cdk-app/.env.dev or cdk-app/.env.prod, or restore its existing managed secret.`);
     }
     plans.set(requirement.name, { requirement, value, arn: existing?.ARN, changed });
   }

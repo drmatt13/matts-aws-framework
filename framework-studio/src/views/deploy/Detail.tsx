@@ -121,7 +121,7 @@ export function Detail(props: {
           <dl className="facts">
             <dt>Intent</dt><dd>{row.target ? (row.target.origin === "personal" ? "CDK_APP_NAME in your development inputs" : "framework:targets in cdk.json") : "Not declared here (read-only)"}</dd>
             <dt>Mode</dt><dd>{row.mode === "prod" ? "Production" : "Development"}<span className="muted"> · fixed when created</span></dd>
-            {row.target ? <><dt>Inputs</dt><dd><code>{row.target.inputs ?? (row.mode === "dev" ? "cdk-app/.env" : "cdk-app/.env.prod")}</code></dd></> : null}
+            {row.target ? <><dt>Inputs</dt><dd><code>{row.target.inputs ?? (`cdk-app/.env.${row.mode}`)}</code></dd></> : null}
             {row.target ? <><dt>Account</dt><dd>{row.target.account ? <code>{row.target.account}</code> : <span className="muted">the profile's</span>}</dd></> : null}
             {row.target?.region ? <><dt>Region</dt><dd><code>{row.target.region}</code></dd></> : null}
           </dl>

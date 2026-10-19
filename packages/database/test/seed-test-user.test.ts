@@ -69,7 +69,7 @@ function fakeDirectory(existing?: CognitoTestUser) {
 // What a development export wrote to root .env and Compose hands the service.
 const exported = "my-aws-app";
 
-test("settings come from cdk-app/.env, with the email normalized", () => {
+test("settings come from cdk-app/.env.dev, with the email normalized", () => {
   assert.deepEqual(
     testUserSettings({
       LOCAL_TEST_USER_EMAIL: "  TestUser@Example.com ",
@@ -121,7 +121,7 @@ test("creates the Cognito account and its row on a fresh deployment", async () =
   assert.ok(outcome.status === "ready" && outcome.createdInCognito && outcome.createdRow);
 });
 
-test("an existing account keeps its row and gets the password from cdk-app/.env", async () => {
+test("an existing account keeps its row and gets the password from cdk-app/.env.dev", async () => {
   const row: UserRecord = {
     id: "id-1",
     cognitoSub: "sub-1",

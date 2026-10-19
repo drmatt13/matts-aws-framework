@@ -446,11 +446,11 @@ test("a conditional requirement holds only when its condition does", () => {
     () => assertRequirementsMet(declared, lane({ "langgraph.modelProvider": "openai" }), "test:"),
     (error: Error) => {
       assert.match(error.message, /resources\.openaiApiKey is required/);
-      assert.match(error.message, /cdk-app\/\.env declares no value for it/);
+      assert.match(error.message, /cdk-app\/\.env\.dev or cdk-app\/\.env\.prod declares no value for it/);
       assert.match(error.message, /The task reads the key at startup\./);
       assert.match(
         error.message,
-        /Set OPENAI_API_KEY in cdk-app\/\.env and run npm run deploy:resources\./,
+        /Set OPENAI_API_KEY in cdk-app\/\.env\.dev or cdk-app\/\.env\.prod and run npm run deploy:resources\./,
       );
       return true;
     },

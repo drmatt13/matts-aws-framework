@@ -130,9 +130,7 @@ export class SnapshotBuilder {
     const evaluation = await this.pool.evaluate(settings.webSocketApi);
     const dev = this.lastGood(evaluation.dev);
     const prod = this.lastGood(evaluation.prod);
-    const preferred = settings.currentMode === "prod" ? prod : dev;
-    const fallback = settings.currentMode === "prod" ? dev : prod;
-    const base = !preferred.stale && preferred.targets.length > 0 ? preferred : fallback;
+    const base = !dev.stale && dev.targets.length > 0 ? dev : prod;
     const built = base.stale && this.latest ? this.latest.built : buildSourceIndex(this.repositoryRoot, base);
     const schema = readDeclaredSchema(this.repositoryRoot);
     const localDatabase = readLocalDatabases(this.repositoryRoot);
@@ -154,7 +152,6 @@ export class SnapshotBuilder {
       databaseProblems: localDatabase.problems,
       revision: `${this.generation}-${content.slice(0, 12)}`,
       generatedAt: new Date().toISOString(),
-      currentMode: settings.currentMode,
       webSocketApi: settings.webSocketApi,
       repositoryRoot: this.repositoryRoot,
       models: {

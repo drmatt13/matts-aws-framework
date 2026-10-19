@@ -27,9 +27,9 @@ export interface DeploymentInputEntry {
 export interface DeploymentInputFile {
   readonly mode: Mode;
   readonly path: string;
-  readonly example: string;
+  /** The tracked reference the file is generated from. */
+  readonly template: string;
   readonly exists: boolean;
-  readonly synthesisSource: string;
   readonly entries: readonly DeploymentInputEntry[];
   readonly problem?: string;
 }

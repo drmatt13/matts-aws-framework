@@ -99,6 +99,7 @@ typings/
 .env.*
 !.env.example
 !.env.*.example
+!.env.*.template
 .env.test
 .env*.local
 

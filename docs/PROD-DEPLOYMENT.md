@@ -20,9 +20,10 @@ account it is pinned to, and its own inputs file:
 Every command states production with `-c prodDeployment=true`; with one production target
 declared it is selected automatically, and `-c deployment=<name>` picks among several. A synth
 for any other account than the pin is refused. Create the inputs file from
-[the production example](../cdk-app/.env.prod.example), preserving existing configuration
-rather than blindly overwriting it. Development keeps its own file (`cdk-app/.env`), so the
-two never share settings or secret values. Set:
+[the production template](../cdk-app/.env.prod.template) as `cdk-app/.env.prod` (or generate
+it from Studio's CDK environment files island), preserving existing configuration rather than
+blindly overwriting it. Development keeps its own file (`cdk-app/.env.dev`), so the two never
+share settings or secret values. Set:
 
 - USE_FRONTEND_CUSTOM_DOMAIN=false to use the generated HTTPS CloudFront hostname,
   or true with FRONTEND_URL and FRONTEND_CLOUDFRONT_CERTIFICATE_ARN for a custom domain.

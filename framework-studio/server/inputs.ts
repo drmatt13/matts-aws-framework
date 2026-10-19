@@ -29,7 +29,6 @@ export function findRepositoryRoot(start: string): string {
 }
 
 export interface DeploymentSettings {
-  readonly currentMode: Mode;
   readonly webSocketApi: boolean;
 }
 
@@ -39,22 +38,18 @@ function flag(value: string | undefined): boolean {
 }
 
 export function readDeploymentSettings(repositoryRoot: string): DeploymentSettings {
-  const file = path.join(repositoryRoot, "cdk-app", ".env");
-  const values = parseEnv(existsSync(file) ? readFileSync(file, "utf8") : "");
   return {
-    currentMode: flag(values.PROD_DEPLOYMENT) ? "prod" : "dev",
-    webSocketApi: readModeWebSocketApi(repositoryRoot, "dev", flag(values.DEPLOY_PROD_WEBSOCKET_API)),
+    webSocketApi: readModeWebSocketApi(repositoryRoot, "dev", false),
   };
 }
 
 /** Evaluators receive flags only, never the selected file's authored values. */
 export function readModeWebSocketApi(root: string, mode: Mode, fallback: boolean): boolean {
-  const selected = selectedDeploymentInput(root, mode);
-  if (selected === "cdk-app/.env") return fallback;
-  return flag(parseEnv(readFileSync(path.join(root, selected), "utf8")).DEPLOY_PROD_WEBSOCKET_API);
+  const file = path.join(root, selectedDeploymentInput(root, mode));
+  return existsSync(file) ? flag(parseEnv(readFileSync(file, "utf8")).DEPLOY_PROD_WEBSOCKET_API) : fallback;
 }
 
-/** The inputs file one mode's evaluator loads in place of cdk-app/.env. */
+/** The synthetic inputs file one mode's evaluator loads in place of its cdk-app/.env.<mode>. */
 export function writeModeInputs(repositoryRoot: string, mode: Mode): string {
   const directory = path.join(repositoryRoot, STUDIO_SCRATCH);
   mkdirSync(directory, { recursive: true });

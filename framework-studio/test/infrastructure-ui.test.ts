@@ -164,7 +164,7 @@ test("the file inspector loads all local variables privately and links only cata
   const file = environmentFixture();
   await mount((id) => { selected = id; }, undefined, file);
   await ui.screen.findByLabelText("Value for PGADMIN_HOST_PORT");
-  assert.ok(ui.screen.getByRole("link", { name: "Reference: cdk-app/.env.dev.example" }));
+  assert.ok(ui.screen.getByRole("link", { name: "Template: cdk-app/.env.dev.template" }));
   assert.ok(ui.screen.getByText("OPENAI_API_KEY", { selector: "code" }));
   assert.equal((ui.screen.getByLabelText("Value for OPENAI_API_KEY") as HTMLInputElement).type, "password");
   assert.equal(ui.screen.queryByText("private-ui-sentinel"), null);

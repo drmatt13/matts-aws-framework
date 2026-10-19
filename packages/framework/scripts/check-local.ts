@@ -38,7 +38,7 @@ const compose = {
   },
 };
 
-// Published host ports are authored in cdk-app/.env and interpolated by name, so
+// Published host ports are authored in cdk-app/.env.dev and interpolated by name, so
 // a service that publishes a literal cannot be moved off a port the developer's
 // machine already uses. Both directions are checked: a service publishing a name
 // the export does not write would resolve to nothing, and a name the export
@@ -50,10 +50,10 @@ for (const [name, service] of Object.entries(compose.services ?? {}) as [string,
     const hostPort = entry.split(":").slice(-2)[0];
     const variable = /^\$\{([A-Z0-9_]+)\}$/.exec(hostPort)?.[1];
     if (!variable) {
-      throw new Error(`docker-compose.yml service "${name}" publishes ${entry} on a literal host port. Use one of the \${...} names cdk-app/.env authors so it can be moved.`);
+      throw new Error(`docker-compose.yml service "${name}" publishes ${entry} on a literal host port. Use one of the \${...} names cdk-app/.env.dev authors so it can be moved.`);
     }
     if (!portNames.has(variable)) {
-      throw new Error(`docker-compose.yml service "${name}" publishes \${${variable}}, which npm run export:cdk-outputs never writes. Add it to LOCAL_HOST_PORT_NAMES in scripts/local-export.ts and to cdk-app/.env.dev.example.`);
+      throw new Error(`docker-compose.yml service "${name}" publishes \${${variable}}, which npm run export:cdk-outputs never writes. Add it to LOCAL_HOST_PORT_NAMES in scripts/local-export.ts and to cdk-app/.env.dev.template.`);
     }
     publishedBy.set(variable, name);
   }

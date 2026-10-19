@@ -58,9 +58,10 @@ test("missing assignments get actionable connections which retain identity after
     const defaulted = { ...dev, resources: dev.resources.map((item) => item.id === "resource:region" ? { ...item, default: "fallback" } : item) };
     assert.equal(project(defaulted).edges.find((edge) => edge.id === region.id)!.inputRequirement!.status, "default");
     rmSync(path.join(root, "cdk-app/.env.dev"));
+    // A leftover cdk-app/.env is never consulted: the missing .env.dev leaves the input missing.
     writeFileSync(path.join(root, "cdk-app/.env"), "REGION=legacy-private-sentinel\n");
-    assert.equal(project().resources.find((resource) => resource.id === "resource:region")!.inputRequirement!.status, "configured");
-    assert.equal(project().resources.find((resource) => resource.id === "resource:region")!.inputRequirement!.file, "cdk-app/.env");
+    assert.equal(project().resources.find((resource) => resource.id === "resource:region")!.inputRequirement!.status, "missing");
+    assert.equal(project().resources.find((resource) => resource.id === "resource:region")!.inputRequirement!.file, "cdk-app/.env.dev");
   } finally { assert.ok(root.startsWith(cache + path.sep)); rmSync(root, { recursive: true }); }
 });
 

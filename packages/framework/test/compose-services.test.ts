@@ -61,7 +61,7 @@ const SOURCES = { orders: {}, billing: { dockerfile: "FROM node:24\nEXPOSE 7000\
 const TEMPLATE = `
 x-mounts: &mounts
   - { type: bind, source: ./.framework/local, target: /workspace/.framework/local, read_only: true }
-  - { type: bind, source: ./cdk-app/.env, target: /workspace/cdk-app/.env, read_only: true }
+  - { type: bind, source: ./cdk-app/.env.dev, target: /workspace/cdk-app/.env.dev, read_only: true }
 x-framework-service:
   build: { context: ., dockerfile: Dockerfile.dev }
   init: true

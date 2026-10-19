@@ -43,7 +43,7 @@ import { resources } from "./framework-config/resources";
 import { routes } from "./framework-config/http";
 export default defineFrameworkConfig({ resources, defaults, http: [routes], webSocket: [], events: [], services: [] });
 `);
-  writeFileSync(path.join(fixture, "cdk-app/.env"), '# fixture only\nFIXTURE_KEY="test secret with # and ="\nFIXTURE_SETTING="from local env"\nUNDECLARED_PRIVATE="do not return"\nGROUP_DERIVED="derived value"\n');
+  writeFileSync(path.join(fixture, "cdk-app/.env.dev"), '# fixture only\nFIXTURE_KEY="test secret with # and ="\nFIXTURE_SETTING="from local env"\nUNDECLARED_PRIVATE="do not return"\nGROUP_DERIVED="derived value"\n');
   builder = new SnapshotBuilder(fixture);
   service = new ResourceService(fixture, builder);
   await builder.refresh();
@@ -52,7 +52,7 @@ after(async () => { await builder?.dispose(); rmSync(fixture, { recursive: true,
 
 test("only defined authored resources can reveal a targeted .env value, snapshots remain value-free", () => {
   assert.equal(service.details("resource:key", "dev").value, "test secret with # and =");
-  assert.equal(service.details("resource:setting", "prod").value, "from local env");
+  assert.equal(service.details("resource:setting", "dev").value, "from local env");
   assert.equal(service.details("resource:group.derived", "dev").value, "derived value");
   for (const id of ["UNDECLARED_PRIVATE", "resource:UNDECLARED_PRIVATE", "../../cdk-app/.env", "resource:group"]) assert.throws(() => service.details(id, "dev"));
   const snapshot = JSON.stringify(builder.current!.snapshot);
@@ -63,7 +63,7 @@ test("only defined authored resources can reveal a targeted .env value, snapshot
 });
 
 test("missing and empty values differ from a configured value", () => {
-  const file = path.join(fixture, "cdk-app/.env");
+  const file = path.join(fixture, "cdk-app/.env.dev");
   const before = readFileSync(file, "utf8");
   try {
     writeFileSync(file, "FIXTURE_KEY=\n");
@@ -137,7 +137,7 @@ test("resource API rejects malformed policies and secret values never enter any 
   assert.throws(() => readResourceIntent({ intent: { ...intent(), required: "yes" } }));
   assert.throws(() => readResourceIntent({ intent: { ...intent(), requirements: { bad: "unknown" } } }));
   assert.deepEqual(readResourceIntent({ intent: intent() }), intent());
-  assert.ok(existsSync(path.join(fixture, "cdk-app/.env")));
+  assert.ok(existsSync(path.join(fixture, "cdk-app/.env.dev")));
 });
 
 test("catalog required flags persist through review and can be removed without rewriting consumers", async () => {

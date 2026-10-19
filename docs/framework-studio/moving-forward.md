@@ -225,7 +225,7 @@ These are ranked by value for effort. Each is a separate change with its own tes
    environment references to catalog attributes. This needs array-element splices and
    import management, so design the transaction first.
 6. **Catalog authoring.** `resource.fromEnv` and `resource.secret` declarations, together
-   with the `cdk-app/.env.*.example` lines AGENTS.md requires. Native CDK stays code-first,
+   with the `cdk-app/.env.*.template` lines AGENTS.md requires. Native CDK stays code-first,
    with links to the stack class and its `linkResources` site.
 7. **Isometric polish.** The two-environment presentation (Development/Production), quiet
    exception badges, thin background grid, official AWS SVG icons, quieter

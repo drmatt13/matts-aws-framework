@@ -145,7 +145,7 @@ credentials, a deleted pool) it warns and deletes nothing. It refuses any databa
 other than the Compose or loopback one.
 
 Then seed-test-user makes `LOCAL_TEST_USER_EMAIL` a working account: it creates the
-user in the dev pool if needed, sets its password from cdk-app/.env, and writes its
+user in the dev pool if needed, sets its password from cdk-app/.env.dev, and writes its
 users row through `ensureCognitoUser`. An admin-created account never fires the
 post-confirmation trigger, so this step writes the row itself. It keeps an existing
 row, runs only for a pool a development export wrote, and has the same database guard. See
@@ -174,7 +174,7 @@ Prefix each with `npm --workspace @repo/database run`:
 | `db:init` | Initialize an empty database additively and sign it |
 | `db:update` | Directly synchronize storage; does not author a migration package |
 | `db:prune-cognito-orphans` | Delete local users absent from the dev Cognito pool; Compose runs it |
-| `db:seed-test-user` | Create the cdk-app/.env test user in the dev pool and local database; Compose runs it |
+| `db:seed-test-user` | Create the cdk-app/.env.dev test user in the dev pool and local database; Compose runs it |
 | `scaffold -- <Model> --dry-run` | Preview a new owned-list/create feature; see Data features |
 | `typecheck` / `test` | Check types / run offline database and scaffold tests |
 

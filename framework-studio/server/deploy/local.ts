@@ -118,7 +118,7 @@ export class LocalEnvironment {
 
   /** The origin the web client serves, from the development inputs. */
   appUrl(): string {
-    for (const file of [this.env.FRAMEWORK_INPUTS_FILE, path.join(this.root, "cdk-app", ".env.dev"), path.join(this.root, "cdk-app", ".env")]) {
+    for (const file of [this.env.FRAMEWORK_INPUTS_FILE, path.join(this.root, "cdk-app", ".env.dev")]) {
       if (!file || !existsSync(file)) continue;
       const value = parseEnv(readFileSync(file, "utf8")).LOCAL_DEV_URL;
       if (value) return value;

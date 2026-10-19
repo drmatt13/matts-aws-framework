@@ -24,7 +24,7 @@ export function resolveDeploymentInputs({ getContext, env, target }: DeploymentS
     context, env: envKey, fallback = false, envLabel,
   }: { context: string; env?: string; fallback?: boolean; envLabel?: string }): boolean =>
     optionalBoolean(getContext(context), `-c ${context}`) ??
-    (envKey === undefined ? undefined : optionalBoolean(env[envKey], envLabel ?? `${envKey} in cdk-app/.env`)) ??
+    (envKey === undefined ? undefined : optionalBoolean(env[envKey], envLabel ?? `${envKey} in cdk-app/.env.dev or cdk-app/.env.prod`)) ??
     fallback;
   const account = env.CDK_DEFAULT_ACCOUNT;
   const region = env.CDK_DEFAULT_REGION;
@@ -88,7 +88,7 @@ export function resolveDeploymentInputs({ getContext, env, target }: DeploymentS
   });
   if (requestedSkipEmailVerification && mode === "prod") {
     throw new Error(
-      "SKIP_EMAIL_VERIFICATION is a development setting and cannot be used by a production deployment. Remove it from cdk-app/.env (or drop -c skipEmailVerification).",
+      "SKIP_EMAIL_VERIFICATION is a development setting and cannot be used by a production deployment. Remove it from cdk-app/.env.dev or cdk-app/.env.prod (or drop -c skipEmailVerification).",
     );
   }
 
@@ -127,7 +127,7 @@ export function resolveDeploymentInputs({ getContext, env, target }: DeploymentS
 
   if (retainStatefulResoucesLegacy !== undefined) {
     warnings.push(
-      '[cdk-app] -c retainStatefulResouces is misspelled and will be removed. Use -c retainStatefulResources, or set RETAIN_STATEFUL_RESOURCES in cdk-app/.env.',
+      '[cdk-app] -c retainStatefulResouces is misspelled and will be removed. Use -c retainStatefulResources, or set RETAIN_STATEFUL_RESOURCES in cdk-app/.env.dev or cdk-app/.env.prod.',
     );
   }
 
@@ -139,7 +139,7 @@ export function resolveDeploymentInputs({ getContext, env, target }: DeploymentS
     retainStatefulResoucesLegacy ??
     optionalBoolean(
       env.RETAIN_STATEFUL_RESOURCES,
-      "RETAIN_STATEFUL_RESOURCES in cdk-app/.env",
+      "RETAIN_STATEFUL_RESOURCES in cdk-app/.env.dev or cdk-app/.env.prod",
     ) ??
     false;
 
@@ -164,7 +164,7 @@ export function resolveDeploymentInputs({ getContext, env, target }: DeploymentS
   ];
   if (renamedWebSocketFlags.length > 0) {
     throw new Error(
-      `${renamedWebSocketFlags.join(" and ")} ${renamedWebSocketFlags.length > 1 ? "were" : "was"} renamed. Use DEPLOY_PROD_WEBSOCKET_API in cdk-app/.env, or -c deployProdWebSocketApi.`,
+      `${renamedWebSocketFlags.join(" and ")} ${renamedWebSocketFlags.length > 1 ? "were" : "was"} renamed. Use DEPLOY_PROD_WEBSOCKET_API in cdk-app/.env.dev or cdk-app/.env.prod, or -c deployProdWebSocketApi.`,
     );
   }
   const deployProdWebSocketApiContext = optionalBoolean(
@@ -181,7 +181,7 @@ export function resolveDeploymentInputs({ getContext, env, target }: DeploymentS
   // the flag stopped meaning anything.
   if (enableWebSocketsLegacyContext !== undefined) {
     warnings.push(
-      "[cdk-app] -c enableWebSockets is deprecated and will be removed. Use -c deployProdWebSocketApi, or set DEPLOY_PROD_WEBSOCKET_API in cdk-app/.env. The old name implied it controlled WebSocket support; it only ever controlled the AWS WebSocket API Gateway.",
+      "[cdk-app] -c enableWebSockets is deprecated and will be removed. Use -c deployProdWebSocketApi, or set DEPLOY_PROD_WEBSOCKET_API in cdk-app/.env.dev or cdk-app/.env.prod. The old name implied it controlled WebSocket support; it only ever controlled the AWS WebSocket API Gateway.",
     );
   }
 
@@ -199,7 +199,7 @@ export function resolveDeploymentInputs({ getContext, env, target }: DeploymentS
   // that this deployment would no longer build.
   const retiredWsAuthorizer =
     optionalBoolean(getContext("useCustomWsAuthorizer"), "-c useCustomWsAuthorizer") ??
-    optionalBoolean(env.USE_CUSTOM_WS_AUTHORIZER, "USE_CUSTOM_WS_AUTHORIZER in cdk-app/.env");
+    optionalBoolean(env.USE_CUSTOM_WS_AUTHORIZER, "USE_CUSTOM_WS_AUTHORIZER in cdk-app/.env.dev or cdk-app/.env.prod");
   if (retiredWsAuthorizer === false) {
     throw new Error(
       "USE_CUSTOM_WS_AUTHORIZER=false is no longer supported. The authorizer declared on $connect in framework-config/websocket/routes.ts is always attached; remove that declaration to deploy a WebSocket API without one.",
@@ -207,7 +207,7 @@ export function resolveDeploymentInputs({ getContext, env, target }: DeploymentS
   }
   if (retiredWsAuthorizer === true) {
     warnings.push(
-      "[cdk-app] USE_CUSTOM_WS_AUTHORIZER is no longer read: the $connect authorizer declared in framework-config is always attached. Remove the line from cdk-app/.env.",
+      "[cdk-app] USE_CUSTOM_WS_AUTHORIZER is no longer read: the $connect authorizer declared in framework-config is always attached. Remove the line from cdk-app/.env.dev or cdk-app/.env.prod.",
     );
   }
 
@@ -259,7 +259,7 @@ export function resolveDeploymentInputs({ getContext, env, target }: DeploymentS
   // Mirrors USE_COGNITO_CUSTOM_DOMAIN, but unlike that one this is meaningful
   // only in cloud mode: the CloudFront distribution that would carry the
   // alternate domain name is not created at all in local dev stack mode. Set it
-  // false to keep the domain and certificate parked in .env while deploying on
+  // false to keep the domain and certificate parked in the inputs file while deploying on
   // the generated CloudFront URL.
   const useFrontendCustomDomain = booleanFlag({
     context: "useFrontendCustomDomain",
@@ -369,7 +369,7 @@ export function resolveDeploymentInputs({ getContext, env, target }: DeploymentS
     .map(([, name]) => name);
   if (retiredTaskNetwork.length > 0) {
     warnings.push(
-      `[cdk-app] ${retiredTaskNetwork.join(", ")} ${retiredTaskNetwork.length === 1 ? "is" : "are"} no longer read: tasks run in the framework network, in the subnet each declares as cloud.subnet (inherited from defaults.container.subnet). Remove ${retiredTaskNetwork.length === 1 ? "the line" : "the lines"} from cdk-app/.env.`,
+      `[cdk-app] ${retiredTaskNetwork.join(", ")} ${retiredTaskNetwork.length === 1 ? "is" : "are"} no longer read: tasks run in the framework network, in the subnet each declares as cloud.subnet (inherited from defaults.container.subnet). Remove ${retiredTaskNetwork.length === 1 ? "the line" : "the lines"} from cdk-app/.env.dev or cdk-app/.env.prod.`,
     );
   }
 
@@ -494,7 +494,7 @@ export function loadDeploymentEnvironment(
       value = value.slice(1, -1);
     } else {
       // An unquoted value ends at the first "#" that starts the line or follows
-      // whitespace, so the annotations in .env.dev.example / .env.prod.example
+      // whitespace, so the annotations in .env.dev.template / .env.prod.template
       // never become values.
       value = rawValue.replace(/(^|\s)#.*$/, "").trim();
     }

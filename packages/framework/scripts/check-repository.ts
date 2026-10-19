@@ -8,14 +8,14 @@ import {
 } from "../src/config/index";
 
 /**
- * The templates a developer copies cdk-app/.env from, and the graph each one
+ * The templates a developer copies cdk-app/.env.dev and cdk-app/.env.prod from, and the graph each one
  * sets up: the dev template a development deployment and the local lane, the
  * prod template a full deployment. A repository convention, checked by this
  * repository's framework:check rather than by the framework.
  */
 export const INPUT_TEMPLATES = {
-  "cdk-app/.env.dev.example": "dev",
-  "cdk-app/.env.prod.example": "prod",
+  "cdk-app/.env.dev.template": "dev",
+  "cdk-app/.env.prod.template": "prod",
 } as const satisfies Record<string, "dev" | "prod">;
 
 export interface InputTemplate {

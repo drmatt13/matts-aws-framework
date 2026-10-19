@@ -125,7 +125,7 @@ export class EditService {
       if (baseRevision !== snapshot.revision) {
         throw new EditError(409, "The repository changed since this view was drawn. It has been refreshed; make the change again.");
       }
-      const model = snapshot.currentMode === "prod" ? snapshot.models.prod : snapshot.models.dev;
+      const model = snapshot.models.dev;
       if (snapshot.models.dev.stale || snapshot.models.prod.stale || model.targets.length === 0) {
         throw new EditError(422, "The configuration does not load right now, so no change can be checked against it. Fix it in your editor first.");
       }
@@ -142,7 +142,6 @@ export class EditService {
       if (sha256(readFileSync(planned.file, "utf8")) !== snapshot.files[planned.relativeFile]) throw new EditError(409, "The setting's source changed. Wait for refresh and preview again.");
       const preflight = await evaluation.preflight({ target: intent.target, field: field.id, patch: planned.forward });
       const ok = preflight.dev.ok && preflight.prod.ok;
-      const current = snapshot.currentMode === "prod" ? preflight.prod : preflight.dev;
       const response: PlanResponse = {
         planId: randomUUID(),
         target: intent.target,
@@ -152,7 +151,7 @@ export class EditService {
         diff: planned.diff,
         preflight,
         ok,
-        impact: ok ? target ? impactOf(target, field.id, current) : [
+        impact: ok ? target ? impactOf(target, field.id, preflight.dev) : [
           `${fact.usage?.inherited ?? 0} current workloads inherit this setting; ${fact.usage?.overridden ?? 0} have overrides.`,
           "Applies to matching workloads on every island and to future declarations. Individual overrides are preserved.",
           "Compose Watch restarts affected local workloads when the defaults file changes.",

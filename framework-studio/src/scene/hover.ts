@@ -75,7 +75,7 @@ function resourceWhere(resource: ModelResource | undefined, index: ModelIndex, m
     case "secret": return { where: "AWS Secrets Manager" };
     case "construct": return { where: "CDK construct" };
     // An input is supplied wherever its graph declares it, from the file that environment's synthesis reads.
-    case "input": return { where: `CDK input · ${index.resources.get(`envfile:${mode}`)?.deploymentFile?.synthesisSource ?? "environment file"}` };
+    case "input": return { where: `CDK input · ${index.resources.get(`envfile:${mode}`)?.deploymentFile?.path ?? "environment file"}` };
     case "group": return { where: "CDK input group" };
     default: return { reason: "Not deployed" };
   }

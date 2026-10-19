@@ -11,7 +11,7 @@
  *
  * A catalog has exactly two origins, and most of this module exists to hold it
  * to two. `resource.fromEnv("NAME")` and `resource.secret("NAME")` name a line
- * authored in cdk-app/.env — the one file a deployment reads an input from, so
+ * authored in cdk-app/.env.<mode> — the one file a deployment reads an input from, so
  * a model id is the same string in AWS and under `docker compose up`.
  * Everything else comes off `resource.stack<T>()`, where the stack class *is*
  * the declaration: its public fields are the catalog entries under the names
@@ -27,7 +27,7 @@
  * Nothing here annotates a resource with the deployments it belongs to. The
  * catalog is ordinary TypeScript, so an entry this deployment does not build is
  * written `undefined` — a ternary on `PROD_DEPLOYMENT`, read from that same
- * cdk-app/.env — and {@link defineResources} keeps its place as an *absent*
+ * cdk-app/.env.<mode> — and {@link defineResources} keeps its place as an *absent*
  * reference. It still types as present, so every config that reads it compiles
  * in both graphs while the workload simply never sees the variable, and the
  * handler falls back the way it would for any unset variable. {@link CloudMode}
@@ -95,7 +95,7 @@ export interface ResourceReference<
    *
    * There is no mode to compare against, because the config already answered
    * the question: the same catalog is loaded by synthesis, by the local lane
-   * and by the generator, and all three read the same `cdk-app/.env`. An absent
+   * and by the generator, and all three read the same `cdk-app/.env.<mode>`. An absent
    * resource resolves to nothing everywhere, so the workload that reads it
    * simply never sees the variable.
    */
@@ -143,8 +143,8 @@ export interface ResourceReference<
   readonly secretField?: string;
   /**
    * One line of authored prose beside the declaration, written for whoever
-   * fills in cdk-app/.env: "If using Bedrock". Documentation only — nothing
-   * reads it at deploy time, and the hand-authored cdk-app/.env*.example
+   * fills in cdk-app/.env.<mode>: "If using Bedrock". Documentation only — nothing
+   * reads it at deploy time, and the hand-authored cdk-app/.env.*.template
    * templates are not generated from it.
    */
   readonly note?: string;
@@ -273,7 +273,7 @@ export type SecretResourceReference<Catalog> =
 //     resource.fromEnv("LANGGRAPH_BEDROCK_MODEL_ID")
 //     resource.secret("OPENAI_API_KEY").note("platform.openai.com/api-keys")
 //
-// Both name a line you author in cdk-app/.env. A string needs no kind, because
+// Both name a line you author in cdk-app/.env.<mode>. A string needs no kind, because
 // an environment variable has only one; a secret is the same line, marked as
 // one the deployment uploads to Secrets Manager rather than writes into a
 // template.
@@ -323,7 +323,7 @@ export interface ResourceDeclarationInput {
 }
 
 /**
- * A string read from a line you author in cdk-app/.env.
+ * A string read from a line you author in cdk-app/.env.<mode>.
  *
  * Optional until it is given a `default()`: a variable nobody set, with no
  * fallback to stand in for it, is a setting the workload never sees.
@@ -349,7 +349,7 @@ export interface EnvStringBuilder<
 }
 
 /**
- * A secret whose value you author in cdk-app/.env, and nowhere else.
+ * A secret whose value you author in cdk-app/.env.<mode>, and nowhere else.
  *
  * Locally that value is the whole story. For a deployment, `npm run deploy:resources`
  * copies it into Secrets Manager and supplies the ARN — never the value, which
@@ -523,7 +523,7 @@ export interface ResourceFactory {
   /** Read from the named variable, which is the spelling worth preferring. */
   fromEnv<const Name extends string>(variable: Name): EnvStringBuilder<Name, true>;
   /**
-   * A secret you author in cdk-app/.env, which `npm run deploy:resources` uploads to
+   * A secret you author in cdk-app/.env.<mode>, which `npm run deploy:resources` uploads to
    * Secrets Manager and supplies the ARN for.
    *
    * A secret a *stack* builds or imports is not declared here — it is a public
@@ -697,7 +697,7 @@ function withPaths(
     }
     if (typeof entry !== "object" || Array.isArray(entry)) {
       throw new Error(
-        `resources.${path.join(".")} is not a resource declaration. Use resource.fromEnv("NAME") or resource.secret("NAME") for a value you author in cdk-app/.env, resource.stack<T>() for what a stack builds, or group declarations in an object.`,
+        `resources.${path.join(".")} is not a resource declaration. Use resource.fromEnv("NAME") or resource.secret("NAME") for a value you author in cdk-app/.env.dev or cdk-app/.env.prod, resource.stack<T>() for what a stack builds, or group declarations in an object.`,
       );
     }
     if (prefix.length > 0) {
@@ -1095,7 +1095,7 @@ export function resolveResourceReference(
  * Where an env-backed declaration is read from.
  *
  * Passed in explicitly, never discovered: this module does not know that
- * `cdk-app/.env` exists, and loading it stays the entrypoint adapter's job. A
+ * `cdk-app/.env.<mode>` exists, and loading it stays the entrypoint adapter's job. A
  * missing reader is simply a variable that supplies nothing.
  */
 export interface ResourceEnvironmentReaders {

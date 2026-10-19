@@ -859,7 +859,7 @@ async function main(): Promise<void> {
       if (!produced.has(file)) removeGenerated(file);
     }
   }
-  // cdk-app/.env*.example are authored templates. Generation never writes them,
+  // cdk-app/.env.*.template are authored templates. Generation never writes them,
   // so a declared input or secret is added to them by hand; check-local.ts
   // refuses a required one they leave out.
   const { serviceEnvironmentExample } = await import("./env-examples");
@@ -870,7 +870,7 @@ async function main(): Promise<void> {
       config, target, source.resolveServicePort(config, target.id, { repositoryRoot }),
     ));
   }
-  // Tasks read authored inputs from cdk-app/.env and receive their values from
+  // Tasks read authored inputs from cdk-app/.env.<mode> and receive their values from
   // CDK or from local startup. Deliberately no per-task
   // authored .env file: a task is launched, not run by a developer, and a second
   // authored input file would be one more place its environment could disagree.

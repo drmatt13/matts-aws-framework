@@ -480,7 +480,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
     if (resource.parent) continue;
     if (resource.deploymentFile) {
       environmentFiles.push({ ...catalogItem(resource), badge: resource.deploymentFile.mode,
-        presenceText: `${resource.deploymentFile.path}: ${resource.deploymentFile.exists ? "local file" : "not created"}. Values stay outside the graph.` });
+        presenceText: `${resource.deploymentFile.path}: ${resource.deploymentFile.exists ? "local file" : "not generated; select the island to generate it"}. Values stay outside the graph.` });
     } else if (resource.kind === "stack") {
       stacks.push({ ...catalogItem(resource), label: resource.stackClass ?? resource.path.join(".") });
     } else if (resource.kind === "group") {
@@ -511,7 +511,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
     });
   }
   if (environmentFiles.length) catalog.push({ id: "island:environment", title: "CDK environment files", region: "catalog",
-    caption: ["Separate development and production inputs. Select a file to edit or add environment variables in a draft. Values stay outside the graph."],
+    caption: ["Separate development and production inputs. Select a file to edit or add environment variables in a draft; select the island to generate a missing file from its template. Values stay outside the graph."],
     bands: [{ id: "band:environment", title: "CDK environment files", caption: [], h: 1, groups: [environmentFiles] }] });
   return { entry, compute, catalog };
 }

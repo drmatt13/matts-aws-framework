@@ -85,8 +85,8 @@ connection to see the environment, why it is required, and actions to edit the e
 file or parameter default. Parameters can use non-blank declaration defaults; secrets
 must be supplied in the local environment file and never get source-code defaults.
 File inspectors summarize required inputs and offer **Set NAME** actions. Requirements
-are checked against each mode's selected file, including the legacy `.env` fallback;
-example values are references only. Unknown reads are reported separately from missing
+are checked against each mode's own file (`cdk-app/.env.dev` or `cdk-app/.env.prod`);
+template values are references only. Unknown reads are reported separately from missing
 values. The graph carries presence and requirement metadata, never authored values.
 
 Selecting a file opens an editor for all of that file's variables, including settings
@@ -105,15 +105,15 @@ available without values in the map. Values load only into the selected inspecto
 in-memory draft, outside graph/search data and query caches. Missing example/catalog keys
 can be added from **Not set in this file**. `PROD_DEPLOYMENT` follows the file's mode.
 
-If a file is missing, **Create from reference** creates it without overwriting an existing
-file. It preserves active inputs only when `cdk-app/.env` belongs to that same mode, and
-fills missing entries from the matching example. Production never copies development
-secrets. Both files are ignored by Git; the active `.env` is preserved.
+There is no `cdk-app/.env`: the mode (`-c prodDeployment`) picks `.env.dev` or `.env.prod`.
+A file that has not been generated wears a red cross on its node in the isometric view.
+Select the **CDK environment files** island to see which files exist and **Generate** the
+missing ones, or select a file and use **Generate .env.<mode> from template**. Generation
+copies `cdk-app/.env.dev.template` or `cdk-app/.env.prod.template` without overwriting an
+existing file; production is never seeded from development. Both files are ignored by Git.
 
-Studio synthesis prefers `cdk-app/.env.dev` or `cdk-app/.env.prod` for its selected mode,
-falling back to the legacy `cdk-app/.env` while the mode-specific file is absent. File
-changes refresh the map and stale the matching inventory. Ordinary CLI commands retain
-their existing active-input behavior; creating these files does not deploy or switch it.
+Studio synthesis reads `cdk-app/.env.dev` or `cdk-app/.env.prod` for its selected mode. File
+changes refresh the map and stale the matching inventory; generating a file does not deploy.
 
 ## Synthesized infrastructure
 
@@ -336,7 +336,7 @@ Duplicate paths, invalid paths and overlapping routes are refused. Run
 `framework:generate` after applying a rename to update the generated browser API contract,
 and update callers of the old path. Studio does not deploy the gateway.
 
-Selecting an authored input or secret loads its current value from `cdk-app/.env`.
+Selecting an authored input or secret loads its current value from the selected mode's inputs file.
 Secrets start masked; **Reveal value** displays the selected value. Missing entries and
 empty entries are distinguished. Values are loaded separately from the snapshot, without
 browser caching; snapshots, printed models, previews and the CDK index remain value-free.

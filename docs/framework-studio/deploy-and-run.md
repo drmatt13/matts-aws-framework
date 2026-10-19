@@ -102,7 +102,7 @@ New findings for this revision:
 "framework:targets": {
   "my-aws-app-prod": { "mode": "prod", "account": "734800004764", "region": "us-east-1", "inputs": "cdk-app/.env.prod" }
 }
-// cdk-app/.env (per developer, gitignored): CDK_APP_NAME=my-aws-app → implicit { mode: "dev", inputs: "cdk-app/.env" }
+// cdk-app/.env.dev (per developer, gitignored): CDK_APP_NAME=my-aws-app → implicit { mode: "dev", inputs: "cdk-app/.env.dev" }
 ```
 
 **Rules:**
@@ -115,7 +115,7 @@ New findings for this revision:
   - `-c prodDeployment=true|false` states the graph. It **must agree** with the target's mode, so a prod target can never be built without explicitly stating prod.
   - No flags selects the personal dev target.
   - `-c prodDeployment=true` alone selects the only declared prod target, or fails with the list.
-- **Inputs.** Each target has its own inputs file: dev uses `cdk-app/.env` (the file Compose mounts), prod defaults to `cdk-app/.env.prod`. Secret values therefore never cross between deployments.
+- **Inputs.** Each target has its own inputs file: dev uses `cdk-app/.env.dev` (the file Compose mounts), prod defaults to `cdk-app/.env.prod`. Secret values therefore never cross between deployments.
 
 ## 3. Identity contract v2
 
@@ -447,7 +447,7 @@ The visual language stays: drafting film and ink, Barlow, and colour only for de
 
 Both are planned as included unless you say otherwise. My other calls, all reversible:
 
-- shared targets in `cdk.json`, the personal dev name in `cdk-app/.env`;
+- shared targets in `cdk.json`, the personal dev name in `cdk-app/.env.dev`;
 - prod and mode agreement;
 - the `FRAMEWORK_MODE` shim;
 - a legacy line fails closed;

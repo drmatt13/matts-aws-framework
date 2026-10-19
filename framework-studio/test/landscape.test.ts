@@ -854,6 +854,14 @@ test("an environment file's connections read clearly in its own view and recede 
   }
 });
 
+test("an environment file that has not been generated wears a missing-file badge on its node", () => {
+  const model = snapshot.models.dev;
+  const withExists = (exists: boolean) => buildScene({ ...model, resources: model.resources.map((resource) => resource.deploymentFile ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists } } : resource) }, { webSocketApi: snapshot.webSocketApi });
+  const badges = (scene: Scene) => scene.nodes.filter((node) => node.id.startsWith("envfile:")).map((node) => node.roleIcon);
+  assert.deepEqual(badges(withExists(false)), ["missingFile", "missingFile"]);
+  assert.deepEqual(badges(withExists(true)), [undefined, undefined]);
+});
+
 test("an enabled connection reads clearly in its own view and recedes where it is disabled", () => {
   const strength = (scene: Scene) => {
     const nodeOf = new Map(scene.nodes.map((node) => [node.id, node]));

@@ -63,7 +63,7 @@ export function InfrastructurePanel({ initialOwner, onNavigate }: { initialOwner
     return { ...state.inventory, stacks, resources, dependencies: state.inventory.dependencies.filter((item) => resourceIds.has(item.from) && resourceIds.has(item.to)) };
   }, [state?.inventory]);
   const managedStack = (item: InfrastructureInventory["stacks"][number]) => item.owners.map((id) => index.resources.get(id)).find((resource) => resource?.frameworkManaged);
-  const inputFile = index.resources.get(`envfile:${mode}`)?.deploymentFile?.synthesisSource ?? "cdk-app/.env";
+  const inputFile = index.resources.get(`envfile:${mode}`)?.deploymentFile?.path ?? `cdk-app/.env.${mode}`;
   const ownerIds = useMemo(() => [...new Set([...(inventory?.resources.flatMap((resource) => resource.owners) ?? []), ...(inventory?.stacks.flatMap((stack) => stack.owners) ?? []), ...(initialOwner ? [initialOwner] : [])])].sort(), [inventory, initialOwner]);
   const visible = inventory?.resources.filter((resource) => {
     const ownedStack = inventory.stacks.find((stack) => stack.id === resource.stack)?.owners.some((id) => id === owner);

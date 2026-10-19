@@ -142,7 +142,7 @@ access — it thinks, and its tools touch data. A tool that needs the database d
 
 An agent builds its model with `getModel()` from `@repo/models` (`packages/models/`):
 Bedrock, Bedrock Mantle or OpenAI as a LangChain chat model, chosen by
-`LANGGRAPH_MODEL_PROVIDER` in `cdk-app/.env`. Depend on it in the agent's package.json
+`LANGGRAPH_MODEL_PROVIDER` in `cdk-app/.env.<mode>`. Depend on it in the agent's package.json
 (`"@repo/models": "*"`) rather than copying the providers into the agent.
 
 What the providers need is declared once, in `framework-config/models.ts`, and each agent
@@ -405,7 +405,7 @@ an application splits into deployments; the framework does not shard the stack.
 `CDK_APP_NAME` contains `smoke`:
 
 ```sh
-# a separate checkout or worktree, so the main cdk-app/.env is untouched
+# a separate checkout or worktree, so the main cdk-app/.env.<mode> is untouched
 # cdk-app/cdk.json framework:targets: agents-smoke-<you> as a prod target pinned to your account,
 #   with an inputs file holding DATABASE_BACKUP_RETENTION_DAYS=0, optionally FRONTEND_URL + certificate
 # framework-config/agents/example.ts: the agent deploys "both"

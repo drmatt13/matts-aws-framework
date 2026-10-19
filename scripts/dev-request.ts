@@ -27,7 +27,7 @@ async function main(): Promise<void> {
   const port = inputs.LOCAL_API_DEV_SERVER_HOST_PORT;
   const origin = inputs.LOCAL_DEV_URL;
   if (!email || !password || !port || !origin) {
-    throw new Error("Set LOCAL_TEST_USER_EMAIL, LOCAL_TEST_USER_PASSWORD, LOCAL_API_DEV_SERVER_HOST_PORT and LOCAL_DEV_URL in cdk-app/.env.");
+    throw new Error("Set LOCAL_TEST_USER_EMAIL, LOCAL_TEST_USER_PASSWORD, LOCAL_API_DEV_SERVER_HOST_PORT and LOCAL_DEV_URL in cdk-app/.env.dev.");
   }
   const [method, path, body] = process.argv.slice(2);
   if (!method || !path?.startsWith("/")) {

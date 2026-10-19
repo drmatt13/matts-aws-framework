@@ -14,8 +14,8 @@ const cache = path.resolve(__dirname, "../../.cache/framework-studio/deployment-
 mkdirSync(cache, { recursive: true });
 function fixture() {
   const root = mkdtempSync(path.join(cache, "case-")); mkdirSync(path.join(root, "cdk-app"));
-  writeFileSync(path.join(root, "cdk-app/.env.dev.example"), "PROD_DEPLOYMENT=false\nSETTING=example\nTOKEN=\nDEPLOY_PROD_WEBSOCKET_API=true\n");
-  writeFileSync(path.join(root, "cdk-app/.env.prod.example"), "PROD_DEPLOYMENT=true\nSETTING=production\nTOKEN=\nDEPLOY_PROD_WEBSOCKET_API=false\n");
+  writeFileSync(path.join(root, "cdk-app/.env.dev.template"), "PROD_DEPLOYMENT=false\nSETTING=example\nTOKEN=\nDEPLOY_PROD_WEBSOCKET_API=true\n");
+  writeFileSync(path.join(root, "cdk-app/.env.prod.template"), "PROD_DEPLOYMENT=true\nSETTING=production\nTOKEN=\nDEPLOY_PROD_WEBSOCKET_API=false\n");
   return root;
 }
 function remove(root: string) { assert.ok(path.resolve(root).startsWith(cache + path.sep)); rmSync(root, { recursive: true }); }
@@ -24,22 +24,25 @@ const model: ModeModel = { mode: "dev", status: "ok", targets: [], routes: [], w
   { id: "resource:token", path: ["token"], kind: "secret", fromEnv: "TOKEN", absent: false },
 ] };
 
-test("explicit file creation preserves active inputs and existing files, and never copies development secrets into production", () => {
+test("explicit file creation copies each template exclusively, never overwrites, and ignores a leftover cdk-app/.env", () => {
   const root = fixture();
   try {
-    const original = 'PROD_DEPLOYMENT=false\nSETTING=authored-dev\nTOKEN=private-dev-sentinel\nONLY_DEV=keep\n';
-    writeFileSync(path.join(root, "cdk-app/.env"), original);
+    const leftover = 'SETTING=authored-in-env\nTOKEN=private-env-sentinel\n';
+    writeFileSync(path.join(root, "cdk-app/.env"), leftover);
     assert.equal(createDeploymentInput(root, "dev").created, true);
     assert.equal(createDeploymentInput(root, "prod").created, true);
     const dev = readFileSync(path.join(root, "cdk-app/.env.dev"), "utf8");
     const prod = readFileSync(path.join(root, "cdk-app/.env.prod"), "utf8");
-    assert.equal(parseEnv(dev).TOKEN, "private-dev-sentinel");
-    assert.equal(parseEnv(dev).DEPLOY_PROD_WEBSOCKET_API, "true");
-    assert.equal(parseEnv(prod).PROD_DEPLOYMENT, "true");
-    assert.ok(!prod.includes("private-dev-sentinel")); assert.ok(!prod.includes("ONLY_DEV"));
-    assert.equal(readFileSync(path.join(root, "cdk-app/.env"), "utf8"), original);
+    assert.equal(dev, readFileSync(path.join(root, "cdk-app/.env.dev.template"), "utf8"));
+    assert.equal(prod, readFileSync(path.join(root, "cdk-app/.env.prod.template"), "utf8"));
+    assert.ok(!dev.includes("private-env-sentinel") && !prod.includes("private-env-sentinel"));
+    assert.equal(readFileSync(path.join(root, "cdk-app/.env"), "utf8"), leftover);
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), "SETTING=edited\n");
     assert.equal(createDeploymentInput(root, "dev").created, false);
-    assert.equal(readFileSync(path.join(root, "cdk-app/.env.dev"), "utf8"), dev);
+    assert.equal(readFileSync(path.join(root, "cdk-app/.env.dev"), "utf8"), "SETTING=edited\n");
+    rmSync(path.join(root, "cdk-app/.env.prod.template"));
+    rmSync(path.join(root, "cdk-app/.env.prod"));
+    assert.throws(() => createDeploymentInput(root, "prod"), /Missing cdk-app\/\.env\.prod\.template/);
   } finally { remove(root); }
 });
 
@@ -153,7 +156,7 @@ test("missing files remain observable without being created by a snapshot read",
   try {
     const projected = withDeploymentInputs(root, model);
     const dev = projected.resources.find((resource) => resource.id === "envfile:dev")!.deploymentFile!;
-    assert.equal(dev.exists, false); assert.equal(dev.synthesisSource, "cdk-app/.env");
+    assert.equal(dev.exists, false); assert.equal(dev.template, "cdk-app/.env.dev.template");
     assert.ok(dev.entries.every((entry) => entry.status === "missing"));
     assert.equal(createDeploymentInput(root, "dev").created, true, "reading did not create a file");
   } finally { remove(root); }
@@ -162,7 +165,6 @@ test("missing files remain observable without being created by a snapshot read",
 test("synthesis selects separate dev/prod files, graph flags agree and no named profile is required", async () => {
   const root = fixture();
   try {
-    writeFileSync(path.join(root, "cdk-app/.env"), "PROD_DEPLOYMENT=false\nDEPLOY_PROD_WEBSOCKET_API=false\n");
     createDeploymentInput(root, "dev"); createDeploymentInput(root, "prod");
     writeFileSync(path.join(root, "cdk-app/.env.dev"), 'PROD_DEPLOYMENT=false\nSETTING=only-dev\nDEPLOY_PROD_WEBSOCKET_API=true\nTOKEN="private\nDEPLOY_PROD_WEBSOCKET_API=false\n"\n');
     let runs = 0;

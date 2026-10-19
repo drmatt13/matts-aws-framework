@@ -62,7 +62,7 @@ export class BatchEditor {
     this.unchanged(revision, state.snapshot.files, triggerSources);
     if (!edits.length || edits.length > 100) throw new EditError(400, "Review between 1 and 100 setting changes together.");
     if (Object.values(state.snapshot.models).some((model) => model.stale || model.status === "error")) throw new EditError(422, "Fix configuration errors before reviewing changes.");
-    const model = state.snapshot.models[state.snapshot.currentMode];
+    const model = state.snapshot.models.dev;
     const overrides = new Map<string, string>();
     const seen = new Set<string>();
     const summaries: string[] = [];
@@ -253,7 +253,7 @@ export class BatchEditor {
     const triggerSources = entry.triggerSources ? state.snapshot.source.capabilityFiles : undefined;
     this.unchanged(state.snapshot.revision, hashes, triggerSources);
     const changes = entry.changes.map((change) => inverse ? { ...change, before: change.after, after: change.before } : change);
-    const handlers = entry.replayTargets.map((ref) => state.snapshot.models[state.snapshot.currentMode].targets.find((target) => target.ref === ref)).map((target) => target && replayHandlerFile(this.root, target).file);
+    const handlers = entry.replayTargets.map((ref) => state.snapshot.models.dev.targets.find((target) => target.ref === ref)).map((target) => target && replayHandlerFile(this.root, target).file);
     for (const source of entry.replaySources) {
       if (!handlers.includes(source.file) || readFileSync(source.file, "utf8") !== (inverse ? source.after : source.before)) throw new EditError(409, "The event handler changed since review. No files were written.");
     }

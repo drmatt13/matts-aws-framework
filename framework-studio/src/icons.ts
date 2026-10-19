@@ -17,6 +17,8 @@ export const ICONS = {
   agent: ["aws/agentcore", "Amazon Bedrock AgentCore"],
   stack: ["aws/cloudformation", "AWS CloudFormation stack"],
   unattached: ["generic/unplug", "Not added to CDK app"],
+  /** Red cross on an environment file node whose file has not been generated. */
+  missingFile: ["generic/x", "Environment file not generated"],
   managed: ["generic/lock-keyhole", "Framework managed"],
   table: ["aws/dynamodb", "Amazon DynamoDB"],
   bucket: ["aws/s3", "Amazon S3"],
@@ -78,6 +80,7 @@ export function resourceIcon(resource: ModelResource): IconKey {
 
 export function resourceBadge(resource: ModelResource): IconKey | undefined {
   if (resource.stackUsage?.status === "unreferenced") return "unattached";
+  if (resource.deploymentFile && !resource.deploymentFile.exists) return "missingFile";
   if (resource.frameworkManaged) return "managed";
   return undefined;
 }

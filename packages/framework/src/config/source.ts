@@ -68,12 +68,15 @@ export function findRepositoryRoot(start: string = process.cwd()): string {
   }
 }
 
-/** Where a `.fromEnv()` variable is authored, and the only file one is read from. */
-export const AUTHORED_INPUTS_FILE = "cdk-app/.env";
+/**
+ * Where a `.fromEnv()` variable is authored for a graph, and the only file one is
+ * read from: cdk-app/.env.dev for development, cdk-app/.env.prod for production.
+ */
+export const authoredInputsFile = (mode: "dev" | "prod"): string => `cdk-app/.env.${mode}`;
 
 /**
- * Every value authored in cdk-app/.env, as the map a `.fromEnv()` is resolved
- * against.
+ * Every value authored in the graph's inputs file (cdk-app/.env.dev or
+ * cdk-app/.env.prod), as the map a `.fromEnv()` is resolved against.
  *
  * The file itself, not `process.env`. A deployment and `docker compose up` are
  * then reading the same line of the same file: a variable that happens to be
@@ -89,7 +92,7 @@ export function readAuthoredInputs(
   repositoryRoot: string = findRepositoryRoot(),
   environment: NodeJS.ProcessEnv = process.env,
 ): Readonly<Record<string, string>> {
-  const file = environment.FRAMEWORK_INPUTS_FILE ?? path.join(repositoryRoot, AUTHORED_INPUTS_FILE);
+  const file = environment.FRAMEWORK_INPUTS_FILE ?? path.join(repositoryRoot, authoredInputsFile(frameworkMode(environment)));
   if (!existsSync(file)) return {};
   return Object.fromEntries(
     Object.entries(parseEnv(readFileSync(file, "utf8"))).filter(

@@ -150,10 +150,8 @@ export function Shell(props: { readonly children: ReactNode }) {
               key={candidate}
               aria-pressed={mode === candidate}
               onClick={() => setMode(candidate)}
-              title={candidate === snapshot.currentMode ? "cdk-app/.env points at this graph" : undefined}
             >
               {candidate === "dev" ? "Development" : "Production"}
-              {candidate === snapshot.currentMode ? " (current)" : ""}
             </button>
           ))}
         </span>

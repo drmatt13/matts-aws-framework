@@ -6,7 +6,7 @@ import type { Mode, ModeModel, ModelEdge, ModelResource, SourceLocation } from "
 import { inputRequirements } from "./input-requirements";
 
 export const deploymentInputPath = (mode: Mode) => `cdk-app/.env.${mode}`;
-export const deploymentInputExample = (mode: Mode) => `${deploymentInputPath(mode)}.example`;
+export const deploymentInputTemplate = (mode: Mode) => `${deploymentInputPath(mode)}.template`;
 
 /** Fixed local files only, with no symlink traversal and no arbitrary read/write path API. */
 export function inputText(root: string, relative: string): string | undefined {
@@ -18,28 +18,20 @@ export function inputText(root: string, relative: string): string | undefined {
   return readFileSync(file, "utf8");
 }
 
+/** The mode's inputs file (`-c prodDeployment` picks `.env.prod`, otherwise `.env.dev`), after refusing a link out of the repository. */
 export function selectedDeploymentInput(root: string, mode: Mode): string {
-  if (inputText(root, deploymentInputPath(mode)) !== undefined) return deploymentInputPath(mode);
-  inputText(root, "cdk-app/.env");
-  return "cdk-app/.env";
+  inputText(root, deploymentInputPath(mode));
+  return deploymentInputPath(mode);
 }
 
 /** Explicit bootstrap only. Never called by snapshot evaluation or synthesis. */
 export function createDeploymentInput(root: string, mode: Mode): { file: string; created: boolean } {
   const file = deploymentInputPath(mode);
   if (inputText(root, file) !== undefined) return { file, created: false };
-  const example = inputText(root, deploymentInputExample(mode));
-  if (example === undefined) throw new Error(`Missing ${deploymentInputExample(mode)}.`);
-  const active = inputText(root, "cdk-app/.env");
-  const activeValues = parseEnv(active ?? "");
-  const activeMode = activeValues.PROD_DEPLOYMENT?.trim().toLowerCase() === "true" ? "prod" : "dev";
-  let text = example;
-  if (active !== undefined && activeMode === mode) {
-    // Preserve authored bytes and credentials in their own environment. Never copy dev inputs to prod.
-    const missing = Object.entries(parseEnv(example)).filter(([name]) => activeValues[name] === undefined);
-    text = `${active}\n# Missing defaults from ${deploymentInputExample(mode)}\n${missing.map(([name, value]) => `${name}=${JSON.stringify(value)}`).join("\n")}\n`;
-  }
-  writeFileSync(path.join(root, file), `${text}\nPROD_DEPLOYMENT=${mode === "prod"}\n`, { flag: "wx", mode: 0o600 });
+  const template = inputText(root, deploymentInputTemplate(mode));
+  if (template === undefined) throw new Error(`Missing ${deploymentInputTemplate(mode)}.`);
+  // Exclusive and private: an inputs file is never overwritten, and production is never seeded from development.
+  writeFileSync(path.join(root, file), template, { flag: "wx", mode: 0o600 });
   return { file, created: true };
 }
 
@@ -76,24 +68,22 @@ export function withDeploymentInputs(root: string, model: ModeModel, models?: Re
     try {
       const text = inputText(root, file);
       const parsed = parseEnv(text ?? "");
-      const template = parseEnv(inputText(root, deploymentInputExample(mode)) ?? "");
+      const template = parseEnv(inputText(root, deploymentInputTemplate(mode)) ?? "");
       const locations = assignmentLines(text ?? "");
-      const synthesisSource = selectedDeploymentInput(root, mode);
-      const effectiveValues = synthesisSource === file ? parsed : parseEnv(inputText(root, synthesisSource) ?? "");
-      const requirements = inputRequirements(models?.[mode] ?? model, effectiveValues, mode, synthesisSource);
-      return { mode, path: file, example: deploymentInputExample(mode), exists: text !== undefined,
-        synthesisSource, entries: [...new Set([...Object.keys(parsed), ...Object.keys(template), ...expected.keys()])].sort().map((name) => {
+      const requirements = inputRequirements(models?.[mode] ?? model, parsed, mode, file);
+      return { mode, path: file, template: deploymentInputTemplate(mode), exists: text !== undefined,
+        entries: [...new Set([...Object.keys(parsed), ...Object.keys(template), ...expected.keys()])].sort().map((name) => {
           const targets = expected.get(name) ?? [];
           const value = parsed[name];
           const line = locations.get(name);
           const source: SourceLocation | undefined = line ? { file, line, column: 1, start: 0, end: 0 } : undefined;
           return { name, status: value === undefined ? "missing" as const : value.trim() === "" ? "empty" as const : "configured" as const,
-            sensitive: targets.some((target) => target.kind === "secret") || sensitiveName(name), defaulted: !effectiveValues[name]?.trim() && targets.some((target) => target.default !== undefined),
+            sensitive: targets.some((target) => target.kind === "secret") || sensitiveName(name), defaulted: !parsed[name]?.trim() && targets.some((target) => target.default !== undefined),
             targets: targets.map((target) => target.id), requirements: targets.flatMap((target) => requirements.get(target.id) ? [requirements.get(target.id)!] : []), ...(source ? { source } : {}) };
         }) };
     } catch {
       const requirements = inputRequirements(models?.[mode] ?? model, {}, mode, file, false);
-      return { mode, path: file, example: deploymentInputExample(mode), exists: false, synthesisSource: file,
+      return { mode, path: file, template: deploymentInputTemplate(mode), exists: false,
         entries: [...expected].map(([name, targets]) => ({ name, status: "missing" as const, sensitive: targets.some((target) => target.kind === "secret") || sensitiveName(name), defaulted: false, targets: targets.map((target) => target.id), requirements: targets.flatMap((target) => requirements.get(target.id) ? [requirements.get(target.id)!] : []) })),
         problem: `Could not read ${file}. Check that it is a regular local dotenv file.` };
     }

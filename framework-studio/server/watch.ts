@@ -34,7 +34,7 @@ export function watchRepository(
     { directory: path.join(repositoryRoot, "packages", "framework", "src", "config"), recursive: true },
     { directory: path.join(repositoryRoot, "cdk-app", "lib"), recursive: true },
     { directory: path.join(repositoryRoot, "cdk-app", "bin"), recursive: true },
-    { directory: path.join(repositoryRoot, "cdk-app"), recursive: false, accept: (name) => [".env", ".env.dev", ".env.prod", ".env.dev.example", ".env.prod.example"].includes(name) },
+    { directory: path.join(repositoryRoot, "cdk-app"), recursive: false, accept: (name) => [".env.dev", ".env.prod", ".env.dev.template", ".env.prod.template"].includes(name) },
   ];
   const pending = new Set<string>();
   let timer: NodeJS.Timeout | undefined;

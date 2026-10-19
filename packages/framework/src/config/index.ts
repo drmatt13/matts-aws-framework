@@ -804,7 +804,7 @@ export interface ServiceEnvironment<Catalog = AnyResourceCatalog> extends Target
    * The key is this container's environment name, and the value is a secret
    * from the catalog. The two are deliberately separate — the variable a
    * container reads is a fact about the container, and the variable you author
-   * in cdk-app/.env is a fact about the secret — so one secret can reach two
+   * in cdk-app/.env.<mode> is a fact about the secret — so one secret can reach two
    * containers under two names without being declared twice.
    *
    * Where the value itself comes from is the catalog's business: a

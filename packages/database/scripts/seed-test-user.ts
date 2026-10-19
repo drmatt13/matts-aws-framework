@@ -7,7 +7,7 @@ import type { UserRecord, UserRepository } from "../src/contracts.js";
 /**
  * The local test user: one account in the dev Cognito pool and its row in the
  * local database, made from LOCAL_TEST_USER_EMAIL and LOCAL_TEST_USER_PASSWORD
- * in cdk-app/.env whenever Compose starts. A fresh dev deployment can then be
+ * in cdk-app/.env.dev whenever Compose starts. A fresh dev deployment can then be
  * signed into, in the browser or with `npm run dev:request`, without a sign-up.
  *
  * An admin-created account never fires the post-confirmation trigger, so the
@@ -52,7 +52,7 @@ export type SeedOutcome =
   | { status: "ready"; createdInCognito: boolean; createdRow: boolean; user: UserRecord };
 
 /**
- * Reads the test user from cdk-app/.env. A known password is acceptable in a
+ * Reads the test user from cdk-app/.env.dev. A known password is acceptable in a
  * dev pool and never in a production one, so the pool must be a development
  * export's: `exportedDeployment` is LOCAL_FRAMEWORK_DEPLOYMENT from root .env,
  * which only `npm run export:cdk-outputs` of a development deployment writes.
@@ -73,7 +73,7 @@ export function testUserSettings(
     return {
       status: "skipped",
       reason:
-        "cdk-app/.env says PROD_DEPLOYMENT=true; the test user is created only for a dev deployment.",
+        "cdk-app/.env.dev says PROD_DEPLOYMENT=true; the test user is created only for a dev deployment.",
     };
   }
 
@@ -83,7 +83,7 @@ export function testUserSettings(
     return {
       status: "skipped",
       reason:
-        "Set LOCAL_TEST_USER_EMAIL and LOCAL_TEST_USER_PASSWORD in cdk-app/.env to create a local test user.",
+        "Set LOCAL_TEST_USER_EMAIL and LOCAL_TEST_USER_PASSWORD in cdk-app/.env.dev to create a local test user.",
     };
   }
 
@@ -117,7 +117,7 @@ export async function seedTestUser(options: {
       account = await cognito.create(email, password, TEST_USER_NAME);
       createdInCognito = true;
     }
-    // Every start, so the password in cdk-app/.env is always the one that works.
+    // Every start, so the password in cdk-app/.env.dev is always the one that works.
     await cognito.setPermanentPassword(email, password);
   } catch (error) {
     return { status: "skipped", reason: message(error) };

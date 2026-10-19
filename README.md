@@ -37,7 +37,8 @@ Resources live in `framework-config/resources.ts`. Declare a stack there with
 then reference its fields, attributes and grants in workloads.
 `npm run deploy:resources -- --all --profile <PROFILE>` handles secret synchronization,
 deployment, and development export of your development deployment (`CDK_APP_NAME`); add
-`-c prodDeployment=true` for the production target declared in `cdk-app/cdk.json`. Root `.env`
+`-c prodDeployment=true` for the production target declared in `cdk-app/cdk.json`.
+That flag also chooses the inputs file: `cdk-app/.env.dev` or `cdk-app/.env.prod`. Root `.env`
 contains Compose controls in dev; workload identifiers use the ignored
 `.framework/local/resources.json` manifest. Export writes the client settings Vite reads,
 `client-app/.env.development.local` or `client-app/.env.production.local`; nothing is copied by hand.

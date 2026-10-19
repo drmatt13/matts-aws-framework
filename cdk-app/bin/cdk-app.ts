@@ -40,7 +40,7 @@ loadDeploymentEnvironment(selection.inputsFile);
 
 // Declared resource inputs are *not* read from the process environment. Every
 // `.fromEnv()` in framework-config/resources.ts resolves against the target's
-// inputs file itself (cdk-app/.env for development, the file `docker compose up` reads),
+// inputs file itself (cdk-app/.env.dev for development, the file `docker compose up` reads),
 // so a deployment and a local run cannot disagree about a model id. `-c` still
 // overrides one, because an override you typed is not an override you inherited.
 const readers = {

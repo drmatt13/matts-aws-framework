@@ -66,8 +66,8 @@ x-service: &service
       bind:
         create_host_path: false
     - type: bind
-      source: ./cdk-app/.env
-      target: /workspace/cdk-app/.env
+      source: ./cdk-app/.env.dev
+      target: /workspace/cdk-app/.env.dev
       read_only: true
       bind:
         create_host_path: false

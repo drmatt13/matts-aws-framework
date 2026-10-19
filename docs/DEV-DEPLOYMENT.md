@@ -18,8 +18,8 @@ npm ci
 aws sts get-caller-identity
 ```
 
-Create `cdk-app/.env` from [the dev example](../cdk-app/.env.dev.example) if it does
-not already exist. Preserve existing values when switching configurations. Set:
+Create `cdk-app/.env.dev` from [the dev template](../cdk-app/.env.dev.template) if it does
+not already exist (Studio's CDK environment files island has a Generate button for it). Preserve existing values when switching configurations. Set:
 
 - A distinct CDK_APP_NAME for your own development deployment. It may not be the name of a
   target declared in `cdk-app/cdk.json` (`framework:targets`), such as the production one.
@@ -86,7 +86,8 @@ Each refusal names the stacks and a remedy, and nothing is changed. Two deploys 
 name on one machine cannot run at once (`.cache/deploy/<name>.lock`). Assemblies that an
 interrupted run left in `.cache/deploy` are removed after a day. Deploy and export read
 authored inputs from `FRAMEWORK_INPUTS_FILE` when it is set, otherwise from the target's
-inputs file: `cdk-app/.env.dev` or `cdk-app/.env` for development.
+inputs file: `cdk-app/.env.dev` for development, `cdk-app/.env.prod` with `-c prodDeployment=true`.
+There is no `cdk-app/.env.dev`.
 
 The dev graph holds Cognito, AWS-invoked event handlers, and replay resources. Routed
 HTTP handlers, services, tasks, and workflows run locally; no ECS image is published by a
@@ -99,8 +100,8 @@ off to serve it locally. Use a separate full cloud deployment when testing HTTP 
 
 Export writes root `.env` with fixed Compose controls and `.framework/local/resources.json`
 with discovered development resource identifiers. It does not rewrite authored
-`cdk-app/.env`. If export reports conflicting old assignments, move authored local
-settings to cdk-app/.env and rerun it. The generated manifest directory and authored input
+`cdk-app/.env.dev`. If export reports conflicting old assignments, move authored local
+settings to cdk-app/.env.dev and rerun it. The generated manifest directory and authored input
 file are mounted read-only; neither is copied into images.
 
 Export also writes `client-app/.env.development.local`, which `vite dev` reads over
@@ -189,7 +190,7 @@ the declared services (generated into docker-compose.services.yml; see
 [Framework](FRAMEWORK.md#local-service-containers)), WebSocket tester, and pgAdmin. Postgres and pgAdmin listen on 127.0.0.1 only.
 Each Node Lambda you call keeps a warm process for its next call, as a warm Lambda does, up
 to LOCAL_LAMBDA_WARM_MAX processes, each stopped after LOCAL_LAMBDA_WARM_IDLE_SECONDS idle;
-set LOCAL_LAMBDA_WARM=false in cdk-app/.env to start every call cold. See
+set LOCAL_LAMBDA_WARM=false in cdk-app/.env.dev to start every call cold. See
 [Framework](FRAMEWORK.md#local-resource-delivery). Services use the framework launcher, so adding
 a resource environment reference or secret requires no Compose interpolation change. It applies local migrations before consumers
 start, then deletes local users the current dev Cognito pool does not hold and creates the
@@ -210,7 +211,7 @@ image-owned dependencies. Only the invocation runner gets the Docker socket.
 | A service added, removed, or given another port or healthCheckPath; `x-framework-service` | Restart `npm run dev:containers`: it regenerates docker-compose.services.yml first |
 | Manifests, lockfile, Dockerfile.dev, ignore rules, deleted files while Watch was off | Rebuild and restart with `npm run dev:containers` |
 | A captured event whose handler failed every replay | Fix the handler, then `npm run replay:redrive` (`npm run replay:list` shows what is waiting) |
-| Ports, outputs, local secrets | Edit cdk-app/.env, rerun export, recreate containers |
+| Ports, outputs, local secrets | Edit cdk-app/.env.dev, rerun export, recreate containers |
 | Local AWS profile | Restart with `npm run dev:containers -- --profile=<PROFILE>`; deploy that account's dev graph first if needed |
 | Database contract | Follow Database planning/application steps and rebuild; Watch does not regenerate it |
 | AWS event handler, Cognito, or infrastructure | Redeploy the dev graph, then re-export changed outputs |
@@ -221,7 +222,7 @@ Concurrent submissions may share a build, but each run gets its own container/in
 
 ## Verification and troubleshooting
 
-Set `LOCAL_TEST_USER_EMAIL` and `LOCAL_TEST_USER_PASSWORD` in ignored `cdk-app/.env`
+Set `LOCAL_TEST_USER_EMAIL` and `LOCAL_TEST_USER_PASSWORD` in ignored `cdk-app/.env.dev`
 and every `npm run dev:containers` makes them a working account. Its seed-test-user
 step creates the user in the dev pool if it is missing, with the email marked verified
 and no invitation sent, sets its password to `LOCAL_TEST_USER_PASSWORD`, and writes
@@ -263,7 +264,7 @@ when changing tasks or workflows.
 | Symptom | Check |
 | --- | --- |
 | Source appears unchanged | Watch must remain attached. Inspect the file with `docker compose exec <service> cat <path>`; rebuild if stale |
-| Port conflict | Change the host port in cdk-app/.env, export, and recreate; container ports are fixed |
+| Port conflict | Change the host port in cdk-app/.env.dev, export, and recreate; container ports are fixed |
 | Auth endpoints return Forbidden origin | Re-export LOCAL_BROWSER_ORIGINS and recreate containers; use the frontend's /api proxy |
 | Service returns 502 | The route exists but its upstream is unavailable; inspect that service's startup logs |
 | Missing table/column | Check the selected database and reviewed migrations; generation alone changes no tables |

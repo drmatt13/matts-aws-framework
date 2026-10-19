@@ -1,7 +1,7 @@
 import path from "node:path";
 
-/** Authored deployment/local inputs; Compose consumes the exported root file. */
-export const AUTHORED_ENV_FILE = "cdk-app/.env";
+/** Authored development inputs (Compose mounts it); Compose consumes the exported root file. */
+export const AUTHORED_ENV_FILE = "cdk-app/.env.dev";
 export const OUTPUTS_ENV_FILE = ".env";
 export const BASE_COMPOSE_FILE = "docker-compose.yml";
 

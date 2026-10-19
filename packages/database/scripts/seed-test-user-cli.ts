@@ -22,13 +22,13 @@ import {
 } from "./seed-test-user.js";
 
 // Compose runs this after prune-cognito-orphans and before any database
-// consumer starts. cdk-app/.env is bind-mounted read-only, as it is for every
+// consumer starts. cdk-app/.env.dev is bind-mounted read-only, as it is for every
 // service that reads authored inputs; the password is never printed.
 
 function readAuthoredInputs(): Record<string, string | undefined> {
   const file = resolve(
     dirname(fileURLToPath(import.meta.url)),
-    "../../../cdk-app/.env",
+    "../../../cdk-app/.env.dev",
   );
   return existsSync(file) ? parseEnv(readFileSync(file, "utf8")) : {};
 }
