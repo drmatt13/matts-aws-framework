@@ -97,6 +97,8 @@ export * from "./workflow-semantics";
 export * from "./workflow-asl";
 export * from "./network";
 export * from "./user-pool";
+export * from "./triggers";
+import { normalizeTriggers, type EventTrigger, type NormalizedTrigger } from "./triggers";
 // Named rather than `export *`: reading a deploy token is the framework's job,
 // so `isDeploySettingEnabled` stays internal to the package.
 export { DEPLOY_SETTINGS } from "./deploy";
@@ -490,10 +492,11 @@ export interface EventLambdaTargetDefinition<Catalog = AnyResourceCatalog>
    * it only to build an event from a source kept somewhere else.
    */
   readonly directory?: SuggestedLambdaDirectory;
-  /** What the function needs in AWS; its trigger remains native CDK. */
+  /** What the function needs in AWS. */
   readonly cloud?: EventCloudSettings<Catalog>;
   /** Capture AWS invocations for local replay under this target's own id. */
   readonly localReplay?: true;
+  readonly triggers?: readonly EventTrigger[];
 }
 
 // ---------------------------------------------------------------------------
@@ -2699,6 +2702,7 @@ export function isSourcedTarget(target: NormalizedTarget): target is SourcedTarg
 }
 
 export interface NormalizedFrameworkConfig {
+  readonly triggers: readonly NormalizedTrigger[];
   readonly targets: ReadonlyMap<TargetReference, NormalizedTarget>;
   readonly http: readonly HttpRouteDefinition[];
   readonly webSocket: readonly WebSocketRouteDefinition[];
@@ -3510,7 +3514,7 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
   assertInvocationEdges(config, targets);
   assertNetworkEdges(config, targets);
 
-  return { targets, http, webSocket };
+  return { targets, http, webSocket, triggers: normalizeTriggers(config.events, config.resources ?? {}) };
 }
 
 /**

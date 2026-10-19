@@ -1,7 +1,8 @@
 import type { InputRequirement } from "../../shared/deployment-inputs";
 import type { Mode, ModelEdge } from "../../shared/model";
-import { titleOf } from "../lookup";
+import { editorLink, titleOf } from "../lookup";
 import { useStudio } from "../studio";
+import { Written } from "./Written";
 
 export function RequirementNotice({ requirement }: { requirement?: InputRequirement }) {
   if (!requirement?.required) return null;
@@ -29,6 +30,11 @@ export function ConnectionView({ edge, onlyIn }: { edge: ModelEdge; onlyIn?: Mod
           <button onClick={() => { if (mode !== requirement.mode) setMode(requirement.mode); select(requirement.resource); }}>{resource?.kind === "secret" ? "Open secret settings" : "Set a parameter default"}</button></div>
         <p className="small muted">Review and apply your draft to update this connection. Saving does not deploy infrastructure or upload a secret.</p>
       </> : <p>{edge.detail ?? "This relationship comes from the framework graph."}</p>}
+      {edge.provenance === "derived" ? <p className="small muted">Derived from the linked declaration.</p> : null}
+      {edge.evidence?.length ? <div className="connection-evidence">{edge.evidence.map((item) => <div key={`${item.role}:${item.location.file}:${item.location.start}`}>
+        <Written location={item.location} label={item.role === "derived" ? "Derived from" : item.role} />
+        {item.excerpt ? <a className="evidence-line" href={editorLink(snapshot.repositoryRoot, item.location)}><code><span className="muted">{item.location.line}</span> {item.excerpt}</code></a> : null}
+      </div>)}</div> : null}
     </section>
   </>;
 }

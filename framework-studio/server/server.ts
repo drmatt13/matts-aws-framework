@@ -203,6 +203,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
       if (item?.kind === "field") return { kind: "field", intent: readIntent(item) };
       if (item?.kind === "description" && typeof item.entity === "string" && typeof item.value === "string") return { kind: "description", entity: item.entity, value: item.value };
       if (item?.kind === "route" && typeof item.route === "string" && typeof item.value === "string") return { kind: "route", route: item.route, value: item.value };
+      if (item?.kind === "triggers" && typeof item.event === "string" && Array.isArray(item.bindings)) return { kind: "triggers", event: item.event, bindings: item.bindings };
       throw new EditError(400, "A draft change names an editable field, description or HTTP route.");
     });
     return edits.planBatch(parsed, String(request.body?.revision ?? ""));

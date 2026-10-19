@@ -14,6 +14,7 @@ import { readCatalogSource, readLinkSites, type CatalogEntrySource } from "./cat
 import { readStackUsage } from "./stack-usage";
 import { readExportStacks, type ExportStackSource } from "./export-stacks";
 import { scanCdkLinks } from "./cdk-links";
+import { discoverCapabilities } from "./capabilities";
 import { declarationObject, expressionAt, findProperty, lineAndColumn, literalValue, parse, propertyAt } from "./syntax";
 
 /**
@@ -207,8 +208,18 @@ export function buildSourceIndex(
       problems.push(`The resource catalog could not be read: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
+  let triggerCapabilities: SourceIndex["triggerCapabilities"] = [];
+  let capabilityFiles: SourceIndex["capabilityFiles"] = {};
+  if ([...catalog.values()].some((entry) => entry.stack)) {
+    try {
+      const discovered = discoverCapabilities(repositoryRoot, catalog, model.triggerAdapters ?? []);
+      catalog = new Map(discovered.catalog);
+      triggerCapabilities = discovered.capabilities;
+      capabilityFiles = discovered.files;
+    } catch (error) { problems.push(`Trigger capabilities could not be read: ${error instanceof Error ? error.message : String(error)}`); }
+  }
   const stackUsage = readStackUsage(repositoryRoot, catalog);
-  for (const [key, entry] of catalog) catalog.set(key, { ...entry, stackUsage: stackUsage.get(key) });
+  for (const [key, entry] of catalog) catalog.set(key, { ...entry, stackUsage: entry.stackUsage ?? stackUsage.get(key) });
   for (const [catalogPath, entry] of catalog) {
     const id = `resource:${catalogPath}`;
     entities[id] = { origin: `resources.${catalogPath}`, key: entry.key, value: entry.value };
@@ -244,14 +255,14 @@ export function buildSourceIndex(
     problems.push(`Application CDK could not be scanned for linkResources: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  let cdkLinks: CdkLinkIndex = { version: 1, files: {}, edges: [], notes: [] };
+  let cdkLinks: CdkLinkIndex = { version: 2, files: {}, edges: [], notes: [], manualWiring: [] };
   try {
     cdkLinks = scanCdkLinks(repositoryRoot, catalog, links);
   } catch (error) {
     problems.push(`CDK resource links could not be read: ${error instanceof Error ? error.message : String(error)}`);
   }
   return {
-    index: { entities, editability, links, catalog: catalogFacts, problems, cdkLinks },
+    index: { entities, editability, links, catalog: catalogFacts, problems, cdkLinks, triggerCapabilities, capabilityFiles },
     catalog,
     exportStacks,
     ...(located ? { located } : {}),

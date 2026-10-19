@@ -44,7 +44,7 @@ function entry(object: ts.ObjectLiteralExpression, resourcePath: readonly string
   }
   return { container, property: property(container, resourcePath.at(-1)!) };
 }
-function insertExpression(text: string, source: ts.SourceFile, object: ts.ObjectLiteralExpression, keys: readonly string[], expression: string): string {
+export function insertExpression(text: string, source: ts.SourceFile, object: ts.ObjectLiteralExpression, keys: readonly string[], expression: string): string {
   // Reuse the comment/indentation-aware splice, then replace only its fresh literal.
   const marker = `studio_${randomUUID().replaceAll("-", "")}`;
   return insertProperty(text, source, object, keys, marker, { after: [], before: [] }).replace(JSON.stringify(marker), expression);

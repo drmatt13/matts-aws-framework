@@ -141,19 +141,21 @@ assertCognitoVerifierInputs(framework, (reference) => {
 // ---------------------------------------------------------------------------
 const CDK_VALUE_IMPORT =
   /^(?!.*\bimport\s+type\b)\s*import\s+(?!type\b)[^;]*?from\s*["'](aws-cdk-lib[^"']*|constructs)["']/gm;
-const configDirectory = path.join(repositoryRoot, "framework-config");
-for (const file of readdirSync(configDirectory, { recursive: true, encoding: "utf8" })) {
-  if (!file.endsWith(".ts")) continue;
-  const source = readFileSync(path.join(configDirectory, file), "utf8");
-  const offender = CDK_VALUE_IMPORT.exec(source);
-  CDK_VALUE_IMPORT.lastIndex = 0;
-  if (offender) {
-    throw new Error(
-      [
-        `framework-config/${file.split(path.sep).join("/")} imports CDK as a value:`,
-        `  ${offender[0].trim()}`,
-        'This catalog is loaded by CDK synthesis, the local dev servers and the invocation runner. Write "import type" so the import is erased.',
-      ].join("\n"),
-    );
+for (const relativeDirectory of ["framework-config", "packages/framework/src/config"]) {
+  const configDirectory = path.join(repositoryRoot, relativeDirectory);
+  for (const file of readdirSync(configDirectory, { recursive: true, encoding: "utf8" })) {
+    if (!file.endsWith(".ts")) continue;
+    const source = readFileSync(path.join(configDirectory, file), "utf8");
+    const offender = CDK_VALUE_IMPORT.exec(source);
+    CDK_VALUE_IMPORT.lastIndex = 0;
+    if (offender) {
+      throw new Error(
+        [
+          `${relativeDirectory}/${file.split(path.sep).join("/")} imports CDK as a value:`,
+          `  ${offender[0].trim()}`,
+          'This catalog is loaded by CDK synthesis, the local dev servers and the invocation runner. Write "import type" so the import is erased.',
+        ].join("\n"),
+      );
+    }
   }
 }

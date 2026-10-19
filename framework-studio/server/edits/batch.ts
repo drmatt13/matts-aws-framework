@@ -16,6 +16,9 @@ import { replayHandlerFile, rewriteReplayHandler } from "./local-replay";
 import type { RouteChange } from "./route";
 import { DESCRIPTION_FILE, descriptionEntityIds } from "../../shared/descriptions";
 import { parseDescriptions, renameRouteDescriptions, rewriteDescription } from "../descriptions";
+import { resourceTypeErrors } from "../resources-source";
+import { planTriggers, validateTriggerBindings } from "./triggers";
+import { triggerTiming } from "../../shared/trigger-availability";
 
 interface Change { readonly file: string; readonly before: string; readonly after: string }
 export interface BatchJournal {
@@ -26,6 +29,7 @@ export interface BatchJournal {
   readonly routes: readonly RouteChange[];
   readonly replayTargets: readonly string[];
   readonly replaySources: readonly Change[];
+  readonly triggerSources?: Readonly<Record<string, string>>;
 }
 interface StoredBatch extends BatchJournal { readonly response: BatchPlanResponse; readonly revision: string; readonly hashes: Record<string, string> }
 const identity = (model: ModeModel) => JSON.stringify(model.targets.map((target) => [target.ref, target.constructId]).sort((a, b) => a[0]!.localeCompare(b[0]!)));
@@ -40,13 +44,19 @@ export class BatchEditor {
     if (!this.builder.current) throw new EditError(503, "The configuration has not loaded yet.");
     return this.builder.current;
   }
-  private unchanged(revision: string, hashes: Record<string, string>): void {
+  private unchanged(revision: string, hashes: Record<string, string>, triggerSources: Readonly<Record<string, string>> = {}): void {
     if (this.state().snapshot.revision !== revision || JSON.stringify(hashEditableFiles(this.root)) !== JSON.stringify(hashes)) throw new EditError(409, "Source files changed during this editing session. Your draft is preserved; discard it to load the latest configuration.");
+    for (const [file, hash] of Object.entries(triggerSources)) {
+      let actual: string | undefined;
+      try { actual = sha256(readFileSync(path.join(this.root, file), "utf8")); } catch { /* A removed source also expires the review. */ }
+      if (actual !== hash) throw new EditError(409, "Trigger capability or wiring source changed. Refresh and review again.");
+    }
   }
   async plan(edits: readonly DraftEdit[], revision: string): Promise<BatchPlanResponse> {
     const state = this.state();
+    const triggerSources = edits.some((edit) => edit.kind === "triggers") ? state.snapshot.source.capabilityFiles : undefined;
     const hashes = hashEditableFiles(this.root);
-    this.unchanged(revision, state.snapshot.files);
+    this.unchanged(revision, state.snapshot.files, triggerSources);
     if (!edits.length || edits.length > 100) throw new EditError(400, "Review between 1 and 100 setting changes together.");
     if (Object.values(state.snapshot.models).some((model) => model.stale || model.status === "error")) throw new EditError(422, "Fix configuration errors before reviewing changes.");
     const model = state.snapshot.models[state.snapshot.currentMode];
@@ -56,9 +66,16 @@ export class BatchEditor {
     const replayTargets: string[] = [];
     const handlerBefore = new Map<string, string>();
     for (const edit of edits) {
-      const key = edit.kind === "field" ? `${edit.intent.target}:${edit.intent.field}` : edit.kind === "description" ? `description:${edit.entity}` : edit.route;
+      const key = edit.kind === "field" ? `${edit.intent.target}:${edit.intent.field}` : edit.kind === "description" ? `description:${edit.entity}` : edit.kind === "triggers" ? `triggers:${edit.event}` : edit.route;
       if (seen.has(key)) throw new EditError(400, "A draft can change each setting only once.");
       seen.add(key);
+      if (edit.kind === "triggers") {
+        try {
+          const planned = planTriggers(this.root, state, edit.event, edit.bindings, new SourceFiles(overrides));
+          overrides.set(planned.file, planned.after);
+          summaries.push(`${edit.event} — update triggers`);
+        } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
+      }
       if (edit.kind === "description") {
         if (!descriptionEntityIds(Object.values(state.snapshot.models)).has(edit.entity)) throw new EditError(404, "Select a managed map item to edit its description.");
         const file = assertWritable(this.root, DESCRIPTION_FILE);
@@ -134,7 +151,7 @@ export class BatchEditor {
       const target = mode.targets.find((target) => target.ref === ref);
       if (!target || !handlerBefore.has(replayHandlerFile(this.root, target).file)) throw new EditError(422, "Local replay must keep the event's TypeScript handler entry point.");
     }
-    this.unchanged(revision, hashes);
+    this.unchanged(revision, hashes, triggerSources);
     const response: BatchPlanResponse = {
       planId: randomUUID(), summaries,
       changes: changes.map(({ file, before, after }) => ({ file: toRelative(this.root, file), diff: diffOf(toRelative(this.root, file), before, after) })),
@@ -142,10 +159,21 @@ export class BatchEditor {
       impact: ["Applies this complete draft as one undoable change. Individual workload overrides remain in place when shared defaults change.",
         ...(replayTargets.length ? ["Updates localReplay and the handler's withLocalReplay wrapper together. Run framework:generate before deploying to refresh the replay manifest. Events that require local execution cannot turn replay off."] : []),
         ...(routes.length ? ["Public route paths change; Lambda target and construct identities are preserved. Regenerate the API contract and update callers before deployment."] : []),
+        ...(triggerSources ? edits.filter((edit) => edit.kind === "triggers").flatMap((edit) => {
+          const before = model.triggers?.filter((binding) => binding.event === edit.event) ?? [];
+          return [
+            ...before.filter((binding) => !edit.bindings.some((next) => JSON.stringify(next) === JSON.stringify(binding))).map((binding) => `Remove/update ${binding.resource} → lambda:${edit.event} (${binding.id}).`),
+            ...edit.bindings.filter((binding) => !before.some((old) => JSON.stringify(old) === JSON.stringify(binding))).flatMap((binding) => [
+              `${binding.resource} → lambda:${edit.event}: ${model.triggerAdapters?.find((item) => item.kind === binding.adapter)?.delivery ?? binding.adapter}. Handler contract acknowledged: ${binding.accepts}.`,
+              ...[triggerTiming(state.snapshot, { ...binding, event: edit.event }).recommendation].filter((line): line is string => !!line),
+              ...model.edges.filter((edge) => binding.adapter === "s3" && edge.relation === "grant" && edge.from === `lambda:${edit.event}` && edge.to === binding.resource && /grant(Read)?Write|grantPut/.test(edge.label)).map((edge) => `lambda:${edit.event} can write to this bucket (${edge.label}); its writes must not match this trigger's filter.`),
+            ]),
+          ];
+        }) : []),
         "Compose Watch may restart local workloads after the source files are written. Deployment is a separate action."],
     };
     const replaySources = [...handlerBefore].map(([file, before]) => ({ file, before, after: overrides.get(file)! }));
-    this.plans.set(response.planId, { kind: "batch", label: `${edits.length} inspector changes`, response, revision, hashes, changes, edits, routes, replayTargets, replaySources });
+    this.plans.set(response.planId, { kind: "batch", label: `${edits.length} inspector changes`, response, revision, hashes, changes, edits, routes, replayTargets, replaySources, triggerSources });
     return response;
   }
   private async validate(overrides: Record<string, string>, state: StudioState, routes: readonly RouteChange[]) {
@@ -154,8 +182,15 @@ export class BatchEditor {
     const pool = new EvaluatorPool(this.root);
     try {
       const models = await pool.evaluate(state.snapshot.webSocketApi, overrides);
+      const triggerChange = [models.dev, models.prod].some((model: ModeModel) => JSON.stringify(model.triggers) !== JSON.stringify(state.snapshot.models[model.mode].triggers));
+      const typeErrors = triggerChange ? resourceTypeErrors(this.root, overrides) : [];
       const verdict = (model: ModeModel) => {
         const diagnostics = [...model.diagnostics];
+        for (const message of typeErrors) diagnostics.push({ severity: "error", stage: "validate", message });
+        for (const binding of model.triggers ?? []) {
+          try { validateTriggerBindings(state.snapshot, binding.event, [binding]); }
+          catch (error) { diagnostics.push({ severity: "error", stage: "validate", message: error instanceof Error ? error.message : String(error) }); }
+        }
         if (identity(model) !== identity(state.snapshot.models[model.mode])) diagnostics.push({ severity: "error", stage: "validate", message: "An inspector edit must preserve workload target and construct identities." });
         for (const route of routes) if (!model.routes.some((item) => item.kind === "http" && item.path === route.after && item.target === route.target)) diagnostics.push({ severity: "error", stage: "validate", message: `Route ${route.after} must still reach ${route.target}.` });
         return { mode: model.mode, ok: !diagnostics.some((item) => item.severity === "error"), diagnostics };
@@ -167,13 +202,15 @@ export class BatchEditor {
     const plan = this.plans.get(planId);
     if (!plan) throw new EditError(410, "This review expired. Your draft is preserved; review it again.");
     if (!plan.response.ok) throw new EditError(422, "Fix the rejected settings before applying this draft.");
-    this.unchanged(plan.revision, plan.hashes);
+    this.unchanged(plan.revision, plan.hashes, plan.triggerSources);
     return this.write(plan, false, () => record(plan));
   }
   replay(entry: BatchJournal, inverse: boolean, record: () => void): Promise<ApplyResponse> { return this.write(entry, inverse, record); }
   private async write(entry: BatchJournal, inverse: boolean, record: () => void): Promise<ApplyResponse> {
     const state = this.state();
     const hashes = hashEditableFiles(this.root);
+    const triggerSources = entry.triggerSources ? state.snapshot.source.capabilityFiles : undefined;
+    this.unchanged(state.snapshot.revision, hashes, triggerSources);
     const changes = entry.changes.map((change) => inverse ? { ...change, before: change.after, after: change.before } : change);
     const handlers = entry.replayTargets.map((ref) => state.snapshot.models[state.snapshot.currentMode].targets.find((target) => target.ref === ref)).map((target) => target && replayHandlerFile(this.root, target).file);
     for (const source of entry.replaySources) {
@@ -186,7 +223,7 @@ export class BatchEditor {
     const routes = entry.routes.map((route) => inverse ? { ...route, before: route.after, after: route.before } : route);
     const checked = await this.validate(Object.fromEntries(changes.map((change) => [change.file, change.after])), state, routes);
     if (!checked.preflight.dev.ok || !checked.preflight.prod.ok) throw new EditError(422, "The complete draft no longer validates. Review the current configuration before trying again.");
-    this.unchanged(state.snapshot.revision, hashes);
+    this.unchanged(state.snapshot.revision, hashes, triggerSources);
     for (const source of entry.replaySources) if (readFileSync(source.file, "utf8") !== (inverse ? source.after : source.before)) throw new EditError(409, "The event handler changed while validating. No files were written.");
     const written: Change[] = [];
     try {
@@ -203,6 +240,7 @@ export class BatchEditor {
         const model = actual.snapshot.models[mode];
         const expected = checked.models[mode];
         if (model.stale || model.status === "error" || identity(model) !== identity(expected)) throw new Error(`The ${mode} configuration did not match the review.`);
+        if (JSON.stringify(model.triggers) !== JSON.stringify(expected.triggers)) throw new Error("Trigger connections did not match the review.");
         for (const edit of entry.edits) {
           if (edit.kind !== "field") continue;
           const field = (model: ModeModel) => model.fields[edit.intent.target]?.find((fact) => fact.field === edit.intent.field);

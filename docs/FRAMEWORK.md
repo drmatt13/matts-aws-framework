@@ -677,6 +677,52 @@ createEventLambda or registerEventLambda supports a native owning stack. Each de
 event has exactly one registration; duplicate/missing owners fail. Registering an already
 built function cannot retroactively apply build settings.
 
+An event can instead declare typed `triggers` from `@repo/framework/config`:
+
+```ts
+triggers: [trigger.cognito(resources.identity.userPool, {
+  id: "before-signup", operation: "preSignUp", accepts: "cognito",
+})],
+```
+
+The stable attachment `id` is unique within its source resource and separate from the
+event's ID and construct ID. Changing its event destination retains a rule's identity. `accepts`
+records a reviewed handler payload/response contract; it does not transform a handler.
+Cognito supports standard hooks (excluding custom senders and versioned token hooks).
+`trigger.eventbridge(bus, { id, accepts: "eventbridge", eventPattern, ... })` creates a
+rule using CDK EventPattern field names; it supports enabled state, target input,
+retry attempts, maximum event age and a catalog `deadLetterQueue`. Resources must be
+available in both graphs. Imported Cognito pools, duplicate/native-owned hooks, unknown
+ownership and incompatible replay are rejected. No native binding is overwritten.
+
+`trigger.sqs(queue, { accepts: "sqs-batch", ... })`, `trigger.dynamodb(table, { accepts:
+"dynamodb-stream", startingPosition, ... })`, `trigger.sns(topic, { accepts: "sns", ... })`
+and `trigger.s3(bucket, { accepts: "s3", delivery: "eventbridge" | "notification",
+eventTypes, acknowledgeRecursionRisk: true, ... })` cover the remaining services, with
+batch/filter/failure options where AWS supports them. SQS needs queue visibility at least
+the function timeout (more is only recommended) and FIFO batch limits; DynamoDB needs an
+existing stream and never enables one; SNS refuses FIFO topics; S3 keeps the bucket's
+delivery architecture and refuses overlapping filters. Any existing native mapping on a
+queue or stream, a native subscription to the same function, or native bucket notification
+configuration is reported for review instead of attached over.
+
+Resource finalization validates the entire attachment list before applying adapters,
+resolves each function through `eventFunction`. Cognito retains native source ownership;
+EventBridge rules belong to the function's existing stack so reading a bus does not add a
+reverse dependency. Attachment IDs include a stable source digest and the authored ID,
+independent of the destination function. No blanket stack dependency is added. Native CDK remains valid;
+the application's three Cognito hooks retain their native ownership.
+
+To add a service, define its pure metadata, canonical CDK types, options and validator
+with `defineTriggerAdapter<Native, Options>()`, and register its CDK validation/attachment
+with `registerCdkTriggerAdapter` in the CDK entry point before finalization. Import the
+pure definition before its event declarations. Studio uses that metadata and semantic
+public-field discovery; individual stacks need no registration. Its generic authoring
+form is `trigger.adapter(kind, resource, options)`. Include native-inventory fixtures,
+option/conflict tests, least-privilege IAM and two-mode synth/dependency tests. Config
+modules and the framework's pure config implementation cannot import CDK values;
+`framework:check` enforces that boundary.
+
 Construction order is resources/RDS, tasks, event owners, Cognito, workflows, then routed
 workloads. Event/task/workflow handles live in app-scoped registries; do not thread them
 through every stack constructor. eventFunction does not add a stack dependency: actual

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { after, before, test } from "node:test";
-import { defineFrameworkConfig, defineNetwork, defineResources, dynamodb, invokeLambda, resource, runsTask, sequence, startsWorkflow, workflow, type FrameworkConfig } from "@repo/framework/config";
+import { defineFrameworkConfig, defineNetwork, defineResources, dynamodb, invokeLambda, resource, runsTask, sequence, startsWorkflow, trigger, workflow, type FrameworkConfig } from "@repo/framework/config";
+import type { UserPool } from "aws-cdk-lib/aws-cognito";
 import type { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { defaults } from "../../framework-config/defaults";
 import type { Snapshot } from "../shared/model";
@@ -100,6 +101,26 @@ test("relationships are the framework's, with their own relation", () => {
   assert.equal(userPool?.provenance, "derived", "handed by userPool: true, not written by the author");
 });
 
+test("read connections locate authored entries, field declarations, assignments and linking", () => {
+  for (const model of Object.values(snapshot.models)) {
+    const edge = model.edges.find((item) => item.from === "lambda:sign-out" && item.label === "TRUSTED_FRONTEND_ORIGINS")!;
+    assert.ok(edge);
+    const evidence = edge.evidence!;
+    for (const [role, text] of [["declared", "TRUSTED_FRONTEND_ORIGINS: resources.cognito.trustedOriginsCsv"], ["field", "public readonly trustedOriginsCsv: string"], ["assigned", "this.trustedOriginsCsv ="], ["linked", "linkResources(this, resources.cognito)"]] as const) {
+      const item = evidence.find((item) => item.role === role)!;
+      assert.ok(item?.excerpt?.includes(text), `${role}: ${JSON.stringify(evidence)}`);
+      const line = readFileSync(path.join(repositoryRoot, item.location.file), "utf8").split("\n")[item.location.line - 1]!;
+      assert.ok(line.includes(text));
+    }
+    const derived = model.edges.find((item) => item.from === "lambda:graphql-api" && item.label === "USER_POOL_ID")!;
+    assert.ok(derived.evidence?.some((item) => item.role === "derived" && item.excerpt?.includes("userPool: true")));
+    for (const item of model.edges.filter((edge) => ["env", "secret", "grant"].includes(edge.relation))) {
+      assert.ok(item.evidence?.some((evidence) => evidence.role === "declared" || evidence.role === "derived"), item.id);
+      assert.ok(item.evidence?.every((evidence) => evidence.location.file.endsWith(".ts") && !evidence.excerpt?.includes("\n")), item.id);
+    }
+  }
+});
+
 test("task, workflow and integration relationships come from an isolated config", () => {
   const catalog = defineResources({ data: resource.stack<{ readonly records: ITable }>() });
   const config = defineFrameworkConfig({
@@ -189,9 +210,36 @@ test("referenceExamples exposes source-backed CDK flow in both graphs", () => {
     }
   }
   const cached = JSON.parse(readFileSync(path.join(repositoryRoot, ".cache/framework-studio/cdk-links.json"), "utf8"));
-  assert.equal(cached.version, 1);
+  assert.equal(cached.version, 2);
   assert.ok(cached.edges.length >= 3);
   assert.ok(Object.keys(cached.files).includes("cdk-app/lib/app/reference-example-stack.ts"));
+});
+
+test("the three native Cognito hooks connect the public pool to their events in both lenses", () => {
+  for (const model of Object.values(snapshot.models)) {
+    const hooks = model.edges.filter((edge) => edge.relation === "trigger");
+    assert.deepEqual(hooks.map((edge) => [edge.from, edge.to, edge.label, edge.source?.line]).sort(), [
+      ["resource:cognito.userPool", "lambda:cognito-pre-signup-trigger", "preSignUp", 215],
+      ["resource:cognito.userPool", "lambda:cognito-custom-message", "customMessage", 216],
+      ["resource:cognito.userPool", "lambda:cognito-post-confirmation-trigger", "postConfirmation", 217],
+    ].sort());
+    assert.ok(hooks.every((edge) => edge.evidence?.some((item) => item.role === "wired")));
+  }
+});
+
+test("typed trigger descriptors normalize to declared resource-to-event edges with adapter metadata", () => {
+  const catalog = defineResources({ identity: resource.stack<{ pool: UserPool }>() });
+  const config = defineFrameworkConfig({ resources: catalog, defaults, http: [], webSocket: [], services: [], events: [{ event: { directory: "/test/fixtures/workload-handler", triggers: [trigger.cognito(catalog.identity.pool, { id: "signup", operation: "preSignUp", accepts: "cognito" })] } }] });
+  for (const mode of ["dev", "prod"] as const) {
+    const model = projectModel(config as unknown as FrameworkConfig, { mode, webSocketApi: false });
+    const edge = model.edges.find((edge) => edge.relation === "trigger")!;
+    assert.equal(edge.from, "resource:identity.pool");
+    assert.equal(edge.to, "lambda:event");
+    assert.equal(edge.provenance, "declared");
+    assert.equal(edge.attachment, "identity.pool/signup");
+    assert.equal(model.triggers?.[0]?.key, edge.attachment);
+    assert.ok(model.triggerAdapters?.some((adapter) => adapter.kind === "cognito"));
+  }
 });
 
 test("every target and route is located, and its key is what the source writes there", () => {

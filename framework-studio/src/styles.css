@@ -852,6 +852,15 @@ a {
   color: var(--graphite);
 }
 
+.connection-evidence { display: grid; gap: 12px; margin-top: 16px; }
+.trigger-editor summary { cursor: pointer; font-weight: 600; }
+.trigger-row { margin: 10px 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
+.trigger-row .written { width: 100%; }
+.trigger-form { display: grid; gap: 10px; margin-top: 12px; }
+.trigger-form label { display: grid; gap: 4px; font-size: var(--step--1); }
+.trigger-form input:not([type=checkbox]), .trigger-form select, .trigger-form textarea { width: 100%; }
+.evidence-line { display: block; font-size: 11px; overflow-wrap: anywhere; color: var(--muted); }
+.inspector .connection-evidence .written { margin-bottom: 3px; }
 .inspector .written {
   margin-top: 10px;
   font-size: var(--step--1);

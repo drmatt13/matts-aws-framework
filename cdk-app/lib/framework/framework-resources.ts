@@ -4,6 +4,7 @@ import type { IConstruct } from "constructs";
 import type { IGrantable } from "aws-cdk-lib/aws-iam";
 import type { ISecret } from "aws-cdk-lib/aws-secretsmanager";
 import { markInfrastructure } from "./framework-inventory";
+import { attachFrameworkTriggers } from "./framework-triggers";
 import { DEPLOYMENT_METADATA_KEY, FRAMEWORK_OWNER, IDENTITY_TAGS } from "@repo/framework/deploy";
 import {
   assertRequirementsMet,
@@ -344,6 +345,7 @@ export function finalizeFrameworkResources(scope: IConstruct): void {
   if (!state.options) throw new Error("Initialize framework resources before finalizing them.");
   for (const action of state.pending) action();
   const { config, mode, deployment } = state.options;
+  attachFrameworkTriggers(scope, config);
   const stacks = scope.node.root.node.findAll().filter(cdk.Stack.isStack);
   if (mode === "dev") {
     const published = new Set<string>();

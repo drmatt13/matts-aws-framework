@@ -351,6 +351,12 @@ been removed; the renderer has one visual style.
    A missing required input is still red, with its X marker. Derived edges are fainter,
    and a derived or source-inferred connection says so in its hover card.
 
+   Native event triggers point from the public resource to the event Lambda, in solid
+   warm yellow (`#ead46c`). They share the invocation category but have their own colour,
+   distinct from reads, grants, routes, compute, tools, steps and CDK references. The
+   hook/adapter label and wiring location appear in hover and connection details. Both
+   lenses retain the same triggers, including cycles back through a Lambda's reads.
+
    **The lens.** An idle connection rests at 0.30 opacity (0.18 when derived), so what is
    part of the environment being viewed reads clearly. A connection outside it rests at
    half that: either end is enabled only in the other environment, enabled in neither, or

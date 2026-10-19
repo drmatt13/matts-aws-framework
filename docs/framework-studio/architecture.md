@@ -151,6 +151,11 @@ diagnostics attached. The UI greys it out and pauses editing until the config lo
     loops and dynamic names rather than claiming their execution. No CDK is imported or
     synthesized. Relationships carry `relation: "cdk"`, `provenance: "source"` and source
     spans; they are merged into both graph models after class members are expanded.
+    Native Cognito hooks, Lambda event sources, SNS Lambda subscriptions, S3 Lambda
+    notifications and EventBridge Lambda targets carry `relation: "trigger"`. Local
+    event aliases and constructs later published as public fields are resolved. Version
+    2 of the index also records unresolved/conditional native ownership as manual wiring;
+    absence of an inferred edge never establishes that a trigger slot is free.
     Missing endpoints are omitted. These are source inferences, separate from the
     framework's evaluated declarations.
 
@@ -161,7 +166,29 @@ as a cache input. `POST /api/cdk-links/refresh` uses the existing Host, token an
 guards, rebuilds the snapshot and broadcasts it. The isometric toolbar's **Refresh CDK
 links** calls it. The normal CDK source watcher also refreshes the index automatically.
 
+Read connections carry an in-memory `evidence` list: authored environment/secret/grant
+entries (following literal imports and spreads), derived flags, catalog declarations,
+public fields, assignments and resource link sites. The Inspector links each location
+and its single trimmed TypeScript line to VS Code. Literal contents and comments are
+redacted; input names in catalog declarations remain identifiable. No dotenv source
+is eligible, and excerpts never enter the disposable CDK index or edit journals.
+
 ## Editing
+
+Trigger capability discovery uses a TypeScript Program/TypeChecker on each catalog
+stack's public instance surface. Canonical CDK export symbols, aliases, inheritance
+and re-exports determine compatibility; displayed type text never authorizes an edit.
+Private/protected members, Stack members and secret projections are excluded. Only
+serializable capability/source facts are cached in memory, keyed by source hashes.
+Inherited native wiring and unavailable implementations require manual review.
+
+The event and public-field Inspectors share a collapsed Triggers section. They stage
+source-scoped attachment IDs, event destinations, adapter options and a handler-contract
+acknowledgement in the existing inspector draft. Native slots remain occupied. Trigger
+edits compose through BatchEditor, validate both graphs and TypeScript, check wiring and
+capability hashes, and use its atomic apply/rollback/undo journal. Computed/spread lists
+and commented lists remain source edits. Review identifies changed edges and delivery
+semantics. Synthesis and deployment remain separate checks/actions.
 
 [server/edits/](../../framework-studio/server/edits)
 

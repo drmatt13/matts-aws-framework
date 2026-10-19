@@ -15,6 +15,7 @@ import {
   isTargetDeployed,
   isTargetEnabled,
   normalizeFrameworkConfig,
+  triggerAdapters,
   resolveLambdaTarget,
   resolveNetwork,
   resolveServiceTarget,
@@ -359,6 +360,12 @@ function edgesOf(
     edges.push({ id: `${base}#${index}`, relation, from, to, ...edge });
   };
   const memberPath = (reference: { readonly path: readonly string[] }) => reference.path;
+  for (const binding of normalizeFrameworkConfig(config).triggers) {
+    readPaths.push(binding.resource.path);
+    add("trigger", resourceId(binding.resource.path), `lambda:${binding.event}`, {
+      provenance: "declared", label: String(binding.options.operation ?? binding.adapter), detail: `${binding.adapter} · ${binding.id}`, attachment: binding.key,
+    });
+  }
 
   for (const route of routes) {
     add("routes", route.id, route.target, { provenance: "declared", label: route.kind === "webSocket" ? route.path : route.browserPath ?? route.path });
@@ -607,6 +614,8 @@ export function projectModel(
   const defaults = projectDefaults(config, targets, DEFAULT_FIELDS);
   return {
     mode: options.mode,
+    triggerAdapters: triggerAdapters(),
+    triggers: normalizeFrameworkConfig(config).triggers.map((binding) => ({ ...binding, resource: resourceId(binding.resource.path) })),
     status: diagnostics.some((diagnostic) => diagnostic.severity === "error") ? "error" : "ok",
     targets: targets.map((target) => targetModel(config, target, options)),
     routes,

@@ -3,6 +3,7 @@ import type { FieldFact, Mode, ModelResource, Snapshot } from "../shared/model";
 import type { ResourceApply, ResourceIntent, ResourcePlan } from "../shared/resources";
 import type { DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
 import { descriptionError } from "../shared/descriptions";
+import { triggerBindingsEqual, type TriggerBinding } from "../shared/triggers";
 
 export type Review = { readonly kind: "batch"; readonly plan: BatchPlanResponse } | { readonly kind: "resource"; readonly plan: ResourcePlan } | { readonly kind: "environment"; readonly plan: DeploymentInputPlan };
 export interface EnvironmentEdit extends DeploymentInputEdit { readonly key: string; readonly original?: string }
@@ -12,7 +13,8 @@ interface FieldEntry { readonly kind: "field"; readonly key: string; readonly ra
 interface RouteEntry { readonly kind: "route"; readonly key: string; readonly route: string; readonly value: string; readonly error?: string }
 interface DescriptionEntry { readonly kind: "description"; readonly key: string; readonly entity: string; readonly value: string; readonly error?: string }
 interface ResourceEntry { readonly kind: "resource"; readonly key: string; readonly intent: ResourceIntent; readonly form: ResourceForm; readonly count: number; readonly error?: string }
-export type DraftEntry = FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry;
+interface TriggerEntry { readonly kind: "triggers"; readonly key: string; readonly event: string; readonly bindings: readonly TriggerBinding[]; readonly error?: string }
+export type DraftEntry = FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry;
 export interface DraftState {
   readonly baseline: Snapshot;
   readonly latest: Snapshot;
@@ -119,6 +121,13 @@ export class InspectorDraft {
     const error = !value.startsWith("/") || value.trim() !== value || /[\r\n\0]/.test(value) ? "Use a path beginning with / and no surrounding whitespace." : undefined;
     this.put(`route:${id}`, value === baseline ? undefined : { kind: "route", key: `route:${id}`, route: id, value, ...(error ? { error } : {}) });
   }
+  triggers(event: string): readonly TriggerBinding[] {
+    return this.state.entries.find((entry): entry is TriggerEntry => entry.kind === "triggers" && entry.event === event)?.bindings ?? this.state.baseline.models[this.state.mode].triggers?.filter((binding) => binding.event === event) ?? [];
+  }
+  setTriggers(event: string, bindings: readonly TriggerBinding[], error?: string): void {
+    const baseline = this.state.baseline.models[this.state.mode].triggers?.filter((binding) => binding.event === event) ?? [];
+    this.put(`triggers:${event}`, !error && triggerBindingsEqual(bindings, baseline) ? undefined : { kind: "triggers", key: `triggers:${event}`, event, bindings, ...(error ? { error } : {}) });
+  }
   description(entity: string): string {
     return this.state.entries.find((entry): entry is DescriptionEntry => entry.kind === "description" && entry.entity === entity)?.value ?? this.state.baseline.descriptions.values[entity] ?? "";
   }
@@ -198,6 +207,7 @@ export class InspectorDraft {
           if (entry.kind === "field") return { kind: "field", intent: entry.intent };
           if (entry.kind === "description") return { kind: "description", entity: entry.entity, value: entry.value };
           if (entry.kind === "route") return { kind: "route", route: entry.route, value: entry.value };
+          if (entry.kind === "triggers") return { kind: "triggers", event: entry.event, bindings: entry.bindings };
           throw new Error("Review this configuration in its own inspector session.");
         }), state.baseline.revision) };
       if (serial === this.serial) this.publish({ ...this.state, busy: undefined, review });

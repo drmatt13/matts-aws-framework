@@ -1,8 +1,11 @@
 # Lambda invocation editing: investigation and design
 
-Status: investigation and proposed implementation, October 2026. The shared API and
-Lambda landscape layers are implemented. The type selector, event-source editor and
-function creation described below are **not implemented**.
+Status: implementation in progress, October 2026. Read evidence, native trigger
+inventory and typed Cognito, EventBridge, SQS, SNS, DynamoDB stream and S3
+descriptors/adapters are implemented. The
+event-source editor is implemented through the shared draft and transaction path.
+Role conversion and function creation remain outside
+this implementation.
 
 ## Product decision
 
@@ -76,22 +79,22 @@ Implement this incrementally:
    for one function are supported. Keep existing declarations valid through normalization;
    avoid rewriting the application's configuration merely to introduce Studio controls.
 
-An illustrative source API, **not an available framework API**, could look like:
+The initial source API uses the pure `trigger` builder from `@repo/framework/config`:
 
 ```ts
-// Proposed event declaration extension; exact API requires a framework design review.
 "cognito-pre-signup-trigger": {
   directory: "/lambda_functions/event_functions/cognito-pre-signup-trigger",
   triggers: [
     trigger.cognito(resources.cognito.userPool, {
       id: "pre-sign-up",
       operation: "preSignUp",
+      accepts: "cognito",
     }),
   ],
 }
 ```
 
-`trigger` would be a pure, typed descriptor builder from the framework, not a CDK import.
+`trigger` is a pure, typed descriptor builder from the framework, not a CDK value import.
 Its result contains a discriminant, catalog reference, stable attachment ID and validated
 options. No construct instances, arbitrary method names, executable callbacks, copied
 ARNs or secret values belong in config. Exact catalog-reference typing must be validated
@@ -265,7 +268,64 @@ synthesis as the relevant implementation phases land. Live delivery, retry behav
 AWS permission checks require a separately authorized deployment and integration test.
 The current layout-only implementation does not alter infrastructure or deploy anything.
 
-## Decisions to settle before implementing the editors
+## Implementation decisions (October 2026)
+
+- Existing event declarations retain their current owning stack and construct IDs.
+  Role conversion is outside this editor; a later conversion must introduce an explicit
+  backward-compatible ownership schema and prove identity in both synth modes first.
+  The three application Cognito hooks remain native: the October 2026 development
+  baseline synthesized, but production refused the selected credentials because their
+  account differs from the pinned production target. A two-mode identity/permission/
+  dependency comparison is therefore unavailable. No generated attachment replaces them.
+- One primary invocation family remains authoritative. An event may declare several
+  triggers; this work does not expose a role-conversion selector.
+- Cognito initially supports standard lifecycle/authentication hooks through `addTrigger`.
+  The initial allowlist is preSignUp, customMessage, postConfirmation,
+  preAuthentication, postAuthentication, defineAuthChallenge, createAuthChallenge,
+  verifyAuthChallengeResponse and userMigration. Only postConfirmation permits the
+  existing capture/replay behavior; synchronous decision/mutation hooks reject it.
+  Custom senders, KMS options and versioned token-generation hooks remain unavailable
+  until a specialized adapter validates their options and permissions.
+- Service adapters share pure serializable metadata/validators in config, semantic
+  discovery in Studio and a CDK attachment registry. Extensions register these three
+  pieces explicitly; no application stack names belong in framework dispatch.
+  Attachment IDs are unique within a source resource and independent of the destination
+  event. EventBridge rules are children of the event's existing owning stack, with a
+  stable source digest plus attachment ID. This permits functions to read their bus
+  without introducing a reverse stack dependency; Cognito keeps native pool ownership.
+  EventBridge DLQ permissions merge into the queue's existing policy with a deterministic,
+  rule-scoped ARN, avoiding a reverse reference from the queue's stack. Imported DLQs
+  remain unavailable because this adapter cannot establish their policy ownership.
+- SQS, DynamoDB stream and SNS attachments are children of the event's existing owning
+  stack under the same source-digest attachment ID, so the function stack depends on the
+  resource stack and the resource's template is unchanged apart from cross-stack exports.
+  - **SQS** requires an owned `Queue`. Queue visibility below the function timeout is
+    rejected in Studio and at synthesis; AWS's six-times-plus-batching-window figure is a
+    synthesis warning and a review note only. FIFO queues (including `.fifo` names)
+    reject batches over ten and any batching window. Any existing event-source mapping
+    on the queue, from any function, is native ownership and blocks the attachment.
+  - **DynamoDB** reads stream presence from the owned table's L1 `StreamSpecification`
+    (TableV2 exposes a `StreamArn` token even without a stream); imported tables need an
+    explicit stream ARN, and Studio offers only owned tables. A table without a stream
+    stays unavailable; the adapter never enables one. Existing mappings block it.
+  - **SNS** rejects FIFO topics (Lambda is not a FIFO subscriber) and a native
+    subscription to the same function; other subscribers are preserved. The invoke
+    permission is topic-scoped and the subscription depends on it.
+  - **S3** requires an explicit `delivery`. EventBridge delivery needs EventBridge enabled
+    in the owned bucket's own CFN `NotificationConfiguration` and adds a rule in the
+    event's stack; overlapping rules for one event are refused. Notification delivery
+    requires a bucket with no CFN notification configuration and no CDK notification
+    custom resource, then merges an unmanaged notification from the event's stack; all
+    such notifications for one bucket must share that stack, and overlapping filters are
+    refused. CDK's L2 `eventBridgeEnabled`/`addEventNotification` custom resource is
+    unclassified native wiring for both modes. A recursive-write acknowledgement is
+    required, and review flags an event that holds a write grant on the bucket.
+- Handler compatibility requires an explicit descriptor acknowledgement of the adapter's
+  payload/response contract. Studio previews that acknowledgement with source edits;
+  it cannot infer compatibility from TypeScript, Python or container packaging. Existing
+  native bindings retain native ownership until an identity-preserving migration succeeds.
+
+The earlier open decisions, retained as design context:
 
 - The backward-compatible schema for stable function ownership across role changes.
 - Whether the first type selector permits only one primary invocation family while the

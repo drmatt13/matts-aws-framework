@@ -11,6 +11,7 @@ import { readDeclaredSchema, readLocalDatabases, withLocalDatabases } from "./da
 import { withDeploymentInputs } from "./deployment-inputs";
 import { withExportStacks } from "./source/export-stacks";
 import { readDescriptions } from "./descriptions";
+import { withConnectionEvidence } from "./source/evidence";
 
 /**
  * The studio's current understanding of the repository, rebuilt as a whole.
@@ -48,7 +49,7 @@ function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, Catalog
     }
     if (stack) resources[index.get(`resource:${catalogPath}`)!] = { ...stack, stackClass: entry.stack.className, stackUsage: entry.stackUsage };
   }
-  const ids = new Set(resources.map((resource) => resource.id));
+  const ids = new Set([...resources.map((resource) => resource.id), ...model.targets.map((target) => target.ref)]);
   const ownership = resources.filter((resource) => resource.frameworkManaged && resource.networkPlacement && resource.parent && ids.has(resource.parent)).map((resource): ModeModel["edges"][number] => ({
     id: `contains:${resource.parent}->${resource.id}`,
     relation: "contains",
@@ -136,7 +137,7 @@ export class SnapshotBuilder {
     const schema = readDeclaredSchema(this.repositoryRoot);
     const localDatabase = readLocalDatabases(this.repositoryRoot);
     // A disposable studio projection, never a configuration input. Replace atomically.
-    const directory = path.join(this.repositoryRoot, ".cache", "framework-studio");
+    const directory = process.env.FRAMEWORK_STUDIO_STATE_DIRECTORY ? path.resolve(process.env.FRAMEWORK_STUDIO_STATE_DIRECTORY) : path.join(this.repositoryRoot, ".cache", "framework-studio");
     mkdirSync(directory, { recursive: true });
     const temporary = path.join(directory, `cdk-links-${randomUUID()}.tmp`);
     try {
@@ -157,8 +158,8 @@ export class SnapshotBuilder {
       webSocketApi: settings.webSocketApi,
       repositoryRoot: this.repositoryRoot,
       models: {
-        dev: withDeploymentInputs(this.repositoryRoot, withLocalDatabases(dev.stale ? dev : withExportStacks(withClassMembers(dev, built.catalog, built.index.cdkLinks.edges), built.exportStacks), localDatabase.services), { dev, prod }),
-        prod: withDeploymentInputs(this.repositoryRoot, withLocalDatabases(prod.stale ? prod : withExportStacks(withClassMembers(prod, built.catalog, built.index.cdkLinks.edges), built.exportStacks), localDatabase.services), { dev, prod }),
+        dev: withConnectionEvidence(this.repositoryRoot, withDeploymentInputs(this.repositoryRoot, withLocalDatabases(dev.stale ? dev : withExportStacks(withClassMembers(dev, built.catalog, built.index.cdkLinks.edges), built.exportStacks), localDatabase.services), { dev, prod }), built.index, built.catalog),
+        prod: withConnectionEvidence(this.repositoryRoot, withDeploymentInputs(this.repositoryRoot, withLocalDatabases(prod.stale ? prod : withExportStacks(withClassMembers(prod, built.catalog, built.index.cdkLinks.edges), built.exportStacks), localDatabase.services), { dev, prod }), built.index, built.catalog),
       },
       source: built.index,
       files,

@@ -283,6 +283,8 @@ export type Relation =
   | "database"
   /** An opted-in event captures invocations through the development replay stack. */
   | "localReplay"
+  /** A native or declared event source invokes an event Lambda. */
+  | "trigger"
   | "runsTask"
   | "startsWorkflow"
   | "invokesAgent"
@@ -307,9 +309,18 @@ export interface ModelEdge {
   /** Framework declarations/derivations, or separately identified CDK/input-file source evidence. */
   readonly provenance: "declared" | "derived" | "source";
   readonly source?: SourceLocation;
+  readonly evidence?: readonly ConnectionEvidence[];
+  readonly attachment?: string;
   /** A short human label: the env name, the grant method, the operations. */
   readonly label: string;
   readonly detail?: string;
+}
+
+/** Source references only; excerpts are sanitized TypeScript, never evaluated values. */
+export interface ConnectionEvidence {
+  readonly role: "declared" | "derived" | "field" | "assigned" | "linked" | "catalog" | "wired";
+  readonly location: SourceLocation;
+  readonly excerpt?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -352,6 +363,8 @@ export interface Diagnostic {
 // ---------------------------------------------------------------------------
 
 export interface ModeModel {
+  readonly triggers?: readonly import("./triggers").TriggerBinding[];
+  readonly triggerAdapters?: readonly import("./triggers").TriggerAdapterMetadata[];
   /** Shared framework defaults, separate from workload declarations. */
   readonly defaults?: readonly ModelDefaults[];
   readonly localServices?: readonly LocalDatabase[];
@@ -443,6 +456,8 @@ export interface ModelDefaults {
 }
 
 export interface SourceIndex {
+  readonly triggerCapabilities?: readonly import("./triggers").TriggerCapability[];
+  readonly capabilityFiles?: Readonly<Record<string, string>>;
   /** Studio-only scan output; never consumed by framework configuration or CDK. */
   readonly cdkLinks: CdkLinkIndex;
   /** Entity id (target ref, route id, resource id) to where it was written. */
@@ -460,11 +475,12 @@ export interface SourceIndex {
 }
 
 export interface CdkLinkIndex {
-  readonly version: 1;
+  readonly version: 2;
   /** Only source hashes and relationships, never construct values or source text. */
   readonly files: Readonly<Record<string, string>>;
   readonly edges: readonly ModelEdge[];
   readonly notes: readonly string[];
+  readonly manualWiring: readonly { readonly resource: string; readonly source: SourceLocation; readonly reason: string }[];
 }
 
 export interface Snapshot {

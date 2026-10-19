@@ -1,5 +1,5 @@
 import type { Mode, ModelEdge, ModelResource, Relation, TargetKind } from "../../shared/model";
-import { API_EDGE_COLOR, COMPUTE_EDGE_COLOR, EDGE_COLORS, GUARD_EDGE_COLOR, READ_EDGE_COLOR, STEP_EDGE_COLOR, TOOL_EDGE_COLOR } from "./look";
+import { API_EDGE_COLOR, COMPUTE_EDGE_COLOR, EDGE_COLORS, GUARD_EDGE_COLOR, READ_EDGE_COLOR, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, TRIGGER_EDGE_COLOR } from "./look";
 import type { SceneNode } from "./build";
 import type { EdgeCategory } from "../lookup";
 
@@ -34,6 +34,7 @@ export function connectionStyle(
   destination: Pick<ModelResource, "kind"> | undefined,
 ): ConnectionStyle {
   const { relation } = edge;
+  if (relation === "trigger") return { color: TRIGGER_EDGE_COLOR, dashed: false };
   // An authorizer guards its route.
   if (relation === "authorizes") return { color: GUARD_EDGE_COLOR, dashed: false };
   if (destination && REFERENCES.has(relation)) {

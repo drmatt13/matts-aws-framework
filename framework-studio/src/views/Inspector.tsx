@@ -1,6 +1,6 @@
-import { ExternalLink, X } from "lucide-react";
-import type { ModelEdge, ModelResource, ModelRoute, ModelTarget, ModelWorkflow, Placement, SourceLocation } from "../../shared/model";
-import { editorLink, RELATION_LABEL, ROLE_LABEL, titleOf } from "../lookup";
+import { X } from "lucide-react";
+import type { ModelEdge, ModelResource, ModelRoute, ModelTarget, ModelWorkflow, Placement } from "../../shared/model";
+import { RELATION_LABEL, ROLE_LABEL, titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
 import { resourceIcon, routeIcon, targetIcon } from "../icons";
@@ -21,22 +21,8 @@ import { RouteStatus } from "./RouteStatus";
 import { Description } from "./Description";
 import { networkFixtureIds } from "../../shared/descriptions";
 import { buildScene } from "../scene/build";
-
-function Written(props: { readonly location: SourceLocation | undefined; readonly label?: string }) {
-  const { snapshot } = useStudio();
-  if (!props.location) return <p className="small muted">Its declaration could not be located in source.</p>;
-  const { location } = props;
-  return (
-    <div className="written">
-      <span>
-        {props.label ?? "Written in"} <code>{location.file}:{location.line}</code>
-      </span>
-      <a href={editorLink(snapshot.repositoryRoot, location)} className="small">
-        Open in VS Code <ExternalLink size={12} aria-hidden />
-      </a>
-    </div>
-  );
-}
+import { Written } from "./Written";
+import { Triggers } from "./Triggers";
 
 function LaneLines(props: { readonly target: ModelTarget }) {
   const { lanes } = props.target;
@@ -118,7 +104,7 @@ function Relations(props: { readonly id: string }) {
         ) : null}
         {edge.source ? <Written location={edge.source} label={edge.relation === "supplies" ? "Authored in" : "Inferred from"} /> : null}
       </span>
-      <code className="small">{edge.label}</code>
+      <button className="linkish small code" onClick={() => select(edge.id)}>{edge.label}</button>
     </li>
   );
   return (
@@ -229,6 +215,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
       <Description entity={target.ref} />
       <ApiAuthControl target={target} />
       <LocalReplayControl target={target} />
+      {target.role === "event" ? <Triggers key={target.ref} target={target} /> : null}
       <HttpRoutes target={target} />
       <LaneLines target={target} />
       {compute.kind === "lambda" ? <section>
@@ -350,6 +337,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
   const kind =
     resource.frameworkStack ? "Framework stack" : resource.kind === "stack" ? "Stack in the catalog" : resource.kind === "member" ? "Stack member" : resource.kind === "secret" ? "Authored secret" : resource.kind === "input" ? "Authored input" : resource.kind === "group" ? "Group of inputs" : "Construct";
   const database = [snapshot.models.dev, snapshot.models.prod].some((model) => model.edges.some((edge) => edge.relation === "database" && (edge.to === resource.id || edge.to.startsWith(`${resource.id}.`))));
+  const manual = snapshot.source.cdkLinks.manualWiring.filter((item) => item.resource === resource.id || item.resource.startsWith(`${resource.id}.`) || item.resource === resource.parent);
   return (
     <>
       <header>
@@ -386,6 +374,8 @@ function ResourceView(props: { readonly resource: ModelResource }) {
       </section>
       {resource.kind === "stack" && members.length ? <section><details className="stack-members" open><summary>Public fields <span className="muted">({members.length})</span></summary><ul className="relations">{members.map((member) => <li key={member.id}><button className="linkish" onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className="small muted">{member.typeText ?? member.kind}</code></li>)}</ul><p className="small muted">Read-only. Declared by the stack class.</p></details></section> : null}
       <InputSources resource={resource} />
+      {resource.kind === "member" ? <Triggers key={resource.id} resource={resource} /> : null}
+      {manual.length ? <section>{manual.map((item) => <div key={`${item.source.file}:${item.source.start}`}><p className="small muted">{item.reason}</p><Written location={item.source} label="Wiring in" /></div>)}</section> : null}
       {resource.kind === "input" || resource.kind === "secret" ? <ResourceEditor key={`${resource.id}:${model.mode}`} resource={resource} /> : null}
       <Relations id={resource.id} />
     </>

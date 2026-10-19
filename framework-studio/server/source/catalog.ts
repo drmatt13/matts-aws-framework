@@ -19,6 +19,7 @@ export interface StackMember {
   readonly typeText: string;
   readonly category: "construct" | "value" | "secret";
   readonly location: SourceLocation;
+  readonly assignments?: readonly SourceLocation[];
   readonly networkPlacement?: ModelResource["networkPlacement"];
 }
 
@@ -72,7 +73,7 @@ function stackClassName(value: ts.Expression): string | undefined {
       node.expression.name.text === "stack"
     ) {
       const argument = node.typeArguments?.[0];
-      if (argument && ts.isTypeReferenceNode(argument) && ts.isIdentifier(argument.typeName)) found = argument.typeName.text;
+      if (argument && ts.isTypeReferenceNode(argument)) found = argument.typeName.getText();
       return;
     }
     ts.forEachChild(node, visit);

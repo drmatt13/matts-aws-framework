@@ -11,7 +11,7 @@ import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickIsland,
 import { buildIconShape, ICON_BADGE } from "../src/scene/shapes";
 import { backgroundGrid } from "../src/scene/grid";
 import { islandFrame } from "../src/scene/frame";
-import { API_EDGE_COLOR, BAND_TRIM, COMPUTE_EDGE_COLOR, DECK, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, trimColor } from "../src/scene/look";
+import { API_EDGE_COLOR, BAND_TRIM, COMPUTE_EDGE_COLOR, DECK, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, TRIGGER_EDGE_COLOR, trimColor } from "../src/scene/look";
 import { behind, islandDrawOrder, islandSlabs, polygonArea, type IslandSlab } from "../src/scene/slabs";
 import { ICONS } from "../src/icons";
 import { catalogAvailability } from "../src/deployment";
@@ -721,7 +721,7 @@ test("the local database stands in the isolated subnet right beside RDS, solid i
 });
 
 test("a connection is drawn by what it references and where it starts, solid only where named", () => {
-  const colours = [API_EDGE_COLOR, COMPUTE_EDGE_COLOR, GUARD_EDGE_COLOR, TOOL_EDGE_COLOR, STEP_EDGE_COLOR, ...Object.values(EDGE_COLORS)];
+  const colours = [API_EDGE_COLOR, COMPUTE_EDGE_COLOR, GUARD_EDGE_COLOR, TOOL_EDGE_COLOR, STEP_EDGE_COLOR, TRIGGER_EDGE_COLOR, ...Object.values(EDGE_COLORS)];
   assert.equal(new Set(colours).size, colours.length, "each rule has a colour of its own");
   assert.equal(READ_EDGE_COLOR, EDGE_COLORS.inputs, "a value being read looks like an environment file supplying an input");
   const startsAt = (edge: { from: string }, ...prefixes: string[]) => prefixes.some((prefix) => edge.from.startsWith(prefix));
@@ -732,7 +732,8 @@ test("a connection is drawn by what it references and where it starts, solid onl
       const referenced = kindOf.get(edge.to);
       const reads = (edge.relation === "env" || edge.relation === "secret") && referenced !== undefined;
       const expect = (color: string, dashed: boolean) => assert.deepEqual(style, { color, dashed }, `${edge.id} (${edge.relation})`);
-      if (edge.relation === "authorizes") { seen.authorizer += 1; expect(GUARD_EDGE_COLOR, false); }
+      if (edge.relation === "trigger") expect(TRIGGER_EDGE_COLOR, false);
+      else if (edge.relation === "authorizes") { seen.authorizer += 1; expect(GUARD_EDGE_COLOR, false); }
       else if (edge.relation === "grant") expect(GUARD_EDGE_COLOR, true);
       else if (reads && (edge.relation === "secret" || referenced === "secret")) { seen.secret += 1; expect(GUARD_EDGE_COLOR, true); }
       else if (reads) { seen[referenced === "input" || referenced === "group" ? "input" : "stack"] += 1; expect(READ_EDGE_COLOR, true); }

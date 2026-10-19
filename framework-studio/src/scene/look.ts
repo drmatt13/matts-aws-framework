@@ -93,6 +93,9 @@ export const TOOL_EDGE_COLOR = "#2fd6b0";
 /** The workflow pink (Step Functions), lightened like the rest, for a workflow's steps. */
 export const STEP_EDGE_COLOR = "#ff5aa5";
 
+/** Event delivery: warm yellow, distinct from compute orange and every category colour. */
+export const TRIGGER_EDGE_COLOR = "#ead46c";
+
 const REGION_TRIM: Readonly<Record<Region, string>> = {
   entry: AWS.networking,
   compute: AWS.compute,

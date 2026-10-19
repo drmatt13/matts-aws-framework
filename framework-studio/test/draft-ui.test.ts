@@ -51,7 +51,7 @@ beforeEach(() => {
     planCalls.push(edits);
     await reviewGate;
     if (failReview) throw new Error("Could not validate changes. Try reviewing again.");
-    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
+    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
   });
   mock.method(apiModule.api, "applyBatch", async () => {
     applyCalls++; if (failApply) throw new Error("Source changed. Your draft is preserved.");
@@ -126,6 +126,56 @@ test("all selectable item kinds expose their authored description", async () => 
     assert.equal(description.value, baseline.descriptions.values[id], id);
     assert.equal(description.disabled, false, id);
     ui.cleanup();
+  }
+});
+
+test("read connection labels open compact evidence with line-numbered VS Code links", async () => {
+  await mount("lambda:sign-out");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "TRUSTED_FRONTEND_ORIGINS" }));
+  await ui.screen.findByRole("heading", { name: "TRUSTED_FRONTEND_ORIGINS" });
+  const evidence = baseline.models.dev.edges.find((edge) => edge.from === "lambda:sign-out" && edge.label === "TRUSTED_FRONTEND_ORIGINS")!.evidence!;
+  for (const item of evidence) {
+    const link = ui.screen.getByRole("link", { name: `${item.location.line} ${item.excerpt}` });
+    assert.ok(link.getAttribute("href")?.startsWith("vscode://file/"));
+    assert.ok(link.getAttribute("href")?.endsWith(`:${item.location.line}:${item.location.column}`));
+  }
+  assert.equal(planCalls.length, 0);
+  ui.cleanup();
+  const derived = baseline.models.dev.edges.find((edge) => edge.from === target && edge.label === "USER_POOL_ID")!;
+  await mount(derived.id);
+  assert.ok(ui.screen.getByText("Derived from the linked declaration."));
+  assert.ok(ui.screen.getByRole("link", { name: /userPool: true/ }));
+});
+
+test("event and public-field trigger flows stage through the shared review and keep native hooks occupied", async () => {
+  for (const selected of ["lambda:cognito-pre-signup-trigger", "resource:cognito.userPool"]) {
+    await mount(selected);
+    const summary = ui.screen.getByText(/^Triggers/, { selector: "summary" });
+    assert.equal(summary.closest("details")!.open, false);
+    ui.fireEvent.click(summary);
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add trigger" }));
+    if (selected.startsWith("lambda:")) ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Trigger public resource" }), { target: { value: "resource:cognito.userPool" } });
+    else {
+      const selector = ui.screen.getByRole("combobox", { name: "Trigger event Lambda" });
+      assert.equal(selector.querySelectorAll("option").length, baseline.models.dev.targets.filter((item) => item.role === "event").length + 1);
+      ui.fireEvent.change(selector, { target: { value: "invocation-test-step" } });
+    }
+    const hooks = ui.screen.getByRole("combobox", { name: "Trigger Hook" });
+    assert.equal((ui.within(hooks).getByRole("option", { name: "preSignUp · occupied" }) as HTMLOptionElement).disabled, true);
+    ui.fireEvent.change(hooks, { target: { value: "preAuthentication" } });
+    ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Acknowledge trigger handler contract" }));
+    assert.equal(planCalls.length, 0);
+    assert.match(count(), /1 unsaved change/);
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Done" }));
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+    await waitDialog("Review 1 change");
+    await ui.waitFor(() => assert.equal(planCalls.at(-1)?.[0]?.kind, "triggers"));
+    const edit = planCalls.at(-1)![0]!;
+    assert.ok(edit.kind === "triggers");
+    assert.equal(edit.bindings[0]!.resource, "resource:cognito.userPool");
+    assert.equal(edit.bindings[0]!.accepts, "cognito");
+    assert.equal(applyCalls, 0);
+    ui.cleanup(); planCalls = [];
   }
 });
 

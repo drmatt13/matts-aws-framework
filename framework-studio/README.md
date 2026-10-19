@@ -277,6 +277,15 @@ tests and the browser console.
 
 ## What it edits
 
+Event Lambdas and compatible public stack fields have a collapsed **Triggers** section.
+Select a public resource (optionally filter by stack), an event Lambda, the invocation
+and its options. The picker resolves canonical CDK types, including aliases and inherited
+fields. Unavailable fields show their reason (a missing stream, a FIFO topic, a native
+consumer or notification, a short queue visibility); native hooks stay occupied. Acknowledge
+the handler's required payload/response contract, then use **Review Changes** and
+**Apply All**. Changes, reassignments and removals share exact undo/redo and source-conflict
+checks. Preview checks both graphs and TypeScript; it never executes CDK or deploys.
+
 Every map node, public stack field, island, gateway and endpoint has a **Description**
 in its inspector. Descriptions are shared by Development and Production and saved as
 literal strings in `framework-config/descriptions.ts`, keyed by canonical entity ID.

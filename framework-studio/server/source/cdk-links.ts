@@ -5,6 +5,7 @@ import type { CdkLinkIndex, ModelEdge, SourceLocation } from "../../shared/model
 import { sha256 } from "../files";
 import type { CatalogEntrySource } from "./catalog";
 import { lineAndColumn, literalKey, parse, unwrap } from "./syntax";
+import { COGNITO_TRIGGER_OPERATIONS } from "../../../packages/framework/src/config/triggers";
 
 /** Conservative syntax scan of linked stack constructors. Never imports or synthesizes CDK. */
 export function scanCdkLinks(
@@ -14,7 +15,8 @@ export function scanCdkLinks(
 ): CdkLinkIndex {
   const files: Record<string, string> = {};
   const edges: ModelEdge[] = [];
-  const notes = ["Source inference only: direct constructor statements, public members, constructor references, SNS SQS subscriptions and EventBridge rules with explicit resource references. Helpers, conditions, loops, dynamic names and runtime behavior are not resolved."];
+  const manualWiring: CdkLinkIndex["manualWiring"][number][] = [];
+  const notes = ["Source inference only: direct constructor statements, published local constructs, eventFunction aliases, Cognito hooks, SNS subscriptions, event sources, S3 notifications and EventBridge targets. Helpers, conditions, loops, dynamic names and runtime behavior require manual wiring review."];
   for (const [catalogPath, entry] of catalog) {
     const stack = entry.stack;
     if (!stack?.location) continue;
@@ -48,6 +50,16 @@ export function scanCdkLinks(
       const imported = ts.isIdentifier(expression) ? imports.get(expression.text) : undefined;
       return imported?.module === `aws-cdk-lib/${module}` && imported.name === name;
     };
+    const eventAliases = new Map<string, string>();
+    const eventRef = (expression: ts.Expression): string | undefined => {
+      const value = unwrap(expression);
+      if (ts.isIdentifier(value)) return eventAliases.get(value.text);
+      if (!ts.isCallExpression(value) || !ts.isIdentifier(value.expression)) return undefined;
+      const imported = imports.get(value.expression.text);
+      if (imported?.name !== "eventFunction" || path.resolve(path.dirname(path.join(repositoryRoot, file)), imported.module).replace(/\.ts$/, "") !== path.resolve(repositoryRoot, "cdk-app/lib/framework/framework-events")) return undefined;
+      const id = value.arguments[1];
+      return value.arguments[0]?.kind === ts.SyntaxKind.ThisKeyword && id && ts.isStringLiteralLike(id) ? `lambda:${id.text}` : undefined;
+    };
     const ref = (node: ts.Expression): string | undefined => {
       const value = unwrap(node);
       if (ts.isIdentifier(value)) return aliases.get(value.text);
@@ -66,13 +78,21 @@ export function scanCdkLinks(
       visit(node);
       return [...found];
     };
-    const add = (from: string, to: string, label: string, node: ts.Node): void => {
+    const locate = (node: ts.Node): SourceLocation => {
+      const start = node.getStart(source);
+      return { file, ...lineAndColumn(source, start), start, end: node.end };
+    };
+    const manual = (resource: string | undefined, node: ts.Node, reason = "Manual wiring, review required"): void => {
+      const location = locate(node);
+      if (!manualWiring.some((item) => item.resource === (resource ?? `resource:${catalogPath}`) && item.source.start === location.start)) manualWiring.push({ resource: resource ?? `resource:${catalogPath}`, source: location, reason });
+    };
+    const add = (from: string, to: string, label: string, node: ts.Node, relation: "cdk" | "trigger" = "cdk"): void => {
       if (from === to) return;
       const start = node.getStart(source);
       const location = { file, ...lineAndColumn(source, start), start, end: node.end };
-      const id = `cdk:${from}->${to}#${file}:${start}:${label}`;
+      const id = `${relation}:${from}->${to}#${file}:${start}:${label}`;
       if (edges.some((edge) => edge.id === id)) return;
-      edges.push({ id, relation: "cdk", from, to, label, provenance: "source", source: location, detail: `Inferred from CDK source · ${file}:${location.line}` });
+      edges.push({ id, relation, from, to, label, provenance: "source", source: location, detail: `${relation === "trigger" ? "Native trigger" : "Inferred from CDK source"} · ${file}:${location.line}` });
     };
     const properties = (expression: ts.Expression | undefined): readonly ts.ObjectLiteralElementLike[] => {
       const value = expression && unwrap(expression);
@@ -82,30 +102,93 @@ export function scanCdkLinks(
       const prop = properties(expression).find((item) => literalKey(item) === name);
       return prop && ts.isPropertyAssignment(prop) ? prop.initializer : undefined;
     };
+    // A constructor-local construct can be published after all its native wiring.
+    const variables = new Map<string, ts.Expression>();
+    for (const statement of constructor.body.statements) if (ts.isVariableStatement(statement) && statement.declarationList.flags & ts.NodeFlags.Const) for (const variable of statement.declarationList.declarations) {
+      if (ts.isIdentifier(variable.name) && variable.initializer) variables.set(variable.name.text, variable.initializer);
+    }
+    for (const statement of constructor.body.statements) if (ts.isExpressionStatement(statement)) {
+      const value = unwrap(statement.expression);
+      if (ts.isBinaryExpression(value) && value.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(value.right)) {
+        const initializer = variables.get(value.right.text);
+        const id = ref(value.left);
+        if (id && initializer && ts.isNewExpression(unwrap(initializer))) aliases.set(value.right.text, id);
+      }
+    }
+    const resolve = (node: ts.Expression): ts.Expression => ts.isIdentifier(unwrap(node)) ? variables.get((unwrap(node) as ts.Identifier).text) ?? node : node;
+    const trigger = (from: string | undefined, expression: ts.Expression | undefined, label: string, node: ts.Node) => {
+      const to = expression && eventRef(expression);
+      if (from && to) add(from, to, label, node, "trigger");
+      else manual(from, node);
+    };
     const inspect = (expression: ts.Expression, owner?: string): void => {
       const value = unwrap(expression);
+      if (ts.isCallExpression(value) && ts.isIdentifier(value.expression) && !eventRef(value)) {
+        const resources = value.arguments.flatMap(references);
+        for (const id of resources) manual(id, value);
+      }
       if (ts.isNewExpression(value)) {
         const props = value.arguments?.[2];
+        const hooks = property(props, "lambdaTriggers");
+        if (hooks) {
+          const entries = properties(resolve(hooks));
+          if (!owner || !entries.length) manual(owner, hooks);
+          for (const hook of entries) {
+            if (ts.isPropertyAssignment(hook) && literalKey(hook)) trigger(owner, hook.initializer, literalKey(hook)!, hook);
+            else manual(owner, hook);
+          }
+        }
         if (owner && props) {
           for (const prop of properties(props)) {
             if (!ts.isPropertyAssignment(prop)) continue;
             const name = literalKey(prop);
-            for (const target of references(prop.initializer)) add(owner, target, name === "deadLetterQueue" ? "Dead-letter queue" : `CDK reference · ${name ?? "property"}`, prop);
+            if (name !== "lambdaTriggers") for (const target of references(prop.initializer)) add(owner, target, name === "deadLetterQueue" ? "Dead-letter queue" : `CDK reference · ${name ?? "property"}`, prop);
           }
         }
         if (isConstructor(value, "aws-events", "Rule")) {
           const pattern = property(props, "eventPattern");
           const targets = property(props, "targets");
           if (pattern && targets) for (const from of references(pattern)) for (const to of references(targets)) add(from, to, "EventBridge rule", value);
+          const bus = property(props, "eventBus");
+          const targetList = targets && unwrap(resolve(targets));
+          if (targetList && ts.isArrayLiteralExpression(targetList)) for (const item of targetList.elements) {
+            const target = unwrap(resolve(item));
+            if (ts.isNewExpression(target) && isConstructor(target, "aws-events-targets", "LambdaFunction")) trigger(bus && ref(bus), target.arguments?.[0], "EventBridge rule", value);
+          }
         }
       }
       if (ts.isCallExpression(value) && ts.isPropertyAccessExpression(value.expression)) {
         const from = ref(value.expression.expression);
-        const subscription = value.arguments[0] && unwrap(value.arguments[0]);
+        const subscription = value.arguments[0] && unwrap(resolve(value.arguments[0]));
         if (from && value.expression.name.text === "addSubscription" && subscription && ts.isNewExpression(subscription) && isConstructor(subscription, "aws-sns-subscriptions", "SqsSubscription")) {
           const to = subscription.arguments?.[0] && ref(subscription.arguments[0]);
           if (to) add(from, to, "SNS subscription", value);
         }
+        const method = value.expression.name.text;
+        const override = value.arguments[0];
+        if (["addOverride", "addPropertyOverride"].includes(method) && override && ts.isStringLiteralLike(override) && ["LambdaConfig", "NotificationConfiguration", "Targets", "EventSourceArn"].some((name) => override.text.includes(name))) manual(from, value);
+        if (method === "addSubscription" && subscription && ts.isNewExpression(subscription) && isConstructor(subscription, "aws-sns-subscriptions", "LambdaSubscription")) trigger(from, subscription.arguments?.[0], "SNS subscription", value);
+        if (method === "addEventSource") {
+          const fn = eventRef(value.expression.expression);
+          const eventSource = subscription && unwrap(resolve(subscription));
+          const types = [["SqsEventSource", "SQS"], ["DynamoEventSource", "DynamoDB stream"], ["S3EventSource", "S3 notification"]] as const;
+          const type = eventSource && ts.isNewExpression(eventSource) ? types.find(([name]) => isConstructor(eventSource, "aws-lambda-event-sources", name)) : undefined;
+          const resource = type && ts.isNewExpression(eventSource!) ? eventSource.arguments?.[0] : undefined;
+          const sourceId = resource && ref(resource);
+          if (sourceId && fn) add(sourceId, fn, type![1], value, "trigger"); else manual(sourceId, value);
+        }
+        if (method === "addEventNotification" || method === "addObjectCreatedNotification" || method === "addObjectRemovedNotification") {
+          const notification = value.arguments[method === "addEventNotification" ? 1 : 0];
+          const destination = notification && unwrap(resolve(notification));
+          if (destination && ts.isNewExpression(destination) && isConstructor(destination, "aws-s3-notifications", "LambdaDestination")) trigger(from, destination.arguments?.[0], method === "addEventNotification" ? value.arguments[0]?.getText(source) ?? "S3 notification" : method, value);
+          else manual(from, value);
+        }
+        if (method === "addTrigger") {
+          const operation = value.arguments[0];
+          const hook = operation && ts.isPropertyAccessExpression(operation) ? Object.entries(COGNITO_TRIGGER_OPERATIONS).find(([, name]) => name === operation.name.text)?.[0] : undefined;
+          trigger(from, value.arguments[1], hook ?? operation?.getText(source) ?? "Cognito hook", value);
+        }
+        if (method === "addSubscription" && (!subscription || !ts.isNewExpression(subscription) || !["SqsSubscription", "LambdaSubscription"].some((name) => isConstructor(subscription, "aws-sns-subscriptions", name)))) manual(from, value);
       }
     };
     for (const member of declaration!.members) {
@@ -118,7 +201,9 @@ export function scanCdkLinks(
           if (!variable.initializer) continue;
           const id = ref(variable.initializer);
           if (id && ts.isIdentifier(variable.name)) aliases.set(variable.name.text, id);
-          inspect(variable.initializer);
+          const event = eventRef(variable.initializer);
+          if (event && ts.isIdentifier(variable.name)) eventAliases.set(variable.name.text, event);
+          inspect(variable.initializer, ts.isIdentifier(variable.name) ? aliases.get(variable.name.text) : undefined);
         }
       }
       if (!ts.isExpressionStatement(statement)) continue;
@@ -126,6 +211,17 @@ export function scanCdkLinks(
       if (ts.isBinaryExpression(value) && value.operatorToken.kind === ts.SyntaxKind.EqualsToken) inspect(value.right, ref(value.left));
       else inspect(value);
     }
+    // Unknown/conditional wiring is occupied conservatively; it never authorizes an edit.
+    const direct = new Set(constructor.body.statements);
+    const findManual = (node: ts.Node, nested = false): void => {
+      const indirect = nested || (ts.isStatement(node) && node !== constructor.body && !direct.has(node));
+      if (indirect && ((ts.isPropertyAssignment(node) && literalKey(node) === "lambdaTriggers") || (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression) && ["addTrigger", "addSubscription", "addEventSource", "addEventNotification"].includes(node.expression.name.text)))) {
+        const ids = references(node);
+        for (const id of ids.length ? ids : [`resource:${catalogPath}`]) manual(id, node);
+      }
+      ts.forEachChild(node, (child) => findManual(child, indirect));
+    };
+    findManual(constructor.body);
   }
-  return { version: 1, files, edges: edges.sort((a, b) => a.id.localeCompare(b.id)), notes };
+  return { version: 2, files, edges: edges.sort((a, b) => a.id.localeCompare(b.id)), notes, manualWiring };
 }

@@ -17,6 +17,7 @@ export interface EditIntent {
 }
 
 export type DraftEdit =
+  | { readonly kind: "triggers"; readonly event: string; readonly bindings: readonly import("./triggers").TriggerBinding[] }
   | { readonly kind: "description"; readonly entity: string; readonly value: string }
   | { readonly kind: "field"; readonly intent: EditIntent }
   | { readonly kind: "route"; readonly route: string; readonly value: string };
