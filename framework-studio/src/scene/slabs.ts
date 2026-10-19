@@ -57,6 +57,10 @@ export interface IslandSlab {
   readonly island: Island;
   /** The chamfered outline in grid cells, [gx, gy, ...], clockwise on screen from the back. */
   readonly outline: readonly number[];
+  /** The same outline at the top of the island, in world units: the rim of a deck seen as one piece. */
+  readonly rim: readonly number[];
+  /** Its bands are zones on one continuous deck (an unbuilt network), not terraces standing apart. */
+  readonly deck: boolean;
   readonly bands: readonly BandSlab[];
   /** The outline cast onto a floor far below, from its sharp core outward. */
   readonly shadow: readonly (readonly number[])[];
@@ -171,8 +175,11 @@ function islandSlab(island: Island, standing: readonly { readonly id: string; re
   const outline = octagon(x0, y0, x1, y1, cut);
   const floor = island.base;
 
-  // A terraced island's slabs stand apart by a narrow seam, each a deck of its own.
-  const seam = island.bands.length > 1 ? GRAPHITE.terraceGap / 2 : 0;
+  // A terraced island's slabs stand apart by a narrow seam, each a deck of its own. An unbuilt network is the
+  // exception: its subnets are zones on one continuous deck, level and flush, with no wall between them. A
+  // built network keeps its separate terraces.
+  const deck = island.ghost === "blueprint" && island.bands.length > 1 && island.bands.every((band) => band.h === island.bands[0]!.h);
+  const seam = island.bands.length > 1 && !deck ? GRAPHITE.terraceGap / 2 : 0;
   const bands = island.bands.map((band, index): BandSlab => {
     const u0 = band.gx0 - 0.5 + (index > 0 ? seam : 0);
     const u1 = band.gx1 + 0.5 - (index < island.bands.length - 1 ? seam : 0);
@@ -273,6 +280,8 @@ function islandSlab(island: Island, standing: readonly { readonly id: string; re
   return {
     island,
     outline: flat(outline),
+    rim: world(outline, Math.max(...island.bands.map((band) => band.h))),
+    deck,
     bands,
     shadow,
     bounds: boundsOf(bands.flatMap((band) => [band.top, ...band.walls.map((wall) => wall.quad)]), HEADROOM),

@@ -5,7 +5,7 @@ import type { Prop, Scene, SceneEdge, SceneNode } from "./build";
 import { worldToScreen, type Bounds, type Camera, type Point, type Viewport } from "./camera";
 import { project } from "./iso";
 import { searchOpacity, type LandscapeFocus } from "./focus";
-import { bandTrim, GRAPHITE, hexRgb, ICON_TINT, trimColor } from "./look";
+import { bandTrim, DECK, GRAPHITE, hexRgb, ICON_TINT, trimColor } from "./look";
 import { offLens, restingAlpha } from "./connections";
 import { acceptCards, placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
 import { ICON_BADGE, type Face } from "./shapes";
@@ -123,6 +123,8 @@ interface GraphiteBand {
   readonly lips: Path2D;
   /** The foot of each wall that falls to the floor. */
   readonly feet: Path2D;
+  /** On a continuous deck: the edges of this subnet's walls that are the deck's own, never the joins to the next subnet. */
+  readonly deckEdges: Path2D;
   readonly front?: Path2D;
   readonly frontLength: number;
   readonly shade?: { readonly path: Path2D; readonly fill: CanvasGradient };
@@ -136,6 +138,8 @@ interface GraphiteIsland {
   readonly slab: IslandSlab;
   readonly bands: readonly GraphiteBand[];
   readonly shadow: readonly Path2D[];
+  /** The island's whole outline at its top: the rim of a continuous deck. */
+  readonly rim: Path2D;
 }
 
 const OUTSIDE = (box: Bounds | undefined, view: Bounds) =>
@@ -274,6 +278,18 @@ export class SceneRenderer {
           toPath(run.lip, false, lips);
           if (run.rim) toPath([run.quad[6]!, run.quad[7]!, run.quad[4]!, run.quad[5]!], false, feet);
         }
+        // A continuous deck is outlined by its foot and its true corners; where one subnet's wall continues into the next there is no line.
+        const deckEdges = new Path2D();
+        const last = slab.bands.length - 1;
+        for (const { run } of walls) {
+          const [lx, ly, rx, ry, fx, fy, gx, gy] = run.quad as [number, number, number, number, number, number, number, number];
+          deckEdges.moveTo(gx, gy);
+          deckEdges.lineTo(fx, fy);
+          const joinsNext = slab.deck && run.side === "left" && band.index < last;
+          const joinsPrevious = slab.deck && run.side === "left" && band.index > 0;
+          if (!joinsNext) { deckEdges.moveTo(rx, ry); deckEdges.lineTo(fx, fy); }
+          if (!joinsPrevious) { deckEdges.moveTo(lx, ly); deckEdges.lineTo(gx, gy); }
+        }
         // Etched pads under solid buildings only: a ghost stands on bare ground.
         const pads = new Path2D();
         for (const pad of band.pads) if (!ghosts.has(pad.id)) toPath(pad.points, true, pads);
@@ -295,6 +311,7 @@ export class SceneRenderer {
           walls,
           lips,
           feet,
+          deckEdges,
           ...(band.front.length >= 4 ? { front: toPath(band.front, false) } : {}),
           frontLength: polylineLength(band.front),
           ...(shade ? { shade } : {}),
@@ -311,7 +328,7 @@ export class SceneRenderer {
             }),
         };
       });
-      return { slab, bands, shadow: slab.shadow.map((layer) => toPath(layer)) };
+      return { slab, bands, shadow: slab.shadow.map((layer) => toPath(layer)), rim: toPath(slab.rim) };
     });
   }
 
@@ -439,11 +456,11 @@ export class SceneRenderer {
   private drawGraphite(prepared: Prepared, state: RenderState, view: Bounds): number {
     const context = this.context;
     for (const { slab, shadow } of prepared.graphite) {
-      if (slab.island.ghost === "blueprint" || OUTSIDE(slab.shadowBounds, view)) continue;
+      if (OUTSIDE(slab.shadowBounds, view)) continue;
       this.opacity = searchOpacity(state.focus, "islands", slab.island.id);
       context.fillStyle = "#000";
       shadow.forEach((layer, index) => {
-        context.globalAlpha = this.opacity * (GRAPHITE.shadow.layers[index]!.alpha * (slab.island.ghost ? 0.3 : 1));
+        context.globalAlpha = this.opacity * (GRAPHITE.shadow.layers[index]!.alpha * (slab.island.ghost === "blueprint" ? DECK.shadow : slab.island.ghost ? 0.3 : 1));
         context.fill(layer);
       });
     }
@@ -499,27 +516,7 @@ export class SceneRenderer {
     context.lineCap = "round";
     context.lineWidth = pixel;
     if (ghost === "blueprint") {
-      // A drawing of a network this deployment does not build: glass, hairlines and dashes, in the terrace's colour.
-      const blueprint = trim;
-      context.fillStyle = rgba(blueprint, 0.05);
-      context.fill(band.top);
-      context.save();
-      context.clip(band.top);
-      context.strokeStyle = rgba(blueprint, 0.12);
-      context.stroke(band.grid);
-      context.restore();
-      for (const wall of band.walls) {
-        context.fillStyle = rgba(blueprint, 0.035);
-        context.fill(wall.path);
-      }
-      context.setLineDash([4 * pixel, 4 * pixel]);
-      context.strokeStyle = rgba(blueprint, 0.3);
-      for (const wall of band.walls) context.stroke(wall.path);
-      context.stroke(band.pads);
-      context.strokeStyle = rgba(blueprint, 0.62);
-      context.stroke(band.top);
-      context.setLineDash([]);
-      this.drawWallName(island, band, rgba(mixRgb(blueprint, WHITE, 0.3), 0.7));
+      this.drawDeckBand(island, band);
       return;
     }
     context.globalAlpha = this.opacity * (ghost ? 0.3 : 1);
@@ -582,6 +579,49 @@ export class SceneRenderer {
     context.globalCompositeOperation = "source-over";
     context.globalAlpha = this.opacity;
     context.lineWidth = pixel;
+  }
+
+  /**
+   * One subnet of an unbuilt network, as a quiet zone on the single raised deck: the deck's dark glass
+   * with a whisper of the subnet's colour and nothing drawn between subnets, one dashed rim around the whole
+   * deck (drawn with the last subnet), pads under the solid buildings, and the subnet's name on the wall.
+   */
+  private drawDeckBand(island: GraphiteIsland, band: GraphiteBand): void {
+    const context = this.context;
+    const pixel = this.pixel;
+    const meta = island.slab.island;
+    const violet = hexRgb(trimColor(meta));
+    const glass = (alpha: number) => rgba(mixRgb(DECK.glass.color, violet, DECK.glass.tint), alpha);
+    context.fillStyle = glass(DECK.glass.top);
+    context.fill(band.top);
+    context.fillStyle = rgba(band.trim, DECK.zone);
+    context.fill(band.top);
+    context.save();
+    context.clip(band.top);
+    context.strokeStyle = `rgba(255, 255, 255, ${DECK.grid})`;
+    context.stroke(band.grid);
+    context.restore();
+    // What stands on the deck is anchored by a pad of its own.
+    context.fillStyle = `rgba(255, 255, 255, ${DECK.pad.fill})`;
+    context.fill(band.pads);
+    context.strokeStyle = rgba(band.trim, DECK.pad.stroke);
+    context.stroke(band.pads);
+    for (const wall of band.walls) {
+      context.fillStyle = glass(DECK.wall[wall.run.side]);
+      context.fill(wall.path);
+    }
+    context.setLineDash([4 * pixel, 4 * pixel]);
+    context.strokeStyle = rgba(violet, DECK.wallEdge);
+    context.stroke(band.deckEdges);
+    if (band.slab.index === meta.bands.length - 1) {
+      context.setLineDash([6 * pixel, 4 * pixel]);
+      context.strokeStyle = rgba(violet, DECK.rim);
+      context.lineWidth = 1.3 * pixel;
+      context.stroke(island.rim);
+      context.lineWidth = pixel;
+    }
+    context.setLineDash([]);
+    this.drawWallName(island, band, rgba(mixRgb(band.trim, WHITE, 0.4), DECK.label));
   }
 
   /**

@@ -11,7 +11,7 @@ import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickIsland,
 import { buildIconShape, ICON_BADGE } from "../src/scene/shapes";
 import { backgroundGrid } from "../src/scene/grid";
 import { islandFrame } from "../src/scene/frame";
-import { API_EDGE_COLOR, BAND_TRIM, COMPUTE_EDGE_COLOR, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, trimColor } from "../src/scene/look";
+import { API_EDGE_COLOR, BAND_TRIM, COMPUTE_EDGE_COLOR, DECK, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, trimColor } from "../src/scene/look";
 import { behind, islandDrawOrder, islandSlabs, polygonArea, type IslandSlab } from "../src/scene/slabs";
 import { ICONS } from "../src/icons";
 import { catalogAvailability } from "../src/deployment";
@@ -1059,9 +1059,45 @@ test("islands draw back to front: of two that overlap on screen, the one behind 
   }
 });
 
-test("switching the graph changes how slabs are lit, never their shape", () => {
-  const shape = (scene: Scene) => islandSlabs(scene).map(({ island, outline, bands, shadow }) => ({ id: island.id, outline, bands, shadow }));
+test("switching the graph changes how slabs are lit, never an island's outline, rim, shadow or place", () => {
+  // Only how the VPC is cut differs: one deck while it is unbuilt, terraces once built (tested below), so its bands compare by identity.
+  const shape = (scene: Scene) => islandSlabs(scene).map(({ island, outline, rim, shadow, bands }) => ({ id: island.id, outline, rim, shadow, bands: island.region === "network" ? bands.map((band) => band.id) : bands }));
   assert.deepEqual(shape(prod), shape(dev));
+});
+
+test("an unbuilt VPC is one continuous deck, and a built one keeps its terraces apart", () => {
+  const vpc = (scene: Scene) => islandSlabs(scene).find((slab) => slab.island.id === "island:vpc")!;
+  const deck = vpc(dev), terraces = vpc(furnished());
+  assert.equal(deck.island.ghost, "blueprint");
+  assert.equal(terraces.island.ghost, undefined);
+  assert.equal(deck.deck, true);
+  assert.equal(terraces.deck, false, "a built network is never merged");
+  for (const slab of [...islandSlabs(dev), ...islandSlabs(prod), ...islandSlabs(furnished())].filter((candidate) => candidate.island.id !== "island:vpc" || candidate.island.ghost !== "blueprint")) assert.equal(slab.deck, false, `${slab.island.id} stays as it was`);
+  const covered = (slab: typeof deck) => slab.bands.reduce((sum, band) => sum + polygonArea(band.region), 0);
+  // The deck: the subnets tile the whole outline, flush, with no seam.
+  assert.ok(Math.abs(covered(deck) - polygonArea(deck.outline)) < 1e-9, "no seam");
+  const columns = deck.bands.map((band) => band.region.filter((_, at) => at % 2 === 0));
+  for (let index = 1; index < columns.length; index += 1) assert.ok(Math.abs(Math.min(...columns[index]!) - Math.max(...columns[index - 1]!)) < 1e-9, "flush");
+  // No wall between subnets: a right-hand wall only on the last, one front-left run per subnet along the one long wall, and nothing steps down.
+  deck.bands.forEach((band, index) => {
+    assert.equal(band.walls.filter((wall) => wall.rim && wall.side === "right").length, index === deck.bands.length - 1 ? 1 : 0, band.id);
+    assert.equal(band.walls.filter((wall) => wall.rim && wall.side === "left").length, 1, band.id);
+    assert.ok(band.walls.every((wall) => wall.rim), `${band.id}: nothing steps down`);
+  });
+  // The rim is the whole outline raised to the deck's height, and the same subnets stand either way.
+  assert.equal(deck.rim.length, deck.outline.length);
+  assert.deepEqual(deck.bands.map((band) => band.id), terraces.bands.map((band) => band.id));
+  // The built network is exactly as it was: a seam between terraces, and a right-hand wall beside each.
+  assert.ok(covered(terraces) < polygonArea(terraces.outline) - 1e-9, "a seam between terraces");
+  for (const band of terraces.bands) assert.equal(band.walls.filter((wall) => wall.rim && wall.side === "right").length, 1, band.id);
+});
+
+test("the unbuilt deck keeps its subnets quiet and its rim the strongest line", () => {
+  assert.ok(DECK.zone <= 0.12, "a subnet is a whisper of its colour");
+  assert.ok(DECK.zone < DECK.pad.stroke && DECK.pad.stroke < DECK.rim, "pads anchor what stands on it, and the rim outranks them");
+  assert.ok(DECK.glass.top >= 0.5 && DECK.glass.top < 0.8, "dark glass with body, still glass");
+  assert.ok(DECK.label >= 0.85, "a subnet's name stays legible");
+  assert.ok(DECK.shadow > 0 && DECK.shadow < 1, "a lighter shadow than a built island's");
 });
 
 test("every island has a trim in its icons' colour family, and every icon a tint", () => {

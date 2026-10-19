@@ -241,8 +241,13 @@ Each island is drawn as continuous slabs, one per band, rather than a field of t
   is written only when it would be at least 9 px tall and fits its wall; otherwise the
   flat title stands in for it.
 - **Ghosts.**
-  - An unbuilt VPC is a blueprint, in each subnet's own colour: a translucent top with
-    hairlines, dashed outlines and walls, no glow and no cast shadow.
+  - An unbuilt VPC (Development always; Production when nothing is placed in it) is one
+    raised deck of dark glass rather than a slice per subnet (the `DECK` values in
+    `look.ts`). Its subnets are flush zones on that deck, each a faint wash of its own
+    colour with its name on the front wall, and nothing is drawn between them. A single
+    dashed rim in the VPC violet says it is not built here, a light cast shadow stands the
+    deck off the ground, and a pad under each solid building anchors it. A built VPC is
+    unchanged: separate terraces with a seam between them.
   - Disabled islands draw at 30 % with a dashed trim.
 - **Focus.** With a selection, islands holding nothing in the spotlight dim their trim to
   40 %. While motion is on, a bright dash runs along the selected building's island trim.

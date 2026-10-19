@@ -11,6 +11,7 @@ import { buildScene } from "../src/scene/build";
 import { connectionMidpoint } from "../src/scene/routing";
 import { worldToScreen, type Camera, type Viewport } from "../src/scene/camera";
 import { catalogAvailability } from "../src/deployment";
+import { DECK, hexRgb, ISLAND_TRIM } from "../src/scene/look";
 
 let builder: SnapshotBuilder;
 let response: SnapshotResponse;
@@ -191,6 +192,14 @@ test("the real renderer draws resting connections a little stronger, and those o
   assert.ok(alphas.has(0.15), "a resting connection the environment leaves out, at half the strength");
   assert.ok(!alphas.has(0.6), "nothing is emphasised above the resting strength");
   assert.ok(!alphas.has(0.24), "the old resting strength is gone");
+});
+
+test("in Development the real renderer strokes the unbuilt VPC as one deck with a single violet rim", async () => {
+  await mount();
+  await draw();
+  const [r, g, b] = hexRgb(ISLAND_TRIM["island:vpc"]!);
+  assert.ok(strokes.includes(`rgba(${r}, ${g}, ${b}, ${DECK.rim})`), "the dashed rim of the whole deck");
+  assert.ok(strokes.includes(`rgba(${r}, ${g}, ${b}, ${DECK.wallEdge})`), "the dashed edge along its walls");
 });
 
 interface Pointing {

@@ -123,6 +123,32 @@ export function bandTrim(island: Pick<Island, "id" | "region" | "bands">, index:
   return hexRgb(BAND_TRIM[island.bands[index]?.id ?? ""] ?? trimColor(island));
 }
 
+/**
+ * The unbuilt network (Development always; Production when nothing is placed in it) is one raised deck of dark
+ * glass rather than a slice per subnet. Its single dashed rim in the VPC violet says it is not built here; the
+ * subnets are quiet zones on its surface, each a faint wash of its own colour with its name on the front wall
+ * and nothing drawn between them, so the icons and labels stay the loudest things on it. Pads under the solid
+ * buildings anchor them. A built network keeps its separate terraces.
+ */
+export const DECK = {
+  /** The glass, mixed a little toward the VPC violet: its top and each kind of wall. */
+  glass: { color: [11, 14, 24] as Rgb, tint: 0.14, top: 0.6 },
+  wall: { front: 0.5, left: 0.42, right: 0.58 },
+  /** Each subnet's wash over the glass: a whisper. */
+  zone: 0.085,
+  /** The etched grid (white), and the dashed rim of the whole deck. */
+  grid: 0.06,
+  rim: 0.9,
+  /** The dashed edge along each wall. */
+  wallEdge: 0.4,
+  /** The pad under each solid building: its fill (white) and its outline in the subnet's colour. */
+  pad: { fill: 0.05, stroke: 0.42 },
+  /** A subnet's name on the front wall. */
+  label: 0.9,
+  /** The share of a built island's cast shadow, so the deck stands off the ground. */
+  shadow: 0.35,
+} as const;
+
 /** The graphite look's fixed values. Colours are RGB; widths are screen pixels. */
 export const GRAPHITE = {
   void: { top: "#0b1018", bottom: "#05070b", vignette: [4, 6, 10] as Rgb },
