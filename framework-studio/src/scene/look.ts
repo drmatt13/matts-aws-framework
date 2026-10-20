@@ -74,6 +74,7 @@ export const ISLAND_TRIM: Readonly<Record<string, string>> = {
   "island:stacks": "#6f93c9",
   "island:inputs": AWS.security,
   "island:environment": "#2fb3bc",
+  "island:client-environment": "#5b9ee6",
 };
 
 /** A connection's colour, by the kind of relationship it draws. */

@@ -423,6 +423,22 @@ missing file's node wears a red cross. Reads never create files. Watchers
 refresh both source projections, while inventory fingerprints track the selected mode's
 file. These projections are not framework declarations or a second configuration store.
 
+`framework-config/client-environment.ts` holds literal, mode-specific client-variable
+references. `scripts/client-environment-mapping.ts` defines their types (input, public
+stack output, deployment region, URL from a port, or empty), with per-mode enable flags.
+`server/client-environment-source.ts` reads source literals without executing code and
+rewrites only changed fields. Validation rejects secret inputs, raw values and private
+outputs. The source file participates in the existing config hashes and watcher.
+
+`server/client-environment.ts` binds declarations to current resource IDs after input-file
+and output-stack projection. `client-envfile` stands on `island:client-environment`;
+its `maps` edges use the selected mode's CDK input file or existing stack identity. A
+disabled field retains its reference but has no connection in that mode. The compact
+file/island editor joins the inspector draft and batch review/apply flow, including
+conflict checks, atomic writes, confirmation and global undo/redo. New fields start empty
+in both modes. Region refers to Cognito's deployment metadata, not the local SDK region.
+This projection does not read client values, query deployed outputs or generate files.
+
 `scripts/cloud-assembly.ts` extends the deployment assembly reader into a shared
 manifest traversal. It follows listed stacks and nested cloud assemblies, validates
 real paths within the selected assembly, and reads listed metadata/tree artifacts.

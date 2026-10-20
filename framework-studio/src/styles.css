@@ -1427,3 +1427,23 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 
 .node-description textarea { width: 100%; resize: vertical; min-height: 100px; padding: 9px 10px; font: inherit; line-height: 1.5; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); color: inherit; box-sizing: border-box; }
 .node-description textarea:focus { outline: 2px solid var(--dev); outline-offset: 1px; }
+.client-mapping-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.client-mapping-toolbar h3 { margin: 0; }
+.client-mapping-toolbar button { display: inline-flex; align-items: center; gap: 4px; }
+.client-environment-mappings { list-style: none; padding: 0; margin: 10px 0 0; }
+.client-environment-mappings > li { display: grid; gap: 7px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.client-mapping-name { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.client-mapping-name strong { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+.client-mapping-name .icon-button { padding: 3px; width: 24px; height: 24px; flex-shrink: 0; }
+.client-mapping-editor select, .client-mapping-editor input:not([type=checkbox]) { width: 100%; min-width: 0; box-sizing: border-box; background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 4px; padding: 6px 7px; font: inherit; font-size: 12px; }
+.client-mapping-editor input[type=checkbox] { margin: 0; accent-color: var(--dev); }
+.client-mapping-check { display: flex; align-items: center; gap: 6px; }
+.client-mapping-options summary { font: 11px/1.5 monospace; color: var(--graphite); overflow-wrap: anywhere; cursor: pointer; }
+.client-mapping-options fieldset { border: 0; padding: 8px 0 0; margin: 0; display: grid; gap: 8px; min-width: 0; }
+.client-mapping-url { display: grid; grid-template-columns: 75px minmax(0, 1fr); gap: 6px; }
+.client-mapping-add { margin: 10px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; }
+.client-mapping-add p { grid-column: 1 / -1; margin: 0; }
+.mapping-disabled > select, .mapping-disabled strong { opacity: .45; }
+.client-mapping-description { padding: 10px 20px; border-top: 1px solid var(--rule); }
+.client-mapping-description > summary { cursor: pointer; font-size: 12px; color: var(--graphite); }
+.client-mapping-description .node-description { padding: 10px 0 0; border: 0; }

@@ -12,6 +12,7 @@ import { optimizeLayout, type LayoutSettings, type LayoutResult } from "./layout
 import { layoutLabels, layoutObstacles } from "./layout-quality";
 import { connectionStyle, type ConnectionStyle } from "./connections";
 import { routeConnections, legacyRoute, type ConnectionRoutes } from "./routing";
+import { CLIENT_ENVIRONMENT_ISLAND } from "../../shared/client-environment";
 export { titleRoom } from "./layout";
 
 /**
@@ -286,7 +287,7 @@ function routeItem(route: ModelRoute, target: ModelTarget | undefined, mode: Mod
 function resourceItem(resource: ModelResource, mode: Mode, availability?: Availability): Item {
   const name = resource.path[resource.path.length - 1]!;
   const kindLabel =
-    resource.deploymentFile ? `CDK ${resource.deploymentFile.mode === "dev" ? "development" : "production"} environment file` : resource.kind === "stack"
+    resource.clientEnvironment ? "Client-app environment mappings" : resource.deploymentFile ? `CDK ${resource.deploymentFile.mode === "dev" ? "development" : "production"} environment file` : resource.kind === "stack"
       ? `Stack, ${resource.stackClass ?? "stack"}`
       : resource.kind === "member"
         ? `Stack member, ${resource.typeText ?? "unknown type"}`
@@ -476,9 +477,12 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   const loose: Item[][] = [];
   const stacks: Item[] = [];
   const environmentFiles: Item[] = [];
+  const clientFiles: Item[] = [];
   for (const resource of model.resources) {
     if (resource.parent) continue;
-    if (resource.deploymentFile) {
+    if (resource.clientEnvironment) {
+      clientFiles.push({ ...catalogItem(resource), presenceText: "Client-app variables mapped from CDK inputs and stack outputs. Select to inspect the mappings." });
+    } else if (resource.deploymentFile) {
       environmentFiles.push({ ...catalogItem(resource), badge: resource.deploymentFile.mode,
         presenceText: `${resource.deploymentFile.path}: ${resource.deploymentFile.exists ? "local file" : "not generated; select the island to generate it"}. Values stay outside the graph.` });
     } else if (resource.kind === "stack") {
@@ -513,6 +517,9 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   if (environmentFiles.length) catalog.push({ id: "island:environment", title: "CDK environment files", region: "catalog",
     caption: ["Separate development and production inputs. Select a file to edit or add environment variables in a draft; select the island to generate a missing file from its template. Values stay outside the graph."],
     bands: [{ id: "band:environment", title: "CDK environment files", caption: [], h: 1, groups: [environmentFiles] }] });
+  if (clientFiles.length) catalog.push({ id: CLIENT_ENVIRONMENT_ISLAND, title: "Client-app environment file", region: "catalog",
+    caption: ["Client variables mapped from each environment's CDK inputs and public stack outputs. Select to inspect their sources."],
+    bands: [{ id: "band:client-environment", title: "Client-app environment file", caption: [], h: 1, groups: [clientFiles] }] });
   return { entry, compute, catalog };
 }
 
@@ -609,7 +616,8 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
     const footprint = measuredSpecs.get(spec.id)!, length = footprint.length + 2, inset = insets.get(spec.id)!;
     return footprint.placed.map(({ item, lx, ly, band }) => {
       const p = project({ x: length / 2 + inset + 1 + lx, y: -length / 2 + 1 + ly, h: spec.bands[band]!.h });
-      return { id: item.id, island: spec.id, ...buildIconShape(p.x, p.y).top };
+      const geometry = buildIconShape(p.x, p.y);
+      return { id: item.id, island: spec.id, h: spec.bands[band]!.h + geometry.height / ELEVATION_STEP, ...geometry.top };
     });
   });
   const visibleMembers = new Set(anchors.map((anchor) => anchor.id));
@@ -762,9 +770,12 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
   }
 
   const byNode = new Map(nodes.map((node) => [node.id, node]));
+  const routingAnchor = (id: string): LayoutAnchor => {
+    const node = byNode.get(id)!;
+    return { id, island: node.island, h: node.h + node.geometry.height / ELEVATION_STEP, ...node.geometry.top };
+  };
   const routingLinks: LayoutLink[] = edges.map((edge) => ({ id: edge.edge.id, category: edge.category, weight: edge.edge.provenance === "source" ? 1 : 2,
-    from: { id: edge.from, island: byNode.get(edge.from)!.island, ...byNode.get(edge.from)!.geometry.top },
-    to: { id: edge.to, island: byNode.get(edge.to)!.island, ...byNode.get(edge.to)!.geometry.top } }));
+    from: routingAnchor(edge.from), to: routingAnchor(edge.to) }));
   const obstacles = [...layoutObstacles(footprints, positions), ...layoutLabels(footprints, positions, options.layoutSettings?.aspect), ...nodes.map((node) => ({ id: node.id, bounds: {
     minX: Math.min(...node.geometry.hull.filter((_, at) => at % 2 === 0)), maxX: Math.max(...node.geometry.hull.filter((_, at) => at % 2 === 0)),
     minY: Math.min(...node.geometry.hull.filter((_, at) => at % 2 !== 0)), maxY: Math.max(...node.geometry.hull.filter((_, at) => at % 2 !== 0)),

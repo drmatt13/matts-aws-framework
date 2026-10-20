@@ -87,6 +87,7 @@ export const descriptions = {
   "resource:langgraph.openaiModelId": "Model identifier used when the shared model provider is OpenAI.",
   "envfile:dev": "Development CDK input file editor. Stages variable changes for review and writes only the selected development file; values stay outside map data.",
   "envfile:prod": "Production CDK input file editor. Stages variable changes for review and writes only the selected production file. Saving does not deploy infrastructure.",
+  "client-envfile": "Client-app environment variable mappings. Local endpoints reference the selected CDK inputs, while identity and deployed endpoint settings reference public stack outputs. Inspect each variable's source without loading values.",
   "local:postgres": "Local PostgreSQL service declared in docker-compose.yml. Development workloads share the application schema with production RDS; named Compose storage preserves local data.",
 
   // Network fixtures
@@ -105,4 +106,5 @@ export const descriptions = {
   "island:stacks": "Application catalog stacks and framework output stacks. Inspect a stack to see public fields, source relationships and mapped CloudFormation outputs.",
   "island:inputs": "Input parameters and secrets declared in framework-config/resources.ts, with links to their consumers and supplying environment files.",
   "island:environment": "Development and production CDK input files. Inspect a file to edit variables through draft review; map links show assignment and requirement metadata.",
+  "island:client-environment": "Client-app environment file and its variable mappings, linked to development or production CDK inputs and public stack outputs. File generation is a separate step.",
 } satisfies Record<string, string>;

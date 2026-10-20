@@ -115,6 +115,39 @@ existing file; production is never seeded from development. Both files are ignor
 Studio synthesis reads `cdk-app/.env.dev` or `cdk-app/.env.prod` for its selected mode. File
 changes refresh the map and stale the matching inventory; generating a file does not deploy.
 
+## Client-app environment mappings
+
+The **Client-app environment file** island contains `client-app/.env`. Its inspector is
+a compact editor: enable or disable fields for the selected graph, choose a CDK input,
+public stack output or stack region, add new `VITE_` fields, or remove a field from both
+environments. **URL from CDK port** expands to protocol, hostname, port and optional URL
+override controls. Stack outputs can permit an empty value when their stack is off.
+
+Edits stage in the existing **Review Changes → Apply All** flow, with discard, navigation
+guards, source conflict detection, and global undo/redo. References are saved as literal
+mapping declarations in `framework-config/client-environment.ts`, reread on every refresh.
+Descriptions are collapsed. This editor does not generate environment files or load their
+values; existing export behavior and Vite's `.env.*.local` files are unchanged.
+
+The initial mappings are:
+
+| Variable | Development source | Production source |
+| --- | --- | --- |
+| `VITE_API_GATEWAY_URL` | CDK `VITE_API_GATEWAY_URL` override, otherwise `http://localhost:${LOCAL_API_DEV_SERVER_HOST_PORT}` | Frontend stack `CloudFrontUrl` output |
+| `VITE_LOCAL_WS_URL` | `ws://localhost:${LOCAL_WS_DEV_SERVER_HOST_PORT}` | Empty |
+| `VITE_API_GATEWAY_WS_URL` | WebSocket stack `WebSocketAPIEndpoint` when enabled, otherwise empty | Same rule |
+| `VITE_WS_TESTER_URL` | `http://localhost:${WS_TESTER_HOST_PORT}` | Empty |
+| `VITE_AWS_REGION` | Cognito stack's deployment region | Cognito stack's deployment region |
+| `VITE_USER_POOL_ID` | Cognito `UserPoolId` output | Same output in the selected deployment |
+| `VITE_USER_POOL_CLIENT_ID` | Cognito `UserPoolClientId` output | Same output in the selected deployment |
+| `VITE_COGNITO_DOMAIN` | Cognito `UserPoolDomainUrl` output | Same output in the selected deployment |
+
+CDK inputs always refer to the selected mode's `.env.dev` or `.env.prod`; there is no
+legacy `cdk-app/.env`. Region comes from Cognito's deployment rather than
+`LOCAL_AWS_REGION`, which can name a different region for local SDK calls. An absent
+WebSocket stack permits an empty URL; an enabled stack missing its output is reported as
+unavailable. Snapshots and search carry variable names and recipes, never resolved values.
+
 ## Synthesized infrastructure
 
 Open **Infrastructure** in the header, or **Inspect stack infrastructure** in a catalog stack

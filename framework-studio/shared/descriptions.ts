@@ -2,7 +2,7 @@ import type { ModeModel, NetworkModel } from "./model";
 
 export const DESCRIPTION_FILE = "framework-config/descriptions.ts";
 export const DESCRIPTION_LIMIT = 8000;
-export const ISLAND_IDS = ["island:apis", "island:lambda", "island:vpc", "island:agentcore", "island:orchestration", "island:stacks", "island:inputs", "island:environment"] as const;
+export const ISLAND_IDS = ["island:apis", "island:lambda", "island:vpc", "island:agentcore", "island:orchestration", "island:stacks", "island:inputs", "island:environment", "island:client-environment"] as const;
 
 export function networkFixtureIds(network: NetworkModel | undefined): string[] {
   return ["prop:internet-gateway", ...(network?.egressOnlyInternetGateway ? ["prop:egress-only-gateway"] : []),

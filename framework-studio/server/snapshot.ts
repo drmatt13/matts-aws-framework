@@ -12,6 +12,8 @@ import { withDeploymentInputs } from "./deployment-inputs";
 import { withExportStacks } from "./source/export-stacks";
 import { readDescriptions } from "./descriptions";
 import { withConnectionEvidence } from "./source/evidence";
+import { withClientEnvironment } from "./client-environment";
+import { readClientMappings } from "./client-environment-source";
 
 /**
  * The studio's current understanding of the repository, rebuilt as a whole.
@@ -134,6 +136,7 @@ export class SnapshotBuilder {
     const built = base.stale && this.latest ? this.latest.built : buildSourceIndex(this.repositoryRoot, base);
     const schema = readDeclaredSchema(this.repositoryRoot);
     const localDatabase = readLocalDatabases(this.repositoryRoot);
+    const clientMappings = readClientMappings(this.repositoryRoot);
     // A disposable studio projection, never a configuration input. Replace atomically.
     const directory = process.env.FRAMEWORK_STUDIO_STATE_DIRECTORY ? path.resolve(process.env.FRAMEWORK_STUDIO_STATE_DIRECTORY) : path.join(this.repositoryRoot, ".cache", "framework-studio");
     mkdirSync(directory, { recursive: true });
@@ -155,8 +158,8 @@ export class SnapshotBuilder {
       webSocketApi: settings.webSocketApi,
       repositoryRoot: this.repositoryRoot,
       models: {
-        dev: withConnectionEvidence(this.repositoryRoot, withDeploymentInputs(this.repositoryRoot, withLocalDatabases(dev.stale ? dev : withExportStacks(withClassMembers(dev, built.catalog, built.index.cdkLinks.edges), built.exportStacks), localDatabase.services), { dev, prod }), built.index, built.catalog),
-        prod: withConnectionEvidence(this.repositoryRoot, withDeploymentInputs(this.repositoryRoot, withLocalDatabases(prod.stale ? prod : withExportStacks(withClassMembers(prod, built.catalog, built.index.cdkLinks.edges), built.exportStacks), localDatabase.services), { dev, prod }), built.index, built.catalog),
+        dev: withConnectionEvidence(this.repositoryRoot, withClientEnvironment(withDeploymentInputs(this.repositoryRoot, withLocalDatabases(dev.stale ? dev : withExportStacks(withClassMembers(dev, built.catalog, built.index.cdkLinks.edges), built.exportStacks), localDatabase.services), { dev, prod }), clientMappings), built.index, built.catalog),
+        prod: withConnectionEvidence(this.repositoryRoot, withClientEnvironment(withDeploymentInputs(this.repositoryRoot, withLocalDatabases(prod.stale ? prod : withExportStacks(withClassMembers(prod, built.catalog, built.index.cdkLinks.edges), built.exportStacks), localDatabase.services), { dev, prod }), clientMappings), built.index, built.catalog),
       },
       source: built.index,
       files,

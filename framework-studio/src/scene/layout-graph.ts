@@ -1,12 +1,17 @@
 import type { ModeModel, ModelEdge, Relation } from "../../shared/model";
 import type { Point } from "./camera";
 
-export interface LayoutAnchor extends Point { readonly id: string; readonly island: string }
+export interface LayoutAnchor extends Point {
+  readonly id: string;
+  readonly island: string;
+  /** Attachment elevation in grid steps, including the plaque's height. */
+  readonly h?: number;
+}
 export interface LayoutLink { readonly id: string; readonly from: LayoutAnchor; readonly to: LayoutAnchor; readonly weight: number; readonly category: string }
 export interface IslandLink { readonly from: string; readonly to: string; readonly weight: number }
 export interface LayoutGraph { readonly links: readonly LayoutLink[]; readonly islands: readonly IslandLink[]; readonly signature: string }
-const weights: Record<Relation, number> = { contains: 1, routes: 3, authorizes: 2, env: 2, supplies: 2, secret: 2, grant: 1.5, database: 3, localReplay: 2, trigger: 3, runsTask: 3, startsWorkflow: 3, invokesAgent: 3, usesTool: 3, step: 3, integration: 2, completesCallback: 2, cdk: 1 };
-const reverse = new Set<Relation>(["env", "secret", "grant", "database", "localReplay", "integration"]);
+const weights: Record<Relation, number> = { contains: 1, routes: 3, authorizes: 2, env: 2, supplies: 2, maps: 2, secret: 2, grant: 1.5, database: 3, localReplay: 2, trigger: 3, runsTask: 3, startsWorkflow: 3, invokesAgent: 3, usesTool: 3, step: 3, integration: 2, completesCallback: 2, cdk: 1 };
+const reverse = new Set<Relation>(["env", "maps", "secret", "grant", "database", "localReplay", "integration"]);
 
 /** Union both deployment topologies. Mode visibility and presentation are not topology. */
 export function topologyEdges(models: readonly ModeModel[]): readonly ModelEdge[] {

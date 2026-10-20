@@ -4,6 +4,7 @@ import type { ResourceApply, ResourceIntent, ResourcePlan } from "../shared/reso
 import type { DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
 import { descriptionError } from "../shared/descriptions";
 import { triggerBindingsEqual, type FailureDestinationSettings, type TriggerBinding } from "../shared/triggers";
+import { CLIENT_ENVIRONMENT_ID, clientMappingsError, type ClientEnvironmentMappings } from "../shared/client-environment";
 
 export type Review = { readonly kind: "batch"; readonly plan: BatchPlanResponse } | { readonly kind: "resource"; readonly plan: ResourcePlan } | { readonly kind: "environment"; readonly plan: DeploymentInputPlan };
 export interface EnvironmentEdit extends DeploymentInputEdit { readonly key: string; readonly original?: string }
@@ -16,7 +17,8 @@ interface ResourceEntry { readonly kind: "resource"; readonly key: string; reado
 interface TriggerEntry { readonly kind: "triggers"; readonly key: string; readonly event: string; readonly bindings: readonly TriggerBinding[]; readonly error?: string }
 interface NativeEntry { readonly kind: "native"; readonly key: string; readonly edge: string; readonly error?: string }
 interface FailureEntry { readonly kind: "failure"; readonly key: string; readonly event: string; readonly value: FailureDestinationSettings | null; readonly error?: string }
-export type DraftEntry = FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry;
+interface ClientMappingEntry { readonly kind: "clientEnvironment"; readonly key: string; readonly mappings: ClientEnvironmentMappings; readonly count: number; readonly error?: string }
+export type DraftEntry = FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry | ClientMappingEntry;
 export interface DraftState {
   readonly baseline: Snapshot;
   readonly latest: Snapshot;
@@ -54,7 +56,7 @@ export class InspectorDraft {
   }
   readonly subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   readonly getSnapshot = () => this.state;
-  get count(): number { return this.state.entries.reduce((sum, entry) => sum + (entry.kind === "resource" ? entry.count : entry.kind === "environment" ? entry.edits.length : 1), 0); }
+  get count(): number { return this.state.entries.reduce((sum, entry) => sum + (entry.kind === "resource" || entry.kind === "clientEnvironment" ? entry.count : entry.kind === "environment" ? entry.edits.length : 1), 0); }
   get dirty(): boolean { return this.count > 0; }
   get conflict(): boolean { return this.dirty && this.state.baseline.revision !== this.state.latest.revision; }
   get invalid(): boolean { return this.state.entries.some((entry) => !!entry.error); }
@@ -169,6 +171,16 @@ export class InspectorDraft {
     this.put(`resource:${resource.id}`, count ? { kind: "resource", key: `resource:${resource.id}`, form: { ...form, requirements }, intent, count, ...(error ? { error } : {}) } : undefined);
   }
   environment(mode: Mode): EnvironmentEntry | undefined { return this.state.entries.find((entry): entry is EnvironmentEntry => entry.kind === "environment" && entry.mode === mode); }
+  clientMappings(): ClientEnvironmentMappings {
+    return this.state.entries.find((entry): entry is ClientMappingEntry => entry.kind === "clientEnvironment")?.mappings
+      ?? this.state.baseline.models[this.state.mode].resources.find((resource) => resource.id === CLIENT_ENVIRONMENT_ID)?.clientEnvironment?.mappings ?? {};
+  }
+  setClientMappings(mappings: ClientEnvironmentMappings): void {
+    const baseline = this.state.baseline.models[this.state.mode].resources.find((resource) => resource.id === CLIENT_ENVIRONMENT_ID)?.clientEnvironment?.mappings ?? {};
+    const count = [...new Set([...Object.keys(baseline), ...Object.keys(mappings)])].filter((name) => JSON.stringify(baseline[name]) !== JSON.stringify(mappings[name])).length;
+    const error = clientMappingsError(mappings);
+    this.put("clientEnvironment", count ? { kind: "clientEnvironment", key: "clientEnvironment", mappings, count, ...(error ? { error } : {}) } : undefined);
+  }
   setEnvironment(mode: Mode, hash: string, edits: readonly EnvironmentEdit[], existingNames: readonly string[]): void {
     const changed = edits.filter((edit) => edit.create || edit.value !== edit.original);
     const names = new Set<string>();
@@ -230,6 +242,7 @@ export class InspectorDraft {
           if (entry.kind === "triggers") return { kind: "triggers", event: entry.event, bindings: entry.bindings };
           if (entry.kind === "native") return { kind: "nativeTrigger", edge: entry.edge };
           if (entry.kind === "failure") return { kind: "onFailure", event: entry.event, value: entry.value };
+          if (entry.kind === "clientEnvironment") return { kind: "clientEnvironment", mappings: entry.mappings };
           throw new Error("Review this configuration in its own inspector session.");
         }), state.baseline.revision) };
       if (serial === this.serial) this.publish({ ...this.state, busy: undefined, review });

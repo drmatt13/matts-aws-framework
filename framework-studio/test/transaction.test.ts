@@ -53,6 +53,31 @@ function revision(): string {
   return builder.current!.snapshot.revision;
 }
 
+test("client mapping batches persist references, disable graph links, undo/redo and refuse concurrent writes", async () => {
+  const file = path.join(fixture, "framework-config/client-environment.ts");
+  const before = readFileSync(file, "utf8");
+  const current = builder.current!.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!.clientEnvironment!.mappings;
+  const mappings = { ...current, VITE_LOCAL_WS_URL: { ...current.VITE_LOCAL_WS_URL!, dev: { ...current.VITE_LOCAL_WS_URL!.dev, enabled: false } }, VITE_NEW_REGION: { dev: { kind: "region" as const, stack: "CognitoStack" }, prod: { kind: "empty" as const } } };
+  const plan = await edits.planBatch([{ kind: "clientEnvironment", mappings }], revision());
+  assert.ok(plan.ok);
+  assert.equal(readFileSync(file, "utf8"), before, "review does not write");
+  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  const client = builder.current!.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!.clientEnvironment!;
+  assert.equal(client.entries.find((entry) => entry.name === "VITE_LOCAL_WS_URL")!.status, "disabled");
+  assert.ok(client.entries.some((entry) => entry.name === "VITE_NEW_REGION"));
+  assert.ok(!builder.current!.snapshot.models.dev.edges.some((edge) => edge.relation === "maps" && edge.label === "VITE_LOCAL_WS_URL"));
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), before);
+  assert.equal((await edits.redo()).status, "applied");
+  await edits.undo();
+  const stale = await edits.planBatch([{ kind: "clientEnvironment", mappings }], revision());
+  writeFileSync(file, before + "\n// authored elsewhere\n");
+  await assert.rejects(edits.applyBatch(stale.planId), /changed/);
+  assert.ok(readFileSync(file, "utf8").endsWith("// authored elsewhere\n"));
+  writeFileSync(file, before);
+  await builder.refresh();
+});
+
 test("descriptions review without writing, persist with settings and undo/redo together", async () => {
   const file = path.join(fixture, "framework-config/descriptions.ts");
   const before = readFileSync(file, "utf8");

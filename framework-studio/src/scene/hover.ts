@@ -64,6 +64,7 @@ function frameworkManaged(resource: ModelResource, index: ModelIndex): boolean {
 function resourceWhere(resource: ModelResource | undefined, index: ModelIndex, mode: Mode): Where {
   if (!resource || resource.absent) return { reason: NOT_DEPLOYED };
   if (resource.deploymentFile) return { where: `Local file · ${resource.deploymentFile.path}` };
+  if (resource.clientEnvironment) return { where: `Client environment mappings · ${resource.clientEnvironment.path}` };
   switch (resource.kind) {
     case "stack":
       return resource.stackUsage?.status === "unreferenced" ? { reason: "Not added to the CDK app" } : { where: "CloudFormation stack" };

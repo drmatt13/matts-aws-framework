@@ -2,6 +2,26 @@ import type { Point } from "./camera";
 import { arcControl, arcPoints } from "./picking";
 import { pathHits, pathLength, pathsCross, type Obstacle } from "./layout-geometry";
 import type { LayoutLink } from "./layout-graph";
+import { ELEVATION_STEP } from "./iso";
+
+/** Control-point lift for a quadratic whose crest clears its higher end by `rise`.
+ * Unlike a midpoint-only offset, this also arches above steep/receding endpoints. */
+function crestLift(difference: number, rise: number): number {
+  const half = Math.abs(difference) / 2;
+  return half + rise + Math.sqrt(rise * (rise + 2 * half));
+}
+
+function connectionLift(a: LayoutLink["from"], b: LayoutLink["to"], lane: number): number {
+  const heightDifference = ((b.h ?? 0) - (a.h ?? 0)) * ELEVATION_STEP;
+  // Undo elevation and the ground plane's 2:1 foreshortening. Equal ground spans
+  // get equal physical lift, regardless of which way they run across the map.
+  const span = Math.hypot(b.x - a.x, 2 * (b.y - a.y + heightDifference));
+  const rise = 28 + span * 0.08;
+  // Lift in world Z only: projection changes y, never x. The physical crest
+  // clears both attachments; a projected clearance keeps depth-aligned wires
+  // legible even when their physical arch would otherwise project to a line.
+  return Math.max(crestLift(heightDifference, rise), crestLift(b.y - a.y, 24)) + lane;
+}
 
 export interface ConnectionRoute { readonly points: readonly Point[]; readonly length: number }
 export type ConnectionRoutes = Readonly<Record<string, ConnectionRoute>>;
@@ -33,17 +53,11 @@ export function routeConnections(links: readonly LayoutLink[], obstacles: readon
     const lane = (index % 7) * 5;
     const dx = b.x - a.x, dy = b.y - a.y, length = Math.max(1, Math.hypot(dx, dy));
     const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    // Bend perpendicular to the chord so even vertical connections visibly arc.
-    // Prefer the upward normal, with a rightward bend for exactly vertical links.
-    // Every candidate has the same minimum bow; obstacle scoring may raise it,
-    // but cannot replace it with a cheaper straight or nearly straight route.
-    const direction = dx < 0 || dx === 0 && dy < 0 ? -1 : 1;
-    const normal = { x: dy / length * direction, y: -dx / length * direction };
-    const lift = 24 + length * 0.16 + lane;
+    const lift = connectionLift(a, b, lane);
     // Nearby endpoints need a nearby detour. Retain the established candidates
     // for long connections while smoothly reducing their extra bow on short ones.
     const avoidanceScale = Math.min(1, (length / 800) ** 2);
-    const controls = [0, 80, 180, 320].map((extra) => ({ x: middle.x + normal.x * (lift + extra * avoidanceScale), y: middle.y + normal.y * (lift + extra * avoidanceScale) }));
+    const controls = [0, 80, 180, 320].map((extra) => ({ x: middle.x, y: middle.y - lift - extra * avoidanceScale }));
     let best: readonly Point[] = [], score = Infinity;
     for (const control of controls) {
       const points = arcPoints(a, control, b, 8);

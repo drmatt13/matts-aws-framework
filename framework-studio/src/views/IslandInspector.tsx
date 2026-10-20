@@ -9,6 +9,8 @@ import { BooleanField, FieldRow } from "./FieldRow";
 import { ResourceStatus } from "./ResourceStatus";
 import { RouteStatus } from "./RouteStatus";
 import { Description } from "./Description";
+import { ClientEnvironmentMappings } from "./ClientEnvironment";
+import { CLIENT_ENVIRONMENT_ISLAND } from "../../shared/client-environment";
 
 const LAMBDAS = ["lambda", "http", "webSocket", "events", "tools"];
 const GROUPS: Readonly<Record<string, readonly string[]>> = {
@@ -69,6 +71,7 @@ export function IslandInspector({ id }: { readonly id: string }) {
     <header><span className="kind">Island settings</span><h2>{island.title}</h2><p className="small muted">{members.length} {members.length === 1 ? "entry" : "entries"}</p></header>
     <Description entity={id} />
     {id === "island:environment" ? <EnvironmentFiles /> : null}
+    {id === CLIENT_ENVIRONMENT_ISLAND ? <ClientEnvironmentMappings /> : null}
     {group ? <section>
       <h3>Shared defaults</h3>
       <p className="small">Defaults apply to this service type across all islands, including future nodes. Individual overrides take precedence.</p>
@@ -82,7 +85,7 @@ export function IslandInspector({ id }: { readonly id: string }) {
         {fact.usage ? <p className="small muted default-usage">{fact.usage.inherited} inherit · {fact.usage.overridden} overridden</p> : null}
       </div>)}</div>
       {source ? <a className="small" href={editorLink(snapshot.repositoryRoot, source)}>Open shared defaults in VS Code</a> : null}
-    </section> : id === "island:environment" ? null : <section><h3>Settings</h3><p className="small">The framework has no shared defaults for this island. Select an entry below to configure it.</p></section>}
+    </section> : id === "island:environment" || id === CLIENT_ENVIRONMENT_ISLAND ? null : <section><h3>Settings</h3><p className="small">The framework has no shared defaults for this island. Select an entry below to configure it.</p></section>}
     <section><h3>Island entries</h3><ul className="island-members">{members.map((node) => {
       const route = index.routes.get(node.id);
       return <li key={node.id}><button className="linkish" onClick={() => select(node.id)}>{node.label}</button><span className="small muted">{node.kindLabel}</span><ResourceStatus resource={index.resources.get(node.id)} />{route ? <RouteStatus route={route} /> : null}</li>;

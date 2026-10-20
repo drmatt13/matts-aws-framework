@@ -29,7 +29,7 @@ export function searchScene(scene: Scene, model: ModeModel, query: string): Sear
   const resources = new Map(model.resources.map((resource) => [resource.id, resource]));
   const resourceText = (id: string) => {
     const resource = resources.get(id);
-    return resource ? [resource.id, resource.path, resource.kind, resource.fromEnv, resource.typeText, resource.stackClass, resource.stackOutputs?.map((output) => [output.name, output.envName]), resource.deploymentFile?.path, resource.deploymentFile?.entries.map((entry) => entry.name)] : [];
+    return resource ? [resource.id, resource.path, resource.kind, resource.fromEnv, resource.typeText, resource.stackClass, resource.stackOutputs?.map((output) => [output.name, output.envName]), resource.deploymentFile?.path, resource.deploymentFile?.entries.map((entry) => entry.name), resource.clientEnvironment?.entries.map((entry) => [entry.name, entry.expression, ...entry.sources.map((source) => source.label)])] : [];
   };
   for (const node of scene.nodes) {
     const target = targets.get(node.id);

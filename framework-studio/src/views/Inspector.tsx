@@ -15,6 +15,7 @@ import { BooleanField, FieldRow } from "./FieldRow";
 import { DraftFooter } from "./DraftControls";
 import { StackInfrastructure } from "./Infrastructure";
 import { EnvironmentFileView, InputSources } from "./DeploymentInputs";
+import { ClientEnvironmentFileView } from "./ClientEnvironment";
 import { ConnectionView } from "./InputRequirement";
 import { ResourceStatus } from "./ResourceStatus";
 import { RouteStatus } from "./RouteStatus";
@@ -329,6 +330,7 @@ function RouteView(props: { readonly route: ModelRoute }) {
 function ResourceView(props: { readonly resource: ModelResource }) {
   const { snapshot, model, select } = useStudio();
   const { resource } = props;
+  if (resource.clientEnvironment) return <ClientEnvironmentFileView key={resource.id} resource={resource} />;
   if (resource.deploymentFile) return <EnvironmentFileView key={resource.id} resource={resource} />;
   const members = model.resources.filter((item) => item.parent === resource.id);
   const facts = snapshot.source.catalog[resource.id];

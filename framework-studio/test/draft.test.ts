@@ -17,7 +17,7 @@ function fixture() {
   let resourceRequests = 0;
   let applies = 0;
   const transport: DraftTransport = {
-    planBatch: async (edits) => { requests.push(edits); return { planId: "review", ok: true, summaries: edits.map((edit) => edit.kind === "field" ? edit.intent.field : edit.kind === "description" ? edit.entity : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.route), changes: [{ file: "settings.ts", diff: { unified: "combined diff", lines: [] } }], preflight: { dev: verdict("dev"), prod: verdict("prod") }, impact: [] }; },
+    planBatch: async (edits) => { requests.push(edits); return { planId: "review", ok: true, summaries: edits.map((edit) => edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? edit.intent.field : edit.kind === "description" ? edit.entity : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.route), changes: [{ file: "settings.ts", diff: { unified: "combined diff", lines: [] } }], preflight: { dev: verdict("dev"), prod: verdict("prod") }, impact: [] }; },
     resourcePlan: async (intent) => { resourceRequests++; return { planId: "resource-review", ok: true, resource: intent.resource, nextResource: intent.resource, changes: [], diagnostics: [] }; },
     applyBatch: async () => { applies++; return { status: "applied", revision: "saved", message: "Applied all changes." }; },
     resourceApply: async () => { applies++; return { status: "applied", resource: "resource:updated", revision: "saved", message: "Applied resource changes.", history: {} }; },
@@ -39,6 +39,24 @@ test("staging a toggle never opens a review or calls the preview API", () => {
   assert.equal(draft.count, 1);
   assert.equal(draft.getSnapshot().review, undefined);
   assert.equal(requests.length, 0);
+});
+
+test("client mapping drafts preserve the other environment, clear reverted toggles and guard navigation", async () => {
+  const { draft, requests } = fixture();
+  const baseline = draft.clientMappings();
+  const next = { ...baseline, VITE_LOCAL_WS_URL: { ...baseline.VITE_LOCAL_WS_URL!, dev: { ...baseline.VITE_LOCAL_WS_URL!.dev, enabled: false } } };
+  draft.setClientMappings(next);
+  assert.equal(draft.count, 1);
+  let navigated = false;
+  draft.requestNavigation(() => { navigated = true; });
+  assert.equal(navigated, false);
+  draft.keepEditing();
+  await draft.review();
+  assert.equal(requests[0]![0]!.kind, "clientEnvironment");
+  assert.deepEqual(draft.clientMappings().VITE_LOCAL_WS_URL!.prod, baseline.VITE_LOCAL_WS_URL!.prod);
+  draft.backToEditing();
+  draft.setClientMappings(baseline);
+  assert.equal(draft.dirty, false);
 });
 test("five controls produce one complete review; backing out preserves the whole draft", async () => {
   const { draft, fact, requests } = fixture();

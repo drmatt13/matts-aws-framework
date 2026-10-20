@@ -35,6 +35,7 @@ export function connectionStyle(
 ): ConnectionStyle {
   const { relation } = edge;
   if (relation === "trigger") return { color: TRIGGER_EDGE_COLOR, dashed: false };
+  if (relation === "maps") return { color: READ_EDGE_COLOR, dashed: true };
   // An authorizer guards its route.
   if (relation === "authorizes") return { color: GUARD_EDGE_COLOR, dashed: false };
   if (destination && REFERENCES.has(relation)) {

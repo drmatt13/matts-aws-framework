@@ -20,6 +20,8 @@ import { resourceTypeErrors } from "../resources-source";
 import { planFailureDestination, planTriggers, validateTriggerBindings } from "./triggers";
 import { triggerTiming } from "../../shared/trigger-availability";
 import { assertStackFile, nativeSignature, planNativeRemovals, scanWith } from "./native-triggers";
+import { CLIENT_ENVIRONMENT_FILE } from "../../shared/client-environment";
+import { parseClientMappings, rewriteClientMappings, validateClientMappings } from "../client-environment-source";
 
 interface Change { readonly file: string; readonly before: string; readonly after: string }
 export interface BatchJournal {
@@ -69,9 +71,17 @@ export class BatchEditor {
     const replayTargets: string[] = [];
     const handlerBefore = new Map<string, string>();
     for (const edit of edits) {
-      const key = edit.kind === "field" ? `${edit.intent.target}:${edit.intent.field}` : edit.kind === "description" ? `description:${edit.entity}` : edit.kind === "triggers" ? `triggers:${edit.event}` : edit.kind === "onFailure" ? `onFailure:${edit.event}` : edit.kind === "nativeTrigger" ? `native:${edit.edge}` : edit.route;
+      const key = edit.kind === "clientEnvironment" ? "clientEnvironment" : edit.kind === "field" ? `${edit.intent.target}:${edit.intent.field}` : edit.kind === "description" ? `description:${edit.entity}` : edit.kind === "triggers" ? `triggers:${edit.event}` : edit.kind === "onFailure" ? `onFailure:${edit.event}` : edit.kind === "nativeTrigger" ? `native:${edit.edge}` : edit.route;
       if (seen.has(key)) throw new EditError(400, "A draft can change each setting only once.");
       seen.add(key);
+      if (edit.kind === "clientEnvironment") {
+        const file = assertWritable(this.root, CLIENT_ENVIRONMENT_FILE);
+        try {
+          validateClientMappings(edit.mappings, Object.values(state.snapshot.models));
+          overrides.set(file, rewriteClientMappings(new SourceFiles(overrides).text(file), edit.mappings));
+        } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
+        summaries.push("Update client-app environment mappings");
+      }
       if (edit.kind === "triggers") {
         try {
           const planned = planTriggers(this.root, state, edit.event, edit.bindings, new SourceFiles(overrides));
@@ -180,7 +190,7 @@ export class BatchEditor {
       planId: randomUUID(), summaries,
       changes: changes.map(({ file, before, after }) => ({ file: toRelative(this.root, file), diff: diffOf(toRelative(this.root, file), before, after) })),
       preflight: checked.preflight, ok: checked.preflight.dev.ok && checked.preflight.prod.ok,
-      impact: ["Applies this complete draft as one undoable change. Individual workload overrides remain in place when shared defaults change.",
+      impact: edits.every((edit) => edit.kind === "clientEnvironment") ? ["Saves mapping definitions. Environment-file generation is separate."] : ["Applies this complete draft as one undoable change. Individual workload overrides remain in place when shared defaults change.",
         ...(replayTargets.length ? ["Updates localReplay and the handler's withLocalReplay wrapper together. Run framework:generate before deploying to refresh the replay manifest. Events that require local execution cannot turn replay off."] : []),
         ...(routes.length ? ["Public route paths change; Lambda target and construct identities are preserved. Regenerate the API contract and update callers before deployment."] : []),
         ...(triggerSources ? edits.filter((edit) => edit.kind === "triggers").flatMap((edit) => {
@@ -215,6 +225,11 @@ export class BatchEditor {
   private async validate(overrides: Record<string, string>, state: StudioState, routes: readonly RouteChange[], expectedNative?: readonly string[]) {
     const descriptions = overrides[path.join(this.root, DESCRIPTION_FILE)];
     if (descriptions !== undefined) parseDescriptions(descriptions);
+    const clientMappings = overrides[path.join(this.root, CLIENT_ENVIRONMENT_FILE)];
+    if (clientMappings !== undefined) {
+      try { validateClientMappings(parseClientMappings(clientMappings).mappings, Object.values(state.snapshot.models)); }
+      catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
+    }
     const pool = new EvaluatorPool(this.root);
     try {
       const models = await pool.evaluate(state.snapshot.webSocketApi, overrides);
@@ -276,6 +291,11 @@ export class BatchEditor {
         this.ownWrites.set(toRelative(this.root, change.file), sha256(change.after));
       }
       const actual = await this.builder.refresh();
+      const mappingChange = changes.find((change) => change.file === path.join(this.root, CLIENT_ENVIRONMENT_FILE));
+      if (mappingChange) {
+        const file = actual.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)?.clientEnvironment;
+        if (file?.problem || JSON.stringify(file?.mappings) !== JSON.stringify(parseClientMappings(mappingChange.after).mappings)) throw new Error("Client mappings did not match the review.");
+      }
       const descriptionChange = changes.find((change) => change.file === path.join(this.root, DESCRIPTION_FILE));
       if (descriptionChange && (actual.snapshot.descriptions.problem || JSON.stringify(actual.snapshot.descriptions.values) !== JSON.stringify(parseDescriptions(descriptionChange.after).values))) throw new Error("The descriptions did not match the review.");
       for (const mode of ["dev", "prod"] as const) {

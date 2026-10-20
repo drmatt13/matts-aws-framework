@@ -17,6 +17,7 @@ export interface EditIntent {
 }
 
 export type DraftEdit =
+  | { readonly kind: "clientEnvironment"; readonly mappings: import("./client-environment").ClientEnvironmentMappings }
   | { readonly kind: "triggers"; readonly event: string; readonly bindings: readonly import("./triggers").TriggerBinding[] }
   /** Delete one recognized native trigger (a source edge id) from its CDK stack file. */
   | { readonly kind: "nativeTrigger"; readonly edge: string }

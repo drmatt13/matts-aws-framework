@@ -332,10 +332,15 @@ been removed; the renderer has one visual style.
    margin) are culled. Buildings are drawn by presence, and the selection gets a pulsing
    ring on its tile. When a selection exists, everything outside its neighbourhood is
    dimmed. Search applies the shared focus opacity to all paint layers (see Search).
-4. **Arcs.** Quadratic curves in the air, bowed perpendicular to their endpoint chord
-   toward the upward side (rightward for vertical connections). The control point is
-   offset from the midpoint by at least `24 + 0.16 · length` world units; shared lanes
-   and obstacle avoidance can increase the bow, keeping every connection visibly curved.
+4. **Arcs.** Quadratic curves lifted along world Z, which projects straight up the page.
+   Ground-plane travel stays linear, so connections toward or away from the viewer
+   rise and fall without swinging sideways. Attachment elevations include each plaque's
+   height. Lift accounts for the ground plane's 2:1 foreshortening, with a physical crest
+   at least `28 + 0.08 · ground span` world units above the higher attachment. An additional
+   24-unit minimum clearance above the higher projected endpoint keeps depth-aligned
+   connections legible. Lane offsets and obstacle avoidance can increase the lift;
+   nearby connections retain compact detours. Drawing, picking and packets share the
+   same cached path, and Fit includes its crest.
    They are coloured by the Board's six
    categories, with every category visible by default and no visibility toggles. Dashed is
    the default; solid lines are the named exceptions (below), so a connection's line tells

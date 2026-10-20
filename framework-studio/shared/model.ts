@@ -210,7 +210,7 @@ export interface ModelRoute {
 // ---------------------------------------------------------------------------
 
 export type ResourceKind =
-  /** Studio's read-only projection of a mode-specific CDK input file. */
+  /** Studio's CDK input-file metadata or client environment mappings. */
   | "envFile"
   /** `resource.stack<T>()`: the stack class is the declaration. */
   | "stack"
@@ -261,6 +261,8 @@ export interface ModelResource {
   /** Literal subnet selection read from the stack member's constructor. */
   readonly networkPlacement?: "public" | "private" | "isolated";
   readonly deploymentFile?: import("./deployment-inputs").DeploymentInputFile;
+  /** Client variable references and transformations, never resolved values. */
+  readonly clientEnvironment?: import("./client-environment").ClientEnvironmentFile;
   /** Assignment metadata for this catalog declaration; never dotenv values. */
   readonly inputSources?: readonly { readonly file: string; readonly entry: import("./deployment-inputs").DeploymentInputEntry }[];
 }
@@ -280,6 +282,8 @@ export type Relation =
   | "env"
   /** A local deployment input file supplies an authored parameter or secret name. */
   | "supplies"
+  /** A client variable maps an input file or a public stack output. */
+  | "maps"
   /** A container is handed a secret at startup. */
   | "secret"
   /** A native CDK grant method on a catalog construct. */

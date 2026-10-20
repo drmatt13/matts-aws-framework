@@ -47,12 +47,14 @@ References: [ELK's layered phases](https://eclipse.dev/elk/blog/posts/2025/25-08
    endpoints, provenance, colour and arrow direction. This is corridor/lane routing,
    not merged bus edges. Candidates consider unrelated islands, icon silhouettes
    and estimated overview title envelopes.
-   Every candidate uses an upward-bowing quadratic arc with a distance-scaled minimum
-   bend perpendicular to its endpoints (rightward for vertical connections). Lane
-   offsets and obstacle avoidance increase that bend instead of flattening the wire.
+   Every candidate uses a quadratic arc lifted along world Z rather than perpendicular
+   to its projected chord. Attachment heights and ground-plane foreshortening determine
+   a physical crest at least `28 + 0.08 · ground span` world units above both attachments.
+   A 24-unit projected crest clearance also keeps depth-aligned connections legible.
+   Lane offsets and obstacle avoidance increase that lift instead of flattening the wire.
    The extra obstacle-avoidance bend scales smoothly with endpoint distance below
    800 world units, keeping nearby connections compact; longer routes retain their
-   established candidates. The distance-scaled minimum bow remains unchanged.
+   established avoidance candidates. Both minimum crest clearances remain enforced.
    Drawing, packet animation and hover picking use the same 24-segment cached path.
 
 Projection uses the map's existing `(gx-gy)*32`, `(gx+gy)*16-h*16` transform. Search

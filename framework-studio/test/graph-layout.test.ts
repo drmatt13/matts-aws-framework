@@ -15,6 +15,7 @@ import { pathHits } from "../src/scene/layout-geometry";
 import { fitScene } from "../src/scene/fit";
 import { islandSlabs } from "../src/scene/slabs";
 import { worldToScreen } from "../src/scene/camera";
+import { ELEVATION_STEP, project } from "../src/scene/iso";
 
 const edge = (from: string, to: string, at: number): ModelEdge => ({ id: `edge:${at}`, from, to, relation: "routes", label: "fixture", provenance: "declared" });
 function fixture(count = 4, dense = false) {
@@ -106,36 +107,59 @@ test("routing avoids an unrelated island and retains separate paths for parallel
   assert.notDeepEqual(routes.one!.points, routes.two!.points);
 });
 
-test("connections keep a visible bow for short, long, diagonal and vertical endpoints in either direction", () => {
+test("connections lift along world Z with a minimum crest even when viewed along their depth, in either direction", () => {
   const from = { id: "a", island: "left", x: 0, y: 0 };
   for (const [x, y] of [[30, 0], [800, 0], [400, 400], [-400, 400], [1, 800], [-1, 800], [0, 800], [0, -800]]) {
     const to = { id: "b", island: "right", x: x!, y: y! };
     const link = { id: "wire", from, to, weight: 2, category: "routes" };
     const points = routeConnections([link], []).wire!.points;
     const reverse = routeConnections([{ ...link, from: to, to: from }], []).wire!.points;
-    const chord = Math.hypot(to.x, to.y);
-    const midpoint = points[12]!;
-    const bow = Math.abs(to.x * midpoint.y - to.y * midpoint.x) / chord;
-    assert.ok(bow >= Math.max(12, chord * 0.075), `visible bow for (${to.x}, ${to.y}): ${bow}`);
+    assert.ok(Math.min(from.y, to.y) - Math.min(...points.map((p) => p.y)) >= 23,
+      `the crest clears the higher projected endpoint for (${to.x}, ${to.y})`);
     assert.deepEqual(points[0], { x: 0, y: 0 });
     assert.deepEqual(points.at(-1), { x: to.x, y: to.y });
     for (let at = 0; at < points.length; at++) {
+      const t = at / (points.length - 1);
+      assert.ok(Math.abs(points[at]!.x - (from.x + (to.x - from.x) * t)) < 1e-8,
+        "elevation projects vertically without bending sideways");
+      if (at > 0 && at < points.length - 1) assert.ok(points[at]!.y < from.y + (to.y - from.y) * t,
+        "every interior point is above its straight 3D chord");
       const other = reverse[points.length - 1 - at]!;
       assert.ok(Math.hypot(points[at]!.x - other.x, points[at]!.y - other.y) < 1e-8, "reversing the arrow retains the curve");
     }
   }
 });
 
+test("physical arc height accounts for attachment elevations and foreshortened ground spans", () => {
+  for (const end of [{ x: 20, y: -20, h: 3 }, { x: 20, y: 20, h: 3 }, { x: -15, y: 8, h: 9 }, { x: 0, y: 0, h: 12 }, { x: 0, y: 0, h: 3 }]) {
+    const start = { x: 0, y: 0, h: 3 };
+    const from = { id: "a", island: "left", ...project(start), h: start.h };
+    const to = { id: "b", island: "right", ...project(end), h: end.h };
+    const points = routeConnections([{ id: "wire", from, to, weight: 2, category: "routes" }], []).wire!.points;
+    const heights = points.map((p, at) => {
+      const t = at / (points.length - 1);
+      const ground = project({ x: end.x * t, y: end.y * t });
+      return (ground.y - p.y) / ELEVATION_STEP;
+    });
+    const physicalRise = (Math.max(...heights) - Math.max(start.h, end.h)) * ELEVATION_STEP;
+    const groundSpan = Math.hypot(end.x, end.y) * 32 * Math.SQRT2;
+    assert.ok(physicalRise >= 27 + groundSpan * 0.08, `physical crest clears the attachments: ${physicalRise}`);
+    assert.ok(points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y)), "coincident attachments stay finite");
+  }
+});
+
 test("nearby connections retain compact arcs even when crossings or obstacles favor a larger detour", () => {
   for (const [x, y] of [[30, 0], [200, 0], [250, 200], [0, 320]]) {
     const from = { id: "a", island: "left", x: 0, y: 0 }, to = { id: "b", island: "right", x: x!, y: y! };
-    const chord = Math.hypot(to.x, to.y);
+    const groundSpan = Math.hypot(to.x, to.y * 2);
     const obstacle = { id: "middle", bounds: { minX: -400, maxX: 400, minY: -300, maxY: 300 } };
     const links = Array.from({ length: 7 }, (_, at) => ({ id: `wire-${at}`, from, to, weight: 2, category: "permissions" }));
-    for (const route of Object.values(routeConnections(links, [obstacle]))) {
-      const bow = Math.max(...route.points.map((p) => Math.abs(to.x * p.y - to.y * p.x) / chord));
-      assert.ok(bow >= 12, "the shared visible bow is preserved");
-      assert.ok(bow <= Math.max(30, chord * 0.35), `short connection stays compact: ${bow} for ${chord}`);
+    const routes = Object.values(routeConnections(links, [obstacle]));
+    assert.equal(new Set(routes.map((route) => JSON.stringify(route.points))).size, links.length, "lanes stay distinct even for depth-aligned wires");
+    for (const route of routes) {
+      const lift = Math.max(...route.points.map((p, at) => to.y * at / (route.points.length - 1) - p.y));
+      assert.ok(lift >= 28, "the minimum elevation is preserved");
+      assert.ok(lift <= Math.max(52, groundSpan * 0.3), `short connection stays compact: ${lift} for ${groundSpan}`);
       assert.deepEqual(route.points[0], { x: from.x, y: from.y });
       assert.deepEqual(route.points.at(-1), { x: to.x, y: to.y });
     }
