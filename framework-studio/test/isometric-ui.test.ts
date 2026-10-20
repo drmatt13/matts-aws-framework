@@ -26,6 +26,7 @@ const frames = new Map<number, FrameRequestCallback>();
 let nextFrame = 0;
 const images: { src: string; alpha: number }[] = [];
 const strokes: string[] = [];
+const labels: string[] = [];
 
 before(async () => {
   const require = createRequire(import.meta.url);
@@ -46,6 +47,7 @@ before(async () => {
     globalAlpha: 1,
     strokeStyle: "",
     stroke() { strokes.push(this.strokeStyle); },
+    fillText(text: string) { labels.push(text); },
     save() { alphaStack.push(this.globalAlpha); },
     restore() { this.globalAlpha = alphaStack.pop() ?? 1; },
     createLinearGradient: gradient, createRadialGradient: gradient,
@@ -67,7 +69,7 @@ before(async () => {
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, history: {}, busy: null };
 });
 after(async () => { await builder.dispose(); dom.window.close(); });
-afterEach(() => { ui.cleanup(); frames.clear(); images.length = 0; strokes.length = 0; });
+afterEach(() => { ui.cleanup(); frames.clear(); images.length = 0; strokes.length = 0; labels.length = 0; });
 
 interface Debug { search(): { active: boolean; nodes: string[]; opacityOf(id: string): number }; stats(): { focus: string } }
 const debug = () => (dom.window as unknown as { __studioLandscape: Debug }).__studioLandscape;
@@ -204,17 +206,64 @@ test("clicking a disabled wire explains its endpoints in the inspector and the n
   const edge = scene.edges.find((edge) => edge.edge.from === "envfile:prod" && edge.edge.relation === "supplies")!;
   assert.ok(edge);
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
-  const at = scene.routes[edge.edge.id]!.points.map((point) => worldToScreen(state.camera(), state.viewport(), point))
-    .find((point) => state.pickAt(point.x, point.y)?.id === edge.edge.id);
+  const at = scene.routes[edge.id]!.points.map((point) => worldToScreen(state.camera(), state.viewport(), point))
+    .find((point) => state.pickAt(point.x, point.y)?.id === edge.id);
   assert.ok(at, "a disabled wire remains pickable");
   const canvas = document.querySelector("canvas")!;
   ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   const notice = await ui.screen.findByRole("note", { name: "Connection deployment status" });
+  assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), [["hover-tag off", "Dev"], ["hover-tag prod", "Prod"]]);
   assert.ok(notice.textContent?.includes("Disabled in Development"));
   assert.ok(notice.textContent?.includes(".env.prod"));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
   await ui.waitFor(() => assert.equal(ui.screen.queryByRole("note", { name: "Connection deployment status" }), null));
+});
+
+test("clicking a grouped connection opens every mapping and retains it across environments", async () => {
+  await mount(true);
+  const id = "connection:client-envfile:envfile%3Adev";
+  assert.ok(!labels.includes("3 · Dev"), "connection labels stay off the canvas");
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
+    resourceAvailability: catalogAvailability(response.snapshot.models) });
+  const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
+  const at = scene.routes[id]!.points.map((point) => worldToScreen(state.camera(), state.viewport(), point)).find((point) => state.pickAt(point.x, point.y)?.id === id);
+  assert.ok(at, "the grouped line is pickable");
+  const canvas = document.querySelector("canvas")!;
+  ui.fireEvent.pointerMove(canvas, { clientX: at.x, clientY: at.y });
+  const popup = await ui.screen.findByRole("tooltip");
+  assert.ok(popup.textContent?.includes("3 relationships"));
+  assert.deepEqual(visibleTags(popup), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
+  assert.deepEqual(tagsOf(popup), [["hover-tag dev", "Dev: Connection enabled"], ["hover-tag off", "Prod: not deployed"]]);
+  ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
+  ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
+  const map = await ui.screen.findByRole("region", { name: "Aggregated connection map" });
+  assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
+  assert.equal(map.querySelectorAll(".connection-map-member").length, 3);
+  assert.deepEqual(visibleTags(map.querySelector("summary")!), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
+  assert.ok(!map.textContent?.includes("→"), "connection rows omit repeated arrows");
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, id);
+  ui.fireEvent.click(map.querySelector("summary")!);
+  assert.ok(map.querySelector(".connection-map-detail .connection-details"), "original details are retained without a repeated header");
+  ui.fireEvent.click(map.querySelector("summary")!);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
+  await ui.waitFor(() => assert.ok(map.querySelector(".connection-availability > strong")?.textContent?.includes("Disabled in Production")));
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, id);
+  assert.equal(ui.screen.getByRole("region", { name: "Aggregated connection map" }).querySelectorAll(".connection-map-member").length, 3);
+});
+
+test("connections available in both environments retain two pills in every inspector row", async () => {
+  await mount(true);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: client-app\/.env to cognito, / }));
+  const map = await ui.screen.findByRole("region", { name: "Aggregated connection map" });
+  const expected = [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]];
+  assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), expected);
+  const rows = [...map.querySelectorAll("summary")];
+  assert.equal(rows.length, 4);
+  for (const row of rows) {
+    assert.deepEqual(visibleTags(row), expected);
+    assert.ok(!row.textContent?.includes("client-app/.env"), "summaries show each relationship without repeating shared endpoints");
+  }
 });
 
 test("in Development the real renderer strokes the unbuilt VPC as one deck with a single violet rim", async () => {

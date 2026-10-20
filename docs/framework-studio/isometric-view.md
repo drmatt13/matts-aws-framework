@@ -333,6 +333,18 @@ been removed; the renderer has one visual style.
    ring on its tile. When a selection exists, everything outside its neighbourhood is
    dimmed. Search applies the shared focus opacity to all paint layers (see Search).
 4. **Arcs.** Quadratic curves lifted along world Z, which projects straight up the page.
+   Relationships with the same visible source and destination share one arc, including
+   references to different fields of the same stack. Opposite directions stay separate.
+   The hover popup shows the relationship count when grouped and the same Dev and Prod
+   pills as node popups. Both pills keep their names; unavailable environments are dimmed.
+   Connection inspectors and their individual relationship rows use the same two pills,
+   including when both environments are enabled. Shared endpoints appear once above a
+   compact list of relationship names and types; expanding a row reveals its original
+   field endpoints and evidence. Availability requires a
+   relationship and both enabled endpoints in that graph. Selecting a grouped arc opens
+   a connection map with every original source, destination, label, environment and
+   expandable evidence or input-resolution action. Mixed permission/read groups retain
+   the guarded style, and any missing required input retains the red X marker.
    Ground-plane travel stays linear, so connections toward or away from the viewer
    rise and fall without swinging sideways. Attachment elevations include each plaque's
    height. Lift accounts for the ground plane's 2:1 foreshortening, with a physical crest
@@ -464,7 +476,9 @@ The order follows what is painted on top, front first:
 4. **Terrain.** The painted slab tops and walls, plus the VPC foundation.
    Picking uses the camera inverse and each surface's
    actual height. Empty terrain takes precedence over arcs so it remains clickable.
-5. **Arcs in the void.** Within 6 screen pixels of the sampled curve, hover only.
+5. **Arcs in the void.** Within 6 screen pixels of the sampled curve, hover and click.
+   Missing-input markers are also clickable, including over terrain. Connection labels
+   appear only in the hover popup and inspector, never on the canvas lines.
 
 A ground-plane inverse is never used for picking, because it would return the tile behind
 a raised one. Hover highlights the island and explains its terrace. Clicking empty
@@ -530,6 +544,7 @@ The readout in the bottom right shows a moving average of frame time.
 | `screenOf(id)` | Screen positions of a building's roof and its card |
 | `hullOf(id)` | Its silhouette in screen space |
 | `cards()` | The cards as last drawn |
+| `connections()` | Group ids, visible endpoints, original relationship ids, availability, labels and projected paths |
 | `pickAt(x, y)` | What a point would pick |
 | `stats()` | Tiles, nodes, edges, items drawn, last frame time, frame count, current focus kind |
 | `search()` | Whether search is currently active, focused node/fixture ids, and `opacityOf(id)` |
@@ -548,6 +563,6 @@ drawn, then click there.
 
 Stack fields remain in the underlying model and Inspector. The scene maps their edge
 endpoints and selection highlight to the owning stack through `Scene.representatives`;
-the original edge remains attached as evidence. Connections internal to one stack are
+every original edge remains attached in the connection's members as evidence. Connections internal to one stack are
 omitted from the landscape. The input inspector loads selected `.env` values separately
 from the scene and offers validated catalog edits.

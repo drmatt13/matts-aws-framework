@@ -27,8 +27,10 @@ import { landscapeFocus, searchOpacity, searchScene } from "../scene/focus";
 import { SceneRenderer } from "../scene/render";
 import { nodeHoverFacts, propHoverFacts, type HoverFacts } from "../scene/hover";
 import { catalogAvailability } from "../deployment";
+import { connectionLabel, missingConnectionInput } from "../connections";
 import { AddMenu } from "./AddMenu";
 import { useStudio } from "../studio";
+import { EnvironmentPills } from "./DeploymentBadge";
 
 /**
  * The landscape view: the same application, as a lit miniature you can fly over.
@@ -96,7 +98,7 @@ export function Isometric() {
   const scene = useMemo(() => buildScene(model, { webSocketApi: snapshot.webSocketApi, conditions, resourceAvailability,
     layoutModels: [snapshot.models.dev, snapshot.models.prod], layoutSettings: { aspect, previous: previousLayout.current?.positions, previousKey: previousLayout.current?.topologyKey } }), [model, snapshot.models, snapshot.webSocketApi, conditions, resourceAvailability, aspect, arrangement]);
   useLayoutEffect(() => { previousLayout.current = scene.layout; }, [scene]);
-  const visibleSelected = selected ? scene.representatives[selected] ?? selected : undefined;
+  const visibleSelected = selected ? scene.representatives[selected] ?? scene.edges.find((edge) => edge.members.some((member) => member.edge.id === selected))?.id ?? selected : undefined;
   const matches = useMemo(() => searchScene(scene, model, query), [scene, model, query]);
   const focusState = useMemo(() => landscapeFocus(scene, visibleSelected, matches), [scene, visibleSelected, matches]);
   const nodes = useMemo(() => new Map(scene.nodes.map((node) => [node.id, node])), [scene]);
@@ -104,7 +106,7 @@ export function Isometric() {
   const arcs = useMemo(
     () =>
       scene.edges.map((edge) => {
-        return { edge, points: scene.routes[edge.edge.id]!.points };
+        return { edge, points: scene.routes[edge.id]!.points };
       }),
     [scene],
   );
@@ -289,9 +291,9 @@ export function Isometric() {
       const world = screenToWorld(state.camera, state.viewport, screen);
       const entity = pickEntity(screen, world, state.cards, scene.nodes.map((node) => ({ id: node.id, hull: node.geometry.hull })));
       if (entity) return { kind: "node", id: entity, ...screen };
-      for (const arc of arcs) if (arc.edge.edge.inputRequirement?.status === "missing") {
+      for (const arc of arcs) {
         const marker = worldToScreen(state.camera, state.viewport, connectionMidpoint(arc.points));
-        if (Math.hypot(marker.x - screen.x, marker.y - screen.y) <= 12) return { kind: "edge", id: arc.edge.edge.id, ...screen };
+        if (missingConnectionInput(arc.edge) && Math.hypot(marker.x - screen.x, marker.y - screen.y) <= 12) return { kind: "edge", id: arc.edge.id, ...screen };
       }
       for (let position = scene.props.length - 1; position >= 0; position -= 1) {
         if (insidePolygon(world.x, world.y, scene.props[position]!.geometry.hull)) return { kind: "prop", id: scene.props[position]!.id, ...screen };
@@ -305,7 +307,7 @@ export function Isometric() {
       let best: { id: string; distance: number } | undefined;
       for (const arc of arcs) {
         const distance = distanceToPolyline(world, arc.points);
-        if (distance < tolerance && (!best || distance < best.distance)) best = { id: arc.edge.edge.id, distance };
+        if (distance < tolerance && (!best || distance < best.distance)) best = { id: arc.edge.id, distance };
       }
       if (best) return { kind: "edge", id: best.id, ...screen };
       return undefined;
@@ -466,6 +468,12 @@ export function Isometric() {
       },
       pickAt: (x: number, y: number) => pick({ x, y }),
       cards: () => live.current.cards,
+      connections: () => scene.edges.map((connection) => ({
+        id: connection.id, from: connection.from, to: connection.to, members: connection.members.map((member) => member.edge.id),
+        availability: connection.availability, label: connectionLabel(connection),
+        points: scene.routes[connection.id]!.points.map((point) => worldToScreen(live.current.camera, live.current.viewport, point)),
+        midpoint: worldToScreen(live.current.camera, live.current.viewport, connectionMidpoint(scene.routes[connection.id]!.points)),
+      })),
       hullOf: (id: string) => {
         const node = nodes.get(id);
         if (!node) return undefined;
@@ -564,7 +572,9 @@ export function Isometric() {
       </div>
       {hover ? <HoverCard hover={hover} scene={scene} nodes={nodes} index={index} viewport={live.current.viewport} /> : null}
       <ul className="sr-only" aria-label="Entities in the landscape">
-        {scene.edges.filter((edge) => edge.edge.inputRequirement).map(({ edge }) => <li key={edge.id}><button onClick={() => select(edge.id)} aria-current={visibleSelected === edge.id}>{edge.inputRequirement!.status === "missing" ? "Missing required value" : "Input connection"}: {edge.label} in .env.{edge.inputRequirement!.mode}</button></li>)}
+        {scene.edges.map((connection) => <li key={connection.id}><button onClick={() => select(connection.id)} aria-current={visibleSelected === connection.id}>
+          {missingConnectionInput(connection) ? "Missing required value: " : "Connection: "}{titleOf(index, connection.from)} to {titleOf(index, connection.to)}, {connection.members.length} {connection.members.length === 1 ? "relationship" : "relationships"}{connectionLabel(connection) ? ` (${connectionLabel(connection)})` : ""}
+        </button></li>)}
         {scene.islands.map((island) => <li key={island.id}><button onClick={() => select(island.id)} aria-current={visibleSelected === island.id}>{island.title} island settings</button></li>)}
         {scene.props.map((prop) => <li key={prop.id}><button onClick={() => select(prop.id)} aria-current={visibleSelected === prop.id}>{prop.label}</button></li>)}
         {scene.nodes.map((node) => (
@@ -606,12 +616,19 @@ function HoverCard(props: {
     subtitle = node.kindLabel;
     lines = description ? [] : [NO_DESCRIPTION];
   } else if (current.kind === "edge") {
-    const sceneEdge = props.scene.edges.find((candidate) => candidate.edge.id === current.id);
+    const sceneEdge = props.scene.edges.find((candidate) => candidate.id === current.id);
     const edge = sceneEdge?.edge;
     if (!edge) return null;
-    title = `${RELATION_LABEL[edge.relation]}: ${edge.label}`;
+    title = sceneEdge.members.length > 1 ? `${sceneEdge.members.length} relationships` : `${RELATION_LABEL[edge.relation]}: ${edge.label}`;
+    facts = {
+      places: ENVIRONMENTS.flatMap(([env]) => sceneEdge.availability[env] ? [{ env, where: "Connection enabled" }] : []),
+      frameworkManaged: false,
+    };
     const onlyIn = sceneEdge.otherLens ? `Only in ${sceneEdge.otherLens === "dev" ? "Development" : "Production"}. Switch the view to see it with the rest of that environment.` : undefined;
-    lines = [onlyIn, `${titleOf(index, edge.from)} to ${titleOf(index, edge.to)}`, edge.inputRequirement?.status === "missing" ? `Required in ${edge.inputRequirement.mode === "dev" ? "Development" : "Production"}: no non-blank value or default. Click to resolve.` : undefined, edge.detail, edge.relation === "supplies" ? "Input-file presence and requirement guidance. Values stay outside the map." : edge.provenance === "derived" ? "Derived by the framework." : edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
+    lines = [onlyIn, `${titleOf(index, sceneEdge.from)} to ${titleOf(index, sceneEdge.to)}`,
+      ...(sceneEdge.members.length > 1 ? ["Click to inspect the connection map.", ...sceneEdge.members.slice(0, 4).map((member) => `${RELATION_LABEL[member.edge.relation]}: ${member.edge.label}`)] : [edge.detail]),
+      missingConnectionInput(sceneEdge) ? "Required value missing. Click to resolve." : undefined,
+      edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
   } else if (current.kind === "prop") {
     const prop = props.scene.props.find((candidate) => candidate.id === current.id);
     if (!prop) return null;
@@ -639,12 +656,7 @@ function HoverCard(props: {
       {facts ? (
         <>
           <span className="landscape-hover-tags">
-            {ENVIRONMENTS.map(([env, label]) => {
-              const place = facts.places.find((candidate) => candidate.env === env);
-              // Both pills always stand; the one an environment does not deploy goes dark. The dot's fill and the
-              // hidden text carry the state too, so it never rests on colour alone.
-              return <span key={env} className={`hover-tag ${place ? env : "off"}`}>{label}<span className="sr-only">: {place?.where ?? "not deployed"}</span></span>;
-            })}
+            <EnvironmentPills availability={{ dev: facts.places.some((place) => place.env === "dev"), prod: facts.places.some((place) => place.env === "prod") }} descriptions={Object.fromEntries(facts.places.map((place) => [place.env, place.where]))} />
             {facts.frameworkManaged ? <span className="hover-tag managed">Framework-managed</span> : null}
           </span>
           {facts.notDeployed ? <span className="landscape-hover-note">{facts.notDeployed}</span> : null}

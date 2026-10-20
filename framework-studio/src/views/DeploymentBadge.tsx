@@ -1,4 +1,17 @@
-import { DEPLOYMENT_BADGES, type DeploymentBadgeKind } from "../deployment";
+import { DEPLOYMENT_BADGES, type Availability, type DeploymentBadgeKind } from "../deployment";
+import type { Mode } from "../../shared/model";
+
+/** Keep both environment names visible in hover cards and connection inspectors. */
+export function EnvironmentPills({ availability, descriptions }: {
+  readonly availability: Availability;
+  readonly descriptions?: Readonly<Partial<Record<Mode, string>>>;
+}) {
+  return <span className="environment-pills" aria-label="Deployment environments">
+    {(["dev", "prod"] as const).map((mode) => <span key={mode} className={`hover-tag ${availability[mode] ? mode : "off"}`}>
+      {mode === "dev" ? "Dev" : "Prod"}<span className="sr-only">: {availability[mode] ? descriptions?.[mode] ?? "Connection enabled" : "not deployed"}</span>
+    </span>)}
+  </span>;
+}
 
 export function DeploymentBadge({ kind }: { readonly kind: DeploymentBadgeKind | undefined }) {
   if (!kind) return null;

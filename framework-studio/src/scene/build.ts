@@ -1,4 +1,4 @@
-import type { Lanes, Mode, ModeModel, ModelEdge, ModelResource, ModelRoute, ModelTarget, NetworkModel, TargetKind } from "../../shared/model";
+import type { Lanes, Mode, ModeModel, ModelResource, ModelRoute, ModelTarget, NetworkModel, TargetKind } from "../../shared/model";
 import { RELATION_CATEGORY, ROLE_LABEL, type EdgeCategory } from "../lookup";
 import { endpointServiceIcon, resourceBadge, resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
 import { availabilityBadge, deploymentBadge, developmentLocation, environments, type Availability, type DeploymentBadgeKind } from "../deployment";
@@ -13,6 +13,7 @@ import { layoutLabels, layoutObstacles } from "./layout-quality";
 import { connectionStyle, type ConnectionStyle } from "./connections";
 import { routeConnections, legacyRoute, type ConnectionRoutes } from "./routing";
 import { CLIENT_ENVIRONMENT_ISLAND } from "../../shared/client-environment";
+import { aggregateConnections, type ConnectionGroup } from "../connections";
 export { titleRoom } from "./layout";
 
 /**
@@ -122,16 +123,10 @@ export interface Prop {
   readonly serves: readonly string[];
 }
 
-export interface SceneEdge {
-  readonly edge: ModelEdge;
-  /** Visible endpoints; stack fields connect to their owning stack. Evidence keeps the original edge. */
-  readonly from: string;
-  readonly to: string;
+export interface SceneEdge extends ConnectionGroup {
   readonly category: EdgeCategory;
   /** Colour and dash; presentation only, decided in `connections.ts`. */
   readonly style: ConnectionStyle;
-  /** Set when only the other environment holds this connection: the environment that does. */
-  readonly otherLens?: Mode;
 }
 
 export interface Scene {
@@ -726,17 +721,9 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
   const representatives = Object.fromEntries(model.resources.filter((resource) => resource.kind === "member" && resource.parent && !ids.has(resource.id) && ids.has(resource.parent)).map((resource) => [resource.id, resource.parent!]));
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const resourceById = new Map(model.resources.map((resource) => [resource.id, resource]));
-  // The viewed environment's connections, then the other one's: switching the view changes how strongly a
-  // connection is drawn, never whether it is there. One only the other environment holds says which.
-  const own = new Set(model.edges.map((edge) => edge.id));
-  const held: { readonly edge: ModelEdge; readonly otherLens?: Mode }[] = [
-    ...model.edges.map((edge) => ({ edge })),
-    ...(options.layoutModels ?? []).filter((other) => other.mode !== model.mode)
-      .flatMap((other) => other.edges.filter((edge) => !own.has(edge.id)).map((edge) => ({ edge, otherLens: other.mode }))),
-  ];
-  const edges = held
-    .map(({ edge, otherLens }) => ({ edge, from: representatives[edge.from] ?? edge.from, to: representatives[edge.to] ?? edge.to, category: RELATION_CATEGORY[edge.relation], ...(otherLens ? { otherLens } : {}) }))
-    .filter((edge) => ids.has(edge.from) && ids.has(edge.to) && edge.from !== edge.to)
+  const edges = aggregateConnections(model, options.layoutModels)
+    .filter((edge) => ids.has(edge.from) && ids.has(edge.to))
+    .map((edge) => ({ ...edge, category: RELATION_CATEGORY[edge.edge.relation] }))
     // What an edge references decides its style, even when the map draws a stack field as its owning stack.
     .map((edge): SceneEdge => ({ ...edge, style: connectionStyle(edge.edge, edge.category, nodeById.get(edge.from), resourceById.get(edge.edge.to)) }));
 
@@ -774,7 +761,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
     const node = byNode.get(id)!;
     return { id, island: node.island, h: node.h + node.geometry.height / ELEVATION_STEP, ...node.geometry.top };
   };
-  const routingLinks: LayoutLink[] = edges.map((edge) => ({ id: edge.edge.id, category: edge.category, weight: edge.edge.provenance === "source" ? 1 : 2,
+  const routingLinks: LayoutLink[] = edges.map((edge) => ({ id: edge.id, category: edge.category, weight: edge.edge.provenance === "source" ? 1 : 2,
     from: routingAnchor(edge.from), to: routingAnchor(edge.to) }));
   const obstacles = [...layoutObstacles(footprints, positions), ...layoutLabels(footprints, positions, options.layoutSettings?.aspect), ...nodes.map((node) => ({ id: node.id, bounds: {
     minX: Math.min(...node.geometry.hull.filter((_, at) => at % 2 === 0)), maxX: Math.max(...node.geometry.hull.filter((_, at) => at % 2 === 0)),

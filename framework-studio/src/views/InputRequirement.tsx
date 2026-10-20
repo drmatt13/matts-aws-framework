@@ -3,7 +3,9 @@ import type { Mode, ModelEdge } from "../../shared/model";
 import { editorLink, titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { Written } from "./Written";
-import { connectionDisabledEndpoints } from "../deployment";
+import { connectionDisabledEndpoints, type Availability } from "../deployment";
+import { EnvironmentPills } from "./DeploymentBadge";
+import { edgeAvailability } from "../connections";
 
 export function RequirementNotice({ requirement }: { requirement?: InputRequirement }) {
   if (!requirement?.required) return null;
@@ -16,22 +18,39 @@ export function RequirementNotice({ requirement }: { requirement?: InputRequirem
   </div>;
 }
 
-export function ConnectionView({ edge, onlyIn }: { edge: ModelEdge; onlyIn?: Mode }) {
+export function ConnectionEndpoints({ from, to }: { readonly from: string; readonly to: string }) {
+  const { index, select } = useStudio();
+  return <dl className="connection-endpoints">
+    <div><dt>From</dt><dd><button className="linkish" onClick={() => select(from)}>{titleOf(index, from)}</button></dd></div>
+    <div><dt>To</dt><dd><button className="linkish" onClick={() => select(to)}>{titleOf(index, to)}</button></dd></div>
+  </dl>;
+}
+
+export function ConnectionView({ edge, onlyIn, availability }: { edge: ModelEdge; onlyIn?: Mode; availability?: Availability }) {
+  const { snapshot } = useStudio();
+  return <>
+    <header className="connection-header"><span className="kind">{edge.inputRequirement ? "Input connection" : "Connection"}</span><h2>{edge.label}</h2>
+      <EnvironmentPills availability={availability ?? edgeAvailability(edge, snapshot.models)} />
+      <ConnectionEndpoints from={edge.from} to={edge.to} />
+    </header>
+    <section><ConnectionDetails edge={edge} onlyIn={onlyIn} /></section>
+  </>;
+}
+
+export function ConnectionDetails({ edge, onlyIn }: { edge: ModelEdge; onlyIn?: Mode }) {
   const { index, select, snapshot, mode, setMode } = useStudio();
   const requirement = edge.inputRequirement;
   const resource = requirement ? snapshot.models[requirement.mode].resources.find((item) => item.id === requirement.resource) : undefined;
   const disabledEndpoints = connectionDisabledEndpoints(index, mode, edge);
   const disabled = onlyIn !== undefined || disabledEndpoints.length > 0;
   const environment = mode === "dev" ? "Development" : "Production";
-  return <>
-    <header><span className="kind">{requirement ? "Input connection" : "Connection"}</span><h2>{edge.label}</h2><p className="small muted">{titleOf(index, edge.from)} → {titleOf(index, edge.to)}</p>
+  return <div className="connection-details">
       {disabled ? <div className="connection-availability" role="note" aria-label="Connection deployment status">
         <strong>Disabled in {environment}</strong>
         {onlyIn ? <p>This connection exists only in {onlyIn === "dev" ? "Development" : "Production"}.</p> : null}
         {disabledEndpoints.length ? <><p>Both endpoints must be enabled in this environment.</p><ul>{disabledEndpoints.map((id) => <li key={id}><button className="linkish" onClick={() => select(id)}>{titleOf(index, id)}</button> is not enabled in {environment}.</li>)}</ul></> : null}
       </div> : null}
-    </header>
-    <section><RequirementNotice requirement={requirement} />
+      <RequirementNotice requirement={requirement} />
       {requirement && !requirement.required ? <p className="small muted">Optional in this environment.{requirement.status === "default" ? " A parameter default supplies it." : requirement.status === "configured" ? " An environment value is configured." : ""}</p> : null}
       {requirement ? <>
         <h3>{requirement.status === "missing" ? "Resolve this requirement" : "Manage this input"}</h3>
@@ -45,6 +64,5 @@ export function ConnectionView({ edge, onlyIn }: { edge: ModelEdge; onlyIn?: Mod
         <Written location={item.location} label={item.role === "derived" ? "Derived from" : item.role} />
         {item.excerpt ? <a className="evidence-line" href={editorLink(snapshot.repositoryRoot, item.location)}><code><span className="muted">{item.location.line}</span> {item.excerpt}</code></a> : null}
       </div>)}</div> : null}
-    </section>
-  </>;
+  </div>;
 }

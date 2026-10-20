@@ -758,6 +758,7 @@ a {
   gap: 4px;
   margin: 2px 0;
 }
+.environment-pills { display: inline-flex; flex-wrap: nowrap; gap: 4px; align-items: center; font-size: 11px; font-weight: 400; }
 
 /*
  * Short, single-line pills: Dev and Prod are always there. Colours follow the deployment badges (teal
@@ -854,6 +855,23 @@ a {
 }
 
 .connection-evidence { display: grid; gap: 12px; margin-top: 16px; }
+.connection-header > .environment-pills { margin: 4px 0 8px; }
+.connection-endpoints { display: grid; gap: 3px; margin: 4px 0 0; font-size: 12px; }
+.connection-endpoints > div { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 6px; }
+.connection-endpoints dt { color: var(--graphite); }
+.connection-endpoints dd { margin: 0; overflow-wrap: anywhere; }
+.connection-map-members { border-top: 1px solid var(--rule); }
+.connection-map-member { border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
+.connection-map-member > summary { display: flex; gap: 8px; align-items: center; padding: 8px 0; cursor: pointer; font-size: 12px; list-style: none; }
+.connection-map-member > summary::-webkit-details-marker { display: none; }
+.connection-map-member > summary::before { content: "+"; color: var(--graphite); flex: 0 0 8px; }
+.connection-map-member[open] > summary::before { content: "−"; }
+.connection-map-label { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.connection-map-label code { overflow-wrap: anywhere; }
+.connection-map-detail { padding: 0 0 10px 16px; font-size: 12px; }
+.connection-map-detail .connection-endpoints { margin: 0 0 8px; }
+.connection-map-detail .connection-availability { margin-top: 0; }
+.relations .environment-pills { grid-column: 1 / -1; }
 .connection-availability { margin-top: 14px; padding: 10px 12px; border: 1px solid var(--rule); border-left: 3px solid var(--faint); border-radius: 6px; background: rgba(141, 159, 183, .06); font-size: 12px; }
 .connection-availability > strong { display: inline-block; color: var(--graphite); }
 .connection-availability p { margin: 6px 0; }

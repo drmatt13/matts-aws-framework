@@ -174,7 +174,7 @@ test("the real migration-to-RDS connection stays proportional to its nearby endp
     const scene = buildScene(model, { layoutModels: Object.values(snapshot.models) });
     const edge = scene.edges.find((item) => item.edge.from === "task:db-migrate" && item.edge.to === "resource:rds.database");
     assert.ok(edge);
-    const points = scene.routes[edge.edge.id]!.points, a = points[0]!, b = points.at(-1)!;
+    const points = scene.routes[edge.id]!.points, a = points[0]!, b = points.at(-1)!;
     const dx = b.x - a.x, dy = b.y - a.y, chord = Math.hypot(dx, dy);
     const bow = Math.max(...points.map((point) => Math.abs(dx * (point.y - a.y) - dy * (point.x - a.x)) / chord));
     assert.ok(bow <= chord * 0.25, `migration-to-RDS arc is too tall: ${bow} across ${chord}`);

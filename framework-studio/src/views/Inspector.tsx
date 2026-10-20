@@ -24,6 +24,9 @@ import { networkFixtureIds } from "../../shared/descriptions";
 import { buildScene } from "../scene/build";
 import { Written } from "./Written";
 import { Triggers } from "./Triggers";
+import { aggregateConnections, edgeAvailability } from "../connections";
+import { ConnectionMap } from "./ConnectionMap";
+import { EnvironmentPills } from "./DeploymentBadge";
 
 function LaneLines(props: { readonly target: ModelTarget }) {
   const { lanes } = props.target;
@@ -81,7 +84,7 @@ function LocalReplayControl({ target }: { readonly target: ModelTarget }) {
 }
 
 function Relations(props: { readonly id: string }) {
-  const { index, select } = useStudio();
+  const { index, select, snapshot } = useStudio();
   const stack = index.resources.get(props.id)?.kind === "stack";
   const owns = (id: string) => id === props.id || (stack && id.startsWith(`${props.id}.`));
   const edges = [...new Map([...index.edges.entries()].filter(([id]) => owns(id)).flatMap(([, edges]) => edges).map((edge) => [edge.id, edge])).values()];
@@ -106,6 +109,7 @@ function Relations(props: { readonly id: string }) {
         {edge.source ? <Written location={edge.source} label={edge.relation === "supplies" ? "Authored in" : "Inferred from"} /> : null}
       </span>
       <button className="linkish small code" onClick={() => select(edge.id)}>{edge.label}</button>
+      <EnvironmentPills availability={edgeAvailability(edge, snapshot.models)} />
     </li>
   );
   return (
@@ -414,6 +418,7 @@ export function Inspector() {
   const resource = index.resources.get(selected);
   const localDatabase = index.localServices.get(selected);
   const connection = model.edges.find((edge) => edge.id === selected);
+  const groupedConnection = aggregateConnections(model, Object.values(snapshot.models)).find((group) => group.id === selected);
   // The map also draws the other environment's own connections, faintly marked; selecting one opens it here.
   const otherLens = connection ? undefined : ((["dev", "prod"] as const).filter((candidate) => candidate !== model.mode).map((candidate) => ({ mode: candidate, edge: snapshot.models[candidate].edges.find((edge) => edge.id === selected) })).find((entry) => entry.edge));
   const schemaEntity = snapshot.schema.tables.some((table) => table.id === selected) || snapshot.schema.relations.some((relation) => relation.id === selected);
@@ -429,13 +434,13 @@ export function Inspector() {
       {target ? <TargetView target={target} /> : null}
       {route ? <RouteView route={route} /> : null}
       {resource ? <ResourceView resource={resource} /> : null}
-      {connection ? <ConnectionView edge={connection} /> : otherLens?.edge ? <ConnectionView edge={otherLens.edge} onlyIn={otherLens.mode} /> : null}
+      {groupedConnection && groupedConnection.members.length > 1 ? <ConnectionMap connection={groupedConnection} /> : connection ? <ConnectionView edge={connection} availability={groupedConnection?.availability} /> : otherLens?.edge ? <ConnectionView edge={otherLens.edge} onlyIn={otherLens.mode} availability={groupedConnection?.availability} /> : null}
       {localDatabase ? <LocalDatabaseView database={localDatabase} /> : null}
       {schemaEntity ? <SchemaDetails /> : null}
       {island ? <IslandInspector id={selected} key={selected} /> : null}
       {fixture ? <NetworkFixtureView id={selected} /> : null}
       {resource?.kind === "stack" && !resource.frameworkStack ? <StackInfrastructure id={resource.id} /> : null}
-      {!target && !route && !resource && !connection && !otherLens && !localDatabase && !schemaEntity && !island && !fixture ? <p className="empty">{selected} is not in this graph.</p> : null}
+      {!target && !route && !resource && !connection && !groupedConnection && !otherLens && !localDatabase && !schemaEntity && !island && !fixture ? <p className="empty">{selected} is not in this graph.</p> : null}
       </div><DraftFooter />
     </aside>
   );

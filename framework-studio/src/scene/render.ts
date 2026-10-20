@@ -10,6 +10,7 @@ import { offLens, restingAlpha } from "./connections";
 import { acceptCards, placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
 import { ICON_BADGE, type Face } from "./shapes";
 import { connectionMidpoint } from "./routing";
+import { missingConnectionInput } from "../connections";
 import { islandDrawOrder, islandSlabs, type BandSlab, type IslandSlab, type WallRun } from "./slabs";
 
 /**
@@ -207,7 +208,7 @@ export class SceneRenderer {
     const arcs = new Map<SceneEdge, { points: Point[]; length: number; color: Rgb; offLens: boolean }>();
     const nodeOf = new Map(scene.nodes.map((node) => [node.id, node]));
     for (const edge of scene.edges) {
-      const points = [...scene.routes[edge.edge.id]!.points];
+      const points = [...scene.routes[edge.id]!.points];
       let length = 0;
       for (let index = 1; index < points.length; index += 1) length += Math.hypot(points[index]!.x - points[index - 1]!.x, points[index]!.y - points[index - 1]!.y);
       arcs.set(edge, { points, length, color: hex(edge.style.color), offLens: offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)) });
@@ -914,14 +915,14 @@ export class SceneRenderer {
       const own = edge.otherLens === undefined;
       const active =
         state.focus.kind === "search" ? own && state.focus.nodes.has(edge.from) && state.focus.nodes.has(edge.to) :
-        state.hoveredEdge === edge.edge.id || state.selected === edge.edge.id ||
+        state.hoveredEdge === edge.id || state.selected === edge.id ||
         (own && state.selected !== undefined && (edge.from === state.selected || edge.to === state.selected));
       if (active) {
         lit.push(edge);
         continue;
       }
       const arc = prepared.arcs.get(edge)!;
-      const missing = edge.edge.inputRequirement?.status === "missing";
+      const missing = missingConnectionInput(edge);
       const color = missing ? MISSING_EDGE : arc.color;
       context.strokeStyle = rgba(color, state.focus.kind === "search" ? 0.025 : missing ? state.selected ? 0.35 : 0.9 : state.selected ? 0.06 : restingAlpha(edge.edge.provenance, arc.offLens));
       context.lineWidth = 1.2 * pixel;
@@ -932,7 +933,7 @@ export class SceneRenderer {
     context.setLineDash([]);
     for (const edge of lit) {
       const arc = prepared.arcs.get(edge)!;
-      const missing = edge.edge.inputRequirement?.status === "missing";
+      const missing = missingConnectionInput(edge);
       const color = missing ? MISSING_EDGE : arc.color;
       context.shadowColor = rgba(color, 0.8);
       context.shadowBlur = 10;
@@ -970,7 +971,7 @@ export class SceneRenderer {
     }
     // Fixed screen-size markers remain readable and clickable at overview zoom.
     context.setLineDash([]);
-    for (const edge of prepared.scene.edges) if (edge.edge.inputRequirement?.status === "missing") {
+    for (const edge of prepared.scene.edges) if (missingConnectionInput(edge)) {
       const at = connectionMidpoint(prepared.arcs.get(edge)!.points);
       const radius = 8 * pixel, inset = 3 * pixel;
       const matches = state.focus.kind !== "search" || state.focus.nodes.has(edge.from) && state.focus.nodes.has(edge.to);

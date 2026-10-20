@@ -64,6 +64,6 @@ export function measureSceneLayout(scene: Scene, aspect = 16 / 9): LayoutQuality
   const byId = new Map(scene.nodes.map((node) => [node.id, node]));
   const positions = new Map(scene.layout.positions.map((p) => [p.id, p]));
   const anchor = (id: string) => { const node = byId.get(id)!, p = positions.get(node.island)!; return { id, island: node.island, x: node.geometry.top.x - p.left * 32, y: node.geometry.top.y - p.top * 16 }; };
-  const links = scene.edges.filter((edge) => byId.get(edge.from)!.island !== byId.get(edge.to)!.island).map((edge) => ({ id: edge.edge.id, from: anchor(edge.from), to: anchor(edge.to), weight: edge.edge.provenance === "source" ? 1 : 2, category: edge.category }));
+  const links = scene.edges.filter((edge) => byId.get(edge.from)!.island !== byId.get(edge.to)!.island).map((edge) => ({ id: edge.id, from: anchor(edge.from), to: anchor(edge.to), weight: edge.edge.provenance === "source" ? 1 : 2, category: edge.category }));
   return measureLayout(scene.layout.footprints, { links, islands: [], signature: "actual routes" }, scene.layout.positions, aspect, undefined, scene.routes, 24);
 }

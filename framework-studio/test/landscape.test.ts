@@ -19,6 +19,7 @@ import { indexModel } from "../src/lookup";
 import { existsSync, readFileSync } from "node:fs";
 import { landscapeFocus, searchOpacity, searchScene, SEARCH_FADE } from "../src/scene/focus";
 import { layoutIslands, type IslandFootprint } from "../src/scene/layout";
+import { aggregateConnections, connectionLabel } from "../src/connections";
 
 /**
  * The landscape is a view, and these hold it to that: every entity of the real
@@ -42,6 +43,36 @@ before(async () => {
 });
 after(() => builder.dispose());
 
+test("connection labels reflect relationships and both endpoints in each graph", () => {
+  for (const scene of [dev, prod]) for (const group of scene.edges) {
+    for (const mode of ["dev", "prod"] as const) {
+      const index = indexModel(snapshot.models[mode]);
+      const enabled = group.members.some((member) => member.models[mode] && connectionDisabledEndpoints(index, mode, member.models[mode]!).length === 0);
+      assert.equal(group.availability[mode], enabled, `${group.id}: ${mode}`);
+    }
+    assert.equal(group.badge, group.availability.dev && group.availability.prod ? undefined : group.availability.dev ? "dev" : group.availability.prod ? "prod" : "off");
+  }
+  assert.equal(dev.edges.find((group) => group.from === "client-envfile" && group.to === "envfile:dev")?.members.length, 3);
+  assert.equal(connectionLabel(dev.edges.find((group) => group.from === "client-envfile" && group.to === "envfile:dev")!), "3 · Dev");
+});
+
+test("aggregation keeps per-mode evidence, direction and stable identities", () => {
+  const read = snapshot.models.dev.edges.find((edge) => edge.relation === "env" && edge.to.startsWith("resource:cognito."))!;
+  assert.ok(read);
+  const second = { ...read, id: "fixture:second", label: "second field", to: "resource:cognito" };
+  const reverse = { ...second, id: "fixture:reverse", from: second.to, to: second.from };
+  const devModel = { ...snapshot.models.dev, edges: [read, second, reverse] };
+  const prodModel = { ...snapshot.models.prod, edges: [{ ...read, detail: "Production evidence" }] };
+  const groups = aggregateConnections(devModel, [devModel, prodModel]);
+  const group = groups.find((item) => item.from === read.from)!;
+  assert.equal(group.members.length, 2);
+  assert.equal(groups.length, 2, "opposite directions remain distinct");
+  assert.equal(group.members.find((member) => member.edge.id === read.id)?.models.prod?.detail, "Production evidence");
+  assert.equal(group.members.find((member) => member.edge.id === second.id)?.availability.prod, false);
+  assert.deepEqual(groups.map((item) => item.id), aggregateConnections(prodModel, [prodModel, devModel]).map((item) => item.id));
+  assert.deepEqual(groups.map((item) => item.id), aggregateConnections({ ...devModel, edges: [...devModel.edges].reverse() }, [prodModel]).map((item) => item.id));
+});
+
 test("replay-enabled event connections reach the displayed replay stack through the shared router", () => {
   for (const scene of [dev, prod]) {
     const replay = scene.nodes.find((node) => node.id === "framework-stack:DevLambdaReplayStack")!;
@@ -51,7 +82,7 @@ test("replay-enabled event connections reach the displayed replay stack through 
     for (const edge of edges) {
       assert.equal(edge.to, replay.id);
       assert.ok(scene.nodes.some((node) => node.id === edge.from));
-      assert.ok(scene.routes[edge.edge.id]);
+      assert.ok(scene.routes[edge.id]);
     }
   }
 });
@@ -142,14 +173,20 @@ test("every route, target, catalog entry and managed database stands exactly onc
   }
 });
 
-test("every edge is a model's own, with its relation: the viewed model's, or the other environment's marked as such", () => {
-  // Scene edges are the viewed model's, in order, followed by the connections only the other environment holds.
+test("aggregated connections retain every original edge and its environment evidence", () => {
   const visible = (model: typeof snapshot.models.dev, scene: Scene) => model.edges.filter((edge) => (scene.representatives[edge.from] ?? edge.from) !== (scene.representatives[edge.to] ?? edge.to)).map((edge) => edge.id).sort();
-  assert.deepEqual(dev.edges.filter((edge) => !edge.otherLens).map((edge) => edge.edge.id).sort(), visible(snapshot.models.dev, dev));
-  assert.deepEqual(prod.edges.filter((edge) => !edge.otherLens).map((edge) => edge.edge.id).sort(), visible(snapshot.models.prod, prod));
+  assert.deepEqual(dev.edges.flatMap((edge) => edge.members.flatMap((member) => member.models.dev ? [member.models.dev.id] : [])).sort(), visible(snapshot.models.dev, dev));
+  assert.deepEqual(prod.edges.flatMap((edge) => edge.members.flatMap((member) => member.models.prod ? [member.models.prod.id] : [])).sort(), visible(snapshot.models.prod, prod));
   for (const [scene, other] of [[dev, snapshot.models.prod], [prod, snapshot.models.dev]] as const) {
     const held = new Map(other.edges.map((edge) => [edge.id, edge]));
-    for (const edge of scene.edges.filter((candidate) => candidate.otherLens)) assert.deepEqual(edge.edge, held.get(edge.edge.id), edge.edge.id);
+    const own = new Map(snapshot.models[scene.mode].edges.map((edge) => [edge.id, edge]));
+    const pairs = new Set<string>();
+    for (const edge of scene.edges) {
+      const pair = JSON.stringify([edge.from, edge.to]);
+      assert.ok(!pairs.has(pair), `one arc per directed pair: ${pair}`);
+      pairs.add(pair);
+      for (const member of edge.members) assert.deepEqual(member.edge, own.get(member.edge.id) ?? held.get(member.edge.id));
+    }
   }
 });
 
@@ -763,15 +800,14 @@ test("the WebSocket authorizer's link to the API is red and solid", () => {
   }
 });
 
-test("a permission grant is red and dashed, unlike a parameter being read", () => {
+test("a permission grant keeps a mixed aggregate red and dashed", () => {
   const read = snapshot.models.prod.edges.find((edge) => edge.relation === "env" && edge.to.startsWith("resource:cognito"))!;
   assert.ok(read, "a workload reads a Cognito field");
   const grant = { ...read, id: "edge:test-grant", relation: "grant" as const, label: "grantRead()" };
   const scene = buildScene({ ...snapshot.models.prod, edges: [...snapshot.models.prod.edges, grant] }, { webSocketApi: snapshot.webSocketApi });
-  const drawn = (id: string) => scene.edges.find((edge) => edge.edge.id === id)!.style;
+  const drawn = (id: string) => scene.edges.find((edge) => edge.members.some((member) => member.edge.id === id))!.style;
   assert.deepEqual(drawn(grant.id), { color: GUARD_EDGE_COLOR, dashed: true });
-  assert.deepEqual(drawn(read.id), { color: READ_EDGE_COLOR, dashed: true });
-  assert.notEqual(drawn(grant.id).color, drawn(read.id).color);
+  assert.deepEqual(drawn(read.id), drawn(grant.id), "the read and grant share one guarded connection");
 });
 
 test("a connection outside the viewed environment rests at a quarter of the strength it has inside it", () => {
@@ -857,7 +893,7 @@ test("an environment file's connections read clearly in its own view and recede 
     assert.equal(nodeOf.get(`envfile:${viewed}`)!.presence, "present", `${viewed} file in the ${viewed} view`);
     assert.equal(nodeOf.get(`envfile:${other}`)!.presence, "absent", `${other} file in the ${viewed} view`);
     const strength = (file: "dev" | "prod") => {
-      const edge = scene.edges.find((candidate) => candidate.edge.id === `lens-fixture:${file}`)!;
+      const edge = scene.edges.find((candidate) => candidate.members.some((member) => member.edge.id === `lens-fixture:${file}`))!;
       return restingAlpha(edge.edge.provenance, offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)));
     };
     assert.equal(strength(viewed), 0.3, `${viewed} file's connection in the ${viewed} view`);
@@ -885,15 +921,15 @@ test("an enabled connection reads clearly in its own view and recedes where it i
 });
 
 test("both views draw the same connections; the other environment's own are marked and dimmed", () => {
-  const ids = (scene: Scene) => scene.edges.map((edge) => edge.edge.id).sort();
+  const ids = (scene: Scene) => scene.edges.map((edge) => edge.id).sort();
   assert.deepEqual(ids(dev), ids(prod), "switching the view never makes a connection appear or vanish");
   const marked = (scene: Scene) => scene.edges.filter((edge) => edge.otherLens).map((edge) => `${edge.otherLens}: ${edge.edge.from} -> ${edge.edge.to}`).sort();
   assert.deepEqual(marked(dev), ["prod: client-envfile -> framework-stack:FrontendWebsiteS3Stack", "prod: lambda:graphql-api -> resource:rds.database", "prod: lambda:oauth-callback -> resource:rds.database"]);
-  assert.deepEqual(marked(prod), [...Array(3).fill("dev: client-envfile -> envfile:dev"), "dev: lambda:cognito-post-confirmation-trigger -> local:postgres", "dev: lambda:graphql-api -> local:postgres", "dev: lambda:oauth-callback -> local:postgres"]);
+  assert.deepEqual(marked(prod), ["dev: client-envfile -> envfile:dev", "dev: lambda:cognito-post-confirmation-trigger -> local:postgres", "dev: lambda:graphql-api -> local:postgres", "dev: lambda:oauth-callback -> local:postgres"]);
   // A connection a lens does not hold itself is one the lens dims, and the model's own edges are never marked.
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
     const own = new Set(model.edges.map((edge) => edge.id));
-    for (const edge of scene.edges) assert.equal(edge.otherLens !== undefined, !own.has(edge.edge.id), edge.edge.id);
+    for (const edge of scene.edges) assert.equal(edge.otherLens !== undefined, !edge.members.some((member) => own.has(member.edge.id)), edge.id);
   }
   // Without the other environment's model there is nothing to add: the viewed model alone is drawn as it always was.
   const alone = buildScene(snapshot.models.dev, { webSocketApi: snapshot.webSocketApi });

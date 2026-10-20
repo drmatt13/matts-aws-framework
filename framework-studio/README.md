@@ -189,6 +189,13 @@ for the reusable reader, runner and current limits.
 
 `/isometric` draws the same model as a landscape of floating islands, on a 2D canvas.
 
+Relationships between the same visible source and destination share one connection.
+Connection hover popups, inspectors and relationship rows show Dev and Prod pills, with
+unavailable environments dimmed based on the relationships and both endpoints.
+Grouped inspectors show shared endpoints once and list each relationship in a compact expandable row.
+Click a grouped line to inspect a connection map with every field mapping,
+relationship, environment and expandable source evidence or required-input guidance.
+
 The backdrop is a thin isometric grid anchored to the terrain's world coordinates.
 Entities use locally bundled official AWS SVG service icons on small plinths, with Lucide
 SVGs for generic framework concepts. Board and Inspector share the icon mapping.
