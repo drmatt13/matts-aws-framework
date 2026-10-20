@@ -85,6 +85,6 @@ export function ClientEnvironmentFileView({ resource }: { readonly resource: Mod
   return <>
     <header><span className="kind">Client environment · {resource.clientEnvironment!.mode === "dev" ? "Development" : "Production"}</span><h2><EntityIcon icon="envFile" />.env</h2><code className="ref">client-app/.env</code></header>
     <ClientEnvironmentMappings />
-    <details className="client-mapping-description"><summary>Description</summary><Description entity={resource.id} /></details>
+    <Description entity={resource.id} />
   </>;
 }

@@ -343,7 +343,8 @@ it. Anything nested or computed says why and links to the line instead.
 Every map node, public stack field, island, gateway and endpoint has a **Description**
 in its inspector. Descriptions are shared by Development and Production and saved as
 literal strings in `framework-config/descriptions.ts`, keyed by canonical entity ID.
-Click an item, edit its description, then **Review Changes** and **Apply All**. Description
+Descriptions show a compact preview; choose **Edit** to open the editor, then
+**Review Changes** and **Apply All**. Description
 edits use the existing unsaved-change guards, conflict detection and undo/redo history.
 HTTP route renames move their descriptions to the new route ID in the same change.
 New declarations can add their description from the inspector; existing entries are

@@ -10,10 +10,10 @@ export function Written(props: { readonly location: SourceLocation | undefined; 
   return (
     <div className="written">
       <span>
-        {props.label ?? "Written in"} <code>{location.file}:{location.line}</code>
+        {props.label ?? "Source"}
       </span>
-      <a href={editorLink(snapshot.repositoryRoot, location)} className="small">
-        Open in VS Code <ExternalLink size={12} aria-hidden />
+      <a href={editorLink(snapshot.repositoryRoot, location)} className="small" aria-label={`Open ${location.file}:${location.line} in VS Code`} title={`${location.file}:${location.line}`}>
+        <code>{location.file.split("/").at(-1)}:{location.line}</code> <ExternalLink size={12} aria-hidden />
       </a>
     </div>
   );

@@ -263,7 +263,7 @@ test("connections available in both environments retain two pills in every inspe
   const map = await ui.screen.findByRole("region", { name: "Aggregated connection map" });
   const expected = [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]];
   assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), expected);
-  const rows = [...map.querySelectorAll(".connection-map-member > summary")];
+  const rows = [...map.querySelectorAll<HTMLElement>(".connection-map-member > summary")];
   assert.equal(rows.length, 4);
   for (const row of rows) {
     assert.deepEqual(visibleTags(row), expected);

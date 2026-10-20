@@ -4,7 +4,7 @@ import { RELATION_LABEL, ROLE_LABEL, titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
 import { resourceIcon, routeIcon, targetIcon } from "../icons";
-import { developmentLocation, deploymentSummary, environments } from "../deployment";
+import { developmentLocation, environments } from "../deployment";
 import { Code2, Diamond } from "lucide-react";
 import type { LocalDatabase } from "../../shared/database";
 import { SchemaDetails, SchemaLink } from "./Database";
@@ -27,6 +27,7 @@ import { Triggers } from "./Triggers";
 import { aggregateConnections, edgeAvailability } from "../connections";
 import { ConnectionMap } from "./ConnectionMap";
 import { EnvironmentPills } from "./DeploymentBadge";
+import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
 
 function LaneLines(props: { readonly target: ModelTarget }) {
   const { lanes } = props.target;
@@ -45,9 +46,6 @@ function LaneLines(props: { readonly target: ModelTarget }) {
         {line("dev", availability.dev, "Development", developmentLocation(lanes))}
         {line("prod", availability.prod, "Production", "In AWS")}
       </div>
-      <p className="small">
-        {deploymentSummary(lanes)}
-      </p>
     </section>
   );
 }
@@ -100,27 +98,19 @@ function Relations(props: { readonly id: string }) {
         </button>
         {edge.provenance === "derived" ? <span className="muted small"> (derived)</span> : null}
         {edge.provenance === "source" ? <span className="muted small"> ({edge.relation === "supplies" ? "input file" : "CDK source"})</span> : null}
-        {edge.detail && !edge.source ? (
-          <>
-            <br />
-            <span className="small muted code">{edge.detail}</span>
-          </>
-        ) : null}
-        {edge.source ? <Written location={edge.source} label={edge.relation === "supplies" ? "Authored in" : "Inferred from"} /> : null}
       </span>
       <button className="linkish small code" onClick={() => select(edge.id)}>{edge.label}</button>
       <EnvironmentPills availability={edgeAvailability(edge, snapshot.models)} />
     </li>
   );
   return (
-    <section>
-      <h3>Relations</h3>
+    <InspectorDisclosure title="Connections" count={edges.length}>
       {edges.some((edge) => edge.relation === "cdk" && edge.provenance === "source") ? <p className="small muted">CDK links are inferred from direct source references. Helpers and conditional wiring may add connections this view cannot resolve.</p> : null}
       <ul className="relations">
         {outgoing.map((edge) => row(edge, edge.to, RELATION_LABEL[edge.relation]))}
           {incoming.map((edge) => row(edge, edge.from, edge.relation === "contains" ? "Contained by" : edge.relation === "cdk" ? "CDK link from" : edge.relation === "supplies" ? "Supplied by" : `${RELATION_LABEL[edge.relation]} from`))}
       </ul>
-    </section>
+    </InspectorDisclosure>
   );
 }
 
@@ -204,7 +194,9 @@ function TargetView(props: { readonly target: ModelTarget }) {
   const workflow = model.workflows.find((candidate) => candidate.ref === target.ref);
   const compute = target.compute;
   const buildFields = new Set(["lambda.architecture", "lambda.packaging", "lambda.runtime", "lambda.bundling.minify", "lambda.bundling.sourceMap"]);
-  const settings = facts.filter((fact) => !buildFields.has(fact.field) && fact.field !== "http.auth" && fact.field !== "events.localReplay");
+  const settingOrder = ["lambda.memorySize", "lambda.timeoutSeconds", "deploy", "lambda.subnet", "lambda.logRetentionDays"];
+  const settings = facts.filter((fact) => !buildFields.has(fact.field) && fact.field !== "http.auth" && fact.field !== "events.localReplay")
+    .sort((a, b) => (settingOrder.indexOf(a.field) < 0 ? 99 : settingOrder.indexOf(a.field)) - (settingOrder.indexOf(b.field) < 0 ? 99 : settingOrder.indexOf(b.field)));
   return (
     <>
       <header>
@@ -212,19 +204,17 @@ function TargetView(props: { readonly target: ModelTarget }) {
         <h2><EntityIcon icon={targetIcon(target)} />{target.title}</h2>
         <code className="ref">{target.ref}</code>
         <Written location={snapshot.source.entities[target.ref]?.key} />
-        <p className="small muted" style={{ marginTop: 6 }}>
-          Deployed as <code>{target.constructId}</code>
-          {target.constructIdPinned ? ", pinned by cloud.constructId. Changing it would replace the deployed resource." : ", derived from its id."}
-        </p>
       </header>
+      <LaneLines target={target} />
       <Description entity={target.ref} />
+      {settings.length > 0 ? <InspectorSection title="Settings">
+        {settings.map((fact) => <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />)}
+      </InspectorSection> : null}
       <ApiAuthControl target={target} />
       <LocalReplayControl target={target} />
       {target.role === "event" ? <Triggers key={target.ref} target={target} /> : null}
       <HttpRoutes target={target} />
-      <LaneLines target={target} />
-      {compute.kind === "lambda" ? <section>
-        <h3>Build and runtime</h3>
+      {compute.kind === "lambda" ? <InspectorDisclosure title="Build and runtime">
         <dl className="lambda-build">
           <dt>Implementation</dt><dd>{compute.implementation === "container" ? "Container image" : compute.implementation === "python" ? "Python" : "TypeScript"}</dd>
           <dt>Source</dt><dd><code>{target.directory}</code></dd>
@@ -232,17 +222,8 @@ function TargetView(props: { readonly target: ModelTarget }) {
           {compute.packaging === "container" ? <><dt>Runtime</dt><dd>Defined by the Dockerfile</dd></> : null}
         </dl>
         {facts.filter((fact) => buildFields.has(fact.field)).map((fact) => <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />)}
-      </section> : null}
-      {settings.length > 0 ? (
-        <section>
-          <h3>Settings</h3>
-          {settings.map((fact) => (
-            <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />
-          ))}
-        </section>
-      ) : null}
-      <section>
-        <h3>Production placement</h3>
+      </InspectorDisclosure> : null}
+      <InspectorDisclosure title="Production placement">
         <PlacementText placement={target.placement} />
         {compute.kind === "container" ? (
           <p className="small muted">
@@ -250,12 +231,15 @@ function TargetView(props: { readonly target: ModelTarget }) {
             {compute.port ? `, port ${compute.port}` : ""}.
           </p>
         ) : null}
-      </section>
+      </InspectorDisclosure>
+      <InspectorDisclosure title="Source and identity">
+        <p className="small muted">Deployed as <code>{target.constructId}</code>{target.constructIdPinned ? ", pinned by cloud.constructId. Changing it would replace the deployed resource." : ", derived from its id."}</p>
+        <Written location={snapshot.source.entities[target.ref]?.key} />
+      </InspectorDisclosure>
       {workflow ? <Steps workflow={workflow} /> : null}
       <Relations id={target.ref} />
       {target.environment.length > 0 ? (
-        <section>
-          <h3>Environment</h3>
+        <InspectorDisclosure title="Environment" count={target.environment.length + target.secrets.length}>
           <div className="env">
             {target.environment.map((entry) => (
               <EnvRow key={entry.name} name={entry.name} value={entry.value.kind === "literal" ? JSON.stringify(entry.value.value) : entry.value.display} via={entry.via} />
@@ -264,11 +248,10 @@ function TargetView(props: { readonly target: ModelTarget }) {
               <EnvRow key={secret.name} name={secret.name} value={`${secret.display}, at startup`} />
             ))}
           </div>
-        </section>
+        </InspectorDisclosure>
       ) : null}
       {target.access.length > 0 ? (
-        <section>
-          <h3>Explicit IAM</h3>
+        <InspectorDisclosure title="Explicit IAM" count={target.access.length}>
           {target.access.map((statement, position) => (
             <p key={position} className="small">
               <code>{statement.actions.join(", ")}</code>
@@ -276,7 +259,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
               <span className="muted code">{statement.resources.join(", ")}</span>
             </p>
           ))}
-        </section>
+        </InspectorDisclosure>
       ) : null}
     </>
   );
@@ -284,13 +267,13 @@ function TargetView(props: { readonly target: ModelTarget }) {
 
 function EnvRow(props: { readonly name: string; readonly value: string; readonly via?: string }) {
   return (
-    <>
+    <div className="env-row">
       <code>{props.name}</code>
       <span>
         <code>{props.value}</code>
         {props.via ? <span className="muted"> from userPool: true</span> : null}
       </span>
-    </>
+    </div>
   );
 }
 
@@ -348,23 +331,26 @@ function ResourceView(props: { readonly resource: ModelResource }) {
     <>
       <header>
         <span className="kind">{kind}</span>
-        <h2><EntityIcon icon={resourceIcon(resource)} />{resource.kind === "stack" ? resource.stackClass ?? resource.path.join(".") : `resources.${resource.path.join(".")}`}</h2>
+        <h2><EntityIcon icon={resourceIcon(resource)} />{resource.kind === "stack" ? resource.stackClass ?? resource.path.join(".") : resource.path.at(-1)}</h2>
         <ResourceStatus resource={resource} />
+        {resource.frameworkStack || resource.stackUsage?.status === "unreferenced" || resource.frameworkManaged ? <details className="header-details"><summary>About this resource</summary>
         {resource.frameworkStack ? <p className="small muted">No <code>resource.stack&lt;{resource.stackClass}&gt;()</code> entry in <code>framework-config/resources.ts</code>. Declare and link one if workloads should reference this stack's public fields.</p> : null}
         {resource.stackUsage?.status === "unreferenced" ? <p className="small muted">Declared in the catalog, with no constructor reference in the CDK app's runtime imports. Add it to the app to include it in synthesis.</p> : null}
         {resource.frameworkManaged === "database" ? <p className="small muted">The framework owns this database and its connections. Dedicated database configuration options are coming later.</p> : resource.frameworkManaged ? <p className="small muted">The framework manages this stack and its generated environment outputs.</p> : null}
+        </details> : null}
+        {resource.kind !== "stack" ? <code className="ref">resources.{resource.path.join(".")}</code> : null}
         {resource.typeText ? <code className="ref">{resource.typeText}</code> : null}
         {resource.kind === "member" && resource.parent ? <button className="linkish small" onClick={() => select(resource.parent)}>Back to {model.resources.find((item) => item.id === resource.parent)?.stackClass ?? "stack"}</button> : null}
         <Written location={snapshot.source.entities[resource.id]?.key} label={resource.frameworkStack ? "Class in" : resource.kind === "member" ? "Declared on the stack in" : "Written in"} />
       </header>
       <Description entity={resource.id} />
-      {resource.stackOutputs?.length ? <section className="stack-outputs"><h3>CloudFormation outputs</h3><p className="small muted">Symbolic source values mapped by the root .env exporter.</p><ul>{resource.stackOutputs.map((output) => <li key={output.name}>
+      {resource.stackOutputs?.length ? <InspectorDisclosure title="CloudFormation outputs" count={resource.stackOutputs.length} defaultOpen={!!resource.frameworkStack} className="stack-outputs"><p className="small muted">Symbolic source values mapped by the root .env exporter.</p><ul>{resource.stackOutputs.map((output) => <li key={output.name}>
         <span className="stack-output-name">{output.name}</span>
         <code className="stack-output-value"><span>$</span>{output.symbol}</code>
         <span className="small muted">Root .env · <code>{output.envName}</code></span>
-      </li>)}</ul></section> : null}
+      </li>)}</ul></InspectorDisclosure> : null}
       {database ? <section><SchemaLink /><p className="small muted">The application contract is shared with local PostgreSQL.</p></section> : null}
-      <section>
+      {resource.absent || (resource.kind === "member" && resource.memberSource === "class") || (facts?.stackClass && !resource.frameworkStack) || (facts?.stackLocation && !resource.frameworkStack) || links.length ? <InspectorDisclosure title="Declaration details">
         {resource.absent && resource.frameworkStack ? <p>Not enabled in the {model.mode === "dev" ? "development" : "production"} environment.</p> : resource.absent ? (
           <p>
             Absent in the {model.mode === "dev" ? "development" : "production"} graph
@@ -377,8 +363,8 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         {links.map((link) => (
           <Written key={`${link.file}:${link.line}`} location={link} label="Linked in" />
         ))}
-      </section>
-      {resource.kind === "stack" && members.length ? <section><details className="stack-members" open><summary>Public fields <span className="muted">({members.length})</span></summary><ul className="relations">{members.map((member) => <li key={member.id}><button className="linkish" onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className="small muted">{member.typeText ?? member.kind}</code></li>)}</ul><p className="small muted">Read-only. Declared by the stack class.</p></details></section> : null}
+      </InspectorDisclosure> : null}
+      {resource.kind === "stack" && members.length ? <InspectorDisclosure title="Public fields" count={members.length} defaultOpen className="stack-members"><ul className="relations">{members.map((member) => <li key={member.id}><button className="linkish" onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className="small muted">{member.typeText ?? member.kind}</code></li>)}</ul><p className="small muted">Declared by the stack class.</p></InspectorDisclosure> : null}
       <InputSources resource={resource} />
       {resource.kind === "member" ? <Triggers key={resource.id} resource={resource} /> : null}
       {manual.length ? <section>{manual.map((item) => <div key={`${item.source.file}:${item.source.start}`}><p className="small muted">{item.reason}</p><Written location={item.source} label="Wiring in" /></div>)}</section> : null}
@@ -426,11 +412,12 @@ export function Inspector() {
   const fixture = networkFixtureIds(model.network).includes(selected);
   return (
     <aside className="inspector" aria-label="Inspector">
-      <div className="inspector-content"><div style={{ display: "flex", justifyContent: "flex-end", padding: "8px 8px 0" }}>
+      <div className="inspector-toolbar"><span>Inspector</span>
         <button className="icon-button" onClick={() => select(undefined)} aria-label="Close the inspector">
           <X size={16} aria-hidden />
         </button>
       </div>
+      <div className="inspector-content" key={selected}>
       {target ? <TargetView target={target} /> : null}
       {route ? <RouteView route={route} /> : null}
       {resource ? <ResourceView resource={resource} /> : null}

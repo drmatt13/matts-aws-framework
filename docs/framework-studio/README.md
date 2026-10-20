@@ -45,6 +45,7 @@ separate deployment states.
 | [Report](report.md) | You want to know what exists, why it was built this way, and what was verified |
 | [Architecture](architecture.md) | You are changing the server, the model, source editing, or the browser's data flow |
 | [Isometric view](isometric-view.md) | You are changing the landscape: layout, terrain, buildings, camera, picking or rendering |
+| [Inspector interaction system](inspector-design.md) | You are adding or refining inspector sections, forms, disclosures, menus or edit workflows |
 | [Lambda invocation design](lambda-invocations-design.md) | You are adding Lambda type conversion, resource-specific event triggers or function creation |
 | [Moving forward](moving-forward.md) | You are about to extend the studio: invariants, recipes, gotchas, known limits, the roadmap |
 | [Deploy & Run](deploy-and-run.md) | You are working on deployment discovery, planning, deploys, teardown or the local development lifecycle |

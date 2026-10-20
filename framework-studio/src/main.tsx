@@ -19,6 +19,7 @@ import { Database } from "./views/Database";
 // cascade order while loading the Deploy component only when its route opens.
 import "./views/deploy/deploy.css";
 import "./styles.css";
+import "./inspector.css";
 
 interface Search {
   readonly select?: string;

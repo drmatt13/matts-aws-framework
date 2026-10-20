@@ -4,6 +4,7 @@ import type { ModelResource } from "../../shared/model";
 import type { ResourceDetails, ResourceIntent } from "../../shared/resources";
 import { api } from "../api";
 import { useStudio } from "../studio";
+import { FormGroup } from "./InspectorUI";
 import { RequirementNotice } from "./InputRequirement";
 
 export function ResourceEditor({ resource }: { readonly resource: ModelResource }) {
@@ -50,9 +51,8 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
   };
   return <>
     <section className="resource-editor">
-      <h3>Local value</h3>
+      <div className="section-heading"><h3>Local value</h3><button className="quiet small" onClick={() => select(`envfile:${mode}`)}>Edit value</button></div>
       <RequirementNotice requirement={resource.inputRequirement} />
-      {resource.inputRequirement?.required ? <button className="linkish small" onClick={() => select(`envfile:${mode}`)}>Edit .env.{mode}</button> : null}
       <div className="resource-value">
         <code>{resource.fromEnv}</code>
         {resource.absent ? <p className="muted">Not declared in this graph.</p> : details ? <>
@@ -66,17 +66,17 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
     <section className="resource-editor">
       <h3>Configuration</h3>
       {descriptionPending ? <p className="small muted">Apply or discard the description before editing input settings.</p> : null}
-      <fieldset disabled={disabled}>
+      <fieldset disabled={disabled}><FormGroup title="Input behavior">
         <label className="resource-check"><input type="checkbox" checked={form.required ?? !!resource.required} onChange={(event) => update({ required: event.target.checked })} />Required input</label>
-        <p className="small muted">Every enabled consumer must receive a value. A non-blank environment value{secret ? " is required for a secret" : " or parameter default satisfies it"}. This flag also marks unfilled catalog inputs on the map.</p>
+        <p className="small muted">Requires a value for every enabled consumer{secret ? "." : ", supplied by the environment file or a default."}</p>
         <label className="resource-check"><input type="checkbox" checked={secret} onChange={(event) => setSecret(event.target.checked)} />Secret</label>
-        <p className="small muted">{secret ? "Uploaded to Secrets Manager at deployment. The value belongs in cdk-app/.env." : "Read as a regular string from cdk-app/.env."}</p>
+        <p className="small muted">{secret ? `Stored in Secrets Manager at deployment. Author the value in cdk-app/.env.${mode}.` : `Read from cdk-app/.env.${mode} as a regular string.`}</p>
         <label className="resource-check"><input type="checkbox" checked={!secret && hasDefault} disabled={secret} onChange={(event) => setHasDefault(event.target.checked)} />Default value</label>
         {!secret && hasDefault ? <label className="resource-control"><span className="sr-only">Default value</span>{resource.values ? <select aria-label="Default value" value={fallback} onChange={(event) => setFallback(event.target.value)}><option value="" disabled>Choose a default</option>{resource.values.map((value) => <option key={value}>{value}</option>)}</select> : <input aria-label="Default value" value={fallback} onChange={(event) => setFallback(event.target.value)} />}</label> : null}
         {secret ? <p className="small muted">Secrets have no source-code default.</p> : null}
         <label className="resource-control"><span>Group</span><input aria-label="Resource group" list="resource-groups" value={group} placeholder="Ungrouped" onChange={(event) => setGroup(event.target.value)} /><datalist id="resource-groups">{model.resources.filter((item) => item.kind === "group").map((item) => <option key={item.id} value={item.path[0]} />)}</datalist></label>
         <p className="small muted">Leave empty for no group. Moving an input updates references and preserves its environment variable name.</p>
-        <h4>Required to deploy</h4>
+        </FormGroup><FormGroup title="Workload requirements">
         {details?.consumers.length ? details.consumers.map((consumer) => {
           const rules = consumer.rules.filter((rule) => rule.require.includes(resource.id));
           const summary = rules.length ? rules.map((rule) => rule.when ? `When ${rule.when.resource.slice(9)} = ${JSON.stringify(rule.when.equals)}` : "Required").join("; ") : "Optional";
@@ -88,7 +88,7 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
           })} disabled={form.required ?? !!resource.required}><option value="preserve">Keep current: {summary}</option><option value="required">Required</option><option value="optional">Optional</option></select></label>;
         }) : <p className="small muted">No workload consumes this input. Application stacks may have their own requirements.</p>}
         <p className="small muted">{(form.required ?? resource.required) ? "The catalog-wide flag requires this input for all consumers. Turn it off to manage individual or conditional workload rules." : "Requirements apply to enabled workloads in each graph. Conditional rules stay as declared unless you change them here."}</p>
-      </fieldset>
+      </FormGroup></fieldset>
       {error || entry?.error ? <p className="reason" role="alert">{error ?? entry?.error}</p> : null}
       <div className="resource-actions">
         {details?.history.undo ? <button className="quiet" disabled={disabled || draft.dirty} onClick={() => void write("undo")}>Undo resource edit</button> : null}

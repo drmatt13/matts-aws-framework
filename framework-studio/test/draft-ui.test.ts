@@ -98,14 +98,44 @@ async function mount(selected = target) {
   await ui.screen.findByRole("complementary", { name: "Inspector" });
   return app;
 }
+function openSection(title: string) {
+  const summary = [...document.querySelectorAll<HTMLElement>(".inspector-disclosure > details > summary")].find((summary) => summary.querySelector("span")?.textContent === title)!;
+  assert.ok(summary, `section: ${title}`);
+  if (!summary.closest("details")!.open) ui.fireEvent.click(summary);
+}
+function descriptionField(): HTMLTextAreaElement {
+  const editor = document.querySelector<HTMLDetailsElement>(".description-editor");
+  if (editor && !editor.open) ui.fireEvent.click(editor.querySelector("summary")!);
+  return ui.screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement;
+}
 const memory = () => ui.screen.getByRole("spinbutton", { name: "Memory in MB" });
 const changeMemory = () => ui.fireEvent.change(memory(), { target: { value: "768" } });
 const count = () => ui.screen.getByLabelText("Pending inspector changes").textContent!;
 const waitDialog = (name: string) => ui.waitFor(() => assert.equal(document.querySelector("dialog[open] h2")?.textContent, name));
 
+
+test("inspectors prioritize controls, disclose supporting details, and reset scroll on selection", async () => {
+  await mount();
+  assert.ok(memory());
+  assert.equal(document.querySelector<HTMLDetailsElement>(".description-editor")!.open, false);
+  const build = [...document.querySelectorAll<HTMLDetailsElement>(".inspector-disclosure > details")].find((details) => details.querySelector("summary > span")?.textContent === "Build and runtime")!;
+  assert.equal(build.open, false);
+  assert.ok(!memory().closest("details"), "operational controls stay outside disclosures");
+  openSection("Build and runtime");
+  assert.ok(ui.screen.getByRole("combobox", { name: "Architecture" }));
+  const content = document.querySelector<HTMLElement>(".inspector-content")!;
+  const toolbar = document.querySelector(".inspector-toolbar")!;
+  assert.ok(!content.contains(toolbar), "close remains outside the scrolled region");
+  content.scrollTop = 240;
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Open node B" }));
+  await ui.waitFor(() => assert.ok(document.querySelector(".inspector-content") !== content, "selection replaces the scroll container"));
+  assert.equal(document.querySelector(".inspector-content")!.scrollTop, 0);
+  assert.equal(planCalls.length + applyCalls, 0, "inspecting and expanding never saves source");
+});
+
 test("node descriptions stage with workload settings, review, save and reload in the inspector", async () => {
   await mount();
-  const description = ui.screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement;
+  const description = descriptionField();
   assert.equal(description.value, baseline.descriptions.values[target]);
   const value = "Updated GraphQL notes\nSecond paragraph.";
   ui.fireEvent.change(description, { target: { value } });
@@ -118,13 +148,13 @@ test("node descriptions stage with workload settings, review, save and reload in
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Apply All" }));
   await ui.waitFor(() => assert.ok(ui.screen.queryByLabelText("Pending inspector changes") === null));
   assert.equal(persisted.descriptions.values[target], value);
-  assert.equal((ui.screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement).value, value);
+  assert.equal((descriptionField()).value, value);
 });
 
 test("all selectable item kinds expose their authored description", async () => {
   for (const id of ["route:http:/graphql", "resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "framework-stack:DevLambdaReplayStack", "envfile:dev", "local:postgres", "island:vpc", "prop:endpoint:s3"]) {
     await mount(id);
-    const description = ui.screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement;
+    const description = descriptionField();
     assert.equal(description.value, baseline.descriptions.values[id], id);
     assert.equal(description.disabled, false, id);
     ui.cleanup();
@@ -133,6 +163,7 @@ test("all selectable item kinds expose their authored description", async () => 
 
 test("read connection labels open compact evidence with line-numbered VS Code links", async () => {
   await mount("lambda:sign-out");
+  openSection("Connections");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "TRUSTED_FRONTEND_ORIGINS" }));
   await ui.screen.findByRole("heading", { name: "TRUSTED_FRONTEND_ORIGINS" });
   const configuration = ui.screen.getByText("Configuration", { selector: "summary" });
@@ -162,7 +193,7 @@ test("a plain connection has no filler context and optional descriptions review,
   const add = ui.screen.getByText("Add description", { selector: "summary" });
   assert.equal(add.closest("details")!.open, false);
   ui.fireEvent.click(add);
-  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Description" }), { target: { value: "Used for account identity." } });
+  ui.fireEvent.change(descriptionField(), { target: { value: "Used for account identity." } });
   assert.equal(planCalls.length, 0);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
   await waitDialog("Review 1 change");
@@ -175,7 +206,7 @@ test("a plain connection has no filler context and optional descriptions review,
   persisted = { ...persisted, models: { ...persisted.models, dev: { ...persisted.models.dev, edges: [...persisted.models.dev.edges, edge] } } };
   await mount(edge.id);
   ui.fireEvent.click(ui.screen.getByText("Description", { selector: "summary" }));
-  assert.equal((ui.screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement).value, "Used for account identity.");
+  assert.equal((descriptionField()).value, "Used for account identity.");
 });
 
 test("grouped relationships have separate description drafts and unique accessible fields", async () => {
@@ -382,12 +413,12 @@ test("a local-replay Lambda rules out sources that wait for its response, and on
 
 test("description edits use navigation guards and discard restores the authored text", async () => {
   await mount();
-  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Description" }), { target: { value: "Unsaved notes" } });
+  ui.fireEvent.change(descriptionField(), { target: { value: "Unsaved notes" } });
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Open node B" }));
   await waitDialog("Unsaved changes");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Keep Editing" }));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard" }));
-  assert.equal((ui.screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement).value, baseline.descriptions.values[target]);
+  assert.equal((descriptionField()).value, baseline.descriptions.values[target]);
   assert.equal(planCalls.length, 0);
 });
 
@@ -405,7 +436,7 @@ test("an exported framework stack shows symbolic CfnOutputs and root env names w
   assert.ok(ui.screen.getByRole("heading", { name: "DevLambdaReplayStack" }));
   assert.ok(ui.screen.getByText("Framework managed"));
   assert.ok(ui.screen.getByText("Not defined in resources"));
-  assert.ok(ui.screen.getByRole("heading", { name: "CloudFormation outputs" }));
+  assert.ok(ui.screen.getByText("CloudFormation outputs", { selector: "summary > span" }));
   assert.ok(ui.screen.getByText((_text, element) => element?.tagName === "CODE" && element.textContent === "$queue.queueArn"));
   assert.ok(ui.screen.getByText("DEV_LAMBDA_REPLAY_QUEUE_ARN", { selector: "code" }));
   assert.equal(ui.screen.queryByText("ReplayDeadLetterQueueUrl"), null);
@@ -415,6 +446,7 @@ test("an exported framework stack shows symbolic CfnOutputs and root env names w
 
 test("the stacks island distinguishes missing catalog declarations from missing CDK constructors", async () => {
   await mount("island:stacks");
+  openSection("Island entries");
   for (const name of ["FrontendWebsiteS3Stack", "DevLambdaReplayStack", "WebSocketApiStack", "HttpApiGatewayStack"]) {
     const row = ui.screen.getByRole("button", { name }).closest("li")!;
     assert.ok(ui.within(row).getByText("Framework managed"));
@@ -440,6 +472,7 @@ test("API node and island details identify the framework config managing each ro
     ui.cleanup();
   }
   await mount("island:apis");
+  openSection("Island entries");
   for (const section of Object.values(sections)) assert.ok(ui.screen.getAllByText(`Managed by framework-config/${section}`).length);
 });
 
@@ -500,6 +533,7 @@ test("actual switches stage immediately, five controls share one review, and App
   ui.fireEvent.click(ui.screen.getByRole("switch", { name: "API user-pool authorizer" }));
   assert.ok(document.querySelector("dialog[open]") === null); assert.equal(planCalls.length, 0);
   changeMemory(); ui.fireEvent.change(ui.screen.getByRole("spinbutton", { name: "Timeout in s" }), { target: { value: "25" } });
+  openSection("Build and runtime");
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Architecture" }), { target: { value: "x86_64" } });
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Log retention" }), { target: { value: "14" } });
   assert.match(count(), /5 unsaved changes/); assert.equal(planCalls.length, 0);

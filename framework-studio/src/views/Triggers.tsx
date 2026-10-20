@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, CircleAlert, Info, Pencil, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { ModelResource, ModelTarget } from "../../shared/model";
 import type { TriggerBinding, TriggerField } from "../../shared/triggers";
 import { blockingProblems, eventUnavailable, triggerProblems, triggerUnavailable, type TriggerProblem } from "../../shared/trigger-availability";
@@ -36,6 +36,15 @@ const PROBLEM_ICONS = { form: CircleAlert, source: CircleAlert, warning: Triangl
 export function Triggers({ resource, target }: { readonly resource?: ModelResource; readonly target?: ModelTarget }) {
   const { snapshot, model, index, draft, draftState, select } = useStudio();
   const [form, setForm] = useState<Form>();
+  const formRoot = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!form) return;
+    formRoot.current?.scrollIntoView?.({ block: "start" });
+    if (form.step !== "source") {
+      const controls = formRoot.current?.querySelectorAll<HTMLElement>("input:not(:disabled), select:not(:disabled), textarea:not(:disabled)");
+      [...(controls ?? [])].find((control) => !control.closest("details:not([open])"))?.focus({ preventScroll: true });
+    }
+  }, [form?.step]);
   const [open, setOpen] = useState(false);
   // Nothing is staged until the trigger is added, so only a saved or discarded draft closes the form.
   useEffect(() => { if (!draft.dirty) setForm(undefined); }, [draftState.entries]);
@@ -107,7 +116,7 @@ export function Triggers({ resource, target }: { readonly resource?: ModelResour
       <button className="icon-button" aria-label={`Remove trigger ${binding.id}`} title="Remove" onClick={() => draft.setTriggers(binding.event, draft.triggers(binding.event).filter((item) => item.key !== binding.key))}><Trash2 size={14} aria-hidden /></button></div>)}
     {pendingRemovals.map((binding) => <div className="trigger-row removed" key={`removed:${binding.event}:${binding.key}`}><span className="small">{describe(binding)}</span><span className="small muted">Will be removed</span>
       <button className="quiet small" aria-label={`Restore trigger ${binding.id}`} onClick={() => draft.setTriggers(binding.event, [...draft.triggers(binding.event), binding])}><RotateCcw size={13} aria-hidden />Restore</button></div>)}
-    {resourceReason ? <p className="small muted">{resourceReason}</p> : !form ? <button className="quiet small" onClick={start}>Add trigger</button> : <div className="trigger-form">
+    {resourceReason ? <p className="small muted">{resourceReason}</p> : !form ? <button className="quiet small" onClick={start}>Add trigger</button> : <div className="trigger-form" ref={formRoot}>
       <ol className="trigger-steps" aria-label="Trigger setup">
         {(["source", "settings", "confirm"] as const).map((step, position) => <li key={step} aria-current={form.step === step ? "step" : undefined}>{position + 1}. {step === "source" ? resource ? "Lambda" : "Source" : step === "settings" ? "Settings" : "Confirm"}</li>)}
       </ol>

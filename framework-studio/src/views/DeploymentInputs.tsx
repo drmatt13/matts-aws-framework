@@ -9,6 +9,7 @@ import type { DeploymentInputDetails } from "../../shared/deployment-inputs";
 import type { EnvironmentEdit } from "../draft";
 import { RequirementNotice } from "./InputRequirement";
 import { Description } from "./Description";
+import { InspectorDisclosure } from "./InspectorUI";
 
 function ValueControl({ name, value, sensitive, disabled, onChange }: { name: string; value: string; sensitive: boolean; disabled: boolean; onChange: (value: string) => void }) {
   const [revealed, setRevealed] = useState(false);
@@ -21,13 +22,13 @@ function ValueControl({ name, value, sensitive, disabled, onChange }: { name: st
 export function InputSources({ resource }: { resource: ModelResource }) {
   const { select, snapshot } = useStudio();
   if (!resource.inputSources?.length) return null;
-  return <section><h3>Environment file sources</h3><p className="small muted">Names and presence only. Open a file inspector to edit its local values.</p>
+  return <InspectorDisclosure title="Environment file sources"><p className="small muted">Names and presence only. Open a file inspector to edit its local values.</p>
     {resource.inputSources.map(({ file, entry }) => <p className="small" key={file}>
       <button className="linkish" onClick={() => select(file.endsWith(".dev") ? "envfile:dev" : "envfile:prod")}>{file}</button> · {entry.status}{entry.defaulted ? " · declaration default applies" : ""}
       {entry.sensitive ? " · sensitive value hidden" : ""}
       {entry.source ? <> · <a href={editorLink(snapshot.repositoryRoot, entry.source)}>Open assignment</a></> : null}
     </p>)}
-  </section>;
+  </InspectorDisclosure>;
 }
 
 export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
@@ -64,12 +65,12 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
     <header><span className="kind">CDK {file.mode === "dev" ? "development" : "production"} inputs</span><h2><EntityIcon icon="envFile" />{resource.path[0]}</h2><code className="ref">{file.path}</code></header>
     <Description entity={resource.id} />
     {descriptionPending ? <p className="small muted">Apply or discard the description before editing environment variables.</p> : null}
-    <section><h3>Source</h3><p>{file.exists ? "Local inputs file exists." : "This inputs file has not been generated."} {file.mode === mode ? "Used for synthesis in the selected graph." : "Switch the graph to use this environment for synthesis."}</p>
+    <InspectorDisclosure title="File and template" defaultOpen={!file.exists}><p>{file.exists ? "Local inputs file exists." : "This inputs file has not been generated."} {file.mode === mode ? "Used for synthesis in the selected graph." : "Switch the graph to use this environment for synthesis."}</p>
       {file.exists ? <p><a href={editorLink(snapshot.repositoryRoot, location(file.path))}>Open file in editor</a></p> : <button className="button" disabled={busy || draft.dirty} onClick={() => void create()}>{busy ? "Generating…" : `Generate .env.${file.mode} from template`}</button>}
       <p className="small"><a href={editorLink(snapshot.repositoryRoot, location(file.template))}>Template: {file.template}</a></p>
       <p className="small muted">Edit local values below, then review and apply the complete draft. Values stay outside the graph; sensitive fields are masked. Production is never populated from development inputs.</p>
       {file.problem || error ? <p role="alert">{file.problem || error}</p> : null}
-    </section>
+    </InspectorDisclosure>
     {requirements.length ? <section><h3>Required inputs ({requirements.length})</h3><p className="small muted">Required values must be non-blank or supplied by a parameter default. Secret values belong only in the environment file.</p>
       {requirements.map((requirement) => <div key={requirement.resource}>
         <RequirementNotice requirement={requirement} />
@@ -78,8 +79,9 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
       </div>)}
     </section> : null}
     {file.exists ? <section className="environment-editor"><h3>Environment variables{details ? ` (${details.entries.length + edits.filter((edit) => edit.create).length})` : ""}</h3>
-      <button className="quiet" disabled={disabled} onClick={() => add()}>Add environment variable</button>
-      <label className="resource-control"><span className="sr-only">Filter environment variables</span><input type="search" aria-label="Filter environment variables" placeholder="Find a variable…" value={filter} onChange={(event) => setFilter(event.target.value)} /></label>
+      <div className="environment-toolbar">
+      <label className="environment-search"><span className="sr-only">Filter environment variables</span><input type="search" aria-label="Filter environment variables" placeholder="Find a variable…" value={filter} onChange={(event) => setFilter(event.target.value)} /></label>
+      <button className="quiet" aria-label="Add environment variable" disabled={disabled} onClick={() => add()}>Add variable</button></div>
       {!details && !error ? <p role="status" className="small muted">Reading this local environment file…</p> : null}
       {pending?.error ? <p role="alert" className="reason">{pending.error}</p> : null}
       <ul className="input-file-entries">

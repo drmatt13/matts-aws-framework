@@ -5,6 +5,7 @@ import { catalogAvailability } from "../deployment";
 import { editorLink } from "../lookup";
 import { buildScene } from "../scene/build";
 import { useStudio } from "../studio";
+import { InspectorDisclosure } from "./InspectorUI";
 import { BooleanField, FieldRow } from "./FieldRow";
 import { ResourceStatus } from "./ResourceStatus";
 import { RouteStatus } from "./RouteStatus";
@@ -74,7 +75,7 @@ export function IslandInspector({ id }: { readonly id: string }) {
     {id === CLIENT_ENVIRONMENT_ISLAND ? <ClientEnvironmentMappings /> : null}
     {group ? <section>
       <h3>Shared defaults</h3>
-      <p className="small">Defaults apply to this service type across all islands, including future nodes. Individual overrides take precedence.</p>
+      <p className="small muted">Applies across all islands and to future entries. Individual overrides take precedence.</p>
       <label className="island-default-group">Service type<select aria-label="Default service type" value={group.ref} onChange={(event) => setChosen(event.target.value)}>{groups.map((item) => <option key={item.ref} value={item.ref}>{item.title}</option>)}</select></label>
       {id === "island:agentcore" ? <p className="small muted">These defaults configure Lambda tools used by agents. AgentCore runtimes have individual settings.</p> : null}
       {id === "island:vpc" && group.group === "database" ? <p className="small muted">Connection pool defaults configure database callers. The local database container is configured in Compose.</p> : null}
@@ -86,9 +87,9 @@ export function IslandInspector({ id }: { readonly id: string }) {
       </div>)}</div>
       {source ? <a className="small" href={editorLink(snapshot.repositoryRoot, source)}>Open shared defaults in VS Code</a> : null}
     </section> : id === "island:environment" || id === CLIENT_ENVIRONMENT_ISLAND ? null : <section><h3>Settings</h3><p className="small">The framework has no shared defaults for this island. Select an entry below to configure it.</p></section>}
-    <section><h3>Island entries</h3><ul className="island-members">{members.map((node) => {
+    <InspectorDisclosure title="Island entries" count={members.length}><ul className="island-members">{members.map((node) => {
       const route = index.routes.get(node.id);
       return <li key={node.id}><button className="linkish" onClick={() => select(node.id)}>{node.label}</button><span className="small muted">{node.kindLabel}</span><ResourceStatus resource={index.resources.get(node.id)} />{route ? <RouteStatus route={route} /> : null}</li>;
-    })}</ul></section>
+    })}</ul></InspectorDisclosure>
   </>;
 }
