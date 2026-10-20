@@ -30,3 +30,20 @@ test("client references reject expressions, duplicate names, unknown values, sec
   assert.throws(() => validateClientMappings({ VITE_X: { dev: { kind: "input", name: "INTERNAL_VALUE" }, prod: { kind: "empty" } } }, [model]), /secret inputs/);
   assert.throws(() => validateClientMappings({ VITE_X: { dev: { kind: "output", stack: "CognitoStack", outputs: ["PrivateSigningKey"] }, prod: { kind: "empty" } } }, [model]), /public stack output/);
 });
+
+test("renaming a field preserves source order and comments, including simultaneous per-mode changes", () => {
+  const original = parseClientMappings(text).mappings;
+  const renamed: ClientEnvironmentMappings = {
+    VITE_RENAMED: { ...original.VITE_FIRST!, prod: { ...original.VITE_FIRST!.prod, enabled: false } },
+    VITE_SECOND: original.VITE_SECOND!,
+  };
+  const rewritten = rewriteClientMappings(text, renamed);
+  assert.equal(JSON.stringify(parseClientMappings(rewritten).mappings), JSON.stringify(renamed));
+  assert.ok(rewritten.includes("// field retained\n  VITE_RENAMED:"));
+  const namesOnly = rewriteClientMappings(text, { VITE_RENAMED: original.VITE_FIRST!, VITE_SECOND: original.VITE_SECOND! });
+  assert.equal(namesOnly, text.replace("VITE_FIRST", "VITE_RENAMED"));
+  const combined = { VITE_RENAMED: renamed.VITE_RENAMED!, VITE_ADDED: original.VITE_SECOND! };
+  assert.equal(JSON.stringify(parseClientMappings(rewriteClientMappings(text, combined)).mappings), JSON.stringify(combined));
+  const addedAfterRename = { ...renamed, VITE_ADDED: original.VITE_SECOND! };
+  assert.equal(JSON.stringify(parseClientMappings(rewriteClientMappings(text, addedAfterRename)).mappings), JSON.stringify(addedAfterRename));
+});

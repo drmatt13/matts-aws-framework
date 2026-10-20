@@ -50,7 +50,13 @@ API versus WebSocket) so identically named routes and handlers remain distinguis
 ## Workflows
 
 Environment search and add actions share one toolbar. Mapping rows use the same control
-sizes and action alignment as other forms. Shared defaults reuse the ordinary field rows;
+sizes and action alignment as other forms. Client mappings begin with a searchable source
+overview; expand a row to select a source type and its inputs. Keep symbolic previews and
+availability in sync with the draft, and distinguish omitted fields from empty values.
+Use the shared Dev/Prod pills on each row to toggle inclusion independently, and keep
+renaming inline with duplicate-name validation and preservation of both source recipes.
+The local environment switch follows the graph's navigation guard. Native selects retain
+keyboard support with an inset arrow and reserved text space. Shared defaults reuse the ordinary field rows;
 membership lists can expand separately from settings. Trigger setup retains its three
 steps, brings each step into view and focuses the next relevant field. Back/cancel remain
 secondary actions; the next/commit action sits at the end of the action row.

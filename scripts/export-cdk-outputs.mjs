@@ -7,11 +7,14 @@ import { parseEnv } from "node:util";
 // tsx loads these TypeScript modules as CommonJS in this workspace. Load their
 // actual exports rather than relying on Node's inferred ESM named exports.
 const require = createRequire(import.meta.url);
-const { localClientEndpoints, localExportValues, replaceGeneratedEnvironment } = require("./local-export.ts");
-const { CLIENT_ENVIRONMENT_FILES, CLIENT_SECTION_HEADING, clientEnvironment, renderClientEnvironmentFile, renderGeneratedBlock } = require("./environment-export.ts");
+const { localExportValues, replaceGeneratedEnvironment } = require("./local-export.ts");
+const { CLIENT_ENVIRONMENT_FILES, CLIENT_SECTION_HEADING, renderClientEnvironmentFile, renderGeneratedBlock } = require("./environment-export.ts");
+const { resolveClientEnvironmentMappings } = require("./client-environment-export.ts");
+const { parseClientMappings } = require("./client-environment-source.ts");
+const { CLIENT_ENVIRONMENT_FILE } = require("./client-environment-mapping.ts");
 const { collectDeploymentStacks, collectDevelopmentResources, readDeploymentStackPages, writeDevelopmentFiles } = require("./resource-export.ts");
-const { collectProductionOutputs, renderProductionClientFile } = require("./production-export.ts");
-const { RESOURCE_MANIFEST_FILE } = require("@repo/framework/config");
+const { collectProductionOutputs } = require("./production-export.ts");
+const { RESOURCE_MANIFEST_FILE, listResourceDeclarations } = require("@repo/framework/config");
 const { contextFromArgs, deploymentInputsFile, resolveRepositoryTarget } = require("@repo/framework/deploy/node");
 const { runAwsSync } = require("./aws-cli.ts");
 const { default: framework } = require("../framework.config.ts");
@@ -175,13 +178,26 @@ try { listed = readDeploymentStackPages(token => runAws(["cloudformation", "desc
 catch { throw new Error("Unable to read deployment stacks. Check AWS credentials and permissions; existing local files were preserved."); }
 const { identity } = collectDeploymentStacks(listed, deploymentName);
 if (region && identity.region !== region) throw new Error("The requested region differs from the deployed resources.");
+// The deployed mode is authoritative. A direct production export must never read
+// its custom client inputs from the development file just because no CDK flag was passed.
+const clientInputsPath = process.env.FRAMEWORK_INPUTS_FILE
+  ? resolve(process.env.FRAMEWORK_INPUTS_FILE)
+  : deploymentInputsFile(process.cwd(), identity.mode);
+const clientInputs = existsSync(clientInputsPath) ? parseEnv(readFileSync(clientInputsPath, "utf8")) : {};
+const declarations = listResourceDeclarations(framework.resources);
+const clientMappings = parseClientMappings(readFileSync(resolve(process.cwd(), CLIENT_ENVIRONMENT_FILE), "utf8")).mappings;
+const client = resolveClientEnvironmentMappings(clientMappings, {
+  deployment: deploymentName, stacks: listed, inputs: clientInputs,
+  defaults: Object.fromEntries(declarations.filter((reference) => reference.kind === "string" && !reference.secretArn && reference.fromEnv && reference.default !== undefined).map((reference) => [reference.fromEnv, reference.default])),
+  sensitiveInputs: new Set(declarations.filter((reference) => reference.kind === "secret" || reference.secretArn).flatMap((reference) => reference.fromEnv ? [reference.fromEnv] : [])),
+});
 if (identity.mode === "prod") {
   // Root .env belongs to local development (Compose reads it), so a production
   // export leaves it alone: its outputs and the client build settings live apart.
   const result = collectProductionOutputs(listed, deploymentName);
   writeDevelopmentFiles([
     { path: resolve(process.cwd(), ".framework/prod/outputs.json"), contents: JSON.stringify(result.document, null, 2) + "\n" },
-    { path: resolve(process.cwd(), CLIENT_ENVIRONMENT_FILES.prod), contents: renderProductionClientFile(result) },
+    { path: resolve(process.cwd(), CLIENT_ENVIRONMENT_FILES.prod), contents: renderClientEnvironmentFile(client, { deployment: deploymentName, mode: "prod" }) },
   ]);
   console.log(`Wrote public production outputs to .framework/prod/outputs.json and the client build settings to ${CLIENT_ENVIRONMENT_FILES.prod} for ${deploymentName}.`);
   process.exit(0);
@@ -228,17 +244,6 @@ collectedEnv.set("CDK_APP_NAME", deploymentName);
 const localValues = localExportValues(authoredEnv, { profile, region: manifest.region, repositoryRoot: process.cwd() });
 localValues.set("LOCAL_FRAMEWORK_DEPLOYMENT", manifest.deployment);
 localValues.set("LOCAL_FRAMEWORK_ACCOUNT", manifest.account);
-
-const client = clientEnvironment({
-  // Cognito lives in the deployment's region, which LOCAL_AWS_REGION need not name.
-  region: manifest.region,
-  userPoolId: collectedEnv.get("USER_POOL_ID"),
-  userPoolClientId: collectedEnv.get("USER_POOL_CLIENT_ID"),
-  cognitoDomainUrl: collectedEnv.get("COGNITO_DOMAIN_URL"),
-  ...localClientEndpoints(authoredEnv, localValues),
-  // Whatever this deployment holds: empty unless it built a WebSocketApiStack.
-  apiGatewayWebSocketUrl: collectedEnv.get("WEBSOCKET_API_URL") ?? "",
-});
 
 const { block, names } = renderGeneratedBlock([
   "Generated by `npm run export:cdk-outputs` from a development deployment. Author inputs in cdk-app/.env.dev.",

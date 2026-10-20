@@ -70,6 +70,7 @@ test("input projection links only catalog declarations; CDK-only keys remain ins
     assert.equal(scene.islands.find((island) => island.id === "island:inputs")!.title, "Input parameters and secrets");
     assert.ok(scene.islands.some((island) => island.id === "island:environment"));
     assert.equal(scene.nodes.find((node) => node.id === "envfile:dev")!.island, "island:environment");
+    for (const mode of ["dev", "prod"] as const) assert.equal(scene.nodes.find((node) => node.id === `envfile:${mode}`)!.label, `cdk-app/.env.${mode}`);
     assert.ok(scene.edges.some((edge) => edge.from === "envfile:dev" && edge.to === "resource:token"));
     assert.deepEqual(scene.nodes.filter((node) => node.island === "island:inputs").map((node) => node.id).sort(), ["resource:setting", "resource:token"]);
     assert.deepEqual(scene.nodes.map((node) => [node.id, node.gx, node.gy]), buildScene({ ...projected, mode: "prod" }).nodes.map((node) => [node.id, node.gx, node.gy]));

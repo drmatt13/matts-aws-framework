@@ -55,7 +55,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
     finally { setBusy(false); }
   };
   return <>
-    <header><span className="kind">CDK {file.mode === "dev" ? "development" : "production"} inputs</span><h2><EntityIcon icon="envFile" />{resource.path[0]}</h2><code className="ref">{file.path}</code></header>
+    <header><span className="kind">CDK {file.mode === "dev" ? "development" : "production"} inputs</span><h2><EntityIcon icon="envFile" />{file.path}</h2></header>
     <Description entity={resource.id} />
     {descriptionPending ? <p className="small muted">Apply or discard the description before editing environment variables.</p> : null}
     <InspectorDisclosure title="File and template" defaultOpen={!file.exists}><p>{file.exists ? "Local inputs file exists." : "This inputs file has not been generated."} {file.mode === mode ? "Used for synthesis in the selected graph." : "Switch the graph to use this environment for synthesis."}</p>

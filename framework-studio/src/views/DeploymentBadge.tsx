@@ -2,12 +2,15 @@ import { DEPLOYMENT_BADGES, type Availability, type DeploymentBadgeKind } from "
 import type { Mode } from "../../shared/model";
 
 /** Keep both environment names visible in hover cards and connection inspectors. */
-export function EnvironmentPills({ availability, descriptions }: {
+export function EnvironmentPills({ availability, descriptions, onToggle, disabled, label = "Deployment environments" }: {
   readonly availability: Availability;
   readonly descriptions?: Readonly<Partial<Record<Mode, string>>>;
+  readonly onToggle?: (mode: Mode) => void;
+  readonly disabled?: boolean;
+  readonly label?: string;
 }) {
-  return <span className="environment-pills" aria-label="Deployment environments">
-    {(["dev", "prod"] as const).map((mode) => <span key={mode} className={`hover-tag ${availability[mode] ? mode : "off"}`}>
+  return <span className="environment-pills" role={onToggle ? "group" : undefined} aria-label={label}>
+    {(["dev", "prod"] as const).map((mode) => onToggle ? <button key={mode} type="button" className={`hover-tag ${availability[mode] ? mode : "off"}`} disabled={disabled} aria-pressed={availability[mode]} aria-label={`${label} in ${mode === "dev" ? "Development" : "Production"}`} title={`${availability[mode] ? "Included" : "Omitted"} in ${mode === "dev" ? "Development" : "Production"} · click to toggle`} onClick={() => onToggle(mode)}>{mode === "dev" ? "Dev" : "Prod"}</button> : <span key={mode} className={`hover-tag ${availability[mode] ? mode : "off"}`}>
       {mode === "dev" ? "Dev" : "Prod"}<span className="sr-only">: {availability[mode] ? descriptions?.[mode] ?? "Connection enabled" : "not deployed"}</span>
     </span>)}
   </span>;

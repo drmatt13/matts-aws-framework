@@ -14,11 +14,13 @@ export function previewClientBinding(name: string, binding: ClientEnvironmentBin
   if (binding.enabled === false) return { name, expression: "Disabled", required: false, status: "disabled", sources: [], note: "This field is omitted in this environment; its source is retained." };
   if (binding.kind === "empty") return { name, expression: '""', required: false, status: "empty", sources: [], note: "Write an empty value in this environment. Disable the field to omit it instead." };
   if (binding.kind === "input") {
+    if (!binding.name) return { name, expression: "Choose an input", required: true, status: "unavailable", sources: [], note: `Choose a public CDK input from ${inputs}.` };
     const source = inputSource(binding.name);
     return { name, expression: `\${${binding.name}}`, required: true, status: source.available ? "mapped" : "unavailable", sources: [source],
       note: source.available ? `Read ${binding.name} from ${inputs}, or its declared default.` : `Set ${binding.name} in ${inputs}, or supply a declaration default.` };
   }
   if (binding.kind === "endpoint") {
+    if (!binding.port) return { name, expression: "Choose a port input", required: true, status: "unavailable", sources: [], note: "Choose the CDK input that supplies this URL's port." };
     const port = inputSource(binding.port);
     const override = binding.override ? inputSource(binding.override) : undefined;
     const expression = `${binding.protocol}://${binding.host ?? "localhost"}:\${${binding.port}}`;
@@ -29,11 +31,13 @@ export function previewClientBinding(name: string, binding: ClientEnvironmentBin
         : `Set ${binding.port}${binding.override ? ` or ${binding.override}` : ""} in ${inputs}.` };
   }
   const stack = model.resources.find((resource) => resource.kind === "stack" && resource.stackClass === binding.stack);
+  if (!binding.stack) return { name, expression: "Choose a stack", required: true, status: "unavailable", sources: [], note: "Choose the stack that supplies this field." };
   if (binding.kind === "region") return { name, expression: `${binding.stack}.region`, required: true,
     status: stack && !stack.absent ? "mapped" : "unavailable",
     sources: [{ entity: stack?.id, label: `${binding.stack} · deployment region`, available: !!stack && !stack.absent }],
     note: stack && !stack.absent ? "Use this stack's deployment region, which can differ from LOCAL_AWS_REGION." : `${binding.stack} is not present in this environment.` };
   const output = binding.outputs.map((name) => stack?.stackOutputs?.find((output) => output.name === name)).find(Boolean);
+  if (!binding.outputs.length) return { name, expression: `${binding.stack} · choose an output`, required: true, status: "unavailable", sources: [], note: "Choose a public output from this stack." };
   const available = !!stack && !stack.absent && !!output;
   const empty = !!binding.optional && stack?.absent === true;
   return { name, expression: `${binding.stack}.${output?.name ?? binding.outputs.join(" or ")}${binding.optional ? ' or ""' : ""}`,

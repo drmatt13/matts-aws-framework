@@ -24,7 +24,7 @@ export function withClientEnvironment(model: ModeModel, settings?: { mappings: C
   const edges: ModelEdge[] = entries.flatMap((entry) => entry.sources.flatMap((source, at) => source.entity ? [{
     id: `client-environment:${entry.name}:${source.entity}:${at}`, relation: "maps" as const,
     from: CLIENT_ENVIRONMENT_ID, to: source.entity, provenance: "derived" as const,
-    label: entry.name, detail: `${entry.expression}. ${entry.note}`, source: source.source,
+    label: entry.name, detail: `${entry.expression}. Public source reference; environment export resolves its value.`, source: source.source,
   }] : []));
   if (file) edges.push({
     id: `client-environment:inputs:${file.id}`, relation: "maps",

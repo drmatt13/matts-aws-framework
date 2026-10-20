@@ -191,7 +191,7 @@ export class BatchEditor {
       planId: randomUUID(), summaries,
       changes: changes.map(({ file, before, after }) => ({ file: toRelative(this.root, file), diff: diffOf(toRelative(this.root, file), before, after) })),
       preflight: checked.preflight, ok: checked.preflight.dev.ok && checked.preflight.prod.ok,
-      impact: edits.every((edit) => edit.kind === "clientEnvironment") ? ["Saves mapping definitions. Environment-file generation is separate."] : ["Applies this complete draft as one undoable change. Individual workload overrides remain in place when shared defaults change.",
+      impact: edits.every((edit) => edit.kind === "clientEnvironment") ? ["Saves mapping definitions for the next environment export. Environment-file generation is separate."] : ["Applies this complete draft as one undoable change. Individual workload overrides remain in place when shared defaults change.",
         ...(replayTargets.length ? ["Updates localReplay and the handler's withLocalReplay wrapper together. Run framework:generate before deploying to refresh the replay manifest. Events that require local execution cannot turn replay off."] : []),
         ...(routes.length ? ["Public route paths change; Lambda target and construct identities are preserved. Regenerate the API contract and update callers before deployment."] : []),
         ...(triggerSources ? edits.filter((edit) => edit.kind === "triggers").flatMap((edit) => {

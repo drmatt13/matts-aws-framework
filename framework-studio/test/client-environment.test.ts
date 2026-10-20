@@ -4,6 +4,7 @@ import path from "node:path";
 import { parseEnv } from "node:util";
 import { after, before, test } from "node:test";
 import { withClientEnvironment } from "../server/client-environment";
+import { previewClientBinding } from "../shared/client-environment-preview";
 import { SnapshotBuilder } from "../server/snapshot";
 import { CLIENT_ENVIRONMENT_ID, CLIENT_ENVIRONMENT_ISLAND } from "../shared/client-environment";
 import type { ModeModel, Snapshot } from "../shared/model";
@@ -81,6 +82,23 @@ test("mappings reuse renamed catalog identities and never expose authored input 
   const twice = withClientEnvironment(renamed);
   assert.equal(twice.resources.filter((resource) => resource.id === CLIENT_ENVIRONMENT_ID).length, 1);
   assert.equal(twice.edges.length, renamed.edges.length);
+});
+
+test("draft previews resolve the new source immediately and distinguish missing, empty and omitted fields", () => {
+  const model = snapshot.models.dev;
+  const output = previewClientBinding("VITE_CUSTOM", { kind: "output", stack: "CognitoStack", outputs: ["UserPoolClientId"] }, model);
+  assert.equal(output.expression, "CognitoStack.UserPoolClientId");
+  assert.equal(output.status, "mapped");
+  assert.equal(output.sources[0]?.entity, "resource:cognito");
+  assert.match(output.note, /has not been checked/, "a declaration is not deployed-value verification");
+  const missing = previewClientBinding("VITE_CUSTOM", { kind: "input", name: "UNSET_PUBLIC_INPUT" }, model);
+  assert.equal(missing.status, "unavailable");
+  assert.match(missing.note, /Set UNSET_PUBLIC_INPUT in cdk-app\/\.env.dev/);
+  assert.equal(previewClientBinding("VITE_CUSTOM", { kind: "empty" }, model).status, "empty");
+  assert.equal(previewClientBinding("VITE_CUSTOM", { kind: "input", name: "UNSET_PUBLIC_INPUT", enabled: false }, model).status, "disabled");
+  const incomplete = previewClientBinding("VITE_CUSTOM", { kind: "output", stack: "CognitoStack", outputs: [] }, model);
+  assert.equal(incomplete.status, "unavailable");
+  assert.match(incomplete.note, /Choose a public output/);
 });
 
 test("the client island, its source connections and variable search exist in both scenes without moving between modes", () => {

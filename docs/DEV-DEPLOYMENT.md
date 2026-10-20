@@ -115,6 +115,13 @@ and is empty otherwise. The home page's tester link passes both in its query, an
 left panel with the local server and its right panel with the API Gateway stage.
 Application requests continue to use the same-origin `/api` prefix.
 
+Those are the initial mappings in `framework-config/client-environment.ts`. Edit them in
+Studio's **Client environment** inspector, then review and apply. Each field's Dev/Prod
+pills control inclusion; renames retain both environments' sources. The next export uses
+the saved mappings, resolving public CDK inputs from `.env.dev` and public stack outputs
+from the selected deployment. Missing required sources stop export before any file is
+written. Studio edits do not run export or deployment.
+
 ### macOS (Apple silicon)
 
 - Docker Desktop must expose the default socket, `/var/run/docker.sock`: the invocation

@@ -4,39 +4,9 @@ import ts from "typescript";
 import { ROOT_ENV_STACK_OUTPUTS } from "../../scripts/root-env-outputs";
 import { CLIENT_ENVIRONMENT_FILE, clientMappingsError, type ClientEnvironmentMappings } from "../shared/client-environment";
 import type { ModeModel } from "../shared/model";
-import { literalKey, parse, unwrap } from "./source/syntax";
-
-/** Interpret literal data only; mapping source is never executed by Studio. */
-export function parseClientMappings(text: string) {
-  const source = parse(CLIENT_ENVIRONMENT_FILE, text);
-  if ((source as ts.SourceFile & { parseDiagnostics: readonly ts.Diagnostic[] }).parseDiagnostics.length) throw new Error("Fix the client mapping file's TypeScript syntax.");
-  const declarations = source.statements.filter(ts.isVariableStatement).filter((statement) => statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword))
-    .flatMap((statement) => statement.declarationList.declarations).filter((item) => ts.isIdentifier(item.name) && item.name.text === "clientEnvironment");
-  const initializer = declarations.length === 1 && declarations[0]!.initializer;
-  const object = initializer && unwrap(initializer);
-  if (!object || !ts.isObjectLiteralExpression(object)) throw new Error(`${CLIENT_ENVIRONMENT_FILE} must export const clientEnvironment as a literal object.`);
-  const literal = (expression: ts.Expression): unknown => {
-    const value = unwrap(expression);
-    if (ts.isStringLiteralLike(value)) return value.text;
-    if (value.kind === ts.SyntaxKind.TrueKeyword) return true;
-    if (value.kind === ts.SyntaxKind.FalseKeyword) return false;
-    if (ts.isArrayLiteralExpression(value)) return value.elements.map((item) => literal(item as ts.Expression));
-    if (ts.isObjectLiteralExpression(value)) {
-      const result: Record<string, unknown> = Object.create(null);
-      for (const property of value.properties) {
-        const key = literalKey(property);
-        if (!ts.isPropertyAssignment(property) || key === undefined || Object.hasOwn(result, key)) throw new Error("Mapping keys must be unique literals, without spreads.");
-        result[key] = literal(property.initializer);
-      }
-      return result;
-    }
-    throw new Error("Client mappings accept literal references only; expressions and calls are not supported.");
-  };
-  const mappings = literal(object);
-  const error = clientMappingsError(mappings);
-  if (error) throw new Error(error);
-  return { source, object, mappings: mappings as ClientEnvironmentMappings };
-}
+import { literalKey } from "./source/syntax";
+import { parseClientMappings } from "../../scripts/client-environment-source";
+export { parseClientMappings } from "../../scripts/client-environment-source";
 
 export function readClientMappings(root: string): { mappings: ClientEnvironmentMappings; problem?: string } {
   try { return { mappings: parseClientMappings(readFileSync(path.join(root, CLIENT_ENVIRONMENT_FILE), "utf8")).mappings }; }
@@ -69,21 +39,37 @@ export function rewriteClientMappings(text: string, mappings: ClientEnvironmentM
   const error = clientMappingsError(mappings);
   if (error) throw new Error(error);
   const { source, object, mappings: before } = parseClientMappings(text);
+  // Inline renames retain position and comments, even when this draft also adds
+  // or removes fields. Surviving names anchor the gaps where keys can change.
+  const oldKeys = Object.keys(before), newKeys = Object.keys(mappings);
+  const renames = new Map<string, string>();
+  for (const [at, name] of newKeys.entries()) {
+    if (Object.hasOwn(before, name)) continue;
+    const previous = newKeys.slice(0, at).reverse().find((key) => Object.hasOwn(before, key));
+    const next = newKeys.slice(at + 1).find((key) => Object.hasOwn(before, key));
+    const candidates = oldKeys.slice(previous ? oldKeys.indexOf(previous) + 1 : 0, next ? oldKeys.indexOf(next) : undefined)
+      .filter((key) => !Object.hasOwn(mappings, key) && !renames.has(key));
+    const original = candidates.find((key) => JSON.stringify(before[key]) === JSON.stringify(mappings[name])) ?? candidates[0];
+    if (original) renames.set(original, name);
+  }
   const edits: { start: number; end: number; value: string }[] = [];
   for (const property of object.properties) {
     if (!ts.isPropertyAssignment(property)) continue;
     const name = literalKey(property)!;
-    if (!Object.hasOwn(mappings, name)) {
+    const nextName = renames.get(name) ?? name;
+    if (nextName !== name) edits.push({ start: property.name.getStart(source), end: property.name.end, value: nextName });
+    if (!Object.hasOwn(mappings, nextName)) {
       let end = property.end;
       if (text[end] === ",") end++;
       edits.push({ start: property.getStart(source), end, value: "" });
-    } else if (JSON.stringify(before[name]) !== JSON.stringify(mappings[name])) {
-      edits.push({ start: property.initializer.getStart(source), end: property.initializer.end, value: JSON.stringify(mappings[name], null, 2).replaceAll("\n", "\n  ") });
+    } else if (JSON.stringify(before[name]) !== JSON.stringify(mappings[nextName])) {
+      edits.push({ start: property.initializer.getStart(source), end: property.initializer.end, value: JSON.stringify(mappings[nextName], null, 2).replaceAll("\n", "\n  ") });
     }
   }
-  const added = Object.entries(mappings).filter(([name]) => !Object.hasOwn(before, name));
+  const renamed = new Set(renames.values());
+  const added = Object.entries(mappings).filter(([name]) => !Object.hasOwn(before, name) && !renamed.has(name));
   if (added.length) {
-    const last = object.properties.filter((property) => Object.hasOwn(mappings, literalKey(property)!)).at(-1);
+    const last = object.properties.filter((property) => { const key = literalKey(property)!; return Object.hasOwn(mappings, renames.get(key) ?? key); }).at(-1);
     if (last && text[last.end] !== ",") edits.push({ start: last.end, end: last.end, value: "," });
     edits.push({ start: object.end - 1, end: object.end - 1, value: added.map(([name, modes]) => `  ${JSON.stringify(name)}: ${JSON.stringify(modes, null, 2).replaceAll("\n", "\n  ")},\n`).join("") });
   }

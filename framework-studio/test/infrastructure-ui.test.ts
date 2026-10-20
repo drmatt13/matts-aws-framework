@@ -62,7 +62,7 @@ async function mount(navigate: (id: string) => void = () => {}, initialOwner?: s
         const fact = context.model.fields["lambda:graphql-api"]!.find((fact) => fact.field === "lambda.memorySize")!;
         context.draft.setField("lambda:graphql-api", fact, 768);
       } }, "Stage memory edit"));
-    return h("div", null, h("button", { onClick: () => context.setMode("prod") }, "Production"), environmentFile ? h("div", null, h(environmentFile.clientEnvironment ? clientInputs.ClientEnvironmentFileView : inputs.EnvironmentFileView, { resource: environmentFile }), h(controls.DraftFooter), h(controls.UnsavedChangesDialog), context.draftState.reviewOpen ? h(review.EditDialog, { review: context.draftState.review }) : null) : h(component.InfrastructurePanel, { key: context.mode, onNavigate: navigate, initialOwner }));
+    return h("div", null, environmentFile?.clientEnvironment ? null : h("button", { onClick: () => context.setMode("prod") }, "Production"), environmentFile ? h("div", null, h(environmentFile.clientEnvironment ? clientInputs.ClientEnvironmentFileView : inputs.EnvironmentFileView, { resource: environmentFile }), h(controls.DraftFooter), h(controls.UnsavedChangesDialog), context.draftState.reviewOpen ? h(review.EditDialog, { review: context.draftState.review }) : null) : h(component.InfrastructurePanel, { key: context.mode, onNavigate: navigate, initialOwner }));
   }
   function Root() {
     const search = router.useSearch({ strict: false }) as { select?: string };
@@ -139,19 +139,34 @@ test("a stack browses CDK inline and opens the Stacks inspector for all resource
   assert.equal(runs, 0);
 });
 
-test("client mappings list every variable, navigate to their sources and change recipes with the graph", async () => {
+function openMapping(name: string) {
+  const button = ui.screen.getByRole("button", { name: `Edit mapping for ${name}` });
+  if (button.getAttribute("aria-expanded") !== "true") ui.fireEvent.click(button);
+}
+
+test("client mappings give a searchable source overview and use the selected environment", async () => {
   const file = response.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!;
   let selected = "";
   await mount((id) => { selected = id; }, undefined, file);
   for (const entry of file.clientEnvironment!.entries) assert.ok(ui.screen.getByText(entry.name, { selector: "strong code" }));
-  assert.equal(ui.screen.queryByRole("button", { name: /Generate/ }), null);
+  assert.equal(ui.screen.queryByRole("combobox"), null, "source controls stay collapsed until needed");
+  assert.equal(ui.screen.queryByRole("button", { name: /^Generate \.env/ }), null);
+  openMapping("VITE_LOCAL_WS_URL");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Open source for VITE_LOCAL_WS_URL" }));
   assert.equal(selected, "envfile:dev");
+  openMapping("VITE_USER_POOL_ID");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Open source for VITE_USER_POOL_ID" }));
   assert.equal(selected, "resource:cognito");
+  ui.fireEvent.change(ui.screen.getByRole("searchbox", { name: "Search client mappings" }), { target: { value: "CognitoStack" } });
+  assert.equal(ui.screen.queryByText("VITE_LOCAL_WS_URL", { selector: "strong code" }), null);
+  assert.ok(ui.screen.getByText("VITE_USER_POOL_ID", { selector: "strong code" }));
+  ui.fireEvent.change(ui.screen.getByRole("searchbox", { name: "Search client mappings" }), { target: { value: "" } });
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Production" }));
-  assert.equal((ui.screen.getByRole("combobox", { name: "Mapping for VITE_API_GATEWAY_URL" }) as HTMLSelectElement).value, "output:FrontendWebsiteS3Stack:CloudFrontUrl");
-  assert.equal((ui.screen.getByRole("combobox", { name: "Mapping for VITE_LOCAL_WS_URL" }) as HTMLSelectElement).value, "empty");
+  openMapping("VITE_API_GATEWAY_URL");
+  assert.equal((ui.screen.getByRole("combobox", { name: "Stack for VITE_API_GATEWAY_URL" }) as HTMLSelectElement).value, "FrontendWebsiteS3Stack");
+  assert.equal((ui.screen.getByRole("combobox", { name: "Mapping for VITE_API_GATEWAY_URL" }) as HTMLSelectElement).value, "CloudFrontUrl");
+  openMapping("VITE_LOCAL_WS_URL");
+  assert.equal((ui.screen.getByRole("combobox", { name: "Source type for VITE_LOCAL_WS_URL" }) as HTMLSelectElement).value, "empty");
 });
 
 test("client fields can be added, remapped, disabled, reviewed and discarded without writing before apply", async () => {
@@ -159,19 +174,24 @@ test("client fields can be added, remapped, disabled, reviewed and discarded wit
   let changes: readonly import("../shared/api").DraftEdit[] = [];
   mock.method(api.api, "planBatch", async (edits: readonly import("../shared/api").DraftEdit[]) => { changes = edits; return { planId: "mappings", ok: true, summaries: ["Client mappings"], changes: [], impact: [], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } } }; });
   await mount(() => {}, undefined, file);
-  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Mapping for VITE_USER_POOL_ID" }), { target: { value: "output:CognitoStack:UserPoolClientId" } });
-  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Enable VITE_LOCAL_WS_URL" }));
-  assert.equal((ui.screen.getByRole("combobox", { name: "Mapping for VITE_LOCAL_WS_URL" }) as HTMLSelectElement).disabled, true);
-  const urlRow = ui.screen.getByRole("combobox", { name: "Mapping for VITE_API_GATEWAY_URL" }).closest("li")!;
-  ui.fireEvent.click(urlRow.querySelector("summary")!);
+  openMapping("VITE_USER_POOL_ID");
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Mapping for VITE_USER_POOL_ID" }), { target: { value: "UserPoolClientId" } });
+  assert.match(ui.screen.getByRole("button", { name: "Edit mapping for VITE_USER_POOL_ID" }).textContent!, /CognitoStack.UserPoolClientId/, "preview follows the unsaved source");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Generate VITE_LOCAL_WS_URL in Development" }));
+  openMapping("VITE_LOCAL_WS_URL");
+  assert.ok(ui.screen.getByRole("combobox", { name: "Source type for VITE_LOCAL_WS_URL" }).matches(":disabled"));
+  openMapping("VITE_API_GATEWAY_URL");
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Protocol for VITE_API_GATEWAY_URL" }), { target: { value: "https" } });
   ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Hostname for VITE_API_GATEWAY_URL" }), { target: { value: "app.localhost" } });
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Port input for VITE_API_GATEWAY_URL" }), { target: { value: "WS_TESTER_HOST_PORT" } });
   ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Use URL override for VITE_API_GATEWAY_URL" }));
+  assert.ok((ui.screen.getByRole("combobox", { name: "Override input for VITE_API_GATEWAY_URL" }) as HTMLSelectElement).disabled);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add field" }));
   ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "New client field name" }), { target: { value: "VITE_CUSTOM_REGION" } });
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add" }));
-  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Mapping for VITE_CUSTOM_REGION" }), { target: { value: "region:CognitoStack" } });
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Source type for VITE_CUSTOM_REGION" }), { target: { value: "region" } });
+  assert.ok((ui.screen.getByRole("button", { name: "Review Changes" }) as HTMLButtonElement).disabled, "incomplete references cannot be reviewed");
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Stack for VITE_CUSTOM_REGION" }), { target: { value: "CognitoStack" } });
   assert.equal(changes.length, 0, "editing does not call the server");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
   await ui.screen.findByRole("button", { name: "Apply All" });
@@ -183,12 +203,74 @@ test("client fields can be added, remapped, disabled, reviewed and discarded wit
   assert.deepEqual(changes[0]!.mappings.VITE_CUSTOM_REGION, { dev: { kind: "region", stack: "CognitoStack" }, prod: { kind: "empty" } });
   assert.deepEqual(changes[0]!.mappings.VITE_USER_POOL_ID!.prod, file.clientEnvironment!.mappings.VITE_USER_POOL_ID!.prod);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard All" }));
-  assert.equal(ui.screen.queryByRole("combobox", { name: "Mapping for VITE_CUSTOM_REGION" }), null);
-  assert.equal((ui.screen.getByRole("checkbox", { name: "Enable VITE_LOCAL_WS_URL" }) as HTMLInputElement).checked, true);
+  assert.equal(ui.screen.queryByRole("button", { name: "Edit mapping for VITE_CUSTOM_REGION" }), null);
+  assert.equal(ui.screen.getByRole("button", { name: "Generate VITE_LOCAL_WS_URL in Development" }).getAttribute("aria-pressed"), "true");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Remove VITE_USER_POOL_CLIENT_ID" }));
-  assert.equal(ui.screen.queryByRole("combobox", { name: "Mapping for VITE_USER_POOL_CLIENT_ID" }), null);
+  assert.equal(ui.screen.queryByRole("button", { name: "Edit mapping for VITE_USER_POOL_CLIENT_ID" }), null);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard" }));
-  assert.ok(ui.screen.getByRole("combobox", { name: "Mapping for VITE_USER_POOL_CLIENT_ID" }));
+  assert.ok(ui.screen.getByRole("button", { name: "Edit mapping for VITE_USER_POOL_CLIENT_ID" }));
+});
+
+test("changing source types requires explicit choices, preserves output fallbacks and resets one field", async () => {
+  const file = response.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!;
+  await mount(() => {}, undefined, file);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Production" }));
+  openMapping("VITE_API_GATEWAY_URL");
+  assert.ok(ui.screen.getByText(/Fallback outputs:/));
+  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Allow empty VITE_API_GATEWAY_URL" }));
+  assert.ok(ui.screen.getByText(/Fallback outputs:/), "unrelated options retain authored output fallbacks");
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Stack for VITE_API_GATEWAY_URL" }), { target: { value: "CognitoStack" } });
+  assert.equal((ui.screen.getByRole("combobox", { name: "Mapping for VITE_API_GATEWAY_URL" }) as HTMLSelectElement).value, "");
+  assert.ok((ui.screen.getByRole("button", { name: "Review Changes" }) as HTMLButtonElement).disabled);
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Mapping for VITE_API_GATEWAY_URL" }), { target: { value: "UserPoolDomainUrl" } });
+  assert.equal((ui.screen.getByRole("button", { name: "Review Changes" }) as HTMLButtonElement).disabled, false);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Reset mapping for VITE_API_GATEWAY_URL" }));
+  assert.ok(ui.screen.getByText(/Fallback outputs:/));
+  assert.equal(ui.screen.queryByRole("button", { name: "Review Changes" }), null);
+});
+
+test("client field pills configure both environments and rename retains both recipes with duplicate validation", async () => {
+  const file = response.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!;
+  let changes: readonly import("../shared/api").DraftEdit[] = [];
+  mock.method(api.api, "planBatch", async (edits: readonly import("../shared/api").DraftEdit[]) => { changes = edits; return { planId: "rename", ok: true, summaries: ["Client mappings"], changes: [], impact: [], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } } }; });
+  await mount(() => {}, undefined, file);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Generate VITE_USER_POOL_ID in Production" }));
+  assert.equal(ui.screen.getByRole("button", { name: "Generate VITE_USER_POOL_ID in Development" }).getAttribute("aria-pressed"), "true");
+  assert.equal(ui.screen.getByRole("button", { name: "Generate VITE_USER_POOL_ID in Production" }).getAttribute("aria-pressed"), "false");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Rename VITE_USER_POOL_ID" }));
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "New name for VITE_USER_POOL_ID" }), { target: { value: "VITE_AWS_REGION" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Save name" }));
+  assert.ok(ui.screen.getByRole("alert").textContent!.includes("already exists"));
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "New name for VITE_USER_POOL_ID" }), { target: { value: "bad name" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Save name" }));
+  assert.ok(ui.screen.getByRole("alert").textContent!.includes("VITE_"));
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "New name for VITE_USER_POOL_ID" }), { target: { value: "VITE_RENAMED_POOL" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Save name" }));
+  assert.equal(ui.screen.queryByRole("button", { name: "Rename VITE_USER_POOL_ID" }), null);
+  assert.ok(ui.screen.getByRole("button", { name: "Rename VITE_RENAMED_POOL" }));
+  assert.equal(changes.length, 0);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await ui.screen.findByRole("button", { name: "Apply All" });
+  if (changes[0]?.kind !== "clientEnvironment") return assert.fail("Expected a client mapping draft");
+  assert.equal(changes[0].mappings.VITE_USER_POOL_ID, undefined);
+  assert.deepEqual(changes[0].mappings.VITE_RENAMED_POOL, { dev: file.clientEnvironment!.mappings.VITE_USER_POOL_ID!.dev, prod: { ...file.clientEnvironment!.mappings.VITE_USER_POOL_ID!.prod, enabled: false } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard All" }));
+  assert.ok(ui.screen.getByRole("button", { name: "Rename VITE_USER_POOL_ID" }));
+  assert.equal(ui.screen.getByRole("button", { name: "Generate VITE_USER_POOL_ID in Production" }).getAttribute("aria-pressed"), "true");
+});
+
+test("client environment switches honor the unsaved draft guard", async () => {
+  const file = response.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!;
+  await mount(() => {}, undefined, file);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Generate VITE_LOCAL_WS_URL in Development" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Production" }));
+  await ui.screen.findByRole("heading", { name: "Unsaved changes" });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Keep Editing" }));
+  assert.equal(ui.screen.getByRole("button", { name: "Development" }).getAttribute("aria-pressed"), "true");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Production" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard and Continue" }));
+  await ui.waitFor(() => assert.equal(ui.screen.getByRole("button", { name: "Production" }).getAttribute("aria-pressed"), "true"));
+  assert.equal(ui.screen.getByRole("button", { name: "Generate VITE_LOCAL_WS_URL in Development" }).getAttribute("aria-pressed"), "true");
 });
 
 test("inventory search, type/owner filters and owner navigation use synthesis evidence without starting a job", async () => {

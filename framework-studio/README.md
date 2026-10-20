@@ -71,8 +71,8 @@ never enter evaluator processes.
 ## CDK environment files and input parameters
 
 **Input parameters and secrets** contains only inputs and secrets declared in
-`framework-config/resources.ts`. **CDK environment files** is a separate island with `.env.dev` and
-`.env.prod`. File-to-parameter links come from actual assignments, including empty ones;
+`framework-config/resources.ts`. **CDK environment files** is a separate island with `cdk-app/.env.dev` and
+`cdk-app/.env.prod`, using the same full-path labels as `client-app/.env`. File-to-parameter links come from actual assignments, including empty ones;
 missing entries stay visible in the inspector without pretending to supply a value.
 Catalog identities are reused, preserving their workload and secret-consumer links.
 
@@ -117,16 +117,28 @@ changes refresh the map and stale the matching inventory; generating a file does
 ## Client-app environment mappings
 
 The **Client-app environment file** island contains `client-app/.env`. Its inspector is
-a compact editor: enable or disable fields for the selected graph, choose a CDK input,
-public stack output or stack region, add new `VITE_` fields, or remove a field from both
-environments. **URL from CDK port** expands to protocol, hostname, port and optional URL
-override controls. Stack outputs can permit an empty value when their stack is off.
+a searchable source overview. Expand a field to choose its source type, then its CDK input,
+stack/output or region; URL sources expose protocol, hostname, port and an optional override.
+The environment buttons follow the graph and its unsaved-change guard. Each field shows a
+symbolic preview and source status that update with its draft, plus an individual reset.
+Each variable's Dev/Prod pills independently include or omit it from that environment's
+generated file; **Empty value** keeps an empty value. Rename a field inline while retaining
+both source recipes, add new `VITE_` fields, or remove a field from both environments.
+Renames reject duplicate names and require updating application reads of the old name.
+Stack outputs can permit an empty value when
+their stack is off. Choosing a new stack requires explicitly choosing its output; existing
+fallback output lists are retained until that selection changes.
 
 Edits stage in the existing **Review Changes → Apply All** flow, with discard, navigation
 guards, source conflict detection, and global undo/redo. References are saved as literal
 mapping declarations in `framework-config/client-environment.ts`, reread on every refresh.
-Descriptions are collapsed. This editor does not generate environment files or load their
-values; existing export behavior and Vite's `.env.*.local` files are unchanged.
+Descriptions and file/export guidance are collapsed. This editor does not generate
+environment files or load their values. The next `export:cdk-outputs` reads the saved literal
+mappings, resolves public references against that deployment and its mode's CDK inputs,
+and validates everything before writing files. Vite's `.env.*.local` files remain the export
+destinations, taking precedence over `client-app/.env`. Missing required sources and secret
+references fail without changing existing files; optional outputs are empty only when
+their stack is absent. Opening, editing and applying the inspector never runs export.
 
 The initial mappings are:
 

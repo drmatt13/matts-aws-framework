@@ -434,6 +434,9 @@ stack output, deployment region, URL from a port, or empty), with per-mode enabl
 rewrites only changed fields. Validation rejects secret inputs, raw values and private
 outputs. The source file participates in the existing config hashes and watcher.
 
+`shared/client-environment-preview.ts` resolves symbolic sources and declaration availability
+for both saved projections and in-memory drafts, without reading values. The client mapping
+inspector uses this same resolver so source/status previews cannot remain stuck on a saved binding.
 `server/client-environment.ts` binds declarations to current resource IDs after input-file
 and output-stack projection. `client-envfile` stands on `island:client-environment`;
 its `maps` edges use the selected mode's CDK input file or existing stack identity. A
@@ -442,6 +445,15 @@ file/island editor joins the inspector draft and batch review/apply flow, includ
 conflict checks, atomic writes, confirmation and global undo/redo. New fields start empty
 in both modes. Region refers to Cognito's deployment metadata, not the local SDK region.
 This projection does not read client values, query deployed outputs or generate files.
+`scripts/client-environment-source.ts` supplies the shared literal reader; the exporter
+and Studio use the same reference validation. `scripts/client-environment-export.ts`
+resolves saved mappings from the selected deployment's metadata, public output allowlist,
+and its own mode's authored CDK input file (or explicit inputs override). Declared defaults
+and secret classification come from the resource catalog. It validates all results before
+the existing atomic multi-file write; no values enter Studio projections or review data.
+Each row reuses `EnvironmentPills` as toggle buttons to stage its two independent enable
+flags. Inline renames preserve both recipes and stage an object-key rename; the source
+rewriter, review, conflicts and undo/redo keep their ordinary behavior.
 
 `scripts/cloud-assembly.ts` extends the deployment assembly reader into a shared
 manifest traversal. It follows listed stacks and nested cloud assemblies, validates

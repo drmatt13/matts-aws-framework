@@ -540,7 +540,7 @@ test("required flags stage quietly and the connection inspector guides missing v
   await mount(edge.id);
   assert.ok(ui.screen.getByText("Required value missing"));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Edit .env.dev" }));
-  await ui.screen.findByRole("heading", { name: ".env.dev" });
+  await ui.screen.findByRole("heading", { name: "cdk-app/.env.dev" });
   assert.ok(ui.screen.getByRole("heading", { name: "Required inputs (1)" }));
   const set = await ui.screen.findByRole("button", { name: `Set ${resource.fromEnv}` });
   await ui.waitFor(() => assert.equal((set as HTMLButtonElement).disabled, false));

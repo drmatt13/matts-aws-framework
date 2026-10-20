@@ -246,6 +246,13 @@ distribution used for publishing) and `client-app/.env.production.local`, which
 resource manifest, which belong to local development. Both output files are ignored by Git;
 no secrets are exported.
 
+Client settings follow the saved mappings in `framework-config/client-environment.ts`,
+editable through Studio's **Client environment** inspector. The Prod pill on each field
+controls whether production export includes it; renamed fields keep both source recipes.
+Production input references use `cdk-app/.env.prod`, independently of development inputs.
+Export validates references before writing either output file; a missing required source
+preserves the existing files. Applying a Studio mapping draft does not export or deploy.
+
 For custom DNS, use the deployment output targets:
 
 | Hostname | Target |

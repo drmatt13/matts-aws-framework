@@ -550,12 +550,10 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .client-mapping-editor select, .client-mapping-editor input:not([type=checkbox]) { width: 100%; min-width: 0; box-sizing: border-box; background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 4px; padding: 6px 7px; font: inherit; font-size: 12px; }
 .client-mapping-editor input[type=checkbox] { margin: 0; accent-color: var(--dev); }
 .client-mapping-check { display: flex; align-items: center; gap: 6px; }
-.client-mapping-options summary { font: 11px/1.5 monospace; color: var(--graphite); overflow-wrap: anywhere; cursor: pointer; }
-.client-mapping-options fieldset { border: 0; padding: var(--ui-space-2) 0 0; margin: 0; display: grid; gap: var(--ui-space-2); min-width: 0; }
-.client-mapping-url { display: grid; grid-template-columns: 75px minmax(0, 1fr); gap: 6px; }
+.client-mapping-url { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: var(--ui-space-2); }
 .client-mapping-add { margin: 10px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; }
 .client-mapping-add p { grid-column: 1 / -1; margin: 0; }
-.mapping-disabled > select, .mapping-disabled strong { opacity: .45; }
+.mapping-disabled strong, .mapping-disabled .client-mapping-summary > code { opacity: .55; }
 
 /* Compact support information, never an always-open form above operational settings. */
 .node-description .description-editor > summary { display: flex; align-items: center; justify-content: space-between; cursor: pointer; list-style: none; font-size: var(--ui-label); font-weight: 600; min-height: 24px; }
@@ -656,6 +654,37 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .client-mapping-editor :is(select,input:not([type=checkbox])) { min-height: var(--ui-control-height); padding: 6px 10px; border-radius: var(--ui-control-radius); font-size: var(--ui-label); }
 .client-mapping-name strong { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
 .client-mapping-name .icon-button { padding: 3px; flex-shrink: 0; width: 28px; height: 28px; }
+.client-mapping-name .environment-pills { flex: none; }
+.client-mapping-name .hover-tag { cursor: pointer; min-height: 28px; padding: 3px 8px; font-size: 11px; }
+.client-mapping-name .hover-tag:hover:not(:disabled) { border-color: currentColor; }
+.client-mapping-rename { display: grid; gap: var(--ui-space-2); }
+.client-mapping-rename p { margin: 0; }
+.client-mapping-editor .client-mapping-controls select {
+  appearance: none; padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2385909c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center; background-size: 14px;
+}
+.client-mapping-context { display: grid; gap: var(--ui-space-2); margin-bottom: var(--ui-space-5); }
+.client-mapping-context .segmented { justify-self: start; }
+.client-mapping-context p, .client-mapping-controls p, .client-mapping-note { margin: 0; }
+.client-mapping-help { color: var(--graphite); font-size: var(--ui-caption); }
+.client-mapping-help summary { cursor: pointer; }
+.client-mapping-help p { margin-top: var(--ui-space-2); overflow-wrap: anywhere; }
+.client-mapping-search { margin-top: var(--ui-space-2); }
+.client-mapping-editor .client-mapping-summary { display: grid; width: 100%; gap: var(--ui-space-1); padding: 0; border: 0; background: none; color: var(--ink); text-align: left; cursor: pointer; border-radius: 4px; }
+.client-mapping-summary-heading { display: flex; align-items: center; gap: var(--ui-space-2); font-size: var(--ui-caption); color: var(--graphite); }
+.client-mapping-summary-heading > span:first-child { flex: 1; }
+.client-mapping-summary-heading svg { flex: none; transition: transform .15s; }
+.client-mapping-summary[aria-expanded=true] svg { transform: rotate(90deg); }
+.client-mapping-summary > code { font-size: var(--ui-caption); line-height: 1.6; overflow-wrap: anywhere; }
+.client-mapping-summary:hover > code { color: var(--dev); }
+.client-mapping-detail { display: grid; gap: var(--ui-space-3); padding: var(--ui-space-3); border: 1px solid var(--rule); border-radius: var(--ui-control-radius); background: var(--paper); }
+.client-mapping-controls { display: grid; gap: var(--ui-space-3); border: 0; padding: 0; margin: 0; min-width: 0; }
+.client-mapping-controls label { display: grid; gap: var(--ui-space-1); font-size: var(--ui-caption); min-width: 0; }
+.client-mapping-controls label > code { overflow-wrap: anywhere; }
+.client-mapping-controls .client-mapping-check { display: flex; gap: var(--ui-space-2); }
+.client-mapping-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--ui-space-2); }
+@media (forced-colors: active) { .client-mapping-editor .client-mapping-controls select { appearance: auto; background-image: none; } }
 .input-file-entries { margin: var(--ui-space-3) 0 0; }
 .input-file-entries li { padding: 14px 0; gap: var(--ui-space-2); }
 .input-file-entries li > code { font-size: 11px; font-weight: 500; }
