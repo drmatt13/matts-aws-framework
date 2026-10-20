@@ -28,8 +28,8 @@ A Development/Production switch picks which deployment graph the views describe.
 indicators for both graphs, undo and redo, and a `framework:check` button sit in the top bar.
 
 The isometric view uses a thin world-anchored grid and local official AWS SVGs, with
-Lucide outlines for generic concepts. **Refresh CDK links** rebuilds an ignored JSON index
-from linked stack source; CDK edits also refresh it automatically. Source-inferred edges
+Lucide outlines for generic concepts. Startup and watched CDK edits automatically rebuild
+an ignored JSON index from linked stack source. Source-inferred edges
 have a separate filter and source links, including the resource flow in `referenceExamples`.
 
 Deployment is presented as two environments throughout Studio. Board and Isometric omit

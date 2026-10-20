@@ -251,7 +251,7 @@ Each island is drawn as continuous slabs, one per band, rather than a field of t
     unchanged: separate terraces with a seam between them.
   - Disabled islands draw at 30 % with a dashed trim.
 - **Focus.** With a selection, islands holding nothing in the spotlight dim their trim to
-  40 %. While motion is on, a bright dash runs along the selected building's island trim.
+  40 %. Island trim stays static when a building is selected.
   This happens only while a selection exists, so a still picture still draws nothing, and
   reduced motion disables it.
 - **Order.** Shadows, then the VPC foundation, then whole islands in `islandDrawOrder`.
@@ -474,8 +474,8 @@ plaque faces and shared shadow circles. Scene preparation retains endpoint index
 wire lengths, bounds and required-input marker midpoints. Label cards and island
 title placement are cached for a stationary camera; selection, hover, focus,
 viewport, pixel ratio, scene and font changes invalidate the relevant caches.
-Packet and trim animation still repaint at the native pixel ratio and original
-quality. No bitmap scaling, reduced detail or removed effects are used.
+Connection packets repaint at the native pixel ratio and original quality. Island
+trim stays static; no bitmap scaling or reduced detail is used.
 
 Connections outside the viewport are culled with room for arrows, packets, glows
 and error markers. A frame requests another frame only when it paints moving

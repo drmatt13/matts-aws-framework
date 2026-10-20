@@ -85,12 +85,6 @@ function segmentsPath(segments: readonly number[]): Path2D {
   return path;
 }
 
-function polylineLength(points: readonly number[]): number {
-  let length = 0;
-  for (let index = 2; index < points.length; index += 2) length += Math.hypot(points[index]! - points[index - 2]!, points[index + 1]! - points[index - 1]!);
-  return length;
-}
-
 function trace(context: CanvasRenderingContext2D, points: readonly number[], close = true): void {
   context.beginPath();
   context.moveTo(points[0]!, points[1]!);
@@ -142,7 +136,6 @@ interface GraphiteBand {
   /** On a continuous deck: the edges of this subnet's walls that are the deck's own, never the joins to the next subnet. */
   readonly deckEdges: Path2D;
   readonly front?: Path2D;
-  readonly frontLength: number;
   readonly shade?: { readonly path: Path2D; readonly fill: CanvasGradient };
   /** The wall a name can be written on: the left rim run's top-left corner, its length and its depth. */
   readonly face?: { readonly x: number; readonly y: number; readonly length: number; readonly depth: number };
@@ -376,7 +369,6 @@ export class SceneRenderer {
           feet,
           deckEdges,
           ...(band.front.length >= 4 ? { front: toPath(band.front, false) } : {}),
-          frontLength: polylineLength(band.front),
           ...(shade ? { shade } : {}),
           ...(face ? { face: { x: face.lip[0], y: face.lip[1], length: face.lip[2] - face.lip[0], depth: face.depth } } : {}),
           items: items
@@ -529,7 +521,6 @@ export class SceneRenderer {
     context.globalAlpha = this.opacity;
     this.drawFramesGraphite(prepared, state);
 
-    const shimmering = state.motion && state.selected !== undefined ? prepared.nodes.get(state.selected)?.island : undefined;
     let drawn = 0;
     for (const island of prepared.graphite) {
       const { id } = island.slab.island;
@@ -537,7 +528,7 @@ export class SceneRenderer {
       for (const band of island.bands) {
         if (!OUTSIDE(band.slab.bounds, view)) {
           this.opacity = searchOpacity(state.focus, "islands", id);
-          this.drawBand(island, band, focus, state.time, shimmering === id);
+          this.drawBand(island, band, focus);
           drawn += 1;
         }
         for (const item of band.items) {
@@ -566,7 +557,7 @@ export class SceneRenderer {
   }
 
   /** One terrace: its lit top, etched grid, pads and step shade, its walls and lips, its name, then the glowing trim. */
-  private drawBand(island: GraphiteIsland, band: GraphiteBand, focus: number, time: number, shimmer: boolean): void {
+  private drawBand(island: GraphiteIsland, band: GraphiteBand, focus: number): void {
     const context = this.context;
     context.globalAlpha = this.opacity;
     const pixel = this.pixel;
@@ -604,7 +595,7 @@ export class SceneRenderer {
     context.strokeStyle = `rgba(255, 255, 255, ${GRAPHITE.lip})`;
     context.stroke(band.lips);
     this.drawWallName(island, band, rgba(mixRgb(trim, WHITE, 0.35), 0.92 * focus), rgba(trim, 0.7 * focus));
-    // Light: the trim along the front edges, a faint line at the wall's foot, and the shimmer.
+    // Static light along the front edges and a faint line at the wall's foot.
     context.globalCompositeOperation = "lighter";
     context.strokeStyle = rgba(trim, 0.22 * focus);
     context.stroke(band.feet);
@@ -619,21 +610,6 @@ export class SceneRenderer {
           context.strokeStyle = rgba(trim, pass.alpha * focus);
           context.lineWidth = pass.width * pixel;
           context.stroke(band.front);
-        }
-        if (shimmer) {
-          this.animating = true;
-          const dash = 80;
-          const gap = Math.max(band.frontLength, 320);
-          context.setLineDash([dash, gap]);
-          context.lineDashOffset = -((time * 150) % (dash + gap));
-          context.strokeStyle = rgba(mixRgb(trim, WHITE, 0.4), 0.28);
-          context.lineWidth = 6 * pixel;
-          context.stroke(band.front);
-          context.strokeStyle = rgba(mixRgb(trim, WHITE, 0.6), 0.95);
-          context.lineWidth = 2 * pixel;
-          context.stroke(band.front);
-          context.setLineDash([]);
-          context.lineDashOffset = 0;
         }
       }
     }

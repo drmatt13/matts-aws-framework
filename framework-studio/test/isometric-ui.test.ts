@@ -406,7 +406,7 @@ test("stationary animation reuses text placement and invalidates on camera, focu
   renderer.render(state); labels.length = 0;
   const measured = measurements;
   renderer.render({ ...state, time: 2 }); labels.length = 0;
-  assert.equal(measurements, measured, "packet and shimmer animation do not remeasure stationary titles");
+  assert.equal(measurements, measured, "packet animation does not remeasure stationary titles");
   checkFresh();
   // Reused camera objects must not conceal a change from the cache.
   (state.camera as { zoom: number }).zoom = 0.9;
@@ -434,5 +434,7 @@ test("only visible moving content requests more animation frames", () => {
   assert.equal(renderer.render({ ...state, selected, focus }).animating, true);
   assert.equal(renderer.render({ ...state, selected, focus, motion: false }).animating, false);
   assert.equal(renderer.render({ ...state, selected, focus, camera: { x: -1e7, y: -1e7, zoom: 1 } }).animating, false);
+  renderer.setScene({ ...scene, edges: [], routes: {} });
+  assert.equal(renderer.render({ ...state, selected, focus }).animating, false, "selecting a node does not animate its island; only connection packets keep repainting");
   renderer.dispose();
 });
