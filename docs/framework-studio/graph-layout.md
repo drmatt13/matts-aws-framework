@@ -95,8 +95,9 @@ npm --workspace framework-studio test
 npm run verify
 ```
 
-The benchmark compares the previous semantic packing, original node barycentre and
-original curves with the new layout/router using the repository's actual graph. It
+The benchmark compares the optimizer's unrefined semantic seed (`budget: 1`) with
+the refined layout using the repository's actual graph and current router. The
+obsolete node-ordering and routing implementation has been removed from the application. It
 measures full-resolution painted paths separately from the optimizer's coarse proxy.
 Crossings count intersecting wire pairs, excluding shared endpoints. Reported
 lengths and obstacle hits weight declared relationships by 2 and source-inferred
@@ -104,7 +105,8 @@ links by 1; the optimizer separately uses relationship-specific dependency weigh
 Only inter-island wires enter these metrics. Node and title avoidance is additional
 routing work.
 
-Recorded desktop results (1920-class workspace, 16:9 target):
+Historical desktop results from the original layout migration (1920-class workspace,
+16:9 target; these used the retired layout/router as the baseline):
 
 | Graph | Crossing pairs, before → after | Weighted length, before → after | Weighted island hits | Aspect utilization |
 | --- | --- | --- | --- | --- |

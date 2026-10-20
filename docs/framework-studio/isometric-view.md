@@ -156,8 +156,9 @@ subnet terraces inside the VPC foundation.
   the current declaration model still supplies the application's single VPC.
 - **Graph-aware refinement.** Node slots remain on their measured lattice. Island
   dependencies guide layered/barycentric seeds and bounded moves and swaps. The lower
-  islands need not share one row; Workflows stay left of Stacks. The previous one-sided node barycentre is retained
-  only in the explicit benchmark baseline.
+  islands need not share one row; Workflows stay left of Stacks. Benchmarks compare
+  the current packer's unrefined seed with its refined layout; the previous
+  one-sided node barycentre and legacy router have been removed.
 - **Chamfered corners.** Each corner is cut back by one straight chamfer (`CHAMFER = 2`
   cells along each edge, at most a third of the island's shorter side). A cell is removed
   exactly when its centre falls outside the cut (`chamfered`), so tiles, walls, picking
@@ -465,6 +466,27 @@ tweening. A still picture draws nothing.
   view.
 - **Memory.** The camera is kept in module memory across view switches, for the life of the
   page.
+
+### Rendering and input performance
+
+The renderer retains vector paths for connections, the ground grid, plinths,
+plaque faces and shared shadow circles. Scene preparation retains endpoint indexes,
+wire lengths, bounds and required-input marker midpoints. Label cards and island
+title placement are cached for a stationary camera; selection, hover, focus,
+viewport, pixel ratio, scene and font changes invalidate the relevant caches.
+Packet and trim animation still repaint at the native pixel ratio and original
+quality. No bitmap scaling, reduced detail or removed effects are used.
+
+Connections outside the viewport are culled with room for arrows, packets, glows
+and error markers. A frame requests another frame only when it paints moving
+content; selecting a static network fixture or panning all motion off screen can
+settle. Pointer hover events are coalesced to one hit test per animation frame,
+while clicks remain synchronous. Connection bounds reject distant hit candidates
+before exact polyline picking. The accessible entity controls are memoized so
+tooltip movement and timing updates do not reconstruct their React tree.
+
+See [performance findings and measurements](performance.md) for bottlenecks,
+validation scope and further options.
 
 ## Picking ([picking.ts](../../framework-studio/src/scene/picking.ts))
 

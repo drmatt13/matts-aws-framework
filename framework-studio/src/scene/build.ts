@@ -6,12 +6,12 @@ import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH, project } from "./iso";
 import { buildIconShape, type Shape } from "./shapes";
 import type { Bounds } from "./camera";
 import { islandFrame, type SceneFrame } from "./frame";
-import { layoutIslands, type IslandFootprint } from "./layout";
+import type { IslandFootprint } from "./layout";
 import { extractLayoutGraph, topologyEdges, type LayoutAnchor, type LayoutLink } from "./layout-graph";
 import { optimizeLayout, type LayoutSettings, type LayoutResult } from "./layout-optimize";
 import { layoutLabels, layoutObstacles } from "./layout-quality";
 import { connectionStyle, type ConnectionStyle } from "./connections";
-import { routeConnections, legacyRoute, type ConnectionRoutes } from "./routing";
+import { routeConnections, type ConnectionRoutes } from "./routing";
 import { CLIENT_ENVIRONMENT_ISLAND } from "../../shared/client-environment";
 import { aggregateConnections, type ConnectionGroup } from "../connections";
 export { titleRoom } from "./layout";
@@ -148,8 +148,6 @@ export interface Scene {
 export interface SceneOptions {
   readonly layoutSettings?: LayoutSettings;
   readonly layoutModels?: readonly ModeModel[];
-  /** Baseline retained for measured comparisons and deterministic fallback. */
-  readonly semanticLayout?: boolean;
   readonly resourceAvailability?: Readonly<Record<string, Availability>>;
   /** Whether this deployment builds the AWS WebSocket API (DEPLOY_PROD_WEBSOCKET_API). */
   readonly webSocketApi?: boolean;
@@ -538,13 +536,13 @@ interface Footprint {
   readonly placed: readonly PlacedItem[];
 }
 
-function measure(spec: IslandSpec, order?: (items: readonly Item[]) => readonly Item[]): Footprint {
+function measure(spec: IslandSpec): Footprint {
   const placed: PlacedItem[] = [];
   const bandWidths: number[] = [];
   const bands = spec.bands.map((band) => {
     // Roles retain their order, but share the lattice: a small service group
     // must not strand the rest of its column when declarations change.
-    const items = band.groups.flatMap((group) => order ? [...order(group)] : [...group]);
+    const items = band.groups.flat();
     const perColumn = band.perColumn ?? Math.min(6, Math.max(2, Math.ceil(Math.sqrt(items.length))));
     const columns = Math.max(1, Math.ceil(items.length / perColumn), band.props?.length ?? 0);
     const rows = Math.ceil(items.length / columns);
@@ -599,14 +597,6 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
       bounds: { minX: 0, maxX: size * TILE_WIDTH / 2, minY: -Math.max(...spec.bands.map((band) => band.h)) * ELEVATION_STEP - 54, maxY: size * TILE_HEIGHT / 2 + 16 } };
   });
   const insets = new Map(footprints.map((footprint) => [footprint.id, footprint.inset]));
-  const baselineRows = new Map<string, number>();
-  const baselineOrder = (items: readonly Item[]) => {
-    const mean = (id: string) => {
-      const rows = model.edges.flatMap((edge) => { const other = edge.from === id ? edge.to : edge.to === id ? edge.from : undefined; const y = other ? baselineRows.get(other) : undefined; return y === undefined ? [] : [y]; });
-      return rows.length ? rows.reduce((sum, y) => sum + y, 0) / rows.length : Infinity;
-    };
-    return items.map((item, at) => ({ item, at, y: mean(item.id) })).sort((a, b) => a.y - b.y || a.at - b.at).map(({ item }) => item);
-  };
   const anchors: LayoutAnchor[] = all.flatMap((spec) => {
     const footprint = measuredSpecs.get(spec.id)!, length = footprint.length + 2, inset = insets.get(spec.id)!;
     return footprint.placed.map(({ item, lx, ly, band }) => {
@@ -618,12 +608,12 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
   const visibleMembers = new Set(anchors.map((anchor) => anchor.id));
   const members = Object.fromEntries(model.resources.filter((resource) => resource.kind === "member" && resource.parent && !visibleMembers.has(resource.id)).map((resource) => [resource.id, resource.parent!]));
   const graph = extractLayoutGraph(anchors, topologyEdges(options.layoutModels ?? [model]), members);
-  const layout = optimizeLayout(footprints, graph, { ...options.layoutSettings, ...(options.semanticLayout ? { budget: 1 } : {}) });
-  const positions = options.semanticLayout ? layoutIslands(footprints) : layout.positions;
+  const layout = optimizeLayout(footprints, graph, options.layoutSettings);
+  const { positions } = layout;
   for (const position of positions) {
     const spec = specsById.get(position.id)!;
     // Node slots and measured anchors must agree with the optimizer's input.
-    const footprint = options.semanticLayout && (spec.region === "entry" || spec.region === "catalog") ? measure(spec, baselineOrder) : measuredSpecs.get(spec.id)!;
+    const footprint = measuredSpecs.get(spec.id)!;
     const width = footprint.width + 2, length = footprint.length + 2;
     const inset = insets.get(position.id)!;
     const top = Math.round(position.top + inset);
@@ -676,7 +666,6 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
       const h = spec.bands[band]!.h;
       const anchor = project({ x: gx, y: gy, h });
       nodes.push({ ...item, gx, gy, h, island: spec.id, band: spec.bands[band]!.id, geometry: buildIconShape(anchor.x, anchor.y, !!item.roleIcon) });
-      if (options.semanticLayout) baselineRows.set(item.id, gx + gy);
     }
     // Furniture stands on the last lattice row, clear of the buildings and the chamfers.
     spec.bands.forEach((band, index) => {
@@ -767,7 +756,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
     minX: Math.min(...node.geometry.hull.filter((_, at) => at % 2 === 0)), maxX: Math.max(...node.geometry.hull.filter((_, at) => at % 2 === 0)),
     minY: Math.min(...node.geometry.hull.filter((_, at) => at % 2 !== 0)), maxY: Math.max(...node.geometry.hull.filter((_, at) => at % 2 !== 0)),
   } }))];
-  const routes = options.semanticLayout ? Object.fromEntries(routingLinks.map((link) => [link.id, legacyRoute(link.from, link.to)])) : routeConnections(routingLinks, obstacles);
+  const routes = routeConnections(routingLinks, obstacles);
   for (const route of Object.values(routes)) for (const point of route.points) {
     minX = Math.min(minX, point.x); maxX = Math.max(maxX, point.x);
     minY = Math.min(minY, point.y); maxY = Math.max(maxY, point.y);

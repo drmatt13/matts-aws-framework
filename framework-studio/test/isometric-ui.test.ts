@@ -5,7 +5,9 @@ import { after, afterEach, before, test } from "node:test";
 import { createElement as h } from "react";
 import type { SnapshotResponse } from "../shared/api";
 import { SnapshotBuilder } from "../server/snapshot";
-import { SEARCH_FADE } from "../src/scene/focus";
+import { landscapeFocus, SEARCH_FADE } from "../src/scene/focus";
+import { SceneRenderer, type RenderState } from "../src/scene/render";
+import { fitScene } from "../src/scene/fit";
 import { iconUrl } from "../src/icons";
 import { buildScene } from "../src/scene/build";
 import { connectionMidpoint } from "../src/scene/routing";
@@ -27,6 +29,8 @@ let nextFrame = 0;
 const images: { src: string; alpha: number }[] = [];
 const strokes: string[] = [];
 const labels: string[] = [];
+let measurements = 0;
+let glyphWidth = 6;
 
 before(async () => {
   const require = createRequire(import.meta.url);
@@ -39,7 +43,7 @@ before(async () => {
   Object.defineProperty(globalThis, "requestAnimationFrame", { configurable: true, value: (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; } });
   Object.defineProperty(globalThis, "cancelAnimationFrame", { configurable: true, value: (id: number) => frames.delete(id) });
   Object.defineProperty(dom.window, "matchMedia", { configurable: true, value: () => ({ matches: true }) });
-  Object.defineProperty(globalThis, "Path2D", { configurable: true, value: class { moveTo() {} lineTo() {} closePath() {} } });
+  Object.defineProperty(globalThis, "Path2D", { configurable: true, value: class { moveTo() {} lineTo() {} closePath() {} arc() {} roundRect() {} } });
   Object.defineProperty(globalThis, "Image", { configurable: true, value: class { src = ""; complete = true; naturalWidth = 48; onload = null; } });
   const gradient = () => ({ addColorStop() {} });
   const alphaStack: number[] = [];
@@ -51,7 +55,7 @@ before(async () => {
     save() { alphaStack.push(this.globalAlpha); },
     restore() { this.globalAlpha = alphaStack.pop() ?? 1; },
     createLinearGradient: gradient, createRadialGradient: gradient,
-    measureText: (text: string) => ({ width: text.length * 6, actualBoundingBoxLeft: 0, actualBoundingBoxRight: text.length * 6, actualBoundingBoxAscent: 10, actualBoundingBoxDescent: 3 }),
+    measureText: (text: string) => { measurements++; return { width: text.length * glyphWidth, actualBoundingBoxLeft: 0, actualBoundingBoxRight: text.length * glyphWidth, actualBoundingBoxAscent: 10, actualBoundingBoxDescent: 3 }; },
     drawImage(image: { src: string }) { images.push({ src: image.src, alpha: this.globalAlpha }); },
   }, { get: (target, key) => key in target ? target[key as keyof typeof target] : () => {} });
   dom.window.HTMLCanvasElement.prototype.getContext = (() => context) as unknown as typeof HTMLCanvasElement.prototype.getContext;
@@ -69,7 +73,7 @@ before(async () => {
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, history: {}, busy: null };
 });
 after(async () => { await builder.dispose(); dom.window.close(); });
-afterEach(() => { ui.cleanup(); frames.clear(); images.length = 0; strokes.length = 0; labels.length = 0; });
+afterEach(() => { ui.cleanup(); frames.clear(); images.length = 0; strokes.length = 0; labels.length = 0; glyphWidth = 6; });
 
 interface Debug { search(): { active: boolean; nodes: string[]; opacityOf(id: string): number }; stats(): { focus: string } }
 const debug = () => (dom.window as unknown as { __studioLandscape: Debug }).__studioLandscape;
@@ -231,6 +235,7 @@ test("clicking a grouped connection opens every mapping and retains it across en
   assert.ok(at, "the grouped line is pickable");
   const canvas = document.querySelector("canvas")!;
   ui.fireEvent.pointerMove(canvas, { clientX: at.x, clientY: at.y });
+  await draw();
   const popup = await ui.screen.findByRole("tooltip");
   assert.ok(popup.textContent?.includes("3 relationships"));
   assert.deepEqual(visibleTags(popup), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
@@ -291,6 +296,7 @@ async function hoverOver(id: string) {
   const point = at.card ?? middle ?? at.building;
   assert.equal(pointing().pickAt(point.x, point.y)?.id, id, "the pointer is over the entity");
   ui.fireEvent.pointerMove(document.querySelector("canvas")!, { pointerId: 1, clientX: point.x, clientY: point.y });
+  await draw();
   return ui.screen.findByRole("tooltip");
 }
 
@@ -338,4 +344,77 @@ test("hovering a framework-managed resource labels it, and an undescribed node a
     assert.ok(bare.textContent?.includes("No description yet."), "an undescribed node says so");
     assert.equal(bare.querySelectorAll(".hover-tag").length, 2, "the deployment labels stay");
   } finally { response = original; }
+});
+
+test("pointer bursts resolve the latest hover once per frame, and leaving cancels pending work", async () => {
+  await mount(); await draw();
+  const canvas = document.querySelector("canvas")!;
+  const id = "lambda:sign-out";
+  const hull = pointing().hullOf(id)!;
+  const point = pointing().screenOf(id)!.card ?? {
+    x: hull.reduce((sum, p) => sum + p.x, 0) / hull.length,
+    y: hull.reduce((sum, p) => sum + p.y, 0) / hull.length,
+  };
+  assert.equal(pointing().pickAt(point.x, point.y)?.id, id);
+  for (let at = 0; at < 100; at++) ui.fireEvent.pointerMove(canvas, { clientX: at, clientY: 0 });
+  ui.fireEvent.pointerMove(canvas, { clientX: point.x, clientY: point.y });
+  assert.equal(frames.size, 1, "a burst schedules a single hit test");
+  assert.equal(ui.screen.queryByRole("tooltip"), null);
+  await draw();
+  assert.ok((await ui.screen.findByRole("tooltip")).textContent?.includes("sign-out"));
+  ui.fireEvent.pointerLeave(canvas); await draw();
+  ui.fireEvent.pointerMove(canvas, { clientX: point.x, clientY: point.y });
+  ui.fireEvent.pointerLeave(canvas); await draw();
+  assert.equal(ui.screen.queryByRole("tooltip"), null, "a queued hover cannot reopen a tooltip after leaving");
+});
+
+test("stationary animation reuses text placement and invalidates on camera, focus, font and scene changes", () => {
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models) });
+  const renderer = new SceneRenderer(document.createElement("canvas"));
+  renderer.setScene(scene);
+  const viewport = { width: 1920, height: 1000 };
+  let state: RenderState = { camera: fitScene(scene, viewport), viewport, dpr: 1, time: 1, motion: true,
+    selected: "lambda:graphql-api", focus: landscapeFocus(scene, "lambda:graphql-api") };
+  const checkFresh = () => {
+    const cached = renderer.render(state);
+    const cachedLabels = labels.splice(0);
+    const fresh = new SceneRenderer(document.createElement("canvas"));
+    fresh.setScene(scene);
+    const expected = fresh.render(state);
+    assert.deepEqual(cached.cards, expected.cards);
+    assert.deepEqual(cachedLabels, labels.splice(0), "cached placement paints the same text as a fresh renderer");
+    fresh.dispose();
+  };
+  renderer.render(state); labels.length = 0;
+  const measured = measurements;
+  renderer.render({ ...state, time: 2 }); labels.length = 0;
+  assert.equal(measurements, measured, "packet and shimmer animation do not remeasure stationary titles");
+  checkFresh();
+  // Reused camera objects must not conceal a change from the cache.
+  (state.camera as { zoom: number }).zoom = 0.9;
+  checkFresh();
+  state = { ...state, hovered: "lambda:sign-in" }; checkFresh();
+  state = { ...state, selected: undefined, focus: landscapeFocus(scene) }; checkFresh();
+  // A late font can change card sizes, truncation and title collisions.
+  glyphWidth = 9;
+  renderer.fontsChanged();
+  checkFresh();
+  renderer.setScene({ ...scene }); checkFresh();
+  renderer.dispose();
+});
+
+test("only visible moving content requests more animation frames", () => {
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models) });
+  const renderer = new SceneRenderer(document.createElement("canvas"));
+  renderer.setScene(scene);
+  const viewport = { width: 1920, height: 1000 };
+  const state: RenderState = { camera: fitScene(scene, viewport), viewport, dpr: 1, time: 1, motion: true, focus: landscapeFocus(scene) };
+  const prop = scene.props[0]!.id;
+  assert.equal(renderer.render({ ...state, selected: prop, focus: landscapeFocus(scene, prop) }).animating, false);
+  const selected = "lambda:graphql-api";
+  const focus = landscapeFocus(scene, selected);
+  assert.equal(renderer.render({ ...state, selected, focus }).animating, true);
+  assert.equal(renderer.render({ ...state, selected, focus, motion: false }).animating, false);
+  assert.equal(renderer.render({ ...state, selected, focus, camera: { x: -1e7, y: -1e7, zoom: 1 } }).animating, false);
+  renderer.dispose();
 });

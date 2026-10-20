@@ -11,7 +11,7 @@ void (async () => {
     const results = [];
     for (const mode of ["dev", "prod"] as const) for (const aspect of [16 / 9, 0.9]) {
       const options = { layoutModels: Object.values(snapshot.models), layoutSettings: { aspect } };
-      const baseline = buildScene(snapshot.models[mode], { ...options, semanticLayout: true });
+      const baseline = buildScene(snapshot.models[mode], { ...options, layoutSettings: { aspect, budget: 1 } });
       const started = performance.now();
       const optimized = buildScene(snapshot.models[mode], options);
       const ms = performance.now() - started;

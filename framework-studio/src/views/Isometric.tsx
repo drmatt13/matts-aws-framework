@@ -106,10 +106,14 @@ export function Isometric() {
   const arcs = useMemo(
     () =>
       scene.edges.map((edge) => {
-        return { edge, points: scene.routes[edge.id]!.points };
+        const points = scene.routes[edge.id]!.points;
+        return { edge, points, missing: missingConnectionInput(edge), midpoint: connectionMidpoint(points),
+          minX: Math.min(...points.map((point) => point.x)), maxX: Math.max(...points.map((point) => point.x)),
+          minY: Math.min(...points.map((point) => point.y)), maxY: Math.max(...points.map((point) => point.y)) };
       }),
     [scene],
   );
+  const silhouettes = useMemo(() => scene.nodes.map((node) => ({ id: node.id, hull: node.geometry.hull })), [scene]);
 
   // Everything the frame loop reads, without re-subscribing it on every render.
   const live = useRef({
@@ -289,11 +293,12 @@ export function Isometric() {
     (screen: Point): Hover | undefined => {
       const state = live.current;
       const world = screenToWorld(state.camera, state.viewport, screen);
-      const entity = pickEntity(screen, world, state.cards, scene.nodes.map((node) => ({ id: node.id, hull: node.geometry.hull })));
+      const entity = pickEntity(screen, world, state.cards, silhouettes);
       if (entity) return { kind: "node", id: entity, ...screen };
       for (const arc of arcs) {
-        const marker = worldToScreen(state.camera, state.viewport, connectionMidpoint(arc.points));
-        if (missingConnectionInput(arc.edge) && Math.hypot(marker.x - screen.x, marker.y - screen.y) <= 12) return { kind: "edge", id: arc.edge.id, ...screen };
+        if (!arc.missing) continue;
+        const marker = worldToScreen(state.camera, state.viewport, arc.midpoint);
+        if (Math.hypot(marker.x - screen.x, marker.y - screen.y) <= 12) return { kind: "edge", id: arc.edge.id, ...screen };
       }
       for (let position = scene.props.length - 1; position >= 0; position -= 1) {
         if (insidePolygon(world.x, world.y, scene.props[position]!.geometry.hull)) return { kind: "prop", id: scene.props[position]!.id, ...screen };
@@ -306,13 +311,14 @@ export function Isometric() {
       const tolerance = 6 / state.camera.zoom;
       let best: { id: string; distance: number } | undefined;
       for (const arc of arcs) {
+        if (world.x < arc.minX - tolerance || world.x > arc.maxX + tolerance || world.y < arc.minY - tolerance || world.y > arc.maxY + tolerance) continue;
         const distance = distanceToPolyline(world, arc.points);
         if (distance < tolerance && (!best || distance < best.distance)) best = { id: arc.edge.id, distance };
       }
       if (best) return { kind: "edge", id: best.id, ...screen };
       return undefined;
     },
-    [scene, slabs, arcs],
+    [scene, slabs, arcs, silhouettes],
   );
 
   const setHovered = useCallback(
@@ -327,10 +333,30 @@ export function Isometric() {
         state.hoveredIsland = hoveredIsland;
         schedule();
       }
-      setHover(next);
+      setHover((current) => current?.kind === next?.kind && current?.id === next?.id && current?.band === next?.band && current?.x === next?.x && current?.y === next?.y ? current : next);
     },
     [schedule],
   );
+
+  // High-rate pointers only need one hit test and tooltip position per paint.
+  const hoverFrame = useRef<number | undefined>(undefined);
+  const pendingHover = useRef<Point | undefined>(undefined);
+  const cancelHover = useCallback(() => {
+    if (hoverFrame.current !== undefined) cancelAnimationFrame(hoverFrame.current);
+    hoverFrame.current = undefined;
+    pendingHover.current = undefined;
+  }, []);
+  useEffect(() => cancelHover, [pick, cancelHover]);
+  const queueHover = (point: Point) => {
+    pendingHover.current = point;
+    if (hoverFrame.current !== undefined) return;
+    hoverFrame.current = requestAnimationFrame(() => {
+      hoverFrame.current = undefined;
+      const point = pendingHover.current;
+      pendingHover.current = undefined;
+      if (point) setHovered(pick(point));
+    });
+  };
 
   // Pointer input: a press that travels less than the threshold is a click.
   const pointers = useRef(new Map<number, Point>());
@@ -343,6 +369,7 @@ export function Isometric() {
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0 && event.pointerType === "mouse") return;
+    cancelHover();
     canvasRef.current!.setPointerCapture(event.pointerId);
     const point = local(event);
     pointers.current.set(event.pointerId, point);
@@ -359,7 +386,7 @@ export function Isometric() {
     const point = local(event);
     const current = gesture.current;
     if (!current || !pointers.current.has(event.pointerId)) {
-      setHovered(pick(point));
+      queueHover(point);
       return;
     }
     pointers.current.set(event.pointerId, point);
@@ -396,6 +423,7 @@ export function Isometric() {
   };
 
   const onPointerCancel = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    cancelHover();
     pointers.current.delete(event.pointerId);
     if (pointers.current.size === 0) gesture.current = undefined;
   };
@@ -505,6 +533,21 @@ export function Isometric() {
     };
   }, [nodes, pick, scene]);
 
+  // Hover coordinates and the timing readout must not rebuild hundreds of
+  // hidden controls. Selection, source and scene updates still refresh them.
+  const accessibleEntities = useMemo(() => (
+    <ul className="sr-only" aria-label="Entities in the landscape">
+      {scene.edges.map((connection) => <li key={connection.id}><button onClick={() => select(connection.id)} aria-current={visibleSelected === connection.id}>
+        {missingConnectionInput(connection) ? "Missing required value: " : "Connection: "}{titleOf(index, connection.from)} to {titleOf(index, connection.to)}, {connection.members.length} {connection.members.length === 1 ? "relationship" : "relationships"}{connectionLabel(connection) ? ` (${connectionLabel(connection)})` : ""}
+      </button></li>)}
+      {scene.islands.map((island) => <li key={island.id}><button onClick={() => select(island.id)} aria-current={visibleSelected === island.id}>{island.title} island settings</button></li>)}
+      {scene.props.map((prop) => <li key={prop.id}><button onClick={() => select(prop.id)} aria-current={visibleSelected === prop.id}>{prop.label}</button></li>)}
+      {scene.nodes.map((node) => <li key={node.id}><button onClick={() => select(node.id)} aria-current={visibleSelected === node.id}>
+        {node.label}, {node.kindLabel}. {node.presenceText}
+      </button></li>)}
+    </ul>
+  ), [scene, visibleSelected, index, select]);
+
   if (model.targets.length === 0) {
     return <p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p>;
   }
@@ -521,6 +564,7 @@ export function Isometric() {
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         onPointerLeave={() => {
+          cancelHover();
           if (!gesture.current) setHovered(undefined);
         }}
         onDoubleClick={onDoubleClick}
@@ -571,20 +615,7 @@ export function Isometric() {
         <AddMenu />
       </div>
       {hover ? <HoverCard hover={hover} scene={scene} nodes={nodes} index={index} viewport={live.current.viewport} /> : null}
-      <ul className="sr-only" aria-label="Entities in the landscape">
-        {scene.edges.map((connection) => <li key={connection.id}><button onClick={() => select(connection.id)} aria-current={visibleSelected === connection.id}>
-          {missingConnectionInput(connection) ? "Missing required value: " : "Connection: "}{titleOf(index, connection.from)} to {titleOf(index, connection.to)}, {connection.members.length} {connection.members.length === 1 ? "relationship" : "relationships"}{connectionLabel(connection) ? ` (${connectionLabel(connection)})` : ""}
-        </button></li>)}
-        {scene.islands.map((island) => <li key={island.id}><button onClick={() => select(island.id)} aria-current={visibleSelected === island.id}>{island.title} island settings</button></li>)}
-        {scene.props.map((prop) => <li key={prop.id}><button onClick={() => select(prop.id)} aria-current={visibleSelected === prop.id}>{prop.label}</button></li>)}
-        {scene.nodes.map((node) => (
-          <li key={node.id}>
-            <button onClick={() => select(node.id)} aria-current={visibleSelected === node.id}>
-              {node.label}, {node.kindLabel}. {node.presenceText}
-            </button>
-          </li>
-        ))}
-      </ul>
+      {accessibleEntities}
     </div>
   );
 }

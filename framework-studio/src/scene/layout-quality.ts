@@ -1,7 +1,8 @@
 import type { IslandFootprint, IslandPosition } from "./layout";
 import type { LayoutGraph, LayoutLink } from "./layout-graph";
 import { boundsOf, intersects, pathHits, pathLength, pathsCross, translated, type Obstacle } from "./layout-geometry";
-import { legacyRoute, type ConnectionRoutes } from "./routing";
+import type { ConnectionRoutes } from "./routing";
+import { arcControl, arcPoints } from "./picking";
 import type { Scene } from "./build";
 
 export interface LayoutQuality {
@@ -38,7 +39,7 @@ export function measureLayout(islands: readonly IslandFootprint[], graph: Layout
     labelOverlaps += Number(intersects(labels[i]!, labels[j]!) || intersects(labels[i]!, obstacles[j]!.bounds) || intersects(labels[j]!, obstacles[i]!.bounds));
   }
   const links = positionedLinks(graph, positions);
-  const paths = links.map((link) => routes?.[link.id]?.points ?? legacyRoute(link.from, link.to, samples).points);
+  const paths = links.map((link) => routes?.[link.id]?.points ?? arcPoints(link.from, arcControl(link.from, link.to), link.to, samples));
   for (let i = 0; i < links.length; i++) {
     const a = links[i]!, points = paths[i]!;
     length += pathLength(points) * a.weight;

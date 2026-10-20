@@ -180,10 +180,10 @@ test("the real migration-to-RDS connection stays proportional to its nearby endp
     assert.ok(bow <= chord * 0.25, `migration-to-RDS arc is too tall: ${bow} across ${chord}`);
   }
 });
-test("real development and production graphs improve actual full-resolution wires against the previous layout", () => {
+test("real development and production graphs improve actual full-resolution wires against the unrefined seed", () => {
   for (const model of Object.values(snapshot.models)) {
     const options = { layoutModels: Object.values(snapshot.models) };
-    const baseline = buildScene(model, { ...options, semanticLayout: true });
+    const baseline = buildScene(model, { ...options, layoutSettings: { budget: 1 } });
     const scene = buildScene(model, options);
     const before = measureSceneLayout(baseline), after = measureSceneLayout(scene);
     assert.ok(after.crossings < before.crossings * 0.9, JSON.stringify({ mode: model.mode, before, after }));

@@ -65,6 +65,8 @@ function mixRgb(a: Rgb, b: Rgb, t: number): Rgb {
 }
 
 const WHITE: Rgb = [255, 255, 255];
+const ICON_RGB = Object.fromEntries(Object.entries(ICON_TINT).map(([key, color]) => [key, hex(color)])) as Record<IconKey, Rgb>;
+const STAND_FILLS = ["#2c343f", "#1c222a", "#3a4452"];
 
 function toPath(points: readonly number[], close = true, into = new Path2D()): Path2D {
   if (points.length < 4) return into;
@@ -100,9 +102,22 @@ type Standing =
   | { readonly kind: "node"; readonly node: SceneNode }
   | { readonly kind: "prop"; readonly prop: Prop };
 
+interface PreparedArc {
+  readonly points: readonly Point[];
+  readonly path: Path2D;
+  readonly length: number;
+  readonly midpoint: Point;
+  readonly missing: boolean;
+  readonly bounds: Bounds;
+  readonly color: Rgb;
+  readonly offLens: boolean;
+}
+
 interface Prepared {
   readonly scene: Scene;
-  readonly arcs: ReadonlyMap<SceneEdge, { readonly points: readonly Point[]; readonly length: number; readonly color: Rgb; readonly offLens: boolean }>;
+  readonly arcs: ReadonlyMap<SceneEdge, PreparedArc>;
+  readonly nodes: ReadonlyMap<string, SceneNode>;
+  readonly islands: ReadonlyMap<string, Scene["islands"][number]>;
   /** Each draw item's world bounding box, for culling. */
   readonly boxes: ReadonlyMap<Standing, { minX: number; minY: number; maxX: number; maxY: number }>;
   /** Whole islands, back to front. */
@@ -150,13 +165,50 @@ const CARD_HEIGHT = 22;
 const CARD_MAX_TEXT = 140;
 const CARD_LIFT = 64;
 
+interface PlacedCard extends CardHit {
+  readonly node: SceneNode;
+  readonly order: number;
+  readonly priority: number;
+  readonly scale: number;
+  readonly font: string;
+  readonly text: string;
+  readonly textWidth: number;
+  readonly anchor: Point;
+  readonly top: Point;
+}
+
+/** Time and motion do not affect screen geometry. Store scalar copies: callers may mutate cameras. */
+function sameView(a: RenderState, b: RenderState): boolean {
+  return a.camera.x === b.camera.x && a.camera.y === b.camera.y && a.camera.zoom === b.camera.zoom &&
+    a.viewport.width === b.viewport.width && a.viewport.height === b.viewport.height && a.dpr === b.dpr;
+}
+const copyView = (state: RenderState): RenderState => ({ ...state, camera: { ...state.camera }, viewport: { ...state.viewport } });
+
+interface TitleLabel {
+  readonly island: string;
+  readonly text: string;
+  readonly font: string;
+  readonly color: string;
+  readonly align: CanvasTextAlign;
+  readonly x: number;
+  readonly y: number;
+}
+
 export class SceneRenderer {
   private readonly context: CanvasRenderingContext2D;
   private prepared: Prepared | undefined;
   private readonly widths = new Map<string, number>();
+  private cardLayout: { state: RenderState; placed: readonly PlacedCard[]; hits: readonly CardHit[] } | undefined;
+  private titleLayout: { state: RenderState; cards: readonly CardHit[]; labels: readonly TitleLabel[] } | undefined;
+  private groundGrid: { state: RenderState; paths: readonly Path2D[] } | undefined;
   private readonly icons = new Map<IconKey, HTMLImageElement>();
   private readonly badgePaths = new Map<DeploymentBadgeKind, readonly Path2D[]>();
+  private readonly standPaths = new WeakMap<readonly Face[], { faces: readonly Path2D[]; lip?: Path2D }>();
+  private readonly circle = new Path2D();
+  private readonly plaqueFace = new Path2D();
+  private readonly plaqueDepth = new Path2D();
   private disposed = false;
+  private animating = false;
   /** One screen pixel, in world units, for this frame. */
   private pixel = 1;
   private zoom = 1;
@@ -177,6 +229,9 @@ export class SceneRenderer {
     const context = canvas.getContext("2d", { alpha: false });
     if (!context) throw new Error("This browser offers no 2D canvas.");
     this.context = context;
+    this.circle.arc(0, 0, 1, 0, Math.PI * 2);
+    this.plaqueFace.roundRect(-24, -54, 46, 46, 5);
+    this.plaqueDepth.roundRect(-22, -52, 46, 46, 5);
     for (const kind of Object.keys(DEPLOYMENT_BADGES) as DeploymentBadgeKind[]) {
       this.badgePaths.set(kind, DEPLOYMENT_BADGES[kind].paths.map((d) => new Path2D(d)));
     }
@@ -196,22 +251,29 @@ export class SceneRenderer {
   /** Forget measured text, after web fonts arrive. */
   fontsChanged(): void {
     this.widths.clear();
+    this.cardLayout = undefined;
+    this.titleLayout = undefined;
   }
 
   setScene(scene: Scene): void {
     if (this.prepared?.scene === scene) return;
+    this.cardLayout = undefined;
+    this.titleLayout = undefined;
     const items: Standing[] = [
       ...scene.nodes.map((node): Standing => ({ kind: "node", node })),
       ...scene.props.map((prop): Standing => ({ kind: "prop", prop })),
     ];
 
-    const arcs = new Map<SceneEdge, { points: Point[]; length: number; color: Rgb; offLens: boolean }>();
+    const arcs = new Map<SceneEdge, PreparedArc>();
     const nodeOf = new Map(scene.nodes.map((node) => [node.id, node]));
     for (const edge of scene.edges) {
-      const points = [...scene.routes[edge.id]!.points];
-      let length = 0;
-      for (let index = 1; index < points.length; index += 1) length += Math.hypot(points[index]!.x - points[index - 1]!.x, points[index]!.y - points[index - 1]!.y);
-      arcs.set(edge, { points, length, color: hex(edge.style.color), offLens: offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)) });
+      const { points, length } = scene.routes[edge.id]!;
+      const path = new Path2D();
+      path.moveTo(points[0]!.x, points[0]!.y);
+      for (let at = 1; at < points.length; at++) path.lineTo(points[at]!.x, points[at]!.y);
+      const bounds = { minX: Math.min(...points.map((point) => point.x)), maxX: Math.max(...points.map((point) => point.x)),
+        minY: Math.min(...points.map((point) => point.y)), maxY: Math.max(...points.map((point) => point.y)) };
+      arcs.set(edge, { points, path, length, bounds, midpoint: connectionMidpoint(points), missing: missingConnectionInput(edge), color: hex(edge.style.color), offLens: offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)) });
     }
     const boxes = new Map<Standing, { minX: number; minY: number; maxX: number; maxY: number }>();
     for (const item of items) {
@@ -246,7 +308,7 @@ export class SceneRenderer {
       }
       return [id, outline];
     }));
-    this.prepared = { scene, arcs, boxes, graphite, titleSurfaces: graphiteSurfaces, outlines: outlines(graphiteSurfaces) };
+    this.prepared = { scene, arcs, nodes: nodeOf, islands: new Map(scene.islands.map((island) => [island.id, island])), boxes, graphite, titleSurfaces: graphiteSurfaces, outlines: outlines(graphiteSurfaces) };
   }
 
   /** Island paths, gradients and who stands on each terrace. */
@@ -345,11 +407,11 @@ export class SceneRenderer {
       this.canvas.height = height;
     }
 
-    // The void.
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.fillStyle = this.atmosphereFor(viewport).base;
     context.fillRect(0, 0, viewport.width, viewport.height);
     this.walled.clear();
+    this.animating = false;
     if (!prepared) return { cards: [], animating: false, ms: performance.now() - started };
 
     const zoom = camera.zoom;
@@ -366,34 +428,33 @@ export class SceneRenderer {
         dpr * (viewport.height / 2 - camera.y * zoom),
       );
     world();
-
-    // Hairlines follow the same lattice as the terrain, behind every island.
-    const grid = backgroundGrid(camera, viewport);
+    // Keep the original vector paint order and precision. Only grid paths are
+    // cached; camera changes rebuild them without resampling a previous bitmap.
+    if (!this.groundGrid || !sameView(this.groundGrid.state, state)) {
+      const paths = [new Path2D(), new Path2D()];
+      for (const line of backgroundGrid(camera, viewport)) {
+        const path = paths[Number(line.major)]!;
+        path.moveTo(line.a.x, line.a.y);
+        path.lineTo(line.b.x, line.b.y);
+      }
+      this.groundGrid = { state: copyView(state), paths };
+    }
     context.lineWidth = 0.65 / zoom;
-    for (const major of [false, true]) {
-      context.beginPath();
-      for (const line of grid) {
-        if (line.major !== major) continue;
-        context.moveTo(line.a.x, line.a.y);
-        context.lineTo(line.b.x, line.b.y);
-      }
-      context.strokeStyle = major ? GRAPHITE.grid.major : GRAPHITE.grid.minor;
-      context.stroke();
+    for (const [at, path] of this.groundGrid.paths.entries()) {
+      context.strokeStyle = at ? GRAPHITE.grid.major : GRAPHITE.grid.minor;
+      context.stroke(path);
     }
-    {
-      // The grid fades toward the edges under a vignette, and two soft blooms colour the air.
-      const atmosphere = this.atmosphereFor(viewport);
-      context.setTransform(dpr, 0, 0, dpr, 0, 0);
-      context.fillStyle = atmosphere.vignette;
+    const atmosphere = this.atmosphereFor(viewport);
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.fillStyle = atmosphere.vignette;
+    context.fillRect(0, 0, viewport.width, viewport.height);
+    context.globalCompositeOperation = "lighter";
+    for (const bloom of atmosphere.blooms) {
+      context.fillStyle = bloom;
       context.fillRect(0, 0, viewport.width, viewport.height);
-      context.globalCompositeOperation = "lighter";
-      for (const bloom of atmosphere.blooms) {
-        context.fillStyle = bloom;
-        context.fillRect(0, 0, viewport.width, viewport.height);
-      }
-      context.globalCompositeOperation = "source-over";
-      world();
     }
+    context.globalCompositeOperation = "source-over";
+    world();
 
     // What the viewport can see, in world units, with room for walls and roofs.
     const view = {
@@ -419,8 +480,7 @@ export class SceneRenderer {
     const cards = this.drawCards(prepared, state);
     this.drawTitles(prepared, state, cards);
 
-    const animating = state.motion && state.selected !== undefined && !state.selected.startsWith("island:");
-    return { cards, animating, ms: performance.now() - started };
+    return { cards, animating: this.animating, ms: performance.now() - started };
   }
 
   // -------------------------------------------------------------------------
@@ -469,8 +529,7 @@ export class SceneRenderer {
     context.globalAlpha = this.opacity;
     this.drawFramesGraphite(prepared, state);
 
-    const islandOf = new Map(prepared.scene.nodes.map((node) => [node.id, node.island]));
-    const shimmering = state.motion && state.selected !== undefined ? islandOf.get(state.selected) : undefined;
+    const shimmering = state.motion && state.selected !== undefined ? prepared.nodes.get(state.selected)?.island : undefined;
     let drawn = 0;
     for (const island of prepared.graphite) {
       const { id } = island.slab.island;
@@ -562,6 +621,7 @@ export class SceneRenderer {
           context.stroke(band.front);
         }
         if (shimmer) {
+          this.animating = true;
           const dash = 80;
           const gap = Math.max(band.frontLength, 320);
           context.setLineDash([dash, gap]);
@@ -682,10 +742,9 @@ export class SceneRenderer {
   private drawFramesGraphite(prepared: Prepared, state: RenderState): void {
     const context = this.context;
     const pixel = this.pixel;
-    const islands = new Map(prepared.scene.islands.map((island) => [island.id, island]));
     for (const { ghost, geometry, members } of prepared.scene.frames) {
       this.opacity = searchOpacity(state.focus, "islands", members[0]!);
-      const owner = islands.get(members[0]!);
+      const owner = prepared.islands.get(members[0]!);
       const color = owner ? hexRgb(trimColor(owner)) : hex("#9d6bff");
       context.globalAlpha = this.opacity * (ghost ? 0.5 : 1);
       context.fillStyle = rgba(mixRgb([10, 10, 15], color, 0.1));
@@ -723,9 +782,7 @@ export class SceneRenderer {
     context.translate(x, y);
     context.scale(rx, ry);
     context.fillStyle = fill;
-    context.beginPath();
-    context.arc(0, 0, 1, 0, Math.PI * 2);
-    context.fill();
+    context.fill(this.circle);
     context.restore();
   }
 
@@ -780,21 +837,24 @@ export class SceneRenderer {
     context.globalAlpha = this.opacity * light;
     this.blob(tile.x, tile.y + 1, 46, 23, this.spill(ICON_TINT[icon]));
     context.globalCompositeOperation = "source-over";
-    const [left, right, top] = faces;
-    context.globalAlpha = this.opacity;
-    for (const [face, fill] of [[left, "#2c343f"], [right, "#1c222a"], [top, "#3a4452"]] as const) {
-      if (!face) continue;
-      trace(context, face.points);
-      context.fillStyle = fill;
-      context.fill();
+    let paths = this.standPaths.get(faces);
+    if (!paths) {
+      const top = faces[2];
+      paths = { faces: faces.map((face) => toPath(face.points)), lip: top ? toPath([
+        top.points[6]!, top.points[7]!, top.points[4]!, top.points[5]!, top.points[2]!, top.points[3]!,
+      ], false) : undefined };
+      this.standPaths.set(faces, paths);
     }
-    if (top) {
+    context.globalAlpha = this.opacity;
+    for (const [at, path] of paths.faces.entries()) {
+      context.fillStyle = STAND_FILLS[at]!;
+      context.fill(path);
+    }
+    if (paths.lip) {
       // The plinth's front edges catch the light.
-      const [, , ex, ey, sx, sy, wx, wy] = top.points as [number, number, number, number, number, number, number, number];
       context.strokeStyle = "rgba(255, 255, 255, 0.18)";
       context.lineWidth = pixel;
-      trace(context, [wx, wy, sx, sy, ex, ey], false);
-      context.stroke();
+      context.stroke(paths.lip);
     }
     context.globalAlpha = this.opacity;
   }
@@ -804,23 +864,19 @@ export class SceneRenderer {
     const context = this.context;
     const pixel = this.pixel;
     const fills = this.plaqueFills();
-    const tint = hex(ICON_TINT[key]);
+    const tint = ICON_RGB[key];
     context.save();
     context.translate(tile.x, tile.y);
     context.globalAlpha = this.opacity * alpha;
     if (!ghost) {
       context.fillStyle = "#04070b";
-      context.beginPath();
-      context.roundRect(-22, -52, 46, 46, 5);
-      context.fill();
+      context.fill(this.plaqueDepth);
     }
-    context.beginPath();
-    context.roundRect(-24, -54, 46, 46, 5);
     context.fillStyle = ghost ? "#111b29" : fills.face;
-    context.fill();
+    context.fill(this.plaqueFace);
     if (!ghost) {
       context.save();
-      context.clip();
+      context.clip(this.plaqueFace);
       context.fillStyle = fills.glass;
       context.fillRect(-24, -54, 46, 24);
       context.restore();
@@ -828,13 +884,13 @@ export class SceneRenderer {
     context.setLineDash(ghost ? [3 * pixel, 3 * pixel] : []);
     context.strokeStyle = selected ? "#f2f6ff" : hovered ? "rgba(255, 255, 255, 0.75)" : ghost ? "#63758d" : rgba(tint, 0.72);
     context.lineWidth = (selected ? 1.5 : 1) * pixel;
-    context.stroke();
+    context.stroke(this.plaqueFace);
     context.setLineDash([]);
     if (selected) {
       context.globalCompositeOperation = "lighter";
       context.strokeStyle = rgba(tint, 0.4);
       context.lineWidth = 5 * pixel;
-      context.stroke();
+      context.stroke(this.plaqueFace);
       context.globalCompositeOperation = "source-over";
     }
     const icon = this.icons.get(key);
@@ -908,8 +964,16 @@ export class SceneRenderer {
   private drawEdges(prepared: Prepared, state: RenderState): void {
     const context = this.context;
     const pixel = this.pixel;
+    // Include arrowheads, packets, glow and fixed-size error markers at every zoom.
+    const { camera, viewport } = state;
+    // Shadow blur ignores the transform; allow for browser zoom producing DPR < 1.
+    const padding = 40 / Math.min(1, state.dpr);
+    const view = { minX: camera.x - (viewport.width / 2 + padding) * pixel, maxX: camera.x + (viewport.width / 2 + padding) * pixel,
+      minY: camera.y - (viewport.height / 2 + padding) * pixel, maxY: camera.y + (viewport.height / 2 + padding) * pixel };
     const lit: SceneEdge[] = [];
     for (const edge of prepared.scene.edges) {
+      const arc = prepared.arcs.get(edge)!;
+      if (OUTSIDE(arc.bounds, view)) continue;
       // A connection only the other environment holds lights up when it is hovered or selected itself, never
       // because a node it touches is: the viewed environment's selection tells the viewed environment's story.
       const own = edge.otherLens === undefined;
@@ -921,27 +985,24 @@ export class SceneRenderer {
         lit.push(edge);
         continue;
       }
-      const arc = prepared.arcs.get(edge)!;
-      const missing = missingConnectionInput(edge);
+      const missing = arc.missing;
       const color = missing ? MISSING_EDGE : arc.color;
       context.strokeStyle = rgba(color, state.focus.kind === "search" ? 0.025 : missing ? state.selected ? 0.35 : 0.9 : state.selected ? 0.06 : restingAlpha(edge.edge.provenance, arc.offLens));
       context.lineWidth = 1.2 * pixel;
       context.setLineDash(edge.style.dashed ? [4 * pixel, 4 * pixel] : []);
-      this.polyline(arc.points);
-      context.stroke();
+      context.stroke(arc.path);
     }
     context.setLineDash([]);
     for (const edge of lit) {
       const arc = prepared.arcs.get(edge)!;
-      const missing = missingConnectionInput(edge);
+      const missing = arc.missing;
       const color = missing ? MISSING_EDGE : arc.color;
       context.shadowColor = rgba(color, 0.8);
       context.shadowBlur = 10;
       context.strokeStyle = rgba(color, 0.95);
       context.lineWidth = 2.2 * pixel;
       context.setLineDash(edge.style.dashed ? [5 * pixel, 4 * pixel] : []);
-      this.polyline(arc.points);
-      context.stroke();
+      context.stroke(arc.path);
       context.setLineDash([]);
       // Which way it points.
       const end = arc.points[arc.points.length - 1]!;
@@ -956,6 +1017,7 @@ export class SceneRenderer {
       context.closePath();
       context.fill();
       if (state.motion && state.focus.kind !== "search" && !missing) {
+        this.animating = true;
         // A few packets, travelling at a steady 60 world units a second.
         const count = Math.max(1, Math.min(3, Math.round(arc.length / 220)));
         for (let index = 0; index < count; index += 1) {
@@ -971,8 +1033,8 @@ export class SceneRenderer {
     }
     // Fixed screen-size markers remain readable and clickable at overview zoom.
     context.setLineDash([]);
-    for (const edge of prepared.scene.edges) if (missingConnectionInput(edge)) {
-      const at = connectionMidpoint(prepared.arcs.get(edge)!.points);
+    for (const [edge, arc] of prepared.arcs) if (arc.missing && !OUTSIDE(arc.bounds, view)) {
+      const at = arc.midpoint;
       const radius = 8 * pixel, inset = 3 * pixel;
       const matches = state.focus.kind !== "search" || state.focus.nodes.has(edge.from) && state.focus.nodes.has(edge.to);
       context.globalAlpha = matches ? 1 : 0.08;
@@ -983,13 +1045,6 @@ export class SceneRenderer {
       context.beginPath(); context.moveTo(at.x - inset, at.y - inset); context.lineTo(at.x + inset, at.y + inset); context.moveTo(at.x - inset, at.y + inset); context.lineTo(at.x + inset, at.y - inset); context.stroke();
     }
     context.globalAlpha = 1;
-  }
-
-  private polyline(points: readonly Point[]): void {
-    const context = this.context;
-    context.beginPath();
-    context.moveTo(points[0]!.x, points[0]!.y);
-    for (let index = 1; index < points.length; index += 1) context.lineTo(points[index]!.x, points[index]!.y);
   }
 
   private along(points: readonly Point[], t: number): Point {
@@ -1024,31 +1079,16 @@ export class SceneRenderer {
     return `${text.slice(0, low)}…`;
   }
 
-  private drawCards(prepared: Prepared, state: RenderState): CardHit[] {
-    const context = this.context;
-    const { camera, viewport, dpr } = state;
-    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+  private placeCards(prepared: Prepared, state: RenderState): NonNullable<SceneRenderer["cardLayout"]> {
+    const cached = this.cardLayout;
+    if (cached && sameView(cached.state, state) && cached.state.selected === state.selected &&
+      cached.state.hovered === state.hovered && cached.state.focus === state.focus) return cached;
+    const { camera, viewport } = state;
     // Never smaller than legible: where cards would then collide, placement drops the less important.
     const zoomScale = Math.max(0.8, Math.min(1.2, camera.zoom));
     const showAll = camera.zoom >= 0.55;
 
-    // Lay every candidate card out first.
-    interface Placed {
-      readonly node: SceneNode;
-      readonly order: number;
-      readonly priority: number;
-      readonly scale: number;
-      readonly font: string;
-      readonly text: string;
-      readonly textWidth: number;
-      readonly anchor: Point;
-      readonly top: Point;
-      readonly x: number;
-      readonly y: number;
-      readonly width: number;
-      readonly height: number;
-    }
-    const candidates: Placed[] = [];
+    const candidates: PlacedCard[] = [];
     prepared.scene.nodes.forEach((node, order) => {
       if (state.focus.kind === "search" && !state.focus.nodes.has(node.id)) return;
       const emphasised = state.focus.kind === "search" || node.id === state.selected || node.id === state.hovered || (state.selected !== undefined && !state.selected.startsWith("island:") && state.focus.nodes.has(node.id));
@@ -1067,17 +1107,24 @@ export class SceneRenderer {
       const y = anchor.y - height;
       if (x > viewport.width || x + width < 0 || y > viewport.height || y + height < 0) return;
       const priority = node.id === state.selected ? 3 : node.id === state.hovered ? 2 : emphasised ? 1 : 0;
-      candidates.push({ node, order, priority, scale, font, text, textWidth, anchor, top: worldToScreen(camera, viewport, node.geometry.top), x, y, width, height });
+      candidates.push({ id: node.id, node, order, priority, scale, font, text, textWidth, anchor, top: worldToScreen(camera, viewport, node.geometry.top), x, y, width, height });
     });
 
     // Then let the most important claim their space: the selection, the
     // pointer, what the selection touches, then the rest from the front. A card
     // that would land on one already placed is left out; the inspector still
     // names it.
-    const accepted = acceptCards(candidates);
+    const placed = acceptCards(candidates);
+    this.cardLayout = { state: copyView(state), placed, hits: placed.map(({ id, x, y, width, height }) => ({ id, x, y, width, height })) };
+    return this.cardLayout;
+  }
 
-    const cards: CardHit[] = [];
-    for (const { node, scale, font, text, textWidth, anchor, top, x, y, width, height } of accepted) {
+  private drawCards(prepared: Prepared, state: RenderState): readonly CardHit[] {
+    const context = this.context;
+    const { dpr } = state;
+    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const layout = this.placeCards(prepared, state);
+    for (const { node, scale, font, text, textWidth, anchor, top, x, y, width, height } of layout.placed) {
       const padding = 7 * scale;
       const selected = node.id === state.selected || (state.focus.kind === "search" && state.focus.nodes.has(node.id));
       const quiet = state.focus.kind === "selection" && !state.focus.nodes.has(node.id);
@@ -1117,9 +1164,8 @@ export class SceneRenderer {
         context.fillRect(lx, ly - 1.2 * scale, 7 * scale, 5 * scale);
       }
       context.globalAlpha = this.opacity;
-      cards.push({ id: node.id, x, y, width, height });
     }
-    return cards;
+    return layout.hits;
   }
 
   private drawDeploymentBadge(kind: DeploymentBadgeKind, x: number, y: number, scale: number): void {
@@ -1150,7 +1196,10 @@ export class SceneRenderer {
     context.restore();
   }
 
-  private drawTitles(prepared: Prepared, state: RenderState, cards: readonly CardHit[]): void {
+  private placeTitles(prepared: Prepared, state: RenderState, cards: readonly CardHit[]): readonly TitleLabel[] {
+    const cached = this.titleLayout;
+    if (cached && sameView(cached.state, state) && cached.cards === cards) return cached.labels;
+    const labels: TitleLabel[] = [];
     const context = this.context;
     const { camera, viewport } = state;
     const { scene } = prepared;
@@ -1172,9 +1221,9 @@ export class SceneRenderer {
     const scale = Math.max(0.8, Math.min(1.15, camera.zoom * 1.6));
     context.textAlign = "right";
     context.textBaseline = "middle";
-    context.font = `600 ${15 * scale}px "Barlow Semi Condensed", Barlow, system-ui, sans-serif`;
+    const titleFont = `600 ${15 * scale}px "Barlow Semi Condensed", Barlow, system-ui, sans-serif`;
+    context.font = titleFont;
     for (const island of scene.islands) {
-      context.globalAlpha = this.opacity * (searchOpacity(state.focus, "islands", island.id));
       if (this.walled.has(island.id)) continue;
       const ink = context.measureText(island.title);
       const placed = placeIslandTitle(surfaces.get(island.id)!, {
@@ -1184,24 +1233,37 @@ export class SceneRenderer {
       if (!placed) continue;
       obstacles.push(rectangle(placed));
       const network = rgba(mixRgb(hexRgb(trimColor(island)), WHITE, 0.55));
-      context.fillStyle = island.ghost ? "rgba(214, 222, 234, 0.6)" : island.region === "network" ? network : "rgba(236, 239, 244, 0.94)";
-      context.fillText(island.title, placed.x + placed.width - ink.actualBoundingBoxRight, placed.y + ink.actualBoundingBoxAscent);
+      const color = island.ghost ? "rgba(214, 222, 234, 0.6)" : island.region === "network" ? network : "rgba(236, 239, 244, 0.94)";
+      labels.push({ island: island.id, text: island.title, font: titleFont, color, align: "right", x: placed.x + placed.width - ink.actualBoundingBoxRight, y: placed.y + ink.actualBoundingBoxAscent });
     }
     context.textAlign = "center";
     if (camera.zoom >= 0.45) {
-      context.font = `500 ${11 * scale}px Barlow, system-ui, sans-serif`;
+      const bandFont = `500 ${11 * scale}px Barlow, system-ui, sans-serif`;
       context.textBaseline = "middle";
       for (const island of scene.islands) {
-        context.globalAlpha = this.opacity * (searchOpacity(state.focus, "islands", island.id));
         if (island.bands.length < 2) continue;
         for (const band of island.bands) {
           if (this.walled.has(band.id)) continue;
           const ground = project({ x: band.gx, y: band.gy - 0.2, h: band.h });
           const at = worldToScreen(camera, viewport, ground);
-          context.fillStyle = "rgba(235, 240, 230, 0.72)";
-          context.fillText(band.title, at.x, at.y);
+          labels.push({ island: island.id, text: band.title, font: bandFont, color: "rgba(235, 240, 230, 0.72)", align: "center", x: at.x, y: at.y });
         }
       }
+    }
+    this.titleLayout = { state: copyView(state), cards, labels };
+    return labels;
+  }
+
+  private drawTitles(prepared: Prepared, state: RenderState, cards: readonly CardHit[]): void {
+    const context = this.context;
+    const labels = this.placeTitles(prepared, state, cards);
+    context.textBaseline = "middle";
+    for (const label of labels) {
+      context.globalAlpha = this.opacity * searchOpacity(state.focus, "islands", label.island);
+      context.font = label.font;
+      context.textAlign = label.align;
+      context.fillStyle = label.color;
+      context.fillText(label.text, label.x, label.y);
     }
     context.textAlign = "start";
     context.globalAlpha = this.opacity;
