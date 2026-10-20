@@ -855,6 +855,9 @@ a {
 }
 
 .connection-evidence { display: grid; gap: 12px; margin-top: 16px; }
+.connection-description, .connection-configuration { margin: 10px 0; }
+.connection-description > summary, .connection-configuration > summary { cursor: pointer; font-size: 12px; color: var(--graphite); }
+.inspector .connection-description .node-description { padding: 10px 0 0; border: 0; }
 .connection-header > .environment-pills { margin: 4px 0 8px; }
 .connection-endpoints { display: grid; gap: 3px; margin: 4px 0 0; font-size: 12px; }
 .connection-endpoints > div { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 6px; }

@@ -1,4 +1,4 @@
-import type { ModeModel, NetworkModel } from "./model";
+import type { ModeModel, ModelEdge, NetworkModel } from "./model";
 
 export const DESCRIPTION_FILE = "framework-config/descriptions.ts";
 export const DESCRIPTION_LIMIT = 8000;
@@ -10,11 +10,18 @@ export function networkFixtureIds(network: NetworkModel | undefined): string[] {
     ...new Set([...(network?.gatewayEndpoints ?? []), ...(network?.interfaceEndpoints ?? [])].map((name) => `prop:endpoint:${name}`))];
 }
 
-/** Uses canonical model identities, including public stack fields selected from an inspector. */
+/** Keep notes on the same relationship when graph ordering or environment details change.
+ * Identical relationships share notes; differently named mappings between a pair do not. */
+export function connectionDescriptionId(edge: ModelEdge): string {
+  return `connection-description:${JSON.stringify([edge.relation, edge.from, edge.to, edge.label, edge.attachment ?? null])}`;
+}
+
+/** Uses canonical model identities, including public stack fields and individual relationships. */
 export function descriptionEntityIds(models: readonly ModeModel[]): ReadonlySet<string> {
   return new Set([...ISLAND_IDS, ...models.flatMap((model) => [
     ...model.targets.map((target) => target.ref), ...model.routes.map((route) => route.id),
     ...model.resources.map((resource) => resource.id), ...(model.localServices ?? []).map((service) => service.id),
+    ...model.edges.map(connectionDescriptionId),
     ...networkFixtureIds(model.network),
   ])]);
 }

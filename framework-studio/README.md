@@ -351,6 +351,14 @@ authored documentation, never generated or overwritten on refresh. Input-setting
 environment-variable changes are reviewed separately from their description edits.
 Saving descriptions does not change deployment behavior or deploy infrastructure.
 
+Connections offer **Add description**, including each relationship inside a grouped
+connection. These optional notes use the same review, apply and undo flow and are shared
+across environments. They follow the relationship's endpoints, type and mapping label,
+so reordering declarations does not move notes to another mapping. **Configuration**
+separately expands the generated binding details and source evidence. Those facts come
+from declarations; edit the linked source or its inspector settings to change behavior.
+Connections without details show no placeholder context.
+
 It edits `deploy`, a Lambda's `subnet`, `memorySize`, `timeoutSeconds`, `architecture`,
 `packaging`, `logRetentionDays`, its managed `runtime`, and Node ZIP bundling's `minify`
 and `sourceMap`, plus a container's `cloud.subnet`. Controls appear only where applicable:

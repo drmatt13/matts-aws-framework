@@ -6,6 +6,8 @@ import { Written } from "./Written";
 import { connectionDisabledEndpoints, type Availability } from "../deployment";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { edgeAvailability } from "../connections";
+import { connectionDescriptionId } from "../../shared/descriptions";
+import { Description } from "./Description";
 
 export function RequirementNotice({ requirement }: { requirement?: InputRequirement }) {
   if (!requirement?.required) return null;
@@ -38,7 +40,8 @@ export function ConnectionView({ edge, onlyIn, availability }: { edge: ModelEdge
 }
 
 export function ConnectionDetails({ edge, onlyIn }: { edge: ModelEdge; onlyIn?: Mode }) {
-  const { index, select, snapshot, mode, setMode } = useStudio();
+  const { index, select, snapshot, mode, setMode, draft } = useStudio();
+  const descriptionId = connectionDescriptionId(edge);
   const requirement = edge.inputRequirement;
   const resource = requirement ? snapshot.models[requirement.mode].resources.find((item) => item.id === requirement.resource) : undefined;
   const disabledEndpoints = connectionDisabledEndpoints(index, mode, edge);
@@ -58,11 +61,19 @@ export function ConnectionDetails({ edge, onlyIn }: { edge: ModelEdge; onlyIn?: 
         <div className="resource-actions"><button onClick={() => select(`envfile:${requirement.mode}`)}>Edit .env.{requirement.mode}</button>
           <button onClick={() => { if (mode !== requirement.mode) setMode(requirement.mode); select(requirement.resource); }}>{resource?.kind === "secret" ? "Open secret settings" : "Set a parameter default"}</button></div>
         <p className="small muted">Review and apply your draft to update this connection. Saving does not deploy infrastructure or upload a secret.</p>
-      </> : <p>{edge.detail ?? "This relationship comes from the framework graph."}</p>}
-      {edge.provenance === "derived" ? <p className="small muted">Derived from the linked declaration.</p> : null}
-      {edge.evidence?.length ? <div className="connection-evidence">{edge.evidence.map((item) => <div key={`${item.role}:${item.location.file}:${item.location.start}`}>
-        <Written location={item.location} label={item.role === "derived" ? "Derived from" : item.role} />
-        {item.excerpt ? <a className="evidence-line" href={editorLink(snapshot.repositoryRoot, item.location)}><code><span className="muted">{item.location.line}</span> {item.excerpt}</code></a> : null}
-      </div>)}</div> : null}
+      </> : null}
+      <details className="connection-description" key={descriptionId}>
+        <summary>{draft.description(descriptionId).trim() ? "Description" : "Add description"}</summary>
+        <Description entity={descriptionId} connection />
+      </details>
+      {edge.detail?.trim() || edge.evidence?.length || edge.source ? <details className="connection-configuration">
+        <summary>Configuration</summary>
+        {edge.detail?.trim() ? <p>{edge.detail}</p> : null}
+        {edge.provenance === "derived" ? <p className="small muted">Derived from the linked declaration.</p> : null}
+        {edge.evidence?.length ? <div className="connection-evidence">{edge.evidence.map((item) => <div key={`${item.role}:${item.location.file}:${item.location.start}`}>
+          <Written location={item.location} label={item.role === "derived" ? "Derived from" : item.role} />
+          {item.excerpt ? <a className="evidence-line" href={editorLink(snapshot.repositoryRoot, item.location)}><code><span className="muted">{item.location.line}</span> {item.excerpt}</code></a> : null}
+        </div>)}</div> : edge.source ? <Written location={edge.source} /> : null}
+      </details> : null}
   </div>;
 }

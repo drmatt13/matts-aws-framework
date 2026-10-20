@@ -3,7 +3,7 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import { parseDescriptions, renameRouteDescriptions, rewriteDescription } from "../server/descriptions";
 import { SnapshotBuilder } from "../server/snapshot";
-import { descriptionEntityIds } from "../shared/descriptions";
+import { connectionDescriptionId, descriptionEntityIds } from "../shared/descriptions";
 import type { Snapshot } from "../shared/model";
 import { buildScene } from "../src/scene/build";
 
@@ -17,9 +17,20 @@ test("authored descriptions cover every managed map identity in both environment
   const ids = descriptionEntityIds(Object.values(snapshot.models));
   for (const model of Object.values(snapshot.models)) {
     const scene = buildScene(model);
-    for (const item of [...scene.nodes, ...scene.islands, ...scene.props]) assert.ok(ids.has(item.id), `editable: ${item.id}`);
+    for (const item of [...scene.nodes, ...scene.islands, ...scene.props]) {
+      assert.ok(ids.has(item.id), `editable: ${item.id}`);
+      assert.ok(snapshot.descriptions.values[item.id]?.trim(), `description: ${item.id}`);
+    }
+    for (const edge of model.edges) assert.ok(ids.has(connectionDescriptionId(edge)), `editable connection: ${edge.id}`);
   }
-  for (const id of ids) assert.ok(snapshot.descriptions.values[id]?.trim(), `description: ${id}`);
+  for (const id of ids) if (!id.startsWith("connection-description:")) assert.ok(snapshot.descriptions.values[id]?.trim(), `description: ${id}`);
+});
+
+test("connection notes follow named relationships across graph ordering and environment detail changes", () => {
+  const edge = snapshot.models.dev.edges.find((edge) => edge.relation === "env")!;
+  assert.equal(connectionDescriptionId(edge), connectionDescriptionId({ ...edge, id: "different-ordinal#3", detail: "Production reference", provenance: "derived" }));
+  assert.notEqual(connectionDescriptionId(edge), connectionDescriptionId({ ...edge, label: "ANOTHER_MAPPING" }));
+  assert.notEqual(connectionDescriptionId(edge), connectionDescriptionId({ ...edge, from: edge.to, to: edge.from }));
 });
 
 test("literal edits preserve comments and safely round trip text that resembles code", () => {

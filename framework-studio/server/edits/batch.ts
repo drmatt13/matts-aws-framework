@@ -14,7 +14,7 @@ import { diffOf, planEdit } from "./plan";
 import { formatLiteral } from "./splice";
 import { replayHandlerFile, rewriteReplayHandler } from "./local-replay";
 import type { RouteChange } from "./route";
-import { DESCRIPTION_FILE, descriptionEntityIds } from "../../shared/descriptions";
+import { DESCRIPTION_FILE, connectionDescriptionId, descriptionEntityIds } from "../../shared/descriptions";
 import { parseDescriptions, renameRouteDescriptions, rewriteDescription } from "../descriptions";
 import { resourceTypeErrors } from "../resources-source";
 import { planFailureDestination, planTriggers, validateTriggerBindings } from "./triggers";
@@ -101,7 +101,8 @@ export class BatchEditor {
         const file = assertWritable(this.root, DESCRIPTION_FILE);
         try { overrides.set(file, rewriteDescription(new SourceFiles(overrides).text(file), edit.entity, edit.value)); }
         catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
-        summaries.push(`${edit.entity} — update description`);
+        const edge = Object.values(state.snapshot.models).flatMap((model) => model.edges).find((edge) => connectionDescriptionId(edge) === edit.entity);
+        summaries.push(`${edge ? `${edge.label} connection (${edge.from} → ${edge.to})` : edit.entity} — update description`);
       }
       if (edit.kind !== "field") continue;
       const { intent } = edit;

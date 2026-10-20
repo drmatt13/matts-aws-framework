@@ -6,6 +6,8 @@ import { createElement as h } from "react";
 import type { DraftEdit, SnapshotResponse } from "../shared/api";
 import type { Snapshot } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
+import { connectionDescriptionId } from "../shared/descriptions";
+import { aggregateConnections } from "../src/connections";
 
 let builder: SnapshotBuilder;
 let baseline: Snapshot;
@@ -133,6 +135,9 @@ test("read connection labels open compact evidence with line-numbered VS Code li
   await mount("lambda:sign-out");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "TRUSTED_FRONTEND_ORIGINS" }));
   await ui.screen.findByRole("heading", { name: "TRUSTED_FRONTEND_ORIGINS" });
+  const configuration = ui.screen.getByText("Configuration", { selector: "summary" });
+  assert.equal(configuration.closest("details")!.open, false);
+  ui.fireEvent.click(configuration);
   const evidence = baseline.models.dev.edges.find((edge) => edge.from === "lambda:sign-out" && edge.label === "TRUSTED_FRONTEND_ORIGINS")!.evidence!;
   for (const item of evidence) {
     const link = ui.screen.getByRole("link", { name: `${item.location.line} ${item.excerpt}` });
@@ -143,8 +148,51 @@ test("read connection labels open compact evidence with line-numbered VS Code li
   ui.cleanup();
   const derived = baseline.models.dev.edges.find((edge) => edge.from === target && edge.label === "USER_POOL_ID")!;
   await mount(derived.id);
+  ui.fireEvent.click(ui.screen.getByText("Configuration", { selector: "summary" }));
   assert.ok(ui.screen.getByText("Derived from the linked declaration."));
   assert.ok(ui.screen.getByRole("link", { name: /userPool: true/ }));
+});
+
+test("a plain connection has no filler context and optional descriptions review, save and reload", async () => {
+  const edge = { id: "plain-connection", from: target, to: "resource:cognito", relation: "env" as const, provenance: "declared" as const, label: "Mapping" };
+  persisted = { ...baseline, models: { dev: { ...baseline.models.dev, edges: [...baseline.models.dev.edges, edge] }, prod: { ...baseline.models.prod, edges: [...baseline.models.prod.edges, edge] } } };
+  await mount(edge.id);
+  assert.equal(ui.screen.queryByText("This relationship comes from the framework graph."), null);
+  assert.equal(ui.screen.queryByText("Configuration", { selector: "summary" }), null);
+  const add = ui.screen.getByText("Add description", { selector: "summary" });
+  assert.equal(add.closest("details")!.open, false);
+  ui.fireEvent.click(add);
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Description" }), { target: { value: "Used for account identity." } });
+  assert.equal(planCalls.length, 0);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "description", entity: connectionDescriptionId(edge), value: "Used for account identity." }]);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Apply All" }));
+  await ui.waitFor(() => assert.equal(applyCalls, 1));
+  await ui.waitFor(() => assert.equal(ui.screen.queryByLabelText("Pending inspector changes"), null));
+  // The mock reloads the original graph; put this synthetic connection back for a fresh inspector.
+  ui.cleanup();
+  persisted = { ...persisted, models: { ...persisted.models, dev: { ...persisted.models.dev, edges: [...persisted.models.dev.edges, edge] } } };
+  await mount(edge.id);
+  ui.fireEvent.click(ui.screen.getByText("Description", { selector: "summary" }));
+  assert.equal((ui.screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement).value, "Used for account identity.");
+});
+
+test("grouped relationships have separate description drafts and unique accessible fields", async () => {
+  const group = aggregateConnections(baseline.models.dev, Object.values(baseline.models)).find((group) => group.members.length > 1)!;
+  assert.ok(group);
+  await mount(group.id);
+  const members = [...document.querySelectorAll<HTMLDetailsElement>(".connection-map-member")].slice(0, 2);
+  for (const [index, member] of members.entries()) {
+    ui.fireEvent.click(member.querySelector("summary")!);
+    ui.fireEvent.click(ui.within(member).getByText("Add description", { selector: "summary" }));
+    ui.fireEvent.change(ui.within(member).getByRole("textbox", { name: "Description" }), { target: { value: `Relationship ${index + 1}` } });
+  }
+  const fields = ui.screen.getAllByRole("textbox", { name: "Description" });
+  assert.equal(new Set(fields.map((field) => field.id)).size, 2);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 2 changes");
+  assert.deepEqual(planCalls[0], group.members.slice(0, 2).map((member, index) => ({ kind: "description", entity: connectionDescriptionId(member.edge), value: `Relationship ${index + 1}` })));
 });
 
 test("event and public-field trigger flows stage through the shared review and keep native hooks occupied", async () => {

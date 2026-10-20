@@ -5,6 +5,7 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import { EditError, EditService, writeAtomically } from "../server/edits/transaction";
 import { SnapshotBuilder } from "../server/snapshot";
+import { connectionDescriptionId } from "../shared/descriptions";
 
 /**
  * Writes, against a disposable copy of the repository's configuration.
@@ -105,6 +106,30 @@ test("descriptions review without writing, persist with settings and undo/redo t
   writeFileSync(file, before);
   await builder.refresh();
   await assert.rejects(edits.planBatch([{ kind: "description", entity: "../../outside", value }], revision()), /managed map item/);
+});
+
+test("connection descriptions review, persist, clear and undo without changing graph facts", async () => {
+  const file = path.join(fixture, "framework-config/descriptions.ts");
+  const before = readFileSync(file, "utf8");
+  const edge = builder.current!.snapshot.models.dev.edges.find((edge) => edge.relation === "env")!;
+  const entity = connectionDescriptionId(edge);
+  const value = "Explains why this mapping exists.";
+  const plan = await edits.planBatch([{ kind: "description", entity, value }], revision());
+  assert.ok(plan.ok);
+  assert.equal(readFileSync(file, "utf8"), before, "review does not write");
+  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  assert.equal(builder.current!.snapshot.descriptions.values[entity], value);
+  assert.deepEqual(builder.current!.snapshot.models.dev.edges.find((item) => item.id === edge.id), edge);
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), before);
+  assert.equal((await edits.redo()).status, "applied");
+  assert.equal(builder.current!.snapshot.descriptions.values[entity], value);
+  const clear = await edits.planBatch([{ kind: "description", entity, value: "" }], revision());
+  assert.equal((await edits.applyBatch(clear.planId)).status, "applied");
+  assert.equal(builder.current!.snapshot.descriptions.values[entity], "");
+  await edits.undo();
+  await edits.undo();
+  await assert.rejects(edits.planBatch([{ kind: "description", entity: connectionDescriptionId({ ...edge, to: "nonexistent" }), value }], revision()), /managed map item/);
 });
 
 test("batch HTTP renames move description keys and undo restores both files", async () => {
