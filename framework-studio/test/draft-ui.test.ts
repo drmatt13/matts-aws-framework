@@ -492,7 +492,7 @@ test("the stacks island distinguishes missing catalog declarations from missing 
   }
 });
 
-test("API node and island details identify the framework config managing each route", async () => {
+test("managed API routes show their target's environment cards and owning config", async () => {
   const sections = { http: "http", service: "services", webSocket: "websocket", agent: "agents" } as const;
   for (const [kind, section] of Object.entries(sections)) {
     const route = baseline.models.dev.routes.find((route) => route.kind === kind)!;
@@ -501,11 +501,37 @@ test("API node and island details identify the framework config managing each ro
     const header = ui.screen.getByRole("complementary", { name: "Inspector" }).querySelector("header")!;
     assert.ok(ui.within(header).getByText(`Managed by framework-config/${section}`));
     assert.ok(ui.within(header).getByText(route.origin));
+    const target = baseline.models.dev.targets.find((target) => target.ref === route.target)!;
+    const cards = [...document.querySelectorAll(".lane-line")];
+    assert.equal(cards.length, 2);
+    assert.equal(cards[0]!.querySelector(".environment-name")?.textContent, "Development");
+    assert.equal(cards[0]!.querySelector("strong")?.textContent, target.lanes.local || target.lanes.dev ? "Enabled" : "Not enabled");
+    assert.equal(cards[0]!.querySelector(".small")?.textContent, target.lanes.local && target.lanes.dev ? "Your machine + AWS" : target.lanes.local ? "On your machine" : target.lanes.dev ? "In AWS" : undefined);
+    assert.equal(cards[1]!.querySelector(".environment-name")?.textContent, "Production");
+    assert.equal(cards[1]!.querySelector("strong")?.textContent, target.lanes.prod ? "Enabled" : "Not enabled");
+    assert.equal(cards[1]!.querySelector(".small")?.textContent, target.lanes.prod ? "In AWS" : undefined);
     ui.cleanup();
   }
   await mount("island:apis");
   openSection("Island entries");
   for (const section of Object.values(sections)) assert.ok(ui.screen.getAllByText(`Managed by framework-config/${section}`).length);
+});
+
+test("route cards retain disabled environments and show AWS-only development placement", async () => {
+  const route = baseline.models.dev.routes.find((route) => route.kind === "webSocket")!;
+  for (const enabled of [true, false]) {
+    persisted = { ...baseline, models: { ...baseline.models, dev: { ...baseline.models.dev,
+      targets: baseline.models.dev.targets.map((target) => target.ref === route.target ? { ...target, lanes: { ...target.lanes, local: false, dev: enabled, prod: false } } : target),
+    } } };
+    await mount(route.id);
+    const cards = [...document.querySelectorAll(".lane-line")];
+    assert.equal(cards[0]!.querySelector("strong")?.textContent, enabled ? "Enabled" : "Not enabled");
+    assert.equal(cards[0]!.querySelector(".small")?.textContent, enabled ? "In AWS" : undefined);
+    assert.equal(cards[1]!.querySelector("strong")?.textContent, "Not enabled");
+    assert.equal(cards[1]!.querySelector(".small"), null);
+    assert.equal(ui.screen.queryByRole("button", { name: "Review Changes" }), null, "opening a managed route stages no edits");
+    ui.cleanup();
+  }
 });
 
 test("event Lambda local replay switches stage true or property removal through the shared draft", async () => {

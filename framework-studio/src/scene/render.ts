@@ -316,7 +316,7 @@ export class SceneRenderer {
   private prepareGraphite(scene: Scene, items: readonly Standing[]): GraphiteIsland[] {
     const context = this.context;
     const ghosts = new Set([
-      ...scene.nodes.filter((node) => node.presence === "other" || node.presence === "nowhere" || node.presence === "absent").map((node) => node.id),
+      ...scene.nodes.filter((node) => node.roleIcon === "unattached" || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent").map((node) => node.id),
       ...scene.props.filter((prop) => prop.presence === "other").map((prop) => prop.id),
     ]);
     return islandDrawOrder(islandSlabs(scene)).map((slab) => {
@@ -937,11 +937,13 @@ export class SceneRenderer {
     const tile = project({ x: node.gx, y: node.gy, h: node.h });
     const selected = state.selected === node.id || (state.focus.kind === "search" && state.focus.nodes.has(node.id));
     const hovered = state.hovered === node.id;
-    const ghost = node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
+    const unattached = node.roleIcon === "unattached";
+    const ghost = unattached || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
     const factor = dimmed ? 0.32 : 1;
     if (!ghost) this.drawStand(tile, node.geometry.faces, node.icon, factor);
     this.drawPlaqueGraphite(tile, node.icon, factor * (ghost ? 0.32 : 1), selected, ghost, hovered);
-    if (node.roleIcon) this.drawRoleIconGraphite(tile, node.roleIcon, factor * (ghost ? 0.32 : 1), ghost);
+    // An unattached stack stays identifiable even though its main plaque is a ghost.
+    if (node.roleIcon) this.drawRoleIconGraphite(tile, node.roleIcon, unattached ? 1 : factor * (ghost ? 0.32 : 1), ghost && !unattached);
     if (selected || hovered) {
       trace(context, node.geometry.hull);
       context.strokeStyle = selected ? "rgba(255, 248, 230, 0.6)" : "rgba(255, 255, 255, 0.35)";
@@ -1143,8 +1145,9 @@ export class SceneRenderer {
       const padding = 7 * scale;
       const selected = node.id === state.selected || (state.focus.kind === "search" && state.focus.nodes.has(node.id));
       const quiet = state.focus.kind === "selection" && !state.focus.nodes.has(node.id);
-      const ghost = node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
-      context.globalAlpha = this.opacity * (quiet ? 0.35 : ghost ? 0.7 : 1);
+      const unattached = node.roleIcon === "unattached";
+      const ghost = !unattached && (node.presence === "other" || node.presence === "nowhere" || node.presence === "absent");
+      context.globalAlpha = unattached ? searchOpacity(state.focus, "nodes", node.id) : this.opacity * (quiet ? 0.35 : ghost ? 0.7 : 1);
       context.fillStyle = selected ? "#f3efe4" : "#0e131b";
       context.strokeStyle = selected ? "#fff8e6" : node.id === state.hovered ? "rgba(255, 255, 255, 0.55)" : "rgba(255, 255, 255, 0.14)";
       context.lineWidth = 1;

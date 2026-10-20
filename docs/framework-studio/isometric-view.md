@@ -55,7 +55,10 @@ parameter and secret options are placeholders until creation tools are implement
 Close the menu with its close button, Escape, or by clicking outside it.
 
 Stack plaques carry an unplug badge when the configured CDK app has no constructor
-reference for their class in its local runtime import graph. A lock badge marks the
+reference for their class in its local runtime import graph. These unattached stacks
+have transparent plaques without solid plinths; their unplug badges and names stay
+fully visible in both environments, including when another node is selected.
+Search still fades nonmatching items. A lock badge marks the
 framework's configured database, its stack and the selected root `.env` export stacks.
 The export stacks are selected by the same public-output mapping used by the exporter;
 they are not a complete framework stack inventory. Their inspector outputs use styled
@@ -496,12 +499,12 @@ The order follows what is painted on top, front first:
 1. **Label cards.** Screen rectangles from the last frame, last painted first.
 2. **Buildings.** World silhouettes, frontmost first.
 3. **Gateway and endpoint furniture.** Hover and click (selects the `prop:` fixture).
-4. **Terrain.** The painted slab tops and walls, plus the VPC foundation.
-   Picking uses the camera inverse and each surface's
-   actual height. Empty terrain takes precedence over arcs so it remains clickable.
-5. **Arcs in the void.** Within 6 screen pixels of the sampled curve, hover and click.
+4. **Arcs.** Within 6 screen pixels of the sampled curve, hover and click, including over terrain.
    Missing-input markers are also clickable, including over terrain. Connection labels
    appear only in the hover popup and inspector, never on the canvas lines.
+5. **Terrain.** The painted slab tops and walls, plus the VPC foundation.
+   Picking uses the camera inverse and each surface's actual height.
+   Terrain away from connections remains clickable.
 
 A ground-plane inverse is never used for picking, because it would return the tile behind
 a raised one. Hover highlights the island and explains its terrace. Clicking empty

@@ -20,8 +20,9 @@ live in `src/views/InspectorUI.tsx`. Board, Isometric and Database use the same 
 
 ## Information order
 
-Compute inspectors begin with identity, source access and two environment cards. A
-compact description preview precedes settings; Deploy is always the first setting,
+Compute inspectors begin with identity, source access and two environment cards.
+Managed API routes show the same cards using their target's availability and execution locations.
+For compute, a compact description preview precedes settings; Deploy is always the first setting,
 followed by memory, timeout and other lifecycle settings. Numeric fields keep their
 inherited default visible after an override and offer a direct way to restore it.
 Routing, authentication and event controls follow.

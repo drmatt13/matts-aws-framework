@@ -11,12 +11,13 @@ import { fitScene } from "../src/scene/fit";
 import { iconUrl } from "../src/icons";
 import { buildScene } from "../src/scene/build";
 import { connectionMidpoint } from "../src/scene/routing";
-import { worldToScreen, type Camera, type Viewport } from "../src/scene/camera";
+import { screenToWorld, worldToScreen, type Camera, type Viewport } from "../src/scene/camera";
 import { catalogAvailability } from "../src/deployment";
 import { DECK, hexRgb, ISLAND_TRIM } from "../src/scene/look";
 import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, rectanglesOverlap } from "../src/scene/labels";
 import { project } from "../src/scene/iso";
-import { pickEntity } from "../src/scene/picking";
+import { insidePolygon, pickEntity, pickIsland } from "../src/scene/picking";
+import { islandDrawOrder, islandSlabs } from "../src/scene/slabs";
 
 let builder: SnapshotBuilder;
 let response: SnapshotResponse;
@@ -180,6 +181,44 @@ test("missing required connections paint red X markers and clicking the marker s
     await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, edge.id));
     assert.equal(debug().stats().focus, "selection");
   } finally { response = original; }
+});
+
+test("connections over terrain receive hover and clicks while clear terrain still opens its island", async () => {
+  await mount(true);
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
+    resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
+  const slabs = islandDrawOrder(islandSlabs(scene));
+  const state = (dom.window as unknown as { __studioLandscape: {
+    camera(): Camera; viewport(): Viewport;
+    cards(): { x: number; y: number; width: number; height: number }[];
+    badges(): { x: number; y: number; width: number; height: number }[];
+    connections(): { points: { x: number; y: number }[] }[];
+    pickAt(x: number, y: number): { kind: string; id: string } | undefined;
+  } }).__studioLandscape;
+  const at = state.connections().flatMap((connection) => connection.points.slice(2, -2)).find((point) => {
+    const world = screenToWorld(state.camera(), state.viewport(), point);
+    return pickIsland(world, slabs)
+      && ![...scene.nodes, ...scene.props].some((node) => insidePolygon(world.x, world.y, node.geometry.hull))
+      && ![...state.cards(), ...state.badges()].some((card) => point.x >= card.x && point.x <= card.x + card.width && point.y >= card.y && point.y <= card.y + card.height);
+  });
+  assert.ok(at, "a regular connection crosses terrain away from node controls");
+  const hit = state.pickAt(at.x, at.y)!;
+  assert.equal(hit.kind, "edge", "the line has priority over its underlying slab");
+  const canvas = document.querySelector("canvas")!;
+  ui.fireEvent.pointerMove(canvas, { clientX: at.x, clientY: at.y }); await draw();
+  assert.ok(await ui.screen.findByRole("tooltip"));
+  ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
+  ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, hit.id));
+  assert.ok(ui.screen.getByRole("complementary", { name: "Inspector" }).querySelector(".connection-header"));
+
+  const clear = scene.tiles.map((tile) => worldToScreen(state.camera(), state.viewport(), project({ x: tile.gx, y: tile.gy, h: tile.h })))
+    .find((point) => state.pickAt(point.x, point.y)?.kind === "island");
+  assert.ok(clear, "terrain away from lines and nodes remains selectable");
+  const island = state.pickAt(clear.x, clear.y)!;
+  ui.fireEvent.pointerDown(canvas, { clientX: clear.x, clientY: clear.y, button: 0 });
+  ui.fireEvent.pointerUp(canvas, { clientX: clear.x, clientY: clear.y, button: 0 });
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, island.id));
 });
 
 test("the real renderer strokes connections leaving the APIs island in purple and those leaving a Lambda or container in orange", async () => {

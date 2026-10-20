@@ -276,6 +276,7 @@ function EnvRow(props: { readonly name: string; readonly value: string; readonly
 function RouteView(props: { readonly route: ModelRoute }) {
   const { snapshot, index, select } = useStudio();
   const { route } = props;
+  const target = index.targets.get(route.target);
   return (
     <>
       <header>
@@ -285,6 +286,7 @@ function RouteView(props: { readonly route: ModelRoute }) {
         <code className="ref">{route.origin}</code>
         <Written location={snapshot.source.entities[route.id]?.key} />
       </header>
+      {target ? <LaneLines target={target} /> : null}
       <Description entity={route.id} />
       <section>
         <p>
@@ -304,7 +306,7 @@ function RouteView(props: { readonly route: ModelRoute }) {
         </p>
         <p className="muted small">The public name is separate from the target, so renaming it does not rename what is deployed.</p>
       </section>
-      {(route.kind === "http" || route.kind === "service") && index.targets.get(route.target) ? <ApiAuthControl target={index.targets.get(route.target)!} /> : null}
+      {(route.kind === "http" || route.kind === "service") && target ? <ApiAuthControl target={target} /> : null}
       <Relations id={route.id} />
     </>
   );

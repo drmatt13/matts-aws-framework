@@ -278,7 +278,7 @@ export function Isometric() {
     if (node && !alreadyFocusing && !isVisible(state.camera, state.viewport, node.geometry.top, 60)) focus(node.id);
   }, [visibleSelected, nodes, focus, resize]);
 
-  /** Icons keep their inspector; empty terrain opens island defaults, even beneath an arc. */
+  /** Node controls keep their inspector; connections take precedence over terrain. */
   const pick = useCallback(
     (screen: Point): Hover | undefined => {
       const state = live.current;
@@ -293,11 +293,6 @@ export function Isometric() {
       for (let position = scene.props.length - 1; position >= 0; position -= 1) {
         if (insidePolygon(world.x, world.y, scene.props[position]!.geometry.hull)) return { kind: "prop", id: scene.props[position]!.id, ...screen };
       }
-      const island = pickIsland(world, slabs);
-      if (island) return { kind: "island", ...island, ...screen };
-      for (const frame of scene.frames) {
-        if ([frame.geometry.top, frame.geometry.left, frame.geometry.right].some((polygon) => insidePolygon(world.x, world.y, polygon))) return { kind: "island", id: frame.members[0]!, ...screen };
-      }
       const tolerance = 6 / state.camera.zoom;
       let best: { id: string; distance: number } | undefined;
       for (const arc of arcs) {
@@ -306,6 +301,11 @@ export function Isometric() {
         if (distance < tolerance && (!best || distance < best.distance)) best = { id: arc.edge.id, distance };
       }
       if (best) return { kind: "edge", id: best.id, ...screen };
+      const island = pickIsland(world, slabs);
+      if (island) return { kind: "island", ...island, ...screen };
+      for (const frame of scene.frames) {
+        if ([frame.geometry.top, frame.geometry.left, frame.geometry.right].some((polygon) => insidePolygon(world.x, world.y, polygon))) return { kind: "island", id: frame.members[0]!, ...screen };
+      }
       return undefined;
     },
     [scene, slabs, arcs, silhouettes],
