@@ -1,4 +1,22 @@
-import type { Lanes, Snapshot } from "../shared/model";
+import type { Lanes, Mode, ModelEdge, Snapshot } from "../shared/model";
+import type { ModelIndex } from "./lookup";
+
+/** The same deployment facts used by map nodes, without constructing a scene. */
+export function connectionDisabledEndpoints(index: ModelIndex, mode: Mode, edge: Pick<ModelEdge, "from" | "to">): readonly string[] {
+  const enabled = (id: string): boolean => {
+    const local = index.localServices.get(id);
+    if (local) return local.enabled;
+    const route = index.routes.get(id);
+    const target = index.targets.get(route?.target ?? id);
+    if (target) return environments(target.lanes)[mode];
+    const resource = index.resources.get(id);
+    if (!resource) return false;
+    // Stack members share their owning stack's representation in the map.
+    const representative = resource.kind === "member" && resource.parent ? index.resources.get(resource.parent) ?? resource : resource;
+    return !representative.absent;
+  };
+  return [...new Set([edge.from, edge.to])].filter((id) => !enabled(id));
+}
 
 /** Two environments. Local and AWS are execution locations within development. */
 export interface Availability { readonly dev: boolean; readonly prod: boolean }

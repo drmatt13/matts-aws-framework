@@ -14,7 +14,8 @@ import { islandFrame } from "../src/scene/frame";
 import { API_EDGE_COLOR, BAND_TRIM, COMPUTE_EDGE_COLOR, DECK, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, ROLE_BADGE, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, TRIGGER_EDGE_COLOR, trimColor } from "../src/scene/look";
 import { behind, islandDrawOrder, islandSlabs, polygonArea, type IslandSlab } from "../src/scene/slabs";
 import { carriesOwnTile, ICONS } from "../src/icons";
-import { catalogAvailability } from "../src/deployment";
+import { catalogAvailability, connectionDisabledEndpoints } from "../src/deployment";
+import { indexModel } from "../src/lookup";
 import { existsSync, readFileSync } from "node:fs";
 import { landscapeFocus, searchOpacity, searchScene, SEARCH_FADE } from "../src/scene/focus";
 import { layoutIslands, type IslandFootprint } from "../src/scene/layout";
@@ -773,13 +774,13 @@ test("a permission grant is red and dashed, unlike a parameter being read", () =
   assert.notEqual(drawn(grant.id).color, drawn(read.id).color);
 });
 
-test("a connection outside the viewed environment rests at half the strength it has inside it", () => {
+test("a connection outside the viewed environment rests at a quarter of the strength it has inside it", () => {
   assert.equal(restingAlpha("declared", false), 0.3);
   assert.equal(restingAlpha("source", false), 0.3);
   assert.equal(restingAlpha("derived", false), 0.18);
-  assert.equal(restingAlpha("declared", true), 0.15);
-  assert.equal(restingAlpha("derived", true), 0.09);
-  for (const provenance of ["declared", "derived", "source"] as const) assert.equal(restingAlpha(provenance, true) * 2, restingAlpha(provenance, false), `${provenance}: the same ratio for every connection`);
+  assert.equal(restingAlpha("declared", true), 0.075);
+  assert.equal(restingAlpha("derived", true), 0.045);
+  for (const provenance of ["declared", "derived", "source"] as const) assert.equal(restingAlpha(provenance, true) * 4, restingAlpha(provenance, false), `${provenance}: the same ratio for every connection`);
   assert.ok(restingAlpha("declared", false) > 0.24, "easier to see than the old resting strength");
   // Either end enabled only elsewhere, in neither environment, or absent here puts it outside the lens.
   for (const presence of ["other", "nowhere", "absent"] as const) {
@@ -788,6 +789,17 @@ test("a connection outside the viewed environment rests at half the strength it 
   }
   assert.equal(offLens({}, { presence: "built" }, { presence: "present" }), false);
   assert.equal(offLens({ otherLens: "prod" }, { presence: "built" }, { presence: "built" }), true, "a connection only the other environment holds");
+});
+
+test("connection inspector deployment reasons agree with every drawn connection in both modes", () => {
+  for (const scene of [dev, prod]) {
+    const index = indexModel(snapshot.models[scene.mode]);
+    const nodes = new Map(scene.nodes.map((node) => [node.id, node]));
+    for (const edge of scene.edges) {
+      const disabled = edge.otherLens !== undefined || connectionDisabledEndpoints(index, scene.mode, edge.edge).length > 0;
+      assert.equal(disabled, offLens(edge, nodes.get(edge.from), nodes.get(edge.to)), `${scene.mode}: ${edge.edge.id}`);
+    }
+  }
 });
 
 test("switching Development and Production moves which connections recede", () => {
@@ -849,7 +861,7 @@ test("an environment file's connections read clearly in its own view and recede 
       return restingAlpha(edge.edge.provenance, offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)));
     };
     assert.equal(strength(viewed), 0.3, `${viewed} file's connection in the ${viewed} view`);
-    assert.equal(strength(other), 0.15, `${other} file's connection in the ${viewed} view`);
+    assert.equal(strength(other), 0.075, `${other} file's connection in the ${viewed} view`);
   }
 });
 
@@ -869,7 +881,7 @@ test("an enabled connection reads clearly in its own view and recedes where it i
     return restingAlpha(edge.edge.provenance, offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)));
   };
   assert.equal(strength(dev), 0.3, "enabled in Development");
-  assert.equal(strength(prod), 0.15, "disabled in Production");
+  assert.equal(strength(prod), 0.075, "disabled in Production");
 });
 
 test("both views draw the same connections; the other environment's own are marked and dimmed", () => {

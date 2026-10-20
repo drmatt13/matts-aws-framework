@@ -854,6 +854,10 @@ a {
 }
 
 .connection-evidence { display: grid; gap: 12px; margin-top: 16px; }
+.connection-availability { margin-top: 14px; padding: 10px 12px; border: 1px solid var(--rule); border-left: 3px solid var(--faint); border-radius: 6px; background: rgba(141, 159, 183, .06); font-size: 12px; }
+.connection-availability > strong { display: inline-block; color: var(--graphite); }
+.connection-availability p { margin: 6px 0; }
+.connection-availability ul { margin: 6px 0 0; padding-left: 18px; }
 .trigger-editor summary { cursor: pointer; font-weight: 600; }
 .trigger-row { margin: 10px 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; }
 .trigger-row .written { width: 100%; }

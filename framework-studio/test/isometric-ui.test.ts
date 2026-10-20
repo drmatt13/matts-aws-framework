@@ -21,6 +21,7 @@ let router: typeof import("@tanstack/react-router");
 let query: typeof import("@tanstack/react-query");
 let studio: typeof import("../src/studio");
 let map: typeof import("../src/views/Isometric");
+let inspector: typeof import("../src/views/Inspector");
 const frames = new Map<number, FrameRequestCallback>();
 let nextFrame = 0;
 const images: { src: string; alpha: number }[] = [];
@@ -61,7 +62,7 @@ before(async () => {
   Object.defineProperty(dom.window, "PointerEvent", { configurable: true, value: Pointer });
   Object.defineProperty(globalThis, "PointerEvent", { configurable: true, value: Pointer });
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
-  studio = await import("../src/studio"); map = await import("../src/views/Isometric");
+  studio = await import("../src/studio"); map = await import("../src/views/Isometric"); inspector = await import("../src/views/Inspector");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, history: {}, busy: null };
 });
@@ -76,10 +77,12 @@ const draw = async () => ui.act(async () => {
   for (const callback of pending) callback(performance.now() + 500);
 });
 
-async function mount() {
+async function mount(withInspector = false) {
   function Workbench() {
     const context = studio.useStudio();
-    return h("div", null, h("output", { "aria-label": "Selection" }, context.selected ?? "none"), h(map.Isometric));
+    return h("div", null, h("output", { "aria-label": "Selection" }, context.selected ?? "none"), h(map.Isometric),
+      withInspector ? h("button", { onClick: () => context.setMode(context.mode === "dev" ? "prod" : "dev") }, "Switch environment") : null,
+      withInspector ? h(inspector.Inspector) : null);
   }
   function Root() {
     const search = router.useSearch({ strict: false }) as { select?: string };
@@ -184,14 +187,34 @@ test("the real renderer strokes connections leaving the APIs island in purple an
   assert.ok(strokes.includes("rgba(163, 116, 255, 0.95)"), "a selected API connection lights in the same purple");
 });
 
-test("the real renderer draws resting connections a little stronger, and those outside the viewed environment at half of that", async () => {
+test("the real renderer draws resting connections a little stronger, and those outside the viewed environment at a quarter of that", async () => {
   await mount();
   await draw();
   const alphas = new Set(strokes.flatMap((style) => { const match = /^rgba\(\d+, \d+, \d+, ([\d.]+)\)$/.exec(style); return match ? [Number(match[1])] : []; }));
   assert.ok(alphas.has(0.3), "a resting connection in this environment");
-  assert.ok(alphas.has(0.15), "a resting connection the environment leaves out, at half the strength");
+  assert.ok(alphas.has(0.075), "a resting connection the environment leaves out, at a quarter of the strength");
   assert.ok(!alphas.has(0.6), "nothing is emphasised above the resting strength");
   assert.ok(!alphas.has(0.24), "the old resting strength is gone");
+});
+
+test("clicking a disabled wire explains its endpoints in the inspector and the notice follows the mode", async () => {
+  await mount(true);
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
+    resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
+  const edge = scene.edges.find((edge) => edge.edge.from === "envfile:prod" && edge.edge.relation === "supplies")!;
+  assert.ok(edge);
+  const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
+  const at = scene.routes[edge.edge.id]!.points.map((point) => worldToScreen(state.camera(), state.viewport(), point))
+    .find((point) => state.pickAt(point.x, point.y)?.id === edge.edge.id);
+  assert.ok(at, "a disabled wire remains pickable");
+  const canvas = document.querySelector("canvas")!;
+  ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
+  ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
+  const notice = await ui.screen.findByRole("note", { name: "Connection deployment status" });
+  assert.ok(notice.textContent?.includes("Disabled in Development"));
+  assert.ok(notice.textContent?.includes(".env.prod"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
+  await ui.waitFor(() => assert.equal(ui.screen.queryByRole("note", { name: "Connection deployment status" }), null));
 });
 
 test("in Development the real renderer strokes the unbuilt VPC as one deck with a single violet rim", async () => {

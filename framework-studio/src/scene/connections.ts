@@ -56,10 +56,10 @@ export function connectionStyle(
  * How strongly an idle connection is drawn (the selected, hovered and searched states have their own).
  *
  * What is part of the environment being viewed reads clearly; what is not recedes. A connection outside the
- * viewed environment rests at half the strength it has inside it, so switching the view dims what the new
+ * viewed environment rests at a quarter of the strength it has inside it, so switching the view dims what the new
  * view leaves out and brightens what it brings in, and every connection keeps the same ratio between the two.
  */
-export const EDGE_ALPHA = { declared: 0.3, derived: 0.18, outOfLens: 0.5 } as const;
+export const EDGE_ALPHA = { declared: 0.3, derived: 0.18, outOfLens: 0.25 } as const;
 
 /** A node belongs to the environment being viewed when it is built or held there. */
 const inLens = (node: Pick<SceneNode, "presence"> | undefined): boolean => !node || node.presence === "built" || node.presence === "present";

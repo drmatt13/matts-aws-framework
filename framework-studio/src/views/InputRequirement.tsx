@@ -3,6 +3,7 @@ import type { Mode, ModelEdge } from "../../shared/model";
 import { editorLink, titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { Written } from "./Written";
+import { connectionDisabledEndpoints } from "../deployment";
 
 export function RequirementNotice({ requirement }: { requirement?: InputRequirement }) {
   if (!requirement?.required) return null;
@@ -19,8 +20,17 @@ export function ConnectionView({ edge, onlyIn }: { edge: ModelEdge; onlyIn?: Mod
   const { index, select, snapshot, mode, setMode } = useStudio();
   const requirement = edge.inputRequirement;
   const resource = requirement ? snapshot.models[requirement.mode].resources.find((item) => item.id === requirement.resource) : undefined;
+  const disabledEndpoints = connectionDisabledEndpoints(index, mode, edge);
+  const disabled = onlyIn !== undefined || disabledEndpoints.length > 0;
+  const environment = mode === "dev" ? "Development" : "Production";
   return <>
-    <header><span className="kind">{requirement ? "Input connection" : "Connection"}</span><h2>{edge.label}</h2><p className="small muted">{titleOf(index, edge.from)} → {titleOf(index, edge.to)}</p>{onlyIn ? <p className="small muted">Only in {onlyIn === "dev" ? "Development" : "Production"}: this environment does not hold it. Switch the view to see it with the rest of that environment.</p> : null}</header>
+    <header><span className="kind">{requirement ? "Input connection" : "Connection"}</span><h2>{edge.label}</h2><p className="small muted">{titleOf(index, edge.from)} → {titleOf(index, edge.to)}</p>
+      {disabled ? <div className="connection-availability" role="note" aria-label="Connection deployment status">
+        <strong>Disabled in {environment}</strong>
+        {onlyIn ? <p>This connection exists only in {onlyIn === "dev" ? "Development" : "Production"}.</p> : null}
+        {disabledEndpoints.length ? <><p>Both endpoints must be enabled in this environment.</p><ul>{disabledEndpoints.map((id) => <li key={id}><button className="linkish" onClick={() => select(id)}>{titleOf(index, id)}</button> is not enabled in {environment}.</li>)}</ul></> : null}
+      </div> : null}
+    </header>
     <section><RequirementNotice requirement={requirement} />
       {requirement && !requirement.required ? <p className="small muted">Optional in this environment.{requirement.status === "default" ? " A parameter default supplies it." : requirement.status === "configured" ? " An environment value is configured." : ""}</p> : null}
       {requirement ? <>

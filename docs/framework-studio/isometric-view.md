@@ -369,12 +369,18 @@ been removed; the renderer has one visual style.
 
    **The lens.** An idle connection rests at 0.30 opacity (0.18 when derived), so what is
    part of the environment being viewed reads clearly. A connection outside it rests at
-   half that: either end is enabled only in the other environment, enabled in neither, or
+   a quarter of that (0.075, or 0.045 when derived): either end is enabled only in the
+   other environment, enabled in neither, or
    a catalog entry the viewed graph declares undefined, or the other environment alone
    holds the connection (`offLens` in `connections.ts`, `EDGE_ALPHA.outOfLens`). Every
-   connection keeps the same two-to-one ratio between its enabled and disabled views, so
+   connection keeps the same four-to-one ratio between its enabled and disabled views, so
    switching Development and Production dims what the new view leaves out and brightens
    what it brings in.
+
+   Selecting a dimmed connection shows **Disabled in Development** or **Disabled in
+   Production** in its Inspector, with links to the endpoints that are not enabled.
+   A connection held only by the other graph names that environment instead. The notice
+   follows the current mode and disappears when the connection becomes enabled.
 
    **The standard for new resources.** A resource scoped to one environment says so
    once, at the producer that builds the model: it sets `ModelResource.absent` per graph.
