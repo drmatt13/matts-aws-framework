@@ -5,7 +5,8 @@ import { catalogAvailability } from "../deployment";
 import { editorLink } from "../lookup";
 import { buildScene } from "../scene/build";
 import { useStudio } from "../studio";
-import { InspectorDisclosure } from "./InspectorUI";
+import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
+import { InfrastructurePanel } from "./Infrastructure";
 import { BooleanField, FieldRow } from "./FieldRow";
 import { ResourceStatus } from "./ResourceStatus";
 import { RouteStatus } from "./RouteStatus";
@@ -55,7 +56,7 @@ function EnvironmentFiles() {
 
 /** Island membership comes from the same layout as the canvas, never a second graph. */
 export function IslandInspector({ id }: { readonly id: string }) {
-  const { model, snapshot, select, index } = useStudio();
+  const { model, snapshot, select, index, mode } = useStudio();
   const scene = useMemo(() => buildScene(model, {
     webSocketApi: snapshot.webSocketApi,
     resourceAvailability: catalogAvailability(snapshot.models),
@@ -68,11 +69,17 @@ export function IslandInspector({ id }: { readonly id: string }) {
   const group = groups.find((group) => group.ref === chosen) ?? groups[0];
   if (!island) return <p className="empty">This island has no entries in this environment.</p>;
   const source = group && snapshot.source.entities[group.ref]?.value;
+  const entries = <InspectorDisclosure title="Island entries" count={members.length}><ul className="island-members">{members.map((node) => {
+    const route = index.routes.get(node.id);
+    return <li key={node.id}><button className="linkish" onClick={() => select(node.id)}>{node.label}</button><span className="small muted">{node.kindLabel}</span><ResourceStatus resource={index.resources.get(node.id)} />{route ? <RouteStatus route={route} /> : null}</li>;
+  })}</ul></InspectorDisclosure>;
   return <>
     <header><span className="kind">Island settings</span><h2>{island.title}</h2><p className="small muted">{members.length} {members.length === 1 ? "entry" : "entries"}</p></header>
     <Description entity={id} />
     {id === "island:environment" ? <EnvironmentFiles /> : null}
     {id === CLIENT_ENVIRONMENT_ISLAND ? <ClientEnvironmentMappings /> : null}
+    {id === "island:stacks" ? entries : null}
+    {id === "island:stacks" ? <InspectorSection title="CDK infrastructure"><InfrastructurePanel key={mode} onNavigate={select} /></InspectorSection> : null}
     {group ? <section>
       <h3>Shared defaults</h3>
       <p className="small muted">Applies across all islands and to future entries. Individual overrides take precedence.</p>
@@ -86,10 +93,7 @@ export function IslandInspector({ id }: { readonly id: string }) {
         {fact.usage ? <p className="small muted default-usage">{fact.usage.inherited} inherit · {fact.usage.overridden} overridden</p> : null}
       </div>)}</div>
       {source ? <a className="small" href={editorLink(snapshot.repositoryRoot, source)}>Open shared defaults in VS Code</a> : null}
-    </section> : id === "island:environment" || id === CLIENT_ENVIRONMENT_ISLAND ? null : <section><h3>Settings</h3><p className="small">The framework has no shared defaults for this island. Select an entry below to configure it.</p></section>}
-    <InspectorDisclosure title="Island entries" count={members.length}><ul className="island-members">{members.map((node) => {
-      const route = index.routes.get(node.id);
-      return <li key={node.id}><button className="linkish" onClick={() => select(node.id)}>{node.label}</button><span className="small muted">{node.kindLabel}</span><ResourceStatus resource={index.resources.get(node.id)} />{route ? <RouteStatus route={route} /> : null}</li>;
-    })}</ul></InspectorDisclosure>
+    </section> : id === "island:environment" || id === "island:stacks" || id === CLIENT_ENVIRONMENT_ISLAND ? null : <section><h3>Settings</h3><p className="small">The framework has no shared defaults for this island. Select an entry below to configure it.</p></section>}
+    {id !== "island:stacks" ? entries : null}
   </>;
 }

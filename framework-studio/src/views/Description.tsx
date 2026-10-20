@@ -18,8 +18,10 @@ export function Description({ entity, connection = false }: { readonly entity: s
       aria-invalid={!!entry?.error} aria-describedby={entry?.error ? `${id}-error` : undefined} />
     {entry?.error ? <p id={`${id}-error`} className="reason" role="alert">{entry.error}</p> : null}
     {problem ? <p className="reason" role="alert">{problem}</p> : null}
-    {separate ? <p className="small muted">Apply or discard the input changes before editing this description.</p> : null}
-    <p className="small muted">{entry ? "Unsaved · Review Changes to save." : "Shared across environments."} <a href={editorLink(snapshot.repositoryRoot, { file: DESCRIPTION_FILE, line: 1, column: 1, start: 0, end: 0 })}>Open descriptions.ts</a></p>
+    <p className="small muted"><span className="inspector-status-copy">
+      <span aria-hidden={separate}>{entry ? "Unsaved · Review Changes to save." : "Shared across environments."}</span>
+      <span aria-hidden={!separate}>Apply or discard input changes to edit this description.</span>
+    </span><a href={editorLink(snapshot.repositoryRoot, { file: DESCRIPTION_FILE, line: 1, column: 1, start: 0, end: 0 })}>Open descriptions.ts</a></p>
   </div>;
   return <section className="node-description" aria-label={connection ? "Connection description" : "Node description"}>
     {connection ? editor : <>

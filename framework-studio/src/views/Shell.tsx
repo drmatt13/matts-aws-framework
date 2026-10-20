@@ -8,15 +8,15 @@ import { useStudio } from "../studio";
 import { EditDialog } from "./EditDialog";
 import { Inspector } from "./Inspector";
 import { UnsavedChangesDialog } from "./DraftControls";
-import { InfrastructureNavigation, InfrastructurePanel } from "./Infrastructure";
 
 function Verdict(props: { readonly label: string; readonly diagnostics: readonly Diagnostic[] }) {
   const errors = props.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
+  const warnings = props.diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
   return (
-    <span className={`verdict ${errors ? "bad" : "good"}`}>
-      {errors ? <AlertTriangle size={14} aria-hidden /> : <Check size={14} aria-hidden />}
+    <span className={`verdict ${errors ? "bad" : warnings ? "warning" : "good"}`}>
+      {errors || warnings ? <AlertTriangle size={14} aria-hidden /> : <Check size={14} aria-hidden />}
       {props.label}
-      {errors ? ` ${errors}` : ""}
+      {errors || warnings ? ` ${errors || warnings}` : ""}
     </span>
   );
 }
@@ -35,15 +35,16 @@ function Drawer(props: { readonly title: string; readonly onClose: () => void; r
   );
 }
 
-function DiagnosticsDrawer(props: { readonly onClose: () => void }) {
-  const { snapshot, select } = useStudio();
+function DiagnosticsDrawer(props: { readonly onClose: () => void; readonly onCheck: () => void }) {
+  const { snapshot, select, live } = useStudio();
   const all = (["dev", "prod"] as const).flatMap((mode) =>
     snapshot.models[mode].diagnostics.map((diagnostic) => ({ mode, diagnostic })),
   );
   return (
     <Drawer title="Configuration health" onClose={props.onClose}>
+      <p className="small muted">Configuration validation updates automatically for Development and Production as saved source changes. Inspector changes are validated before applying.</p>
       {all.length === 0 && snapshot.source.problems.length === 0 ? (
-        <p>Both graphs load and pass the framework's checks. This view stays current as you edit in your own editor.</p>
+        <p>Both graphs load and pass configuration validation.</p>
       ) : null}
       {all.map(({ mode, diagnostic }, position) => (
         <div key={position} className={`diagnostic ${diagnostic.severity}`}>
@@ -64,17 +65,25 @@ function DiagnosticsDrawer(props: { readonly onClose: () => void }) {
           <p>{problem}</p>
         </div>
       ))}
+      <details>
+        <summary>Additional checks</summary>
+        <p className="small muted">Audit generated files and local wiring with framework:check. This separate check runs on saved source and writes nothing.</p>
+        <button className="quiet" disabled={live.running !== null || live.evaluating} onClick={props.onCheck}>
+          <ClipboardCheck size={16} aria-hidden /> Check generated files and wiring
+        </button>
+      </details>
     </Drawer>
   );
 }
 
-function CommandDrawer(props: { readonly result: CommandResult | undefined; readonly onClose: () => void; readonly onRun: (name: string, confirmed: boolean) => void }) {
+function CommandDrawer(props: { readonly result: CommandResult | undefined; readonly onClose: () => void; readonly onBack: () => void; readonly onRun: (name: string, confirmed: boolean) => void }) {
   const studio = useStudio();
   const { live } = studio;
   const result = props.result;
   const stale = result && result.exitCode !== 0 && /generat|stale|out of date|differs/i.test(result.output);
   return (
     <Drawer title={result ? `${result.command} ${result.exitCode === 0 ? "passed" : "failed"}` : `Running ${live.running ?? "a command"}…`} onClose={props.onClose}>
+      <button className="linkish small" onClick={props.onBack}>Back to configuration health</button>
       {result ? (
         <>
           <p className="small muted">Finished in {(result.durationMs / 1000).toFixed(1)}s with exit code {String(result.exitCode)}.</p>
@@ -99,8 +108,7 @@ function CommandDrawer(props: { readonly result: CommandResult | undefined; read
 export function Shell(props: { readonly children: ReactNode }) {
   const studio = useStudio();
   const { snapshot, response, mode, setMode, live, toast, toasts, selected } = studio;
-  const [drawer, setDrawer] = useState<"health" | "command" | "infrastructure" | undefined>();
-  const [infrastructureOwner, setInfrastructureOwner] = useState<string | undefined>();
+  const [drawer, setDrawer] = useState<"health" | "command" | undefined>();
   const [result, setResult] = useState<CommandResult | undefined>();
   const repository = snapshot.repositoryRoot.replaceAll("\\", "/").split("/").pop();
 
@@ -125,16 +133,16 @@ export function Shell(props: { readonly children: ReactNode }) {
   };
 
   return (
-    <InfrastructureNavigation.Provider value={(owner) => { setInfrastructureOwner(owner); setDrawer("infrastructure"); }}><div className="shell">
+    <div className="shell">
       <header className="bar">
         <span className="wordmark">
           AWS Studio<small>{repository}</small>
         </span>
         <nav className="tabs" aria-label="Views">
-          <Link to="/" search={(previous) => previous} className="tab" activeOptions={{ exact: true, includeSearch: false }}>
+          <Link to="/" search={(previous: { select?: string }) => previous} className="tab" activeOptions={{ exact: true, includeSearch: false }}>
             Board
           </Link>
-          <Link to="/isometric" search={(previous) => previous} className="tab" activeOptions={{ includeSearch: false }}>
+          <Link to="/isometric" search={(previous: { select?: string }) => previous} className="tab" activeOptions={{ includeSearch: false }}>
             Isometric
           </Link>
           <Link to="/database" search={{}} className="tab" activeOptions={{ includeSearch: false }}>
@@ -156,22 +164,23 @@ export function Shell(props: { readonly children: ReactNode }) {
           ))}
         </span>
         <span className="spacer" />
-        {live.evaluating ? <span className="evaluating">Re-evaluating…</span> : null}
-        <button className="icon-button" onClick={() => { setInfrastructureOwner(undefined); setDrawer(drawer === "infrastructure" ? undefined : "infrastructure"); }}>Infrastructure</button>
-        <button className="health" onClick={() => setDrawer(drawer === "health" ? undefined : "health")} title="Configuration health">
-          <Verdict label="Dev" diagnostics={snapshot.models.dev.diagnostics} />
-          <Verdict label="Prod" diagnostics={snapshot.models.prod.diagnostics} />
-          <span className="small muted">{snapshot.models.dev.evaluatedInMs + snapshot.models.prod.evaluatedInMs} ms</span>
-        </button>
-        <button className="icon-button" onClick={() => void history("undo")} disabled={!response.history.undo || studio.draft.dirty || !!studio.draftState.busy} title={response.history.undo ? `Undo ${response.history.undo}` : "Nothing to undo"}>
-          <Undo2 size={16} aria-hidden /> Undo
-        </button>
-        <button className="icon-button" onClick={() => void history("redo")} disabled={!response.history.redo || studio.draft.dirty || !!studio.draftState.busy} title={response.history.redo ? `Redo ${response.history.redo}` : "Nothing to redo"}>
-          <Redo2 size={16} aria-hidden /> Redo
-        </button>
-        <button className="icon-button" onClick={() => void run("framework:check", false)} disabled={live.running !== null} title={response.commands["framework:check"]?.description}>
-          <ClipboardCheck size={16} aria-hidden /> Check
-        </button>
+        <div className="bar-actions">
+          <button className="health" onClick={() => setDrawer(drawer === "health" ? undefined : "health")} title="Configuration health · updates automatically" aria-label="Configuration health" aria-expanded={drawer === "health"}>
+            {live.evaluating ? <span className="evaluating">Validating…</span> : <>
+              <Verdict label="Dev" diagnostics={snapshot.models.dev.diagnostics} />
+              <Verdict label="Prod" diagnostics={snapshot.models.prod.diagnostics} />
+              {snapshot.source.problems.length ? <span className="verdict warning"><AlertTriangle size={14} aria-hidden />{snapshot.source.problems.length}</span> : null}
+            </>}
+          </button>
+          <span className="history-actions" role="group" aria-label="Edit history">
+            <button className="icon-button" aria-label="Undo" onClick={() => void history("undo")} disabled={!response.history.undo || studio.draft.dirty || !!studio.draftState.busy} title={response.history.undo ? `Undo ${response.history.undo}` : "Nothing to undo"}>
+              <Undo2 size={16} aria-hidden />
+            </button>
+            <button className="icon-button" aria-label="Redo" onClick={() => void history("redo")} disabled={!response.history.redo || studio.draft.dirty || !!studio.draftState.busy} title={response.history.redo ? `Redo ${response.history.redo}` : "Nothing to redo"}>
+              <Redo2 size={16} aria-hidden />
+            </button>
+          </span>
+        </div>
       </header>
       <div className={`workspace ${selected ? "" : "no-selection"}`}>
         <main className={`canvas ${studio.model.stale ? "stale" : ""}`}>
@@ -189,9 +198,8 @@ export function Shell(props: { readonly children: ReactNode }) {
       </div>
       {studio.draftState.reviewOpen ? <EditDialog review={studio.draftState.review} /> : null}
       <UnsavedChangesDialog />
-      {drawer === "health" ? <DiagnosticsDrawer onClose={() => setDrawer(undefined)} /> : null}
-      {drawer === "command" ? <CommandDrawer result={result} onClose={() => setDrawer(undefined)} onRun={(name, confirmed) => void run(name, confirmed)} /> : null}
-      {drawer === "infrastructure" ? <Drawer title="Infrastructure" onClose={() => setDrawer(undefined)}><InfrastructurePanel key={`${mode}:${infrastructureOwner ?? "all"}`} initialOwner={infrastructureOwner} onNavigate={(id) => { studio.select(id); setDrawer(undefined); }} /></Drawer> : null}
+      {drawer === "health" ? <DiagnosticsDrawer onClose={() => setDrawer(undefined)} onCheck={() => void run("framework:check", false)} /> : null}
+      {drawer === "command" ? <CommandDrawer result={result} onClose={() => setDrawer(undefined)} onBack={() => setDrawer("health")} onRun={(name, confirmed) => void run(name, confirmed)} /> : null}
       <div className="toasts" role="status" aria-live="polite">
         {toasts.map((item) => (
           <div key={item.id} className={`toast ${item.tone === "refuse" ? "refuse" : ""}`}>
@@ -199,6 +207,6 @@ export function Shell(props: { readonly children: ReactNode }) {
           </div>
         ))}
       </div>
-    </div></InfrastructureNavigation.Provider>
+    </div>
   );
 }

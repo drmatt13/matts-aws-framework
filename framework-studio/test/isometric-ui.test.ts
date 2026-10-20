@@ -245,7 +245,7 @@ test("clicking a disabled wire explains its endpoints in the inspector and the n
 test("clicking a grouped connection opens every mapping and retains it across environments", async () => {
   await mount(true);
   const id = "connection:client-envfile:envfile%3Adev";
-  assert.ok(!labels.includes("3 · Dev"), "connection labels stay off the canvas");
+  assert.ok(!labels.includes("4 · Dev"), "connection labels stay off the canvas");
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
     resourceAvailability: catalogAvailability(response.snapshot.models) });
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
@@ -255,14 +255,14 @@ test("clicking a grouped connection opens every mapping and retains it across en
   ui.fireEvent.pointerMove(canvas, { clientX: at.x, clientY: at.y });
   await draw();
   const popup = await ui.screen.findByRole("tooltip");
-  assert.ok(popup.textContent?.includes("3 relationships"));
+  assert.ok(popup.textContent?.includes("4 relationships"));
   assert.deepEqual(visibleTags(popup), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
   assert.deepEqual(tagsOf(popup), [["hover-tag dev", "Dev: Connection enabled"], ["hover-tag off", "Prod: not deployed"]]);
   ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   const map = await ui.screen.findByRole("region", { name: "Aggregated connection map" });
   assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
-  assert.equal(map.querySelectorAll(".connection-map-member").length, 3);
+  assert.equal(map.querySelectorAll(".connection-map-member").length, 4);
   assert.deepEqual(visibleTags(map.querySelector("summary")!), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
   assert.ok(!map.textContent?.includes("→"), "connection rows omit repeated arrows");
   assert.equal(ui.screen.getByLabelText("Selection").textContent, id);
@@ -272,7 +272,7 @@ test("clicking a grouped connection opens every mapping and retains it across en
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
   await ui.waitFor(() => assert.ok(map.querySelector(".connection-availability > strong")?.textContent?.includes("Disabled in Production")));
   assert.equal(ui.screen.getByLabelText("Selection").textContent, id);
-  assert.equal(ui.screen.getByRole("region", { name: "Aggregated connection map" }).querySelectorAll(".connection-map-member").length, 3);
+  assert.equal(ui.screen.getByRole("region", { name: "Aggregated connection map" }).querySelectorAll(".connection-map-member").length, 4);
 });
 
 test("connections available in both environments retain two pills in every inspector row", async () => {

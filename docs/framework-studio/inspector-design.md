@@ -35,6 +35,11 @@ file destination and saved/default/empty state. Allowed values use a select; fre
 use the shared environment value control. Secrets start masked. Revert and default actions
 stage through the existing private environment-file review rather than navigating away.
 
+Checkbox help describes what the option does and stays the same when toggled. Keep related
+controls in place and disable them when inapplicable (including input defaults and client
+mapping options). Draft restrictions belong in existing status space; reserve that space
+for both messages so wrapping on narrow panels cannot move the controls below it.
+
 Descriptions show a two-line preview and open their editor deliberately. Source links
 show a filename and line, retain the full path in their title and open the original
 declaration. Field provenance expands beside its control rather than repeating long

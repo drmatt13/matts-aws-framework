@@ -21,9 +21,9 @@ function ReferenceSelect({ name, binding, options, disabled, onChange }: {
   </select>;
 }
 
-function InputSelect({ label, value, options, onChange }: { label: string; value: string; options: readonly ClientReferenceOption[]; onChange: (name: string) => void }) {
+function InputSelect({ label, value, options, disabled, onChange }: { label: string; value: string; options: readonly ClientReferenceOption[]; disabled?: boolean; onChange: (name: string) => void }) {
   const inputs = options.filter((option) => option.binding.kind === "input");
-  return <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value)}>
+  return <select aria-label={label} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
     {!inputs.some((option) => option.label === value) ? <option value={value}>{value || "Select CDK input"}</option> : null}
     {inputs.map((option) => <option key={option.id} value={option.label}>{option.label}</option>)}
   </select>;
@@ -62,18 +62,18 @@ export function ClientEnvironmentMappings() {
       const changed = JSON.stringify(binding) !== JSON.stringify(file.mappings[name]?.[mode]);
       return <li key={name} className={enabled ? "" : "mapping-disabled"}>
         <div className="client-mapping-name"><input type="checkbox" aria-label={`Enable ${name}`} checked={enabled} disabled={disabled} onChange={(event) => { const { enabled: _old, ...reference } = binding; update(name, event.target.checked ? reference : { ...reference, enabled: false }); }} /><strong><code>{name}</code></strong>
-          {!changed && enabled && entry?.sources[0]?.entity ? <button className="icon-button" aria-label={`Open source for ${name}`} title="Open source" disabled={draft.dirty} onClick={() => select(entry.sources[0]!.entity)}><ArrowUpRight size={13} aria-hidden /></button> : null}
+          {entry?.sources[0]?.entity ? <button className="icon-button" aria-label={`Open source for ${name}`} title="Open source" disabled={draft.dirty || !enabled} onClick={() => select(entry.sources[0]!.entity)}><ArrowUpRight size={13} aria-hidden /></button> : null}
           <button className="icon-button" title="Remove field from both environments" aria-label={`Remove ${name}`} disabled={disabled} onClick={() => remove(name)}><Trash2 size={13} aria-hidden /></button>
         </div>
         <ReferenceSelect name={name} binding={binding} options={file.options} disabled={disabled || !enabled} onChange={(next) => update(name, next)} />
-        {enabled && binding.kind === "endpoint" ? <details className="client-mapping-options"><summary>{binding.protocol}://{binding.host ?? "localhost"}:${`{${binding.port}}`}</summary><fieldset disabled={disabled}>
+        {binding.kind === "endpoint" ? <details className="client-mapping-options"><summary>{binding.protocol}://{binding.host ?? "localhost"}:${`{${binding.port}}`}</summary><fieldset disabled={disabled || !enabled}>
           <div className="client-mapping-url"><select aria-label={`Protocol for ${name}`} value={binding.protocol} onChange={(event) => update(name, { ...binding, protocol: event.target.value as typeof binding.protocol })}>{["http", "https", "ws", "wss"].map((protocol) => <option key={protocol}>{protocol}</option>)}</select><input aria-label={`Hostname for ${name}`} value={binding.host ?? "localhost"} onChange={(event) => update(name, { ...binding, host: event.target.value })} /></div>
           <label className="small">Port<InputSelect label={`Port input for ${name}`} value={binding.port} options={file.options} onChange={(port) => update(name, { ...binding, port })} /></label>
           <label className="client-mapping-check small"><input type="checkbox" aria-label={`Use URL override for ${name}`} checked={binding.override !== undefined} onChange={(event) => { const { override: _old, ...reference } = binding; update(name, event.target.checked ? { ...reference, override: name } : reference); }} />Use URL override</label>
-          {binding.override !== undefined ? <InputSelect label={`Override input for ${name}`} value={binding.override} options={file.options} onChange={(override) => update(name, { ...binding, override })} /> : null}
+          <InputSelect label={`Override input for ${name}`} value={binding.override ?? name} options={file.options} disabled={binding.override === undefined} onChange={(override) => update(name, { ...binding, override })} />
         </fieldset></details> : null}
-        {enabled && binding.kind === "output" ? <label className="client-mapping-check small"><input type="checkbox" aria-label={`Allow empty ${name}`} disabled={disabled} checked={!!binding.optional} onChange={(event) => { const { optional: _old, ...reference } = binding; update(name, event.target.checked ? { ...reference, optional: true } : reference); }} />Allow empty when stack is off</label> : null}
-        {!changed && enabled && entry?.status === "unavailable" ? <span className="small reason">Source unavailable</span> : null}
+        {binding.kind === "output" ? <label className="client-mapping-check small"><input type="checkbox" aria-label={`Allow empty ${name}`} disabled={disabled || !enabled} checked={!!binding.optional} onChange={(event) => { const { optional: _old, ...reference } = binding; update(name, event.target.checked ? { ...reference, optional: true } : reference); }} />Allow empty when stack is off</label> : null}
+        {entry?.status === "unavailable" ? <span className="small reason" style={{ visibility: !changed && enabled ? undefined : "hidden" }} aria-hidden={changed || !enabled}>Source unavailable</span> : null}
       </li>;
     })}</ul>
     {!Object.keys(mappings).length ? <p className="small muted">Add a field to choose its source.</p> : null}

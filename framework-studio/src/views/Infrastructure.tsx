@@ -1,12 +1,11 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { InfrastructureInventory, InfrastructureResource } from "../../shared/infrastructure";
 import { api, ApiError } from "../api";
 import { editorLink, titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { ResourceStatus } from "./ResourceStatus";
-
-export const InfrastructureNavigation = createContext<(owner?: string) => void>(() => {});
+import { InspectorDisclosure } from "./InspectorUI";
 
 function useInventory() {
   const { mode } = useStudio();
@@ -38,13 +37,16 @@ function ResourceDetails({ resource, inventory, navigate }: { resource: Infrastr
 }
 
 export function StackInfrastructure({ id }: { id: string }) {
-  const open = useContext(InfrastructureNavigation);
-  return <section><button className="button secondary" onClick={() => open(id)}>Inspect stack infrastructure</button></section>;
+  const { mode, select } = useStudio();
+  const [open, setOpen] = useState(false);
+  return <InspectorDisclosure title="CDK infrastructure" open={open} onToggle={setOpen}>
+    {open ? <InfrastructurePanel key={`${mode}:${id}`} initialOwner={id} onNavigate={select} /> : null}
+  </InspectorDisclosure>;
 }
 
 /** Same inventory and mode as node inspectors; this panel never creates map nodes or edits source. */
 export function InfrastructurePanel({ initialOwner, onNavigate }: { initialOwner?: string; onNavigate: (id: string) => void }) {
-  const { mode, index, draft } = useStudio();
+  const { mode, index, draft, draftState, live, model } = useStudio();
   const query = useInventory();
   const client = useQueryClient();
   const [search, setSearch] = useState("");
@@ -53,6 +55,8 @@ export function InfrastructurePanel({ initialOwner, onNavigate }: { initialOwner
   const [owner, setOwner] = useState(initialOwner ?? "");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const running = pending || query.data?.status === "running";
+  const blocked = draft.dirty || !!draftState.busy || live.evaluating || !!live.running || model.stale;
   const state = query.data;
   const inventory = useMemo(() => {
     if (!state?.inventory) return undefined;
@@ -78,25 +82,31 @@ export function InfrastructurePanel({ initialOwner, onNavigate }: { initialOwner
     finally { setPending(false); }
   };
   return <div className="infrastructure-panel">
-    <p>Infrastructure for <strong>{mode === "dev" ? "Development" : "Production"}</strong>. Lists resources synthesized by the full CDK app, including application CDK outside framework-config. Nothing needs to be deployed.</p>
-    <div className="infrastructure-run"><button className="button" disabled={query.isPending || !!query.error || pending || state?.status === "running" || draft.dirty} onClick={() => void synthesize()}>{pending || state?.status === "running" ? "Synthesizing…" : `Synthesize ${mode === "dev" ? "development" : "production"}`}</button></div>
-    <p className="small muted">Uses an isolated copy of {inputFile}. Creates templates and may bundle assets locally; it does not deploy or change the inputs file.</p>
-    {draft.dirty ? <p role="status">Apply or discard the current draft before synthesizing saved source.</p> : null}
+    <p className="small muted">Resources constructed by the saved CDK app for <strong>{mode === "dev" ? "Development" : "Production"}</strong>, including stacks outside framework-config.</p>
+    {initialOwner ? <p className="small">{owner === initialOwner ? <>Filtered to {titleOf(index, initialOwner)}. </> : null}<button className="linkish" onClick={() => onNavigate("island:stacks")}>Show all infrastructure</button></p> : null}
+    <div className="infrastructure-run"><button className="button" disabled={query.isPending || !!query.error || running || blocked} onClick={() => void synthesize()}>{running ? "Synthesizing…" : state?.inventory ? "Refresh from CDK" : "Synthesize CDK"}</button>
+      {state && !running ? <span className={`small ${state.stale || state.status === "failed" ? "warning" : "muted"}`}>{state.stale ? "Needs refresh" : state.status === "failed" ? "Synthesis failed" : state.inventory ? "Up to date" : "Not synthesized"}</span> : null}
+    </div>
+    <p className="small muted">Builds a local inventory and templates; does not deploy or rewrite stack source.</p>
+    {blocked ? <p role="status">{draft.dirty ? "Apply or discard the current draft before synthesizing saved source." : model.stale ? "Fix the configuration errors before synthesizing saved source." : "Wait for source validation or the current operation to finish before synthesizing."}</p> : null}
     {query.isPending ? <p>Loading inventory…</p> : null}
     {query.error ? <p role="alert">{infrastructureError(query.error)}</p> : null}
     {error || state?.error ? <pre className="infrastructure-error" role="alert">{error || state?.error}</pre> : null}
     {state?.stale ? <p className="infrastructure-stale" role="status">Stale inventory. Source or inputs changed, or the latest synthesis failed. Showing the last successful assembly.</p> : null}
-    {state?.generatedAt ? <p className="small">Generated {new Date(state.generatedAt).toLocaleString()} · {state.inputs?.file} · {state.inputs?.profile}<br />{state.inputs?.modeSelection}</p> : null}
-    {!inventory && !query.isPending && !query.error ? <p className="empty">{pending || state?.status === "running" ? "Synthesis is running. Resources will appear when the assembly is complete." : "No successful synthesis for this environment yet. Run synthesis explicitly to discover its infrastructure."}</p> : null}
+    <details><summary>Synthesis details{state?.generatedAt ? ` · ${new Date(state.generatedAt).toLocaleString()}` : ""}</summary>
+      <p className="small muted">Uses an isolated copy of {state?.inputs?.file ?? inputFile}. May bundle assets and use AWS credentials for CDK context lookups. The inputs file stays unchanged.</p>
+      {state?.inputs ? <p className="small muted">{state.inputs.profile} · {state.inputs.modeSelection}</p> : null}
+      {initialOwner ? <p className="small muted">Synthesis refreshes the full app inventory. The results below are filtered to this stack.</p> : null}
+    </details>
+    {!inventory && running ? <p className="small muted" role="status">Synthesis is running. Resources will appear when the assembly is complete.</p> : null}
     {inventory ? <>
       <label>Search infrastructure<input type="search" aria-label="Search infrastructure" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Resource type, logical ID, path or owner" /></label>
-      <div className="infrastructure-filters">
+      <details><summary>Filter resources{stack || type || owner ? " · active" : ""}</summary><div className="infrastructure-filters">
         <label>Stack<select aria-label="Infrastructure stack" value={stack} onChange={(event) => setStack(event.target.value)}><option value="">All stacks</option>{inventory.stacks.map((stack) => <option key={stack.id} value={stack.id}>{stack.name}{managedStack(stack) ? " · Framework managed" : ""}</option>)}</select></label>
         <label>Logical owner<select aria-label="Infrastructure owner" value={owner} onChange={(event) => setOwner(event.target.value)}><option value="">All owners</option><option value="__unknown">Unknown owner</option>{ownerIds.map((id) => <option key={id} value={id}>{titleOf(index, id)}</option>)}</select></label>
         <label>Resource type<select aria-label="Infrastructure resource type" value={type} onChange={(event) => setType(event.target.value)}><option value="">All types</option>{[...new Set(inventory.resources.map((resource) => resource.type))].sort().map((type) => <option key={type}>{type}</option>)}</select></label>
-      </div>
+      </div></details>
       <p role="status">{visible.length} of {inventory.resources.length} resources · {inventory.stacks.length} stacks</p>
-      {owner && initialOwner === owner ? <p className="small">Filtered to {titleOf(index, owner)}. <button className="linkish" onClick={() => { setOwner(""); setStack(""); setType(""); setSearch(""); }}>Show all infrastructure</button></p> : null}
       {inventory.stacks.filter((item) => (!stack || item.id === stack) && visible.some((resource) => resource.stack === item.id)).map((stack) => <section key={stack.id} className="infrastructure-stack"><h3>{stack.name}</h3><p className="small muted">{stack.environment}</p>
         <ResourceStatus resource={managedStack(stack)} />
         {visible.filter((resource) => resource.stack === stack.id).map((resource) => <details key={resource.id} className="infrastructure-resource"><summary><strong>{resource.logicalId ?? resource.constructPath}</strong><span className="small muted">{resource.type} · {classification[resource.classification]}</span></summary><ResourceDetails resource={resource} inventory={inventory} navigate={onNavigate} /></details>)}

@@ -96,6 +96,10 @@
 .section-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-3); margin-bottom: 10px; }
 .inspector .section-heading h3 { margin: 0; }
 .section-description { color: var(--graphite); font-size: var(--ui-caption); line-height: 1.5; margin: 0 0 var(--ui-space-3); }
+/* Reserve the larger status message, including wrapped lines on narrow panels. */
+.inspector-status-copy { display: grid; min-width: 0; }
+.inspector-status-copy > span { grid-area: 1 / 1; }
+.inspector-status-copy > [aria-hidden=true] { visibility: hidden; }
 .section-content > :last-child { margin-bottom: 0; }
 .inspector-disclosure > details > summary { display: flex; align-items: center; gap: var(--ui-space-2); list-style: none; min-height: 24px; font-weight: 600; cursor: pointer; font-size: var(--ui-label); }
 .inspector-disclosure > details > summary::-webkit-details-marker { display: none; }
@@ -613,11 +617,11 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .inspector .local-input-source { margin-bottom: var(--ui-space-3); overflow-wrap: anywhere; }
 .local-input-source button { font: inherit; }
 .local-input-status { display: flex; align-items: center; gap: 6px; margin-bottom: var(--ui-space-2); color: var(--graphite); font-size: var(--ui-caption); }
-.local-input-status > span { width: 6px; height: 6px; border-radius: 50%; background: var(--graphite); }
+.local-input-status > span:first-child { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--graphite); }
 .local-input-status.pending { color: var(--dev); }
-.local-input-status.pending > span { background: var(--dev); }
+.local-input-status.pending > span:first-child { background: var(--dev); }
 .local-input-status.missing { color: var(--refuse); }
-.local-input-status.missing > span { background: var(--refuse); }
+.local-input-status.missing > span:first-child { background: var(--refuse); }
 .local-input-choice { width: 100%; }
 .local-input-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ui-space-2); margin-top: var(--ui-space-2); }
 .local-input-actions:empty { display: none; }

@@ -41,7 +41,10 @@ export function LocalValue({ resource, details, error, busy, onRetry }: {
       : error ? <div className="local-input-error"><p className="reason" role="alert">{error}</p><button className="quiet small" onClick={onRetry}>Retry value read</button></div>
       : !details ? <p role="status" className="small muted">Reading local value…</p>
       : <>
-        <div className={`local-input-status${edit ? " pending" : requiredMissing ? " missing" : ""}`} role="status"><span aria-hidden />{status}</div>
+        <div className={`local-input-status${edit ? " pending" : requiredMissing ? " missing" : ""}`} role="status"><span aria-hidden /><span className="inspector-status-copy">
+          <span aria-hidden={otherChanges}>{status}</span>
+          <span aria-hidden={!otherChanges}>Apply or discard settings to edit this value.</span>
+        </span></div>
         {details.inputFile?.exists === false ? <div className="local-input-empty"><p className="small muted">Create this environment file before setting a local value.</p><button className="quiet small" onClick={() => select(`envfile:${mode}`)}>Set up .env.{mode}</button></div>
           : <>
             {resource.values && !secret ? <select className="local-input-choice" aria-label={`Value for ${name}`} aria-describedby={help} value={value} disabled={disabled} onChange={(event) => update(event.target.value)}>
@@ -58,7 +61,6 @@ export function LocalValue({ resource, details, error, busy, onRetry }: {
           {hasDefault ? <p>Default: <code>{resource.default}</code></p> : !value.trim() ? <p>{requiredMissing ? "A non-blank value is required." : "No local value is supplied."}</p> : null}
           {edit ? <p>Review Changes to save this value. Nothing is deployed.</p> : null}
           {secret ? <p>Masked by default. Saved only in this local file.</p> : null}
-          {otherChanges ? <p>Apply or discard the current settings draft before editing local values.</p> : null}
           {!details.inputFile ? <p>Restart Studio to enable inline value editing.</p> : null}
         </div>
         {!edit ? <RequirementNotice requirement={resource.inputRequirement} /> : null}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { ModelResource } from "../../shared/model";
 import type { ResourceDetails, ResourceIntent } from "../../shared/resources";
@@ -10,6 +10,7 @@ import { LocalValue } from "./LocalValue";
 export function ResourceEditor({ resource }: { readonly resource: ModelResource }) {
   const { snapshot, mode, model, live, select, toast, draft, draftState } = useStudio();
   const query = useQueryClient();
+  const help = useId();
   const [details, setDetails] = useState<ResourceDetails>();
   const [detailsError, setDetailsError] = useState<string>();
   const [reload, setReload] = useState(0);
@@ -58,13 +59,13 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
       {descriptionPending ? <p className="small muted">Apply or discard the description before editing input settings.</p> : null}
       {environmentPending ? <p className="small muted">Apply or discard local value changes before editing input settings.</p> : null}
       <fieldset disabled={disabled}><FormGroup title="Input behavior">
-        <label className="resource-check"><input type="checkbox" checked={form.required ?? !!resource.required} onChange={(event) => update({ required: event.target.checked })} />Required input</label>
-        <p className="small muted">Requires a value for every enabled consumer{secret ? "." : ", supplied by the environment file or a default."}</p>
-        <label className="resource-check"><input type="checkbox" checked={secret} onChange={(event) => setSecret(event.target.checked)} />Secret</label>
-        <p className="small muted">{secret ? `Stored in Secrets Manager at deployment. Author the value in cdk-app/.env.${mode}.` : `Read from cdk-app/.env.${mode} as a regular string.`}</p>
-        <label className="resource-check"><input type="checkbox" checked={!secret && hasDefault} disabled={secret} onChange={(event) => setHasDefault(event.target.checked)} />Default value</label>
-        {!secret && hasDefault ? <label className="resource-control"><span className="sr-only">Default value</span>{resource.values ? <select aria-label="Default value" value={fallback} onChange={(event) => setFallback(event.target.value)}><option value="" disabled>Choose a default</option>{resource.values.map((value) => <option key={value}>{value}</option>)}</select> : <input aria-label="Default value" value={fallback} onChange={(event) => setFallback(event.target.value)} />}</label> : null}
-        {secret ? <p className="small muted">Secrets have no source-code default.</p> : null}
+        <label className="resource-check"><input type="checkbox" aria-describedby={`${help}-required`} checked={form.required ?? !!resource.required} onChange={(event) => update({ required: event.target.checked })} />Required input</label>
+        <p id={`${help}-required`} className="small muted">Require a non-blank value for every enabled consumer.</p>
+        <label className="resource-check"><input type="checkbox" aria-describedby={`${help}-secret`} checked={secret} onChange={(event) => setSecret(event.target.checked)} />Secret</label>
+        <p id={`${help}-secret`} className="small muted">Store the value from cdk-app/.env.{mode} in Secrets Manager at deployment. Leave unchecked to use a regular string.</p>
+        <label className="resource-check"><input type="checkbox" aria-describedby={`${help}-default`} checked={!secret && hasDefault} disabled={secret} onChange={(event) => setHasDefault(event.target.checked)} />Default value</label>
+        <label className="resource-control"><span className="sr-only">Default value</span>{resource.values ? <select aria-label="Default value" aria-describedby={`${help}-default`} disabled={secret || !hasDefault} value={fallback} onChange={(event) => setFallback(event.target.value)}><option value="" disabled>Choose a default</option>{resource.values.map((value) => <option key={value}>{value}</option>)}</select> : <input aria-label="Default value" aria-describedby={`${help}-default`} disabled={secret || !hasDefault} value={fallback} placeholder="No default" onChange={(event) => setFallback(event.target.value)} />}</label>
+        <p id={`${help}-default`} className="small muted">Used when no local value is supplied. Secrets cannot have defaults.</p>
         <label className="resource-control"><span>Group</span><input aria-label="Resource group" list="resource-groups" value={group} placeholder="Ungrouped" onChange={(event) => setGroup(event.target.value)} /><datalist id="resource-groups">{model.resources.filter((item) => item.kind === "group").map((item) => <option key={item.id} value={item.path[0]} />)}</datalist></label>
         <p className="small muted">Leave empty for no group. Moving an input updates references and preserves its environment variable name.</p>
         </FormGroup><FormGroup title="Workload requirements">
@@ -78,7 +79,7 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
             return next;
           })} disabled={form.required ?? !!resource.required}><option value="preserve">Keep current: {summary}</option><option value="required">Required</option><option value="optional">Optional</option></select></label>;
         }) : <p className="small muted">No workload consumes this input. Application stacks may have their own requirements.</p>}
-        <p className="small muted">{(form.required ?? resource.required) ? "The catalog-wide flag requires this input for all consumers. Turn it off to manage individual or conditional workload rules." : "Requirements apply to enabled workloads in each graph. Conditional rules stay as declared unless you change them here."}</p>
+        <p className="small muted">Required input applies to every enabled consumer. Turn it off to edit individual workload rules. Conditional rules stay as declared unless changed here.</p>
       </FormGroup></fieldset>
       {error || entry?.error ? <p className="reason" role="alert">{error ?? entry?.error}</p> : null}
       <div className="resource-actions">

@@ -24,8 +24,13 @@ npm run studio -- --print # the whole model as JSON, then exit
 | Deploy | `/deploy` | Placeholder for future deployment controls |
 | Inspector | beside any view | One entity: source location, resolved settings and where they come from, relationships, and the editable fields |
 
-A Development/Production switch picks which deployment graph the views describe. Health
-indicators for both graphs, undo and redo, and a `framework:check` button sit in the top bar.
+A Development/Production switch picks which deployment graph the views describe. Automatic
+health indicators for both graphs and compact undo/redo controls sit in the top bar.
+Configuration health contains an optional saved-source audit for generated files and local
+wiring under **Additional checks**. This runs `framework:check`; it is separate from the
+automatic configuration validation and inspector preflight. The **Stacks** island inspector
+owns CDK synthesis and its resource inventory; catalog stack inspectors offer a scoped
+inline disclosure. These actions build local templates and never deploy or rewrite stacks.
 
 The isometric view uses a thin world-anchored grid and local official AWS SVGs, with
 Lucide outlines for generic concepts. Startup and watched CDK edits automatically rebuild

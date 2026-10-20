@@ -486,16 +486,21 @@ inputs, context and dependency versions detect stale results, including edits du
 run. Errors retain the last successful inventory, timestamp and configuration. A server
 restart clears inventory history; this milestone does not persist raw assemblies.
 
-`src/views/Infrastructure.tsx` is a single drawer shared by the header and existing
-stack inspectors. Workload, route, input, member and island inspectors omit this action.
-It filters by stack, logical owner and resource type, supports text search,
-and navigates back through Studio's guarded logical selection. A catalog stack owner
+`src/views/Infrastructure.tsx` is an inline inventory shared by the Stacks island inspector
+and catalog stack inspectors. The island exposes synthesis directly; a stack lazily opens
+its scoped inventory through the shared inspector disclosure. Workload, route, input and
+member inspectors omit this action. There is no infrastructure drawer or header action.
+Filters for stack, logical owner and resource type expand separately from text search.
+The inventory navigates through Studio's guarded logical selection. A catalog stack owner
 matches its entire stack collection, including resources with unknown individual owners.
 The asynchronous Lambda and WebSocket handler/API stacks are omitted from the browse
 view; the underlying synthesis inventory remains complete. RDS remains visible with a
 framework-managed label. Synthesis has no profile-entry control in Studio.
 No generated infrastructure nodes are added to the map. Synthesis is disabled while an
-inspector draft is dirty and never starts from view/mode changes. Deployment Inputs,
+inspector draft is dirty, validation is pending, or a source operation is running, and never
+starts from view/mode changes. Automatic graph health remains in the header; the distinct
+`framework:check` generated-file/local-wiring audit lives in health's Additional checks.
+Deployment Inputs,
 creation wizards and deployment comparisons remain subsequent milestones.
 
 ## Security model

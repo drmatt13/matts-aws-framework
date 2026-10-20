@@ -14,6 +14,7 @@ let query: typeof import("@tanstack/react-query");
 let router: typeof import("@tanstack/react-router");
 let studio: typeof import("../src/studio");
 let component: typeof import("../src/views/Infrastructure");
+let shell: typeof import("../src/views/Shell");
 let inputs: typeof import("../src/views/DeploymentInputs");
 let clientInputs: typeof import("../src/views/ClientEnvironment");
 let controls: typeof import("../src/views/DraftControls");
@@ -23,7 +24,7 @@ let builder: SnapshotBuilder;
 let response: SnapshotResponse;
 const clients: import("@tanstack/react-query").QueryClient[] = [];
 
-const ready: InfrastructureState = { mode: "dev", status: "ready", stale: false, generatedAt: "2026-10-17T12:00:00Z", inputs: { file: "cdk-app/.env", modeSelection: "Isolated development", profile: "dev" }, inventory: {
+const ready: InfrastructureState = { mode: "dev", status: "ready", stale: false, generatedAt: "2026-10-17T12:00:00Z", inputs: { file: "cdk-app/.env.dev", modeSelection: "Isolated development", profile: "dev" }, inventory: {
   version: 1, stacks: [{ id: "App", name: "App", environment: "aws://111111111111/us-east-1", dependencies: [], owners: ["resource:cognito"] }],
   resources: [
     { id: "function", stack: "App", logicalId: "Handler", type: "AWS::Lambda::Function", classification: "framework", owners: ["lambda:graphql-api"] },
@@ -42,6 +43,7 @@ before(async () => {
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   ui = require("@testing-library/react"); query = require("@tanstack/react-query"); router = require("@tanstack/react-router");
   studio = await import("../src/studio"); component = await import("../src/views/Infrastructure"); api = await import("../src/api");
+  shell = await import("../src/views/Shell");
   inputs = await import("../src/views/DeploymentInputs");
   clientInputs = await import("../src/views/ClientEnvironment");
   controls = await import("../src/views/DraftControls"); review = await import("../src/views/EditDialog");
@@ -51,19 +53,91 @@ before(async () => {
 after(async () => { await builder.dispose(); dom.window.close(); });
 afterEach(() => { ui.cleanup(); clients.splice(0).forEach((client) => client.clear()); mock.restoreAll(); });
 
-async function mount(navigate: (id: string) => void = () => {}, initialOwner?: string, environmentFile?: ModelResource) {
+async function mount(navigate: (id: string) => void = () => {}, initialOwner?: string, environmentFile?: ModelResource, withShell = false) {
   function Workbench() {
     const context = studio.useStudio();
+    if (withShell) return h(shell.Shell, null,
+      h("button", { onClick: () => context.select("island:stacks") }, "Stacks island settings"),
+      h("button", { onClick: () => {
+        const fact = context.model.fields["lambda:graphql-api"]!.find((fact) => fact.field === "lambda.memorySize")!;
+        context.draft.setField("lambda:graphql-api", fact, 768);
+      } }, "Stage memory edit"));
     return h("div", null, h("button", { onClick: () => context.setMode("prod") }, "Production"), environmentFile ? h("div", null, h(environmentFile.clientEnvironment ? clientInputs.ClientEnvironmentFileView : inputs.EnvironmentFileView, { resource: environmentFile }), h(controls.DraftFooter), h(controls.UnsavedChangesDialog), context.draftState.reviewOpen ? h(review.EditDialog, { review: context.draftState.review }) : null) : h(component.InfrastructurePanel, { key: context.mode, onNavigate: navigate, initialOwner }));
   }
-  function Root() { return h(studio.StudioProvider, { response, selected: undefined, select: (id) => { if (id) navigate(id); }, children: h(Workbench) }); }
-  const root = router.createRootRoute({ component: Root });
+  function Root() {
+    const search = router.useSearch({ strict: false }) as { select?: string };
+    const select = router.useNavigate();
+    return h(studio.StudioProvider, { response, selected: search.select, select: (id) => { if (id) navigate(id); void select({ to: ".", search: { select: id } } as never); }, children: h(Workbench) });
+  }
+  const root = router.createRootRoute({ component: Root, validateSearch: (search) => ({ select: typeof search.select === "string" ? search.select : undefined }) });
   const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null })]) });
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); clients.push(client);
   ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
-  if (environmentFile) await ui.screen.findByRole("heading", { name: environmentFile.clientEnvironment ? ".env" : environmentFile.path[0] });
-  else await ui.screen.findByRole("button", { name: "Synthesize development" });
+  if (withShell) await ui.screen.findByRole("button", { name: "Configuration health" });
+  else if (environmentFile) await ui.screen.findByRole("heading", { name: environmentFile.clientEnvironment ? ".env" : environmentFile.path[0] });
+  else await ui.screen.findByRole("button", { name: /Synthesize CDK|Refresh from CDK/ });
 }
+
+test("the header keeps automatic health and compact history; the saved-source audit is available in health", async () => {
+  const commands: unknown[][] = [];
+  mock.method(api.api, "command", async (...args: unknown[]) => { commands.push(args); return { command: "framework:check", exitCode: 0, output: "All checks passed", durationMs: 20 }; });
+  await mount(() => {}, undefined, undefined, true);
+  const header = document.querySelector(".bar")! as HTMLElement;
+  assert.equal(ui.within(header).queryByRole("button", { name: "Check" }), null);
+  assert.equal(ui.within(header).queryByRole("button", { name: "Infrastructure" }), null);
+  assert.equal(ui.within(header).getByRole("button", { name: "Undo" }).textContent, "");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Configuration health" }));
+  assert.ok(ui.screen.getByText(/Configuration validation updates automatically/));
+  assert.equal(commands.length, 0);
+  ui.fireEvent.click(ui.screen.getByText("Additional checks", { selector: "summary" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Check generated files and wiring" }));
+  await ui.screen.findByRole("heading", { name: "framework:check passed" });
+  assert.deepEqual(commands, [["framework:check", false]]);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to configuration health" }));
+  assert.ok(ui.screen.getByRole("heading", { name: "Configuration health" }));
+});
+
+test("Stacks settings synthesize explicitly, switch inventories, and block synthesis during drafts", async () => {
+  const runs: Mode[] = [];
+  mock.method(api.api, "infrastructure", async (mode: Mode) => mode === "dev" ? ready : { mode, status: "empty", stale: false });
+  mock.method(api.api, "synthesize", async (mode: Mode) => { runs.push(mode); return { ...ready, mode }; });
+  await mount(() => {}, undefined, undefined, true);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Stacks island settings" }));
+  await ui.screen.findByRole("searchbox", { name: "Search infrastructure" });
+  assert.ok(ui.screen.getByRole("heading", { name: "CDK infrastructure" }));
+  assert.equal(ui.screen.queryByText(/The framework has no shared defaults/), null);
+  assert.deepEqual(runs, []);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Refresh from CDK" }));
+  await ui.waitFor(() => assert.deepEqual(runs, ["dev"]));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Production" }));
+  const synthesize = await ui.screen.findByRole("button", { name: "Synthesize CDK" });
+  await ui.waitFor(() => assert.equal((synthesize as HTMLButtonElement).disabled, false));
+  assert.equal(ui.screen.queryByRole("searchbox", { name: "Search infrastructure" }), null);
+  assert.deepEqual(runs, ["dev"]);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Stage memory edit" }));
+  assert.equal((synthesize as HTMLButtonElement).disabled, true);
+  assert.ok(ui.screen.getByText(/Apply or discard the current draft before synthesizing/));
+});
+
+test("a stack browses CDK inline and opens the Stacks inspector for all resources", async () => {
+  let runs = 0;
+  mock.method(api.api, "infrastructure", async () => ready);
+  mock.method(api.api, "synthesize", async () => { runs++; return ready; });
+  await mount(() => {}, undefined, undefined, true);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Stacks island settings" }));
+  const entries = await ui.screen.findByText("Island entries", { selector: "summary span" });
+  ui.fireEvent.click(entries.closest("summary")!);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "CognitoStack" }));
+  const disclosure = await ui.screen.findByText("CDK infrastructure", { selector: "summary span" });
+  ui.fireEvent.click(disclosure.closest("summary")!);
+  await ui.screen.findByRole("searchbox", { name: "Search infrastructure" });
+  assert.ok(ui.screen.getByText("Internal", { selector: "strong" }), "stack ownership includes children with unknown owners");
+  assert.equal(document.querySelector(".drawer"), null);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Show all infrastructure" }));
+  await ui.screen.findByRole("heading", { name: "Stacks" });
+  assert.ok(ui.screen.getByText("Internal", { selector: "strong" }));
+  assert.equal(runs, 0);
+});
 
 test("client mappings list every variable, navigate to their sources and change recipes with the graph", async () => {
   const file = response.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!;
@@ -126,6 +200,7 @@ test("inventory search, type/owner filters and owner navigation use synthesis ev
   ui.fireEvent.change(ui.screen.getByRole("searchbox"), { target: { value: "IAM role" } });
   assert.ok(ui.screen.getByText("1 of 3 resources · 1 stacks"));
   ui.fireEvent.change(ui.screen.getByRole("searchbox"), { target: { value: "" } });
+  ui.fireEvent.click(ui.screen.getByText("Filter resources", { selector: "summary" }));
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Infrastructure owner" }), { target: { value: "__unknown" } });
   assert.ok(ui.screen.getByText("Internal", { selector: "strong" })); assert.equal(ui.screen.queryByText("HandlerRole", { selector: "strong" }), null);
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Infrastructure owner" }), { target: { value: "lambda:graphql-api" } });
@@ -142,6 +217,7 @@ test("managed handler/API stacks stay out of browsing and RDS is marked as frame
   const stacks = names.map((name) => ({ id: name, name, environment: "local", dependencies: [], owners: [] }));
   mock.method(api.api, "infrastructure", async () => ({ ...ready, inventory: { ...inventory, stacks: [...inventory.stacks, ...stacks, { id: "Rds", name: "my-app-RdsStack", environment: "local", dependencies: [], owners: ["resource:rds"] }], resources: [...inventory.resources, ...names.map((name) => ({ id: name, logicalId: name, stack: name, type: "AWS::Hidden::Fixture", classification: "unowned" as const, owners: [] })), { id: "database", logicalId: "Database", stack: "Rds", type: "AWS::RDS::DBInstance", classification: "framework" as const, owners: ["resource:rds.database"] }] } }));
   await mount(); await ui.screen.findByRole("searchbox");
+  ui.fireEvent.click(ui.screen.getByText("Filter resources", { selector: "summary" }));
   assert.equal(ui.screen.queryByText("AWS connection options (optional)"), null);
   assert.equal(ui.screen.queryByRole("textbox", { name: "Synthesis AWS profile" }), null);
   for (const name of names) assert.equal(ui.screen.queryByText(name), null);
@@ -156,7 +232,7 @@ test("a failed explicit synthesis keeps prior resources and shows the stale/erro
   mock.method(api.api, "infrastructure", async () => ready);
   mock.method(api.api, "synthesize", async () => ({ ...ready, status: "failed", stale: true, error: "CDK configuration validation failed." } as InfrastructureState));
   await mount(); await ui.screen.findByRole("searchbox");
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Synthesize development" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Refresh from CDK" }));
   await ui.screen.findByRole("alert");
   assert.ok(ui.screen.getByText(/Stale inventory/));
   assert.ok(ui.screen.getByText("HandlerRole", { selector: "strong" }));
@@ -168,10 +244,10 @@ test("switching environment reads its independent inventory and synthesizes only
   mock.method(api.api, "synthesize", async (mode: Mode) => { runs.push(mode); return { ...ready, mode }; });
   await mount(); await ui.screen.findByRole("searchbox");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Production" }));
-  await ui.screen.findByRole("button", { name: "Synthesize production" });
-  await ui.waitFor(() => assert.equal((ui.screen.getByRole("button", { name: "Synthesize production" }) as HTMLButtonElement).disabled, false));
+  await ui.screen.findByRole("button", { name: "Synthesize CDK" });
+  await ui.waitFor(() => assert.equal((ui.screen.getByRole("button", { name: "Synthesize CDK" }) as HTMLButtonElement).disabled, false));
   assert.deepEqual(runs, []);
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Synthesize production" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Synthesize CDK" }));
   await ui.screen.findByRole("searchbox");
   assert.deepEqual(runs, ["prod"]);
 });
@@ -184,7 +260,7 @@ test("an outdated running server explains how to recover instead of offering a s
   const alert = await ui.screen.findByRole("alert");
   assert.match(alert.textContent!, /Restart npm run studio/);
   assert.match(alert.textContent!, /No AWS deployment is needed/);
-  assert.equal((ui.screen.getByRole("button", { name: "Synthesize development" }) as HTMLButtonElement).disabled, true);
+  assert.equal((ui.screen.getByRole("button", { name: "Synthesize CDK" }) as HTMLButtonElement).disabled, true);
   assert.equal(ui.screen.queryByText(/No successful synthesis/), null);
   assert.equal(runs, 0);
 });
@@ -197,13 +273,13 @@ test("the inventory API rejects an old server's HTML fallback even when its HTTP
 });
 
 test("a logical inspector can reveal all app resources, including resources with no framework declaration", async () => {
+  let selected = "";
   mock.method(api.api, "infrastructure", async () => ready);
-  await mount(() => {}, "lambda:graphql-api");
+  await mount((id) => { selected = id; }, "lambda:graphql-api");
   await ui.screen.findByRole("searchbox");
   assert.equal(ui.screen.queryByText("Internal", { selector: "strong" }), null);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Show all infrastructure" }));
-  assert.ok(ui.screen.getByText("Internal", { selector: "strong" }));
-  assert.ok(ui.screen.getByText("3 of 3 resources · 1 stacks"));
+  assert.equal(selected, "island:stacks");
 });
 
 function environmentFixture() {

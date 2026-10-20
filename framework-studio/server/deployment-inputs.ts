@@ -93,7 +93,7 @@ export function withDeploymentInputs(root: string, model: ModeModel, models?: Re
     inputSources: files.flatMap((file) => file.entries.filter((entry) => entry.name === resource.fromEnv).map((entry) => ({ file: file.path, entry }))) } : resource);
   // A file belongs to its own environment's graph and is absent from the other's, as any resource a graph does
   // not hold is: every view follows `absent`, so the file's connections recede in the other environment too.
-  for (const file of files) resources.push({ id: `envfile:${file.mode}`, path: [`.env.${file.mode}`], kind: "envFile", absent: file.mode !== model.mode, deploymentFile: file });
+  for (const file of files) resources.push({ id: `envfile:${file.mode}`, path: [file.path], kind: "envFile", absent: file.mode !== model.mode, deploymentFile: file });
   const edges: ModelEdge[] = files.flatMap((file) => file.entries.flatMap((entry) => entry.targets.filter((to) => entry.status !== "missing" || entry.requirements?.some((item) => item.resource === to && item.required)).map((to) => ({
     id: `input-source:${file.mode}:${entry.name}:${to}`, relation: "supplies" as const, from: `envfile:${file.mode}`, to, provenance: "source" as const,
     inputRequirement: entry.requirements?.find((item) => item.resource === to),

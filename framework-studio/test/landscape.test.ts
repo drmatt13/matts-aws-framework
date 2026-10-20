@@ -52,8 +52,8 @@ test("connection labels reflect relationships and both endpoints in each graph",
     }
     assert.equal(group.badge, group.availability.dev && group.availability.prod ? undefined : group.availability.dev ? "dev" : group.availability.prod ? "prod" : "off");
   }
-  assert.equal(dev.edges.find((group) => group.from === "client-envfile" && group.to === "envfile:dev")?.members.length, 3);
-  assert.equal(connectionLabel(dev.edges.find((group) => group.from === "client-envfile" && group.to === "envfile:dev")!), "3 · Dev");
+  assert.equal(dev.edges.find((group) => group.from === "client-envfile" && group.to === "envfile:dev")?.members.length, 4);
+  assert.equal(connectionLabel(dev.edges.find((group) => group.from === "client-envfile" && group.to === "envfile:dev")!), "4 · Dev");
 });
 
 test("aggregation keeps per-mode evidence, direction and stable identities", () => {
@@ -924,7 +924,7 @@ test("both views draw the same connections; the other environment's own are mark
   const ids = (scene: Scene) => scene.edges.map((edge) => edge.id).sort();
   assert.deepEqual(ids(dev), ids(prod), "switching the view never makes a connection appear or vanish");
   const marked = (scene: Scene) => scene.edges.filter((edge) => edge.otherLens).map((edge) => `${edge.otherLens}: ${edge.edge.from} -> ${edge.edge.to}`).sort();
-  assert.deepEqual(marked(dev), ["prod: client-envfile -> framework-stack:FrontendWebsiteS3Stack", "prod: lambda:graphql-api -> resource:rds.database", "prod: lambda:oauth-callback -> resource:rds.database"]);
+  assert.deepEqual(marked(dev), ["prod: client-envfile -> envfile:prod", "prod: client-envfile -> framework-stack:FrontendWebsiteS3Stack", "prod: lambda:graphql-api -> resource:rds.database", "prod: lambda:oauth-callback -> resource:rds.database"]);
   assert.deepEqual(marked(prod), ["dev: client-envfile -> envfile:dev", "dev: lambda:cognito-post-confirmation-trigger -> local:postgres", "dev: lambda:graphql-api -> local:postgres", "dev: lambda:oauth-callback -> local:postgres"]);
   // A connection a lens does not hold itself is one the lens dims, and the model's own edges are never marked.
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {

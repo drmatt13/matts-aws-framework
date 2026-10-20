@@ -23,6 +23,10 @@ test("every documented client variable maps to the selected graph's inputs or pu
     const file = clientFile(model);
     assert.deepEqual(file.entries.map((entry) => entry.name).sort(), expected);
     assert.equal(file.inputs, `cdk-app/.env.${model.mode}`);
+    const inputEdge = model.edges.find((edge) => edge.id === `client-environment:inputs:envfile:${model.mode}`);
+    assert.equal(inputEdge?.from, CLIENT_ENVIRONMENT_ID);
+    assert.equal(inputEdge?.to, `envfile:${model.mode}`);
+    assert.match(inputEdge!.detail!, /Environment-file generation is separate/);
     const entries = new Map(file.entries.map((entry) => [entry.name, entry]));
     const cognito = model.resources.find((resource) => resource.stackClass === "CognitoStack")!;
     for (const name of ["VITE_USER_POOL_ID", "VITE_USER_POOL_CLIENT_ID", "VITE_COGNITO_DOMAIN", "VITE_AWS_REGION"]) {
@@ -87,6 +91,11 @@ test("the client island, its source connections and variable search exist in bot
     assert.equal(scene.islands.find((island) => island.id === CLIENT_ENVIRONMENT_ISLAND)?.title, "Client-app environment file");
     assert.equal(scene.nodes.find((node) => node.id === CLIENT_ENVIRONMENT_ID)?.island, CLIENT_ENVIRONMENT_ISLAND);
     assert.ok(scene.edges.some((edge) => edge.from === CLIENT_ENVIRONMENT_ID && edge.to === "resource:cognito"));
+    for (const mode of ["dev", "prod"] as const) {
+      const connection = scene.edges.find((edge) => edge.from === CLIENT_ENVIRONMENT_ID && edge.to === `envfile:${mode}`);
+      assert.ok(connection, `${mode} inputs stay connected in either view`);
+      assert.deepEqual(connection.availability, { dev: mode === "dev", prod: mode === "prod" });
+    }
     assert.ok(searchScene(scene, model, "VITE_USER_POOL_CLIENT_ID")!.nodes.has(CLIENT_ENVIRONMENT_ID));
   }
   assert.deepEqual(scenes[0]!.nodes.map((node) => [node.id, node.gx, node.gy]), scenes[1]!.nodes.map((node) => [node.id, node.gx, node.gy]));

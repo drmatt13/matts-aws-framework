@@ -142,16 +142,21 @@ The initial mappings are:
 | `VITE_COGNITO_DOMAIN` | Cognito `UserPoolDomainUrl` output | Same output in the selected deployment |
 
 CDK inputs always refer to the selected mode's `.env.dev` or `.env.prod`; there is no
-legacy `cdk-app/.env`. Region comes from Cognito's deployment rather than
+legacy `cdk-app/.env`. Both CDK files connect to `client-app/.env` in the map, each in
+its own environment, even when that environment's fields all use stack outputs.
+This file relationship describes the input context; it does not generate client files.
+Region comes from Cognito's deployment rather than
 `LOCAL_AWS_REGION`, which can name a different region for local SDK calls. An absent
 WebSocket stack permits an empty URL; an enabled stack missing its output is reported as
 unavailable. Snapshots and search carry variable names and recipes, never resolved values.
 
 ## Synthesized infrastructure
 
-Open **Infrastructure** in the header, or **Inspect stack infrastructure** in a catalog stack
-inspector. Choose Development or Production, then run
-**Synthesize**. Opening the panel, switching modes and editing source never synthesize
+Select the **Stacks** island to open **CDK infrastructure** in the inspector. Choose
+Development or Production in the header, then **Synthesize CDK** to build the inventory,
+or **Refresh from CDK** to regenerate it from saved source. A catalog stack's
+**CDK infrastructure** disclosure shows scoped resources inline; **Show all infrastructure**
+returns to the Stacks inspector. Opening an inspector, switching modes and editing source never synthesize
 automatically. Apply or discard a pending inspector draft first; synthesis reads saved source.
 
 This runs the app configured in `cdk-app/cdk.json` (`bin/cdk-app.ts`), so it includes
@@ -161,7 +166,8 @@ starts with an owner filter; **Show all infrastructure** clears that scope. No e
 CloudFormation deployment is required.
 
 The searchable inventory groups resources by stack, with owner and CloudFormation-type
-filters. Stack inspectors include their complete resource collection, including unknown
+filters in **Filter resources**. Freshness stays beside the refresh action; synthesis
+time, inputs and credential context expand under **Synthesis details**. Stack inspectors include their complete resource collection, including unknown
 owners. Resource details show logical IDs, construct paths, explicit ownership evidence,
 owner declaration links and separate CloudFormation dependencies. Generated roles,
 policies and log groups stay in this panel rather than adding map nodes. Imported references
