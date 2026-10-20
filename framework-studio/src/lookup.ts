@@ -127,6 +127,22 @@ export function titleOf(index: ModelIndex, id: string): string {
   return id;
 }
 
+/** Connections need a type as well as a name: routes and handlers often share both. */
+export function endpointLabel(index: ModelIndex, id: string): string {
+  const title = titleOf(index, id);
+  if (index.routes.has(id)) return `API: ${title}`;
+  const target = index.targets.get(id);
+  if (target) return `${target.role === "http" ? "HTTP" : target.role === "webSocket" ? "WebSocket" : ROLE_LABEL[target.role]}: ${title}`;
+  if (index.localServices.has(id)) return `Database: ${title}`;
+  if (index.defaults.has(id)) return `Defaults: ${title}`;
+  const resource = index.resources.get(id);
+  if (resource) {
+    const labels = { envFile: "Environment file", stack: "Stack", member: "Stack member", construct: "Construct", input: "Input", secret: "Secret", group: "Inputs" };
+    return `${labels[resource.kind]}: ${title}`;
+  }
+  return title;
+}
+
 /** An editor link that opens the declaration where it was written. */
 export function editorLink(repositoryRoot: string, location: SourceLocation): string {
   const absolute = `${repositoryRoot.replaceAll("\\", "/")}/${location.file}`;

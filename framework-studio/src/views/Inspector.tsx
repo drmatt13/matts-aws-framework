@@ -1,6 +1,6 @@
 import { X } from "lucide-react";
 import type { ModelEdge, ModelResource, ModelRoute, ModelTarget, ModelWorkflow, Placement } from "../../shared/model";
-import { RELATION_LABEL, ROLE_LABEL, titleOf } from "../lookup";
+import { RELATION_LABEL, ROLE_LABEL, endpointLabel, titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
 import { resourceIcon, routeIcon, targetIcon } from "../icons";
@@ -94,7 +94,7 @@ function Relations(props: { readonly id: string }) {
       <span>
         <span className="muted small">{verb} </span>
         <button className="linkish" onClick={() => select(other)}>
-          {titleOf(index, other)}
+          {endpointLabel(index, other)}
         </button>
         {edge.provenance === "derived" ? <span className="muted small"> (derived)</span> : null}
         {edge.provenance === "source" ? <span className="muted small"> ({edge.relation === "supplies" ? "input file" : "CDK source"})</span> : null}
@@ -194,7 +194,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
   const workflow = model.workflows.find((candidate) => candidate.ref === target.ref);
   const compute = target.compute;
   const buildFields = new Set(["lambda.architecture", "lambda.packaging", "lambda.runtime", "lambda.bundling.minify", "lambda.bundling.sourceMap"]);
-  const settingOrder = ["lambda.memorySize", "lambda.timeoutSeconds", "deploy", "lambda.subnet", "lambda.logRetentionDays"];
+  const settingOrder = ["deploy", "lambda.memorySize", "lambda.timeoutSeconds", "lambda.subnet", "lambda.logRetentionDays"];
   const settings = facts.filter((fact) => !buildFields.has(fact.field) && fact.field !== "http.auth" && fact.field !== "events.localReplay")
     .sort((a, b) => (settingOrder.indexOf(a.field) < 0 ? 99 : settingOrder.indexOf(a.field)) - (settingOrder.indexOf(b.field) < 0 ? 99 : settingOrder.indexOf(b.field)));
   return (
@@ -231,10 +231,6 @@ function TargetView(props: { readonly target: ModelTarget }) {
             {compute.port ? `, port ${compute.port}` : ""}.
           </p>
         ) : null}
-      </InspectorDisclosure>
-      <InspectorDisclosure title="Source and identity">
-        <p className="small muted">Deployed as <code>{target.constructId}</code>{target.constructIdPinned ? ", pinned by cloud.constructId. Changing it would replace the deployed resource." : ", derived from its id."}</p>
-        <Written location={snapshot.source.entities[target.ref]?.key} />
       </InspectorDisclosure>
       {workflow ? <Steps workflow={workflow} /> : null}
       <Relations id={target.ref} />

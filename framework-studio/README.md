@@ -43,8 +43,7 @@ The design, history and roadmap are in [docs/framework-studio](../docs/framework
 
 The isometric map arranges islands using weighted dependencies and projected crossing,
 length, obstacle and viewport costs. Small edits retain nearby positions; major workspace
-aspect changes reflow automatically. **Auto-arrange islands** releases that stability
-preference and fits a fresh layout. Pan, zoom, search, selection and the mode switch keep
+aspect changes reflow automatically. Pan, zoom, search, selection and the mode switch keep
 the current arrangement. See [graph-aware layout and measurements](../docs/framework-studio/graph-layout.md).
 
 ## What it shows, and where that comes from
@@ -304,8 +303,8 @@ when it does not, so a missing environment is as visible as a present one), and 
 are always read, so the Dev/Prod switch does not change the pills. Packets move only along the selection's edges, and the Pause button or
 reduced-motion stops them. A still picture draws no frames.
 
-**Refresh CDK links** re-reads the source and updates the ignored internal index at
-`.cache/framework-studio/cdk-links.json`. Startup and watched CDK changes also rebuild it.
+Startup and watched CDK source changes automatically rebuild the ignored internal index
+at `.cache/framework-studio/cdk-links.json`; no manual map refresh is needed.
 For example, `referenceExamples` shows bucket → topic (EventBridge), topic → queue (SNS),
 and queue → dead-letter queue. The index contains only source hashes, entity ids and
 relationship evidence. It is disposable; framework configuration and CDK never read it.

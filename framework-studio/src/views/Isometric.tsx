@@ -1,7 +1,6 @@
-import { Crosshair, LayoutGrid, Maximize2, Minus, Pause, Play, Plus, RefreshCw, Search, X } from "lucide-react";
-import { api } from "../api";
+import { Crosshair, Maximize2, Minus, Pause, Play, Plus, Search, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { RELATION_LABEL, indexModel, titleOf } from "../lookup";
+import { RELATION_LABEL, endpointLabel, indexModel } from "../lookup";
 import { buildScene, type Scene, type SceneNode } from "../scene/build";
 import { islandDrawOrder, islandSlabs } from "../scene/slabs";
 import {
@@ -65,17 +64,7 @@ const ENVIRONMENTS = [["dev", "Dev"], ["prod", "Prod"]] as const;
 const NO_DESCRIPTION = "No description yet. Select it to write one.";
 
 export function Isometric() {
-  const { model, index, snapshot, selected, select, toast, live: studioLive } = useStudio();
-  const [scanning, setScanning] = useState(false);
-  const refreshCdkLinks = async () => {
-    setScanning(true);
-    try {
-      const result = await api.refreshCdkLinks();
-      toast(`Found ${result.edges} CDK resource links in ${result.files} stack files.`);
-    } catch (error) {
-      toast(error instanceof Error ? error.message : String(error), "refuse");
-    } finally { setScanning(false); }
-  };
+  const { model, index, snapshot, selected, select } = useStudio();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SceneRenderer | undefined>(undefined);
@@ -85,8 +74,7 @@ export function Isometric() {
   const [stats, setStats] = useState({ ms: 0 });
   const [aspect, setAspect] = useState(16 / 9);
   const previousLayout = useRef<LayoutResult | undefined>(undefined);
-  const [arrangement, setArrangement] = useState(0);
-  const pendingArrangeFit = useRef(false);
+  const pendingLayoutFit = useRef(false);
   const aspectTimer = useRef<number | undefined>(undefined);
   const appliedAspect = useRef(16 / 9);
 
@@ -96,7 +84,7 @@ export function Isometric() {
   );
   const resourceAvailability = useMemo(() => catalogAvailability(snapshot.models), [snapshot.models]);
   const scene = useMemo(() => buildScene(model, { webSocketApi: snapshot.webSocketApi, conditions, resourceAvailability,
-    layoutModels: [snapshot.models.dev, snapshot.models.prod], layoutSettings: { aspect, previous: previousLayout.current?.positions, previousKey: previousLayout.current?.topologyKey } }), [model, snapshot.models, snapshot.webSocketApi, conditions, resourceAvailability, aspect, arrangement]);
+    layoutModels: [snapshot.models.dev, snapshot.models.prod], layoutSettings: { aspect, previous: previousLayout.current?.positions, previousKey: previousLayout.current?.topologyKey } }), [model, snapshot.models, snapshot.webSocketApi, conditions, resourceAvailability, aspect]);
   useLayoutEffect(() => { previousLayout.current = scene.layout; }, [scene]);
   const visibleSelected = selected ? scene.representatives[selected] ?? scene.edges.find((edge) => edge.members.some((member) => member.edge.id === selected))?.id ?? selected : undefined;
   const matches = useMemo(() => searchScene(scene, model, query), [scene, model, query]);
@@ -227,7 +215,7 @@ export function Isometric() {
     window.clearTimeout(aspectTimer.current);
     aspectTimer.current = window.setTimeout(() => {
       if (appliedAspect.current === nextAspect) return;
-      appliedAspect.current = nextAspect; previousLayout.current = undefined; pendingArrangeFit.current = true; setAspect(nextAspect);
+      appliedAspect.current = nextAspect; previousLayout.current = undefined; pendingLayoutFit.current = true; setAspect(nextAspect);
     }, 180);
     if (state.fitted && next.width === previous.width && next.height === previous.height) return;
     state.viewport = next;
@@ -276,7 +264,7 @@ export function Isometric() {
   }, [schedule, resize]);
 
   useEffect(schedule, [schedule, scene, selected, motion, focusState]);
-  useEffect(() => { if (pendingArrangeFit.current) { pendingArrangeFit.current = false; fit(); } }, [scene, fit]);
+  useEffect(() => { if (pendingLayoutFit.current) { pendingLayoutFit.current = false; fit(); } }, [scene, fit]);
 
   // Opening/closing the inspector changes CSS layout during this commit. Resize and paint
   // now, rather than leaving a stretched frame until the observer's next animation callback.
@@ -538,7 +526,7 @@ export function Isometric() {
   const accessibleEntities = useMemo(() => (
     <ul className="sr-only" aria-label="Entities in the landscape">
       {scene.edges.map((connection) => <li key={connection.id}><button onClick={() => select(connection.id)} aria-current={visibleSelected === connection.id}>
-        {missingConnectionInput(connection) ? "Missing required value: " : "Connection: "}{titleOf(index, connection.from)} to {titleOf(index, connection.to)}, {connection.members.length} {connection.members.length === 1 ? "relationship" : "relationships"}{connectionLabel(connection) ? ` (${connectionLabel(connection)})` : ""}
+        {missingConnectionInput(connection) ? "Missing required value: " : "Connection: "}{endpointLabel(index, connection.from)} to {endpointLabel(index, connection.to)}, {connection.members.length} {connection.members.length === 1 ? "relationship" : "relationships"}{connectionLabel(connection) ? ` (${connectionLabel(connection)})` : ""}
       </button></li>)}
       {scene.islands.map((island) => <li key={island.id}><button onClick={() => select(island.id)} aria-current={visibleSelected === island.id}>{island.title} island settings</button></li>)}
       {scene.props.map((prop) => <li key={prop.id}><button onClick={() => select(prop.id)} aria-current={visibleSelected === prop.id}>{prop.label}</button></li>)}
@@ -586,10 +574,6 @@ export function Isometric() {
         </div>
         <span className="spacer" />
         <div className="landscape-tools">
-          <button aria-label="Auto-arrange islands" title="Rebuild the layout from current connections, then fit the map" disabled={studioLive.evaluating} onClick={() => { previousLayout.current = undefined; pendingArrangeFit.current = true; setArrangement((value) => value + 1); }}><LayoutGrid size={16} aria-hidden /></button>
-          <button className="refresh-cdk" onClick={() => void refreshCdkLinks()} disabled={scanning || studioLive.evaluating} title="Re-read linked CDK stacks and rebuild the studio link index. CDK source changes also refresh automatically.">
-            <RefreshCw size={14} aria-hidden />{scanning ? "Refreshing…" : "Refresh CDK links"}
-          </button>
           <button onClick={() => zoomBy(0.8)} aria-label="Zoom out" title="Zoom out (−)">
             <Minus size={16} aria-hidden />
           </button>
@@ -656,7 +640,7 @@ function HoverCard(props: {
       frameworkManaged: false,
     };
     const onlyIn = sceneEdge.otherLens ? `Only in ${sceneEdge.otherLens === "dev" ? "Development" : "Production"}. Switch the view to see it with the rest of that environment.` : undefined;
-    lines = [onlyIn, `${titleOf(index, sceneEdge.from)} to ${titleOf(index, sceneEdge.to)}`,
+    lines = [onlyIn, `From ${endpointLabel(index, sceneEdge.from)}`, `To ${endpointLabel(index, sceneEdge.to)}`,
       ...(sceneEdge.members.length > 1 ? ["Click to inspect the connection map.", ...sceneEdge.members.slice(0, 4).map((member) => `${RELATION_LABEL[member.edge.relation]}: ${member.edge.label}`)] : [edge.detail]),
       missingConnectionInput(sceneEdge) ? "Required value missing. Click to resolve." : undefined,
       edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];

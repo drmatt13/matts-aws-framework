@@ -21,9 +21,11 @@ live in `src/views/InspectorUI.tsx`. Board, Isometric and Database use the same 
 ## Information order
 
 Compute inspectors begin with identity, source access and two environment cards. A
-compact description preview precedes settings; memory and timeout appear before less
-frequently adjusted lifecycle settings. Routing, authentication and event controls follow.
-Build configuration, placement, deployed identity, connections, environment bindings and
+compact description preview precedes settings; Deploy is always the first setting,
+followed by memory, timeout and other lifecycle settings. Numeric fields keep their
+inherited default visible after an override and offer a direct way to restore it.
+Routing, authentication and event controls follow.
+Build configuration, placement, connections, environment bindings and
 IAM remain available through explicit disclosures.
 
 Resource titles use the useful short name, with the full catalog identity on a secondary
@@ -35,7 +37,8 @@ Descriptions show a two-line preview and open their editor deliberately. Source 
 show a filename and line, retain the full path in their title and open the original
 declaration. Field provenance expands beside its control rather than repeating long
 inheritance expressions in every select option. Connection evidence and user-authored
-descriptions remain separate.
+descriptions remain separate. Connection endpoints include their type (for example,
+API versus WebSocket) so identically named routes and handlers remain distinguishable.
 
 ## Workflows
 

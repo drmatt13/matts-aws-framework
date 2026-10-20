@@ -526,7 +526,8 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .island-default-group select { width: 100%; }
 .island-members .linkish { justify-self: start; text-align: left; }
 
-.inspector-content { overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable; flex: 1; min-height: 0; overflow: auto; }
+/* Keep absolutely positioned accessibility text inside the panel's scroll bounds. */
+.inspector-content { position: relative; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable; flex: 1; min-height: 0; overflow: auto; }
 .draft-footer p { margin: var(--ui-space-2) 0; font-size: 13px; }
 .field-dirty .name::after { content: " •"; color: var(--dev); }
 .unsaved-dialog { max-width: 580px; }
@@ -566,6 +567,8 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .connection-description .node-description { padding: 10px 0 0; }
 .field-origin > summary { color: var(--graphite); cursor: pointer; font-size: 11px; }
 .field-origin[open] > span { display: block; padding-top: var(--ui-space-1); overflow-wrap: anywhere; }
+.numeric-default { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--ui-space-1) var(--ui-space-3); }
+.numeric-default > button { font: inherit; }
 .field .auth-switch { margin-left: auto; padding: 2px; min-height: 30px; }
 .field:has(.auth-switch) .name { padding-top: 3px; }
 .field:has(.auth-switch) .note { grid-column: 1 / -1; font-size: 11px; }
@@ -613,8 +616,6 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .resource-actions:empty { display: none; }
 .resource-actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-2); margin-top: var(--ui-space-3); align-items: center; }
 .trigger-row { display: flex; gap: var(--ui-space-2); flex-wrap: wrap; align-items: baseline; padding: 10px 0; margin: 0; border-bottom: 1px solid var(--rule); }
-.trigger-editor > details > summary { min-height: 24px; font-size: var(--ui-label); }
-.trigger-editor > details[open] > summary { margin-bottom: var(--ui-space-3); }
 .trigger-form { display: grid; margin-top: var(--ui-space-3); gap: 14px; padding-top: 6px; }
 .trigger-form .resource-actions { padding-top: var(--ui-space-3); border-top: 1px solid var(--rule); }
 .trigger-form .resource-actions .primary { margin-left: auto; order: 1; }
@@ -701,7 +702,6 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
   .landscape-search-panel { width: 100%; }
   .landscape-tools { max-width: 100%; }
   .landscape-tools button { width: 30px; height: 30px; }
-  .landscape-tools .refresh-cdk { font-size: 11px; padding: 0 var(--ui-space-2); }
   .landscape-stats { font-size: 10px; white-space: normal; max-width: calc(100% - 64px); }
 }
 

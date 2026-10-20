@@ -203,6 +203,24 @@ test("the real renderer draws resting connections a little stronger, and those o
   assert.ok(!alphas.has(0.24), "the old resting strength is gone");
 });
 
+test("connection hover and inspection distinguish identically named API routes and WebSocket handlers", async () => {
+  await mount(true);
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
+    resourceAvailability: catalogAvailability(response.snapshot.models) });
+  const edge = scene.edges.find((edge) => edge.from === "route:ws:customAction" && edge.edge.relation === "routes")!;
+  assert.ok(edge);
+  const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
+  const at = scene.routes[edge.id]!.points.map((point) => worldToScreen(state.camera(), state.viewport(), point)).find((point) => state.pickAt(point.x, point.y)?.id === edge.id);
+  assert.ok(at, "the route-to-handler connection is pickable");
+  ui.fireEvent.pointerMove(document.querySelector("canvas")!, { clientX: at.x, clientY: at.y });
+  await draw();
+  const popup = await ui.screen.findByRole("tooltip");
+  assert.ok(popup.textContent?.includes("From API: customAction"));
+  assert.ok(popup.textContent?.includes("To WebSocket: customAction"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: API: customAction to WebSocket: customAction,/ }));
+  await ui.waitFor(() => assert.ok(document.querySelector(".connection-endpoints")?.textContent?.includes("FromAPI: customActionToWebSocket: customAction")));
+});
+
 test("clicking a disabled wire explains its endpoints in the inspector and the notice follows the mode", async () => {
   await mount(true);
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
@@ -259,7 +277,7 @@ test("clicking a grouped connection opens every mapping and retains it across en
 
 test("connections available in both environments retain two pills in every inspector row", async () => {
   await mount(true);
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: client-app\/.env to cognito, / }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: Environment file: client-app\/.env to Stack: cognito, / }));
   const map = await ui.screen.findByRole("region", { name: "Aggregated connection map" });
   const expected = [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]];
   assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), expected);

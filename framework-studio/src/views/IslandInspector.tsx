@@ -79,7 +79,7 @@ export function IslandInspector({ id }: { readonly id: string }) {
       <label className="island-default-group">Service type<select aria-label="Default service type" value={group.ref} onChange={(event) => setChosen(event.target.value)}>{groups.map((item) => <option key={item.ref} value={item.ref}>{item.title}</option>)}</select></label>
       {id === "island:agentcore" ? <p className="small muted">These defaults configure Lambda tools used by agents. AgentCore runtimes have individual settings.</p> : null}
       {id === "island:vpc" && group.group === "database" ? <p className="small muted">Connection pool defaults configure database callers. The local database container is configured in Compose.</p> : null}
-      <div className="fields" key={group.ref}>{(model.fields[group.ref] ?? []).map((fact) => <div key={fact.field}>
+      <div className="fields" key={group.ref}>{[...(model.fields[group.ref] ?? [])].sort((a, b) => Number(b.field.endsWith(".deploy")) - Number(a.field.endsWith(".deploy"))).map((fact) => <div key={fact.field}>
         {fact.domain.kind === "enum" && fact.domain.values.includes(true) && fact.domain.values.includes(false)
           ? <BooleanField target={group} fact={fact} editability={snapshot.source.editability[group.ref]?.[fact.field]} />
           : <FieldRow target={group} fact={fact} allowInherit={!!fact.inherited} editability={snapshot.source.editability[group.ref]?.[fact.field]} />}

@@ -1,6 +1,6 @@
 import type { InputRequirement } from "../../shared/deployment-inputs";
 import type { Mode, ModelEdge } from "../../shared/model";
-import { editorLink, titleOf } from "../lookup";
+import { editorLink, endpointLabel, titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { Written } from "./Written";
 import { connectionDisabledEndpoints, type Availability } from "../deployment";
@@ -23,8 +23,8 @@ export function RequirementNotice({ requirement }: { requirement?: InputRequirem
 export function ConnectionEndpoints({ from, to }: { readonly from: string; readonly to: string }) {
   const { index, select } = useStudio();
   return <dl className="connection-endpoints">
-    <div><dt>From</dt><dd><button className="linkish" onClick={() => select(from)}>{titleOf(index, from)}</button></dd></div>
-    <div><dt>To</dt><dd><button className="linkish" onClick={() => select(to)}>{titleOf(index, to)}</button></dd></div>
+    <div><dt>From</dt><dd><button className="linkish" onClick={() => select(from)}>{endpointLabel(index, from)}</button></dd></div>
+    <div><dt>To</dt><dd><button className="linkish" onClick={() => select(to)}>{endpointLabel(index, to)}</button></dd></div>
   </dl>;
 }
 

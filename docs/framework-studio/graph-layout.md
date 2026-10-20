@@ -76,8 +76,8 @@ preserve intersections. No layout work occurs inside the animation loop.
   island titles, including VPC foundations. Narrow viewports keep titles on screen.
   The isometric view loads separately so its optimizer does not enlarge the initial
   Board bundle.
-- **Auto-arrange islands** releases the previous-position preference and fits a fresh
-  arrangement. Fit continues to change only the camera. No settings panel or persisted
+- Graph changes recalculate layout automatically while preserving nearby positions.
+  Fit changes only the camera. No settings panel or persisted
   manual-layout store is added. The pure optimizer accepts pinned constraints for a
   future manual-positioning interaction; current drag-to-pan behavior is preserved.
 - Search uses at most 360 evaluated candidates (90 above 24 islands) and 36 weighted

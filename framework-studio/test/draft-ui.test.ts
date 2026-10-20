@@ -121,6 +121,8 @@ test("inspectors prioritize controls, disclose supporting details, and reset scr
   const build = [...document.querySelectorAll<HTMLDetailsElement>(".inspector-disclosure > details")].find((details) => details.querySelector("summary > span")?.textContent === "Build and runtime")!;
   assert.equal(build.open, false);
   assert.ok(!memory().closest("details"), "operational controls stay outside disclosures");
+  assert.equal(document.querySelector(".inspector-section .field .name")?.textContent, "Deploy");
+  assert.ok(!document.querySelector(".inspector")?.textContent?.includes("Source and identity"));
   openSection("Build and runtime");
   assert.ok(ui.screen.getByRole("combobox", { name: "Architecture" }));
   const content = document.querySelector<HTMLElement>(".inspector-content")!;
@@ -131,6 +133,35 @@ test("inspectors prioritize controls, disclose supporting details, and reset scr
   await ui.waitFor(() => assert.ok(document.querySelector(".inspector-content") !== content, "selection replaces the scroll container"));
   assert.equal(document.querySelector(".inspector-content")!.scrollTop, 0);
   assert.equal(planCalls.length + applyCalls, 0, "inspecting and expanding never saves source");
+});
+
+test("numeric defaults stay visible through overrides and restoring them stages inheritance for review", async () => {
+  await mount();
+  const fact = baseline.models.dev.fields[target]!.find((fact) => fact.field === "lambda.memorySize")!;
+  const inherited = fact.inherited!.value;
+  const row = memory().closest(".field")!;
+  assert.equal(row.querySelector(".numeric-default > span")?.textContent, `Default: ${inherited} MB`);
+  changeMemory();
+  assert.equal((memory() as HTMLInputElement).value, "768");
+  assert.equal(row.querySelector(".numeric-default > span")?.textContent, `Default: ${inherited} MB`);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Use default memory" }));
+  assert.equal((memory() as HTMLInputElement).value, "");
+  assert.equal(memory().getAttribute("placeholder"), String(inherited));
+  assert.ok(!ui.screen.queryByRole("button", { name: "Use default memory" }));
+  assert.equal(applyCalls + planCalls.length, 0);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 1 change");
+  assert.ok(planCalls[0]?.some((edit) => edit.kind === "field" && edit.intent.target === target && edit.intent.field === "lambda.memorySize" && edit.intent.inherit));
+});
+
+test("Deploy precedes settings for every workload role that supports it", async () => {
+  for (const role of new Set(baseline.models.dev.targets.map((target) => target.role))) {
+    const item = baseline.models.dev.targets.find((target) => target.role === role)!;
+    if (!baseline.models.dev.fields[item.ref]?.some((fact) => fact.field === "deploy")) continue;
+    await mount(item.ref);
+    assert.equal(document.querySelector(".inspector-section .field .name")?.textContent, "Deploy", role);
+    ui.cleanup();
+  }
 });
 
 test("node descriptions stage with workload settings, review, save and reload in the inspector", async () => {
@@ -229,7 +260,7 @@ test("grouped relationships have separate description drafts and unique accessib
 test("event and public-field trigger flows stage through the shared review and keep native hooks occupied", async () => {
   for (const selected of ["lambda:cognito-pre-signup-trigger", "resource:cognito.userPool"]) {
     await mount(selected);
-    const summary = ui.screen.getByText(/^Triggers/, { selector: "summary" });
+    const summary = document.querySelector<HTMLElement>(".trigger-editor > details > summary")!;
     assert.equal(summary.closest("details")!.open, false);
     ui.fireEvent.click(summary);
     ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add trigger" }));
@@ -267,7 +298,7 @@ test("event and public-field trigger flows stage through the shared review and k
 
 test("a native hook stages removal, can be restored, and reviews as one CDK source edit", async () => {
   await mount("lambda:cognito-pre-signup-trigger");
-  ui.fireEvent.click(ui.screen.getByText(/^Triggers/, { selector: "summary" }));
+  ui.fireEvent.click(document.querySelector<HTMLElement>(".trigger-editor > details > summary")!);
   const edge = baseline.models.dev.edges.find((item) => item.relation === "trigger" && item.provenance === "source" && item.label === "preSignUp")!;
   assert.equal(edge.removal && "kind" in edge.removal ? edge.removal.kind : undefined, "property");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Remove native trigger preSignUp" }));
@@ -286,7 +317,7 @@ test("a declared trigger shows its pending removal until restored, and the edit 
   const binding = { event: "invocation-test-step", id: "before-auth", key: "cognito.userPool/before-auth", adapter: "cognito", resource: "resource:cognito.userPool", accepts: "cognito", options: { operation: "preAuthentication" } };
   persisted = { ...baseline, models: { dev: { ...baseline.models.dev, triggers: [binding] }, prod: { ...baseline.models.prod, triggers: [binding] } } } as Snapshot;
   await mount("lambda:invocation-test-step");
-  ui.fireEvent.click(ui.screen.getByText(/^Triggers/, { selector: "summary" }));
+  ui.fireEvent.click(document.querySelector<HTMLElement>(".trigger-editor > details > summary")!);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Remove trigger before-auth" }));
   assert.ok(ui.screen.getByText("Will be removed"));
   assert.match(count(), /1 unsaved change/);
@@ -302,7 +333,7 @@ test("a declared trigger shows its pending removal until restored, and the edit 
 
 const openAddTrigger = async (selected: string) => {
   await mount(selected);
-  ui.fireEvent.click(ui.screen.getByText(/^Triggers/, { selector: "summary" }));
+  ui.fireEvent.click(document.querySelector<HTMLElement>(".trigger-editor > details > summary")!);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add trigger" }));
 };
 

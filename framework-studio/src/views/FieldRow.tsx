@@ -34,15 +34,21 @@ export function FieldRow({ target, fact, editability, allowInherit }: Props) {
   };
   const inherited = draft.inherited(fact);
   const inheritLabel = fact.inherited ? `Inherit · ${display(inherited)}${unit}` : "Inherit";
+  const numericDefault = fact.domain.kind === "number" && inherited !== undefined;
+  const describedBy = [numericDefault ? `${id}-default` : undefined, entry?.error ? `error-${target.ref}-${fact.field}` : undefined].filter(Boolean).join(" ") || undefined;
   return <div className={`field ${entry ? "field-dirty" : ""}`}>
     <label className="name" htmlFor={id}>{fact.label}</label>
     <span className="control">
       {locked ? <code>{display(fact.effective)}{unit}</code> : fact.domain.kind === "enum" ? <select id={id} value={value === undefined ? INHERIT : String(value)} onChange={(event) => draft.setField(target.ref, fact, event.target.value === INHERIT ? undefined : event.target.value)} aria-label={fact.label} disabled={!!draftState.busy || live.evaluating}>
         {fact.domain.values.map((value) => <option key={String(value)} value={String(value)}>{display(value)}</option>)}
         {allowInherit !== false ? <option value={INHERIT}>{inheritLabel}</option> : null}
-      </select> : <><input id={id} type="number" min={fact.domain.min} max={fact.domain.max} required={allowInherit === false} value={value === undefined ? "" : String(value)} placeholder={inherited === undefined ? "" : String(inherited)} onChange={(event) => draft.setField(target.ref, fact, event.target.validity.badInput ? "Invalid number" : event.target.value === "" ? undefined : event.target.value)} aria-label={`${fact.label} in ${fact.domain.unit}`} aria-invalid={!!entry?.error} aria-describedby={entry?.error ? `error-${target.ref}-${fact.field}` : undefined} disabled={!!draftState.busy || live.evaluating} /><span className="muted small">{fact.domain.unit}</span></>}
+      </select> : <><input id={id} type="number" min={fact.domain.min} max={fact.domain.max} required={allowInherit === false} value={value === undefined ? "" : String(value)} placeholder={inherited === undefined ? "" : String(inherited)} onChange={(event) => draft.setField(target.ref, fact, event.target.validity.badInput ? "Invalid number" : event.target.value === "" ? undefined : event.target.value)} aria-label={`${fact.label} in ${fact.domain.unit}`} aria-invalid={!!entry?.error} aria-describedby={describedBy} disabled={!!draftState.busy || live.evaluating} /><span className="muted small">{fact.domain.unit}</span></>}
     </span>
     {entry?.error ? <span className="locked" role="alert" id={`error-${target.ref}-${fact.field}`}>{entry.error}</span> : null}
+    {numericDefault ? <div className="note numeric-default">
+      <span id={`${id}-default`} title={fact.inherited?.from}>Default: {display(inherited)}{unit}</span>
+      {value !== undefined && allowInherit !== false && !locked ? <button className="linkish" aria-label={`Use default ${fact.label.toLowerCase()}`} disabled={!!draftState.busy || live.evaluating} onClick={() => draft.setField(target.ref, fact, undefined)}>Use default</button> : null}
+    </div> : null}
     {locked ? <span className="locked">{locked}</span> : <details className="note field-origin"><summary>{entry ? "Unsaved change" : fact.authored === undefined ? "Inherited value" : "Configured here"}</summary><span>{entry ? `Unsaved: ${value === undefined ? inheritLabel : display(value) + unit}.` : fact.authored === undefined ? `Inherited: ${display(draft.effective(target.ref, fact))}${unit} from ${fact.provenance}.` : `Written as ${describeValue(fact.authored)}.`}</span></details>}
   </div>;
 }

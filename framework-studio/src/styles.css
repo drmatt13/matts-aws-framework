@@ -683,14 +683,6 @@ a {
   border-left: 0;
 }
 
-.landscape-tools .refresh-cdk {
-  width: auto;
-  padding: 0 10px;
-  gap: 6px;
-  white-space: nowrap;
-  font-size: 12px;
-}
-
 .landscape-top { align-items: flex-start; }
 .landscape-search-panel { display: grid; gap: 8px; min-width: 0; width: min(360px, 66%); }
 .landscape-search { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 10px; border: 1px solid rgba(255,255,255,.2); border-radius: var(--radius); background: rgba(14,19,27,.9); color: #cbd5e1; backdrop-filter: blur(6px); }

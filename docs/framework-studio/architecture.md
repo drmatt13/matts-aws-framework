@@ -163,8 +163,8 @@ Each snapshot atomically replaces `.cache/framework-studio/cdk-links.json` with 
 versioned scan output (file hashes, relationships, limitations; no resource values or
 source snippets). This file is ignored, disposable and never used as configuration or
 as a cache input. `POST /api/cdk-links/refresh` uses the existing Host, token and origin
-guards, rebuilds the snapshot and broadcasts it. The isometric toolbar's **Refresh CDK
-links** calls it. The normal CDK source watcher also refreshes the index automatically.
+guards, rebuilds the snapshot and broadcasts it. The normal CDK source watcher refreshes
+the index automatically; the map toolbar does not require a manual refresh control.
 
 Read connections carry an in-memory `evidence` list: authored environment/secret/grant
 entries (following literal imports and spreads), derived flags, catalog declarations,

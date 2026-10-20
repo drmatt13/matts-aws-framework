@@ -15,12 +15,13 @@ export function InspectorSection({ title, description, children, actions, classN
 }
 
 /** Supporting information stays one click away without burying everyday controls. */
-export function InspectorDisclosure({ title, children, count, defaultOpen = false, className = "" }: {
+export function InspectorDisclosure({ title, children, count, defaultOpen = false, open, onToggle, className = "" }: {
   readonly title: string; readonly children: ReactNode; readonly count?: number;
   readonly defaultOpen?: boolean; readonly className?: string;
+  readonly open?: boolean; readonly onToggle?: (open: boolean) => void;
 }) {
   return <section className={`inspector-section inspector-disclosure ${className}`}>
-    <details open={defaultOpen}>
+    <details open={open ?? defaultOpen} onToggle={onToggle ? (event) => onToggle(event.currentTarget.open) : undefined}>
       <summary><ChevronRight size={14} aria-hidden /><span>{title}</span>{count !== undefined ? <span className="section-count">{count}</span> : null}</summary>
       <div className="section-content">{children}</div>
     </details>
