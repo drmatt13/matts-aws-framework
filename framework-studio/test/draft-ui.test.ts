@@ -5,6 +5,7 @@ import { after, afterEach, before, beforeEach, mock, test } from "node:test";
 import { createElement as h } from "react";
 import type { DraftEdit, SnapshotResponse } from "../shared/api";
 import type { Snapshot } from "../shared/model";
+import type { DeploymentInputEdit } from "../shared/deployment-inputs";
 import { SnapshotBuilder } from "../server/snapshot";
 import { connectionDescriptionId } from "../shared/descriptions";
 import { aggregateConnections } from "../src/connections";
@@ -546,6 +547,88 @@ test("required flags stage quietly and the connection inspector guides missing v
   ui.fireEvent.click(set);
   assert.ok(ui.screen.getByText(/A blank value will not satisfy this requirement/));
   assert.equal(planCalls.length + resourceCalls.length, 0, "guided editing does not force review");
+});
+
+test("local values edit inline, revert, review privately and reload after apply without reading the whole file", async () => {
+  const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv && !item.values)!;
+  let stored = "";
+  const inputPlans: { mode: string; edits: unknown; hash: string }[] = [];
+  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "selected-hash" }, configured: true, value: stored, consumers: [], history: {} }));
+  mock.method(apiModule.api, "inputDetails", async () => { throw new Error("Inline editing must read only the selected variable."); });
+  mock.method(apiModule.api, "inputPlan", async (mode: "dev" | "prod", edits: readonly DeploymentInputEdit[], hash: string) => {
+    inputPlans.push({ mode, edits, hash });
+    return { planId: "local-value", ok: true, summaries: [`Update ${resource.fromEnv}`], changes: [{ file: "cdk-app/.env.dev", diff: { unified: "redacted", lines: [{ kind: "add" as const, newLine: 1, text: `${resource.fromEnv}=<updated value hidden>` }] } }] };
+  });
+  mock.method(apiModule.api, "inputApply", async () => {
+    stored = "local-value-test";
+    persisted = { ...baseline, revision: "local-value-saved" };
+    return { status: "applied" as const, message: "Local value saved.", revision: persisted.revision };
+  });
+  await mount(resource.id);
+  const field = await ui.screen.findByLabelText(`Value for ${resource.fromEnv}`) as HTMLTextAreaElement;
+  await ui.waitFor(() => assert.equal(field.disabled, false));
+  assert.equal(field.value, "");
+  ui.fireEvent.change(field, { target: { value: "local-value-test" } });
+  assert.equal(ui.screen.getByLabelText("Current selection").textContent, resource.id);
+  assert.match(count(), /1 unsaved change/);
+  assert.ok(ui.screen.getByRole("checkbox", { name: "Secret" }).matches(":disabled"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Revert value" }));
+  assert.equal(field.value, "");
+  assert.ok(!ui.screen.queryByLabelText("Pending inspector changes"));
+  ui.fireEvent.change(field, { target: { value: "local-value-test" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 1 change");
+  assert.deepEqual(inputPlans, [{ mode: "dev", hash: "selected-hash", edits: [{ name: resource.fromEnv, value: "local-value-test" }] }]);
+  assert.ok(!document.querySelector("dialog")!.textContent!.includes("local-value-test"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Apply All" }));
+  await ui.waitFor(() => assert.ok(!ui.screen.queryByLabelText("Pending inspector changes")));
+  await ui.waitFor(() => assert.equal((ui.screen.getByLabelText(`Value for ${resource.fromEnv}`) as HTMLTextAreaElement).value, "local-value-test"));
+  assert.equal(planCalls.length + resourceCalls.length, 0);
+});
+
+test("blank local values show the effective default and constrained values offer a direct choice", async () => {
+  const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv)!;
+  persisted = { ...baseline, models: { ...baseline.models, dev: { ...baseline.models.dev, resources: baseline.models.dev.resources.map((item) => item.id === resource.id ? { ...item, default: "bedrock", values: ["bedrock", "openai"], inputRequirement: undefined } : item) } } };
+  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "enum-hash" }, configured: false, consumers: [], history: {} }));
+  await mount(resource.id);
+  const field = await ui.screen.findByRole("combobox", { name: `Value for ${resource.fromEnv}` });
+  assert.ok(ui.within(ui.screen.getByRole("region", { name: "Local value" })).getByText("Using default"));
+  ui.fireEvent.change(field, { target: { value: "openai" } });
+  assert.match(count(), /1 unsaved change/);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Use default" }));
+  assert.equal((field as HTMLSelectElement).value, "");
+  assert.ok(!ui.screen.queryByLabelText("Pending inspector changes"));
+  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Required input" }));
+  assert.equal((field as HTMLSelectElement).disabled, true, "configuration and local file values review separately");
+});
+
+test("inline secrets stay masked and local value read errors can be retried", async () => {
+  const resource = baseline.models.dev.resources.find((item) => item.kind === "secret")!;
+  let reads = 0;
+  mock.method(apiModule.api, "resourceDetails", async () => {
+    if (++reads === 1) throw new Error("Could not read the local file.");
+    return { file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "secret-hash" }, configured: true, value: "private-selected-sentinel", consumers: [], history: {} };
+  });
+  await mount(resource.id);
+  await ui.screen.findByText("Could not read the local file.");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Retry value read" }));
+  const field = await ui.screen.findByLabelText(`Value for ${resource.fromEnv}`) as HTMLInputElement;
+  assert.equal(field.type, "password");
+  assert.ok(!document.querySelector(".local-input")!.textContent!.includes("private-selected-sentinel"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: `Reveal ${resource.fromEnv}` }));
+  assert.equal((ui.screen.getByLabelText(`Value for ${resource.fromEnv}`) as HTMLTextAreaElement).value, "private-selected-sentinel");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: `Hide ${resource.fromEnv}` }));
+  assert.equal((ui.screen.getByLabelText(`Value for ${resource.fromEnv}`) as HTMLInputElement).type, "password");
+  assert.equal(planCalls.length + resourceCalls.length, 0);
+});
+
+test("a missing environment file offers setup rather than an unusable value editor", async () => {
+  const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv)!;
+  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: false, hash: "missing" }, configured: false, consumers: [], history: {} }));
+  await mount(resource.id);
+  await ui.screen.findByRole("button", { name: "Set up .env.dev" });
+  assert.ok(!ui.screen.queryByLabelText(`Value for ${resource.fromEnv}`));
+  assert.equal(planCalls.length + resourceCalls.length, 0);
 });
 
 test("the catalog-wide required checkbox participates in the unified resource draft", async () => {

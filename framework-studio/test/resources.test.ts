@@ -6,6 +6,7 @@ import { after, before, test } from "node:test";
 import type { ResourceIntent } from "../shared/resources";
 import { SnapshotBuilder } from "../server/snapshot";
 import { readResourceIntent, ResourceService } from "../server/resources";
+import { DeploymentInputService } from "../server/deployment-input-edits";
 
 const root = path.resolve(__dirname, "../..");
 const fixture = path.join(root, ".cache/framework-studio", `resources-${randomUUID()}`);
@@ -71,6 +72,19 @@ test("missing and empty values differ from a configured value", () => {
     assert.equal(service.details("resource:key", "dev").configured, true);
     assert.equal(service.details("resource:setting", "dev").configured, false);
   } finally { writeFileSync(file, before); }
+});
+
+test("a selected input supplies the file revision for private review without reading other variables", () => {
+  const details = service.details("resource:setting", "dev");
+  assert.equal(details.inputFile?.exists, true);
+  assert.equal(service.details("resource:setting", "prod").inputFile?.exists, false);
+  assert.ok(!JSON.stringify(details).includes("UNDECLARED_PRIVATE"));
+  assert.ok(!JSON.stringify(details).includes("test secret with # and ="));
+  const inputs = new DeploymentInputService(fixture, builder);
+  const plan = inputs.plan("dev", [{ name: "FIXTURE_SETTING", value: "selected-value-update" }], details.inputFile!.hash, revision());
+  assert.equal(plan.ok, true);
+  assert.ok(!JSON.stringify(plan).includes("selected-value-update"));
+  assert.ok(readFileSync(path.join(fixture, "cdk-app/.env.dev"), "utf8").includes('FIXTURE_SETTING="from local env"'), "review does not write");
 });
 
 test("default changes are evaluated from candidate source, applied, undone and redone exactly", async () => {

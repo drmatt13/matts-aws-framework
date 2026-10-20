@@ -10,14 +10,7 @@ import type { EnvironmentEdit } from "../draft";
 import { RequirementNotice } from "./InputRequirement";
 import { Description } from "./Description";
 import { InspectorDisclosure } from "./InspectorUI";
-
-function ValueControl({ name, value, sensitive, disabled, onChange }: { name: string; value: string; sensitive: boolean; disabled: boolean; onChange: (value: string) => void }) {
-  const [revealed, setRevealed] = useState(false);
-  return <div className="env-value-control">{sensitive && !revealed
-    ? <input aria-label={`Value for ${name}`} type="password" autoComplete="off" disabled={disabled} value={value} onChange={(event) => onChange(event.target.value)} />
-    : <textarea aria-label={`Value for ${name}`} rows={value.includes("\n") ? 4 : 1} autoComplete="off" spellCheck={false} disabled={disabled} value={value} onChange={(event) => onChange(event.target.value)} />}
-    {sensitive ? <button className="linkish small" aria-label={`${revealed ? "Hide" : "Reveal"} ${name}`} aria-pressed={revealed} onClick={() => setRevealed(!revealed)}>{revealed ? "Hide" : "Reveal"}</button> : null}</div>;
-}
+import { EnvironmentValueControl as ValueControl } from "./EnvironmentValueControl";
 
 export function InputSources({ resource }: { resource: ModelResource }) {
   const { select, snapshot } = useStudio();

@@ -416,6 +416,10 @@ the file hash and snapshot revision again, writes by private sibling/atomic rena
 refreshes the snapshot. Unchanged assignments and comments are preserved; changed duplicate
 keys are consolidated and every value must round-trip through Node's dotenv parser.
 Saving inputs does not run infrastructure synthesis or claim complete CDK validation.
+The input/secret inspector edits its selected variable inline through the same environment
+draft and review service. Its targeted value read also returns the selected file's hash
+and presence, never other variables. Input configuration and file-value drafts remain
+separate; secrets start masked and individual value edits can be reverted before review.
 Missing files expose one typed generation operation that copies the corresponding
 `.template` (`cdk-app/.env.<mode>.template`) with exclusive creation; there is no legacy
 `cdk-app/.env`. The environment-files island inspector offers it for every missing file, and a

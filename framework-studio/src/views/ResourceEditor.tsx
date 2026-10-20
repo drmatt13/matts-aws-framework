@@ -5,28 +5,29 @@ import type { ResourceDetails, ResourceIntent } from "../../shared/resources";
 import { api } from "../api";
 import { useStudio } from "../studio";
 import { FormGroup } from "./InspectorUI";
-import { RequirementNotice } from "./InputRequirement";
+import { LocalValue } from "./LocalValue";
 
 export function ResourceEditor({ resource }: { readonly resource: ModelResource }) {
   const { snapshot, mode, model, live, select, toast, draft, draftState } = useStudio();
   const query = useQueryClient();
   const [details, setDetails] = useState<ResourceDetails>();
+  const [detailsError, setDetailsError] = useState<string>();
+  const [reload, setReload] = useState(0);
   const [error, setError] = useState<string>();
-  const [revealed, setRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setDetails(undefined);
-    setRevealed(false);
+    setDetailsError(undefined);
     setError(undefined);
     setBusy(false);
     if (!resource.absent && !model.stale) {
       void api.resourceDetails(resource.id, mode, controller.signal).then((details) => { if (!controller.signal.aborted) setDetails(details); }).catch((reason: unknown) => {
-        if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Could not load this input.");
+        if (!controller.signal.aborted) setDetailsError(reason instanceof Error ? reason.message : "Could not load this input.");
       });
     }
     return () => controller.abort();
-  }, [resource, snapshot.revision, mode, model.stale]);
+  }, [resource, snapshot.revision, mode, model.stale, reload]);
 
   const form = draft.resourceForm(resource);
   const { secret, fallback, hasDefault, group, requirements } = form;
@@ -38,7 +39,8 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
   const setRequirements = (change: (current: ResourceIntent["requirements"]) => ResourceIntent["requirements"]) => update({ requirements: change(requirements) });
   const entry = draftState.entries.find((entry) => entry.kind === "resource" && entry.intent.resource === resource.id);
   const descriptionPending = draftState.entries.some((entry) => entry.kind === "description");
-  const disabled = busy || !!draftState.busy || live.evaluating || live.running !== null || model.stale || resource.absent || descriptionPending;
+  const environmentPending = draftState.entries.some((entry) => entry.kind === "environment");
+  const disabled = busy || !!draftState.busy || draft.conflict || live.evaluating || live.running !== null || model.stale || resource.absent || descriptionPending || environmentPending;
   const write = async (direction: "undo" | "redo") => {
     setBusy(true); setError(undefined);
     try {
@@ -50,22 +52,11 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
     finally { setBusy(false); }
   };
   return <>
-    <section className="resource-editor">
-      <div className="section-heading"><h3>Local value</h3><button className="quiet small" onClick={() => select(`envfile:${mode}`)}>Edit value</button></div>
-      <RequirementNotice requirement={resource.inputRequirement} />
-      <div className="resource-value">
-        <code>{resource.fromEnv}</code>
-        {resource.absent ? <p className="muted">Not declared in this graph.</p> : details ? <>
-          <p className="small muted">Source: {details.file ?? "cdk-app/.env"}</p>
-          <pre className="env-value">{details.configured ? resource.kind === "secret" && !revealed ? "••••••••••••" : details.value === "" ? "(empty)" : details.value : `Not set in ${details.file ?? "cdk-app/.env"}`}</pre>
-          {resource.kind === "secret" && details.configured ? <button className="quiet" onClick={() => setRevealed(!revealed)} aria-pressed={revealed}>{revealed ? "Hide value" : "Reveal value"}</button> : null}
-          {!details.configured && resource.default !== undefined ? <p className="small muted">Using default: <code>{resource.default}</code></p> : null}
-        </> : <p className="small muted" role="status">{model.stale ? "Unavailable until the configuration loads." : "Reading the inputs file…"}</p>}
-      </div>
-    </section>
+    <LocalValue resource={resource} details={details} error={detailsError} busy={busy} onRetry={() => setReload((value) => value + 1)} />
     <section className="resource-editor">
       <h3>Configuration</h3>
       {descriptionPending ? <p className="small muted">Apply or discard the description before editing input settings.</p> : null}
+      {environmentPending ? <p className="small muted">Apply or discard local value changes before editing input settings.</p> : null}
       <fieldset disabled={disabled}><FormGroup title="Input behavior">
         <label className="resource-check"><input type="checkbox" checked={form.required ?? !!resource.required} onChange={(event) => update({ required: event.target.checked })} />Required input</label>
         <p className="small muted">Requires a value for every enabled consumer{secret ? "." : ", supplied by the environment file or a default."}</p>

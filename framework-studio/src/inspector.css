@@ -494,8 +494,6 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .resource-check input { width: auto; accent-color: var(--dev); }
 .resource-control { display: grid; gap: 6px; margin: var(--ui-space-3) 0; font-size: var(--ui-label); font-weight: 500; }
 .resource-control input, .resource-control select { width: 100%; min-width: 0; }
-.resource-value { padding: var(--ui-space-3); border: 1px solid var(--rule); border-radius: 6px; }
-.env-value { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--step--1); font-family: var(--mono); }
 .resource-diff { overflow: auto; padding: var(--ui-space-3); font-size: 11px; background: rgba(0,0,0,.2); max-height: 350px; }
 .resource-diff .add { background: var(--added); color: var(--ink); }
 .resource-diff .remove { background: var(--removed); color: var(--ink); }
@@ -610,9 +608,25 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .connection-map-label code { overflow-wrap: anywhere; font-size: 12px; }
 .inspector .connection-description .node-description { border: 0; padding: var(--ui-space-2) 0 0; }
 .inspector .connection-configuration[open] > summary { margin-bottom: 10px; }
-.inspector .resource-value { background: var(--paper); border-radius: 8px; }
-.inspector .resource-value > code { display: block; margin-bottom: 6px; }
-.inspector .resource-value pre { margin: var(--ui-space-2) 0; }
+.local-input-mode { margin-left: auto; color: var(--graphite); font-size: var(--ui-caption); font-weight: 500; }
+.local-input-name { display: block; overflow-wrap: anywhere; margin: var(--ui-space-3) 0 var(--ui-space-1); font-size: var(--ui-caption); }
+.inspector .local-input-source { margin-bottom: var(--ui-space-3); overflow-wrap: anywhere; }
+.local-input-source button { font: inherit; }
+.local-input-status { display: flex; align-items: center; gap: 6px; margin-bottom: var(--ui-space-2); color: var(--graphite); font-size: var(--ui-caption); }
+.local-input-status > span { width: 6px; height: 6px; border-radius: 50%; background: var(--graphite); }
+.local-input-status.pending { color: var(--dev); }
+.local-input-status.pending > span { background: var(--dev); }
+.local-input-status.missing { color: var(--refuse); }
+.local-input-status.missing > span { background: var(--refuse); }
+.local-input-choice { width: 100%; }
+.local-input-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--ui-space-2); margin-top: var(--ui-space-2); }
+.local-input-actions:empty { display: none; }
+.local-input-help { margin-top: var(--ui-space-2); overflow-wrap: anywhere; }
+.local-input-help code { font-size: inherit; }
+.local-input .env-value-control { align-items: flex-start; }
+.local-input .env-value-control textarea { max-height: 160px; }
+.local-input .env-value-control button { min-height: var(--ui-control-height); }
+.local-input-error, .local-input-empty { display: grid; justify-items: start; gap: var(--ui-space-2); }
 .resource-actions:empty { display: none; }
 .resource-actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-2); margin-top: var(--ui-space-3); align-items: center; }
 .trigger-row { display: flex; gap: var(--ui-space-2); flex-wrap: wrap; align-items: baseline; padding: 10px 0; margin: 0; border-bottom: 1px solid var(--rule); }

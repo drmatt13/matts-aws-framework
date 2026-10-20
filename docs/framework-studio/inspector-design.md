@@ -30,8 +30,10 @@ IAM remain available through explicit disclosures.
 
 Resource titles use the useful short name, with the full catalog identity on a secondary
 line. Operational flags remain visible; longer ownership and source explanations expand
-on demand. Empty sections are omitted. Local values offer a direct path to their
-environment-file editor, with existing reveal controls and value-handling boundaries.
+on demand. Empty sections are omitted. Local values edit inline with a clear environment,
+file destination and saved/default/empty state. Allowed values use a select; freeform values
+use the shared environment value control. Secrets start masked. Revert and default actions
+stage through the existing private environment-file review rather than navigating away.
 
 Descriptions show a two-line preview and open their editor deliberately. Source links
 show a filename and line, retain the full path in their title and open the original

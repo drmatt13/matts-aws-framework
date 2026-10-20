@@ -9,6 +9,8 @@ export interface RequirementRule {
 
 export interface ResourceDetails {
   readonly file?: string;
+  /** Selected-file revision only; no other variables or values are returned. */
+  readonly inputFile?: { readonly exists: boolean; readonly hash: string };
   /** Only the selected, declared key is returned. Never included in a snapshot. */
   readonly value?: string;
   readonly configured: boolean;

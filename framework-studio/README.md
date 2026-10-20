@@ -385,10 +385,14 @@ Duplicate paths, invalid paths and overlapping routes are refused. Run
 and update callers of the old path. Studio does not deploy the gateway.
 
 Selecting an authored input or secret loads its current value from the selected mode's inputs file.
-Secrets start masked; **Reveal value** displays the selected value. Missing entries and
-empty entries are distinguished. Values are loaded separately from the snapshot, without
-browser caching; snapshots, printed models, previews and the CDK index remain value-free.
-Studio does not change `.env`.
+**Local value** edits that variable in place, showing the environment and file destination.
+Missing, empty, configured, defaulted and unsaved states stay distinct. Declared choices use
+a dropdown; **Use default** clears the local override and **Revert value** restores the saved
+value. Secrets start masked; **Reveal** displays only the selected value. Review Changes
+redacts values and checks the file revision before saving to `.env.dev` or `.env.prod`.
+Input configuration and local values are reviewed separately. Values remain outside
+snapshots, browser query caches, printed models, previews and the CDK index. Saving never
+deploys or uploads secrets.
 
 The resource inspector edits secret status, a regular input's default, group membership
 (including a new group), and deployment requirements on consuming workloads. Existing

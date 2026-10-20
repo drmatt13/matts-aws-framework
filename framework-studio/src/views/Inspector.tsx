@@ -361,10 +361,10 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         ))}
       </InspectorDisclosure> : null}
       {resource.kind === "stack" && members.length ? <InspectorDisclosure title="Public fields" count={members.length} defaultOpen className="stack-members"><ul className="relations">{members.map((member) => <li key={member.id}><button className="linkish" onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className="small muted">{member.typeText ?? member.kind}</code></li>)}</ul><p className="small muted">Declared by the stack class.</p></InspectorDisclosure> : null}
-      <InputSources resource={resource} />
       {resource.kind === "member" ? <Triggers key={resource.id} resource={resource} /> : null}
       {manual.length ? <section>{manual.map((item) => <div key={`${item.source.file}:${item.source.start}`}><p className="small muted">{item.reason}</p><Written location={item.source} label="Wiring in" /></div>)}</section> : null}
       {resource.kind === "input" || resource.kind === "secret" ? <ResourceEditor key={`${resource.id}:${model.mode}`} resource={resource} /> : null}
+      <InputSources resource={resource} />
       <Relations id={resource.id} />
     </>
   );
