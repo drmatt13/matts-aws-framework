@@ -3,7 +3,8 @@ import { RELATION_CATEGORY, ROLE_LABEL, type EdgeCategory } from "../lookup";
 import { endpointServiceIcon, resourceBadge, resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
 import { availabilityBadge, deploymentBadge, developmentLocation, environments, type Availability, type DeploymentBadgeKind } from "../deployment";
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH, project } from "./iso";
-import { buildIconShape, type Shape } from "./shapes";
+import { buildIconShape, NODE_SPACING, type Shape } from "./shapes";
+import { NODE_CAPTION } from "./labels";
 import type { Bounds } from "./camera";
 import { islandFrame, type SceneFrame } from "./frame";
 import type { IslandFootprint } from "./layout";
@@ -159,8 +160,8 @@ export interface SceneOptions {
 // Layout constants, in grid cells
 // ---------------------------------------------------------------------------
 
-/** Buildings stand every third cell, so every label card has its own space. */
-const STEP = 3;
+/** The icon and caption share one predictable lattice slot. */
+const STEP = NODE_SPACING;
 const THICKNESS = 3;
 /** The VPC's subnets stand level, side by side: public, private, isolated. */
 const VPC_HEIGHT = 4;
@@ -566,6 +567,19 @@ function measure(spec: IslandSpec): Footprint {
 
 export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene {
   const specs = islandSpecs(model, options);
+  // A badge describes both environments, independently of the graph being viewed.
+  const badgeById = new Map<string, DeploymentBadgeKind | undefined>();
+  const devModel = options.layoutModels?.find((item) => item.mode === "dev");
+  const prodModel = options.layoutModels?.find((item) => item.mode === "prod");
+  if (devModel && prodModel) {
+    const devTargets = new Map(devModel.targets.map((target) => [target.ref, target]));
+    const prodTargets = new Map(prodModel.targets.map((target) => [target.ref, target]));
+    for (const id of new Set([...devTargets.keys(), ...prodTargets.keys()])) {
+      const dev = devTargets.get(id), prod = prodTargets.get(id);
+      badgeById.set(id, availabilityBadge({ dev: !!dev && (dev.lanes.local || dev.lanes.dev), prod: !!prod?.lanes.prod }));
+    }
+    for (const route of [...devModel.routes, ...prodModel.routes]) badgeById.set(route.id, badgeById.get(route.target));
+  }
   const nodes: SceneNode[] = [];
   const props: Prop[] = [];
   const islands: Island[] = [];
@@ -665,7 +679,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
       const gy = gy0 + 1 + ly;
       const h = spec.bands[band]!.h;
       const anchor = project({ x: gx, y: gy, h });
-      nodes.push({ ...item, gx, gy, h, island: spec.id, band: spec.bands[band]!.id, geometry: buildIconShape(anchor.x, anchor.y, !!item.roleIcon) });
+      nodes.push({ ...item, ...(badgeById.has(item.id) ? { badge: badgeById.get(item.id) } : {}), gx, gy, h, island: spec.id, band: spec.bands[band]!.id, geometry: buildIconShape(anchor.x, anchor.y, !!item.roleIcon) });
     }
     // Furniture stands on the last lattice row, clear of the buildings and the chamfers.
     spec.bands.forEach((band, index) => {
@@ -752,10 +766,16 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
   };
   const routingLinks: LayoutLink[] = edges.map((edge) => ({ id: edge.id, category: edge.category, weight: edge.edge.provenance === "source" ? 1 : 2,
     from: routingAnchor(edge.from), to: routingAnchor(edge.to) }));
-  const obstacles = [...layoutObstacles(footprints, positions), ...layoutLabels(footprints, positions, options.layoutSettings?.aspect), ...nodes.map((node) => ({ id: node.id, bounds: {
-    minX: Math.min(...node.geometry.hull.filter((_, at) => at % 2 === 0)), maxX: Math.max(...node.geometry.hull.filter((_, at) => at % 2 === 0)),
-    minY: Math.min(...node.geometry.hull.filter((_, at) => at % 2 !== 0)), maxY: Math.max(...node.geometry.hull.filter((_, at) => at % 2 !== 0)),
-  } }))];
+  const obstacles = [...layoutObstacles(footprints, positions), ...layoutLabels(footprints, positions, options.layoutSettings?.aspect), ...nodes.flatMap((node) => {
+    const tile = project({ x: node.gx, y: node.gy, h: node.h });
+    return [{ id: node.id, bounds: {
+      minX: Math.min(...node.geometry.hull.filter((_, at) => at % 2 === 0)), maxX: Math.max(...node.geometry.hull.filter((_, at) => at % 2 === 0)),
+      minY: Math.min(...node.geometry.hull.filter((_, at) => at % 2 !== 0)), maxY: Math.max(...node.geometry.hull.filter((_, at) => at % 2 !== 0)),
+    } }, { id: node.id, bounds: {
+      minX: tile.x - NODE_CAPTION.width / 2, maxX: tile.x + NODE_CAPTION.width / 2,
+      minY: tile.y + NODE_CAPTION.offset - NODE_CAPTION.height, maxY: tile.y + NODE_CAPTION.offset,
+    } }];
+  })];
   const routes = routeConnections(routingLinks, obstacles);
   for (const route of Object.values(routes)) for (const point of route.points) {
     minX = Math.min(minX, point.x); maxX = Math.max(maxX, point.x);

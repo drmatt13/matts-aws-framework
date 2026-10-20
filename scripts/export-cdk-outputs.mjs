@@ -185,7 +185,10 @@ const clientInputsPath = process.env.FRAMEWORK_INPUTS_FILE
   : deploymentInputsFile(process.cwd(), identity.mode);
 const clientInputs = existsSync(clientInputsPath) ? parseEnv(readFileSync(clientInputsPath, "utf8")) : {};
 const declarations = listResourceDeclarations(framework.resources);
-const clientMappings = parseClientMappings(readFileSync(resolve(process.cwd(), CLIENT_ENVIRONMENT_FILE), "utf8")).mappings;
+// Deploy can export into a separate directory. Its mappings still belong to
+// the prepared source checkout beside this script, never to the output directory.
+const mappingRoot = process.env.FRAMEWORK_EXPORT_DIRECTORY ? resolve(import.meta.dirname, "..") : process.cwd();
+const clientMappings = parseClientMappings(readFileSync(resolve(mappingRoot, CLIENT_ENVIRONMENT_FILE), "utf8")).mappings;
 const client = resolveClientEnvironmentMappings(clientMappings, {
   deployment: deploymentName, stacks: listed, inputs: clientInputs,
   defaults: Object.fromEntries(declarations.filter((reference) => reference.kind === "string" && !reference.secretArn && reference.fromEnv && reference.default !== undefined).map((reference) => [reference.fromEnv, reference.default])),

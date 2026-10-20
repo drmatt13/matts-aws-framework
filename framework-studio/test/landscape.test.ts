@@ -8,7 +8,7 @@ import { buildScene, chamfered, chamferSize, titleRoom, type Island, type Scene 
 import { fitBounds, pan, resizeCamera, screenToWorld, wheelFactor, worldToScreen, zoomAt, MAX_ZOOM, MIN_ZOOM, type Camera } from "../src/scene/camera";
 import { project, unprojectAt } from "../src/scene/iso";
 import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickIsland, surfaceOutline } from "../src/scene/picking";
-import { buildIconShape, ICON_BADGE } from "../src/scene/shapes";
+import { buildIconShape, ICON_BADGE, NODE_SPACING } from "../src/scene/shapes";
 import { backgroundGrid } from "../src/scene/grid";
 import { islandFrame } from "../src/scene/frame";
 import { API_EDGE_COLOR, BAND_TRIM, COMPUTE_EDGE_COLOR, DECK, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, ROLE_BADGE, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, TRIGGER_EDGE_COLOR, trimColor } from "../src/scene/look";
@@ -384,7 +384,7 @@ test("mixed service groups share a regular lattice as islands grow and shrink", 
     const nodes = scene.nodes.filter((node) => node.island === island.id);
     const columns = [...new Set(nodes.map((node) => node.gx))].sort((a, b) => a - b);
     const rows = [...new Set(nodes.map((node) => node.gy))].sort((a, b) => a - b);
-    for (const line of [columns, rows]) for (let at = 1; at < line.length; at += 1) assert.equal(line[at]! - line[at - 1]!, 3, "no extra gap at a service-group boundary");
+    for (const line of [columns, rows]) for (let at = 1; at < line.length; at += 1) assert.equal(line[at]! - line[at - 1]!, NODE_SPACING, "no extra gap at a service-group boundary");
     assert.equal(columns.length, Math.ceil(count / rows.length), "no reserved role columns");
     for (const node of nodes) {
       assert.ok(node.gx >= island.gx0 + 2 && node.gx <= island.gx1 - 2);
@@ -404,7 +404,22 @@ test("mixed service groups share a regular lattice as islands grow and shrink", 
     assert.deepEqual(buildScene(input).nodes.map(({ id, gx, gy }) => [id, gx, gy]), scene.nodes.map(({ id, gx, gy }) => [id, gx, gy]));
   }
   for (const scene of [dev, prod]) for (const prop of scene.props) for (const node of scene.nodes.filter((node) => prop.serves.includes(node.band))) {
-    assert.ok(Math.max(Math.abs(prop.gx - node.gx), Math.abs(prop.gy - node.gy)) >= 3, "network fixtures reserve their own lattice row");
+    assert.ok(Math.max(Math.abs(prop.gx - node.gx), Math.abs(prop.gy - node.gy)) >= NODE_SPACING, "network fixtures reserve their own lattice row");
+  }
+});
+
+test("workload and route badges use the two graphs' own availability and never change with the viewed mode", () => {
+  const target = snapshot.models.dev.targets.find((target) => target.role === "webSocket")!;
+  const route = snapshot.models.dev.routes.find((route) => route.target === target.ref)!;
+  for (const [enabledDev, enabledProd, expected] of [[true, false, "dev"], [false, true, "prod"], [true, true, undefined], [false, false, "off"]] as const) {
+    const models = [
+      { ...snapshot.models.dev, targets: snapshot.models.dev.targets.map((item) => item.ref === target.ref ? { ...item, lanes: { local: enabledDev, dev: false, prod: false } } : item) },
+      { ...snapshot.models.prod, targets: snapshot.models.prod.targets.map((item) => item.ref === target.ref ? { ...item, lanes: { local: false, dev: false, prod: enabledProd } } : item) },
+    ];
+    for (const model of models) {
+      const scene = buildScene(model, { layoutModels: models });
+      for (const id of [target.ref, route.id]) assert.equal(scene.nodes.find((node) => node.id === id)?.badge, expected, `${id} stays ${expected ?? "unbadged"} in ${model.mode}`);
+    }
   }
 });
 
@@ -419,7 +434,7 @@ test("what a building shows of an entity follows the model's lanes and absence",
   assert.equal(node(dev, "task:db-migrate").presence, "other");
   assert.equal(node(prod, "service:example-service").presence, "other", "local-only execution belongs to Development");
   assert.equal(node(dev, "lambda:graphql-api").badge, undefined, "local development plus production needs no exception badge");
-  assert.equal(node(dev, "lambda:ws-disconnect-route").badge, snapshot.webSocketApi ? undefined : "dev", "WebSocket availability accounts for whether its AWS API is enabled");
+  assert.equal(node(dev, "lambda:ws-disconnect-route").badge, snapshot.models.prod.targets.find((target) => target.ref === "lambda:ws-disconnect-route")?.lanes.prod ? undefined : "dev", "WebSocket availability uses Production's own graph rather than Development's API flag");
   assert.equal(node(dev, "service:example-service").badge, "dev");
   assert.equal(node(dev, "task:db-migrate").badge, "prod");
   assert.equal(node(dev, "resource:rds").badge, "prod");
@@ -751,7 +766,7 @@ test("the local database stands in the isolated subnet right beside RDS, solid i
     assert.equal(local.entity, "local");
     assert.equal(local.presence, model.mode === "dev" ? "built" : "other");
     assert.equal(local.h, rds.h, "on the same terrace");
-    assert.equal(Math.abs(local.gx - rds.gx) + Math.abs(local.gy - rds.gy), 3, "one lattice step from RDS");
+    assert.equal(Math.abs(local.gx - rds.gx) + Math.abs(local.gy - rds.gy), NODE_SPACING, "one lattice step from RDS");
     const isolated = scene.islands.find((island) => island.id === "island:vpc")!.bands.find((band) => band.id === "band:isolated")!;
     assert.ok(isolated.caption.some((line) => line.includes("Local PostgreSQL")), "the subnet says it is not an AWS resource");
   }

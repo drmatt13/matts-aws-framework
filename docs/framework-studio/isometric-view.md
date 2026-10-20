@@ -120,8 +120,8 @@ subnet terraces inside the VPC foundation.
 
 ### Packing
 
-- **The lattice.** Buildings stand every third cell (`STEP = 3`), so every label card has
-  its own space at normal zoom. An island is its lattice plus a one-cell rim.
+- **The lattice.** Buildings stand every fourth cell (`NODE_SPACING = 4`), leaving room
+  for each icon, its corner badges and a caption above its plaque. An island is its lattice plus a one-cell rim.
 - **Near-square islands.** Each band packs about √n items per lattice column (2–6).
   Service groups keep their order but continue into the same columns, without reserving
   empty cells between groups. Bands with fewer nodes are centred in the available depth.
@@ -196,7 +196,8 @@ subnet terraces inside the VPC foundation.
   marks disabled workloads. Execution location never gets a separate deployment badge.
   Badge paths, colors and semantics are shared by canvas and DOM views in `deployment.ts`.
   Catalog badges use absence in both snapshot models; they are never guessed from types.
-  The drawing measures badge width only when one exists. Auth locks remain independent.
+  Deployment tags sit on the plinth's front edge, separate from name pills, so they
+  never consume title width. Auth locks remain independent.
 
 ## Terrain ([slabs.ts](../../framework-studio/src/scene/slabs.ts), [look.ts](../../framework-studio/src/scene/look.ts))
 
@@ -416,7 +417,7 @@ been removed; the renderer has one visual style.
    - **Lit arcs.** The selection's and the hovered arc's are bright, with an arrowhead.
    - **Packets.** With motion on, the selection's arcs carry one to three packets at
      60 world units a second.
-5. **Label cards** in screen space, with leader lines to their roofs (see Labels).
+5. **Node captions** in screen space, centred above their plaques (see Labels).
 6. **Titles.** Flat island titles sit 10 CSS pixels outside the projected left flank,
    measured against the visible tops and walls (including a VPC's foundation), without
    shadow or culling padding. Placement uses the painted geometry and the text's ink
@@ -539,14 +540,20 @@ the query lives in the mounted isometric view and never writes configuration or 
 
 ## Labels
 
-- **Cards hang at a fixed height.** Each card sits 64 world units above its building's
-  tile, so a row of cards reads as a row, and a leader line runs from the card to the roof.
-- **Size.** Cards scale with zoom between 0.8 and 1.2. Below 0.55× only emphasised cards
-  show: the selection, the hovered building, what the selection touches, and search matches. Emphasised
-  cards stay at least 0.9 scale.
-- **Placement.** `acceptCards` lets the selection, then the hover, then the spotlight,
-  then the rest from the front claim space. A card that would land on one already placed
-  is dropped (the inspector still names it). Cards are then drawn in painter's order.
+- **Anchored captions.** Names end 64 world units above their tiles, centred on their
+  plaques, with no leader lines. Hover and selection change styling and show full details;
+  they never change caption position, size or truncation. Zoom preserves the same world anchor.
+- **Measured truncation.** A caption uses at most 160 world units of width. Its text
+  budget subtracts the authentication lock and padding before
+  adding an ellipsis. Font scale stays between 0.9 and 1.2. Below 0.55× the overview
+  uses icons and island names; full node names remain in hover details and the inspector.
+- **Environment tags.** At detail zoom, DEV/PROD (or OFF) appears as a separate, fixed
+  tag centred on the plinth's front edge. Both-environment nodes have no tag. The same
+  symbols, colors and presence rules apply, and clicking the tag selects its node.
+- **Clearance.** The four-cell lattice gives captions their own space. The shared wire
+  router reserves their world envelopes. Captions that collide with icons, corner badges,
+  wall names, missing-input markers or canvas controls, or cross a viewport edge, are omitted
+  until there is space. They never jump to another slot. Painting and picking use the same rectangles.
 
 ## Performance
 
@@ -566,6 +573,7 @@ The readout in the bottom right shows a moving average of frame time.
 | `screenOf(id)` | Screen positions of a building's roof and its card |
 | `hullOf(id)` | Its silhouette in screen space |
 | `cards()` | The cards as last drawn |
+| `badges()` | Separate deployment-tag hit rectangles as last drawn |
 | `connections()` | Group ids, visible endpoints, original relationship ids, availability, labels and projected paths |
 | `pickAt(x, y)` | What a point would pick |
 | `stats()` | Tiles, nodes, edges, items drawn, last frame time, frame count, current focus kind |

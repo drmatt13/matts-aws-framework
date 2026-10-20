@@ -7,7 +7,8 @@ import { project } from "./iso";
 import { searchOpacity, type LandscapeFocus } from "./focus";
 import { bandTrim, DECK, GRAPHITE, hexRgb, ICON_TINT, ROLE_BADGE, ROLE_BADGE_PLATE, trimColor } from "./look";
 import { offLens, restingAlpha } from "./connections";
-import { acceptCards, placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
+import { placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
+import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, rectanglesOverlap, visibleNodeCaptions, type LabelRect } from "./labels";
 import { ICON_BADGE, type Face } from "./shapes";
 import { connectionMidpoint } from "./routing";
 import { missingConnectionInput } from "../connections";
@@ -38,6 +39,8 @@ export interface RenderState {
 export interface FrameResult {
   /** Label cards as drawn, in painter's order, for picking. */
   readonly cards: readonly CardHit[];
+  /** Separate deployment tags are also selectable as their owning node. */
+  readonly badges: readonly CardHit[];
   /** Whether anything on screen moves, so the caller keeps drawing. */
   readonly animating: boolean;
   readonly ms: number;
@@ -155,8 +158,6 @@ const OUTSIDE = (box: Bounds | undefined, view: Bounds) =>
   box !== undefined && (box.maxX < view.minX || box.minX > view.maxX || box.maxY < view.minY || box.minY > view.maxY);
 
 const CARD_HEIGHT = 22;
-const CARD_MAX_TEXT = 140;
-const CARD_LIFT = 64;
 
 interface PlacedCard extends CardHit {
   readonly node: SceneNode;
@@ -166,8 +167,14 @@ interface PlacedCard extends CardHit {
   readonly font: string;
   readonly text: string;
   readonly textWidth: number;
-  readonly anchor: Point;
-  readonly top: Point;
+}
+
+interface PlacedTag extends CardHit {
+  readonly node: SceneNode;
+  readonly scale: number;
+  readonly kind: DeploymentBadgeKind;
+  readonly order: number;
+  readonly priority: number;
 }
 
 /** Time and motion do not affect screen geometry. Store scalar copies: callers may mutate cameras. */
@@ -191,7 +198,7 @@ export class SceneRenderer {
   private readonly context: CanvasRenderingContext2D;
   private prepared: Prepared | undefined;
   private readonly widths = new Map<string, number>();
-  private cardLayout: { state: RenderState; placed: readonly PlacedCard[]; hits: readonly CardHit[] } | undefined;
+  private cardLayout: { state: RenderState; placed: readonly PlacedCard[]; hits: readonly CardHit[]; tags: readonly PlacedTag[] } | undefined;
   private titleLayout: { state: RenderState; cards: readonly CardHit[]; labels: readonly TitleLabel[] } | undefined;
   private groundGrid: { state: RenderState; paths: readonly Path2D[] } | undefined;
   private readonly icons = new Map<IconKey, HTMLImageElement>();
@@ -215,6 +222,7 @@ export class SceneRenderer {
   private atmosphere: { readonly width: number; readonly height: number; readonly base: CanvasGradient; readonly vignette: CanvasGradient; readonly blooms: readonly CanvasGradient[] } | undefined;
   /** Islands and terraces whose names this frame wrote on a wall, so no flat title repeats them. */
   private readonly walled = new Set<string>();
+  private readonly wallLabels: LabelRect[] = [];
   /** How many slabs and standing items the last frame drew, after culling. */
   drawnItems = 0;
 
@@ -403,8 +411,9 @@ export class SceneRenderer {
     context.fillStyle = this.atmosphereFor(viewport).base;
     context.fillRect(0, 0, viewport.width, viewport.height);
     this.walled.clear();
+    this.wallLabels.length = 0;
     this.animating = false;
-    if (!prepared) return { cards: [], animating: false, ms: performance.now() - started };
+    if (!prepared) return { cards: [], badges: [], animating: false, ms: performance.now() - started };
 
     const zoom = camera.zoom;
     this.pixel = 1 / zoom;
@@ -472,7 +481,7 @@ export class SceneRenderer {
     const cards = this.drawCards(prepared, state);
     this.drawTitles(prepared, state, cards);
 
-    return { cards, animating: this.animating, ms: performance.now() - started };
+    return { cards, badges: this.cardLayout!.tags, animating: this.animating, ms: performance.now() - started };
   }
 
   // -------------------------------------------------------------------------
@@ -695,6 +704,10 @@ export class SceneRenderer {
     context.restore();
     this.setSpacing(0);
     this.walled.add(terraced ? meta.id : island.slab.island.id);
+    // Reserve the projected ink envelope before placing floating node labels.
+    this.wallLabels.push({ x: face.x + inset,
+      y: face.y + inset * 0.5 + Math.min(face.depth * 0.45, size * 1.1) - size / 2,
+      width, height: width * 0.5 + size });
   }
 
   private setSpacing(spacing: number): void {
@@ -1060,38 +1073,57 @@ export class SceneRenderer {
     if (cached && sameView(cached.state, state) && cached.state.selected === state.selected &&
       cached.state.hovered === state.hovered && cached.state.focus === state.focus) return cached;
     const { camera, viewport } = state;
-    // Never smaller than legible: where cards would then collide, placement drops the less important.
-    const zoomScale = Math.max(0.8, Math.min(1.2, camera.zoom));
-    const showAll = camera.zoom >= 0.55;
-
+    const scale = Math.max(0.9, Math.min(1.2, camera.zoom));
+    const font = `500 ${12 * scale}px Barlow, system-ui, sans-serif`;
+    const buildings = new Map([...prepared.scene.nodes, ...prepared.scene.props].map((item) => {
+      const hull = item.geometry.hull;
+      const points = Array.from({ length: hull.length / 2 }, (_, at) => worldToScreen(camera, viewport, { x: hull[at * 2]!, y: hull[at * 2 + 1]! }));
+      const x = Math.min(...points.map((point) => point.x)), y = Math.min(...points.map((point) => point.y));
+      return [item.id, { x, y, width: Math.max(...points.map((point) => point.x)) - x, height: Math.max(...points.map((point) => point.y)) - y }] as const;
+    }));
     const candidates: PlacedCard[] = [];
+    const tagCandidates: PlacedTag[] = [];
     prepared.scene.nodes.forEach((node, order) => {
       if (state.focus.kind === "search" && !state.focus.nodes.has(node.id)) return;
-      const emphasised = state.focus.kind === "search" || node.id === state.selected || node.id === state.hovered || (state.selected !== undefined && !state.selected.startsWith("island:") && state.focus.nodes.has(node.id));
-      if (!showAll && !emphasised) return;
-      // What the selection touches stays readable however far out you are.
-      const scale = emphasised ? Math.max(0.9, zoomScale) : zoomScale;
-      const font = `500 ${12 * scale}px Barlow, system-ui, sans-serif`;
-      const tile = project({ x: node.gx, y: node.gy, h: node.h });
-      const anchor = worldToScreen(camera, viewport, { x: tile.x, y: tile.y - CARD_LIFT });
-      const text = this.fit(node.label, font, CARD_MAX_TEXT * scale);
-      const textWidth = this.measure(text, font);
-      const badge = node.badge ? (BADGE_WIDTH[node.badge] + 6) * scale : 0;
-      const width = textWidth + 14 * scale + badge + (node.auth ? 14 * scale : 0);
+      // Overview uses icons and island names; hover details never reflow captions.
+      if (camera.zoom < NODE_CAPTION.minZoom) return;
+      const building = buildings.get(node.id)!;
+      if (building.x + building.width < 0 || building.x > viewport.width || building.y + building.height < 0 || building.y > viewport.height) return;
       const height = CARD_HEIGHT * scale;
-      const x = anchor.x - width / 2;
-      const y = anchor.y - height;
-      if (x > viewport.width || x + width < 0 || y > viewport.height || y + height < 0) return;
-      const priority = node.id === state.selected ? 3 : node.id === state.hovered ? 2 : emphasised ? 1 : 0;
-      candidates.push({ id: node.id, node, order, priority, scale, font, text, textWidth, anchor, top: worldToScreen(camera, viewport, node.geometry.top), x, y, width, height });
+      const chrome = 14 * scale + (node.auth ? 14 * scale : 0);
+      const budget = Math.min(260 * scale, NODE_CAPTION.width * camera.zoom) - chrome;
+      if (budget < 24 * scale) return;
+      const text = this.fit(node.label, font, budget);
+      const textWidth = this.measure(text, font);
+      const width = textWidth + chrome;
+      const tile = project({ x: node.gx, y: node.gy, h: node.h });
+      const anchor = worldToScreen(camera, viewport, { x: tile.x, y: tile.y + NODE_CAPTION.offset });
+      candidates.push({ id: node.id, node, order, priority: 0, scale, font, text, textWidth, width, height, x: anchor.x - width / 2, y: anchor.y - height });
+      if (node.badge) {
+        const at = worldToScreen(camera, viewport, { x: tile.x, y: tile.y + NODE_DEPLOYMENT_TAG.offset });
+        const tagWidth = BADGE_WIDTH[node.badge] * scale, tagHeight = NODE_DEPLOYMENT_TAG.height * scale;
+        tagCandidates.push({ id: node.id, node, order, priority: 0, scale, kind: node.badge, width: tagWidth, height: tagHeight, x: at.x - tagWidth / 2, y: at.y - tagHeight / 2 });
+      }
     });
 
-    // Then let the most important claim their space: the selection, the
-    // pointer, what the selection touches, then the rest from the front. A card
-    // that would land on one already placed is left out; the inspector still
-    // names it.
-    const placed = acceptCards(candidates);
-    this.cardLayout = { state: copyView(state), placed, hits: placed.map(({ id, x, y, width, height }) => ({ id, x, y, width, height })) };
+    const controls = [
+      { x: 8, y: 8, width: Math.min(360, viewport.width * 0.5), height: 42 },
+      { x: viewport.width - 184, y: 8, width: 176, height: 42 },
+      { x: viewport.width - 64, y: viewport.height - 64, width: 64, height: 64 },
+    ];
+    const reserved = [
+      ...controls,
+      ...this.wallLabels.map((rect) => ({ ...worldToScreen(camera, viewport, rect), width: rect.width * camera.zoom, height: rect.height * camera.zoom })),
+      ...[...prepared.arcs.values()].filter((arc) => arc.missing).map((arc) => {
+        const at = worldToScreen(camera, viewport, arc.midpoint);
+        return { x: at.x - 10, y: at.y - 10, width: 20, height: 20 };
+      }),
+    ];
+    const placed = visibleNodeCaptions(candidates, [...buildings.values(), ...reserved], viewport);
+    // Tags intentionally sit on their own plinth; every other node and caption
+    // remains an obstacle. This fixed slot never borrows width from the name.
+    const tags = visibleNodeCaptions(tagCandidates.filter((tag) => [...buildings].every(([id, rect]) => id === tag.id || !rectanglesOverlap(tag, rect))), [...controls, ...placed], viewport);
+    this.cardLayout = { state: copyView(state), placed, tags, hits: placed.map(({ id, x, y, width, height }) => ({ id, x, y, width, height })) };
     return this.cardLayout;
   }
 
@@ -1100,22 +1132,20 @@ export class SceneRenderer {
     const { dpr } = state;
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     const layout = this.placeCards(prepared, state);
-    for (const { node, scale, font, text, textWidth, anchor, top, x, y, width, height } of layout.placed) {
+    for (const tag of layout.tags) {
+      // Availability remains legible when switching to the environment where
+      // the icon is ghosted. Search alone can fade an unrelated tag.
+      context.globalAlpha = searchOpacity(state.focus, "nodes", tag.id);
+      this.drawDeploymentBadge(tag.kind, tag.x, tag.y + tag.height / 2, tag.scale);
+    }
+    context.textAlign = "left";
+    for (const { node, scale, font, text, textWidth, x, y, width, height } of layout.placed) {
       const padding = 7 * scale;
       const selected = node.id === state.selected || (state.focus.kind === "search" && state.focus.nodes.has(node.id));
       const quiet = state.focus.kind === "selection" && !state.focus.nodes.has(node.id);
       const ghost = node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
       context.globalAlpha = this.opacity * (quiet ? 0.35 : ghost ? 0.7 : 1);
-      // The leader from card to roof.
-      if (top.y > anchor.y + 2) {
-        context.strokeStyle = selected ? "rgba(255, 244, 214, 0.8)" : "rgba(220, 228, 240, 0.28)";
-        context.lineWidth = 1;
-        context.beginPath();
-        context.moveTo(anchor.x, anchor.y);
-        context.lineTo(top.x, top.y - 2);
-        context.stroke();
-      }
-      context.fillStyle = selected ? "#f3efe4" : "rgba(14, 19, 27, 0.86)";
+      context.fillStyle = selected ? "#f3efe4" : "#0e131b";
       context.strokeStyle = selected ? "#fff8e6" : node.id === state.hovered ? "rgba(255, 255, 255, 0.55)" : "rgba(255, 255, 255, 0.14)";
       context.lineWidth = 1;
       context.beginPath();
@@ -1126,10 +1156,9 @@ export class SceneRenderer {
       context.textBaseline = "middle";
       context.fillStyle = selected ? "#141922" : ghost ? "#9aa3ae" : "#e7eaef";
       context.fillText(text, x + padding, y + height / 2 + 0.5);
-      if (node.badge) this.drawDeploymentBadge(node.badge, x + padding + textWidth + 6 * scale, y + height / 2, scale);
       if (node.auth) {
         // A padlock: the gateway admits signed-in users only.
-        const lx = x + padding + textWidth + 5 * scale + (node.badge ? (BADGE_WIDTH[node.badge] + 6) * scale : 0);
+        const lx = x + padding + textWidth + 5 * scale;
         const ly = y + height / 2;
         context.strokeStyle = selected ? "#141922" : "#cfd5dd";
         context.fillStyle = context.strokeStyle;

@@ -263,7 +263,9 @@ The view follows the model:
   the same edits.
 - Positions, islands and colours are layout, computed from the model on every refresh.
   Nothing about them is written to disk or read back as configuration.
-- Nodes share a three-cell lattice within each layer, including across service types.
+- Nodes share a four-cell lattice within each layer, including across service types,
+  with truncated captions anchored above each icon. Hover and selection keep captions in place.
+  Dev/Prod tags sit separately on the plinths, leaving the full caption width for names.
   Islands shrink, grow and shift through the same row packer as declarations change.
 - Hover empty terrain to highlight an island; click it to open island settings. Shared
   defaults have service-type menus (HTTP, WebSocket, events and tools), boolean switches,

@@ -1,4 +1,7 @@
 /** Service plaques, plinth faces and picking silhouettes in projected world space. */
+/** Room for an icon, its corner badges and a caption on the next line. */
+export const NODE_SPACING = 4;
+
 export interface Face { readonly points: readonly number[] }
 
 export interface Shape {

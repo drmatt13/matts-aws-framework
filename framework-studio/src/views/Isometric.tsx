@@ -116,6 +116,7 @@ export function Isometric() {
     focus: focusState,
     tween: undefined as Tween | undefined,
     cards: [] as readonly CardHit[],
+    badges: [] as readonly CardHit[],
     frame: undefined as number | undefined,
     fitted: rememberedCamera !== undefined,
     samples: [] as number[],
@@ -153,6 +154,7 @@ export function Isometric() {
       focus: state.focus,
     });
     state.cards = result.cards;
+    state.badges = result.badges;
     state.frames += 1;
     // The readout: a moving average over recent frames, published twice a
     // second at most while animating, and at once when the picture settles.
@@ -281,7 +283,7 @@ export function Isometric() {
     (screen: Point): Hover | undefined => {
       const state = live.current;
       const world = screenToWorld(state.camera, state.viewport, screen);
-      const entity = pickEntity(screen, world, state.cards, silhouettes);
+      const entity = pickEntity(screen, world, [...state.badges, ...state.cards], silhouettes);
       if (entity) return { kind: "node", id: entity, ...screen };
       for (const arc of arcs) {
         if (!arc.missing) continue;
@@ -484,6 +486,7 @@ export function Isometric() {
       },
       pickAt: (x: number, y: number) => pick({ x, y }),
       cards: () => live.current.cards,
+      badges: () => live.current.badges,
       connections: () => scene.edges.map((connection) => ({
         id: connection.id, from: connection.from, to: connection.to, members: connection.members.map((member) => member.edge.id),
         availability: connection.availability, label: connectionLabel(connection),

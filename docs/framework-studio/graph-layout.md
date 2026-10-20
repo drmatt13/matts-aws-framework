@@ -42,6 +42,8 @@ References: [ELK's layered phases](https://eclipse.dev/elk/blog/posts/2025/25-08
    negative space and movement. Overlaps dominate the cost. Crossing reduction and
    obstacle clearance outweigh cosmetic symmetry. Labels use a conservative overview
    estimate; actual typography and flank placement still belong to the renderer.
+   Wire length is weighted by viewport utilization so the wider caption lattice stays
+   compact in both landscape and portrait workspaces.
 5. `routing.ts` chooses a clear, short curve for each actual relationship. Related
    category/pair connections use small lane offsets, retaining each edge's identity,
    endpoints, provenance, colour and arrow direction. This is corridor/lane routing,

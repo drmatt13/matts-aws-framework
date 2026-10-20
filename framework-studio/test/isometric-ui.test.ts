@@ -14,6 +14,9 @@ import { connectionMidpoint } from "../src/scene/routing";
 import { worldToScreen, type Camera, type Viewport } from "../src/scene/camera";
 import { catalogAvailability } from "../src/deployment";
 import { DECK, hexRgb, ISLAND_TRIM } from "../src/scene/look";
+import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, rectanglesOverlap } from "../src/scene/labels";
+import { project } from "../src/scene/iso";
+import { pickEntity } from "../src/scene/picking";
 
 let builder: SnapshotBuilder;
 let response: SnapshotResponse;
@@ -386,6 +389,48 @@ test("pointer bursts resolve the latest hover once per frame, and leaving cancel
   assert.equal(ui.screen.queryByRole("tooltip"), null, "a queued hover cannot reopen a tooltip after leaving");
 });
 
+test("painted labels keep clear of icon and lock silhouettes and remain pickable across zooms and environments", () => {
+  const badgesByZoom = new Map<number, unknown>();
+  for (const model of Object.values(response.snapshot.models)) {
+    const scene = buildScene(model, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
+    const renderer = new SceneRenderer(document.createElement("canvas"));
+    renderer.setScene(scene);
+    const selected = scene.nodes.find((node) => node.id === "resource:cognito")!;
+    for (const zoom of [0.36, 0.6, 0.9, 1.4]) {
+      const camera = { ...selected.geometry.top, zoom };
+      const viewport = { width: 960, height: 700 };
+      const { cards, badges } = renderer.render({ camera, viewport, selected: selected.id, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene, selected.id) });
+      const tagGeometry = badges.map(({ id, x, y, width, height }) => ({ id, x, y, width, height }));
+      if (badgesByZoom.has(zoom)) assert.deepEqual(tagGeometry, badgesByZoom.get(zoom), "mode switches preserve every deployment tag and its position");
+      else badgesByZoom.set(zoom, tagGeometry);
+      if (zoom < NODE_CAPTION.minZoom) { assert.equal(cards.length, 0, "overview retains icons and hover details without floating names"); continue; }
+      assert.ok(cards.some((card) => card.id === selected.id), `selected stack keeps its label at ${zoom}`);
+      assert.ok(cards.length >= 3, "captions remain useful in a dense stack island");
+      const buildings = [...scene.nodes, ...scene.props].map((item) => {
+        const points = Array.from({ length: item.geometry.hull.length / 2 }, (_, at) => worldToScreen(camera, viewport, { x: item.geometry.hull[at * 2]!, y: item.geometry.hull[at * 2 + 1]! }));
+        const x = Math.min(...points.map((point) => point.x)), y = Math.min(...points.map((point) => point.y));
+        return { x, y, width: Math.max(...points.map((point) => point.x)) - x, height: Math.max(...points.map((point) => point.y)) - y };
+      });
+      for (const card of cards) {
+        const node = scene.nodes.find((node) => node.id === card.id)!;
+        const tile = project({ x: node.gx, y: node.gy, h: node.h });
+        const anchor = worldToScreen(camera, viewport, { x: tile.x, y: tile.y + NODE_CAPTION.offset });
+        assert.equal(card.x + card.width / 2, anchor.x, "caption stays centred on its plinth");
+        assert.equal(card.y + card.height, anchor.y, "caption stays above its plaque when zooming");
+        assert.ok(buildings.every((building) => !rectanglesOverlap(card, building)), `${card.id} clears icons and lock/role badges`);
+        assert.ok(cards.every((other) => card === other || !rectanglesOverlap(card, other)));
+        const centre = { x: card.x + card.width / 2, y: card.y + card.height / 2 };
+        assert.equal(pickEntity(centre, centre, cards, []), card.id);
+      }
+      const focus = landscapeFocus(scene, selected.id);
+      assert.deepEqual(renderer.render({ camera, viewport, selected: selected.id, hovered: cards[0]!.id, dpr: 1, time: 2, motion: false, focus }).cards, cards, "hover changes no caption positions or sizes");
+      const overview = renderer.render({ camera, viewport, dpr: 1, time: 3, motion: false, focus: landscapeFocus(scene) }).cards;
+      assert.deepEqual(overview, cards, "selection changes styling, never caption placement");
+    }
+    renderer.dispose();
+  }
+});
+
 test("stationary animation reuses text placement and invalidates on camera, focus, font and scene changes", () => {
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models) });
   const renderer = new SceneRenderer(document.createElement("canvas"));
@@ -400,6 +445,7 @@ test("stationary animation reuses text placement and invalidates on camera, focu
     fresh.setScene(scene);
     const expected = fresh.render(state);
     assert.deepEqual(cached.cards, expected.cards);
+    assert.deepEqual(cached.badges, expected.badges);
     assert.deepEqual(cachedLabels, labels.splice(0), "cached placement paints the same text as a fresh renderer");
     fresh.dispose();
   };
@@ -419,6 +465,36 @@ test("stationary animation reuses text placement and invalidates on camera, focu
   checkFresh();
   renderer.setScene({ ...scene }); checkFresh();
   renderer.dispose();
+});
+
+test("deployment tags leave the full caption width available and select their owning node", () => {
+  const source = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models) });
+  const node = source.nodes.find((node) => node.id === "resource:cognito")!;
+  const camera = { ...node.geometry.top, zoom: 0.8 }, viewport = { width: 960, height: 700 };
+  const state: RenderState = { camera, viewport, dpr: 1, time: 1, motion: false, focus: landscapeFocus(source) };
+  let name: string | undefined, width: number | undefined;
+  for (const badge of [undefined, "dev", "prod", "off"] as const) {
+    const scene = { ...source, nodes: source.nodes.map((item) => item.id === node.id ? { ...item, badge, label: "LongFrameworkStackDeploymentNameWithOutputs" } : item) };
+    const renderer = new SceneRenderer(document.createElement("canvas")); renderer.setScene(scene);
+    labels.length = 0;
+    const frame = renderer.render(state), card = frame.cards.find((card) => card.id === node.id)!;
+    assert.ok(card);
+    const text = labels.find((label) => label.startsWith("LongFramework"));
+    if (!badge) { name = text; width = card.width; }
+    assert.equal(text, name, "environment metadata does not truncate the name further");
+    assert.equal(card.width, width, "name pills have identical width with or without a deployment tag");
+    const tag = frame.badges.find((tag) => tag.id === node.id);
+    if (badge) {
+      assert.ok(tag);
+      const tile = project({ x: node.gx, y: node.gy, h: node.h });
+      const anchor = worldToScreen(camera, viewport, { x: tile.x, y: tile.y + NODE_DEPLOYMENT_TAG.offset });
+      assert.equal(tag.x + tag.width / 2, anchor.x);
+      assert.equal(tag.y + tag.height / 2, anchor.y);
+      assert.ok(frame.cards.every((caption) => !rectanglesOverlap(tag, caption)));
+      assert.equal(pickEntity(anchor, anchor, [...frame.badges, ...frame.cards], []), node.id);
+    } else assert.equal(tag, undefined, "nodes available in both environments have no tag");
+    renderer.dispose();
+  }
 });
 
 test("only visible moving content requests more animation frames", () => {

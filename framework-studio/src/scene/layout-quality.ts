@@ -55,7 +55,9 @@ export function measureLayout(islands: readonly IslandFootprint[], graph: Layout
   const actualAspect = width / height;
   const utilization = Math.min(actualAspect / aspect, aspect / actualAspect);
   const area = obstacles.reduce((sum, item) => sum + (item.bounds.maxX - item.bounds.minX) * (item.bounds.maxY - item.bounds.minY), 0);
-  const cost = islandOverlaps * 1e8 + labelOverlaps * 200000 + weightedCrossings * 2500 + edgeObstacles * 5000 + length * 0.025 + Math.abs(Math.log(actualAspect / aspect)) * 1200 + Math.max(0, 1 - area / (width * height)) * 300 + movement * 3;
+  // A wider caption lattice needs compact wires without sacrificing the fit of
+  // portrait workspaces. Penalize length in proportion to lost viewport space.
+  const cost = islandOverlaps * 1e8 + labelOverlaps * 200000 + weightedCrossings * 2500 + edgeObstacles * 5000 + length / utilization + Math.abs(Math.log(actualAspect / aspect)) * 1200 + Math.max(0, 1 - area / (width * height)) * 300 + movement * 3;
   return { crossings, weightedCrossings, length, islandOverlaps, labelOverlaps, edgeObstacles, aspect: actualAspect, utilization, movement, cost };
 }
 
