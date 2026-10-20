@@ -37,7 +37,7 @@
     "jsdom": "^28.1.0",
     "tailwindcss": "^4.1.18",
     "typescript": "^5.9.3",
-    "vite": "^8.2.2",
+    "vite": "^8.2.4",
     "vitest": "^4.1.11"
   },
   "optionalDependencies": {
@@ -49,11 +49,5 @@
     "@tailwindcss/oxide-linux-x64-musl": "4.3.0",
     "@unrs/resolver-binding-linux-arm64-musl": "1.12.2",
     "@unrs/resolver-binding-linux-x64-musl": "1.12.2"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "lightningcss"
-    ]
   }
 }

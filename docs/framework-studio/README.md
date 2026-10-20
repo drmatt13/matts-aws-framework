@@ -47,6 +47,7 @@ separate deployment states.
 
 | Document | Read it when |
 | --- | --- |
+| [Resource baseline (2026-10-20)](resource-baseline-2026-10-20.md) | You are experimenting with resources and need the original application inventory, source revision and scoped restoration procedure |
 | [Report](report.md) | You want to know what exists, why it was built this way, and what was verified |
 | [Architecture](architecture.md) | You are changing the server, the model, source editing, or the browser's data flow |
 | [Isometric view](isometric-view.md) | You are changing the landscape: layout, terrain, buildings, camera, picking or rendering |

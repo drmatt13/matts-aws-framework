@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Fails when package-lock.json lacks a native binding a supported platform needs.
+// Fails when package-lock.json lacks registry integrity data or a native binding
+// a supported platform needs.
 //
 // npm records a package's platform binaries as optional dependencies, and a
 // lockfile written on one machine can silently lack another platform's entries.
@@ -22,7 +23,15 @@ const present = new Set(
 );
 
 const missing = [];
+const missingRegistryMetadata = [];
 for (const [path, entry] of Object.entries(lock.packages)) {
+  // Bundled dependencies are covered by their parent's tarball integrity. Links
+  // and file/git sources do not have registry tarballs to pin.
+  const registryPackage = path.includes("node_modules/") && !entry.link && !entry.inBundle &&
+    (!entry.resolved || entry.resolved.startsWith("https://registry.npmjs.org/"));
+  if (registryPackage && (!entry.resolved || !entry.integrity)) {
+    missingRegistryMetadata.push(`${path}@${entry.version}`);
+  }
   const optional = Object.keys(entry.optionalDependencies ?? {});
   for (const [platform, pattern] of Object.entries(PLATFORMS)) {
     for (const dependency of optional.filter((name) => pattern.test(name))) {
@@ -32,6 +41,13 @@ for (const [path, entry] of Object.entries(lock.packages)) {
       }
     }
   }
+}
+
+if (missingRegistryMetadata.length > 0) {
+  console.error(`package-lock.json lacks registry URLs or integrity hashes for ${missingRegistryMetadata.length} package(s):`);
+  for (const line of missingRegistryMetadata) console.error(`  ${line}`);
+  console.error("Restore metadata with npm 11 in a clean install before approving version-pinned scripts.");
+  process.exit(1);
 }
 
 if (missing.length > 0) {

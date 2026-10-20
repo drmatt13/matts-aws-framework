@@ -2,7 +2,7 @@
 
 /**
  * Every AWS service an interface VPC endpoint reaches, by the name AWS gives
- * its endpoint (com.amazonaws.<region>.<name>), as aws-cdk-lib 2.270.0 lists
+ * its endpoint (com.amazonaws.<region>.<name>), as aws-cdk-lib 2.274.0 lists
  * them. S3 and DynamoDB are left out: network.ts reaches them through its free
  * gateway endpoints instead.
  */
@@ -135,6 +135,7 @@ export const INTERFACE_ENDPOINT_SERVICES = [
   "ecs-telemetry",
   "eks",
   "eks-auth",
+  "eks-proxy",
   "elastic-inference.runtime",
   "elasticache",
   "elasticache-fips",

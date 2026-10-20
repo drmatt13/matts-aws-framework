@@ -140,6 +140,120 @@ written. Studio edits do not run export or deployment.
 - Commands in these guides are PowerShell unless an `sh` variant is shown. Plain `npm`
   lines work in any shell.
 
+### Dependency installation and security
+
+Use the root's `npm@11.19.0` package-manager version for lockfile changes and run
+`npm ci` from the root. Keep registry URLs, integrity hashes, and all supported
+platform bindings in the lockfile. Funding notices need no action.
+
+The root `package.json` owns npm's `allowScripts` policy for every workspace.
+Review an updated package's scripts before renewing its version-specific approval
+with `npm install-scripts approve <package>`; `npm install-scripts ls` lists pending
+reviews. Workspace pnpm policies do not apply to npm. See
+[npm's install-script policy](https://docs.npmjs.com/cli/v11/commands/npm-install-scripts/).
+
+The reviewed decisions are:
+
+- `esbuild@0.28.2`: allow its postinstall. CDK bundling, tsx, and service builds
+  need its platform binary. The script selects the optional binary package,
+  validates its version, and can retrieve a missing binary from npm with a hash check.
+  Preserve the root esbuild pin.
+- `workerd@1.20260901.1`: allow its postinstall. Prisma CLI's Composer dependencies
+  bring `alchemy` and `@alchemy.run/cloudflare-runtime`, which require this binary.
+  The script selects the platform package, prepares the executable, and checks its
+  version, with an npm download fallback. This is development tooling, outside the
+  application's deployed runtime; removing it requires changing Prisma's CLI family.
+- `fsevents`: deny install scripts. Vite and tsx optionally use this macOS watcher.
+  Version 2.3.3's registry metadata advertises `node-gyp rebuild`, but its published
+  tarball ships `fsevents.node`, no install script, and no `binding.gyp`. No rebuild
+  is needed. Keep the optional dependency for macOS; npm skips it on Linux/Windows.
+  Revisit this decision if its packaging changes.
+
+The October 20, 2026 dependency review upgraded GraphQL Codegen CLI to 7.4.6,
+schema-ast to 6.1.1, GraphQL Yoga to 5.24.6, Vite to 8.2.4, CDK library to 2.274.0,
+CDK CLI to 2.1146.0 (required for assembly schema 55), and transitive launch-editor
+to 2.14.2. Sign-in and MFA now declare Zod 4.4.3, the version their schemas were
+already resolving from the root; this corrects their invalid Zod 3 declarations.
+Patched GraphQL Tools utilities resolve
+through their parents' supported ranges. CDK bundles its glob dependencies, so
+upgrading CDK replaces its vulnerable bundled brace-expansion. Vite's existing
+override now pins the patched 8.2.4 backport across application and Prisma tooling.
+
+The new override is deliberately scoped to `@tailwindcss/typography`:
+`postcss-selector-parser: 7.1.6`. Typography 0.5.19 (and the reviewed latest 0.5.20)
+pins vulnerable 6.0.10. Version 7 retains the parser/AST APIs typography uses;
+its major change makes insertion during iteration safe. Remove this override when
+typography supports a patched parser itself. The security fix is described in
+[GHSA-rj75-hqrm-r3gf](https://github.com/advisories/GHSA-rj75-hqrm-r3gf).
+
+The `zod@^4.0.0: 4.4.3` override preserves the repository's existing Zod 4 runtime.
+Resolving the corrected auth declarations otherwise selects 4.6.7, whose JSON-schema
+union encoding breaks the AgentCore Gateway schema diagnostics. Keep Zod 3 in the
+browser contract workspace independent. Remove this compatibility pin after the
+Gateway projection supports the newer encoding and its contract tests pass.
+
+One advisory still has no published patch:
+[braces stack exhaustion, GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm).
+All published braces versions through 3.0.3 are affected. Its development-only paths are:
+
+```text
+@graphql-codegen/cli@7.4.6
+  -> micromatch@4.0.8 -> braces@3.0.3
+  -> @graphql-tools/git-loader@8.0.46 -> micromatch@4.0.8 -> braces@3.0.3
+  -> @graphql-tools/{code-file-loader@8.1.43,graphql-file-loader@8.1.24,json-file-loader@8.0.38}
+     -> globby@11.1.0 -> fast-glob@3.3.3 -> micromatch@4.0.8 -> braces@3.0.3
+  -> graphql-config@5.1.8 -> the same file loaders -> the same globby/braces chain
+```
+
+Code generation uses repository-authored file patterns in `codegen.ts`; these paths
+do not handle application HTTP requests or ship in the browser/Lambda runtime.
+Do not feed untrusted patterns into this tooling. Upgrade braces/micromatch and its
+parents when a fix is published. Replacing Codegen or substituting a different
+glob implementation would require a separate compatibility migration. The full
+audit retains ten high findings propagated from this one advisory; none are ignored.
+
+Two informational upstream notices can still appear during installation:
+Codegen's `@graphql-tools/apollo-engine-loader -> sync-fetch -> node-fetch ->
+fetch-blob -> node-domexception@1.0.0` chain uses a deprecated DOMException shim,
+and Prisma may suggest `prisma skills sync` for optional coding-agent instructions.
+The reviewed loader still requires that shim through its current dependency ranges.
+Neither notice is an unapproved install script; changing agent instructions is
+separate from installing application dependencies.
+
+Validation of the October 20 dependency update:
+
+| Audit | Before | After |
+| --- | --- | --- |
+| All workspaces | 35 high, 2 moderate | 10 high, 0 moderate (the unpatched braces chain above) |
+| `npm audit --omit=dev` | 4 high, 4 moderate | 0 |
+
+The clean `npm ci --strict-allow-scripts` preserves the lockfile byte for byte;
+`npm ls --all` succeeds and `npm install-scripts ls` has no pending reviews.
+Registry metadata was restored for 478 existing entries with npm 11's registry
+client and lockfile writer, without changing those entries' versions. The lockfile
+check now also rejects missing registry URLs/integrity hashes. All supported native
+platform entries remain present. The macOS fsevents watcher was exercised without
+a rebuild, and esbuild/workerd binaries run successfully.
+
+All workspace builds, 453 framework tests, 22 executable GraphQL schema tests, and
+65 client tests pass. Typography's 33 variants and 29 component groups, plus client
+and WebSocket tester CSS output, match their pre-update output. Offline dev/prod
+synthesis preserves resource logical IDs/types and output names across the CDK
+upgrade; the updated CLI reads both assemblies. Asset bundling was skipped in
+these synthesis comparisons. Live AWS, database, Docker-image and browser checks
+are separate and were not performed.
+
+`npm run verify` still stops at `framework-studio/test/landscape.test.ts:420`:
+an existing fixture omits `Lanes.deploy`, `origin`, and `cloud`. The full workspace
+test run also has seven existing Studio failures: three Docker/Compose prerequisite
+or process expectations (`deploy-orphans`, `deploy-prereqs`, `deploy-service`), a
+null-prototype environment-object expectation (`deployment-inputs`), two deployment
+hover-label expectations (`hover`), and a role-badge expectation (`landscape`).
+The same typecheck error and all seven failures reproduce in a disposable snapshot
+of the original source with its original lockfile. Those unrelated files remain
+unchanged. The two AgentCore test failures introduced by resolving a newer Zod
+minor are fixed by the compatibility override above.
+
 ### Line endings (Windows and macOS)
 
 `.gitattributes` checks every text file out with LF on every platform. Git for Windows
