@@ -61,6 +61,24 @@ export function connectionStyle(
  */
 export const EDGE_ALPHA = { declared: 0.3, derived: 0.18, outOfLens: 0.25 } as const;
 
+/** Hover responds faster than captions; environment and selection changes stay immediate. */
+export const EDGE_HOVER_DURATION = 0.05;
+
+/** cubic-bezier(0.16, 1, 0.3, 1): immediate response, then a soft finish without overshoot. */
+export function connectionHoverEase(progress: number): number {
+  if (progress <= 0) return 0;
+  if (progress >= 1) return 1;
+  // Time is the curve's x coordinate, so solve x(t) before evaluating y(t).
+  let low = 0, high = 1;
+  for (let iteration = 0; iteration < 12; iteration++) {
+    const t = (low + high) / 2, inverse = 1 - t;
+    const x = 3 * inverse * inverse * t * 0.16 + 3 * inverse * t * t * 0.3 + t * t * t;
+    if (x < progress) low = t;
+    else high = t;
+  }
+  return 1 - Math.pow(1 - (low + high) / 2, 3);
+}
+
 /** A node belongs to the environment being viewed when it is built or held there. */
 const inLens = (node: Pick<SceneNode, "presence"> | undefined): boolean => !node || node.presence === "built" || node.presence === "present";
 

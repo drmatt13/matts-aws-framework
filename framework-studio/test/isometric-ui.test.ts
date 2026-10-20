@@ -18,6 +18,7 @@ import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, rectanglesOverlap } from "../src/sce
 import { project } from "../src/scene/iso";
 import { insidePolygon, pickEntity, pickIsland } from "../src/scene/picking";
 import { islandDrawOrder, islandSlabs } from "../src/scene/slabs";
+import { connectionHoverEase, EDGE_HOVER_DURATION } from "../src/scene/connections";
 
 let builder: SnapshotBuilder;
 let response: SnapshotResponse;
@@ -33,6 +34,9 @@ let nextFrame = 0;
 const images: { src: string; alpha: number }[] = [];
 const strokes: string[] = [];
 const labels: string[] = [];
+const labelPaints: { text: string; alpha: number; y: number }[] = [];
+const iconStrokes: { icon: string; color: string; width: number }[] = [];
+const pathStrokes: { color: string; width: number }[] = [];
 let measurements = 0;
 let glyphWidth = 6;
 
@@ -51,16 +55,23 @@ before(async () => {
   Object.defineProperty(globalThis, "Image", { configurable: true, value: class { src = ""; complete = true; naturalWidth = 48; onload = null; } });
   const gradient = () => ({ addColorStop() {} });
   const alphaStack: number[] = [];
+  let paintedIcon = "";
   const context = new Proxy({
     globalAlpha: 1,
     strokeStyle: "",
-    stroke() { strokes.push(this.strokeStyle); },
-    fillText(text: string) { labels.push(text); },
+    lineWidth: 1,
+    stroke(path?: Path2D) {
+      strokes.push(this.strokeStyle);
+      if (path) pathStrokes.push({ color: this.strokeStyle, width: this.lineWidth });
+      if (paintedIcon) iconStrokes.push({ icon: paintedIcon, color: this.strokeStyle, width: this.lineWidth });
+      paintedIcon = "";
+    },
+    fillText(text: string, _x: number, y: number) { labels.push(text); labelPaints.push({ text, alpha: this.globalAlpha, y }); },
     save() { alphaStack.push(this.globalAlpha); },
     restore() { this.globalAlpha = alphaStack.pop() ?? 1; },
     createLinearGradient: gradient, createRadialGradient: gradient,
     measureText: (text: string) => { measurements++; return { width: text.length * glyphWidth, actualBoundingBoxLeft: 0, actualBoundingBoxRight: text.length * glyphWidth, actualBoundingBoxAscent: 10, actualBoundingBoxDescent: 3 }; },
-    drawImage(image: { src: string }) { images.push({ src: image.src, alpha: this.globalAlpha }); },
+    drawImage(image: { src: string }) { images.push({ src: image.src, alpha: this.globalAlpha }); paintedIcon = image.src; },
   }, { get: (target, key) => key in target ? target[key as keyof typeof target] : () => {} });
   dom.window.HTMLCanvasElement.prototype.getContext = (() => context) as unknown as typeof HTMLCanvasElement.prototype.getContext;
   dom.window.HTMLElement.prototype.getBoundingClientRect = () => ({ x: 0, y: 0, width: 1920, height: 1000, top: 0, left: 0, right: 1920, bottom: 1000, toJSON() {} });
@@ -77,7 +88,7 @@ before(async () => {
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, history: {}, busy: null };
 });
 after(async () => { await builder.dispose(); dom.window.close(); });
-afterEach(() => { ui.cleanup(); frames.clear(); images.length = 0; strokes.length = 0; labels.length = 0; glyphWidth = 6; });
+afterEach(() => { ui.cleanup(); frames.clear(); images.length = 0; strokes.length = 0; labels.length = 0; labelPaints.length = 0; iconStrokes.length = 0; pathStrokes.length = 0; glyphWidth = 6; });
 
 interface Debug { search(): { active: boolean; nodes: string[]; opacityOf(id: string): number }; stats(): { focus: string } }
 const debug = () => (dom.window as unknown as { __studioLandscape: Debug }).__studioLandscape;
@@ -435,14 +446,13 @@ test("painted labels keep clear of icon and lock silhouettes and remain pickable
     const renderer = new SceneRenderer(document.createElement("canvas"));
     renderer.setScene(scene);
     const selected = scene.nodes.find((node) => node.id === "resource:cognito")!;
-    for (const zoom of [0.36, 0.6, 0.9, 1.4]) {
+    for (const zoom of [0.18, 0.36, 0.54, 0.56, 0.9, 1.4]) {
       const camera = { ...selected.geometry.top, zoom };
       const viewport = { width: 960, height: 700 };
       const { cards, badges } = renderer.render({ camera, viewport, selected: selected.id, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene, selected.id) });
       const tagGeometry = badges.map(({ id, x, y, width, height }) => ({ id, x, y, width, height }));
       if (badgesByZoom.has(zoom)) assert.deepEqual(tagGeometry, badgesByZoom.get(zoom), "mode switches preserve every deployment tag and its position");
       else badgesByZoom.set(zoom, tagGeometry);
-      if (zoom < NODE_CAPTION.minZoom) { assert.equal(cards.length, 0, "overview retains icons and hover details without floating names"); continue; }
       assert.ok(cards.some((card) => card.id === selected.id), `selected stack keeps its label at ${zoom}`);
       assert.ok(cards.length >= 3, "captions remain useful in a dense stack island");
       const buildings = [...scene.nodes, ...scene.props].map((item) => {
@@ -454,10 +464,10 @@ test("painted labels keep clear of icon and lock silhouettes and remain pickable
         const node = scene.nodes.find((node) => node.id === card.id)!;
         const tile = project({ x: node.gx, y: node.gy, h: node.h });
         const anchor = worldToScreen(camera, viewport, { x: tile.x, y: tile.y + NODE_CAPTION.offset });
-        assert.equal(card.x + card.width / 2, anchor.x, "caption stays centred on its plinth");
-        assert.equal(card.y + card.height, anchor.y, "caption stays above its plaque when zooming");
-        assert.ok(buildings.every((building) => !rectanglesOverlap(card, building)), `${card.id} clears icons and lock/role badges`);
-        assert.ok(cards.every((other) => card === other || !rectanglesOverlap(card, other)));
+        assert.ok(Math.abs(card.x + card.width / 2 - anchor.x) < 1e-8, "caption stays centred on its plinth");
+        assert.ok(Math.abs(card.y + card.height - anchor.y) < 1e-8, "caption stays above its plaque when zooming");
+        assert.ok(buildings.every((building) => !rectanglesOverlap(card, building, 0)), `${card.id} clears icons and lock/role badges`);
+        assert.ok(cards.every((other) => card === other || !rectanglesOverlap(card, other, 0)));
         const centre = { x: card.x + card.width / 2, y: card.y + card.height / 2 };
         assert.equal(pickEntity(centre, centre, cards, []), card.id);
       }
@@ -534,6 +544,116 @@ test("deployment tags leave the full caption width available and select their ow
     } else assert.equal(tag, undefined, "nodes available in both environments have no tag");
     renderer.dispose();
   }
+});
+
+test("WebSocket and managed lock badges paint identical borders", () => {
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models) });
+  const renderer = new SceneRenderer(document.createElement("canvas"));
+  renderer.setScene(scene);
+  const viewport = { width: 1920, height: 1000 };
+  renderer.render({ camera: fitScene(scene, viewport), viewport, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene) });
+  const socket = iconStrokes.find(({ icon }) => icon === iconUrl("webSocket"));
+  const lock = iconStrokes.find(({ icon }) => icon === iconUrl("managed"));
+  assert.ok(socket); assert.ok(lock);
+  assert.deepEqual({ color: socket.color, width: socket.width }, { color: lock.color, width: lock.width });
+  renderer.dispose();
+});
+
+test("distant captions and deployment tags fade together, reverse continuously and settle", () => {
+  const source = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models) });
+  const node = { ...source.nodes.find(({ id }) => id === "lambda:sign-out")!, badge: "dev" as const };
+  const scene = { ...source, nodes: [node], props: [], edges: [], routes: {} };
+  const renderer = new SceneRenderer(document.createElement("canvas"));
+  renderer.setScene(scene);
+  const state: RenderState = { camera: { ...node.geometry.top, zoom: 0.3 }, viewport: { width: 960, height: 700 },
+    dpr: 1, time: 1, motion: true, focus: landscapeFocus(scene) };
+  const paint = (time: number, hovered?: string, motion = true) => {
+    labelPaints.length = 0;
+    const frame = renderer.render({ ...state, time, hovered, motion });
+    const card = frame.cards.find(({ id }) => id === node.id)!;
+    assert.ok(card);
+    const alpha = labelPaints.find(({ y }) => y === card.y + card.height / 2 + 0.5)!.alpha;
+    assert.ok(frame.badges.some(({ id }) => id === node.id), "deployment tag stays visible at distant zoom");
+    assert.equal(labelPaints.find(({ text }) => text === "DEV")!.alpha, alpha, "tag and name share hover opacity");
+    return { frame, alpha };
+  };
+  const resting = paint(1);
+  const entering = paint(2, node.id);
+  assert.equal(entering.alpha, resting.alpha);
+  assert.equal(entering.frame.animating, true);
+  const middle = paint(2 + NODE_CAPTION.hoverDuration / 2, node.id);
+  assert.ok(middle.alpha > resting.alpha && middle.alpha < 1);
+  assert.equal(paint(2.3, node.id).alpha, 1);
+  assert.equal(paint(2.31, node.id).frame.animating, false);
+  assert.equal(paint(3).alpha, 1, "leaving starts from the current opacity");
+  const leaving = paint(3 + NODE_CAPTION.hoverDuration / 2);
+  assert.ok(leaving.alpha > resting.alpha && leaving.alpha < 1);
+  assert.equal(paint(3 + NODE_CAPTION.hoverDuration / 2, node.id).alpha, leaving.alpha, "reversing does not jump");
+  assert.ok(paint(3 + NODE_CAPTION.hoverDuration, node.id).alpha > leaving.alpha);
+  paint(4);
+  const settled = paint(4.3);
+  assert.equal(settled.alpha, resting.alpha);
+  assert.equal(settled.frame.animating, false);
+  assert.deepEqual(settled.frame.cards, resting.frame.cards, "hover never moves captions");
+  assert.equal(paint(5, node.id, false).alpha, 1, "reduced motion applies hover immediately");
+  assert.equal(paint(5.1, undefined, false).frame.animating, false);
+  for (const zoom of [0.18, 0.3, 0.54, 0.56, 0.9]) {
+    const frame = renderer.render({ ...state, camera: { ...state.camera, zoom }, motion: false });
+    assert.ok(frame.badges.some(({ id }) => id === node.id), `tag has no hard zoom cutoff at ${zoom}`);
+  }
+  renderer.dispose();
+});
+
+test("connection hover fades quickly while environment changes update immediately", () => {
+  const source = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models) });
+  const nodes = new Map(source.nodes.map((node) => [node.id, node]));
+  const edge = source.edges.find((edge) => edge.style.color === "#ff9a3d" && !edge.otherLens &&
+    [edge.from, edge.to].every((id) => ["built", "present"].includes(nodes.get(id)?.presence ?? "")))!;
+  assert.ok(edge);
+  const scene = { ...source, edges: [edge] };
+  const renderer = new SceneRenderer(document.createElement("canvas"));
+  renderer.setScene(scene);
+  const viewport = { width: 1920, height: 1000 };
+  const state: RenderState = { camera: fitScene(scene, viewport), viewport, dpr: 1, time: 1, motion: true, focus: landscapeFocus(scene) };
+  const prefix = `rgba(${hexRgb(edge.style.color).join(", ")}, `;
+  const paint = (time: number, hoveredEdge?: string, motion = true) => {
+    pathStrokes.length = 0;
+    const frame = renderer.render({ ...state, time, hoveredEdge, motion });
+    const stroke = pathStrokes.find(({ color }) => color.startsWith(prefix))!;
+    assert.ok(stroke);
+    return { frame, ...stroke, alpha: Number(stroke.color.slice(prefix.length, -1)) };
+  };
+  const resting = paint(1);
+  assert.equal(paint(2, edge.id).alpha, resting.alpha);
+  const middle = paint(2 + EDGE_HOVER_DURATION / 2, edge.id);
+  assert.ok(middle.alpha > resting.alpha && middle.alpha < 0.95);
+  assert.ok(middle.alpha > resting.alpha + (0.95 - resting.alpha) * 0.9, "ease-out responds strongly before its soft finish");
+  assert.ok(middle.width > resting.width);
+  assert.equal(paint(2.1, edge.id).alpha, 0.95);
+  paint(3);
+  assert.ok(paint(3 + EDGE_HOVER_DURATION / 2).alpha < 0.95);
+  assert.equal(paint(3.1).alpha, resting.alpha);
+  assert.equal(paint(3.2).frame.animating, false);
+  paint(4, edge.id);
+  paint(4 + EDGE_HOVER_DURATION / 2, edge.id);
+  renderer.setScene({ ...scene, edges: [{ ...edge, otherLens: "prod" as const }] });
+  const switched = paint(4.05);
+  assert.ok(switched.alpha < resting.alpha, "new environment's resting strength applies on its first frame");
+  assert.equal(switched.frame.animating, false, "switching cancels the prior hover fade");
+  renderer.setScene(scene);
+  assert.equal(paint(4.06).alpha, resting.alpha);
+  renderer.setScene({ ...scene });
+  assert.equal(paint(5, edge.id).alpha, 0.95, "hover retained through an environment switch also applies immediately");
+  assert.equal(paint(6, undefined, false).alpha, resting.alpha, "reduced motion bypasses hover transitions");
+  assert.equal(connectionHoverEase(0), 0);
+  assert.equal(connectionHoverEase(1), 1);
+  let previous = 0;
+  for (let step = 1; step <= 100; step++) {
+    const value = connectionHoverEase(step / 100);
+    assert.ok(value >= previous && value <= 1, "the easing never reverses or overshoots");
+    previous = value;
+  }
+  renderer.dispose();
 });
 
 test("only visible moving content requests more animation frames", () => {

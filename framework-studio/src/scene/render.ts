@@ -6,9 +6,9 @@ import { worldToScreen, type Bounds, type Camera, type Point, type Viewport } fr
 import { project } from "./iso";
 import { searchOpacity, type LandscapeFocus } from "./focus";
 import { bandTrim, DECK, GRAPHITE, hexRgb, ICON_TINT, ROLE_BADGE, ROLE_BADGE_PLATE, trimColor } from "./look";
-import { offLens, restingAlpha } from "./connections";
+import { connectionHoverEase, EDGE_HOVER_DURATION, offLens, restingAlpha } from "./connections";
 import { placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
-import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, rectanglesOverlap, visibleNodeCaptions, type LabelRect } from "./labels";
+import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, nodeCaptionPresentation, rectanglesOverlap, visibleNodeCaptions, type LabelRect } from "./labels";
 import { ICON_BADGE, type Face } from "./shapes";
 import { connectionMidpoint } from "./routing";
 import { missingConnectionInput } from "../connections";
@@ -47,6 +47,7 @@ export interface FrameResult {
 }
 
 const BADGE_WIDTH: Readonly<Record<DeploymentBadgeKind, number>> = { dev: 43, prod: 48, off: 43 };
+const smoothstep = (progress: number): number => progress * progress * (3 - 2 * progress);
 
 type Rgb = readonly [number, number, number];
 
@@ -209,6 +210,9 @@ export class SceneRenderer {
   private readonly plaqueDepth = new Path2D();
   private disposed = false;
   private animating = false;
+  private readonly captionHovers = new Map<string, { from: number; to: number; started: number }>();
+  private readonly edgeHovers = new Map<string, { from: number; to: number; started: number }>();
+  private snapEdgeHover = true;
   /** One screen pixel, in world units, for this frame. */
   private pixel = 1;
   private zoom = 1;
@@ -246,6 +250,8 @@ export class SceneRenderer {
 
   dispose(): void {
     this.disposed = true;
+    this.captionHovers.clear();
+    this.edgeHovers.clear();
     for (const icon of this.icons.values()) icon.onload = null;
   }
 
@@ -258,6 +264,9 @@ export class SceneRenderer {
 
   setScene(scene: Scene): void {
     if (this.prepared?.scene === scene) return;
+    this.captionHovers.clear();
+    this.edgeHovers.clear();
+    this.snapEdgeHover = true;
     this.cardLayout = undefined;
     this.titleLayout = undefined;
     const items: Standing[] = [
@@ -924,7 +933,7 @@ export class SceneRenderer {
     context.beginPath();
     context.roundRect(x, y, size, size, 4);
     context.setLineDash(ghost ? [3 * this.pixel, 3 * this.pixel] : []);
-    context.strokeStyle = ghost ? "#63758d" : rgba(hex(ICON_TINT[key]), 0.75);
+    context.strokeStyle = ghost ? "#63758d" : rgba(hex(ICON_TINT[badge?.borderIcon ?? key]), 0.75);
     context.lineWidth = this.pixel;
     context.stroke();
     context.setLineDash([]);
@@ -961,40 +970,48 @@ export class SceneRenderer {
     const padding = 40 / Math.min(1, state.dpr);
     const view = { minX: camera.x - (viewport.width / 2 + padding) * pixel, maxX: camera.x + (viewport.width / 2 + padding) * pixel,
       minY: camera.y - (viewport.height / 2 + padding) * pixel, maxY: camera.y + (viewport.height / 2 + padding) * pixel };
-    const lit: SceneEdge[] = [];
+    const lit: { edge: SceneEdge; strength: number; resting: number }[] = [];
+    const visible = new Set<string>();
     for (const edge of prepared.scene.edges) {
       const arc = prepared.arcs.get(edge)!;
       if (OUTSIDE(arc.bounds, view)) continue;
+      visible.add(edge.id);
       // A connection only the other environment holds lights up when it is hovered or selected itself, never
       // because a node it touches is: the viewed environment's selection tells the viewed environment's story.
       const own = edge.otherLens === undefined;
       const active =
         state.focus.kind === "search" ? own && state.focus.nodes.has(edge.from) && state.focus.nodes.has(edge.to) :
-        state.hoveredEdge === edge.id || state.selected === edge.id ||
+        state.selected === edge.id ||
         (own && state.selected !== undefined && (edge.from === state.selected || edge.to === state.selected));
-      if (active) {
-        lit.push(edge);
+      const hover = this.hoverAmount(this.edgeHovers, edge.id, state.focus.kind !== "search" && state.hoveredEdge === edge.id ? 1 : 0,
+        state, EDGE_HOVER_DURATION, this.snapEdgeHover, connectionHoverEase);
+      const resting = state.focus.kind === "search" ? 0.025 : arc.missing ? state.selected ? 0.35 : 0.9 : state.selected ? 0.06 : restingAlpha(edge.edge.provenance, arc.offLens);
+      if (active || hover > 0) {
+        lit.push({ edge, strength: active ? 1 : hover, resting });
         continue;
       }
       const missing = arc.missing;
       const color = missing ? MISSING_EDGE : arc.color;
-      context.strokeStyle = rgba(color, state.focus.kind === "search" ? 0.025 : missing ? state.selected ? 0.35 : 0.9 : state.selected ? 0.06 : restingAlpha(edge.edge.provenance, arc.offLens));
+      context.strokeStyle = rgba(color, resting);
       context.lineWidth = 1.2 * pixel;
       context.setLineDash(edge.style.dashed ? [4 * pixel, 4 * pixel] : []);
       context.stroke(arc.path);
     }
+    this.snapEdgeHover = false;
+    for (const id of this.edgeHovers.keys()) if (!visible.has(id)) this.edgeHovers.delete(id);
     context.setLineDash([]);
-    for (const edge of lit) {
+    for (const { edge, strength, resting } of lit) {
       const arc = prepared.arcs.get(edge)!;
       const missing = arc.missing;
       const color = missing ? MISSING_EDGE : arc.color;
-      context.shadowColor = rgba(color, 0.8);
-      context.shadowBlur = 10;
-      context.strokeStyle = rgba(color, 0.95);
-      context.lineWidth = 2.2 * pixel;
+      context.shadowColor = rgba(color, 0.8 * strength);
+      context.shadowBlur = 10 * strength;
+      context.strokeStyle = rgba(color, resting + (0.95 - resting) * strength);
+      context.lineWidth = (1.2 + strength) * pixel;
       context.setLineDash(edge.style.dashed ? [5 * pixel, 4 * pixel] : []);
       context.stroke(arc.path);
       context.setLineDash([]);
+      context.globalAlpha = strength;
       // Which way it points.
       const end = arc.points[arc.points.length - 1]!;
       const before = arc.points[arc.points.length - 3]!;
@@ -1021,6 +1038,7 @@ export class SceneRenderer {
         }
       }
       context.shadowBlur = 0;
+      context.globalAlpha = 1;
     }
     // Fixed screen-size markers remain readable and clickable at overview zoom.
     context.setLineDash([]);
@@ -1075,7 +1093,8 @@ export class SceneRenderer {
     if (cached && sameView(cached.state, state) && cached.state.selected === state.selected &&
       cached.state.hovered === state.hovered && cached.state.focus === state.focus) return cached;
     const { camera, viewport } = state;
-    const scale = Math.max(0.9, Math.min(1.2, camera.zoom));
+    const { scale, gap } = nodeCaptionPresentation(camera.zoom);
+    const tagScale = scale;
     const font = `500 ${12 * scale}px Barlow, system-ui, sans-serif`;
     const buildings = new Map([...prepared.scene.nodes, ...prepared.scene.props].map((item) => {
       const hull = item.geometry.hull;
@@ -1087,8 +1106,6 @@ export class SceneRenderer {
     const tagCandidates: PlacedTag[] = [];
     prepared.scene.nodes.forEach((node, order) => {
       if (state.focus.kind === "search" && !state.focus.nodes.has(node.id)) return;
-      // Overview uses icons and island names; hover details never reflow captions.
-      if (camera.zoom < NODE_CAPTION.minZoom) return;
       const building = buildings.get(node.id)!;
       if (building.x + building.width < 0 || building.x > viewport.width || building.y + building.height < 0 || building.y > viewport.height) return;
       const height = CARD_HEIGHT * scale;
@@ -1103,8 +1120,8 @@ export class SceneRenderer {
       candidates.push({ id: node.id, node, order, priority: 0, scale, font, text, textWidth, width, height, x: anchor.x - width / 2, y: anchor.y - height });
       if (node.badge) {
         const at = worldToScreen(camera, viewport, { x: tile.x, y: tile.y + NODE_DEPLOYMENT_TAG.offset });
-        const tagWidth = BADGE_WIDTH[node.badge] * scale, tagHeight = NODE_DEPLOYMENT_TAG.height * scale;
-        tagCandidates.push({ id: node.id, node, order, priority: 0, scale, kind: node.badge, width: tagWidth, height: tagHeight, x: at.x - tagWidth / 2, y: at.y - tagHeight / 2 });
+        const tagWidth = BADGE_WIDTH[node.badge] * tagScale, tagHeight = NODE_DEPLOYMENT_TAG.height * tagScale;
+        tagCandidates.push({ id: node.id, node, order, priority: 0, scale: tagScale, kind: node.badge, width: tagWidth, height: tagHeight, x: at.x - tagWidth / 2, y: at.y - tagHeight / 2 });
       }
     });
 
@@ -1121,7 +1138,7 @@ export class SceneRenderer {
         return { x: at.x - 10, y: at.y - 10, width: 20, height: 20 };
       }),
     ];
-    const placed = visibleNodeCaptions(candidates, [...buildings.values(), ...reserved], viewport);
+    const placed = visibleNodeCaptions(candidates, [...buildings.values(), ...reserved], viewport, gap);
     // Tags intentionally sit on their own plinth; every other node and caption
     // remains an obstacle. This fixed slot never borrows width from the name.
     const tags = visibleNodeCaptions(tagCandidates.filter((tag) => [...buildings].every(([id, rect]) => id === tag.id || !rectanglesOverlap(tag, rect))), [...controls, ...placed], viewport);
@@ -1129,32 +1146,77 @@ export class SceneRenderer {
     return this.cardLayout;
   }
 
+  private hoverAmount(animations: Map<string, { from: number; to: number; started: number }>, id: string,
+    target: number, state: RenderState, duration: number, snap = false, ease = smoothstep): number {
+    if (!state.motion || snap) {
+      if (target) animations.set(id, { from: target, to: target, started: state.time });
+      else animations.delete(id);
+      return target;
+    }
+    let animation = animations.get(id);
+    const sample = () => {
+      if (!animation) return 0;
+      const progress = Math.max(0, Math.min(1, (state.time - animation.started) / duration));
+      return animation.from + (animation.to - animation.from) * ease(progress);
+    };
+    const current = sample();
+    if ((animation?.to ?? 0) !== target) {
+      if (current === target) {
+        animations.delete(id);
+        return target;
+      }
+      animation = { from: current, to: target, started: state.time };
+      animations.set(id, animation);
+    }
+    if (animation && animation.from !== animation.to && state.time - animation.started < duration) this.animating = true;
+    else if (target === 0) animations.delete(id);
+    return sample();
+  }
+
+  private captionAlpha(node: SceneNode, state: RenderState, detail: number, hover: number): number {
+    if (node.id === state.selected || (state.focus.kind === "search" && state.focus.nodes.has(node.id))) return 1;
+    const quiet = state.focus.kind === "selection" && !state.focus.nodes.has(node.id);
+    const ghost = node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
+    const prominence = node.roleIcon === "unattached" ? 1 : quiet ? 0.35 : ghost ? 0.7 : 1;
+    const resting = NODE_CAPTION.minOpacity + (prominence - NODE_CAPTION.minOpacity) * detail;
+    return resting + (1 - resting) * hover;
+  }
+
   private drawCards(prepared: Prepared, state: RenderState): readonly CardHit[] {
     const context = this.context;
     const { dpr } = state;
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     const layout = this.placeCards(prepared, state);
+    const visible = new Set([...layout.placed, ...layout.tags].map(({ id }) => id));
+    for (const id of this.captionHovers.keys()) if (!visible.has(id)) this.captionHovers.delete(id);
+    const hovers = new Map([...visible].map((id) => [id,
+      this.hoverAmount(this.captionHovers, id, state.hovered === id ? 1 : 0, state, NODE_CAPTION.hoverDuration)]));
+    const { detail } = nodeCaptionPresentation(state.camera.zoom);
+    const plate = 0.25 + 0.75 * detail;
     for (const tag of layout.tags) {
-      // Availability remains legible when switching to the environment where
-      // the icon is ghosted. Search alone can fade an unrelated tag.
-      context.globalAlpha = searchOpacity(state.focus, "nodes", tag.id);
-      this.drawDeploymentBadge(tag.kind, tag.x, tag.y + tag.height / 2, tag.scale);
+      const hover = hovers.get(tag.id)!;
+      const selected = tag.id === state.selected || (state.focus.kind === "search" && state.focus.nodes.has(tag.id));
+      context.globalAlpha = this.captionAlpha(tag.node, state, detail, hover);
+      this.drawDeploymentBadge(tag.kind, tag.x, tag.y + tag.height / 2, tag.scale, selected ? 1 : plate + (1 - plate) * hover);
     }
     context.textAlign = "left";
     for (const { node, scale, font, text, textWidth, x, y, width, height } of layout.placed) {
       const padding = 7 * scale;
       const selected = node.id === state.selected || (state.focus.kind === "search" && state.focus.nodes.has(node.id));
-      const quiet = state.focus.kind === "selection" && !state.focus.nodes.has(node.id);
       const unattached = node.roleIcon === "unattached";
       const ghost = !unattached && (node.presence === "other" || node.presence === "nowhere" || node.presence === "absent");
-      context.globalAlpha = unattached ? searchOpacity(state.focus, "nodes", node.id) : this.opacity * (quiet ? 0.35 : ghost ? 0.7 : 1);
+      const hover = hovers.get(node.id)!;
+      const alpha = this.captionAlpha(node, state, detail, hover);
+      // Let the plate dissolve faster than its name so distant islands keep a quiet texture.
+      context.globalAlpha = alpha * (selected ? 1 : plate + (1 - plate) * hover);
       context.fillStyle = selected ? "#f3efe4" : "#0e131b";
-      context.strokeStyle = selected ? "#fff8e6" : node.id === state.hovered ? "rgba(255, 255, 255, 0.55)" : "rgba(255, 255, 255, 0.14)";
+      context.strokeStyle = selected ? "#fff8e6" : `rgba(255, 255, 255, ${0.14 + 0.41 * hover})`;
       context.lineWidth = 1;
       context.beginPath();
       context.roundRect(x, y, width, height, 5 * scale);
       context.fill();
       context.stroke();
+      context.globalAlpha = alpha;
       context.font = font;
       context.textBaseline = "middle";
       context.fillStyle = selected ? "#141922" : ghost ? "#9aa3ae" : "#e7eaef";
@@ -1176,12 +1238,14 @@ export class SceneRenderer {
     return layout.hits;
   }
 
-  private drawDeploymentBadge(kind: DeploymentBadgeKind, x: number, y: number, scale: number): void {
+  private drawDeploymentBadge(kind: DeploymentBadgeKind, x: number, y: number, scale: number, plateAlpha: number): void {
     const context = this.context;
     const badge = DEPLOYMENT_BADGES[kind];
     context.save();
     context.translate(x, y);
     context.scale(scale, scale);
+    const alpha = context.globalAlpha;
+    context.globalAlpha *= plateAlpha;
     context.fillStyle = badge.background;
     context.strokeStyle = badge.color;
     context.lineWidth = 0.6;
@@ -1189,6 +1253,7 @@ export class SceneRenderer {
     context.roundRect(0, -7.5, BADGE_WIDTH[kind], 15, 3);
     context.fill();
     context.stroke();
+    context.globalAlpha = alpha;
     context.save();
     context.translate(4, -5.5);
     context.scale(11 / 24, 11 / 24);

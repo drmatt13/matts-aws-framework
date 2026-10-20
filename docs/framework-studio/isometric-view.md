@@ -287,7 +287,8 @@ renderer; completion schedules a redraw even when motion is paused. Disposal cle
 their callbacks. Presence controls active versus ghost opacity and dashed outlines.
 Local execution is active in Development; local-only workloads are ghosted in Production.
 
-WebSocket routes and functions carry a small connection badge; agent routes and tool
+WebSocket routes and functions carry a small connection badge with the same border
+color, opacity and thickness as the managed lock badge; agent routes and tool
 Lambdas carry an AgentCore badge; event Lambdas carry a black lightning bolt on yellow.
 These sit at the main icon's lower-right corner, share its disabled/dimmed opacity and
 belong to its clickable silhouette. HTTP nodes keep their plain API Gateway or Lambda icon.
@@ -377,6 +378,12 @@ been removed; the renderer has one visual style.
 
    A missing required input is still red, with its X marker. Derived edges are fainter,
    and a derived or source-inferred connection says so in its hover card.
+
+   Hover eases a connection's brightness, width, glow, arrow and packets over 50 ms
+   in either direction, using `cubic-bezier(0.16, 1, 0.3, 1)` for a fast response and
+   soft finish. Selection and search highlighting remain immediate. Switching
+   Development/Production applies the new connection strengths instantly and clears
+   any hover fade from the previous graph. Paused or reduced motion skips the fade.
 
    Native event triggers point from the public resource to the event Lambda, in solid
    warm yellow (`#ead46c`). They share the invocation category but have their own colour,
@@ -548,11 +555,18 @@ the query lives in the mounted isometric view and never writes configuration or 
   they never change caption position, size or truncation. Zoom preserves the same world anchor.
 - **Measured truncation.** A caption uses at most 160 world units of width. Its text
   budget subtracts the authentication lock and padding before
-  adding an ellipsis. Font scale stays between 0.9 and 1.2. Below 0.55× the overview
-  uses icons and island names; full node names remain in hover details and the inspector.
-- **Environment tags.** At detail zoom, DEV/PROD (or OFF) appears as a separate, fixed
-  tag centred on the plinth's front edge. Both-environment nodes have no tag. The same
-  symbols, colors and presence rules apply, and clicking the tag selects its node.
+  adding an ellipsis. Names shrink gently with the map instead of retaining a fixed
+  screen size, with a 1.2 font-scale cap for close views. There is no overview cutoff:
+  contrast eases from full at 0.85× to a 25% floor at 0.18×. Plates and borders fade
+  faster than text, leaving a quiet layer of names over distant islands. Hovered,
+  selected and search-matching captions keep full contrast without changing geometry.
+  Hover fades the caption text, plate and border to full contrast over 120 ms and
+  fades them back on exit. Reversing hover continues from the current opacity;
+  paused or reduced motion applies the change immediately. Frames stop when the fade settles.
+- **Environment tags.** DEV/PROD (or OFF) appears as a separate, fixed tag centred
+  on the plinth's front edge. Tags share the name's zoom scaling, contrast and hover
+  fade, with no zoom cutoff. Both-environment nodes have no tag. The same symbols,
+  colors and presence rules apply, and clicking the tag selects its node.
 - **Clearance.** The four-cell lattice gives captions their own space. The shared wire
   router reserves their world envelopes. Captions that collide with icons, corner badges,
   wall names, missing-input markers or canvas controls, or cross a viewport edge, are omitted

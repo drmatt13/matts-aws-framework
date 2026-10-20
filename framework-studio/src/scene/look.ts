@@ -24,8 +24,9 @@ const EVENT_YELLOW = "#facc15";
 /** The dark plate behind a role badge's glyph, unless the badge has a backdrop of its own. */
 export const ROLE_BADGE_PLATE = "#121b28";
 
-/** Role badges with their own backdrop and artwork: an event Lambda's black bolt on yellow. Every other badge keeps the dark plate and its own icon. */
-export const ROLE_BADGE: Readonly<Partial<Record<IconKey, { readonly fill: string; readonly artwork?: IconKey }>>> = {
+/** Role badges with their own backdrop, border or artwork. Every other badge keeps the dark plate and its own icon. */
+export const ROLE_BADGE: Readonly<Partial<Record<IconKey, { readonly fill: string; readonly borderIcon?: IconKey; readonly artwork?: IconKey }>>> = {
+  webSocket: { fill: ROLE_BADGE_PLATE, borderIcon: "managed" },
   event: { fill: EVENT_YELLOW, artwork: "eventBadge" },
 };
 
