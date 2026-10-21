@@ -17,6 +17,7 @@ export interface EditIntent {
 }
 
 export type DraftEdit =
+  | import("./managed-database").DatabasePlacementEdit
   | { readonly kind: "removeNetwork"; readonly network: string }
   | { readonly kind: "database"; readonly database: string; readonly settings: import("@repo/framework/config/database").DatabaseSettingsInput }
   | ({ readonly kind: "placement" } & import("./networks").PlacementEdit)

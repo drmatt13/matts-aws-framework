@@ -23,7 +23,7 @@ function registered(root: string, files: SourceFiles): LocatedConfigSource {
 }
 
 
-function importVpc(file: string, text: string, id: string, located: LocatedConfigSource): { text: string; symbol: string } {
+export function importVpc(file: string, text: string, id: string, located: LocatedConfigSource): { text: string; symbol: string } {
   const network = located.networks.find(network => network.id === id);
   if (!network) throw new EditError(422, "Select a registered VPC with an exported source declaration.");
   const source = parse(file, text);
@@ -42,6 +42,30 @@ function importVpc(file: string, text: string, id: string, located: LocatedConfi
   let specifier = path.relative(path.dirname(file), network.file).replaceAll("\\", "/").replace(/\.ts$/, "").replace(/\/index$/, "");
   if (!specifier.startsWith(".")) specifier = `./${specifier}`;
   return { text: `import { ${network.exportName} as ${symbol} } from ${JSON.stringify(specifier)};\n${text}`, symbol };
+}
+
+/** Remove only plain, now-unused VPC imports. Comments and shared imports remain source-owned. */
+export function pruneUnusedVpcImports(root: string, file: string, text: string, located: LocatedConfigSource): string {
+  const source = parse(file, text);
+  const removals: { start: number; end: number }[] = [];
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || statement.importClause?.name || statement.importClause?.isTypeOnly) continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings) || bindings.elements.length !== 1) continue;
+    const name = bindings.elements[0]!.name;
+    if (!importedVpc(root, file, source, name, located)) continue;
+    let used = false;
+    const inspect = (node: ts.Node): void => {
+      if (node === statement) return;
+      if (ts.isIdentifier(node) && node.text === name.text) used = true;
+      ts.forEachChild(node, inspect);
+    };
+    inspect(source);
+    if (used || (ts.getLeadingCommentRanges(text, statement.pos) ?? []).length || (ts.getTrailingCommentRanges(text, statement.end) ?? []).length || /\/\*|\/\//.test(statement.getText(source))) continue;
+    removals.push({ start: statement.getStart(source), end: statement.end + (/^[ \t]*\r?\n/.exec(text.slice(statement.end))?.[0].length ?? 0) });
+  }
+  for (const removal of removals.reverse()) text = text.slice(0, removal.start) + text.slice(removal.end);
+  return text;
 }
 
 export function planPlacement(root: string, state: StudioState, edit: PlacementEdit, overrides: Map<string, string>): void {
@@ -73,13 +97,16 @@ export function planPlacement(root: string, state: StudioState, edit: PlacementE
       const old = position.property;
       if (position.editability.kind === "spread") throw new EditError(422, "Placement uses an object spread. Make the placement explicit in source first.");
       if (position.editability.kind === "unsupported") throw new EditError(422, position.editability.reason);
+      if (!old && position.editability.kind === "computed") throw new EditError(422, "Placement is computed. Make the VPC and subnet explicit in source first.");
       if (key === "vpc" && old && !importedVpc(root, file, source, old.initializer, located)) throw new EditError(422, "The current VPC is computed or cannot be resolved safely. Edit it in source.");
       const expression = key === "subnet" ? JSON.stringify(edit.subnet) : symbol;
       if (old) {
+        const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, old.initializer.getText(source));
+        for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) if (token === ts.SyntaxKind.SingleLineCommentTrivia || token === ts.SyntaxKind.MultiLineCommentTrivia) throw new EditError(422, "Placement contains a source comment. Edit it in source to preserve that comment deliberately.");
         if (expression === undefined) text = removeProperty(text, source, old.parent as ts.ObjectLiteralExpression, old);
         else if (key === "subnet" && !ts.isStringLiteral(old.initializer)) throw new EditError(422, "The subnet is computed. Edit it in source.");
         else text = text.slice(0, old.initializer.getStart(source)) + expression + text.slice(old.initializer.end);
-      } else if (expression !== undefined) text = insertExpression(text, source, declaration.object, keys, expression);
+      } else if (expression !== undefined) text = insertExpression(text, source, position.container, position.missing, expression);
     }
     overrides.set(file, text);
   }

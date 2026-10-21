@@ -57,7 +57,7 @@ beforeEach(() => {
     planCalls.push(edits);
     await reviewGate;
     if (failReview) throw new Error("Could not validate changes. Try reviewing again.");
-    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
+    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "databasePlacement" ? `database placement ${edit.database}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
   });
   mock.method(apiModule.api, "applyBatch", async () => {
     applyCalls++; if (failApply) throw new Error("Source changed. Your draft is preserved.");
@@ -538,7 +538,7 @@ test("managed API routes show their target's environment cards and owning config
 
 test("catalog and local services share deployment cards while managed entries link to their owner", async () => {
   const tool = baseline.models.dev.targets.find((target) => target.role === "tool")!;
-  for (const id of ["resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "local:postgres", "prop:vpc:application:endpoint:s3", "lambda:cognito-post-confirmation-trigger", tool.ref]) {
+  for (const id of ["resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "prop:vpc:application:endpoint:s3", "lambda:cognito-post-confirmation-trigger", tool.ref]) {
     await mount(id);
     const section = document.querySelector(".inspector-content > .inspector-deployment");
     assert.ok(section, id);
@@ -1026,15 +1026,68 @@ test("VPC creation switches preserve boolean choices through review without subm
   assert.equal(applyCalls, 0);
 });
 
+test("local PostgreSQL and RDS open the same application database workflow without writing source", async () => {
+  for (const id of ["local:postgres", "resource:rds.database"]) {
+    await mount(id);
+    assert.ok(ui.screen.getByRole("heading", { name: "Application PostgreSQL" }));
+    assert.deepEqual([...document.querySelectorAll(".database-environment strong")].map(node => node.textContent), ["Development", "Production"]);
+    assert.ok(ui.screen.getByText(/data is not synchronized/));
+    assert.ok(ui.screen.getByRole("heading", { name: "Database home" }));
+    assert.equal(ui.screen.queryByRole("combobox", { name: "Deploy" }), null);
+    openSection("Connected workloads");
+    assert.ok(document.querySelector(".database-consumers")?.textContent?.includes("Direct writer"));
+    assert.ok(document.querySelector(".database-consumers")?.textContent?.includes("task:db-migrate"));
+    assert.equal(planCalls.length + applyCalls, 0);
+    ui.cleanup();
+  }
+});
+
+test("database placement stages a coordinated review, guards navigation, and restores the current home", async () => {
+  const database = baseline.models.dev.managedDatabase!;
+  const spare = { ...baseline.models.dev.networks![0]!, id: "database-destination", name: "Database destination", cidr: "10.99.0.0/16" };
+  persisted = { ...baseline, models: {
+    dev: { ...baseline.models.dev, networks: [...baseline.models.dev.networks!, spare] },
+    prod: { ...baseline.models.prod, networks: [...baseline.models.prod.networks!, spare] },
+  } };
+  await mount("resource:rds.database");
+  ui.fireEvent.click(ui.screen.getByText("Change placement"));
+  const vpc = () => ui.screen.getByRole("combobox", { name: "Database VPC" }) as HTMLSelectElement;
+  const subnet = () => ui.screen.getByRole("combobox", { name: "Database subnets" }) as HTMLSelectElement;
+  assert.ok(![...vpc().options].some(option => option.value === "none" || !option.value));
+  assert.deepEqual([...subnet().options].map(option => option.value), ["isolated", "private"]);
+  ui.fireEvent.change(vpc(), { target: { value: spare.id } });
+  ui.fireEvent.change(subnet(), { target: { value: "private" } });
+  assert.ok(ui.screen.getByText("Coordinated placement review"));
+  assert.match(document.querySelector(".database-placement-impact")!.textContent!, /task:db-migrate/);
+  assert.equal(planCalls.length + applyCalls, 0);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "databasePlacement", database: database.id, vpc: spare.id, subnet: "private" }]);
+  assert.equal(applyCalls, 0);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" }));
+  assert.equal(vpc().value, spare.id);
+  assert.equal(subnet().value, "private");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Open node B" }));
+  await waitDialog("Unsaved changes");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Keep Editing" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Restore current placement" }));
+  assert.equal(vpc().value, database.networkId);
+  assert.equal(subnet().value, database.subnet);
+  assert.equal(ui.screen.queryByLabelText("Pending inspector changes"), null);
+  assert.equal(applyCalls, 0);
+});
+
 test("managed PostgreSQL policy stays editable in development and retains its complete draft through review", async () => {
   assert.equal(baseline.models.dev.resources.find(resource => resource.id === "resource:rds")?.absent, true, "development uses local PostgreSQL while RDS stays declared");
   const database = baseline.models.dev.managedDatabase!;
   assert.ok(database, "the native RDS resource has a first-class declaration");
   await mount("resource:rds.database");
-  assert.ok(ui.screen.getByRole("heading", { name: "Managed PostgreSQL" }));
-  assert.ok(ui.screen.getByRole("heading", { name: "Connection pool defaults" }));
+  assert.ok(ui.screen.getByRole("heading", { name: "Application PostgreSQL" }));
+  assert.ok(ui.screen.getByRole("heading", { name: "Production RDS" }));
+  assert.ok([...document.querySelectorAll("summary")].some(summary => summary.textContent === "Connection pool defaults"));
   assert.equal(ui.screen.queryByRole("combobox", { name: "Default service type" }), null, "database defaults need no service-type menu");
-  assert.ok(ui.screen.getByText(/Production builds RDS; development uses local PostgreSQL/));
+  assert.ok(ui.screen.getByText(/Independent data in development and production/));
+  openSection("Availability and backups");
   const standby = () => ui.screen.getByRole("switch", { name: "Multi-AZ standby" });
   const replicas = () => ui.screen.getByRole("spinbutton", { name: "Read replicas" }) as HTMLInputElement;
   const retention = () => ui.screen.getByRole("spinbutton", { name: "Backup retention (days)" }) as HTMLInputElement;
@@ -1066,6 +1119,7 @@ test("managed PostgreSQL policy stays editable in development and retains its co
 
 test("database callers' global pool defaults remain reviewable beside the database policy", async () => {
   await mount("resource:rds.database");
+  openSection("Connection pool defaults");
   const input = ui.screen.getByRole("spinbutton", { name: "Maximum connections in connections" });
   const fact = baseline.models.dev.fields["defaults:database"]!.find(fact => fact.field === "defaults.database.pool.maxConnections")!;
   const value = Number(fact.effective) + 1;

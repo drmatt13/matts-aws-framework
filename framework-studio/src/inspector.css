@@ -831,6 +831,43 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
   .landscape-add-menu { position: fixed; right: 16px; bottom: 16px; width: min(360px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); z-index: 30; }
 }
 
+/* The application database has two implementations and one reviewed declaration. */
+.database-environments { display: grid; gap: var(--ui-space-2); }
+.database-environment, .database-home { display: flex; align-items: center; gap: var(--ui-space-3); min-width: 0; padding: var(--ui-space-3); border: 1px solid var(--rule-strong); border-radius: var(--ui-control-radius); background: var(--paper); }
+.database-environment.selected.dev { border-color: color-mix(in srgb, var(--dev) 65%, var(--rule-strong)); }
+.database-environment.selected.prod { border-color: color-mix(in srgb, var(--prod) 65%, var(--rule-strong)); }
+.database-environment > .entity-icon, .database-home > .entity-icon { width: 32px; height: 32px; flex: none; }
+.database-environment > span:first-of-type, .database-home > span:first-of-type { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.database-environment strong, .database-home strong { font-size: var(--ui-label); font-weight: 600; overflow-wrap: anywhere; }
+.database-environment code, .database-home code { color: var(--graphite); font-size: 11px; overflow-wrap: anywhere; }
+.database-environment > span:last-child, .database-home > span:last-child { flex: none; }
+.database-home { width: 100%; text-align: left; color: var(--ink); font: inherit; cursor: pointer; }
+.database-home:hover { border-color: var(--graphite); background: var(--wash); }
+.database-placement-editor > summary { cursor: pointer; font-size: var(--ui-label); font-weight: 500; padding-block: var(--ui-space-2); }
+.database-placement-editor fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
+.database-placement-impact, .network-database-home { margin: var(--ui-space-3) 0; padding: var(--ui-space-3); border: 1px solid var(--rule-strong); border-radius: var(--ui-control-radius); background: var(--wash); }
+.database-placement-impact strong, .network-database-home strong { font-size: var(--ui-label); font-weight: 500; }
+.database-placement-impact p, .network-database-home p { margin: var(--ui-space-2) 0; }
+.database-placement-impact ul { padding-left: 18px; overflow-wrap: anywhere; }
+.database-migration-note { border-left: 2px solid var(--prod); padding-left: var(--ui-space-3); color: var(--graphite); }
+.database-paths { display: grid; gap: var(--ui-space-2); }
+.database-paths > div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: var(--ui-space-3); font-size: var(--ui-label); }
+.database-paths > div > span { color: var(--graphite); }
+.database-paths strong { font-weight: 500; overflow-wrap: anywhere; }
+.database-policy-summary { display: flex; flex-wrap: wrap; gap: var(--ui-space-2); }
+.database-policy-summary > span { padding: 4px 7px; border-radius: 4px; background: var(--wash); font-size: var(--ui-caption); }
+.database-policy-group .section-content > p:first-child { margin-top: 0; }
+.database-pool-defaults .section-content > section { padding: 0; border: 0; }
+.database-consumers { list-style: none; padding: 0; margin: 0; }
+.database-consumers li { display: flex; justify-content: space-between; align-items: start; gap: var(--ui-space-3); padding-block: var(--ui-space-3); border-top: 1px solid var(--rule); }
+.database-consumers li:first-child { border-top: 0; }
+.database-consumers .linkish { display: flex; align-items: start; gap: var(--ui-space-2); min-width: 0; text-align: left; }
+.database-consumers .entity-icon { width: 22px; height: 22px; flex: none; }
+.database-consumers .linkish > span { display: grid; min-width: 0; }
+.database-consumers code { font-size: 10px; color: var(--graphite); overflow-wrap: anywhere; }
+.database-consumers li > span { text-align: right; flex: none; }
+@media (max-width: 420px) { .database-consumers li { flex-wrap: wrap; } .database-consumers li > span { text-align: left; padding-left: 30px; } }
+
 /* A service picker keeps exact endpoint identities visible beside AWS artwork. */
 .field.endpoint-field { grid-template-columns: minmax(0, 1fr); gap: var(--ui-space-2); }
 .field.endpoint-field > .name { padding-top: 0; }

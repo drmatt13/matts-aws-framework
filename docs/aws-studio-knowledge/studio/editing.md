@@ -7,8 +7,11 @@ read_when:
 source:
   - framework-studio/src/draft.ts
   - framework-studio/src/views/Deployment.tsx
+  - framework-studio/src/views/ManagedDatabaseInspector.tsx
+  - framework-studio/src/views/DatabasePlacement.tsx
   - framework-studio/server/edits/transaction.ts
   - framework-studio/server/edits/batch.ts
+  - framework-studio/server/edits/database.ts
   - framework-studio/server/edits/plan.ts
   - framework-studio/server/edits/splice.ts
   - framework-studio/server/edits/io.ts
@@ -29,7 +32,7 @@ Boolean settings reuse `InspectorSwitch` in `InspectorUI.tsx`, including VPC/dat
 policies and creation forms; toggling stages the owning draft and never applies source.
 VPC inspectors contain only network settings and membership, not global workload defaults.
 `SharedDefaults.tsx` presents family defaults in their related inspectors; database caller
-pool defaults live beside Managed PostgreSQL controls and still edit `defaults.database`,
+pool defaults live in Application PostgreSQL's Connection pool defaults and still edit `defaults.database`,
 independently of the server policy declaration. See the
 [inspector conventions](../../framework-studio/inspector-design.md).
 
@@ -67,8 +70,21 @@ Use [extensions](../guides/extensions.md) for new fields. Tests: [plan](../../..
 
 Typed VPC removal and managed database settings reuse this batch journal, including
 post-apply semantic checks, guarded rollback and undo/redo. VPC removal rescans source
-consumers immediately before writing. Database edits target only literal policy settings;
-placement and native identity changes remain source-owned. The
+consumers immediately before writing. `ManagedDatabaseInspector.tsx` joins local PostgreSQL
+and production RDS, showing independent data, connection paths, the VPC home and consumers.
+Policy edits target literal settings. A separate typed `databasePlacement` operation
+coordinates the database declaration and the union of normalized database consumers in
+both modes, preserving each workload's subnet tier and bindings. `DatabasePlacement.tsx`
+offers only registered VPCs and private/isolated subnets; the owning VPC is required.
+Computed declarations and competing consumer placement edits are refused. Actual placement
+is checked after apply; mismatch uses guarded rollback, and undo/redo restores source.
+This edits source only: deployed RDS moves need migration/cutover planning and separately
+authorized deployment. Identity and native CDK source remain source-owned. See
+[placement and parity](../../framework-studio/network-database-declarations.md).
+The [database placement suite](../../../framework-studio/test/database-placement.test.ts)
+covers coordinated consumers, policy composition, unsafe-source refusal, post-write rollback
+and exact undo/redo without touching a live database.
+The
 [HTTP response helper](../../../framework-studio/server/http.ts) catches synchronous
 validation as well as rejected planning promises. A shared browser/server protocol blocks
 incompatible edits with an explicit restart instruction; a Vite refresh does not reload

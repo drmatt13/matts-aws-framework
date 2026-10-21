@@ -3,13 +3,18 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { readDatabaseDraft } from "../shared/managed-database";
+import { readDatabaseDraft, readDatabasePlacementDraft } from "../shared/managed-database";
 import { planDatabaseSettings } from "../server/edits/database";
 import { SourceFiles } from "../server/source";
 import { locateManagedDatabase } from "../server/source/database";
 import type { StudioState } from "../server/snapshot";
 
 const request = (settings: unknown = { multiAz: true }) => ({ kind: "database", database: "application", settings });
+test("database placement requests require one registered identity and never accept public or absent placement", () => {
+  const edit = { kind: "databasePlacement", database: "application", vpc: "analytics", subnet: "isolated" };
+  assert.deepEqual(readDatabasePlacementDraft(edit), edit);
+  for (const raw of [{ ...edit, subnet: "public" }, { ...edit, subnet: "none" }, { ...edit, vpc: null }, { ...edit, database: "../application" }, { ...edit, consumers: [] }, { ...edit, settings: {} }, { ...edit, file: "anything.ts" }]) assert.throws(() => readDatabasePlacementDraft(raw));
+});
 test("managed database HTTP drafts validate names, topology and typed settings", () => {
   assert.deepEqual(readDatabaseDraft(request()), request());
   const settings = { storageType: "gp3", allocatedStorage: 400, maxAllocatedStorage: 1000, iops: 12000, throughput: 500, readReplicaCount: 2, backupRetentionDays: 7 };

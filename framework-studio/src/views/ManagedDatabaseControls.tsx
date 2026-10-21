@@ -1,39 +1,44 @@
 import { DATABASE_SETTING_INPUTS, resolveDatabaseSettings, type DatabaseSettings, type DatabaseSettingsInput } from "@repo/framework/config/database";
-import { useStudio } from "../studio";
-import { editorLink } from "../lookup";
-import { InspectorSection, InspectorSwitch } from "./InspectorUI";
 import { useId } from "react";
+import { useStudio } from "../studio";
+import { InspectorDisclosure, InspectorSection, InspectorSwitch } from "./InspectorUI";
 import { SharedDefaults } from "./SharedDefaults";
 
-const fields: readonly { key: keyof DatabaseSettings; label: string; type?: "number" | "boolean" | "list"; options?: readonly string[]; advanced?: boolean }[] = [
-  { key: "instanceClass", label: "Instance class" },
-  { key: "multiAz", label: "Multi-AZ standby", type: "boolean" },
-  { key: "readReplicaCount", label: "Read replicas", type: "number" },
-  { key: "backupRetentionDays", label: "Backup retention (days)", type: "number" },
-  { key: "storageType", label: "Storage type", options: ["gp2", "gp3", "io2"] },
-  { key: "allocatedStorage", label: "Allocated storage (GiB)", type: "number" },
-  { key: "maxAllocatedStorage", label: "Storage autoscaling ceiling (GiB)", type: "number" },
-  { key: "proxyEnabled", label: "RDS Proxy with IAM authentication", type: "boolean" },
-  { key: "engineVersion", label: "PostgreSQL version", advanced: true },
-  { key: "readReplicaInstanceClass", label: "Replica instance class", advanced: true },
-  { key: "readReplicaMultiAz", label: "Multi-AZ replicas", type: "boolean", advanced: true },
-  { key: "iops", label: "Provisioned IOPS", type: "number", advanced: true },
-  { key: "throughput", label: "Storage throughput (MiB/s)", type: "number", advanced: true },
-  { key: "backupWindow", label: "Backup window (UTC)", advanced: true },
-  { key: "maintenanceWindow", label: "Maintenance window (UTC)", advanced: true },
-  { key: "logExports", label: "Log exports (comma-separated)", type: "list", advanced: true },
-  { key: "logRetentionDays", label: "Log retention (days)", type: "number", advanced: true },
-  { key: "allowMajorVersionUpgrade", label: "Allow major version upgrade", type: "boolean", advanced: true },
-  { key: "autoMinorVersionUpgrade", label: "Automatic minor version upgrades", type: "boolean", advanced: true },
-  { key: "applyImmediately", label: "Apply outside maintenance window", type: "boolean", advanced: true },
-  { key: "proxyMaxConnectionsPercent", label: "Proxy connection limit (%)", type: "number", advanced: true },
-  { key: "proxyBorrowTimeoutSeconds", label: "Proxy borrow timeout (seconds)", type: "number", advanced: true },
-  { key: "proxyIdleClientTimeoutSeconds", label: "Proxy idle timeout (seconds)", type: "number", advanced: true },
+type Group = "capacity" | "resilience" | "connections" | "maintenance";
+const fields: readonly { key: keyof DatabaseSettings; label: string; group: Group; type?: "number" | "boolean"; options?: readonly string[] }[] = [
+  { key: "instanceClass", label: "Instance class", group: "capacity" },
+  { key: "storageType", label: "Storage type", options: ["gp2", "gp3", "io2"], group: "capacity" },
+  { key: "allocatedStorage", label: "Allocated storage (GiB)", type: "number", group: "capacity" },
+  { key: "maxAllocatedStorage", label: "Storage autoscaling ceiling (GiB)", type: "number", group: "capacity" },
+  { key: "iops", label: "Provisioned IOPS", type: "number", group: "capacity" },
+  { key: "throughput", label: "Storage throughput (MiB/s)", type: "number", group: "capacity" },
+  { key: "multiAz", label: "Multi-AZ standby", type: "boolean", group: "resilience" },
+  { key: "readReplicaCount", label: "Read replicas", type: "number", group: "resilience" },
+  { key: "readReplicaInstanceClass", label: "Replica instance class", group: "resilience" },
+  { key: "readReplicaMultiAz", label: "Multi-AZ replicas", type: "boolean", group: "resilience" },
+  { key: "backupRetentionDays", label: "Backup retention (days)", type: "number", group: "resilience" },
+  { key: "backupWindow", label: "Backup window (UTC)", group: "resilience" },
+  { key: "proxyEnabled", label: "RDS Proxy with IAM authentication", type: "boolean", group: "connections" },
+  { key: "proxyMaxConnectionsPercent", label: "Proxy connection limit (%)", type: "number", group: "connections" },
+  { key: "proxyBorrowTimeoutSeconds", label: "Proxy borrow timeout (seconds)", type: "number", group: "connections" },
+  { key: "proxyIdleClientTimeoutSeconds", label: "Proxy idle timeout (seconds)", type: "number", group: "connections" },
+  { key: "engineVersion", label: "PostgreSQL version", group: "maintenance" },
+  { key: "autoMinorVersionUpgrade", label: "Automatic minor version upgrades", type: "boolean", group: "maintenance" },
+  { key: "allowMajorVersionUpgrade", label: "Allow major version upgrade", type: "boolean", group: "maintenance" },
+  { key: "applyImmediately", label: "Apply outside maintenance window", type: "boolean", group: "maintenance" },
+  { key: "maintenanceWindow", label: "Maintenance window (UTC)", group: "maintenance" },
+  { key: "logRetentionDays", label: "Log retention (days)", type: "number", group: "maintenance" },
+];
+const groups: readonly { id: Group; title: string; help: string }[] = [
+  { id: "capacity", title: "Capacity and storage", help: "Writer sizing and storage autoscaling. Storage changes need review before deployment." },
+  { id: "resilience", title: "Availability and backups", help: "Multi-AZ adds a standby for failover. Read replicas serve explicitly requested, potentially stale reads and require backups." },
+  { id: "connections", title: "Proxy and connections", help: "Proxy handles application writer traffic with end-to-end IAM. Migrations stay direct; replicas use direct reader connections." },
+  { id: "maintenance", title: "Maintenance and logs", help: "Engine upgrades and immediate application affect production operations; review them before deployment." },
 ];
 
-/** Edits the source policy; never connects to, migrates, or changes a live database. */
+/** All settings use the existing declaration resolver and guarded source transaction. */
 export function ManagedDatabaseControls() {
-  const { model, snapshot, draft } = useStudio();
+  const { model, snapshot, draft, draftState, live, select } = useStudio();
   const prefix = useId();
   const database = model.managedDatabase;
   if (!database) return null;
@@ -41,35 +46,58 @@ export function ManagedDatabaseControls() {
   let settings: DatabaseSettings;
   try { settings = resolveDatabaseSettings({ getContext: () => undefined, env: {}, defaults: authored }); }
   catch { settings = { ...database.settings, ...authored }; }
-  const source = snapshot.source.entities[`database:${database.id}`]?.value;
-  const error = draft.getSnapshot().entries.find(entry => entry.kind === "database" && entry.database === database.id)?.error;
-  const inputNames = new Set(Object.values(DATABASE_SETTING_INPUTS));
-  const overrides = model.resources.flatMap(resource => resource.deploymentFile?.mode === model.mode ? resource.deploymentFile.entries.filter(entry => inputNames.has(entry.name as never)).map(entry => entry.name) : []);
+  const error = draftState.entries.find(entry => entry.kind === "database" && entry.database === database.id)?.error;
+  const disabled = !!draftState.busy || live.evaluating || !!model.stale || draft.conflict;
+  const inputNames = new Set<string>(Object.values(DATABASE_SETTING_INPUTS));
+  const overrides = Object.values(snapshot.models).flatMap(graph => graph.resources.flatMap(resource => resource.deploymentFile ? [{ file: resource.deploymentFile, entries: resource.deploymentFile.entries.filter(entry => inputNames.has(entry.name)) }] : [])).filter(({ entries }) => entries.length);
+  const uniqueOverrides = [...new Map(overrides.map(item => [item.file.mode, item])).values()];
   const update = (key: keyof DatabaseSettings, value: unknown) => {
     const next = { ...authored } as Record<string, unknown>;
     if (value === undefined || value === "") delete next[key]; else next[key] = value;
     draft.setDatabase(database.id, next as DatabaseSettingsInput);
   };
-  const inputs = (advanced: boolean) => <div className="fields">{fields.filter(field => !!field.advanced === advanced).map(field => {
+  const inputs = (group: Group) => <div className="fields">{fields.filter(field => field.group === group).map(field => {
     const value = settings[field.key];
     const id = `${prefix}-${field.key}`;
+    const unavailable = field.key.startsWith("proxy") && field.key !== "proxyEnabled" && !settings.proxyEnabled ? "Enable Proxy to configure its pool."
+      : ["readReplicaInstanceClass", "readReplicaMultiAz"].includes(field.key) && !settings.readReplicaCount ? "Add a read replica to configure its sizing."
+      : field.key === "iops" && settings.storageType === "gp2" ? "Custom IOPS requires gp3 or io2."
+      : field.key === "throughput" && settings.storageType !== "gp3" ? "Custom throughput requires gp3." : undefined;
+    const invalid = !!error?.includes(`settings.${field.key}`);
     return <div className="field" key={field.key}><label className="name" htmlFor={id}>{field.label}</label><span className="control">
-      {field.type === "boolean" ? <InspectorSwitch id={id} label={field.label} checked={value === true} onChange={checked => update(field.key, checked)} />
-        : field.options ? <select id={id} aria-label={field.label} value={String(value)} onChange={event => update(field.key, event.target.value)}>{field.options.map(option => <option key={option}>{option}</option>)}</select>
-        : field.type === "list" ? <input id={id} aria-label={field.label} key={draft.getSnapshot().baseline.revision} defaultValue={(value as readonly string[]).join(", ")} onChange={event => update(field.key, event.target.value.split(",").map(item => item.trim()).filter(Boolean))} />
-        : <input id={id} aria-label={field.label} type={field.type === "number" ? "number" : "text"} value={value === undefined ? "" : String(value)} onChange={event => update(field.key, field.type === "number" && event.target.value !== "" ? Number(event.target.value) : event.target.value)} />}</span>
-      <span className="note">{Object.hasOwn(authored, field.key) ? <button className="linkish small" type="button" aria-label={`Use framework default for ${field.label}`} onClick={() => update(field.key, undefined)}>Use framework default</button> : "Framework default"}</span>
+      {field.type === "boolean" ? <InspectorSwitch id={id} label={field.label} checked={value === true} disabled={disabled || !!unavailable} onChange={checked => update(field.key, checked)} invalid={invalid} />
+        : field.options ? <select id={id} aria-label={field.label} value={String(value)} disabled={disabled || !!unavailable} onChange={event => update(field.key, event.target.value)}>{field.options.map(option => <option key={option}>{option}</option>)}</select>
+        : <input id={id} aria-label={field.label} type={field.type === "number" ? "number" : "text"} disabled={disabled || !!unavailable} value={value === undefined ? "" : String(value)} aria-invalid={invalid} aria-describedby={invalid ? `${prefix}-error` : undefined} onChange={event => update(field.key, field.type === "number" && event.target.value !== "" ? Number(event.target.value) : event.target.value)} />}</span>
+      <span className="note">{unavailable ? <span>{unavailable} </span> : null}{Object.hasOwn(authored, field.key) ? <button className="linkish small" type="button" disabled={disabled} aria-label={`Use framework default for ${field.label}`} onClick={() => update(field.key, undefined)}>Use framework default</button> : "Framework default"}</span>
     </div>;
   })}</div>;
-  return <><InspectorSection title="Managed PostgreSQL" description="Declaration defaults shared by both modes. Production builds RDS; development uses local PostgreSQL.">
-    <p className="small">{database.id} · {database.networkId} VPC · {database.subnet} subnets · {database.databaseName}</p>
-    <p className="small muted">IAM-only workload login. Network, database name, engine family, and deployed identities remain source-owned.</p>
-    {inputs(false)}
-    <p className="small muted">Multi-AZ, replicas, and Proxy add billed capacity. Enabling replicas requires backups; workloads request replica access explicitly.</p>
-    {settings.multiAz && !database.settings.multiAz ? <p className="small">Multi-AZ upgrade staged. Review the source diff, then review a production synth before a separate deployment.</p> : null}
-    <details><summary>Advanced PostgreSQL settings</summary>{inputs(true)}<p className="small muted">Engine upgrades, storage changes, and immediate application need a separate operational review before deployment.</p></details>
-    {error ? <p className="reason small" role="alert">{error}</p> : null}
-    <p className="small muted">{overrides.length ? `This mode has deployment inputs: ${overrides.join(", ")}. ` : ""}DATABASE_* inputs and CDK context override declaration defaults. Synthesis resolves the final deployment settings.</p>
-    {source ? <a className="small" href={editorLink(snapshot.repositoryRoot, source)}>Open database declaration in VS Code</a> : null}
-  </InspectorSection><SharedDefaults families={["database"]} title="Connection pool defaults" description="Shared by database callers across all VPCs. Individual workload overrides take precedence; these settings do not size the database server." /></>;
+  return <>
+    <InspectorSection title="Connection paths" description="Production routes from the declaration preview; these are not live connection checks.">
+      <div className="database-paths" aria-live="polite">
+        <div><span>Application</span><strong>{settings.proxyEnabled ? "IAM → Proxy → Writer" : "IAM → Writer"}</strong></div>
+        <div><span>Migrations</span><strong>IAM → Direct writer</strong></div>
+        <div><span>Reader access</span><strong>{settings.readReplicaCount ? `${settings.readReplicaCount} direct ${settings.readReplicaCount === 1 ? "replica" : "replicas"}` : "Writer fallback"}</strong></div>
+      </div>
+      <p className="small muted">Reader access is opt-in per workload. Replica reads can be stale; development uses the same local instance for both roles.</p>
+    </InspectorSection>
+    <InspectorSection title="Production RDS" description="Declaration defaults for RDS. Local PostgreSQL is configured separately in Compose.">
+      <div className="database-policy-summary"><span>{settings.instanceClass}</span><span>PostgreSQL {settings.engineVersion}</span><span>{settings.allocatedStorage}–{settings.maxAllocatedStorage || settings.allocatedStorage} GiB</span></div>
+      <p className="small muted">{settings.multiAz ? "Multi-AZ standby" : "Single-AZ writer"} · {settings.readReplicaCount ? `${settings.readReplicaCount} read replicas` : "No read replicas"}</p>
+      {settings.multiAz && !database.settings.multiAz ? <p className="small">Multi-AZ upgrade staged. Review the source diff and production synth before a separate deployment.</p> : null}
+      {error ? <p id={`${prefix}-error`} className="reason small" role="alert">{error}</p> : null}
+    </InspectorSection>
+    {groups.map(group => <InspectorDisclosure key={group.id} title={group.title} className="database-policy-group" open={error && fields.some(field => field.group === group.id && error.includes(`settings.${field.key}`)) ? true : undefined}>
+      <p className="small muted">{group.help}</p>{inputs(group.id)}
+      {group.id === "resilience" || group.id === "connections" ? <p className="small muted">Standby instances, read replicas and Proxy add billed capacity.</p> : null}
+      {group.id === "maintenance" ? <><div className="fields">{(["postgresql", "upgrade"] as const).map(name => <div className="field" key={name}><label className="name" htmlFor={`${prefix}-logs-${name}`}>{name === "postgresql" ? "PostgreSQL logs" : "Upgrade logs"}</label><span className="control"><InspectorSwitch id={`${prefix}-logs-${name}`} label={name === "postgresql" ? "PostgreSQL logs" : "Upgrade logs"} disabled={disabled} checked={settings.logExports.includes(name)} onChange={checked => update("logExports", checked ? [...settings.logExports, name] : settings.logExports.filter(item => item !== name))} /></span></div>)}</div>{Object.hasOwn(authored, "logExports") ? <button className="linkish small" disabled={disabled} onClick={() => update("logExports", undefined)}>Use framework default for log exports</button> : null}</> : null}
+    </InspectorDisclosure>)}
+    <InspectorDisclosure title="Connection pool defaults" className="database-pool-defaults">
+      <p className="small muted">Limits apply per warm process and per writer/reader connection, not across the entire database. Workloads can override these shared defaults.</p>
+      <SharedDefaults families={["database"]} title="Per-process pools" description="The framework resolves these limits for each declared database consumer." />
+    </InspectorDisclosure>
+    <InspectorDisclosure title="Deployment overrides">
+      <p className="small muted">DATABASE_* inputs and CDK context take precedence over these declaration defaults. Synthesis resolves the effective AWS settings.</p>
+      {uniqueOverrides.map(({ file, entries }) => <div key={file.mode}><button className="linkish small" onClick={() => select(`envfile:${file.mode}`)}>{file.path}</button><p className="small muted">{entries.length} database setting entries. Empty entries do not override defaults.</p><details><summary>Setting names</summary><ul className="small">{entries.map(entry => <li key={entry.name}><code>{entry.name}</code></li>)}</ul></details></div>)}
+    </InspectorDisclosure>
+  </>;
 }

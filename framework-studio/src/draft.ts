@@ -6,7 +6,7 @@ import type { DeploymentInputEdit, DeploymentInputPlan } from "../shared/deploym
 import { descriptionError } from "../shared/descriptions";
 import { triggerBindingsEqual, type FailureDestinationSettings, type TriggerBinding } from "../shared/triggers";
 import { CLIENT_ENVIRONMENT_ID, clientMappingsError, type ClientEnvironmentMappings } from "../shared/client-environment";
-import { readDatabaseDraft } from "../shared/managed-database";
+import { readDatabaseDraft, readDatabasePlacementDraft, type DatabasePlacementEdit } from "../shared/managed-database";
 import type { DatabaseSettingsInput } from "@repo/framework/config/database";
 
 import { CREATORS, creationDefaults, readCreationRequest, type CreationKind, type CreationRequest } from "../shared/creation";
@@ -28,7 +28,8 @@ export interface PlacementEntry { readonly kind: "placement"; readonly key: stri
 export interface NetworkEntry { readonly kind: "network"; readonly key: string; readonly network: string; readonly settings: NetworkSettings; readonly error?: string }
 export interface NetworkRemovalEntry { readonly kind: "removeNetwork"; readonly key: string; readonly network: string; readonly error?: string }
 export interface DatabaseEntry { readonly kind: "database"; readonly key: string; readonly database: string; readonly settings: DatabaseSettingsInput; readonly error?: string }
-export type DraftEntry = DatabaseEntry | NetworkRemovalEntry | PlacementEntry | NetworkEntry | CreationEntry | FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry | ClientMappingEntry;
+export interface DatabasePlacementEntry { readonly kind: "databasePlacement"; readonly key: string; readonly edit: DatabasePlacementEdit; readonly error?: string }
+export type DraftEntry = DatabasePlacementEntry | DatabaseEntry | NetworkRemovalEntry | PlacementEntry | NetworkEntry | CreationEntry | FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry | ClientMappingEntry;
 export interface DraftState {
   readonly baseline: Snapshot;
   readonly latest: Snapshot;
@@ -113,6 +114,16 @@ export class InspectorDraft {
     try { readDatabaseDraft({ kind: "database", database: id, settings }); } catch (reason) { error = reason instanceof Error ? reason.message : String(reason); }
     const base = this.state.baseline.models[this.state.mode].managedDatabase;
     this.put(`database:${id}`, base?.id === id && JSON.stringify(base.authored) === JSON.stringify(settings) ? undefined : { kind: "database", key: `database:${id}`, database: id, settings, error });
+  }
+  databasePlacement(id: string): DatabasePlacementEdit | undefined {
+    return this.state.entries.find((entry): entry is DatabasePlacementEntry => entry.kind === "databasePlacement" && entry.edit.database === id)?.edit;
+  }
+  setDatabasePlacement(edit: DatabasePlacementEdit): void {
+    let error: string | undefined;
+    try { readDatabasePlacementDraft(edit); } catch (reason) { error = reason instanceof Error ? reason.message : String(reason); }
+    if (!this.state.baseline.models[this.state.mode].networks?.some(network => network.id === edit.vpc)) error ??= "Select a registered VPC.";
+    const base = this.state.baseline.models[this.state.mode].managedDatabase;
+    this.put(`databasePlacement:${edit.database}`, base?.id === edit.database && base.networkId === edit.vpc && base.subnet === edit.subnet ? undefined : { kind: "databasePlacement", key: `databasePlacement:${edit.database}`, edit, error });
   }
   creation(): CreationEntry | undefined { return this.state.entries.find((entry): entry is CreationEntry => entry.kind === "create"); }
   beginCreation(kind: CreationKind): void {
@@ -309,6 +320,7 @@ export class InspectorDraft {
         : { kind: "batch", plan: await this.transport.planBatch(state.entries.map((entry): DraftEdit => {
           if (entry.kind === "removeNetwork") return { kind: "removeNetwork", network: entry.network };
           if (entry.kind === "database") return { kind: "database", database: entry.database, settings: entry.settings };
+          if (entry.kind === "databasePlacement") return entry.edit;
           if (entry.kind === "placement") return { kind: "placement", ...entry.edit };
           if (entry.kind === "network") return { kind: "network", network: entry.network, settings: entry.settings };
           if (entry.kind === "create" && entry.request) return { kind: "create", request: entry.request };

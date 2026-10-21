@@ -57,11 +57,30 @@ The VPC Inspector reviews settings and removal. Removal requires no workload, da
 or native source references and removes the module, registry import and descriptions;
 undo restores exact source. Referenced or custom modules receive a corrective refusal.
 
-The RDS building, owning stack and **Database → Configure PostgreSQL** open managed
-PostgreSQL settings. A Multi-AZ toggle stages an upgrade; replica controls validate
-backups, and optional settings can return to framework defaults. Review shows source
-diffs and cost/operational implications. Identity, database name, engine family and
-placement remain source-owned in this Inspector to avoid casual replacement operations.
+The RDS building and local PostgreSQL node open the dedicated **Application PostgreSQL**
+inspector. The owning stack and **Database → Configure PostgreSQL** link there too.
+Development and production cards explain the shared schema and independent data. The
+inspector shows application writer/Proxy, direct migration and opt-in reader paths,
+declared consumers and per-process pool limits. Local persistence remains owned by Compose.
+Capacity, availability/backups, Proxy/connections, maintenance/logs and caller pool defaults
+have separate disclosures. Deployment override entries are linked by name without values;
+the policy preview is a declaration preview, not a live database or final synth result.
+
+**Database home → Change placement** offers registered VPCs and private/isolated subnets;
+there is no public or unplaced state. A VPC change stages one typed `databasePlacement`
+operation, which updates the literal database declaration and every normalized framework
+database consumer across both mode graphs. Consumer subnet tiers, database bindings,
+construct IDs and native stack source stay intact. Computed/ambiguous declarations and
+competing consumer placement edits receive a corrective refusal. Both mode evaluations
+and TypeScript checks must pass before source review. Apply verifies the actual database
+and consumer placement; mismatch rolls back, and undo/redo restores exact source bytes.
+Identity, database name and engine family remain source-owned.
+
+For deployed RDS, source placement is preparation for a planned migration/cutover. It
+does not copy data, guarantee an in-place AWS move, or authorize deployment. Review native
+CDK wiring, both synths and the deployment change set separately. The database's current
+VPC remains required until the declaration and consumers are reassigned; native source
+references can still block removing the old VPC. No database is silently detached.
 
 This is a source-configuration migration only. `RdsStack`, `PostgresDatabase`, subnet
 group, secret attachment, replicas, Proxy, IAM-login bootstrap and endpoint output scopes

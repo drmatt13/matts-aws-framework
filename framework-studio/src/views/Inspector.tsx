@@ -7,7 +7,7 @@ import { EntityIcon } from "./EntityIcon";
 import { resourceIcon, routeIcon, targetIcon } from "../icons";
 import type { LocalDatabase } from "../../shared/database";
 import { SchemaDetails, SchemaLink } from "./Database";
-import { ManagedDatabaseControls } from "./ManagedDatabaseControls";
+import { ManagedDatabaseInspector } from "./ManagedDatabaseInspector";
 import { ResourceEditor } from "./ResourceEditor";
 import { HttpRoutes } from "./HttpRoutes";
 import { IslandInspector } from "./IslandInspector";
@@ -315,7 +315,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         <Written location={snapshot.source.entities[resource.id]?.key} label={resource.frameworkStack ? "Class in" : resource.kind === "member" ? "Declared on the stack in" : "Written in"} />
       </header>
       <ResourceDeployment resource={resource} />
-      {resource.id === model.managedDatabase?.resource || members.some(member => member.id === model.managedDatabase?.resource) ? <ManagedDatabaseControls /> : null}
+      {members.some(member => member.id === model.managedDatabase?.resource) ? <InspectorSection title="Application database"><button className="button" onClick={() => select(model.managedDatabase!.resource)}>Configure application PostgreSQL</button><p className="small muted">One database declaration coordinates production RDS and local PostgreSQL.</p></InspectorSection> : null}
       <Description entity={resource.id} />
       {resource.stackOutputs?.length ? <InspectorDisclosure title="CloudFormation outputs" count={resource.stackOutputs.length} defaultOpen={!!resource.frameworkStack} className="stack-outputs"><p className="small muted">Symbolic source values mapped by the root .env exporter.</p><ul>{resource.stackOutputs.map((output) => <li key={output.name}>
         <span className="stack-output-name">{output.name}</span>
@@ -396,9 +396,9 @@ export function Inspector() {
       <div className="inspector-content" key={selected}>
       {target ? <TargetView target={target} /> : null}
       {route ? <RouteView route={route} /> : null}
-      {resource ? <ResourceView resource={resource} /> : null}
+      {resource ? resource.id === model.managedDatabase?.resource ? <ManagedDatabaseInspector resource={resource} /> : <ResourceView resource={resource} /> : null}
       {groupedConnection && groupedConnection.members.length > 1 ? <ConnectionMap connection={groupedConnection} /> : connection ? <ConnectionView edge={connection} availability={groupedConnection?.availability} /> : otherLens?.edge ? <ConnectionView edge={otherLens.edge} onlyIn={otherLens.mode} availability={groupedConnection?.availability} /> : null}
-      {localDatabase ? <LocalDatabaseView database={localDatabase} /> : null}
+      {localDatabase ? model.managedDatabase ? <ManagedDatabaseInspector local={localDatabase} /> : <LocalDatabaseView database={localDatabase} /> : null}
       {schemaEntity ? <SchemaDetails /> : null}
       {island ? <IslandInspector id={selected} key={selected} /> : null}
       {fixture ? <NetworkFixtureView id={selected} /> : null}

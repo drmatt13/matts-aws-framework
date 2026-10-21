@@ -567,9 +567,16 @@ database: applicationDatabase,
 const database = getDatabase(databaseConnection());
 ```
 
-Studio exposes these declaration defaults from the RDS/owning-stack Inspector and
-**Database → Configure PostgreSQL**, with reviewed edits for Multi-AZ, replicas, Proxy,
-storage, backups and maintenance. Deployment inputs and CDK context retain precedence.
+Studio's **Application PostgreSQL** inspector joins the RDS building and local Postgres
+node: one schema, independent data. Open it directly, through the owning stack, or through
+**Database → Configure PostgreSQL**. It shows the required VPC home, declared consumers,
+application/direct/reader connection paths, and grouped settings for Multi-AZ, replicas,
+Proxy, storage, backups and maintenance. Deployment inputs and CDK context retain precedence.
+**Change placement** reviews one coordinated source edit for the database and every
+framework database consumer, preserving workload subnet tiers and IAM/connection policy.
+It never copies data or relocates a running RDS instance. Existing deployments need a
+planned migration/cutover and separate deployment authorization. A VPC that owns the
+database cannot be removed; native imports must also be reconciled before removal.
 See the [declaration design and identity contract](framework-studio/network-database-declarations.md)
 for before/after config, generated files, regional scope and migration impact.
 

@@ -35,7 +35,7 @@ export function PlacementControl({ target }: { readonly target: ModelTarget }) {
 }
 
 export function NetworkControls({ id }: { readonly id: string }) {
-  const { model, snapshot, draft, draftState, live } = useStudio();
+  const { model, snapshot, draft, draftState, live, select } = useStudio();
   const prefix = useId();
   const network = model.networks?.find(network => `island:vpc:${network.id}` === id);
   if (!network) return null;
@@ -50,8 +50,10 @@ export function NetworkControls({ id }: { readonly id: string }) {
   const error = draft.getSnapshot().entries.find(entry => entry.kind === "network" && entry.network === network.id)?.error;
   const assigned = Object.values(snapshot.models).some(model => model.databaseNetworkId === network.id || model.targets.some(target => target.placement.kind === "vpc" && target.placement.networkId === network.id));
   const used = assigned || Object.values(snapshot.models).some(model => model.networks?.find(item => item.id === network.id)?.builtInProd);
+  const database = Object.values(snapshot.models).flatMap(graph => graph.managedDatabase?.networkId === network.id ? [graph.managedDatabase] : [])[0];
   return <InspectorSection title="VPC settings" description="Applies to this VPC and its assigned resources.">
     <p className="small muted">Identity: {network.id} · {network.constructId}</p>
+    {database ? <div className="network-database-home"><strong>Home of the application database</strong><p className="small muted">This VPC cannot be removed while the database is placed here.</p><button className="linkish small" onClick={() => select(database.resource)}>Configure application PostgreSQL</button></div> : null}
     <div className="fields">{fields.map(field => <div className="field" key={field.key}><label className="name" htmlFor={`${prefix}-${field.key}`}>{field.label}</label><span className="control">
       {field.type === "boolean" ? <InspectorSwitch id={`${prefix}-${field.key}`} label={field.label} checked={form[field.key as keyof typeof form] === true} onChange={checked => update(field.key, checked)} describedBy={field.help ? `${prefix}-${field.key}-help` : undefined} />
         : <input id={`${prefix}-${field.key}`} type={field.type === "number" ? "number" : "text"} value={String(form[field.key as keyof typeof form])} onChange={event => update(field.key, field.type === "number" ? Number(event.target.value) : event.target.value)} />}</span>

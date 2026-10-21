@@ -65,10 +65,19 @@ use the same cards and identify Compose or the production VPC as their configura
 VPC island inspectors configure only the selected network and list its entries. Global
 Lambda defaults belong to Serverless compute (and the related API/tool defaults to their
 family inspectors), container defaults remain under APIs, and connection pool defaults
-appear beside Managed PostgreSQL controls. These defaults apply across VPCs; they are
+appear in Application PostgreSQL's Connection pool defaults. These defaults apply across VPCs; they are
 never scoped by which network is selected. Select an individual entry to change its
 deployment scope. Client mapping Dev/Prod pills
 continue to control file generation rather than workload deployment.
+
+The managed application database has a dedicated inspector shared by the RDS resource and
+local Postgres node. Identity leads into Development/Production implementations, the required
+VPC home and connection paths. Group production capacity, availability, connections and
+maintenance into disclosures, followed by caller pool defaults, deployment overrides and
+supporting ownership details. Explain independent data and shared schema without implying
+local replication or live health. Placement uses a separate coordinated source review for
+the database and its consumers, with no public or unplaced option. Existing RDS moves need
+migration/cutover planning and separate deployment; routine policy toggles never perform it.
 
 For compute, a compact description preview follows Deployment and precedes memory,
 timeout and other lifecycle settings. Numeric fields keep their

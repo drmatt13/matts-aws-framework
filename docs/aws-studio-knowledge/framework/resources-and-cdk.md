@@ -46,5 +46,8 @@ while `RdsStack` preserves all native construct scopes and resource links. Optio
 replicas, Multi-AZ and Proxy remain settings rather than new identity schemes. Complete
 template comparisons in [database-topology.test.ts](../../../cdk-app/test/database-topology.test.ts)
 protect the writer, replicas, Proxy, bootstrap and output identities. Studio edits typed
-declaration settings through [database.ts](../../../framework-studio/server/edits/database.ts);
-IAM-only workload login and `database: true` are unchanged.
+declaration settings through [database.ts](../../../framework-studio/server/edits/database.ts).
+Its separate placement operation edits the literal database and all normalized framework
+consumer VPC references together, retaining subnet tiers and native CDK identities.
+It never moves data or deploys RDS; deployed moves require migration/cutover planning.
+IAM-only workload login, local Compose parity and `database: true` are unchanged.

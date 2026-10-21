@@ -21,7 +21,7 @@ import { DeployService } from "./deploy/service";
 import { deployRouter } from "./deploy/routes";
 import { sendJson } from "./http";
 import { STUDIO_PROTOCOL_VERSION, STUDIO_RESTART_MESSAGE } from "../shared/protocol";
-import { readDatabaseDraft } from "../shared/managed-database";
+import { readDatabaseDraft, readDatabasePlacementDraft } from "../shared/managed-database";
 
 /**
  * The studio's HTTP surface: one origin, on the loopback interface only.
@@ -214,6 +214,9 @@ export async function startServer(repositoryRoot: string, args: readonly string[
       if (item?.kind === "removeNetwork" && Object.keys(item).every(key => ["kind", "network"].includes(key)) && typeof item.network === "string" && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(item.network)) return { kind: "removeNetwork", network: item.network };
       if (item?.kind === "database") {
         try { return readDatabaseDraft(item); } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
+      }
+      if (item?.kind === "databasePlacement") {
+        try { return readDatabasePlacementDraft(item); } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
       }
       if (item?.kind === "field") return { kind: "field", intent: readIntent(item) };
       if (item?.kind === "clientEnvironment") return { kind: "clientEnvironment", mappings: item.mappings as never };

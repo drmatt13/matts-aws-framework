@@ -12,7 +12,8 @@ import { fieldById } from "./fields";
 import { EditError, sourceContents, writeSourceChange } from "./io";
 import { assertCreationFile, planCreation, type CreationExpectation } from "./creation";
 import { planPlacement, planNetwork, planNetworkRemoval } from "./networks";
-import { planDatabaseSettings } from "./database";
+import { planDatabasePlacement, planDatabaseSettings } from "./database";
+import { databaseConsumers } from "../../shared/managed-database";
 import { generateCreationArtifacts } from "./creation-generation";
 import { CreationValidationError } from "../../shared/creation";
 import { diffOf, planEdit } from "./plan";
@@ -115,9 +116,15 @@ export class BatchEditor {
     const handlerBefore = new Map<string, string>();
     for (const edit of edits) {
       if (edit.kind === "create") { summaries.push(`Create ${edit.request.kind}: ${creation!.expected.select}`); continue; }
-      const key = edit.kind === "database" ? `database:${edit.database}` : edit.kind === "removeNetwork" ? `removeNetwork:${edit.network}` : edit.kind === "placement" ? `placement:${edit.target}` : edit.kind === "network" ? `network:${edit.network}` : edit.kind === "clientEnvironment" ? "clientEnvironment" : edit.kind === "field" ? `${edit.intent.target}:${edit.intent.field}` : edit.kind === "description" ? `description:${edit.entity}` : edit.kind === "triggers" ? `triggers:${edit.event}` : edit.kind === "onFailure" ? `onFailure:${edit.event}` : edit.kind === "nativeTrigger" ? `native:${edit.edge}` : edit.route;
+      const key = edit.kind === "databasePlacement" ? `databasePlacement:${edit.database}` : edit.kind === "database" ? `database:${edit.database}` : edit.kind === "removeNetwork" ? `removeNetwork:${edit.network}` : edit.kind === "placement" ? `placement:${edit.target}` : edit.kind === "network" ? `network:${edit.network}` : edit.kind === "clientEnvironment" ? "clientEnvironment" : edit.kind === "field" ? `${edit.intent.target}:${edit.intent.field}` : edit.kind === "description" ? `description:${edit.entity}` : edit.kind === "triggers" ? `triggers:${edit.event}` : edit.kind === "onFailure" ? `onFailure:${edit.event}` : edit.kind === "nativeTrigger" ? `native:${edit.edge}` : edit.route;
       if (seen.has(key)) throw new EditError(400, "A draft can change each setting only once.");
       seen.add(key);
+      if (edit.kind === "databasePlacement") {
+        const consumers = databaseConsumers(Object.values(state.snapshot.models), edit.database);
+        if (edits.some(item => item.kind === "placement" && consumers.some(consumer => consumer.target === item.target))) throw new EditError(422, "A coordinated database placement already includes its connected workloads. Remove their separate placement changes and review again.");
+        const moved = planDatabasePlacement(this.root, state, edit, overrides);
+        summaries.push(`Application database ${edit.database} — ${edit.vpc} VPC, ${edit.subnet} subnets${moved.length ? `; update ${moved.length} connected workloads` : ""}`);
+      }
       if (edit.kind === "database") {
         const planned = planDatabaseSettings(this.root, state, edit.database, edit.settings, new SourceFiles(overrides));
         overrides.set(planned.file, planned.after);
@@ -265,6 +272,7 @@ export class BatchEditor {
         ...(replayTargets.length ? ["Updates localReplay and the handler's withLocalReplay wrapper together. Run framework:generate before deploying to refresh the replay manifest. Events that require local execution cannot turn replay off."] : []),
         ...(edits.some(edit => edit.kind === "network") ? ["CIDR or availability-zone changes may replace subnets and attached infrastructure on deployment. NAT and interface endpoints incur hourly and data charges when built."] : []),
         ...(edits.some(edit => edit.kind === "database") ? ["Changes PostgreSQL declaration defaults while preserving native construct identities. Multi-AZ, replicas, and Proxy add billed capacity. Review engine/storage changes and the production synth before a separate deployment; DATABASE_* inputs or CDK context may override these defaults."] : []),
+        ...(edits.some(edit => edit.kind === "databasePlacement") ? ["Changes the database's declared home and coordinates framework workload VPC references. This saves source only: it does not copy data, relocate a running RDS instance, or change local PostgreSQL. Existing RDS requires a separately approved migration/cutover and review of both synths before deployment. Native CDK connections remain source-owned."] : []),
         ...(edits.some(edit => edit.kind === "removeNetwork") ? ["Removes an unused VPC declaration, its registry import, and descriptions. Existing AWS resources are unchanged until a separately reviewed deployment."] : []),
         ...(edits.some(edit => edit.kind === "placement") ? ["Moving a workload between VPCs updates its cloud networking. Local Compose networking remains shared."] : []),
         ...(routes.length ? ["Public route paths change; Lambda target and construct identities are preserved. Regenerate the API contract and update callers before deployment."] : []),
@@ -314,7 +322,8 @@ export class BatchEditor {
       const models = await pool.evaluate(state.snapshot.webSocketApi, overrides);
       const triggerChange = [models.dev, models.prod].some((model: ModeModel) => JSON.stringify([model.triggers, model.failureDestinations]) !== JSON.stringify([state.snapshot.models[model.mode].triggers, state.snapshot.models[model.mode].failureDestinations]));
       const stackChange = Object.keys(overrides).some((file) => toRelative(this.root, file).startsWith("cdk-app/lib/"));
-      const typeErrors = triggerChange || stackChange || (creation && !inverse) ? resourceTypeErrors(this.root, overrides) : [];
+      const databasePlacementChanged = [models.dev, models.prod].some(model => model.managedDatabase?.networkId !== state.snapshot.models[model.mode].managedDatabase?.networkId || model.managedDatabase?.subnet !== state.snapshot.models[model.mode].managedDatabase?.subnet);
+      const typeErrors = triggerChange || stackChange || databasePlacementChanged || (creation && !inverse) ? resourceTypeErrors(this.root, overrides) : [];
       const native = stackChange ? nativeSignature(scanWith(this.root, state, overrides)) : undefined;
       const unexpected = expectedNative && native ? [...native.filter((item) => !expectedNative.includes(item)).map((item) => `adds ${item}`), ...expectedNative.filter((item) => !native.includes(item)).map((item) => `removes ${item}`)] : [];
       const nativeMismatch = expectedNative && (JSON.stringify(native) !== JSON.stringify(expectedNative));
@@ -406,7 +415,11 @@ export class BatchEditor {
         if (JSON.stringify(model.failureDestinations) !== JSON.stringify(expected.failureDestinations)) throw new Error("Failure destinations did not match the review.");
         if (checked.native && JSON.stringify(nativeSignature(actual.snapshot.source.cdkLinks)) !== JSON.stringify(checked.native)) throw new Error("Native triggers did not match the review.");
         for (const edit of entry.edits) {
-          if (edit.kind === "database" && JSON.stringify(model.managedDatabase) !== JSON.stringify(expected.managedDatabase)) throw new Error("Database settings did not match the review.");
+          if ((edit.kind === "database" || edit.kind === "databasePlacement") && JSON.stringify(model.managedDatabase) !== JSON.stringify(expected.managedDatabase)) throw new Error("Database declaration did not match the review.");
+          if (edit.kind === "databasePlacement") for (const consumer of databaseConsumers([expected], edit.database)) {
+            const placement = (value: ModeModel) => value.targets.find(target => target.ref === consumer.target)?.placement;
+            if (JSON.stringify(placement(model)) !== JSON.stringify(placement(expected))) throw new Error(`The database placement of ${consumer.target} did not match the review.`);
+          }
           if (edit.kind === "removeNetwork" && JSON.stringify(model.networks?.find(network => network.id === edit.network)) !== JSON.stringify(expected.networks?.find(network => network.id === edit.network))) throw new Error("The VPC registry did not match the removal review.");
           if (edit.kind === "placement") {
             const placement = (value: ModeModel) => value.targets.find(target => target.ref === edit.target)?.placement;

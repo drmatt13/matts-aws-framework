@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { after, before, test } from "node:test";
-import { defineFrameworkConfig, INTERFACE_ENDPOINT_SERVICES, defineNetwork, defineResources, dynamodb, invokeLambda, resource, runsTask, sequence, startsWorkflow, trigger, workflow, type FrameworkConfig } from "@repo/framework/config";
+import { defineDatabase, defineFrameworkConfig, INTERFACE_ENDPOINT_SERVICES, defineNetwork, defineResources, dynamodb, invokeLambda, resource, runsTask, sequence, startsWorkflow, trigger, workflow, type FrameworkConfig } from "@repo/framework/config";
+import type { IDatabaseInstance } from "aws-cdk-lib/aws-rds";
 import type { UserPool } from "aws-cdk-lib/aws-cognito";
 import type { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { defaults } from "../../framework-config/defaults";
@@ -86,6 +87,23 @@ test("only replay-enabled event Lambdas connect to the replay stack, including c
     const projected = withExportStacks({ ...model, resources: model.resources.map((item) => item.id === replay.id ? { ...item, id: "resource:replay", frameworkStack: undefined } : item) }, state.built.exportStacks);
     assert.equal(projected.edges.filter((edge) => edge.relation === "localReplay").length, edges.length);
     assert.ok(projected.edges.filter((edge) => edge.relation === "localReplay").every((edge) => edge.to === "resource:replay"));
+  }
+});
+
+test("database consumer facts preserve normalized reader, direct and per-process pool policy", () => {
+  const catalog = defineResources({ db: resource.stack<{ database: IDatabaseInstance }>() });
+  const database = defineDatabase({ id: "primary", resource: catalog.db.database, vpc: fixtureVpc, subnet: "isolated", engine: "postgres", databaseName: "app_db" });
+  const config = defineFrameworkConfig({ networks: [fixtureVpc], resources: catalog, database,
+    defaults: { ...defaults, database: { pool: { maxConnections: 17 } } }, http: [], webSocket: [], services: [],
+    events: [{ reader: { directory: "/test/fixtures/workload-handler", localReplay: true, vpc: fixtureVpc, subnet: "isolated", database: { readers: true, pool: { maxConnections: 3 } } } }],
+    tasks: [{ migrate: { directory: "/test/fixtures/task-worker", deploy: "cloud-only", cloud: { vpc: fixtureVpc }, database: { connection: "direct" } } }],
+  });
+  for (const mode of ["dev", "prod"] as const) {
+    const model = projectModel(config, { mode, webSocketApi: false });
+    const consumers = model.managedDatabase!.consumers!;
+    assert.equal(consumers.length, 2);
+    assert.deepEqual(consumers.find(item => item.target === "lambda:reader"), { target: "lambda:reader", title: "reader", connection: "application", readers: true, maxConnections: 3 });
+    assert.deepEqual(consumers.find(item => item.target === "task:migrate"), { target: "task:migrate", title: "migrate", connection: "direct", readers: false, maxConnections: 17 });
   }
 });
 

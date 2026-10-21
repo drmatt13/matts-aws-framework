@@ -1,4 +1,13 @@
 import { databaseSettingsProblem, resolveDatabaseSettings, type DatabaseSettings, type DatabaseSettingsInput } from "@repo/framework/config/database";
+import type { ModeModel } from "./model";
+
+export interface DatabaseConsumer {
+  readonly target: string;
+  readonly title: string;
+  readonly connection: "application" | "direct";
+  readonly readers: boolean;
+  readonly maxConnections: number;
+}
 
 /** Source-owned PostgreSQL settings, separate from live schema/table inspection. */
 export interface ManagedDatabaseModel {
@@ -10,6 +19,31 @@ export interface ManagedDatabaseModel {
   readonly databaseName: string;
   readonly settings: DatabaseSettings;
   readonly authored: DatabaseSettingsInput;
+  /** Framework-normalized database bindings, including workloads disabled in this mode. */
+  readonly consumers?: readonly DatabaseConsumer[];
+}
+
+export interface DatabasePlacementEdit {
+  readonly kind: "databasePlacement";
+  readonly database: string;
+  readonly vpc: string;
+  readonly subnet: "private" | "isolated";
+}
+
+/** One primary database, with a union of declared consumers across both mode graphs. */
+export function databaseConsumers(models: readonly ModeModel[], id: string): readonly DatabaseConsumer[] {
+  const consumers = new Map<string, DatabaseConsumer>();
+  for (const model of models) if (model.managedDatabase?.id === id) for (const consumer of model.managedDatabase.consumers ?? []) if (!consumers.has(consumer.target)) consumers.set(consumer.target, consumer);
+  return [...consumers.values()].sort((a, b) => a.title.localeCompare(b.title) || a.target.localeCompare(b.target));
+}
+
+/** Placement is a separate coordinated source operation, never an infrastructure migration. */
+export function readDatabasePlacementDraft(raw: unknown): DatabasePlacementEdit {
+  const id = (value: unknown): value is string => typeof value === "string" && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(value);
+  if (!plainObject(raw) || Object.keys(raw).some(key => !["kind", "database", "vpc", "subnet"].includes(key)) || raw.kind !== "databasePlacement" || !id(raw.database) || !id(raw.vpc) || (raw.subnet !== "private" && raw.subnet !== "isolated")) {
+    throw new Error("Database placement requires its declared ID, a registered VPC, and private or isolated subnets. The application database cannot be unplaced or public.");
+  }
+  return { kind: "databasePlacement", database: raw.database, vpc: raw.vpc, subnet: raw.subnet };
 }
 
 /** Changes configuration defaults; deployment remains a separate reviewed action. */
