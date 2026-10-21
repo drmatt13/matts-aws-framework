@@ -22,6 +22,7 @@ interface StudioContextValue {
   readonly toasts: readonly Toast[];
   readonly draft: InspectorDraft;
   readonly draftState: DraftState;
+  readonly created?: { readonly id: string; readonly revision: string };
   readonly applyDraft: () => Promise<void>;
 }
 const StudioContext = createContext<StudioContextValue | undefined>(undefined);
@@ -34,6 +35,7 @@ export function useStudio(): StudioContextValue {
 export function StudioProvider(props: { readonly response: SnapshotResponse; readonly selected: string | undefined; readonly select: (id: string | undefined) => void; readonly children: ReactNode }) {
   const { response } = props;
   const query = useQueryClient();
+  const [created, setCreated] = useState<{ id: string; revision: string }>();
   const [mode, setMode] = useState<Mode>("dev");
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextToast = useRef(1);
@@ -69,13 +71,14 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
     const result = await draft.apply();
     if (!result) return;
     toast(result.message);
-    if ("resource" in result && result.resource !== draftState.selected) props.select(result.resource);
+    if (result.select) { setCreated({ id: result.select, revision: result.revision }); props.select(result.select); }
+    else if ("resource" in result && result.resource !== draftState.selected) props.select(result.resource);
   };
   const snapshot = draftState.baseline;
   const model = snapshot.models[draftState.mode];
   const index = useMemo(() => indexModel(model), [model]);
   return <StudioContext.Provider value={{ response, snapshot, mode: draftState.mode,
     setMode: (next) => { if (next !== draftState.mode) draft.requestNavigation(() => setMode(next)); },
-    model, index, selected: draftState.selected, select: props.select, live, toast, toasts, draft, draftState, applyDraft,
+    model, index, selected: draftState.selected, select: props.select, live, toast, toasts, draft, draftState, applyDraft, created,
   }}>{props.children}</StudioContext.Provider>;
 }

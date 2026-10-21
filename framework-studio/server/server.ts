@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
+import { readCreationRequest, CreationValidationError } from "../shared/creation";
 import type { DraftEdit, SnapshotResponse } from "../shared/api";
 import { COMMANDS, CommandRunner } from "./commands";
 import { EditError, EditService } from "./edits/transaction";
@@ -200,6 +201,10 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     if (!Array.isArray(entries) || !entries.length || entries.length > 100) throw new EditError(400, "A draft contains between 1 and 100 setting changes.");
     const parsed: DraftEdit[] = entries.map((edit: unknown) => {
       const item = edit as Record<string, unknown> | undefined;
+      if (item?.kind === "create") {
+        try { return { kind: "create", request: readCreationRequest(item.request) }; }
+        catch (error) { if (error instanceof CreationValidationError) throw new EditError(422, `${error.field}: ${error.message}`); throw error; }
+      }
       if (item?.kind === "field") return { kind: "field", intent: readIntent(item) };
       if (item?.kind === "clientEnvironment") return { kind: "clientEnvironment", mappings: item.mappings as never };
       if (item?.kind === "description" && typeof item.entity === "string" && typeof item.value === "string") return { kind: "description", entity: item.entity, value: item.value };
@@ -299,8 +304,8 @@ export async function startServer(repositoryRoot: string, args: readonly string[
           owner.delete(file);
           return false;
         }
-      } catch {
-        // Removed since: someone else's change.
+      } catch (error) {
+        if (written === "absent" && (error as NodeJS.ErrnoException).code === "ENOENT") { owner.delete(file); return false; }
       }
       return true;
     });

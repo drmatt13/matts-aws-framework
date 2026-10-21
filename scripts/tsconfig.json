@@ -1,0 +1,19 @@
+{
+  // The repository scripts (deploy:resources, destroy:resources, deploy:status,
+  // export:cdk-outputs and the rest) run through tsx, with extensionless dynamic
+  // imports, as packages/framework/tsconfig.tools.json checks the framework's own.
+  // Tests spawn several of them rather than importing them, so only this checks them.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["*.ts"]
+}

@@ -55,7 +55,8 @@ let framework: Framework;
 let source: FrameworkSource;
 
 const checkOnly = process.argv.includes("--check");
-const repositoryRoot = path.resolve(
+const rootArgument = process.argv.indexOf("--repository-root");
+const repositoryRoot = rootArgument >= 0 ? path.resolve(process.argv[rootArgument + 1] ?? (() => { throw new Error("--repository-root needs a directory."); })()) : path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
   "..",
@@ -828,7 +829,7 @@ async function main(): Promise<void> {
 
   framework = await import("../src/config/index");
   source = await import("../src/config/source");
-  const { default: config } = (await import("../../../framework.config")) as {
+  const { default: config } = (await import(pathToFileURL(configFile).href)) as {
     default: FrameworkConfig;
   };
 

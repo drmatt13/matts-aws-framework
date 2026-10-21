@@ -1,4 +1,4 @@
-import type { Lanes, Mode, ModelEdge, Snapshot } from "../shared/model";
+import type { Lanes, Mode, ModelEdge, ModelTarget, Snapshot } from "../shared/model";
 import type { ModelIndex } from "./lookup";
 
 /** The same deployment facts used by map nodes, without constructing a scene. */
@@ -29,10 +29,11 @@ export const DEPLOYMENT_BADGES = {
 } as const;
 
 /** Friendly labels; edit intents still carry the framework's original tokens. */
-export function deploymentSettingLabel(value: string, webSocketApi?: boolean): string {
+export function deploymentSettingLabel(value: string, webSocketApi?: boolean | Availability): string {
   if (webSocketApi !== undefined) {
-    if (value === "both") return webSocketApi ? "Dev + Prod" : "Dev only";
-    if (value === "cloud-only") return webSocketApi ? "Dev + Prod (AWS execution)" : "Off (API disabled)";
+    const api = typeof webSocketApi === "boolean" ? { dev: webSocketApi, prod: webSocketApi } : webSocketApi;
+    if (value === "both") return api.prod ? "Dev + Prod" : api.dev ? "Dev only (local + AWS)" : "Dev only (AWS API disabled)";
+    if (value === "cloud-only") return api.dev && api.prod ? "Dev + Prod (AWS execution)" : api.dev ? "Dev only (AWS execution)" : api.prod ? "Prod only" : "Off (API disabled)";
   }
   return ({ both: "Dev + Prod", "local-only": "Dev only", "cloud-only": "Prod only", none: "Off" } as Readonly<Record<string, string>>)[value] ?? value;
 }
@@ -54,6 +55,15 @@ export function deploymentBadge(lanes: Lanes): DeploymentBadgeKind | undefined {
 
 export function developmentLocation(lanes: Lanes): string {
   return lanes.local && lanes.dev ? "Your machine + AWS" : lanes.local ? "On your machine" : lanes.dev ? "In AWS" : "Not enabled";
+}
+
+/** Preview a supported deploy-field edit; each graph supplies its own API flag. */
+export function previewDeploymentLanes(target: Pick<ModelTarget, "lanes" | "role">, setting: string, webSocketApi: boolean): Lanes {
+  if (setting !== "both" && setting !== "local-only" && setting !== "cloud-only" && setting !== "none") return target.lanes;
+  const local = setting === "both" || setting === "local-only";
+  const cloud = setting === "both" || setting === "cloud-only";
+  const websocket = target.role === "webSocket" || target.role === "webSocketAuthorizer";
+  return { ...target.lanes, deploy: setting, local, cloud, dev: websocket && webSocketApi && cloud, prod: cloud && (!websocket || webSocketApi) };
 }
 
 export function deploymentSummary(lanes: Lanes): string {

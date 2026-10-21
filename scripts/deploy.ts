@@ -14,9 +14,12 @@
  * <dir>/plan.json (what would change, by resource; secrets by name; IAM
  * broadening; exports still in use; Docker images; the confirmation the change
  * needs). A change-set review (production's default) prepares CloudFormation
- * change sets, which modify no resource. --apply deploys exactly that assembly,
- * refusing a plan that is stale, expired or unconfirmed, and verifies the
- * result in AWS. --discard removes what a plan created.
+ * change sets, which modify no resource; --create-secrets first creates the
+ * managed secrets that do not exist yet, and writes no existing one. --apply
+ * deploys exactly that assembly, refusing a plan that is stale, expired or
+ * unconfirmed, or whose secret writes differ from the reviewed ones (see
+ * deployment-secrets.ts), and verifies the result in AWS. --discard removes what
+ * a plan created.
  */
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -37,13 +40,15 @@ import {
   cliSecretsClient, deployedTemplate, describeChangeSet, describeStack, dockerImages, fingerprintOf, stackOrder,
   verifyDeployment, writeDeploymentRecord, type AssemblyStackEntry, type ChangeSetReview,
 } from "./deployment-review";
-import { planDeploymentSecrets, type SecretPlanEntry } from "./deployment-secrets";
-import { acquireDeploymentLock, sweepStaleAssemblies } from "./deployment-workspace";
+import { planDeploymentSecrets, type SecretBinding, type SecretPlanEntry } from "./deployment-secrets";
+import { acquireDeploymentLock, secretBindings, sweepStaleAssemblies } from "./deployment-workspace";
 import { readDeploymentStackPages } from "./resource-export";
 
 const root = resolve(__dirname, "..");
 const cdk = process.env.FRAMEWORK_CDK_CLI ?? require.resolve("aws-cdk/bin/cdk");
 const cdkDirectory = resolve(root, "cdk-app");
+/** Where each reviewed plan's secret binding is kept: see deployment-secrets.ts. */
+const bindings = resolve(root, ".cache/deploy/secret-bindings");
 
 // Ctrl+C stops the running step and refuses to start another: see deployment-interrupt.ts.
 const interrupt = new DeploymentInterrupt();
@@ -273,6 +278,7 @@ async function plan(wrapper: Wrapper): Promise<void> {
   mkdirSync(directory, { recursive: true });
   const assembly = resolve(directory, "assembly");
   const planId = `plan-${Date.now().toString(36)}-${createHash("sha256").update(directory).digest("hex").slice(0, 6)}`;
+  secretBindings.sweep(bindings, Date.now(), PLAN_LIFETIME_MS + 60 * 60 * 1000);
   const prepared = await prepare(wrapper.rest, { directory: assembly, synthesize: true });
   try {
     const { graph, aws } = prepared;
@@ -319,14 +325,21 @@ async function plan(wrapper: Wrapper): Promise<void> {
         stacks.push({ id: entry.id, name: entry.name, fingerprint, changes, exportsInUse, noChanges: fingerprint.exists && !changes.length });
       }
     } else if (review === "change-set") {
-      let arns = secretPlan.arns;
       if (creating.length) {
-        const created = await secretPlan.apply((name) => console.log(`Created managed secret ${name} so the change sets can reference it.`));
-        createdSecrets = created.updated;
+        // Only the missing secrets are created: an existing secret's new value is
+        // part of the review, written when the plan is applied.
         const secretsAgain = secretsClient(aws);
-        try { arns = (await planDeploymentSecrets(graph.requirements, prepared.authored, graph.identity, secretsAgain.client)).arns; }
-        finally { secretsAgain.close(); }
+        try {
+          try {
+            createdSecrets = await secretPlan.createMissing((name) => console.log(`Created managed secret ${name} so the change sets can reference it.`));
+          } catch (error) {
+            throw new Error(`${error instanceof Error ? error.message : "Creating managed secrets failed."} No change set was prepared; planning again reuses the secrets already created.`);
+          }
+          // The review describes, and binds, what AWS holds now.
+          secretPlan = await planDeploymentSecrets(graph.requirements, prepared.authored, graph.identity, secretsAgain.client);
+        } finally { secretsAgain.close(); }
       }
+      const arns = secretPlan.arns;
       const deferred = new Set<string>();
       const created = new Set(reviewed.filter((item) => !item.fingerprint.exists).map((item) => item.entry.id));
       // Written before each change set is prepared: a plan that stops part-way
@@ -360,7 +373,7 @@ async function plan(wrapper: Wrapper): Promise<void> {
         const prepared = fingerprintOf(describeStack(aws, entry.name));
         stacks.push({ id: entry.id, name: entry.name, fingerprint: prepared, changes: set.noChanges ? [] : authoritative, exportsInUse, noChanges: set.noChanges, changeSet: summary, ...(!fingerprint.exists ? { createdByPlan: true } : {}) });
       }
-      status = statusOf(stacks, secretPlan.entries.map((secret) => createdSecrets.includes(secret.name) ? { ...secret, action: "unchanged" as const } : secret));
+      status = statusOf(stacks, secretPlan.entries);
     } else {
       for (const { entry, fingerprint, changes, exportsInUse } of reviewed) {
         stacks.push({ id: entry.id, name: entry.name, fingerprint, changes, exportsInUse, noChanges: fingerprint.exists && !changes.length });
@@ -378,13 +391,15 @@ async function plan(wrapper: Wrapper): Promise<void> {
       identity: graph.identity, ...(prepared.profile ? { profile: prepared.profile } : {}),
       forwarded: prepared.selection.forwarded, guard: prepared.deployed.kind,
       stacks,
-      secrets: secretPlan.entries.map((secret) => createdSecrets.includes(secret.name) ? { ...secret, action: "unchanged" as const } : secret),
+      secrets: secretPlan.entries,
       dockerImages: dockerImages(assembly).map(({ stack, asset }) => ({ stack, asset })),
       iamBroadening,
       confirmation: confirmationLevel({ mode: graph.identity.mode, firstDeploy: prepared.deployed.kind === "absent", iamBroadening, changes: allChanges, exportsInUse }),
       uncertainties: [...PLAN_UNCERTAINTIES[review], ...(createdSecrets.length ? [`Created before review so the change sets could reference them: ${createdSecrets.join(", ")}. Nothing reads them until this plan is applied.`] : [])],
       assemblyDigest: digestOf(prepared.stacks),
     };
+    // The binding is what apply holds the secret writes to; plan.json shows names and actions only.
+    if (status !== "needs-secrets" && secretPlan.entries.length) secretBindings.write(bindings, planId, secretPlan.bind(planId));
     writeFileSync(resolve(directory, "plan.json"), `${JSON.stringify(document, null, 2)}\n`);
     rmSync(resolve(directory, "preparing.json"), { force: true });
     console.log(`Plan ${planId} for ${graph.identity.deployment} (${graph.identity.mode}, ${graph.identity.account}/${graph.identity.region}): ${status}.`);
@@ -419,11 +434,16 @@ function planArguments(document: DeploymentPlanDocument, rest: readonly string[]
 async function apply(wrapper: Wrapper): Promise<void> {
   const directory = resolve(wrapper.apply!);
   const document = readPlan(directory);
+  if (existsSync(resolve(directory, "result.json"))) throw new Error(`Plan ${document.planId} was already applied. Plan again for further changes.`);
   if (Date.parse(document.expiresAt) < Date.now()) throw new Error(`Plan ${document.planId} expired at ${document.expiresAt}. Plan again.`);
   if (document.status === "needs-secrets") throw new Error(`Plan ${document.planId} could not prepare change sets until its new secrets exist. Plan again with --create-secrets.`);
   if (document.status === "no-changes") { console.log(`Plan ${document.planId} has nothing to change.`); return; }
   if (document.confirmation.level === "name" && wrapper.confirm !== document.identity.deployment) {
     throw new Error(`Plan ${document.planId} needs --confirm ${document.identity.deployment} (${document.confirmation.reasons.join("; ")}). Nothing was changed.`);
+  }
+  const binding = document.secrets.length ? secretBindings.read(bindings, document.planId) as SecretBinding | undefined : undefined;
+  if (document.secrets.length && binding?.planId !== document.planId) {
+    throw new Error(`Plan ${document.planId} has no secret binding in ${bindings}: it was planned in another checkout, or the binding was removed. Plan again. Nothing was changed.`);
   }
   const plannedReviews = new Set(document.stacks.filter((stack) => stack.createdByPlan).map((stack) => stack.name));
   const prepared = await prepare(planArguments(document, wrapper.rest), { directory: resolve(directory, "assembly"), synthesize: false }, { inputsFile: document.target.inputsFile, plannedReviews });
@@ -444,15 +464,15 @@ async function apply(wrapper: Wrapper): Promise<void> {
         }
       }
     }
-    // The secret writes must be the ones reviewed: the same names, the same actions.
+    // The secret writes must be the ones reviewed: the same names and actions,
+    // the same authored values, and the same AWS versions they replace.
     interrupt.assertContinuing();
     const secrets = secretsClient(aws);
     let result;
     try {
       const again = await planDeploymentSecrets(graph.requirements, prepared.authored, graph.identity, secrets.client);
-      const describe = (entries: readonly SecretPlanEntry[]) => JSON.stringify(entries.map((entry) => `${entry.name}:${entry.action}`).sort());
-      if (describe(again.entries) !== describe(document.secrets)) throw new Error("Secret values changed since the review (or a secret was created or removed). Plan again. Nothing was changed.");
-      result = await again.apply((name) => console.log(`Updated managed secret ${name}.`));
+      // Refuses, before any write, unless every write is the reviewed one.
+      result = await again.apply((name) => console.log(`Updated managed secret ${name}.`), { entries: document.secrets, binding });
     } finally { secrets.close(); }
     const deploying = prepared.stacks.filter((stack) => changing.some((entry) => entry.id === stack.id));
     try {
@@ -472,6 +492,7 @@ async function apply(wrapper: Wrapper): Promise<void> {
       status: !verification.verified ? "unverified" : deferred.length ? "partial" : "succeeded",
       verification, deferred,
     }, null, 2)}\n`);
+    secretBindings.remove(bindings, document.planId);
     if (deferred.length) console.log(`Applied. Still to plan, now that the stacks they depend on exist: ${deferred.join(", ")}.`);
     if (verification.verified) await exportDevelopment(prepared);
   } finally {
@@ -509,6 +530,7 @@ async function discard(wrapper: Wrapper): Promise<void> {
       console.log(`Removed ${stack.name}, which the plan created and which holds no resources.`);
     }
   }
+  secretBindings.remove(bindings, document.planId);
   rmSync(directory, { recursive: true, force: true });
   console.log(`Discarded plan ${document.planId}.`);
 }

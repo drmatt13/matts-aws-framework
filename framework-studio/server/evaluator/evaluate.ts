@@ -51,15 +51,31 @@ let config: FrameworkConfig | undefined;
 process.once("message", (message: { type?: string; overrides?: Record<string, string> }) => {
   if (message.type !== "load") throw new Error("Expected evaluator initialization.");
   const overrides = message.overrides ?? {};
-  const prototype = Module.prototype as unknown as { _compile: (code: string, filename: string) => unknown };
-  const compile = prototype._compile;
-  prototype._compile = function (code: string, filename: string) {
-    const replacement = overrides[path.resolve(filename)];
-    return compile.call(this, replacement === undefined ? code : ts.transpileModule(replacement, {
-      fileName: filename,
-      compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true },
-    }).outputText, filename);
+  // Resolve and load proposed modules that do not exist on disk yet. This is
+  // confined to the disposable evaluator; approval never writes preview files.
+  const loader = Module as unknown as {
+    _resolveFilename: (request: string, parent: { filename: string } | undefined, ...args: unknown[]) => string;
+    _extensions: Record<string, (module: { _compile: (text: string, filename: string) => void }, filename: string) => void>;
   };
+  const resolve = loader._resolveFilename;
+  loader._resolveFilename = function (request, parent, ...args) {
+    if (request.startsWith(".") || path.isAbsolute(request)) {
+      const absolute = path.resolve(parent ? path.dirname(parent.filename) : repositoryRoot, request);
+      for (const file of [absolute, `${absolute}.ts`, `${absolute}.tsx`, path.join(absolute, "index.ts")]) if (Object.hasOwn(overrides, file)) return file;
+    }
+    return resolve.call(this, request, parent, ...args);
+  };
+  for (const extension of [".ts", ".tsx"]) {
+    const load = loader._extensions[extension];
+    loader._extensions[extension] = (module, filename) => {
+      const replacement = overrides[path.resolve(filename)];
+      if (replacement === undefined) { load!(module, filename); return; }
+      module._compile(ts.transpileModule(replacement, {
+        fileName: filename,
+        compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true },
+      }).outputText, filename);
+    };
+  }
   try {
     // `require`, as tsx gives this CommonJS module, so the config and this
     // process share one instance of @repo/framework/config.

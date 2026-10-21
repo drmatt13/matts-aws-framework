@@ -88,7 +88,7 @@ export function PlanReview(props: {
             ) : plan.status === "needs-secrets" ? (
               <div className="plan-banner warn">
                 <AlertTriangle size={15} aria-hidden />
-                <span>A change set can only reference a secret that exists. Create {secretsChanging.filter((secret) => secret.action === "create").map((secret) => secret.name).join(", ")} now so CloudFormation can plan against {secretsChanging.filter((secret) => secret.action === "create").length === 1 ? "it. Nothing reads it" : "them. Nothing reads them"} until you apply.</span>
+                <span>A change set can only reference a secret that exists. Create {secretsChanging.filter((secret) => secret.action === "create").map((secret) => secret.name).join(", ")} now so CloudFormation can plan against {secretsChanging.filter((secret) => secret.action === "create").length === 1 ? "it. Nothing reads it" : "them. Nothing reads them"} until you apply.{secretsChanging.some((secret) => secret.action === "update") ? " Existing secrets with new values are not written now: they are updated when you apply the reviewed plan." : ""}</span>
               </div>
             ) : plan.expired ? (
               <p className="plan-banner warn"><AlertTriangle size={15} aria-hidden /> This plan expired. Plan again: AWS may have changed since.</p>

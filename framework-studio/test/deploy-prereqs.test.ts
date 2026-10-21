@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { dependencyState, probeDocker, probePrerequisites } from "../server/deploy/prereqs";
-import { Tools, type CommandResult, type CommandSpec, type Runner } from "../server/deploy/process";
+import { npmCli, Tools, type CommandResult, type CommandSpec, type Runner } from "../server/deploy/process";
 
 /**
  * What this machine can do, from each tool's own answers: the runner is
@@ -68,6 +68,26 @@ test("prerequisites say what is wrong and offer the operation that fixes it", as
   assert.equal(byId.docker!.status, "warn");
   assert.deepEqual(byId.docker!.remedy, { kind: "docker-start", params: {} });
   assert.equal(byId.compose!.status, "warn", "a Compose without watch --no-up cannot be watched separately");
+});
+
+test("npm is found beside Node in each install layout, including Homebrew's linked bin/npm", { skip: process.platform === "win32" ? "symlinked layouts are POSIX" : false }, () => {
+  mkdirSync(path.join(root, ".cache"), { recursive: true });
+  const directory = mkdtempSync(path.join(root, ".cache", "studio-npm-"));
+  try {
+    const place = (file: string) => { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, ""); return file; };
+    // Node's own distribution: lib/node_modules/npm beside bin/node.
+    const official = place(path.join(directory, "official", "lib", "node_modules", "npm", "bin", "npm-cli.js"));
+    assert.equal(path.resolve(npmCli({}, path.join(directory, "official", "bin", "node"))!), official);
+    // Homebrew: the Node keg holds node and a bin/npm link to npm installed elsewhere.
+    const linked = place(path.join(directory, "homebrew", "lib", "node_modules", "npm", "bin", "npm-cli.js"));
+    mkdirSync(path.join(directory, "homebrew", "Cellar", "node", "bin"), { recursive: true });
+    symlinkSync(linked, path.join(directory, "homebrew", "Cellar", "node", "bin", "npm"));
+    assert.equal(npmCli({}, path.join(directory, "homebrew", "Cellar", "node", "bin", "node")), realpathSync(linked));
+    // Nothing anywhere: not found, rather than a guess.
+    assert.equal(npmCli({}, path.join(directory, "bare", "bin", "node")), undefined);
+    // npm running Studio names itself.
+    assert.equal(npmCli({ npm_execpath: linked }, path.join(directory, "bare", "bin", "node")), linked);
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
 test("a simulated AWS CLI is reported as such", async () => {

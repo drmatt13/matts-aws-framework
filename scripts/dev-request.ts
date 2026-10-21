@@ -29,8 +29,8 @@ async function main(): Promise<void> {
   if (!email || !password || !port || !origin) {
     throw new Error("Set LOCAL_TEST_USER_EMAIL, LOCAL_TEST_USER_PASSWORD, LOCAL_API_DEV_SERVER_HOST_PORT and LOCAL_DEV_URL in cdk-app/.env.dev.");
   }
-  const [method, path, body] = process.argv.slice(2);
-  if (!method || !path?.startsWith("/")) {
+  const [method, route, body] = process.argv.slice(2);
+  if (!method || !route?.startsWith("/")) {
     throw new Error("Usage: npm run dev:request -- <METHOD> </route> [json-body]");
   }
 
@@ -53,7 +53,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const response = await fetch(`${api}/api${path}`, {
+  const response = await fetch(`${api}/api${route}`, {
     method: method.toUpperCase(),
     headers: {
       authorization: `Bearer ${session.idToken}`,

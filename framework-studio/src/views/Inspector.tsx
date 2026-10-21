@@ -1,11 +1,9 @@
 import { X } from "lucide-react";
 import type { ModelEdge, ModelResource, ModelRoute, ModelTarget, ModelWorkflow, Placement } from "../../shared/model";
-import { RELATION_LABEL, ROLE_LABEL, endpointLabel, titleOf } from "../lookup";
+import { RELATION_LABEL, ROLE_LABEL, endpointLabel } from "../lookup";
 import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
 import { resourceIcon, routeIcon, targetIcon } from "../icons";
-import { developmentLocation, environments } from "../deployment";
-import { Code2, Diamond } from "lucide-react";
 import type { LocalDatabase } from "../../shared/database";
 import { SchemaDetails, SchemaLink } from "./Database";
 import { ResourceEditor } from "./ResourceEditor";
@@ -28,27 +26,7 @@ import { aggregateConnections, edgeAvailability } from "../connections";
 import { ConnectionMap } from "./ConnectionMap";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
-
-function LaneLines(props: { readonly target: ModelTarget }) {
-  const { lanes } = props.target;
-  const availability = environments(lanes);
-  const line = (lane: "dev" | "prod", on: boolean, name: string, location: string) => (
-    <div className={`lane-line ${lane} ${on ? "" : "off"}`}>
-      <span className="environment-name">{lane === "dev" ? <Code2 size={14} aria-hidden /> : <Diamond size={14} aria-hidden />}{name}</span>
-      <strong>{on ? "Enabled" : "Not enabled"}</strong>
-      {on ? <span className="small muted">{location}</span> : null}
-    </div>
-  );
-  return (
-    <section>
-      <h3>Where it runs</h3>
-      <div className="lane-lines">
-        {line("dev", availability.dev, "Development", developmentLocation(lanes))}
-        {line("prod", availability.prod, "Production", "In AWS")}
-      </div>
-    </section>
-  );
-}
+import { DeploymentSection, ResourceDeployment, TargetDeployment } from "./Deployment";
 
 function PlacementText(props: { readonly placement: Placement }) {
   const { placement } = props;
@@ -194,8 +172,8 @@ function TargetView(props: { readonly target: ModelTarget }) {
   const workflow = model.workflows.find((candidate) => candidate.ref === target.ref);
   const compute = target.compute;
   const buildFields = new Set(["lambda.architecture", "lambda.packaging", "lambda.runtime", "lambda.bundling.minify", "lambda.bundling.sourceMap"]);
-  const settingOrder = ["deploy", "lambda.memorySize", "lambda.timeoutSeconds", "lambda.subnet", "lambda.logRetentionDays"];
-  const settings = facts.filter((fact) => !buildFields.has(fact.field) && fact.field !== "http.auth" && fact.field !== "events.localReplay")
+  const settingOrder = ["lambda.memorySize", "lambda.timeoutSeconds", "lambda.subnet", "lambda.logRetentionDays"];
+  const settings = facts.filter((fact) => !buildFields.has(fact.field) && fact.field !== "deploy" && fact.field !== "http.auth" && fact.field !== "events.localReplay")
     .sort((a, b) => (settingOrder.indexOf(a.field) < 0 ? 99 : settingOrder.indexOf(a.field)) - (settingOrder.indexOf(b.field) < 0 ? 99 : settingOrder.indexOf(b.field)));
   return (
     <>
@@ -205,7 +183,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
         <code className="ref">{target.ref}</code>
         <Written location={snapshot.source.entities[target.ref]?.key} />
       </header>
-      <LaneLines target={target} />
+      <TargetDeployment target={target} />
       <Description entity={target.ref} />
       {settings.length > 0 ? <InspectorSection title="Settings">
         {settings.map((fact) => <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />)}
@@ -274,7 +252,7 @@ function EnvRow(props: { readonly name: string; readonly value: string; readonly
 }
 
 function RouteView(props: { readonly route: ModelRoute }) {
-  const { snapshot, index, select } = useStudio();
+  const { snapshot, index } = useStudio();
   const { route } = props;
   const target = index.targets.get(route.target);
   return (
@@ -286,17 +264,10 @@ function RouteView(props: { readonly route: ModelRoute }) {
         <code className="ref">{route.origin}</code>
         <Written location={snapshot.source.entities[route.id]?.key} />
       </header>
-      {target ? <LaneLines target={target} /> : null}
+      {target ? <TargetDeployment target={target} route /> : null}
       <Description entity={route.id} />
       <section>
-        <p>
-          Reaches{" "}
-          <button className="linkish" onClick={() => select(route.target)}>
-            {titleOf(index, route.target)}
-          </button>
-          .{" "}
-          {route.methods ? `Answers ${route.methods === "*" ? "every method" : route.methods.join(", ")}.` : ""}
-        </p>
+        {route.methods ? <p>Answers {route.methods === "*" ? "every method" : route.methods.join(", ")}.</p> : null}
         <p className="muted small">
           {route.auth
             ? route.kind === "webSocket"
@@ -338,9 +309,9 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         </details> : null}
         {resource.kind !== "stack" ? <code className="ref">resources.{resource.path.join(".")}</code> : null}
         {resource.typeText ? <code className="ref">{resource.typeText}</code> : null}
-        {resource.kind === "member" && resource.parent ? <button className="linkish small" onClick={() => select(resource.parent)}>Back to {model.resources.find((item) => item.id === resource.parent)?.stackClass ?? "stack"}</button> : null}
         <Written location={snapshot.source.entities[resource.id]?.key} label={resource.frameworkStack ? "Class in" : resource.kind === "member" ? "Declared on the stack in" : "Written in"} />
       </header>
+      <ResourceDeployment resource={resource} />
       <Description entity={resource.id} />
       {resource.stackOutputs?.length ? <InspectorDisclosure title="CloudFormation outputs" count={resource.stackOutputs.length} defaultOpen={!!resource.frameworkStack} className="stack-outputs"><p className="small muted">Symbolic source values mapped by the root .env exporter.</p><ul>{resource.stackOutputs.map((output) => <li key={output.name}>
         <span className="stack-output-name">{output.name}</span>
@@ -375,8 +346,8 @@ function ResourceView(props: { readonly resource: ModelResource }) {
 function LocalDatabaseView({ database }: { readonly database: LocalDatabase }) {
   return <>
     <header><span className="kind">Local development service</span><h2><EntityIcon icon="postgres" />{database.title}</h2><code className="ref">{database.service} · {database.image}</code><Written location={database.source} /></header>
+    <DeploymentSection availability={{ dev: database.enabled, prod: false }} locations={{ dev: "On your machine" }}><p className="deployment-note small muted">Configured in Docker Compose. Container health and running state are not monitored.</p></DeploymentSection>
     <Description entity={database.id} />
-    <section><h3>Where it runs</h3><div className="lane-lines"><div className="lane-line dev"><span>Development</span><strong>On your machine</strong></div><div className="lane-line prod off"><span>Production</span><strong>Not enabled</strong></div></div><p className="small muted">Declared by Compose. Container health and running state are not monitored.</p></section>
     <section><SchemaLink /><p className="small muted">Shares the application contract with production RDS.</p></section>
     {database.volumes.length ? <section><h3>Persistent storage</h3>{database.volumes.map((volume) => <p key={volume}><code>{volume}</code></p>)}</section> : null}
     <Relations id={database.id} />
@@ -384,13 +355,16 @@ function LocalDatabaseView({ database }: { readonly database: LocalDatabase }) {
 }
 
 function NetworkFixtureView({ id }: { readonly id: string }) {
-  const { model } = useStudio();
+  const { model, snapshot } = useStudio();
   const fixture = buildScene(model).props.find((prop) => prop.id === id);
   if (!fixture) return null;
+  const production = snapshot.models.prod;
+  const inProduction = !!production.network?.builtInProd && buildScene(production).props.some((prop) => prop.id === id);
   return <>
     <header><span className="kind">Network fixture</span><h2><EntityIcon icon={fixture.icon} />{fixture.label}</h2><code className="ref">{id}</code><Written location={{ file: "framework-config/network.ts", line: 1, column: 1, start: 0, end: 0 }} /></header>
+    <DeploymentSection availability={{ dev: false, prod: inProduction }} locations={{ prod: "In AWS" }}><p className="deployment-note small muted">Managed by the production VPC.</p></DeploymentSection>
     <Description entity={id} />
-    <section>{fixture.caption.map((line) => <p key={line}>{line}</p>)}<p className="small muted">{model.mode === "prod" && model.network?.builtInProd ? "Built with the production VPC." : "Blueprint: this environment does not build the VPC."}</p></section>
+    <section>{fixture.caption.map((line) => <p key={line}>{line}</p>)}</section>
   </>;
 }
 

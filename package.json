@@ -22,7 +22,7 @@
     "studio": "node --import tsx framework-studio/server/index.ts",
     "codegen": "graphql-codegen --config codegen.ts",
     "codegen:check": "graphql-codegen --config codegen.ts --check",
-    "typecheck": "npm run typecheck --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present && tsc -p scripts/tsconfig.json",
     "test": "npm test --workspaces --if-present",
     "lockfile:check": "node scripts/check-lockfile-platforms.mjs",
     "verify": "node scripts/check-lockfile-platforms.mjs && npm run framework:check && npm --workspace @repo/database run generate && npm run codegen:check && npm run typecheck && node --import tsx --test cdk-app/lambda_functions/http_functions/graphql-api/schema/*.test.ts && npm run test",

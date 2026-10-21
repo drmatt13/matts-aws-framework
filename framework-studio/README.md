@@ -1,6 +1,7 @@
 # Framework Studio
 
-A local view of `framework.config.ts` that you can also edit, for a few fields. It shows:
+A local view of `framework.config.ts` with reviewed resource creation and targeted
+source editing. It shows:
 
 - what each declaration is;
 - where it runs: Development and Production, with execution location shown inside each;
@@ -38,6 +39,69 @@ editor would.
 After changing Studio's server code or edit-field registry, restart `npm run studio`.
 Application declarations refresh automatically; Vite refreshes the browser UI, but it
 does not reload the server's edit registry.
+
+## Add to application
+
+Use **Add to application** in Board or Isometric, choose a resource, and configure
+its form. Advanced settings contain runtime sizing, placement and catalog bindings.
+**Review generated changes** checks both deployment graphs and TypeScript, then
+shows the complete patch grouped by file, including new files and generator output.
+**Back to Editing** and **Back to resource types** retain the current form.
+**Apply All** is the approval to write that exact patch. A successful write rebuilds
+the source index and graph, selects the canonical resource and opens its Inspector.
+Global undo/redo includes its scaffolding and generated artifacts.
+Descriptions use `framework-config/descriptions.ts`, the same metadata source
+the existing Inspector edits, for every resource family.
+
+| Entry | Authored source | Supported creation choices |
+| --- | --- | --- |
+| Function | New `framework-config/events`, `http` or `websocket` module; composition import/array entry; `cdk-app/lambda_functions/<category>/<id>/index.ts` | Event, HTTP and WebSocket; Node 22/24 zip; memory, timeout, architecture, subnet; authenticated HTTP wrapper and pool binding; optional input/secret binding |
+| Stack | `cdk-app/lib/app/<class-name>.ts`, typed catalog entry, import and instantiation in `cdk-app/bin/cdk-app.ts` | Actual SQS queue exposed as a typed public field, `linkResources`, deployment-prefixed stack/output identity; both/dev/prod scope |
+| VPC | Existing `framework-config/network.ts`, or a new module and composition reference when no network is declared | The one shared network; private /16, two/three zones, NAT, IPv6 egress, gateway/interface endpoints; existing construct identity retained |
+| Workflow | New workflow section module and composition entry | Executable pass-through workflow, or a sequence of existing event Lambdas/tasks; deployment lanes and execution timeout; native workflow DSL and IR |
+| Container service | Service section/composition, `cdk-app/ecs_containers/services/<id>/{index.mjs,Dockerfile,package.json}` | Node HTTP server and health endpoint; mount, port, gateway auth, CPU/memory, architecture, subnet, input/secret binding; local-only default |
+| Container task | Task section/composition, `cdk-app/ecs_containers/tasks/<id>/{index.mjs,Dockerfile}` | Run-to-completion Node container reading `FRAMEWORK_TASK_INPUT`; sizing, architecture, subnet, deployment lanes, input/secret binding; timeout belongs to its invocation |
+| API route | HTTP/WebSocket section/composition; optional new handler | New Lambda or an existing routed Lambda of the same category. Reused functions retain their authentication, bindings, handler and construct identity. HTTP methods and literal route paths use normal conflict validation |
+| Agent | Agent section/composition, `agents/<id>/{index,contract}.ts`, workspace manifest and tsconfig | AgentCore JSON responder; validated Zod contract; bounded model/tool loop using `@repo/models`; existing tools; authenticated browser route or IAM service agent; input/secret reference |
+| Input parameter | Resource catalog; commented keys in both input templates; optional consumer section/import | String or enumerated string, declaration default, required flag, description, group, existing consumer mapping |
+| Secret | Resource catalog; commented keys in both input templates; optional consumer section/import | Declaration only, required flag, description, group, existing consumer mapping; automatic ARN/read permissions for Lambdas/agents and startup-value delivery for containers |
+
+The framework's real generator runs in a disposable source copy before review.
+Changes to framework IDs, browser contracts, agent contracts, service environment
+examples and Compose are included when needed. Service and agent workspace metadata also
+uses npm 11's offline lockfile generator; it never installs dependencies into the
+application. Start Studio with npm 11. New workspaces require rebuilding local
+development images with `dev:containers`; creation does not start containers.
+
+Source creation never synthesizes, deploys, provisions secret values or writes
+authored environment files. Inputs and secrets share declarations across graphs;
+their authored values remain independent in `cdk-app/.env.dev` and `.env.prod`.
+Use the protected environment-file Inspector for values as a separate operation.
+Network and container forms expose cost-relevant settings before approval.
+
+Creation uses the existing `DraftEdit` union, `InspectorDraft`, `BatchEditor`,
+`EditService` history, source splices and evaluator processes. New modules are
+resolved from an in-memory overlay during preflight. The API accepts typed resource
+requests, not source text, shell commands or destination paths. Every destination
+has a fixed allowlist and rejects traversal and symlink components. Reviews retain
+source hashes, generator-input hashes and absence checks. New files are installed
+exclusively through temporary files; undo removes them only while their bytes still
+match. Both modes must match the reviewed resource identities and semantics after
+writing. Failed writes or verification restore unchanged files and remove generated
+files; concurrent edits are preserved and reported as unconfirmed. As with existing
+batch edits, this is compensating restoration, not a durable crash-recovery journal.
+
+The initial creators deliberately support the repository's conventional literal
+section layout and TypeScript zip handlers. Python/image Lambda scaffolding,
+arbitrary existing Docker build contexts, custom CDK construct templates and stack
+dependencies, agent streaming/history implementations, multi-binding editors and
+arbitrary workflow graph construction remain source-authored. Event triggers and
+failure destinations use the existing Inspector after creation. Adding a route to
+an existing function preserves that function's settings rather than generating a
+second implementation. The framework has one VPC and string-valued inputs; the
+creator does not introduce additional VPCs, numeric inputs or a second configuration
+model. Computed declarations that cannot be safely spliced are refused before any
+application file is written.
 
 The design, history and roadmap are in [docs/framework-studio](../docs/framework-studio/README.md).
 
@@ -302,9 +366,13 @@ disabled workloads. Board and Isometric share these badges, including catalog re
 across the two mode models. The Inspector uses two
 environment cards. Local and AWS are execution locations within Development, never a
 third environment. The framework's underlying deployment settings are unchanged.
-The Inspector's deploy selector labels those settings Dev + Prod, Dev only, Prod only
-and Off; edit intents retain the framework's source tokens.
-WebSocket options also account for whether its AWS API is enabled, so the labels do not
+Workloads and routes share a **Deployment** section directly below their identity,
+with the same cards and **Deploy** selector: Dev + Prod, Dev only, Prod only and Off.
+Routes edit their owning workload; staged changes immediately preview in the cards.
+Catalog resources and local services reuse the cards and identify what controls their
+availability. Catalog availability describes declarations, not deployed health.
+Edit intents retain the framework's source tokens.
+WebSocket options also account for each environment's own AWS API flag, so the labels do not
 claim a production deployment where no API exists, or hide its AWS-backed Development execution.
 
 | Input | Action |

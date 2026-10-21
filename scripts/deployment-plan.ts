@@ -131,13 +131,13 @@ export function staleness(planned: Readonly<Record<string, StackFingerprint>>, c
 export const PLAN_UNCERTAINTIES = {
   template: [
     "Replacement is not known from a template comparison: a modified resource may be replaced. Use a change-set review for certainty.",
-    "Secret values are compared, never shown; changed values are written before the stacks update and reach runtime readers at once.",
+    "Secret values are compared, never shown; changed values are written before the stacks update and reach runtime readers at once. Apply refuses if an authored value, or the value in Secrets Manager, changed since this review.",
     "Changes made outside CloudFormation (drift) are not part of this comparison.",
     "Custom resources run code whose effects a plan cannot predict.",
   ],
   "change-set": [
     "Parameters resolved when the change set runs (such as the bootstrap version) are not known until then.",
-    "Secret values are compared, never shown; changed values are written before the change sets execute and reach runtime readers at once.",
+    "Secret values are compared, never shown; changed values are written before the change sets execute and reach runtime readers at once. Apply refuses if an authored value, or the value in Secrets Manager, changed since this review.",
     "CloudFormation compares against the deployed template and parameters; drift is included only in a drift-aware review.",
     "A stack whose imports depend on another stack's new exports can only be planned after that stack runs; it is deferred.",
     "Custom resources run code whose effects a plan cannot predict.",

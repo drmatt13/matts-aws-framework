@@ -50,14 +50,19 @@ export function clientCommand(root: string, env: NodeJS.ProcessEnv): CommandSpec
 }
 
 /** Where the Docker CLI looks for its Compose plugin, in its own order. */
-export function composePlugin(env: NodeJS.ProcessEnv): string | undefined {
+/** Where an installed Docker keeps its plugins for every user, after the user's own directory. */
+export function systemPluginDirectories(env: NodeJS.ProcessEnv): string[] {
+  return process.platform === "win32"
+    ? [path.join(env.ProgramFiles ?? "C:\\Program Files", "Docker", "cli-plugins"), path.join(env.ProgramFiles ?? "C:\\Program Files", "Docker", "Docker", "resources", "cli-plugins")]
+    : ["/usr/local/lib/docker/cli-plugins", "/usr/local/libexec/docker/cli-plugins", "/usr/lib/docker/cli-plugins", "/usr/libexec/docker/cli-plugins", "/Applications/Docker.app/Contents/Resources/cli-plugins"];
+}
+
+export function composePlugin(env: NodeJS.ProcessEnv, systemDirectories: readonly string[] = systemPluginDirectories(env)): string | undefined {
   const name = process.platform === "win32" ? "docker-compose.exe" : "docker-compose";
   const home = env.USERPROFILE ?? env.HOME ?? os.homedir();
   const directories = [
     env.DOCKER_CONFIG ? path.join(env.DOCKER_CONFIG, "cli-plugins") : path.join(home, ".docker", "cli-plugins"),
-    ...(process.platform === "win32"
-      ? [path.join(env.ProgramFiles ?? "C:\\Program Files", "Docker", "cli-plugins"), path.join(env.ProgramFiles ?? "C:\\Program Files", "Docker", "Docker", "resources", "cli-plugins")]
-      : ["/usr/local/lib/docker/cli-plugins", "/usr/local/libexec/docker/cli-plugins", "/usr/lib/docker/cli-plugins", "/usr/libexec/docker/cli-plugins", "/Applications/Docker.app/Contents/Resources/cli-plugins"]),
+    ...systemDirectories,
   ];
   return directories.map((directory) => path.join(directory, name)).find((file) => existsSync(file));
 }

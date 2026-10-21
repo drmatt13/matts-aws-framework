@@ -292,8 +292,12 @@ export function resourceTypeErrors(root: string, overrides: Readonly<Record<stri
   }
   const host = ts.createCompilerHost(options);
   const read = host.readFile;
+  const exists = host.fileExists;
+  const directoryExists = host.directoryExists?.bind(host);
   host.readFile = (name) => overrides[path.resolve(name)] ?? read(name);
-  const roots = [...new Set([...editableFiles(root).map((name) => path.join(root, name)), ...Object.keys(overrides)])];
+  host.fileExists = (name) => path.resolve(name) in overrides || exists(name);
+  host.directoryExists = (name) => Object.keys(overrides).some((file) => file.startsWith(path.resolve(name) + path.sep)) || !!directoryExists?.(name);
+  const roots = [...new Set([...editableFiles(root).map((name) => path.join(root, name)), ...Object.keys(overrides).filter((file) => /\.tsx?$/.test(file))])];
   const program = ts.createProgram(roots, options, host);
   return ts.getPreEmitDiagnostics(program).filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error).slice(0, 12).map((diagnostic) => `${diagnostic.file ? toRelative(root, diagnostic.file.fileName) + ": " : ""}${ts.flattenDiagnosticMessageText(diagnostic.messageText, " ")}`);
 }

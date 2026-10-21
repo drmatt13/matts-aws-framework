@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -104,13 +104,26 @@ export class Tools {
   }
 }
 
-export function npmCli(env: NodeJS.ProcessEnv = process.env): string | undefined {
+export function npmCli(env: NodeJS.ProcessEnv = process.env, execPath = process.execPath): string | undefined {
+  const bin = path.dirname(execPath);
   const candidates = [
     env.npm_execpath && /npm-cli\.js$/.test(env.npm_execpath) ? env.npm_execpath : undefined,
-    path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js"),
-    path.join(path.dirname(process.execPath), "..", "lib", "node_modules", "npm", "bin", "npm-cli.js"),
+    path.join(bin, "node_modules", "npm", "bin", "npm-cli.js"),
+    path.join(bin, "..", "lib", "node_modules", "npm", "bin", "npm-cli.js"),
+    // Homebrew installs npm outside Node's own directory and links it as bin/npm beside node.
+    linkedNpm(bin),
   ];
   return candidates.find((candidate): candidate is string => Boolean(candidate && existsSync(candidate)));
+}
+
+function linkedNpm(bin: string): string | undefined {
+  if (process.platform === "win32") return undefined;
+  try {
+    const target = realpathSync(path.join(bin, "npm"));
+    return /npm-cli\.js$/.test(target) ? target : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Starts a command with the module's rules: no shell, no window, its own process group on POSIX. */

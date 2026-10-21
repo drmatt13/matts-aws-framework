@@ -17,6 +17,7 @@ export interface EditIntent {
 }
 
 export type DraftEdit =
+  | { readonly kind: "create"; readonly request: import("./creation").CreationRequest }
   | { readonly kind: "clientEnvironment"; readonly mappings: import("./client-environment").ClientEnvironmentMappings }
   | { readonly kind: "triggers"; readonly event: string; readonly bindings: readonly import("./triggers").TriggerBinding[] }
   /** Delete one recognized native trigger (a source edge id) from its CDK stack file. */
@@ -30,10 +31,12 @@ export type DraftEdit =
 export interface BatchPlanResponse {
   readonly planId: string;
   readonly summaries: readonly string[];
-  readonly changes: readonly { readonly file: string; readonly diff: PlanResponse["diff"] }[];
+  readonly changes: readonly { readonly file: string; readonly diff: PlanResponse["diff"]; readonly operation?: "create" | "modify" | "delete" }[];
   readonly preflight: { readonly dev: PreflightResult; readonly prod: PreflightResult };
   readonly ok: boolean;
   readonly impact: readonly string[];
+  /** Canonical identity to focus only after a confirmed creation. */
+  readonly select?: string;
 }
 
 export interface DiffLine {
@@ -76,6 +79,7 @@ export interface ApplyResponse {
   readonly status: "applied" | "reverted" | "unconfirmed";
   readonly message: string;
   readonly revision: string;
+  readonly select?: string;
 }
 
 export interface HistoryState {

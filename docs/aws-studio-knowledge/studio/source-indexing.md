@@ -1,0 +1,35 @@
+---
+id: studio.source-indexing
+summary: Connect evaluated entities to editable TypeScript and conservatively inferred CDK evidence.
+read_when:
+  - Adding source transformations, source evidence, or resource discovery
+  - Explaining a read-only field or missing inferred edge
+source:
+  - framework-studio/server/source/index.ts
+  - framework-studio/server/source/capabilities.ts
+  - framework-studio/server/source/cdk-links.ts
+  - packages/framework/scripts/config-source.ts
+related:
+  - studio.editing
+  - studio.graph-model
+  - framework.resources-cdk
+---
+# Source locations, capability discovery and evidence
+
+Evaluation answers what a declaration means; the source index answers where it was authored and whether a narrow transformation is safe. `buildSourceIndex` / `SourceFiles` in [source/index.ts](../../../framework-studio/server/source/index.ts) combine normalized origins with parsed TypeScript and overlay contents. `locateConfigSource` in [config-source.ts](../../../packages/framework/scripts/config-source.ts) follows supported imports/aliases and literal section composition.
+
+`fieldEditability` compares actual authored expressions against the evaluated setting. Computed expressions, ambiguous spreads, unsupported wrappers and comment-sensitive edits can be read-only even when their values normalize successfully. Do not replace a computed declaration merely because the Inspector can display its effective value.
+
+| Source analysis | Owner / evidence strength |
+| --- | --- |
+| Catalog and public members | [catalog.ts](../../../framework-studio/server/source/catalog.ts): type-only stack imports, catalog paths, field declarations and native link sites |
+| Trigger/resource capability | `discoverCapabilities` in [capabilities.ts](../../../framework-studio/server/source/capabilities.ts): TypeScript program resolves official CDK type symbols, inheritance and adapter metadata; not class-name string guessing |
+| Stack instantiation | [stack-usage.ts](../../../framework-studio/server/source/stack-usage.ts): source evidence of application constructor usage; not CloudFormation observation |
+| Native relationship inference | `scanCdkLinks` in [cdk-links.ts](../../../framework-studio/server/source/cdk-links.ts): supported direct constructors/aliases and native S3/SQS/SNS/DynamoDB/Cognito/EventBridge patterns |
+| Safe evidence snippets | `sourceEvidence` in [evidence.ts](../../../framework-studio/server/source/evidence.ts): strips comments/redacts literal/template/regex contents while retaining structural names |
+
+CDK inference deliberately skips unsupported loops, conditions, helper indirection and dynamic expressions. A missing edge is not proof of absence. A source-supported edge is not proof that its stack is constructed or deployed. Edges retain provenance and supported-removal metadata; arbitrary native statements must remain source-owned. [Graph model](graph-model.md) owns how those distinctions reach the UI.
+
+Extend discovery when a real source shape/resource family is needed; add positive and refusal fixtures together. Do not broaden the writable-file allowlist to compensate for an unresolved source location. New native trigger semantics also need framework adapter/CDK support, not just an inferred visual wire; see [creation/connections](creation-and-connections.md).
+
+Tests: [CDK links](../../../framework-studio/test/cdk-links.test.ts), [stack usage](../../../framework-studio/test/stack-usage.test.ts), [evidence](../../../framework-studio/test/evidence.test.ts), framework [config source](../../../packages/framework/test/config-source.test.ts). [Editing](editing.md) consumes locations; [snapshots](snapshots.md) consumes the index and exposes diagnostics.

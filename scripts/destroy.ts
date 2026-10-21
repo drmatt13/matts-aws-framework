@@ -189,7 +189,7 @@ async function main(): Promise<void> {
       runAwsSync(["cloudformation", "update-termination-protection", "--stack-name", stack.name, "--no-enable-termination-protection"], aws);
       console.log(`Turned off termination protection on ${stack.name}, as confirmed.`);
     }
-    const retain = opts.retainFailed && stack.status === "DELETE_FAILED"
+    const retain: string[] = opts.retainFailed && stack.status === "DELETE_FAILED"
       ? (runAwsSync(["cloudformation", "describe-stack-events", "--stack-name", stack.name, "--max-items", "100"], aws).StackEvents ?? [])
         .filter((event: any) => event.ResourceStatus === "DELETE_FAILED" && event.LogicalResourceId !== stack.name).map((event: any) => String(event.LogicalResourceId))
       : [];

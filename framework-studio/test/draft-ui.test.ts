@@ -19,6 +19,7 @@ let studio: typeof import("../src/studio");
 let inspector: typeof import("../src/views/Inspector");
 let dialogs: typeof import("../src/views/DraftControls");
 let review: typeof import("../src/views/EditDialog");
+let addMenu: typeof import("../src/views/AddMenu");
 let apiModule: typeof import("../src/api");
 let planCalls: (readonly DraftEdit[])[];
 let resourceCalls: unknown[];
@@ -44,6 +45,7 @@ before(async () => {
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
   ui.configure({ getElementError: (message) => new Error(message ?? "Element not found") });
   studio = await import("../src/studio"); inspector = await import("../src/views/Inspector"); dialogs = await import("../src/views/DraftControls"); review = await import("../src/views/EditDialog"); apiModule = await import("../src/api");
+  addMenu = await import("../src/views/AddMenu");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../..")); baseline = (await builder.refresh()).snapshot;
 });
 after(async () => { await builder.dispose(); dom.window.close(); });
@@ -54,7 +56,7 @@ beforeEach(() => {
     planCalls.push(edits);
     await reviewGate;
     if (failReview) throw new Error("Could not validate changes. Try reviewing again.");
-    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
+    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
   });
   mock.method(apiModule.api, "applyBatch", async () => {
     applyCalls++; if (failApply) throw new Error("Source changed. Your draft is preserved.");
@@ -83,6 +85,7 @@ async function mount(selected = target) {
       h(router.Link, { to: "/other" }, "Other view"),
       h("output", { "aria-label": "Current selection" }, context.selected ?? "none"),
       h(inspector.Inspector),
+      h(addMenu.AddMenu),
       context.draftState.reviewOpen ? h(review.EditDialog, { review: context.draftState.review }) : null,
       h(dialogs.UnsavedChangesDialog));
   }
@@ -155,12 +158,20 @@ test("numeric defaults stay visible through overrides and restoring them stages 
   assert.ok(planCalls[0]?.some((edit) => edit.kind === "field" && edit.intent.target === target && edit.intent.field === "lambda.memorySize" && edit.intent.inherit));
 });
 
-test("Deploy precedes settings for every workload role that supports it", async () => {
+test("every configurable workload starts with the shared Deployment section and previews its draft", async () => {
   for (const role of new Set(baseline.models.dev.targets.map((target) => target.role))) {
     const item = baseline.models.dev.targets.find((target) => target.role === role)!;
     if (!baseline.models.dev.fields[item.ref]?.some((fact) => fact.field === "deploy")) continue;
     await mount(item.ref);
-    assert.equal(document.querySelector(".inspector-section .field .name")?.textContent, "Deploy", role);
+    const section = document.querySelector(".inspector-content > .inspector-deployment")!;
+    assert.ok(section, role);
+    assert.equal(section.previousElementSibling?.tagName, "HEADER", role);
+    assert.equal(section.querySelector("h3")?.textContent, "Deployment", role);
+    assert.equal(section.querySelector(".field .name")?.textContent, "Deploy", role);
+    const control = ui.within(section as HTMLElement).getByRole("combobox", { name: "Deploy" });
+    ui.fireEvent.change(control, { target: { value: "none" } });
+    assert.deepEqual([...section.querySelectorAll(".lane-line strong")].map((item) => item.textContent), ["Not enabled", "Not enabled"], role);
+    assert.equal(applyCalls + planCalls.length, 0, "changing deployment only stages a draft");
     ui.cleanup();
   }
 });
@@ -510,11 +521,36 @@ test("managed API routes show their target's environment cards and owning config
     assert.equal(cards[1]!.querySelector(".environment-name")?.textContent, "Production");
     assert.equal(cards[1]!.querySelector("strong")?.textContent, target.lanes.prod ? "Enabled" : "Not enabled");
     assert.equal(cards[1]!.querySelector(".small")?.textContent, target.lanes.prod ? "In AWS" : undefined);
+    const control = ui.screen.getByRole("combobox", { name: "Deploy" });
+    ui.fireEvent.change(control, { target: { value: "none" } });
+    assert.equal(document.querySelector(".lane-line.dev strong")?.textContent, "Not enabled");
+    assert.equal(document.querySelector(".lane-line.prod strong")?.textContent, "Not enabled");
+    await ui.act(async () => { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); });
+    await waitDialog("Review 1 change");
+    assert.deepEqual(planCalls.at(-1), [{ kind: "field", intent: { target: target.ref, field: "deploy", value: "none" } }], "route and target share the same deployment declaration");
     ui.cleanup();
   }
   await mount("island:apis");
   openSection("Island entries");
   for (const section of Object.values(sections)) assert.ok(ui.screen.getAllByText(`Managed by framework-config/${section}`).length);
+});
+
+test("catalog and local services share deployment cards while managed entries link to their owner", async () => {
+  const tool = baseline.models.dev.targets.find((target) => target.role === "tool")!;
+  for (const id of ["resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "local:postgres", "prop:endpoint:s3", "lambda:cognito-post-confirmation-trigger", tool.ref]) {
+    await mount(id);
+    const section = document.querySelector(".inspector-content > .inspector-deployment");
+    assert.ok(section, id);
+    assert.equal(section.previousElementSibling?.tagName, "HEADER", id);
+    assert.deepEqual([...section.querySelectorAll(".environment-name")].map((item) => item.textContent), ["Development", "Production"], id);
+    assert.equal(ui.screen.queryByRole("combobox", { name: "Deploy" }), null, "managed availability has no independent deployment override");
+    assert.equal(applyCalls + planCalls.length, 0);
+    if (id === "resource:cognito.userPool") {
+      ui.fireEvent.click(ui.within(section as HTMLElement).getByRole("button", { name: "CognitoStack" }));
+      await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Current selection").textContent, "resource:cognito"));
+    }
+    ui.cleanup();
+  }
 });
 
 test("route cards retain disabled environments and show AWS-only development placement", async () => {
@@ -534,15 +570,39 @@ test("route cards retain disabled environments and show AWS-only development pla
   }
 });
 
+test("WebSocket deployment choices preview each environment's own API flag", async () => {
+  const target = baseline.models.dev.targets.find((target) => target.role === "webSocket")!;
+  persisted = { ...baseline, models: {
+    dev: { ...baseline.models.dev, webSocketApi: false },
+    prod: { ...baseline.models.prod, webSocketApi: true },
+  } };
+  await mount(target.ref);
+  const control = ui.screen.getByRole("combobox", { name: "Deploy" });
+  assert.equal(ui.within(control).getByRole("option", { name: "Prod only" }).getAttribute("value"), "cloud-only");
+  ui.fireEvent.change(control, { target: { value: "cloud-only" } });
+  assert.equal(document.querySelector(".lane-line.dev strong")?.textContent, "Not enabled");
+  assert.equal(document.querySelector(".lane-line.prod strong")?.textContent, "Enabled");
+  assert.equal(applyCalls + planCalls.length, 0);
+});
+
 test("event Lambda local replay switches stage true or property removal through the shared draft", async () => {
   for (const [id, enabled] of [["cognito-custom-message", false], ["cognito-post-confirmation-trigger", true]] as const) {
     await mount(`lambda:${id}`);
     const control = ui.screen.getByRole("switch", { name: "Local replay" });
     assert.equal(control.getAttribute("aria-checked"), String(enabled));
     assert.equal(ui.screen.queryByRole("switch", { name: "API user-pool authorizer" }), null);
+    const development = () => document.querySelector(".lane-line.dev .small")?.textContent;
+    const replayLocation = "AWS first → captured → replayed on your machine";
+    assert.equal(development(), enabled ? replayLocation : "In AWS");
+    assert.equal(document.querySelector(".lane-line.prod .small")?.textContent, "In AWS");
     ui.fireEvent.click(control);
     assert.equal(control.getAttribute("aria-checked"), String(!enabled));
+    assert.equal(development(), enabled ? "In AWS" : replayLocation, "the Development card previews the staged replay setting");
     assert.match(count(), /1 unsaved change/);
+    ui.fireEvent.click(control);
+    assert.equal(development(), enabled ? replayLocation : "In AWS", "restoring the setting also restores the Development card");
+    assert.equal(ui.screen.queryByRole("button", { name: "Review Changes" }), null);
+    ui.fireEvent.click(control);
     await ui.act(async () => { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); });
     await waitDialog("Review 1 change");
     assert.deepEqual(planCalls.at(-1), [{ kind: "field", intent: enabled
@@ -792,4 +852,51 @@ test("resource controls and island service groups participate in the same shared
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Default service type" }), { target: { value: "defaults:lambda" } });
   assert.equal(ui.screen.getByRole("switch", { name: "Minify" }).getAttribute("aria-checked"), "false");
   await ui.act(async () => { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); }); await waitDialog("Review 2 changes"); assert.equal(planCalls[0].length, 2);
+});
+
+
+test("all ten creation options enter the guarded wizard; review/back retains form and cancel writes nothing", async () => {
+  await mount();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add to application" }));
+  const menu = ui.screen.getByRole("dialog", { name: "Add to application" });
+  for (const label of ["Function", "Stack", "VPC", "Workflow", "Container service", "Container task", "API route", "Agent", "Input parameter", "Secret"]) assert.equal((ui.within(menu).getByRole("button", { name: label }) as HTMLButtonElement).disabled, false);
+  ui.fireEvent.click(ui.within(menu).getByRole("button", { name: "Input parameter" }));
+  await waitDialog("Create input parameter");
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Stable identifier" }), { target: { value: "reviewedInput" } });
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Environment variable" }), { target: { value: "REVIEWED_INPUT" } });
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Declaration default (optional)" }), { target: { value: "kept" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review generated changes" }));
+  await waitDialog("Review 1 change");
+  await ui.waitFor(() => assert.equal(planCalls.length, 1));
+  assert.equal(planCalls[0]![0]!.kind, "create");
+  assert.equal(applyCalls, 0, "review is not approval to write");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" }));
+  await waitDialog("Create input parameter");
+  assert.equal((ui.screen.getByRole("textbox", { name: "Declaration default (optional)" }) as HTMLInputElement).value, "kept");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to resource types" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Input parameter" }));
+  await waitDialog("Create input parameter");
+  assert.equal((ui.screen.getByRole("textbox", { name: "Stable identifier" }) as HTMLInputElement).value, "reviewedInput");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Cancel creation" }));
+  assert.equal(applyCalls, 0);
+  assert.ok(!document.querySelector(".creation-wizard"));
+});
+
+test("starting creation respects existing inspector changes and creation guards navigation", async () => {
+  await mount(); changeMemory();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add to application" }));
+  await waitDialog("Unsaved changes");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Keep Editing" }));
+  assert.ok(count().includes("1 unsaved change"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add to application" }));
+  await waitDialog("Unsaved changes");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard and Continue" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Secret" }));
+  await waitDialog("Create secret");
+  assert.equal(ui.screen.queryByLabelText(/secret value/i), null);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to resource types" }));
+  ui.fireEvent.click(ui.screen.getByRole("link", { name: "Other view" }));
+  await waitDialog("Unsaved changes");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Keep Editing" }));
+  assert.equal(applyCalls + planCalls.length, 0);
 });

@@ -83,7 +83,10 @@ exported files are current. `--plan <dir>` / `--apply <dir>` review a deployment
 anything; see [Production](PROD-DEPLOYMENT.md#deploy).
 
 Each refusal names the stacks and a remedy, and nothing is changed. Two deploys of the same
-name on one machine cannot run at once (`.cache/deploy/<name>.lock`). Assemblies that an
+name on one machine cannot run at once (`.cache/deploy/<name>.lock`). A reviewed plan's secret
+writes are bound to the review in `.cache/deploy/secret-bindings/` (keyed digests and AWS version
+ids, never values): applying refuses if a secret's authored value or its value in Secrets Manager
+changed since the plan was made. Assemblies that an
 interrupted run left in `.cache/deploy` are removed after a day. Deploy and export read
 authored inputs from `FRAMEWORK_INPUTS_FILE` when it is set, otherwise from the target's
 inputs file: `cdk-app/.env.dev` for development, `cdk-app/.env.prod` with `-c prodDeployment=true`.
@@ -243,16 +246,28 @@ upgrade; the updated CLI reads both assemblies. Asset bundling was skipped in
 these synthesis comparisons. Live AWS, database, Docker-image and browser checks
 are separate and were not performed.
 
-`npm run verify` still stops at `framework-studio/test/landscape.test.ts:420`:
-an existing fixture omits `Lanes.deploy`, `origin`, and `cloud`. The full workspace
-test run also has seven existing Studio failures: three Docker/Compose prerequisite
-or process expectations (`deploy-orphans`, `deploy-prereqs`, `deploy-service`), a
-null-prototype environment-object expectation (`deployment-inputs`), two deployment
-hover-label expectations (`hover`), and a role-badge expectation (`landscape`).
-The same typecheck error and all seven failures reproduce in a disposable snapshot
-of the original source with its original lockfile. Those unrelated files remain
-unchanged. The two AgentCore test failures introduced by resolving a newer Zod
-minor are fixed by the compatibility override above.
+At the time, `npm run verify` stopped at `framework-studio/test/landscape.test.ts:420`
+(a fixture omitting `Lanes.deploy`, `origin` and `cloud`), and the full workspace run
+had seven Studio failures. None was a dependency regression; each depended on the
+machine running it, and each is now fixed so the result is the same on any machine:
+
+- `deploy-orphans`: Compose plugin discovery also found this machine's Docker
+  Desktop install. The system plugin directories are now a parameter the test sets.
+- `deploy-prereqs`: npm discovery missed Homebrew's layout, where `bin/npm` beside
+  Node links to npm installed elsewhere. This also affected Studio launched without
+  `npm run`; `npmCli` now follows that link.
+- `deploy-service`: the simulated Docker named its Compose project after one
+  checkout's directory. It now uses the project Studio derives for the checkout.
+- `deployment-inputs`: `util.parseEnv` returns a null-prototype object on Node 26.
+  The test compares contents.
+- `hover` (two tests): the labels encoded one machine's `DEPLOY_PROD_WEBSOCKET_API`
+  values in its ignored `cdk-app/.env.dev` and `.env.prod`. The tests now pin those
+  lanes, and a separate test checks each environment follows its own file.
+- `landscape`: the WebSocket role badge gained the managed border on purpose; the
+  assertion still expected no WebSocket entry. It now checks the documented badge.
+
+The two AgentCore test failures introduced by resolving a newer Zod minor are fixed by
+the compatibility override above.
 
 ### Line endings (Windows and macOS)
 
@@ -376,6 +391,17 @@ npm run verify
 docker compose ps
 docker compose logs -f local-api-dev-server local-invocation-runner
 ```
+
+Verification has three lanes:
+
+| Lane | Command | Needs |
+| --- | --- | --- |
+| Offline | `npm run verify`: lockfile, generated artifacts, every workspace typecheck (including the root `scripts/`), all test suites | Node 24+ and installed dependencies. No AWS, Docker, database, browser or ignored inputs file: AWS, the CDK CLI and Docker are simulated (`FRAMEWORK_AWS_CLI`, `FRAMEWORK_CDK_CLI`, `FRAMEWORK_DOCKER_CLI`) |
+| Integration (part of Offline) | The same run: `deploy:resources` plan/apply/discard as real processes against the simulated account, Studio's deploy service driving them, evaluator processes, invocation-runner child processes | As above |
+| Acceptance | Synthesis in both modes, `npm run dev:containers` with the browser checks below, a reviewed plan and apply against a development account, migrations | Docker, AWS credentials, a database; run by hand for the change being made |
+
+A test in the offline lanes must not read this machine's state: ignored inputs files,
+an installed Docker, the checkout's directory name, or where Node keeps npm.
 
 The offline gate does not verify credentials, container startup, or live migrations.
 After startup, sign in, list/create/archive/delete a Project, reload the page, and check

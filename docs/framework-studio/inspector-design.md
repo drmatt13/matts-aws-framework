@@ -13,17 +13,45 @@ live in `src/views/InspectorUI.tsx`. Board, Isometric and Database use the same 
 | Scrolling | One content region, with close and draft actions outside it; a new selection starts at the top |
 | Type | 20 px item titles, 14 px body, 13 px labels, 12 px captions; monospace for identifiers and source |
 | Spacing | Shared 4, 8, 12, 16 and 20 px tokens; 20 px panel gutters |
-| Controls | 34 px inputs/selects, 32 px actions, 30 px icon actions, 16 px checkboxes |
+| Controls | 34 px inputs/selects, 32 px actions and icon actions, 24 px supporting disclosures, 16 px checkboxes; 44 px control targets for touch |
 | Sections | `InspectorSection` for immediate controls; `InspectorDisclosure` for supporting information |
 | Forms | Associated labels, inline units, visible error messages, semantic `FormGroup` boundaries |
 | Color | Existing theme surfaces; teal/violet for environments, accept/refuse colors for validation |
 
+Controls share horizontal padding and a single select-arrow treatment: a 14 px chevron
+inset 12 px from the edge, with 10 px between text and icon. Native selects retain keyboard
+behavior and return to the platform arrow in forced-colors mode. Focus uses an outline
+without changing control geometry. Component styles should not reset shared control
+padding, backgrounds or arrow placement.
+
+Field dividers keep 12 px of vertical padding; Deployment instead uses an unruled 16 px
+gap from its cards to its selector. Labels, controls and default notes share column tokens.
+At widths up to 420 px, fields stack their labels above controls, mapping actions wrap,
+and primary dialog actions use the full row. Long labels and source references wrap;
+selected options reserve their arrow space and truncate within the control.
+
 ## Information order
 
-Compute inspectors begin with identity, source access and two environment cards.
-Managed API routes show the same cards using their target's availability and execution locations.
-For compute, a compact description preview precedes settings; Deploy is always the first setting,
-followed by memory, timeout and other lifecycle settings. Numeric fields keep their
+Workload, route, catalog and local-service inspectors begin with identity, source access
+and the shared **Deployment** section (`src/views/Deployment.tsx`). Development always
+precedes Production; both cards remain visible when disabled. Configurable workloads
+and their routes expose the same **Deploy** selector beneath the cards. A route edits
+its target's declaration. The cards immediately preview a staged scope, and restoring
+inheritance restores the default preview. WebSocket choices account for each graph's
+own AWS API flag, including AWS execution in development.
+For event Lambdas, Development shows AWS execution unless local replay is enabled;
+then it shows AWS capture first, followed by replay on the developer's machine.
+This summary follows the staged replay setting and always describes the development graph.
+Catalog cards say Available/Unavailable to describe declaration availability rather
+than deployed health. Stack members link to their parent; tools link to their consuming
+agents; event functions and framework-managed resources explain their fixed availability.
+These do not get unsupported deployment overrides. Local services and network fixtures
+use the same cards and identify Compose or the production VPC as their configuration source. Islands configure shared defaults;
+select an individual entry to change its deployment scope. Client mapping Dev/Prod pills
+continue to control file generation rather than workload deployment.
+
+For compute, a compact description preview follows Deployment and precedes memory,
+timeout and other lifecycle settings. Numeric fields keep their
 inherited default visible after an override and offer a direct way to restore it.
 Routing, authentication and event controls follow.
 Build configuration, placement, connections, environment bindings and

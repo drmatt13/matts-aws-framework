@@ -1,0 +1,36 @@
+---
+id: framework.configuration
+summary: Literal section composition, normalized targets, stable identities, and execution lanes.
+read_when:
+  - Adding a workload or changing the framework DSL
+  - Debugging identity or local/cloud selection
+source:
+  - framework.config.ts
+  - framework-config/contracts.ts
+  - packages/framework/src/config/index.ts
+related:
+  - framework.resources-cdk
+  - deployment.environments
+  - reference.change-impact
+---
+# Configuration and normalized identities
+
+[framework.config.ts](../../../framework.config.ts) composes `defaults`, `network`, `resources`, application database/user-pool references, and arrays of `http`, `webSocket`, `events`, `services`, `tasks`, `workflows`, `tools`, and `agents` modules. [contracts.ts](../../../framework-config/contracts.ts) specializes section types from the catalog and exports only types.
+
+In [config/index.ts](../../../packages/framework/src/config/index.ts), `defineFrameworkConfig` merges sections and validates normalization eagerly. `mergeSection` detects duplicate keys before information is lost; an object spread could erase that evidence. `normalizeFrameworkConfig` / `getFrameworkTargets` give CDK, generation, runtime and Studio one target vocabulary.
+
+| Identity | Meaning / preservation rule |
+| --- | --- |
+| Public path / WebSocket key | How traffic enters; may change without renaming compute |
+| Target `id` / canonical `kind:id` | Shared workload identity; routed IDs derive from directory unless explicit |
+| `directory` | Framework path relative to cdk-app; agents have their documented root-directory convention |
+| `cloud.constructId` | Stable deployed construct identity; moving source must preserve it where appropriate |
+| Stack scope + output prefix | CloudFormation logical identity and export compatibility, independent of route names |
+
+`NormalizedTarget` records kind, role, resolved compute/settings, source origin, references and bindings. Several routes may share one compatible target; target-level settings must agree. Lambda inheritance resolves framework defaults → section defaults → workload override. Container architecture has its own defaults chain.
+
+`isTargetEnabled` applies `both`, `local-only`, `cloud-only`, `none` to execution lanes. `isTargetDeployed` separately applies the deployment mode: dev builds AWS-invoked event infrastructure, not the normal locally executed HTTP/task/workflow/agent fleet; prod builds cloud-enabled workloads. Events have no target deploy toggle. Tools derive lanes from consuming agents. WebSocket AWS deployment also has a mode input flag. These predicates are not synonyms. [Environment modes](../deployment/environments.md) owns named-target behavior.
+
+`assertCloudEdgesResolvable` rejects cloud consumers whose required declared targets/resources cannot resolve. Source validation also checks literal routes, overlap, handler wrappers, invocation cycles, workflow semantics and runtime packaging. `npm run framework:generate` emits projections; `framework:check` detects drift and authoring violations. Neither is a live deployment check.
+
+Extend a DSL field through its type, normalization/defaults, validation, CDK/local consumers, generated projections and Studio projection/editability as applicable; use [extension recipes](../guides/extensions.md). Start from existing [Framework guidance](../../FRAMEWORK.md), then use [change impact](../reference/change-impact.md). Resource references belong to [resources/CDK](resources-and-cdk.md), not new environment-specific import tables.

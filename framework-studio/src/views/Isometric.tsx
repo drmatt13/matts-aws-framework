@@ -64,7 +64,7 @@ const ENVIRONMENTS = [["dev", "Dev"], ["prod", "Prod"]] as const;
 const NO_DESCRIPTION = "No description yet. Select it to write one.";
 
 export function Isometric() {
-  const { model, index, snapshot, selected, select } = useStudio();
+  const { model, index, snapshot, selected, select, created } = useStudio();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SceneRenderer | undefined>(undefined);
@@ -202,6 +202,8 @@ export function Isometric() {
     },
     [moveCamera],
   );
+
+  useEffect(() => { if (created) focus(scene.representatives[created.id] ?? created.id); }, [created, focus]);
 
   const resize = useCallback(() => {
     const container = containerRef.current;

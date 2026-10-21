@@ -289,18 +289,19 @@ Replacement is shown as "may". Change sets can be switched on for dev too.
 **Production, the change-set plan:**
 
 1. Synth (kept assembly), guard, and the secret plan.
-2. **New secrets.** If the plan needs secrets that don't exist yet, it pauses: "Create N secrets so CloudFormation can plan against their ARNs. Nothing reads them until you apply." This is an explicit authorization, because a change set cannot reference an ARN that doesn't exist.
+2. **New secrets.** If the plan needs secrets that don't exist yet, it pauses: "Create N secrets so CloudFormation can plan against their ARNs. Nothing reads them until you apply." This is an explicit authorization, because a change set cannot reference an ARN that doesn't exist. It creates only the missing secrets: an existing secret's new value is never written while planning. It stays an `update` in the review, written at apply. If a creation fails, the error names what was created before it, and planning again reuses those secrets.
 3. `cdk deploy --app <dir> --method prepare-change-set --change-set-name framework-<planId> --parameters <ARNs>`, with `--revert-drift` optional (a drift-aware review). This publishes assets (S3 and ECR, plus Docker if images are missing) and creates change sets. New stacks enter `REVIEW_IN_PROGRESS`.
 4. `describe-change-set --include-property-values` per stack, giving authoritative changes: action, `Replacement` (True / False / Conditional), scope, details and the causing entity. Empty change sets are recorded as "no changes" and deleted.
 5. **Staged dependencies.** A stack whose change set can't be created yet (it imports an export that isn't deployed) is marked **deferred until `<upstream>` runs**. Apply pauses after the upstream stack, prepares the deferred change set, and **asks again** if its changes go beyond the template preview.
 6. `plan.json`: assembly digest, change-set ids, fingerprints (`LastUpdatedTime ?? CreationTime`, status) and the authorization level. Plans expire after 24 h by default.
+7. **Secret binding.** Beside `plan.json`, outside the plan directory, `.cache/deploy/secret-bindings/<planId>.json` (mode 0600) binds each secret write to the review. It holds an HMAC of each authored value under a random key made for that plan alone, and each existing secret's ARN and `AWSCURRENT` version id. It holds no value. Because the key is in the same file, a low-entropy value could be guessed from it, so it is treated like the inputs file: it is never shown, logged or sent to Studio, it is removed when the plan is applied or discarded, and a later plan sweeps it after a day.
 
 **Apply in production:**
 
 1. guard again;
 2. every change set must be `CREATE_COMPLETE` and `AVAILABLE`; `OBSOLETE` means re-plan;
-3. recompute the secret plan, and refuse if the names or actions differ;
-4. update secret values;
+3. recompute the secret plan, and refuse unless every secret write is the reviewed one: the same names and actions, the same ARNs, the same `AWSCURRENT` version for each update, and the same authored value (by its keyed digest) for each create or update. A missing binding refuses too;
+4. update secret values (Secrets Manager has no conditional write, so a change made in the moment between this check and the write is not detected);
 5. `cdk deploy --app <dir> --method execute-change-set --change-set-name framework-<planId>` in dependency order;
 6. verify: statuses, identity, and templates equal the assembly;
 7. write the deployment record.
@@ -310,7 +311,7 @@ Replacement is shown as "may". Change sets can be switched on for dev too.
 | Area | What the plan knows | What it cannot establish | Mitigation |
 | --- | --- | --- | --- |
 | Parameters | Secret-ARN parameters are passed explicitly; others keep their previous values | Parameters resolved when the change set runs (e.g. `BootstrapVersion` from SSM) | Listed; stale checks |
-| Secrets | Names and create/update/unchanged | Value contents (never shown). Value updates apply *before* the stacks run and reach runtime readers immediately | Apply recomputes the secret plan and refuses on mismatch |
+| Secrets | Names and create/update/unchanged; the authored values and AWS versions they replace, bound by keyed digest and version id | Value contents (never shown). Value updates apply *before* the stacks run and reach runtime readers immediately | Apply recomputes the secret plan and refuses if an action, ARN, AWS version or authored value differs from the review |
 | Assets | Content hashes; published during preparation | Whether `cdk gc` removed them before apply | Plan expiry; CloudFormation fails safely if they're missing |
 | External changes | The change set against the deployed template and parameters; a drift-aware change set includes drift on supported types | Resources CloudFormation doesn't manage; types where drift isn't supported | A drift check is offered as a prod plan step; labelled |
 | Concurrency | CloudFormation marks change sets `OBSOLETE` when the stack is updated | Changes made outside CloudFormation | Fingerprints plus the `OBSOLETE` check |

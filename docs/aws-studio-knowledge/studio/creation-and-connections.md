@@ -1,0 +1,44 @@
+---
+id: studio.creation-connections
+summary: Implemented creation wizards, bounded scaffolding, trigger adapters and native connection removal.
+read_when:
+  - Extending Add to Application
+  - Creating or modifying Lambda triggers and failure destinations
+source:
+  - framework-studio/shared/creation.ts
+  - framework-studio/src/views/AddMenu.tsx
+  - framework-studio/src/views/CreationWizard.tsx
+  - framework-studio/server/edits/creation.ts
+  - framework-studio/server/edits/creation-generation.ts
+  - framework-studio/server/edits/triggers.ts
+  - framework-studio/server/edits/native-triggers.ts
+related:
+  - studio.editing
+  - studio.source-indexing
+  - framework.resources-cdk
+---
+# Creation and resource connections
+
+Current source implements **Add to Application**, not a disabled menu. [AddMenu](../../../framework-studio/src/views/AddMenu.tsx) opens [CreationWizard](../../../framework-studio/src/views/CreationWizard.tsx); `CREATORS`, `CreationRequest` and `readCreationRequest` in [shared/creation.ts](../../../framework-studio/shared/creation.ts) define forms and server-revalidated inputs. `InspectorDraft.beginCreation` stages one complete creation; it cannot be mixed with unrelated edits in a batch.
+
+`planCreation` in [edits/creation.ts](../../../framework-studio/server/edits/creation.ts) returns source overrides, expected entities/selection and impact. It does not write authored files. `assertCreationFile` allows fixed creator-owned destinations and refuses traversal/symlink components. Disposable evaluators load new proposed modules; the [transaction](editing.md) reviews, validates both modes/typechecks, applies, verifies and makes creation undoable.
+
+`generateCreationArtifacts` in [creation-generation.ts](../../../framework-studio/server/edits/creation-generation.ts) copies selected source/manifests into a private preview directory, excludes authored environment values/dependencies/deployment outputs, overlays the proposal and runs the real framework generator with `--repository-root`. Its allowlisted generated outputs join the same diff/journal. New service and agent manifests also trigger an offline npm 11 lockfile-only update in the copy. Input hashes protect the review from generator-input changes. Generated files are never authored by scaffold templates or accepted as arbitrary HTTP write destinations.
+
+| Creator | Current source behavior / boundary |
+| --- | --- |
+| Function / API route | Node TypeScript zip handler plus literal section and root array registration; HTTP/WebSocket/event categories. Compatible existing routed Lambda aliases are appended to the original literal section, preserving local references, imports, settings and construct identity. WebSocket modules narrow their section type with an exact `Pick`. Other runtimes/images remain manually authored |
+| Stack | Application stack exposing an SQS queue, catalog type import/declaration and actual CDK entrypoint instantiation; custom members remain source-owned |
+| VPC | Configure the framework's single shared network, not an independent second VPC. Prod builds it when required; deployment may replace infrastructure |
+| Workflow | Identity workflow or initial sequence of existing event Lambdas/tasks through the existing DSL |
+| Service / task | Node source, Dockerfile, declaration; service manifest and generated Compose/lock changes join the review where needed. No new arbitrary Docker execution path |
+| Agent | Contract, agent/module/tool loop using shared model configuration and declared existing tools, workspace manifest and TypeScript configuration; not a tool creator or arbitrary agent-language generator |
+| Input / secret | Catalog declaration and commented template keys; no authored environment values or secret provisioning |
+
+Descriptions for every family use [framework-config/descriptions.ts](../../../framework-config/descriptions.ts), which the existing Inspector reads and edits. Optional input/secret consumer bindings reuse compatible catalog imports and the framework's ARN or startup-value delivery. Inputs/secrets share declarations across graphs; their authored values remain independent in each mode's protected input file. Creation refuses collisions, incompatible route reuse, nonliteral compositions and unknown references. Apply selects the created entity and saves the reviewed authored/generated artifacts; it does not deploy or start containers. Preview generation can fail when offline npm cache/workspace inputs are insufficient. Browser usability and live provisioned behavior require separate checks. The [capability matrix](../reference/capabilities.md) distinguishes implemented source paths from external validation.
+
+Triggers are a separate change surface. [config/triggers.ts](../../../packages/framework/src/config/triggers.ts) defines `TriggerAdapterMetadata`, `defineTriggerAdapter`, `triggerAdapters`, trigger/failure-destination validation and normalization. [framework-triggers.ts](../../../cdk-app/lib/framework/framework-triggers.ts) and [framework-trigger-services.ts](../../../cdk-app/lib/framework/framework-trigger-services.ts) attach supported native integrations. Resource capabilities come from [type-aware discovery](source-indexing.md).
+
+`validateTriggerBindings` / `planTriggers` in [edits/triggers.ts](../../../framework-studio/server/edits/triggers.ts) write declared event triggers. Failure destination and local replay changes share batch preflight; enabling replay also updates a supported handler wrapper through [local-replay.ts](../../../framework-studio/server/edits/local-replay.ts). Source-inferred native edges use `planNativeRemovals` in [native-triggers.ts](../../../framework-studio/server/edits/native-triggers.ts) only when a safe removal site is recognized. Unsupported native code is not a general CDK editor.
+
+Validate using [creation](../../../framework-studio/test/creation.test.ts), [triggers](../../../framework-studio/test/triggers.test.ts), [removal](../../../framework-studio/test/trigger-removal.test.ts), [trigger services](../../../framework-studio/test/trigger-services.test.ts), [CDK triggers](../../../cdk-app/test/triggers.test.ts), and draft/undo tests. Adding a resource family requires the [extension recipe](../guides/extensions.md) across framework, CDK, discovery and transformations.

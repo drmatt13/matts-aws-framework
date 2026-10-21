@@ -6,6 +6,7 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import express from "express";
 import type { DeployOverview, DiscoveryView, JobView, PlanView, StatusView, TeardownPlanView } from "../shared/deploy";
+import { composeProjectName } from "../server/deploy/local";
 import { deployRouter } from "../server/deploy/routes";
 import { DeployService } from "../server/deploy/service";
 import { fakeAccount, frameworkStack, READ_VERB, REGION, type FakeAccount } from "../../cdk-app/test/support/fake-aws-state";
@@ -49,7 +50,6 @@ before(async () => {
     "USE_FRONTEND_CUSTOM_DOMAIN=false", "USE_COGNITO_CUSTOM_DOMAIN=false", `OPENAI_API_KEY=${SECRET_VALUE}`, "",
   ].join("\n"));
   dockerState = path.join(account.directory, "docker.json");
-  writeFileSync(dockerState, JSON.stringify({ engine: "stopped", desktop: true, compose: "5.1.0", services: [{ name: "postgres", health: "healthy" }, { name: "prisma-migrate", oneShot: true }, { name: "api-dev-server" }] }));
   const env: NodeJS.ProcessEnv = {
     ...account.env,
     FRAMEWORK_INPUTS_FILE: inputs,
@@ -59,6 +59,8 @@ before(async () => {
     FRAMEWORK_EXPORT_DIRECTORY: exportDirectory,
     FRAMEWORK_POLL_MS: "20",
   };
+  // The project Studio names from this checkout's directory (or COMPOSE_PROJECT_NAME), whatever the checkout is called.
+  writeFileSync(dockerState, JSON.stringify({ engine: "stopped", desktop: true, compose: "5.1.0", project: composeProjectName(root, env), services: [{ name: "postgres", health: "healthy" }, { name: "prisma-migrate", oneShot: true }, { name: "api-dev-server" }] }));
   const idle = { file: process.execPath, args: ["-e", "console.log('ready'); setInterval(() => {}, 1000)"], cwd: root, display: "idle" };
   service = new DeployService(root, (event, data) => events.push({ event, data }), {
     env, stateDirectory: path.join(account.directory, "studio"),

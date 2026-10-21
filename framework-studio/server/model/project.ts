@@ -621,6 +621,7 @@ export function projectModel(
   const defaults = projectDefaults(config, targets, DEFAULT_FIELDS);
   return {
     mode: options.mode,
+    webSocketApi: options.webSocketApi,
     triggerAdapters: triggerAdapters(),
     triggers: normalizeFrameworkConfig(config).triggers.map((binding) => ({ ...binding, resource: binding.resource ? resourceId(binding.resource.path) : "" })),
     failureDestinations: normalizeFrameworkConfig(config).failureDestinations.map(({ event, destination, retryAttempts, maxEventAgeSeconds }) => ({ event, destination: resourceId(destination.path), ...(retryAttempts !== undefined ? { retryAttempts } : {}), ...(maxEventAgeSeconds !== undefined ? { maxEventAgeSeconds } : {}) })),

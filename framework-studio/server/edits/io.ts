@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, linkSync, mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { STUDIO_SCRATCH } from "../inputs";
 
@@ -10,6 +10,26 @@ export class EditError extends Error {
   ) {
     super(message);
   }
+}
+
+/** null means absence, distinct from an existing empty file. */
+export function sourceContents(file: string): string | null {
+  try { return readFileSync(file, "utf8"); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
+}
+
+/** A new file is linked exclusively, so another editor's new file wins. */
+export function writeSourceChange(root: string, file: string, before: string | null, after: string | null): void {
+  if (sourceContents(file) !== before) throw new EditError(409, "A source file changed while applying the draft.");
+  if (after === null) { unlinkSync(file); return; }
+  if (before !== null) { writeAtomically(root, file, after); return; }
+  mkdirSync(path.dirname(file), { recursive: true });
+  const directory = path.join(root, STUDIO_SCRATCH, "tmp");
+  mkdirSync(directory, { recursive: true });
+  const temporary = path.join(directory, `create-${randomUUID()}.tmp`);
+  writeFileSync(temporary, after, { flag: "wx" });
+  try { linkSync(temporary, file); }
+  finally { unlinkSync(temporary); }
 }
 
 

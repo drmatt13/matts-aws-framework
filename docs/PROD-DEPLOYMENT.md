@@ -216,8 +216,10 @@ sets (which modify no resource) so the review shows CloudFormation's own replace
 writes `plan.json`: per-resource changes, secrets by name, IAM broadening, exports other stacks still
 import, container images, and what the review cannot know. A stack that imports from a stack the plan
 creates is deferred until that stack exists. Planning needs every managed secret to exist: when one is
-new, plan again with `--create-secrets`. `--apply` refuses a plan older than a day, a plan whose stacks
-changed since the review, an obsolete change set, or secret values that changed; consequential
+new, plan again with `--create-secrets`, which creates only the missing secrets. An existing secret
+with a new value is not written while planning: it is updated when the plan is applied. `--apply`
+refuses a plan older than a day, a plan whose stacks changed since the review, an obsolete change set,
+or a secret whose authored value or Secrets Manager version changed since the review; consequential
 production changes (removals, replacements, stateful resources, IAM broadening, exports in use, a first
 deployment) need `--confirm <NAME>`. After deploying, AWS is checked: every stack must have completed
 with this deployment's identity and the reviewed template. `--discard <dir>` removes a plan's change

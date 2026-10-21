@@ -82,7 +82,7 @@ export function IslandInspector({ id }: { readonly id: string }) {
     {id === "island:stacks" ? <InspectorSection title="CDK infrastructure"><InfrastructurePanel key={mode} onNavigate={select} /></InspectorSection> : null}
     {group ? <section>
       <h3>Shared defaults</h3>
-      <p className="small muted">Applies across all islands and to future entries. Individual overrides take precedence.</p>
+      <p className="small muted">Applies across all islands and to future entries. Individual overrides take precedence. Select an entry to configure its deployment.</p>
       <label className="island-default-group">Service type<select aria-label="Default service type" value={group.ref} onChange={(event) => setChosen(event.target.value)}>{groups.map((item) => <option key={item.ref} value={item.ref}>{item.title}</option>)}</select></label>
       {id === "island:agentcore" ? <p className="small muted">These defaults configure Lambda tools used by agents. AgentCore runtimes have individual settings.</p> : null}
       {id === "island:vpc" && group.group === "database" ? <p className="small muted">Connection pool defaults configure database callers. The local database container is configured in Compose.</p> : null}

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
-import { clientCommand, composePlugin } from "../server/deploy/local-commands";
+import { clientCommand, composePlugin, systemPluginDirectories } from "../server/deploy/local-commands";
 
 /**
  * Studio's own local processes must end with Studio. On Windows a Node parent
@@ -38,12 +38,19 @@ test("a dev script that needs a shell, or names no installed program, is not run
 test("the Compose plugin is found where the Docker CLI looks for it", () => {
   mkdirSync(path.join(root, ".cache"), { recursive: true });
   const home = mkdtempSync(path.join(root, ".cache", "studio-home-"));
+  const name = process.platform === "win32" ? "docker-compose.exe" : "docker-compose";
+  // The system directories are this machine's (Docker Desktop installs one): each case names its own.
+  const system = path.join(home, "system-plugins");
   try {
-    assert.equal(composePlugin({ HOME: home, USERPROFILE: home, ProgramFiles: home, DOCKER_CONFIG: path.join(home, "none") }), undefined);
+    assert.equal(composePlugin({ HOME: home, USERPROFILE: home, ProgramFiles: home, DOCKER_CONFIG: path.join(home, "none") }, [system]), undefined);
+    mkdirSync(system, { recursive: true });
+    writeFileSync(path.join(system, name), "");
+    assert.equal(composePlugin({ HOME: home, USERPROFILE: home, DOCKER_CONFIG: path.join(home, "none") }, [system]), path.join(system, name), "an installed Docker's plugin is found");
     const plugins = path.join(home, ".docker", "cli-plugins");
     mkdirSync(plugins, { recursive: true });
-    const binary = path.join(plugins, process.platform === "win32" ? "docker-compose.exe" : "docker-compose");
+    const binary = path.join(plugins, name);
     writeFileSync(binary, "");
-    assert.equal(composePlugin({ HOME: home, USERPROFILE: home, ProgramFiles: path.join(home, "none") }), binary);
+    assert.equal(composePlugin({ HOME: home, USERPROFILE: home }, [system]), binary, "the user's own plugin comes first");
   } finally { rmSync(home, { recursive: true, force: true }); }
+  assert.ok(systemPluginDirectories({}).length > 0, "the default looks where Docker installs");
 });

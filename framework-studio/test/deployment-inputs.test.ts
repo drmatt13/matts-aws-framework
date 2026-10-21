@@ -101,7 +101,8 @@ test("a selected file exposes all actual variables and saves a reviewed batch wi
     assert.equal(readFileSync(path.join(root, "cdk-app/.env.dev"), "utf8"), original, "review never writes");
     assert.equal((await service.apply(plan.planId)).status, "applied");
     const after = readFileSync(path.join(root, "cdk-app/.env.dev"), "utf8");
-    assert.deepEqual(parseEnv(after), { PGADMIN_HOST_PORT: "6060", TOKEN: "new-private\nsecond line", UNRELATED: "keep", ADDED: "new-value # with whitespace" });
+    // parseEnv returns a null-prototype object on newer Node releases: compare what the file holds, not its prototype.
+    assert.deepEqual({ ...parseEnv(after) }, { PGADMIN_HOST_PORT: "6060", TOKEN: "new-private\nsecond line", UNRELATED: "keep", ADDED: "new-value # with whitespace" });
     assert.ok(after.startsWith("# retained comment\r\n"));
     assert.equal(after.match(/^PGADMIN_HOST_PORT=/gm)!.length, 1);
     assert.equal(readFileSync(path.join(root, "cdk-app/.env.prod"), "utf8"), "PROD_ONLY=unchanged\n");

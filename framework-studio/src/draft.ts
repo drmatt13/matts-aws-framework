@@ -6,6 +6,8 @@ import { descriptionError } from "../shared/descriptions";
 import { triggerBindingsEqual, type FailureDestinationSettings, type TriggerBinding } from "../shared/triggers";
 import { CLIENT_ENVIRONMENT_ID, clientMappingsError, type ClientEnvironmentMappings } from "../shared/client-environment";
 
+import { CREATORS, creationDefaults, readCreationRequest, type CreationKind, type CreationRequest } from "../shared/creation";
+
 export type Review = { readonly kind: "batch"; readonly plan: BatchPlanResponse } | { readonly kind: "resource"; readonly plan: ResourcePlan } | { readonly kind: "environment"; readonly plan: DeploymentInputPlan };
 export interface EnvironmentEdit extends DeploymentInputEdit { readonly key: string; readonly original?: string }
 interface EnvironmentEntry { readonly kind: "environment"; readonly key: string; readonly mode: Mode; readonly hash: string; readonly edits: readonly EnvironmentEdit[]; readonly error?: string }
@@ -18,7 +20,8 @@ interface TriggerEntry { readonly kind: "triggers"; readonly key: string; readon
 interface NativeEntry { readonly kind: "native"; readonly key: string; readonly edge: string; readonly error?: string }
 interface FailureEntry { readonly kind: "failure"; readonly key: string; readonly event: string; readonly value: FailureDestinationSettings | null; readonly error?: string }
 interface ClientMappingEntry { readonly kind: "clientEnvironment"; readonly key: string; readonly mappings: ClientEnvironmentMappings; readonly count: number; readonly error?: string }
-export type DraftEntry = FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry | ClientMappingEntry;
+export interface CreationEntry { readonly kind: "create"; readonly key: "create"; readonly resourceKind: CreationKind; readonly form: Readonly<Record<string, string | number | boolean>>; readonly request?: CreationRequest; readonly error?: string }
+export type DraftEntry = CreationEntry | FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry | ClientMappingEntry;
 export interface DraftState {
   readonly baseline: Snapshot;
   readonly latest: Snapshot;
@@ -70,6 +73,35 @@ export class InspectorDraft {
     ++this.serial;
     this.publish({ ...this.state, entries: [...this.state.entries.filter((item) => item.key !== key), ...(entry ? [entry] : [])], reviewOpen: false, review: undefined, error: undefined, busy: undefined });
     if (!this.dirty && this.state.baseline !== this.state.latest) this.publish({ ...this.state, baseline: this.state.latest });
+  }
+  creation(): CreationEntry | undefined { return this.state.entries.find((entry): entry is CreationEntry => entry.kind === "create"); }
+  beginCreation(kind: CreationKind): void {
+    if (this.creation()?.resourceKind === kind) return;
+    if (this.dirty) throw new Error("Apply or discard pending changes before starting another creation.");
+    const form = creationDefaults(kind);
+    const defaults = this.state.baseline.models[this.state.mode].fields;
+    const inherit = (key: string, group: string, field: string) => {
+      const value = defaults[`defaults:${group}`]?.find((fact) => fact.field === `defaults.${group}.${field}`)?.effective;
+      const choices = CREATORS[kind].fields.find((field) => field.key === key)?.options;
+      if (value !== undefined && (!choices || choices.includes(String(value)))) form[key] = value;
+    };
+    if (kind === "function" || kind === "route") {
+      for (const key of ["runtime", "architecture", "subnet"] as const) inherit(key, "lambda", key);
+      inherit("memory", "lambda", "memorySize"); inherit("timeout", "lambda", "timeoutSeconds");
+    }
+    if (kind === "service" || kind === "task") for (const key of ["architecture", "subnet"] as const) inherit(key, "container", key);
+    if (kind === "vpc") {
+      const network = this.state.baseline.models[this.state.mode].network;
+      if (network) Object.assign(form, { cidr: network.cidr, zones: network.zones, nat: network.natGateway, ipv6: network.egressOnlyInternetGateway, s3: network.gatewayEndpoints.includes("s3"), dynamodb: network.gatewayEndpoints.includes("dynamodb"), endpoints: network.interfaceEndpoints.join(", ") });
+    }
+    this.setCreation(kind, form);
+  }
+  setCreation(resourceKind: CreationKind, form: CreationEntry["form"]): void {
+    let request: CreationRequest | undefined;
+    let error: string | undefined;
+    try { request = readCreationRequest({ kind: resourceKind, ...form }); }
+    catch (problem) { error = problem instanceof Error ? problem.message : String(problem); }
+    this.put("create", { kind: "create", key: "create", resourceKind, form, request, error });
   }
   field(target: string, fact: FieldFact): FieldEntry | undefined { return this.state.entries.find((entry): entry is FieldEntry => entry.kind === "field" && entry.key === fieldKey(target, fact.field)); }
   value(target: string, fact: FieldFact): LiteralValue | undefined {
@@ -236,6 +268,7 @@ export class InspectorDraft {
         : resource
         ? { kind: "resource", plan: await this.transport.resourcePlan(resource.intent, state.baseline.revision, state.mode) }
         : { kind: "batch", plan: await this.transport.planBatch(state.entries.map((entry): DraftEdit => {
+          if (entry.kind === "create" && entry.request) return { kind: "create", request: entry.request };
           if (entry.kind === "field") return { kind: "field", intent: entry.intent };
           if (entry.kind === "description") return { kind: "description", entity: entry.entity, value: entry.value };
           if (entry.kind === "route") return { kind: "route", route: entry.route, value: entry.value };

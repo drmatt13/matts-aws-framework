@@ -1,8 +1,9 @@
 import { Lock } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ModelResource, ModelTarget } from "../../shared/model";
 import { layoutBoard, type BoardNode } from "../layout";
 import { CATEGORY_LABEL, ROLE_LABEL, type EdgeCategory } from "../lookup";
+import { AddMenu } from "./AddMenu";
 import { useStudio } from "../studio";
 import { DeploymentBadge, DeploymentLegend } from "./DeploymentBadge";
 import { availabilityBadge, catalogAvailability, deploymentBadge, type DeploymentBadgeKind } from "../deployment";
@@ -43,7 +44,11 @@ function ResourceNode(props: { readonly resource: ModelResource; readonly shape:
 }
 
 export function Board() {
-  const { model, index, selected, select, snapshot } = useStudio();
+  const { model, index, selected, select, snapshot, created } = useStudio();
+  const board = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (created) [...(board.current?.querySelectorAll<HTMLElement>("[data-entity-id]") ?? [])].find((element) => element.dataset.entityId === created.id)?.scrollIntoView?.({ block: "center", inline: "center", behavior: "smooth" });
+  }, [created]);
   const availability = useMemo(() => catalogAvailability(snapshot.models), [snapshot.models]);
   const layout = useMemo(() => layoutBoard(model), [model]);
   const [shown, setShown] = useState<ReadonlySet<EdgeCategory>>(() => new Set(CATEGORIES));
@@ -92,8 +97,9 @@ export function Board() {
         </div>
         <span className="spacer" />
         <DeploymentLegend />
+        <AddMenu />
       </div>
-      <div className="board" style={{ width: layout.width + 120, height: layout.height }} onClick={() => select(undefined)}>
+      <div ref={board} className="board" style={{ width: layout.width + 120, height: layout.height }} onClick={() => select(undefined)}>
         <svg className="edges" width={layout.width + 120} height={layout.height} aria-label="Resource connections">
           <defs>
             <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -147,6 +153,7 @@ export function Board() {
           return (
             <button
               key={node.id}
+              data-entity-id={node.id}
               className={classes}
               style={{ left: node.x, top: node.y, width: node.width, height: node.height }}
               aria-current={selected === node.id}

@@ -11,6 +11,7 @@
  * A read never writes the state file, and a write replaces it whole: the
  * scripts run several of these at once (a watch beside a deployment).
  */
+import { randomUUID } from "node:crypto";
 import { appendFileSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 
 /** Replaces the state file whole, so a concurrent reader never sees half of it. */
@@ -136,18 +137,22 @@ switch (key) {
   case "secretsmanager get-secret-value": {
     const secret = (account.secrets ?? []).find((entry) => entry.Name === options["secret-id"] || entry.ARN === options["secret-id"]);
     if (!secret) fail("not-found", "An error occurred (ResourceNotFoundException) when calling the GetSecretValue operation: Secrets Manager can't find the specified secret.");
-    reply({ ARN: secret.ARN, Name: secret.Name, SecretString: secret.SecretString });
+    reply({ ARN: secret.ARN, Name: secret.Name, SecretString: secret.SecretString, VersionId: secret.VersionId, VersionStages: ["AWSCURRENT"] });
   }
   case "secretsmanager create-secret": {
+    // As in AWS: creating a name that exists fails, and every value is a new AWSCURRENT version.
+    if ((account.secrets ?? []).some((entry) => entry.Name === options.name)) fail("exists", "An error occurred (ResourceExistsException) when calling the CreateSecret operation: The operation failed because the secret already exists.");
     const arnOf = `arn:aws:secretsmanager:${region}:${state.identity?.Account ?? "111122223333"}:secret:${options.name}-AbCdEf`;
-    account.secrets = [...(account.secrets ?? []), { Name: options.name, ARN: arnOf, SecretString: options["secret-string"], Tags: options.tags ? JSON.parse(options.tags) : [] }];
-    reply({ ARN: arnOf, Name: options.name });
+    const VersionId = randomUUID();
+    account.secrets = [...(account.secrets ?? []), { Name: options.name, ARN: arnOf, SecretString: options["secret-string"], VersionId, Tags: options.tags ? JSON.parse(options.tags) : [] }];
+    reply({ ARN: arnOf, Name: options.name, VersionId });
   }
   case "secretsmanager put-secret-value": {
     const secret = (account.secrets ?? []).find((entry) => entry.Name === options["secret-id"] || entry.ARN === options["secret-id"]);
     if (!secret) fail("not-found");
     secret.SecretString = options["secret-string"];
-    reply({ ARN: secret.ARN });
+    secret.VersionId = randomUUID();
+    reply({ ARN: secret.ARN, VersionId: secret.VersionId, VersionStages: ["AWSCURRENT"] });
   }
   case "resourcegroupstaggingapi get-resources":
     reply({ ResourceTagMappingList: account.taggedResources ?? [] });

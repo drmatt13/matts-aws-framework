@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import type { ApplyResponse, DraftEdit, HistoryState, PlanResponse, PreflightResult } from "../../shared/api";
 import type { FieldFact, Lanes, ModelTarget, Placement } from "../../shared/model";
 import { assertWritable, sha256 } from "../files";
-import { EditError, writeAtomically } from "./io";
+import { EditError, writeAtomically, writeSourceChange } from "./io";
 export { EditError, writeAtomically } from "./io";
 import type { SemanticPatch } from "../model/origin";
 import type { SnapshotBuilder, StudioState } from "../snapshot";
@@ -86,7 +86,8 @@ export class EditService {
   constructor(
     private readonly repositoryRoot: string,
     private readonly builder: SnapshotBuilder,
-  ) { this.batches = new BatchEditor(repositoryRoot, builder, this.ownWrites); }
+    writeBatchFile = writeSourceChange,
+  ) { this.batches = new BatchEditor(repositoryRoot, builder, this.ownWrites, writeBatchFile); }
 
   /** Every plan is offered against one snapshot; a new snapshot expires them all. */
   expirePlans(): void {

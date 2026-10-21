@@ -11,7 +11,7 @@ import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickIsland,
 import { buildIconShape, ICON_BADGE, NODE_SPACING } from "../src/scene/shapes";
 import { backgroundGrid } from "../src/scene/grid";
 import { islandFrame } from "../src/scene/frame";
-import { API_EDGE_COLOR, BAND_TRIM, COMPUTE_EDGE_COLOR, DECK, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, ROLE_BADGE, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, TRIGGER_EDGE_COLOR, trimColor } from "../src/scene/look";
+import { API_EDGE_COLOR, BAND_TRIM, COMPUTE_EDGE_COLOR, DECK, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, ROLE_BADGE, ROLE_BADGE_PLATE, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, TRIGGER_EDGE_COLOR, trimColor } from "../src/scene/look";
 import { behind, islandDrawOrder, islandSlabs, polygonArea, type IslandSlab } from "../src/scene/slabs";
 import { carriesOwnTile, ICONS } from "../src/icons";
 import { catalogAvailability, connectionDisabledEndpoints } from "../src/deployment";
@@ -413,8 +413,8 @@ test("workload and route badges use the two graphs' own availability and never c
   const route = snapshot.models.dev.routes.find((route) => route.target === target.ref)!;
   for (const [enabledDev, enabledProd, expected] of [[true, false, "dev"], [false, true, "prod"], [true, true, undefined], [false, false, "off"]] as const) {
     const models = [
-      { ...snapshot.models.dev, targets: snapshot.models.dev.targets.map((item) => item.ref === target.ref ? { ...item, lanes: { local: enabledDev, dev: false, prod: false } } : item) },
-      { ...snapshot.models.prod, targets: snapshot.models.prod.targets.map((item) => item.ref === target.ref ? { ...item, lanes: { local: false, dev: false, prod: enabledProd } } : item) },
+      { ...snapshot.models.dev, targets: snapshot.models.dev.targets.map((item) => item.ref === target.ref ? { ...item, lanes: { ...item.lanes, local: enabledDev, dev: false, prod: false } } : item) },
+      { ...snapshot.models.prod, targets: snapshot.models.prod.targets.map((item) => item.ref === target.ref ? { ...item, lanes: { ...item.lanes, local: false, dev: false, prod: enabledProd } } : item) },
     ];
     for (const model of models) {
       const scene = buildScene(model, { layoutModels: models });
@@ -1229,7 +1229,10 @@ test("an event badge is a black bolt on yellow, and every other role badge keeps
   assert.equal(event.artwork, "eventBadge");
   const bolt = readFileSync(path.join(repositoryRoot, "framework-studio/public/icons", `${ICONS.eventBadge[0]}.svg`), "utf8");
   assert.ok(!/#d9e6f2/i.test(bolt) && /stroke="#0b0f14"/.test(bolt), "the bolt on yellow is dark ink");
-  assert.deepEqual(Object.keys(ROLE_BADGE), ["event"], "the WebSocket plug and the agent badge keep the plate");
+  // The WebSocket plug keeps the dark plate and takes the managed lock badge's border; the agent badge keeps the plate untouched.
+  assert.deepEqual(Object.keys(ROLE_BADGE).sort(), ["event", "webSocket"]);
+  assert.deepEqual(ROLE_BADGE.webSocket, { fill: ROLE_BADGE_PLATE, borderIcon: "managed" }, "the WebSocket plug keeps the plate, with the managed border");
+  assert.equal(ROLE_BADGE.agent, undefined, "the agent badge keeps the plate");
   for (const [key, badge] of Object.entries(ROLE_BADGE)) {
     assert.ok(badge.artwork === undefined || badge.artwork in ICONS, key);
     assert.ok(existsSync(path.join(repositoryRoot, "framework-studio/public/icons", `${ICONS[(badge.artwork ?? key) as keyof typeof ICONS][0]}.svg`)), key);

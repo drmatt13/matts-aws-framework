@@ -15,6 +15,10 @@ This is a TypeScript npm-workspace monorepo for AWS-backed applications. Start w
 | Development environment | [Development](docs/DEV-DEPLOYMENT.md) |
 | Production release | [Production](docs/PROD-DEPLOYMENT.md) and [deployment procedure](docs/playbooks/prod-deployment.md) |
 
+For architecture-sensitive changes, use the [AWS Studio knowledge router](docs/aws-studio-knowledge/README.md)
+to load the smallest relevant context, verify critical contracts against source, and
+update affected knowledge pages when those contracts change.
+
 ## Working rules
 
 - Preserve unrelated working-tree changes. Use npm workspaces from the root and keep

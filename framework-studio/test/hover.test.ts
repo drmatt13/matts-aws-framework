@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import type { Mode, ModeModel, Snapshot } from "../shared/model";
+import { readModeWebSocketApi } from "../server/inputs";
 import { SnapshotBuilder } from "../server/snapshot";
 import { catalogAvailability } from "../src/deployment";
 import { indexModel } from "../src/lookup";
@@ -13,25 +14,41 @@ import { nodeHoverFacts, propHoverFacts, type HoverFacts } from "../src/scene/ho
  * framework owns it. It reads both models, so the Dev/Prod switch never changes it.
  */
 
+const repositoryRoot = path.resolve(__dirname, "..", "..");
 let builder: SnapshotBuilder;
 let snapshot: Snapshot;
 
 before(async () => {
-  builder = new SnapshotBuilder(path.resolve(__dirname, "..", ".."));
+  builder = new SnapshotBuilder(repositoryRoot);
   snapshot = (await builder.refresh()).snapshot;
 });
 after(async () => { await builder.dispose(); });
 
-const indexes = () => ({ dev: indexModel(snapshot.models.dev), prod: indexModel(snapshot.models.prod) });
+const indexes = (models: Readonly<Record<Mode, ModeModel>> = snapshot.models) => ({ dev: indexModel(models.dev), prod: indexModel(models.prod) });
 
 function sceneOf(mode: Mode): Scene {
   return buildScene(snapshot.models[mode], { webSocketApi: snapshot.webSocketApi, resourceAvailability: catalogAvailability(snapshot.models), layoutModels: Object.values(snapshot.models) });
 }
 
-function factsOf(id: string, mode: Mode = "dev"): HoverFacts {
+function factsOf(id: string, mode: Mode = "dev", models?: Readonly<Record<Mode, ModeModel>>): HoverFacts {
   const node = sceneOf(mode).nodes.find((candidate) => candidate.id === id);
   assert.ok(node, `${id} stands in the ${mode} landscape`);
-  return nodeHoverFacts(node, indexes());
+  return nodeHoverFacts(node, indexes(models));
+}
+
+const WEB_SOCKET_ROLES = new Set(["webSocket", "webSocketAuthorizer"]);
+
+/**
+ * Whether a graph builds the AWS WebSocket API is DEPLOY_PROD_WEBSOCKET_API in
+ * that environment's cdk-app/.env.<mode>, a file this machine owns and the
+ * repository does not. These models are the snapshot with development building it
+ * and production not, as each environment's evaluator projects that, so the
+ * labels asserted against them do not depend on the files present.
+ */
+function webSocketInDevelopmentOnly(): Record<Mode, ModeModel> {
+  const pin = (mode: Mode): ModeModel => ({ ...snapshot.models[mode], targets: snapshot.models[mode].targets.map((target) =>
+    WEB_SOCKET_ROLES.has(target.role) ? { ...target, lanes: { ...target.lanes, ...(mode === "dev" ? { dev: true } : { prod: false }) } } : target) });
+  return { dev: pin("dev"), prod: pin("prod") };
 }
 
 const labels = (facts: HoverFacts) => facts.places.map((place) => `${place.env}: ${place.where}`);
@@ -49,8 +66,16 @@ test("a workload deployed to both environments shows a Dev label and a Prod labe
   assert.deepEqual(labels(factsOf("lambda:cognito-post-confirmation-trigger")), ["dev: Your machine + AWS Lambda · private subnet", "prod: AWS Lambda · private subnet"]);
 });
 
+test("each environment's WebSocket lanes follow its own inputs file", () => {
+  // What the pinned models below stand for: each graph's WebSocket handlers deploy exactly when its file says so.
+  for (const mode of ["dev", "prod"] as const) {
+    const built = readModeWebSocketApi(repositoryRoot, mode, snapshot.webSocketApi);
+    for (const target of snapshot.models[mode].targets.filter((item) => WEB_SOCKET_ROLES.has(item.role))) assert.equal(target.lanes[mode], built, `${mode}: ${target.ref}`);
+  }
+});
+
 test("a workload deployed to one environment shows only that label", () => {
-  assert.deepEqual(labels(factsOf("lambda:ws-authorizer")), ["dev: Your machine + AWS Lambda · outside the VPC"]);
+  assert.deepEqual(labels(factsOf("lambda:ws-authorizer", "dev", webSocketInDevelopmentOnly())), ["dev: Your machine + AWS Lambda · outside the VPC"]);
   assert.deepEqual(labels(factsOf("task:db-migrate")), ["prod: Amazon ECS · public subnet"]);
   assert.deepEqual(labels(factsOf("local:postgres")), ["dev: Your machine · Docker Compose"]);
   assert.equal(factsOf("task:db-migrate").notDeployed, undefined);
@@ -58,7 +83,7 @@ test("a workload deployed to one environment shows only that label", () => {
 
 test("a route follows its target's lanes and names the front door it deploys behind", () => {
   assert.deepEqual(labels(factsOf("route:http:/sign-out")), ["dev: Your machine", "prod: API Gateway HTTP API"]);
-  assert.deepEqual(labels(factsOf("route:ws:$connect")), ["dev: Your machine + API Gateway WebSocket API"]);
+  assert.deepEqual(labels(factsOf("route:ws:$connect", "dev", webSocketInDevelopmentOnly())), ["dev: Your machine + API Gateway WebSocket API"]);
   assert.deepEqual(labels(factsOf("route:agent:/chat/example")), ["dev: Your machine", "prod: AgentCore Runtime"]);
 });
 

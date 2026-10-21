@@ -379,6 +379,8 @@ export interface Diagnostic {
 // ---------------------------------------------------------------------------
 
 export interface ModeModel {
+  /** This graph's AWS WebSocket API flag, including when all its handlers are off. */
+  readonly webSocketApi?: boolean;
   readonly triggers?: readonly import("./triggers").TriggerBinding[];
   readonly triggerAdapters?: readonly import("./triggers").TriggerAdapterMetadata[];
   /** Each event's declared onFailure destination. */

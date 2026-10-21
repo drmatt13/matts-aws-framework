@@ -24,7 +24,10 @@ export function FieldRow({ target, fact, editability, allowInherit }: Props) {
   const value = draft.value(target.ref, fact);
   const entry = draft.field(target.ref, fact);
   const unit = fact.domain.kind === "number" ? ` ${fact.domain.unit}` : "";
-  const webSocketApi = target.role === "webSocket" || target.role === "webSocketAuthorizer" ? snapshot.webSocketApi : undefined;
+  const webSocketApi = target.role === "webSocket" || target.role === "webSocketAuthorizer" ? {
+    dev: snapshot.models.dev.webSocketApi ?? snapshot.webSocketApi,
+    prod: snapshot.models.prod.webSocketApi ?? snapshot.webSocketApi,
+  } : undefined;
   const display = (value: unknown) => {
     if (fact.field === "deploy") return deploymentSettingLabel(String(value), webSocketApi);
     if (fact.field.endsWith(".packaging")) return value === "container" ? "Container image (Dockerfile)" : "Source bundle (ZIP)";

@@ -718,7 +718,7 @@ a {
 .landscape-add-close:hover { background: #ffffff12; }
 .landscape-add-menu p { margin: 8px 0 16px; font-size: 12px; line-height: 1.5; color: #a3b1c4; }
 .landscape-add-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.landscape-add-options button { display: flex; flex-direction: row; align-items: center; min-height: 48px; gap: 10px; padding: 10px; border: 1px solid #2c394b; border-radius: 7px; background: #1a2534; color: #9aadc5; opacity: 1; text-align: left; font-size: 12px; cursor: not-allowed; }
+.landscape-add-options button { display: flex; flex-direction: row; align-items: center; min-height: 48px; gap: 10px; padding: 10px; border: 1px solid #2c394b; border-radius: 7px; background: #1a2534; color: #9aadc5; opacity: 1; text-align: left; font-size: 12px; cursor: pointer; }
 
 .landscape-stats {
   font-size: var(--step--1);
@@ -878,3 +878,8 @@ a {
     max-height: 45vh;
   }
 }
+
+.landscape-add-options button:disabled { cursor: not-allowed; opacity: .5; }
+.landscape-add-options button:not(:disabled):hover { border-color: #7791b0; background: #26364b; color: #eef4fc; }
+.board-head .landscape-add { margin: 0; }
+.board-head .landscape-add-menu { top: 48px; bottom: auto; }
