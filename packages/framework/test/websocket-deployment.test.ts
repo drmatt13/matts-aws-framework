@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -26,7 +27,7 @@ const routes = {
 };
 
 const config = (overrides: Partial<FrameworkConfigInput> = {}, defaultRoute: Record<string, unknown> = {}): FrameworkConfig =>
-  defineFrameworkConfig({
+  defineFrameworkConfig({ networks: [fixtureVpc],
     defaults,
     http: [{ "/verify-session": { directory: "/lambda_functions/http_functions/verify-session", methods: ["GET"] } }],
     webSocket: [{ ...routes, $default: { ...routes.$default, ...defaultRoute } }],
@@ -54,7 +55,7 @@ test("a dev deployment holds the WebSocket handlers only when it builds the WebS
 });
 
 test("a WebSocket handler a dev deployment builds may not need what the dev graph lacks", () => {
-  const callsTask = config({ tasks: [{ worker: { directory: "/test/fixtures/task-worker", deploy: "both" } }] }, { cloud: { bindings: [runsTask("worker")] } });
+  const callsTask = config({ tasks: [{ worker: { cloud: { vpc: fixtureVpc }, directory: "/test/fixtures/task-worker", deploy: "both" } }] }, { cloud: { bindings: [runsTask("worker")] } });
   // Served under Compose, it reaches the local task, as before.
   assert.doesNotThrow(() => assertCloudEdgesResolvable(callsTask, "dev"));
   assert.doesNotThrow(() => assertCloudEdgesResolvable(callsTask, "prod", { webSocketApi: true }));
@@ -63,7 +64,7 @@ test("a WebSocket handler a dev deployment builds may not need what the dev grap
     /declares runsTask\("worker"\), which a dev deployment does not build.*Turn DEPLOY_PROD_WEBSOCKET_API off to serve it under Compose/,
   );
 
-  const inside = config({}, { subnet: "private" });
+  const inside = config({}, { vpc: fixtureVpc, subnet: "private" });
   assert.doesNotThrow(() => assertCloudEdgesResolvable(inside, "dev"));
   assert.throws(
     () => assertCloudEdgesResolvable(inside, "dev", { webSocketApi: true }),
@@ -71,7 +72,7 @@ test("a WebSocket handler a dev deployment builds may not need what the dev grap
   );
 
   const catalog = defineResources({ rds: resource.stack<{ readonly database: { readonly connections: object; readonly node: { readonly id: string; readonly path: string } } }>() });
-  const connected = config({ resources: catalog, database: catalog.rds.database } as never, { database: true });
+  const connected = config({ resources: catalog, database: { resource: catalog.rds.database, vpc: fixtureVpc } } as never, { vpc: fixtureVpc, database: true });
   assert.doesNotThrow(() => assertCloudEdgesResolvable(connected, "prod", { webSocketApi: true }));
   assert.throws(
     () => assertCloudEdgesResolvable(connected, "dev", { webSocketApi: true }),

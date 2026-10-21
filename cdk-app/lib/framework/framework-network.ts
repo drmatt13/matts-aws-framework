@@ -24,17 +24,15 @@ import { databaseConnectionTarget, type DatabaseEndpoint } from "./framework-dat
 import { markInfrastructure } from "./framework-inventory";
 
 /**
- * The application's network, built by a production deployment the first time
- * something needs it: an application stack calling `frameworkVpc(this)`, a
- * Lambda with `subnet: "private"` or `"isolated"`, a workload declaring
- * `database: true`, or a container.
+ * One declared VPC, built by a production deployment the first time a native
+ * application resource or deployed workload selects it explicitly.
  *
  * A development deployment never builds it. The database is absent from the
  * dev graph and runs under Compose instead, where the local
  * lane enforces the same rules — which is why asking for the network in a dev
  * deployment is an error rather than a smaller network.
  *
- * Everything about its way out is framework-config/network.ts: the
+ * Everything about its way out belongs to its VPC declaration: the
  * egress-only internet gateway, the NAT gateway, and the gateway and interface
  * endpoints. Subnets, the internet and egress-only gateways, security groups
  * and the gateway endpoints are free; the NAT gateway and interface endpoints
@@ -70,7 +68,8 @@ export class NetworkStack extends cdk.Stack {
         ...(network.gatewayEndpoints.dynamodb ? { DynamoDB: { service: ec2.GatewayVpcEndpointAwsService.DYNAMODB } } : {}),
       },
     });
-    markInfrastructure(this.vpc, "island:vpc");
+    markInfrastructure(this, `island:vpc:${network.id}`, "supporting");
+    markInfrastructure(this.vpc, `island:vpc:${network.id}`);
 
     // CDK gives a dual-stack VPC's private subnets an egress-only internet
     // gateway and an IPv6 default route to it, unasked. Without one, they keep
@@ -89,6 +88,7 @@ export class NetworkStack extends cdk.Stack {
     // One security group for every interface endpoint: HTTPS from anything in
     // the VPC. The endpoints are IPv4, which every subnet has.
     if (network.interfaceEndpoints.length > 0) {
+      // Preserve the original security-group description as well as its logical ID.
       const group = new ec2.SecurityGroup(this, "InterfaceEndpoints", {
         vpc: this.vpc,
         description: "Interface endpoints declared in framework-config/network.ts",
@@ -158,20 +158,28 @@ interface NetworkState {
   /** Workloads placed in the network, for the synth summary. */
   readonly placed: string[];
 }
-const states = new WeakMap<IConstruct, NetworkState>();
-function state(scope: IConstruct): NetworkState {
+const states = new WeakMap<IConstruct, Map<string, NetworkState>>();
+function state(scope: IConstruct, reference: FrameworkNetwork): NetworkState {
+  const options = frameworkResourceOptions(scope);
+  if (!options) throw new Error("Initialize framework resources before asking for a VPC.");
+  const network = resolveNetwork(options.config, reference);
   const root = scope.node.root;
-  let value = states.get(root);
-  if (!value) {
-    value = { placed: [], admissions: new Set() };
-    states.set(root, value);
-  }
+  let registry = states.get(root);
+  if (!registry) { registry = new Map(); states.set(root, registry); }
+  let value = registry.get(network.id);
+  if (!value) { value = { placed: [], admissions: new Set() }; registry.set(network.id, value); }
   return value;
 }
 
-function networkStack(scope: IConstruct, reason: string): NetworkStack {
-  const network = state(scope);
-  if (network.stack) return network.stack;
+function databaseNetwork(scope: IConstruct): FrameworkNetwork {
+  const options = frameworkResourceOptions(scope);
+  const reference = options?.config.database?.vpc;
+  if (!options || !reference) throw new Error("Configure database: { resource, vpc } before requesting database placement.");
+  return resolveNetwork(options.config, reference);
+}
+
+function networkStack(scope: IConstruct, reason: string, reference: FrameworkNetwork): NetworkStack {
+  const network = state(scope, reference);
   const options = frameworkResourceOptions(scope);
   if (!options) {
     throw new Error("Initialize framework resources before asking for the framework network.");
@@ -182,12 +190,21 @@ function networkStack(scope: IConstruct, reason: string): NetworkStack {
     );
   }
   const caller = cdk.Stack.of(scope);
+  const existing = [...(states.get(scope.node.root)?.values() ?? [])].find((value) => value.stack)?.stack;
+  const account = options.env?.account ?? existing?.account;
+  const region = options.env?.region ?? existing?.region;
+  if ((account !== undefined && caller.account !== account) || (region !== undefined && caller.region !== region)) {
+    throw new Error(
+      `${caller.node.path} selects VPC "${reference.id}" in ${caller.account}/${caller.region}, but deployment "${options.deployment}" uses ${account ?? caller.account}/${region ?? caller.region}. Keep application stacks on the deployment's shared stackEnv. Use a separate named deployment target for another account or region.`,
+    );
+  }
+  if (network.stack) return network.stack;
   const env = cdk.Token.isUnresolved(caller.account) || cdk.Token.isUnresolved(caller.region)
     ? undefined
     : { account: caller.account, region: caller.region };
-  network.stack = new NetworkStack(scope.node.root as Construct, `${options.deployment}-NetworkStack`, {
+  network.stack = new NetworkStack(scope.node.root as Construct, `${options.deployment}-${reference.cloud.constructId}`, {
     ...(env ? { env } : {}),
-    network: resolveNetwork(options.config),
+    network: resolveNetwork(options.config, reference),
   });
   return network.stack;
 }
@@ -199,13 +216,13 @@ function networkStack(scope: IConstruct, reason: string): NetworkStack {
  *
  * ```ts
  * new rds.DatabaseInstance(this, "Database", {
- *   vpc: frameworkVpc(this),
+ *   vpc: frameworkVpc(this, importedVpc),
  *   vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
  * });
  * ```
  */
-export function frameworkVpc(scope: IConstruct): ec2.IVpc {
-  return networkStack(scope, `${cdk.Stack.of(scope).node.path} asks for the framework network`).vpc;
+export function frameworkVpc(scope: IConstruct, reference: FrameworkNetwork): ec2.IVpc {
+  return networkStack(scope, `${cdk.Stack.of(scope).node.path} asks for VPC "${reference?.id}"`, reference).vpc;
 }
 
 /**
@@ -215,11 +232,11 @@ export function frameworkVpc(scope: IConstruct): ec2.IVpc {
  * stack — never at a workload's stack, which already depends on the
  * database's for its IAM grant and would close a cycle.
  */
-function databaseClientGroup(scope: IConstruct, kind: DatabaseEndpoint["kind"], origin: string): ec2.SecurityGroup {
-  const network = state(scope);
+function databaseClientGroup(scope: IConstruct, kind: DatabaseEndpoint["kind"], origin: string, reference: FrameworkNetwork): ec2.SecurityGroup {
+  const network = state(scope, reference);
   const field = kind === "proxy" ? "databaseProxyClients" : kind === "reader" ? "databaseReaderClients" : "databaseClients";
   if (network[field]) return network[field]!;
-  const stack = networkStack(scope, `${origin} declares database access`);
+  const stack = networkStack(scope, `${origin} declares database access`, reference);
   const id = kind === "proxy" ? "DatabaseProxyClients" : kind === "reader" ? "DatabaseReaderClients" : "DatabaseClients";
   return network[field] = new ec2.SecurityGroup(stack, id, {
     vpc: stack.vpc, description: kind === "direct" ? "Workloads that declare database: true" : `Database ${kind} clients`,
@@ -227,19 +244,19 @@ function databaseClientGroup(scope: IConstruct, kind: DatabaseEndpoint["kind"], 
   });
 }
 
-function databaseClientGroups(scope: IConstruct, binding: ConnectsToBinding, origin: string): ec2.SecurityGroup[] {
+function databaseClientGroups(scope: IConstruct, binding: ConnectsToBinding, origin: string, reference: FrameworkNetwork): ec2.SecurityGroup[] {
   const target = databaseConnectionTarget(scope, binding);
   const writer = binding.connection === "direct" ? target.directWriter : target.applicationWriter;
   const endpoints = [writer, ...(binding.readers ? target.readers : [])];
   const groups = new Set<ec2.SecurityGroup>();
   for (const endpoint of endpoints) {
-    const group = databaseClientGroup(scope, endpoint.kind, origin);
+    const group = databaseClientGroup(scope, endpoint.kind, origin, reference);
     groups.add(group);
     const key = `${JSON.stringify(binding.resource.path)}:${endpoint.kind}:${endpoint.hostname}`;
-    if (!state(scope).admissions.has(key)) {
-      state(scope).admissions.add(key);
+    if (!state(scope, reference).admissions.has(key)) {
+      state(scope, reference).admissions.add(key);
       deferResourceAttachment(scope, () => {
-        if (endpoint.vpc !== networkStack(scope, origin).vpc) throw new Error("The database is built in another VPC. Build it with vpc: frameworkVpc(this).");
+        if (endpoint.vpc !== networkStack(scope, origin, reference).vpc) throw new Error("The database is built in another VPC. Build it with vpc: frameworkVpc(this, selectedVpc).");
         endpoint.connections.allowFrom(group, endpoint.connections.defaultPort ?? ec2.Port.tcp(typeof endpoint.port === "number" ? endpoint.port : cdk.Token.asNumber(endpoint.port)), "database: true");
       });
     }
@@ -280,15 +297,15 @@ function placedLambdaSubnet(scope: IConstruct, target: NormalizedTarget): "priva
  * dual-stack hostnames; otherwise nothing, so the SDK calls the standard
  * hostnames the network's interface endpoints answer. Set in both lanes.
  */
-export function dualStackEnvironment(scope: IConstruct, subnet: "private" | "isolated"): Record<string, string> {
+export function dualStackEnvironment(scope: IConstruct, subnet: "private" | "isolated", reference: FrameworkNetwork): Record<string, string> {
   const options = frameworkResourceOptions(scope);
-  const network = resolveNetwork(options?.config ?? {});
+  const network = resolveNetwork(options?.config ?? {}, reference);
   return usesDualStackEndpoints(network, subnet) ? { AWS_USE_DUALSTACK_ENDPOINT: "true" } : {};
 }
 
 /** {@link dualStackEnvironment} for a Lambda, which is empty outside the network. */
 export function lambdaNetworkEnvironment(scope: IConstruct, target: NormalizedTarget): Record<string, string> {
-  return isPlacedInNetwork(scope, target) ? dualStackEnvironment(scope, placedLambdaSubnet(scope, target)) : {};
+  return isPlacedInNetwork(scope, target) ? dualStackEnvironment(scope, placedLambdaSubnet(scope, target), target.vpc!) : {};
 }
 
 /**
@@ -296,10 +313,10 @@ export function lambdaNetworkEnvironment(scope: IConstruct, target: NormalizedTa
  * created with the first of them. Shared, so the functions share their network
  * interfaces too; it admits nobody, and lets them out over both families.
  */
-function vpcLambdas(scope: IConstruct, origin: string): ec2.SecurityGroup {
-  const network = state(scope);
+function vpcLambdas(scope: IConstruct, origin: string, reference: FrameworkNetwork): ec2.SecurityGroup {
+  const network = state(scope, reference);
   if (network.vpcLambdas) return network.vpcLambdas;
-  const stack = networkStack(scope, `${origin} runs in the VPC`);
+  const stack = networkStack(scope, `${origin} runs in the VPC`, reference);
   network.vpcLambdas = new ec2.SecurityGroup(stack, "VpcLambdas", {
     vpc: stack.vpc,
     description: "Lambdas in the VPC",
@@ -325,11 +342,12 @@ export function databaseClientPlacement(
   binding: ConnectsToBinding,
   origin: string,
   subnet: "private" | "isolated" = "private",
+  reference: FrameworkNetwork = databaseNetwork(scope),
 ): LambdaPlacement {
   return {
-    vpc: networkStack(scope, `${origin} declares database: true`).vpc,
+    vpc: networkStack(scope, `${origin} declares database: true`, reference).vpc,
     vpcSubnets: networkSubnets(subnet),
-    securityGroups: databaseClientGroups(scope, binding, origin),
+    securityGroups: databaseClientGroups(scope, binding, origin, reference),
     ipv6AllowedForDualStack: true,
   };
 }
@@ -341,15 +359,15 @@ export function databaseClientPlacement(
  */
 export function lambdaPlacement(scope: IConstruct, target: NormalizedTarget): LambdaPlacement | undefined {
   if (!isPlacedInNetwork(scope, target)) return undefined;
-  state(scope).placed.push(target.reference);
+  state(scope, target.vpc!).placed.push(target.reference);
   const origin = target.origins[0] ?? target.reference;
   const subnet = placedLambdaSubnet(scope, target);
   const [binding] = presentConnections(target);
-  if (binding) return databaseClientPlacement(scope, binding, origin, subnet);
+  if (binding) return databaseClientPlacement(scope, binding, origin, subnet, target.vpc!);
   return {
-    vpc: networkStack(scope, `${origin} has subnet: "${subnet}"`).vpc,
+    vpc: networkStack(scope, `${origin} has subnet: "${subnet}"`, target.vpc!).vpc,
     vpcSubnets: networkSubnets(subnet),
-    securityGroups: [vpcLambdas(scope, origin)],
+    securityGroups: [vpcLambdas(scope, origin, target.vpc!)],
     ipv6AllowedForDualStack: true,
   };
 }
@@ -366,12 +384,12 @@ export interface ContainerPlacement {
 export function containerPlacement(scope: IConstruct, target: NormalizedTarget, subnet: ContainerSubnet): ContainerPlacement {
   const origin = target.origins[0] ?? target.reference;
   const placement: ContainerPlacement = {
-    vpc: networkStack(scope, `${origin} is a container`).vpc,
+    vpc: networkStack(scope, `${origin} is a container`, target.vpc!).vpc,
     subnets: networkSubnets(subnet),
     assignPublicIp: subnet === "public",
-    connectionGroups: presentConnections(target).flatMap((binding) => databaseClientGroups(scope, binding, origin)),
+    connectionGroups: presentConnections(target).flatMap((binding) => databaseClientGroups(scope, binding, origin, target.vpc!)),
   };
-  state(scope).placed.push(target.reference);
+  state(scope, target.vpc!).placed.push(target.reference);
   return placement;
 }
 
@@ -381,7 +399,10 @@ export function containerPlacement(scope: IConstruct, target: NormalizedTarget, 
  * built no network.
  */
 export function describeFrameworkNetwork(scope: IConstruct): string | undefined {
-  const built = state(scope);
+  return [...(states.get(scope.node.root)?.values() ?? [])].map(describeNetwork).filter(Boolean).join("\n") || undefined;
+}
+
+function describeNetwork(built: NetworkState): string | undefined {
   if (!built.stack) return undefined;
   const { network } = built.stack;
   const placed = built.placed.length > 0 ? built.placed.join(", ") : "nothing yet";
@@ -403,5 +424,5 @@ export function describeFrameworkNetwork(scope: IConstruct): string | undefined 
       ? [`${network.interfaceEndpoints.length} interface endpoint${network.interfaceEndpoints.length === 1 ? "" : "s"} in ${network.zones} zones, about ${formatMonthlyCost(interfaceEndpointsMonthlyCost(network, network.interfaceEndpoints.length))} a month plus $0.01 per GB`]
       : []),
   ];
-  return `Network: ${placed} run in the VPC. ${egress}${endpoints.length > 0 ? `, with ${endpoints.join(" and ")}` : ""}. ${costs.length > 0 ? `It costs ${costs.join(", and ")}, as framework-config/network.ts declares.` : "It costs nothing."}`;
+  return `Network ${network.id}: ${placed} run in the VPC. ${egress}${endpoints.length > 0 ? `, with ${endpoints.join(" and ")}` : ""}. ${costs.length > 0 ? `It costs ${costs.join(", and ")}, as the selected VPC declaration specifies.` : "It costs nothing."}`;
 }

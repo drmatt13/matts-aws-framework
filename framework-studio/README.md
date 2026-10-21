@@ -57,7 +57,7 @@ the existing Inspector edits, for every resource family.
 | --- | --- | --- |
 | Function | New `framework-config/events`, `http` or `websocket` module; composition import/array entry; `cdk-app/lambda_functions/<category>/<id>/index.ts` | Event, HTTP and WebSocket; Node 22/24 zip; memory, timeout, architecture, subnet; authenticated HTTP wrapper and pool binding; optional input/secret binding |
 | Stack | `cdk-app/lib/app/<class-name>.ts`, typed catalog entry, import and instantiation in `cdk-app/bin/cdk-app.ts` | Actual SQS queue exposed as a typed public field, `linkResources`, deployment-prefixed stack/output identity; both/dev/prod scope |
-| VPC | Existing `framework-config/network.ts`, or a new module and composition reference when no network is declared | The one shared network; private /16, two/three zones, NAT, IPv6 egress, gateway/interface endpoints; existing construct identity retained |
+| VPC | New `framework-config/networks/<id>/index.ts` and a literal registry reference | Independent VPCs with private /16, two/three zones, NAT, IPv6 egress and endpoints; unused VPCs appear as blueprints |
 | Workflow | New workflow section module and composition entry | Executable pass-through workflow, or a sequence of existing event Lambdas/tasks; deployment lanes and execution timeout; native workflow DSL and IR |
 | Container service | Service section/composition, `cdk-app/ecs_containers/services/<id>/{index.mjs,Dockerfile,package.json}` | Node HTTP server and health endpoint; mount, port, gateway auth, CPU/memory, architecture, subnet, input/secret binding; local-only default |
 | Container task | Task section/composition, `cdk-app/ecs_containers/tasks/<id>/{index.mjs,Dockerfile}` | Run-to-completion Node container reading `FRAMEWORK_TASK_INPUT`; sizing, architecture, subnet, deployment lanes, input/secret binding; timeout belongs to its invocation |
@@ -558,3 +558,10 @@ separately, as Framework describes.
 
 Tests (`npm --workspace framework-studio test`) run against the real configuration in
 memory, and against a disposable copy under `.cache/framework-studio/` when they write.
+
+VPC placement is explicit: Lambdas import `vpc`, services/tasks import `cloud.vpc`,
+and native application resources call `frameworkVpc(this, importedVpc)`. Each VPC has
+its own Isometric island, subnet bands, gateway/endpoint selection and settings Inspector.
+Workload Inspectors review VPC and subnet changes together. Database callers must use
+the database's selected VPC. Compose keeps its existing shared network; configuration
+checks and local Lambda egress use the selected VPC. Creation and editing never deploy.

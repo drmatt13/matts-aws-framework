@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { resolveDatabaseSettings } from "../database-settings";
+import { DATABASE_SETTING_INPUTS } from "@repo/framework/config/database";
+import { resolveDeploymentInputs } from "../deployment";
 const settings = (env: Record<string, string | undefined> = {}, context: Record<string, unknown> = {}) => resolveDatabaseSettings({ env, getContext: key => context[key] });
 
 test("database settings preserve defaults and explicit context overrides", () => {
@@ -77,12 +79,23 @@ test("storage validation follows PostgreSQL gp3 and io2 requirements", () => {
 test("both authored templates document all resolver settings with production defaults", () => {
   const prod = readFileSync(path.join(__dirname, "../.env.prod.template"), "utf8");
   const dev = readFileSync(path.join(__dirname, "../.env.dev.template"), "utf8");
-  const source = readFileSync(path.join(__dirname, "../database-settings.ts"), "utf8");
-  const names = new Set(source.match(/DATABASE_[A-Z_]+/g));
+  const names = Object.values(DATABASE_SETTING_INPUTS);
   for (const name of names) {
     assert.match(prod, new RegExp(`^#? ?${name}=`, "m"), name);
     assert.match(dev, new RegExp(`^# ${name}=`, "m"), name);
   }
   const env = Object.fromEntries(prod.split(/\r?\n/).filter(line => /^DATABASE_/.test(line)).map(line => line.split("=")));
   assert.deepEqual(settings(env), settings());
+});
+
+
+test("application deployment validates overrides against authored database defaults", () => {
+  const deployment = resolveDeploymentInputs({
+    env: { CDK_DEFAULT_ACCOUNT: "111122223333", CDK_DEFAULT_REGION: "us-east-1", CDK_APP_NAME: "example", DATABASE_STORAGE_IOPS: "2000" },
+    getContext: key => key === "databaseMultiAz" ? true : undefined,
+    databaseSettings: { multiAz: false, storageType: "io2", allocatedStorage: 100, maxAllocatedStorage: 1000, iops: 1000 },
+  });
+  assert.equal(deployment.database.storageType, "io2");
+  assert.equal(deployment.database.iops, 2000);
+  assert.equal(deployment.database.multiAz, true);
 });

@@ -25,7 +25,7 @@ Source inspected 2026-10-20. **Implemented** describes a code path, not successf
 | Inspector settings/defaults/routes | Implemented, bounded | Recognized fields/source shapes; reviewed source transformations; [editing](../studio/editing.md) |
 | Multi-file edit, undo/redo | Implemented, bounded | In-memory history; guarded restoration, no crash-atomic/durable transaction; [editing](../studio/editing.md) |
 | General arbitrary code/CDK editing | Not implemented as a general UI editor | Narrow splices/native removals/creator scaffolds do not establish arbitrary editing |
-| Add to Application | Implemented in current source | Function, stack, shared VPC, workflow, service, task, route, agent, input, secret wizards; fixed templates/options and reviewed batch; [creation](../studio/creation-and-connections.md) |
+| Add to Application | Implemented in current source | Function, stack, independent VPC, workflow, service, task, route, agent, input, secret wizards; fixed templates/options and reviewed batch; [creation](../studio/creation-and-connections.md) |
 | Arbitrary resource CRUD / new tool wizard | Not provided by current creators | Native family support/handwritten tools may exist independently of creator UI; [extensions](../guides/extensions.md) |
 | Triggers/failure destinations/native edge removal | Implemented for supported adapters/source shapes | Capability/type compatibility and safe removal evidence required; [connections](../studio/creation-and-connections.md) |
 | Database schema visualization | Implemented read-only | Parses contract/Compose; no live introspection/migration editor; [graph](../studio/graph-model.md) |

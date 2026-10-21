@@ -2,12 +2,12 @@ import type { ModeModel, ModelEdge, NetworkModel } from "./model";
 
 export const DESCRIPTION_FILE = "framework-config/descriptions.ts";
 export const DESCRIPTION_LIMIT = 8000;
-export const ISLAND_IDS = ["island:apis", "island:lambda", "island:vpc", "island:agentcore", "island:orchestration", "island:stacks", "island:inputs", "island:environment", "island:client-environment"] as const;
+export const ISLAND_IDS = ["island:apis", "island:lambda", "island:agentcore", "island:orchestration", "island:stacks", "island:inputs", "island:environment", "island:client-environment"] as const;
 
 export function networkFixtureIds(network: NetworkModel | undefined): string[] {
-  return ["prop:internet-gateway", ...(network?.egressOnlyInternetGateway ? ["prop:egress-only-gateway"] : []),
-    ...(network?.natGateway ? ["prop:nat-gateway"] : []),
-    ...new Set([...(network?.gatewayEndpoints ?? []), ...(network?.interfaceEndpoints ?? [])].map((name) => `prop:endpoint:${name}`))];
+  return network ? [`island:vpc:${network.id}`, `prop:vpc:${network.id}:internet-gateway`, ...(network?.egressOnlyInternetGateway ? [`prop:vpc:${network.id}:egress-only-gateway`] : []),
+    ...(network?.natGateway ? [`prop:vpc:${network.id}:nat-gateway`] : []),
+    ...new Set([...(network?.gatewayEndpoints ?? []), ...(network?.interfaceEndpoints ?? [])].map((name) => `prop:vpc:${network.id}:endpoint:${name}`))] : [];
 }
 
 /** Keep notes on the same relationship when graph ordering or environment details change.
@@ -22,7 +22,7 @@ export function descriptionEntityIds(models: readonly ModeModel[]): ReadonlySet<
     ...model.targets.map((target) => target.ref), ...model.routes.map((route) => route.id),
     ...model.resources.map((resource) => resource.id), ...(model.localServices ?? []).map((service) => service.id),
     ...model.edges.map(connectionDescriptionId),
-    ...networkFixtureIds(model.network),
+    ...(model.networks ?? []).flatMap(networkFixtureIds),
   ])]);
 }
 

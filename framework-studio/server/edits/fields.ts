@@ -7,11 +7,11 @@ import {
   LAMBDA_RUNTIMES,
   LAMBDA_SUBNETS,
   isNodeLambdaRuntime,
-  resolveLambdaTarget,
   type FrameworkConfig,
   type NormalizedTarget,
 } from "@repo/framework/config";
 import type { FieldDomain, FieldFact } from "../../shared/model";
+import { lambdaSpec } from "../model/lambda-spec";
 import { declarationOf, parseOrigin, readPath } from "../model/origin";
 import { makeDefaultFields } from "./defaults";
 
@@ -77,9 +77,9 @@ function lambdaSetting(
 ): FieldDefinition {
   return {
     id: `lambda.${key}`, label, path: [key], domain: { kind: "enum", values }, ...LAMBDA_BUILD_ANCHORS,
-    applies: (target, config) => target.kind === "lambda" && (key !== "runtime" || resolveLambdaTarget(config, target.id).packaging === "zip"),
+    applies: (target, config) => target.kind === "lambda" && (key !== "runtime" || lambdaSpec(config, target.id).packaging === "zip"),
     resolve: (config, target, declaration) => {
-      const spec = resolveLambdaTarget(config, target.id);
+      const spec = lambdaSpec(config, target.id);
       const inherited = lambdaInherited(config, target, key, fallback);
       return {
         effective: key === "runtime" ? spec.packaging === "zip" ? spec.runtime : "Dockerfile" : spec[key],
@@ -95,11 +95,11 @@ function bundlingSetting(key: "minify" | "sourceMap", label: string): FieldDefin
     id: `lambda.bundling.${key}`, label, path: ["bundling", key], domain: { kind: "enum", values: [true, false] }, ...LAMBDA_BUILD_ANCHORS,
     applies: (target, config) => {
       if (target.kind !== "lambda") return false;
-      const spec = resolveLambdaTarget(config, target.id);
+      const spec = lambdaSpec(config, target.id);
       return spec.packaging === "zip" && isNodeLambdaRuntime(spec.runtime);
     },
     resolve: (config, target, declaration) => {
-      const spec = resolveLambdaTarget(config, target.id);
+      const spec = lambdaSpec(config, target.id);
       const section = readPath(lambdaSectionDefaults(config, target), ["bundling", key]);
       const base = config.defaults.lambda.bundling[key];
       const inherited = typeof section === "boolean" ? { value: section, from: `defaults.${target.section}.bundling.${key}` }
@@ -167,11 +167,11 @@ export const FIELDS: readonly FieldDefinition[] = [
     ...LAMBDA_BUILD_ANCHORS,
     applies: (target) => target.kind === "lambda",
     resolve: (config, target, declaration) => {
-      const spec = resolveLambdaTarget(config, target.id);
+      const spec = lambdaSpec(config, target.id);
       const base = lambdaInherited(config, target, "subnet", "none");
-      const lifted = declaration?.database !== undefined && base.value === "none";
+      const lifted = (declaration?.database !== undefined || declaration?.vpc !== undefined) && base.value === "none";
       const inherited = lifted
-        ? { value: "private", from: `${base.from}, lifted from "none" by database: true` }
+        ? { value: "private", from: `${base.from}, lifted from "none" by explicit VPC placement` }
         : base;
       return {
         effective: spec.subnet,
@@ -190,7 +190,7 @@ export const FIELDS: readonly FieldDefinition[] = [
     resolve: (config, target, declaration) => {
       const inherited = lambdaInherited(config, target, "memorySize", 128);
       return {
-        effective: resolveLambdaTarget(config, target.id).memorySize,
+        effective: lambdaSpec(config, target.id).memorySize,
         provenance: readPath(declaration, ["memorySize"]) !== undefined ? DECLARED : inherited.from,
         inherited,
       };
@@ -206,7 +206,7 @@ export const FIELDS: readonly FieldDefinition[] = [
     resolve: (config, target, declaration) => {
       const inherited = lambdaInherited(config, target, "timeoutSeconds", 3);
       return {
-        effective: resolveLambdaTarget(config, target.id).timeoutSeconds,
+        effective: lambdaSpec(config, target.id).timeoutSeconds,
         provenance: readPath(declaration, ["timeoutSeconds"]) !== undefined ? DECLARED : inherited.from,
         inherited,
       };
@@ -258,7 +258,7 @@ export function fieldFacts(config: FrameworkConfig, target: NormalizedTarget): r
   return FIELDS.filter((field) => field.applies(target, config)).map((field) => {
     const authored = readPath(declaration, field.path);
     const resolved = field.resolve(config, target, declaration);
-    const replaySpec = field.id === "events.localReplay" ? resolveLambdaTarget(config, target.id) : undefined;
+    const replaySpec = field.id === "events.localReplay" ? lambdaSpec(config, target.id) : undefined;
     const replayBlocked = replaySpec && (replaySpec.packaging !== "zip" || !isNodeLambdaRuntime(replaySpec.runtime))
       ? "Studio pairs local replay with TypeScript ZIP handlers. Configure this implementation in source." : undefined;
     return {

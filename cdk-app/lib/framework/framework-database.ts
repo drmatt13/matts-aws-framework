@@ -7,10 +7,10 @@ import * as nodejs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as cr from "aws-cdk-lib/custom-resources";
 import { Construct, type IConstruct } from "constructs";
-import { DATABASE_LOGIN, type ConnectsToBinding, type NormalizedTarget, type CdkResourceSpec, DEFAULT_DATABASE_POOL } from "@repo/framework/config";
+import { DATABASE_LOGIN, hasEndpoint, resolveNetwork, subnetEgress, isResourceAbsent, type ConnectsToBinding, type NormalizedTarget, type CdkResourceSpec, DEFAULT_DATABASE_POOL } from "@repo/framework/config";
 import { findRepositoryRoot } from "@repo/framework/config/source";
-import { linkedConstruct, deferResourceAttachment } from "./framework-resources";
-import { databaseClientPlacement, dualStackEnvironment, presentConnections } from "./framework-network";
+import { linkedConstruct, deferResourceAttachment, frameworkResourceOptions } from "./framework-resources";
+import { databaseClientPlacement, dualStackEnvironment, frameworkVpc, presentConnections } from "./framework-network";
 
 const LOGIN_HANDLER = path.join(
   findRepositoryRoot(__dirname),
@@ -46,6 +46,16 @@ function state(scope: IConstruct): DatabaseState {
     states.set(root, value);
   }
   return value;
+}
+
+/** Check the native writer even when no deployed workload requests database access. */
+export function validateDatabaseNetwork(scope: IConstruct): void {
+  const database = frameworkResourceOptions(scope)?.config.database;
+  if (!database || isResourceAbsent(database.resource)) return;
+  const linked = linkedConstruct(scope, database.resource);
+  if (!linked || !(linked.construct instanceof rds.DatabaseInstance)) return;
+  const expected = frameworkVpc(linked.construct, database.vpc);
+  if (linked.construct.vpc !== expected) throw new Error(`The database is built in another VPC. Build resources.${database.resource.path.join(".")} with vpc: frameworkVpc(this, the configured database VPC).`);
 }
 
 /** The config's database, checked to be one a workload can log in to with IAM. */
@@ -155,6 +165,14 @@ export function databaseConnectionTarget(scope: IConstruct, binding: ConnectsToB
 function databaseLogin(scope: IConstruct, binding: ConnectsToBinding, instance: rds.DatabaseInstance, databaseName: string): cdk.CustomResource {
   const logins = state(scope).logins;
   if (logins.has(instance)) return logins.get(instance)!;
+  const options = frameworkResourceOptions(scope);
+  const database = options?.config.database;
+  if (!options || !database) throw new Error("Configure an explicit application database declaration before creating its IAM login.");
+  const network = resolveNetwork(options.config, database.vpc);
+  const egress = subnetEgress(network, "private");
+  if (!egress.ipv4 && !egress.ipv6 && !hasEndpoint(network, "secretsmanager")) {
+    throw new Error(`The database's IAM login bootstrap runs in VPC "${network.id}" private subnets and must read its master secret from Secrets Manager. Turn on egressOnlyInternetGateway or natGateway, or add "secretsmanager" to interfaceEndpoints in that VPC declaration. Endpoints in another VPC cannot provide this route.`);
+  }
   const owner = new Construct(cdk.Stack.of(instance), "FrameworkDatabaseLogin");
   const handler = new nodejs.NodejsFunction(owner, "Handler", {
     entry: LOGIN_HANDLER,
@@ -165,7 +183,7 @@ function databaseLogin(scope: IConstruct, binding: ConnectsToBinding, instance: 
     // the way the private subnets allow: over IPv6, through the NAT gateway,
     // or through a "secretsmanager" interface endpoint.
     ...databaseClientPlacement(scope, { ...binding, connection: "direct", readers: undefined }, "The database's IAM login"),
-    environment: dualStackEnvironment(scope, "private"),
+    environment: dualStackEnvironment(scope, "private", frameworkResourceOptions(scope)!.config.database!.vpc),
   });
   instance.secret!.grantRead(handler);
   const provider = new cr.Provider(owner, "Provider", { onEventHandler: handler });

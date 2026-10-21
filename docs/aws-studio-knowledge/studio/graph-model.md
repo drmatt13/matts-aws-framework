@@ -36,3 +36,9 @@ Declared/derived/source-inferred edges retain their evidence classification. [so
 The Database view uses `parseDeclaredSchema` in [server/database.ts](../../../framework-studio/server/database.ts) to parse the authored Prisma contract and inspect local Compose database metadata. It does not introspect a live database, apply a migration or provide a database schema editor.
 
 When adding a relation, update projection, shared types, lookup/category labels, aggregation, Inspector, layout direction/weight, focus/picking, and tests as applicable; use [change impact](../reference/change-impact.md). Start with [model tests](../../../framework-studio/test/model.test.ts), [database tests](../../../framework-studio/test/database.test.ts), and [rendering tests](rendering.md). Snapshot revisions and edit conflicts belong to [snapshots](snapshots.md) / [editing](editing.md).
+
+`ModeModel.networks` contains stable VPC identities and per-network settings.
+VPC workload placement includes `networkId`; recognized native member placement does too.
+Network islands, subnet bands and fixtures use VPC-qualified IDs. The database's local
+counterpart is drawn only in its declared VPC. Native helper calls and simple aliases are
+source evidence; synthesis inventory remains the authority for built infrastructure.

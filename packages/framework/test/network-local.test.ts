@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
@@ -21,13 +22,13 @@ type FakeDataStack = {
 };
 // As in a dev deployment: the database is absent from the AWS graph, and runs under Compose.
 const resources = defineResources({ rds: (false as boolean) ? resource.stack<FakeDataStack>() : undefined });
-const connected = { database: true };
+const connected = { vpc: fixtureVpc, database: true };
 
 const config = (network?: ReturnType<typeof defineNetwork>): FrameworkConfig =>
-  defineFrameworkConfig({
-    ...(network ? { network } : {}),
+  defineFrameworkConfig({ networks: [fixtureVpc],
+    ...(network ? { networks: [network] } : {}),
     resources,
-    database: resources.rds.database,
+    database: { resource: resources.rds.database, vpc: fixtureVpc },
     defaults: {
       lambda: {
         runtime: "nodejs24", packaging: "zip", architecture: "arm64",
@@ -37,11 +38,11 @@ const config = (network?: ReturnType<typeof defineNetwork>): FrameworkConfig =>
     http: [{
       "/orders": { directory: "/lambda_functions/http_functions/orders", methods: ["GET"], ...connected },
       "/plain": { directory: "/lambda_functions/http_functions/plain", methods: ["GET"] },
-      "/inside": { directory: "/lambda_functions/http_functions/inside", methods: ["GET"], subnet: "private" },
-      "/sealed": { directory: "/lambda_functions/http_functions/sealed", methods: ["GET"], subnet: "isolated" },
+      "/inside": { vpc: fixtureVpc, directory: "/lambda_functions/http_functions/inside", methods: ["GET"], subnet: "private" },
+      "/sealed": { vpc: fixtureVpc, directory: "/lambda_functions/http_functions/sealed", methods: ["GET"], subnet: "isolated" },
     }],
     webSocket: [], events: [], services: [],
-    tasks: [{ job: { ...connected, cloud: { subnet: "public" } } }],
+    tasks: [{ job: { database: true, cloud: { vpc: fixtureVpc, subnet: "public" } } }],
     tools: [{ lookup: { ...connected } }],
   } as never);
 
@@ -67,16 +68,16 @@ test("a Lambda calls AWS's dual-stack endpoints only where IPv6 leaves its subne
   assert.equal((await environmentOf("lambda:sealed")).AWS_USE_DUALSTACK_ENDPOINT, undefined, "nothing leaves the isolated subnets, so it calls the names the endpoints answer");
   assert.equal((await environmentOf("lambda:plain")).AWS_USE_DUALSTACK_ENDPOINT, undefined);
   assert.equal((await environmentOf("task:job")).AWS_USE_DUALSTACK_ENDPOINT, undefined);
-  const natOnly = defineNetwork({ cidr: "10.0.0.0/16", zones: 2, egressOnlyInternetGateway: false, natGateway: true });
+  const natOnly = defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, egressOnlyInternetGateway: false, natGateway: true });
   assert.equal((await environmentOf("lambda:inside", natOnly)).AWS_USE_DUALSTACK_ENDPOINT, undefined, "only IPv4 leaves, through the NAT gateway");
 });
 
 test("local reader and direct declarations keep Compose and the resolved pool settings", async () => {
   const base = config();
-  const withReaders = defineFrameworkConfig({
-    ...base, defaults: { ...base.defaults, database: { pool: { maxConnections: 4 } } },
+  const withReaders = defineFrameworkConfig({ networks: [fixtureVpc],
+    ...base, defaults: { vpc: fixtureVpc, ...base.defaults, database: { pool: { maxConnections: 4 } } },
     http: [{
-      "/orders": { directory: "/lambda_functions/http_functions/orders", methods: ["GET"], database: { readers: true, connection: "direct", pool: { idleTimeoutMs: 1000 } } },
+      "/orders": { vpc: fixtureVpc, directory: "/lambda_functions/http_functions/orders", methods: ["GET"], database: { readers: true, connection: "direct", pool: { idleTimeoutMs: 1000 } } },
     }],
   });
   const env = await resolveLocalWorkloadEnvironment(withReaders, "lambda:orders", {
@@ -97,19 +98,19 @@ test("a Lambda in the VPC is held to its subnet's egress, which a NAT gateway op
   assert.deepEqual(localLambdaEgress(config(), "lambda:inside"), { subnet: "private", ipv6: true, endpoints });
   assert.deepEqual(localLambdaEgress(config(), "lambda:sealed"), { subnet: "isolated", ipv6: false, endpoints });
   assert.equal(localLambdaEgress(config(), "lambda:plain"), undefined);
-  const nat = defineNetwork({ cidr: "10.0.0.0/16", zones: 2, natGateway: true, interfaceEndpoints: ["secretsmanager"] });
+  const nat = defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, natGateway: true, interfaceEndpoints: ["secretsmanager"] });
   assert.equal(localLambdaEgress(config(nat), "lambda:orders"), undefined);
   assert.deepEqual(localLambdaEgress(config(nat), "lambda:sealed"), { subnet: "isolated", ipv6: false, endpoints: [...endpoints, "secretsmanager"] }, "NAT never reaches the isolated subnets");
 });
 
 test("the framework owns AWS_USE_DUALSTACK_ENDPOINT, and primaryDatabase is no longer a local resource", () => {
-  const base = { defaults: { lambda: { runtime: "nodejs24", packaging: "zip" } }, http: [], webSocket: [], events: [], services: [] };
+  const base = { networks: [fixtureVpc], defaults: { lambda: { runtime: "nodejs24", packaging: "zip" } }, http: [], webSocket: [], events: [], services: [] };
   assert.throws(
     () => defineFrameworkConfig({ ...base, http: [{ "/a": { directory: "/lambda_functions/http_functions/a", methods: ["GET"], environment: { AWS_USE_DUALSTACK_ENDPOINT: "true" } } }] } as never),
     /The framework sets it, in both lanes, on every Lambda in the VPC whose subnet sends IPv6 out/,
   );
   assert.throws(
-    () => defineFrameworkConfig({ ...base, tasks: [{ job: { local: { resources: ["primaryDatabase"] } } }] } as never),
+    () => defineFrameworkConfig({ ...base, tasks: [{ job: { cloud: { vpc: fixtureVpc }, local: { resources: ["primaryDatabase"] } } }] } as never),
     /requests local resource "primaryDatabase"\. A task reaches the database the way every workload does, in both lanes: declare database: true/,
   );
 });
@@ -175,8 +176,8 @@ test("a refused AWS host names the endpoint that would reach it", () => {
   assert.equal(endpointServiceForHost("api.github.com"), undefined);
   assert.equal(endpointServiceForHost("sts.amazonaws.com"), undefined, "a global endpoint has no regional endpoint service");
 
-  assert.match(egressFix("cognito-idp.eu-west-2.amazonaws.com", endpointsOnly), /^Add "cognito-idp" to interfaceEndpoints in framework-config\/network\.ts \(about \$7\.30 a month per zone\), or give it subnet: "private"\.$/);
-  assert.match(egressFix("dynamodb.eu-west-2.amazonaws.com", { ...endpointsOnly, endpoints: [] }), /^Turn on gatewayEndpoints\.dynamodb in framework-config\/network\.ts \(free\)/);
+  assert.match(egressFix("cognito-idp.eu-west-2.amazonaws.com", endpointsOnly), /^Add "cognito-idp" to interfaceEndpoints in the selected VPC declaration \(about \$7\.30 a month per zone\), or give it subnet: "private"\.$/);
+  assert.match(egressFix("dynamodb.eu-west-2.amazonaws.com", { ...endpointsOnly, endpoints: [] }), /^Turn on gatewayEndpoints\.dynamodb in the selected VPC declaration \(free\)/);
   assert.match(egressFix("api.github.com", ipv6Out), /^Call it from a Lambda outside the VPC \(subnet: "none"\), or give the private subnets IPv4 with natGateway: true/);
   assert.match(egressFix("api.github.com", { ...ipv6Out, ipv6: false }), /turn on egressOnlyInternetGateway \(free\) or natGateway/);
 });

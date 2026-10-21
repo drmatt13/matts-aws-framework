@@ -180,6 +180,10 @@ stack's public instance surface. Canonical CDK export symbols, aliases, inherita
 and re-exports determine compatibility; displayed type text never authorizes an edit.
 Private/protected members, Stack members and secret projections are excluded. Only
 serializable capability/source facts are cached in memory, keyed by source hashes.
+The capability program and candidate type-checks also share parsed `node_modules`
+declaration files (`server/source/declarations.ts`), keyed on `package-lock.json` and
+the compiler options and dropped after ten idle minutes; repository and review-overlay
+files are always parsed fresh, so the cache never holds authored source or values.
 Inherited native wiring and unavailable implementations require manual review.
 
 The event and public-field Inspectors share a collapsed Triggers section. They stage

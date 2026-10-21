@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { defineFrameworkConfig, defineResources, resource, type DeploySetting } from "../src/config";
@@ -13,7 +14,7 @@ const resources = defineResources({
 
 /** One route reading every input, requiring the key when the mode is live. */
 function config(deploy: DeploySetting, requirements = true) {
-  return defineFrameworkConfig({
+  return defineFrameworkConfig({ networks: [fixtureVpc],
     resources, defaults, webSocket: [], events: [], services: [],
     http: [{
       "/partner": {

@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
@@ -74,7 +75,7 @@ test("a workload invokes an agent, which calls a tool through its emulated Gatew
     ].join("\n"),
   );
 
-  const config = defineFrameworkConfig({
+  const config = defineFrameworkConfig({ networks: [fixtureVpc],
     defaults,
     http: [
       {
@@ -178,7 +179,7 @@ test("a workflow step invokes an agent and reads its result, entirely locally", 
   );
 
   const step = invokeAgentStepBuilder as unknown as <Out>(agent: string, input: unknown) => Flow<Out>;
-  const config = defineFrameworkConfig({
+  const config = defineFrameworkConfig({ networks: [fixtureVpc],
     defaults,
     http: [],
     webSocket: [],
@@ -223,7 +224,7 @@ test("a workflow step invokes an agent and reads its result, entirely locally", 
       submit: () => {
         throw new Error("no tasks here");
       },
-      wait: async () => ({ runId: "none" }),
+      wait: async () => ({ cloud: { vpc: fixtureVpc }, runId: "none" }),
       stop: async () => undefined,
     },
     agents: supervisor,

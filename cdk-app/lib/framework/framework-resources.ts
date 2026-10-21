@@ -5,6 +5,7 @@ import type { IGrantable } from "aws-cdk-lib/aws-iam";
 import type { ISecret } from "aws-cdk-lib/aws-secretsmanager";
 import { markInfrastructure } from "./framework-inventory";
 import { attachFrameworkTriggers } from "./framework-triggers";
+import { validateDatabaseNetwork } from "./framework-database";
 import { DEPLOYMENT_METADATA_KEY, FRAMEWORK_OWNER, IDENTITY_TAGS } from "@repo/framework/deploy";
 import {
   assertRequirementsMet,
@@ -28,6 +29,8 @@ interface Options {
   readonly config: FrameworkConfig;
   readonly mode: CloudMode;
   readonly deployment: string;
+  /** The application's shared destination, also enforced for native VPC callers. */
+  readonly env?: cdk.Environment;
   readonly readers?: ResourceEnvironmentReaders;
 }
 interface Registry {
@@ -344,6 +347,7 @@ export function finalizeFrameworkResources(scope: IConstruct): void {
   if (state.finalized) throw new Error("Framework resources were finalized twice.");
   if (!state.options) throw new Error("Initialize framework resources before finalizing them.");
   for (const action of state.pending) action();
+  validateDatabaseNetwork(scope);
   const { config, mode, deployment } = state.options;
   attachFrameworkTriggers(scope, config);
   const stacks = scope.node.root.node.findAll().filter(cdk.Stack.isStack);

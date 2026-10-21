@@ -9,6 +9,8 @@ source:
   - packages/framework/src/deploy/identity.ts
   - cdk-app/bin/main.ts
   - framework-studio/server/inputs.ts
+  - cdk-app/deployment.ts
+  - cdk-app/lib/framework/framework-network.ts
 related:
   - framework.configuration
   - deployment.planning-safety
@@ -32,6 +34,32 @@ Dev AWS builds Cognito, AWS-invoked event Lambdas and replay support; normal rou
 Selection checks require command/target mode agreement and refuse accidental production inference. `prepare` in [deploy.ts](../../../scripts/deploy.ts) then compares the synthesized identity with selection and actual STS account. Ownership classification prevents a dev graph from updating stacks owned by prod or another deployment. Named targets do not provide a separate secret namespace if someone deliberately aliases identities/inputs; identity and selected inputs must be reviewed together.
 
 Development export supplies generated root environment/resource manifest and browser settings. Production output/export uses its production destinations rather than seeding development. Protected Studio input editing addresses only the two fixed mode files; custom target input paths are not a general file browser. [Secrets](secrets.md) owns the private-value boundaries.
+
+## Region belongs to the deployment
+
+One application deployment uses one account and region. Keep `region` on a named
+target in `framework:targets`, not on individual VPC declarations. The existing exact
+target pin is the destination guardrail; no `allowedRegions` list or per-network
+region selector is needed. Different named targets can deploy independent application
+copies to different regions; they imply no replication or regional failover.
+
+`resolveDeploymentInputs` in [deployment.ts](../../../cdk-app/deployment.ts) reads
+`CDK_DEFAULT_ACCOUNT`/`CDK_DEFAULT_REGION` set by the CDK CLI, rejects target pin
+mismatches, and returns the `stackEnv` shared by application/framework stacks in
+[cdk-app.ts](../../../cdk-app/bin/cdk-app.ts). `prepare` in
+[deploy.ts](../../../scripts/deploy.ts) passes an explicit `--region` through
+`AWS_REGION` and verifies it against the synthesized deployment identity.
+
+[framework-network.ts](../../../cdk-app/lib/framework/framework-network.ts) builds
+VPCs in that environment and refuses callers in a different account or region before
+reusing or constructing network infrastructure. `maxAzs` uses the deployment region's
+CDK availability-zone context; endpoint service names use the VPC stack region.
+Per-network region would break same-VPC database placement and the framework's native
+cross-stack references. CloudFormation exports/imports are
+[limited to the same account and region](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/intrinsic-function-reference-importvalue.html).
+The [region tests](../../../cdk-app/test/network-region.test.ts) cover endpoint/AZ
+resolution, target pins and cross-environment VPC refusal; the
+[Framework guide](../../FRAMEWORK.md#deployment-region) owns the user-facing contract.
 
 Adding a truly independent third mode is a foundational change: update mode unions/parsers, predicates, input selection, synthesis/bootstrap, identity/tag parsing/classification, deployment/export/destroy, Studio model/evaluators/selectors and all binary mode branches. A new target name alone should not require these changes. Follow [change impact](../reference/change-impact.md) and [retrieval validation](../guides/retrieval-checks.md).
 

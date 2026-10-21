@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { defineFrameworkConfig } from "../src/config/index";
@@ -5,7 +6,7 @@ import { assertAgentCoreEntries } from "../scripts/check-agentcore";
 import { defaults } from "../../../framework-config/defaults";
 
 const cognito = { USER_POOL_ID: "pool", USER_POOL_CLIENT_ID: "client" };
-const config = defineFrameworkConfig({
+const config = defineFrameworkConfig({ networks: [fixtureVpc],
   defaults,
   http: [],
   webSocket: [],

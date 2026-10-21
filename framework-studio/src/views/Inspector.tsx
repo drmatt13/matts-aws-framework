@@ -1,3 +1,4 @@
+import { PlacementControl } from "./NetworkControls";
 import { X } from "lucide-react";
 import type { ModelEdge, ModelResource, ModelRoute, ModelTarget, ModelWorkflow, Placement } from "../../shared/model";
 import { RELATION_LABEL, ROLE_LABEL, endpointLabel } from "../lookup";
@@ -6,6 +7,7 @@ import { EntityIcon } from "./EntityIcon";
 import { resourceIcon, routeIcon, targetIcon } from "../icons";
 import type { LocalDatabase } from "../../shared/database";
 import { SchemaDetails, SchemaLink } from "./Database";
+import { ManagedDatabaseControls } from "./ManagedDatabaseControls";
 import { ResourceEditor } from "./ResourceEditor";
 import { HttpRoutes } from "./HttpRoutes";
 import { IslandInspector } from "./IslandInspector";
@@ -35,7 +37,7 @@ function PlacementText(props: { readonly placement: Placement }) {
   return (
     <>
       <p>
-        The {placement.subnet} subnet. {placement.reason}
+        VPC {placement.networkId}, {placement.subnet} subnet. {placement.reason}
       </p>
       <p className="small muted">
         {out.length > 0 ? `${out.join(" and ")} leave this subnet.` : "Nothing leaves this subnet except through the network's endpoints."}
@@ -186,7 +188,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
       <TargetDeployment target={target} />
       <Description entity={target.ref} />
       {settings.length > 0 ? <InspectorSection title="Settings">
-        {settings.map((fact) => <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />)}
+        {settings.filter(fact => !fact.field.endsWith("subnet")).map((fact) => <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />)}
       </InspectorSection> : null}
       <ApiAuthControl target={target} />
       <LocalReplayControl target={target} />
@@ -199,9 +201,10 @@ function TargetView(props: { readonly target: ModelTarget }) {
           <dt>Handler</dt><dd><code>{compute.packaging === "container" ? "Dockerfile CMD" : compute.handler}</code></dd>
           {compute.packaging === "container" ? <><dt>Runtime</dt><dd>Defined by the Dockerfile</dd></> : null}
         </dl>
-        {facts.filter((fact) => buildFields.has(fact.field)).map((fact) => <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />)}
+        {facts.filter((fact) => buildFields.has(fact.field) && !fact.field.endsWith("subnet")).map((fact) => <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />)}
       </InspectorDisclosure> : null}
       <InspectorDisclosure title="Production placement">
+        <PlacementControl target={target} />
         <PlacementText placement={target.placement} />
         {compute.kind === "container" ? (
           <p className="small muted">
@@ -305,13 +308,14 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         {resource.frameworkStack || resource.stackUsage?.status === "unreferenced" || resource.frameworkManaged ? <details className="header-details"><summary>About this resource</summary>
         {resource.frameworkStack ? <p className="small muted">No <code>resource.stack&lt;{resource.stackClass}&gt;()</code> entry in <code>framework-config/resources.ts</code>. Declare and link one if workloads should reference this stack's public fields.</p> : null}
         {resource.stackUsage?.status === "unreferenced" ? <p className="small muted">Declared in the catalog, with no constructor reference in the CDK app's runtime imports. Add it to the app to include it in synthesis.</p> : null}
-        {resource.frameworkManaged === "database" ? <p className="small muted">The framework owns this database and its connections. Dedicated database configuration options are coming later.</p> : resource.frameworkManaged ? <p className="small muted">The framework manages this stack and its generated environment outputs.</p> : null}
+        {resource.frameworkManaged === "database" ? <p className="small muted">Its database declaration owns PostgreSQL policy and placement; the framework supplies IAM-only workload connections.</p> : resource.frameworkManaged ? <p className="small muted">The framework manages this stack and its generated environment outputs.</p> : null}
         </details> : null}
         {resource.kind !== "stack" ? <code className="ref">resources.{resource.path.join(".")}</code> : null}
         {resource.typeText ? <code className="ref">{resource.typeText}</code> : null}
         <Written location={snapshot.source.entities[resource.id]?.key} label={resource.frameworkStack ? "Class in" : resource.kind === "member" ? "Declared on the stack in" : "Written in"} />
       </header>
       <ResourceDeployment resource={resource} />
+      {resource.id === model.managedDatabase?.resource || members.some(member => member.id === model.managedDatabase?.resource) ? <ManagedDatabaseControls /> : null}
       <Description entity={resource.id} />
       {resource.stackOutputs?.length ? <InspectorDisclosure title="CloudFormation outputs" count={resource.stackOutputs.length} defaultOpen={!!resource.frameworkStack} className="stack-outputs"><p className="small muted">Symbolic source values mapped by the root .env exporter.</p><ul>{resource.stackOutputs.map((output) => <li key={output.name}>
         <span className="stack-output-name">{output.name}</span>
@@ -359,9 +363,9 @@ function NetworkFixtureView({ id }: { readonly id: string }) {
   const fixture = buildScene(model).props.find((prop) => prop.id === id);
   if (!fixture) return null;
   const production = snapshot.models.prod;
-  const inProduction = !!production.network?.builtInProd && buildScene(production).props.some((prop) => prop.id === id);
+  const inProduction = !!production.networks?.find(network => id.startsWith(`prop:vpc:${network.id}:`))?.builtInProd && buildScene(production).props.some((prop) => prop.id === id);
   return <>
-    <header><span className="kind">Network fixture</span><h2><EntityIcon icon={fixture.icon} />{fixture.label}</h2><code className="ref">{id}</code><Written location={{ file: "framework-config/network.ts", line: 1, column: 1, start: 0, end: 0 }} /></header>
+    <header><span className="kind">Network fixture</span><h2><EntityIcon icon={fixture.icon} />{fixture.label}</h2><code className="ref">{id}</code><Written location={snapshot.source.entities[`island:vpc:${model.networks?.find(network => id.startsWith(`prop:vpc:${network.id}:`))?.id}`]?.value} /></header>
     <DeploymentSection availability={{ dev: false, prod: inProduction }} locations={{ prod: "In AWS" }}><p className="deployment-note small muted">Managed by the production VPC.</p></DeploymentSection>
     <Description entity={id} />
     <section>{fixture.caption.map((line) => <p key={line}>{line}</p>)}</section>
@@ -381,7 +385,7 @@ export function Inspector() {
   const otherLens = connection ? undefined : ((["dev", "prod"] as const).filter((candidate) => candidate !== model.mode).map((candidate) => ({ mode: candidate, edge: snapshot.models[candidate].edges.find((edge) => edge.id === selected) })).find((entry) => entry.edge));
   const schemaEntity = snapshot.schema.tables.some((table) => table.id === selected) || snapshot.schema.relations.some((relation) => relation.id === selected);
   const island = selected.startsWith("island:");
-  const fixture = networkFixtureIds(model.network).includes(selected);
+  const fixture = (model.networks ?? []).flatMap(networkFixtureIds).includes(selected);
   return (
     <aside className="inspector" aria-label="Inspector">
       <div className="inspector-toolbar"><span>Inspector</span>

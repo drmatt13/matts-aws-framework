@@ -3,6 +3,7 @@ import type { Editability, FieldFact, ModelTarget } from "../../shared/model";
 import { describeValue } from "../lookup";
 import { useStudio } from "../studio";
 import { deploymentSettingLabel } from "../deployment";
+import { InspectorSwitch } from "./InspectorUI";
 
 export function lockedReason(editability: Editability | undefined, fact: FieldFact): string | undefined {
   if (fact.blocked) return fact.blocked;
@@ -64,7 +65,7 @@ export function BooleanField({ target, fact, editability }: Props) {
   const entry = draft.field(target.ref, fact);
   const label = `switch-${target.ref}-${fact.field}`;
   return <div className={`field ${entry ? "field-dirty" : ""}`}>
-    <span className="name" id={label}>{fact.label}</span><span className="control"><button className="auth-switch" role="switch" aria-label={fact.label} aria-checked={enabled} disabled={!!locked || !!draftState.busy || live.evaluating} onClick={() => draft.toggleField(target.ref, fact)}><span className="auth-switch-state">{enabled ? "On" : "Off"}</span><span className="auth-switch-track" aria-hidden><span className="auth-switch-thumb" /></span></button></span>
+    <label className="name" htmlFor={label}>{fact.label}</label><span className="control"><InspectorSwitch id={label} label={fact.label} checked={enabled} disabled={!!locked || !!draftState.busy || live.evaluating} onChange={() => draft.toggleField(target.ref, fact)} /></span>
     <details className="note field-origin"><summary>{entry ? "Unsaved change" : fact.authored === undefined ? "Inherited value" : "Configured here"}</summary><span>{fact.authored === undefined ? `Inherited from ${fact.provenance}.` : "Written in this configuration."}</span>
     {draft.value(target.ref, fact) !== undefined && fact.inherited && !locked ? <span className="note"><button className="linkish small" disabled={!!draftState.busy || live.evaluating} onClick={() => draft.setField(target.ref, fact, undefined)}>Use inherited value ({draft.inherited(fact) ? "On" : "Off"})</button></span> : null}</details>
     {locked || entry?.error ? <span className="locked" role={entry?.error ? "alert" : undefined}>{locked ?? entry?.error}</span> : null}

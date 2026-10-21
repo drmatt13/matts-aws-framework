@@ -58,7 +58,7 @@ const short = (name: string, deployment: string) => (name.startsWith(`${deployme
 
 export function deploymentFindings(input: FindingsInput): Finding[] {
   const findings: Finding[] = [];
-  const { name, target, deployment, detail, context, local } = input;
+  const { name, target, deployment, detail, context } = input;
   const mode = target?.mode ?? deployment?.mode ?? "dev";
   const running = input.jobs.find((job) => job.status === "running" && job.deployment === name);
   const busy = running ? `${running.title} is running.` : undefined;

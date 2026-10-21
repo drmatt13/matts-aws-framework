@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -69,7 +70,7 @@ test("changed values upload through the SDK once per resource and failures repor
 /** A stack's computed value, which is how a deployment now supplies a string. */
 class ExampleStack extends Stack { public readonly identifier: string = "resolved"; }
 const resources = defineResources({ key: resource.secret(), example: resource.stack<ExampleStack>() });
-const config = defineFrameworkConfig({ resources, defaults, http: [], webSocket: [], services: [], events: [], tasks: [], workflows: [] });
+const config = defineFrameworkConfig({ networks: [fixtureVpc], resources, defaults, http: [], webSocket: [], services: [], events: [], tasks: [], workflows: [] });
 const metadata = { version: 1, deployment: "example", mode: "dev", ...identity };
 function deployed(outputs: DeploymentStack["Outputs"] = [], extra = {}): DeploymentStack {
   return { StackName: "App", StackId: "arn:aws:cloudformation:eu-west-2:111122223333:stack/App/id", StackStatus: "UPDATE_COMPLETE", Outputs: [{ Description: "framework:deployment:v1", OutputValue: JSON.stringify({ ...metadata, ...extra }) }, ...outputs!] };

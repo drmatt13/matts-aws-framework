@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as cdk from "aws-cdk-lib";
@@ -49,7 +50,7 @@ const resources = defineResources({
 });
 
 function config(secrets: Record<string, unknown>): FrameworkConfig {
-  return defineFrameworkConfig({
+  return defineFrameworkConfig({ networks: [fixtureVpc],
     resources,
     defaults,
     http: [],
@@ -63,7 +64,7 @@ function config(secrets: Record<string, unknown>): FrameworkConfig {
           port: 5000,
           deploy: "both",
           secrets,
-          cloud: { constructId: "ExampleService", cpu: 256, memoryMiB: 512, desiredCount: 1 },
+          cloud: { vpc: fixtureVpc, constructId: "ExampleService", cpu: 256, memoryMiB: 512, desiredCount: 1 },
         },
       },
     ],

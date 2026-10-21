@@ -119,7 +119,7 @@ const REGION_TRIM: Readonly<Record<Region, string>> = {
 };
 
 export function trimColor(island: Pick<Island, "id" | "region">): string {
-  return ISLAND_TRIM[island.id] ?? REGION_TRIM[island.region];
+  return ISLAND_TRIM[island.id.startsWith("island:vpc:") ? "island:vpc" : island.id] ?? REGION_TRIM[island.region];
 }
 
 export function hexRgb(value: string): Rgb {
@@ -136,7 +136,7 @@ export const BAND_TRIM: Readonly<Record<string, string>> = {
 
 /** A terrace's trim: its own colour where it has one, otherwise its island's. */
 export function bandTrim(island: Pick<Island, "id" | "region" | "bands">, index: number): Rgb {
-  return hexRgb(BAND_TRIM[island.bands[index]?.id ?? ""] ?? trimColor(island));
+  return hexRgb(BAND_TRIM[`band:${island.bands[index]?.id.split(":").at(-1) ?? ""}`] ?? trimColor(island));
 }
 
 /**

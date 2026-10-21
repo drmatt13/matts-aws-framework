@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { App, Stack } from "aws-cdk-lib";
@@ -46,7 +47,7 @@ const catalog = defineResources({
 });
 
 function config(): FrameworkConfig {
-  return defineFrameworkConfig({
+  return defineFrameworkConfig({ networks: [fixtureVpc],
     resources: catalog, defaults, http: [{ "/work": {
       directory: "/lambda_functions/http_functions/work", methods: ["POST"], auth: true,
       environment: {
@@ -98,7 +99,7 @@ test("a stack's public constructs become the catalog, and reach a workload in an
 test("a reference into an undeclared stack is refused by the catalog", () => {
   const other = defineResources({ referenceExamples: resource.stack<ExampleStack>() });
   assert.throws(
-    () => defineFrameworkConfig({
+    () => defineFrameworkConfig({ networks: [fixtureVpc],
       resources: { apiKey: resource.secret() }, defaults,
       http: [{ "/work": { directory: "/lambda_functions/http_functions/work", methods: ["POST"], auth: true,
         environment: { BUCKET: other.referenceExamples.documentsBucket.bucketName } } }],

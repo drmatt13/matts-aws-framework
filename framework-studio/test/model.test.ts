@@ -1,8 +1,9 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { after, before, test } from "node:test";
-import { defineFrameworkConfig, defineNetwork, defineResources, dynamodb, invokeLambda, resource, runsTask, sequence, startsWorkflow, trigger, workflow, type FrameworkConfig } from "@repo/framework/config";
+import { defineFrameworkConfig, INTERFACE_ENDPOINT_SERVICES, defineNetwork, defineResources, dynamodb, invokeLambda, resource, runsTask, sequence, startsWorkflow, trigger, workflow, type FrameworkConfig } from "@repo/framework/config";
 import type { UserPool } from "aws-cdk-lib/aws-cognito";
 import type { ITable } from "aws-cdk-lib/aws-dynamodb";
 import { defaults } from "../../framework-config/defaults";
@@ -123,11 +124,11 @@ test("read connections locate authored entries, field declarations, assignments 
 
 test("task, workflow and integration relationships come from an isolated config", () => {
   const catalog = defineResources({ data: resource.stack<{ readonly records: ITable }>() });
-  const config = defineFrameworkConfig({
+  const config = defineFrameworkConfig({ networks: [fixtureVpc],
     resources: catalog, defaults, webSocket: [], services: [],
     http: [{ "/process": { directory: "/test/fixtures/caller", methods: ["POST"], cloud: { bindings: [runsTask("worker"), startsWorkflow("process")] } } }],
     events: [{ worker: { directory: "/test/fixtures/workload-handler" } }],
-    tasks: [{ worker: { directory: "/test/fixtures/task-worker", deploy: "both" } }],
+    tasks: [{ worker: { cloud: { vpc: fixtureVpc }, directory: "/test/fixtures/task-worker", deploy: "both" } }],
     workflows: [{ process: workflow(() => sequence(invokeLambda("worker"), dynamodb.put(catalog.data.records, { item: { pk: "example" } })), { timeoutSeconds: 60 }) }],
   });
   const model = projectModel(config as unknown as FrameworkConfig, { mode: "dev", webSocketApi: false });
@@ -229,7 +230,7 @@ test("the three native Cognito hooks connect the public pool to their events in 
 
 test("typed trigger descriptors normalize to declared resource-to-event edges with adapter metadata", () => {
   const catalog = defineResources({ identity: resource.stack<{ pool: UserPool }>() });
-  const config = defineFrameworkConfig({ resources: catalog, defaults, http: [], webSocket: [], services: [], events: [{ event: { directory: "/test/fixtures/workload-handler", triggers: [trigger.cognito(catalog.identity.pool, { id: "signup", operation: "preSignUp", accepts: "cognito" })] } }] });
+  const config = defineFrameworkConfig({ networks: [fixtureVpc], resources: catalog, defaults, http: [], webSocket: [], services: [], events: [{ event: { directory: "/test/fixtures/workload-handler", triggers: [trigger.cognito(catalog.identity.pool, { id: "signup", operation: "preSignUp", accepts: "cognito" })] } }] });
   for (const mode of ["dev", "prod"] as const) {
     const model = projectModel(config as unknown as FrameworkConfig, { mode, webSocketApi: false });
     const edge = model.edges.find((edge) => edge.relation === "trigger")!;
@@ -315,7 +316,7 @@ test("Cognito event Lambda build settings are editable and an outdated registry 
 });
 
 test("Lambda settings inherit section defaults and Python has no Node bundling controls", () => {
-  const config = defineFrameworkConfig({
+  const config = defineFrameworkConfig({ networks: [fixtureVpc],
     defaults: {
       lambda: { runtime: "nodejs24", packaging: "zip", architecture: "arm64", memorySize: 128, timeoutSeconds: 10, bundling: { minify: true } },
       http: { architecture: "x86_64", runtime: "nodejs22", logRetentionDays: 14, bundling: { minify: false } },
@@ -345,10 +346,10 @@ test("the projection follows the framework's rules on a config of its own", () =
   // An isolated Lambda that runs a task reaches ECS only through its endpoint,
   // which the framework refuses to leave out.
   const config = defineFrameworkConfig({
-    network: defineNetwork({ cidr: "10.0.0.0/16", zones: 2, interfaceEndpoints: ["ecs"] }),
+    networks: [defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, interfaceEndpoints: ["ecs"] })],
     defaults: { lambda: { runtime: "nodejs24", packaging: "zip", architecture: "arm64", memorySize: 128, timeoutSeconds: 10, bundling: {} } },
     http: {
-      "/orders": {
+      "/orders": { vpc: fixtureVpc,
         directory: "/lambda_functions/http_functions/orders",
         methods: ["POST"],
         subnet: "isolated",
@@ -358,7 +359,7 @@ test("the projection follows the framework's rules on a config of its own", () =
     webSocket: {},
     events: {},
     services: {},
-    tasks: { rollup: { deploy: "both" } },
+    tasks: { rollup: { cloud: { vpc: fixtureVpc }, deploy: "both" } },
   }) as unknown as FrameworkConfig;
   const model = projectModel(config, { mode: "dev", webSocketApi: false });
   assert.equal(model.status, "ok");
@@ -373,5 +374,14 @@ test("the projection follows the framework's rules on a config of its own", () =
   assert.ok(model.edges.some((edge) => edge.relation === "runsTask" && edge.to === "task:rollup"));
   const subnet = model.fields["lambda:orders"]?.find((fact) => fact.field === "lambda.subnet");
   assert.deepEqual([subnet?.effective, subnet?.provenance, subnet?.authored], ["isolated", "declared on the entry", "isolated"]);
-  assert.equal(model.network?.monthlyCost.interfaceEndpoints, 14.6);
+  assert.equal(model.networks?.[0]?.monthlyCost.interfaceEndpoints, 14.6);
+});
+
+
+test("each mode exposes the complete framework endpoint catalog without gateway services", () => {
+  for (const model of Object.values(snapshot.models)) {
+    assert.deepEqual(model.interfaceEndpointServices, [...INTERFACE_ENDPOINT_SERVICES]);
+    assert.ok(!new Set<string>(model.interfaceEndpointServices).has("s3"));
+    assert.ok(!new Set<string>(model.interfaceEndpointServices).has("dynamodb"));
+  }
 });

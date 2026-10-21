@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -28,7 +29,7 @@ const userPool = { userPoolId: resources.pool.userPoolId, userPoolClientId: reso
 
 /** `null` is a config that names no pool. */
 function config(sections: Record<string, unknown>, pool: unknown = userPool): FrameworkConfig {
-  return defineFrameworkConfig({
+  return defineFrameworkConfig({ networks: [fixtureVpc],
     resources, defaults, http: [], webSocket: [], events: [], services: [],
     ...(pool === null ? {} : { userPool: pool }),
     ...sections,
@@ -59,8 +60,8 @@ test("userPool: true hands every kind of workload the config's pool, before its 
       },
     }],
     events: [{ "user-import": { directory: directory("event_functions", "user-import"), userPool: true } }],
-    services: [{ "/accounts/*": { directory: "/ecs_containers/services/accounts", methods: "*", auth: true, port: 5000, userPool: true } }],
-    tasks: [{ "export-users": { directory: "/ecs_containers/tasks/export-users", userPool: true } }],
+    services: [{ "/accounts/*": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/services/accounts", methods: "*", auth: true, port: 5000, userPool: true } }],
+    tasks: [{ "export-users": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/tasks/export-users", userPool: true } }],
     tools: [{ "invite-user": { directory: directory("tool_functions", "invite-user"), userPool: true } }],
   });
   for (const reference of ["lambda:reports", "lambda:authorizer", "lambda:user-import", "service:accounts", "task:export-users", "lambda:invite-user"]) {
@@ -74,7 +75,7 @@ test("userPool: true hands every kind of workload the config's pool, before its 
 test("a tool or agent with auth: true is handed the pool; a route's or service's auth: true is its gateway's", () => {
   const built = config({
     http: [{ "/gated": { directory: directory("http_functions", "gated"), methods: ["GET"], auth: true } }],
-    services: [{ "/gated-service/*": { directory: "/ecs_containers/services/gated-service", methods: "*", auth: true, port: 5000 } }],
+    services: [{ "/gated-service/*": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/services/gated-service", methods: "*", auth: true, port: 5000 } }],
     tools: [{ "lookup-case": { auth: true }, echo: {} }],
     agents: [{ "support-agent": { auth: true, tools: ["lookup-case", "echo"] } }],
   });

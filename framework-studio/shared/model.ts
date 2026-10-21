@@ -82,6 +82,7 @@ export type Placement =
     }
   | {
       readonly kind: "vpc";
+      readonly networkId: string;
       readonly subnet: "public" | "private" | "isolated";
       readonly reason: string;
       readonly egress: { readonly ipv4: boolean; readonly ipv6: boolean };
@@ -95,6 +96,9 @@ export type Placement =
     };
 
 export interface NetworkModel {
+  readonly id: string;
+  readonly name?: string;
+  readonly constructId: string;
   readonly cidr: string;
   readonly zones: number;
   readonly egressOnlyInternetGateway: boolean;
@@ -260,6 +264,7 @@ export interface ModelResource {
   readonly frameworkStack?: boolean;
   /** Literal subnet selection read from the stack member's constructor. */
   readonly networkPlacement?: "public" | "private" | "isolated";
+  readonly networkId?: string;
   readonly deploymentFile?: import("./deployment-inputs").DeploymentInputFile;
   /** Client variable references and transformations, never resolved values. */
   readonly clientEnvironment?: import("./client-environment").ClientEnvironmentFile;
@@ -383,6 +388,8 @@ export interface ModeModel {
   readonly webSocketApi?: boolean;
   readonly triggers?: readonly import("./triggers").TriggerBinding[];
   readonly triggerAdapters?: readonly import("./triggers").TriggerAdapterMetadata[];
+  /** The framework's CDK-derived supported names, independent of regional availability. */
+  readonly interfaceEndpointServices?: readonly string[];
   /** Each event's declared onFailure destination. */
   readonly failureDestinations?: readonly import("./triggers").FailureDestination[];
   /** Shared framework defaults, separate from workload declarations. */
@@ -401,7 +408,9 @@ export interface ModeModel {
   readonly resources: readonly ModelResource[];
   readonly edges: readonly ModelEdge[];
   readonly workflows: readonly ModelWorkflow[];
-  readonly network?: NetworkModel;
+  readonly networks?: readonly NetworkModel[];
+  readonly managedDatabase?: import("./managed-database").ManagedDatabaseModel;
+  readonly databaseNetworkId?: string;
   /** Target ref to its editable fields, as resolved in this mode. */
   readonly fields: Readonly<Record<string, readonly FieldFact[]>>;
   readonly diagnostics: readonly Diagnostic[];

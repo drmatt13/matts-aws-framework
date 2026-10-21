@@ -1,3 +1,4 @@
+import { applicationVpc } from "../networks/application";
 import type { HttpSection } from "../contracts";
 import { resources } from "../resources";
 
@@ -45,6 +46,7 @@ export const authRoutes = {
       ...authEndpointEnvironment,
       COGNITO_DOMAIN_URL: resources.cognito.userPoolDomainUrl,
     },
+    vpc: applicationVpc,
     database: true,
     cloud: {
       constructId: "OAuthCallback",

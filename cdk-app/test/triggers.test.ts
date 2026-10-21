@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { App, Stack, CfnResource } from "aws-cdk-lib";
@@ -15,7 +16,7 @@ import { appEventRegistry } from "../lib/framework/framework-events";
 const env = { account: "111122223333", region: "us-east-1" };
 const catalog = defineResources({ pool: resource.cdk<cognito.UserPool>(), bus: resource.cdk<events.IEventBus>(), dlq: resource.cdk<sqs.IQueue>() });
 function setup(triggers: readonly EventTrigger[] = [], mode: "dev" | "prod" = "dev", native = false) {
-  const config = defineFrameworkConfig({ resources: catalog, defaults, http: [], services: [], webSocket: [], events: [{ event: { directory: "/test/fixtures/workload-handler", triggers } }] }) as unknown as FrameworkConfig;
+  const config = defineFrameworkConfig({ networks: [fixtureVpc], resources: catalog, defaults, http: [], services: [], webSocket: [], events: [{ event: { directory: "/test/fixtures/workload-handler", triggers } }] }) as unknown as FrameworkConfig;
   const app = new App();
   initializeFrameworkResources(app, { config, mode, deployment: "test", readers: { env: {} } });
   const compute = new Stack(app, "AsynchronousLambdaFunctionsStack", { env });
@@ -54,7 +55,7 @@ test("native hooks, imported pools, unknown ownership and missing actual resourc
   // Exercise the adapter directly with a linked imported pool in an isolated app.
   const { attachFrameworkTriggers } = require("../lib/framework/framework-triggers") as typeof import("../lib/framework/framework-triggers");
   const otherCatalog = defineResources({ imported: resource.cdk<cognito.UserPool>() });
-  const config = { ...defineFrameworkConfig({ resources: otherCatalog, defaults, http: [], webSocket: [], services: [], events: [] }), events: { event: { triggers: [trigger.cognito(otherCatalog.imported, { id: "signup", operation: "preSignUp", accepts: "cognito" })] } } } as unknown as FrameworkConfig;
+  const config = { ...defineFrameworkConfig({ networks: [fixtureVpc], resources: otherCatalog, defaults, http: [], webSocket: [], services: [], events: [] }), events: { event: { triggers: [trigger.cognito(otherCatalog.imported, { id: "signup", operation: "preSignUp", accepts: "cognito" })] } } } as unknown as FrameworkConfig;
   assert.throws(() => attachFrameworkTriggers(imported.app, config), /not linked in this graph/);
   linkResource(imported.owner, otherCatalog.imported, pool as cognito.UserPool);
   assert.throws(() => attachFrameworkTriggers(imported.app, config), /imported pools do not support mutation/);
@@ -91,7 +92,7 @@ test("EventBridge rules attach in the existing function owner, grant scoped invo
 test("changing the destination within an event owner preserves rule logical and physical identities", () => {
   const build = (destination: "first" | "second") => {
     const descriptor = trigger.eventbridge(catalog.bus, { id: "orders", accepts: "eventbridge", eventPattern: { source: ["orders"] } });
-    const config = defineFrameworkConfig({ resources: catalog, defaults, http: [], webSocket: [], services: [], events: [{
+    const config = defineFrameworkConfig({ networks: [fixtureVpc], resources: catalog, defaults, http: [], webSocket: [], services: [], events: [{
       first: { directory: "/test/fixtures/workload-handler", triggers: destination === "first" ? [descriptor] : [] },
       second: { directory: "/test/fixtures/caller", triggers: destination === "second" ? [descriptor] : [] },
     }] }) as unknown as FrameworkConfig;
@@ -117,6 +118,6 @@ test("validation is atomic and imported buses cannot silently cross accounts", (
   const imported = defineResources({ foreign: resource.cdk<events.IEventBus>() });
   const foreign = events.EventBus.fromEventBusArn(current.owner, "Foreign", "arn:aws:events:us-east-1:999999999999:event-bus/foreign");
   linkResource(current.owner, imported.foreign, foreign);
-  const config = defineFrameworkConfig({ resources: imported, defaults, http: [], services: [], webSocket: [], events: [{ event: { directory: "/test/fixtures/workload-handler", triggers: [trigger.eventbridge(imported.foreign, { id: "foreign", accepts: "eventbridge", eventPattern: { source: ["orders"] } })] } }] }) as unknown as FrameworkConfig;
+  const config = defineFrameworkConfig({ networks: [fixtureVpc], resources: imported, defaults, http: [], services: [], webSocket: [], events: [{ event: { directory: "/test/fixtures/workload-handler", triggers: [trigger.eventbridge(imported.foreign, { id: "foreign", accepts: "eventbridge", eventPattern: { source: ["orders"] } })] } }] }) as unknown as FrameworkConfig;
   assert.throws(() => attachFrameworkTriggers(current.app, config), /same explicit account and region/);
 });

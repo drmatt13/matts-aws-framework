@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -23,7 +24,7 @@ const manifest: GatewayToolManifest = {
 };
 
 const config = (): FrameworkConfig =>
-  defineFrameworkConfig({
+  defineFrameworkConfig({ networks: [fixtureVpc],
     defaults,
     http: [],
     webSocket: [],
@@ -119,7 +120,7 @@ test("a local agent gets no database URL, as its Runtime gets none: tools touch 
 });
 
 test("a caller's local invokesAgent descriptor is one the runtime reads", () => {
-  const caller = defineFrameworkConfig({
+  const caller = defineFrameworkConfig({ networks: [fixtureVpc],
     defaults,
     http: [
       {
@@ -158,7 +159,7 @@ test("locally, a tool's contract is read live: an edited description is what the
     `import { z } from "zod";\nexport const contract = { description: ${JSON.stringify(description)}, request: z.object({ q: z.string() }), response: z.object({ a: z.string() }) };\n`;
   writeFileSync(path.join(directory, "index.ts"), "export const lambdaHandler = async () => ({});");
   writeFileSync(path.join(directory, "contract.ts"), contract("First wording."));
-  const probe = defineFrameworkConfig({
+  const probe = defineFrameworkConfig({ networks: [fixtureVpc],
     defaults,
     http: [],
     webSocket: [],
@@ -190,7 +191,7 @@ test("through the real local executor, a tool receives the argument map and Gate
     path.join(directory, "index.ts"),
     "export async function lambdaHandler(event: unknown, context: { clientContext?: { custom?: unknown } }) { return { event, custom: context.clientContext?.custom }; }",
   );
-  const probe = defineFrameworkConfig({
+  const probe = defineFrameworkConfig({ networks: [fixtureVpc],
     defaults,
     http: [],
     webSocket: [],

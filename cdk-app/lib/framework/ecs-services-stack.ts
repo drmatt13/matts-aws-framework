@@ -1,3 +1,4 @@
+import { networkConstructId } from "@repo/framework/config";
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
@@ -85,13 +86,14 @@ export class EcsServicesStack extends cdk.Stack {
       mode: props.cloud.mode,
     };
 
-    const vpc = frameworkVpc(this);
-
-    const cluster = new ecs.Cluster(this, "EcsCluster", {
-      vpc,
-    });
-
+    const clusters = new Map<string, ecs.Cluster>();
     for (const target of services) {
+      const network = target.vpc!;
+      let cluster = clusters.get(network.id);
+      if (!cluster) {
+        cluster = new ecs.Cluster(this, networkConstructId(network, "EcsCluster"), { vpc: frameworkVpc(this, network) });
+        clusters.set(network.id, cluster);
+      }
       this.addService(cluster, target, context);
     }
   }

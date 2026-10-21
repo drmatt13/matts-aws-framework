@@ -164,11 +164,11 @@ test("zero-result searches fade the whole map and whitespace restores the overvi
 test("network fixtures can be selected from the map's accessible item list", async () => {
   await mount();
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "s3 endpoint" }));
-  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "prop:endpoint:s3"));
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "prop:vpc:application:endpoint:s3"));
   await draw();
   assert.equal(debug().stats().focus, "selection");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Internet gateway" }));
-  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "prop:internet-gateway"));
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "prop:vpc:application:internet-gateway"));
 });
 
 test("missing required connections paint red X markers and clicking the marker selects its guidance", async () => {
@@ -549,7 +549,8 @@ test("deployment tags leave the full caption width available and select their ow
 test("WebSocket and managed lock badges paint identical borders", () => {
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models) });
   const renderer = new SceneRenderer(document.createElement("canvas"));
-  renderer.setScene(scene);
+  // Compare the same presence state; painter order can encounter a ghost lock first.
+  renderer.setScene({ ...scene, nodes: scene.nodes.map(node => ({ ...node, presence: "built" as const })) });
   const viewport = { width: 1920, height: 1000 };
   renderer.render({ camera: fitScene(scene, viewport), viewport, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene) });
   const socket = iconStrokes.find(({ icon }) => icon === iconUrl("webSocket"));

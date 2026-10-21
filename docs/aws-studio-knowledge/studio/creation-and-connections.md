@@ -29,11 +29,23 @@ Current source implements **Add to Application**, not a disabled menu. [AddMenu]
 | --- | --- |
 | Function / API route | Node TypeScript zip handler plus literal section and root array registration; HTTP/WebSocket/event categories. Compatible existing routed Lambda aliases are appended to the original literal section, preserving local references, imports, settings and construct identity. WebSocket modules narrow their section type with an exact `Pick`. Other runtimes/images remain manually authored |
 | Stack | Application stack exposing an SQS queue, catalog type import/declaration and actual CDK entrypoint instantiation; custom members remain source-owned |
-| VPC | Configure the framework's single shared network, not an independent second VPC. Prod builds it when required; deployment may replace infrastructure |
+| VPC | Create an independent VPC module and registry entry. Each has its own map island and settings; prod builds it when used. Placement edits generate imported references and subnet settings together |
 | Workflow | Identity workflow or initial sequence of existing event Lambdas/tasks through the existing DSL |
 | Service / task | Node source, Dockerfile, declaration; service manifest and generated Compose/lock changes join the review where needed. No new arbitrary Docker execution path |
 | Agent | Contract, agent/module/tool loop using shared model configuration and declared existing tools, workspace manifest and TypeScript configuration; not a tool creator or arbitrary agent-language generator |
 | Input / secret | Catalog declaration and commented template keys; no authored environment values or secret provisioning |
+
+The VPC creator separates immutable `id` / `cloud.constructId` from its optional
+display `name`. Changing a display name preserves deployed construct identity.
+The form and server reject duplicate IDs, duplicate deployed identities, invalid
+private `/16` ranges and overlapping ranges before source writes. The DSL still
+permits intentionally overlapping independent VPCs; Studio refuses to introduce
+one accidentally. An existing intentional overlap can keep its CIDR while other
+settings change. A VPC can be removed only after workloads, the database and all
+other source imports/re-exports have stopped using it. Removal reviews the registry,
+import, exclusive declaration module and map descriptions together, and uses the
+same conflict checks, rollback and undo/redo as creation. Custom modules or computed
+references stay source-owned and produce an actionable refusal.
 
 Descriptions for every family use [framework-config/descriptions.ts](../../../framework-config/descriptions.ts), which the existing Inspector reads and edits. Optional input/secret consumer bindings reuse compatible catalog imports and the framework's ARN or startup-value delivery. Inputs/secrets share declarations across graphs; their authored values remain independent in each mode's protected input file. Creation refuses collisions, incompatible route reuse, nonliteral compositions and unknown references. Apply selects the created entity and saves the reviewed authored/generated artifacts; it does not deploy or start containers. Preview generation can fail when offline npm cache/workspace inputs are insufficient. Browser usability and live provisioned behavior require separate checks. The [capability matrix](../reference/capabilities.md) distinguishes implemented source paths from external validation.
 

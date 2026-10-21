@@ -13,7 +13,7 @@ live in `src/views/InspectorUI.tsx`. Board, Isometric and Database use the same 
 | Scrolling | One content region, with close and draft actions outside it; a new selection starts at the top |
 | Type | 20 px item titles, 14 px body, 13 px labels, 12 px captions; monospace for identifiers and source |
 | Spacing | Shared 4, 8, 12, 16 and 20 px tokens; 20 px panel gutters |
-| Controls | 34 px inputs/selects, 32 px actions and icon actions, 24 px supporting disclosures, 16 px checkboxes; 44 px control targets for touch |
+| Controls | 34 px inputs/selects, 32 px actions and icon actions, 24 px supporting disclosures; shared On/Off switches for boolean settings, checkboxes for acknowledgements and multi-selection; 44 px control targets for touch |
 | Sections | `InspectorSection` for immediate controls; `InspectorDisclosure` for supporting information |
 | Forms | Associated labels, inline units, visible error messages, semantic `FormGroup` boundaries |
 | Color | Existing theme surfaces; teal/violet for environments, accept/refuse colors for validation |
@@ -29,6 +29,21 @@ gap from its cards to its selector. Labels, controls and default notes share col
 At widths up to 420 px, fields stack their labels above controls, mapping actions wrap,
 and primary dialog actions use the full row. Long labels and source references wrap;
 selected options reserve their arrow space and truncate within the control.
+Boolean setting rows keep their label and right-aligned switch on the same line at all
+widths, with room for long labels to wrap. `InspectorSwitch` in `InspectorUI.tsx` owns
+the existing On/Off appearance, accessible name, checked state and native button keyboard
+behavior. Workload/default, VPC, database, input, client mapping and creation controls
+reuse it while retaining their existing draft, validation and disabled behavior.
+
+VPC interface endpoints use `InterfaceEndpointPicker` in both the network inspector and
+creation form. Selected endpoints remain visible as removable service chips. **Add services**
+opens a searchable dropdown with AWS service/family artwork, friendly names, exact endpoint
+IDs and a visible selection mark. Search and selection stay in place for choosing related
+variants such as `ecr.api` and `ecr.dkr`; Escape closes only the picker and restores its
+toggle's focus. Arrow keys move through results. The catalog comes from the framework's
+CDK-derived list in each mode's snapshot; artwork is presentation metadata and never a
+second service allowlist. S3 and DynamoDB gateway switches remain separate. Keep billing
+help visible; the catalog does not verify regional service availability.
 
 ## Information order
 
@@ -46,8 +61,13 @@ Catalog cards say Available/Unavailable to describe declaration availability rat
 than deployed health. Stack members link to their parent; tools link to their consuming
 agents; event functions and framework-managed resources explain their fixed availability.
 These do not get unsupported deployment overrides. Local services and network fixtures
-use the same cards and identify Compose or the production VPC as their configuration source. Islands configure shared defaults;
-select an individual entry to change its deployment scope. Client mapping Dev/Prod pills
+use the same cards and identify Compose or the production VPC as their configuration source.
+VPC island inspectors configure only the selected network and list its entries. Global
+Lambda defaults belong to Serverless compute (and the related API/tool defaults to their
+family inspectors), container defaults remain under APIs, and connection pool defaults
+appear beside Managed PostgreSQL controls. These defaults apply across VPCs; they are
+never scoped by which network is selected. Select an individual entry to change its
+deployment scope. Client mapping Dev/Prod pills
 continue to control file generation rather than workload deployment.
 
 For compute, a compact description preview follows Deployment and precedes memory,
@@ -64,7 +84,7 @@ file destination and saved/default/empty state. Allowed values use a select; fre
 use the shared environment value control. Secrets start masked. Revert and default actions
 stage through the existing private environment-file review rather than navigating away.
 
-Checkbox help describes what the option does and stays the same when toggled. Keep related
+Boolean setting help describes what the option does and stays the same when toggled. Keep related
 controls in place and disable them when inapplicable (including input defaults and client
 mapping options). Draft restrictions belong in existing status space; reserve that space
 for both messages so wrapping on narrow panels cannot move the controls below it.

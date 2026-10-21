@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -40,17 +41,17 @@ function repository(
 
 /** Four services, one per deploy setting; two of them run locally. */
 function config(services: Record<string, Record<string, unknown>> = {}): FrameworkConfig {
-  return defineFrameworkConfig({
+  return defineFrameworkConfig({ networks: [fixtureVpc],
     resources: defineResources({}),
     defaults,
     http: [],
     webSocket: [],
     events: [],
     services: [{
-      "/orders/*": { directory: "/ecs_containers/services/orders", methods: ["GET"], port: 8000, healthCheckPath: "/health", deploy: "local-only" },
-      "/billing/*": { directory: "/ecs_containers/services/billing", methods: "*", deploy: "both" },
-      "/reports/*": { directory: "/ecs_containers/services/reports", methods: ["GET"], port: 8100, deploy: "cloud-only" },
-      "/archive/*": { directory: "/ecs_containers/services/archive", methods: ["GET"], port: 8200, deploy: "none" },
+      "/orders/*": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/services/orders", methods: ["GET"], port: 8000, healthCheckPath: "/health", deploy: "local-only" },
+      "/billing/*": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/services/billing", methods: "*", deploy: "both" },
+      "/reports/*": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/services/reports", methods: ["GET"], port: 8100, deploy: "cloud-only" },
+      "/archive/*": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/services/archive", methods: ["GET"], port: 8200, deploy: "none" },
       ...services,
     }],
   } as never);
@@ -221,7 +222,7 @@ test("a generated container docker-compose.yml does not include is refused, sinc
 test("a declared value reaches the probe intact, whatever it contains", () => {
   const { repositoryRoot, dispose } = repository(SOURCES);
   try {
-    const odd = config({ "/orders/*": { directory: "/ecs_containers/services/orders", methods: ["GET"], port: 8000, healthCheckPath: "/it's \\ \"ok\"", deploy: "local-only" } });
+    const odd = config({ "/orders/*": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/services/orders", methods: ["GET"], port: 8000, healthCheckPath: "/it's \\ \"ok\"", deploy: "local-only" } });
     const services = parseCompose(composeServicesFile(odd, authored(INCLUDED), { repositoryRoot })!).services!;
     const script = (services.orders!.healthcheck as { test: string[] }).test[3]!;
     // Valid JavaScript, requesting exactly the declared path.

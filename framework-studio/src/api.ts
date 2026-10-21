@@ -14,6 +14,7 @@ import type { ResourceDetails, ResourceIntent, ResourcePlan, ResourceApply } fro
 import type { Mode } from "../shared/model";
 import type { InfrastructureState } from "../shared/infrastructure";
 import type { DeploymentInputDetails, DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
+import { STUDIO_PROTOCOL_VERSION, studioProtocolProblem } from "../shared/protocol";
 
 /**
  * The studio's server, from the page's side.
@@ -34,11 +35,13 @@ export class ApiError extends Error {
 }
 
 export async function call<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+  const problem = body === undefined ? undefined : studioProtocolProblem(document.querySelector<HTMLMetaElement>('meta[name="studio-protocol"]')?.content);
+  if (problem) throw new ApiError(409, problem);
   const response = await fetch(`/api${path}`, {
     method: body === undefined ? "GET" : "POST",
     cache: "no-store",
     signal,
-    headers: { "x-studio-token": token, ...(body === undefined ? {} : { "content-type": "application/json" }) },
+    headers: { "x-studio-token": token, "x-studio-protocol": STUDIO_PROTOCOL_VERSION, ...(body === undefined ? {} : { "content-type": "application/json" }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const payload = (await response.json().catch(() => ({}))) as { error?: string };

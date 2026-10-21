@@ -29,10 +29,6 @@ export function shortStack(name: string, deployment: string): string {
   return name.startsWith(`${deployment}-`) ? name.slice(deployment.length + 1) : name;
 }
 
-export function maskAccount(account: string | undefined): string {
-  return account ?? "";
-}
-
 export const STATE_LABEL: Readonly<Record<string, string>> = {
   ready: "Deployed",
   "in-progress": "Updating",

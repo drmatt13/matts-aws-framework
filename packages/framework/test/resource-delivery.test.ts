@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -18,12 +19,12 @@ const manifest: ResourceManifest = { ...identity, attributes: {
 }, integrations: {} };
 function config(): FrameworkConfig {
   const environment = { RESOURCE: resources.one.queueUrl, INPUT: resources.input };
-  return defineFrameworkConfig({ resources, defaults,
+  return defineFrameworkConfig({ networks: [fixtureVpc], resources, defaults,
     http: [{ "/one": { directory: "/lambda_functions/http_functions/one", methods: ["POST"], auth: true, environment }, "/two": { directory: "/lambda_functions/http_functions/two", methods: ["POST"], auth: true, environment: { RESOURCE: resources.two.queueUrl } } }],
     webSocket: [{ $default: { directory: "/lambda_functions/websocket_functions/socket", environment } }],
-    services: [{ "/service/*": { directory: "/ecs_containers/services/service", methods: "*", auth: true, port: 5000, environment, secrets: { API_KEY: resources.key, PASSWORD: resources.vault.linked.field("password") } } }],
+    services: [{ "/service/*": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/services/service", methods: "*", auth: true, port: 5000, environment, secrets: { API_KEY: resources.key, PASSWORD: resources.vault.linked.field("password") } } }],
     events: [{ event: { directory: "/lambda_functions/event_functions/event", environment } }],
-    tasks: [{ task: { directory: "/ecs_containers/tasks/task", environment } }], workflows: [],
+    tasks: [{ task: { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/tasks/task", environment } }], workflows: [],
   } as never);
 }
 

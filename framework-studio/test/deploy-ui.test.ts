@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { after, afterEach, before, test } from "node:test";
 import { createElement as h } from "react";
 import type { DeployOverview, DiscoveryView, DiscoveredDeploymentView, PlanSummaryView, PlanView, TeardownPlanView } from "../shared/deploy";
+import { STUDIO_PROTOCOL_VERSION } from "../shared/protocol";
 
 /**
  * The Deploy & Run page in a DOM, against scripted /api/deploy answers: what it
@@ -55,7 +56,7 @@ before(async () => {
   // The page imports its stylesheet; Node has nothing to do with it.
   (require as unknown as { extensions: Record<string, unknown> }).extensions[".css"] = () => {};
   const { JSDOM } = require("jsdom");
-  dom = new JSDOM("<!doctype html><html><head><meta name=\"studio-token\" content=\"t\"></head><body></body></html>", { url: "http://localhost/", pretendToBeVisual: true });
+  dom = new JSDOM(`<!doctype html><html><head><meta name="studio-token" content="t"><meta name="studio-protocol" content="${STUDIO_PROTOCOL_VERSION}"></head><body></body></html>`, { url: "http://localhost/", pretendToBeVisual: true });
   for (const name of ["window", "self", "document", "navigator", "HTMLElement", "Node", "MutationObserver", "getComputedStyle"] as const) Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] });
   // The studio's event stream, which a test can speak through: emit(event, data).
   Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class {

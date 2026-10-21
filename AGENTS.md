@@ -52,15 +52,20 @@ update affected knowledge pages when those contracts change.
 - Keep public paths, target ids, and deployed construct identities distinct. Preserve
   cloud.constructId, stack scopes, historical AsynchronousLambdaFunctionsStack identity,
   and stack-prefixed output names; compare logical ids when moving infrastructure.
-- A workload reaches the database only by declaring `database: true` (framework.config.ts
-  names the database); it logs in with IAM, so never give a workload a database password
-  or secret. A Lambda joins the network with `subnet: "private"` or `"isolated"`, or
-  `database: true`; a container's `cloud.subnet` is `"public"` or `"private"`. Never set
-  CDK vpc, subnets or security groups on a framework workload by hand. NAT, the
-  egress-only gateway and every endpoint are declared only in framework-config/network.ts.
-  Application stacks build into the network with `frameworkVpc(this)`, which only a
-  production deployment builds. Inside a Lambda in the VPC, an SDK client with a custom
-  `endpoint` passes `useDualstackEndpoint: false`.
+- A workload reaches the database only by declaring `database: true`; framework.config.ts
+  names the imported `defineDatabase` declaration in framework-config/databases/<id>/index.ts,
+  which owns its native resource, VPC, subnet and PostgreSQL policy. It logs in with IAM,
+  never a database password or secret. Every networked Lambda declares an imported `vpc`
+  beside `subnet` (private/isolated); every container declares `cloud.vpc` beside
+  `cloud.subnet` (public/private). VPC references are never inherited. Register literal
+  `networks: [applicationVpc, ...]` from framework-config/networks/<id>/index.ts; each
+  declaration owns its NAT, egress-only gateway and endpoints. Keep network IDs and
+  cloud.constructId stable. Never set CDK vpc, subnets or security groups on framework
+  workloads by hand. Native application resources use `frameworkVpc(this, importedVpc)`;
+  only production builds VPCs, lazily when used. Cross-VPC database access is rejected;
+  no automatic peering exists. Compose networking remains shared; existing local Lambda
+  egress rules use the selected VPC. A custom SDK endpoint in a VPC Lambda passes
+  `useDualstackEndpoint: false`.
 - Call runTask/startWorkflow through declared bindings, and push to WebSocket clients
   with webSocketConnections(event) from @repo/framework/runtime/websocket. Do not
   hand-author descriptor variables or branch on environment to select local versus AWS

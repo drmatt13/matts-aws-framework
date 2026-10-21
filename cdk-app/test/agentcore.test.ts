@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
@@ -59,7 +60,7 @@ function fixtures() {
 
 function config(toolId: string, agentId: string, http = {}): FrameworkConfig {
   const run = runOf(toolId);
-  return defineFrameworkConfig({
+  return defineFrameworkConfig({ networks: [fixtureVpc],
     defaults,
     http: [http],
     webSocket: [],
@@ -284,7 +285,7 @@ test("a workflow's invokeAgent step calls the Runtime with the workflow's role, 
   const invokeStep = invokeAgent as unknown as (agent: string, input: unknown) => Flow<unknown>;
   try {
     const base = config(toolId, agentId);
-    const framework = defineFrameworkConfig({
+    const framework = defineFrameworkConfig({ networks: [fixtureVpc],
       defaults,
       http: [],
       webSocket: [],

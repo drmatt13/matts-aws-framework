@@ -5,6 +5,7 @@
   "private": true,
   "exports": {
     "./config": "./src/config/index.ts",
+    "./config/database": "./src/config/database.ts",
     "./config/source": "./src/config/source.ts",
     "./deploy": "./src/deploy/index.ts",
     "./deploy/node": "./src/deploy/node.ts",

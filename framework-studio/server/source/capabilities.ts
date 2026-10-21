@@ -5,6 +5,7 @@ import type { TriggerAdapterMetadata, TriggerCapability } from "../../shared/tri
 import type { SourceLocation } from "../../shared/model";
 import { sha256 } from "../files";
 import { typeScriptFiles, type CatalogEntrySource, type StackMember } from "./catalog";
+import { declarationHost } from "./declarations";
 import { lineAndColumn, literalKey, unwrap } from "./syntax";
 import { triggerFacts } from "./trigger-facts";
 
@@ -27,7 +28,7 @@ export function discoverCapabilities(root: string, catalog: ReadonlyMap<string, 
   const configPath = path.join(root, "cdk-app/tsconfig.json");
   if (existsSync(configPath)) options = { ...ts.parseJsonConfigFileContent(ts.readConfigFile(configPath, ts.sys.readFile).config, ts.sys, path.dirname(configPath)).options, noEmit: true };
   const roots = [...new Set([...catalog.values()].map((entry) => path.join(root, entry.value.file)).concat(typeScriptFiles(path.join(root, "cdk-app/bin"))))];
-  const program = ts.createProgram(roots, options);
+  const program = ts.createProgram(roots, options, declarationHost(root, options));
   const checker = program.getTypeChecker();
   const canonical = new Map<string, ts.Symbol>();
   const canonicalSymbol = (module: string, name: string): ts.Symbol | undefined => {
@@ -145,7 +146,7 @@ export function discoverCapabilities(root: string, catalog: ReadonlyMap<string, 
       };
       visitNew(file);
     }
-    resultCatalog.set(id, { ...entry, ...(sites.length ? { stackUsage: { status: "referenced" as const, sites } } : {}), stack: { className: declaration.name?.text ?? entry.stack?.className ?? "Stack", location: locate(declaration.name ?? declaration), members } });
+    resultCatalog.set(id, { ...entry, ...(sites.length ? { stackUsage: { status: "referenced" as const, sites } } : {}), stack: { ...entry.stack, className: declaration.name?.text ?? entry.stack?.className ?? "Stack", location: locate(declaration.name ?? declaration), members } });
   }
   const result = { catalog: resultCatalog, capabilities, files: hashes };
   if (cache.size > 8) cache.delete(cache.keys().next().value!);

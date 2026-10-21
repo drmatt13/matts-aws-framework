@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { runInNewContext } from "node:vm";
 import test from "node:test";
@@ -84,7 +85,7 @@ test("generated-domain routing creates an acyclic graph with exact Cognito URLs,
   targets.lambda("example", fn);
   const api = new HttpApiGatewayStack(app, "Api", {
     env, targets, cognito: { userPool, userPoolClient }, frontendUrls: [website.cloudFrontUrl!],
-    config: defineFrameworkConfig({
+    config: defineFrameworkConfig({ networks: [fixtureVpc],
       resources: defineResources({}), defaults,
       http: [{ "/example": { directory: "/lambda_functions/http_functions/example", methods: ["GET"], auth: true } }],
       webSocket: [], services: [], events: [], tasks: [], workflows: [],
@@ -137,7 +138,7 @@ test("switching frontend hostname modes preserves construct identities and the A
     const userPoolClient = userPool.addClient("Client", { oAuth: { callbackUrls: [`${origin}/auth/callback`], logoutUrls: [origin] } });
     const api = new HttpApiGatewayStack(app, "Api", {
       env, cognito: { userPool, userPoolClient }, frontendUrls: [origin], targets: new FrameworkTargetRegistry(),
-      config: defineFrameworkConfig({ resources: defineResources({}), defaults, http: [], webSocket: [], services: [], events: [], tasks: [], workflows: [] }),
+      config: defineFrameworkConfig({ networks: [fixtureVpc], resources: defineResources({}), defaults, http: [], webSocket: [], services: [], events: [], tasks: [], workflows: [] }),
     });
     website.addApiOrigin(api.apiDomainName);
     if (website.routingStore) new FrontendRouting(api, "FrontendRouting", {

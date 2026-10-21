@@ -112,7 +112,7 @@ export async function resolveLocalWorkloadEnvironment(config: FrameworkConfig, t
     environment.PRIMARY_DATABASE_POOL_OPTIONS = JSON.stringify(binding.pool ?? DEFAULT_DATABASE_POOL);
     if (binding.readers) environment.PRIMARY_DATABASE_READ_URLS = "[]";
   }
-  if (target.kind === "lambda" && usesDualStackEndpoints(resolveNetwork(config), resolveLambdaTarget(config, target.id).subnet)) environment.AWS_USE_DUALSTACK_ENDPOINT = "true";
+  if (target.kind === "lambda" && target.vpc && usesDualStackEndpoints(resolveNetwork(config, target.vpc), resolveLambdaTarget(config, target.id).subnet)) environment.AWS_USE_DUALSTACK_ENDPOINT = "true";
   if (target.kind !== "workflow") Object.assign(environment, localInvocationDescriptors(config, targetId, options.runnerUrl ?? platform.LOCAL_INVOCATION_RUNNER_URL ?? "http://local-invocation-runner:8090"));
   return environment;
 }

@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer, type Server } from "node:http";
@@ -37,7 +38,7 @@ import {
  * way API Gateway answers it.
  */
 
-const config: FrameworkConfig = {
+const config: FrameworkConfig = { networks: [fixtureVpc],
   defaults: {
     lambda: {
       runtime: "nodejs24",
@@ -63,7 +64,7 @@ const config: FrameworkConfig = {
   webSocket: {},
   events: {},
   services: {
-    "/orders/*": {
+    "/orders/*": { cloud: { vpc: fixtureVpc },
       directory: "/ecs_containers/services/orders",
       methods: ["GET"],
     },

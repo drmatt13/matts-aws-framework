@@ -164,7 +164,7 @@ test("every node has facts, and network fixtures are framework-managed and follo
     assert.ok(facts.places.every((place) => place.where.length > 0), `${mode} ${node.id}`);
     assert.ok(!facts.notDeployed || facts.places.length === 0, `${mode} ${node.id}: a reason only when nothing deploys it`);
   }
-  assert.deepEqual(propHoverFacts(snapshot.models), { places: [{ env: "prod", where: "AWS VPC" }], frameworkManaged: true });
-  const unbuilt = { ...snapshot.models, prod: { ...snapshot.models.prod, network: { ...snapshot.models.prod.network!, builtInProd: false } } };
-  assert.deepEqual(propHoverFacts(unbuilt), { places: [], notDeployed: "Not built: nothing is placed in the VPC", frameworkManaged: true });
+  assert.deepEqual(propHoverFacts(snapshot.models, "prop:vpc:application:internet-gateway"), { places: [{ env: "prod", where: "AWS VPC" }], frameworkManaged: true });
+  const unbuilt = { ...snapshot.models, prod: { ...snapshot.models.prod, networks: [{ ...snapshot.models.prod.networks![0]!, builtInProd: false }] } };
+  assert.deepEqual(propHoverFacts(unbuilt, "prop:vpc:application:internet-gateway"), { places: [], notDeployed: "Not built: nothing is placed in the VPC", frameworkManaged: true });
 });

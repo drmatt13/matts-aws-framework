@@ -1,3 +1,4 @@
+import { applicationVpc } from "../networks/application";
 import type { HttpSection } from "../contracts";
 import { PROD_DEPLOYMENT } from "@repo/framework/config/source";
 
@@ -19,6 +20,7 @@ export const graphqlRoutes = {
       GRAPHQL_PERSISTED_DOCUMENTS_ONLY: "false",
     },
     userPool: true,
+    vpc: applicationVpc,
     database: true,
     cloud: { constructId: "GraphQLApi" },
   },

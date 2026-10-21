@@ -3,7 +3,7 @@
  *
  * A Lambda in the VPC (`subnet: "private"` or `"isolated"`, or `database:
  * true`) reaches, in AWS, only what its subnet routes to: IPv6 through the
- * egress-only internet gateway when framework-config/network.ts has one, and
+ * egress-only internet gateway when the selected VPC declaration has one, and
  * the network's endpoints. A host beyond that is unreachable from there: the
  * connection is not refused, it simply never answers until the function times
  * out. Locally the same call would succeed over the laptop's IPv4, and "works
@@ -86,15 +86,15 @@ export async function egressRefusal(
 export function egressFix(hostname: string, policy: EgressPolicy): string {
   const service = endpointServiceForHost(hostname);
   const endpoint = service === "s3" || service === "dynamodb"
-    ? `turn on gatewayEndpoints.${service} in framework-config/network.ts (free)`
+    ? `turn on gatewayEndpoints.${service} in the selected VPC declaration (free)`
     : service
-      ? `add "${service}" to interfaceEndpoints in framework-config/network.ts (about ${formatMonthlyCost(NETWORK_PRICES.interfaceEndpointMonthlyPerZone)} a month per zone)`
+      ? `add "${service}" to interfaceEndpoints in the selected VPC declaration (about ${formatMonthlyCost(NETWORK_PRICES.interfaceEndpointMonthlyPerZone)} a month per zone)`
       : undefined;
   const route = policy.subnet === "isolated"
     ? `give it subnet: "private"`
     : policy.ipv6
-      ? `give the private subnets IPv4 with natGateway: true in framework-config/network.ts (about $33 a month)`
-      : `turn on egressOnlyInternetGateway (free) or natGateway in framework-config/network.ts`;
+      ? `give the private subnets IPv4 with natGateway: true in the selected VPC declaration (about $33 a month)`
+      : `turn on egressOnlyInternetGateway (free) or natGateway in the selected VPC declaration`;
   return endpoint
     ? `${endpoint[0]!.toUpperCase()}${endpoint.slice(1)}, or ${route}.`
     : `Call it from a Lambda outside the VPC (subnet: "none"), or ${route}.`;

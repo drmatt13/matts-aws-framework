@@ -14,7 +14,7 @@ import { FrontendWebsiteS3Stack } from "../lib/app/frontend-website-s3-stack";
 import { FrontendRouting } from "../lib/app/frontend-routing";
 import { RdsStack } from "../lib/app/rds-stack";
 import { EventLambdaFunctionsStack } from "../lib/framework/event-lambda-functions-stack";
-import { assertCloudEdgesResolvable, validateFrameworkConfig } from "@repo/framework/config";
+import { assertCloudEdgesResolvable, isFrameworkDatabase, validateFrameworkConfig } from "@repo/framework/config";
 import { PROD_DEPLOYMENT, readAuthoredInputs } from "@repo/framework/config/source";
 import { initializeFrameworkResources, finalizeFrameworkResources } from "../lib/framework/framework-resources";
 import { describeFrameworkNetwork } from "../lib/framework/framework-network";
@@ -52,6 +52,7 @@ const deployment = resolveDeploymentInputs({
   getContext: (key) => app.node.tryGetContext(key),
   env: process.env,
   target: selection.target,
+  databaseSettings: isFrameworkDatabase(framework.database) ? framework.database.settings : undefined,
 });
 deployment.warnings.forEach((warning) => console.warn(warning));
 const { stackEnv, mode } = deployment;
@@ -67,7 +68,7 @@ if ((mode === "prod") !== PROD_DEPLOYMENT) {
 const stackId = (name: string) => `${deployment.deploymentName}-${name}`;
 
 initializeFrameworkResources(app, {
-  config: framework, mode, deployment: deployment.deploymentName,
+  config: framework, mode, deployment: deployment.deploymentName, env: stackEnv,
   readers,
 });
 
@@ -111,7 +112,7 @@ const foundation = createFrameworkFoundation(app, composition);
 const rdsStack = mode === "prod"
   ? new RdsStack(app, stackId("RdsStack"), {
       env: stackEnv,
-      primaryDatabaseName: "app_db",
+      definition: isFrameworkDatabase(framework.database) ? framework.database : undefined,
       retainStatefulResources: deployment.retainStatefulResources,
       backupRetentionDays: deployment.databaseBackupRetentionDays,
       databaseSettings: deployment.database,

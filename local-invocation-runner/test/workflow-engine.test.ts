@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
@@ -25,10 +26,10 @@ const repositoryRoot = path.resolve(__dirname, "..", "..");
 
 /** The declared fixture graph: validate, then run a container and wait. */
 const FIXTURE_WORKFLOW = "validate-and-process";
-const framework = defineFrameworkConfig({
+const framework = defineFrameworkConfig({ networks: [fixtureVpc],
   defaults, http: [], webSocket: [], services: [],
   events: [{ "validate-message": { directory: "/test/fixtures/workload-handler" } }],
-  tasks: [{ "process-message": { directory: "/test/fixtures/task-worker", deploy: "both" } }],
+  tasks: [{ "process-message": { cloud: { vpc: fixtureVpc }, directory: "/test/fixtures/task-worker", deploy: "both" } }],
   workflows: [{
     "validate-and-process": workflow<{ message: string }>(({ input }) => {
       const validated = invokeLambda<{ validatedBy: string }, { message: string }>("validate-message", { payload: input });

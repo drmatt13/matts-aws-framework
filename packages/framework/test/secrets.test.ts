@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -62,7 +63,7 @@ function serviceConfig(
   secrets: Record<string, unknown>,
   requirements: readonly CloudRequirement[] = [],
 ): FrameworkConfig {
-  return defineFrameworkConfig({
+  return defineFrameworkConfig({ networks: [fixtureVpc],
     resources,
     defaults,
     http: [],
@@ -76,7 +77,7 @@ function serviceConfig(
           port: 5000,
           deploy: "both",
           secrets,
-          cloud: { constructId: "ExampleService", requirements },
+          cloud: { vpc: fixtureVpc, constructId: "ExampleService", requirements },
         },
       },
     ],
@@ -87,7 +88,7 @@ function serviceConfig(
 }
 
 function lambdaConfig(environment: Record<string, unknown>): FrameworkConfig {
-  return defineFrameworkConfig({
+  return defineFrameworkConfig({ networks: [fixtureVpc],
     resources,
     defaults,
     http: [
@@ -296,7 +297,7 @@ test("an ARN projection under secrets says to drop the .arn", () => {
 test("a Lambda declaring startup secrets is sent to the ARN form", () => {
   assert.throws(
     () =>
-      defineFrameworkConfig({
+      defineFrameworkConfig({ networks: [fixtureVpc],
         resources,
         defaults,
         http: [
@@ -357,7 +358,7 @@ test("a bare secret in environment points at .arn rather than being accepted", (
 test("readSecret\\(\\) as a binding says where the read moved to", () => {
   assert.throws(
     () =>
-      defineFrameworkConfig({
+      defineFrameworkConfig({ networks: [fixtureVpc],
         resources,
         defaults,
         http: [

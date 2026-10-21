@@ -1,7 +1,9 @@
 import {
+  isFrameworkDatabase, databaseSettings,
   WORKFLOW_REFERENCE,
   assertCloudEdgesResolvable,
   endpointServices,
+  INTERFACE_ENDPOINT_SERVICES,
   formatResourceReference,
   getAgentBrowserRoutes,
   getFrameworkTargets,
@@ -16,7 +18,6 @@ import {
   isTargetEnabled,
   normalizeFrameworkConfig,
   triggerAdapters,
-  resolveLambdaTarget,
   resolveNetwork,
   resolveServiceTarget,
   subnetEgress,
@@ -25,6 +26,7 @@ import {
   walkWorkflow,
   NETWORK_PRICES,
   type FrameworkConfig,
+  type FrameworkNetwork,
   type NormalizedTarget,
   type ResourceReference,
 } from "@repo/framework/config";
@@ -45,6 +47,7 @@ import type {
 } from "../../shared/model";
 import { DEFAULT_FIELDS, fieldFacts } from "../edits/fields";
 import { projectDefaults } from "../edits/defaults";
+import { lambdaSpec } from "./lambda-spec";
 import { declarationOf, originInMessage, parseOrigin } from "./origin";
 
 /**
@@ -52,10 +55,11 @@ import { declarationOf, originInMessage, parseOrigin } from "./origin";
  *
  * Every fact here is a call into `@repo/framework/config`: targets and bindings
  * from normalization, lanes from `isTargetEnabled`/`isTargetDeployed`,
- * placement from `resolveLambdaTarget` and the network helpers. The projection
- * only reshapes them into something a browser can draw; it decides nothing the
- * framework has not already decided, and where the framework has no answer
- * (a stack's members, which only its class knows) it says so rather than guess.
+ * placement from `resolveLambdaTarget` (asked once per Lambda) and the network
+ * helpers. The projection only reshapes them into something a browser can
+ * draw; it decides nothing the framework has not already decided, and where the
+ * framework has no answer (a stack's members, which only its class knows) it
+ * says so rather than guess.
  */
 
 export interface ProjectionOptions {
@@ -130,7 +134,7 @@ export function targetLanes(config: FrameworkConfig, target: NormalizedTarget, o
 
 function compute(config: FrameworkConfig, target: NormalizedTarget): Compute {
   if (target.kind === "lambda") {
-    const spec = resolveLambdaTarget(config, target.id);
+    const spec = lambdaSpec(config, target.id);
     return {
       kind: "lambda",
       implementation: spec.packaging === "container" ? "container" : isNodeLambdaRuntime(spec.runtime) ? "typescript" : "python",
@@ -147,6 +151,7 @@ function compute(config: FrameworkConfig, target: NormalizedTarget): Compute {
     };
   }
   if (target.kind === "service" || target.kind === "task") {
+    const network = resolveNetwork(config, target.vpc);
     const container = target.cloud.service ?? target.cloud.task!;
     const service = target.kind === "service" ? resolveServiceTarget(config, target.id) : undefined;
     return {
@@ -177,7 +182,6 @@ function compute(config: FrameworkConfig, target: NormalizedTarget): Compute {
 }
 
 export function targetPlacement(config: FrameworkConfig, target: NormalizedTarget): Placement {
-  const network = resolveNetwork(config);
   if (target.kind === "workflow") {
     return { kind: "managed", reason: "Step Functions runs the state machine; it has no subnet." };
   }
@@ -185,24 +189,28 @@ export function targetPlacement(config: FrameworkConfig, target: NormalizedTarge
     return { kind: "outside", reason: "AgentCore Runtime runs outside the VPC." };
   }
   if (target.kind === "service" || target.kind === "task") {
+    const network = resolveNetwork(config, target.vpc);
     const container = target.cloud.service ?? target.cloud.task!;
     const declaration = target.origins[0] ? declarationOf(config, parseOrigin(target.origins[0])!) : undefined;
     const declared = (declaration?.cloud as Record<string, unknown> | undefined)?.subnet !== undefined;
     return {
       kind: "vpc",
+      networkId: network.id,
       subnet: container.subnet,
       reason: `Fargate always runs in the VPC; ${declared ? "cloud.subnet" : config.defaults.container?.subnet !== undefined ? "defaults.container.subnet" : "the framework's default"} chooses the ${container.subnet} subnet.`,
       egress: subnetEgress(network, container.subnet),
     };
   }
-  const spec = resolveLambdaTarget(config, target.id);
+  const spec = lambdaSpec(config, target.id);
   const declaration = target.origins[0] ? declarationOf(config, parseOrigin(target.origins[0])!) : undefined;
   if (spec.subnet === "none") {
     return { kind: "outside", reason: "Outside the VPC, with the whole internet." };
   }
+  const network = resolveNetwork(config, target.vpc);
   const lifted = declaration?.subnet === undefined && declaration?.database !== undefined;
   return {
     kind: "vpc",
+    networkId: network.id,
     subnet: spec.subnet,
     reason: lifted
       ? 'database: true places it in the private subnets.'
@@ -214,22 +222,25 @@ export function targetPlacement(config: FrameworkConfig, target: NormalizedTarge
   };
 }
 
-function networkModel(config: FrameworkConfig, targets: readonly NormalizedTarget[]): NetworkModel {
-  const network = resolveNetwork(config);
+function networkModel(config: FrameworkConfig, targets: readonly NormalizedTarget[], network: FrameworkNetwork): NetworkModel {
   const placed = targets.some((target) => {
+    if (target.vpc?.id !== network.id) return false;
     if (!isTargetDeployed(config, target.kind, target.id, "prod")) return false;
     if (target.kind === "service" || target.kind === "task") return true;
-    return target.kind === "lambda" && resolveLambdaTarget(config, target.id).subnet !== "none";
+    return target.kind === "lambda" && lambdaSpec(config, target.id).subnet !== "none";
   });
   const gateways = endpointServices(network).filter((service) => service === "s3" || service === "dynamodb");
   return {
+    id: network.id,
+    name: network.name,
+    constructId: network.cloud.constructId,
     cidr: network.cidr,
     zones: network.zones,
     egressOnlyInternetGateway: network.egressOnlyInternetGateway,
     natGateway: network.natGateway,
     gatewayEndpoints: gateways,
     interfaceEndpoints: [...network.interfaceEndpoints],
-    builtInProd: placed,
+    builtInProd: placed || (config.database?.vpc.id === network.id && !config.database.resource.absent),
     monthlyCost: {
       natGateway: network.natGateway ? NETWORK_PRICES.natGatewayMonthly : 0,
       interfaceEndpoints: interfaceEndpointsMonthlyCost(network, network.interfaceEndpoints.length),
@@ -319,7 +330,7 @@ function catalogModel(config: FrameworkConfig, readPaths: readonly (readonly str
   // A stack's members exist only in its class, so the members listed here are
   // the ones something reads. The server adds the rest from the class source.
   const known = new Set(resources.map((resource) => resource.id));
-  for (const path of [...readPaths, ...(config.database ? [config.database.path] : [])]) {
+  for (const path of [...readPaths, ...(config.database ? [config.database.resource.path] : [])]) {
     const [stack, member] = path;
     if (stack === undefined || member === undefined || !stacks.has(stack)) continue;
     const id = resourceId([stack, member]);
@@ -335,10 +346,10 @@ function catalogModel(config: FrameworkConfig, readPaths: readonly (readonly str
     });
   }
   if (config.database) {
-    const database = resourceId(config.database.path);
-    const owner = resourceId(config.database.path.slice(0, -1));
+    const database = resourceId(config.database.resource.path);
+    const owner = resourceId(config.database.resource.path.slice(0, -1));
     for (let index = 0; index < resources.length; index++) {
-      if (resources[index]!.id === database || resources[index]!.id === owner) resources[index] = { ...resources[index]!, frameworkManaged: "database" };
+      if (resources[index]!.id === database || resources[index]!.id === owner) resources[index] = { ...resources[index]!, frameworkManaged: "database", networkId: config.database.vpc.id };
     }
   }
   return resources;
@@ -623,6 +634,7 @@ export function projectModel(
     mode: options.mode,
     webSocketApi: options.webSocketApi,
     triggerAdapters: triggerAdapters(),
+    interfaceEndpointServices: [...INTERFACE_ENDPOINT_SERVICES],
     triggers: normalizeFrameworkConfig(config).triggers.map((binding) => ({ ...binding, resource: binding.resource ? resourceId(binding.resource.path) : "" })),
     failureDestinations: normalizeFrameworkConfig(config).failureDestinations.map(({ event, destination, retryAttempts, maxEventAgeSeconds }) => ({ event, destination: resourceId(destination.path), ...(retryAttempts !== undefined ? { retryAttempts } : {}), ...(maxEventAgeSeconds !== undefined ? { maxEventAgeSeconds } : {}) })),
     status: diagnostics.some((diagnostic) => diagnostic.severity === "error") ? "error" : "ok",
@@ -632,7 +644,13 @@ export function projectModel(
     edges,
     workflows: targets.map(workflowModel).filter((workflow): workflow is ModelWorkflow => workflow !== undefined),
     defaults: defaults.groups,
-    network: networkModel(config, targets),
+    networks: (config.networks ?? []).map(network => networkModel(config, targets, network)),
+    databaseNetworkId: config.database?.vpc.id,
+    ...(isFrameworkDatabase(config.database) ? { managedDatabase: {
+      id: config.database.id, resource: resourceId(config.database.resource.path), networkId: config.database.vpc.id,
+      subnet: config.database.subnet, engine: config.database.engine, databaseName: config.database.databaseName,
+      settings: databaseSettings(config.database), authored: config.database.settings,
+    } } : {}),
     fields: { ...Object.fromEntries(targets.map((target) => [target.reference, fieldFacts(config, target)])), ...defaults.fields },
     diagnostics,
     evaluatedInMs,

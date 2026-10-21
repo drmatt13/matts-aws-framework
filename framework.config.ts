@@ -1,7 +1,9 @@
+import { studioTestVpc } from "./framework-config/networks/test";
 import { defineFrameworkConfig } from "@repo/framework/config";
 import { defaults } from "./framework-config/defaults";
 import { resources } from "./framework-config/resources";
-import { network } from "./framework-config/network";
+import { applicationVpc } from "./framework-config/networks/application";
+import { applicationDatabase } from "./framework-config/databases/application";
 import { authRoutes } from "./framework-config/http/auth";
 import { graphqlRoutes } from "./framework-config/http/graphql";
 import { exampleRoutes } from "./framework-config/http/examples";
@@ -37,10 +39,10 @@ export { resources } from "./framework-config/resources";
 const framework = defineFrameworkConfig({
   resources,
   defaults,
-  network,
+  networks: [applicationVpc, studioTestVpc],
   // What a workload reaches by declaring database: true. Built only by a
   // production deployment; locally, the Compose Postgres stands in for it.
-  database: resources.rds.database,
+  database: applicationDatabase,
   // What a workload's userPool: true is handed, as USER_POOL_ID and
   // USER_POOL_CLIENT_ID, and what an auth: true tool or agent verifies its
   // caller against. The HTTP API's and AgentCore's authorizers check the same

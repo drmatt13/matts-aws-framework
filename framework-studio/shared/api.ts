@@ -17,6 +17,10 @@ export interface EditIntent {
 }
 
 export type DraftEdit =
+  | { readonly kind: "removeNetwork"; readonly network: string }
+  | { readonly kind: "database"; readonly database: string; readonly settings: import("@repo/framework/config/database").DatabaseSettingsInput }
+  | ({ readonly kind: "placement" } & import("./networks").PlacementEdit)
+  | { readonly kind: "network"; readonly network: string; readonly settings: import("./networks").NetworkSettings }
   | { readonly kind: "create"; readonly request: import("./creation").CreationRequest }
   | { readonly kind: "clientEnvironment"; readonly mappings: import("./client-environment").ClientEnvironmentMappings }
   | { readonly kind: "triggers"; readonly event: string; readonly bindings: readonly import("./triggers").TriggerBinding[] }

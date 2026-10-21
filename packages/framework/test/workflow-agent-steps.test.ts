@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import test from "node:test";
@@ -352,7 +353,7 @@ test("express workflows may invoke an agent: it is a request-response call", () 
 // ---------------------------------------------------------------------------
 
 const cognito = { USER_POOL_ID: "us-east-1_pool", USER_POOL_CLIENT_ID: "client" };
-const base = {
+const base = { networks: [fixtureVpc],
   defaults,
   http: [],
   webSocket: [],

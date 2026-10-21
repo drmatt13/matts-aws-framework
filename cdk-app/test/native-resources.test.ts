@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { App, Stack, SecretValue } from "aws-cdk-lib";
@@ -27,7 +28,7 @@ const catalog = defineResources({
 });
 const env = { account: "111122223333", region: "eu-west-2" };
 function config(environment: Record<string, unknown> = {}): FrameworkConfig {
-  return defineFrameworkConfig({ resources: catalog, defaults, http: [{ "/work": {
+  return defineFrameworkConfig({ networks: [fixtureVpc], resources: catalog, defaults, http: [{ "/work": {
     directory: "/lambda_functions/http_functions/work", methods: ["POST"], auth: true, environment,
     cloud: { bindings: [catalog.queue.grantSendMessages(), catalog.bucket.grantRead("incoming/*")] },
   } }], webSocket: [], services: [], events: [], tasks: [], workflows: [] } as never);
@@ -123,10 +124,10 @@ test("conditional secret parameters and linked encryption permissions attach to 
   class CredentialsStack extends Stack { public readonly credentials!: secretsmanager.ISecret; }
   const resources = defineResources({ provider: resource.fromEnv().enum("native", "external").default("native"), apiKey: resource.secret(), vault: resource.stack<CredentialsStack>() });
   for (const provider of ["native", "external"]) {
-    const configuration = defineFrameworkConfig({ resources, defaults, http: [], webSocket: [], events: [], tasks: [], workflows: [], services: [{ "/example/*": {
+    const configuration = defineFrameworkConfig({ networks: [fixtureVpc], resources, defaults, http: [], webSocket: [], events: [], tasks: [], workflows: [], services: [{ "/example/*": {
       directory: "/ecs_containers/services/example-service", port: 5000, auth: true, methods: "*", deploy: "both", environment: { PROVIDER: resources.provider },
       secrets: { API_KEY: resources.apiKey, CREDENTIALS: resources.vault.credentials.value },
-      cloud: { requirements: [{ when: { resource: resources.provider, equals: "external" }, require: [resources.apiKey] }] },
+      cloud: { vpc: fixtureVpc, requirements: [{ when: { resource: resources.provider, equals: "external" }, require: [resources.apiKey] }] },
     } }] });
     const app = new App(); initializeFrameworkResources(app, { config: configuration, mode: "prod", deployment: "example", readers: { env: { PROVIDER: provider } } });
     const stack = new EcsServicesStack(app, `Services${provider}`, { env, config: configuration, cloud: { mode: "prod" } });

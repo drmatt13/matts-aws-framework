@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
@@ -8,7 +9,7 @@ import { defaults } from "../../framework-config/defaults";
 import { registerAgentRoutes, type AgentInvoker } from "../src/agent-routes";
 
 const cognito = { USER_POOL_ID: "pool", USER_POOL_CLIENT_ID: "client" };
-const config = defineFrameworkConfig({
+const config = defineFrameworkConfig({ networks: [fixtureVpc],
   defaults,
   http: [
     {

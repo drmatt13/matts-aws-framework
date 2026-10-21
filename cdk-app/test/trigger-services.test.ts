@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { App, Duration, Stack, CfnResource } from "aws-cdk-lib";
@@ -26,7 +27,7 @@ const catalog = defineResources({
 });
 type Native = "sqs" | "dynamodb" | "sns" | "s3" | "s3-cfn";
 function setup(triggers: readonly EventTrigger[] = [], options: { mode?: "dev" | "prod"; native?: Native; second?: readonly EventTrigger[]; onFailure?: EventFailureDestination } = {}) {
-  const config = defineFrameworkConfig({ resources: catalog, defaults, http: [], services: [], webSocket: [], events: [{
+  const config = defineFrameworkConfig({ networks: [fixtureVpc], resources: catalog, defaults, http: [], services: [], webSocket: [], events: [{
     event: { directory: "/test/fixtures/workload-handler", triggers, ...(options.onFailure ? { onFailure: options.onFailure } : {}) },
     second: { directory: "/test/fixtures/caller", triggers: options.second ?? [] },
   }] }) as unknown as FrameworkConfig;
@@ -269,7 +270,7 @@ test("DynamoDB reads stream presence from the table's own configuration, and imp
   const unresolved = new dynamodb.TableV2(current.owner, "Unresolved", { partitionKey: { name: "pk", type: dynamodb.AttributeType.STRING } });
   (unresolved.node.defaultChild as dynamodb.CfnGlobalTable).streamSpecification = { "Fn::If": ["Condition", { streamViewType: "KEYS_ONLY" }, { Ref: "AWS::NoValue" }] } as never;
   linkResource(current.owner, imports.unresolved, unresolved);
-  const config = (name: keyof typeof imports) => defineFrameworkConfig({ resources: imports, defaults, http: [], services: [], webSocket: [], events: [{ event: { directory: "/test/fixtures/workload-handler", triggers: [dynamoTrigger({}, imports[name])] } }] }) as unknown as FrameworkConfig;
+  const config = (name: keyof typeof imports) => defineFrameworkConfig({ networks: [fixtureVpc], resources: imports, defaults, http: [], services: [], webSocket: [], events: [{ event: { directory: "/test/fixtures/workload-handler", triggers: [dynamoTrigger({}, imports[name])] } }] }) as unknown as FrameworkConfig;
   assert.throws(() => attachFrameworkTriggers(current.app, config("withoutStream")), /no stream/);
   assert.throws(() => attachFrameworkTriggers(current.app, config("unresolved")), /stream configuration is unresolved/);
   attachFrameworkTriggers(current.app, config("withStream"));
@@ -283,7 +284,7 @@ test("S3 notifications for one bucket cannot be split across function owners", (
   const vpc = new Stack(current.app, "VpcEventFunctionsStack", { env });
   appEventRegistry(current.app).lambda("elsewhere", new lambda.Function(vpc, "Elsewhere", { code: lambda.Code.fromInline("exports.handler = async e => e"), handler: "index.handler", runtime: lambda.Runtime.NODEJS_24_X }));
   const notification = (id: string, eventTypes: string[]) => s3Trigger({ delivery: "notification", eventTypes }, catalog.plainBucket, id);
-  const config = defineFrameworkConfig({ resources: catalog, defaults, http: [], services: [], webSocket: [], events: [{
+  const config = defineFrameworkConfig({ networks: [fixtureVpc], resources: catalog, defaults, http: [], services: [], webSocket: [], events: [{
     event: { directory: "/test/fixtures/workload-handler", triggers: [notification("created", ["s3:ObjectCreated:*"])] },
     elsewhere: { directory: "/test/fixtures/caller", triggers: [notification("removed", ["s3:ObjectRemoved:*"])] },
   }] }) as unknown as FrameworkConfig;

@@ -11,10 +11,11 @@ import type { CdkLinkIndex, Editability, EntitySource, FieldFact, ModeModel, Sou
 import { fieldById } from "../edits/fields";
 import { parseOrigin, type ParsedOrigin } from "../model/origin";
 import { readCatalogSource, readLinkSites, type CatalogEntrySource } from "./catalog";
-import { readStackUsage } from "./stack-usage";
+import { readConstructorSites, readStackUsage } from "./stack-usage";
 import { readExportStacks, type ExportStackSource } from "./export-stacks";
 import { scanCdkLinks } from "./cdk-links";
 import { discoverCapabilities } from "./capabilities";
+import { locateManagedDatabase } from "./database";
 import { declarationObject, expressionAt, findProperty, lineAndColumn, literalValue, parse, propertyAt } from "./syntax";
 
 /**
@@ -176,6 +177,15 @@ export function buildSourceIndex(
   }
 
   if (located) {
+    const database = locateManagedDatabase(repositoryRoot, files);
+    if (database) {
+      const at = { file: relative(repositoryRoot, database.file), line: database.line, column: database.column, start: database.span.start, end: database.span.end };
+      entities[`database:${database.id}`] = { origin: `database.${database.id}`, key: at, value: at };
+    }
+    for (const network of located.networks) {
+      const at = { file: relative(repositoryRoot, network.file), line: network.line, column: network.column, start: network.span.start, end: network.span.end };
+      entities[`island:vpc:${network.id}`] = { origin: `networks.${network.id}`, key: at, value: at };
+    }
     for (const target of model.targets) {
       const origin = target.origins[0];
       const source = origin ? locateOrigin(repositoryRoot, files, located, origin) : undefined;
@@ -218,7 +228,9 @@ export function buildSourceIndex(
       capabilityFiles = discovered.files;
     } catch (error) { problems.push(`Trigger capabilities could not be read: ${error instanceof Error ? error.message : String(error)}`); }
   }
-  const stackUsage = readStackUsage(repositoryRoot, catalog);
+  // One walk of the CDK app's imports answers both the catalog and the export stacks.
+  const sites = readConstructorSites(repositoryRoot);
+  const stackUsage = readStackUsage(repositoryRoot, catalog, sites);
   for (const [key, entry] of catalog) catalog.set(key, { ...entry, stackUsage: entry.stackUsage ?? stackUsage.get(key) });
   for (const [catalogPath, entry] of catalog) {
     const id = `resource:${catalogPath}`;
@@ -239,7 +251,7 @@ export function buildSourceIndex(
 
   let exportStacks: readonly ExportStackSource[] = [];
   try {
-    exportStacks = readExportStacks(repositoryRoot);
+    exportStacks = readExportStacks(repositoryRoot, sites);
     for (const stack of exportStacks) {
       const entry = [...catalog].find(([, item]) => item.stack?.className === stack.className);
       const id = entry ? `resource:${entry[0]}` : `framework-stack:${stack.className}`;

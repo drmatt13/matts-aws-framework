@@ -130,7 +130,7 @@ It also has:
 
 ### 1.7 Network, database, identity, and verification — [DOCUMENTED]
 
-- Network configuration lives in `framework-config/network.ts`; production may materialize a dual-stack VPC with subnet types and conditional connectivity. Workload placement and endpoints carry constraints; local runtime can enforce egress restrictions intended to mirror AWS.
+- VPC declarations live in `framework-config/networks/<id>/index.ts` and are registered in `framework.config.ts`'s `networks` array. Workloads select an imported VPC explicitly; production builds each used VPC lazily. Workload placement and endpoints carry constraints; local Lambda runtime enforces egress restrictions against the selected VPC.
 - Database access is declared by a workload capability (`database: true` or its supported options), not by a raw password. AWS permissions, subnet selection, connection delivery, and local Compose replacement are handled by the framework.
 - The user pool is named once and a workload can opt into `userPool: true`; `auth: true` has *different* meanings depending on whether the subject is a route/service or an agent/tool. These must not be conflated in a UI.
 - `framework:generate` creates generated contracts/manifests, `framework:check` validates framework/config invariants, and `npm run verify` covers framework projections/tests and other workspace checks. **`verify` does not prove CDK synthesis or deployed behavior.** The docs explicitly call for synth checks of both dev and prod graphs after infrastructure/config changes.
@@ -519,7 +519,7 @@ The UI must not silently normalize, reorder or remove source code just because t
 
 **Idea:** In a separate network/deployment view, explain conditional VPC creation, subnet placement, endpoints, database access modes, and why a workload can or cannot reach a resource in a lane.
 
-**Inspect first:** `framework-config/network.ts`, placement/resolver code, endpoint validation/egress guard, database connection target/adapters.
+**Inspect first:** `framework-config/networks/`, placement/resolver code, endpoint validation/egress guard, database connection target/adapters.
 
 **Avoid:** showing fictional networking links as if they were deployed ENIs/routing tables. A high-level *capability view* is not a packet topology. Don't suggest editing stack identity, CIDR, native constructs or grant topology until robust safeguards exist.
 

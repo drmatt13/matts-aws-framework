@@ -811,7 +811,7 @@ async function main(): Promise<void> {
     targetIdsFile,
     idsModule(lambdaDirectories, serviceIds, taskIds, workflowIds, [...sectionKeys.agents].sort()),
   );
-  // framework-config/network.ts is typed against it, so it is written here too.
+  // VPC declarations are typed against it, so it is written here too.
   writeGenerated(vpcEndpointServicesFile, vpcEndpointServicesModule(repositoryRoot));
 
   // `--check` writes nothing, so on a repository whose id union has never been

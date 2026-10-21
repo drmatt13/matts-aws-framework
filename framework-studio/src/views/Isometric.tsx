@@ -653,7 +653,7 @@ function HoverCard(props: {
     const prop = props.scene.props.find((candidate) => candidate.id === current.id);
     if (!prop) return null;
     title = prop.label;
-    facts = propHoverFacts(snapshot.models);
+    facts = propHoverFacts(snapshot.models, prop.id);
     description = draft.description(prop.id).trim();
     lines = description ? [] : [...prop.caption];
   } else {

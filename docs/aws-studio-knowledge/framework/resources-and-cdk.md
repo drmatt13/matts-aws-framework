@@ -32,6 +32,19 @@ Application stacks own native constructors/options and expose public constructs/
 
 **A catalog declaration does not instantiate a stack.** `ReferenceExampleStack` is declared in the catalog but is not instantiated in the current entry point. Source-derived members can therefore appear without deployed infrastructure. Use [synth inventory](../deployment/operations.md), not the source graph, to establish assembly contents.
 
-`frameworkLambda` in [framework-lambda.ts](../../../cdk-app/lib/framework/framework-lambda.ts) resolves packaging/runtime and denies manual VPC/subnet/security-group options. `database: true` gives IAM database access and placement; use [network.ts](../../../framework-config/network.ts) for NAT/endpoints. Native grants and explicit IAM requirements are inputs to role construction, not a complete effective-permission viewer.
+`frameworkLambda` in [framework-lambda.ts](../../../cdk-app/lib/framework/framework-lambda.ts) resolves packaging/runtime and denies manual VPC/subnet/security-group options. `database: true` gives IAM database access and placement; use [network declarations](../../../framework-config/networks/application/index.ts) for NAT/endpoints. Native grants and explicit IAM requirements are inputs to role construction, not a complete effective-permission viewer.
 
 For a new family: expose/link a native public member first; add explicit framework semantics only when needed; separately extend [Studio discovery/trigger adapters](../studio/source-indexing.md). Validate with [native resource](../../../cdk-app/test/native-resources.test.ts), [stack resource](../../../cdk-app/test/stack-resources.test.ts), network/trigger tests and both synth modes. See the [extension recipe](../guides/extensions.md).
+
+Native VPC-backed resources use `frameworkVpc(this, importedVpc)`. Network state,
+security groups, ECS clusters and API VPC links are per VPC. `NetworkStack` retains
+historical scopes; other construct identities get stable namespaces. Unused declarations
+build nothing. CDK checks actual database placement against its declared VPC.
+
+`defineDatabase` owns primary PostgreSQL placement and default infrastructure policy,
+while `RdsStack` preserves all native construct scopes and resource links. Optional
+replicas, Multi-AZ and Proxy remain settings rather than new identity schemes. Complete
+template comparisons in [database-topology.test.ts](../../../cdk-app/test/database-topology.test.ts)
+protect the writer, replicas, Proxy, bootstrap and output identities. Studio edits typed
+declaration settings through [database.ts](../../../framework-studio/server/edits/database.ts);
+IAM-only workload login and `database: true` are unchanged.

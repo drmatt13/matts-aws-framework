@@ -7,7 +7,7 @@
   "scripts": {
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
-    "test": "node --conditions=development --import tsx --test test/*.test.ts"
+    "test": "node --conditions=development --import tsx --test --test-concurrency=4 test/*.test.ts"
   },
   "dependencies": {
     "@prisma/orm-framework": "8.0.0-rc.14",

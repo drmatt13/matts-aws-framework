@@ -1,7 +1,7 @@
 import { defineNetwork } from "@repo/framework/config";
 
 /**
- * The application's VPC, and the one place its way out is decided.
+ * The application's original VPC. Import it explicitly on each consumer.
  *
  * Built only by a production deployment (-c prodDeployment=true), and only once a
  * workload is placed in it: a Lambda with subnet: "private" or "isolated" (see
@@ -14,7 +14,9 @@ import { defineNetwork } from "@repo/framework/config";
  * Private subnets leave only as declared below. Isolated subnets never leave:
  * they reach the database and the endpoints, nothing else.
  */
-export const network = defineNetwork({
+export const applicationVpc = defineNetwork({
+  id: "application",
+  cloud: { constructId: "NetworkStack" },
   // Set once: changing either renumbers every subnet and replaces everything
   // inside them.
   cidr: "10.0.0.0/16",

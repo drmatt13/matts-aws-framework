@@ -1,3 +1,4 @@
+import { networkConstructId } from "@repo/framework/config";
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
@@ -94,24 +95,32 @@ export class EcsTasksStack extends cdk.Stack {
     // Each task's place in the framework network follows its own declaration:
     // cloud.subnet, inherited from defaults.container.subnet, and the groups
     // of whatever it connects to.
-    const vpc = frameworkVpc(this);
-    const cluster = new ecs.Cluster(this, "EcsTasksCluster", { vpc });
-    /** What a task that connects to nothing belongs to. A task accepts no connections. */
-    let unconnected: ec2.SecurityGroup | undefined;
+    const clusters = new Map<string, ecs.Cluster>();
+    const unconnected = new Map<string, ec2.SecurityGroup>();
 
     // Two passes, so declaration order does not matter: a task that launches
     // another needs that task's handle, and the second one may be declared
     // below the first. The config already proved these edges are acyclic.
     const built = tasks.map((target) => {
+      const network = target.vpc!;
+      const vpc = frameworkVpc(this, network);
+      let cluster = clusters.get(network.id);
+      if (!cluster) { cluster = new ecs.Cluster(this, networkConstructId(network, "EcsTasksCluster"), { vpc }); clusters.set(network.id, cluster); }
       const placement = containerPlacement(this, target, target.cloud.task!.subnet);
-      const groups = placement.connectionGroups.length > 0
-        ? placement.connectionGroups
-        : [unconnected ??= new ec2.SecurityGroup(this, "TaskSecurityGroup", {
+      let groups = placement.connectionGroups;
+      if (groups.length === 0) {
+        let group = unconnected.get(network.id);
+        if (!group) {
+          group = new ec2.SecurityGroup(this, networkConstructId(network, "TaskSecurityGroup"), {
             vpc,
             description: "Framework container tasks. No inbound rules by design.",
             allowAllOutbound: true,
             allowAllIpv6Outbound: true,
-          })];
+          });
+          unconnected.set(network.id, group);
+        }
+        groups = [group];
+      }
       return {
         target,
         ...this.addTask(cluster, target, context, {

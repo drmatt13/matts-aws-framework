@@ -3,9 +3,10 @@ import path from "node:path";
 import ts from "typescript";
 import { ROOT_ENV_STACK_OUTPUTS } from "../../../scripts/root-env-outputs";
 import type { ModelResource, ModeModel, SourceLocation } from "../../shared/model";
-import { stackMembers, typeScriptFiles, type CatalogEntrySource } from "./catalog";
-import { readStackUsage } from "./stack-usage";
+import { typeScriptFiles, type CatalogEntrySource } from "./catalog";
+import { readConstructorSites, readStackUsage } from "./stack-usage";
 import { lineAndColumn, literalKey, parse, unwrap } from "./syntax";
+import { toRelative } from "../files";
 
 export interface ExportStackSource {
   readonly className: string;
@@ -17,7 +18,7 @@ export interface ExportStackSource {
 /** Only outputs on the exporter's public allowlist leave the source reader.
  * Values expose identifier paths only; literals and resolved values are excluded.
  */
-export function readExportStacks(repositoryRoot: string): readonly ExportStackSource[] {
+export function readExportStacks(repositoryRoot: string, sites = readConstructorSites(repositoryRoot)): readonly ExportStackSource[] {
   const found: ExportStackSource[] = [];
   const mappings: Readonly<Record<string, Readonly<Record<string, string>>>> = ROOT_ENV_STACK_OUTPUTS;
   for (const file of typeScriptFiles(path.join(repositoryRoot, "cdk-app/lib"))) {
@@ -50,18 +51,19 @@ export function readExportStacks(repositoryRoot: string): readonly ExportStackSo
             // an output-name token so authored values cannot enter the snapshot.
             const expression = unwrap(value).getText(source);
             const symbol = /^(?:this\.)?[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(expression) ? expression.replace(/^this\./, "") : name.text;
-            outputs.push({ name: name.text, envName: mappings[className]![name.text]!, symbol, source: { file: path.relative(repositoryRoot, file).replaceAll("\\", "/"), ...lineAndColumn(source, start), start, end: node.end } });
+            outputs.push({ name: name.text, envName: mappings[className]![name.text]!, symbol, source: { file: toRelative(repositoryRoot, file), ...lineAndColumn(source, start), start, end: node.end } });
           }
         }
         ts.forEachChild(node, visit);
       };
       visit(declaration);
-      const location = stackMembers(repositoryRoot, file, className)?.location;
-      if (outputs.length && location) found.push({ className, location, outputs });
+      if (!outputs.length) continue;
+      const start = declaration.name.getStart(source);
+      found.push({ className, location: { file: toRelative(repositoryRoot, file), ...lineAndColumn(source, start), start, end: declaration.name.end }, outputs });
     }
   }
   const catalog = new Map<string, CatalogEntrySource>(found.map((item) => [item.className, { key: item.location, value: item.location, stack: { className: item.className, location: item.location, members: [] } }]));
-  const usage = readStackUsage(repositoryRoot, catalog);
+  const usage = readStackUsage(repositoryRoot, catalog, sites);
   return found.map((item) => ({ ...item, usage: usage.get(item.className) }));
 }
 

@@ -73,6 +73,7 @@ export interface LocatedConfigSource {
   readonly configFile: string;
   readonly sections: Readonly<Record<CheckedSection, readonly LocatedSectionEntry[]>>;
   readonly properties: Readonly<Partial<Record<string, LocatedConfigProperty>>>;
+  readonly networks: readonly (LocatedConfigProperty & { readonly id: string; readonly exportName: string })[];
 }
 
 /** File access, injectable so the checker can be tested without a repository. */
@@ -179,7 +180,7 @@ class ConfigSource {
   private moduleFile(from: string, specifier: string): string | undefined {
     const base = path.resolve(path.dirname(from), specifier);
     const candidates = [
-      base.replace(/\.js$/, ".ts"),
+      ...(/\.[cm]?[jt]s$/.test(base) ? [base.replace(/\.js$/, ".ts")] : []),
       `${base}.ts`,
       path.join(base, "index.ts"),
     ];
@@ -286,6 +287,7 @@ export function locateConfigSource(
     http: [], webSocket: [], events: [], services: [], tasks: [], workflows: [], tools: [], agents: [],
   };
   const properties: Record<string, LocatedConfigProperty> = {};
+  const networks: (LocatedConfigProperty & { id: string; exportName: string })[] = [];
 
   /** A node's offsets and one-based position in the file that holds it. */
   const position = (file: string, node: ts.Node) => {
@@ -432,6 +434,23 @@ export function locateConfigSource(
               : ts.isShorthandPropertyAssignment(property)
                 ? property.name
                 : undefined;
+            if (name === "networks" && value) {
+              const array = unwrap(value);
+              if (!ts.isArrayLiteralExpression(array)) { problems.push("networks must be a literal array of imported VPC declarations."); continue; }
+              for (const element of array.elements) {
+                if (ts.isSpreadElement(element)) { problems.push("List each VPC explicitly in networks."); continue; }
+                const item = source.resolve({ file: configFile, expression: element });
+                if (typeof item === "string") { problems.push(item); continue; }
+                const call = unwrap(item.expression);
+                const object = ts.isCallExpression(call) && call.arguments[0] ? unwrap(call.arguments[0]) : undefined;
+                const id = object && ts.isObjectLiteralExpression(object) ? object.properties.find(p => literalKey(p) === "id") : undefined;
+                const idValue = id && ts.isPropertyAssignment(id) && ts.isStringLiteral(id.initializer) ? id.initializer.text : undefined;
+                const declaration = source.parse(item.file).statements.flatMap(statement => ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : []).find(d => d.initializer && unwrap(d.initializer) === call);
+                if (!idValue || !declaration || !ts.isIdentifier(declaration.name)) { problems.push("Each VPC must be an exported const defineNetwork({ id, ... }) declaration with a literal id."); continue; }
+                const at = position(item.file, call);
+                networks.push({ name: idValue, id: idValue, exportName: declaration.name.text, file: item.file, span: at.span, line: at.line, column: at.column });
+              }
+            }
             if (!(CHECKED_SECTIONS as readonly string[]).includes(name)) {
               if (value) locateProperty(name, value);
               continue;
@@ -452,5 +471,5 @@ export function locateConfigSource(
     );
   }
 
-  return { configFile, sections, properties };
+  return { configFile, sections, properties, networks };
 }

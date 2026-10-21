@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
+import { readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
 import type { ResourceApply, ResourceDetails, ResourceIntent, ResourcePlan } from "../shared/resources";
 import type { HistoryState } from "../shared/api";

@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as cdk from "aws-cdk-lib";
@@ -32,7 +33,7 @@ interface Template {
 }
 
 function synthesize() {
-  const config = defineFrameworkConfig({
+  const config = defineFrameworkConfig({ networks: [fixtureVpc],
     defaults,
     webSocket: [],
     events: [],
@@ -45,7 +46,7 @@ function synthesize() {
         cloud: { bindings: [runsTask(TASK)] },
       },
     }],
-    tasks: [{ [TASK]: { directory: "/test/fixtures/task-worker", deploy: "both", cloud: { subnet: "public" } } }],
+    tasks: [{ [TASK]: { directory: "/test/fixtures/task-worker", deploy: "both", cloud: { vpc: fixtureVpc, subnet: "public" } } }],
     workflows: [{ "runs-the-task": workflow(() => runTask(TASK), { deploy: "both", timeoutSeconds: 900 }) }],
   });
   const app = new cdk.App({ context: { "@aws-cdk/aws-lambda:useCdkManagedLogGroup": true } });

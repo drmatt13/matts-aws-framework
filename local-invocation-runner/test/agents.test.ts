@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -28,7 +29,7 @@ function probe(idleSeconds = 60) {
       ].join("\n"),
     );
   write(0);
-  const config = defineFrameworkConfig({
+  const config = defineFrameworkConfig({ networks: [fixtureVpc],
     defaults,
     http: [],
     webSocket: [],

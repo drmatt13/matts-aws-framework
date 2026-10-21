@@ -1,3 +1,4 @@
+import { applicationVpc } from "../networks/application";
 import type { EventsSection } from "../contracts";
 import { resources } from "../resources";
 
@@ -30,6 +31,7 @@ export const cognitoEvents = {
     timeoutSeconds: 30,
     bundling: { sourceMap: false },
     localReplay: true,
+    vpc: applicationVpc,
     database: true,
   },
 } satisfies EventsSection;

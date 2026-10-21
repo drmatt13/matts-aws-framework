@@ -2,7 +2,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { defineNetwork, type InterfaceEndpointService } from "@repo/framework/config";
-import { readCreationRequest, CreationValidationError, type CreationRequest } from "../../shared/creation";
+import { readCreationRequest, CreationValidationError, networkCreationProblem, type CreationRequest } from "../../shared/creation";
 import { DESCRIPTION_FILE } from "../../shared/descriptions";
 import { rewriteDescription } from "../descriptions";
 import { toRelative } from "../files";
@@ -13,7 +13,7 @@ import { parseOrigin } from "../model/origin";
 import { EditError } from "./io";
 import { isCreationGeneratedFile } from "./creation-generation";
 
-export interface CreationExpectation { readonly select: string; readonly targets: readonly string[]; readonly resources: readonly string[]; readonly routes: readonly string[]; readonly kind: CreationRequest["kind"]; readonly network?: { readonly cidr: string; readonly zones: number; readonly natGateway: boolean; readonly egressOnlyInternetGateway: boolean; readonly gatewayEndpoints: readonly string[]; readonly interfaceEndpoints: readonly string[] } }
+export interface CreationExpectation { readonly select: string; readonly targets: readonly string[]; readonly resources: readonly string[]; readonly routes: readonly string[]; readonly kind: CreationRequest["kind"]; readonly network?: { readonly id: string; readonly cidr: string; readonly zones: number; readonly natGateway: boolean; readonly egressOnlyInternetGateway: boolean; readonly gatewayEndpoints: readonly string[]; readonly interfaceEndpoints: readonly string[] } }
 export interface CreationSource { readonly overrides: ReadonlyMap<string, string>; readonly before: ReadonlyMap<string, string | null>; readonly expected: CreationExpectation; readonly impact: readonly string[] }
 const q = JSON.stringify;
 function refuse(field: string, message: string): never { throw new CreationValidationError(field, message); }
@@ -38,7 +38,7 @@ export function assertCreationFile(root: string, relative: string): string {
   return path.resolve(root, relative);
 }
 
-function objectCall(file: string, text: string, name: string) {
+export function objectCall(file: string, text: string, name: string) {
   const source = parse(file, text);
   const found: ts.ObjectLiteralExpression[] = [];
   const visit = (node: ts.Node): void => {
@@ -77,7 +77,7 @@ function addImport(text: string, statement: string, name: string): string {
   if (identifiers.has(name)) throw new EditError(422, `The generated import ${name} conflicts with an existing source identifier.`);
   return statement + "\n" + text;
 }
-function setProperty(file: string, text: string, object: ts.ObjectLiteralExpression, source: ts.SourceFile, key: string, expression: string): string {
+export function setProperty(file: string, text: string, object: ts.ObjectLiteralExpression, source: ts.SourceFile, key: string, expression: string): string {
   const found = findProperty(object, key);
   if (found.spread || (found.property && !ts.isPropertyAssignment(found.property))) throw new EditError(422, `Edit computed ${key} in ${file} in your editor first.`);
   if (!found.property) return insertExpression(text, source, object, [key], expression);
@@ -112,12 +112,18 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
   const targetExists = (id: string) => models.some((model) => model.targets.some((target) => target.id === id));
   const expected: { select: string; targets: string[]; resources: string[]; routes: string[]; kind: CreationRequest["kind"]; network?: CreationExpectation["network"] } = { select: "", targets: [], resources: [], routes: [], kind: request.kind };
   const impact = ["Creates the reviewed source as one undoable operation. AWS deployment and secret provisioning remain separate actions."];
+  const selectedVpc = "vpc" in request && request.vpc ? state.built.located?.networks.find(network => network.id === request.vpc) : undefined;
+  if ("vpc" in request && request.vpc && !selectedVpc) return refuse("vpc", "Select a registered VPC with a source declaration.");
   function register(section: string, id: string, expression: string, imports = "") {
     const relative = `framework-config/${section.toLowerCase()}/${id}.ts`;
     const symbol = `studio${id.replace(/(^|-)([a-z0-9])/g, (_match, _prefix, letter: string) => letter.toUpperCase())}${section[0]!.toUpperCase() + section.slice(1)}`;
     const types: Record<string, string> = { http: "HttpSection", webSocket: "WebSocketSection", events: "EventsSection", workflows: "WorkflowsSection", services: "ServicesSection", tasks: "TasksSection", agents: "AgentsSection" };
     const sectionType = section === "webSocket" && (request.kind === "function" || request.kind === "route")
       ? `Pick<WebSocketSection, ${q(request.path)}>` : types[section];
+    if (selectedVpc) {
+      const specifier = path.relative(path.dirname(path.join(root, relative)), selectedVpc.file).replaceAll("\\", "/").replace(/\.ts$/, "").replace(/\/index$/, "");
+      imports += `import { ${selectedVpc.exportName} as studioVpc } from ${q(specifier.startsWith(".") ? specifier : `./${specifier}`)};\n`;
+    }
     fresh(relative, formatNewModule(relative, `${imports}import type { ${types[section]} } from "../contracts";\n\nexport const ${symbol} = ${expression} satisfies ${sectionType};\n`));
     let text = read("framework.config.ts");
     const { source, object } = objectCall("framework.config.ts", text, "defineFrameworkConfig");
@@ -273,7 +279,7 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
         ? 'import type { APIGatewayProxyWebsocketEventV2 } from "aws-lambda";\n\nexport const lambdaHandler = async (_event: APIGatewayProxyWebsocketEventV2) => ({ statusCode: 200, body: "Ready" });\n'
         : 'export interface Input { readonly message?: string }\nexport const lambdaHandler = async (input: Input) => ({ message: input.message ?? "Ready" });\n';
       fresh(`cdk-app${directory}/index.ts`, handler);
-      declaration = `{ directory: ${q(directory)}, ${request.category !== "event" ? `id: ${q(request.id)}, deploy: ${q(request.deploy)},` : ""} runtime: ${q(request.runtime)}, packaging: "zip", architecture: ${q(request.architecture)}, memorySize: ${request.memory}, timeoutSeconds: ${request.timeout}, subnet: ${q(request.subnet)}, ${request.category === "http" ? `methods: ${request.method === "*" ? q("*") : `[${q(request.method)}]`}, ${auth ? "auth: true, userPool: true," : ""}` : ""} ${binding(request, false)} }`;
+      declaration = `{ directory: ${q(directory)}, ${request.category !== "event" ? `id: ${q(request.id)}, deploy: ${q(request.deploy)},` : ""} runtime: ${q(request.runtime)}, packaging: "zip", architecture: ${q(request.architecture)}, memorySize: ${request.memory}, timeoutSeconds: ${request.timeout}, subnet: ${q(request.subnet)}, ${selectedVpc ? "vpc: studioVpc," : ""} ${request.category === "http" ? `methods: ${request.method === "*" ? q("*") : `[${q(request.method)}]`}, ${auth ? "auth: true, userPool: true," : ""}` : ""} ${binding(request, false)} }`;
       register(section, request.id, `{ ${q(request.category === "event" ? request.id : request.path)}: ${declaration} }`, request.bindingResource ? bindingImport : "");
       expected.targets.push(target);
       impact.push(`Handler: cdk-app${directory}/index.ts. TypeScript zip packaging; other runtimes and images remain source-authored.`);
@@ -290,7 +296,7 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
     fresh(`cdk-app${directory}/index.mjs`, code);
     if (service) fresh(`cdk-app${directory}/package.json`, JSON.stringify({ name: `@repo/${request.id}`, private: true, scripts: { dev: "node --watch index.mjs" } }, null, 2) + "\n");
     fresh(`cdk-app${directory}/Dockerfile`, `FROM node:24-bookworm-slim\nWORKDIR /app\nCOPY cdk-app${directory}/index.mjs ./index.mjs\nUSER node\n${service ? `EXPOSE ${request.port}\n` : ""}CMD ["node", "index.mjs"]\n`);
-    register(service ? "services" : "tasks", request.id, `{ ${q(service ? request.path : request.id)}: { directory: ${q(directory)}, ${service ? `id: ${q(request.id)}, methods: "*", port: ${request.port}, healthCheckPath: "/health", ${request.auth ? "auth: true," : ""}` : ""} deploy: ${q(request.deploy)}, ${binding(request, true)} cloud: { cpu: ${request.cpu}, memoryMiB: ${request.memory}, architecture: ${q(request.architecture)}, subnet: ${q(request.subnet)} } } }`, request.bindingResource ? bindingImport : "");
+    register(service ? "services" : "tasks", request.id, `{ ${q(service ? request.path : request.id)}: { directory: ${q(directory)}, ${service ? `id: ${q(request.id)}, methods: "*", port: ${request.port}, healthCheckPath: "/health", ${request.auth ? "auth: true," : ""}` : ""} deploy: ${q(request.deploy)}, ${binding(request, true)} cloud: { vpc: studioVpc, cpu: ${request.cpu}, memoryMiB: ${request.memory}, architecture: ${q(request.architecture)}, subnet: ${q(request.subnet)} } } }`, request.bindingResource ? bindingImport : "");
     expected.select = `${request.kind}:${request.id}`; expected.targets.push(expected.select);
     if (service) expected.routes.push(`route:service:${request.path}`);
     if (service) impact.push("The new workspace requires rebuilding local development images with dev:containers. Source creation does not start containers.");
@@ -338,31 +344,28 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
     expected.select = `resource:${request.id}`; expected.resources.push(expected.select);
     impact.push(`Instantiates ${request.className} in ${request.scope} deployment graphs, before orchestration, and exposes its typed queue through linkResources. The stack identity is deployment-prefixed.`);
   } else {
-    try { defineNetwork({ cidr: request.cidr, zones: request.zones, natGateway: request.nat, egressOnlyInternetGateway: request.ipv6, gatewayEndpoints: { s3: request.s3, dynamodb: request.dynamodb }, interfaceEndpoints: request.endpoints as InterfaceEndpointService[] }); }
-    catch (error) {
-      if (error instanceof Error && /interfaceEndpoints|endpoint service/.test(error.message)) return refuse("endpoints", "Choose recognized, distinct interface endpoint services, such as ecr.api or logs.");
-      return refuse("cidr", "Use a private /16, such as 10.0.0.0/16, and two or three zones.");
-    }
-    const file = "framework-config/network.ts";
-    let text: string;
-    if (!existsSync(path.join(root, file))) {
-      const rootText = read("framework.config.ts");
-      const { source, object } = objectCall("framework.config.ts", rootText, "defineFrameworkConfig");
-      if (findProperty(object, "network").property || findProperty(object, "network").spread) throw new EditError(422, "The network is declared elsewhere. Edit its existing declaration in source.");
-      fresh(file, 'import { defineNetwork } from "@repo/framework/config";\nexport const network = defineNetwork({ cidr: "10.0.0.0/16", zones: 2 });\n');
-      put("framework.config.ts", addImport(insertExpression(rootText, source, object, ["network"], "studioNetwork"), 'import { network as studioNetwork } from "./framework-config/network";', "studioNetwork"));
-    }
-    text = read(file);
-    const entries = { cidr: q(request.cidr), zones: String(request.zones), natGateway: String(request.nat), egressOnlyInternetGateway: String(request.ipv6), gatewayEndpoints: `{ s3: ${request.s3}, dynamodb: ${request.dynamodb} }`, interfaceEndpoints: q(request.endpoints) };
-    for (const [key, value] of Object.entries(entries)) {
-      const { source, object } = objectCall(file, text, "defineNetwork");
-      const old = findProperty(object, key).property;
-      if (old && ts.isPropertyAssignment(old) && old.initializer.getText(source).replace(/\s/g, "") === value.replace(/\s/g, "")) continue;
-      text = setProperty(file, text, object, source, key, value);
-    }
-    put(file, text); expected.select = "island:vpc";
-    expected.network = { cidr: request.cidr, zones: request.zones, natGateway: request.nat, egressOnlyInternetGateway: request.ipv6, gatewayEndpoints: [...(request.s3 ? ["s3"] : []), ...(request.dynamodb ? ["dynamodb"] : [])], interfaceEndpoints: request.endpoints };
-    impact.push("Configures the one shared network; no second VPC or new deployed identity is introduced.", `Cost-relevant settings: NAT ${request.nat ? "enabled (hourly plus data processing)" : "off"}; ${request.endpoints.length} interface endpoints in ${request.zones} zones (hourly plus data processing). Gateway endpoint and IPv6 egress choices are shown in the patch.`);
+    const problem = networkCreationProblem(request, models.flatMap(model => model.networks ?? []));
+    if (problem) throw problem;
+    let declared;
+    try { declared = defineNetwork({ id: request.id, cidr: request.cidr, zones: request.zones, natGateway: request.nat, egressOnlyInternetGateway: request.ipv6, gatewayEndpoints: { s3: request.s3, dynamodb: request.dynamodb }, interfaceEndpoints: request.endpoints as InterfaceEndpointService[] }); }
+    catch (error) { return refuse(/endpoint/i.test(String(error)) ? "endpoints" : "cidr", error instanceof Error ? error.message : String(error)); }
+    if (models.some(model => model.networks?.some(network => network.id === request.id || network.constructId === declared.cloud.constructId))) return refuse("id", "This VPC identity or deployed construct identity already exists.");
+    const file = `framework-config/networks/${request.id}/index.ts`;
+    const symbol = `studio${request.id.split("-").map(part => part[0]!.toUpperCase() + part.slice(1)).join("")}Vpc`;
+    fresh(file, formatNewModule(file, `import { defineNetwork } from "@repo/framework/config";\nexport const ${symbol} = defineNetwork(${JSON.stringify({ id: request.id, ...(request.name ? { name: request.name } : {}), cidr: request.cidr, zones: request.zones, natGateway: request.nat, egressOnlyInternetGateway: request.ipv6, gatewayEndpoints: { s3: request.s3, dynamodb: request.dynamodb }, interfaceEndpoints: request.endpoints })});\n`));
+    let text = read("framework.config.ts");
+    const { source, object } = objectCall("framework.config.ts", text, "defineFrameworkConfig");
+    const property = findProperty(object, "networks");
+    if (property.spread || (property.property && !ts.isPropertyAssignment(property.property))) throw new EditError(422, "Compose networks as a literal array.");
+    if (property.property && ts.isPropertyAssignment(property.property)) {
+      const array = unwrap(property.property.initializer);
+      if (!ts.isArrayLiteralExpression(array) || array.elements.some(ts.isSpreadElement)) throw new EditError(422, "Compose networks as a literal array.");
+      text = text.slice(0, array.end - 1) + `${array.elements.length && !array.elements.hasTrailingComma ? "," : ""} ${symbol}` + text.slice(array.end - 1);
+    } else text = insertExpression(text, source, object, ["networks"], `[${symbol}]`);
+    put("framework.config.ts", addImport(text, `import { ${symbol} } from ${q(`./framework-config/networks/${request.id}`)};`, symbol));
+    expected.select = `island:vpc:${request.id}`;
+    expected.network = { id: request.id, cidr: request.cidr, zones: request.zones, natGateway: request.nat, egressOnlyInternetGateway: request.ipv6, gatewayEndpoints: [...(request.s3 ? ["s3"] : []), ...(request.dynamodb ? ["dynamodb"] : [])], interfaceEndpoints: request.endpoints };
+    impact.push("Creates a separate VPC declaration. It appears as a blueprint until production infrastructure uses it.", `Cost-relevant settings: NAT ${request.nat ? "enabled (hourly plus data processing)" : "off"}; ${request.endpoints.length} interface endpoints in ${request.zones} zones (hourly plus data processing).`);
   }
   if (request.description) {
     const text = existsSync(path.join(root, DESCRIPTION_FILE)) ? read(DESCRIPTION_FILE) : "export const descriptions = {};\n";

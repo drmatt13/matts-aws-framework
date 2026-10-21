@@ -32,7 +32,7 @@ before(async () => {
   cpSync(path.join(repositoryRoot, "framework-config"), path.join(fixture, "framework-config"), { recursive: true });
   cpSync(path.join(repositoryRoot, "framework.config.ts"), path.join(fixture, "framework.config.ts"));
   // Test-only binding: a cloud caller must prevent removing its worker's cloud lane.
-  writeFileSync(taskFile, 'export const worker = { "transaction-worker": { deploy: "both", } };\n');
+  writeFileSync(taskFile, 'import { applicationVpc } from "../networks/application";\nexport const worker = { "transaction-worker": { deploy: "both", cloud: { vpc: applicationVpc } } };\n');
   writeFileSync(path.join(fixture, "framework-config/http/worker.ts"), `import { runsTask } from "@repo/framework/config";
 export const workerRoute = { "/worker": { directory: "/lambda_functions/worker", methods: ["POST"], cloud: { bindings: [runsTask("transaction-worker")] } } };
 `);

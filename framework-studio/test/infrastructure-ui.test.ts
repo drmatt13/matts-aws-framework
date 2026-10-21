@@ -7,6 +7,7 @@ import { SnapshotBuilder } from "../server/snapshot";
 import type { SnapshotResponse } from "../shared/api";
 import type { InfrastructureState } from "../shared/infrastructure";
 import type { Mode, ModelResource } from "../shared/model";
+import { STUDIO_PROTOCOL_VERSION } from "../shared/protocol";
 
 let dom: { window: Window & typeof globalThis };
 let ui: typeof import("@testing-library/react");
@@ -35,7 +36,7 @@ const ready: InfrastructureState = { mode: "dev", status: "ready", stale: false,
 before(async () => {
   const require = createRequire(import.meta.url);
   const { JSDOM } = require("jsdom");
-  dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/", pretendToBeVisual: true });
+  dom = new JSDOM(`<!doctype html><html><head><meta name="studio-protocol" content="${STUDIO_PROTOCOL_VERSION}"></head><body></body></html>`, { url: "http://localhost/", pretendToBeVisual: true });
   for (const name of ["window", "self", "document", "navigator", "HTMLElement", "Node", "MutationObserver", "getComputedStyle"] as const) Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] });
   Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} close() {} } });
   Object.defineProperty(globalThis, "scrollTo", { configurable: true, value: () => {} });
@@ -184,7 +185,7 @@ test("client fields can be added, remapped, disabled, reviewed and discarded wit
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Protocol for VITE_API_GATEWAY_URL" }), { target: { value: "https" } });
   ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Hostname for VITE_API_GATEWAY_URL" }), { target: { value: "app.localhost" } });
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Port input for VITE_API_GATEWAY_URL" }), { target: { value: "WS_TESTER_HOST_PORT" } });
-  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Use URL override for VITE_API_GATEWAY_URL" }));
+  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Use URL override for VITE_API_GATEWAY_URL" }));
   assert.ok((ui.screen.getByRole("combobox", { name: "Override input for VITE_API_GATEWAY_URL" }) as HTMLSelectElement).disabled);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add field" }));
   ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "New client field name" }), { target: { value: "VITE_CUSTOM_REGION" } });
@@ -217,7 +218,7 @@ test("changing source types requires explicit choices, preserves output fallback
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Production" }));
   openMapping("VITE_API_GATEWAY_URL");
   assert.ok(ui.screen.getByText(/Fallback outputs:/));
-  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Allow empty VITE_API_GATEWAY_URL" }));
+  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Allow empty VITE_API_GATEWAY_URL" }));
   assert.ok(ui.screen.getByText(/Fallback outputs:/), "unrelated options retain authored output fallbacks");
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Stack for VITE_API_GATEWAY_URL" }), { target: { value: "CognitoStack" } });
   assert.equal((ui.screen.getByRole("combobox", { name: "Mapping for VITE_API_GATEWAY_URL" }) as HTMLSelectElement).value, "");
@@ -415,4 +416,16 @@ test("file value edits and additions stay in one guarded draft and Review Change
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Apply All" }));
   await ui.waitFor(() => assert.equal(applies, 1));
   await ui.waitFor(() => assert.equal(ui.screen.queryByText("3 unsaved changes"), null));
+});
+
+test("a stale page blocks source writes before transport and explains how to reload the server", async () => {
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="studio-protocol"]')!;
+  const original = meta.content;
+  meta.content = "1";
+  let calls = 0;
+  mock.method(globalThis, "fetch", async () => { calls++; throw new Error("A stale page must not send a write."); });
+  try {
+    await assert.rejects(api.api.applyBatch("not-sent"), (error: unknown) => error instanceof api.ApiError && error.status === 409 && /Restart npm run studio/.test(error.message));
+    assert.equal(calls, 0);
+  } finally { meta.content = original; }
 });

@@ -295,9 +295,9 @@ export class LambdaWorkerPool {
  * private subnet with a NAT gateway), which reaches everything.
  */
 export function localLambdaEgress(config: FrameworkConfig, target: LambdaTarget): EgressPolicy | undefined {
-  const { subnet } = resolveLambdaTarget(config, target.slice("lambda:".length));
+  const { subnet, vpc } = resolveLambdaTarget(config, target.slice("lambda:".length));
   if (subnet === "none") return undefined;
-  const network = resolveNetwork(config);
+  const network = resolveNetwork(config, vpc);
   const egress = subnetEgress(network, subnet);
   if (egress.ipv4) return undefined;
   return { subnet, ipv6: egress.ipv6, endpoints: [...endpointServices(network)] };

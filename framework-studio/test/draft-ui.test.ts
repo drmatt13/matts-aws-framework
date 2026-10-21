@@ -9,6 +9,7 @@ import type { DeploymentInputEdit } from "../shared/deployment-inputs";
 import { SnapshotBuilder } from "../server/snapshot";
 import { connectionDescriptionId } from "../shared/descriptions";
 import { aggregateConnections } from "../src/connections";
+import { networkSettings, unusedNetworkCidr } from "../shared/networks";
 
 let builder: SnapshotBuilder;
 let baseline: Snapshot;
@@ -56,7 +57,7 @@ beforeEach(() => {
     planCalls.push(edits);
     await reviewGate;
     if (failReview) throw new Error("Could not validate changes. Try reviewing again.");
-    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
+    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
   });
   mock.method(apiModule.api, "applyBatch", async () => {
     applyCalls++; if (failApply) throw new Error("Source changed. Your draft is preserved.");
@@ -195,7 +196,7 @@ test("node descriptions stage with workload settings, review, save and reload in
 });
 
 test("all selectable item kinds expose their authored description", async () => {
-  for (const id of ["route:http:/graphql", "resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "framework-stack:DevLambdaReplayStack", "envfile:dev", "local:postgres", "island:vpc", "prop:endpoint:s3"]) {
+  for (const id of ["route:http:/graphql", "resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "framework-stack:DevLambdaReplayStack", "envfile:dev", "local:postgres", "island:vpc:application", "prop:vpc:application:endpoint:s3"]) {
     await mount(id);
     const description = descriptionField();
     assert.equal(description.value, baseline.descriptions.values[id], id);
@@ -537,7 +538,7 @@ test("managed API routes show their target's environment cards and owning config
 
 test("catalog and local services share deployment cards while managed entries link to their owner", async () => {
   const tool = baseline.models.dev.targets.find((target) => target.role === "tool")!;
-  for (const id of ["resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "local:postgres", "prop:endpoint:s3", "lambda:cognito-post-confirmation-trigger", tool.ref]) {
+  for (const id of ["resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "local:postgres", "prop:vpc:application:endpoint:s3", "lambda:cognito-post-confirmation-trigger", tool.ref]) {
     await mount(id);
     const section = document.querySelector(".inspector-content > .inspector-deployment");
     assert.ok(section, id);
@@ -657,7 +658,7 @@ test("local values edit inline, revert, review privately and reload after apply 
   ui.fireEvent.change(field, { target: { value: "local-value-test" } });
   assert.equal(ui.screen.getByLabelText("Current selection").textContent, resource.id);
   assert.match(count(), /1 unsaved change/);
-  assert.ok(ui.screen.getByRole("checkbox", { name: "Secret" }).matches(":disabled"));
+  assert.ok(ui.screen.getByRole("switch", { name: "Secret" }).matches(":disabled"));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Revert value" }));
   assert.equal(field.value, "");
   assert.ok(!ui.screen.queryByLabelText("Pending inspector changes"));
@@ -684,7 +685,7 @@ test("blank local values show the effective default and constrained values offer
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Use default" }));
   assert.equal((field as HTMLSelectElement).value, "");
   assert.ok(!ui.screen.queryByLabelText("Pending inspector changes"));
-  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Required input" }));
+  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Required input" }));
   assert.equal((field as HTMLSelectElement).disabled, true, "configuration and local file values review separately");
 });
 
@@ -717,10 +718,10 @@ test("a missing environment file offers setup rather than an unusable value edit
   assert.equal(planCalls.length + resourceCalls.length, 0);
 });
 
-test("the catalog-wide required checkbox participates in the unified resource draft", async () => {
+test("the catalog-wide required switch participates in the unified resource draft", async () => {
   const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv)!;
   await mount(resource.id);
-  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Required input" }));
+  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Required input" }));
   assert.equal(resourceCalls.length, 0);
   assert.match(count(), /1 unsaved change/);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
@@ -840,7 +841,7 @@ test("resource controls and island service groups participate in the same shared
   await mount(resource.id);
   await ui.waitFor(() => assert.ok(ui.screen.queryByText("Reading the inputs file…") === null));
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Resource group" }), { target: { value: "draftGroup" } });
-  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Secret" }));
+  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Secret" }));
   assert.equal(resourceCalls.length, 0); assert.ok(ui.screen.getByLabelText("Pending inspector changes"));
   await ui.act(async () => { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); }); await ui.screen.findByRole("button", { name: "Apply All" }); assert.equal(resourceCalls.length, 1);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard All" })); ui.cleanup();
@@ -899,4 +900,211 @@ test("starting creation respects existing inspector changes and creation guards 
   await waitDialog("Unsaved changes");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Keep Editing" }));
   assert.equal(applyCalls + planCalls.length, 0);
+});
+
+test("VPC creator catches duplicate IDs and CIDR overlap without making a review request", async () => {
+  await mount();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add to application" }));
+  ui.fireEvent.click(ui.within(ui.screen.getByRole("dialog", { name: "Add to application" })).getByRole("button", { name: "VPC" }));
+  const id = ui.screen.getByRole("textbox", { name: "Stable identifier" });
+  const cidr = ui.screen.getByRole("textbox", { name: "Private IPv4 /16" });
+  const review = ui.screen.getByRole("button", { name: "Review generated changes" }) as HTMLButtonElement;
+  ui.fireEvent.change(id, { target: { value: "application" } });
+  assert.ok(review.disabled);
+  assert.equal(id.getAttribute("aria-invalid"), "true");
+  assert.ok(ui.screen.getByText(/This VPC identifier already exists/));
+  ui.fireEvent.change(id, { target: { value: "analytics" } });
+  ui.fireEvent.change(cidr, { target: { value: "10.0.0.0/16" } });
+  assert.ok(review.disabled);
+  assert.equal(cidr.getAttribute("aria-invalid"), "true");
+  assert.ok(ui.screen.getByText(/This range overlaps VPC "application"/));
+  ui.fireEvent.change(cidr, { target: { value: unusedNetworkCidr(baseline.models.dev.networks!)! } });
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Display name" }), { target: { value: "Analytics workspace" } });
+  assert.equal(review.disabled, false, ui.screen.queryAllByRole("status").map(node => node.textContent).join("\n"));
+  assert.equal(planCalls.length, 0);
+  ui.fireEvent.click(review);
+  await ui.waitFor(() => assert.equal(planCalls.length, 1));
+  const edit = planCalls[0]![0]!;
+  assert.ok(edit.kind === "create" && edit.request.kind === "vpc" && edit.request.name === "Analytics workspace");
+});
+
+test("VPC endpoint service icons search, toggle and retain a typed selection through review", async () => {
+  await mount("island:vpc:application");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Choose interface endpoint services" }));
+  const search = ui.screen.getByRole("searchbox", { name: "Search interface endpoint services" });
+  assert.equal(document.activeElement, search);
+  const options = ui.screen.getByRole("list", { name: "Interface endpoint services" });
+  assert.equal(ui.within(options).getAllByRole("button").length, baseline.models.dev.interfaceEndpointServices!.length);
+  assert.equal(ui.within(options).queryByRole("button", { name: / · s3$/ }), null, "free gateway services keep their separate controls");
+  ui.fireEvent.change(search, { target: { value: "cloudwatch logs" } });
+  const logs = ui.screen.getByRole("button", { name: "CloudWatch Logs · logs" });
+  assert.ok(logs.querySelector("img")!.getAttribute("src")!.endsWith("cloudwatch.svg"));
+  ui.fireEvent.click(logs);
+  assert.equal(logs.getAttribute("aria-pressed"), "true");
+  ui.fireEvent.click(logs);
+  assert.equal(logs.getAttribute("aria-pressed"), "false");
+  ui.fireEvent.click(logs);
+  ui.fireEvent.change(search, { target: { value: "ecr.api" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "ECR · API · ecr.api" }));
+  assert.ok(ui.screen.getByRole("button", { name: "Remove logs endpoint" }));
+  assert.ok(ui.screen.getByRole("button", { name: "Remove ecr.api endpoint" }));
+  assert.equal(planCalls.length + applyCalls, 0);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Done" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0]!.find(edit => edit.kind === "network"), {
+    kind: "network", network: "application", settings: { ...networkSettings(baseline.models.dev.networks!.find(network => network.id === "application")!), endpoints: ["logs", "ecr.api"] },
+  });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" }));
+  assert.ok(ui.screen.getByRole("button", { name: "Remove logs endpoint" }));
+  assert.ok(ui.screen.getByRole("button", { name: "Remove ecr.api endpoint" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Remove logs endpoint" }));
+  assert.equal(ui.screen.queryByRole("button", { name: "Remove logs endpoint" }), null);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard" }));
+  assert.equal(ui.screen.queryByRole("button", { name: "Remove ecr.api endpoint" }), null);
+  assert.equal(applyCalls, 0);
+});
+
+test("VPC settings use named switches and review only the selected network without global defaults", async () => {
+  await mount("island:vpc:application");
+  assert.equal(ui.screen.queryByRole("heading", { name: "Shared defaults" }), null);
+  assert.equal(ui.screen.queryByRole("combobox", { name: "Default service type" }), null);
+  assert.equal(ui.screen.queryByRole("switch", { name: "Minify" }), null);
+  assert.equal(ui.screen.queryByRole("checkbox"), null);
+  const settings = networkSettings(baseline.models.dev.networks!.find(network => network.id === "application")!);
+  const expected = { ...settings };
+  for (const [label, key] of [
+    ["One NAT gateway (billed hourly and per GB)", "nat"],
+    ["IPv6 egress-only gateway", "ipv6"],
+    ["S3 gateway endpoint", "s3"],
+    ["DynamoDB gateway endpoint", "dynamodb"],
+  ] as const) {
+    const control = ui.screen.getByRole("switch", { name: label });
+    assert.equal(control.getAttribute("aria-checked"), String(settings[key]));
+    assert.equal(control.textContent, settings[key] ? "On" : "Off");
+    assert.equal(control.getAttribute("type"), "button");
+    ui.fireEvent.click(ui.screen.getByLabelText(label));
+    expected[key] = !settings[key];
+    assert.equal(control.getAttribute("aria-checked"), String(expected[key]));
+  }
+  assert.equal(planCalls.length + applyCalls, 0);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "network", network: "application", settings: expected }]);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" }));
+  assert.equal(ui.screen.getByRole("switch", { name: "S3 gateway endpoint" }).getAttribute("aria-checked"), String(expected.s3));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard" }));
+  assert.equal(ui.screen.getByRole("switch", { name: "S3 gateway endpoint" }).getAttribute("aria-checked"), String(settings.s3));
+  assert.equal(applyCalls, 0);
+});
+
+test("VPC creation switches preserve boolean choices through review without submitting the form", async () => {
+  await mount();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add to application" }));
+  ui.fireEvent.click(ui.within(ui.screen.getByRole("dialog", { name: "Add to application" })).getByRole("button", { name: "VPC" }));
+  await waitDialog("Create VPC");
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Stable identifier" }), { target: { value: "switch-review" } });
+  const control = ui.screen.getByRole("switch", { name: "One NAT gateway (billed hourly and per GB)" });
+  assert.equal(control.getAttribute("aria-checked"), "false");
+  ui.fireEvent.click(control);
+  assert.equal(control.getAttribute("aria-checked"), "true");
+  assert.equal(planCalls.length, 0);
+  ui.fireEvent.click([...document.querySelectorAll(".creation-wizard summary")].find(summary => summary.textContent === "Advanced settings")!);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Choose interface endpoint services" }));
+  ui.fireEvent.change(ui.screen.getByRole("searchbox", { name: "Search interface endpoint services" }), { target: { value: "secretsmanager" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Secrets Manager · secretsmanager" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Done" }));
+  assert.equal(planCalls.length, 0);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review generated changes" }));
+  await waitDialog("Review 1 change");
+  const edit = planCalls[0]![0]!;
+  assert.ok(edit.kind === "create" && edit.request.kind === "vpc" && edit.request.nat === true);
+  assert.deepEqual(edit.request.endpoints, ["secretsmanager"]);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" }));
+  assert.equal(ui.screen.getByRole("switch", { name: "One NAT gateway (billed hourly and per GB)" }).getAttribute("aria-checked"), "true");
+  assert.ok(ui.screen.getByRole("button", { name: "Remove secretsmanager endpoint" }));
+  assert.equal(applyCalls, 0);
+});
+
+test("managed PostgreSQL policy stays editable in development and retains its complete draft through review", async () => {
+  assert.equal(baseline.models.dev.resources.find(resource => resource.id === "resource:rds")?.absent, true, "development uses local PostgreSQL while RDS stays declared");
+  const database = baseline.models.dev.managedDatabase!;
+  assert.ok(database, "the native RDS resource has a first-class declaration");
+  await mount("resource:rds.database");
+  assert.ok(ui.screen.getByRole("heading", { name: "Managed PostgreSQL" }));
+  assert.ok(ui.screen.getByRole("heading", { name: "Connection pool defaults" }));
+  assert.equal(ui.screen.queryByRole("combobox", { name: "Default service type" }), null, "database defaults need no service-type menu");
+  assert.ok(ui.screen.getByText(/Production builds RDS; development uses local PostgreSQL/));
+  const standby = () => ui.screen.getByRole("switch", { name: "Multi-AZ standby" });
+  const replicas = () => ui.screen.getByRole("spinbutton", { name: "Read replicas" }) as HTMLInputElement;
+  const retention = () => ui.screen.getByRole("spinbutton", { name: "Backup retention (days)" }) as HTMLInputElement;
+  ui.fireEvent.click(standby());
+  ui.fireEvent.change(replicas(), { target: { value: "2" } });
+  assert.equal(standby().getAttribute("aria-checked"), "true");
+  assert.equal(replicas().value, "2");
+  assert.ok(ui.screen.getByText(/Multi-AZ upgrade staged/));
+  assert.equal(planCalls.length + applyCalls, 0, "editing policy never writes or applies changes");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "database", database: database.id, settings: { ...database.authored, multiAz: true, readReplicaCount: 2 } }]);
+  assert.equal(applyCalls, 0, "review requires a separate explicit apply");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" }));
+  assert.equal(standby().getAttribute("aria-checked"), "true");
+  assert.equal(replicas().value, "2");
+  ui.fireEvent.change(retention(), { target: { value: "0" } });
+  assert.match(ui.screen.getByRole("alert").textContent ?? "", /settings\.readReplicaCount requires positive settings\.backupRetentionDays/);
+  assert.equal((ui.screen.getByRole("button", { name: "Review Changes" }) as HTMLButtonElement).disabled, true);
+  assert.equal(planCalls.length, 1, "invalid replica policy is caught before a server review");
+  assert.equal(applyCalls, 0);
+  ui.fireEvent.change(retention(), { target: { value: "7" } });
+  assert.equal((ui.screen.getByRole("button", { name: "Review Changes" }) as HTMLButtonElement).disabled, false);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[1], [{ kind: "database", database: database.id, settings: { ...database.authored, multiAz: true, readReplicaCount: 2, backupRetentionDays: 7 } }]);
+  assert.equal(applyCalls, 0);
+});
+
+test("database callers' global pool defaults remain reviewable beside the database policy", async () => {
+  await mount("resource:rds.database");
+  const input = ui.screen.getByRole("spinbutton", { name: "Maximum connections in connections" });
+  const fact = baseline.models.dev.fields["defaults:database"]!.find(fact => fact.field === "defaults.database.pool.maxConnections")!;
+  const value = Number(fact.effective) + 1;
+  ui.fireEvent.change(input, { target: { value: String(value) } });
+  assert.equal(planCalls.length + applyCalls, 0);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "field", intent: { target: "defaults:database", field: fact.field, value } }]);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" }));
+  assert.equal((ui.screen.getByRole("spinbutton", { name: "Maximum connections in connections" }) as HTMLInputElement).value, String(value));
+  assert.equal(applyCalls, 0);
+});
+
+test("VPC removal is unavailable while used and stages an unused declaration through review", async () => {
+  const spare = { ...baseline.models.dev.networks![0]!, id: "spare", name: "Spare network", constructId: "SpareNetworkStack", cidr: "10.99.0.0/16", builtInProd: false };
+  persisted = { ...baseline, models: {
+    dev: { ...baseline.models.dev, networks: [...baseline.models.dev.networks!, spare] },
+    prod: { ...baseline.models.prod, networks: [...baseline.models.prod.networks!, spare] },
+  } };
+  const openRemoval = () => {
+    const summary = [...document.querySelectorAll("summary")].find(summary => summary.textContent === "Remove VPC")!;
+    assert.ok(summary);
+    if (!summary.parentElement!.hasAttribute("open")) ui.fireEvent.click(summary);
+    return ui.screen.getByRole("button", { name: "Review VPC removal" }) as HTMLButtonElement;
+  };
+  await mount("island:vpc:application");
+  assert.equal(openRemoval().disabled, true);
+  assert.ok(ui.screen.getByText(/Reassign workloads, the database, and native resource references before removal/));
+  assert.equal(planCalls.length, 0);
+  ui.cleanup();
+  await mount("island:vpc:spare");
+  const removal = openRemoval();
+  assert.equal(removal.disabled, false);
+  ui.fireEvent.click(removal);
+  await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls, [[{ kind: "removeNetwork", network: "spare" }]]);
+  assert.equal(applyCalls, 0, "reviewing removal never applies it");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" }));
+  assert.equal(openRemoval().disabled, true, "a pending removal cannot be staged twice");
+  assert.equal(planCalls.length, 1);
+  assert.equal(applyCalls, 0);
 });

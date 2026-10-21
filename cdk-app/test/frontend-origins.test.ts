@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as cdk from "aws-cdk-lib";
@@ -40,7 +41,7 @@ test("a generated CloudFront origin appears once in CORS and Cognito URLs", () =
   const userPoolClient = userPool.addClient("Client");
   const api = new HttpApiGatewayStack(app, "Api", {
     env,
-    config: defineFrameworkConfig({
+    config: defineFrameworkConfig({ networks: [fixtureVpc],
       resources: defineResources({}), defaults,
       http: [], webSocket: [], services: [], events: [], tasks: [], workflows: [],
     }),

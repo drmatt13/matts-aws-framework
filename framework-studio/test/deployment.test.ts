@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { defineFrameworkConfig, getFrameworkTargets, type FrameworkConfig } from "@repo/framework/config";
@@ -41,7 +42,7 @@ test("exception badges use actual environment availability, including disabled A
 
 test("deployment draft previews match the framework projection for every scope and WebSocket API flag", () => {
   for (const setting of ["both", "local-only", "cloud-only", "none"] as const) {
-    const config = defineFrameworkConfig({ defaults,
+    const config = defineFrameworkConfig({ networks: [fixtureVpc], defaults,
       http: [{ "/preview": { directory: "/lambda_functions/http_functions/preview", methods: ["POST"], deploy: setting } }],
       webSocket: [{ "$connect": { directory: "/lambda_functions/websocket_functions/preview-connect", deploy: setting } }],
       events: [], services: [],

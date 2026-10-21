@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -10,7 +11,7 @@ import {
 } from "@repo/framework/config";
 
 function fixture(architecture?: ContainerArchitecture, override?: ContainerArchitecture): FrameworkConfig {
-  return defineFrameworkConfig({
+  return defineFrameworkConfig({ networks: [fixtureVpc],
     resources: {},
     defaults: {
       lambda: {
@@ -20,10 +21,10 @@ function fixture(architecture?: ContainerArchitecture, override?: ContainerArchi
       container: { architecture },
     },
     http: [], webSocket: [], events: [],
-    tasks: [{ job: { cloud: { architecture: override } } }],
+    tasks: [{ job: { cloud: { vpc: fixtureVpc, architecture: override } } }],
     services: [{ "/orders/*": {
       directory: "/ecs_containers/services/orders", methods: ["GET"], port: 8000,
-      cloud: { architecture: override },
+      cloud: { vpc: fixtureVpc, architecture: override },
     } }],
   } as never);
 }

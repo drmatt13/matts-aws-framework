@@ -45,7 +45,7 @@ export function SchemaDetails() {
 }
 
 export function Database() {
-  const { snapshot, selected, select } = useStudio();
+  const { snapshot, model, selected, select } = useStudio();
   const schema = snapshot.schema;
   const [query, setQuery] = useState("");
   const [zoom, setZoom] = useState(1);
@@ -59,6 +59,7 @@ export function Database() {
   const fit = () => { if (viewport.current) setZoom(Math.max(0.35, Math.min(1.25, (viewport.current.clientWidth - 30) / layout.width, (viewport.current.clientHeight - 30) / layout.height))); };
   return <div className="database-view">
     <header className="schema-heading"><div><span className="kind">Application database</span><h1>Declared schema</h1>
+      {model.managedDatabase ? <p className="small"><button className="button" onClick={() => select(model.managedDatabase!.resource)}>Configure PostgreSQL</button> {model.managedDatabase.networkId} VPC · {model.managedDatabase.subnet} subnets</p> : null}
       <p className="muted">{schema.tables.length} tables · {schema.relations.length} relationships · Shared by local PostgreSQL and production RDS</p>
       <p className="small muted">Read from <code>{schema.file}</code>. This diagram does not inspect the live databases.</p>
     </div><div className="schema-zoom"><button className="icon-button" aria-label="Zoom out" onClick={() => setZoom((zoom) => Math.max(0.35, zoom / 1.2))}><Minus size={16} /></button><span>{Math.round(zoom * 100)}%</span><button className="icon-button" aria-label="Zoom in" onClick={() => setZoom((zoom) => Math.min(1.6, zoom * 1.2))}><Plus size={16} /></button><button className="icon-button" aria-label="Fit schema" onClick={fit}><Maximize2 size={16} /></button></div></header>

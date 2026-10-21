@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
@@ -78,8 +79,8 @@ test("a nested field goes into the object that already holds its siblings", () =
   const edit = planned(plan({ target: "service:example-service", field: "container.subnet", value: "private" }));
   assert.equal(edit.after, edit.before.replace("      desiredCount: 1,\n", '      desiredCount: 1,\n      subnet: "private",\n'));
   const created = planned(plan({ target: "task:db-migrate", field: "container.subnet", value: "private" }));
-  assert.match(created.after, /cloud: \{ subnet: "private" \},/);
-  assert.deepEqual(created.inverse, { origin: 'tasks["db-migrate"]', path: ["cloud"], remove: true });
+  assert.match(created.after, /cloud: \{ vpc: applicationVpc, subnet: "private" \},/);
+  assert.deepEqual(created.inverse, { origin: 'tasks["db-migrate"]', path: ["cloud", "subnet"], remove: true });
 });
 
 test("Lambda architecture, packaging and typed build options produce ordinary source edits", () => {
@@ -107,7 +108,7 @@ test("a workflow's fields are its options object", () => {
   const source = 'export default defineFrameworkConfig({ workflows: [{ process: workflow(() => wait({ seconds: 1 }), { deploy: "local-only", timeoutSeconds: 120 }) }] });\n';
   writeFileSync(path.join(root, "framework.config.ts"), source);
   try {
-    const config = defineFrameworkConfig({ defaults, http: [], webSocket: [], events: [], services: [], workflows: [{ process: workflow(() => wait({ seconds: 1 }), { deploy: "local-only", timeoutSeconds: 120 }) }] });
+    const config = defineFrameworkConfig({ networks: [fixtureVpc], defaults, http: [], webSocket: [], events: [], services: [], workflows: [{ process: workflow(() => wait({ seconds: 1 }), { deploy: "local-only", timeoutSeconds: 120 }) }] });
     const model = projectModel(config as unknown as FrameworkConfig, { mode: "dev", webSocketApi: false });
     const fact = model.fields["workflow:process"]!.find((fact) => fact.field === "deploy")!;
     const edit = planned(planEdit({ repositoryRoot: root, origin: 'workflows["process"]', field: fieldById("deploy")!, fact, intent: { target: "workflow:process", field: "deploy", value: "both" } }));
@@ -120,7 +121,7 @@ test("inherit removes the property, unless the author commented it", () => {
   const removed = planned(plan({ target: "lambda:graphql-api", field: "lambda.timeoutSeconds", inherit: true }));
   assert.deepEqual(
     removed.diff.lines.filter((line) => line.kind !== "context").map((line) => [line.kind, line.text, line.oldLine]),
-    [["remove", "    timeoutSeconds: 30,", 11]],
+    [["remove", "    timeoutSeconds: 30,", 12]],
   );
   assert.equal(removed.before.split("\n").length - 1, removed.after.split("\n").length);
   const file = path.join(repositoryRoot, "framework-config/http/graphql.ts");

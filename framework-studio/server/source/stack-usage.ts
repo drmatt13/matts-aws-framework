@@ -5,10 +5,16 @@ import type { ModelResource, SourceLocation } from "../../shared/model";
 import type { CatalogEntrySource } from "./catalog";
 import { lineAndColumn, parse } from "./syntax";
 
-/** Find constructor references reachable through the CDK entry point's local runtime imports.
- * Conditions and function calls are not executed: a reference is source evidence only.
+/** Every constructor reference reachable through the CDK entry point's local runtime imports,
+ * keyed by `<absolute file>#<class>`. `complete` is false when part of that graph could not be read.
  */
-export function readStackUsage(repositoryRoot: string, catalog: ReadonlyMap<string, CatalogEntrySource>): Map<string, NonNullable<ModelResource["stackUsage"]>> {
+export interface ConstructorSites {
+  readonly complete: boolean;
+  readonly constructors: ReadonlyMap<string, readonly SourceLocation[]>;
+}
+
+/** Conditions and function calls are not executed: a reference is source evidence only. */
+export function readConstructorSites(repositoryRoot: string): ConstructorSites {
   const files = new Map<string, ts.SourceFile>();
   let complete = true;
   const moduleFile = (from: string, specifier: string): string | undefined => {
@@ -94,9 +100,18 @@ export function readStackUsage(repositoryRoot: string, catalog: ReadonlyMap<stri
     };
     walk(source);
   }
+  return { complete, constructors };
+}
+
+/** Whether the CDK app constructs each catalog stack, from one read of its constructor sites. */
+export function readStackUsage(
+  repositoryRoot: string,
+  catalog: ReadonlyMap<string, CatalogEntrySource>,
+  { complete, constructors }: ConstructorSites = readConstructorSites(repositoryRoot),
+): Map<string, NonNullable<ModelResource["stackUsage"]>> {
   return new Map([...catalog].filter(([, entry]) => entry.stack).map(([id, entry]) => {
     const stack = entry.stack!;
-    const sites = stack.location ? constructors.get(`${path.resolve(repositoryRoot, stack.location.file)}#${stack.className}`) ?? [] : [];
+    const sites = stack.location ? [...constructors.get(`${path.resolve(repositoryRoot, stack.location.file)}#${stack.className}`) ?? []] : [];
     return [id, { status: sites.length ? "referenced" : complete && stack.location ? "unreferenced" : "unknown", sites }];
   }));
 }

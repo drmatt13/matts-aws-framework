@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -24,7 +25,7 @@ import { defaults } from "../../../framework-config/defaults";
 /** The Cognito inputs a token verifier reads, which `auth: true` requires. */
 const cognito = { USER_POOL_ID: "us-east-1_pool", USER_POOL_CLIENT_ID: "client" };
 
-const base = {
+const base = { networks: [fixtureVpc],
   defaults: { ...defaults, tools: { timeoutSeconds: 20 } },
   http: [],
   webSocket: [],
@@ -56,14 +57,14 @@ test("an agent never uses the database; a tool can", () => {
   const catalog = defineResources({ rds: resource.stack<{ readonly database: { readonly connections: object; readonly node: { readonly id: string; readonly path: string } } }>() });
   assert.throws(
     () => config({
-      resources: catalog, database: catalog.rds.database,
-      agents: [{ "support-agent": { ...agents["support-agent"], database: true } }],
+      resources: catalog, database: { resource: catalog.rds.database, vpc: fixtureVpc },
+      agents: [{ "support-agent": { vpc: fixtureVpc, ...agents["support-agent"], database: true } }],
     } as never),
     /declares database: true, but an AgentCore agent runs outside the VPC\. Give the work that needs the database to a tool/,
   );
   assert.doesNotThrow(() => config({
-    resources: catalog, database: catalog.rds.database,
-    tools: [{ ...tools, "lookup-case": { ...tools["lookup-case"], database: true } }],
+    resources: catalog, database: { resource: catalog.rds.database, vpc: fixtureVpc },
+    tools: [{ ...tools, "lookup-case": { vpc: fixtureVpc, ...tools["lookup-case"], database: true } }],
   } as never));
 });
 
@@ -235,7 +236,7 @@ test("agent routes cannot shadow HTTP paths, even on a different method or deplo
 test("service mounts conflict at their root and descendants, but not sibling prefixes", () => {
   const withRoute = (route: `/${string}`) => config({
     agents: [{ ...agents, "support-agent": { ...agents["support-agent"], route } }],
-    services: [{ "/chat/*": { directory: "/ecs_containers/services/chat", methods: ["GET"] } }],
+    services: [{ "/chat/*": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/services/chat", methods: ["GET"] } }],
   });
   for (const route of ["/api/chat", "/api/chat/support"] as const) {
     assert.throws(() => withRoute(route), /Browser route collision: agents\["support-agent"\]\.route.*services\["\/chat\/\*"\]/);
@@ -245,7 +246,7 @@ test("service mounts conflict at their root and descendants, but not sibling pre
   withRoute("/chat/support");
   assert.throws(() => config({
     agents: [{ "support-agent": { ...agents["support-agent"], route: "/api/anywhere" } }],
-    services: [{ "/*": { directory: "/ecs_containers/services/chat", methods: "*" } }],
+    services: [{ "/*": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/services/chat", methods: "*" } }],
   }), /Browser route collision/);
 });
 

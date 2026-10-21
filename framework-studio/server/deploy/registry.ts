@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type { AwsProfileInfo, DeployMode, DockerView, DriftView, JobView, OperationKind, OperationRequest, TargetView } from "../../shared/deploy";
 import type { JobManager, JobSpec, JobStep } from "./jobs";
@@ -109,10 +108,6 @@ const cdkContext = (name: string, deployMode: DeployMode) => ["-c", `deployment=
 const awsArguments = (profileName: string, regionName: string | undefined) => ["--profile", profileName, ...(regionName ? ["--region", regionName] : [])];
 
 const CLOUD_CANCEL_NOTE = "Stopped the command. A CloudFormation operation it had already started continues in AWS; Studio keeps showing its stacks.";
-
-function readJson(file: string): any {
-  try { return JSON.parse(readFileSync(file, "utf8")); } catch { return undefined; }
-}
 
 export async function buildOperation(context: OperationContext, request: OperationRequest): Promise<JobSpec> {
   const params = request.params ?? {};
@@ -468,10 +463,6 @@ function watchCommand(context: OperationContext, env: NodeJS.ProcessEnv): Comman
 
 export function exportDirectory(root: string, env: NodeJS.ProcessEnv): string {
   return env.FRAMEWORK_EXPORT_DIRECTORY ? path.resolve(env.FRAMEWORK_EXPORT_DIRECTORY) : root;
-}
-
-export function planFileExists(context: OperationContext, key: string): boolean {
-  return existsSync(path.join(context.plans.path(key), "plan.json")) && readJson(path.join(context.plans.path(key), "plan.json")) !== undefined;
 }
 
 export function validService(name: unknown): string {

@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as cdk from "aws-cdk-lib";
@@ -11,7 +12,7 @@ import { finalizeFrameworkResources, initializeFrameworkResources } from "../lib
 const env = { account: "111122223333", region: "us-east-1" };
 const cognitoEnvironment = { USER_POOL_ID: "us-east-1_pool", USER_POOL_CLIENT_ID: "client" };
 
-const framework: FrameworkConfig = defineFrameworkConfig({
+const framework: FrameworkConfig = defineFrameworkConfig({ networks: [fixtureVpc],
   defaults,
   http: [{ "/verify-session": { directory: "/lambda_functions/http_functions/verify-session", methods: ["GET"] } }],
   webSocket: [{

@@ -79,17 +79,18 @@ test("workflow call spans are located in an isolated section module", () => {
 });
 
 test("the configuration's other properties resolve one hop, like the sections do", () => {
-  const { properties } = locateConfigSource(configFile, { repositoryRoot });
+  const { properties, networks } = locateConfigSource(configFile, { repositoryRoot });
   const relative = (file: string) => path.relative(repositoryRoot, file).replaceAll("\\", "/");
 
   assert.equal(relative(properties.defaults!.file), "framework-config/defaults.ts");
   assert.match(slice(properties.defaults!.file, properties.defaults!.span), /^\{/);
-  assert.equal(relative(properties.network!.file), "framework-config/network.ts");
-  assert.match(slice(properties.network!.file, properties.network!.span), /^defineNetwork\(\{/);
+  assert.equal(relative(networks[0]!.file), "framework-config/networks/application/index.ts");
+  assert.equal(networks[0]!.id, "application");
+  assert.match(slice(networks[0]!.file, networks[0]!.span), /^defineNetwork\(\{/);
   assert.equal(relative(properties.resources!.file), "framework-config/resources.ts");
   assert.match(slice(properties.resources!.file, properties.resources!.span), /^defineResources\(\{/);
-  assert.equal(relative(properties.database!.file), "framework.config.ts");
-  assert.equal(slice(properties.database!.file, properties.database!.span), "resources.rds.database");
+  assert.equal(relative(properties.database!.file), "framework-config/databases/application/index.ts");
+  assert.match(slice(properties.database!.file, properties.database!.span), /^defineDatabase\(\{/);
 });
 
 test("a spread array of modules is followed, and each entry keeps its own file", () => {

@@ -79,8 +79,8 @@ under `framework-config/`, and this file imports and composes them:
 const framework = defineFrameworkConfig({
   resources,
   defaults,
-  network,                          // framework-config/network.ts: the production VPC
-  database: resources.rds.database, // what a workload's `database: true` reaches
+  networks: [applicationVpc],        // framework-config/networks/application/index.ts
+  database: applicationDatabase,
   userPool: {                       // what a workload's `userPool: true` is handed
     userPoolId: resources.cognito.userPool.userPoolId,
     userPoolClientId: resources.cognito.userPoolClient.userPoolClientId,
@@ -99,6 +99,13 @@ const framework = defineFrameworkConfig({
 To add something new, write a module in `framework-config/<type>/`, then add it to the
 matching array. The framework builds the routing, local dev servers and AWS
 infrastructure from these declarations.
+
+Declare each VPC with `defineNetwork({ id, ...settings })` in
+`framework-config/networks/<id>/index.ts` and register its imported value in `networks`.
+A networked Lambda selects it with `vpc: applicationVpc`; a container selects it with
+`cloud: { vpc: applicationVpc, subnet: "public" }`. Database consumers must select the
+database's VPC. Each declaration appears as its own Studio island; unused VPCs remain
+blueprints and create no production infrastructure.
 
 ### `framework-config/resources.ts`: where workloads get their inputs
 

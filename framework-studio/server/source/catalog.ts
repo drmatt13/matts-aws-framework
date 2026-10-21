@@ -1,7 +1,9 @@
+import { nativeVpcReferences } from "./networks";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import type { ModelResource, SourceLocation } from "../../shared/model";
+import { toRelative } from "../files";
 import { expressionAt, lineAndColumn, literalKey, parse, unwrap } from "./syntax";
 
 /**
@@ -21,6 +23,7 @@ export interface StackMember {
   readonly location: SourceLocation;
   readonly assignments?: readonly SourceLocation[];
   readonly networkPlacement?: ModelResource["networkPlacement"];
+  readonly networkId?: string;
 }
 
 export interface CatalogEntrySource {
@@ -30,17 +33,13 @@ export interface CatalogEntrySource {
   /** `PROD_DEPLOYMENT ? … : undefined`: the condition under which the entry exists. */
   readonly condition?: string;
   /** For `resource.stack<T>()`, the class and its public members. */
-  readonly stack?: { readonly className: string; readonly location?: SourceLocation; readonly members: readonly StackMember[] };
+  readonly stack?: { readonly className: string; readonly location?: SourceLocation; readonly members: readonly StackMember[]; readonly networkIds?: readonly string[] };
   readonly stackUsage?: ModelResource["stackUsage"];
-}
-
-function relative(repositoryRoot: string, file: string): string {
-  return path.relative(repositoryRoot, file).replaceAll("\\", "/");
 }
 
 function locate(repositoryRoot: string, sourceFile: ts.SourceFile, node: ts.Node): SourceLocation {
   const start = node.getStart(sourceFile);
-  return { file: relative(repositoryRoot, sourceFile.fileName), ...lineAndColumn(sourceFile, start), start, end: node.end };
+  return { file: toRelative(repositoryRoot, sourceFile.fileName), ...lineAndColumn(sourceFile, start), start, end: node.end };
 }
 
 function moduleFile(from: string, specifier: string): string | undefined {
@@ -99,11 +98,18 @@ export function stackMembers(repositoryRoot: string, file: string, className: st
     (statement): statement is ts.ClassDeclaration => ts.isClassDeclaration(statement) && statement.name?.text === className,
   );
   if (!declaration) return undefined;
+  const vpcs = nativeVpcReferences(repositoryRoot, sourceFile, declaration);
+  const memberVpcs = new Map<string, string>();
   const placements = new Map<string, ModelResource["networkPlacement"]>();
   const readPlacement = (node: ts.Node): void => {
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isPropertyAccessExpression(node.left) && node.left.expression.kind === ts.SyntaxKind.ThisKeyword && ts.isNewExpression(node.right)) {
       const options = node.right.arguments?.[2];
-      const property = (value: ts.Node | undefined, name: string) => value && ts.isObjectLiteralExpression(value) ? value.properties.find((item): item is ts.PropertyAssignment => ts.isPropertyAssignment(item) && literalKey(item) === name)?.initializer : undefined;
+      const property = (value: ts.Node | undefined, name: string): ts.Expression | undefined => {
+        const item = value && ts.isObjectLiteralExpression(value) ? value.properties.find(item => literalKey(item) === name) : undefined;
+        return item && ts.isPropertyAssignment(item) ? item.initializer : item && ts.isShorthandPropertyAssignment(item) ? item.name : undefined;
+      };
+      const network = vpcs.resolve(property(options, "vpc"));
+      if (network) memberVpcs.set(node.left.name.text, network);
       const selection = property(property(options, "vpcSubnets"), "subnetType");
       const subnetTypes: Readonly<Record<string, NonNullable<ModelResource["networkPlacement"]>>> = { PUBLIC: "public", PRIVATE_WITH_EGRESS: "private", PRIVATE_ISOLATED: "isolated" };
       const subnet = selection && ts.isPropertyAccessExpression(selection) ? subnetTypes[selection.name.text] : undefined;
@@ -120,9 +126,9 @@ export function stackMembers(repositoryRoot: string, file: string, className: st
       continue;
     }
     const typeText = member.type?.getText(sourceFile) ?? "unknown";
-    members.push({ name: member.name.text, typeText, category: categorize(typeText), location: locate(repositoryRoot, sourceFile, member.name), networkPlacement: placements.get(member.name.text) });
+    members.push({ name: member.name.text, typeText, category: categorize(typeText), location: locate(repositoryRoot, sourceFile, member.name), networkPlacement: placements.get(member.name.text), networkId: memberVpcs.get(member.name.text) });
   }
-  return { className, location: locate(repositoryRoot, sourceFile, declaration.name ?? declaration), members };
+  return { className, location: locate(repositoryRoot, sourceFile, declaration.name ?? declaration), members, networkIds: [...vpcs.used] };
 }
 
 /**

@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -6,7 +7,7 @@ import {
 } from "@repo/framework/config";
 
 function withService(service: Record<string, unknown>): FrameworkConfig {
-  return {
+  return { networks: [fixtureVpc],
     resources: {},
     defaults: {
       lambda: {
@@ -22,7 +23,7 @@ function withService(service: Record<string, unknown>): FrameworkConfig {
     webSocket: {},
     events: {},
     services: {
-      "/orders/*": { directory: "/ecs_containers/services/orders", methods: ["GET"], port: 8000, ...service },
+      "/orders/*": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/services/orders", methods: ["GET"], port: 8000, ...service },
     },
   } as unknown as FrameworkConfig;
 }
@@ -35,9 +36,9 @@ test("a service's load balancer is private unless declared otherwise", () => {
 
 test("auth: true cannot be combined with a public load balancer", () => {
   assert.throws(
-    () => normalizeFrameworkConfig(withService({ auth: true, cloud: { publicLoadBalancer: true } })),
+    () => normalizeFrameworkConfig(withService({ auth: true, cloud: { vpc: fixtureVpc, publicLoadBalancer: true } })),
     /reachable without the HTTP API's authorizer/,
   );
   // Without auth the service owns its own access control, so it is allowed.
-  normalizeFrameworkConfig(withService({ cloud: { publicLoadBalancer: true } }));
+  normalizeFrameworkConfig(withService({ cloud: { vpc: fixtureVpc, publicLoadBalancer: true } }));
 });

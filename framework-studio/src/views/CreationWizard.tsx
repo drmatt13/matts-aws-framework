@@ -1,7 +1,9 @@
 import { useEffect, useId, useRef } from "react";
-import { CREATORS, CreationValidationError, readCreationRequest, type CreationField } from "../../shared/creation";
+import { CREATORS, CreationValidationError, networkCreationProblem, readCreationRequest, type CreationField } from "../../shared/creation";
 import type { CreationEntry } from "../draft";
 import { useStudio } from "../studio";
+import { InspectorSwitch } from "./InspectorUI";
+import { InterfaceEndpointPicker } from "./InterfaceEndpointPicker";
 
 /** Forms are part of InspectorDraft: review/back, source conflicts, navigation,
  * browser exit, discard and apply all share the existing session lifecycle. */
@@ -16,7 +18,10 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
     return () => element.close();
   }, [draftState.reviewOpen, draftState.pendingNavigation]);
   let problem: CreationValidationError | undefined;
-  try { readCreationRequest({ kind: entry.resourceKind, ...entry.form }); }
+  try {
+    const request = readCreationRequest({ kind: entry.resourceKind, ...entry.form });
+    if (request.kind === "vpc") problem = networkCreationProblem(request, model.networks ?? []);
+  }
   catch (error) { if (error instanceof CreationValidationError) problem = error; }
   const fields = creator.fields.filter((field) => {
     const lambda = entry.resourceKind === "function" || entry.resourceKind === "route";
@@ -35,6 +40,8 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
       const form = { ...entry.form, [field.key]: next };
       const envName = (value: string) => value.replace(/([a-z0-9])([A-Z])/g, "$1_$2").replaceAll("-", "_").toUpperCase();
       const route = (name: string, category: unknown) => entry.resourceKind === "service" ? `/${name}/*` : category === "webSocket" ? name : `/${name}`;
+      if (field.key === "vpc" && next && form.subnet === "none") form.subnet = "private";
+      if (field.key === "vpc" && !next && ["function", "route"].includes(entry.resourceKind)) form.subnet = "none";
       if (field.key === "id" && typeof next === "string") {
         const old = String(entry.form.id);
         if ("envName" in form && (!form.envName || form.envName === envName(old))) form.envName = envName(next);
@@ -52,14 +59,17 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
       }
       draft.setCreation(entry.resourceKind, form);
     };
-    const options = field.key === "bindingResource" ? ["", ...model.resources.filter((resource) => resource.kind === "input" || resource.kind === "secret").map((resource) => resource.id)]
+    const options = field.key === "vpc" ? ["", ...(model.networks ?? []).map(network => network.id)] : field.key === "bindingResource" ? ["", ...model.resources.filter((resource) => resource.kind === "input" || resource.kind === "secret").map((resource) => resource.id)]
       : field.key === "consumer" ? ["", ...model.targets.map((target) => target.ref)]
       : field.key === "existingTarget" ? ["", ...model.targets.filter((target) => target.kind === "lambda" && target.role === entry.form.category).map((target) => target.ref)] : field.options;
     const appendOptions = field.key === "steps" ? model.targets.filter((target) => target.kind === "task" || target.role === "event").map((target) => target.ref)
       : field.key === "tools" ? model.targets.filter((target) => target.role === "tool" && (entry.form.auth || !target.auth)).map((target) => target.id) : undefined;
-    return <div className={`creation-field ${field.type === "boolean" ? "creation-switch" : ""}`} key={field.key}>
+    const endpoints = entry.resourceKind === "vpc" && field.key === "endpoints";
+    return <div className={`creation-field ${field.type === "boolean" ? "creation-switch" : ""} ${endpoints ? "endpoint-creation-field" : ""}`} key={field.key}>
       <label htmlFor={id}>{field.label}</label>
-      {field.type === "boolean" ? <input id={id} type="checkbox" checked={value === true} onChange={(event) => update(event.target.checked)} />
+      {endpoints ? <InterfaceEndpointPicker id={id} services={model.interfaceEndpointServices} selected={String(value ?? "").split(",").map(name => name.trim()).filter(Boolean)}
+        onChange={services => update(services.join(", "))} disabled={!!draftState.busy || draft.conflict || !!model.stale} invalid={!!error} describedBy={error ? `${id}-error` : `${id}-help`} />
+        : field.type === "boolean" ? <InspectorSwitch id={id} label={field.label} checked={value === true} onChange={update} invalid={!!error} describedBy={error ? `${id}-error` : field.help ? `${id}-help` : undefined} />
         : options ? <select id={id} value={String(value)} onChange={(event) => update(event.target.value)} aria-invalid={!!error} aria-describedby={error ? `${id}-error` : `${id}-help`}>
           {options.map((option) => <option key={option} value={option}>{option || "None"}</option>)}
         </select>
@@ -72,7 +82,7 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
     </div>;
   };
   return <dialog ref={dialog} className="preview creation-wizard" aria-labelledby={`${prefix}-title`} onCancel={(event) => { event.preventDefault(); back(); }}>
-    <header><p className="small muted">Add to application · Configure → Review → Apply</p><h2 id={`${prefix}-title`}>{entry.resourceKind === "vpc" ? "Configure shared VPC" : `Create ${creator.label.toLowerCase()}`}</h2></header>
+    <header><p className="small muted">Add to application · Configure → Review → Apply</p><h2 id={`${prefix}-title`}>{entry.resourceKind === "vpc" ? "Create VPC" : `Create ${creator.label.toLowerCase()}`}</h2></header>
     <div className="body">
       <p>{creator.help}</p>
       <div className="creation-fields">{fields.filter((field) => !field.advanced).map(render)}</div>
@@ -81,6 +91,6 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
       {draftState.error ? <p className="reason" role="alert">{draftState.error}</p> : null}
       <p className="small muted">Review shows every proposed file before anything is written. Apply saves source; deployment is a separate action.</p>
     </div>
-    <footer><button className="quiet" onClick={back}>Back to resource types</button><button className="quiet" onClick={() => draft.discard()}>Cancel creation</button><button className="primary" disabled={draft.invalid || draft.conflict || !!draftState.busy} onClick={() => void draft.review()}>Review generated changes</button></footer>
+    <footer><button className="quiet" onClick={back}>Back to resource types</button><button className="quiet" onClick={() => draft.discard()}>Cancel creation</button><button className="primary" disabled={!!problem || draft.invalid || draft.conflict || !!draftState.busy} onClick={() => void draft.review()}>Review generated changes</button></footer>
   </dialog>;
 }

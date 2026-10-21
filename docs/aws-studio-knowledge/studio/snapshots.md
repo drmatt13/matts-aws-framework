@@ -25,9 +25,14 @@ related:
 
 1. Hash editable files and read deployment settings.
 2. `EvaluatorPool` loads dev and prod in separate forked module graphs. Synthetic inputs select mode; graph evaluation does not need resolved secret values. A narrow mode flag is read from the authored mode files. Forks inherit host trust/environment; do not describe them as secret-proof isolation.
-3. `projectModel` normalizes/validates declarations into each `ModeModel`.
+3. `projectModel` normalizes/validates declarations into each `ModeModel`. `lambdaSpec` in [lambda-spec.ts](../../../framework-studio/server/model/lambda-spec.ts) asks `resolveLambdaTarget` once per Lambda per evaluated config; Studio never mutates an evaluated config (`applyPatch` copies).
 4. [Source indexing](source-indexing.md) supplies locations, capabilities and CDK evidence. Prisma contract parsing, Compose metadata, client mappings, descriptions and input **metadata** enrich the snapshot.
 5. Increment generation and combine it with a content hash for `revision`; atomically cache disposable CDK-link evidence under `.cache/framework-studio`.
+
+Each mode also carries `interfaceEndpointServices`, copied from the framework's generated
+CDK endpoint catalog by `projectModel`. The browser uses this list for the VPC service
+picker without importing CDK or maintaining its own supported-service list. It describes
+framework support, not live regional availability.
 
 `lastGood` retains a previous nonempty graph after a new load failure, marks it stale/error and carries new diagnostics. It is display continuity, not permission to edit old source. Models are rebuilt, not incrementally patched node by node. A generation change may occur even for equal content.
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Plus, Trash2, ArrowUpRight, ChevronRight, Pencil } from "lucide-react";
 import { CLIENT_ENVIRONMENT_ID, type ClientEnvironmentBinding, type ClientReferenceOption } from "../../shared/client-environment";
 import { previewClientBinding } from "../../shared/client-environment-preview";
@@ -7,6 +7,7 @@ import { useStudio } from "../studio";
 import { Description } from "./Description";
 import { EntityIcon } from "./EntityIcon";
 import { EnvironmentPills } from "./DeploymentBadge";
+import { InspectorSwitch } from "./InspectorUI";
 
 const sourceKinds = { input: "CDK input", output: "Stack output", region: "Stack region", endpoint: "URL from CDK port", empty: "Empty value" } as const;
 
@@ -22,6 +23,7 @@ function InputSelect({ label, value, options, disabled, onChange }: { label: str
 function SourceControls({ name, binding, options, inputs, disabled, onChange }: {
   name: string; binding: ClientEnvironmentBinding; options: readonly ClientReferenceOption[]; inputs: string; disabled: boolean; onChange: (binding: ClientEnvironmentBinding) => void;
 }) {
+  const prefix = useId();
   const stacks = [...new Set(options.flatMap((option) => option.binding.kind === (binding.kind === "output" ? "output" : "region") && "stack" in option.binding ? [option.binding.stack] : []))];
   const outputs = binding.kind === "output" ? options.flatMap((option) => option.binding.kind === "output" && option.binding.stack === binding.stack ? [...option.binding.outputs] : []) : [];
   return <fieldset className="client-mapping-controls" disabled={disabled}>
@@ -46,12 +48,12 @@ function SourceControls({ name, binding, options, inputs, disabled, onChange }: 
         {outputs.map((output) => <option key={output}>{output}</option>)}
       </select></label>
       {binding.outputs.length > 1 ? <p className="small muted">Fallback outputs: <code>{binding.outputs.slice(1).join(", ")}</code>. Selecting another output replaces this list.</p> : null}
-      <label className="client-mapping-check"><input type="checkbox" aria-label={`Allow empty ${name}`} checked={!!binding.optional} onChange={(event) => { const { optional: _old, ...reference } = binding; onChange(event.target.checked ? { ...reference, optional: true } : reference); }} />Allow empty when stack is off</label>
+      <div className="setting-switch"><label htmlFor={`${prefix}-optional`}>Allow empty when stack is off</label><InspectorSwitch id={`${prefix}-optional`} label={`Allow empty ${name}`} checked={!!binding.optional} onChange={checked => { const { optional: _old, ...reference } = binding; onChange(checked ? { ...reference, optional: true } : reference); }} /></div>
     </> : null}
     {binding.kind === "endpoint" ? <>
       <div className="client-mapping-url"><label>Protocol<select aria-label={`Protocol for ${name}`} value={binding.protocol} onChange={(event) => onChange({ ...binding, protocol: event.target.value as typeof binding.protocol })}>{["http", "https", "ws", "wss"].map((protocol) => <option key={protocol}>{protocol}</option>)}</select></label><label>Hostname<input aria-label={`Hostname for ${name}`} value={binding.host ?? "localhost"} onChange={(event) => onChange({ ...binding, host: event.target.value })} /></label></div>
       <label><span>Port in <code>{inputs}</code></span><InputSelect label={`Port input for ${name}`} value={binding.port} options={options} onChange={(port) => onChange({ ...binding, port })} /></label>
-      <label className="client-mapping-check"><input type="checkbox" aria-label={`Use URL override for ${name}`} checked={binding.override !== undefined} onChange={(event) => { const { override: _old, ...reference } = binding; onChange(event.target.checked ? { ...reference, override: name } : reference); }} />Use a URL override when set</label>
+      <div className="setting-switch"><label htmlFor={`${prefix}-override`}>Use a URL override when set</label><InspectorSwitch id={`${prefix}-override`} label={`Use URL override for ${name}`} checked={binding.override !== undefined} onChange={checked => { const { override: _old, ...reference } = binding; onChange(checked ? { ...reference, override: name } : reference); }} /></div>
       <InputSelect label={`Override input for ${name}`} value={binding.override ?? name} options={options} disabled={binding.override === undefined} onChange={(override) => onChange({ ...binding, override })} />
       <p className="small muted">The override takes priority. When empty, the URL uses the hostname and port above.</p>
     </> : null}

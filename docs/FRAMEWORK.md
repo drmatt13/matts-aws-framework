@@ -460,20 +460,41 @@ The override file is plain Compose and is not checked.
 
 ## Network and database
 
-[framework-config/network.ts](../framework-config/network.ts) declares the application's VPC,
-and is the only place its way out is decided. Only a production deployment builds it, and only
-once something is placed in it: a Lambda with a `subnet` or `database: true`, or a container.
+VPCs are independent declarations under `framework-config/networks/<id>/index.ts`.
+Import each declaration into `framework.config.ts` and list it in the literal
+`networks` array. Every networked workload imports its selected declaration explicitly;
+there is no implicit/default VPC or inherited VPC reference.
 
 ```ts
-export const network = defineNetwork({
+export const applicationVpc = defineNetwork({
+  id: "application",
+  // Preserve the original deployed identity when migrating existing infrastructure.
+  cloud: { constructId: "NetworkStack" },
   cidr: "10.0.0.0/16",
   zones: 2,
-  egressOnlyInternetGateway: true, // IPv6 out of the private subnets: free
-  natGateway: false,               // IPv4 out: about $33 a month plus $0.045 per GB
-  gatewayEndpoints: { s3: true, dynamodb: true }, // free
-  interfaceEndpoints: [],          // about $7.30 a month per zone each plus $0.01 per GB
+  egressOnlyInternetGateway: true,
+  natGateway: false,
+  gatewayEndpoints: { s3: true, dynamodb: true },
+  interfaceEndpoints: [],
 });
+
+// framework.config.ts
+networks: [applicationVpc, analyticsVpc],
+database: applicationDatabase,
+
+// A Lambda: VPC identity and subnet tier are separate choices.
+"/reports": { directory: "...", methods: ["GET"], vpc: analyticsVpc, subnet: "private" },
+// A service/task's placement lives under cloud.
+cloud: { vpc: applicationVpc, subnet: "public" },
 ```
+
+Only production builds VPC infrastructure, when a deployed workload or native application
+resource uses it. An unused declaration appears in Studio as a blueprint. Each VPC owns
+its gateways, endpoints and security groups; no peering or private routing connects VPCs.
+IDs and deployed construct identities must be unique. Independent CIDRs may overlap.
+The original `NetworkStack` identity retains its existing scopes; additional VPCs have
+stable namespaced stacks, ECS clusters, task security groups and API Gateway VPC links.
+Changing registration order does not rename infrastructure.
 
 The layout is fixed: a public, a private and an isolated subnet in each zone, all dual-stack.
 `cidr` and `zones` are set once: changing either renumbers every subnet. Everything else says
@@ -496,19 +517,20 @@ one NAT gateway. Synthesis prints what the network holds and what it costs.
 
 ### Lambdas in the VPC
 
-A Lambda's `subnet` places it. Set it on one Lambda, on a section (`defaults.http`), or on every
+A Lambda's imported `vpc` selects its network; declare it explicitly on each workload.
+The `subnet` selects the tier and may be set on one Lambda, on a section (`defaults.http`), or on every
 Lambda (`defaults.lambda.subnet`), and override it on any one:
 
 - `"none"` (the default): outside the VPC, with the whole internet.
-- `"private"`: the private subnets, leaving as network.ts allows, plus its endpoints.
+- `"private"`: the private subnets, leaving as its selected VPC allows, plus its endpoints.
 - `"isolated"`: the isolated subnets, which reach the database and the endpoints, nothing else.
 
 ```ts
-"/reports": { directory: "...", methods: ["GET"], subnet: "private" },
+"/reports": { directory: "...", methods: ["GET"], vpc: applicationVpc, subnet: "private" },
 ```
 
 There is no `"public"`: AWS gives a Lambda in a VPC no public IPv4 address, so a public subnet
-would only lose the NAT gateway. `database: true` puts a Lambda that would be `"none"` in
+would only lose the NAT gateway. `vpc: applicationVpc` puts a Lambda that would inherit `"none"` in
 `"private"`, and refuses an explicit `"none"`. A Lambda in the VPC shares one security group with
 the others (one that uses the database joins the database's group instead). Only TypeScript
 Lambdas run in the VPC, and an event that does needs `localReplay: true`, because a dev
@@ -529,19 +551,27 @@ there outright: no interface endpoint reaches API Gateway's management API.
 
 ### The database
 
-framework.config.ts names the database once, and a workload that uses it says so with one
-flag. There is no secret to declare and no password anywhere in a workload:
+The imported `defineDatabase` declaration in
+`framework-config/databases/application/index.ts` owns the primary resource, VPC,
+private/isolated subnet and PostgreSQL settings. The root selects it once; workloads
+keep `database: true`. There is no password in a workload:
 
 ```ts
 // framework.config.ts
-database: resources.rds.database,
+database: applicationDatabase,
 
 // any Lambda, event, tool, service or task
-"/graphql": { directory: "...", methods: ["GET", "POST"], auth: true, database: true },
+"/graphql": { directory: "...", methods: ["GET", "POST"], auth: true, vpc: applicationVpc, database: true },
 
 // its handler
 const database = getDatabase(databaseConnection());
 ```
+
+Studio exposes these declaration defaults from the RDS/owning-stack Inspector and
+**Database → Configure PostgreSQL**, with reviewed edits for Multi-AZ, replicas, Proxy,
+storage, backups and maintenance. Deployment inputs and CDK context retain precedence.
+See the [declaration design and identity contract](framework-studio/network-database-declarations.md)
+for before/after config, generated files, regional scope and migration impact.
 
 In a production deployment, `database: true` on a Lambda:
 
@@ -571,12 +601,14 @@ the helper keeps one randomly selected replica per execution environment and nev
 against the writer. Read-after-write consistency and transactions belong on the writer.
 See [Database](DATABASE.md#writer-and-reader-connections) for pooling and consistency details.
 
-The database is ordinary CDK, built into the network with `frameworkVpc(this)`, with no
-security groups or ingress rules of its own:
+The database is ordinary CDK, built into the network with `frameworkVpc(this, applicationVpc)`, with no
+security groups or ingress rules of its own. Its declaration must match the VPC named in
+the database binding; consumers in another VPC are rejected in both modes:
+
 
 ```ts
 new rds.DatabaseInstance(this, "PostgresDatabase", {
-  vpc: frameworkVpc(this),
+  vpc: frameworkVpc(this, applicationVpc),
   vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
   credentials: rds.Credentials.fromGeneratedSecret("postgres"),
   iamAuthentication: true,
@@ -633,7 +665,7 @@ container chooses is the subnet, `cloud.subnet`, inherited from `defaults.contai
 (default `"public"`):
 
 - `"public"`: a public IPv4 address per running task (about $3.65 a month while it runs) and no
-  inbound rules. It starts whatever network.ts declares.
+  inbound rules. It starts whatever its selected VPC declares.
 - `"private"`: no public address. Fargate pulls the image over IPv4, so the network needs its NAT
   gateway, or the `ecr.api`, `ecr.dkr` and `logs` interface endpoints plus the S3 gateway
   endpoint (and `secretsmanager` when it takes secrets).
@@ -1036,6 +1068,44 @@ public endpoint names and Runtime ARNs. Requests without a published destination
 503; they never fall through to the SPA. Cognito callbacks/logout and trusted browser
 origins still use the exact generated HTTPS hostname. See
 [CloudFront origin modification](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/helper-functions-origin-modification.html).
+
+### Deployment region
+
+Choose one AWS account and region for the whole application deployment, including all
+its VPCs and the database. Pin a shared deployment's destination in `cdk-app/cdk.json`:
+
+```json
+"framework:targets": {
+  "application-prod": {
+    "mode": "prod", "account": "111122223333", "region": "us-east-1",
+    "inputs": "cdk-app/.env.prod"
+  }
+}
+```
+
+This is the existing target vocabulary; VPC declarations have no region property.
+The CDK CLI resolves the selected profile/region into `CDK_DEFAULT_ACCOUNT` and
+`CDK_DEFAULT_REGION`; `deployment.ts` validates the target pins and passes one
+`stackEnv` to application and framework stacks. `deploy:resources -- --region <region>`
+also checks that the synthesized assembly has that region. A region pin guards the
+deployment; it does not move existing infrastructure to another region.
+
+Every VPC uses that stack environment. Its `zones` setting is CDK's `maxAzs` within
+the deployment region; the account's cached availability-zone context determines the
+available zones. CDK resolves interface service names such as
+`com.amazonaws.us-east-1.secretsmanager` and gateway endpoints from the VPC stack's
+region. Studio's VPC settings edit the network, while the deployment target owns its
+destination. Native application stacks must use the same `stackEnv`; framework VPC
+access fails early for a different account or region.
+
+Per-VPC regions would require regional copies of compute, routing and database
+integration. Ordinary CloudFormation cross-stack exports/imports are limited to
+one account and region, and a workload cannot use a subnet in another region.
+See [CDK environments](https://docs.aws.amazon.com/cdk/v2/guide/environments.html)
+and [CloudFormation ImportValue restrictions](https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/intrinsic-function-reference-importvalue.html).
+Keep the exact target region pin instead of introducing a second `allowedRegions`
+policy. Another named target may deploy an independent application into another region;
+it adds no database replication, traffic failover, or connectivity between VPCs.
 
 ## Authentication
 

@@ -114,12 +114,12 @@ test("island and subnet searches highlight their members, while endpoint searche
   assert.ok(dev.nodes.filter((node) => node.island === "island:lambda").every((node) => matches.nodes.has(node.id)));
   assert.ok(!matches.islands.has("island:apis"));
   const model = snapshot.models.prod;
-  const withEndpoints = { ...model, network: { ...model.network!, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["lambda"] } };
+  const withEndpoints = { ...model, networks: [{ ...model.networks![0]!, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["lambda"] }] };
   const scene = buildScene(withEndpoints);
   const endpoint = searchScene(scene, withEndpoints, "dynamodb")!;
-  assert.ok(endpoint.props.has("prop:endpoint:dynamodb"));
+  assert.ok(endpoint.props.has("prop:vpc:application:endpoint:dynamodb"));
   const subnet = searchScene(scene, withEndpoints, "Private subnet")!;
-  assert.ok(scene.nodes.filter((node) => node.band === "band:private").every((node) => subnet.nodes.has(node.id)));
+  assert.ok(scene.nodes.filter((node) => node.band === "band:vpc:application:private").every((node) => subnet.nodes.has(node.id)));
 });
 
 test("selection overrides search and clearing it restores the original matching view", () => {
@@ -199,8 +199,8 @@ test("every scene entity and network fixture has a local SVG and a pickable plaq
 
 test("network plaques stand on their terraces with room between adjacent fixtures", () => {
   const source = snapshot.models.prod;
-  assert.ok(source.network);
-  const scene = buildScene({ ...source, network: { ...source.network, natGateway: true, egressOnlyInternetGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "logs"] } });
+  assert.ok(source.networks![0]);
+  const scene = buildScene({ ...source, networks: [{ ...source.networks![0], natGateway: true, egressOnlyInternetGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "logs"] }] });
   for (const prop of scene.props) {
     const tile = scene.tiles.find((tile) => tile.gx === prop.gx && tile.gy === prop.gy);
     assert.ok(tile, `${prop.id} must stand on terrain`);
@@ -214,14 +214,14 @@ test("network plaques stand on their terraces with room between adjacent fixture
 
 test("every VPC endpoint has a service badge included in its hover silhouette", () => {
   const source = snapshot.models.prod;
-  const network = { ...source.network!, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "lambda", "secretsmanager", "states", "logs"] };
-  const scene = buildScene({ ...source, network });
-  const endpoints = scene.props.filter((prop) => prop.id.startsWith("prop:endpoint:"));
+  const network = { ...source.networks![0]!, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "lambda", "secretsmanager", "states", "logs"] };
+  const scene = buildScene({ ...source, networks: [network] });
+  const endpoints = scene.props.filter((prop) => prop.id.startsWith("prop:vpc:application:endpoint:"));
   assert.equal(endpoints.length, 7, "endpoints beyond the fourth remain visible");
-  assert.equal(endpoints.find((prop) => prop.id === "prop:endpoint:s3")!.roleIcon, "bucket");
-  assert.equal(endpoints.find((prop) => prop.id === "prop:endpoint:dynamodb")!.roleIcon, "table");
-  assert.equal(endpoints.find((prop) => prop.id === "prop:endpoint:ecs")!.roleIcon, "service");
-  assert.equal(endpoints.find((prop) => prop.id === "prop:endpoint:logs")!.roleIcon, "construct", "unmapped services keep a generic badge");
+  assert.equal(endpoints.find((prop) => prop.id === "prop:vpc:application:endpoint:s3")!.roleIcon, "bucket");
+  assert.equal(endpoints.find((prop) => prop.id === "prop:vpc:application:endpoint:dynamodb")!.roleIcon, "table");
+  assert.equal(endpoints.find((prop) => prop.id === "prop:vpc:application:endpoint:ecs")!.roleIcon, "service");
+  assert.equal(endpoints.find((prop) => prop.id === "prop:vpc:application:endpoint:logs")!.roleIcon, "construct", "unmapped services keep a generic badge");
   for (const prop of endpoints) {
     assert.equal(prop.icon, "endpoint");
     assert.ok(prop.roleIcon);
@@ -230,14 +230,14 @@ test("every VPC endpoint has a service badge included in its hover silhouette", 
     // This point lies in the badge beyond the main plaque's right edge.
     assert.ok(insidePolygon(anchor.x + ICON_BADGE.x + ICON_BADGE.size - ICON_BADGE.padding, anchor.y + ICON_BADGE.y + ICON_BADGE.size / 2, prop.geometry.hull));
   }
-  const development = buildScene({ ...source, network, mode: "dev" });
+  const development = buildScene({ ...source, networks: [network], mode: "dev" });
   for (const prop of endpoints) {
     const ghost = development.props.find((item) => item.id === prop.id)!;
     assert.equal(ghost.presence, "other");
     assert.equal(ghost.roleIcon, prop.roleIcon);
     assert.deepEqual(ghost.geometry, prop.geometry);
   }
-  assert.ok(scene.props.filter((prop) => !prop.id.startsWith("prop:endpoint:")).every((prop) => prop.roleIcon === undefined), "gateway fixtures keep their plain plaques");
+  assert.ok(scene.props.filter((prop) => !prop.id.startsWith("prop:vpc:application:endpoint:")).every((prop) => prop.roleIcon === undefined), "gateway fixtures keep their plain plaques");
 });
 
 test("background lattice follows the terrain projection and stays bounded at distant zooms", () => {
@@ -454,17 +454,17 @@ test("compute stands where it runs, and the VPC is a blueprint where it is not b
   };
   for (const target of snapshot.models.dev.targets) {
     if (target.placement.kind === "vpc") {
-      assert.equal(islandOf(target.ref), "island:vpc", target.ref);
-      assert.equal(bandOf(target.ref), `band:${target.placement.subnet}`, target.ref);
+      assert.equal(islandOf(target.ref), "island:vpc:application", target.ref);
+      assert.equal(bandOf(target.ref), `band:vpc:${target.placement.networkId}:${target.placement.subnet}`, target.ref);
     } else {
-      assert.notEqual(islandOf(target.ref), "island:vpc", target.ref);
+      assert.notEqual(islandOf(target.ref), "island:vpc:application", target.ref);
     }
   }
-  const vpc = (scene: Scene) => scene.islands.find((island) => island.id === "island:vpc")!;
+  const vpc = (scene: Scene) => scene.islands.find((island) => island.id === "island:vpc:application")!;
   assert.equal(vpc(dev).ghost, "blueprint");
-  assert.equal(vpc(prod).ghost, snapshot.models.prod.network?.builtInProd ? undefined : "blueprint");
+  assert.equal(vpc(prod).ghost, snapshot.models.prod.networks![0]?.builtInProd ? undefined : "blueprint");
   // The subnets stand level, side by side: public, private, isolated.
-  assert.deepEqual(vpc(dev).bands.map((band) => band.id), ["band:public", "band:private", "band:isolated"]);
+  assert.deepEqual(vpc(dev).bands.map((band) => band.id), ["band:vpc:application:public", "band:vpc:application:private", "band:vpc:application:isolated"]);
   assert.equal(new Set(vpc(dev).bands.map((band) => band.h)).size, 1);
   assert.equal(dev.islands.find((island) => island.id === "island:stacks")!.ghost, undefined, "present stacks keep their shared island solid");
 });
@@ -738,8 +738,8 @@ test("stack constructor evidence produces an unattached badge, while the managed
     assert.equal(node(scene, example.id).roleIcon, "unattached");
     assert.equal(model.resources.find((resource) => resource.id === "resource:cognito")?.stackUsage?.status, "referenced");
     const database = node(scene, "resource:rds.database");
-    assert.equal(database.island, "island:vpc");
-    assert.equal(database.band, "band:isolated");
+    assert.equal(database.island, "island:vpc:application");
+    assert.equal(database.band, "band:vpc:application:isolated");
     assert.equal(database.icon, "database");
     assert.equal(database.roleIcon, "managed");
     assert.equal(database.presence, model.mode === "dev" ? "absent" : "present");
@@ -761,13 +761,13 @@ test("the local database stands in the isolated subnet right beside RDS, solid i
     assert.ok(!scene.islands.some((island) => island.id === "island:local" || island.title === "Local development"), "it has no island of its own");
     const local = scene.nodes.find((item) => item.id === "local:postgres")!;
     const rds = scene.nodes.find((item) => item.id === "resource:rds.database")!;
-    assert.equal(local.island, "island:vpc");
-    assert.equal(local.band, "band:isolated");
+    assert.equal(local.island, "island:vpc:application");
+    assert.equal(local.band, "band:vpc:application:isolated");
     assert.equal(local.entity, "local");
     assert.equal(local.presence, model.mode === "dev" ? "built" : "other");
     assert.equal(local.h, rds.h, "on the same terrace");
     assert.equal(Math.abs(local.gx - rds.gx) + Math.abs(local.gy - rds.gy), NODE_SPACING, "one lattice step from RDS");
-    const isolated = scene.islands.find((island) => island.id === "island:vpc")!.bands.find((band) => band.id === "band:isolated")!;
+    const isolated = scene.islands.find((island) => island.id === "island:vpc:application")!.bands.find((band) => band.id === "band:vpc:application:isolated")!;
     assert.ok(isolated.caption.some((line) => line.includes("Local PostgreSQL")), "the subnet says it is not an AWS resource");
   }
 });
@@ -954,7 +954,7 @@ test("both views draw the same connections; the other environment's own are mark
 test("without a local database the isolated subnet says nothing about one", () => {
   const scene = buildScene({ ...snapshot.models.dev, localServices: [] });
   assert.ok(!scene.nodes.some((node) => node.entity === "local"));
-  assert.ok(!scene.islands.find((island) => island.id === "island:vpc")!.bands.some((band) => band.caption.some((line) => line.includes("Local PostgreSQL"))));
+  assert.ok(!scene.islands.find((island) => island.id === "island:vpc:application")!.bands.some((band) => band.caption.some((line) => line.includes("Local PostgreSQL"))));
 });
 
 test("catalog and selected output stacks share one island while keeping their availability and inspector identities", () => {
@@ -975,10 +975,10 @@ test("catalog and selected output stacks share one island while keeping their av
 });
 
 test("all VPC gateways and endpoints ghost with the unbuilt network and stay in the same positions", () => {
-  const network = snapshot.models.prod.network!;
+  const network = snapshot.models.prod.networks![0]!;
   assert.ok(network);
   for (const builtInProd of [true, false]) {
-    const source = { ...snapshot.models.prod, network: { ...network, builtInProd, natGateway: true, egressOnlyInternetGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "logs"] } };
+    const source = { ...snapshot.models.prod, networks: [{ ...network, builtInProd, natGateway: true, egressOnlyInternetGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "logs"] }] };
     const development = buildScene({ ...source, mode: "dev" });
     const production = buildScene({ ...source, mode: "prod" });
     assert.equal(development.props.length, 7, "internet, egress-only, NAT and four endpoint plaques");
@@ -995,14 +995,14 @@ test("every building knows its band, and each gateway or endpoint names the subn
       assert.equal(node.band, scene.tiles.find((tile) => tile.gx === node.gx && tile.gy === node.gy)!.band, node.id);
     }
   }
-  const network = snapshot.models.prod.network!;
-  const scene = buildScene({ ...snapshot.models.prod, network: { ...network, natGateway: true, egressOnlyInternetGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "logs"] } });
+  const network = snapshot.models.prod.networks![0]!;
+  const scene = buildScene({ ...snapshot.models.prod, networks: [{ ...network, natGateway: true, egressOnlyInternetGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "logs"] }] });
   const serves = Object.fromEntries(scene.props.map((prop) => [prop.id, [...prop.serves].sort()]));
-  assert.deepEqual(serves["prop:internet-gateway"], ["band:public"]);
-  assert.deepEqual(serves["prop:egress-only-gateway"], ["band:private"]);
-  assert.deepEqual(serves["prop:nat-gateway"], ["band:private"]);
-  for (const id of Object.keys(serves).filter((id) => id.startsWith("prop:endpoint:"))) {
-    assert.deepEqual(serves[id], ["band:isolated", "band:private", "band:public"], id);
+  assert.deepEqual(serves["prop:vpc:application:internet-gateway"], ["band:vpc:application:public"]);
+  assert.deepEqual(serves["prop:vpc:application:egress-only-gateway"], ["band:vpc:application:private"]);
+  assert.deepEqual(serves["prop:vpc:application:nat-gateway"], ["band:vpc:application:private"]);
+  for (const id of Object.keys(serves).filter((id) => id.startsWith("prop:vpc:application:endpoint:"))) {
+    assert.deepEqual(serves[id], ["band:vpc:application:isolated", "band:vpc:application:private", "band:vpc:application:public"], id);
   }
 });
 
@@ -1011,7 +1011,7 @@ test("HTTP, WebSocket, event and tool Lambdas share one layer, while HTTP, WebSo
   assert.ok(lambdas.some((target) => target.role === "tool"), "the repository declares a tool Lambda");
   for (const target of lambdas) {
     const node = dev.nodes.find((node) => node.id === target.ref)!;
-    assert.equal(node.island, target.placement.kind === "vpc" ? "island:vpc" : "island:lambda", target.ref);
+    assert.equal(node.island, target.placement.kind === "vpc" ? "island:vpc:application" : "island:lambda", target.ref);
   }
   const apis = dev.nodes.filter((node) => node.entity === "route");
   assert.equal(apis.length, snapshot.models.dev.routes.length);
@@ -1023,7 +1023,7 @@ test("HTTP, WebSocket, event and tool Lambdas share one layer, while HTTP, WebSo
 test("only the VPC has a boundary; API and Lambda panels have no group frame", () => {
   for (const scene of [dev, prod]) {
     assert.deepEqual(scene.frames.map((frame) => frame.kind), ["network"]);
-    assert.deepEqual(scene.frames[0]!.members, ["island:vpc"]);
+    assert.deepEqual(scene.frames[0]!.members, ["island:vpc:application"]);
   }
 });
 
@@ -1034,7 +1034,7 @@ test("only the VPC has a boundary; API and Lambda panels have no group frame", (
 /** The real scene plus a production network with every fixture, so terraces carry furniture. */
 function furnished(): Scene {
   const source = snapshot.models.prod;
-  return buildScene({ ...source, network: { ...source.network!, builtInProd: true, natGateway: true, egressOnlyInternetGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "logs"] } });
+  return buildScene({ ...source, networks: [{ ...source.networks![0]!, builtInProd: true, natGateway: true, egressOnlyInternetGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "logs"] }] });
 }
 
 const onEdge = (x: number, y: number, polygon: readonly number[]) => {
@@ -1173,13 +1173,13 @@ test("switching the graph changes how slabs are lit, never an island's outline, 
 });
 
 test("an unbuilt VPC is one continuous deck, and a built one keeps its terraces apart", () => {
-  const vpc = (scene: Scene) => islandSlabs(scene).find((slab) => slab.island.id === "island:vpc")!;
+  const vpc = (scene: Scene) => islandSlabs(scene).find((slab) => slab.island.id === "island:vpc:application")!;
   const deck = vpc(dev), terraces = vpc(furnished());
   assert.equal(deck.island.ghost, "blueprint");
   assert.equal(terraces.island.ghost, undefined);
   assert.equal(deck.deck, true);
   assert.equal(terraces.deck, false, "a built network is never merged");
-  for (const slab of [...islandSlabs(dev), ...islandSlabs(prod), ...islandSlabs(furnished())].filter((candidate) => candidate.island.id !== "island:vpc" || candidate.island.ghost !== "blueprint")) assert.equal(slab.deck, false, `${slab.island.id} stays as it was`);
+  for (const slab of [...islandSlabs(dev), ...islandSlabs(prod), ...islandSlabs(furnished())].filter((candidate) => candidate.island.id !== "island:vpc:application" || candidate.island.ghost !== "blueprint")) assert.equal(slab.deck, false, `${slab.island.id} stays as it was`);
   const covered = (slab: typeof deck) => slab.bands.reduce((sum, band) => sum + polygonArea(band.region), 0);
   // The deck: the subnets tile the whole outline, flush, with no seam.
   assert.ok(Math.abs(covered(deck) - polygonArea(deck.outline)) < 1e-9, "no seam");
@@ -1210,15 +1210,15 @@ test("the unbuilt deck keeps its subnets quiet and its rim the strongest line", 
 test("every island has a trim in its icons' colour family, and every icon a tint", () => {
   for (const scene of [dev, prod, furnished()]) {
     for (const island of scene.islands) {
-      assert.ok(island.id in ISLAND_TRIM, `${island.id} falls back to its region's trim`);
+      assert.ok((island.id.startsWith("island:vpc:") ? "island:vpc" : island.id) in ISLAND_TRIM, `${island.id} falls back to its region's trim`);
       assert.match(trimColor(island), /^#[0-9a-f]{6}$/i);
     }
   }
   for (const key of Object.keys(ICONS) as (keyof typeof ICONS)[]) assert.match(ICON_TINT[key], /^#[0-9a-f]{6}$/i);
   // Subnets read by colour: public green, private blue, isolated purple, each unlike the VPC's own edge.
-  const vpc = dev.islands.find((island) => island.id === "island:vpc")!;
-  for (const band of vpc.bands) assert.ok(band.id in BAND_TRIM, band.id);
-  const colours = [...vpc.bands.map((band) => BAND_TRIM[band.id]), trimColor(vpc)];
+  const vpc = dev.islands.find((island) => island.id === "island:vpc:application")!;
+  for (const band of vpc.bands) assert.ok(`band:${band.id.split(":").at(-1)}` in BAND_TRIM, band.id);
+  const colours = [...vpc.bands.map((band) => BAND_TRIM[`band:${band.id.split(":").at(-1)}`]), trimColor(vpc)];
   assert.equal(new Set(colours).size, colours.length);
 });
 

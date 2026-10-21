@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
@@ -57,7 +58,7 @@ function fixtures(count: number) {
   return { ids, at, manifest, dispose };
 }
 
-const base = { defaults, http: [], webSocket: [], events: [], services: [] } satisfies FrameworkConfigInput;
+const base = { networks: [fixtureVpc], defaults, http: [], webSocket: [], events: [], services: [] } satisfies FrameworkConfigInput;
 const intake = { intake: workflow(() => wait({ seconds: 1 }), { timeoutSeconds: 60 }) };
 
 function synthesize(config: FrameworkConfig, manifest: Record<string, unknown>) {

@@ -575,7 +575,7 @@ just because a stack contains a queue or DynamoDB stream.
 
 ### Production network
 
-Source: [network.ts](../../framework-config/network.ts), implemented by
+Source (migrated to an explicit VPC): [application/index.ts](../../framework-config/networks/application/index.ts), implemented by
 [framework-network.ts](../../cdk-app/lib/framework/framework-network.ts).
 
 - CIDR `10.0.0.0/16`, two availability zones, public/private/isolated subnet terraces,

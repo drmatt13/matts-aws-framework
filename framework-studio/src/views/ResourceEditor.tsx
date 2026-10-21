@@ -4,7 +4,7 @@ import type { ModelResource } from "../../shared/model";
 import type { ResourceDetails, ResourceIntent } from "../../shared/resources";
 import { api } from "../api";
 import { useStudio } from "../studio";
-import { FormGroup } from "./InspectorUI";
+import { FormGroup, InspectorSwitch } from "./InspectorUI";
 import { LocalValue } from "./LocalValue";
 
 export function ResourceEditor({ resource }: { readonly resource: ModelResource }) {
@@ -59,11 +59,11 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
       {descriptionPending ? <p className="small muted">Apply or discard the description before editing input settings.</p> : null}
       {environmentPending ? <p className="small muted">Apply or discard local value changes before editing input settings.</p> : null}
       <fieldset disabled={disabled}><FormGroup title="Input behavior">
-        <label className="resource-check"><input type="checkbox" aria-describedby={`${help}-required`} checked={form.required ?? !!resource.required} onChange={(event) => update({ required: event.target.checked })} />Required input</label>
+        <div className="setting-switch"><label htmlFor={`${help}-required-switch`}>Required input</label><InspectorSwitch id={`${help}-required-switch`} label="Required input" describedBy={`${help}-required`} checked={form.required ?? !!resource.required} onChange={required => update({ required })} /></div>
         <p id={`${help}-required`} className="small muted">Require a non-blank value for every enabled consumer.</p>
-        <label className="resource-check"><input type="checkbox" aria-describedby={`${help}-secret`} checked={secret} onChange={(event) => setSecret(event.target.checked)} />Secret</label>
-        <p id={`${help}-secret`} className="small muted">Store the value from cdk-app/.env.{mode} in Secrets Manager at deployment. Leave unchecked to use a regular string.</p>
-        <label className="resource-check"><input type="checkbox" aria-describedby={`${help}-default`} checked={!secret && hasDefault} disabled={secret} onChange={(event) => setHasDefault(event.target.checked)} />Default value</label>
+        <div className="setting-switch"><label htmlFor={`${help}-secret-switch`}>Secret</label><InspectorSwitch id={`${help}-secret-switch`} label="Secret" describedBy={`${help}-secret`} checked={secret} onChange={setSecret} /></div>
+        <p id={`${help}-secret`} className="small muted">Store the value from cdk-app/.env.{mode} in Secrets Manager at deployment. Turn off to use a regular string.</p>
+        <div className="setting-switch"><label htmlFor={`${help}-default-switch`}>Default value</label><InspectorSwitch id={`${help}-default-switch`} label="Default value" describedBy={`${help}-default`} checked={!secret && hasDefault} disabled={secret} onChange={setHasDefault} /></div>
         <label className="resource-control"><span className="sr-only">Default value</span>{resource.values ? <select aria-label="Default value" aria-describedby={`${help}-default`} disabled={secret || !hasDefault} value={fallback} onChange={(event) => setFallback(event.target.value)}><option value="" disabled>Choose a default</option>{resource.values.map((value) => <option key={value}>{value}</option>)}</select> : <input aria-label="Default value" aria-describedby={`${help}-default`} disabled={secret || !hasDefault} value={fallback} placeholder="No default" onChange={(event) => setFallback(event.target.value)} />}</label>
         <p id={`${help}-default`} className="small muted">Used when no local value is supplied. Secrets cannot have defaults.</p>
         <label className="resource-control"><span>Group</span><input aria-label="Resource group" list="resource-groups" value={group} placeholder="Ungrouped" onChange={(event) => setGroup(event.target.value)} /><datalist id="resource-groups">{model.resources.filter((item) => item.kind === "group").map((item) => <option key={item.id} value={item.path[0]} />)}</datalist></label>

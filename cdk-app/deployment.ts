@@ -3,7 +3,7 @@ import { createHash } from "crypto";
 import * as fs from "fs";
 import type { CloudMode } from "@repo/framework/config";
 import { modeFromContext, type DeploymentTarget } from "@repo/framework/deploy";
-import { resolveDatabaseSettings } from "./database-settings";
+import { resolveDatabaseSettings, type DatabaseSettingsInput } from "./database-settings";
 
 /** Application-owned deployment policy. See docs/FRAMEWORK.md#configuration-and-environment.
  * Importing this module never reads .env, creates an App, or generates code.
@@ -13,9 +13,11 @@ export interface DeploymentSources {
   env: Readonly<Record<string, string | undefined>>;
   /** The deployment target bin/app.ts resolved from context. */
   target?: Pick<DeploymentTarget, "name" | "mode" | "account" | "region">;
+  /** The primary database declaration, before explicit deployment overrides. */
+  databaseSettings?: DatabaseSettingsInput;
 }
 
-export function resolveDeploymentInputs({ getContext, env, target }: DeploymentSources) {
+export function resolveDeploymentInputs({ getContext, env, target, databaseSettings }: DeploymentSources) {
   const warnings: string[] = [];
   // New ordinary flags use these readers: context, environment, then fallback.
   const stringFlag = (context: string, envKey: string) =>
@@ -110,7 +112,7 @@ export function resolveDeploymentInputs({ getContext, env, target }: DeploymentS
 
   // Days of automated RDS backups. Production only; 0 turns backups off, which
   // is a deliberate choice for a disposable deployment and nothing else.
-  const database = resolveDatabaseSettings({ getContext, env });
+  const database = resolveDatabaseSettings({ getContext, env, defaults: databaseSettings });
   const databaseBackupRetentionDays = database.backupRetentionDays;
 
   // Guards deletion protection and the removal policy on the database and user

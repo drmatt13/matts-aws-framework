@@ -1,3 +1,4 @@
+import { applicationVpc } from "../networks/application";
 import type { ServicesSection } from "../contracts";
 
 /**
@@ -15,6 +16,7 @@ export const exampleService = {
     deploy: "local-only",
     userPool: true,
     cloud: {
+      vpc: applicationVpc,
       constructId: "ExampleService",
       cpu: 256,
       memoryMiB: 512,

@@ -1,26 +1,4 @@
-/**
- * The application's network: one VPC, built by a production deployment the
- * first time a workload is placed in it — a Lambda with `subnet: "private"`,
- * `subnet: "isolated"` or `database: true`, or any container.
- *
- * Declared once, in framework-config/network.ts, and the only place anything
- * about the network's way out is decided. The layout is fixed — a public, a
- * private and an isolated subnet in each zone — so the choices are the address
- * range, how many zones it spans, and how the private subnets reach beyond the
- * VPC: an egress-only internet gateway for IPv6, a NAT gateway for IPv4, and
- * endpoints that reach AWS services without either. The first two are set
- * once: subnets are numbered in order, so changing either renumbers every
- * subnet and replaces everything inside them.
- *
- * Subnets are dual-stack. What leaves each one is {@link subnetEgress}: the
- * one answer CDK, configuration checks and the local lane all read, so a
- * workload that runs locally has exactly the reach it will have in AWS.
- *
- * A development deployment never builds it. What a dev deployment puts in AWS
- * is what AWS itself invokes, and the database is absent from that graph and
- * runs under Compose instead — where the local lane enforces the rules this
- * network would (see `database: true`).
- */
+/** Independently declared VPCs. Configuration, CDK and local egress share these rules. */
 import { INTERFACE_ENDPOINT_SERVICES } from "../generated/vpc-endpoint-services";
 
 export { INTERFACE_ENDPOINT_SERVICES };
@@ -47,6 +25,12 @@ export interface GatewayEndpoints {
 
 /** What `defineNetwork` takes. */
 export interface NetworkDeclaration {
+  /** Stable identity, independent of the CIDR or registration order. */
+  readonly id: string;
+  /** Human-readable label. Changing it does not rename deployed constructs. */
+  readonly name?: string;
+  /** Deployed stack identity. Retain this when moving or renaming source. */
+  readonly cloud?: { readonly constructId?: string };
   /**
    * The VPC's IPv4 range: a private /16 such as "10.0.0.0/16". The IPv6 range
    * is Amazon-provided and never written. Set once.
@@ -88,6 +72,9 @@ export interface NetworkDeclaration {
 /** A validated network declaration, with every default folded in. */
 export interface FrameworkNetwork {
   readonly $network: typeof NETWORK_BRAND;
+  readonly id: string;
+  readonly name: string;
+  readonly cloud: { readonly constructId: string };
   readonly cidr: string;
   readonly zones: 2 | 3;
   readonly egressOnlyInternetGateway: boolean;
@@ -102,7 +89,7 @@ export type NetworkSubnet = (typeof NETWORK_SUBNETS)[number];
 
 /**
  * Where a Lambda runs. "none": outside the VPC, with the whole internet.
- * "private": the private subnets, leaving as network.ts allows. "isolated":
+ * "private": the private subnets, leaving as the selected VPC allows. "isolated":
  * the isolated subnets, which reach only the database and the network's
  * endpoints. Never "public": AWS gives a Lambda in a VPC no public IPv4
  * address, so a public subnet would only lose the NAT gateway.
@@ -149,15 +136,16 @@ export function interfaceEndpointsMonthlyCost(network: FrameworkNetwork, count: 
 
 const PRIVATE_SLASH_16 = /^(10\.(\d{1,3})|172\.(1[6-9]|2\d|3[01])|192\.168)\.0\.0\/16$/;
 const DECLARATION_KEYS = [
-  "cidr", "zones", "egressOnlyInternetGateway", "natGateway", "gatewayEndpoints", "interfaceEndpoints",
+  "id", "name", "cloud", "cidr", "zones", "egressOnlyInternetGateway", "natGateway", "gatewayEndpoints", "interfaceEndpoints",
 ] as const;
 const KNOWN_INTERFACE_ENDPOINTS: ReadonlySet<string> = new Set(INTERFACE_ENDPOINT_SERVICES);
 
 /**
- * Declares the application's network.
+ * Declares an independently selected VPC.
  *
  * ```ts
- * export const network = defineNetwork({
+ * export const applicationVpc = defineNetwork({
+ *   id: "application",
  *   cidr: "10.0.0.0/16",
  *   zones: 2,
  *   egressOnlyInternetGateway: true,
@@ -168,6 +156,7 @@ const KNOWN_INTERFACE_ENDPOINTS: ReadonlySet<string> = new Set(INTERFACE_ENDPOIN
  * ```
  */
 export function defineNetwork(declaration: NetworkDeclaration): FrameworkNetwork {
+  if (["region", "regions", "allowedRegions"].some(key => key in declaration)) throw new Error("Region belongs to framework:targets.<name>.region in cdk-app/cdk.json; all VPCs inherit the deployment region. Use separate deployment targets for separate regions.");
   if ("nat" in declaration) {
     throw new Error("defineNetwork() takes natGateway: true or false. nat was its earlier name.");
   }
@@ -177,8 +166,13 @@ export function defineNetwork(declaration: NetworkDeclaration): FrameworkNetwork
     }
   }
   const {
-    cidr, zones, egressOnlyInternetGateway = true, natGateway = false, gatewayEndpoints = {}, interfaceEndpoints = [],
+    id, name = id, cloud = {}, cidr, zones, egressOnlyInternetGateway = true, natGateway = false, gatewayEndpoints = {}, interfaceEndpoints = [],
   } = declaration;
+  if (typeof id !== "string" || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(id)) throw new Error('defineNetwork() requires a stable kebab-case id, such as "application".');
+  if (typeof name !== "string" || !name.trim() || name.length > 100 || /[\x00-\x1f\x7f]/.test(name)) throw new Error("A VPC name must contain 1–100 printable characters. Its stable id and cloud.constructId remain unchanged.");
+  if (!cloud || typeof cloud !== "object" || Object.keys(cloud).some(key => key !== "constructId")) throw new Error("A network's cloud settings take only constructId.");
+  const constructId = cloud.constructId ?? `${id.split("-").map(part => part[0]!.toUpperCase() + part.slice(1)).join("")}NetworkStack`;
+  if (typeof constructId !== "string" || !/^[A-Za-z][A-Za-z0-9-]*$/.test(constructId)) throw new Error("A network cloud.constructId must be a stable alphanumeric stack identity.");
   const match = typeof cidr === "string" ? PRIVATE_SLASH_16.exec(cidr) : null;
   if (!match || (match[2] !== undefined && Number(match[2]) > 255)) {
     throw new Error(
@@ -225,6 +219,9 @@ export function defineNetwork(declaration: NetworkDeclaration): FrameworkNetwork
   }
   return Object.freeze({
     $network: NETWORK_BRAND,
+    id,
+    name: name.trim(),
+    cloud: Object.freeze({ constructId }),
     cidr,
     zones,
     egressOnlyInternetGateway,
@@ -238,12 +235,30 @@ export function isFrameworkNetwork(value: unknown): value is FrameworkNetwork {
   return typeof value === "object" && value !== null && (value as FrameworkNetwork).$network === NETWORK_BRAND;
 }
 
-/** The network a config builds when framework-config/network.ts declares none. */
-export const DEFAULT_NETWORK: FrameworkNetwork = defineNetwork({ cidr: "10.0.0.0/16", zones: 2 });
+/** The registry is explicit; there is no implicit/default VPC. */
+export function networkRegistry(config: { readonly networks?: readonly FrameworkNetwork[] }): ReadonlyMap<string, FrameworkNetwork> {
+  if (config.networks !== undefined && !Array.isArray(config.networks)) throw new Error("networks must be an array of imported defineNetwork declarations.");
+  const byId = new Map<string, FrameworkNetwork>();
+  const constructs = new Set<string>();
+  for (const network of config.networks ?? []) {
+    if (!isFrameworkNetwork(network)) throw new Error("networks takes imported defineNetwork declarations.");
+    if (byId.has(network.id)) throw new Error(`networks declares duplicate VPC id "${network.id}".`);
+    if (constructs.has(network.cloud.constructId)) throw new Error(`networks declares duplicate cloud.constructId "${network.cloud.constructId}".`);
+    byId.set(network.id, network); constructs.add(network.cloud.constructId);
+  }
+  return byId;
+}
 
-/** The config's network, or the default one. */
-export function resolveNetwork(config: { readonly network?: FrameworkNetwork }): FrameworkNetwork {
-  return config.network ?? DEFAULT_NETWORK;
+export function resolveNetwork(config: { readonly networks?: readonly FrameworkNetwork[] }, reference: FrameworkNetwork | undefined): FrameworkNetwork {
+  if (!isFrameworkNetwork(reference)) throw new Error("VPC placement requires an explicit imported vpc reference from defineNetwork().");
+  const network = networkRegistry(config).get(reference.id);
+  if (!network || network.cloud.constructId !== reference.cloud?.constructId) throw new Error(`VPC "${reference.id}" is not the declaration registered in networks.`);
+  return network;
+}
+
+/** Legacy scopes belong to the preserved construct identity, never the first VPC in an array. */
+export function networkConstructId(network: FrameworkNetwork, legacy: string): string {
+  return network.cloud.constructId === "NetworkStack" ? legacy : `${network.cloud.constructId}-${legacy}`;
 }
 
 /** What leaves a subnet for the internet. Endpoints are separate: see {@link hasEndpoint}. */
@@ -255,7 +270,7 @@ export interface SubnetEgress {
 /**
  * What leaves a subnet. A public subnet routes both families to the internet
  * gateway, which reaches only what has a public address — a container with its
- * public IPv4. A private subnet leaves as network.ts allows, and an isolated one
+ * public IPv4. A private subnet leaves as the selected VPC allows, and an isolated one
  * not at all.
  */
 export function subnetEgress(network: FrameworkNetwork, subnet: NetworkSubnet): SubnetEgress {

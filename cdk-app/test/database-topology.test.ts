@@ -123,3 +123,56 @@ test("direct, Multi-AZ, replica, Proxy and combined graphs preserve identities a
     assert.match(serialized(bootstrap.Properties.VpcConfig), /DatabaseClientsD3CE02C8/);
   }
 });
+
+
+test("managed database source owns writer, replica and Proxy settings with unchanged construct scopes", () => {
+  const authored = {
+    subnet: "private",
+    settings: {
+      instanceClass: "db.m7g.large", multiAz: true,
+      readReplicaCount: 1, readReplicaMultiAz: true, proxyEnabled: true,
+      storageType: "gp3", allocatedStorage: 400, maxAllocatedStorage: 1000,
+      iops: 12000, throughput: 500, backupRetentionDays: 14,
+    },
+  };
+  const templates = synth({ FRAMEWORK_DATABASE_DECLARATION: JSON.stringify(authored) });
+  const database = templates["example-RdsStack"]!;
+  const writer = database.Resources.PostgresDatabase0A8A7373!;
+  assert.equal(writer.Type, "AWS::RDS::DBInstance");
+  assert.equal(writer.Properties.DBInstanceClass, "db.m7g.large");
+  assert.equal(writer.Properties.MultiAZ, true);
+  assert.equal(writer.Properties.StorageType, "gp3");
+  assert.equal(writer.Properties.AllocatedStorage, "400");
+  assert.equal(writer.Properties.Iops, 12000);
+  assert.equal(writer.Properties.StorageThroughput, 500);
+  assert.equal(writer.Properties.BackupRetentionPeriod, 14);
+  assert.equal(writer.Properties.EnableIAMDatabaseAuthentication, true);
+  assert.equal(writer.Properties.PubliclyAccessible, false);
+  const subnetGroup = resourcesOf(database, "AWS::RDS::DBSubnetGroup")[0]![1];
+  assert.match(serialized(subnetGroup.Properties.SubnetIds), /privateSubnet/);
+  assert.doesNotMatch(serialized(subnetGroup.Properties.SubnetIds), /isolatedSubnet/);
+  const replica = resourcesOf(database, "AWS::RDS::DBInstance").find(([id]) => id.startsWith("ReadReplica1"))![1];
+  assert.equal(replica.Properties.DBInstanceClass, "db.m7g.large");
+  assert.equal(replica.Properties.MultiAZ, true);
+  assert.equal(resourcesOf(database, "AWS::RDS::DBProxy").length, 1);
+  assert.ok(database.Resources.FrameworkDatabaseLoginD6767A56, "the declaration never introduces another scope around bootstrap");
+  assert.equal(database.Outputs.RdsDatabaseEndpoint.Export.Name, "example-RdsStack:RdsDatabaseEndpoint");
+});
+
+test("source declarations preserve complete default and Multi-AZ/replica/Proxy synthesized templates", () => {
+  const cases = [
+    {
+      settings: { engineVersion: "16", instanceClass: "db.t3.micro", storageType: "gp2", allocatedStorage: 20, maxAllocatedStorage: 100, backupRetentionDays: 7, multiAz: false, readReplicaCount: 0, proxyEnabled: false },
+      env: {},
+    },
+    {
+      settings: { multiAz: true, readReplicaCount: 2, readReplicaMultiAz: true, proxyEnabled: true },
+      env: { DATABASE_MULTI_AZ: "true", DATABASE_READ_REPLICA_COUNT: "2", DATABASE_READ_REPLICA_MULTI_AZ: "true", DATABASE_PROXY_ENABLED: "true" },
+    },
+  ] as const;
+  for (const item of cases) {
+    const before = synth(item.env);
+    const after = synth({ FRAMEWORK_DATABASE_DECLARATION: JSON.stringify({ settings: item.settings }) });
+    assert.deepEqual(after, before, "source ownership must preserve every database/network/workload logical ID, property and output");
+  }
+});

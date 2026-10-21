@@ -350,24 +350,24 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   // Compute, by where it runs.
   // HTTP, WebSocket, event and AgentCore tool functions, a column group each.
   const lambdaGroups: Item[][] = [[], [], [], []];
-  const vpc: Record<"public" | "private" | "isolated", Item[]> = { public: [], private: [], isolated: [] };
+  const byVpc = new Map((model.networks ?? []).map(network => [network.id, { public: [] as Item[], private: [] as Item[], isolated: [] as Item[] }]));
   const agents: Item[] = [];
   const workflows: Item[] = [];
   for (const resource of model.resources) {
-    if (resource.kind === "member" && resource.frameworkManaged === "database" && resource.networkPlacement) {
-      vpc[resource.networkPlacement].push({ ...catalogItem(resource), label: "RDS database", kindLabel: "Framework-managed Amazon RDS" });
+    if (resource.kind === "member" && resource.networkId && resource.networkPlacement) {
+      byVpc.get(resource.networkId!)?.[resource.networkPlacement].push({ ...catalogItem(resource), ...(resource.frameworkManaged === "database" ? { label: "RDS database", kindLabel: "Framework-managed Amazon RDS" } : {}) });
     }
   }
   // The local database stands beside RDS, as its development counterpart: workloads bind to one or the other.
   const localServices = model.localServices ?? [];
-  vpc.isolated.push(...localServices.map((service): Item => ({
+  byVpc.get(model.databaseNetworkId ?? "")?.isolated.push(...localServices.map((service): Item => ({
     id: service.id, entity: "local", icon: "postgres", label: service.title,
     kindLabel: "Compose database", badge: "dev", presence: service.enabled ? "built" : "other",
     presenceText: service.enabled ? "Development database, declared in docker-compose.yml. Container status is not monitored." : "Used during development on your machine.",
   })));
   for (const target of model.targets) {
     const item = targetItem(target, mode);
-    if (target.placement.kind === "vpc") vpc[target.placement.subnet].push(item);
+    if (target.placement.kind === "vpc") byVpc.get(target.placement.networkId)?.[target.placement.subnet].push(item);
     else if (target.kind === "workflow") workflows.push(item);
     else if (target.kind === "agent") agents.push(item);
     else if (target.role === "tool") lambdaGroups[3]!.push(item);
@@ -375,18 +375,19 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
     else if (target.role === "webSocket" || target.role === "webSocketAuthorizer") lambdaGroups[1]!.push(item);
     else lambdaGroups[0]!.push(item);
   }
-  const captions = networkCaptions(model.network);
-  const vpcBuilt = mode === "prod" && model.network?.builtInProd === true;
-  const network = model.network;
   const computeIslands: IslandSpec[] = [
     {
       id: "island:lambda", title: "Serverless compute", region: "compute",
       caption: ["HTTP, WebSocket, event and AgentCore tool functions. VPC-attached functions remain on their subnet terraces.", "A tool runs wherever the agents that list it run."],
       bands: [{ id: "band:lambda", title: "Serverless compute", caption: [], h: 3, groups: lambdaGroups.filter((group) => group.length > 0) }],
     },
-    {
-      id: "island:vpc",
-      title: network ? `VPC ${network.cidr}` : "VPC",
+    ...(model.networks ?? []).map((network): IslandSpec => {
+      const vpc = byVpc.get(network.id)!;
+      const captions = networkCaptions(network);
+      const vpcBuilt = mode === "prod" && network.builtInProd;
+      return {
+      id: `island:vpc:${network.id}`,
+      title: `${network.name ?? network.id} · ${network.cidr}`,
       region: "network",
       ghost: vpcBuilt ? undefined : "blueprint",
       caption: [
@@ -399,16 +400,16 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
       ],
       bands: [
         {
-          id: "band:public",
+          id: `band:vpc:${network.id}:public`,
           title: "Public subnet",
           caption: captions.public,
           h: VPC_HEIGHT,
           groups: [vpc.public],
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
-          props: [{ id: "prop:internet-gateway", icon: "internetGateway", label: "Internet gateway", caption: ["IPv4 and IPv6 between the public subnets and the internet."], serves: ["band:public"] }],
+          props: [{ id: `prop:vpc:${network.id}:internet-gateway`, icon: "internetGateway", label: "Internet gateway", caption: ["IPv4 and IPv6 between the public subnets and the internet."], serves: [`band:vpc:${network.id}:public`] }],
         },
         {
-          id: "band:private",
+          id: `band:vpc:${network.id}:private`,
           title: "Private subnet",
           caption: captions.private,
           h: VPC_HEIGHT,
@@ -416,22 +417,22 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
           props: [
             ...(network?.egressOnlyInternetGateway
-              ? [{ id: "prop:egress-only-gateway", icon: "internetGateway" as const, label: "Egress-only gateway", caption: ["IPv6 out of the private subnets, never in. Free."], serves: ["band:private"] }]
+              ? [{ id: `prop:vpc:${network.id}:egress-only-gateway`, icon: "internetGateway" as const, label: "Egress-only gateway", caption: ["IPv6 out of the private subnets, never in. Free."], serves: [`band:vpc:${network.id}:private`] }]
               : []),
             ...(network?.natGateway
-              ? [{ id: "prop:nat-gateway", icon: "natGateway" as const, label: "NAT gateway", caption: [`IPv4 out of the private subnets, about $${network.monthlyCost.natGateway.toFixed(2)} a month.`], serves: ["band:private"] }]
+              ? [{ id: `prop:vpc:${network.id}:nat-gateway`, icon: "natGateway" as const, label: "NAT gateway", caption: [`IPv4 out of the private subnets, about $${network.monthlyCost.natGateway.toFixed(2)} a month.`], serves: [`band:vpc:${network.id}:private`] }]
               : []),
           ],
         },
         {
-          id: "band:isolated",
+          id: `band:vpc:${network.id}:isolated`,
           title: "Isolated subnet",
-          caption: [...captions.isolated, ...(localServices.length ? ["Local PostgreSQL stands beside RDS as its development counterpart. It runs in Compose on your machine, not in AWS."] : [])],
+          caption: [...captions.isolated, ...(network.id === model.databaseNetworkId && localServices.length ? ["Local PostgreSQL stands beside RDS as its development counterpart. It runs in Compose on your machine, not in AWS."] : [])],
           h: VPC_HEIGHT,
           groups: [vpc.isolated],
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
           props: captions.endpoints.map((endpoint) => ({
-            id: `prop:endpoint:${endpoint}`,
+            id: `prop:vpc:${network.id}:endpoint:${endpoint}`,
             icon: "endpoint" as const,
             roleIcon: endpointServiceIcon(endpoint),
             label: `${endpoint} endpoint`,
@@ -440,11 +441,12 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
                 ? `Gateway endpoint for ${endpoint}, on every route table. Free.`
                 : `Interface endpoint for ${endpoint}, reachable from every subnet over IPv4.`,
             ],
-            serves: ["band:public", "band:private", "band:isolated"],
+            serves: [`band:vpc:${network.id}:public`, `band:vpc:${network.id}:private`, `band:vpc:${network.id}:isolated`],
           })),
         },
       ],
-    },
+    };
+    }),
     {
       id: "island:agentcore",
       title: "Agents",

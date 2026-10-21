@@ -15,7 +15,7 @@ related:
 ---
 # Configuration and normalized identities
 
-[framework.config.ts](../../../framework.config.ts) composes `defaults`, `network`, `resources`, application database/user-pool references, and arrays of `http`, `webSocket`, `events`, `services`, `tasks`, `workflows`, `tools`, and `agents` modules. [contracts.ts](../../../framework-config/contracts.ts) specializes section types from the catalog and exports only types.
+[framework.config.ts](../../../framework.config.ts) composes `defaults`, `networks`, `resources`, application database/user-pool references, and arrays of `http`, `webSocket`, `events`, `services`, `tasks`, `workflows`, `tools`, and `agents` modules. [contracts.ts](../../../framework-config/contracts.ts) specializes section types from the catalog and exports only types.
 
 In [config/index.ts](../../../packages/framework/src/config/index.ts), `defineFrameworkConfig` merges sections and validates normalization eagerly. `mergeSection` detects duplicate keys before information is lost; an object spread could erase that evidence. `normalizeFrameworkConfig` / `getFrameworkTargets` give CDK, generation, runtime and Studio one target vocabulary.
 
@@ -34,3 +34,16 @@ In [config/index.ts](../../../packages/framework/src/config/index.ts), `defineFr
 `assertCloudEdgesResolvable` rejects cloud consumers whose required declared targets/resources cannot resolve. Source validation also checks literal routes, overlap, handler wrappers, invocation cycles, workflow semantics and runtime packaging. `npm run framework:generate` emits projections; `framework:check` detects drift and authoring violations. Neither is a live deployment check.
 
 Extend a DSL field through its type, normalization/defaults, validation, CDK/local consumers, generated projections and Studio projection/editability as applicable; use [extension recipes](../guides/extensions.md). Start from existing [Framework guidance](../../FRAMEWORK.md), then use [change impact](../reference/change-impact.md). Resource references belong to [resources/CDK](resources-and-cdk.md), not new environment-specific import tables.
+
+VPC declarations are exported `defineNetwork({ id, ... })` values, one module under
+`framework-config/networks/<id>/index.ts`, registered in a literal `networks` array.
+Networked Lambdas declare `vpc`; services/tasks declare `cloud.vpc`. References are
+explicit, never inherited. The imported `defineDatabase` value owns its resource and VPC, allowing cross-VPC
+rejection even when native RDS is absent in development.
+
+The primary managed PostgreSQL declaration is `defineDatabase` in
+[databases/application/index.ts](../../../framework-config/databases/application/index.ts).
+The root selects `database: applicationDatabase`; network, subnet and PostgreSQL policy
+belong to that value. Stable declaration IDs do not determine deployed RDS identities.
+Existing deployment inputs/context override declared defaults. See the
+[design and migration contract](../../framework-studio/network-database-declarations.md).

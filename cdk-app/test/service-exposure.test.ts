@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as cdk from "aws-cdk-lib";
@@ -27,7 +28,7 @@ import {
 const env = { account: "111122223333", region: "eu-west-2" };
 
 function config(): FrameworkConfig {
-  return defineFrameworkConfig({
+  return defineFrameworkConfig({ networks: [fixtureVpc],
     resources: defineResources({}),
     defaults,
     http: [],
@@ -40,7 +41,7 @@ function config(): FrameworkConfig {
           auth: true,
           port: 5000,
           deploy: "both",
-          cloud: { constructId: "ExampleService", cpu: 256, memoryMiB: 512, desiredCount: 1 },
+          cloud: { vpc: fixtureVpc, constructId: "ExampleService", cpu: 256, memoryMiB: 512, desiredCount: 1 },
         },
       },
     ],

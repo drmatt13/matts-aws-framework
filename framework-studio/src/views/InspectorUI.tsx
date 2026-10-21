@@ -1,6 +1,20 @@
 import { ChevronRight } from "lucide-react";
 import { useId, type ReactNode } from "react";
 
+/** Boolean settings use the same named, keyboard-operable On/Off control. */
+export function InspectorSwitch({ id, label, checked, onChange, disabled, describedBy, invalid }: {
+  readonly id?: string; readonly label: string; readonly checked: boolean;
+  readonly onChange: (checked: boolean) => void; readonly disabled?: boolean;
+  readonly describedBy?: string; readonly invalid?: boolean;
+}) {
+  return <button id={id} type="button" className="auth-switch" role="switch" aria-label={label}
+    aria-checked={checked} aria-describedby={describedBy} aria-invalid={invalid} disabled={disabled}
+    onClick={() => onChange(!checked)}>
+    <span className="auth-switch-state">{checked ? "On" : "Off"}</span>
+    <span className="auth-switch-track" aria-hidden><span className="auth-switch-thumb" /></span>
+  </button>;
+}
+
 /** One heading and content rhythm across every inspector and configuration form. */
 export function InspectorSection({ title, description, children, actions, className = "" }: {
   readonly title: string; readonly description?: ReactNode; readonly children: ReactNode;

@@ -91,16 +91,16 @@ export const descriptions = {
   "local:postgres": "Local PostgreSQL service declared in docker-compose.yml. Development workloads share the application schema with production RDS; named Compose storage preserves local data.",
 
   // Network fixtures
-  "prop:internet-gateway": "Connects the VPC's public subnets to the internet for IPv4 and IPv6 traffic. Network settings are declared in framework-config/network.ts.",
-  "prop:egress-only-gateway": "Allows outbound IPv6 traffic from private subnets while preventing unsolicited inbound connections.",
-  "prop:nat-gateway": "Optional outbound IPv4 path for private subnets. Appears when NAT is enabled in the network declaration.",
-  "prop:endpoint:s3": "S3 gateway endpoint attached to the VPC route tables so S3 traffic stays on the AWS network.",
-  "prop:endpoint:dynamodb": "DynamoDB gateway endpoint attached to the VPC route tables so DynamoDB traffic stays on the AWS network.",
+  "prop:vpc:application:internet-gateway": "Connects the VPC's public subnets to the internet for IPv4 and IPv6 traffic. Network settings are declared in framework-config/networks/application/index.ts.",
+  "prop:vpc:application:egress-only-gateway": "Allows outbound IPv6 traffic from private subnets while preventing unsolicited inbound connections.",
+  "prop:vpc:application:nat-gateway": "Optional outbound IPv4 path for private subnets. Appears when NAT is enabled in the network declaration.",
+  "prop:vpc:application:endpoint:s3": "S3 gateway endpoint attached to the VPC route tables so S3 traffic stays on the AWS network.",
+  "prop:vpc:application:endpoint:dynamodb": "DynamoDB gateway endpoint attached to the VPC route tables so DynamoDB traffic stays on the AWS network.",
 
   // Selectable terrain
   "island:apis": "Public HTTP routes, container service mounts, WebSocket route keys and agent browser paths. Each entry has its own identity and declared target.",
   "island:lambda": "Lambda compute outside the VPC, grouped across HTTP, WebSocket, events and agent tools. Shared defaults apply by service type; individual workload overrides take precedence.",
-  "island:vpc": "Application VPC with public, private and isolated subnet terraces. Production workloads follow their declared placement; gateway and endpoint settings control egress.",
+  "island:vpc:application": "Application VPC with public, private and isolated subnet terraces. Production workloads follow their declared placement; gateway and endpoint settings control egress.",
   "island:agentcore": "Conversational agents running on AgentCore Runtime or the local agent lane. Declared tool bindings determine which Lambda tools each agent can call.",
   "island:orchestration": "Declared workflow graphs interpreted locally or compiled to AWS Step Functions. Steps invoke only the targets and integrations declared by the workflow.",
   "island:stacks": "Application catalog stacks and framework output stacks. Inspect a stack to see public fields, source relationships and mapped CloudFormation outputs.",

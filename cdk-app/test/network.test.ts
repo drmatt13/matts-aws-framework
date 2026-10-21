@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as cdk from "aws-cdk-lib";
@@ -15,7 +16,7 @@ import {
   type FrameworkConfig,
 } from "@repo/framework/config";
 import { defaults } from "../../framework-config/defaults";
-import { network as appNetwork } from "../../framework-config/network";
+import { applicationVpc as appNetwork } from "../../framework-config/networks/application";
 import { EcsServicesStack } from "../lib/framework/ecs-services-stack";
 import { EcsTasksStack } from "../lib/framework/ecs-tasks-stack";
 import { SynchronousLambdaFunctionsStack } from "../lib/framework/synchronous-lambda-functions-stack";
@@ -29,14 +30,14 @@ import {
 
 const env = { account: "111122223333", region: "eu-west-2" };
 
-/** An application stack as the framework expects one: built in frameworkVpc(this). */
+/** An application stack as the framework expects one: built in frameworkVpc(this, fixtureVpc). */
 class DataStack extends cdk.Stack {
   public readonly database: rds.DatabaseInstance;
   public constructor(scope: Construct, id: string, overrides: Partial<rds.DatabaseInstanceProps> = {}) {
     super(scope, id, { env });
     this.database = new rds.DatabaseInstance(this, "Database", {
       engine: rds.DatabaseInstanceEngine.postgres({ version: rds.PostgresEngineVersion.VER_16 }),
-      vpc: frameworkVpc(this),
+      vpc: frameworkVpc(this, fixtureVpc),
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       publiclyAccessible: false,
       storageEncrypted: true,
@@ -51,12 +52,12 @@ class DataStack extends cdk.Stack {
 const resources = defineResources({ data: resource.stack<DataStack>() });
 const absent = defineResources({ data: (false as boolean) ? resource.stack<DataStack>() : undefined });
 
-const connected = { database: true };
+const connected = { vpc: fixtureVpc, database: true };
 const route = { "/verify-session": { directory: "/lambda_functions/http_functions/verify-session", methods: ["GET"], ...connected } };
 
 function config(input: Record<string, unknown>): FrameworkConfig {
-  return defineFrameworkConfig({
-    resources, database: resources.data.database, defaults, http: [], webSocket: [], events: [], services: [], tasks: [], workflows: [],
+  return defineFrameworkConfig({ networks: [fixtureVpc],
+    resources, database: { resource: resources.data.database, vpc: fixtureVpc }, defaults, http: [], webSocket: [], events: [], services: [], tasks: [], workflows: [],
     ...input,
   } as never);
 }
@@ -105,7 +106,7 @@ test("database: true puts a Lambda in the private subnets, logging in with IAM, 
   const ingress = Object.values(Template.fromStack(data).findResources("AWS::EC2::SecurityGroupIngress")).map((rule) => JSON.stringify((rule as { Properties: unknown }).Properties));
   assert.equal(ingress.length, 1);
   assert.match(ingress[0]!, /example-NetworkStack:ExportsOutputFnGetAttDatabaseClients/);
-  assert.equal(describeFrameworkNetwork(application), "Network: lambda:verify-session run in the VPC. The private subnets leave over IPv6 only, with gateway endpoints for S3 and DynamoDB. It costs nothing.");
+  assert.equal(describeFrameworkNetwork(application), "Network application: lambda:verify-session run in the VPC. The private subnets leave over IPv6 only, with gateway endpoints for S3 and DynamoDB. It costs nothing.");
   assert.match(describeFrameworkDatabase(application) ?? "", /lambda:verify-session log in as app_user with IAM/);
 });
 
@@ -148,11 +149,11 @@ test("database: true reaches an rds.DatabaseInstance whose master secret the fra
   }
 });
 
-const withNat = defineNetwork({ cidr: "10.0.0.0/16", zones: 2, natGateway: true });
+const withNat = defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, natGateway: true });
 
 test("only the network declaration builds a NAT gateway, never a container", () => {
   for (const [network, subnet, nat] of [[undefined, "public", 0], [withNat, "public", 1], [withNat, "private", 1]] as const) {
-    const built = config({ ...(network ? { network } : {}), tasks: [{ "network-worker": { directory: "/test/fixtures/task-worker", deploy: "both", cloud: { subnet } } }] });
+    const built = config({ ...(network ? { networks: [network] } : {}), tasks: [{ "network-worker": { directory: "/test/fixtures/task-worker", deploy: "both", cloud: { vpc: fixtureVpc, subnet } } }] });
     const application = app(built);
     new EcsTasksStack(application, "Tasks", { env, config: built, cloud: { mode: "prod" } });
     finalizeFrameworkResources(application);
@@ -162,10 +163,10 @@ test("only the network declaration builds a NAT gateway, never a container", () 
 });
 
 test("a service joins its connections' groups without opening them to its load balancer", () => {
-  const built = config({ network: withNat, services: [{ "/example/*": {
+  const built = config({ networks: [withNat], services: [{ "/example/*": {
     directory: "/ecs_containers/services/example-service", methods: "*", port: 5000, deploy: "both",
-    ...connected,
-    cloud: { constructId: "ExampleService", subnet: "private" },
+    database: true,
+    cloud: { vpc: fixtureVpc, constructId: "ExampleService", subnet: "private" },
   } }] });
   const application = app(built);
   new DataStack(application, "Data");
@@ -188,11 +189,11 @@ test("a service joins its connections' groups without opening them to its load b
 test("a dev deployment never builds the network", () => {
   const application = app(config({}), "dev");
   const stack = new cdk.Stack(application, "Data", { env });
-  assert.throws(() => frameworkVpc(stack), /a dev deployment never builds the network.*-c prodDeployment=true/);
+  assert.throws(() => frameworkVpc(stack, fixtureVpc), /a dev deployment never builds the network.*-c prodDeployment=true/);
 });
 
 test("database: true places nothing when the deployment builds no database", () => {
-  const built = config({ resources: absent, database: absent.data.database, http: [route] });
+  const built = config({ resources: absent, database: { resource: absent.data.database, vpc: fixtureVpc }, http: [route] });
   const application = app(built, "dev");
   const stack = new cdk.Stack(application, "Lambdas", { env });
   const target = normalizeFrameworkConfig(built).targets.get("lambda:verify-session")!;
@@ -201,7 +202,7 @@ test("database: true places nothing when the deployment builds no database", () 
   assert.equal(describeFrameworkDatabase(application), undefined);
 });
 
-const inside = { "/verify-session": { directory: "/lambda_functions/http_functions/verify-session", methods: ["GET"], subnet: "private" } };
+const inside = { "/verify-session": { vpc: fixtureVpc, directory: "/lambda_functions/http_functions/verify-session", methods: ["GET"], subnet: "private" } };
 
 test("subnet: \"private\" puts a Lambda in the private subnets, in a shared group the database does not admit", () => {
   const built = config({ http: [inside] });
@@ -224,7 +225,7 @@ test("subnet: \"private\" puts a Lambda in the private subnets, in a shared grou
 });
 
 test("a subnet places nothing in a dev deployment, which builds no network", () => {
-  const built = config({ resources: absent, database: absent.data.database, http: [inside] });
+  const built = config({ resources: absent, database: { resource: absent.data.database, vpc: fixtureVpc }, http: [inside] });
   const application = app(built, "dev");
   const stack = new cdk.Stack(application, "Lambdas", { env });
   const target = normalizeFrameworkConfig(built).targets.get("lambda:verify-session")!;
@@ -248,9 +249,9 @@ const LOGICAL_IDS_BEFORE = [
 
 /** The network stack alone, built for a config. */
 function networkFor(network?: ReturnType<typeof defineNetwork>, input: Record<string, unknown> = {}) {
-  const built = config({ ...(network ? { network } : {}), ...input });
+  const built = config({ ...(network ? { networks: [network] } : {}), ...input });
   const application = app(built);
-  frameworkVpc(new cdk.Stack(application, "Probe", { env }));
+  frameworkVpc(new cdk.Stack(application, "Probe", { env }), network ?? fixtureVpc);
   finalizeFrameworkResources(application);
   return { application, template: networkOf(application) };
 }
@@ -261,7 +262,7 @@ test("the app's network.ts builds exactly the network it built before, logical i
 });
 
 test("without an egress-only internet gateway the private subnets keep no IPv6 way out; the public ones keep theirs", () => {
-  const { template, application } = networkFor(defineNetwork({ cidr: "10.0.0.0/16", zones: 2, egressOnlyInternetGateway: false }));
+  const { template, application } = networkFor(defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, egressOnlyInternetGateway: false }));
   template.resourceCountIs("AWS::EC2::EgressOnlyInternetGateway", 0);
   const ids = Object.keys(template.toJSON().Resources);
   assert.ok(!ids.some((id) => /^VpcprivateSubnet\dDefaultRoute6/.test(id)), "no IPv6 route out of a private subnet");
@@ -271,13 +272,13 @@ test("without an egress-only internet gateway the private subnets keep no IPv6 w
 });
 
 test("the gateway endpoints are network.ts's to turn off, and keep their logical ids when on", () => {
-  const { template } = networkFor(defineNetwork({ cidr: "10.0.0.0/16", zones: 2, gatewayEndpoints: { s3: true, dynamodb: false } }));
+  const { template } = networkFor(defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, gatewayEndpoints: { s3: true, dynamodb: false } }));
   template.resourceCountIs("AWS::EC2::VPCEndpoint", 1);
   assert.ok("VpcS3A5408339" in template.toJSON().Resources);
 });
 
 test("interface endpoints sit in the private subnets with private DNS, behind one group that admits HTTPS from the VPC", () => {
-  const { template, application } = networkFor(defineNetwork({ cidr: "10.0.0.0/16", zones: 2, interfaceEndpoints: ["secretsmanager", "ecr.api"] }));
+  const { template, application } = networkFor(defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, interfaceEndpoints: ["secretsmanager", "ecr.api"] }));
   const resources = template.toJSON().Resources as Record<string, { Type: string; Properties: Record<string, unknown> }>;
   const interfaces = Object.entries(resources).filter(([, resource]) => resource.Type === "AWS::EC2::VPCEndpoint" && resource.Properties.VpcEndpointType === "Interface");
   assert.deepEqual(interfaces.map(([id]) => id.replace(/[0-9A-F]{8}$/, "")).sort(), ["VpcEcrApiEndpoint", "VpcSecretsmanagerEndpoint"], "named for the service");
@@ -296,12 +297,12 @@ test("interface endpoints sit in the private subnets with private DNS, behind on
   );
   assert.match(describeFrameworkNetwork(application) ?? "", /interface endpoints for secretsmanager, ecr\.api\. It costs 2 interface endpoints in 2 zones, about \$29\.20 a month plus \$0\.01 per GB/);
 
-  const reordered = networkFor(defineNetwork({ cidr: "10.0.0.0/16", zones: 2, interfaceEndpoints: ["ecr.api", "secretsmanager"] })).template;
+  const reordered = networkFor(defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, interfaceEndpoints: ["ecr.api", "secretsmanager"] })).template;
   assert.deepEqual(Object.keys(reordered.toJSON().Resources).sort(), Object.keys(resources).sort(), "listing them in another order replaces nothing");
 });
 
 test("subnet: \"isolated\" puts a Lambda in the isolated subnets, calling the standard hostnames the endpoints answer", () => {
-  const isolated = { "/verify-session": { directory: "/lambda_functions/http_functions/verify-session", methods: ["GET"], subnet: "isolated" } };
+  const isolated = { "/verify-session": { vpc: fixtureVpc, directory: "/lambda_functions/http_functions/verify-session", methods: ["GET"], subnet: "isolated" } };
   const built = config({ http: [isolated] });
   const application = app(built);
   const lambdas = new SynchronousLambdaFunctionsStack(application, "Lambdas", { env, config: built, cloud: { mode: "prod" } });
@@ -312,8 +313,8 @@ test("subnet: \"isolated\" puts a Lambda in the isolated subnets, calling the st
 });
 
 test("a private Lambda and the database login call dual-stack endpoints only where IPv6 leaves the private subnets", () => {
-  const natOnly = defineNetwork({ cidr: "10.0.0.0/16", zones: 2, egressOnlyInternetGateway: false, natGateway: true });
-  const built = config({ network: natOnly, http: [route] });
+  const natOnly = defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, egressOnlyInternetGateway: false, natGateway: true });
+  const built = config({ networks: [natOnly], http: [route] });
   const application = app(built);
   const data = new DataStack(application, "Data");
   const lambdas = new SynchronousLambdaFunctionsStack(application, "Lambdas", { env, config: built, cloud: { mode: "prod" } });

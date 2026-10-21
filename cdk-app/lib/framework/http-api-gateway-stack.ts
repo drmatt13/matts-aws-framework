@@ -1,3 +1,4 @@
+import { networkConstructId, getFrameworkTargets, type FrameworkNetwork } from "@repo/framework/config";
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as apigw from "aws-cdk-lib/aws-apigateway";
@@ -176,14 +177,18 @@ export class HttpApiGatewayStack extends cdk.Stack {
     };
 
     // One VPC link for every internal service, in the subnets the services use.
-    let vpcLink: apigwv2.VpcLink | undefined;
-    const vpcLinkFor = (listener: ApplicationListener): apigwv2.VpcLink => {
-      vpcLink ??= new apigwv2.VpcLink(this, "ServicesVpcLink", {
+    const serviceNetworks = new Map(getFrameworkTargets(props.config).filter(target => target.kind === "service").map(target => [target.id, target.vpc!]));
+    const vpcLinks = new Map<string, apigwv2.VpcLink>();
+    const vpcLinkFor = (listener: ApplicationListener, network: FrameworkNetwork): apigwv2.VpcLink => {
+      const existing = vpcLinks.get(network.id);
+      if (existing) return existing;
+      const vpcLink = new apigwv2.VpcLink(this, networkConstructId(network, "ServicesVpcLink"), {
         vpc: listener.loadBalancer.vpc!,
         // Beside the internal load balancers, in the framework network's
         // private subnets.
         subnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
       });
+      vpcLinks.set(network.id, vpcLink);
       return vpcLink;
     };
 
@@ -225,7 +230,7 @@ export class HttpApiGatewayStack extends cdk.Stack {
       ): apigwv2.HttpRouteIntegration =>
         service.listener
           ? new integrations.HttpAlbIntegration(constructId, service.listener, {
-              vpcLink: vpcLinkFor(service.listener),
+              vpcLink: vpcLinkFor(service.listener, serviceNetworks.get(route.target)!),
               ...(parameterMapping ? { parameterMapping } : {}),
             })
           : new integrations.HttpUrlIntegration(

@@ -8,6 +8,7 @@ import type { ResourceIntent, RequirementRule } from "../shared/resources";
 import type { ModelResource, ModelTarget } from "../shared/model";
 import { editableFiles, toRelative } from "./files";
 import { insertProperty, removeProperty } from "./edits/splice";
+import { declarationHost } from "./source/declarations";
 import { declarationObject, expressionAt, findProperty, literalKey, literalValue, parse, propertyAt, unwrap } from "./source/syntax";
 import { parseOrigin } from "./model/origin";
 import type { StudioState } from "./snapshot";
@@ -290,7 +291,7 @@ export function resourceTypeErrors(root: string, overrides: Readonly<Record<stri
     const config = ts.readConfigFile(configPath, ts.sys.readFile);
     options = { ...ts.parseJsonConfigFileContent(config.config, ts.sys, path.dirname(configPath)).options, noEmit: true };
   }
-  const host = ts.createCompilerHost(options);
+  const host = declarationHost(root, options);
   const read = host.readFile;
   const exists = host.fileExists;
   const directoryExists = host.directoryExists?.bind(host);

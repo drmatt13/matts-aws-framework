@@ -5,7 +5,7 @@ import path from "node:path";
 import { EvaluatorPool, type Evaluation } from "./evaluator/pool";
 import { hashEditableFiles, sha256 } from "./files";
 import { readDeploymentSettings } from "./inputs";
-import { buildSourceIndex, type BuiltSourceIndex } from "./source";
+import { buildSourceIndex, SourceFiles, type BuiltSourceIndex } from "./source";
 import type { CatalogEntrySource } from "./source/catalog";
 import { readDeclaredSchema, readLocalDatabases, withLocalDatabases } from "./database";
 import { withDeploymentInputs } from "./deployment-inputs";
@@ -34,7 +34,11 @@ function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, Catalog
       const id = `resource:${catalogPath}.${member.name}`;
       const existing = index.get(id);
       if (existing !== undefined) {
-        resources[existing] = { ...resources[existing]!, typeText: member.typeText, memberSource: "both", networkPlacement: member.networkPlacement };
+        const resource = resources[existing]!;
+        const managed = resource.frameworkManaged === "database";
+        resources[existing] = { ...resource, typeText: member.typeText, memberSource: "both",
+          networkPlacement: managed ? model.managedDatabase?.subnet ?? member.networkPlacement : member.networkPlacement,
+          networkId: managed ? model.databaseNetworkId : member.networkId };
         continue;
       }
       index.set(id, resources.length);
@@ -46,7 +50,7 @@ function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, Catalog
         absent: stack?.absent === true,
         typeText: member.typeText,
         memberSource: "class",
-        networkPlacement: member.networkPlacement,
+        networkPlacement: member.networkPlacement, networkId: member.networkId,
       });
     }
     if (stack) resources[index.get(`resource:${catalogPath}`)!] = { ...stack, stackClass: entry.stack.className, stackUsage: entry.stackUsage };
@@ -61,7 +65,9 @@ function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, Catalog
     label: "Database in stack",
     detail: "This stack declares the application's framework-managed database.",
   }));
-  return { ...model, resources, edges: [...model.edges, ...ownership, ...cdkEdges.filter((edge) => ids.has(edge.from) && ids.has(edge.to))] };
+  return { ...model, resources,
+    networks: model.networks?.map(network => ({ ...network, builtInProd: network.builtInProd || [...catalog].some(([name, entry]) => entry.stack?.networkIds?.includes(network.id) && entry.stackUsage?.status === "referenced" && resources.some(resource => resource.id === `resource:${name}` && !resource.absent)) })),
+    edges: [...model.edges, ...ownership, ...cdkEdges.filter((edge) => ids.has(edge.from) && ids.has(edge.to))] };
 }
 
 export interface StudioState {
@@ -133,7 +139,9 @@ export class SnapshotBuilder {
     const dev = this.lastGood(evaluation.dev);
     const prod = this.lastGood(evaluation.prod);
     const base = !dev.stale && dev.targets.length > 0 ? dev : prod;
-    const built = base.stale && this.latest ? this.latest.built : buildSourceIndex(this.repositoryRoot, base);
+    // One parse of each source file serves the index and both modes' evidence.
+    const sources = new SourceFiles();
+    const built = base.stale && this.latest ? this.latest.built : buildSourceIndex(this.repositoryRoot, base, sources);
     const schema = readDeclaredSchema(this.repositoryRoot);
     const localDatabase = readLocalDatabases(this.repositoryRoot);
     const clientMappings = readClientMappings(this.repositoryRoot);
@@ -149,6 +157,11 @@ export class SnapshotBuilder {
     }
     this.generation += 1;
     const content = sha256(JSON.stringify({ files, settings, schema: schema.hash, localDatabase }));
+    const project = (model: ModeModel): ModeModel => {
+      const declared = model.stale ? model : withExportStacks(withClassMembers(model, built.catalog, built.index.cdkLinks.edges), built.exportStacks);
+      const enriched = withClientEnvironment(withDeploymentInputs(this.repositoryRoot, withLocalDatabases(declared, localDatabase.services), { dev, prod }), clientMappings);
+      return withConnectionEvidence(this.repositoryRoot, enriched, built.index, built.catalog, sources);
+    };
     const snapshot: Snapshot = {
       descriptions: readDescriptions(this.repositoryRoot),
       schema,
@@ -158,8 +171,8 @@ export class SnapshotBuilder {
       webSocketApi: settings.webSocketApi,
       repositoryRoot: this.repositoryRoot,
       models: {
-        dev: withConnectionEvidence(this.repositoryRoot, withClientEnvironment(withDeploymentInputs(this.repositoryRoot, withLocalDatabases(dev.stale ? dev : withExportStacks(withClassMembers(dev, built.catalog, built.index.cdkLinks.edges), built.exportStacks), localDatabase.services), { dev, prod }), clientMappings), built.index, built.catalog),
-        prod: withConnectionEvidence(this.repositoryRoot, withClientEnvironment(withDeploymentInputs(this.repositoryRoot, withLocalDatabases(prod.stale ? prod : withExportStacks(withClassMembers(prod, built.catalog, built.index.cdkLinks.edges), built.exportStacks), localDatabase.services), { dev, prod }), clientMappings), built.index, built.catalog),
+        dev: project(dev),
+        prod: project(prod),
       },
       source: built.index,
       files,

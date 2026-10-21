@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { IUserPool, IUserPoolClient } from "aws-cdk-lib/aws-cognito";
@@ -9,7 +10,7 @@ const resources = defineResources({ pool: resource.cdk<IUserPool>(), client: res
 const userPool = { userPoolId: resources.pool.userPoolId, userPoolClientId: resources.client.userPoolClientId };
 const cognito = { USER_POOL_ID: "pool", USER_POOL_CLIENT_ID: "client" };
 const configWith = (reports: Record<string, unknown>, options: { readonly pool?: boolean } = {}) =>
-  defineFrameworkConfig({
+  defineFrameworkConfig({ networks: [fixtureVpc],
     resources,
     defaults,
     ...(options.pool ? { userPool } : {}),

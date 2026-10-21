@@ -118,8 +118,8 @@ export function nodeHoverFacts(node: SceneNode, indexes: ModelIndexes): HoverFac
 }
 
 /** Gateways and endpoints exist only because the framework builds the declared network, and only a production deployment builds it. */
-export function propHoverFacts(models: Readonly<Record<Mode, ModeModel>>): HoverFacts {
-  return models.prod.network?.builtInProd
+export function propHoverFacts(models: Readonly<Record<Mode, ModeModel>>, id: string): HoverFacts {
+  return models.prod.networks?.find(network => id.startsWith(`prop:vpc:${network.id}:`))?.builtInProd
     ? { places: [{ env: "prod", where: "AWS VPC" }], frameworkManaged: true }
     : { places: [], notDeployed: "Not built: nothing is placed in the VPC", frameworkManaged: true };
 }

@@ -78,18 +78,16 @@ A field that is not a literal in an object literal (an array entry, a call argum
 value behind an identifier) needs new splice and editability support first. Do not widen
 `propertyAt` to guess.
 
-### Edit something outside the sections (the network, defaults)
+### Edit something outside the sections (VPCs, defaults)
 
-Origins today are section entries (`http["/x"]`, …). The locator already finds the other
-properties in `located.properties` (`network`, `defaults`, `resources`, `database`,
-`userPool`).
+The locator exposes imported VPC modules in `located.networks`. The typed network and
+placement edits in `server/edits/networks.ts` update those declarations through the
+existing reviewed batch transaction. Placement changes write the imported VPC reference
+and subnet together; settings edits retain the VPC's identity. Evaluation rebuilds each
+network with `defineNetwork` in both modes before source is applied.
 
-- To edit `framework-config/network.ts`, add an origin form for it in
-  `server/model/origin.ts` and a `declarationObject` case for the `defineNetwork({ … })`
-  argument.
-- In `applyPatch`, rebuild the network with `defineNetwork` rather than patching the
-  frozen evaluated object, because `defineNetwork` applies defaults and brands its result.
-- Preflight will then report cost and endpoint consequences in the framework's words.
+Other root properties remain available in `located.properties` (`defaults`, `resources`,
+`database`, `userPool`). Add dedicated editability support before expanding their UI.
 
 ### Add an entity or relationship to the model
 

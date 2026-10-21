@@ -12,6 +12,13 @@ import { SnapshotBuilder } from "../server/snapshot";
 import { generateCreationArtifacts } from "../server/edits/creation-generation";
 import { resourceTypeErrors } from "../server/resources-source";
 import { buildScene } from "../src/scene/build";
+import { landscapeFocus, searchScene } from "../src/scene/focus";
+import { islandSlabs } from "../src/scene/slabs";
+import { pickIsland } from "../src/scene/picking";
+import { project } from "../src/scene/iso";
+import { networkSettings } from "../shared/networks";
+import { planNetworkRemoval } from "../server/edits/networks";
+import { SourceFiles } from "../server/source";
 
 const root = path.resolve(__dirname, "../..");
 const fixture = path.join(root, ".cache/framework-studio", `creation-${randomUUID()}`);
@@ -20,7 +27,7 @@ let edits: EditService;
 before(async () => {
   mkdirSync(fixture, { recursive: true });
   const include = (source: string) => !/(?:^|\/)(?:node_modules|cdk\.out|dist|\.git)(?:\/|$)/.test(source) && (!/\/\.env(?:\.|$)/.test(source) || path.basename(source) === ".env.example");
-  for (const relative of ["framework-config", "framework.config.ts", "package.json", "package-lock.json", "docker-compose.yml", "docker-compose.services.yml", "packages/framework/src", "packages/api-contract/src/generated", "cdk-app/lib", "cdk-app/bin", "cdk-app/deployment.ts", "cdk-app/database-settings.ts", "cdk-app/tsconfig.json", "cdk-app/lambda_functions", "cdk-app/ecs_containers", "agents", "scripts"]) cpSync(path.join(root, relative), path.join(fixture, relative), { recursive: true, filter: include });
+  for (const relative of ["framework-config", "framework.config.ts", "package.json", "package-lock.json", "docker-compose.yml", "docker-compose.services.yml", "packages/framework/src", "packages/api-contract/src/generated", "cdk-app/lib", "cdk-app/bin", "cdk-app/deployment.ts", "cdk-app/database-settings.ts", "cdk-app/cdk.json", "cdk-app/tsconfig.json", "cdk-app/lambda_functions", "cdk-app/ecs_containers", "agents", "scripts"]) cpSync(path.join(root, relative), path.join(fixture, relative), { recursive: true, filter: include });
   const manifests = require("node:fs").globSync(JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).workspaces.map((pattern: string) => `${pattern}/package.json`), { cwd: root }) as string[];
   for (const relative of manifests) { mkdirSync(path.dirname(path.join(fixture, relative)), { recursive: true }); cpSync(path.join(root, relative), path.join(fixture, relative)); }
   for (const mode of ["dev", "prod"]) cpSync(path.join(root, `cdk-app/.env.${mode}.template`), path.join(fixture, `cdk-app/.env.${mode}.template`));
@@ -32,7 +39,7 @@ after(async () => { await builder?.dispose(); rmSync(fixture, { recursive: true,
 // Add only fields the selected discriminant accepts: the HTTP parser rejects extras.
 function valid(kind: CreationKind, extra: Record<string, unknown> = {}) {
   const defaults = creationDefaults(kind);
-  return readCreationRequest({ kind, ...defaults, ...("id" in defaults ? { id: ["input", "secret", "stack"].includes(kind) ? "studioExample" : `studio-${kind}` } : {}), ...("envName" in defaults ? { envName: "STUDIO_EXAMPLE" } : {}), ...(kind === "stack" ? { className: "StudioExampleStack" } : {}), ...(kind === "route" ? { path: "/studio-example" } : {}), ...(kind === "service" ? { path: "/studio-example/*" } : {}), ...(kind === "vpc" ? { cidr: "10.42.0.0/16" } : {}), ...extra });
+  return readCreationRequest({ kind, ...defaults, ...("id" in defaults ? { id: ["input", "secret", "stack"].includes(kind) ? "studioExample" : `studio-${kind}` } : {}), ...("envName" in defaults ? { envName: "STUDIO_EXAMPLE" } : {}), ...(kind === "stack" ? { className: "StudioExampleStack" } : {}), ...(kind === "route" ? { path: "/studio-example" } : {}), ...(["service", "task"].includes(kind) ? { vpc: "application" } : {}), ...(kind === "service" ? { path: "/studio-example/*" } : {}), ...(kind === "vpc" ? { cidr: "10.42.0.0/16" } : {}), ...extra });
 }
 const state = () => builder.current!;
 const revision = () => state().snapshot.revision;
@@ -59,8 +66,7 @@ for (const kind of CREATION_KINDS) test(`${kind}: complete reviewed creation, di
     assert.ok(scene.nodes.some((node) => node.id === planned.expected.select) || scene.islands.some((island) => island.id === planned.expected.select), "the canonical resource appears in the actual graph projection");
     assert.equal(model.status, "ok");
   }
-  if (kind === "vpc") await assert.rejects(edits.planBatch([{ kind: "create", request: intent }], revision()), /no source changes/);
-  else await assert.rejects(edits.planBatch([{ kind: "create", request: intent }], revision()), /already|exists/);
+  await assert.rejects(edits.planBatch([{ kind: "create", request: intent }], revision()), /already|exists/);
   const undo = await edits.undo();
   assert.equal(undo.status, "applied", undo.message);
   for (const [file, before] of originals) assert.equal(existsSync(file) ? readFileSync(file, "utf8") : null, before, "undo restores exact bytes and removes only generated files");
@@ -208,6 +214,214 @@ test("a catalog input can be a single-file transaction and source changes expire
     assert.ok(buildScene(state().snapshot.models.dev).nodes.some((node) => node.id === "resource:singleInput"));
     assert.equal((await edits.undo()).status, "applied");
   } finally { files.forEach((file, index) => writeFileSync(file, templates[index]!)); }
+});
+
+test("successive VPC creation supports NAT, friendly names, unused removal, and guarded undo", async () => {
+  await builder.refresh();
+  const baselineRoot = readFileSync(path.join(fixture, "framework.config.ts"), "utf8");
+  const ids = ["test", "analytics", "reporting"];
+  for (const [index, id] of ids.entries()) {
+    const request = valid("vpc", { id, name: `${id} workspace`, description: `Notes for ${id}`, cidr: `10.${index + 1}.0.0/16`, nat: true });
+    const plan = await edits.planBatch([{ kind: "create", request }], revision());
+    assert.ok(plan.ok, JSON.stringify(plan.preflight));
+    assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+    for (const mode of ["dev", "prod"] as const) {
+      const network = state().snapshot.models[mode].networks!.find(network => network.id === id)!;
+      assert.equal(network.name, `${id} workspace`);
+      assert.equal(network.natGateway, true);
+      assert.equal(network.builtInProd, false);
+      assert.equal(state().snapshot.models[mode].networks!.length, index + 2);
+    }
+    await assert.rejects(edits.planBatch([{ kind: "create", request }], revision()), /already exists/);
+  }
+  const beforeOverlap = readFileSync(path.join(fixture, "framework.config.ts"), "utf8");
+  await assert.rejects(edits.planBatch([{ kind: "create", request: valid("vpc", { id: "overlapping", cidr: "10.1.0.0/16" }) }], revision()), /overlaps VPC "test"/);
+  assert.equal(readFileSync(path.join(fixture, "framework.config.ts"), "utf8"), beforeOverlap);
+  assert.equal(existsSync(path.join(fixture, "framework-config/networks/overlapping/index.ts")), false);
+  const testNetwork = state().snapshot.models.prod.networks!.find(network => network.id === "test")!;
+  const rename = await edits.planBatch([{ kind: "network", network: "test", settings: { ...networkSettings(testNetwork), name: "Customer sandbox" } }], revision());
+  assert.ok(rename.ok, JSON.stringify(rename.preflight));
+  assert.equal((await edits.applyBatch(rename.planId)).status, "applied");
+  assert.equal(state().snapshot.models.prod.networks!.find(network => network.id === "test")!.name, "Customer sandbox");
+  assert.equal(state().snapshot.models.prod.networks!.find(network => network.id === "test")!.constructId, testNetwork.constructId);
+  await assert.rejects(edits.planBatch([{ kind: "network", network: "test", settings: { ...networkSettings(testNetwork), cidr: "10.2.0.0/16" } }], revision()), /overlaps VPC "analytics"/);
+  assert.throws(() => planNetworkRemoval(fixture, state(), "application", new SourceFiles()), /used by|database/);
+  const nativeFile = path.join(fixture, "cdk-app/lib/app/network-consumer.ts");
+  writeFileSync(nativeFile, 'import { studioTestVpc as nativeVpc } from "../../../framework-config/networks/test"; const alias = nativeVpc; export { alias };');
+  try { assert.throws(() => planNetworkRemoval(fixture, state(), "test", new SourceFiles()), /network-consumer\.ts/); }
+  finally { rmSync(nativeFile); }
+  const interruptedRemoval = await edits.planBatch([{ kind: "removeNetwork", network: "test" }], revision());
+  writeFileSync(nativeFile, 'import { studioTestVpc } from "../../../framework-config/networks/test"; export { studioTestVpc };');
+  try {
+    await assert.rejects(edits.applyBatch(interruptedRemoval.planId), /referenced|changed/);
+    assert.ok(existsSync(path.join(fixture, "framework-config/networks/test/index.ts")), "a new native reference prevents removal before any write");
+  } finally { rmSync(nativeFile); }
+  const removal = await edits.planBatch([{ kind: "removeNetwork", network: "test" }], revision());
+  assert.ok(removal.ok, JSON.stringify(removal.preflight));
+  assert.ok(removal.changes.some(change => change.file === "framework-config/networks/test/index.ts" && change.operation === "delete"));
+  assert.equal((await edits.applyBatch(removal.planId)).status, "applied");
+  assert.equal(existsSync(path.join(fixture, "framework-config/networks/test/index.ts")), false);
+  assert.equal(existsSync(path.join(fixture, "framework-config/networks/test")), false, "removal prunes only the empty VPC directory");
+  assert.ok(!state().snapshot.models.prod.networks!.some(network => network.id === "test"));
+  assert.equal(state().snapshot.descriptions.values["island:vpc:test"], undefined);
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(state().snapshot.models.prod.networks!.find(network => network.id === "test")!.name, "Customer sandbox");
+  assert.equal(state().snapshot.descriptions.values["island:vpc:test"], "Notes for test");
+  assert.equal((await edits.redo()).status, "applied");
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal((await edits.undo()).status, "applied");
+  for (const id of [...ids].reverse()) {
+    assert.equal((await edits.undo()).status, "applied");
+    assert.equal(existsSync(path.join(fixture, `framework-config/networks/${id}/index.ts`)), false);
+  }
+  assert.equal(readFileSync(path.join(fixture, "framework.config.ts"), "utf8"), baselineRoot);
+});
+
+test("independent VPC creation, workload reassignment and network settings share reviewed transactions", async () => {
+  await builder.refresh();
+  const request = valid("vpc", { id: "secondary", cidr: "10.77.0.0/16" });
+  const create = await edits.planBatch([{ kind: "create", request }], revision());
+  assert.ok(create.ok, JSON.stringify(create.preflight));
+  assert.ok(create.changes.some(change => change.file === "framework-config/networks/secondary/index.ts" && change.operation === "create"));
+  assert.equal(create.select, "island:vpc:secondary");
+  assert.equal((await edits.applyBatch(create.planId)).status, "applied");
+  const secondary = state().snapshot.models.prod.networks!.find(network => network.id === "secondary")!;
+  assert.equal(secondary.builtInProd, false);
+  assert.equal(state().snapshot.source.entities["island:vpc:secondary"]?.value.file, "framework-config/networks/secondary/index.ts");
+  // A native resource can build this VPC before any framework workload uses it.
+  // Review evaluates declarations; apply additionally enriches them from CDK source.
+  const stackFile = path.join(fixture, "cdk-app/lib/app/rds-stack.ts");
+  const stackBefore = readFileSync(stackFile, "utf8");
+  const stackWithNativeVpc = 'import { studioSecondaryVpc as secondaryVpc } from "../../../framework-config/networks/secondary";\n' + stackBefore
+    .replace("public readonly database:", "public readonly nativeSecurityGroup: ec2.SecurityGroup;\n  public readonly database:")
+    .replace("super(scope, id, props);", 'super(scope, id, props);\n    this.nativeSecurityGroup = new ec2.SecurityGroup(this, "NativeSecurityGroup", { vpc: frameworkVpc(this, secondaryVpc) });');
+  writeFileSync(stackFile, stackWithNativeVpc);
+  try {
+    await builder.refresh();
+    assert.equal(state().snapshot.models.prod.networks!.find(network => network.id === "secondary")!.builtInProd, true);
+    assert.equal(state().snapshot.models.prod.resources.find(resource => resource.id === "resource:rds.nativeSecurityGroup")?.networkId, "secondary");
+    const nativeReview = await edits.planBatch([{ kind: "create", request: valid("input", { id: "nativeVpcReview", envName: "NATIVE_VPC_REVIEW" }) }], revision());
+    assert.ok(nativeReview.ok, JSON.stringify(nativeReview.preflight));
+    const result = await edits.applyBatch(nativeReview.planId);
+    assert.equal(result.status, "applied", result.message);
+    assert.equal((await edits.undo()).status, "applied");
+    assert.equal((await edits.redo()).status, "applied");
+    assert.equal((await edits.undo()).status, "applied");
+  } finally {
+    writeFileSync(stackFile, stackBefore);
+    await builder.refresh();
+  }
+  const original = readFileSync(path.join(fixture, "framework-config/http/auth.ts"), "utf8");
+  const review = await edits.planBatch([
+    { kind: "placement", target: "lambda:sign-out", vpc: "secondary", subnet: "private" },
+    { kind: "network", network: "secondary", settings: { cidr: secondary.cidr, zones: 2, nat: true, ipv6: true, s3: true, dynamodb: true, endpoints: [] } },
+  ], revision());
+  assert.ok(review.ok, JSON.stringify(review.preflight));
+  assert.equal(readFileSync(path.join(fixture, "framework-config/http/auth.ts"), "utf8"), original, "review does not write");
+  assert.ok(review.changes.some(change => change.file === "framework-config/http/auth.ts" && /secondary/.test(change.diff.unified)));
+  assert.equal((await edits.applyBatch(review.planId)).status, "applied");
+  const model = state().snapshot.models.prod;
+  assert.deepEqual(model.targets.find(target => target.ref === "lambda:sign-out")!.placement.kind === "vpc" && model.targets.find(target => target.ref === "lambda:sign-out")!.placement, {
+    kind: "vpc", networkId: "secondary", subnet: "private", reason: 'Declares subnet: "private".', egress: { ipv4: true, ipv6: true }, dualStack: true,
+  });
+  const layoutModels = Object.values(state().snapshot.models);
+  const scene = buildScene(model, { layoutModels });
+  assert.equal(scene.islands.filter(island => island.region === "network").length, 2);
+  assert.equal(new Set(scene.props.map(prop => prop.id)).size, scene.props.length);
+  assert.equal(new Set(scene.islands.flatMap(island => island.bands.map(band => band.id))).size, scene.islands.flatMap(island => island.bands).length);
+  assert.equal(scene.nodes.find(node => node.id === "lambda:sign-out")?.island, "island:vpc:secondary");
+  assert.equal(scene.nodes.find(node => node.id === "resource:rds.database")?.island, "island:vpc:application");
+  const selection = landscapeFocus(scene, "island:vpc:secondary");
+  assert.ok(selection.nodes.has("lambda:sign-out"));
+  assert.ok(!selection.nodes.has("lambda:graphql-api"));
+  assert.ok([...selection.props].every(id => id.startsWith("prop:vpc:secondary:")));
+  const matches = searchScene(scene, model, "secondary")!;
+  assert.ok(matches.islands.has("island:vpc:secondary"));
+  assert.ok(!matches.islands.has("island:vpc:application"));
+  for (const island of scene.islands.filter(island => island.region === "network")) {
+    const point = project({ x: (island.gx0 + island.gx1) / 2, y: (island.gy0 + island.gy1) / 2, h: island.top });
+    assert.equal(pickIsland(point, islandSlabs(scene))?.id, island.id);
+  }
+  const geometry = (value: ReturnType<typeof buildScene>) => value.islands.map(({ id, gx0, gy0, gx1, gy1, bands }) => ({ id, gx0, gy0, gx1, gy1, bands })).sort((a, b) => a.id.localeCompare(b.id));
+  assert.deepEqual(geometry(buildScene(state().snapshot.models.dev, { layoutModels })), geometry(scene), "mode switching keeps both VPCs in place");
+  assert.deepEqual(geometry(buildScene({ ...model, networks: [...model.networks!].reverse() }, { layoutModels })), geometry(scene), "registry order does not move islands");
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(path.join(fixture, "framework-config/http/auth.ts"), "utf8"), original);
+  assert.equal((await edits.redo()).status, "applied");
+  assert.equal((await edits.undo()).status, "applied");
+  const move = await edits.planBatch([{ kind: "placement", target: "lambda:sign-out", vpc: "secondary", subnet: "isolated" }], revision());
+  const networkFile = path.join(fixture, "framework-config/networks/secondary/index.ts");
+  const text = readFileSync(networkFile, "utf8");
+  writeFileSync(networkFile, text + "\n// Concurrent VPC edit\n");
+  await assert.rejects(edits.applyBatch(move.planId), /changed/);
+  writeFileSync(networkFile, text);
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(existsSync(networkFile), false);
+});
+
+test("post-apply VPC and placement mismatches roll back the complete reviewed source", async () => {
+  const baseline = state().snapshot.models.dev;
+  const originalPlacement = baseline.targets.find(target => target.ref === "lambda:sign-out")!.placement;
+  const network = baseline.networks!.find(network => network.id === "application")!;
+  for (const kind of ["placement", "network"] as const) {
+    const edit = kind === "placement"
+      ? { kind, target: "lambda:sign-out", vpc: "application", subnet: "private" as const }
+      : { kind, network: "application", settings: { ...networkSettings(network), nat: true } };
+    const plan = await edits.planBatch([edit], revision());
+    assert.ok(plan.ok, JSON.stringify(plan.preflight));
+    const originals = plan.changes.map(change => ({ file: path.join(fixture, change.file), text: readFileSync(path.join(fixture, change.file), "utf8") }));
+    const refresh = builder.refresh.bind(builder);
+    let corrupt = true;
+    builder.refresh = async () => {
+      const actual = await refresh();
+      if (!corrupt) return actual;
+      corrupt = false;
+      const dev = actual.snapshot.models.dev;
+      return { ...actual, snapshot: { ...actual.snapshot, models: { ...actual.snapshot.models, dev: {
+        ...dev,
+        targets: kind === "placement" ? dev.targets.map(target => target.ref === "lambda:sign-out" ? { ...target, placement: originalPlacement } : target) : dev.targets,
+        networks: kind === "network" ? dev.networks!.map(network => network.id === "application" ? { ...network, natGateway: false } : network) : dev.networks,
+      } } } };
+    };
+    try {
+      const result = await edits.applyBatch(plan.planId);
+      assert.equal(result.status, "reverted", result.message);
+      assert.match(result.message!, /did not match the review/);
+      for (const original of originals) assert.equal(readFileSync(original.file, "utf8"), original.text);
+    } finally { builder.refresh = refresh; }
+  }
+});
+
+test("managed database settings review both modes, apply exact source, and survive undo, redo and conflicts", async () => {
+  await builder.refresh();
+  const database = state().snapshot.models.prod.managedDatabase!;
+  assert.equal(database.id, "application");
+  const file = path.join(fixture, "framework-config/databases/application/index.ts");
+  const before = readFileSync(file, "utf8");
+  const settings = { ...database.authored, multiAz: true, readReplicaCount: 2 };
+  const plan = await edits.planBatch([{ kind: "database", database: database.id, settings }], revision());
+  assert.ok(plan.ok, JSON.stringify(plan.preflight));
+  assert.deepEqual(plan.changes.map(change => change.file), ["framework-config/databases/application/index.ts"]);
+  assert.equal(readFileSync(file, "utf8"), before);
+  const applied = await edits.applyBatch(plan.planId);
+  assert.equal(applied.status, "applied", applied.message);
+  for (const mode of ["dev", "prod"] as const) {
+    const model = state().snapshot.models[mode];
+    assert.equal(model.managedDatabase!.settings.multiAz, true);
+    assert.equal(model.managedDatabase!.settings.readReplicaCount, 2);
+    assert.equal(model.managedDatabase!.networkId, "application");
+    assert.equal(state().snapshot.source.entities["database:application"]!.value.file, "framework-config/databases/application/index.ts");
+  }
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), before);
+  assert.equal((await edits.redo()).status, "applied");
+  assert.equal((await edits.undo()).status, "applied");
+  const pending = await edits.planBatch([{ kind: "database", database: database.id, settings }], revision());
+  writeFileSync(file, before + "\n// Concurrent database policy edit\n");
+  await assert.rejects(edits.applyBatch(pending.planId), /changed/);
+  assert.equal(readFileSync(file, "utf8"), before + "\n// Concurrent database policy edit\n");
+  writeFileSync(file, before);
+  await builder.refresh();
 });
 
 test("generated declarations and stack registration survive full offline development and production synthesis", async () => {

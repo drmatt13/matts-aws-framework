@@ -1,3 +1,4 @@
+import { readNetworkDraft } from "../shared/networks";
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
@@ -18,6 +19,9 @@ import { createDeploymentInput } from "./deployment-inputs";
 import { DeploymentInputService, inputMode, readInputEdits } from "./deployment-input-edits";
 import { DeployService } from "./deploy/service";
 import { deployRouter } from "./deploy/routes";
+import { sendJson } from "./http";
+import { STUDIO_PROTOCOL_VERSION, STUDIO_RESTART_MESSAGE } from "../shared/protocol";
+import { readDatabaseDraft } from "../shared/managed-database";
 
 /**
  * The studio's HTTP surface: one origin, on the loopback interface only.
@@ -76,16 +80,20 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   };
   const infrastructure = new InfrastructureService(repositoryRoot, () => builder.current?.snapshot, undefined, () => broadcast("infrastructure", {}));
   const deploy = new DeployService(repositoryRoot, broadcast);
+  /** Every preview was offered against one snapshot; a new one expires them all, whoever wrote it. */
+  const published = (revision: string, external: readonly string[] = []) => {
+    edits.expirePlans();
+    resources.expirePlans();
+    inputs.expirePlans();
+    broadcast("snapshot", { revision, external, history: edits.history() });
+  };
   let evaluating = false;
   const refresh = async (external: readonly string[]): Promise<StudioState | undefined> => {
     evaluating = true;
     broadcast("status", { evaluating: true });
     try {
       const state = await builder.refresh();
-      edits.expirePlans();
-      resources.expirePlans();
-      inputs.expirePlans();
-      broadcast("snapshot", { revision: state.snapshot.revision, external, history: edits.history() });
+      published(state.snapshot.revision, external);
       return state;
     } catch (error) {
       log(`Refresh failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -104,16 +112,13 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   const api = express.Router();
   api.use(express.json({ limit: "64kb" }));
   api.use(apiGuard(token));
-
-  const send = (response: Response, run: () => Promise<unknown>) => {
-    run().then(
-      (body) => response.json(body),
-      (error: unknown) => {
-        const status = error instanceof EditError ? error.status : (error as { status?: number }).status ?? 500;
-        response.status(status).json({ error: error instanceof Error ? error.message : String(error) });
-      },
-    );
-  };
+  api.use((request, response, next) => {
+    if (request.method !== "GET" && request.get("x-studio-protocol") !== STUDIO_PROTOCOL_VERSION) {
+      response.status(409).json({ error: STUDIO_RESTART_MESSAGE }); return;
+    }
+    next();
+  });
+  const send = sendJson;
 
   api.get("/snapshot", (_request, response) => {
     const state = builder.current;
@@ -161,8 +166,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   });
   api.post("/deployment-inputs/apply", (request, response) => send(response, async () => {
     const result = await inputs.apply(String(request.body?.planId ?? ""));
-    edits.expirePlans(); resources.expirePlans();
-    broadcast("snapshot", { revision: result.revision, external: [], history: edits.history() });
+    published(result.revision);
     return result;
   }));
   api.post("/infrastructure/synthesize", (request, response) => send(response, async () => {
@@ -175,15 +179,13 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   api.post("/resources/plan", (request, response) => send(response, () => resources.plan(readResourceIntent(request.body), String(request.body?.revision ?? ""), request.body?.mode === "prod" ? "prod" : "dev")));
   api.post("/resources/apply", (request, response) => send(response, async () => {
     const result = await resources.apply(String(request.body?.planId ?? ""));
-    edits.expirePlans();
-    broadcast("snapshot", { revision: result.revision, external: [], history: edits.history() });
+    published(result.revision);
     return result;
   }));
   for (const direction of ["undo", "redo"] as const) {
     api.post(`/resources/${direction}`, (_request, response) => send(response, async () => {
       const result = await resources.replay(direction);
-      edits.expirePlans();
-      broadcast("snapshot", { revision: result.revision, external: [], history: edits.history() });
+      published(result.revision);
       return result;
     }));
   }
@@ -205,6 +207,14 @@ export async function startServer(repositoryRoot: string, args: readonly string[
         try { return { kind: "create", request: readCreationRequest(item.request) }; }
         catch (error) { if (error instanceof CreationValidationError) throw new EditError(422, `${error.field}: ${error.message}`); throw error; }
       }
+      if (item?.kind === "placement" || item?.kind === "network") {
+        try { return readNetworkDraft(item); }
+        catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
+      }
+      if (item?.kind === "removeNetwork" && Object.keys(item).every(key => ["kind", "network"].includes(key)) && typeof item.network === "string" && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(item.network)) return { kind: "removeNetwork", network: item.network };
+      if (item?.kind === "database") {
+        try { return readDatabaseDraft(item); } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
+      }
       if (item?.kind === "field") return { kind: "field", intent: readIntent(item) };
       if (item?.kind === "clientEnvironment") return { kind: "clientEnvironment", mappings: item.mappings as never };
       if (item?.kind === "description" && typeof item.entity === "string" && typeof item.value === "string") return { kind: "description", entity: item.entity, value: item.value };
@@ -218,8 +228,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   }));
   api.post("/edits/batch/apply", (request, response) => send(response, async () => {
     const result = await edits.applyBatch(String(request.body?.planId ?? ""));
-    resources.expirePlans();
-    broadcast("snapshot", { revision: result.revision, external: [], history: edits.history() });
+    published(result.revision);
     return result;
   }));
   api.post("/cdk-links/refresh", (_request, response) =>
@@ -232,7 +241,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   api.post("/edits/apply", (request, response) =>
     send(response, async () => {
       const result = await edits.apply(String((request.body as { planId?: unknown })?.planId ?? ""));
-      broadcast("snapshot", { revision: result.revision, external: [], history: edits.history() });
+      published(result.revision);
       return result;
     }),
   );
@@ -240,7 +249,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     api.post(`/edits/${direction}`, (_request, response) =>
       send(response, async () => {
         const result = await edits[direction]();
-        broadcast("snapshot", { revision: result.revision, external: [], history: edits.history() });
+        published(result.revision);
         return result;
       }),
     );
@@ -286,7 +295,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
         .status(200)
         .type("html")
         .setHeader("Cache-Control", "no-store")
-        .send(page.replace("</head>", `<meta name="studio-token" content="${token}" />\n</head>`));
+        .send(page.replace("</head>", `<meta name="studio-token" content="${token}" />\n<meta name="studio-protocol" content="${STUDIO_PROTOCOL_VERSION}" />\n</head>`));
     } catch (error) {
       next(error);
     }

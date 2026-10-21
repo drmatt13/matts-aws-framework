@@ -1,3 +1,4 @@
+import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { App, Stack } from "aws-cdk-lib";
@@ -38,12 +39,12 @@ const env = { account: "111122223333", region: "eu-west-2" };
 const resources = defineResources({ pool: resource.cdk<IUserPool>(), client: resource.cdk<IUserPoolClient>() });
 
 function config(workload: Record<string, unknown>): FrameworkConfig {
-  return defineFrameworkConfig({
+  return defineFrameworkConfig({ networks: [fixtureVpc],
     resources,
     defaults,
     userPool: { userPoolId: resources.pool.userPoolId, userPoolClientId: resources.client.userPoolClientId },
     http: [{ "/reports": { directory: "/lambda_functions/http_functions/reports", methods: ["GET"], auth: true, ...workload } }],
-    services: [{ "/accounts/*": { directory: "/ecs_containers/services/accounts", methods: "*", auth: true, port: 5000, deploy: "both", ...workload } }],
+    services: [{ "/accounts/*": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/services/accounts", methods: "*", auth: true, port: 5000, deploy: "both", ...workload } }],
     webSocket: [], events: [], tasks: [], workflows: [],
   } as never);
 }

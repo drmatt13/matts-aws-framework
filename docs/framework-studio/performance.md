@@ -85,3 +85,22 @@ handlers, React commits, canvas command submission and GPU paint. The existing
 `window.__studioLandscape.stats()` hook exposes frame counts and JavaScript
 draw timing. Run the layout benchmark separately from frame timing; it measures
 scene construction and graph quality, not interactive rendering speed.
+
+## Server evaluation, review and source index
+
+A second October 2026 pass removed repeated work on the server, which every
+save, review and apply waits on. Outputs are unchanged: both mode models,
+preflight answers for every field, the source index, export stacks, capability
+facts and type-check diagnostics (including an error case) were byte-identical
+before and after, measured in-process on a clean export of the same commit.
+
+| Cost | Finding | Change | Before | After |
+| --- | --- | --- | ---: | ---: |
+| `projectModel`, per evaluator (warm) | `resolveLambdaTarget` normalizes the whole config on every call, and each Lambda was asked about a dozen times (fields, shared defaults, compute, placement). | `lambdaSpec` asks once per Lambda per evaluated config. Lanes still call `isTargetEnabled`/`isTargetDeployed` directly. | 227 ms | 75 ms |
+| Candidate type-check (`resourceTypeErrors`) | Each review or apply of a resource, trigger, stack or creation re-parsed about 3,500 `node_modules` declaration files, blocking the server thread. | Parsed dependency declarations are shared with the capability program and dropped after ten idle minutes (about 700 MB while held; peak memory is unchanged). | 2.2 s | 0.6–0.75 s |
+| Capability discovery cache miss | The same re-parse after a CDK, catalog or framework-config change. | Same shared declarations. | 1.9 s | 0.29 s |
+| `buildSourceIndex` (warm) | The CDK entry point's import graph was walked twice, and export stacks re-parsed their files for a class location. | One `readConstructorSites` walk serves the catalog and export stacks; the location comes from the parsed declaration. | 80 ms | 51 ms |
+
+`SnapshotBuilder` also parses each source file once per refresh for the index and
+both modes' connection evidence. Evaluator process start-up and the framework's own
+normalization (about 0.5 ms per call, deliberately not memoized) are unchanged.
