@@ -1,4 +1,4 @@
-import { Maximize2, Minus, Plus, Search, Table2, X } from "lucide-react";
+import { Minus, Plus, Scan, Search, Table2, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import type { DeclaredSchema, SchemaTable } from "../../shared/database";
 import type { SourceLocation } from "../../shared/model";
@@ -36,7 +36,7 @@ export function DatabaseDiagram({ schema, selection, onSelect, onLocate, retaine
       <div className="schema-zoom" role="group" aria-label="Schema view controls">
         <button className="icon-button" aria-label="Zoom out" disabled={zoom <= .15} onClick={() => setZoom(value => Math.max(.15, value / 1.2))}><Minus size={14} /></button>
         <span>{Math.round(zoom * 100)}%</span><button className="icon-button" aria-label="Zoom in" disabled={zoom >= 1.6} onClick={() => setZoom(value => Math.min(1.6, value * 1.2))}><Plus size={14} /></button>
-        <button className="icon-button" aria-label="Fit schema" onClick={fit}><Maximize2 size={14} /></button>
+        <button className="icon-button" aria-label="Fit schema" title="Fit schema to view" onClick={fit}><Scan size={14} /></button>
       </div>
     </div>
     {retained ? <div className="workbench-notice warning" role="status">Last valid diagram · current draft has not passed validation. Source navigation is paused.</div> : null}

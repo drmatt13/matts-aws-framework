@@ -15,8 +15,17 @@ pinned and the runtime remains Rust-free.
 
 ## Authoring and navigation
 
-The default split workspace favors sustained source editing while showing its structure.
-Focus source or diagram when more space is useful. Drag the separator, or focus it and use
+The page starts with workspace tabs; the help icon opens guidance on demand.
+**Open in editor** sits in the Prisma source pane header. The default split workspace
+favors sustained source editing while showing its structure.
+Source, split and diagram controls stay in the shared toolbar in every layout. Each pane
+has a fullscreen button; Escape or **Exit fullscreen** restores the previous layout and
+keyboard focus. Fullscreen keeps source review, validation and layout controls available
+without resetting text, undo, diagram zoom or selection. It requires browser fullscreen
+support. The Schema tab shows change-impact guidance only for a validated modified draft;
+history and database inspection live in their own tabs.
+
+Drag the separator, or focus it and use
 Left/Right; Home/End select the supported width limits. Diagram search, focus, zoom and
 fit remain independent from the source proposal. Selecting a field or relationship locates
 its Prisma range; moving the editor cursor identifies its model, column or relation.

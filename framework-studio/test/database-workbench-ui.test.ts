@@ -36,6 +36,7 @@ let sourceReviews: DatabaseSourceReview[];
 let saves: string[];
 let saveGate: Promise<void> | undefined;
 let refreshUnavailable: boolean;
+let fullscreenElement: Element | null = null;
 const clients: import("@tanstack/react-query").QueryClient[] = [];
 
 function validate(text: string): DatabaseValidation {
@@ -68,11 +69,22 @@ before(async () => {
   dom.window.Range.prototype.getBoundingClientRect = () => new dom.window.DOMRect();
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
+  Object.defineProperty(document, "fullscreenEnabled", { configurable: true, value: true });
+  Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => fullscreenElement });
+  dom.window.HTMLElement.prototype.requestFullscreen = async function () {
+    fullscreenElement = this;
+    document.dispatchEvent(new dom.window.Event("fullscreenchange"));
+  };
+  document.exitFullscreen = async () => {
+    fullscreenElement = null;
+    document.dispatchEvent(new dom.window.Event("fullscreenchange"));
+  };
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
   ui.configure({ getElementError: message => new Error(message ?? "Element not found") });
   studio = await import("../src/studio"); database = await import("../src/views/Database"); history = await import("../src/views/DatabaseHistory");
 });
 beforeEach(() => {
+  fullscreenElement = null;
   persisted = workbench(); sourceReviews = []; saves = []; saveGate = undefined; refreshUnavailable = false;
   mock.method(database.databaseApi, "load", async () => persisted);
   mock.method(database.databaseApi, "validate", async (text: string) => validate(text));
@@ -209,17 +221,78 @@ test("external save conflict preserves editor identity and offers an explicit la
 
 test("keyboard resizing and schema focus modes keep the same editor session", async () => {
   await mount(); const view = editor();
+  assert.ok(!ui.screen.queryByText("Next: understand database evolution"));
   const separator = ui.screen.getByRole("separator", { name: "Resize source and diagram" });
   ui.fireEvent.keyDown(separator, { key: "End" }); assert.equal(separator.getAttribute("aria-valuenow"), "75");
   ui.fireEvent.keyDown(separator, { key: "Home" }); assert.equal(separator.getAttribute("aria-valuenow"), "25");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Focus source" }));
   assert.equal(document.querySelector(".workbench-split")?.getAttribute("data-mode"), "source");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Focus diagram" }));
+  assert.equal(document.querySelector(".workbench-split")?.getAttribute("data-mode"), "diagram");
+  const controls = ui.screen.getByRole("group", { name: "Editing layout" });
+  assert.equal(controls.closest(".workbench-source-pane, .workbench-diagram-pane"), null, "layout controls must stay outside either hideable pane");
+  assert.equal(ui.within(controls).getAllByRole("button").length, 3);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Split source and diagram" }));
   assert.equal(editor(), view);
 });
 
+test("fullscreen panes preserve draft, selection and undo and restore layout and keyboard focus on browser exit", async () => {
+  await mount();
+  replaceText("title String", "title String?");
+  const view = editor();
+  ui.act(() => view.dispatch({ selection: { anchor: 25 } }));
+  const selection = view.state.selection.main;
+  for (const pane of ["Prisma source", "schema diagram"]) {
+    const trigger = ui.screen.getByRole("button", { name: `Fullscreen ${pane}` });
+    trigger.focus();
+    ui.fireEvent.click(trigger);
+    await ui.waitFor(() => assert.ok(document.fullscreenElement === document.querySelector(".database-workbench"), "workbench enters fullscreen"));
+    assert.equal(document.querySelector(".workbench-split")?.getAttribute("data-mode"), pane === "Prisma source" ? "source" : "diagram");
+    assert.equal(editor(), view);
+    assert.deepEqual(view.state.selection.main, selection);
+    assert.match(view.state.doc.toString(), /title String\?/);
+    // The same event is emitted when the browser handles Escape.
+    await ui.act(() => document.exitFullscreen());
+    await ui.waitFor(() => assert.ok(document.activeElement === trigger, "keyboard focus returns to the fullscreen trigger"));
+    assert.equal(document.querySelector(".workbench-split")?.getAttribute("data-mode"), "split");
+  }
+  ui.act(() => require("@codemirror/commands").undo(view));
+  assert.equal(view.state.doc.toString(), source);
+  assert.equal(saves.length, 0);
+});
+
+test("fullscreen keeps layout switching and source review available; exit returns to the original focus mode", async () => {
+  await mount(); replaceText("title String", "title String?"); await validateDraft();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Focus source" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Fullscreen Prisma source" }));
+  await ui.waitFor(() => assert.ok(document.fullscreenElement));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Split source and diagram" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Focus diagram" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review source changes" }));
+  const review = await ui.screen.findByRole("dialog", { name: "Review source changes" });
+  assert.ok(document.fullscreenElement!.contains(review), "review must be visible within the fullscreen element");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to editing" }));
+  ui.fireEvent.click(ui.within(ui.screen.getByRole("region", { name: "Schema diagram pane" })).getByRole("button", { name: "Exit fullscreen" }));
+  await ui.waitFor(() => assert.equal(document.fullscreenElement, null));
+  assert.equal(document.querySelector(".workbench-split")?.getAttribute("data-mode"), "source");
+  assert.equal(saves.length, 0);
+});
+
+test("a rejected fullscreen request restores the workspace and preserves unsaved text", async () => {
+  await mount(); replaceText("title String", "title String?");
+  mock.method(dom.window.HTMLElement.prototype, "requestFullscreen", async () => { throw new Error("Denied by browser"); });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Fullscreen schema diagram" }));
+  await ui.screen.findByText(/The browser could not change fullscreen mode/);
+  assert.equal(document.fullscreenElement, null);
+  assert.equal(document.querySelector(".workbench-split")?.getAttribute("data-mode"), "split");
+  assert.match(editor().state.doc.toString(), /title String\?/);
+  assert.equal(saves.length, 0);
+});
+
 test("save freezes the reviewed draft and remains a source success when graph refresh fails", async () => {
   await mount(); replaceText("title String", "title String?"); await validateDraft();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Fullscreen Prisma source" }));
+  await ui.waitFor(() => assert.ok(document.fullscreenElement));
   let finish!: () => void;
   saveGate = new Promise<void>(resolve => { finish = resolve; }); refreshUnavailable = true;
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review source changes" }));
@@ -232,6 +305,8 @@ test("save freezes the reviewed draft and remains a source success when graph re
   await ui.waitFor(() => assert.ok(!ui.screen.queryByRole("dialog"), "review closes after successful source write"));
   assert.match(persisted.source, /title String\?/);
   assert.ok(ui.screen.getByText("Saved source", { selector: ".workbench-badge" }));
+  const feedback = await ui.screen.findByText("Source saved; graph refresh unavailable. Refresh separately.");
+  assert.ok(document.fullscreenElement!.contains(feedback), "partial-effect feedback remains visible in fullscreen");
   assert.equal(saves.length, 1);
 });
 
