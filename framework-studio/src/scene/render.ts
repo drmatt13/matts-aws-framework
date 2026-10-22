@@ -8,7 +8,7 @@ import { searchOpacity, type LandscapeFocus } from "./focus";
 import { bandTrim, DECK, GRAPHITE, hexRgb, ICON_TINT, ROLE_BADGE, ROLE_BADGE_PLATE, trimColor } from "./look";
 import { connectionHoverEase, EDGE_HOVER_DURATION, offLens, restingAlpha } from "./connections";
 import { placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
-import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, SUBNET_LABEL, nodeCaptionPresentation, subnetLabelPresentation, rectanglesOverlap, visibleNodeCaptions, type LabelRect } from "./labels";
+import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, SUBNET_LABEL, nodeCaptionPresentation, subnetLabelPresentation, subnetLabelRect, rectanglesOverlap, visibleNodeCaptions, type LabelRect } from "./labels";
 import { ICON_BADGE, type Face } from "./shapes";
 import { connectionMidpoint } from "./routing";
 import { missingConnectionInput } from "../connections";
@@ -194,7 +194,7 @@ interface TitleLabel {
   readonly align: CanvasTextAlign;
   readonly x: number;
   readonly y: number;
-  readonly plate?: LabelRect & { readonly accent: string; readonly anchor: Point };
+  readonly plate?: LabelRect & { readonly accent: string };
 }
 
 export class SceneRenderer {
@@ -1225,18 +1225,25 @@ export class SceneRenderer {
       const { scale } = subnetLabelPresentation(camera.zoom);
       const baseFont = `600 ${SUBNET_LABEL.fontSize}px Barlow, system-ui, sans-serif`;
       const font = `600 ${SUBNET_LABEL.fontSize * scale}px Barlow, system-ui, sans-serif`;
+      const rimEnds = new Map(prepared.graphite.map(({ slab }) => [slab.island.id,
+        Math.max(...slab.bands.flatMap(band => band.top.filter((_, at) => at % 2 === 0))),
+      ]));
       for (const island of scene.islands) {
         if (island.region !== "network") continue;
+        let previous: LabelRect | undefined;
         for (const [index, band] of island.bands.entries()) {
-          // One consistent rail across the VPC. Each connector lands on its terrace top;
+          // One consistent rail outside the top-right edge of the VPC's terrace tops;
           // resource collisions and viewport boundaries never displace an individual name.
-          const anchor = worldToScreen(camera, viewport, project({ x: (band.gx0 + band.gx1) / 2, y: island.gy1 - SUBNET_LABEL.anchorInset, h: band.h }));
+          const gx = (band.gx0 + band.gx1) / 2;
+          const anchor = worldToScreen(camera, viewport, project({ x: gx, y: island.gy0, h: band.h }));
           const width = (this.measure(band.title, baseFont) + SUBNET_LABEL.padding * 2 + SUBNET_LABEL.cue) * scale;
           const height = SUBNET_LABEL.height * scale;
-          const rect = { x: anchor.x - width / 2, y: anchor.y - height / 2, width, height };
+          const rimEndX = worldToScreen(camera, viewport, { x: rimEnds.get(island.id)!, y: 0 }).x;
+          const rect = subnetLabelRect(anchor, width, height, scale, rimEndX, previous);
+          previous = rect;
           labels.push({ island: island.id, text: band.title, font, color: "#f1f5f9", align: "left",
             x: rect.x + (SUBNET_LABEL.padding + SUBNET_LABEL.cue) * scale, y: rect.y + rect.height / 2,
-            plate: { ...rect, anchor, accent: rgba(bandTrim(island, index)) } });
+            plate: { ...rect, accent: rgba(bandTrim(island, index)) } });
         }
       }
     }

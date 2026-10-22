@@ -16,7 +16,7 @@ import { connectionMidpoint } from "../src/scene/routing";
 import { screenToWorld, worldToScreen, type Camera, type Viewport } from "../src/scene/camera";
 import { catalogAvailability } from "../src/deployment";
 import { DECK, hexRgb, ISLAND_TRIM } from "../src/scene/look";
-import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, SUBNET_LABEL, nodeCaptionPresentation, subnetLabelPresentation, rectanglesOverlap } from "../src/scene/labels";
+import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, SUBNET_LABEL, subnetLabelPresentation, subnetLabelRect, rectanglesOverlap } from "../src/scene/labels";
 import { project } from "../src/scene/iso";
 import { insidePolygon, pickEntity, pickIsland } from "../src/scene/picking";
 import { islandDrawOrder, islandSlabs } from "../src/scene/slabs";
@@ -443,7 +443,8 @@ test("production subnet headings stay horizontal and legible across zoom; develo
     const full = buildScene(response.snapshot.models[mode]);
     for (const island of full.islands.filter(island => island.region === "network")) {
       const scene = { ...full, islands: [island], nodes: full.nodes.filter(node => node.island === island.id), props: full.props.filter(prop => prop.serves.some(id => island.bands.some(band => band.id === id))), frames: full.frames.filter(frame => frame.members.includes(island.id)), edges: [], routes: {} };
-      const { bounds } = islandSlabs(scene)[0]!;
+      const { bounds, bands: slabBands } = islandSlabs(scene)[0]!;
+      const rimEndWorldX = Math.max(...slabBands.flatMap(band => band.top.filter((_, at) => at % 2 === 0)));
       for (const zoom of [0.05, 0.18, 0.3, 0.45, 0.7, 1, 1.8, 2.5]) {
         const camera = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2, zoom };
         labelPaints.length = 0;
@@ -453,8 +454,21 @@ test("production subnet headings stay horizontal and legible across zoom; develo
         if (mode === "dev") assert.deepEqual(headings, [], `${mode} at ${zoom} has no subnet headings`);
         else {
           assert.deepEqual(headings.map(label => label.text).sort(), ["Isolated subnet", "Private subnet", "Public subnet"], `${island.id} at ${zoom} shows all section headings`);
-          const alpha = NODE_CAPTION.minOpacity + (1 - NODE_CAPTION.minOpacity) * nodeCaptionPresentation(zoom).detail;
+          const alpha = subnetLabelPresentation(zoom).alpha;
           assert.ok(headings.every(label => label.font === `600 ${SUBNET_LABEL.fontSize * subnetLabelPresentation(zoom).scale}px Barlow, system-ui, sans-serif` && Math.abs(label.alpha - alpha) < 0.0001), "every heading keeps legible screen-space typography and fades continuously with node captions");
+          let previous: ReturnType<typeof subnetLabelRect> | undefined;
+          headings.forEach((label, at) => {
+            const band = island.bands[at]!;
+            const anchor = worldToScreen(camera, viewport, project({ x: (band.gx0 + band.gx1) / 2, y: island.gy0, h: band.h }));
+            const scale = subnetLabelPresentation(zoom).scale;
+            const width = (band.title.length * glyphWidth + SUBNET_LABEL.padding * 2 + SUBNET_LABEL.cue) * scale;
+            const rimEndX = worldToScreen(camera, viewport, { x: rimEndWorldX, y: 0 }).x;
+            const rect = subnetLabelRect(anchor, width, SUBNET_LABEL.height * scale, scale, rimEndX, previous);
+            if (previous) assert.ok(!rectanglesOverlap(rect, previous, Math.max(SUBNET_LABEL.minSpacing, SUBNET_LABEL.gap * scale) - 0.0001), "overview headings retain clear spacing along their rim");
+            previous = rect;
+            assert.ok(Math.abs(label.x - (rect.x + (SUBNET_LABEL.padding + SUBNET_LABEL.cue) * scale)) < 0.0001);
+            assert.ok(Math.abs(label.y - (rect.y + rect.height / 2)) < 0.0001, "all subnet names keep the same top-right gap from their terrace, never independent collision lifts");
+          });
           const pan = { x: camera.x + 2400, y: camera.y + 1200, zoom };
           labelPaints.length = 0;
           renderer.render({ camera: pan, viewport, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene) });

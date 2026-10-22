@@ -242,15 +242,20 @@ Each island is drawn as continuous slabs, one per band, rather than a field of t
   shadow, drawn as four inflated layers, onto a floor five steps below it.
 - **Readable names.** Island titles stay horizontal outside the left flank at every zoom.
   Production subnet names use horizontal dark cards with 13 px detail text and a
-  short subnet-coloured cue. Each heading keeps its anchor above the terrace's back rim,
-  lifting vertically to clear icons and other headings. Clearance adjustments ease to
-  rest, while pan movement tracks the terrain exactly. They never become perspective
-  wall text or choose a different slot at a viewport edge: canvas clipping carries them
-  naturally offscreen. Overview zoom uses the node captions' smooth opacity curve and
-  25% text floor; cards dissolve faster than text. Below 0.65× zoom, typography and card
+  short subnet-coloured cue. Each heading sits just outside the top-right edge, with a
+  small gap at detail size. The card's bottom-left corner aligns near the midpoint of its
+  zone's rim, so names extend up and right without drifting away through zoom. There are
+  no connector lines. The trailing name balances its midpoint anchor with the painted
+  end cap, sliding halfway back along the rim when it overhangs. Content never lifts or
+  scatters individual names away from the network. Names follow the camera exactly, including its existing
+  easing and reduced-motion handling. They never become perspective wall text or choose
+  a different slot at a viewport edge: canvas clipping carries them naturally offscreen.
+  Overview zoom uses the node captions' smooth fade convention with stronger visibility:
+  headings retain full contrast down to 0.5× and ease to a 50% text floor at 0.08×.
+  Cards dissolve faster than text. Below 0.65× zoom, typography and card
   geometry also shrink gently with the node-caption scale to keep overviews compact.
-  Resource captions yield to these section
-  headings. Paused/reduced motion applies clearance adjustments immediately.
+  Resource captions yield to these section headings. No independent heading animation
+  runs while the camera is still.
 - **Ghosts.**
   - A development VPC is one
     raised deck of dark glass rather than a slice per subnet (the `DECK` values in

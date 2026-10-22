@@ -48,15 +48,19 @@ Every selectable canvas hit, including gateways, endpoints and connections, uses
 Island titles always stay horizontal outside the left flank; no names are painted onto
 island walls. Production subnet headings use dark horizontal cards with 13 px detail
 text and subnet-coloured cues. Below 0.65×, text and card geometry shrink gently using
-the node-caption scale. Each keeps its back-rim anchor, lifting to
-clear icons and other headings. Local clearance adjustments ease to rest independently
-of camera movement; pan tracks terrain exactly. Viewport edges never reflow or hide names:
-the canvas clips them naturally. Overview opacity follows the node-caption curve with a
-25% text floor and faster-dissolving cards. Resource captions yield to section headings.
-Paused/reduced motion snaps local adjustments; animation frames stop once settled.
-Placement caches invalidate with camera, viewport, scene and font changes and track
-animated offsets. Development shows no subnet names on the canvas or VPC hover title;
-the declaration and inspector still retain their networking configuration.
+the node-caption scale. Each sits just outside the top-right edge, with its bottom-left
+corner anchored near the midpoint of its zone's rim. A small screen-space gap scales
+with the card. The trailing name balances its midpoint anchor with the painted end cap,
+sliding halfway back along the rim when it overhangs. This terrain bound is independent
+of viewport clipping. No connector lines or dots are drawn. Icons never trigger independent lifts that
+scatter names away from the network. Headings track the camera exactly and share its
+existing easing/reduced-motion behavior. Viewport edges never reflow or hide names:
+the canvas clips them naturally. Overview opacity follows the node-caption fade convention,
+but holds full contrast down to 0.5× and reaches a stronger 50% text floor at 0.08×. Cards dissolve
+faster than text. Resource captions yield to section headings.
+No independent heading animation runs at rest. Placement caches invalidate with
+camera, viewport, scene and font changes. Development shows no subnet names on the canvas
+or VPC hover title; the declaration and inspector still retain their networking configuration.
 
 Search and tag filters use the shared control geometry and inset chevrons. Clearing
 either restores keyboard focus to the surviving search/key control. Camera controls
