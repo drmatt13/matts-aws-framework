@@ -275,7 +275,10 @@ Each island is drawn as continuous slabs, one per band, rather than a field of t
   reduced motion disables it.
 - **Order.** Shadows, then the VPC foundation, then whole islands in `islandDrawOrder`.
   Of two islands that overlap on screen, the one wholly behind on the grid draws first.
-  Within an island, each terrace's slab is drawn, then what stands on it.
+  Within an island, each terrace's slab is drawn, then what stands on it. Selection and
+  hover outlines paint with the foundation and each terrace, before standing resources.
+  Terrace strokes are clipped to that terrace's painted surface so later terrain cannot
+  repaint a whole-island highlight over an earlier resource icon.
 
 ## Buildings ([shapes.ts](../../framework-studio/src/scene/shapes.ts))
 

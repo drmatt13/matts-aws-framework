@@ -7,8 +7,8 @@ import {
   DRAG_THRESHOLD,
   fitBounds,
   interpolate,
-  isVisible,
   pan,
+  revealInspectorSelection,
   resizeCamera,
   screenToWorld,
   wheelFactor,
@@ -20,7 +20,7 @@ import {
 } from "../scene/camera";
 import { distanceToPolyline, insidePolygon, pickEntity, pickIsland, type CardHit } from "../scene/picking";
 import { layoutAspect, type LayoutResult } from "../scene/layout-optimize";
-import { fitScene } from "../scene/fit";
+import { fitScene, selectionBounds } from "../scene/fit";
 import { connectionMidpoint } from "../scene/routing";
 import { landscapeFocus, searchOpacity, searchScene } from "../scene/focus";
 import { filterSceneByTag } from "../scene/tag-filter";
@@ -65,6 +65,7 @@ interface Tween {
   readonly to: Camera;
   readonly start: number;
   readonly duration: number;
+  readonly source?: "inspector";
 }
 
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -130,6 +131,7 @@ export function Isometric() {
     camera: rememberedCamera ?? { x: 0, y: 0, zoom: 1 },
     viewport: { width: 1, height: 1 } as Viewport,
     selected: visibleSelected,
+    inspectedSelection: visibleSelected,
     hovered: undefined as string | undefined,
     hoveredEdge: undefined as string | undefined,
     hoveredIsland: undefined as string | undefined,
@@ -233,16 +235,19 @@ export function Isometric() {
     const rect = container.getBoundingClientRect();
     const previous = state.viewport;
     const next = { width: Math.max(1, rect.width), height: Math.max(1, rect.height) };
+    const selectionChanged = state.selected !== state.inspectedSelection;
+    state.inspectedSelection = state.selected;
+    if (selectionChanged && state.tween?.source === "inspector") state.tween = undefined;
     // Selection and the inspector are presentation; use the containing workspace
-    // width so opening a node does not relayout the architecture.
-    const workspaceWidth = container.closest(".workspace")?.getBoundingClientRect().width ?? next.width;
-    const nextAspect = layoutAspect(workspaceWidth, next.height);
+    // dimensions so opening a node does not relayout the architecture.
+    const workspace = container.closest(".workspace")?.getBoundingClientRect();
+    const nextAspect = layoutAspect(workspace?.width ?? next.width, workspace?.height ?? next.height);
     window.clearTimeout(aspectTimer.current);
     aspectTimer.current = window.setTimeout(() => {
       if (appliedAspect.current === nextAspect) return;
       appliedAspect.current = nextAspect; previousLayout.current = undefined; pendingLayoutFit.current = true; setAspect(nextAspect);
     }, 180);
-    if (state.fitted && next.width === previous.width && next.height === previous.height) return;
+    if (state.fitted && next.width === previous.width && next.height === previous.height && !selectionChanged) return;
     state.viewport = next;
     if (!state.fitted) {
       state.fitted = true;
@@ -251,9 +256,11 @@ export function Isometric() {
       state.camera = resizeCamera(state.camera, previous, next);
       // An in-flight focus starts from the resized camera, without jumping back to its old origin.
       if (state.tween) state.tween = { ...state.tween, from: state.camera, start: performance.now() };
-      const node = state.selected ? state.scene.nodes.find((candidate) => candidate.id === state.selected) : undefined;
-      if (node && !isVisible(state.camera, next, node.geometry.top, 60)) {
-        state.tween = { from: state.camera, to: { ...state.camera, zoom: state.tween?.to.zoom ?? state.camera.zoom, x: node.geometry.top.x, y: node.geometry.top.y }, start: performance.now(), duration: reducedMotion() ? 0 : 450 };
+      const bounds = selectionChanged && state.selected ? selectionBounds(state.scene, state.selected) : undefined;
+      const unobscured = { width: workspace?.width ?? previous.width, height: workspace?.height ?? previous.height };
+      const revealed = bounds ? revealInspectorSelection(state.camera, unobscured, next, bounds) : undefined;
+      if (revealed) {
+        state.tween = { from: state.camera, to: revealed, start: performance.now(), duration: reducedMotion() ? 0 : 450, source: "inspector" };
       }
     }
     // A ResizeObserver runs before paint but after animation callbacks. Waiting for another
@@ -296,11 +303,7 @@ export function Isometric() {
   // now, rather than leaving a stretched frame until the observer's next animation callback.
   useLayoutEffect(() => {
     resize();
-    const node = visibleSelected ? nodes.get(visibleSelected) : undefined;
-    const state = live.current;
-    const alreadyFocusing = node && state.tween?.to.x === node.geometry.top.x && state.tween.to.y === node.geometry.top.y;
-    if (node && !alreadyFocusing && !isVisible(state.camera, state.viewport, node.geometry.top, 60)) focus(node.id);
-  }, [visibleSelected, nodes, focus, resize]);
+  }, [visibleSelected, resize]);
 
   /** Node controls keep their inspector; connections take precedence over terrain. */
   const pick = useCallback(

@@ -44,6 +44,10 @@ Canvas mini badges use the same local AWS SVG service/family catalog as the endp
 picker (`endpoint-services.ts`); the renderer loads selected artwork once per instance.
 The zoom floor permits narrow-view fits as network fixture counts grow.
 Every selectable canvas hit, including gateways, endpoints and connections, uses a pointer cursor.
+Island selection and hover outlines paint with the foundation and terrace surfaces,
+before standing resources. Each terrace clips its portion of the outline to its own
+painted top/walls; a later terrace never repaints a whole-island overlay across earlier
+resource icons. Preserve this painter order when changing terrain or selection styling.
 
 Island titles always stay horizontal outside the left flank; no names are painted onto
 island walls. Production subnet headings use dark horizontal cards with 13 px detail

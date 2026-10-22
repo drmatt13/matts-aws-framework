@@ -69,6 +69,18 @@ export function resizeCamera(camera: Camera, previous: Viewport, next: Viewport)
   };
 }
 
+/** Reveal a fitting selection covered by the right-hand inspector, preserving zoom and vertical position. */
+export function revealInspectorSelection(camera: Camera, unobscured: Viewport, viewport: Viewport, bounds: Bounds, padding = 16): Camera | undefined {
+  if (viewport.width >= unobscured.width) return undefined;
+  const left = worldToScreen(camera, viewport, { x: bounds.minX, y: bounds.minY });
+  const right = worldToScreen(camera, viewport, { x: bounds.maxX, y: bounds.maxY });
+  const width = right.x - left.x, height = right.y - left.y;
+  if (width > viewport.width || height > viewport.height) return undefined;
+  if (right.x <= viewport.width || left.x >= unobscured.width || right.y <= 0 || left.y >= viewport.height) return undefined;
+  const inset = Math.min(padding, (viewport.width - width) / 2);
+  return { ...camera, x: camera.x + (right.x - viewport.width + inset) / camera.zoom };
+}
+
 /**
  * Zooms by `factor` about a screen point, keeping the world point under it
  * where it was: find it before, zoom, find it after, and move the camera by
