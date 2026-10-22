@@ -1,4 +1,4 @@
-import { importedVpc } from "../source/networks";
+import { importedVpc, referencesModule } from "../source/networks";
 import path from "node:path";
 import { existsSync, readdirSync } from "node:fs";
 import ts from "typescript";
@@ -9,7 +9,7 @@ import type { NetworkSettings, PlacementEdit } from "../../shared/networks";
 import type { StudioState } from "../snapshot";
 import { assertWritable, toRelative } from "../files";
 import { SourceFiles, entryValue, findEntry } from "../source";
-import { declarationObject, findProperty, parse, propertyAt } from "../source/syntax";
+import { declarationObject, expressionAt, findProperty, hasComments, parse, propertyAt, unwrap } from "../source/syntax";
 import { parseOrigin } from "../model/origin";
 import { insertExpression } from "../resources-source";
 import { removeProperty } from "./splice";
@@ -34,7 +34,7 @@ export function importVpc(file: string, text: string, id: string, located: Locat
     if (!ts.isImportDeclaration(statement)) continue;
     const bindings = statement.importClause?.namedBindings;
     if (!bindings || !ts.isNamedImports(bindings)) continue;
-    for (const binding of bindings.elements) if (importedVpc("", file, source, binding.name, located) === id) return { text, symbol: binding.name.text };
+    for (const binding of bindings.elements) if (importedVpc(file, source, binding.name, located) === id) return { text, symbol: binding.name.text };
   }
   let symbol = `${id.split("-").map((part, i) => i ? part[0]!.toUpperCase() + part.slice(1) : part).join("")}Vpc`;
   const base = symbol;
@@ -45,7 +45,7 @@ export function importVpc(file: string, text: string, id: string, located: Locat
 }
 
 /** Remove only plain, now-unused VPC imports. Comments and shared imports remain source-owned. */
-export function pruneUnusedVpcImports(root: string, file: string, text: string, located: LocatedConfigSource): string {
+export function pruneUnusedVpcImports(file: string, text: string, located: LocatedConfigSource): string {
   const source = parse(file, text);
   const removals: { start: number; end: number }[] = [];
   for (const statement of source.statements) {
@@ -53,7 +53,7 @@ export function pruneUnusedVpcImports(root: string, file: string, text: string, 
     const bindings = statement.importClause?.namedBindings;
     if (!bindings || !ts.isNamedImports(bindings) || bindings.elements.length !== 1) continue;
     const name = bindings.elements[0]!.name;
-    if (!importedVpc(root, file, source, name, located)) continue;
+    if (!importedVpc(file, source, name, located)) continue;
     let used = false;
     const inspect = (node: ts.Node): void => {
       if (node === statement) return;
@@ -98,11 +98,10 @@ export function planPlacement(root: string, state: StudioState, edit: PlacementE
       if (position.editability.kind === "spread") throw new EditError(422, "Placement uses an object spread. Make the placement explicit in source first.");
       if (position.editability.kind === "unsupported") throw new EditError(422, position.editability.reason);
       if (!old && position.editability.kind === "computed") throw new EditError(422, "Placement is computed. Make the VPC and subnet explicit in source first.");
-      if (key === "vpc" && old && !importedVpc(root, file, source, old.initializer, located)) throw new EditError(422, "The current VPC is computed or cannot be resolved safely. Edit it in source.");
+      if (key === "vpc" && old && !importedVpc(file, source, old.initializer, located)) throw new EditError(422, "The current VPC is computed or cannot be resolved safely. Edit it in source.");
       const expression = key === "subnet" ? JSON.stringify(edit.subnet) : symbol;
       if (old) {
-        const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, old.initializer.getText(source));
-        for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) if (token === ts.SyntaxKind.SingleLineCommentTrivia || token === ts.SyntaxKind.MultiLineCommentTrivia) throw new EditError(422, "Placement contains a source comment. Edit it in source to preserve that comment deliberately.");
+        if (hasComments(old.initializer.getText(source))) throw new EditError(422, "Placement contains a source comment. Edit it in source to preserve that comment deliberately.");
         if (expression === undefined) text = removeProperty(text, source, old.parent as ts.ObjectLiteralExpression, old);
         else if (key === "subnet" && !ts.isStringLiteral(old.initializer)) throw new EditError(422, "The subnet is computed. Edit it in source.");
         else text = text.slice(0, old.initializer.getStart(source)) + expression + text.slice(old.initializer.end);
@@ -125,17 +124,30 @@ export function planNetwork(root: string, state: StudioState, id: string, raw: N
   if (!entry) throw new EditError(422, "The VPC source declaration cannot be located.");
   const file = assertWritable(root, toRelative(root, entry.file));
   let text = files.text(file);
+  // Re-resolve the registered declaration after every splice. A cohesive module
+  // may contain other networks and may alias the framework's defineNetwork import.
+  const currentObject = () => {
+    const currentFiles = files.withText(file, text);
+    const current = registered(root, currentFiles).networks.find(network => network.id === id);
+    if (!current || current.file !== file) throw new EditError(422, "The VPC source declaration cannot be located after editing.");
+    const source = currentFiles.get(file);
+    const value = expressionAt(source, current.span.start, current.span.end);
+    const call = value && unwrap(value);
+    const object = call && ts.isCallExpression(call) && call.arguments[0] && unwrap(call.arguments[0]);
+    if (!object || !ts.isObjectLiteralExpression(object)) throw new EditError(422, "VPC settings are computed. Edit them in source.");
+    return { source, object };
+  };
   const settings = { name: request.name || id, cidr: request.cidr, zones: request.zones, natGateway: request.nat, egressOnlyInternetGateway: request.ipv6, interfaceEndpoints: request.endpoints };
   const modes = Object.values(state.snapshot.models).flatMap(model => model.networks?.filter(network => network.id === id) ?? []);
   const unchanged = (key: keyof typeof settings, value: unknown) => modes.every(network => JSON.stringify(key === "name" ? network.name ?? network.id : network[key]) === JSON.stringify(value));
   for (const [key, value] of Object.entries(settings)) {
     if (unchanged(key as keyof typeof settings, value)) continue;
-    const { source, object } = objectCall(file, text, "defineNetwork");
+    const { source, object } = currentObject();
     text = setProperty(file, text, object, source, key, JSON.stringify(value));
   }
   for (const endpoint of ["s3", "dynamodb"] as const) {
     if (modes.every(network => network.gatewayEndpoints.includes(endpoint) === request[endpoint])) continue;
-    const { source, object } = objectCall(file, text, "defineNetwork");
+    const { source, object } = currentObject();
     const gateway = findProperty(object, "gatewayEndpoints");
     if (gateway.spread) throw new EditError(422, "Gateway endpoints use an object spread. Edit them in source.");
     if (gateway.property && ts.isPropertyAssignment(gateway.property)) {
@@ -145,12 +157,6 @@ export function planNetwork(root: string, state: StudioState, id: string, raw: N
     } else text = insertExpression(text, source, object, ["gatewayEndpoints", endpoint], String(request[endpoint]));
   }
   return { file, after: text };
-}
-
-function moduleMatches(file: string, specifier: string, target: string): boolean {
-  if (!specifier.startsWith(".")) return false;
-  const absolute = path.resolve(path.dirname(file), specifier);
-  return [absolute, `${absolute}.ts`, `${absolute}.tsx`, path.join(absolute, "index.ts")].includes(target);
 }
 
 /** The removal contract deliberately refuses arbitrary source surgery. Any
@@ -178,7 +184,7 @@ export function planNetworkRemoval(root: string, state: StudioState, id: string,
         const source = files.get(current);
         let used = false;
         const inspect = (node: ts.Node): void => {
-          if (ts.isStringLiteralLike(node) && moduleMatches(current, node.text, file)) used = true;
+          if (ts.isStringLiteralLike(node) && referencesModule(current, node.text, file)) used = true;
           ts.forEachChild(node, inspect);
         };
         inspect(source);
@@ -202,14 +208,14 @@ export function planNetworkRemoval(root: string, state: StudioState, id: string,
   if (!registry.property || !ts.isPropertyAssignment(registry.property) || !ts.isArrayLiteralExpression(registry.property.initializer)) throw new EditError(422, "Compose networks as a literal array before removing a VPC.");
   const array = registry.property.initializer;
   const located = registered(root, files);
-  const elements = array.elements.filter(element => ts.isExpression(element) && importedVpc(root, config, source, element, located) === id);
+  const elements = array.elements.filter(element => ts.isExpression(element) && importedVpc(config, source, element, located) === id);
   if (elements.length !== 1 || !ts.isIdentifier(elements[0]!)) throw new EditError(422, "The VPC registry reference is computed. Remove it in source.");
   const element = elements[0]!;
   const localName = element.text;
   const references: ts.Identifier[] = [];
   const inspect = (node: ts.Node): void => { if (ts.isIdentifier(node) && node.text === localName) references.push(node); ts.forEachChild(node, inspect); };
   inspect(source);
-  const importStatement = source.statements.find(statement => ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && moduleMatches(config, statement.moduleSpecifier.text, file));
+  const importStatement = source.statements.find(statement => ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && referencesModule(config, statement.moduleSpecifier.text, file));
   if (!importStatement || !ts.isImportDeclaration(importStatement)) throw new EditError(422, "The VPC import cannot be removed safely. Edit the registry in source.");
   const bindings = importStatement.importClause?.namedBindings;
   if (!bindings || !ts.isNamedImports(bindings) || bindings.elements.length !== 1 || bindings.elements[0]!.name.text !== localName || importStatement.importClause?.name || references.some(reference => reference !== element && reference !== bindings.elements[0]!.name && reference !== bindings.elements[0]!.propertyName)) throw new EditError(422, "The VPC has additional references in framework.config.ts. Remove or reassign them before removing it.");
@@ -228,7 +234,7 @@ export function planNetworkRemoval(root: string, state: StudioState, id: string,
   };
   text = removeElement(text, source, element, array.elements);
   source = parse(config, text);
-  const currentImport = source.statements.find(statement => ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && moduleMatches(config, statement.moduleSpecifier.text, file))!;
+  const currentImport = source.statements.find(statement => ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && referencesModule(config, statement.moduleSpecifier.text, file))!;
   text = text.slice(0, currentImport.getStart(source)) + text.slice(currentImport.end).replace(/^[ \t]*\r?\n/, "");
   const changes: { file: string; before: string; after: string | null }[] = [{ file: config, before: files.text(config), after: text }, { file, before: files.text(file), after: null }];
   const descriptionFile = path.join(root, DESCRIPTION_FILE);

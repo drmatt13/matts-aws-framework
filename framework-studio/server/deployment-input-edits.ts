@@ -126,7 +126,11 @@ export class DeploymentInputService {
     } finally { if (existsSync(temporary)) unlinkSync(temporary); }
     this.ownWrites.set(file, sha256(plan.after));
     this.expirePlans();
-    const state = await this.builder.refresh();
-    return { status: "applied", message: `Saved ${file}. Synthesis and deployment are separate actions.`, revision: state.snapshot.revision };
+    const state = await this.builder.refresh().catch(() => undefined);
+    return {
+      status: "applied",
+      message: `Saved ${file}.${state ? "" : " Studio could not refresh the configuration. Reload Studio after resolving the refresh failure."} Synthesis and deployment are separate actions.`,
+      revision: state?.snapshot.revision ?? plan.revision,
+    };
   }
 }

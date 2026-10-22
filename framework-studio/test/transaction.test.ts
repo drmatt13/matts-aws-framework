@@ -453,6 +453,50 @@ test("an atomic write leaves no temporary file behind", () => {
   assert.deepEqual(readdirSync(path.join(fixture, ".cache", "framework-studio", "tmp")), []);
 });
 
+test("single-edit verification failures restore source without recording an applied edit", async () => {
+  const original = readFileSync(serviceFile, "utf8");
+  const history = edits.history();
+  const plan = await edits.plan({ target: "service:example-service", field: "deploy", value: "both" }, revision());
+  const refresh = builder.refresh.bind(builder);
+  let fail = true;
+  builder.refresh = async () => {
+    if (fail) { fail = false; throw new Error("Simulated snapshot read failure"); }
+    return refresh();
+  };
+  try {
+    const response = await edits.apply(plan.planId);
+    assert.equal(response.status, "reverted", response.message);
+    assert.match(response.message, /snapshot read failure/);
+    assert.equal(readFileSync(serviceFile, "utf8"), original);
+    assert.deepEqual(edits.history(), history);
+  } finally {
+    builder.refresh = refresh;
+    writeFileSync(serviceFile, original);
+    await builder.refresh();
+  }
+});
+
+test("single-edit verification failures preserve a concurrent editor's deletion", async () => {
+  const original = readFileSync(serviceFile, "utf8");
+  const history = edits.history();
+  const plan = await edits.plan({ target: "service:example-service", field: "deploy", value: "both" }, revision());
+  const refresh = builder.refresh.bind(builder);
+  builder.refresh = async () => {
+    rmSync(serviceFile);
+    throw new Error("Simulated failure after a concurrent deletion");
+  };
+  try {
+    const response = await edits.apply(plan.planId);
+    assert.equal(response.status, "unconfirmed", response.message);
+    assert.throws(() => readFileSync(serviceFile, "utf8"), { code: "ENOENT" });
+    assert.deepEqual(edits.history(), history);
+  } finally {
+    builder.refresh = refresh;
+    writeFileSync(serviceFile, original);
+    await builder.refresh();
+  }
+});
+
 test("an HTTP route rename updates its gateway and preserves the Lambda identity through undo and redo", async () => {
   const file = path.join(fixture, "framework-config/workloads/http.ts");
   const original = readFileSync(file, "utf8");

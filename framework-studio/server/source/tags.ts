@@ -1,12 +1,18 @@
 import path from "node:path";
 import ts from "typescript";
-import { locateConfigSource } from "../../../packages/framework/scripts/config-source";
+import { locateConfigSource, type LocatedConfigSource } from "../../../packages/framework/scripts/config-source";
 import type { Editability, ModeModel } from "../../shared/model";
 import { parseOrigin } from "../model/origin";
-import { readCatalogSource } from "./catalog";
+import { readCatalogSource, type CatalogEntrySource } from "./catalog";
 import { locateManagedDatabase } from "./database";
 import type { SourceFiles } from "./index";
-import { declarationObject, expressionAt, findProperty, literalKey, parse, unwrap } from "./syntax";
+import { declarationObject, expressionAt, findProperty, literalKey, unwrap } from "./syntax";
+
+/** Reuse one snapshot's discovery results; never retain them across source overlays. */
+export interface TagSourceContext {
+  readonly located: LocatedConfigSource;
+  readonly catalog: ReadonlyMap<string, CatalogEntrySource>;
+}
 
 export interface TagSite {
   readonly file: string;
@@ -41,8 +47,8 @@ const optionsObject = (source: ts.SourceFile, expression: ts.Expression, segment
 };
 
 /** Resolve declaration ownership, independently of paths and map organization. */
-export function locateTagSites(root: string, model: ModeModel, files: SourceFiles, entity: string): readonly TagSite[] {
-  const located = locateConfigSource(path.join(root, "framework.config.ts"), { repositoryRoot: root, host: files.host() });
+export function locateTagSites(root: string, model: ModeModel, files: SourceFiles, entity: string, context?: TagSourceContext): readonly TagSite[] {
+  const located = context?.located ?? locateConfigSource(path.join(root, "framework.config.ts"), { repositoryRoot: root, host: files.host() });
   const route = model.routes.find(route => route.id === entity);
   const target = model.targets.find(target => target.ref === (route?.target ?? entity));
   if (target) return target.origins.map(origin => {
@@ -73,7 +79,7 @@ export function locateTagSites(root: string, model: ModeModel, files: SourceFile
   if (entity.startsWith("resource:")) {
     const resources = located.properties.resources;
     if (!resources) return refuse("The resource catalog could not be located.");
-    const catalog = readCatalogSource(root, resources.file, resources.span, file => files.text(file));
+    const catalog = context?.catalog ?? readCatalogSource(root, resources.file, resources.span, file => files.text(file));
     const key = entity.slice("resource:".length);
     let entry = catalog.get(key);
     let member: string | undefined;
@@ -85,7 +91,7 @@ export function locateTagSites(root: string, model: ModeModel, files: SourceFile
     const aliases = [...catalog].filter(([, candidate]) => candidate.value.file === entry!.value.file && candidate.value.start === entry!.value.start && candidate.value.end === entry!.value.end);
     if (aliases.length > 1) return refuse(`This resource descriptor is shared by ${aliases.map(([key]) => `resources.${key}`).join(" and ")}. Edit its shared metadata in source so every catalog owner is reviewed together.`);
     const file = path.join(root, entry.value.file);
-    const source = parse(file, files.text(file));
+    const source = files.get(file);
     const value = expressionAt(source, entry.value.start, entry.value.end);
     if (!value) return refuse("This resource declaration could not be read.");
     return [optionsObject(source, value, member ? ["members", member, "tags"] : ["tags"])];
@@ -115,9 +121,9 @@ export function readTagSite(site: TagSite): { readonly value: Readonly<Record<st
   return { value, object: container };
 }
 
-export function tagEditability(root: string, model: ModeModel, files: SourceFiles, entity: string): Editability {
+export function tagEditability(root: string, model: ModeModel, files: SourceFiles, entity: string, context?: TagSourceContext): Editability {
   try {
-    const sites = locateTagSites(root, model, files, entity);
+    const sites = locateTagSites(root, model, files, entity, context);
     const facts = model.tagging?.[entity];
     for (const site of sites) {
       const read = readTagSite(site);

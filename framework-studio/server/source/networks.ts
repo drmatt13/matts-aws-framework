@@ -20,8 +20,15 @@ function shadowed(name: string, expression: ts.Node): boolean {
   return false;
 }
 
+/** Source imports may spell the emitted .js path while the declaration is .ts. */
+export function referencesModule(file: string, specifier: string, target: string): boolean {
+  if (!specifier.startsWith(".")) return false;
+  const base = path.resolve(path.dirname(file), specifier);
+  return [base, base.replace(/\.js$/, ".ts"), `${base}.ts`, `${base}.tsx`, path.join(base, "index.ts")].includes(target);
+}
+
 /** Resolve only real imports of registered declarations; never accept arbitrary source expressions. */
-export function importedVpc(root: string, file: string, source: ts.SourceFile, expression: ts.Expression, located: LocatedConfigSource): string | undefined {
+export function importedVpc(file: string, source: ts.SourceFile, expression: ts.Expression, located: LocatedConfigSource): string | undefined {
   if (!ts.isIdentifier(expression) || shadowed(expression.text, expression)) return undefined;
   for (const statement of source.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.importClause?.isTypeOnly) continue;
@@ -29,8 +36,8 @@ export function importedVpc(root: string, file: string, source: ts.SourceFile, e
     if (!bindings || !ts.isNamedImports(bindings)) continue;
     const binding = bindings.elements.find(binding => binding.name.text === expression.text && !binding.isTypeOnly);
     if (!binding) continue;
-    const base = path.resolve(path.dirname(file), statement.moduleSpecifier.text);
-    return located.networks.find(network => network.exportName === (binding.propertyName?.text ?? binding.name.text) && [base, `${base}.ts`, path.join(base, "index.ts")].includes(network.file))?.id;
+    const specifier = statement.moduleSpecifier.text;
+    return located.networks.find(network => network.exportName === (binding.propertyName?.text ?? binding.name.text) && referencesModule(file, specifier, network.file))?.id;
   }
   return undefined;
 }
@@ -69,7 +76,7 @@ export function nativeVpcReferences(root: string, source: ts.SourceFile, scope: 
   };
   const declaration = (value: ts.Expression, depth = 0): string | undefined => {
     if (depth > 8) return undefined;
-    const imported = importedVpc(root, source.fileName, source, value, located);
+    const imported = importedVpc(source.fileName, source, value, located);
     if (imported) return imported;
     const alias = ts.isIdentifier(value) ? aliasValue(value) : undefined;
     return alias ? declaration(alias, depth + 1) : undefined;

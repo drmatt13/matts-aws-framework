@@ -279,7 +279,8 @@ export function buildSourceIndex(
     taggedEntities.add(`resource:${key}`);
     for (const member of entry.stack?.members ?? []) taggedEntities.add(`resource:${key}.${member.name}`);
   }
-  for (const entity of taggedEntities) editability[entity] = { ...editability[entity], tags: tagEditability(repositoryRoot, model, files, entity) };
+  const tagSources = located ? { located, catalog } : undefined;
+  for (const entity of taggedEntities) editability[entity] = { ...editability[entity], tags: tagEditability(repositoryRoot, model, files, entity, tagSources) };
   return {
     index: { entities, editability, links, catalog: catalogFacts, problems, cdkLinks, triggerCapabilities, capabilityFiles },
     catalog,

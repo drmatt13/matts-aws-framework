@@ -1,7 +1,7 @@
 import { Plus, RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { MAX_DECLARATION_TAGS, validateTags } from "@repo/framework/config";
+import { MAX_DECLARATION_TAGS, validateTags } from "@repo/framework/config/tags";
 import { api, ApiError } from "../api";
 import { editorLink } from "../lookup";
 import { useStudio } from "../studio";

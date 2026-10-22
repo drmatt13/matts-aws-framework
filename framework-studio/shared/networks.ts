@@ -1,7 +1,7 @@
 import { networkCidrIdentity, networkCreationProblem, readCreationRequest, type CreationRequest } from "./creation";
 import type { NetworkModel } from "./model";
 
-export type NetworkSettings = Omit<Extract<CreationRequest, { kind: "vpc" }>, "kind" | "id" | "description" | "name"> & { readonly name?: string };
+export type NetworkSettings = Omit<Extract<CreationRequest, { kind: "vpc" }>, "kind" | "id" | "description" | "name" | "tags"> & { readonly name?: string };
 export { networkCreationProblem };
 /** Prefer consecutive 10/8 ranges, then the remaining private /16 blocks. */
 export function unusedNetworkCidr(networks: readonly { readonly cidr: string }[]): string | undefined {

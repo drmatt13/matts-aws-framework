@@ -363,11 +363,12 @@ test("Lambda settings inherit section defaults and Python has no Node bundling c
 test("the projection follows the framework's rules on a config of its own", () => {
   // An isolated Lambda that runs a task reaches ECS only through its endpoint,
   // which the framework refuses to leave out.
+  const network = defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, interfaceEndpoints: ["ecs"] });
   const config = defineFrameworkConfig({
-    networks: [defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, interfaceEndpoints: ["ecs"] })],
+    networks: [network],
     defaults: { lambda: { runtime: "nodejs24", packaging: "zip", architecture: "arm64", memorySize: 128, timeoutSeconds: 10, bundling: {} } },
     http: {
-      "/orders": { vpc: fixtureVpc,
+      "/orders": { vpc: network,
         directory: "/lambda_functions/http_functions/orders",
         methods: ["POST"],
         subnet: "isolated",
@@ -377,7 +378,7 @@ test("the projection follows the framework's rules on a config of its own", () =
     webSocket: {},
     events: {},
     services: {},
-    tasks: { rollup: { cloud: { vpc: fixtureVpc }, deploy: "both" } },
+    tasks: { rollup: { cloud: { vpc: network }, deploy: "both" } },
   }) as unknown as FrameworkConfig;
   const model = projectModel(config, { mode: "dev", webSocketApi: false });
   assert.equal(model.status, "ok");
@@ -393,6 +394,20 @@ test("the projection follows the framework's rules on a config of its own", () =
   const subnet = model.fields["lambda:orders"]?.find((fact) => fact.field === "lambda.subnet");
   assert.deepEqual([subnet?.effective, subnet?.provenance, subnet?.authored], ["isolated", "declared on the entry", "isolated"]);
   assert.equal(model.networks?.[0]?.monthlyCost.interfaceEndpoints, 14.6);
+});
+
+test("a VPC used only by WebSocket handlers follows the API deployment setting", () => {
+  const network = defineNetwork({ id: "realtime", cidr: "10.9.0.0/16", zones: 2 });
+  const config = defineFrameworkConfig({ networks: [network], defaults,
+    http: [], events: [], services: [],
+    webSocket: [{ $default: { directory: "/lambda_functions/websocket_functions/realtime", vpc: network, subnet: "private" } }],
+  });
+  for (const webSocketApi of [false, true]) {
+    const model = projectModel(config, { mode: "prod", webSocketApi });
+    assert.equal(model.status, "ok", JSON.stringify(model.diagnostics));
+    assert.equal(model.targets[0]!.lanes.prod, webSocketApi);
+    assert.equal(model.networks![0]!.builtInProd, webSocketApi, "network applicability agrees with its only consumer");
+  }
 });
 
 

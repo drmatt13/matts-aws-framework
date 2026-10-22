@@ -198,7 +198,9 @@ function secretPlanMismatch(plans: ReadonlyMap<string, Planned>, reviewed: Revie
     if ((bound.arn ?? "") !== (now.arn ?? "")) { problems.push(`${name} was replaced in Secrets Manager`); continue; }
     if (action === "update" && (!bound.current || !now.current || bound.current !== now.current)) problems.push(`${name} changed in Secrets Manager`);
     if ((bound.tags ?? "{}") !== JSON.stringify(validateTags(now.requirement.tags)) || (bound.currentTags ?? "{}") !== JSON.stringify(validateTags(now.existingTags))) problems.push(`tags of ${name} changed`);
-    if ((action === "create" || now.changed) && (bound.authored === undefined || now.value === undefined || !same(bound.authored, digest(key, name, now.value)))) {
+    // A tag update keeps action="update" even when a reviewed value was removed.
+    // Keep checking its binding rather than silently applying only the tags.
+    if ((action === "create" || now.changed || (action === "update" && bound.authored !== undefined)) && (bound.authored === undefined || now.value === undefined || !same(bound.authored, digest(key, name, now.value)))) {
       problems.push(`the authored value of ${now.requirement.variable} (${name}) changed`);
     }
   }

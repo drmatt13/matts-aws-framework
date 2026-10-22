@@ -5,15 +5,9 @@ import { assertWritable, toRelative } from "../files";
 import { insertExpression } from "../resources-source";
 import { SourceFiles } from "../source";
 import { locateTagSites, readTagSite, tagEditability, type TagSite } from "../source/tags";
-import { findProperty, parse, propertyAt } from "../source/syntax";
+import { findProperty, hasComments, parse, propertyAt } from "../source/syntax";
 import { removeProperty, replaceValue } from "./splice";
 import { EditError } from "./io";
-
-function hasComments(text: string): boolean {
-  const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, text);
-  for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) if (token === ts.SyntaxKind.SingleLineCommentTrivia || token === ts.SyntaxKind.MultiLineCommentTrivia) return true;
-  return false;
-}
 
 function rewrite(site: TagSite, tags: Readonly<Record<string, string>>, text: string, envName?: string): string {
   const current = readTagSite(site);
@@ -22,7 +16,6 @@ function rewrite(site: TagSite, tags: Readonly<Record<string, string>>, text: st
     if (site.object) {
       const position = propertyAt(site.object, site.segments);
       if (position.editability.kind !== "absent") throw new Error("Tag metadata is computed or ambiguous. Edit its owning expression in source.");
-      if (!position.container.properties.length && hasComments(position.container.getText(site.source))) throw new Error("This empty tag metadata object contains comments. Add tags in source so those comments are preserved deliberately.");
       return insertExpression(text, site.source, position.container, position.missing, JSON.stringify(tags));
     }
     const expression = site.segments.reduceRight((value, segment) => `{ ${JSON.stringify(segment)}: ${value} }`, JSON.stringify(tags));

@@ -153,7 +153,6 @@ function compute(config: FrameworkConfig, target: NormalizedTarget): Compute {
     };
   }
   if (target.kind === "service" || target.kind === "task") {
-    const network = resolveNetwork(config, target.vpc);
     const container = target.cloud.service ?? target.cloud.task!;
     const service = target.kind === "service" ? resolveServiceTarget(config, target.id) : undefined;
     return {
@@ -224,13 +223,8 @@ export function targetPlacement(config: FrameworkConfig, target: NormalizedTarge
   };
 }
 
-function networkModel(config: FrameworkConfig, targets: readonly NormalizedTarget[], network: FrameworkNetwork): NetworkModel {
-  const placed = targets.some((target) => {
-    if (target.vpc?.id !== network.id) return false;
-    if (!isTargetDeployed(config, target.kind, target.id, "prod")) return false;
-    if (target.kind === "service" || target.kind === "task") return true;
-    return target.kind === "lambda" && lambdaSpec(config, target.id).subnet !== "none";
-  });
+function networkModel(config: FrameworkConfig, targets: readonly ModelTarget[], network: FrameworkNetwork): NetworkModel {
+  const placed = targets.some(target => target.lanes.prod && target.placement.kind === "vpc" && target.placement.networkId === network.id);
   const gateways = endpointServices(network).filter((service) => service === "s3" || service === "dynamodb");
   return {
     id: network.id,
@@ -632,6 +626,7 @@ export function projectModel(
   const { edges, readPaths } = edgesOf(config, targets, routes);
   const diagnostics = validateForMode(config, options, targets);
   const defaults = projectDefaults(config, targets, DEFAULT_FIELDS);
+  const projectedTargets = targets.map(target => targetModel(config, target, options));
   return {
     mode: options.mode,
     tagging: projectTagging(config, targets, routes),
@@ -641,13 +636,13 @@ export function projectModel(
     triggers: normalizeFrameworkConfig(config).triggers.map((binding) => ({ ...binding, resource: binding.resource ? resourceId(binding.resource.path) : "" })),
     failureDestinations: normalizeFrameworkConfig(config).failureDestinations.map(({ event, destination, retryAttempts, maxEventAgeSeconds }) => ({ event, destination: resourceId(destination.path), ...(retryAttempts !== undefined ? { retryAttempts } : {}), ...(maxEventAgeSeconds !== undefined ? { maxEventAgeSeconds } : {}) })),
     status: diagnostics.some((diagnostic) => diagnostic.severity === "error") ? "error" : "ok",
-    targets: targets.map((target) => targetModel(config, target, options)),
+    targets: projectedTargets,
     routes,
     resources: catalogModel(config, readPaths),
     edges,
     workflows: targets.map(workflowModel).filter((workflow): workflow is ModelWorkflow => workflow !== undefined),
     defaults: defaults.groups,
-    networks: (config.networks ?? []).map(network => networkModel(config, targets, network)),
+    networks: (config.networks ?? []).map(network => networkModel(config, projectedTargets, network)),
     databaseNetworkId: config.database?.vpc.id,
     ...(isFrameworkDatabase(config.database) ? { managedDatabase: {
       id: config.database.id, resource: resourceId(config.database.resource.path), networkId: config.database.vpc.id,

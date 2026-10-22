@@ -106,6 +106,13 @@ test("inserting into an empty object writes it on one line", () => {
   assert.equal(insertProperty(text, sourceFile, object, ["deploy"], "none", { after: [], before: [] }), `const entry = { deploy: "none" };\n`);
 });
 
+test("inserting into an empty commented object refuses without discarding authored prose", () => {
+  for (const text of ["const entry = { /* preserve this policy */ };\n", "const entry = {\n  // Reserved for production settings.\n};\n"]) {
+    const { sourceFile, object } = objectIn(text);
+    assert.throws(() => insertProperty(text, sourceFile, object, ["deploy"], "none", { after: [], before: [] }), /comment/i);
+  }
+});
+
 test("removing a property takes its whole line and nothing else", () => {
   const text = `const entry = {\n  directory: "/x",\n  timeoutSeconds: 15,\n  userPool: true,\n};\n`;
   const { sourceFile, object } = objectIn(text);

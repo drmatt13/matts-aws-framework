@@ -16,10 +16,11 @@ const s3 = (delivery: string, eventTypes = ["s3:ObjectCreated:*"]) => ({ deliver
 
 before(async () => {
   const cache = path.join(repository, ".cache/framework-studio"); mkdirSync(cache, { recursive: true }); root = mkdtempSync(path.join(cache, "trigger-services-"));
-  for (const directory of ["framework-config", "cdk-app/lib/framework", "cdk-app/bin"]) mkdirSync(path.join(root, directory), { recursive: true });
+  for (const directory of ["framework-config/resources", "cdk-app/lib/framework", "cdk-app/bin"]) mkdirSync(path.join(root, directory), { recursive: true });
   cpSync(path.join(repository, "framework-config/defaults.ts"), path.join(root, "framework-config/defaults.ts"));
   writeFileSync(path.join(root, "framework.config.ts"), 'import { defineFrameworkConfig } from "@repo/framework/config"; import { defaults } from "./framework-config/defaults"; import { resources } from "./framework-config/resources"; import { first } from "./framework-config/first"; import { second } from "./framework-config/second"; export default defineFrameworkConfig({ resources, defaults, http: [], webSocket: [], services: [], events: [first, second] });');
-  writeFileSync(path.join(root, "framework-config/resources.ts"), 'import { defineResources, resource } from "@repo/framework/config"; import type { Storage } from "../cdk-app/lib/stacks"; export const resources = defineResources({ storage: resource.stack<Storage>() });');
+  writeFileSync(path.join(root, "framework-config/resources/inputs.ts"), 'import { resource } from "@repo/framework/config"; export const setting = resource.fromEnv("FIXTURE_SETTING");');
+  writeFileSync(path.join(root, "framework-config/resources.ts"), 'import { defineResources, resource } from "@repo/framework/config"; import type { Storage } from "../cdk-app/lib/stacks"; import { setting } from "./resources/inputs"; export const resources = defineResources({ setting, storage: resource.stack<Storage>() });');
   stackFile = path.join(root, "cdk-app/lib/stacks.ts");
   writeFileSync(stackFile, `import * as cdk from "aws-cdk-lib";
 import * as sqs from "aws-cdk-lib/aws-sqs";

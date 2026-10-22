@@ -1,4 +1,4 @@
-import { validateTags, type DeclarationTags } from "@repo/framework/config";
+import { validateTags, type DeclarationTags } from "@repo/framework/config/tags";
 
 /** Source creation uses the inspector's batch transaction, never a file-writing API. */
 export const CREATION_KINDS = ["function", "stack", "vpc", "workflow", "service", "task", "route", "agent", "input", "secret"] as const;

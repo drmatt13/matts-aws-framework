@@ -29,9 +29,15 @@ Every secret has one catalog entry: `resource.secret("NAME")` for a raw authored
 
 `planDeploymentSecrets` in [deployment-secrets.ts](../../../scripts/deployment-secrets.ts) completes ownership/account/region/value reads before writes, compares values in memory and exposes create/update/unchanged actions plus ARNs. Existing secrets must have matching management tags and usable state. `createMissing` creates only missing secrets; it never updates an existing secret during review preparation.
 
+Saving an authored inputs file and refreshing Studio are separate outcomes. Once the
+reviewed dotenv bytes are saved, the response reports that save even if snapshot refresh
+fails, expires the plan and asks for a reload. Refresh diagnostics and input values are
+never echoed through that response; a refresh failure must not suggest the file was left
+unchanged or offer the accepted plan again.
+
 For reviewed apply, `bind(planId)` captures each action, existing ARN/current version and a keyed HMAC of authored values. `secretBindings` in [deployment-workspace.ts](../../../scripts/deployment-workspace.ts) stores the binding privately beside lock state, **outside the plan directory**, with private file/directory modes. The random key plus HMAC is sensitive material: it permits guessing low-entropy values if disclosed. Do not copy it into plan.json, Studio, logs or source control.
 
-[deploy.ts](../../../scripts/deploy.ts) reloads the secret plan before apply and requires its private binding. `mismatch` refuses changed actions/ARNs, changed AWS current version for an update, or changed authored values for create/update. A plan moved to another checkout without its binding must be replanned. `--create-secrets` creates missing entries without synchronizing existing updates.
+[deploy.ts](../../../scripts/deploy.ts) reloads the secret plan before apply and requires its private binding. `mismatch` refuses changed actions/ARNs, changed AWS current version for an update, changed authored values for create/update, or drift in desired/current application tags. A reviewed value-and-tag update cannot become tags-only when the authored value is removed: its value binding still applies. Tags-only reviews need no authored value and never rewrite the secret contents. A plan moved to another checkout without its binding must be replanned. `--create-secrets` creates missing entries without synchronizing existing updates.
 
 Limitations: Secrets Manager has no conditional put in this path; a concurrent version change **after** validation and before write can race. Sequential secret writes and subsequent CloudFormation changes are not one transaction, and infrastructure rollback does not roll values back. The direct deployment path synchronizes current inputs without a saved review binding; retain its existing CLI safeguards/authorization. [Planning/safety](planning-and-safety.md) owns the ordering and failure reporting.
 

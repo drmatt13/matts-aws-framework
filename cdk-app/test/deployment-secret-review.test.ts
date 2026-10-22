@@ -286,6 +286,17 @@ test("secret tag drift invalidates the bound review before any write", async () 
   assert.deepEqual(aws.writes(), []);
 });
 
+test("removing a reviewed value update cannot turn a combined update into tags only", async () => {
+  const aws = secretsManager({ KEY: PREVIOUS });
+  const requirement = { ...KEY, tags: { area: "billing" } };
+  const review = await reviewed(aws, [requirement], { KEY: REVIEWED });
+  const again = await planDeploymentSecrets([requirement], {}, identity, aws.client);
+  assert.deepEqual(again.entries, review.entries, "both plans still advertise an update");
+  await assert.rejects(again.apply(() => {}, review), /the authored value of KEY .* changed/);
+  assert.deepEqual(aws.writes(), [], "drift refuses before writing values or tags");
+  assert.equal(aws.secrets.get(KEY.name)!.value, PREVIOUS);
+});
+
 
 test("a tag failure after a value write reports that secret as already changed", async () => {
   const aws = secretsManager({ KEY: PREVIOUS });

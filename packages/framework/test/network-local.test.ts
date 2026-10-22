@@ -22,13 +22,10 @@ type FakeDataStack = {
 };
 // As in a dev deployment: the database is absent from the AWS graph, and runs under Compose.
 const resources = defineResources({ rds: (false as boolean) ? resource.stack<FakeDataStack>() : undefined });
-const connected = { vpc: fixtureVpc, database: true };
-
-const config = (network?: ReturnType<typeof defineNetwork>): FrameworkConfig =>
-  defineFrameworkConfig({ networks: [fixtureVpc],
-    ...(network ? { networks: [network] } : {}),
+const config = (network = fixtureVpc): FrameworkConfig =>
+  defineFrameworkConfig({ networks: [network],
     resources,
-    database: { resource: resources.rds.database, vpc: fixtureVpc },
+    database: { resource: resources.rds.database, vpc: network },
     defaults: {
       lambda: {
         runtime: "nodejs24", packaging: "zip", architecture: "arm64",
@@ -36,14 +33,14 @@ const config = (network?: ReturnType<typeof defineNetwork>): FrameworkConfig =>
       },
     },
     http: [{
-      "/orders": { directory: "/lambda_functions/http_functions/orders", methods: ["GET"], ...connected },
+      "/orders": { directory: "/lambda_functions/http_functions/orders", methods: ["GET"], vpc: network, database: true },
       "/plain": { directory: "/lambda_functions/http_functions/plain", methods: ["GET"] },
-      "/inside": { vpc: fixtureVpc, directory: "/lambda_functions/http_functions/inside", methods: ["GET"], subnet: "private" },
-      "/sealed": { vpc: fixtureVpc, directory: "/lambda_functions/http_functions/sealed", methods: ["GET"], subnet: "isolated" },
+      "/inside": { vpc: network, directory: "/lambda_functions/http_functions/inside", methods: ["GET"], subnet: "private" },
+      "/sealed": { vpc: network, directory: "/lambda_functions/http_functions/sealed", methods: ["GET"], subnet: "isolated" },
     }],
     webSocket: [], events: [], services: [],
-    tasks: [{ job: { database: true, cloud: { vpc: fixtureVpc, subnet: "public" } } }],
-    tools: [{ lookup: { ...connected } }],
+    tasks: [{ job: { database: true, cloud: { vpc: network, subnet: "public" } } }],
+    tools: [{ lookup: { vpc: network, database: true } }],
   } as never);
 
 const environmentOf = (target: string, network?: ReturnType<typeof defineNetwork>) =>
@@ -75,7 +72,7 @@ test("a Lambda calls AWS's dual-stack endpoints only where IPv6 leaves its subne
 test("local reader and direct declarations keep Compose and the resolved pool settings", async () => {
   const base = config();
   const withReaders = defineFrameworkConfig({ networks: [fixtureVpc],
-    ...base, defaults: { vpc: fixtureVpc, ...base.defaults, database: { pool: { maxConnections: 4 } } },
+    ...base, defaults: { ...base.defaults, database: { pool: { maxConnections: 4 } } },
     http: [{
       "/orders": { vpc: fixtureVpc, directory: "/lambda_functions/http_functions/orders", methods: ["GET"], database: { readers: true, connection: "direct", pool: { idleTimeoutMs: 1000 } } },
     }],

@@ -55,6 +55,7 @@ test("a request naming another host is refused, whatever it carries", async () =
 test("the API needs the token", async () => {
   assert.equal(await call({ path: "/api/snapshot" }), 401);
   assert.equal(await call({ path: "/api/snapshot", headers: { "x-studio-token": "b".repeat(48) } }), 401);
+  assert.equal(await call({ path: "/api/snapshot", headers: { "x-studio-token": "é".repeat(48) } }), 401);
   assert.equal(await call({ path: "/api/snapshot", headers: { "x-studio-token": token } }), 200);
 });
 

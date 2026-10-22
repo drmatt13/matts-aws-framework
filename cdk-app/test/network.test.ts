@@ -16,7 +16,6 @@ import {
   type FrameworkConfig,
 } from "@repo/framework/config";
 import { defaults } from "../../framework-config/defaults";
-import { applicationVpc as appNetwork } from "../../framework-config/networks/application";
 import { EcsServicesStack } from "../lib/framework/ecs-services-stack";
 import { EcsTasksStack } from "../lib/framework/ecs-tasks-stack";
 import { SynchronousLambdaFunctionsStack } from "../lib/framework/synchronous-lambda-functions-stack";
@@ -33,11 +32,11 @@ const env = { account: "111122223333", region: "eu-west-2" };
 /** An application stack as the framework expects one: built in frameworkVpc(this, fixtureVpc). */
 class DataStack extends cdk.Stack {
   public readonly database: rds.DatabaseInstance;
-  public constructor(scope: Construct, id: string, overrides: Partial<rds.DatabaseInstanceProps> = {}) {
+  public constructor(scope: Construct, id: string, overrides: Partial<rds.DatabaseInstanceProps> = {}, network = fixtureVpc) {
     super(scope, id, { env });
     this.database = new rds.DatabaseInstance(this, "Database", {
       engine: rds.DatabaseInstanceEngine.postgres({ version: rds.PostgresEngineVersion.VER_16 }),
-      vpc: frameworkVpc(this, fixtureVpc),
+      vpc: frameworkVpc(this, network),
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       publiclyAccessible: false,
       storageEncrypted: true,
@@ -56,8 +55,9 @@ const connected = { vpc: fixtureVpc, database: true };
 const route = { "/verify-session": { directory: "/lambda_functions/http_functions/verify-session", methods: ["GET"], ...connected } };
 
 function config(input: Record<string, unknown>): FrameworkConfig {
+  const network = Array.isArray(input.networks) ? input.networks[0] : fixtureVpc;
   return defineFrameworkConfig({ networks: [fixtureVpc],
-    resources, database: { resource: resources.data.database, vpc: fixtureVpc }, defaults, http: [], webSocket: [], events: [], services: [], tasks: [], workflows: [],
+    resources, database: { resource: resources.data.database, vpc: network }, defaults, http: [], webSocket: [], events: [], services: [], tasks: [], workflows: [],
     ...input,
   } as never);
 }
@@ -153,7 +153,7 @@ const withNat = defineNetwork({ id: "application", cloud: { constructId: "Networ
 
 test("only the network declaration builds a NAT gateway, never a container", () => {
   for (const [network, subnet, nat] of [[undefined, "public", 0], [withNat, "public", 1], [withNat, "private", 1]] as const) {
-    const built = config({ ...(network ? { networks: [network] } : {}), tasks: [{ "network-worker": { directory: "/test/fixtures/task-worker", deploy: "both", cloud: { vpc: fixtureVpc, subnet } } }] });
+    const built = config({ ...(network ? { networks: [network] } : {}), tasks: [{ "network-worker": { directory: "/test/fixtures/task-worker", deploy: "both", cloud: { vpc: network ?? fixtureVpc, subnet } } }] });
     const application = app(built);
     new EcsTasksStack(application, "Tasks", { env, config: built, cloud: { mode: "prod" } });
     finalizeFrameworkResources(application);
@@ -166,10 +166,10 @@ test("a service joins its connections' groups without opening them to its load b
   const built = config({ networks: [withNat], services: [{ "/example/*": {
     directory: "/ecs_containers/services/example-service", methods: "*", port: 5000, deploy: "both",
     database: true,
-    cloud: { vpc: fixtureVpc, constructId: "ExampleService", subnet: "private" },
+    cloud: { vpc: withNat, constructId: "ExampleService", subnet: "private" },
   } }] });
   const application = app(built);
-  new DataStack(application, "Data");
+  new DataStack(application, "Data", {}, withNat);
   const services = new EcsServicesStack(application, "Services", {
     env, config: built, cloud: { mode: "prod" },
     targets: getFrameworkTargets(built).filter((target) => target.kind === "service"),
@@ -257,7 +257,7 @@ function networkFor(network?: ReturnType<typeof defineNetwork>, input: Record<st
 }
 
 test("the app's network.ts builds exactly the network it built before, logical id for logical id", () => {
-  const { template } = networkFor(appNetwork);
+  const { template } = networkFor(fixtureVpc);
   assert.deepEqual(Object.keys(template.toJSON().Resources).sort(), [...LOGICAL_IDS_BEFORE].sort());
 });
 
@@ -314,9 +314,9 @@ test("subnet: \"isolated\" puts a Lambda in the isolated subnets, calling the st
 
 test("a private Lambda and the database login call dual-stack endpoints only where IPv6 leaves the private subnets", () => {
   const natOnly = defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, egressOnlyInternetGateway: false, natGateway: true });
-  const built = config({ networks: [natOnly], http: [route] });
+  const built = config({ networks: [natOnly], http: [{ "/verify-session": { ...route["/verify-session"], vpc: natOnly } }] });
   const application = app(built);
-  const data = new DataStack(application, "Data");
+  const data = new DataStack(application, "Data", {}, natOnly);
   const lambdas = new SynchronousLambdaFunctionsStack(application, "Lambdas", { env, config: built, cloud: { mode: "prod" } });
   finalizeFrameworkResources(application);
   const fn = Object.values(Template.fromStack(lambdas).findResources("AWS::Lambda::Function"))[0] as { Properties: { Environment?: { Variables?: Record<string, unknown> } } };

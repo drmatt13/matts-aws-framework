@@ -28,10 +28,8 @@ import type {
 } from "../generated/target-ids";
 import {
   formatResourceReference,
-  formatResourceEnv,
   isSecretArnReference,
   isResourceReference,
-  isUnresolvedTokenString,
   listResourceDeclarations,
   listCdkResourceDeclarations,
   listCdkResourceGroupDeclarations,
@@ -82,7 +80,6 @@ import type {
   ResourceDeclarationGroup,
   ResourceKind,
   ResourceReference,
-  ResourceEnvironmentReaders,
   SecretHandle,
   ResourceResolver,
   SecretResourceReference,
@@ -177,7 +174,6 @@ export type SourcedTargetKind = "lambda" | "service" | "task" | "agent";
 
 export interface ParsedTargetReference {
   readonly kind: TargetKind;
-  readonly vpc?: FrameworkNetwork;
   readonly id: string;
   readonly reference: TargetReference;
 }
@@ -3023,6 +3019,7 @@ function exampleConflictingRequest(
 
 function normalize(config: FrameworkConfig): InternalNormalizedConfig {
   if ("tags" in config.defaults) throw new Error("defaults.tags is not supported. Declare tags on each workload, network, database or resource owner; tags are never inherited from workload defaults.");
+  if ("vpc" in config.defaults) throw new Error("defaults.vpc is not supported. Import a VPC explicitly on each workload; VPC references cannot be inherited.");
   const networks = networkRegistry(config);
   for (const group of ["lambda", "container", "http", "webSocket", "events", "tools"] as const) {
     const defaults = config.defaults[group];
@@ -3553,7 +3550,7 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
   assertDistinctConstructIds(targets);
   assertOrchestrationIdentities(targets);
   assertReferencesAreDeclared(config, targets);
-  assertInvocationEdges(config, targets);
+  assertInvocationEdges(targets);
   assertNetworkEdges(config, targets);
 
   return { networks, targets, http, webSocket, triggers: normalizeTriggers(config.events, config.resources ?? {}), failureDestinations: normalizeFailureDestinations(config.events, config.resources ?? {}) };
@@ -3898,7 +3895,6 @@ function assertNetworkEdges(
 }
 
 function assertInvocationEdges(
-  config: FrameworkConfig,
   targets: ReadonlyMap<TargetReference, MutableTarget>,
 ): void {
   const describe = (target: MutableTarget): string =>

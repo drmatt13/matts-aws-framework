@@ -1,6 +1,7 @@
 import type { ModeModel } from "../../shared/model";
 import type { Scene } from "./build";
 import { matchesTagFilter } from "../tag-groups";
+import { indexModel } from "../lookup";
 
 export interface SearchMatches {
   readonly nodes: ReadonlySet<string>;
@@ -57,12 +58,15 @@ export function searchScene(scene: Scene, model: ModeModel, query: string): Sear
 
 /** Filtering changes emphasis only; topology, picking and entity identities stay intact. */
 export function tagSceneMatches(scene: Scene, model: ModeModel, key: string, value: string | null): SearchMatches {
+  const index = indexModel(model);
+  const nodeById = new Map(scene.nodes.map(node => [node.id, node]));
+  const matches = (id: string) => matchesTagFilter(model, id, key, value, index);
   const nodes = new Set<string>(), props = new Set<string>(), islands = new Set<string>();
-  for (const node of scene.nodes) if (matchesTagFilter(model, node.id, key, value)) { nodes.add(node.id); islands.add(node.island); }
-  for (const [id, representative] of Object.entries(scene.representatives)) if (matchesTagFilter(model, id, key, value)) {
-    nodes.add(representative); const node = scene.nodes.find(node => node.id === representative); if (node) islands.add(node.island);
+  for (const node of scene.nodes) if (matches(node.id)) { nodes.add(node.id); islands.add(node.island); }
+  for (const [id, representative] of Object.entries(scene.representatives)) if (matches(id)) {
+    nodes.add(representative); const node = nodeById.get(representative); if (node) islands.add(node.island);
   }
-  for (const island of scene.islands) if (island.region === "network" && matchesTagFilter(model, island.id, key, value)) {
+  for (const island of scene.islands) if (island.region === "network" && matches(island.id)) {
     islands.add(island.id); for (const prop of scene.props) if (prop.serves.some(band => island.bands.some(item => item.id === band))) props.add(prop.id);
   }
   return { nodes, props, islands };

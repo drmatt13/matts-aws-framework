@@ -286,39 +286,39 @@ export class EditService {
     predicted: { readonly dev: PreflightResult; readonly prod: PreflightResult },
     record: () => void,
   ): Promise<ApplyResponse> {
-    const state = await this.builder.refresh();
-    const mismatch = (["dev", "prod"] as const).flatMap((mode) => {
-      const model = state.snapshot.models[mode];
-      if (model.status === "error" && model.targets.length === 0) return [`the ${mode} configuration no longer loads`];
-      if (written.target.startsWith("defaults:") && model.status === "error") return [`the ${mode} configuration rejects the shared defaults`];
-      if (written.edit.kind === "route") {
-        const change = written.edit.change;
-        return model.status === "error" || !model.routes.some((route) => route.kind === "http" && route.path === change.after && route.target === change.target)
-          ? [`the ${mode} route did not reach the expected Lambda`] : [];
+    let mismatch: string[];
+    try {
+      const state = await this.builder.refresh();
+      mismatch = (["dev", "prod"] as const).flatMap((mode) => {
+        const model = state.snapshot.models[mode];
+        if (model.stale || model.status === "error") return [`the ${mode} configuration no longer validates`];
+        if (written.edit.kind === "route") {
+          const change = written.edit.change;
+          return !model.routes.some((route) => route.kind === "http" && route.path === change.after && route.target === change.target)
+            ? [`the ${mode} route did not reach the expected Lambda`] : [];
+        }
+        const expected = predicted[mode].predicted?.effective;
+        const actual = model.fields[written.target]?.find((fact) => fact.field === written.field)?.effective;
+        return expected === actual ? [] : [`${mode} resolves ${JSON.stringify(actual)} where ${JSON.stringify(expected)} was predicted`];
+      });
+      if (mismatch.length === 0) {
+        record();
+        return { status: "applied", message: `Wrote ${written.relativeFile}.`, revision: state.snapshot.revision };
       }
-      const expected = predicted[mode].predicted?.effective;
-      const actual = model.fields[written.target]?.find((fact) => fact.field === written.field)?.effective;
-      return expected === actual ? [] : [`${mode} resolves ${JSON.stringify(actual)} where ${JSON.stringify(expected)} was predicted`];
-    });
-    if (mismatch.length === 0) {
-      record();
-      return { status: "applied", message: `Wrote ${written.relativeFile}.`, revision: state.snapshot.revision };
-    }
-    const now = readFileSync(written.file, "utf8");
-    if (sha256(now) === sha256(written.after)) {
-      writeAtomically(this.repositoryRoot, written.file, written.before);
+    } catch (error) { mismatch = [error instanceof Error ? error.message : String(error)]; }
+
+    let restored = false;
+    try {
+      assertWritable(this.repositoryRoot, written.relativeFile);
+      writeSourceChange(this.repositoryRoot, written.file, written.after, written.before);
       this.ownWrites.set(written.relativeFile, sha256(written.before));
-      const reverted = await this.builder.refresh();
-      return {
-        status: "reverted",
-        message: `The edit was written and then undone: ${mismatch.join("; ")}. ${written.relativeFile} is back as it was.`,
-        revision: reverted.snapshot.revision,
-      };
-    }
+      restored = true;
+    } catch { /* A concurrent edit, deletion or failed restoration must remain unconfirmed. */ }
+    const refreshed = await this.builder.refresh().catch(() => undefined);
     return {
-      status: "unconfirmed",
-      message: `The edit did not resolve as predicted (${mismatch.join("; ")}), and ${written.relativeFile} has changed since, so it was left alone.`,
-      revision: state.snapshot.revision,
+      status: restored ? "reverted" : "unconfirmed",
+      message: `The edit could not be confirmed (${mismatch.join("; ")}). ${restored ? `${written.relativeFile} is back as it was.` : `The source could not be safely restored; inspect ${written.relativeFile}. Concurrent edits were preserved.`}${refreshed ? "" : " The snapshot could not be refreshed; refresh Studio after resolving the failure."}`,
+      revision: refreshed?.snapshot.revision ?? this.state().snapshot.revision,
     };
   }
 }

@@ -1126,6 +1126,35 @@ test("VPC settings use named switches and review only the selected network witho
   assert.equal(applyCalls, 0);
 });
 
+test("VPC settings freeze every control while a review is being prepared", async () => {
+  await mount("island:vpc:application");
+  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "S3 gateway endpoint" }));
+  let finish!: () => void;
+  reviewGate = new Promise<void>(resolve => { finish = resolve; });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 1 change");
+  const controls = document.querySelectorAll<HTMLInputElement | HTMLButtonElement>(".inspector .fields input, .inspector .fields button");
+  assert.ok(controls.length > 4);
+  try { for (const control of controls) assert.equal(control.disabled, true, control.getAttribute("aria-label") ?? control.id); }
+  finally { await ui.act(async () => { finish(); await reviewGate; }); }
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" }));
+  assert.equal(ui.screen.getByRole("switch", { name: "S3 gateway endpoint" }).hasAttribute("disabled"), false);
+});
+
+test("stale configuration freezes VPC settings and workload placement", async () => {
+  persisted = { ...baseline, models: { ...baseline.models, dev: { ...baseline.models.dev, stale: true } } };
+  await mount("island:vpc:application");
+  const settings = document.querySelectorAll<HTMLInputElement | HTMLButtonElement>(".inspector .fields input, .inspector .fields button");
+  assert.ok(settings.length > 4);
+  for (const control of settings) assert.equal(control.disabled, true);
+  ui.cleanup();
+  await mount(target);
+  openSection("Production placement");
+  assert.equal((ui.screen.getByRole("combobox", { name: "Workload VPC" }) as HTMLSelectElement).disabled, true);
+  assert.equal((ui.screen.getByRole("combobox", { name: "Workload subnet" }) as HTMLSelectElement).disabled, true);
+  assert.equal(planCalls.length + applyCalls, 0);
+});
+
 test("VPC creation switches preserve boolean choices through review without submitting the form", async () => {
   await mount();
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add to application" }));

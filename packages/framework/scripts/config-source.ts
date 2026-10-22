@@ -176,6 +176,32 @@ class ConfigSource {
     return found;
   }
 
+  /** A VPC editor may rewrite only the literal passed to the framework's factory. */
+  networkExportName(located: Located): string | undefined {
+    const call = unwrap(located.expression);
+    if (!ts.isCallExpression(call)) return undefined;
+    const file = this.parse(located.file);
+    const callee = unwrap(call.expression);
+    let official = false;
+    for (const statement of file.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "@repo/framework/config" || statement.importClause?.isTypeOnly) continue;
+      const bindings = statement.importClause?.namedBindings;
+      if (bindings && ts.isNamedImports(bindings) && ts.isIdentifier(callee)) {
+        official ||= bindings.elements.some(element => !element.isTypeOnly && element.name.text === callee.text && (element.propertyName?.text ?? element.name.text) === "defineNetwork");
+      } else if (bindings && ts.isNamespaceImport(bindings) && ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression)) {
+        official ||= bindings.name.text === callee.expression.text && callee.name.text === "defineNetwork";
+      }
+    }
+    if (!official) return undefined;
+    for (const statement of file.statements) {
+      if (!ts.isVariableStatement(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const) || !statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && declaration.initializer && unwrap(declaration.initializer) === call) return declaration.name.text;
+      }
+    }
+    return undefined;
+  }
+
   /** A relative specifier as a file on disk. */
   private moduleFile(from: string, specifier: string): string | undefined {
     const base = path.resolve(path.dirname(from), specifier);
@@ -445,10 +471,10 @@ export function locateConfigSource(
                 const object = ts.isCallExpression(call) && call.arguments[0] ? unwrap(call.arguments[0]) : undefined;
                 const id = object && ts.isObjectLiteralExpression(object) ? object.properties.find(p => literalKey(p) === "id") : undefined;
                 const idValue = id && ts.isPropertyAssignment(id) && ts.isStringLiteral(id.initializer) ? id.initializer.text : undefined;
-                const declaration = source.parse(item.file).statements.flatMap(statement => ts.isVariableStatement(statement) ? [...statement.declarationList.declarations] : []).find(d => d.initializer && unwrap(d.initializer) === call);
-                if (!idValue || !declaration || !ts.isIdentifier(declaration.name)) { problems.push("Each VPC must be an exported const defineNetwork({ id, ... }) declaration with a literal id."); continue; }
+                const exportName = source.networkExportName(item);
+                if (!idValue || !exportName) { problems.push("Each VPC must be an exported const calling defineNetwork({ id, ... }) imported from @repo/framework/config, with a literal id."); continue; }
                 const at = position(item.file, call);
-                networks.push({ name: idValue, id: idValue, exportName: declaration.name.text, file: item.file, span: at.span, line: at.line, column: at.column });
+                networks.push({ name: idValue, id: idValue, exportName, file: item.file, span: at.span, line: at.line, column: at.column });
               }
             }
             if (!(CHECKED_SECTIONS as readonly string[]).includes(name)) {

@@ -1,6 +1,6 @@
 {
-  // The browser half. It imports shared/ for the snapshot types and nothing
-  // from @repo/framework: every fact it shows arrives from the server.
+  // The browser half consumes shared snapshots and browser-safe declaration
+  // validators. Server evaluation and backend runtime modules stay outside it.
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],

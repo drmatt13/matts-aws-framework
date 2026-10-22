@@ -5,7 +5,7 @@ import type { Snapshot } from "../../shared/model";
 import type { FailureDestinationSettings, TriggerBinding } from "../../shared/triggers";
 import type { StudioState } from "../snapshot";
 import { SourceFiles, entryValue } from "../source";
-import { declarationObject, findProperty, unwrap } from "../source/syntax";
+import { declarationObject, findProperty, hasComments, unwrap } from "../source/syntax";
 import { assertWritable } from "../files";
 import { insertExpression } from "../resources-source";
 import { blockingProblems, triggerProblems, triggerTiming, triggerUnavailable } from "../../shared/trigger-availability";
@@ -75,18 +75,15 @@ export function planFailureDestination(root: string, state: StudioState, event: 
   const position = findProperty(declaration.object, "onFailure");
   if (position.spread || (position.property && !ts.isPropertyAssignment(position.property))) throw new Error("A computed onFailure requires source review.");
   const property = position.property as ts.PropertyAssignment | undefined;
-  if (property) {
-    const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, property.getText(source));
-    for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) if (kind === ts.SyntaxKind.SingleLineCommentTrivia || kind === ts.SyntaxKind.MultiLineCommentTrivia) throw new Error("This onFailure has comments; edit it in source to preserve them.");
-  }
+  if (property && hasComments(property.getText(source))) throw new Error("This onFailure has comments; edit it in source to preserve them.");
   const text = files.text(file);
   if (value === null) {
     if (!property) throw new Error("This event has no failure destination to remove.");
     return { file, after: pruneImports(file, text, removeProperty(text, source, declaration.object, property)) };
   }
-  const catalogFile = [...state.built.catalog.values()][0]?.value.file;
+  const catalogFile = located.properties.resources?.file;
   if (!catalogFile) throw new Error("The resource catalog module could not be located.");
-  let specifier = path.relative(path.dirname(file), path.join(root, catalogFile)).replaceAll("\\", "/").replace(/\.ts$/, "");
+  let specifier = path.relative(path.dirname(file), catalogFile).replaceAll("\\", "/").replace(/\.ts$/, "");
   if (!specifier.startsWith(".")) specifier = `./${specifier}`;
   let existing: string | undefined;
   for (const statement of source.statements) if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text === specifier && !statement.importClause?.isTypeOnly) {
@@ -129,18 +126,15 @@ export function planTriggers(root: string, state: StudioState, event: string, bi
     }
     if (array.elements.some((item) => { const value = unwrap(item); return !ts.isCallExpression(value) || !ts.isPropertyAccessExpression(value.expression) || !ts.isIdentifier(value.expression.expression) || !imports.has(value.expression.expression.text); })) throw new Error("Computed or spread trigger entries require source review.");
   }
-  if (property) {
-    const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, property.getText(source));
-    for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) if (kind === ts.SyntaxKind.SingleLineCommentTrivia || kind === ts.SyntaxKind.MultiLineCommentTrivia) throw new Error("This trigger list contains comments; edit it in source to preserve them.");
-  }
+  if (property && hasComments(property.getText(source))) throw new Error("This trigger list contains comments; edit it in source to preserve them.");
   const text = files.text(file);
   const names = new Set<string>();
   const collect = (node: ts.Node) => { if (ts.isIdentifier(node)) names.add(node.text); ts.forEachChild(node, collect); };
   collect(source);
   const alias = (prefix: string) => { let name = prefix, index = 1; while (names.has(name)) name = `${prefix}${index++}`; names.add(name); return name; };
-  const catalogFile = [...state.built.catalog.values()][0]?.value.file;
+  const catalogFile = located.properties.resources?.file;
   if (!catalogFile) throw new Error("The resource catalog module could not be located.");
-  let specifier = path.relative(path.dirname(file), path.join(root, catalogFile)).replaceAll("\\", "/").replace(/\.ts$/, "");
+  let specifier = path.relative(path.dirname(file), catalogFile).replaceAll("\\", "/").replace(/\.ts$/, "");
   if (!specifier.startsWith(".")) specifier = `./${specifier}`;
   const imported = (module: string, name: string) => {
     for (const statement of source.statements) if (ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text === module && !statement.importClause?.isTypeOnly) {

@@ -8,7 +8,7 @@ import { rewriteDescription } from "../descriptions";
 import { toRelative } from "../files";
 import { insertExpression } from "../resources-source";
 import type { StudioState } from "../snapshot";
-import { findProperty, parse, unwrap, declarationObject, expressionAt, propertyAt, literalKey } from "../source/syntax";
+import { findProperty, hasComments, parse, unwrap, declarationObject, expressionAt, propertyAt, literalKey } from "../source/syntax";
 import { parseOrigin } from "../model/origin";
 import { EditError } from "./io";
 import { readCatalogSource } from "../source/catalog";
@@ -176,6 +176,7 @@ export function setProperty(file: string, text: string, object: ts.ObjectLiteral
     return [ts.SyntaxKind.StringLiteral, ts.SyntaxKind.NumericLiteral, ts.SyntaxKind.TrueKeyword, ts.SyntaxKind.FalseKeyword].includes(item.kind);
   };
   if (!literal(node)) throw new EditError(422, `The ${key} setting is computed. Edit it in source.`);
+  if (hasComments(node.getText(source))) throw new EditError(422, `The ${key} setting contains source comments. Edit it in source so those comments are preserved deliberately.`);
   return text.slice(0, node.getStart(source)) + expression + text.slice(node.end);
 }
 

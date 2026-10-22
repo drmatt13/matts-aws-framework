@@ -41,6 +41,10 @@ for tooling/CDK. The config entry point itself remains browser-safe. These modul
 share one dependency manifest; their explicit exports and bundle tests keep their
 execution boundaries separate. There is no package-root barrel.
 
+Browser forms that only validate metadata use `@repo/framework/config/tags` or
+`@repo/framework/config/database`. These expose the same canonical validators without
+loading unrelated declaration machinery.
+
 Application section types derive from the complete resource catalog in
 [framework-config/contracts.ts](../framework-config/contracts.ts), beside the resource
 catalog. Import these with `import type`. Keep every export in that file type-only;
@@ -468,7 +472,9 @@ The override file is plain Compose and is not checked.
 VPCs are independent declarations under `framework-config/networks/<id>/index.ts`.
 Import each declaration into `framework.config.ts` and list it in the literal
 `networks` array. Every networked workload imports its selected declaration explicitly;
-there is no implicit/default VPC or inherited VPC reference.
+there is no implicit/default VPC or inherited VPC reference. Register and place with the
+same imported value. Recreating a declaration with matching IDs is rejected so its
+network policy cannot be silently replaced by another declaration's settings.
 
 ```ts
 export const applicationVpc = defineNetwork({

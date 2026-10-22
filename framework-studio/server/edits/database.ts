@@ -5,7 +5,7 @@ import { databaseConsumers, readDatabaseDraft, readDatabasePlacementDraft, type 
 import type { StudioState } from "../snapshot";
 import { SourceFiles } from "../source";
 import { locateManagedDatabase } from "../source/database";
-import { findProperty, literalKey, literalValue, unwrap } from "../source/syntax";
+import { findProperty, hasComments, literalKey, literalValue, unwrap } from "../source/syntax";
 import { assertWritable, toRelative } from "../files";
 import { setProperty } from "./creation";
 import { removeProperty } from "./splice";
@@ -38,7 +38,7 @@ export function planDatabaseSettings(root: string, state: StudioState, id: strin
   const known = models.flatMap(model => model.managedDatabase?.id === id ? [model.managedDatabase] : []);
   if (!known.length) throw new EditError(404, "Unknown managed database declaration.");
   let located = locateManagedDatabase(root, files);
-  if (!located || located.id !== id) throw new EditError(422, "The database must be an imported, exported defineDatabase declaration at framework-config/databases/<id>/index.ts. Make its settings literal in source before editing them.");
+  if (!located || located.id !== id) throw new EditError(422, "The database must be an imported, exported defineDatabase declaration inside framework-config. Make its settings literal in source before editing them.");
   const file = assertWritable(root, toRelative(root, located.file));
   let text = files.text(file);
   const settingProperty = findProperty(located.object, "settings");
@@ -65,10 +65,7 @@ export function planDatabaseSettings(root: string, state: StudioState, id: strin
     if (!ts.isObjectLiteralExpression(current)) throw new EditError(422, "Database settings are computed. Edit them in source.");
     const property = findProperty(current, key).property;
     if (property && ts.isPropertyAssignment(property)) {
-      const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, property.initializer.getText(located.source));
-      for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
-        if (token === ts.SyntaxKind.SingleLineCommentTrivia || token === ts.SyntaxKind.MultiLineCommentTrivia) throw new EditError(422, `Database settings.${key} contains a source comment. Edit that setting in source to preserve the comment deliberately.`);
-      }
+      if (hasComments(property.initializer.getText(located.source))) throw new EditError(422, `Database settings.${key} contains a source comment. Edit that setting in source to preserve the comment deliberately.`);
     }
     if (!Object.hasOwn(desired, key)) {
       if (property) text = removeProperty(text, located.source, current, property);
@@ -100,10 +97,9 @@ export function planDatabasePlacement(root: string, state: StudioState, raw: Dat
   let registry = locateConfigSource(path.join(root, "framework.config.ts"), { repositoryRoot: root, host: files.host() });
   const vpc = findProperty(located.object, "vpc").property;
   const subnet = findProperty(located.object, "subnet").property;
-  if (!vpc || !ts.isPropertyAssignment(vpc) || importedVpc(root, file, located.source, vpc.initializer, registry) !== database.networkId || (subnet && (!ts.isPropertyAssignment(subnet) || !ts.isStringLiteral(unwrap(subnet.initializer)) || (unwrap(subnet.initializer) as ts.StringLiteral).text !== database.subnet))) throw new EditError(422, "The database placement is computed or changed since the snapshot. Refresh Studio or edit it in source.");
+  if (!vpc || !ts.isPropertyAssignment(vpc) || importedVpc(file, located.source, vpc.initializer, registry) !== database.networkId || (subnet && (!ts.isPropertyAssignment(subnet) || !ts.isStringLiteral(unwrap(subnet.initializer)) || (unwrap(subnet.initializer) as ts.StringLiteral).text !== database.subnet))) throw new EditError(422, "The database placement is computed or changed since the snapshot. Refresh Studio or edit it in source.");
   for (const property of [vpc, subnet]) if (property && ts.isPropertyAssignment(property)) {
-    const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, property.initializer.getText(located.source));
-    for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) if (token === ts.SyntaxKind.SingleLineCommentTrivia || token === ts.SyntaxKind.MultiLineCommentTrivia) throw new EditError(422, "Database placement contains a source comment. Edit it in source to preserve that comment deliberately.");
+    if (hasComments(property.initializer.getText(located.source))) throw new EditError(422, "Database placement contains a source comment. Edit it in source to preserve that comment deliberately.");
   }
   let text = files.text(file);
   const imported = importVpc(file, text, edit.vpc, registry);
@@ -129,6 +125,6 @@ export function planDatabasePlacement(root: string, state: StudioState, raw: Dat
   }
   files = new SourceFiles(overrides);
   registry = locateConfigSource(path.join(root, "framework.config.ts"), { repositoryRoot: root, host: files.host() });
-  for (const changed of affected) overrides.set(changed, pruneUnusedVpcImports(root, changed, overrides.get(changed)!, registry));
+  for (const changed of affected) overrides.set(changed, pruneUnusedVpcImports(changed, overrides.get(changed)!, registry));
   return moved;
 }

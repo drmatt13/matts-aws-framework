@@ -13,6 +13,15 @@ export function parse(file: string, text: string): ts.SourceFile {
   return ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
 }
 
+/** Distinguish source comments from comment-like text inside literal values. */
+export function hasComments(text: string): boolean {
+  const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, text);
+  for (let token = scanner.scan(); token !== ts.SyntaxKind.EndOfFileToken; token = scanner.scan()) {
+    if (token === ts.SyntaxKind.SingleLineCommentTrivia || token === ts.SyntaxKind.MultiLineCommentTrivia) return true;
+  }
+  return false;
+}
+
 /** Strips the wrappers an authored value may carry: parentheses, `satisfies`, `as`. */
 export function unwrap(node: ts.Expression): ts.Expression {
   let current = node;

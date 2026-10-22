@@ -1,6 +1,9 @@
 # Framework Studio: what has been built, and why
 
-Status as of 2026-10-16.
+Historical investigation as of 2026-10-16. The implementation and verification claims
+below describe that phase. Use the [knowledge router](../aws-studio-knowledge/README.md)
+for current contracts and [Studio's guide](../../framework-studio/README.md) for supported
+workflows.
 
 ## Summary
 

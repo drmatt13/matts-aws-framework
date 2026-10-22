@@ -93,6 +93,40 @@ test("the configuration's other properties resolve one hop, like the sections do
   assert.match(slice(properties.database!.file, properties.database!.span), /^defineDatabase\(\{/);
 });
 
+test("VPC source locations follow official helper aliases and exported const declarations", () => {
+  for (const [imports, call] of [
+    ['import { defineNetwork } from "@repo/framework/config";', "defineNetwork"],
+    ['import { defineNetwork as network } from "@repo/framework/config";', "network"],
+    ['import * as framework from "@repo/framework/config";', "framework.defineNetwork"],
+    ['import { defineNetwork } from "@repo/framework/config";', "(defineNetwork)"],
+    ['import * as framework from "@repo/framework/config";', "(framework.defineNetwork)"],
+  ]) {
+    const host = memoryHost({
+      "framework.config.ts": 'import { applicationVpc } from "./network"; defineFrameworkConfig({ networks: [applicationVpc] });',
+      "network.ts": `${imports}\nexport const applicationVpc = ${call}({ id: "application", cidr: "10.0.0.0/16", zones: 2 });`,
+    });
+    const located = locateConfigSource("/repo/framework.config.ts", { repositoryRoot: "/repo", host });
+    assert.equal(located.networks[0]!.id, "application");
+    assert.equal(located.networks[0]!.exportName, "applicationVpc");
+  }
+});
+
+test("VPC indexing rejects wrappers, foreign helpers and mutable or unexported declarations", () => {
+  for (const declaration of [
+    'export const applicationVpc = customNetwork({ id: "application" });',
+    'import { defineNetwork } from "other-framework"; export const applicationVpc = defineNetwork({ id: "application" });',
+    'import type { defineNetwork } from "@repo/framework/config"; export const applicationVpc = defineNetwork({ id: "application" });',
+    'import { defineNetwork } from "@repo/framework/config"; export let applicationVpc = defineNetwork({ id: "application" });',
+    'import { defineNetwork } from "@repo/framework/config"; const applicationVpc = defineNetwork({ id: "application" });',
+  ]) {
+    const host = memoryHost({
+      "framework.config.ts": 'import { applicationVpc } from "./network"; defineFrameworkConfig({ networks: [applicationVpc] });',
+      "network.ts": declaration,
+    });
+    assert.throws(() => locateConfigSource("/repo/framework.config.ts", { repositoryRoot: "/repo", host }), /exported const.*defineNetwork/);
+  }
+});
+
 test("a spread array of modules is followed, and each entry keeps its own file", () => {
   const host = memoryHost({
     "framework.config.ts": `

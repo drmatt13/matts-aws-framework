@@ -220,7 +220,6 @@ export class SceneRenderer {
   private snapEdgeHover = true;
   /** One screen pixel, in world units, for this frame. */
   private pixel = 1;
-  private dpr = 1;
   /** Search fades every paint layer, including plinths, shadows and badges. */
   private opacity = 1;
   /** Graphite's shared unit gradients, drawn under a transform so one serves every building. */
@@ -434,7 +433,6 @@ export class SceneRenderer {
 
     const zoom = camera.zoom;
     this.pixel = 1 / zoom;
-    this.dpr = dpr;
     const world = () =>
       context.setTransform(
         dpr * zoom,

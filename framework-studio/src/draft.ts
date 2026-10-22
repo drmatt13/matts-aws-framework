@@ -8,7 +8,7 @@ import { triggerBindingsEqual, type FailureDestinationSettings, type TriggerBind
 import { CLIENT_ENVIRONMENT_ID, clientMappingsError, type ClientEnvironmentMappings } from "../shared/client-environment";
 import { readDatabaseDraft, readDatabasePlacementDraft, type DatabasePlacementEdit } from "../shared/managed-database";
 import type { DatabaseSettingsInput } from "@repo/framework/config/database";
-import { validateTags } from "@repo/framework/config";
+import { validateTags } from "@repo/framework/config/tags";
 
 import { CREATORS, creationDefaults, readCreationRequest, type CreationKind, type CreationRequest } from "../shared/creation";
 
@@ -80,6 +80,9 @@ export class InspectorDraft {
     this.publish({ baseline: snapshot, latest: snapshot, selected, mode, entries: [], reviewOpen: false, pendingNavigation: false });
   }
   private put(key: string, entry: DraftEntry | undefined): void {
+    // An accepted write cannot be cancelled by a control still dispatching an
+    // event. Keep the reviewed entries and busy state until the server answers.
+    if (this.state.busy === "apply") return;
     ++this.serial;
     this.publish({ ...this.state, entries: [...this.state.entries.filter((item) => item.key !== key), ...(entry ? [entry] : [])], reviewOpen: false, review: undefined, error: undefined, busy: undefined });
     if (!this.dirty && this.state.baseline !== this.state.latest) this.publish({ ...this.state, baseline: this.state.latest });
@@ -302,10 +305,12 @@ export class InspectorDraft {
     this.publish({ ...this.state, pendingNavigation: false }); navigation?.cancel();
   }
   discard(): void {
+    if (this.state.busy === "apply") return;
     this.keepEditing(); ++this.serial;
     this.publish({ baseline: this.state.latest, latest: this.state.latest, selected: this.state.selected, mode: this.state.mode, entries: [], reviewOpen: false, pendingNavigation: false });
   }
   discardAndContinue(): void {
+    if (this.state.busy === "apply") return;
     const navigation = this.navigation; this.navigation = undefined;
     this.discard(); navigation?.proceed();
   }

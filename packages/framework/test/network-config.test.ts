@@ -33,9 +33,10 @@ function route(path: string, extra: Record<string, unknown> = {}): Record<string
 }
 
 function config(input: Record<string, unknown>): FrameworkConfig {
+  const network = Array.isArray(input.networks) ? input.networks[0] : fixtureVpc;
   return defineFrameworkConfig({ networks: [fixtureVpc],
     resources,
-    database: { resource: resources.rds.database, vpc: fixtureVpc },
+    database: { resource: resources.rds.database, vpc: network },
     defaults: { lambda: lambdaDefaults },
     http: [], webSocket: [], events: [], services: [],
     ...input,
@@ -72,6 +73,9 @@ test("defineNetwork defaults: IPv6 out, no NAT gateway, both gateway endpoints, 
 
 test("defineNetwork refuses what it does not take, and names what it does", () => {
   const base = { cidr: "10.0.0.0/16", zones: 2 } as const;
+  for (const value of [undefined, null, [], "application", Object.create({ id: "application", ...base })]) {
+    assert.throws(() => defineNetwork(value as never), /takes a plain VPC declaration/);
+  }
   assert.throws(() => defineNetwork({ ...base, nat: true } as never), /takes natGateway: true or false\. nat was its earlier name/);
   assert.throws(() => defineNetwork({ ...base, natGateways: 1 } as never), /does not take "natGateways"\. It takes id, name, cloud, cidr, zones, egressOnlyInternetGateway, natGateway/);
   assert.throws(() => defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, ...base, natGateway: "yes" as never }), /true or false for natGateway/);
@@ -107,10 +111,10 @@ function containers(defaultSubnet?: string, override?: string, network = withNat
   return config({
     networks: [network],
     defaults: { lambda: lambdaDefaults, container: { subnet: defaultSubnet } },
-    tasks: [{ job: { cloud: { vpc: fixtureVpc, subnet: override } } }],
+    tasks: [{ job: { cloud: { vpc: network, subnet: override } } }],
     services: [{ "/orders/*": {
       directory: "/ecs_containers/services/orders", methods: ["GET"], port: 8000,
-      cloud: { vpc: fixtureVpc, subnet: override },
+      cloud: { vpc: network, subnet: override },
     } }],
   });
 }
@@ -138,30 +142,30 @@ test("a deployed private container starts through the NAT gateway or Fargate's e
   assert.doesNotThrow(() => normalizeFrameworkConfig(config({
     networks: [withoutNat],
     defaults: { lambda: lambdaDefaults, container: { subnet: "private" } },
-    tasks: [{ job: { cloud: { vpc: fixtureVpc }, deploy: "local-only" } }],
+    tasks: [{ job: { cloud: { vpc: withoutNat }, deploy: "local-only" } }],
   })), "a container AWS never runs needs nothing from its network");
 });
 
 test("a private container without NAT names every endpoint it lacks: image layers, secrets and the AWS calls it makes", () => {
   const noS3 = defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, gatewayEndpoints: { s3: false }, interfaceEndpoints: ["ecr.api", "ecr.dkr", "logs"] });
   assert.throws(
-    () => normalizeFrameworkConfig(config({ networks: [noS3], tasks: [{ job: { cloud: { vpc: fixtureVpc, subnet: "private" } } }] })),
+    () => normalizeFrameworkConfig(config({ networks: [noS3], tasks: [{ job: { cloud: { vpc: noS3, subnet: "private" } } }] })),
     /It needs the endpoint "s3" \(its image layers\): set gatewayEndpoints\.s3: true, or set natGateway: true/,
   );
   assert.throws(
-    () => normalizeFrameworkConfig(config({ networks: [fargateEndpoints], tasks: [{ job: { secrets: { API_KEY: resources.apiKey }, cloud: { vpc: fixtureVpc, subnet: "private" } } }] })),
+    () => normalizeFrameworkConfig(config({ networks: [fargateEndpoints], tasks: [{ job: { secrets: { API_KEY: resources.apiKey }, cloud: { vpc: fargateEndpoints, subnet: "private" } } }] })),
     /It needs the endpoint "secretsmanager" \(it reads a secret\): add "secretsmanager" to interfaceEndpoints in the selected VPC declaration \(about \$14\.60 a month at 2 zones\)/,
   );
   assert.throws(
     () => normalizeFrameworkConfig(config({
       networks: [fargateEndpoints],
-      tasks: [{ job: { cloud: { vpc: fixtureVpc, subnet: "private", bindings: [runsTask("other")] } }, other: { cloud: { vpc: fixtureVpc },} }],
+      tasks: [{ job: { cloud: { vpc: fargateEndpoints, subnet: "private", bindings: [runsTask("other")] } }, other: { cloud: { vpc: fargateEndpoints } } }],
     })),
     /It needs the endpoint "ecs" \(it runs task:other\)/,
   );
   assert.doesNotThrow(() => normalizeFrameworkConfig(config({
     networks: [withNat],
-    tasks: [{ job: { secrets: { API_KEY: resources.apiKey }, cloud: { vpc: fixtureVpc, subnet: "private", bindings: [runsTask("other")] } }, other: { cloud: { vpc: fixtureVpc },} }],
+    tasks: [{ job: { secrets: { API_KEY: resources.apiKey }, cloud: { vpc: withNat, subnet: "private", bindings: [runsTask("other")] } }, other: { cloud: { vpc: withNat } } }],
   })), "a NAT gateway reaches all of it");
 });
 
@@ -307,22 +311,23 @@ test("a Lambda in the VPC is held to the VPC's rules: TypeScript only, and an ev
 
 test("a Lambda whose subnet has no way out needs an endpoint for every AWS call the framework makes for it", () => {
   const sealed = defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, egressOnlyInternetGateway: false });
-  const isolatedCalls = route("/orders", { vpc: fixtureVpc, subnet: "isolated", environment: { API_KEY: resources.apiKey.arn }, cloud: { bindings: [runsTask("job")] } });
-  const tasks = [{ job: { cloud: { vpc: fixtureVpc } } }];
+  const withEndpoints = defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, interfaceEndpoints: ["secretsmanager", "ecs"] });
+  const isolatedCalls = (vpc = fixtureVpc) => route("/orders", { vpc, subnet: "isolated", environment: { API_KEY: resources.apiKey.arn }, cloud: { bindings: [runsTask("job")] } });
+  const tasks = (vpc = fixtureVpc) => [{ job: { cloud: { vpc } } }];
   assert.throws(
-    () => config({ http: [isolatedCalls], tasks }),
+    () => config({ http: [isolatedCalls()], tasks: tasks() }),
     /has subnet: "isolated", which reaches nothing beyond the VPC but the network's endpoints\. It needs the endpoints "secretsmanager" \(it reads a secret\), "ecs" \(it runs task:job\): add "secretsmanager", "ecs" to interfaceEndpoints in the selected VPC declaration \(about \$29\.20 a month at 2 zones\), or give it subnet: "private"/,
   );
   assert.doesNotThrow(
-    () => config({ networks: [defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, interfaceEndpoints: ["secretsmanager", "ecs"] })], http: [isolatedCalls], tasks }),
+    () => config({ networks: [withEndpoints], http: [isolatedCalls(withEndpoints)], tasks: tasks(withEndpoints) }),
   );
-  const privateCalls = route("/orders", { vpc: fixtureVpc, subnet: "private", environment: { API_KEY: resources.apiKey.arn } });
-  assert.doesNotThrow(() => config({ http: [privateCalls] }), "IPv6 leaves the private subnets by default");
+  const privateCalls = (vpc = fixtureVpc) => route("/orders", { vpc, subnet: "private", environment: { API_KEY: resources.apiKey.arn } });
+  assert.doesNotThrow(() => config({ http: [privateCalls()] }), "IPv6 leaves the private subnets by default");
   assert.throws(
-    () => config({ networks: [sealed], http: [privateCalls] }),
+    () => config({ networks: [sealed], http: [privateCalls(sealed)] }),
     /has subnet: "private", and the selected VPC declaration gives the private subnets no way out.*"secretsmanager" \(it reads a secret\).*, or turn on egressOnlyInternetGateway, which is free/,
   );
-  assert.doesNotThrow(() => config({ networks: [defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, egressOnlyInternetGateway: false, natGateway: true })], http: [privateCalls] }), "IPv4 through NAT is a way out");
+  assert.doesNotThrow(() => config({ networks: [withNat], http: [privateCalls(withNat)] }), "IPv4 through NAT is a way out");
 });
 
 test("a WebSocket push from a subnet with no way out is refused: no endpoint reaches the management API", () => {
@@ -335,12 +340,13 @@ test("a WebSocket push from a subnet with no way out is refused: no endpoint rea
 test("the database's IAM login needs Secrets Manager from the private subnets", () => {
   const sealed = defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, egressOnlyInternetGateway: false });
   assert.throws(
-    () => config({ networks: [sealed], http: [route("/orders", { ...connected, subnet: "isolated" })] }),
+    () => config({ networks: [sealed], http: [route("/orders", { vpc: sealed, database: true, subnet: "isolated" })] }),
     /The database's IAM login is created on deploy by a function in the private subnets that reads the database's master secret.*Turn on egressOnlyInternetGateway, which is free, or add "secretsmanager" to interfaceEndpoints/,
   );
+  const withSecrets = defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, egressOnlyInternetGateway: false, interfaceEndpoints: ["secretsmanager"] });
   assert.doesNotThrow(() => config({
-    networks: [defineNetwork({ id: "application", cloud: { constructId: "NetworkStack" }, cidr: "10.0.0.0/16", zones: 2, egressOnlyInternetGateway: false, interfaceEndpoints: ["secretsmanager"] })],
-    http: [route("/orders", { ...connected, subnet: "isolated" })],
+    networks: [withSecrets],
+    http: [route("/orders", { vpc: withSecrets, database: true, subnet: "isolated" })],
   }));
 });
 

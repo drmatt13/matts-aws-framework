@@ -12,7 +12,7 @@ function fixture(run: (root: string) => void) {
     for (const id of ["alpha", "beta"]) {
       const directory = path.join(root, `framework-config/networks/${id}`);
       mkdirSync(directory, { recursive: true });
-      writeFileSync(path.join(directory, "index.ts"), `export const ${id}Vpc = defineNetwork({ id: "${id}", cidr: "10.0.0.0/16", zones: 2 });`);
+      writeFileSync(path.join(directory, "index.ts"), `import { defineNetwork } from "@repo/framework/config";\nexport const ${id}Vpc = defineNetwork({ id: "${id}", cidr: "10.0.0.0/16", zones: 2 });`);
     }
     writeFileSync(path.join(root, "framework.config.ts"), 'import { alphaVpc } from "./framework-config/networks/alpha"; import { betaVpc } from "./framework-config/networks/beta"; defineFrameworkConfig({ networks: [alphaVpc, betaVpc] });');
     run(root);
@@ -57,12 +57,19 @@ test("unregistered, mutable, computed and shadowed native VPC references stay un
   }
 }));
 
+test("native VPC evidence recognizes TypeScript imports written with runtime .js extensions", () => fixture(root => {
+  const file = source(root, 'class Example { constructor() { selectVpc(this, primary); } }');
+  const runtimeImports = ts.createSourceFile(file.fileName, file.text.replace('"../../../framework-config/networks/alpha"', '"../../../framework-config/networks/alpha/index.js"'), ts.ScriptTarget.Latest, true);
+  assert.deepEqual([...nativeVpcReferences(root, runtimeImports).used], ["alpha"]);
+}));
+
 test("VPC setting edits preserve unchanged literals and comments inside endpoint settings", async () => {
   const { planNetwork } = await import("../server/edits/networks");
   const { SourceFiles } = await import("../server/source");
   fixture(root => {
     const file = path.join(root, "framework-config/networks/alpha/index.ts");
-    const before = `export const alphaVpc = defineNetwork({
+    const before = `import { defineNetwork } from "@repo/framework/config";
+export const alphaVpc = defineNetwork({
   id: "alpha", cidr: "10.0.0.0/16", zones: 2,
   natGateway: false,
   gatewayEndpoints: {
@@ -77,6 +84,35 @@ test("VPC setting edits preserve unchanged literals and comments inside endpoint
     const settings = { cidr: network.cidr, zones: 2 as const, nat: true, ipv6: true, s3: true, dynamodb: true, endpoints: [] };
     assert.equal(planNetwork(root, state, "alpha", settings, new SourceFiles()).after, before.replace("natGateway: false", "natGateway: true"));
     assert.equal(planNetwork(root, state, "alpha", { ...settings, nat: false, s3: false }, new SourceFiles()).after, before.replace("s3: true", "s3: false"));
+  });
+});
+
+test("VPC setting edits follow the registered declaration in cohesive modules and official aliases", async () => {
+  const { planNetwork } = await import("../server/edits/networks");
+  const { SourceFiles } = await import("../server/source");
+  fixture(root => {
+    const file = path.join(root, "framework-config/networks/alpha/index.ts");
+    const network = { id: "alpha", cidr: "10.0.0.0/16", zones: 2, natGateway: false, egressOnlyInternetGateway: true, gatewayEndpoints: [], interfaceEndpoints: [] };
+    const state = { snapshot: { models: { dev: { networks: [network] }, prod: { networks: [network] } } } } as unknown as import("../server/snapshot").StudioState;
+    const settings = { cidr: network.cidr, zones: 2 as const, nat: true, ipv6: true, s3: false, dynamodb: false, endpoints: [] };
+    for (const helper of ["defineNetwork", "network"]) {
+      const before = `import { defineNetwork as ${helper} } from "@repo/framework/config";\nexport const unrelated = ${helper}({ id: "spare", cidr: "10.1.0.0/16", zones: 2, natGateway: false });\nexport const alphaVpc = ${helper}({ id: "alpha", cidr: "10.0.0.0/16", zones: 2, natGateway: false });\n`;
+      writeFileSync(file, before);
+      assert.equal(planNetwork(root, state, "alpha", settings, new SourceFiles()).after, before.replace('id: "alpha", cidr: "10.0.0.0/16", zones: 2, natGateway: false', 'id: "alpha", cidr: "10.0.0.0/16", zones: 2, natGateway: true'));
+    }
+  });
+});
+
+test("VPC setting edits refuse to erase comments inside a changed literal", async () => {
+  const { planNetwork } = await import("../server/edits/networks");
+  const { SourceFiles } = await import("../server/source");
+  fixture(root => {
+    const file = path.join(root, "framework-config/networks/alpha/index.ts");
+    const network = { id: "alpha", cidr: "10.0.0.0/16", zones: 2, natGateway: false, egressOnlyInternetGateway: true, gatewayEndpoints: [], interfaceEndpoints: ["logs"] };
+    const state = { snapshot: { models: { dev: { networks: [network] }, prod: { networks: [network] } } } } as unknown as import("../server/snapshot").StudioState;
+    const before = 'import { defineNetwork } from "@repo/framework/config";\nexport const alphaVpc = defineNetwork({ id: "alpha", cidr: "10.0.0.0/16", zones: 2, interfaceEndpoints: [/* log delivery */ "logs"] });\n';
+    writeFileSync(file, before);
+    assert.throws(() => planNetwork(root, state, "alpha", { cidr: network.cidr, zones: 2, nat: false, ipv6: true, s3: false, dynamodb: false, endpoints: ["logs", "ssm"] }, new SourceFiles()), /comment/i);
   });
 });
 
@@ -98,11 +134,17 @@ test("unused VPC removal handles registry separators and refuses custom modules 
       }
     }
     const consumer = path.join(root, "native.ts");
-    writeFileSync(consumer, 'export { alphaVpc as sharedNetwork } from "./framework-config/networks/alpha";');
-    assert.throws(() => planNetworkRemoval(root, state, "alpha", new SourceFiles()), /native\.ts/);
+    for (const reference of [
+      'export { alphaVpc as sharedNetwork } from "./framework-config/networks/alpha";',
+      'export { alphaVpc as sharedNetwork } from "./framework-config/networks/alpha/index.js";',
+      'export const load = () => import("./framework-config/networks/alpha/index.js");',
+    ]) {
+      writeFileSync(consumer, reference);
+      assert.throws(() => planNetworkRemoval(root, state, "alpha", new SourceFiles()), /native\.ts/);
+    }
     rmSync(consumer);
     const declaration = path.join(root, "framework-config/networks/alpha/index.ts");
-    writeFileSync(declaration, 'export const alphaVpc = defineNetwork({ id: "alpha", cidr: "10.0.0.0/16", zones: 2 });\nexport const unrelated = true;');
+    writeFileSync(declaration, 'import { defineNetwork } from "@repo/framework/config";\nexport const alphaVpc = defineNetwork({ id: "alpha", cidr: "10.0.0.0/16", zones: 2 });\nexport const unrelated = true;');
     assert.throws(() => planNetworkRemoval(root, state, "alpha", new SourceFiles()), /other declarations or custom code/);
   });
 });

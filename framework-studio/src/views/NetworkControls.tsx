@@ -9,24 +9,25 @@ import { useId } from "react";
 
 /** One placement edit keeps VPC references and subnet selection in the same reviewed transaction. */
 export function PlacementControl({ target }: { readonly target: ModelTarget }) {
-  const { model, draft } = useStudio();
+  const { model, draft, draftState, live } = useStudio();
   const prefix = useId();
   if (!["lambda", "service", "task"].includes(target.kind) || (target.compute.kind === "lambda" && target.compute.implementation !== "typescript")) return null;
   const lambda = target.kind === "lambda";
+  const disabled = !!draftState.busy || live.evaluating || !!model.stale || draft.conflict;
   const current: PlacementEdit = draft.placement(target.ref) ?? {
     target: target.ref,
     vpc: target.placement.kind === "vpc" ? target.placement.networkId : null,
     subnet: target.placement.kind === "vpc" ? target.placement.subnet : "none",
   };
   return <div className="fields">
-    <div className="field"><label className="name" htmlFor={`${prefix}-vpc`}>VPC</label><span className="control"><select id={`${prefix}-vpc`} aria-label="Workload VPC" value={current.vpc ?? ""} onChange={event => {
+    <div className="field"><label className="name" htmlFor={`${prefix}-vpc`}>VPC</label><span className="control"><select id={`${prefix}-vpc`} aria-label="Workload VPC" disabled={disabled} value={current.vpc ?? ""} onChange={event => {
       const vpc = event.target.value || null;
       draft.setPlacement({ ...current, vpc, subnet: vpc ? current.subnet === "none" ? "private" : current.subnet : "none" });
     }}>
       {lambda ? <option value="">Outside VPCs</option> : null}
       {(model.networks ?? []).map(network => <option key={network.id} value={network.id}>{network.id} · {network.cidr}</option>)}
     </select></span></div>
-    {current.vpc ? <div className="field"><label className="name" htmlFor={`${prefix}-subnet`}>Subnet</label><span className="control"><select id={`${prefix}-subnet`} aria-label="Workload subnet" value={current.subnet} onChange={event => draft.setPlacement({ ...current, subnet: event.target.value as PlacementEdit["subnet"] })}>
+    {current.vpc ? <div className="field"><label className="name" htmlFor={`${prefix}-subnet`}>Subnet</label><span className="control"><select id={`${prefix}-subnet`} aria-label="Workload subnet" disabled={disabled} value={current.subnet} onChange={event => draft.setPlacement({ ...current, subnet: event.target.value as PlacementEdit["subnet"] })}>
       {(lambda ? ["private", "isolated"] : ["public", "private"]).map(subnet => <option key={subnet} value={subnet}>{subnet}</option>)}
     </select></span></div> : null}
     {target.origins.length > 1 ? <p className="small muted">Updates all routes sharing this workload.</p> : null}
@@ -43,6 +44,7 @@ export function NetworkControls({ id }: { readonly id: string }) {
   const source = snapshot.source.entities[id]?.value;
   const fields = CREATORS.vpc.fields.filter(field => !["id", "description", "endpoints", "tags"].includes(field.key));
   const form = settings;
+  const disabled = !!draftState.busy || live.evaluating || !!model.stale || draft.conflict;
   const update = (key: string, value: string | number | boolean) => {
     const next = { ...form, [key]: value };
     draft.setNetwork(network.id, next as NetworkSettings);
@@ -55,12 +57,12 @@ export function NetworkControls({ id }: { readonly id: string }) {
     <p className="small muted">Identity: {network.id} · {network.constructId}</p>
     {database ? <div className="network-database-home"><strong>Home of the application database</strong><p className="small muted">This VPC cannot be removed while the database is placed here.</p><button className="linkish small" onClick={() => select(database.resource)}>Configure application PostgreSQL</button></div> : null}
     <div className="fields">{fields.map(field => <div className="field" key={field.key}><label className="name" htmlFor={`${prefix}-${field.key}`}>{field.label}</label><span className="control">
-      {field.type === "boolean" ? <InspectorSwitch id={`${prefix}-${field.key}`} label={field.label} checked={form[field.key as keyof typeof form] === true} onChange={checked => update(field.key, checked)} describedBy={field.help ? `${prefix}-${field.key}-help` : undefined} />
-        : <input id={`${prefix}-${field.key}`} type={field.type === "number" ? "number" : "text"} value={String(form[field.key as keyof typeof form])} onChange={event => update(field.key, field.type === "number" ? Number(event.target.value) : event.target.value)} />}</span>
+      {field.type === "boolean" ? <InspectorSwitch id={`${prefix}-${field.key}`} label={field.label} disabled={disabled} checked={form[field.key as keyof typeof form] === true} onChange={checked => update(field.key, checked)} describedBy={field.help ? `${prefix}-${field.key}-help` : undefined} />
+        : <input id={`${prefix}-${field.key}`} disabled={disabled} type={field.type === "number" ? "number" : "text"} value={String(form[field.key as keyof typeof form])} onChange={event => update(field.key, field.type === "number" ? Number(event.target.value) : event.target.value)} />}</span>
       {field.help ? <span id={`${prefix}-${field.key}-help`} className="note">{field.help}</span> : null}
     </div>)}<div className="field endpoint-field"><label className="name" htmlFor={`${prefix}-endpoints`}>Interface endpoints</label>
       <InterfaceEndpointPicker id={`${prefix}-endpoints`} services={model.interfaceEndpointServices} selected={settings.endpoints}
-        onChange={endpoints => draft.setNetwork(network.id, { ...settings, endpoints })} disabled={!!draftState.busy || live.evaluating || !!model.stale || draft.conflict}
+        onChange={endpoints => draft.setNetwork(network.id, { ...settings, endpoints })} disabled={disabled}
         describedBy={`${prefix}-endpoints-help`} />
       <p id={`${prefix}-endpoints-help`} className="small muted">Each service incurs hourly charges in each zone and per GB.</p>
     </div></div>
@@ -72,7 +74,7 @@ export function NetworkControls({ id }: { readonly id: string }) {
     <details><summary>Remove VPC</summary>
       <p className="small muted">Removes this unused declaration and registry entry through diff review. Applying source does not delete AWS resources.</p>
       {used ? <p className="small muted">Reassign workloads, the database, and native resource references before removal.</p> : null}
-      <button className="button" disabled={used || draft.dirty} onClick={() => { draft.removeNetwork(network.id); void draft.review(); }}>Review VPC removal</button>
+      <button className="button" disabled={disabled || used || draft.dirty} onClick={() => { draft.removeNetwork(network.id); void draft.review(); }}>Review VPC removal</button>
     </details>
   </InspectorSection>;
 }

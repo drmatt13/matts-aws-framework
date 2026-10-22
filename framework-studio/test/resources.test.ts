@@ -147,6 +147,35 @@ test("a concurrent edit expires a preview without overwriting it", async () => {
   await builder.refresh();
 });
 
+test("failed multi-file resource edits preserve an external deletion and restore remaining files", async () => {
+  const history = service.history();
+  const plan = await service.plan(intent({ group: "providers" }), revision(), "dev");
+  assert.equal(plan.ok, true, JSON.stringify(plan.diagnostics));
+  assert.equal(plan.changes.length, 2);
+  const refresh = builder.refresh.bind(builder);
+  let fail = true;
+  builder.refresh = async () => {
+    if (fail) {
+      fail = false;
+      rmSync(route);
+    }
+    throw new Error("Simulated verification failure after an external deletion");
+  };
+  try {
+    const result = await service.apply(plan.planId);
+    assert.equal(result.status, "unconfirmed", result.message);
+    assert.match(result.message, /snapshot could not be refreshed/);
+    assert.equal(readFileSync(catalog, "utf8"), original, "one failed restoration cannot skip another file");
+    assert.equal(existsSync(route), false, "the external deletion remains intact");
+    assert.deepEqual(service.history(), history, "a failed edit is never recorded as applied");
+  } finally {
+    builder.refresh = refresh;
+    writeFileSync(catalog, original);
+    writeFileSync(route, http);
+    await builder.refresh();
+  }
+});
+
 test("resource API rejects malformed policies and secret values never enter any preview", () => {
   assert.throws(() => readResourceIntent({ intent: { ...intent(), required: "yes" } }));
   assert.throws(() => readResourceIntent({ intent: { ...intent(), requirements: { bad: "unknown" } } }));

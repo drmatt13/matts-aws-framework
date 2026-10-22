@@ -5,7 +5,7 @@ import type { ResourceApply, ResourceDetails, ResourceIntent, ResourcePlan } fro
 import type { HistoryState } from "../shared/api";
 import type { Mode, ModelResource } from "../shared/model";
 import { EvaluatorPool } from "./evaluator/pool";
-import { EditError, writeAtomically } from "./edits/transaction";
+import { EditError, writeAtomically, writeSourceChange } from "./edits/io";
 import { diffOf } from "./edits/plan";
 import { hashEditableFiles, sha256, toRelative } from "./files";
 import type { SnapshotBuilder, StudioState } from "./snapshot";
@@ -145,14 +145,16 @@ export class ResourceService {
     } catch {
       let conflicted = false;
       for (const change of written.reverse()) {
-        if (readFileSync(change.file, "utf8") === change.after) {
-          writeAtomically(this.root, change.file, change.before);
+        try {
+          assertResourceFile(this.root, change.file);
+          writeSourceChange(this.root, change.file, change.after, change.before);
           this.ownWrites.set(toRelative(this.root, change.file), sha256(change.before));
-        } else conflicted = true;
+        } catch { conflicted = true; }
       }
-      const state = await this.builder.refresh();
+      const state = await this.builder.refresh().catch(() => undefined);
       this.expirePlans();
-      return { status: conflicted ? "unconfirmed" : "reverted", message: conflicted ? "The resource edit could not be confirmed. Concurrent edits were preserved; review the changed files." : "The resource edit was reverted because it could not be confirmed.", resource: inverse ? entry.nextResource : entry.resource, revision: state.snapshot.revision, history: this.history() };
+      const message = conflicted ? "The resource edit could not be confirmed. Concurrent edits were preserved; review the changed files." : "The resource edit was reverted because it could not be confirmed.";
+      return { status: conflicted ? "unconfirmed" : "reverted", message: `${message}${state ? "" : " The snapshot could not be refreshed; refresh Studio after resolving the failure."}`, resource: inverse ? entry.nextResource : entry.resource, revision: state?.snapshot.revision ?? this.state().snapshot.revision, history: this.history() };
     }
   }
 }

@@ -1,6 +1,6 @@
 import ts from "typescript";
 import type { LiteralValue } from "../../shared/api";
-import { literalKey, unwrap } from "../source/syntax";
+import { hasComments, literalKey, unwrap } from "../source/syntax";
 
 /**
  * Text edits that change one property and nothing else.
@@ -120,6 +120,7 @@ export function insertProperty(
   const containerStart = container.getStart(sourceFile);
 
   if (properties.length === 0) {
+    if (hasComments(container.getText(sourceFile))) throw new Error("This empty object contains source comments. Add its first property in your editor so those comments are preserved deliberately.");
     return `${text.slice(0, containerStart)}{ ${property} }${text.slice(container.end)}`;
   }
 

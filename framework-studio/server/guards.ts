@@ -25,7 +25,8 @@ export function hostGuard(port: number) {
 
 function equalTokens(expected: string, supplied: unknown): boolean {
   if (typeof supplied !== "string" || supplied.length !== expected.length) return false;
-  return timingSafeEqual(Buffer.from(expected), Buffer.from(supplied));
+  const left = Buffer.from(expected), right = Buffer.from(supplied);
+  return left.length === right.length && timingSafeEqual(left, right);
 }
 
 export function apiGuard(token: string) {

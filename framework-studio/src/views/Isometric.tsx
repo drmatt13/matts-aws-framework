@@ -97,12 +97,12 @@ export function Isometric() {
     [snapshot.source.catalog],
   );
   const resourceAvailability = useMemo(() => catalogAvailability(snapshot.models), [snapshot.models]);
-  const availableTagKeys = useMemo(() => tagKeys(model), [model]);
+  const availableTagKeys = useMemo(() => tagKeys(model, index), [model, index]);
   const activeTagKey = model.tagging ? tagFilter.key : "";
   const untaggedOnly = activeTagKey === UNTAGGED_FILTER;
   const filterValue = untaggedOnly ? null : tagFilter.value;
-  const untaggedCount = useMemo(() => tagGroups(model, UNTAGGED_FILTER)[0]!.members.length, [model]);
-  const groups = useMemo(() => activeTagKey ? tagGroups(model, activeTagKey) : [], [model, activeTagKey]);
+  const untaggedCount = useMemo(() => tagGroups(model, UNTAGGED_FILTER, index)[0]!.members.length, [model, index]);
+  const groups = useMemo(() => activeTagKey ? tagGroups(model, activeTagKey, index) : [], [model, activeTagKey, index]);
   const tagMatchCount = groups.find(group => group.value === filterValue)?.members.length ?? 0;
   const topology = useMemo(() => buildScene(model, { webSocketApi: snapshot.webSocketApi, conditions, resourceAvailability,
     layoutModels: [snapshot.models.dev, snapshot.models.prod], layoutSettings: { aspect, previous: previousLayout.current?.positions, previousKey: previousLayout.current?.topologyKey } }), [model, snapshot.models, snapshot.webSocketApi, conditions, resourceAvailability, aspect]);

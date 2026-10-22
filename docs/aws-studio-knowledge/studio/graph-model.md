@@ -45,6 +45,10 @@ When adding a relation, update projection, shared types, lookup/category labels,
 
 `ModeModel.networks` contains stable VPC identities and per-network settings.
 VPC workload placement includes `networkId`; recognized native member placement does too.
+Network production applicability derives from the projected targets' placement and
+production lanes, including the selected WebSocket API setting, then adds database and
+source-discovered native-stack consumers. Do not recalculate workload availability in
+the network projection with different deployment options.
 Network islands, subnet bands and fixtures use VPC-qualified IDs. The database's local
 counterpart is drawn only in its declared VPC. Native helper calls and simple aliases are
 source evidence; synthesis inventory remains the authority for built infrastructure.

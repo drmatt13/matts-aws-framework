@@ -19,6 +19,7 @@ test("network registries have stable identities and allow overlapping independen
 });
 
 test("placement always requires a registered import, with no implicit network or defaults", () => {
+  assert.throws(() => config({ defaults: { ...defaults, vpc: primary } } as never), /defaults.vpc is not supported.*explicitly on each workload/);
   assert.throws(() => config({ http: [{ "/orders": { ...lambda, subnet: "private" } }] }), /explicit imported vpc/);
   assert.throws(() => config({ tasks: [{ job: {} }] }), /explicit imported vpc/);
   assert.throws(() => config({ http: [{ "/orders": { ...lambda, vpc: defineNetwork({ id: "unknown", cidr: "10.2.0.0/16", zones: 2 }) } }] }), /not the declaration registered/);
@@ -26,6 +27,17 @@ test("placement always requires a registered import, with no implicit network or
   const outside = config({ http: [{ "/orders": lambda }] });
   assert.equal(resolveLambdaTarget(outside, "orders").subnet, "none");
   assert.equal(getFrameworkTargets(outside)[0]!.vpc, undefined);
+});
+
+test("a second declaration cannot impersonate a registered VPC by reusing its identity", () => {
+  const conflicting = defineNetwork({ id: sealed.id, cloud: sealed.cloud, cidr: "10.3.0.0/16", zones: 3, natGateway: true, tags: { owner: "other" } });
+  const duplicate = defineNetwork({ id: sealed.id, cloud: sealed.cloud, cidr: sealed.cidr, zones: sealed.zones, egressOnlyInternetGateway: false });
+  for (const vpc of [conflicting, duplicate]) {
+    assert.throws(() => config({ http: [{ "/orders": { ...lambda, vpc } }] }), /not the declaration registered.*Import the same declaration/);
+    assert.throws(() => config({ tasks: [{ job: { cloud: { vpc } } }] }), /not the declaration registered/);
+    const resources = defineResources({ data: resource.stack<{ database: { node: { id: string; path: string }; connections: object } }>() });
+    assert.throws(() => config({ resources, database: { resource: resources.data.database, vpc } }), /not the declaration registered/);
+  }
 });
 
 test("an explicit VPC lifts Lambda placement to private and preserves isolated subnet choices", () => {

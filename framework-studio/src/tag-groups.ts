@@ -1,30 +1,31 @@
 import type { ModeModel, TagFacts } from "../shared/model";
 import { environments } from "./deployment";
+import { indexModel, type ModelIndex } from "./lookup";
 
 /** Brackets cannot occur in an authored tag key, so this view option cannot collide with metadata. */
 export const UNTAGGED_FILTER = "[untagged]";
 
-export function entityTagFacts(model: ModeModel, id: string): TagFacts | undefined {
-  if (model.localServices?.some(service => service.id === id) && model.managedDatabase) return model.tagging?.[model.managedDatabase.resource] ?? model.tagging?.[`database:${model.managedDatabase.id}`];
+function entityTagFacts(model: ModeModel, id: string, index?: ModelIndex): TagFacts | undefined {
+  if ((index ? index.localServices.has(id) : model.localServices?.some(service => service.id === id)) && model.managedDatabase) return model.tagging?.[model.managedDatabase.resource] ?? model.tagging?.[`database:${model.managedDatabase.id}`];
   return model.tagging?.[id];
 }
-export const entityTagValue = (model: ModeModel, id: string, key: string): string | null => entityTagFacts(model, id)?.effective[key] ?? null;
+export const entityTagValue = (model: ModeModel, id: string, key: string, index?: ModelIndex): string | null => entityTagFacts(model, id, index)?.effective[key] ?? null;
 /** Plain parameters, file metadata and framework-owned projections do not need application tags. */
-export function isUntaggedCandidate(model: ModeModel, id: string): boolean {
-  if (model.localServices?.some(service => service.id === id)) return false;
-  const resource = model.resources.find(resource => resource.id === id);
+function isUntaggedCandidate(id: string, index: ModelIndex): boolean {
+  if (index.localServices.has(id)) return false;
+  const resource = index.resources.get(id);
   if (!resource) return true;
-  const owner = resource.parent ? model.resources.find(parent => parent.id === resource.parent) : undefined;
+  const owner = resource.parent ? index.resources.get(resource.parent) : undefined;
   return resource.kind !== "input" && resource.kind !== "envFile" && resource.kind !== "group"
     && !resource.frameworkStack && !resource.frameworkManaged && !owner?.frameworkStack && !owner?.frameworkManaged;
 }
-export const matchesTagFilter = (model: ModeModel, id: string, key: string, value: string | null): boolean => key === UNTAGGED_FILTER
-  ? isUntaggedCandidate(model, id) && Object.keys(entityTagFacts(model, id)?.effective ?? {}).length === 0
-  : (value !== null || isUntaggedCandidate(model, id)) && entityTagValue(model, id, key) === value;
+export const matchesTagFilter = (model: ModeModel, id: string, key: string, value: string | null, index: ModelIndex): boolean => key === UNTAGGED_FILTER
+  ? isUntaggedCandidate(id, index) && Object.keys(entityTagFacts(model, id, index)?.effective ?? {}).length === 0
+  : (value !== null || isUntaggedCandidate(id, index)) && entityTagValue(model, id, key, index) === value;
 export const tagValueLabel = (value: string | null): string => value === null ? "Untagged" : value === "" ? "(empty value)" : value === "Untagged" ? '"Untagged" (value)' : value;
 export const compareTagValues = (a: string | null, b: string | null): number => a === b ? 0 : a === null ? 1 : b === null ? -1 : a < b ? -1 : 1;
-export function tagKeys(model: ModeModel): readonly string[] {
-  return [...new Set(tagMembers(model).flatMap(member => Object.keys(entityTagFacts(model, member.id)?.effective ?? {})))].sort();
+export function tagKeys(model: ModeModel, index = indexModel(model)): readonly string[] {
+  return [...new Set(tagMembers(model).flatMap(member => Object.keys(entityTagFacts(model, member.id, index)?.effective ?? {})))].sort();
 }
 
 export interface TagMember { readonly id: string; readonly label: string; readonly kind: string; readonly placement?: string }
@@ -44,13 +45,14 @@ function tagMembers(model: ModeModel): readonly TagMember[] {
 }
 
 /** Logical membership crosses kinds/files; each active entity occurs once. */
-export function tagGroups(model: ModeModel, key: string): readonly TagGroup[] {
-  if (key === UNTAGGED_FILTER) return [{ value: null, members: tagMembers(model).filter(member => matchesTagFilter(model, member.id, key, null)).sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)) }];
+export function tagGroups(model: ModeModel, key: string, index = indexModel(model)): readonly TagGroup[] {
+  if (key === UNTAGGED_FILTER) return [{ value: null, members: tagMembers(model).filter(member => matchesTagFilter(model, member.id, key, null, index)).sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)) }];
   const groups = new Map<string | null, TagMember[]>();
   for (const member of tagMembers(model)) {
-    const value = entityTagValue(model, member.id, key);
-    if (value === null && !isUntaggedCandidate(model, member.id)) continue;
-    groups.set(value, [...(groups.get(value) ?? []), member]);
+    const value = entityTagValue(model, member.id, key, index);
+    if (value === null && !isUntaggedCandidate(member.id, index)) continue;
+    const members = groups.get(value);
+    if (members) members.push(member); else groups.set(value, [member]);
   }
   return [...groups].sort(([a], [b]) => compareTagValues(a, b)).map(([value, members]) => ({ value, members: members.sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)) }));
 }

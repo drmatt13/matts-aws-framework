@@ -557,7 +557,7 @@ infrastructure inventory carry references and identifiers, never resolved input 
     over an SVG of curves.
   - [Isometric](../../framework-studio/src/views/Isometric.tsx).
   - [Database](../../framework-studio/src/views/Database.tsx).
-  - [Deploy](../../framework-studio/src/views/Deploy.tsx): placeholder for deployment controls.
+  - [Deploy](../../framework-studio/src/views/Deploy.tsx): deployment discovery, reviewed plans, authorized operations and local lifecycle controls; see [current operations](../aws-studio-knowledge/deployment/operations.md).
   - [Inspector](../../framework-studio/src/views/Inspector.tsx) and the
     [edit dialog](../../framework-studio/src/views/EditDialog.tsx), in React DOM, never on
     a canvas.

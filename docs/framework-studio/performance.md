@@ -55,11 +55,17 @@ dragging, wheel zoom and toolbar zoom. Scene/UI regression tests cover
 coalescing, canceled hover, cache invalidation, fonts, offscreen animation,
 deployment badges, missing-input markers, picking and unchanged layout rules.
 
-The focused scene/UI run passed 103 tests, and both the client and Studio builds
-passed. The full repository verification reached six failures in untouched
-tests: Docker Compose plugin discovery, deployment prerequisites, local process
-ownership, dotenv object prototypes, and two WebSocket hover expectations. The
-two hover failures were also reproduced with the original scene builder.
+These measurements describe that renderer fixture, not the repository's current
+verification status. Run the [current checks](../aws-studio-knowledge/guides/verification-and-maintenance.md)
+after source changes; browser measurements supplement those checks.
+
+The consolidation pass also measured a 12,000-resource shared-tag fixture. Reusing
+the existing model index and appending to local group buckets reduced median grouping
+time from 55.62 ms to 6.80 ms over five runs each. This removes quadratic copying and
+repeated resource scans; it does not establish an FPS improvement. Importing the same
+tag validators through `@repo/framework/config/tags` reduced the production entry chunk
+from 624.41 kB (191.48 kB gzip) to 605.82 kB (186.01 kB gzip), without adding another
+validator implementation. The chunk still exceeds Vite's 500 kB warning threshold.
 
 ## Remaining opportunities
 
@@ -100,6 +106,7 @@ before and after, measured in-process on a clean export of the same commit.
 | Candidate type-check (`resourceTypeErrors`) | Each review or apply of a resource, trigger, stack or creation re-parsed about 3,500 `node_modules` declaration files, blocking the server thread. | Parsed dependency declarations are shared with the capability program and dropped after ten idle minutes (about 700 MB while held; peak memory is unchanged). | 2.2 s | 0.6–0.75 s |
 | Capability discovery cache miss | The same re-parse after a CDK, catalog or framework-config change. | Same shared declarations. | 1.9 s | 0.29 s |
 | `buildSourceIndex` (warm) | The CDK entry point's import graph was walked twice, and export stacks re-parsed their files for a class location. | One `readConstructorSites` walk serves the catalog and export stacks; the location comes from the parsed declaration. | 80 ms | 51 ms |
+| Tag editability across 68 entities | Every entity rediscovered the complete config and catalog. | Reuse the current source index's discoveries; resolve edited overlays afresh. Three passes with fresh parsed-file state. | 206–218 ms | 4–8 ms |
 
 `SnapshotBuilder` also parses each source file once per refresh for the index and
 both modes' connection evidence. Evaluator process start-up and the framework's own

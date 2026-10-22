@@ -159,6 +159,7 @@ const KNOWN_INTERFACE_ENDPOINTS: ReadonlySet<string> = new Set(INTERFACE_ENDPOIN
  * ```
  */
 export function defineNetwork(declaration: NetworkDeclaration): FrameworkNetwork {
+  if (!declaration || typeof declaration !== "object" || Array.isArray(declaration) || ![Object.prototype, null].includes(Object.getPrototypeOf(declaration))) throw new Error("defineNetwork() takes a plain VPC declaration with id, cidr and zones.");
   if (["region", "regions", "allowedRegions"].some(key => key in declaration)) throw new Error("Region belongs to framework:targets.<name>.region in cdk-app/cdk.json; all VPCs inherit the deployment region. Use separate deployment targets for separate regions.");
   if ("nat" in declaration) {
     throw new Error("defineNetwork() takes natGateway: true or false. nat was its earlier name.");
@@ -256,7 +257,7 @@ export function networkRegistry(config: { readonly networks?: readonly Framework
 export function resolveNetwork(config: { readonly networks?: readonly FrameworkNetwork[] }, reference: FrameworkNetwork | undefined): FrameworkNetwork {
   if (!isFrameworkNetwork(reference)) throw new Error("VPC placement requires an explicit imported vpc reference from defineNetwork().");
   const network = networkRegistry(config).get(reference.id);
-  if (!network || network.cloud.constructId !== reference.cloud?.constructId) throw new Error(`VPC "${reference.id}" is not the declaration registered in networks.`);
+  if (network !== reference) throw new Error(`VPC "${reference.id}" is not the declaration registered in networks. Import the same declaration for registration and placement; matching IDs do not merge separate VPC policies.`);
   return network;
 }
 

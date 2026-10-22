@@ -78,6 +78,25 @@ test("configuration remains browser-safe without loading runtime or local execut
   assert.ok(!inputs.some((input) => /src\/(runtime|local)\/|src\/config\/source\.ts|node_modules\//.test(input)));
 });
 
+test("tag validation imports only its pure module, without the declaration graph", async () => {
+  const result = await build({
+    absWorkingDir: packageRoot,
+    stdin: {
+      contents: 'export * from "@repo/framework/config/tags";',
+      resolveDir: packageRoot,
+      loader: "ts",
+    },
+    bundle: true,
+    platform: "browser",
+    format: "esm",
+    treeShaking: false,
+    write: false,
+    metafile: true,
+  });
+  const inputs = Object.keys(result.metafile.inputs).filter(input => input !== "<stdin>");
+  assert.deepEqual(inputs, ["src/config/tags.ts"]);
+});
+
 test("local origins can be imported without loading the executor", async () => {
   const result = await build({
     absWorkingDir: packageRoot,

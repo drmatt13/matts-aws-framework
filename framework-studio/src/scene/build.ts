@@ -653,7 +653,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
     const spec = specsById.get(position.id)!;
     // Node slots and measured anchors must agree with the optimizer's input.
     const footprint = measuredSpecs.get(spec.id)!;
-    const width = footprint.width + 2, length = footprint.length + 2;
+    const length = footprint.length + 2;
     const inset = insets.get(position.id)!;
     const top = Math.round(position.top + inset);
     let difference = Math.round(position.left + inset + length);

@@ -38,6 +38,13 @@ Deployment cards adapt to available width; review tables scroll within their own
 and confirmation actions wrap without leaving the dialog. Log updates follow the bottom
 only while the reader remains there.
 
+Gate a form's related controls together. VPC and workload placement editors pause native
+inputs, switches, placement selects, endpoint pickers and removal actions during pending
+review/apply, configuration evaluation, stale configuration, and source conflicts.
+A partially disabled form invites edits that cannot participate in the displayed review.
+The shared draft enforces its accepted-write boundary independently of control state;
+see [editing transactions](../aws-studio-knowledge/studio/editing.md).
+
 ## Audit and regression coverage
 
 The consistency audit covered shell navigation and health, Board, Isometric controls,
@@ -57,13 +64,9 @@ and deletion can be exercised with mocked API responses while refusing all opera
 requests. These checks establish UI behavior; applying source, deployment, live database
 operations and infrastructure replacement retain their separate authorization boundaries.
 
-The October 21, 2026 pass completed `npm run verify` (including 536 Studio tests),
-the additional entry-point connection-recovery regression, Studio TypeScript checking,
-the production UI build, the knowledge-link check, and
-`git diff --check`. A real Chrome pass covered 67 view/size combinations at 320, 420,
-760, 1100 and 1440px, checked focus/reset/navigation behavior and forced-color selects,
-and found no horizontal page/panel overflow or lost select adornments in those cases.
-Separate mocked production plan/deletion checks covered 420, 700, 1000 and 1440px,
-confirmation gating and dialog/table containment, with no deployment mutations or
-browser runtime errors. The build still reports its existing main-chunk size warning;
-live AWS operations and live database behavior were not part of this UI pass.
+For control changes, exercise the complete stage → review → back/discard lifecycle,
+including a delayed review and stale source. Check the rendered disabled state and
+keyboard focus as well as the draft transitions. Browser checks should report the
+actual viewports and workflows exercised; unit fixtures alone establish neither layout
+quality nor live AWS behavior. Build output and current checks belong in the engineering
+handoff rather than permanent historical test counts here.

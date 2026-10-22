@@ -51,7 +51,9 @@ Extend a DSL field through its type, normalization/defaults, validation, CDK/loc
 VPC declarations are exported `defineNetwork({ id, ... })` values, one module under
 `framework-config/networks/<id>/index.ts`, registered in a literal `networks` array.
 Networked Lambdas declare `vpc`; services/tasks declare `cloud.vpc`. References are
-explicit, never inherited. The imported `defineDatabase` value owns its resource and VPC, allowing cross-VPC
+explicit, never inherited. Registration and placement import the same declaration value;
+another `defineNetwork` call with matching IDs is rejected rather than silently replacing
+its policy with the registry's CIDR, egress, endpoints and tags. The imported `defineDatabase` value owns its resource and VPC, allowing cross-VPC
 rejection even when native RDS is absent in development.
 
 The primary managed PostgreSQL declaration is `defineDatabase` in

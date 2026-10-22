@@ -5,13 +5,12 @@ verify a change, the traps already found, its known limits, and where it could g
 
 ## Where things stand
 
-- Phase 1 (Board, Inspector, edit loop) is committed in `d1e3d1d`.
-- Phase 2 (the isometric view) is in the working tree: `src/scene/*`,
-  `src/views/Isometric.tsx`, `test/landscape.test.ts`, and edits to `main.tsx`,
-  `Shell.tsx`, `styles.css`, `scene/iso.ts` and the README. It passes `npm run verify`. It is
-  not yet committed.
-- `FRAMEWORK_STUDIO_ISOMETRIC_PHASE_PROMPT.md` at the repository root is untracked. Keep
-  it, move it here, or delete it, as you prefer.
+- Board, Isometric, Database and Deploy share source-linked selection and inspectors.
+  Supported authoring uses a draft, validated review and guarded source application.
+- The [knowledge router](../aws-studio-knowledge/README.md) owns current subsystem
+  contracts and verification routes. The [declaration guide](declarations-and-tags.md)
+  explains the consolidated workload layout and metadata; filenames do not register
+  workloads or establish deployment identity.
 - Owner decisions still in force: a TypeScript renderer (no Bevy/WASM), a host process
   (not Compose), and preview-then-apply (never write immediately).
 

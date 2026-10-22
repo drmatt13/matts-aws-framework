@@ -111,6 +111,22 @@ test("a selected file exposes all actual variables and saves a reviewed batch wi
   } finally { remove(root); }
 });
 
+test("a saved inputs file remains applied when snapshot refresh fails, with an actionable value-free response", async () => {
+  const root = fixture();
+  try {
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), "TOKEN=old-private\n");
+    const { builder, service } = editing(root);
+    const plan = service.plan("dev", [{ name: "TOKEN", value: "new-private" }], service.details("dev").hash, "initial");
+    builder.refresh = async () => { throw new Error("private diagnostic sentinel"); };
+    const response = await service.apply(plan.planId);
+    assert.equal(response.status, "applied");
+    assert.match(response.message, /Saved cdk-app\/\.env\.dev.*refresh.*Reload/s);
+    assert.ok(!/old-private|new-private|private diagnostic sentinel/.test(JSON.stringify(response)));
+    assert.equal(parseEnv(readFileSync(path.join(root, "cdk-app/.env.dev"), "utf8")).TOKEN, "new-private");
+    await assert.rejects(service.apply(plan.planId), /expired/);
+  } finally { remove(root); }
+});
+
 test("dotenv batches reject stale file hashes, intervening writes, duplicate additions, invalid names and a contradictory mode", async () => {
   const root = fixture();
   try {

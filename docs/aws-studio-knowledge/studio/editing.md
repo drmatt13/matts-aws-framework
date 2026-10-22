@@ -39,6 +39,10 @@ This is the canonical graph-to-source contract. Creators, trigger editors and re
 
 `InspectorDraft` in [draft.ts](../../../framework-studio/src/draft.ts) owns baseline/latest snapshots, staged entries, validation, review and navigation protection. While dirty, the visible graph stays on the baseline. A different snapshot revision marks conflict; it does not auto-merge. Invalid/conflicting drafts cannot apply. `StudioProvider` in [studio.tsx](../../../framework-studio/src/studio.tsx) connects this lifecycle across routes and browser exit. The draft/history is in memory, not durable recovery storage.
 
+During apply, draft setters and discard are inert until the server responds, preserving
+the accepted review payload. Network creation/settings and workload placement controls
+use the same busy, evaluating, stale and conflict gates as the other Inspectors.
+
 Inspector settings consume `FieldFact` inheritance and source editability. `FIELDS`, `DEFAULT_FIELDS`, `fieldFacts` and `fieldById` in [edits/fields.ts](../../../framework-studio/server/edits/fields.ts) define recognized fields, domains, parsers, source paths and defaults. Add a field through this shared contract rather than a UI-only input. Effective inherited values and authored overrides must remain distinct; removal restores inheritance. Some boolean fields support true/absence rather than explicit false.
 
 Boolean settings reuse `InspectorSwitch` in `InspectorUI.tsx`, including VPC/database
@@ -73,11 +77,27 @@ flowchart LR
 
 `planEdit` in [plan.ts](../../../framework-studio/server/edits/plan.ts) uses [source locations](source-indexing.md), narrow parsing and semantic patches; `diffOf` emits a compact contiguous diff. [splice.ts](../../../framework-studio/server/edits/splice.ts) replaces/inserts/removes supported literal ranges while preserving surrounding source/quotes. It refuses unsafe computed shapes/comments instead of reprinting entire files.
 
+Comment protection belongs in the shared source operations: inserting the first property
+into a commented empty object is refused, and `setProperty` refuses replacing a literal
+whose range contains comments. Editors may change a neighboring literal while preserving
+comments outside that range. Do not add editor-specific fallbacks that discard this prose.
+VPC settings use the registered declaration's source span, including official import
+aliases and modules containing multiple declarations; a helper's spelling or file layout
+does not identify the declaration to edit.
+
 Plans capture revision and file hashes; both fresh mode evaluations must pass. Trigger/CDK/creation changes also use TypeScript checks where implemented. Normal Inspector edits preserve target/construct identity. Creation permits expected additions while preserving existing identities and includes [preview-generated artifacts](creation-and-connections.md) in review/history. Plans expire after relevant source changes. Review approval saves authored/generated source; it does not synthesize or deploy infrastructure.
 
 Apply checks source before and after preflight, then checks each write's expected contents. `writeSourceChange` in [io.ts](../../../framework-studio/server/edits/io.ts) distinguishes absent files (`null`) from empty files, creates through an exclusive link, and replaces existing files by temporary-file rename. After refresh, the batch compares relevant actual identities/settings/routes/triggers/creation relationships with the reviewed model.
 
 **Multi-file apply is not a crash-atomic filesystem transaction.** On caught failure it restores written files in reverse only while they still equal its own written contents. Concurrent edits are preserved and can produce `unconfirmed`; inspect those files. Undo/redo uses expected contents and inverse validation, including creator-owned file deletion. Server restart loses in-memory review/history; no durable journal makes interrupted writes automatically recoverable. Revision/hash checks also do not eliminate every external-editor race between a check and rename.
+
+The single-edit API and resource editor follow the same expected-contents write guard during recovery.
+Post-write snapshot exceptions and stale/error models trigger restoration, never a
+successful history entry. An external edit or deletion remains untouched and yields
+`unconfirmed`. If refresh still fails after recovery, the response distinguishes restored
+source from an unavailable snapshot and asks the user to refresh after resolving it.
+Resource rollback attempts every written file even when one was externally deleted or
+cannot be restored, reports `unconfirmed`, and leaves successful undo history untouched.
 
 Use [extensions](../guides/extensions.md) for new fields. Tests: [plan](../../../framework-studio/test/plan.test.ts), [splice](../../../framework-studio/test/splice.test.ts), [transaction](../../../framework-studio/test/transaction.test.ts), [draft](../../../framework-studio/test/draft.test.ts), [draft UI](../../../framework-studio/test/draft-ui.test.ts), and feature-specific creation/trigger/resource suites. Assert refusal causes zero writes and undo preserves unrelated changes.
 

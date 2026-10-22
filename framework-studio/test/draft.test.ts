@@ -126,6 +126,26 @@ test("Apply All uses one request, updates the baseline and permits navigation", 
   assert.equal(applies(), 1); assert.equal(draft.dirty, false); assert.equal(draft.getSnapshot().baseline.revision, "saved");
   let left = false; draft.requestNavigation(() => { left = true; }); assert.equal(left, true);
 });
+test("an in-flight apply owns an immutable draft until it finishes", async () => {
+  const { draft, change, fact, transport } = fixture();
+  const apply = transport.applyBatch;
+  let finish!: () => void;
+  transport.applyBatch = async (...args) => { await new Promise<void>(resolve => { finish = resolve; }); return apply(...args); };
+  change(); await draft.review();
+  const pending = draft.apply();
+  const applying = draft.getSnapshot();
+  draft.setField(target, fact("lambda.memorySize"), 1536);
+  draft.discard();
+  draft.discardAndContinue();
+  assert.equal(draft.getSnapshot(), applying, "editing and discard cannot invalidate an accepted source write");
+  assert.equal(draft.getSnapshot().busy, "apply");
+  let navigated = false;
+  draft.requestNavigation(() => { navigated = true; });
+  assert.equal(navigated, false);
+  finish(); await pending;
+  assert.equal(draft.dirty, false);
+  assert.equal(draft.getSnapshot().baseline.revision, "saved");
+});
 test("invalid numeric values stay inline and prevent review without losing valid edits", async () => {
   const { draft, fact, requests } = fixture();
   draft.setField(target, fact("lambda.memorySize"), "12"); draft.setField(target, fact("lambda.timeoutSeconds"), 25);

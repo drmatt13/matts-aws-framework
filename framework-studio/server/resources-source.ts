@@ -9,7 +9,7 @@ import type { ModelResource, ModelTarget } from "../shared/model";
 import { editableFiles, toRelative } from "./files";
 import { insertProperty, removeProperty } from "./edits/splice";
 import { declarationHost } from "./source/declarations";
-import { declarationObject, expressionAt, findProperty, literalKey, literalValue, parse, propertyAt, unwrap } from "./source/syntax";
+import { declarationObject, expressionAt, findProperty, hasComments, literalKey, literalValue, parse, propertyAt, unwrap } from "./source/syntax";
 import { parseOrigin } from "./model/origin";
 import type { StudioState } from "./snapshot";
 import { readCatalogSource } from "./source/catalog";
@@ -90,8 +90,7 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
     const position = base.end - 1 - outer.getStart();
     return original.slice(0, position) + JSON.stringify(resource.fromEnv) + original.slice(position);
   }
-  const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, outer.getText());
-  for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) if (kind === ts.SyntaxKind.SingleLineCommentTrivia || kind === ts.SyntaxKind.MultiLineCommentTrivia) return fail("This resource declaration contains comments. Edit it in source to preserve them.");
+  if (hasComments(outer.getText())) return fail("This resource declaration contains comments. Edit it in source to preserve them.");
   // Always keep the resolved env name explicit when moving between groups.
   let result = `resource.${intent.kind === "secret" ? "secret" : "fromEnv"}(${JSON.stringify(resource.fromEnv)}${calls[0]!.args[1] ? `, ${calls[0]!.args[1]!.getText()}` : ""})`;
   if (intent.required ?? resource.required) result += ".required()";
@@ -264,7 +263,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
   for (const [id, policy] of Object.entries(intent.requirements)) {
     const target = targets.get(id);
     if (!target || !consumesResource(target, resource.id)) return fail("Requirements can be edited only for workloads that consume this resource.");
-    writeRequirements(root, state, overrides, target, resource.id, policy);
+    writeRequirements(root, overrides, target, resource.id, policy);
   }
   if (moved || intent.kind !== resource.kind) {
     for (const candidate of sourceFiles(root)) {
@@ -331,7 +330,7 @@ function reference(id: string, alias = "studioResources"): string {
 function ruleText(rule: RequirementRule, alias: string): string {
   return `{ ${rule.when ? `when: { resource: ${reference(rule.when.resource, alias)}, equals: ${JSON.stringify(rule.when.equals)} }, ` : ""}require: [${rule.require.map((id) => reference(id, alias)).join(", ")}]${rule.message ? `, message: ${JSON.stringify(rule.message)}` : ""} }`;
 }
-function writeRequirements(root: string, state: StudioState, overrides: Record<string, string>, target: ModelTarget, resource: string, policy: "required" | "optional"): void {
+function writeRequirements(root: string, overrides: Record<string, string>, target: ModelTarget, resource: string, policy: "required" | "optional"): void {
   const origin = target.origins[0] && parseOrigin(target.origins[0]);
   const locatedSource = locateConfigSource(path.join(root, "framework.config.ts"), { repositoryRoot: root, host: new SourceFiles(new Map(Object.entries(overrides))).host() });
   const located = origin && origin.section !== "defaults" && locatedSource.sections[origin.section].find((item) => item.key === origin.key);
@@ -353,8 +352,7 @@ function writeRequirements(root: string, state: StudioState, overrides: Record<s
   const expression = `[${rules.map((rule) => ruleText(rule, alias)).join(", ")}]`;
   if (position.property) {
     const written = position.property.initializer.getText(source);
-    const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, written);
-    for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) if (kind === ts.SyntaxKind.SingleLineCommentTrivia || kind === ts.SyntaxKind.MultiLineCommentTrivia) return fail("This requirement list contains comments. Edit it in source to preserve them.");
+    if (hasComments(written)) return fail("This requirement list contains comments. Edit it in source to preserve them.");
     text = replace(text, position.property.initializer, expression, source);
   } else text = insertExpression(text, source, position.container, position.missing, expression);
   const catalogFile = locateConfigSource(path.join(root, "framework.config.ts"), { repositoryRoot: root }).properties.resources?.file;
