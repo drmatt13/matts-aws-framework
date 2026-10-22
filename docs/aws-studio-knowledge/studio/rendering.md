@@ -51,8 +51,9 @@ text and subnet-coloured cues. Below 0.65×, text and card geometry shrink gentl
 the node-caption scale. Each sits just outside the top-right edge, with its bottom-left
 corner anchored near the midpoint of its zone's rim. A small screen-space gap scales
 with the card. The trailing name balances its midpoint anchor with the painted end cap,
-sliding halfway back along the rim when it overhangs. This terrain bound is independent
-of viewport clipping. No connector lines or dots are drawn. Icons never trigger independent lifts that
+sliding halfway back along the rim when it overhangs. At overview zoom, neighbouring
+headings keep at least four screen pixels of separation via a minimal continuous slide
+along the same rim. This terrain bound is independent of viewport clipping. No connector lines or dots are drawn. Icons never trigger independent lifts that
 scatter names away from the network. Headings track the camera exactly and share its
 existing easing/reduced-motion behavior. Viewport edges never reflow or hide names:
 the canvas clips them naturally. Overview opacity follows the node-caption fade convention,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { NODE_CAPTION, SUBNET_LABEL, nodeCaptionPresentation, subnetLabelPresentation, subnetLabelRect, visibleNodeCaptions } from "../src/scene/labels";
+import { NODE_CAPTION, SUBNET_LABEL, nodeCaptionPresentation, rectanglesOverlap, subnetLabelPresentation, subnetLabelRect, visibleNodeCaptions } from "../src/scene/labels";
 
 test("subnet headings retain mid-range contrast and fade continuously into a compact overview", () => {
   assert.equal(subnetLabelPresentation(0.5).alpha, 1);
@@ -42,6 +42,22 @@ test("the trailing heading balances its midpoint and the painted VPC end cap alo
   const panned = subnetLabelRect({ x: anchor.x - 800, y: anchor.y + 300 }, width, height, 1, 400 - 800);
   assert.equal(panned.x, capped.x - 800);
   assert.equal(panned.y, capped.y + 300, "the end cap belongs to terrain, so viewport edges never relocate it");
+});
+
+test("zoomed-out subnet headings keep a minimum gap and move continuously along the same rim", () => {
+  let last: ReturnType<typeof subnetLabelRect>[] | undefined;
+  for (let step = 50; step <= 1500; step++) {
+    const zoom = step / 1000, { scale } = subnetLabelPresentation(zoom);
+    const gap = Math.max(SUBNET_LABEL.minSpacing, SUBNET_LABEL.gap * scale);
+    const placed: ReturnType<typeof subnetLabelRect>[] = [];
+    for (const [at, x] of [0, 144, 352].entries()) {
+      const rect = subnetLabelRect({ x: x * zoom, y: x * zoom / 2 }, (110 + at * 5) * scale, 28 * scale, scale, 448 * zoom, placed.at(-1));
+      if (placed.length) assert.ok(!rectanglesOverlap(rect, placed.at(-1)!, gap - 0.0001), "Private and Isolated never ride against each other");
+      if (last) assert.ok(Math.hypot(rect.x - last[at]!.x, rect.y - last[at]!.y) < 1, "small zoom changes never trigger a discrete label jump");
+      placed.push(rect);
+    }
+    last = placed;
+  }
 });
 
 test("captions keep their exact anchor and omit obstructed slots without moving neighbours", () => {

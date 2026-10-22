@@ -133,6 +133,8 @@ interface GraphiteBand {
   readonly slab: BandSlab;
   readonly trim: Rgb;
   readonly top: Path2D;
+  /** Painted top and walls, for this terrace's portion of the island highlight. */
+  readonly surface: Path2D;
   readonly topFill: CanvasGradient;
   readonly grid: Path2D;
   readonly pads: Path2D;
@@ -380,10 +382,13 @@ export class SceneRenderer {
           fill.addColorStop(1, "rgba(0, 0, 0, 0)");
           shade = { path: toPath(band.stepShade.polygon), fill };
         }
+        const surface = new Path2D();
+        for (const polygon of [band.top, ...band.walls.map(wall => wall.quad)]) toPath(polygon, true, surface);
         return {
           slab: band,
           trim,
           top: toPath(band.top),
+          surface,
           topFill,
           grid: segmentsPath(band.grid),
           pads,
@@ -477,17 +482,6 @@ export class SceneRenderer {
     };
     this.drawnItems = this.drawGraphite(prepared, state, view);
 
-    for (const id of new Set([state.hoveredIsland, state.selected?.startsWith("island:") ? state.selected : undefined])) {
-      if (!id) continue;
-      context.save();
-      context.globalAlpha = this.opacity * (searchOpacity(state.focus, "islands", id));
-      context.strokeStyle = id === state.selected ? "rgba(167, 215, 255, 0.85)" : "rgba(207, 229, 248, 0.6)";
-      context.lineWidth = (id === state.selected ? 2 : 1.5) / zoom;
-      const outline = prepared.outlines.get(id);
-      if (outline) context.stroke(outline);
-      context.restore();
-    }
-
     this.drawEdges(prepared, state);
     const cards = this.drawCards(prepared, state);
     this.drawTitles(prepared, state, cards);
@@ -540,6 +534,10 @@ export class SceneRenderer {
     this.opacity = 1;
     context.globalAlpha = this.opacity;
     this.drawFramesGraphite(prepared, state);
+    // Foundation and exposed outer strokes belong beneath all standing resources.
+    for (const id of new Set([state.hoveredIsland, state.selected?.startsWith("island:") ? state.selected : undefined])) {
+      if (id) this.drawIslandHighlight(prepared, state, id);
+    }
 
     let drawn = 0;
     for (const island of prepared.graphite) {
@@ -549,6 +547,9 @@ export class SceneRenderer {
         if (!OUTSIDE(band.slab.bounds, view)) {
           this.opacity = searchOpacity(state.focus, "islands", id);
           this.drawBand(island, band, focus);
+          // Paint only this terrace's stroke before its resources. Repainting the
+          // entire island here would put later terraces' strokes over earlier icons.
+          this.drawIslandHighlight(prepared, state, id, band.surface);
           drawn += 1;
         }
         for (const item of band.items) {
@@ -574,6 +575,20 @@ export class SceneRenderer {
     this.opacity = 1;
     context.globalAlpha = this.opacity;
     return drawn;
+  }
+
+  private drawIslandHighlight(prepared: Prepared, state: RenderState, id: string, surface?: Path2D): void {
+    if (id !== state.selected && id !== state.hoveredIsland) return;
+    const outline = prepared.outlines.get(id);
+    if (!outline) return;
+    const context = this.context;
+    context.save();
+    if (surface) context.clip(surface);
+    context.globalAlpha = searchOpacity(state.focus, "islands", id);
+    context.strokeStyle = id === state.selected ? "rgba(167, 215, 255, 0.85)" : "rgba(207, 229, 248, 0.6)";
+    context.lineWidth = (id === state.selected ? 2 : 1.5) / state.camera.zoom;
+    context.stroke(outline);
+    context.restore();
   }
 
   /** One terrace: its lit top, etched grid, pads and step shade, its walls and lips, then the glowing trim. */

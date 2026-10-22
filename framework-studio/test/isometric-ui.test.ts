@@ -39,6 +39,7 @@ const labels: string[] = [];
 const labelPaints: { text: string; alpha: number; x: number; y: number; font: string }[] = [];
 const iconStrokes: { icon: string; color: string; width: number }[] = [];
 const pathStrokes: { color: string; width: number }[] = [];
+const paintOrder: ({ kind: "highlight"; clipped: boolean } | { kind: "image" })[] = [];
 let measurements = 0;
 let glyphWidth = 6;
 
@@ -56,7 +57,8 @@ before(async () => {
   Object.defineProperty(globalThis, "Path2D", { configurable: true, value: class { moveTo() {} lineTo() {} closePath() {} arc() {} roundRect() {} } });
   Object.defineProperty(globalThis, "Image", { configurable: true, value: class { src = ""; complete = true; naturalWidth = 48; onload = null; } });
   const gradient = () => ({ addColorStop() {} });
-  const alphaStack: number[] = [];
+  let activeClip: Path2D | undefined;
+  const paintStack: { alpha: number; stroke: string; width: number; clip: Path2D | undefined }[] = [];
   let paintedIcon = "";
   const context = new Proxy({
     globalAlpha: 1,
@@ -64,16 +66,22 @@ before(async () => {
     lineWidth: 1,
     stroke(path?: Path2D) {
       strokes.push(this.strokeStyle);
+      if (this.strokeStyle === "rgba(167, 215, 255, 0.85)" || this.strokeStyle === "rgba(207, 229, 248, 0.6)") paintOrder.push({ kind: "highlight", clipped: !!activeClip });
       if (path) pathStrokes.push({ color: this.strokeStyle, width: this.lineWidth });
       if (paintedIcon) iconStrokes.push({ icon: paintedIcon, color: this.strokeStyle, width: this.lineWidth });
       paintedIcon = "";
     },
     fillText(text: string, x: number, y: number) { labels.push(text); labelPaints.push({ text, alpha: this.globalAlpha, x, y, font: String((this as unknown as { font: string }).font) }); },
-    save() { alphaStack.push(this.globalAlpha); },
-    restore() { this.globalAlpha = alphaStack.pop() ?? 1; },
+    clip(path?: Path2D) { activeClip = path ?? new Path2D(); },
+    save() { paintStack.push({ alpha: this.globalAlpha, stroke: this.strokeStyle, width: this.lineWidth, clip: activeClip }); },
+    restore() {
+      const saved = paintStack.pop();
+      if (!saved) return;
+      this.globalAlpha = saved.alpha; this.strokeStyle = saved.stroke; this.lineWidth = saved.width; activeClip = saved.clip;
+    },
     createLinearGradient: gradient, createRadialGradient: gradient,
     measureText: (text: string) => { measurements++; return { width: text.length * glyphWidth, actualBoundingBoxLeft: 0, actualBoundingBoxRight: text.length * glyphWidth, actualBoundingBoxAscent: 10, actualBoundingBoxDescent: 3 }; },
-    drawImage(image: { src: string }) { images.push({ src: image.src, alpha: this.globalAlpha }); paintedIcon = image.src; },
+    drawImage(image: { src: string }) { images.push({ src: image.src, alpha: this.globalAlpha }); paintOrder.push({ kind: "image" }); paintedIcon = image.src; },
   }, { get: (target, key) => key in target ? target[key as keyof typeof target] : () => {} });
   dom.window.HTMLCanvasElement.prototype.getContext = (() => context) as unknown as typeof HTMLCanvasElement.prototype.getContext;
   dom.window.HTMLElement.prototype.getBoundingClientRect = () => ({ x: 0, y: 0, width: 1920, height: 1000, top: 0, left: 0, right: 1920, bottom: 1000, toJSON() {} });
@@ -90,7 +98,7 @@ before(async () => {
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, history: {}, busy: null };
 });
 after(async () => { await builder.dispose(); dom.window.close(); });
-afterEach(() => { ui.cleanup(); frames.clear(); images.length = 0; strokes.length = 0; labels.length = 0; labelPaints.length = 0; iconStrokes.length = 0; pathStrokes.length = 0; glyphWidth = 6; });
+afterEach(() => { ui.cleanup(); frames.clear(); images.length = 0; strokes.length = 0; labels.length = 0; labelPaints.length = 0; iconStrokes.length = 0; pathStrokes.length = 0; paintOrder.length = 0; glyphWidth = 6; });
 
 interface Debug { search(): { active: boolean; nodes: string[]; opacityOf(id: string): number }; stats(): { focus: string }; tagFilter(): { key: string; value?: string | null; muted: readonly string[] } }
 const debug = () => (dom.window as unknown as { __studioLandscape: Debug }).__studioLandscape;
@@ -484,6 +492,31 @@ test("production subnet headings stay horizontal and legible across zoom; develo
       labelPaints.length = 0;
       renderer.render({ camera: { x: (bounds.minX + bounds.maxX) / 2, y: Math.min(...top) - viewport.height / 2 - 20, zoom: 1 }, viewport, dpr: 1, time: 0, motion: false, focus: landscapeFocus(scene) });
       assert.equal(labelPaints.filter(label => /subnet$/i.test(label.text)).length, mode === "prod" ? 3 : 0, "headings continue beyond the canvas edges without disappearing or relocating");
+    }
+  }
+  renderer.dispose();
+});
+
+test("selected and hovered island outlines paint with terrain beneath resource nodes", () => {
+  const renderer = new SceneRenderer(document.createElement("canvas"));
+  const viewport = { width: 1920, height: 1000 };
+  for (const mode of ["dev", "prod"] as const) {
+    const full = buildScene(response.snapshot.models[mode]);
+    for (const island of full.islands.filter(island => island.region === "network")) {
+      const scene = { ...full, islands: [island], nodes: full.nodes.filter(node => node.island === island.id), props: full.props.filter(prop => prop.serves.some(id => island.bands.some(band => band.id === id))), frames: full.frames.filter(frame => frame.members.includes(island.id)), edges: [], routes: {} };
+      const { bounds } = islandSlabs(scene)[0]!;
+      const camera = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2, zoom: 0.5 };
+      renderer.setScene(scene);
+      for (const highlight of [{ selected: island.id }, { hoveredIsland: island.id }]) {
+        paintOrder.length = 0;
+        renderer.render({ camera, viewport, dpr: 1, time: 0, motion: false, focus: landscapeFocus(scene), ...highlight });
+        const firstIcon = paintOrder.findIndex(paint => paint.kind === "image");
+        assert.ok(firstIcon >= 0, "the real renderer paints resource icons");
+        const unrestricted = paintOrder.flatMap((paint, at) => paint.kind === "highlight" && !paint.clipped ? [at] : []);
+        assert.equal(unrestricted.length, 1, "the foundation gets one complete outline");
+        assert.ok(unrestricted[0]! < firstIcon, "the complete outline never overlays standing resources");
+        assert.equal(paintOrder.filter(paint => paint.kind === "highlight" && paint.clipped).length, island.bands.length, "each terrace paints only its own portion before its resources");
+      }
     }
   }
   renderer.dispose();

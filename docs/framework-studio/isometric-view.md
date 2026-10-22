@@ -246,7 +246,9 @@ Each island is drawn as continuous slabs, one per band, rather than a field of t
   small gap at detail size. The card's bottom-left corner aligns near the midpoint of its
   zone's rim, so names extend up and right without drifting away through zoom. There are
   no connector lines. The trailing name balances its midpoint anchor with the painted
-  end cap, sliding halfway back along the rim when it overhangs. Content never lifts or
+  end cap, sliding halfway back along the rim when it overhangs. Neighbouring headings
+  retain at least four screen pixels of separation at overview zoom; a minimal slide along
+  the same rim clears a crowded name continuously. Content never lifts or
   scatters individual names away from the network. Names follow the camera exactly, including its existing
   easing and reduced-motion handling. They never become perspective wall text or choose
   a different slot at a viewport edge: canvas clipping carries them naturally offscreen.
