@@ -5,8 +5,8 @@ read_when:
   - Implementing agents or tool integrations
   - Changing session, auth, Gateway, or agent workflow behavior
 source:
-  - framework-config/agents/example.ts
-  - framework-config/tools/example.ts
+  - framework-config/workloads/agents.ts
+  - framework-config/workloads/tools.ts
   - packages/framework/src/runtime/agentcore.ts
   - packages/framework/src/runtime/tools.ts
   - cdk-app/lib/framework/framework-agentcore.ts

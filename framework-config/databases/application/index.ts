@@ -12,6 +12,7 @@ import { applicationVpc } from "../../networks/application";
  */
 export const applicationDatabase = defineDatabase({
   id: "application",
+  tags: { area: "database" },
   resource: resources.rds.database,
   vpc: applicationVpc,
   subnet: "isolated",

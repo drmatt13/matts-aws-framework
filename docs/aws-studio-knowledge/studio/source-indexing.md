@@ -16,6 +16,14 @@ related:
 ---
 # Source locations, capability discovery and evidence
 
+Catalog shorthand and named relative descriptor imports resolve to their owning const,
+including cohesive one-level catalog namespaces. The default `workloads/<kind>.ts` layout is an
+authoring convention, not a section-discovery or module-depth restriction. Independently
+imported network/database literals remain source-located without using directory depth as
+write authority. Tag writes remain restricted to the root and `framework-config` TypeScript.
+Tag editability requires literal string maps and unambiguous ownership; computed values,
+spreads and comment-sensitive replacements provide source links and corrective refusals.
+
 Evaluation answers what a declaration means; the source index answers where it was authored and whether a narrow transformation is safe. `buildSourceIndex` / `SourceFiles` in [source/index.ts](../../../framework-studio/server/source/index.ts) combine normalized origins with parsed TypeScript and overlay contents. `locateConfigSource` in [config-source.ts](../../../packages/framework/scripts/config-source.ts) follows supported imports/aliases and literal section composition.
 
 `fieldEditability` compares actual authored expressions against the evaluated setting. Computed expressions, ambiguous spreads, unsupported wrappers and comment-sensitive edits can be read-only even when their values normalize successfully. Do not replace a computed declaration merely because the Inspector can display its effective value.

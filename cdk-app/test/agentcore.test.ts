@@ -15,7 +15,7 @@ import {
   type FrameworkConfig,
 } from "@repo/framework/config";
 import { defaults } from "../../framework-config/defaults";
-import { models } from "../../framework-config/models";
+import { models } from "../../framework-config/shared/models";
 import { hasAgentCoreCloudResources } from "../lib/framework/framework-agentcore";
 import { buildFrameworkLambdas } from "../lib/framework/framework-cloud";
 import { finalizeFrameworkResources, initializeFrameworkResources } from "../lib/framework/framework-resources";

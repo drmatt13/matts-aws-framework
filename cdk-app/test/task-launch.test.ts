@@ -46,7 +46,7 @@ function synthesize() {
         cloud: { bindings: [runsTask(TASK)] },
       },
     }],
-    tasks: [{ [TASK]: { directory: "/test/fixtures/task-worker", deploy: "both", cloud: { vpc: fixtureVpc, subnet: "public" } } }],
+    tasks: [{ [TASK]: { directory: "/test/fixtures/task-worker", deploy: "both", tags: { area: "billing" }, cloud: { vpc: fixtureVpc, subnet: "public" } } }],
     workflows: [{ "runs-the-task": workflow(() => runTask(TASK), { deploy: "both", timeoutSeconds: 900 }) }],
   });
   const app = new cdk.App({ context: { "@aws-cdk/aws-lambda:useCdkManagedLogGroup": true } });
@@ -81,6 +81,9 @@ test("no stack exports a task definition revision, so a changed task deploys und
     }
   }
 
+  const definition = Object.values(templates.Tasks!.Resources).find(resource => resource.Type === "AWS::ECS::TaskDefinition")!;
+  assert.ok((definition.Properties?.Tags as { Key: string; Value: string }[]).some(tag => tag.Key === "area" && tag.Value === "billing"));
+
   // Both callers may run every revision of the family, and only that family.
   const [family] = Object.values(templates.Tasks!.Resources)
     .filter((resource) => resource.Type === "AWS::ECS::TaskDefinition")
@@ -93,5 +96,13 @@ test("no stack exports a task definition revision, so a changed task deploys und
       .filter((statement) => [statement.Action].flat().includes("ecs:RunTask"));
     assert.equal(statements.length, 1, `${caller} holds one RunTask grant`);
     assert.match(JSON.stringify(statements[0]!.Resource), new RegExp(`:task-definition/${family}:\\*"`), `${caller} may run any revision of ${family}`);
+    const tagging = Object.values(templates[caller]!.Resources)
+      .filter(resource => resource.Type === "AWS::IAM::Policy")
+      .flatMap(resource => (resource.Properties!.PolicyDocument as { Statement: { Action: unknown; Resource: unknown; Condition?: unknown }[] }).Statement)
+      .filter(statement => [statement.Action].flat().includes("ecs:TagResource"));
+    assert.equal(tagging.length, 1, `${caller} can propagate task tags during creation`);
+    assert.deepEqual(tagging[0]!.Condition, { StringEquals: { "ecs:CreateAction": "RunTask" } });
+    assert.match(JSON.stringify(tagging[0]!.Resource), /:task\//, "tagging is scoped to tasks in the declared cluster");
+    assert.notEqual(tagging[0]!.Resource, "*");
   }
 });

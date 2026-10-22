@@ -53,7 +53,7 @@ test("an entry's spans point at its key and its declaration in the module that w
   assert.ok(graphql);
   assert.equal(
     path.relative(repositoryRoot, graphql.file).replaceAll("\\", "/"),
-    "framework-config/http/graphql.ts",
+    "framework-config/workloads/http.ts",
   );
   assert.equal(slice(graphql.file, graphql.keySpan), '"/graphql"');
   assert.match(slice(graphql.file, graphql.valueSpan), /^\{\s*directory: "\/lambda_functions\/http_functions\/graphql-api"/);

@@ -223,7 +223,8 @@ test("a reviewed secret update applies only with the reviewed value, and no valu
     const applied = deploy({}, "--apply", planDirectory, "--profile", "dev");
     assert.equal(applied.status, 0, applied.output);
     assert.equal(secretOf(account, google.Name).SecretString, REVIEWED_VALUE);
-    assert.deepEqual(writesOf(account).filter((key) => key.startsWith("secretsmanager")), ["secretsmanager put-secret-value"]);
+    assert.equal(secretOf(account, google.Name).Tags.find((tag: any) => tag.Key === "area")?.Value, "auth");
+    assert.deepEqual(writesOf(account).filter((key) => key.startsWith("secretsmanager")), ["secretsmanager put-secret-value", "secretsmanager tag-resource"]);
     assert.equal(JSON.parse(readFileSync(path.join(planDirectory, "result.json"), "utf8")).status, "succeeded");
     assert.equal(existsSync(bindingFile), false, "an applied plan's binding is removed");
     const record = account.read().regions[REGION].parameters.find((parameter: any) => parameter.Name === "/framework/deployments/my-aws-app");
@@ -304,9 +305,10 @@ test("--create-secrets creates only missing secrets: an existing secret's new va
 
     const applied = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--apply", second, "--confirm", "my-aws-app-prod", "--profile", "dev");
     assert.equal(applied.status, 0, applied.output);
-    assert.deepEqual(writesOf(account).filter((key) => key.startsWith("secretsmanager")), ["secretsmanager create-secret", "secretsmanager put-secret-value"]);
+    assert.deepEqual(writesOf(account).filter((key) => key.startsWith("secretsmanager")), ["secretsmanager create-secret", "secretsmanager put-secret-value", "secretsmanager tag-resource"]);
     assert.equal(secretOf(account, google.Name).SecretString, REVIEWED_VALUE);
     assert.equal(secretOf(account, openai).SecretString, OPENAI_VALUE);
+    assert.equal(secretOf(account, openai).Tags.find((tag: any) => tag.Key === "area")?.Value, "examples");
     assertNoSentinel(applied.output, "applying");
   } finally {
     if (planId) rmSync(path.join(BINDINGS, `${planId}.json`), { force: true });

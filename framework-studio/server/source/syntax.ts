@@ -101,7 +101,13 @@ export function declarationObject(
 ): { readonly object: ts.ObjectLiteralExpression } | { readonly unsupported: string } {
   let node = unwrap(value);
   if (section === "workflows") {
-    if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression) || node.expression.text !== "workflow") {
+    const call = ts.isCallExpression(node) && ts.isIdentifier(node.expression) ? node.expression.text : undefined;
+    const officialAlias = call && node.getSourceFile().statements.some(statement => {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "@repo/framework/config" || statement.importClause?.isTypeOnly) return false;
+      const bindings = statement.importClause?.namedBindings;
+      return bindings && ts.isNamedImports(bindings) && bindings.elements.some(binding => !binding.isTypeOnly && (binding.propertyName?.text ?? binding.name.text) === "workflow" && binding.name.text === call);
+    });
+    if (!ts.isCallExpression(node) || !call || (call !== "workflow" && !officialAlias)) {
       return { unsupported: "This workflow is not declared with workflow(...) directly." };
     }
     const options = node.arguments[1];

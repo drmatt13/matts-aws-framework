@@ -202,6 +202,7 @@ export class FrameworkAgentCore extends Construct {
         : {}),
     });
     markInfrastructure(runtime, `agent:${target.id}`);
+    markInfrastructure(runtime.role, `agent:${target.id}`, "supporting");
     appInvocationRegistry(this).agent(target.id, {
       arn: runtime.agentRuntimeArn,
       region: stack.region,
@@ -226,6 +227,8 @@ export class FrameworkAgentCore extends Construct {
               supportedVersions: [agentcore.MCPProtocolVersion.MCP_2025_03_26],
             }),
           });
+    markInfrastructure(gateway, `agent:${target.id}`, "supporting");
+    markInfrastructure(gateway?.role, `agent:${target.id}`, "supporting");
     for (const tool of agentTools) {
       const fn = tools.get(tool.id);
       if (!fn) throw new Error(`agent:${target.id} lists tools("${tool.id}"), which this deployment did not build.`);

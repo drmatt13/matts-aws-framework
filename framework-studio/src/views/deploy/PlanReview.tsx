@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Check, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, ShieldAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { PlanView, ResourceChangeView } from "../../../shared/deploy";
 import { deployApi } from "../../deploy/api";
@@ -21,9 +21,9 @@ function ChangeRow({ change }: { readonly change: ResourceChangeView }) {
       <td><code>{change.logicalId}</code></td>
       <td className="change-type">{change.type.replace(/^AWS::/, "")}</td>
       <td>
-        {change.replacement === "True" ? <span className="flag bad">replaces</span> : change.replacement === "Conditional" ? <span className="flag warn">may replace</span> : change.replacement === "Unknown" && change.action === "modify" ? <span className="flag quiet">replacement unknown</span> : null}
+        {change.replacement === "True" ? <span className="flag bad">replaces</span> : change.replacement === "Conditional" ? <span className="flag warn">may replace</span> : change.replacement === "Unknown" && change.action === "modify" ? <span className="flag">replacement unknown</span> : null}
         {change.stateful ? <span className="flag warn">holds data</span> : null}
-        {change.action === "remove" && change.deletionPolicy && change.deletionPolicy !== "Delete" ? <span className="flag quiet">{change.deletionPolicy.toLowerCase()}</span> : null}
+        {change.action === "remove" && change.deletionPolicy && change.deletionPolicy !== "Delete" ? <span className="flag">{change.deletionPolicy.toLowerCase()}</span> : null}
         {change.details?.length ? <span className="change-details">{change.details.join(", ")}</span> : null}
       </td>
     </tr>
@@ -46,7 +46,7 @@ export function PlanReview(props: {
   const dialog = useRef<HTMLDialogElement>(null);
   const [typed, setTyped] = useState("");
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const { data: plan, error } = useQuery({ queryKey: ["deploy", "plan", props.planKey], queryFn: () => deployApi.plan(props.planKey), refetchOnWindowFocus: false });
+  const { data: plan, error, isPending, refetch } = useQuery({ queryKey: ["deploy", "plan", props.planKey], queryFn: () => deployApi.plan(props.planKey), refetchOnWindowFocus: false });
   useEffect(() => {
     const element = dialog.current!;
     element.showModal();
@@ -74,9 +74,10 @@ export function PlanReview(props: {
           </p>
         ) : null}
       </header>
-      <div className="body">
-        {error ? <p className="diagnostic">{error instanceof Error ? error.message : String(error)}</p> : null}
-        {!plan ? <p className="muted">Reading the plan…</p> : (
+      <div className="body" aria-busy={isPending}>
+        {error ? <div className="deploy-read-error" role="alert"><p className="diagnostic">{error instanceof Error ? error.message : String(error)}</p><button className="quiet" onClick={() => void refetch()}>Try again</button></div> : null}
+        {isPending ? <p className="muted" role="status">Reading the plan…</p> : null}
+        {plan ? (
           <>
             {plan.result ? (
               <p className={`plan-banner ${plan.result.status === "succeeded" ? "ok" : "warn"}`}>
@@ -106,15 +107,18 @@ export function PlanReview(props: {
               <ul className="plan-stacks">
                 {plan.stacks.map((stack) => (
                   <li key={stack.name}>
-                    <button className="plan-stack" aria-expanded={Boolean(open[stack.name])} onClick={() => setOpen({ ...open, [stack.name]: !open[stack.name] })} disabled={!stack.changes.length}>
+                    <button className="plan-stack" aria-expanded={stack.changes.length ? Boolean(open[stack.name]) : undefined} onClick={() => setOpen({ ...open, [stack.name]: !open[stack.name] })} disabled={!stack.changes.length}>
+                      <ChevronRight size={14} className="plan-stack-chevron" aria-hidden />
                       <strong>{shortStack(stack.name, name)}</strong>
                       <span className="muted">{stack.deferred ? `deferred — ${stack.deferred}` : stack.noChanges ? "no changes" : counts(stack.changes)}</span>
                       {stack.changes.some((change) => replaces(change) || change.action === "remove") ? <span className="flag bad">review</span> : null}
                     </button>
                     {open[stack.name] ? (
-                      <table className="change-table">
+                      <div className="change-table-scroll" role="region" aria-label={`Resource changes in ${shortStack(stack.name, name)}`} tabIndex={0}><table className="change-table">
+                        <caption className="sr-only">Resource changes in {shortStack(stack.name, name)}</caption>
+                        <thead><tr><th scope="col">Action</th><th scope="col">Resource</th><th scope="col">Type</th><th scope="col">Impact</th></tr></thead>
                         <tbody>{stack.changes.map((change) => <ChangeRow key={change.logicalId} change={change} />)}</tbody>
-                      </table>
+                      </table></div>
                     ) : null}
                   </li>
                 ))}
@@ -124,7 +128,7 @@ export function PlanReview(props: {
             {plan.secrets.length ? (
               <section aria-label="Secrets">
                 <h3 className="section-title">Secrets <span className="small muted">names only</span></h3>
-                <ul className="plain-list">{plan.secrets.map((secret) => <li key={secret.name}><code>{secret.name}</code> <span className={`flag ${secret.action === "unchanged" ? "quiet" : "warn"}`}>{secret.action}</span></li>)}</ul>
+                <ul className="plain-list">{plan.secrets.map((secret) => <li key={secret.name}><code>{secret.name}</code> <span className={`flag ${secret.action === "unchanged" ? "" : "warn"}`}>{secret.action}</span></li>)}</ul>
               </section>
             ) : null}
             {plan.dockerImages.length ? (
@@ -138,7 +142,7 @@ export function PlanReview(props: {
               <ul className="plain-list uncertainties">{plan.uncertainties.map((line) => <li key={line}>{line}</li>)}</ul>
             </section>
           </>
-        )}
+        ) : null}
       </div>
       <footer>
         {plan && applicable && needsName ? (

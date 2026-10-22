@@ -39,6 +39,7 @@ function config(): FrameworkConfig {
           directory: "/ecs_containers/services/example-service",
           methods: "*",
           auth: true,
+          tags: { area: "identity" },
           port: 5000,
           deploy: "both",
           cloud: { vpc: fixtureVpc, constructId: "ExampleService", cpu: 256, memoryMiB: 512, desiredCount: 1 },
@@ -72,6 +73,12 @@ test("an authenticated service sits behind an internal load balancer and a VPC l
     frontendUrls: [],
   });
   finalizeFrameworkResources(app);
+
+  const serviceTemplate = Template.fromStack(services);
+  serviceTemplate.hasResourceProperties("AWS::ECS::Service", { PropagateTags: "SERVICE" });
+  const definitionTags = Object.values(serviceTemplate.findResources("AWS::ECS::TaskDefinition"))
+    .flatMap((resource: any) => resource.Properties.Tags ?? []);
+  assert.ok(definitionTags.some((tag: { Key: string; Value: string }) => tag.Key === "area" && tag.Value === "identity"));
 
   const loadBalancers = Template.fromStack(services).findResources(
     "AWS::ElasticLoadBalancingV2::LoadBalancer",

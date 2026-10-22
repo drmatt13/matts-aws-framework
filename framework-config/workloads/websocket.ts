@@ -1,6 +1,7 @@
 import type { WebSocketSection } from "../contracts";
 
-export const webSocketRoutes = {
+/** WebSocket declarations. Tags describe concerns independently of this module. */
+export const webSocket = {
   $connect: {
     directory: "/lambda_functions/websocket_functions/ws-connect-route",
     cloud: {
@@ -14,7 +15,9 @@ export const webSocketRoutes = {
         constructId: "AuthorizerFunction",
         outputs: { arn: { id: "AuthorizerFunctionArn" } },
       },
+      tags: { area: "realtime" },
     },
+    tags: { area: "realtime" },
   },
   $default: {
     directory: "/lambda_functions/websocket_functions/ws-default-route",
@@ -22,6 +25,7 @@ export const webSocketRoutes = {
       constructId: "DefaultRouteFunction",
       outputs: { arn: { id: "DefaultRouteFunctionArn" } },
     },
+    tags: { area: "realtime" },
   },
   $disconnect: {
     directory: "/lambda_functions/websocket_functions/ws-disconnect-route",
@@ -30,6 +34,7 @@ export const webSocketRoutes = {
       constructId: "DisconnectRouteFunction",
       outputs: { arn: { id: "DisconnectRouteFunctionArn" } },
     },
+    tags: { area: "realtime" },
   },
   customAction: {
     directory: "/lambda_functions/websocket_functions/ws-custom-action-route",
@@ -37,5 +42,6 @@ export const webSocketRoutes = {
       constructId: "CustomActionRouteFunction",
       outputs: { arn: { id: "CustomActionRouteFunctionArn" } },
     },
+    tags: { area: "realtime" },
   },
 } satisfies WebSocketSection;

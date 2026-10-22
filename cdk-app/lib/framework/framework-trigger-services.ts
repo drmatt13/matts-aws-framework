@@ -1,3 +1,4 @@
+import { markInfrastructure } from "./framework-inventory";
 import * as cdk from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as sources from "aws-cdk-lib/aws-lambda-event-sources";
@@ -89,6 +90,7 @@ export function registerServiceTriggerAdapters(): void {
       const queue = context.resource as sqs.Queue;
       const grant = queue.grantConsumeMessages(context.fn);
       const mapping = new lambda.EventSourceMapping(cdk.Stack.of(context.fn), triggerAttachmentId(context.binding), { ...batchOptions(context), target: context.fn, eventSourceArn: queue.queueArn, maxConcurrency: context.binding.options.maxConcurrency as number | undefined });
+      markInfrastructure(mapping, `lambda:${context.binding.event}`, "supporting");
       grant.applyBefore(mapping);
     },
   });
@@ -116,6 +118,7 @@ export function registerServiceTriggerAdapters(): void {
         bisectBatchOnError: options.bisectBatchOnError as boolean | undefined,
         onFailure: dlq ? new sources.SqsDlq(dlq) : undefined,
       });
+      markInfrastructure(mapping, `lambda:${context.binding.event}`, "supporting");
       grant.applyBefore(mapping);
     },
   });
@@ -177,10 +180,11 @@ export function registerServiceTriggerAdapters(): void {
       const prefix = String(options.prefix ?? ""), suffix = String(options.suffix ?? "");
       if (options.delivery === "eventbridge") {
         const escape = (value: string) => value.replace(/\\/g, "\\\\").replace(/\*/g, "\\*");
-        new events.Rule(stack, triggerAttachmentId(context.binding), {
+        const rule = new events.Rule(stack, triggerAttachmentId(context.binding), {
           eventPattern: { source: ["aws.s3"], detailType: (options.eventTypes as string[]).map((type) => type === "s3:ObjectCreated:*" ? "Object Created" : "Object Deleted"), detail: { bucket: { name: [bucket.bucketName] }, ...(prefix || suffix ? { object: { key: [{ wildcard: `${escape(prefix)}*${escape(suffix)}` }] } } : {}) } },
           targets: [new targets.LambdaFunction(context.fn)],
         });
+        markInfrastructure(rule, `lambda:${context.binding.event}`, "supporting");
       } else {
         // An imported reference keeps the notification custom resource in the function's
         // existing owner and uses CDK's unmanaged merge, preserving other subscribers.

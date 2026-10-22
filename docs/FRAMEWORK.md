@@ -4,6 +4,10 @@
 and literal section modules under `framework-config/`. Those declarations drive CDK,
 local execution, and generated browser route/payload contracts.
 
+Start with the [declaration directory guide](../framework-config/README.md) for file
+ownership and [declarations and tags](framework-studio/declarations-and-tags.md) for
+tag validation, inheritance, AWS propagation and Studio authoring.
+
 Use [Development](DEV-DEPLOYMENT.md) or [Production](PROD-DEPLOYMENT.md) to run the system.
 Use [Data features](DATA-FEATURES.md) for changes inside the existing GraphQL endpoint.
 Use [AgentCore](AGENTCORE.md) for the `agents` and `tools` sections: agents, the tools they
@@ -73,14 +77,14 @@ feature directory, and frontend operations without changing these package bounda
 
 | Kind | Declaration key | Implementation | Working example |
 | --- | --- | --- | --- |
-| HTTP Lambda | Public path in http | Explicit directory under cdk-app | [graphql](../framework-config/http/graphql.ts) |
-| WebSocket Lambda | API Gateway route key in webSocket | Explicit directory; authorizer belongs to connect | [routes](../framework-config/websocket/routes.ts) |
-| Event Lambda | Stable target id in events | Defaults to /lambda_functions/event_functions/id | [Cognito](../framework-config/events/cognito.ts) |
-| Service | Public mount in services | /ecs_containers/services/id; its Compose container is [generated](#local-service-containers) | [example-service](../framework-config/services/example.ts) |
-| Task | Stable target id in tasks | Defaults to /ecs_containers/tasks/id | [database migration](../framework-config/tasks/database.ts) |
+| HTTP Lambda | Public path in http | Explicit directory under cdk-app | [graphql](../framework-config/workloads/http.ts) |
+| WebSocket Lambda | API Gateway route key in webSocket | Explicit directory; authorizer belongs to connect | [routes](../framework-config/workloads/websocket.ts) |
+| Event Lambda | Stable target id in events | Defaults to /lambda_functions/event_functions/id | [Cognito](../framework-config/workloads/events.ts) |
+| Service | Public mount in services | /ecs_containers/services/id; its Compose container is [generated](#local-service-containers) | [example-service](../framework-config/workloads/services.ts) |
+| Task | Stable target id in tasks | Defaults to /ecs_containers/tasks/id | [database migration](../framework-config/workloads/tasks.ts) |
 | Workflow | Stable target id in workflows | Graph declaration; no implementation directory | [test-only graph](../local-invocation-runner/test/workflow-engine.test.ts) |
-| AgentCore tool | Stable target id in tools | Explicit directory under cdk-app, with contract.ts | [add-numbers](../framework-config/tools/example.ts) |
-| AgentCore agent | Stable target id in agents | Explicit directory under agents at the repository root, with contract.ts | [example-agent](../framework-config/agents/example.ts) |
+| AgentCore tool | Stable target id in tools | Explicit directory under cdk-app, with contract.ts | [add-numbers](../framework-config/workloads/tools.ts) |
+| AgentCore agent | Stable target id in agents | Explicit directory under agents at the repository root, with contract.ts | [example-agent](../framework-config/workloads/agents.ts) |
 
 1. Add the implementation. A TypeScript Lambda is its `index.ts`: cdk-app's typecheck
    checks every handler under `lambda_functions` in one pass
@@ -93,8 +97,9 @@ feature directory, and frontend operations without changing these package bounda
    its handler imports, so a manifest changes neither bundle size nor cold start.
 2. Declare a literal entry in a section, using `satisfies HttpSection` (or the matching
    section type) imported type-only from `framework-config/contracts.ts` (for example,
-   `import type { HttpSection } from "../contracts"` in framework-config/http/).
-3. Add a new section module to the relevant array in root framework.config.ts.
+   `import type { HttpSection } from "../contracts"` in framework-config/workloads/http.ts).
+3. The canonical kind module is already registered in root framework.config.ts. If you
+   deliberately split a large section, import the additional module into its literal array.
 4. Declare environment, permissions/bindings, and deploy scope with the workload.
 5. Run `npm run framework:generate` and `npm run verify`; exercise the local route.
    Infrastructure changes also require both synth paths and deployment review.
@@ -842,7 +847,7 @@ Build graphs with the declarations from @repo/framework/config: `workflow`, `seq
 and the typed API in [workflow definitions](../packages/framework/src/config/workflows.ts).
 
 An `invokeLambda` target is declared under `events`: a workflow is one more native invoker
-of an event Lambda. Application event declarations live under `framework-config/events/`;
+of an event Lambda. Application event declarations live in `framework-config/workloads/events.ts`;
 the workflow engine's isolated test declares its own handler and graph.
 
 Creating a step does not schedule it; the returned graph establishes execution order.

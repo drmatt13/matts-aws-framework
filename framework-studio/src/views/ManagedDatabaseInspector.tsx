@@ -9,6 +9,7 @@ import { Written } from "./Written";
 import { SchemaLink } from "./Database";
 import { ManagedDatabaseControls } from "./ManagedDatabaseControls";
 import { DatabasePlacement } from "./DatabasePlacement";
+import { Tags } from "./Tags";
 
 /** One application database, presented through its local and AWS implementations. */
 export function ManagedDatabaseInspector({ resource, local }: { readonly resource?: ModelResource; readonly local?: LocalDatabase }) {
@@ -21,6 +22,7 @@ export function ManagedDatabaseInspector({ resource, local }: { readonly resourc
   const source = snapshot.source.entities[`database:${database.id}`]?.value;
   return <>
     <header><span className="kind">Framework-managed database</span><h2><EntityIcon icon={local ? "postgres" : "database"} />Application PostgreSQL</h2><code className="ref">{database.databaseName} · {database.id}</code><Written location={source} label="Declared in" /></header>
+    <Tags entity={`database:${database.id}`} />
     <InspectorSection title="Environments" description="One application schema. Independent data in development and production.">
       <div className="database-environments">
         <div className={`database-environment dev${mode === "dev" ? " selected" : ""}`}><EntityIcon icon="postgres" /><span><strong>Development</strong><span>Local PostgreSQL</span><code>{postgres?.image ?? "Not configured"}</code></span><span className="small muted">Compose</span></div>

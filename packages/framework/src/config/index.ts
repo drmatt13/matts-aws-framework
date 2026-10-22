@@ -1,3 +1,5 @@
+import { validateTags, sameTags, type DeclarationTags } from "./tags";
+export * from "./tags";
 import {
   EVENT_SOURCE_ROOT,
   LAMBDA_SOURCE_ROOT,
@@ -414,6 +416,7 @@ export const CLOUDWATCH_LOG_RETENTION_DAYS = [
 
 /** Build overrides shared by http, webSocket, and events Lambdas. */
 export interface LambdaTargetDefinition {
+  readonly tags?: DeclarationTags;
   /** Imported VPC declaration; never inherited from defaults. */
   readonly vpc?: FrameworkNetwork;
   /** Override the managed runtime. Invalid for `packaging: "container"`. */
@@ -761,6 +764,7 @@ export function isFrameworkOwnedEnvironmentName(name: string): boolean {
 
 /** The workload environment shared by deployed and local execution. */
 export interface TargetEnvironment<Catalog = AnyResourceCatalog> {
+  readonly tags?: DeclarationTags;
   readonly environment?: Readonly<Record<string, string | StringResourceReference<Catalog>>>;
   /**
    * This workload uses the application's database, the one framework.config.ts
@@ -2037,6 +2041,7 @@ export interface ResolvedTaskTarget extends ResolvedTargetEnvironment {
 }
 
 interface ResolvedLambdaBase {
+  readonly tags?: DeclarationTags;
   readonly vpc?: FrameworkNetwork;
   readonly id: string;
   readonly reference: LambdaTarget;
@@ -2612,6 +2617,7 @@ export function resolveLambdaTargetDefinition(
     definition[key] ?? (sectionDefaults as LambdaTargetDefinition | undefined)?.[key];
 
   const base: ResolvedLambdaBase = {
+    tags: validateTags(definition.tags, `lambda:${id}`),
     id,
     reference: toTargetReference("lambda", id) as LambdaTarget,
     directory,
@@ -2671,6 +2677,7 @@ export function resolveLambdaTargetDefinition(
 
 /** What every normalized target has, whatever it is built from. */
 export interface NormalizedTargetBase extends ResolvedTargetSettings {
+  readonly tags: DeclarationTags;
   readonly kind: TargetKind;
   readonly vpc?: FrameworkNetwork;
   readonly id: string;
@@ -3015,9 +3022,11 @@ function exampleConflictingRequest(
 }
 
 function normalize(config: FrameworkConfig): InternalNormalizedConfig {
+  if ("tags" in config.defaults) throw new Error("defaults.tags is not supported. Declare tags on each workload, network, database or resource owner; tags are never inherited from workload defaults.");
   const networks = networkRegistry(config);
   for (const group of ["lambda", "container", "http", "webSocket", "events", "tools"] as const) {
     const defaults = config.defaults[group];
+    if (defaults && "tags" in defaults) throw new Error(`defaults.${group}.tags is not supported. Declare tags on each workload; only catalog stack members inherit their stack tags.`);
     if (defaults && "vpc" in defaults) throw new Error(`defaults.${group} declares "vpc". Import a VPC explicitly on each workload; VPC references cannot be inherited.`);
   }
   if (config.database) {
@@ -3133,8 +3142,11 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
             healthCheckPath: serviceDefinition?.healthCheckPath,
           });
 
+    const tagDeclaration = kind === "service" ? serviceDefinition : kind === "task" ? extra.taskDefinition : kind === "agent" ? extra.agentDefinition : definition;
+    const tags = validateTags(tagDeclaration?.tags, origin);
     const existing = targets.get(reference);
     if (existing) {
+      if (!sameTags(existing.tags, tags)) throw new Error(`Target "${reference}" has conflicting tags in ${existing.origins[0]} and ${origin}. Routes sharing compute must declare the same tags; a route cannot retag its shared target.`);
       if (existing.role !== role) {
         throw new Error(
           `Target "${reference}" is declared as ${existing.role} in ${existing.origins[0]} and as ${role} in ${origin}. A target belongs to exactly one invocation surface; share an application module instead of one Lambda identity.`,
@@ -3172,6 +3184,7 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
     const declaredVpc = kind === "lambda" ? definition.vpc : cloud.service?.vpc ?? cloud.task?.vpc;
     const selectedVpc = declaredVpc ? resolveNetwork(config, declaredVpc) : undefined;
     const target = {
+      tags,
       kind,
       id,
       reference,
@@ -3495,7 +3508,7 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
       { id },
       "workflow",
       undefined,
-      {},
+      { tags: definition.tags },
       undefined,
       origin,
       { workflow, deploy: definition.deploy ?? "both" },

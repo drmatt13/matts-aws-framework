@@ -37,7 +37,9 @@ export function locateManagedDatabase(root: string, files: SourceFiles): Located
   if (!id.property || !ts.isPropertyAssignment(id.property)) return undefined;
   const identity = unwrap(id.property.initializer);
   if (!ts.isStringLiteral(identity) || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(identity.text)) return undefined;
-  const expected = path.join(root, "framework-config", "databases", identity.text, "index.ts");
-  if (path.resolve(entry.file) !== path.resolve(expected)) return undefined;
+  // Placement in a directory is a convention, not declaration identity. Keep
+  // writes inside the configuration tree while supporting cohesive modules.
+  const inside = path.relative(path.join(root, "framework-config"), entry.file);
+  if (inside.startsWith("..") || path.isAbsolute(inside)) return undefined;
   return { id: identity.text, file: entry.file, span: entry.span, line: entry.line, column: entry.column, source, object };
 }

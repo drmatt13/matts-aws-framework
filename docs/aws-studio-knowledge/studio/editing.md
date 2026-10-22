@@ -22,6 +22,19 @@ related:
 ---
 # Inspector drafts and source transactions
 
+Tags use a typed `tags` draft operation for the owning declaration, including all aliases
+of shared compute. `server/edits/tags.ts` plans narrow literal changes and
+`server/source/tags.ts` supplies conservative editability. Tag changes participate in
+normal both-mode review, per-file diffs, stale hashes, refreshed-model validation, guarded
+rollback and undo/redo. Stack member overrides are distinct from effective inherited tags;
+removal restores inheritance. See [tag authoring](../../framework-studio/declarations-and-tags.md).
+The tag Inspector uses labeled key/value inputs, an Add tag action that focuses the new
+key, and visible Delete buttons. Validation is associated with its fields; deleting a
+row returns keyboard focus to a remaining key or Add tag. Route ownership help stays
+inside the Tags section. An open page with missing tag editability offers
+Refresh editor, which reloads its snapshot without writing source; an expired server
+session reconnects through a page reload. Refresh is disabled while a draft is dirty.
+
 This is the canonical graph-to-source contract. Creators, trigger editors and resource tools reuse it; they do not gain arbitrary file-writing authority.
 
 `InspectorDraft` in [draft.ts](../../../framework-studio/src/draft.ts) owns baseline/latest snapshots, staged entries, validation, review and navigation protection. While dirty, the visible graph stays on the baseline. A different snapshot revision marks conflict; it does not auto-merge. Invalid/conflicting drafts cannot apply. `StudioProvider` in [studio.tsx](../../../framework-studio/src/studio.tsx) connects this lifecycle across routes and browser exit. The draft/history is in memory, not durable recovery storage.

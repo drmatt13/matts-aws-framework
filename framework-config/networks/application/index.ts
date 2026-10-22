@@ -16,6 +16,7 @@ import { defineNetwork } from "@repo/framework/config";
  */
 export const applicationVpc = defineNetwork({
   id: "application",
+  tags: { area: "platform" },
   cloud: { constructId: "NetworkStack" },
   // Set once: changing either renumbers every subnet and replaces everything
   // inside them.

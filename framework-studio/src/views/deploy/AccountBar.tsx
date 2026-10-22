@@ -54,7 +54,7 @@ export function AccountBar(props: {
           <span className="account-resolved muted">{props.profile ? (props.loading ? "Resolving the account…" : "") : "Choose the profile whose account to inspect."}</span>
         )}
         <span className="spacer" />
-        <button className="icon-button" onClick={props.onRefresh} disabled={!props.profile} title="Read AWS and this machine again">
+        <button className="quiet" onClick={props.onRefresh} disabled={!props.profile} title="Read AWS and this machine again">
           <RefreshCw size={14} className={props.loading ? "spin" : undefined} aria-hidden /> Refresh
         </button>
       </div>

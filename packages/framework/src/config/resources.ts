@@ -1,3 +1,4 @@
+import { validateTags, type DeclarationTags, type DeclarationMetadata } from "./tags";
 /**
  * Typed, serializable resource declarations and deferred references.
  *
@@ -86,6 +87,8 @@ export interface ResourceReference<
   FromEnv extends string | undefined = string | undefined,
   Value extends string = string,
 > {
+  readonly tags?: DeclarationTags;
+  readonly effectiveTags?: DeclarationTags;
   readonly $resource: typeof RESOURCE_REFERENCE_BRAND;
   /** What the supplied value is: a plain string, or a non-secret secret handle. */
   readonly kind: Kind;
@@ -469,7 +472,7 @@ function rebuild(current: BuilderData, change: Record<string, unknown>): Builder
 }
 
 /** One authored input, of either kind, as the builder a chain continues from. */
-function declareInput(kind: ResourceKind, variable?: string): BuilderData {
+function declareInput(kind: ResourceKind, variable?: string, options?: DeclarationMetadata): BuilderData {
   if (
     variable !== undefined &&
     (typeof variable !== "string" || !ENVIRONMENT_VARIABLE_NAME.test(variable))
@@ -482,6 +485,7 @@ function declareInput(kind: ResourceKind, variable?: string): BuilderData {
     $declaration: RESOURCE_DECLARATION_BRAND,
     $payload: {
       kind,
+      ...(options?.tags === undefined ? {} : { tags: validateTags(options.tags, `resource.${kind === "secret" ? "secret" : "fromEnv"}()`), effectiveTags: validateTags(options.tags) }),
       // Optional until a `.default()` answers for it. A secret has no default
       // and stays optional: whether a deployment needs it belongs to the
       // workloads that read it, not to the catalog.
@@ -502,7 +506,7 @@ function declareInput(kind: ResourceKind, variable?: string): BuilderData {
  */
 export interface ResourceFactory {
   /** A reference to any native construct, linked beside its definition. */
-  cdk<T>(): CdkResource<T>;
+  cdk<T>(options?: DeclarationMetadata): CdkResource<T>;
   /**
    * Everything a stack exposes, as one entry.
    *
@@ -517,11 +521,11 @@ export interface ResourceFactory {
    * Import the stack with `import type`: a value import would carry CDK into
    * the dev servers and the invocation runner, which load this catalog.
    */
-  stack<T>(): CdkResourceGroup<T>;
+  stack<T>(options?: import("./cdk-resources").StackResourceOptions<T>): CdkResourceGroup<T>;
   /** Read from the SCREAMING_SNAKE_CASE of this declaration's catalog path. */
   fromEnv(): EnvStringBuilder<string, true>;
   /** Read from the named variable, which is the spelling worth preferring. */
-  fromEnv<const Name extends string>(variable: Name): EnvStringBuilder<Name, true>;
+  fromEnv<const Name extends string>(variable: Name, options?: DeclarationMetadata): EnvStringBuilder<Name, true>;
   /**
    * A secret you author in cdk-app/.env.<mode>, which `npm run deploy:resources` uploads to
    * Secrets Manager and supplies the ARN for.
@@ -534,21 +538,21 @@ export interface ResourceFactory {
    * startup. None of the three puts the value in a template.
    */
   secret(): EnvSecretBuilder<string>;
-  secret<const Name extends string>(variable: Name): EnvSecretBuilder<Name>;
+  secret<const Name extends string>(variable: Name, options?: DeclarationMetadata): EnvSecretBuilder<Name>;
 }
 
 export const resource: ResourceFactory = {
-  cdk<T>(): CdkResource<T> {
-    return cdkResource<T>();
+  cdk<T>(options?: DeclarationMetadata): CdkResource<T> {
+    return cdkResource<T>([], options?.tags === undefined ? {} : { tags: validateTags(options.tags), effectiveTags: validateTags(options.tags) });
   },
-  stack<T>(): CdkResourceGroup<T> {
-    return cdkResourceGroup<T>();
+  stack<T>(options?: import("./cdk-resources").StackResourceOptions<T>): CdkResourceGroup<T> {
+    return cdkResourceGroup<T>([], false, options);
   },
-  fromEnv(variable?: string) {
-    return declareInput("string", variable) as unknown as EnvStringBuilder<string, true>;
+  fromEnv(variable?: string, options?: DeclarationMetadata) {
+    return declareInput("string", variable, options) as unknown as EnvStringBuilder<string, true>;
   },
-  secret(variable?: string) {
-    return declareInput("secret", variable) as unknown as EnvSecretBuilder<string>;
+  secret(variable?: string, options?: DeclarationMetadata) {
+    return declareInput("secret", variable, options) as unknown as EnvSecretBuilder<string>;
   },
 };
 

@@ -19,7 +19,29 @@ related:
 ---
 # Creation and resource connections
 
+Every creator accepts the same optional string key/value tags. Workloads append a literal
+entry to the canonical `framework-config/workloads/<section>.ts` export (`http`, `events`,
+`tasks`, etc.). Existing imports, comments and fragments are preserved; the existing root
+array registration remains in place. A missing kind module is created and explicitly
+registered. Computed/ambiguous canonical maps receive a corrective source-owned refusal.
+Developers can still deliberately compose smaller maps through root arrays. Catalog
+creation writes named descriptors and explicitly composes them in `resources.ts`.
+Creation tags travel through generated-source review and history.
+
+The default catalog granularity is cohesive: new flat inputs/secrets append named exports
+to `resources/inputs.ts`, and new stack descriptors append to `resources/stacks.ts`.
+Existing catalog groups retain their declaring module. The explicit facade imports/composes
+each public name; descriptor filenames are never public catalog identity.
+
 Current source implements **Add to Application**, not a disabled menu. [AddMenu](../../../framework-studio/src/views/AddMenu.tsx) opens [CreationWizard](../../../framework-studio/src/views/CreationWizard.tsx); `CREATORS`, `CreationRequest` and `readCreationRequest` in [shared/creation.ts](../../../framework-studio/shared/creation.ts) define forms and server-revalidated inputs. `InspectorDraft.beginCreation` stages one complete creation; it cannot be mixed with unrelated edits in a batch.
+
+The chooser supports arrow keys, Home/End and Escape with focus returned to its trigger.
+Unavailable choices explain their configuration/validation blocker in the menu.
+Wizard fields keep labels, controls, helper text and validation together; tags and
+list editors span the form width. Helpers remain associated when errors appear,
+and all configuration controls freeze during validation, stale-source evaluation
+or a source conflict. Cancel remains available for resolving a conflict. These UI
+states do not change the reviewed-source transaction or deploy authorization.
 
 `planCreation` in [edits/creation.ts](../../../framework-studio/server/edits/creation.ts) returns source overrides, expected entities/selection and impact. It does not write authored files. `assertCreationFile` allows fixed creator-owned destinations and refuses traversal/symlink components. Disposable evaluators load new proposed modules; the [transaction](editing.md) reviews, validates both modes/typechecks, applies, verifies and makes creation undoable.
 
@@ -27,7 +49,7 @@ Current source implements **Add to Application**, not a disabled menu. [AddMenu]
 
 | Creator | Current source behavior / boundary |
 | --- | --- |
-| Function / API route | Node TypeScript zip handler plus literal section and root array registration; HTTP/WebSocket/event categories. Compatible existing routed Lambda aliases are appended to the original literal section, preserving local references, imports, settings and construct identity. WebSocket modules narrow their section type with an exact `Pick`. Other runtimes/images remain manually authored |
+| Function / API route | Node TypeScript zip handler plus literal section and root array registration; HTTP/WebSocket/event categories. Compatible existing routed Lambda aliases are appended to the original literal section, preserving local references, imports, settings and construct identity. New WebSocket modules use `Partial<WebSocketSection>`; existing modules retain their authored type. Other runtimes/images remain manually authored |
 | Stack | Application stack exposing an SQS queue, catalog type import/declaration and actual CDK entrypoint instantiation; custom members remain source-owned |
 | VPC | Create an independent VPC module and registry entry. Each has its own map island and settings; prod builds it when used. Placement edits generate imported references and subnet settings together |
 | Workflow | Identity workflow or initial sequence of existing event Lambdas/tasks through the existing DSL |

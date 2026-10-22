@@ -9,11 +9,66 @@ source:
   - framework-studio/src/scene/layout-optimize.ts
   - framework-studio/src/scene/routing.ts
   - framework-studio/src/scene/render.ts
+  - framework-studio/src/endpoint-services.ts
 related:
   - studio.graph-model
   - studio.snapshots
 ---
 # Board and Isometric rendering
+
+Isometric always retains its topology islands and real VPC/subnet terraces. The compact
+key/value tag filter changes only visual presence: nonmatches use the same transparent
+style as resources unavailable in the active deployment mode. Untagged and empty values
+remain distinct. Filtering preserves canonical IDs, positions, network placement, edges,
+source links and inspector selection; it never changes actual deployment availability.
+Filter state is a view preference and never stages a source edit.
+Tag keys and value totals use active-mode membership: enabled workload lanes and routes,
+non-absent catalog entries, enabled local services and built production VPCs. Union-topology
+placeholders retain their metadata for filtering/inspection but contribute no counts.
+Development VPCs use the continuous blueprint deck. Production renders every declared VPC
+and its gateways/endpoints as solid terraces, including unused VPCs. Captions and hover facts
+still report whether production actually builds the network; rendering never provisions it.
+The first tag selector includes **Untagged**, matching entities with no effective tags at all,
+with mode-scoped totals. The value selector's **Untagged** option instead means missing the
+selected key. Empty values and inherited tags count as tags.
+Untagged results exclude plain input parameters, namespace containers, environment files,
+local database fixtures, and framework-managed stacks and their member projections. Tagged
+parameters still match explicit tag values. This applies to both no-tags and missing-key filters.
+
+VPC fixtures wrap into approximately square grids within their subnet. Measurement reserves
+separate compute and fixture rows across the terraces; placement reuses these measured
+coordinates. Endpoint count grows width and depth together, preserving every fixture,
+its service badge, stable ID, subnet ownership and picking silhouette. Gateways sit on
+the left-facing perimeter, leaving the interior for compute and the endpoint grid.
+Canvas mini badges use the same local AWS SVG service/family catalog as the endpoint
+picker (`endpoint-services.ts`); the renderer loads selected artwork once per instance.
+The zoom floor permits narrow-view fits as network fixture counts grow.
+Every selectable canvas hit, including gateways, endpoints and connections, uses a pointer cursor.
+
+Island titles always stay horizontal outside the left flank; no names are painted onto
+island walls. Production subnet headings use dark horizontal cards with 13 px detail
+text and subnet-coloured cues. Below 0.65×, text and card geometry shrink gently using
+the node-caption scale. Each keeps its back-rim anchor, lifting to
+clear icons and other headings. Local clearance adjustments ease to rest independently
+of camera movement; pan tracks terrain exactly. Viewport edges never reflow or hide names:
+the canvas clips them naturally. Overview opacity follows the node-caption curve with a
+25% text floor and faster-dissolving cards. Resource captions yield to section headings.
+Paused/reduced motion snaps local adjustments; animation frames stop once settled.
+Placement caches invalidate with camera, viewport, scene and font changes and track
+animated offsets. Development shows no subnet names on the canvas or VPC hover title;
+the declaration and inspector still retain their networking configuration.
+
+Search and tag filters use the shared control geometry and inset chevrons. Clearing
+either restores keyboard focus to the surviving search/key control. Camera controls
+are a named group; long tag selections retain their full value in their tooltip.
+Board keeps resource-only and local-service graphs visible even before any compute
+is declared; its creation menu remains available on those valid graphs.
+The landscape entity list becomes a bounded visible navigator while it contains
+keyboard focus. Arrow keys and Home/End browse the existing entity order; Enter
+inspects, and Escape returns focus to the canvas without changing selection.
+An empty/error graph shows configuration-health guidance; canvas renderer and
+wheel listeners mount when a later valid snapshot restores entities, and dispose
+again if the graph becomes empty.
 
 Board's [layout.ts](../../../framework-studio/src/layout.ts) arranges entry, compute and catalog columns with role grouping and SVG connections. Isometric builds a separate geometric scene from the same [graph model](graph-model.md); layout coordinates are disposable projections, never infrastructure configuration.
 

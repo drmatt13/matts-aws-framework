@@ -1,3 +1,4 @@
+import { validateTags, validateRdsTags, mergeTags, type DeclarationTags } from "./tags";
 import { isCdkResource, type CdkResource } from "./cdk-resources";
 import type { Connectable } from "./resources";
 import { isFrameworkNetwork, type FrameworkNetwork } from "./network";
@@ -82,6 +83,7 @@ export const DATABASE_BRAND = "@repo/framework/database" as const;
 
 /** Native references remain useful for framework integrations and test fixtures. */
 export interface DatabaseReference {
+  readonly tags?: DeclarationTags;
   readonly resource: CdkResource<Connectable>;
   readonly vpc: FrameworkNetwork;
 }
@@ -126,10 +128,11 @@ export function databaseSettingsProblem(error: unknown): string {
 export function defineDatabase(declaration: DatabaseDeclaration): FrameworkDatabase {
   if (!declaration || typeof declaration !== "object" || Array.isArray(declaration)) throw new Error("defineDatabase takes a literal database declaration.");
   for (const key of Object.keys(declaration)) {
-    if (!["id", "resource", "vpc", "subnet", "engine", "databaseName", "settings"].includes(key)) throw new Error(`Database declares unknown field "${key}". Put infrastructure options inside settings.`);
+    if (!["tags", "id", "resource", "vpc", "subnet", "engine", "databaseName", "settings"].includes(key)) throw new Error(`Database declares unknown field "${key}". Put infrastructure options inside settings.`);
   }
   if (typeof declaration.id !== "string" || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(declaration.id)) throw new Error("Database id must start with a lowercase letter and contain lowercase letters, digits, or single hyphens, such as application.");
   assertDatabaseReference(declaration);
+  validateRdsTags(mergeTags(`Database "${declaration.id}"`, declaration.resource.effectiveTags ?? declaration.resource.tags, declaration.tags), `Database "${declaration.id}"`);
   const subnet = declaration.subnet ?? "isolated";
   if (subnet !== "private" && subnet !== "isolated") throw new Error(`Database "${declaration.id}" subnet must be "private" or "isolated". Databases are never public.`);
   const engine = declaration.engine ?? "postgres";
@@ -142,6 +145,7 @@ export function defineDatabase(declaration: DatabaseDeclaration): FrameworkDatab
     throw new Error(`Database "${declaration.id}": ${databaseSettingsProblem(error)}`);
   }
   return Object.freeze({
+    tags: validateTags(declaration.tags, `Database "${declaration.id}"`),
     $database: DATABASE_BRAND, id: declaration.id, resource: declaration.resource, vpc: declaration.vpc,
     subnet, engine, databaseName,
     settings: Object.freeze({ ...settings, ...(settings.logExports === undefined ? {} : { logExports: Object.freeze([...settings.logExports]) }) }),

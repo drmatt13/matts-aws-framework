@@ -14,6 +14,7 @@ import { readDescriptions } from "./descriptions";
 import { withConnectionEvidence } from "./source/evidence";
 import { withClientEnvironment } from "./client-environment";
 import { readClientMappings } from "./client-environment-source";
+import { STACK_MEMBER_TAGGING, tagFacts, withAbsentTagging } from "./model/tags";
 
 /**
  * The studio's current understanding of the repository, rebuilt as a whole.
@@ -25,6 +26,7 @@ import { readClientMappings } from "./client-environment-source";
 
 /** A stack's members as its class declares them, merged with the ones workloads read. */
 function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, CatalogEntrySource>, cdkEdges: ModeModel["edges"]): ModeModel {
+  const tagging = { ...model.tagging };
   const resources: ModelResource[] = [...model.resources];
   const index = new Map(resources.map((resource, position) => [resource.id, position]));
   for (const [catalogPath, entry] of catalog) {
@@ -32,6 +34,9 @@ function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, Catalog
     const stack = resources[index.get(`resource:${catalogPath}`) ?? -1];
     for (const member of entry.stack.members) {
       const id = `resource:${catalogPath}.${member.name}`;
+      const parent = `resource:${catalogPath}`;
+      const capability = member.category === "value" ? { kind: "logical" as const, note: "Public stack values have no independently taggable AWS resource." } : STACK_MEMBER_TAGGING;
+      tagging[id] = { ...(tagging[id] ?? tagFacts(id, {}, capability, { entity: parent, tags: tagging[parent]?.effective ?? {} })), aws: capability };
       const existing = index.get(id);
       if (existing !== undefined) {
         const resource = resources[existing]!;
@@ -44,7 +49,7 @@ function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, Catalog
       index.set(id, resources.length);
       resources.push({
         id,
-        path: [catalogPath, member.name],
+        path: [...catalogPath.split("."), member.name],
         kind: "member",
         parent: `resource:${catalogPath}`,
         absent: stack?.absent === true,
@@ -65,7 +70,7 @@ function withClassMembers(model: ModeModel, catalog: ReadonlyMap<string, Catalog
     label: "Database in stack",
     detail: "This stack declares the application's framework-managed database.",
   }));
-  return { ...model, resources,
+  return { ...model, resources, tagging,
     networks: model.networks?.map(network => ({ ...network, builtInProd: network.builtInProd || [...catalog].some(([name, entry]) => entry.stack?.networkIds?.includes(network.id) && entry.stackUsage?.status === "referenced" && resources.some(resource => resource.id === `resource:${name}` && !resource.absent)) })),
     edges: [...model.edges, ...ownership, ...cdkEdges.filter((edge) => ids.has(edge.from) && ids.has(edge.to))] };
 }
@@ -136,8 +141,9 @@ export class SnapshotBuilder {
     const settings = readDeploymentSettings(this.repositoryRoot);
     const files = hashEditableFiles(this.repositoryRoot);
     const evaluation = await this.pool.evaluate(settings.webSocketApi);
-    const dev = this.lastGood(evaluation.dev);
-    const prod = this.lastGood(evaluation.prod);
+    const freshDev = this.lastGood(evaluation.dev), freshProd = this.lastGood(evaluation.prod);
+    const dev = withAbsentTagging(freshDev, freshProd);
+    const prod = withAbsentTagging(freshProd, freshDev);
     const base = !dev.stale && dev.targets.length > 0 ? dev : prod;
     // One parse of each source file serves the index and both modes' evidence.
     const sources = new SourceFiles();

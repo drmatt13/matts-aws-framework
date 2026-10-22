@@ -7,11 +7,21 @@ export const NODE_CAPTION = { width: 160, offset: -64, height: 40, minOpacity: 0
 export const NODE_DEPLOYMENT_TAG = { offset: 10, height: 15 } as const;
 export type LabelRect = Omit<CardHit, "id">;
 
+/** Screen-space section labels retain legible type instead of following a terrain face. */
+export const SUBNET_LABEL = { fontSize: 13, fullSizeZoom: 0.65, height: 28, padding: 10, cue: 12, radius: 6, gap: 8, anchorInset: 0.75 } as const;
+
 /** Let names shrink more gently than the scene, without oversized screen-fixed labels. */
 export function nodeCaptionPresentation(zoom: number): { scale: number; detail: number; gap: number } {
   const progress = Math.max(0, Math.min(1, (zoom - 0.18) / (0.85 - 0.18)));
   const scale = zoom < 0.9 ? 0.9 * Math.pow(zoom / 0.9, 0.65) : Math.min(1.2, zoom);
   return { scale, detail: progress * progress * (3 - 2 * progress), gap: 3 * Math.min(1, zoom / 0.9) };
+}
+
+/** Full readable type in detail views, with the same gentle overview scaling and opacity curve as resource names. */
+export function subnetLabelPresentation(zoom: number): { scale: number; alpha: number; plateAlpha: number } {
+  const { scale, detail } = nodeCaptionPresentation(zoom);
+  const alpha = NODE_CAPTION.minOpacity + (1 - NODE_CAPTION.minOpacity) * detail;
+  return { scale: Math.min(1, scale / nodeCaptionPresentation(SUBNET_LABEL.fullSizeZoom).scale), alpha, plateAlpha: alpha * alpha };
 }
 
 export function rectanglesOverlap(a: LabelRect, b: LabelRect, gap = 3): boolean {

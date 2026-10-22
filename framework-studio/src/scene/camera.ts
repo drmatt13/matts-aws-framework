@@ -31,7 +31,7 @@ export interface Bounds {
 }
 
 /** Low enough that a fit shows the whole application on a small screen. */
-export const MIN_ZOOM = 0.18;
+export const MIN_ZOOM = 0.05;
 export const MAX_ZOOM = 2.5;
 
 /** Pointer travel, in CSS pixels, before a press becomes a pan rather than a click. */

@@ -45,7 +45,7 @@ const state = () => builder.current!;
 const revision = () => state().snapshot.revision;
 
 for (const kind of CREATION_KINDS) test(`${kind}: complete reviewed creation, discovery, conflict protection, undo and redo`, async () => {
-  const intent = valid(kind, { description: `Created in Studio: ${kind}` });
+  const intent = valid(kind, { description: `Created in Studio: ${kind}`, tags: { Feature: "Studio fixtures" } });
   const planned = planCreation(fixture, state(), intent);
   const originals = new Map([...planned.overrides].map(([file]) => [file, existsSync(file) ? readFileSync(file, "utf8") : null]));
   const plan = await edits.planBatch([{ kind: "create", request: intent }], revision());
@@ -65,6 +65,7 @@ for (const kind of CREATION_KINDS) test(`${kind}: complete reviewed creation, di
     const scene = buildScene(model);
     assert.ok(scene.nodes.some((node) => node.id === planned.expected.select) || scene.islands.some((island) => island.id === planned.expected.select), "the canonical resource appears in the actual graph projection");
     assert.equal(model.status, "ok");
+    assert.equal(model.tagging?.[planned.expected.select]?.effective.Feature, "Studio fixtures", `${mode} reads the created tags from TypeScript`);
   }
   await assert.rejects(edits.planBatch([{ kind: "create", request: intent }], revision()), /already|exists/);
   const undo = await edits.undo();
@@ -81,6 +82,19 @@ for (const kind of CREATION_KINDS) test(`${kind}: complete reviewed creation, di
   assert.equal((await edits.undo()).status, "applied");
 });
 
+test("prod-only stack tags remain editable in the local graph and undo restores their source", async () => {
+  const file = path.join(fixture, "framework-config/resources/stacks.ts");
+  const before = readFileSync(file, "utf8");
+  const originalTags = state().snapshot.models.prod.tagging!["resource:rds"]!.authored;
+  const plan = await edits.planBatch([{ kind: "tags", entity: "resource:rds", tags: { ...originalTags, Purpose: "Database ownership" } }], revision());
+  assert.ok(plan.ok, JSON.stringify(plan.preflight));
+  const applied = await edits.applyBatch(plan.planId);
+  assert.equal(applied.status, "applied", applied.message);
+  for (const mode of ["dev", "prod"] as const) assert.equal(state().snapshot.models[mode].tagging?.["resource:rds"]?.effective.Purpose, "Database ownership");
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(readFileSync(file, "utf8"), before);
+});
+
 test("untrusted requests reject unsupported settings and never reflect secret plaintext", () => {
   for (const kind of CREATION_KINDS) {
     assert.throws(() => readCreationRequest({ ...valid(kind), [kind === "vpc" ? "zones" : "id"]: kind === "vpc" ? 1 : "../../outside" }));
@@ -92,13 +106,15 @@ test("untrusted requests reject unsupported settings and never reflect secret pl
 test("creation paths reject traversal, arbitrary files and symbolic-link parents", () => {
   for (const file of ["../outside.ts", "cdk-app/.env.dev", "package.json", "framework-config/../secret.ts", "framework-config/x/../../secret.ts", "framework-config/x\\secret.ts"]) assert.throws(() => assertCreationFile(fixture, file));
   const linked = path.join(fixture, "framework-config/linked");
-  symlinkSync(path.join(fixture, "framework-config/http"), linked);
+  symlinkSync(path.join(fixture, "framework-config/workloads"), linked);
   try { assert.throws(() => assertCreationFile(fixture, "framework-config/linked/test.ts"), /symbolic/); }
   finally { rmSync(linked); }
 });
 
 test("concurrent source changes and newly occupied handler paths prevent all writes", async () => {
   const intent = valid("function", { id: "concurrent-function" });
+  const declaration = path.join(fixture, "framework-config/workloads/events.ts");
+  const originalDeclaration = readFileSync(declaration, "utf8");
   const plan = await edits.planBatch([{ kind: "create", request: intent }], revision());
   assert.ok(plan.ok, JSON.stringify(plan.preflight));
   const handler = path.join(fixture, "cdk-app/lambda_functions/event_functions/concurrent-function/index.ts");
@@ -106,7 +122,7 @@ test("concurrent source changes and newly occupied handler paths prevent all wri
   writeFileSync(handler, "// User-owned file\n");
   await assert.rejects(edits.applyBatch(plan.planId), /changed/);
   assert.equal(readFileSync(handler, "utf8"), "// User-owned file\n");
-  assert.ok(!existsSync(path.join(fixture, "framework-config/events/concurrent-function.ts")));
+  assert.equal(readFileSync(declaration, "utf8"), originalDeclaration);
   rmSync(path.dirname(handler), { recursive: true });
 });
 
@@ -114,7 +130,7 @@ test("an HTTP route and authenticated handler include bindings, permission edges
   const intent = valid("route", { id: "bound-route", path: "/bound-route", bindingResource: "resource:openaiApiKey", bindingVariable: "PROVIDER_SECRET_ARN" });
   const plan = await edits.planBatch([{ kind: "create", request: intent }], revision());
   assert.ok(plan.ok, JSON.stringify(plan.preflight));
-  for (const file of ["cdk-app/lambda_functions/http_functions/bound-route/index.ts", "framework.config.ts", "framework-config/http/bound-route.ts", "packages/api-contract/src/generated/framework-routes.ts"]) assert.ok(plan.changes.some((change) => change.file === file), `review includes ${file}`);
+  for (const file of ["cdk-app/lambda_functions/http_functions/bound-route/index.ts", "framework-config/workloads/http.ts", "packages/api-contract/src/generated/framework-routes.ts"]) assert.ok(plan.changes.some((change) => change.file === file), `review includes ${file}`);
   assert.match(plan.changes.find((change) => change.file.endsWith("bound-route/index.ts"))!.diff.unified, /authenticated/);
   assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
   const model = state().snapshot.models.prod;
@@ -180,6 +196,8 @@ test("partial multi-file write failure restores existing files and removes newly
 });
 
 test("post-write evaluation failure compensates the entire creation", async () => {
+  const declaration = path.join(fixture, "framework-config/workloads/events.ts");
+  const originalDeclaration = readFileSync(declaration, "utf8");
   const plan = await edits.planBatch([{ kind: "create", request: valid("function", { id: "verification-failure" }) }], revision());
   assert.ok(plan.ok, JSON.stringify(plan.preflight));
   const refresh = builder.refresh.bind(builder);
@@ -188,12 +206,12 @@ test("post-write evaluation failure compensates the entire creation", async () =
   try {
     const result = await edits.applyBatch(plan.planId);
     assert.equal(result.status, "reverted", result.message);
-    assert.ok(!existsSync(path.join(fixture, "framework-config/events/verification-failure.ts")));
+    assert.equal(readFileSync(declaration, "utf8"), originalDeclaration);
     assert.ok(!existsSync(path.join(fixture, "cdk-app/lambda_functions/event_functions/verification-failure/index.ts")));
   } finally { builder.refresh = refresh; }
 });
 
-test("a catalog input can be a single-file transaction and source changes expire its approval", async () => {
+test("a catalog input composes its declaration module and source changes expire its approval", async () => {
   const files = ["dev", "prod"].map((mode) => path.join(fixture, `cdk-app/.env.${mode}.template`));
   const templates = files.map((file) => readFileSync(file, "utf8"));
   files.forEach((file, index) => writeFileSync(file, templates[index] + "\n# STUDIO_SINGLE=\n"));
@@ -201,7 +219,7 @@ test("a catalog input can be a single-file transaction and source changes expire
     const intent = valid("input", { id: "singleInput", envName: "STUDIO_SINGLE" });
     const plan = await edits.planBatch([{ kind: "create", request: intent }], revision());
     assert.ok(plan.ok, JSON.stringify(plan.preflight));
-    assert.deepEqual(plan.changes.map((change) => change.file), ["framework-config/resources.ts"]);
+    assert.deepEqual(plan.changes.map((change) => change.file).sort(), ["framework-config/resources.ts", "framework-config/resources/inputs.ts"]);
     const file = path.join(fixture, "framework-config/resources.ts");
     const before = readFileSync(file, "utf8");
     writeFileSync(file, before + "\n// Concurrent source edit\n");
@@ -219,9 +237,10 @@ test("a catalog input can be a single-file transaction and source changes expire
 test("successive VPC creation supports NAT, friendly names, unused removal, and guarded undo", async () => {
   await builder.refresh();
   const baselineRoot = readFileSync(path.join(fixture, "framework.config.ts"), "utf8");
-  const ids = ["test", "analytics", "reporting"];
+  const initialNetworks = state().snapshot.models.prod.networks!.length;
+  const ids = ["creator-test", "analytics", "reporting"];
   for (const [index, id] of ids.entries()) {
-    const request = valid("vpc", { id, name: `${id} workspace`, description: `Notes for ${id}`, cidr: `10.${index + 1}.0.0/16`, nat: true });
+    const request = valid("vpc", { id, name: `${id} workspace`, description: `Notes for ${id}`, cidr: `10.${index + 21}.0.0/16`, nat: true });
     const plan = await edits.planBatch([{ kind: "create", request }], revision());
     assert.ok(plan.ok, JSON.stringify(plan.preflight));
     assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
@@ -230,43 +249,43 @@ test("successive VPC creation supports NAT, friendly names, unused removal, and 
       assert.equal(network.name, `${id} workspace`);
       assert.equal(network.natGateway, true);
       assert.equal(network.builtInProd, false);
-      assert.equal(state().snapshot.models[mode].networks!.length, index + 2);
+      assert.equal(state().snapshot.models[mode].networks!.length, initialNetworks + index + 1);
     }
     await assert.rejects(edits.planBatch([{ kind: "create", request }], revision()), /already exists/);
   }
   const beforeOverlap = readFileSync(path.join(fixture, "framework.config.ts"), "utf8");
-  await assert.rejects(edits.planBatch([{ kind: "create", request: valid("vpc", { id: "overlapping", cidr: "10.1.0.0/16" }) }], revision()), /overlaps VPC "test"/);
+  await assert.rejects(edits.planBatch([{ kind: "create", request: valid("vpc", { id: "overlapping", cidr: "10.21.0.0/16" }) }], revision()), /overlaps VPC "creator-test"/);
   assert.equal(readFileSync(path.join(fixture, "framework.config.ts"), "utf8"), beforeOverlap);
   assert.equal(existsSync(path.join(fixture, "framework-config/networks/overlapping/index.ts")), false);
-  const testNetwork = state().snapshot.models.prod.networks!.find(network => network.id === "test")!;
-  const rename = await edits.planBatch([{ kind: "network", network: "test", settings: { ...networkSettings(testNetwork), name: "Customer sandbox" } }], revision());
+  const testNetwork = state().snapshot.models.prod.networks!.find(network => network.id === "creator-test")!;
+  const rename = await edits.planBatch([{ kind: "network", network: "creator-test", settings: { ...networkSettings(testNetwork), name: "Customer sandbox" } }], revision());
   assert.ok(rename.ok, JSON.stringify(rename.preflight));
   assert.equal((await edits.applyBatch(rename.planId)).status, "applied");
-  assert.equal(state().snapshot.models.prod.networks!.find(network => network.id === "test")!.name, "Customer sandbox");
-  assert.equal(state().snapshot.models.prod.networks!.find(network => network.id === "test")!.constructId, testNetwork.constructId);
-  await assert.rejects(edits.planBatch([{ kind: "network", network: "test", settings: { ...networkSettings(testNetwork), cidr: "10.2.0.0/16" } }], revision()), /overlaps VPC "analytics"/);
+  assert.equal(state().snapshot.models.prod.networks!.find(network => network.id === "creator-test")!.name, "Customer sandbox");
+  assert.equal(state().snapshot.models.prod.networks!.find(network => network.id === "creator-test")!.constructId, testNetwork.constructId);
+  await assert.rejects(edits.planBatch([{ kind: "network", network: "creator-test", settings: { ...networkSettings(testNetwork), cidr: "10.22.0.0/16" } }], revision()), /overlaps VPC "analytics"/);
   assert.throws(() => planNetworkRemoval(fixture, state(), "application", new SourceFiles()), /used by|database/);
   const nativeFile = path.join(fixture, "cdk-app/lib/app/network-consumer.ts");
-  writeFileSync(nativeFile, 'import { studioTestVpc as nativeVpc } from "../../../framework-config/networks/test"; const alias = nativeVpc; export { alias };');
-  try { assert.throws(() => planNetworkRemoval(fixture, state(), "test", new SourceFiles()), /network-consumer\.ts/); }
+  writeFileSync(nativeFile, 'import { creatorTestVpc as nativeVpc } from "../../../framework-config/networks/creator-test"; const alias = nativeVpc; export { alias };');
+  try { assert.throws(() => planNetworkRemoval(fixture, state(), "creator-test", new SourceFiles()), /network-consumer\.ts/); }
   finally { rmSync(nativeFile); }
-  const interruptedRemoval = await edits.planBatch([{ kind: "removeNetwork", network: "test" }], revision());
-  writeFileSync(nativeFile, 'import { studioTestVpc } from "../../../framework-config/networks/test"; export { studioTestVpc };');
+  const interruptedRemoval = await edits.planBatch([{ kind: "removeNetwork", network: "creator-test" }], revision());
+  writeFileSync(nativeFile, 'import { creatorTestVpc } from "../../../framework-config/networks/creator-test"; export { creatorTestVpc };');
   try {
     await assert.rejects(edits.applyBatch(interruptedRemoval.planId), /referenced|changed/);
-    assert.ok(existsSync(path.join(fixture, "framework-config/networks/test/index.ts")), "a new native reference prevents removal before any write");
+    assert.ok(existsSync(path.join(fixture, "framework-config/networks/creator-test/index.ts")), "a new native reference prevents removal before any write");
   } finally { rmSync(nativeFile); }
-  const removal = await edits.planBatch([{ kind: "removeNetwork", network: "test" }], revision());
+  const removal = await edits.planBatch([{ kind: "removeNetwork", network: "creator-test" }], revision());
   assert.ok(removal.ok, JSON.stringify(removal.preflight));
-  assert.ok(removal.changes.some(change => change.file === "framework-config/networks/test/index.ts" && change.operation === "delete"));
+  assert.ok(removal.changes.some(change => change.file === "framework-config/networks/creator-test/index.ts" && change.operation === "delete"));
   assert.equal((await edits.applyBatch(removal.planId)).status, "applied");
-  assert.equal(existsSync(path.join(fixture, "framework-config/networks/test/index.ts")), false);
-  assert.equal(existsSync(path.join(fixture, "framework-config/networks/test")), false, "removal prunes only the empty VPC directory");
-  assert.ok(!state().snapshot.models.prod.networks!.some(network => network.id === "test"));
-  assert.equal(state().snapshot.descriptions.values["island:vpc:test"], undefined);
+  assert.equal(existsSync(path.join(fixture, "framework-config/networks/creator-test/index.ts")), false);
+  assert.equal(existsSync(path.join(fixture, "framework-config/networks/creator-test")), false, "removal prunes only the empty VPC directory");
+  assert.ok(!state().snapshot.models.prod.networks!.some(network => network.id === "creator-test"));
+  assert.equal(state().snapshot.descriptions.values["island:vpc:creator-test"], undefined);
   assert.equal((await edits.undo()).status, "applied");
-  assert.equal(state().snapshot.models.prod.networks!.find(network => network.id === "test")!.name, "Customer sandbox");
-  assert.equal(state().snapshot.descriptions.values["island:vpc:test"], "Notes for test");
+  assert.equal(state().snapshot.models.prod.networks!.find(network => network.id === "creator-test")!.name, "Customer sandbox");
+  assert.equal(state().snapshot.descriptions.values["island:vpc:creator-test"], "Notes for creator-test");
   assert.equal((await edits.redo()).status, "applied");
   assert.equal((await edits.undo()).status, "applied");
   assert.equal((await edits.undo()).status, "applied");
@@ -292,7 +311,7 @@ test("independent VPC creation, workload reassignment and network settings share
   // Review evaluates declarations; apply additionally enriches them from CDK source.
   const stackFile = path.join(fixture, "cdk-app/lib/app/rds-stack.ts");
   const stackBefore = readFileSync(stackFile, "utf8");
-  const stackWithNativeVpc = 'import { studioSecondaryVpc as secondaryVpc } from "../../../framework-config/networks/secondary";\n' + stackBefore
+  const stackWithNativeVpc = 'import { secondaryVpc } from "../../../framework-config/networks/secondary";\n' + stackBefore
     .replace("public readonly database:", "public readonly nativeSecurityGroup: ec2.SecurityGroup;\n  public readonly database:")
     .replace("super(scope, id, props);", 'super(scope, id, props);\n    this.nativeSecurityGroup = new ec2.SecurityGroup(this, "NativeSecurityGroup", { vpc: frameworkVpc(this, secondaryVpc) });');
   writeFileSync(stackFile, stackWithNativeVpc);
@@ -311,14 +330,14 @@ test("independent VPC creation, workload reassignment and network settings share
     writeFileSync(stackFile, stackBefore);
     await builder.refresh();
   }
-  const original = readFileSync(path.join(fixture, "framework-config/http/auth.ts"), "utf8");
+  const original = readFileSync(path.join(fixture, "framework-config/workloads/http.ts"), "utf8");
   const review = await edits.planBatch([
     { kind: "placement", target: "lambda:sign-out", vpc: "secondary", subnet: "private" },
     { kind: "network", network: "secondary", settings: { cidr: secondary.cidr, zones: 2, nat: true, ipv6: true, s3: true, dynamodb: true, endpoints: [] } },
   ], revision());
   assert.ok(review.ok, JSON.stringify(review.preflight));
-  assert.equal(readFileSync(path.join(fixture, "framework-config/http/auth.ts"), "utf8"), original, "review does not write");
-  assert.ok(review.changes.some(change => change.file === "framework-config/http/auth.ts" && /secondary/.test(change.diff.unified)));
+  assert.equal(readFileSync(path.join(fixture, "framework-config/workloads/http.ts"), "utf8"), original, "review does not write");
+  assert.ok(review.changes.some(change => change.file === "framework-config/workloads/http.ts" && /secondary/.test(change.diff.unified)));
   assert.equal((await edits.applyBatch(review.planId)).status, "applied");
   const model = state().snapshot.models.prod;
   assert.deepEqual(model.targets.find(target => target.ref === "lambda:sign-out")!.placement.kind === "vpc" && model.targets.find(target => target.ref === "lambda:sign-out")!.placement, {
@@ -326,7 +345,7 @@ test("independent VPC creation, workload reassignment and network settings share
   });
   const layoutModels = Object.values(state().snapshot.models);
   const scene = buildScene(model, { layoutModels });
-  assert.equal(scene.islands.filter(island => island.region === "network").length, 2);
+  assert.equal(scene.islands.filter(island => island.region === "network").length, model.networks!.length);
   assert.equal(new Set(scene.props.map(prop => prop.id)).size, scene.props.length);
   assert.equal(new Set(scene.islands.flatMap(island => island.bands.map(band => band.id))).size, scene.islands.flatMap(island => island.bands).length);
   assert.equal(scene.nodes.find(node => node.id === "lambda:sign-out")?.island, "island:vpc:secondary");
@@ -346,7 +365,7 @@ test("independent VPC creation, workload reassignment and network settings share
   assert.deepEqual(geometry(buildScene(state().snapshot.models.dev, { layoutModels })), geometry(scene), "mode switching keeps both VPCs in place");
   assert.deepEqual(geometry(buildScene({ ...model, networks: [...model.networks!].reverse() }, { layoutModels })), geometry(scene), "registry order does not move islands");
   assert.equal((await edits.undo()).status, "applied");
-  assert.equal(readFileSync(path.join(fixture, "framework-config/http/auth.ts"), "utf8"), original);
+  assert.equal(readFileSync(path.join(fixture, "framework-config/workloads/http.ts"), "utf8"), original);
   assert.equal((await edits.redo()).status, "applied");
   assert.equal((await edits.undo()).status, "applied");
   const move = await edits.planBatch([{ kind: "placement", target: "lambda:sign-out", vpc: "secondary", subnet: "isolated" }], revision());

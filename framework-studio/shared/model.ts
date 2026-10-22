@@ -29,6 +29,17 @@ export type TargetRole =
   | "task"
   | "workflow";
 
+/** Declaration metadata, separate from topology and deployed construct identity. */
+export interface TagFacts {
+  readonly authored: Readonly<Record<string, string>>;
+  readonly effective: Readonly<Record<string, string>>;
+  /** The lower ownership layer, retained even when every key is overridden. */
+  readonly inherited?: { readonly entity: string; readonly values: Readonly<Record<string, string>> };
+  readonly provenance: Readonly<Record<string, { readonly entity: string; readonly kind: "declared" | "inherited" }>>;
+  /** Capability belongs to the producer; referencing a resource never tags it. */
+  readonly aws: { readonly kind: "owned" | "linked" | "external" | "logical"; readonly note: string };
+}
+
 /** A place in a repository file. `file` is repository-relative with forward slashes. */
 export interface SourceLocation {
   readonly file: string;
@@ -384,6 +395,8 @@ export interface Diagnostic {
 // ---------------------------------------------------------------------------
 
 export interface ModeModel {
+  /** Canonical entity IDs, including database declarations and VPC islands. No resolved inputs. */
+  readonly tagging?: Readonly<Record<string, TagFacts>>;
   /** This graph's AWS WebSocket API flag, including when all its handlers are off. */
   readonly webSocketApi?: boolean;
   readonly triggers?: readonly import("./triggers").TriggerBinding[];

@@ -59,8 +59,12 @@ export function assertWritable(repositoryRoot: string, relativeFile: string): st
   }
   const absolute = path.resolve(repositoryRoot, normalized);
   if (!existsSync(absolute)) throw new Error(`${normalized} does not exist.`);
-  if (lstatSync(absolute).isSymbolicLink()) throw new Error(`${normalized} is a symbolic link; the studio does not write through links.`);
   const root = realpathSync(repositoryRoot);
+  let component = root;
+  for (const segment of normalized.split("/")) {
+    component = path.join(component, segment);
+    if (lstatSync(component).isSymbolicLink()) throw new Error(`${normalized} uses a symbolic link; the studio does not write through links.`);
+  }
   const real = realpathSync(absolute);
   const inside = path.relative(root, real);
   if (inside.startsWith("..") || path.isAbsolute(inside)) throw new Error(`${normalized} resolves outside the repository.`);

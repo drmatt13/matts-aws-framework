@@ -1,4 +1,4 @@
-import { ExternalLink, Maximize2, Minus, Plus, Search, Table2 } from "lucide-react";
+import { ExternalLink, Maximize2, Minus, Plus, Search, Table2, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import type { SourceLocation } from "../../shared/model";
@@ -49,6 +49,7 @@ export function Database() {
   const schema = snapshot.schema;
   const [query, setQuery] = useState("");
   const [zoom, setZoom] = useState(1);
+  const search = useRef<HTMLInputElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const layout = useMemo(() => schemaLayout(schema), [schema]);
   const searched = query.trim().toLowerCase();
@@ -62,8 +63,8 @@ export function Database() {
       {model.managedDatabase ? <p className="small"><button className="button" onClick={() => select(model.managedDatabase!.resource)}>Configure PostgreSQL</button> {model.managedDatabase.networkId} VPC · {model.managedDatabase.subnet} subnets</p> : null}
       <p className="muted">{schema.tables.length} tables · {schema.relations.length} relationships · Shared by local PostgreSQL and production RDS</p>
       <p className="small muted">Read from <code>{schema.file}</code>. This diagram does not inspect the live databases.</p>
-    </div><div className="schema-zoom"><button className="icon-button" aria-label="Zoom out" onClick={() => setZoom((zoom) => Math.max(0.35, zoom / 1.2))}><Minus size={16} /></button><span>{Math.round(zoom * 100)}%</span><button className="icon-button" aria-label="Zoom in" onClick={() => setZoom((zoom) => Math.min(1.6, zoom * 1.2))}><Plus size={16} /></button><button className="icon-button" aria-label="Fit schema" onClick={fit}><Maximize2 size={16} /></button></div></header>
-    <div className="schema-toolbar"><label><Search size={15} aria-hidden /><input aria-label="Find a table or column" type="search" placeholder="Find a table or column" value={query} onChange={(event) => setQuery(event.target.value)} /></label><span className="small muted">PK primary key · FK foreign key · UQ unique</span>{searched ? <span className="small">{matches.size} matching tables</span> : null}</div>
+    </div><div className="schema-zoom" role="group" aria-label="Schema view controls"><button className="icon-button" aria-label="Zoom out" title="Zoom out" disabled={zoom <= 0.35} onClick={() => setZoom((zoom) => Math.max(0.35, zoom / 1.2))}><Minus size={16} aria-hidden /></button><span>{Math.round(zoom * 100)}%</span><button className="icon-button" aria-label="Zoom in" title="Zoom in" disabled={zoom >= 1.6} onClick={() => setZoom((zoom) => Math.min(1.6, zoom * 1.2))}><Plus size={16} aria-hidden /></button><button className="icon-button" aria-label="Fit schema" title="Fit schema" onClick={fit}><Maximize2 size={16} aria-hidden /></button></div></header>
+    <div className="schema-toolbar"><div className="schema-search" role="search" aria-label="Schema search"><Search size={15} aria-hidden /><input ref={search} aria-label="Find a table or column" type="search" placeholder="Find a table or column" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); setQuery(""); } }} />{query ? <button className="icon-button" aria-label="Clear schema search" title="Clear schema search" onClick={() => { setQuery(""); search.current?.focus(); }}><X size={14} aria-hidden /></button> : null}</div><span className="small muted">PK primary key · FK foreign key · UQ unique</span>{searched ? <span className="small" role="status">{matches.size === 0 ? "No matching tables or columns" : `${matches.size} matching ${matches.size === 1 ? "table" : "tables"}`}</span> : null}</div>
     {schema.problems.length || snapshot.databaseProblems.length ? <div className="schema-problems" role="status">{[...schema.problems, ...snapshot.databaseProblems].map((problem, index) => <p key={index}>{problem}</p>)}</div> : null}
     {schema.tables.length ? <>
       <div className="schema-viewport" ref={viewport} tabIndex={0} aria-label="Database relationship diagram">
@@ -79,11 +80,11 @@ export function Database() {
               })}
             </svg>
             {layout.tables.map(({ table, x, y }) => <article key={table.id} className={`schema-table ${selected === table.id || related.has(table.id) ? "active" : ""} ${!matches.has(table.id) || (selectedSchema && selected !== table.id && !related.has(table.id)) ? "faded" : ""}`} style={{ left: x, top: y, width: TABLE_WIDTH }}>
-              <button className="schema-table-heading" aria-label={`Select table ${table.table}`} aria-pressed={selected === table.id} onClick={() => select(table.id)}><span><strong>{table.table}</strong><span className="small muted">{table.namespace} · {table.model}</span></span><Table2 size={20} aria-hidden /></button>
+              <button className="schema-table-heading" aria-label={`Select table ${table.table}`} title={`${table.namespace}.${table.table} · ${table.model}`} aria-pressed={selected === table.id} onClick={() => select(table.id)}><span><strong>{table.table}</strong><span className="small muted">{table.namespace} · {table.model}</span></span><Table2 size={20} aria-hidden /></button>
               {table.columns.map((column) => {
                 const foreign = schema.relations.some((relation) => relation.from === table.id && relation.fields.includes(column.name));
                 const highlighted = chosenRelation && ((chosenRelation.from === table.id && chosenRelation.fields.includes(column.name)) || (chosenRelation.to === table.id && chosenRelation.references.includes(column.name)));
-                return <button className={`schema-column ${highlighted ? "highlighted" : ""}`} key={column.name} onClick={() => select(table.id)} title={`${column.name}${column.default ? ` · default ${column.default}` : ""}`}><span className="schema-key">{[column.primaryKey ? "PK" : "", foreign ? "FK" : "", column.unique && !column.primaryKey ? "UQ" : ""].filter(Boolean).join(" ")}</span><code>{column.column}</code><span className="schema-type">{column.type}</span></button>;
+                return <button className={`schema-column ${highlighted ? "highlighted" : ""}`} key={column.name} onClick={() => select(table.id)} title={`${column.name} · ${column.type}${column.default ? ` · default ${column.default}` : ""}`}><span className="schema-key">{[column.primaryKey ? "PK" : "", foreign ? "FK" : "", column.unique && !column.primaryKey ? "UQ" : ""].filter(Boolean).join(" ")}</span><code>{column.column}</code><span className="schema-type">{column.type}</span></button>;
               })}
               <footer>{table.indexes.length} keys / indexes</footer>
             </article>)}

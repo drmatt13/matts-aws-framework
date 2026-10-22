@@ -41,7 +41,7 @@ export function NetworkControls({ id }: { readonly id: string }) {
   if (!network) return null;
   const settings = draft.network(network.id)!;
   const source = snapshot.source.entities[id]?.value;
-  const fields = CREATORS.vpc.fields.filter(field => !["id", "description", "endpoints"].includes(field.key));
+  const fields = CREATORS.vpc.fields.filter(field => !["id", "description", "endpoints", "tags"].includes(field.key));
   const form = settings;
   const update = (key: string, value: string | number | boolean) => {
     const next = { ...form, [key]: value };

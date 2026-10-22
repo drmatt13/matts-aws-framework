@@ -1,5 +1,5 @@
-import type { AgentsSection } from "./contracts";
-import { resources } from "./resources";
+import type { AgentsSection } from "../contracts";
+import { resources } from "../resources";
 
 type Agent = AgentsSection[string];
 type AgentCloud = NonNullable<Agent["cloud"]>;

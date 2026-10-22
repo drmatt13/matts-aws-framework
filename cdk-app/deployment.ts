@@ -204,7 +204,7 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     optionalBoolean(env.USE_CUSTOM_WS_AUTHORIZER, "USE_CUSTOM_WS_AUTHORIZER in cdk-app/.env.dev or cdk-app/.env.prod");
   if (retiredWsAuthorizer === false) {
     throw new Error(
-      "USE_CUSTOM_WS_AUTHORIZER=false is no longer supported. The authorizer declared on $connect in framework-config/websocket/routes.ts is always attached; remove that declaration to deploy a WebSocket API without one.",
+      "USE_CUSTOM_WS_AUTHORIZER=false is no longer supported. The authorizer declared on $connect in framework-config/workloads/websocket.ts is always attached; remove that declaration to deploy a WebSocket API without one.",
     );
   }
   if (retiredWsAuthorizer === true) {

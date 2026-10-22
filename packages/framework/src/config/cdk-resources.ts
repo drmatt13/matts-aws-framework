@@ -1,3 +1,4 @@
+import { validateTags, mergeTags, type DeclarationTags, type DeclarationMetadata } from "./tags";
 import type { Stack } from "aws-cdk-lib";
 import type { ResourceReference } from "./resources";
 
@@ -9,6 +10,8 @@ export type JsonArgument = null | boolean | number | string | readonly JsonArgum
 
 /** Serializable identity. It never contains a construct or a resolved attribute. */
 export interface CdkResourceSpec {
+  readonly tags?: DeclarationTags;
+  readonly effectiveTags?: DeclarationTags;
   readonly $cdk: typeof CDK_RESOURCE_BRAND;
   readonly path: readonly string[];
   readonly optional: boolean;
@@ -60,6 +63,9 @@ export function isCdkResource(value: unknown): value is CdkResourceSpec {
 
 /** Serializable identity of a group. Like a resource, it holds no construct. */
 export interface CdkResourceGroupSpec {
+  readonly tags?: DeclarationTags;
+  readonly effectiveTags?: DeclarationTags;
+  readonly memberTags?: Readonly<Record<string, DeclarationTags>>;
   readonly $cdkGroup: typeof CDK_GROUP_BRAND;
   readonly path: readonly string[];
   /** Set when the catalog left this stack out of the graph being built. */
@@ -170,6 +176,10 @@ export type CdkResourceGroup<T, Path extends readonly string[] = readonly string
   readonly [K in StackSecretKeys<T>]: SecretProjections<readonly [...Path, K]>;
 };
 
+export interface StackResourceOptions<T> extends DeclarationMetadata {
+  readonly members?: Partial<Record<StackResourceKeys<T> | StackSecretKeys<T> | StackValueKeys<T>, DeclarationMetadata>>;
+}
+
 export function isCdkResourceGroup(value: unknown): value is CdkResourceGroupSpec {
   return typeof value === "object" && value !== null && (value as CdkResourceGroupSpec).$cdkGroup === CDK_GROUP_BRAND;
 }
@@ -196,8 +206,14 @@ export function isCdkResourceGroup(value: unknown): value is CdkResourceGroupSpe
 export function cdkResourceGroup<T>(
   path: readonly string[] = [],
   absent = false,
+  options?: StackResourceOptions<T>,
 ): CdkResourceGroup<T> {
+  const tags = options?.tags === undefined ? undefined : validateTags(options.tags, `resource.stack() ${path.join(".")}`);
+  const memberTags = options?.members === undefined ? undefined : Object.freeze(Object.fromEntries(Object.entries(options.members).map(([name, metadata]) => [name, validateTags((metadata as DeclarationMetadata | undefined)?.tags, `resource.stack() member ${name}`)])));
+  for (const [name, own] of Object.entries(memberTags ?? {})) mergeTags(`resource.stack() member ${name}`, tags, own);
   const spec = Object.freeze({
+    ...(tags === undefined ? {} : { tags, effectiveTags: tags }),
+    ...(memberTags === undefined ? {} : { memberTags }),
     $cdkGroup: CDK_GROUP_BRAND,
     path: Object.freeze([...path]),
     ...(absent ? { absent: true as const } : {}),
@@ -207,7 +223,7 @@ export function cdkResourceGroup<T>(
     get(target, property, receiver) {
       if (typeof property !== "string") return Reflect.get(target, property, receiver);
       if (Object.prototype.hasOwnProperty.call(target, property)) return Reflect.get(target, property, receiver);
-      if (["then", "toJSON", "constructor", "__proto__", "prototype"].includes(property)) return undefined;
+      if (["then", "toJSON", "constructor", "__proto__", "prototype", "tags", "effectiveTags", "memberTags"].includes(property)) return undefined;
       let member = members.get(property);
       if (!member) {
         // The brand is spelled out rather than imported, as it is below: this
@@ -215,6 +231,8 @@ export function cdkResourceGroup<T>(
         member = cdkResource<unknown>([...path, property], {
           $resource: "@repo/framework/resource",
           kind: "string",
+          ...(memberTags?.[property] === undefined ? {} : { tags: memberTags[property] }),
+          ...(tags === undefined && memberTags?.[property] === undefined ? {} : { effectiveTags: mergeTags(`resources.${[...path, property].join(".")}`, tags, memberTags?.[property]) }),
           ...(absent ? { absent: true as const } : {}),
         });
         members.set(property, member);
@@ -225,7 +243,7 @@ export function cdkResourceGroup<T>(
 }
 
 export function withCdkResourceGroupPath(group: CdkResourceGroupSpec, path: readonly string[]): CdkResourceGroup<object> {
-  return cdkResourceGroup<object>(path, group.absent === true);
+  return cdkResourceGroup<object>(path, group.absent === true, { tags: group.tags, members: group.memberTags === undefined ? undefined : Object.fromEntries(Object.entries(group.memberTags).map(([name, tags]) => [name, { tags }])) });
 }
 
 /**
@@ -289,7 +307,7 @@ export function assertJsonArguments(value: unknown, origin: string): void {
  * `path`, `optional`, `kind`, `absent` — are answered by the spec itself, and
  * `arn`/`value`/`field` are answered by the secret projections above.
  */
-const REFERENCE_FIELDS = ["fromEnv", "values", "secretArn", "secretField", "note", "default", "attribute"];
+const REFERENCE_FIELDS = ["tags", "effectiveTags", "memberTags", "fromEnv", "values", "secretArn", "secretField", "note", "default", "attribute"];
 
 /** Only accessed attributes become references; the native construct is never enumerated. */
 export function cdkResource<T>(
@@ -326,7 +344,7 @@ export function cdkResource<T>(
       if (typeof property !== "string") return Reflect.get(target, property, receiver);
       if (Object.prototype.hasOwnProperty.call(target, property)) return Reflect.get(target, property, receiver);
       if (["then", "toJSON", "constructor", "__proto__", "prototype"].includes(property)) return undefined;
-      if (isGroupMember && REFERENCE_FIELDS.includes(property)) return undefined;
+      if (REFERENCE_FIELDS.includes(property) && (isGroupMember || ["tags", "effectiveTags", "memberTags"].includes(property))) return undefined;
       // The secret projections. Offered on every member at runtime and on only
       // the secret ones in the type, the way attributes already are.
       if (isGroupMember && property === "arn") return projection("arn", { kind: "string", secretArn: true });

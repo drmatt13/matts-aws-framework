@@ -162,6 +162,8 @@ export function cliSecretsClient(aws: AwsTarget): { send(command: any): Promise<
         if (name === "DescribeSecretCommand") return runAwsSync(["secretsmanager", "describe-secret", "--secret-id", input.SecretId], aws);
         if (name === "GetSecretValueCommand") return runAwsSync(["secretsmanager", "get-secret-value", "--secret-id", input.SecretId], aws);
         if (name === "CreateSecretCommand") return runAwsSync(["secretsmanager", "create-secret", "--name", input.Name, "--secret-string", input.SecretString ?? "", "--tags", JSON.stringify(input.Tags ?? [])], aws);
+        if (name === "TagResourceCommand") return runAwsSync(["secretsmanager", "tag-resource", "--secret-id", input.SecretId, "--tags", JSON.stringify(input.Tags ?? [])], aws);
+        if (name === "UntagResourceCommand") return runAwsSync(["secretsmanager", "untag-resource", "--secret-id", input.SecretId, "--tag-keys", ...input.TagKeys], aws);
         if (name === "PutSecretValueCommand") return runAwsSync(["secretsmanager", "put-secret-value", "--secret-id", input.SecretId, "--secret-string", input.SecretString ?? ""], aws);
       } catch (error) {
         if (error instanceof AwsCliError && error.kind === "not-found") throw Object.assign(new Error("absent"), { name: "ResourceNotFoundException" });

@@ -96,6 +96,7 @@ export async function runAwsTask(
       cluster: launch.cluster,
       taskDefinition: launch.taskDefinitionFamily,
       launchType: launch.launchType,
+      propagateTags: "TASK_DEFINITION",
       platformVersion: launch.platformVersion,
       count: 1,
       clientToken: randomUUID(),

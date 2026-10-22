@@ -17,6 +17,7 @@ import { scanCdkLinks } from "./cdk-links";
 import { discoverCapabilities } from "./capabilities";
 import { locateManagedDatabase } from "./database";
 import { declarationObject, expressionAt, findProperty, lineAndColumn, literalValue, parse, propertyAt } from "./syntax";
+import { tagEditability } from "./tags";
 
 /**
  * Where every entity was written, and what the studio may change in it.
@@ -213,7 +214,7 @@ export function buildSourceIndex(
   const resources = located?.properties.resources;
   if (resources) {
     try {
-      catalog = readCatalogSource(repositoryRoot, resources.file, resources.span);
+      catalog = readCatalogSource(repositoryRoot, resources.file, resources.span, (file) => files.text(file));
     } catch (error) {
       problems.push(`The resource catalog could not be read: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -273,6 +274,12 @@ export function buildSourceIndex(
   } catch (error) {
     problems.push(`CDK resource links could not be read: ${error instanceof Error ? error.message : String(error)}`);
   }
+  const taggedEntities = new Set(Object.keys(model.tagging ?? {}));
+  for (const [key, entry] of catalog) {
+    taggedEntities.add(`resource:${key}`);
+    for (const member of entry.stack?.members ?? []) taggedEntities.add(`resource:${key}.${member.name}`);
+  }
+  for (const entity of taggedEntities) editability[entity] = { ...editability[entity], tags: tagEditability(repositoryRoot, model, files, entity) };
   return {
     index: { entities, editability, links, catalog: catalogFacts, problems, cdkLinks, triggerCapabilities, capabilityFiles },
     catalog,

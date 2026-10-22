@@ -12,6 +12,7 @@ import { declarationHost } from "./source/declarations";
 import { declarationObject, expressionAt, findProperty, literalKey, literalValue, parse, propertyAt, unwrap } from "./source/syntax";
 import { parseOrigin } from "./model/origin";
 import type { StudioState } from "./snapshot";
+import { readCatalogSource } from "./source/catalog";
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 const fail = (message: string): never => { throw new Error(message); };
@@ -75,7 +76,13 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
     current = receiver;
   }
   if (!calls.length || !["fromEnv", "secret"].includes(calls[0]!.name) || calls.some((call) => !["fromEnv", "secret", "enum", "default", "note", "required"].includes(call.name)) || calls.some((call) => call.name === "required" && call.args.length)) return fail("This resource is computed. Edit its declaration in source.");
-  for (const call of calls) for (const argument of call.args) if (typeof literalValue(argument)?.value !== "string") return fail("This resource uses computed arguments. Edit it in source.");
+  for (const [index, call] of calls.entries()) for (const [argumentIndex, argument] of call.args.entries()) {
+    if (index === 0 && argumentIndex === 1) {
+      // Descriptor metadata is independent of the input value. Keep its exact
+      // source while editing defaults/required, including authored tag maps.
+      if (!ts.isObjectLiteralExpression(unwrap(argument))) return fail("This resource uses computed options. Edit it in source.");
+    } else if (typeof literalValue(argument)?.value !== "string") return fail("This resource uses computed arguments. Edit it in source.");
+  }
   if (intent.kind === resource.kind && intent.default === (resource.default ?? null) && (intent.required ?? !!resource.required) === !!resource.required) {
     const original = outer.getText();
     if (calls[0]!.args.length) return original;
@@ -86,7 +93,7 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
   const scanner = ts.createScanner(ts.ScriptTarget.Latest, false, ts.LanguageVariant.Standard, outer.getText());
   for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) if (kind === ts.SyntaxKind.SingleLineCommentTrivia || kind === ts.SyntaxKind.MultiLineCommentTrivia) return fail("This resource declaration contains comments. Edit it in source to preserve them.");
   // Always keep the resolved env name explicit when moving between groups.
-  let result = `resource.${intent.kind === "secret" ? "secret" : "fromEnv"}(${JSON.stringify(resource.fromEnv)})`;
+  let result = `resource.${intent.kind === "secret" ? "secret" : "fromEnv"}(${JSON.stringify(resource.fromEnv)}${calls[0]!.args[1] ? `, ${calls[0]!.args[1]!.getText()}` : ""})`;
   if (intent.required ?? resource.required) result += ".required()";
   if (intent.kind === "input") {
     const choices = calls.find((call) => call.name === "enum");
@@ -131,6 +138,62 @@ function accessPath(node: ts.Expression): string[] | undefined {
   return undefined;
 }
 
+/** Move the explicit catalog membership while its exported descriptor stays put. */
+function moveImportedMembership(root: string, facts: { readonly key: import("../shared/model").SourceLocation }, declarationFile: string, exportName: string, nextPath: readonly string[], overrides: Record<string, string>): void {
+  const read = (file: string) => overrides[file] ?? readFileSync(file, "utf8");
+  const membershipFile = path.join(root, facts.key.file);
+  let text = read(membershipFile);
+  const source = parse(membershipFile, text);
+  let membership: ts.ObjectLiteralElementLike | undefined;
+  const visit = (node: ts.Node): void => {
+    if ((ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) && node.name.getStart(source) === facts.key.start && ts.isObjectLiteralExpression(node.parent)) membership = node;
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  if (!membership || !ts.isObjectLiteralExpression(membership.parent)) return fail("The catalog membership is ambiguous. Move it in source.");
+  overrides[membershipFile] = removeProperty(text, source, membership.parent, membership);
+
+  const facade = path.join(root, "framework-config/resources.ts");
+  let destination = facade;
+  text = read(facade);
+  let parsed = catalog(facade, text);
+  let object = parsed.object;
+  let keys = nextPath;
+  if (nextPath.length > 1) {
+    const group = findProperty(object, nextPath[0]!);
+    if (group.spread) return fail("The destination group comes from a spread. Move the membership in source.");
+    if (group.property) {
+      const call = object.parent;
+      const entry = readCatalogSource(root, facade, { start: call.getStart(parsed.source), end: call.end }, read).get(nextPath[0]!);
+      if (!entry) return fail("The destination group could not be located.");
+      destination = path.join(root, entry.value.file);
+      text = read(destination);
+      const source = parse(destination, text);
+      const value = expressionAt(source, entry.value.start, entry.value.end);
+      if (!value || !ts.isObjectLiteralExpression(unwrap(value))) return fail("The destination group is computed. Move the membership in source.");
+      parsed = { source, object: unwrap(value) as ts.ObjectLiteralExpression };
+      object = parsed.object;
+      keys = [nextPath.at(-1)!];
+    }
+  }
+  if (object.properties.some(ts.isSpreadAssignment) || findProperty(object, keys[0]!).property) return fail("The destination catalog identity exists or includes a spread.");
+  let alias = exportName;
+  if (path.resolve(destination) !== path.resolve(declarationFile)) {
+    const imported = parsed.source.statements.filter(ts.isImportDeclaration).find(statement => ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text.startsWith(".") && path.resolve(path.dirname(destination), statement.moduleSpecifier.text.replace(/\.(?:js|ts)$/, "")) === declarationFile.replace(/\.ts$/, "") && statement.importClause?.namedBindings && ts.isNamedImports(statement.importClause.namedBindings) && statement.importClause.namedBindings.elements.some(binding => (binding.propertyName?.text ?? binding.name.text) === exportName));
+    if (imported?.importClause?.namedBindings && ts.isNamedImports(imported.importClause.namedBindings)) alias = imported.importClause.namedBindings.elements.find(binding => (binding.propertyName?.text ?? binding.name.text) === exportName)!.name.text;
+    else {
+      for (let suffix = 2; new RegExp(`\\b${alias}\\b`).test(text); suffix++) alias = `${exportName}${suffix}`;
+      let specifier = path.relative(path.dirname(destination), declarationFile).replaceAll("\\", "/").replace(/\.ts$/, "");
+      if (!specifier.startsWith(".")) specifier = `./${specifier}`;
+      const statement = `import { ${exportName}${alias === exportName ? "" : ` as ${alias}`} } from ${JSON.stringify(specifier)};\n`;
+      text = statement + insertExpression(text, parsed.source, object, keys, alias);
+      overrides[destination] = text;
+      return;
+    }
+  }
+  overrides[destination] = insertExpression(text, parsed.source, object, keys, alias);
+}
+
 export function planResourceSource(root: string, state: StudioState, resource: ModelResource, intent: ResourceIntent): { overrides: Record<string, string>; nextResource: string } {
   if (!IDENTIFIER.test(intent.group || "ungrouped") || ["__proto__", "constructor", "prototype"].includes(intent.group)) return fail("A group must be a safe TypeScript property name, or empty for no group.");
   if (intent.kind === "secret" && intent.default !== null) return fail("Secrets cannot have a default in source. Author the value only in cdk-app/.env.");
@@ -140,12 +203,31 @@ export function planResourceSource(root: string, state: StudioState, resource: M
   if (!facts) return fail("This resource could not be located in source.");
   const file = path.join(root, facts.value.file);
   const original = readFileSync(file, "utf8");
-  let { source, object } = catalog(file, original);
-  const found = entry(object, resource.path);
   const nextPath = [...(intent.group ? [intent.group] : []), resource.path.at(-1)!];
   const moved = nextPath.join(".") !== resource.path.join(".");
   const metadataChanged = intent.kind !== resource.kind || intent.default !== (resource.default ?? null) || (intent.required ?? !!resource.required) !== !!resource.required;
   let text = original;
+  const overrides: Record<string, string> = {};
+  const parsed = parse(file, original);
+  const resolvedValue = expressionAt(parsed, facts.value.start, facts.value.end);
+  const directDescriptor = resolvedValue && !(ts.isCallExpression(unwrap(resolvedValue)) && ts.isIdentifier((unwrap(resolvedValue) as ts.CallExpression).expression) && (unwrap(resolvedValue) as ts.CallExpression).expression.getText(parsed) === "defineResources");
+  // A split catalog edits metadata where it was authored. Moving an exported
+  // descriptor changes its explicit catalog membership without flattening it.
+  if (!original.includes("defineResources(")) {
+    if (!directDescriptor || !resolvedValue) return fail("This resource declaration could not be read.");
+    if (metadataChanged) text = replace(text, resolvedValue, builderExpression(resolvedValue, resource, intent), parsed);
+    if (moved) {
+      const parent = resolvedValue.parent;
+      if (!ts.isVariableDeclaration(parent) || !ts.isIdentifier(parent.name) || !ts.isVariableDeclarationList(parent.parent) || !ts.isVariableStatement(parent.parent.parent) || !parent.parent.parent.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)) return fail("This resource is inline inside its declaration group. Move its catalog membership in source, preserving any local fragments.");
+      overrides[file] = text;
+      const shifted = facts.key.file === toRelative(root, file) && facts.key.start >= resolvedValue.end
+        ? { key: { ...facts.key, start: facts.key.start + text.length - original.length, end: facts.key.end + text.length - original.length } } : facts;
+      moveImportedMembership(root, shifted, file, parent.name.text, nextPath, overrides);
+      text = overrides[file] ?? text;
+    }
+  } else {
+  let { source, object } = catalog(file, original);
+  const found = entry(object, resource.path);
   if (metadataChanged || moved) {
     const expression = builderExpression(found.property.initializer, resource, intent);
     if (moved) {
@@ -174,7 +256,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
       }
     } else text = replace(text, found.property.initializer, expression, source);
   }
-  const overrides: Record<string, string> = {};
+  }
   if (text !== original) overrides[file] = text;
   const targets = new Map([...state.snapshot.models.dev.targets, ...state.snapshot.models.prod.targets].map((target) => [target.ref, target]));
   // Each workload keeps all its other conditions. An override deliberately materializes
@@ -190,7 +272,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
       const parsed = parse(candidate, before);
       const aliases = new Set<string>();
       for (const statement of parsed.statements) {
-        if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !importedCatalog(candidate, statement.moduleSpecifier.text, file, root)) continue;
+        if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !importedCatalog(candidate, statement.moduleSpecifier.text, path.join(root, "framework-config/resources.ts"), root)) continue;
         const bindings = statement.importClause?.namedBindings;
         if (bindings && ts.isNamedImports(bindings)) for (const binding of bindings.elements) if ((binding.propertyName?.text ?? binding.name.text) === "resources") aliases.add(binding.name.text);
       }
@@ -275,9 +357,9 @@ function writeRequirements(root: string, state: StudioState, overrides: Record<s
     for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) if (kind === ts.SyntaxKind.SingleLineCommentTrivia || kind === ts.SyntaxKind.MultiLineCommentTrivia) return fail("This requirement list contains comments. Edit it in source to preserve them.");
     text = replace(text, position.property.initializer, expression, source);
   } else text = insertExpression(text, source, position.container, position.missing, expression);
-  const catalogFile = [...state.built.catalog.values()][0]?.value.file;
+  const catalogFile = locateConfigSource(path.join(root, "framework.config.ts"), { repositoryRoot: root }).properties.resources?.file;
   if (!catalogFile) return fail("The catalog module could not be located.");
-  let specifier = path.relative(path.dirname(file), path.join(root, catalogFile)).replaceAll("\\", "/").replace(/\.ts$/, "");
+  let specifier = path.relative(path.dirname(file), catalogFile).replaceAll("\\", "/").replace(/\.ts$/, "");
   if (!specifier.startsWith(".")) specifier = `./${specifier}`;
   if (rules.length) text = `import { resources as ${alias} } from ${JSON.stringify(specifier)};\n${text}`;
   overrides[file] = text;

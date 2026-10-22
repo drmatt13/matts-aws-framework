@@ -1,3 +1,4 @@
+import { validateTags, type DeclarationTags } from "./tags";
 /** Independently declared VPCs. Configuration, CDK and local egress share these rules. */
 import { INTERFACE_ENDPOINT_SERVICES } from "../generated/vpc-endpoint-services";
 
@@ -25,6 +26,7 @@ export interface GatewayEndpoints {
 
 /** What `defineNetwork` takes. */
 export interface NetworkDeclaration {
+  readonly tags?: DeclarationTags;
   /** Stable identity, independent of the CIDR or registration order. */
   readonly id: string;
   /** Human-readable label. Changing it does not rename deployed constructs. */
@@ -71,6 +73,7 @@ export interface NetworkDeclaration {
 
 /** A validated network declaration, with every default folded in. */
 export interface FrameworkNetwork {
+  readonly tags?: DeclarationTags;
   readonly $network: typeof NETWORK_BRAND;
   readonly id: string;
   readonly name: string;
@@ -136,7 +139,7 @@ export function interfaceEndpointsMonthlyCost(network: FrameworkNetwork, count: 
 
 const PRIVATE_SLASH_16 = /^(10\.(\d{1,3})|172\.(1[6-9]|2\d|3[01])|192\.168)\.0\.0\/16$/;
 const DECLARATION_KEYS = [
-  "id", "name", "cloud", "cidr", "zones", "egressOnlyInternetGateway", "natGateway", "gatewayEndpoints", "interfaceEndpoints",
+  "id", "name", "cloud", "cidr", "zones", "egressOnlyInternetGateway", "natGateway", "gatewayEndpoints", "interfaceEndpoints", "tags",
 ] as const;
 const KNOWN_INTERFACE_ENDPOINTS: ReadonlySet<string> = new Set(INTERFACE_ENDPOINT_SERVICES);
 
@@ -219,6 +222,7 @@ export function defineNetwork(declaration: NetworkDeclaration): FrameworkNetwork
   }
   return Object.freeze({
     $network: NETWORK_BRAND,
+    tags: validateTags(declaration.tags, `Network "${id}"`),
     id,
     name: name.trim(),
     cloud: Object.freeze({ constructId }),

@@ -42,10 +42,10 @@ export function Teardown(props: {
         <h2 id="teardown-title">Delete {props.deployment} <DeploymentBadge kind={props.mode} /></h2>
         {plan ? <p className="small muted">{plan.account} · {plan.region}</p> : null}
       </header>
-      <div className="body">
-        {isPending ? <p className="muted">Reading what {props.deployment} consists of…</p> : null}
-        {error ? <p className="diagnostic">{error instanceof Error ? error.message : String(error)}</p> : null}
-        {data && !data.ok ? <p className="diagnostic">{data.problem.message}</p> : null}
+      <div className="body" aria-busy={isPending}>
+        {isPending ? <p className="muted" role="status">Reading what {props.deployment} consists of…</p> : null}
+        {error ? <p className="diagnostic" role="alert">{error instanceof Error ? error.message : String(error)}</p> : null}
+        {data && !data.ok ? <p className="diagnostic" role="alert">{data.problem.message}</p> : null}
         {plan ? (
           <>
             <p className="plan-banner bad"><AlertOctagon size={15} aria-hidden /> Deleting removes these stacks and everything they created{plan.mode === "prod" ? ", including production data not kept below" : ""}. It cannot be undone.</p>
@@ -93,18 +93,19 @@ export function ServiceLogs(props: { readonly service: string; readonly onClose:
   const dialog = useRef<HTMLDialogElement>(null);
   const { data, error, refetch, isFetching } = useQuery({ queryKey: ["deploy", "service-logs", props.service], queryFn: () => deployApi.serviceLogs(props.service), refetchInterval: 4000 });
   const pre = useRef<HTMLPreElement>(null);
+  const pinned = useRef(true);
   useEffect(() => {
     const element = dialog.current!;
     element.showModal();
     return () => element.close();
   }, []);
-  useEffect(() => { if (pre.current) pre.current.scrollTop = pre.current.scrollHeight; }, [data?.text]);
+  useEffect(() => { if (pre.current && pinned.current) pre.current.scrollTop = pre.current.scrollHeight; }, [data?.text]);
   return (
     <dialog ref={dialog} className="preview service-logs" aria-labelledby="logs-title" onCancel={(event) => { event.preventDefault(); props.onClose(); }}>
       <header><h2 id="logs-title">{props.service}</h2><p className="small muted">The container's last 300 lines, refreshed every few seconds.</p></header>
       <div className="body">
-        {error ? <p className="diagnostic">{error instanceof Error ? error.message : String(error)}</p> : null}
-        <pre ref={pre} className="job-log">{data?.text ?? "Reading…"}</pre>
+        {error ? <p className="diagnostic" role="alert">{error instanceof Error ? error.message : String(error)}</p> : null}
+        <pre ref={pre} className="job-log" tabIndex={0} aria-label={`Logs for ${props.service}`} onScroll={(event) => { const element = event.currentTarget; pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24; }}>{data?.text ?? (error ? "No logs available." : "Reading…")}</pre>
       </div>
       <footer>
         <button className="quiet" onClick={() => void refetch()} disabled={isFetching}>Refresh</button>

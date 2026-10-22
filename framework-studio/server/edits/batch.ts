@@ -29,6 +29,9 @@ import { assertStackFile, nativeSignature, planNativeRemovals, scanWith } from "
 import { CLIENT_ENVIRONMENT_FILE } from "../../shared/client-environment";
 import { parseClientMappings, rewriteClientMappings, validateClientMappings } from "../client-environment-source";
 
+import { planTags, tagSignature, tagOwner, tagDifferences } from "./tags";
+import { withAbsentTagging } from "../model/tags";
+
 interface Change { readonly file: string; readonly before: string | null; readonly after: string | null }
 export interface BatchJournal {
   readonly kind: "batch";
@@ -51,7 +54,7 @@ interface StoredBatch extends BatchJournal { readonly response: BatchPlanRespons
 function creationSignature(model: ModeModel): string {
   return JSON.stringify({ targets: model.targets.map(({ ref, constructId, role, lanes, environment, secrets, placement, compute, access, requirementRules }) => ({ ref, constructId, role, lanes, environment, secrets, placement, compute, access, requirementRules })), routes: model.routes,
     resources: model.resources.filter((resource) => ["input", "secret", "stack"].includes(resource.kind) && resource.id.startsWith("resource:")).map(({ id, kind, absent, fromEnv, default: fallback, required, values, note }) => ({ id, kind, absent, fromEnv, fallback, required, values, note })),
-    workflows: model.workflows,
+    workflows: model.workflows, tagging: tagSignature(model),
     // Native CDK usage is added by the source index after evaluation. Compare
     // authored settings here, independently of that source-only enrichment.
     networks: model.networks?.map(({ builtInProd, ...network }) => network), databaseNetworkId: model.databaseNetworkId,
@@ -116,9 +119,13 @@ export class BatchEditor {
     const handlerBefore = new Map<string, string>();
     for (const edit of edits) {
       if (edit.kind === "create") { summaries.push(`Create ${edit.request.kind}: ${creation!.expected.select}`); continue; }
-      const key = edit.kind === "databasePlacement" ? `databasePlacement:${edit.database}` : edit.kind === "database" ? `database:${edit.database}` : edit.kind === "removeNetwork" ? `removeNetwork:${edit.network}` : edit.kind === "placement" ? `placement:${edit.target}` : edit.kind === "network" ? `network:${edit.network}` : edit.kind === "clientEnvironment" ? "clientEnvironment" : edit.kind === "field" ? `${edit.intent.target}:${edit.intent.field}` : edit.kind === "description" ? `description:${edit.entity}` : edit.kind === "triggers" ? `triggers:${edit.event}` : edit.kind === "onFailure" ? `onFailure:${edit.event}` : edit.kind === "nativeTrigger" ? `native:${edit.edge}` : edit.route;
+      const key = edit.kind === "tags" ? `tags:${tagOwner(model, edit.entity)}` : edit.kind === "databasePlacement" ? `databasePlacement:${edit.database}` : edit.kind === "database" ? `database:${edit.database}` : edit.kind === "removeNetwork" ? `removeNetwork:${edit.network}` : edit.kind === "placement" ? `placement:${edit.target}` : edit.kind === "network" ? `network:${edit.network}` : edit.kind === "clientEnvironment" ? "clientEnvironment" : edit.kind === "field" ? `${edit.intent.target}:${edit.intent.field}` : edit.kind === "description" ? `description:${edit.entity}` : edit.kind === "triggers" ? `triggers:${edit.event}` : edit.kind === "onFailure" ? `onFailure:${edit.event}` : edit.kind === "nativeTrigger" ? `native:${edit.edge}` : edit.route;
       if (seen.has(key)) throw new EditError(400, "A draft can change each setting only once.");
       seen.add(key);
+      if (edit.kind === "tags") {
+        planTags(this.root, model, edit.entity, edit.tags, overrides);
+        summaries.push(`${edit.entity} — update declaration tags`);
+      }
       if (edit.kind === "databasePlacement") {
         const consumers = databaseConsumers(Object.values(state.snapshot.models), edit.database);
         if (edits.some(item => item.kind === "placement" && consumers.some(consumer => consumer.target === item.target))) throw new EditError(422, "A coordinated database placement already includes its connected workloads. Remove their separate placement changes and review again.");
@@ -319,7 +326,10 @@ export class BatchEditor {
     }
     const pool = new EvaluatorPool(this.root);
     try {
-      const models = await pool.evaluate(state.snapshot.webSocketApi, overrides);
+      const evaluated = await pool.evaluate(state.snapshot.webSocketApi, overrides);
+      // Review uses the same cross-mode metadata projection as the visible
+      // snapshot, including a production-only database's inherited stack tags.
+      const models = { dev: withAbsentTagging(evaluated.dev, evaluated.prod), prod: withAbsentTagging(evaluated.prod, evaluated.dev) };
       const triggerChange = [models.dev, models.prod].some((model: ModeModel) => JSON.stringify([model.triggers, model.failureDestinations]) !== JSON.stringify([state.snapshot.models[model.mode].triggers, state.snapshot.models[model.mode].failureDestinations]));
       const stackChange = Object.keys(overrides).some((file) => toRelative(this.root, file).startsWith("cdk-app/lib/"));
       const databasePlacementChanged = [models.dev, models.prod].some(model => model.managedDatabase?.networkId !== state.snapshot.models[model.mode].managedDatabase?.networkId || model.managedDatabase?.subnet !== state.snapshot.models[model.mode].managedDatabase?.subnet);
@@ -414,6 +424,7 @@ export class BatchEditor {
         if (JSON.stringify(model.triggers) !== JSON.stringify(expected.triggers)) throw new Error("Trigger connections did not match the review.");
         if (JSON.stringify(model.failureDestinations) !== JSON.stringify(expected.failureDestinations)) throw new Error("Failure destinations did not match the review.");
         if (checked.native && JSON.stringify(nativeSignature(actual.snapshot.source.cdkLinks)) !== JSON.stringify(checked.native)) throw new Error("Native triggers did not match the review.");
+        if (entry.edits.some(edit => edit.kind === "tags") && tagSignature(model) !== tagSignature(expected)) throw new Error(`Declaration tags did not match the review (${mode}: ${tagDifferences(model, expected)}).`);
         for (const edit of entry.edits) {
           if ((edit.kind === "database" || edit.kind === "databasePlacement") && JSON.stringify(model.managedDatabase) !== JSON.stringify(expected.managedDatabase)) throw new Error("Database declaration did not match the review.");
           if (edit.kind === "databasePlacement") for (const consumer of databaseConsumers([expected], edit.database)) {

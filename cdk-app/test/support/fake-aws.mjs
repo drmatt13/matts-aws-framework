@@ -154,6 +154,21 @@ switch (key) {
     secret.VersionId = randomUUID();
     reply({ ARN: secret.ARN, VersionId: secret.VersionId, VersionStages: ["AWSCURRENT"] });
   }
+  case "secretsmanager tag-resource": {
+    const secret = (account.secrets ?? []).find((entry) => entry.Name === options["secret-id"] || entry.ARN === options["secret-id"]);
+    if (!secret) fail("not-found");
+    const tags = new Map((secret.Tags ?? []).map(tag => [tag.Key, tag.Value]));
+    for (const tag of JSON.parse(options.tags ?? "[]")) tags.set(tag.Key, tag.Value);
+    secret.Tags = [...tags].map(([Key, Value]) => ({ Key, Value }));
+    reply({});
+  }
+  case "secretsmanager untag-resource": {
+    const secret = (account.secrets ?? []).find((entry) => entry.Name === options["secret-id"] || entry.ARN === options["secret-id"]);
+    if (!secret) fail("not-found");
+    const keys = [].concat(options["tag-keys"] ?? []);
+    secret.Tags = (secret.Tags ?? []).filter(tag => !keys.includes(tag.Key));
+    reply({});
+  }
   case "resourcegroupstaggingapi get-resources":
     reply({ ResourceTagMappingList: account.taggedResources ?? [] });
   case "cloudformation delete-stack": {

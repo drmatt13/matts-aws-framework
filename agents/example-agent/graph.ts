@@ -73,7 +73,7 @@ export type GraphContextType = z.infer<typeof GraphContext>;
  * - The graph's own tools, written here. One that has to reach
  *   into the graph itself — interrupt(), state — lives here.
  * - The agent's Gateway tools: Lambdas declared on the agent in
- *   framework-config/agents/example.ts. Give the agent another
+ *   framework-config/workloads/agents.ts. Give the agent another
  *   one by writing its Lambda and listing it there; it reaches
  *   the model and the shared `tools` node with no change here.
  * ============================================================ */

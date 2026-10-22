@@ -23,6 +23,7 @@ import { layoutAspect, type LayoutResult } from "../scene/layout-optimize";
 import { fitScene } from "../scene/fit";
 import { connectionMidpoint } from "../scene/routing";
 import { landscapeFocus, searchOpacity, searchScene } from "../scene/focus";
+import { filterSceneByTag } from "../scene/tag-filter";
 import { SceneRenderer } from "../scene/render";
 import { nodeHoverFacts, propHoverFacts, type HoverFacts } from "../scene/hover";
 import { catalogAvailability } from "../deployment";
@@ -30,6 +31,14 @@ import { connectionLabel, missingConnectionInput } from "../connections";
 import { AddMenu } from "./AddMenu";
 import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
+import { tagGroups, tagKeys, tagValueLabel, UNTAGGED_FILTER } from "../tag-groups";
+
+const TAG_VIEW_STORAGE = "framework-studio:isometric-tag-filter";
+interface TagFilterPreference { readonly key: string; readonly value?: string | null }
+const rememberedTagFilter = (): TagFilterPreference => {
+  try { const value = JSON.parse(window.localStorage.getItem(TAG_VIEW_STORAGE) ?? "null"); if (value && typeof value.key === "string" && (value.value === undefined || value.value === null || typeof value.value === "string")) return value; } catch { /* Invalid preferences fall back to the whole topology. */ }
+  return { key: "" };
+};
 
 /**
  * The landscape view: the same application, as a lit miniature you can fly over.
@@ -65,11 +74,15 @@ const NO_DESCRIPTION = "No description yet. Select it to write one.";
 
 export function Isometric() {
   const { model, index, snapshot, selected, select, created } = useStudio();
+  const hasEntities = model.targets.length > 0 || model.resources.length > 0 || !!model.networks?.length;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SceneRenderer | undefined>(undefined);
   const [motion, setMotion] = useState(() => !reducedMotion());
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const tagKeyRef = useRef<HTMLSelectElement>(null);
+  const [tagFilter, setTagFilter] = useState(rememberedTagFilter);
   const [hover, setHover] = useState<Hover | undefined>();
   const [stats, setStats] = useState({ ms: 0 });
   const [aspect, setAspect] = useState(16 / 9);
@@ -83,8 +96,16 @@ export function Isometric() {
     [snapshot.source.catalog],
   );
   const resourceAvailability = useMemo(() => catalogAvailability(snapshot.models), [snapshot.models]);
-  const scene = useMemo(() => buildScene(model, { webSocketApi: snapshot.webSocketApi, conditions, resourceAvailability,
+  const availableTagKeys = useMemo(() => tagKeys(model), [model]);
+  const activeTagKey = model.tagging ? tagFilter.key : "";
+  const untaggedOnly = activeTagKey === UNTAGGED_FILTER;
+  const filterValue = untaggedOnly ? null : tagFilter.value;
+  const untaggedCount = useMemo(() => tagGroups(model, UNTAGGED_FILTER)[0]!.members.length, [model]);
+  const groups = useMemo(() => activeTagKey ? tagGroups(model, activeTagKey) : [], [model, activeTagKey]);
+  const tagMatchCount = groups.find(group => group.value === filterValue)?.members.length ?? 0;
+  const topology = useMemo(() => buildScene(model, { webSocketApi: snapshot.webSocketApi, conditions, resourceAvailability,
     layoutModels: [snapshot.models.dev, snapshot.models.prod], layoutSettings: { aspect, previous: previousLayout.current?.positions, previousKey: previousLayout.current?.topologyKey } }), [model, snapshot.models, snapshot.webSocketApi, conditions, resourceAvailability, aspect]);
+  const scene = useMemo(() => activeTagKey && filterValue !== undefined ? filterSceneByTag(topology, model, activeTagKey, filterValue) : topology, [topology, model, activeTagKey, filterValue]);
   useLayoutEffect(() => { previousLayout.current = scene.layout; }, [scene]);
   const visibleSelected = selected ? scene.representatives[selected] ?? scene.edges.find((edge) => edge.members.some((member) => member.edge.id === selected))?.id ?? selected : undefined;
   const matches = useMemo(() => searchScene(scene, model, query), [scene, model, query]);
@@ -244,8 +265,9 @@ export function Isometric() {
 
   // Mount before paint: the renderer, the canvas's size, and web fonts arriving late.
   useLayoutEffect(() => {
-    const canvas = canvasRef.current!;
-    const container = containerRef.current!;
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
     rendererRef.current = new SceneRenderer(canvas, schedule);
     const observer = new ResizeObserver(resize);
     observer.observe(container);
@@ -265,7 +287,7 @@ export function Isometric() {
       rendererRef.current?.dispose();
       rendererRef.current = undefined;
     };
-  }, [schedule, resize]);
+  }, [schedule, resize, hasEntities]);
 
   useEffect(schedule, [schedule, scene, selected, motion, focusState]);
   useEffect(() => { if (pendingLayoutFit.current) { pendingLayoutFit.current = false; fit(); } }, [scene, fit]);
@@ -434,7 +456,8 @@ export function Isometric() {
   // Wheel: zoom about the pointer. Registered by hand, because React's wheel
   // listener is passive and could not stop the page from scrolling.
   useEffect(() => {
-    const canvas = canvasRef.current!;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       const state = live.current;
@@ -449,7 +472,7 @@ export function Isometric() {
     };
     canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", onWheel);
-  }, [schedule]);
+  }, [schedule, hasEntities]);
 
   const zoomBy = (factor: number) => {
     const state = live.current;
@@ -472,13 +495,18 @@ export function Isometric() {
     event.preventDefault();
   };
 
+  const changeTagFilter = (value: TagFilterPreference) => {
+    setTagFilter(value);
+    try { if (value.key) window.localStorage.setItem(TAG_VIEW_STORAGE, JSON.stringify(value)); else window.localStorage.removeItem(TAG_VIEW_STORAGE); } catch { /* View preferences do not block the map. */ }
+  };
+
   // Test and console access to where things are drawn. Read-only.
   useEffect(() => {
     const debug = {
       camera: () => live.current.camera,
       viewport: () => live.current.viewport,
       screenOf: (id: string) => {
-        const node = nodes.get(id);
+        const node = nodes.get(id) ?? scene.props.find(prop => prop.id === id);
         if (!node) return undefined;
         const card = live.current.cards.find((candidate) => candidate.id === id);
         return {
@@ -496,7 +524,7 @@ export function Isometric() {
         midpoint: worldToScreen(live.current.camera, live.current.viewport, connectionMidpoint(scene.routes[connection.id]!.points)),
       })),
       hullOf: (id: string) => {
-        const node = nodes.get(id);
+        const node = nodes.get(id) ?? scene.props.find(prop => prop.id === id);
         if (!node) return undefined;
         const points: Point[] = [];
         for (let index = 0; index < node.geometry.hull.length; index += 2) {
@@ -519,29 +547,41 @@ export function Isometric() {
         props: [...live.current.focus.props],
         opacityOf: (id: string) => searchOpacity(live.current.focus, "nodes", id),
       }),
+      tagFilter: () => ({ key: activeTagKey, value: tagFilter.value, muted: scene.nodes.filter(node => node.tagFiltered).map(node => node.id) }),
     };
     (window as unknown as { __studioLandscape?: typeof debug }).__studioLandscape = debug;
     return () => {
       delete (window as unknown as { __studioLandscape?: typeof debug }).__studioLandscape;
     };
-  }, [nodes, pick, scene]);
+  }, [nodes, pick, scene, activeTagKey, tagFilter.value]);
 
   // Hover coordinates and the timing readout must not rebuild hundreds of
   // hidden controls. Selection, source and scene updates still refresh them.
   const accessibleEntities = useMemo(() => (
-    <ul className="sr-only" aria-label="Entities in the landscape">
+    <ul className="sr-only landscape-entity-list" aria-label="Entities in the landscape" onKeyDown={(event) => {
+      if (event.key === "Escape") {
+        event.preventDefault(); event.stopPropagation(); canvasRef.current?.focus(); return;
+      }
+      const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
+      const current = items.indexOf(event.target as HTMLButtonElement);
+      if (current < 0) return;
+      const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : event.key === "ArrowDown" ? (current + 1) % items.length : event.key === "ArrowUp" ? (current - 1 + items.length) % items.length : undefined;
+      if (next === undefined) return;
+      event.preventDefault(); items[next]?.focus();
+    }}>
+      <li className="landscape-entity-help"><strong>Map resources and connections</strong><span>Use arrow keys or Tab to browse, Enter to inspect, Escape to return to the map.</span></li>
       {scene.edges.map((connection) => <li key={connection.id}><button onClick={() => select(connection.id)} aria-current={visibleSelected === connection.id}>
         {missingConnectionInput(connection) ? "Missing required value: " : "Connection: "}{endpointLabel(index, connection.from)} to {endpointLabel(index, connection.to)}, {connection.members.length} {connection.members.length === 1 ? "relationship" : "relationships"}{connectionLabel(connection) ? ` (${connectionLabel(connection)})` : ""}
       </button></li>)}
       {scene.islands.map((island) => <li key={island.id}><button onClick={() => select(island.id)} aria-current={visibleSelected === island.id}>{island.title} island settings</button></li>)}
-      {scene.props.map((prop) => <li key={prop.id}><button onClick={() => select(prop.id)} aria-current={visibleSelected === prop.id}>{prop.label}</button></li>)}
+      {scene.props.map((prop) => <li key={prop.id}><button data-entity-id={prop.id} aria-description={prop.id} onClick={() => select(prop.id)} aria-current={visibleSelected === prop.id}>{prop.label}</button></li>)}
       {scene.nodes.map((node) => <li key={node.id}><button onClick={() => select(node.id)} aria-current={visibleSelected === node.id}>
         {node.label}, {node.kindLabel}. {node.presenceText}
       </button></li>)}
     </ul>
   ), [scene, visibleSelected, index, select]);
 
-  if (model.targets.length === 0) {
+  if (!hasEntities) {
     return <p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p>;
   }
 
@@ -562,23 +602,34 @@ export function Isometric() {
         }}
         onDoubleClick={onDoubleClick}
         onKeyDown={onKeyDown}
-        style={{ cursor: gesture.current?.dragging ? "grabbing" : hover?.kind === "node" || hover?.kind === "island" ? "pointer" : "grab" }}
+        style={{ cursor: gesture.current?.dragging ? "grabbing" : hover ? "pointer" : "grab" }}
       />
       <div className="landscape-bar landscape-top">
         <div className="landscape-search-panel">
-          <div className="landscape-search">
+          <div className="landscape-search" role="search" aria-label="Map search">
             <Search size={16} aria-hidden />
-            <input type="search" aria-label="Search isometric map" placeholder="Search the map…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
+            <input ref={searchRef} type="search" aria-label="Search isometric map" placeholder="Search the map…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
               if (event.key !== "Escape") return;
               if (selected) select(undefined); else setQuery("");
               event.preventDefault();
             }} />
-            {query ? <button className="icon-button" aria-label="Clear map search" onClick={() => setQuery("")}><X size={14} aria-hidden /></button> : null}
+            {query ? <button className="icon-button" aria-label="Clear map search" title="Clear map search" onClick={() => { setQuery(""); searchRef.current?.focus(); }}><X size={14} aria-hidden /></button> : null}
           </div>
           {matches ? <span className="landscape-search-status" role="status">{matches.nodes.size + matches.props.size} {matches.nodes.size + matches.props.size === 1 ? "match" : "matches"}{selected ? " · Search resumes when selection clears" : ""}</span> : null}
+          <div className="landscape-tag-controls" role="group" aria-label="Map tag filters"><label htmlFor="map-tag-key">Tags</label>
+            <select ref={tagKeyRef} id="map-tag-key" aria-label="Filter map by tag key" title={untaggedOnly ? "Entities with no tags" : activeTagKey || "All tags"} value={activeTagKey} onChange={event => changeTagFilter({ key: event.target.value, ...(event.target.value === UNTAGGED_FILTER ? { value: null } : {}) })}>
+              <option value="">All tags</option>
+              <option value={UNTAGGED_FILTER} disabled={!model.tagging}>Untagged ({untaggedCount})</option>
+              {activeTagKey && !untaggedOnly && !availableTagKeys.includes(activeTagKey) ? <option value={activeTagKey}>{activeTagKey} (unavailable in this mode)</option> : null}
+              {availableTagKeys.map(key => <option key={key} value={key}>{key === "Untagged" ? "Untagged (key)" : key}</option>)}
+            </select>
+            {!untaggedOnly ? <select aria-label="Filter map by tag value" title={!activeTagKey || filterValue === undefined ? "All values" : tagValueLabel(filterValue)} disabled={!activeTagKey} value={!activeTagKey || filterValue === undefined ? "all" : JSON.stringify(filterValue)} onChange={event => { const chosen = groups.find(group => JSON.stringify(group.value) === event.target.value); changeTagFilter({ key: activeTagKey, ...(chosen ? { value: chosen.value } : {}) }); }}><option value="all">All values</option>{activeTagKey && filterValue !== undefined && !groups.some(group => group.value === filterValue) ? <option value={JSON.stringify(filterValue)}>{tagValueLabel(filterValue)} (no matches)</option> : null}{groups.map(group => <option key={JSON.stringify(group.value)} value={JSON.stringify(group.value)}>{tagValueLabel(group.value)} ({group.members.length})</option>)}</select> : null}
+            {activeTagKey ? <button className="icon-button" aria-label="Clear tag filter" title="Clear tag filter" onClick={() => { changeTagFilter({ key: "" }); tagKeyRef.current?.focus(); }}><X size={14} aria-hidden /></button> : null}
+          </div>
+          {activeTagKey && filterValue !== undefined ? <span className="landscape-search-status" role="status">{tagMatchCount} matching {tagMatchCount === 1 ? "entity" : "entities"} in {model.mode === "dev" ? "development" : "production"}</span> : null}
         </div>
         <span className="spacer" />
-        <div className="landscape-tools">
+        <div className="landscape-tools" role="group" aria-label="Map view controls">
           <button onClick={() => zoomBy(0.8)} aria-label="Zoom out" title="Zoom out (−)">
             <Minus size={16} aria-hidden />
           </button>
@@ -659,7 +710,7 @@ function HoverCard(props: {
   } else {
     const island = props.scene.islands.find((candidate) => candidate.id === current.id);
     if (!island) return null;
-    const band = island?.bands.length && island.bands.length > 1 ? island.bands.find((band) => band.id === current.band) : undefined;
+    const band = props.scene.mode === "prod" && island?.bands.length && island.bands.length > 1 ? island.bands.find((band) => band.id === current.band) : undefined;
     title = island ? `${island.title}${band ? `: ${band.title}` : ""}` : "";
     lines = [...(island?.caption ?? []), ...(band?.caption ?? []), "Click empty terrain for island settings and service defaults."];
   }

@@ -1,12 +1,14 @@
 import { applicationVpc } from "../networks/application";
 import type { ServicesSection } from "../contracts";
 
-/**
- * A minimal Express service on ECS. Local-only until its deploy setting
- * changes; in AWS it sits behind an internal load balancer that the HTTP API
- * reaches over a VPC link, so `auth: true` is the only way in.
- */
-export const exampleService = {
+/** Services declarations. Tags describe concerns independently of this module. */
+export const services = {
+  /**
+   * A minimal Express service on ECS. Local-only until its deploy setting
+   * changes; in AWS it sits behind an internal load balancer that the HTTP API
+   * reaches over a VPC link, so `auth: true` is the only way in.
+   */
+
   "/example-service/*": {
     directory: "/ecs_containers/services/example-service",
     methods: "*",
@@ -23,5 +25,6 @@ export const exampleService = {
       desiredCount: 1,
       outputs: { url: { id: "ExampleServiceUrl" } },
     },
+    tags: { area: "examples" },
   },
 } satisfies ServicesSection;

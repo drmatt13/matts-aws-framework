@@ -5,7 +5,7 @@ import test from "node:test";
 import { isDeepStrictEqual } from "node:util";
 import { findRepositoryRoot, resolveAgentSourcePath } from "@repo/framework/config/source";
 import framework from "../../framework.config";
-import { models } from "../../framework-config/models";
+import { models } from "../../framework-config/shared/models";
 import { resources } from "../../framework-config/resources";
 import {
   DEFAULT_MODEL_PROVIDER,
@@ -38,7 +38,7 @@ test("every agent that depends on @repo/models declares what its providers need"
     if (!manifest.dependencies?.["@repo/models"]) continue;
 
     const where = `agents["${id}"] depends on @repo/models`;
-    const fix = "Spread framework-config/models.ts into its declaration.";
+    const fix = "Spread framework-config/shared/models.ts into its declaration.";
     for (const name of Object.keys(models.environment)) {
       assert.ok(name in (agent.environment ?? {}), `${where} but its environment has no ${name}. ${fix}`);
     }

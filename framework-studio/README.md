@@ -8,6 +8,10 @@ source editing. It shows:
 - what it reads, grants and invokes;
 - where it was written.
 
+Declarations use the same [code-first layout and tags](../docs/framework-studio/declarations-and-tags.md)
+when authored by hand or created in Studio. Tag edits use source review. Isometric always keeps topology; its tag filter fades
+nonmatches without changing placement, identity or source.
+
 The **Database** tab (`/database`) visualizes the declared application schema from
 `packages/database/prisma/contract.prisma`. Select a table or foreign-key relationship
 to inspect mapped column names, types, nullability, defaults, primary/unique keys,
@@ -55,14 +59,14 @@ the existing Inspector edits, for every resource family.
 
 | Entry | Authored source | Supported creation choices |
 | --- | --- | --- |
-| Function | New `framework-config/events`, `http` or `websocket` module; composition import/array entry; `cdk-app/lambda_functions/<category>/<id>/index.ts` | Event, HTTP and WebSocket; Node 22/24 zip; memory, timeout, architecture, subnet; authenticated HTTP wrapper and pool binding; optional input/secret binding |
+| Function | Existing `framework-config/workloads/events.ts`, `http.ts` or `websocket.ts` map; registration only if absent; `cdk-app/lambda_functions/<category>/<id>/index.ts` | Event, HTTP and WebSocket; Node 22/24 zip; memory, timeout, architecture, subnet; authenticated HTTP wrapper and pool binding; optional input/secret binding |
 | Stack | `cdk-app/lib/app/<class-name>.ts`, typed catalog entry, import and instantiation in `cdk-app/bin/cdk-app.ts` | Actual SQS queue exposed as a typed public field, `linkResources`, deployment-prefixed stack/output identity; both/dev/prod scope |
 | VPC | New `framework-config/networks/<id>/index.ts` and a literal registry reference | Independent VPCs with private /16, two/three zones, NAT, IPv6 egress and endpoints; unused VPCs appear as blueprints |
-| Workflow | New workflow section module and composition entry | Executable pass-through workflow, or a sequence of existing event Lambdas/tasks; deployment lanes and execution timeout; native workflow DSL and IR |
-| Container service | Service section/composition, `cdk-app/ecs_containers/services/<id>/{index.mjs,Dockerfile,package.json}` | Node HTTP server and health endpoint; mount, port, gateway auth, CPU/memory, architecture, subnet, input/secret binding; local-only default |
-| Container task | Task section/composition, `cdk-app/ecs_containers/tasks/<id>/{index.mjs,Dockerfile}` | Run-to-completion Node container reading `FRAMEWORK_TASK_INPUT`; sizing, architecture, subnet, deployment lanes, input/secret binding; timeout belongs to its invocation |
-| API route | HTTP/WebSocket section/composition; optional new handler | New Lambda or an existing routed Lambda of the same category. Reused functions retain their authentication, bindings, handler and construct identity. HTTP methods and literal route paths use normal conflict validation |
-| Agent | Agent section/composition, `agents/<id>/{index,contract}.ts`, workspace manifest and tsconfig | AgentCore JSON responder; validated Zod contract; bounded model/tool loop using `@repo/models`; existing tools; authenticated browser route or IAM service agent; input/secret reference |
+| Workflow | Existing workflows.ts map; registration only if absent | Executable pass-through workflow, or a sequence of existing event Lambdas/tasks; deployment lanes and execution timeout; native workflow DSL and IR |
+| Container service | Existing services.ts section, `cdk-app/ecs_containers/services/<id>/{index.mjs,Dockerfile,package.json}` | Node HTTP server and health endpoint; mount, port, gateway auth, CPU/memory, architecture, subnet, input/secret binding; local-only default |
+| Container task | Existing tasks.ts section, `cdk-app/ecs_containers/tasks/<id>/{index.mjs,Dockerfile}` | Run-to-completion Node container reading `FRAMEWORK_TASK_INPUT`; sizing, architecture, subnet, deployment lanes, input/secret binding; timeout belongs to its invocation |
+| API route | Existing HTTP/WebSocket section; optional new handler | New Lambda or an existing routed Lambda of the same category. Reused functions retain their authentication, bindings, handler and construct identity. HTTP methods and literal route paths use normal conflict validation |
+| Agent | Existing agents.ts section, `agents/<id>/{index,contract}.ts`, workspace manifest and tsconfig | AgentCore JSON responder; validated Zod contract; bounded model/tool loop using `@repo/models`; existing tools; authenticated browser route or IAM service agent; input/secret reference |
 | Input parameter | Resource catalog; commented keys in both input templates; optional consumer section/import | String or enumerated string, declaration default, required flag, description, group, existing consumer mapping |
 | Secret | Resource catalog; commented keys in both input templates; optional consumer section/import | Declaration only, required flag, description, group, existing consumer mapping; automatic ARN/read permissions for Lambdas/agents and startup-value delivery for containers |
 

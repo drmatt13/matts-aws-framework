@@ -1,5 +1,5 @@
 import { AlertOctagon, AlertTriangle, ExternalLink, Info, MoreHorizontal, ScrollText } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { AccountContext, AwsProblem, DeploymentRecordView, DriftView, LocalRunView, StackEventView, StatusView } from "../../../shared/deploy";
 import type { Action, Finding } from "../../../shared/deploy-findings";
 import { DeploymentBadge } from "../DeploymentBadge";
@@ -61,6 +61,21 @@ export function Detail(props: {
   readonly onServiceLogs: (service: string) => void;
 }) {
   const { row, context, status, record, local } = props;
+  const actions = useRef<HTMLDetailsElement>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const closeActions = (restoreFocus = false) => {
+    if (!actions.current) return;
+    actions.current.open = false;
+    if (restoreFocus) actions.current.querySelector("summary")?.focus();
+  };
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!actions.current?.contains(event.target as Node)) closeActions();
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [actionsOpen]);
   // Once status has answered (from the deployment's own region), it is the authority, even when it found nothing.
   const deployment = status ? status.detail : row.deployment;
   const exists = Boolean(deployment && deployment.state.kind !== "absent");
@@ -86,8 +101,23 @@ export function Detail(props: {
         </div>
         <div className="detail-actions">
           {props.next ? <ActionButton action={props.next} onAction={props.onAction} primary /> : null}
-          <details className="more-menu" onClick={(event) => { if ((event.target as HTMLElement).closest("[role=menuitem]")) (event.currentTarget as HTMLDetailsElement).open = false; }}>
-            <summary className="icon-button" aria-label="More actions"><MoreHorizontal size={16} aria-hidden /></summary>
+          <details ref={actions} className="more-menu"
+            onToggle={(event) => setActionsOpen(event.currentTarget.open)}
+            onClick={(event) => { if ((event.target as HTMLElement).closest("[role=menuitem]")) closeActions(true); }}
+            onBlur={(event) => { if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) closeActions(); }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && event.currentTarget.open) {
+                event.preventDefault(); event.stopPropagation(); closeActions(true);
+              }
+              if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+              event.preventDefault();
+              event.currentTarget.open = true;
+              const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("[role=menuitem]:not(:disabled)")];
+              const current = items.indexOf(document.activeElement as HTMLButtonElement);
+              const index = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : event.key === "ArrowDown" ? (current + 1) % items.length : (current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length);
+              items[index]?.focus();
+            }}>
+            <summary className="icon-button" aria-label="More actions" aria-haspopup="menu" aria-expanded={actionsOpen}><MoreHorizontal size={16} aria-hidden /></summary>
             <div className="menu" role="menu">
               {row.target ? <button role="menuitem" onClick={() => props.onMore("plan")} disabled={props.busy || !context}>Plan changes for review…</button> : null}
               {row.target && row.mode === "dev" && exists ? <button role="menuitem" onClick={() => props.onMore("export")} disabled={!context}>Export settings to this machine</button> : null}
@@ -137,7 +167,7 @@ export function Detail(props: {
                       {deployment!.stacks.map((stack) => (
                         <li key={stack.name} className={`stack ${stackTone(stack.health)}`}>
                           <span className={`status-dot ${stackTone(stack.health)}`} aria-hidden />
-                          <span className="stack-name">{shortStack(stack.name, row.name)}</span>
+                          <span className="stack-name" title={stack.name}>{shortStack(stack.name, row.name)}</span>
                           <span className="stack-status">{stack.status.replaceAll("_", " ").toLowerCase()}</span>
                         </li>
                       ))}

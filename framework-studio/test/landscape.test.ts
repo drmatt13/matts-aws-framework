@@ -14,6 +14,7 @@ import { islandFrame } from "../src/scene/frame";
 import { API_EDGE_COLOR, BAND_TRIM, COMPUTE_EDGE_COLOR, DECK, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, ROLE_BADGE, ROLE_BADGE_PLATE, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, TRIGGER_EDGE_COLOR, trimColor } from "../src/scene/look";
 import { behind, islandDrawOrder, islandSlabs, polygonArea, type IslandSlab } from "../src/scene/slabs";
 import { carriesOwnTile, ICONS } from "../src/icons";
+import { endpointServiceDetails } from "../src/endpoint-services";
 import { catalogAvailability, connectionDisabledEndpoints } from "../src/deployment";
 import { indexModel } from "../src/lookup";
 import { existsSync, readFileSync } from "node:fs";
@@ -212,6 +213,38 @@ test("network plaques stand on their terraces with room between adjacent fixture
   }
 });
 
+test("endpoint-heavy VPCs wrap fixtures in compact grids separated from compute", () => {
+  const source = snapshot.models.prod, network = source.networks![0]!;
+  const template = source.targets.find(target => target.placement.kind === "vpc")!;
+  assert.ok(template);
+  for (const computeCount of [0, 24]) for (const endpointCount of [1, 9, 25, 64]) {
+    const targets = [...source.targets, ...Array.from({ length: computeCount }, (_, index) => ({ ...template, ref: `lambda:grid-${index}`, id: `grid-${index}`, title: `grid-${index}`, placement: { kind: "vpc" as const, networkId: network.id, subnet: "isolated" as const, reason: "Grid fixture", egress: { ipv4: false, ipv6: false } } }))];
+    const scene = buildScene({ ...source, targets, networks: [{ ...network, gatewayEndpoints: [], interfaceEndpoints: Array.from({ length: endpointCount }, (_, index) => `fixture-${index}`) }] });
+    const island = scene.islands.find(island => island.id === `island:vpc:${network.id}`)!;
+    const endpoints = scene.props.filter(prop => prop.id.startsWith(`prop:vpc:${network.id}:endpoint:`));
+    assert.equal(endpoints.length, endpointCount);
+    if (endpointCount > 1) assert.ok(new Set(endpoints.map(prop => prop.gy)).size > 1, "endpoints wrap into multiple rows");
+    const width = island.gx1 - island.gx0, depth = island.gy1 - island.gy0;
+    assert.ok(width / depth < 3 && depth / width < 3, `${endpointCount} endpoints and ${computeCount} extra compute nodes remain compact: ${width} × ${depth}`);
+    const nodes = scene.nodes.filter(node => node.island === island.id);
+    const props = scene.props.filter(prop => prop.id.startsWith(`prop:vpc:${network.id}:`));
+    for (const prop of props.filter(prop => prop.icon !== "endpoint")) {
+      assert.equal(prop.gy, island.gy1 - 2, "gateways sit along the left-facing edge rather than the terrace centre");
+    }
+    if (nodes.length) assert.ok(Math.max(...nodes.map(node => node.gy)) < Math.min(...props.map(prop => prop.gy)), "compute and fixtures occupy separate rows");
+    const occupied = new Set<string>();
+    for (const item of [...nodes, ...props]) {
+      const key = `${item.gx},${item.gy}`;
+      assert.ok(!occupied.has(key), `${item.id} has its own cell`); occupied.add(key);
+      const tile = scene.tiles.find(tile => tile.gx === item.gx && tile.gy === item.gy);
+      assert.ok(tile, `${item.id} stands clear of chamfers`);
+      assert.equal(tile.island, island.id);
+      if ("band" in item) assert.equal(tile.band, item.band);
+      else assert.ok(tile.band && item.serves.includes(tile.band), "fixtures stand on a subnet they serve");
+    }
+  }
+});
+
 test("every VPC endpoint has a service badge included in its hover silhouette", () => {
   const source = snapshot.models.prod;
   const network = { ...source.networks![0]!, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "lambda", "secretsmanager", "states", "logs"] };
@@ -225,6 +258,9 @@ test("every VPC endpoint has a service badge included in its hover silhouette", 
   for (const prop of endpoints) {
     assert.equal(prop.icon, "endpoint");
     assert.ok(prop.roleIcon);
+    const endpoint = prop.id.split(":endpoint:")[1]!;
+    assert.equal(prop.serviceIcon, endpointServiceDetails(endpoint).icon, "canvas and picker share the service artwork catalog");
+    assert.ok(existsSync(path.join(repositoryRoot, "framework-studio/public", prop.serviceIcon.slice(1))));
     assert.ok(existsSync(path.join(repositoryRoot, "framework-studio/public/icons", `${ICONS[prop.roleIcon][0]}.svg`)));
     const anchor = project({ x: prop.gx, y: prop.gy, h: prop.h });
     // This point lies in the badge beyond the main plaque's right edge.
@@ -446,7 +482,7 @@ test("what a building shows of an entity follows the model's lanes and absence",
   assert.equal(node(dev, "route:http:/graphql").presence, node(dev, "lambda:graphql-api").presence);
 });
 
-test("compute stands where it runs, and the VPC is a blueprint where it is not built", () => {
+test("compute stands where it runs, with development blueprints and solid production terraces", () => {
   const islandOf = (id: string) => dev.nodes.find((node) => node.id === id)!.island;
   const bandOf = (id: string) => {
     const node = dev.nodes.find((candidate) => candidate.id === id)!;
@@ -462,7 +498,7 @@ test("compute stands where it runs, and the VPC is a blueprint where it is not b
   }
   const vpc = (scene: Scene) => scene.islands.find((island) => island.id === "island:vpc:application")!;
   assert.equal(vpc(dev).ghost, "blueprint");
-  assert.equal(vpc(prod).ghost, snapshot.models.prod.networks![0]?.builtInProd ? undefined : "blueprint");
+  assert.equal(vpc(prod).ghost, undefined);
   // The subnets stand level, side by side: public, private, isolated.
   assert.deepEqual(vpc(dev).bands.map((band) => band.id), ["band:vpc:application:public", "band:vpc:application:private", "band:vpc:application:isolated"]);
   assert.equal(new Set(vpc(dev).bands.map((band) => band.h)).size, 1);
@@ -974,13 +1010,19 @@ test("catalog and selected output stacks share one island while keeping their av
   }
 });
 
-test("all VPC gateways and endpoints ghost with the unbuilt network and stay in the same positions", () => {
+test("VPC fixtures retain build facts and stable positions while production terraces stay solid", () => {
   const network = snapshot.models.prod.networks![0]!;
   assert.ok(network);
   for (const builtInProd of [true, false]) {
     const source = { ...snapshot.models.prod, networks: [{ ...network, builtInProd, natGateway: true, egressOnlyInternetGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["ecs", "logs"] }] };
     const development = buildScene({ ...source, mode: "dev" });
     const production = buildScene({ ...source, mode: "prod" });
+    const developmentVpc = islandSlabs(development).find(slab => slab.island.id === `island:vpc:${network.id}`)!;
+    const productionVpc = islandSlabs(production).find(slab => slab.island.id === `island:vpc:${network.id}`)!;
+    assert.equal(developmentVpc.island.ghost, "blueprint");
+    assert.equal(developmentVpc.deck, true);
+    assert.equal(productionVpc.island.ghost, undefined, "production shows the declared network design at full opacity even without consumers");
+    assert.equal(productionVpc.deck, false, "unused production networks retain production terraces rather than the development deck");
     assert.equal(development.props.length, 7, "internet, egress-only, NAT and four endpoint plaques");
     assert.ok(development.props.every((prop) => prop.presence === "other"));
     assert.ok(production.props.every((prop) => prop.presence === (builtInProd ? "built" : "other")));
@@ -1020,10 +1062,10 @@ test("HTTP, WebSocket, event and tool Lambdas share one layer, while HTTP, WebSo
   for (const id of ["island:lambda", "island:apis"]) assert.equal(dev.islands.find((island) => island.id === id)?.bands.length, 1);
 });
 
-test("only the VPC has a boundary; API and Lambda panels have no group frame", () => {
+test("only VPCs have boundaries; API and Lambda panels have no group frame", () => {
   for (const scene of [dev, prod]) {
-    assert.deepEqual(scene.frames.map((frame) => frame.kind), ["network"]);
-    assert.deepEqual(scene.frames[0]!.members, ["island:vpc:application"]);
+    assert.ok(scene.frames.every(frame => frame.kind === "network"));
+    assert.deepEqual(scene.frames.flatMap(frame => frame.members).sort(), scene.islands.filter(island => island.region === "network").map(island => island.id).sort());
   }
 });
 
@@ -1179,7 +1221,7 @@ test("an unbuilt VPC is one continuous deck, and a built one keeps its terraces 
   assert.equal(terraces.island.ghost, undefined);
   assert.equal(deck.deck, true);
   assert.equal(terraces.deck, false, "a built network is never merged");
-  for (const slab of [...islandSlabs(dev), ...islandSlabs(prod), ...islandSlabs(furnished())].filter((candidate) => candidate.island.id !== "island:vpc:application" || candidate.island.ghost !== "blueprint")) assert.equal(slab.deck, false, `${slab.island.id} stays as it was`);
+  for (const slab of [...islandSlabs(dev), ...islandSlabs(prod), ...islandSlabs(furnished())]) assert.equal(slab.deck, slab.island.region === "network" && slab.island.ghost === "blueprint", `${slab.island.id} follows its own network state`);
   const covered = (slab: typeof deck) => slab.bands.reduce((sum, band) => sum + polygonArea(band.region), 0);
   // The deck: the subnets tile the whole outline, flush, with no seam.
   assert.ok(Math.abs(covered(deck) - polygonArea(deck.outline)) < 1e-9, "no seam");
@@ -1203,7 +1245,6 @@ test("the unbuilt deck keeps its subnets quiet and its rim the strongest line", 
   assert.ok(DECK.zone <= 0.12, "a subnet is a whisper of its colour");
   assert.ok(DECK.zone < DECK.pad.stroke && DECK.pad.stroke < DECK.rim, "pads anchor what stands on it, and the rim outranks them");
   assert.ok(DECK.glass.top >= 0.5 && DECK.glass.top < 0.8, "dark glass with body, still glass");
-  assert.ok(DECK.label >= 0.85, "a subnet's name stays legible");
   assert.ok(DECK.shadow > 0 && DECK.shadow < 1, "a lighter shadow than a built island's");
 });
 

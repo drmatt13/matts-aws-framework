@@ -2,7 +2,8 @@
 
 Studio is a visual control room. Inspectors should answer what an item is, where it
 runs, and what can be changed before asking the developer to read implementation detail.
-The shared system lives in `framework-studio/src/inspector.css`; the section primitives
+The shared tokens and base controls live in `framework-studio/src/styles.css`.
+`src/inspector.css` owns panel layout and aliases those tokens; the section primitives
 live in `src/views/InspectorUI.tsx`. Board, Isometric and Database use the same inspector.
 
 ## Conventions
@@ -13,7 +14,7 @@ live in `src/views/InspectorUI.tsx`. Board, Isometric and Database use the same 
 | Scrolling | One content region, with close and draft actions outside it; a new selection starts at the top |
 | Type | 20 px item titles, 14 px body, 13 px labels, 12 px captions; monospace for identifiers and source |
 | Spacing | Shared 4, 8, 12, 16 and 20 px tokens; 20 px panel gutters |
-| Controls | 34 px inputs/selects, 32 px actions and icon actions, 24 px supporting disclosures; shared On/Off switches for boolean settings, checkboxes for acknowledgements and multi-selection; 44 px control targets for touch |
+| Controls | 32 px inputs/selects, actions and icon actions, 24 px supporting disclosures; shared On/Off switches for boolean settings, checkboxes for acknowledgements and multi-selection; 44 px control targets for touch |
 | Sections | `InspectorSection` for immediate controls; `InspectorDisclosure` for supporting information |
 | Forms | Associated labels, inline units, visible error messages, semantic `FormGroup` boundaries |
 | Color | Existing theme surfaces; teal/violet for environments, accept/refuse colors for validation |
@@ -26,9 +27,15 @@ padding, backgrounds or arrow placement.
 
 Field dividers keep 12 px of vertical padding; Deployment instead uses an unruled 16 px
 gap from its cards to its selector. Labels, controls and default notes share column tokens.
-At widths up to 420 px, fields stack their labels above controls, mapping actions wrap,
+At panel widths up to 420 px, fields stack their labels above controls, mapping actions wrap,
 and primary dialog actions use the full row. Long labels and source references wrap;
 selected options reserve their arrow space and truncate within the control.
+Container queries apply the same behavior to a narrow inspector beside a wide map.
+Long public-field types wrap in their metadata column, then stack beneath the field name
+in the narrowest panels. Route tag ownership help belongs inside the Tags section;
+explanatory copy never sits outside a section's gutters. Tag controls share the normal
+field height, identify invalid keys/values, connect validation messages to their inputs,
+and return focus to a remaining row or Add tag after deletion.
 Boolean setting rows keep their label and right-aligned switch on the same line at all
 widths, with room for long labels to wrap. `InspectorSwitch` in `InspectorUI.tsx` owns
 the existing On/Off appearance, accessible name, checked state and native button keyboard
@@ -47,8 +54,10 @@ help visible; the catalog does not verify regional service availability.
 
 ## Information order
 
-Workload, route, catalog and local-service inspectors begin with identity, source access
-and the shared **Deployment** section (`src/views/Deployment.tsx`). Development always
+Workload, route and catalog inspectors begin with identity, source access and **Tags**,
+followed by the shared **Deployment** section (`src/views/Deployment.tsx`). Generated
+fixtures and local services keep their deployment summary immediately after identity.
+Development always
 precedes Production; both cards remain visible when disabled. Configurable workloads
 and their routes expose the same **Deploy** selector beneath the cards. A route edits
 its target's declaration. The cards immediately preview a staged scope, and restoring

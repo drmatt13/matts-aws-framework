@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import test from "node:test";
-import { CreateSecretCommand, DescribeSecretCommand, GetSecretValueCommand, PutSecretValueCommand } from "@aws-sdk/client-secrets-manager";
+import { CreateSecretCommand, DescribeSecretCommand, GetSecretValueCommand, PutSecretValueCommand, TagResourceCommand, UntagResourceCommand } from "@aws-sdk/client-secrets-manager";
 import { planDeploymentSecrets, type SecretBinding, type SecretRequirement } from "../../scripts/deployment-secrets";
 
 /**
@@ -64,6 +64,16 @@ function secretsManager(seed: Record<string, string> = {}) {
         found![1].version = randomUUID();
         return { ARN: found![1].arn, VersionId: found![1].version };
       }
+      if (command instanceof TagResourceCommand) {
+        const tags = new Map(found![1].tags.map(tag => [tag.Key, tag.Value]));
+        for (const tag of command.input.Tags ?? []) tags.set(tag.Key!, tag.Value!);
+        found![1].tags = [...tags].map(([Key, Value]) => ({ Key, Value }));
+        return {};
+      }
+      if (command instanceof UntagResourceCommand) {
+        found![1].tags = found![1].tags.filter(tag => !command.input.TagKeys?.includes(tag.Key));
+        return {};
+      }
       throw new Error(`unexpected ${kind}`);
     },
   };
@@ -75,7 +85,7 @@ function secretsManager(seed: Record<string, string> = {}) {
     recreate: (requirement: SecretRequirement) => put(requirement, secrets.get(requirement.name)!.value),
     /** The (n+1)th call of a kind fails. */
     failAfter: (kind: string, successes: number) => failures.set(kind, successes),
-    writes: () => calls.filter((call) => call.command === "CreateSecretCommand" || call.command === "PutSecretValueCommand"),
+    writes: () => calls.filter((call) => call.command === "CreateSecretCommand" || call.command === "PutSecretValueCommand" || call.command === "TagResourceCommand" || call.command === "UntagResourceCommand"),
   };
 }
 
@@ -241,4 +251,46 @@ test("a reviewed apply that fails part-way reports only the writes that happened
   // What is left cannot be applied again under the old review: KEY no longer needs its update.
   const after = await planDeploymentSecrets([KEY, OTHER], { KEY: REVIEWED, OTHER: REVIEWED }, identity, aws.client);
   assert.match(String(after.mismatch(review)), /KEY was reviewed as update but is now unchanged/);
+});
+
+
+test("reviewed secret metadata updates and removals preserve ownership and do not rewrite its value", async () => {
+  const aws = secretsManager({ KEY: PREVIOUS });
+  aws.secrets.get(KEY.name)!.tags.push({ Key: "area", Value: "old" }, { Key: "obsolete", Value: "remove" });
+  const requirement = { ...KEY, tags: { area: "billing" } };
+  const plan = await planDeploymentSecrets([requirement], {}, identity, aws.client);
+  const review = { entries: plan.entries, binding: plan.bind("plan-tags") };
+  assert.deepEqual(plan.entries.map(entry => entry.action), ["update"]);
+  assert.deepEqual(aws.writes(), []);
+  await plan.apply(() => {}, review);
+  const stored = aws.secrets.get(KEY.name)!;
+  assert.equal(stored.value, PREVIOUS);
+  assert.deepEqual(Object.fromEntries(stored.tags.map(tag => [tag.Key, tag.Value])), {
+    "framework:deployment": KEY.deployment, "framework:resource": "key", "framework:environment": "KEY", area: "billing",
+  });
+  assert.deepEqual(aws.writes().map(call => call.command), ["UntagResourceCommand", "TagResourceCommand"]);
+  const remove = await planDeploymentSecrets([KEY], {}, identity, aws.client);
+  await remove.apply();
+  assert.equal(stored.tags.some(tag => tag.Key === "area"), false);
+});
+
+test("secret tag drift invalidates the bound review before any write", async () => {
+  const aws = secretsManager({ KEY: PREVIOUS });
+  const requirement = { ...KEY, tags: { area: "billing" } };
+  const review = await reviewed(aws, [requirement], {});
+  const changedSource = await planDeploymentSecrets([{ ...requirement, tags: { area: "other" } }], {}, identity, aws.client);
+  assert.match(String(changedSource.mismatch(review)), /tags of .* changed/);
+  aws.secrets.get(KEY.name)!.tags.push({ Key: "area", Value: "external" });
+  const changedAws = await planDeploymentSecrets([requirement], {}, identity, aws.client);
+  await assert.rejects(changedAws.apply(() => {}, review), /tags of .* changed/);
+  assert.deepEqual(aws.writes(), []);
+});
+
+
+test("a tag failure after a value write reports that secret as already changed", async () => {
+  const aws = secretsManager({ KEY: PREVIOUS });
+  aws.failAfter("TagResourceCommand", 0);
+  const plan = await planDeploymentSecrets([{ ...KEY, tags: { area: "billing" } }], { KEY: REVIEWED }, identity, aws.client);
+  await assert.rejects(plan.apply(), /Secret updates already performed: example\/secret\/KEY/);
+  assert.equal(aws.secrets.get(KEY.name)!.value, REVIEWED);
 });

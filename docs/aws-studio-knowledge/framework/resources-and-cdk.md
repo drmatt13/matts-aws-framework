@@ -17,6 +17,20 @@ related:
 ---
 # Resource catalog, permissions and CDK
 
+`resources.ts` explicitly composes imported descriptor constants from cohesive modules
+under `framework-config/resources/`. Source indexing follows those constants to their
+owning declarations; public catalog names and native link sites remain stable. Type-only
+stack imports still keep evaluation browser-safe.
+
+Tags follow ownership rather than consumer traversal. Stack descriptors carry `tags` and
+typed `members: { field: { tags } }` overrides; references and public string values retain
+metadata without independent AWS tagging. Imported constructs are not retagged. Owned
+compute/network/native subtrees use CDK tagging, preserving deployment ownership keys.
+The database declaration owns final overrides on its primary resource. Conflicting aliases
+must fail instead of choosing import order. The
+[tag guide](../../framework-studio/declarations-and-tags.md) describes limits and unsupported
+cases; saving tags never calls AWS or deploys.
+
 The catalog describes what consumers need without constructing CDK or reading secret values. [resources.ts](../../../framework-config/resources.ts) uses `defineResources`, `resource.fromEnv`, `resource.secret`, and `resource.stack<T>()`. A mode-absent entry remains a typed reference but resolves to nothing; consumers must respect required/optional semantics.
 
 | Abstraction | Implementation contract |

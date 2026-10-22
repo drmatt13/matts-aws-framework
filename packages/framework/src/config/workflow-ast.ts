@@ -1,3 +1,4 @@
+import type { DeclarationTags } from "./tags";
 /**
  * The workflow intermediate representation.
  *
@@ -505,6 +506,7 @@ export const WORKFLOW_NODE_KINDS = [
 export type WorkflowExecutionType = "standard" | "express";
 
 export interface WorkflowOptions {
+  readonly tags?: DeclarationTags;
   /** Whole-execution deadline. Required: a graph needs a bound. */
   readonly timeoutSeconds: number;
   readonly deploy?: DeploySetting;
@@ -525,6 +527,7 @@ export interface WorkflowOptions {
  * malformed graph is a module-load error rather than a deployment surprise.
  */
 export interface WorkflowDefinition {
+  readonly tags?: DeclarationTags;
   readonly root: WorkflowNode;
   readonly timeoutSeconds: number;
   readonly deploy?: DeploySetting;

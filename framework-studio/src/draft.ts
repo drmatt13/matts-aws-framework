@@ -8,6 +8,7 @@ import { triggerBindingsEqual, type FailureDestinationSettings, type TriggerBind
 import { CLIENT_ENVIRONMENT_ID, clientMappingsError, type ClientEnvironmentMappings } from "../shared/client-environment";
 import { readDatabaseDraft, readDatabasePlacementDraft, type DatabasePlacementEdit } from "../shared/managed-database";
 import type { DatabaseSettingsInput } from "@repo/framework/config/database";
+import { validateTags } from "@repo/framework/config";
 
 import { CREATORS, creationDefaults, readCreationRequest, type CreationKind, type CreationRequest } from "../shared/creation";
 
@@ -18,6 +19,7 @@ export interface ResourceForm { readonly required?: boolean; readonly secret: bo
 interface FieldEntry { readonly kind: "field"; readonly key: string; readonly raw: LiteralValue | undefined; readonly intent: EditIntent; readonly error?: string }
 interface RouteEntry { readonly kind: "route"; readonly key: string; readonly route: string; readonly value: string; readonly error?: string }
 interface DescriptionEntry { readonly kind: "description"; readonly key: string; readonly entity: string; readonly value: string; readonly error?: string }
+interface TagsEntry { readonly kind: "tags"; readonly key: string; readonly entity: string; readonly tags: Readonly<Record<string, string>>; readonly error?: string }
 interface ResourceEntry { readonly kind: "resource"; readonly key: string; readonly intent: ResourceIntent; readonly form: ResourceForm; readonly count: number; readonly error?: string }
 interface TriggerEntry { readonly kind: "triggers"; readonly key: string; readonly event: string; readonly bindings: readonly TriggerBinding[]; readonly error?: string }
 interface NativeEntry { readonly kind: "native"; readonly key: string; readonly edge: string; readonly error?: string }
@@ -29,7 +31,7 @@ export interface NetworkEntry { readonly kind: "network"; readonly key: string; 
 export interface NetworkRemovalEntry { readonly kind: "removeNetwork"; readonly key: string; readonly network: string; readonly error?: string }
 export interface DatabaseEntry { readonly kind: "database"; readonly key: string; readonly database: string; readonly settings: DatabaseSettingsInput; readonly error?: string }
 export interface DatabasePlacementEntry { readonly kind: "databasePlacement"; readonly key: string; readonly edit: DatabasePlacementEdit; readonly error?: string }
-export type DraftEntry = DatabasePlacementEntry | DatabaseEntry | NetworkRemovalEntry | PlacementEntry | NetworkEntry | CreationEntry | FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry | ClientMappingEntry;
+export type DraftEntry = TagsEntry | DatabasePlacementEntry | DatabaseEntry | NetworkRemovalEntry | PlacementEntry | NetworkEntry | CreationEntry | FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry | ClientMappingEntry;
 export interface DraftState {
   readonly baseline: Snapshot;
   readonly latest: Snapshot;
@@ -146,11 +148,12 @@ export class InspectorDraft {
     }
     this.setCreation(kind, form);
   }
-  setCreation(resourceKind: CreationKind, form: CreationEntry["form"]): void {
+  setCreation(resourceKind: CreationKind, form: CreationEntry["form"], errorOverride?: string): void {
     let request: CreationRequest | undefined;
     let error: string | undefined;
     try { request = readCreationRequest({ kind: resourceKind, ...form }); }
     catch (problem) { error = problem instanceof Error ? problem.message : String(problem); }
+    error = errorOverride ?? error;
     this.put("create", { kind: "create", key: "create", resourceKind, form, request, error });
   }
   field(target: string, fact: FieldFact): FieldEntry | undefined { return this.state.entries.find((entry): entry is FieldEntry => entry.kind === "field" && entry.key === fieldKey(target, fact.field)); }
@@ -234,6 +237,15 @@ export class InspectorDraft {
   restoreNative(edge: string): void { this.put(`native:${edge}`, undefined); }
   description(entity: string): string {
     return this.state.entries.find((entry): entry is DescriptionEntry => entry.kind === "description" && entry.entity === entity)?.value ?? this.state.baseline.descriptions.values[entity] ?? "";
+  }
+  tags(entity: string): Readonly<Record<string, string>> {
+    return this.state.entries.find((entry): entry is TagsEntry => entry.kind === "tags" && entry.entity === entity)?.tags ?? this.state.baseline.models[this.state.mode].tagging?.[entity]?.authored ?? {};
+  }
+  changeTags(entity: string, tags: Readonly<Record<string, string>>, error?: string): void {
+    try { validateTags(tags, `${entity}.tags`); } catch (reason) { error ??= reason instanceof Error ? reason.message : String(reason); }
+    const base = this.state.baseline.models[this.state.mode].tagging?.[entity]?.authored ?? {};
+    const signature = (value: Readonly<Record<string, string>>) => JSON.stringify(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
+    this.put(`tags:${entity}`, !error && signature(tags) === signature(base) ? undefined : { kind: "tags", key: `tags:${entity}`, entity, tags, ...(error ? { error } : {}) });
   }
   setDescription(entity: string, value: string): void {
     const key = `description:${entity}`;
@@ -326,6 +338,7 @@ export class InspectorDraft {
           if (entry.kind === "create" && entry.request) return { kind: "create", request: entry.request };
           if (entry.kind === "field") return { kind: "field", intent: entry.intent };
           if (entry.kind === "description") return { kind: "description", entity: entry.entity, value: entry.value };
+          if (entry.kind === "tags") return { kind: "tags", entity: entry.entity, tags: entry.tags };
           if (entry.kind === "route") return { kind: "route", route: entry.route, value: entry.value };
           if (entry.kind === "triggers") return { kind: "triggers", event: entry.event, bindings: entry.bindings };
           if (entry.kind === "native") return { kind: "nativeTrigger", edge: entry.edge };

@@ -63,7 +63,7 @@ export function Activity(props: {
           <ul className="job-list" aria-label="Operations">
             {props.jobs.slice(0, 20).map((entry) => (
               <li key={entry.id}>
-                <button className={`job ${entry.status} ${entry.id === job?.id ? "selected" : ""}`} onClick={() => props.onSelect(entry.id)}>
+                <button className={`job ${entry.status} ${entry.id === job?.id ? "selected" : ""}`} aria-current={entry.id === job?.id ? "true" : undefined} onClick={() => props.onSelect(entry.id)}>
                   <span className="job-title">{entry.title}</span>
                   <span className="job-meta">{STATUS_LABEL[entry.status]} · {relativeTime(entry.endedAt ?? entry.startedAt)}</span>
                 </button>
@@ -92,6 +92,7 @@ export function Activity(props: {
               <pre
                 ref={log}
                 className="job-log"
+                tabIndex={0}
                 aria-label="Log"
                 onScroll={(event) => { const element = event.currentTarget; pinned.current = element.scrollHeight - element.scrollTop - element.clientHeight < 24; }}
               >

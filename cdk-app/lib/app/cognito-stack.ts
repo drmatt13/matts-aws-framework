@@ -208,7 +208,7 @@ export class CognitoStack extends cdk.Stack {
             sesRegion: props.sesRegion ?? this.region,
           })
         : cognito.UserPoolEmail.withCognito(),
-      // Declared under framework-config/events/cognito.ts and built before this
+      // Declared under framework-config/workloads/events.ts and built before this
       // stack; `eventFunction` finds each one by id, so nothing is threaded
       // through the entrypoint and Cognito's trigger names stay with Cognito.
       lambdaTriggers: {

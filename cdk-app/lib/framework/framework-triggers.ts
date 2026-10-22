@@ -1,3 +1,4 @@
+import { markInfrastructure } from "./framework-inventory";
 import * as cdk from "aws-cdk-lib";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as events from "aws-cdk-lib/aws-events";
@@ -92,6 +93,7 @@ registerCdkTriggerAdapter({
       eventPattern: options.eventPattern as events.EventPattern,
       enabled: options.enabled as boolean | undefined,
     });
+    markInfrastructure(rule, `lambda:${binding.event}`, "supporting");
     const target = new targets.LambdaFunction(fn, {
       ...(options.input ? { event: events.RuleTargetInput.fromObject(options.input) } : {}),
       retryAttempts: options.retryAttempts as number | undefined,
@@ -114,12 +116,21 @@ registerCdkTriggerAdapter({
   },
   attach({ fn, binding }) {
     const options = binding.options;
-    new scheduler.Schedule(cdk.Stack.of(fn), triggerAttachmentId(binding), {
+    const invocation = new schedulerTargets.LambdaInvoke(fn, options.input ? { input: scheduler.ScheduleTargetInput.fromObject(options.input) } : {});
+    const schedule = new scheduler.Schedule(cdk.Stack.of(fn), triggerAttachmentId(binding), {
       schedule: scheduler.ScheduleExpression.expression(String(options.expression), typeof options.timezone === "string" ? cdk.TimeZone.of(options.timezone) : undefined),
-      target: new schedulerTargets.LambdaInvoke(fn, options.input ? { input: scheduler.ScheduleTargetInput.fromObject(options.input) } : {}),
+      target: { bind: owner => {
+        const target = invocation.bind(owner);
+        // CDK shares this role by target and places it beside the schedule.
+        // Its native identity stays intact; each same-target schedule records
+        // the same workload owner instead of inheriting traversal order.
+        markInfrastructure(target.role, `lambda:${binding.event}`, "supporting");
+        return target;
+      } },
       enabled: options.enabled as boolean | undefined,
       description: `${binding.event}: ${binding.id}`,
     });
+    markInfrastructure(schedule, `lambda:${binding.event}`, "supporting");
   },
 });
 

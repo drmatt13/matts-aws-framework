@@ -47,7 +47,7 @@ export function connectionStyle(
   if (relation === "usesTool") return { color: TOOL_EDGE_COLOR, dashed: false };
   if (relation === "step") return { color: STEP_EDGE_COLOR, dashed: false };
   // Anything else takes the colour of where it starts, solid out of the APIs island and out of compute.
-  if (source?.island === "island:apis") return { color: API_EDGE_COLOR, dashed: false };
+  if (relation === "routes" || source?.island === "island:apis") return { color: API_EDGE_COLOR, dashed: false };
   if (source?.targetKind && COMPUTE_TARGETS.has(source.targetKind)) return { color: COMPUTE_EDGE_COLOR, dashed: false };
   return { color: EDGE_COLORS[category], dashed: true };
 }
@@ -80,13 +80,13 @@ export function connectionHoverEase(progress: number): number {
 }
 
 /** A node belongs to the environment being viewed when it is built or held there. */
-const inLens = (node: Pick<SceneNode, "presence"> | undefined): boolean => !node || node.presence === "built" || node.presence === "present";
+const inLens = (node: Pick<SceneNode, "presence" | "tagFiltered"> | undefined): boolean => !node || !node.tagFiltered && (node.presence === "built" || node.presence === "present");
 
 /**
  * Whether a connection is outside the environment being viewed: the other environment alone holds it, or
  * either end is enabled only there, in neither, or a catalog entry the viewed graph declares undefined.
  */
-export function offLens(edge: { readonly otherLens?: Mode }, from: Pick<SceneNode, "presence"> | undefined, to: Pick<SceneNode, "presence"> | undefined): boolean {
+export function offLens(edge: { readonly otherLens?: Mode }, from: Pick<SceneNode, "presence" | "tagFiltered"> | undefined, to: Pick<SceneNode, "presence" | "tagFiltered"> | undefined): boolean {
   return edge.otherLens !== undefined || !inLens(from) || !inLens(to);
 }
 

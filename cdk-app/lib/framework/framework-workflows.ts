@@ -1,3 +1,4 @@
+import { markInfrastructure } from "./framework-inventory";
 import { deferResourceAttachment } from "./framework-resources";
 import * as cdk from "aws-cdk-lib";
 import * as iam from "aws-cdk-lib/aws-iam";
@@ -322,6 +323,7 @@ export class FrameworkWorkflows {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    markInfrastructure(logGroup, `workflow:${target.id}`, "supporting");
     const stateMachine = new sfn.StateMachine(stack, target.cloud.constructId, {
       stateMachineType:
         workflow.type === "express"

@@ -17,8 +17,8 @@ import { connectionDescriptionId } from "../shared/descriptions";
 
 const repositoryRoot = path.resolve(__dirname, "..", "..");
 const fixture = path.join(repositoryRoot, ".cache", "framework-studio", `fixture-${randomUUID()}`);
-const serviceFile = path.join(fixture, "framework-config", "services", "example.ts");
-const taskFile = path.join(fixture, "framework-config", "tasks", "worker.ts");
+const serviceFile = path.join(fixture, "framework-config", "workloads", "services.ts");
+const taskFile = path.join(fixture, "framework-config", "workloads", "worker-task.ts");
 let builder: SnapshotBuilder;
 let edits: EditService;
 
@@ -33,11 +33,11 @@ before(async () => {
   cpSync(path.join(repositoryRoot, "framework.config.ts"), path.join(fixture, "framework.config.ts"));
   // Test-only binding: a cloud caller must prevent removing its worker's cloud lane.
   writeFileSync(taskFile, 'import { applicationVpc } from "../networks/application";\nexport const worker = { "transaction-worker": { deploy: "both", cloud: { vpc: applicationVpc } } };\n');
-  writeFileSync(path.join(fixture, "framework-config/http/worker.ts"), `import { runsTask } from "@repo/framework/config";
+  writeFileSync(path.join(fixture, "framework-config/workloads/worker-http.ts"), `import { runsTask } from "@repo/framework/config";
 export const workerRoute = { "/worker": { directory: "/lambda_functions/worker", methods: ["POST"], cloud: { bindings: [runsTask("transaction-worker")] } } };
 `);
   const configFile = path.join(fixture, "framework.config.ts");
-  writeFileSync(configFile, 'import { worker } from "./framework-config/tasks/worker";\nimport { workerRoute } from "./framework-config/http/worker";\n' + readFileSync(configFile, "utf8")
+  writeFileSync(configFile, 'import { worker } from "./framework-config/workloads/worker-task";\nimport { workerRoute } from "./framework-config/workloads/worker-http";\n' + readFileSync(configFile, "utf8")
     .replace(/http: \[([^\]]*)\]/, "http: [$1, workerRoute]")
     .replace(/tasks: \[([^\]]*)\]/, "tasks: [$1, worker]"));
   builder = new SnapshotBuilder(fixture);
@@ -148,7 +148,7 @@ test("batch HTTP renames move description keys and undo restores both files", as
 
 test("local replay reviews config and handler together, restores both exactly, and preserves concurrent handler edits", async () => {
   const target = "lambda:cognito-custom-message";
-  const config = path.join(fixture, "framework-config/events/cognito.ts");
+  const config = path.join(fixture, "framework-config/workloads/events.ts");
   const handler = path.join(fixture, "cdk-app/lambda_functions/event_functions/cognito-custom-message/index.ts");
   const beforeConfig = readFileSync(config, "utf8");
   const beforeHandler = readFileSync(handler, "utf8");
@@ -370,7 +370,7 @@ test("a change the framework refuses is previewed with its reason and cannot be 
 });
 
 test("Lambda build controls round-trip architecture, numeric retention and boolean bundling through validated writes", async () => {
-  const file = path.join(fixture, "framework-config/http/graphql.ts");
+  const file = path.join(fixture, "framework-config/workloads/http.ts");
   const original = readFileSync(file, "utf8");
   for (const [field, value] of [["lambda.architecture", "x86_64"], ["lambda.runtime", "nodejs22"], ["lambda.logRetentionDays", 14], ["lambda.bundling.minify", false], ["lambda.bundling.sourceMap", true]] as const) {
     const plan = await edits.plan({ target: "lambda:graphql-api", field, value }, revision());
@@ -388,13 +388,13 @@ test("Lambda build controls round-trip architecture, numeric retention and boole
 });
 
 test("Cognito event Lambda settings can be previewed, written and undone in their section module", async () => {
-  const file = path.join(fixture, "framework-config/events/cognito.ts");
+  const file = path.join(fixture, "framework-config/workloads/events.ts");
   const original = readFileSync(file, "utf8");
   const target = "lambda:cognito-pre-signup-trigger";
   for (const [field, value] of [["lambda.architecture", "x86_64"], ["lambda.runtime", "nodejs22"], ["lambda.bundling.minify", false], ["lambda.bundling.sourceMap", false], ["lambda.logRetentionDays", 14]] as const) {
     const plan = await edits.plan({ target, field, value }, revision());
     assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
-    assert.equal(plan.file, "framework-config/events/cognito.ts");
+    assert.equal(plan.file, "framework-config/workloads/events.ts");
     assert.equal((await edits.apply(plan.planId)).status, "applied");
     assert.equal(builder.current!.snapshot.models.dev.fields[target]!.find((fact) => fact.field === field)?.effective, value);
     assert.equal((await edits.undo()).status, "applied");
@@ -430,7 +430,7 @@ test("a config that stops loading keeps its last good model, refuses edits, and 
     const broken = (await builder.refresh()).snapshot;
     assert.equal(broken.models.dev.stale, true);
     assert.equal(broken.models.dev.diagnostics[0]?.stage, "load");
-    assert.match(broken.models.dev.diagnostics[0]!.message, /worker\.ts:\d+:\d+/);
+    assert.match(broken.models.dev.diagnostics[0]!.message, /worker-task\.ts:\d+:\d+/);
     assert.ok(broken.models.dev.targets.some((target) => target.ref === "task:transaction-worker"), "the last good targets are still shown");
     await rejects(
       edits.plan({ target: "service:example-service", field: "deploy", value: "both" }, broken.revision),
@@ -454,7 +454,7 @@ test("an atomic write leaves no temporary file behind", () => {
 });
 
 test("an HTTP route rename updates its gateway and preserves the Lambda identity through undo and redo", async () => {
-  const file = path.join(fixture, "framework-config/http/examples.ts");
+  const file = path.join(fixture, "framework-config/workloads/http.ts");
   const original = readFileSync(file, "utf8");
   const identity = (mode: "dev" | "prod") => builder.current!.snapshot.models[mode].targets.map((target) => [target.ref, target.constructId]);
   const before = { dev: identity("dev"), prod: identity("prod") };
@@ -482,7 +482,7 @@ test("route renames reject duplicate and invalid paths and preserve concurrent e
   const invalid = await edits.planRoute("route:http:/examples/python", "/examples/:id", revision());
   assert.equal(invalid.ok, false);
   await rejects(edits.apply(invalid.planId), 422, /refuses/);
-  const file = path.join(fixture, "framework-config/http/examples.ts");
+  const file = path.join(fixture, "framework-config/workloads/http.ts");
   const original = readFileSync(file, "utf8");
   const plan = await edits.planRoute("route:http:/examples/python", "/examples/another", revision());
   const theirs = `${original}\n// concurrent edit\n`;
@@ -494,14 +494,15 @@ test("route renames reject duplicate and invalid paths and preserve concurrent e
 });
 
 test("HTTP authorizer auth can be switched off and on without changing handler user-pool access", async () => {
-  const file = path.join(fixture, "framework-config/http/graphql.ts");
+  const file = path.join(fixture, "framework-config/workloads/http.ts");
   const original = readFileSync(file, "utf8");
   const before = builder.current!.snapshot.models.dev.targets.find((target) => target.ref === "lambda:graphql-api")!;
   const disabled = await edits.plan({ target: before.ref, field: "http.auth", inherit: true }, revision());
   assert.equal(disabled.ok, true, JSON.stringify(disabled.preflight));
   assert.equal(disabled.preflight.dev.predicted?.effective, false);
   assert.equal((await edits.apply(disabled.planId)).status, "applied");
-  assert.equal(readFileSync(file, "utf8"), original.replace("    auth: true,\n", ""));
+  const at = original.indexOf("    auth: true,\n", original.indexOf('"/graphql":'));
+  assert.equal(readFileSync(file, "utf8"), original.slice(0, at) + original.slice(at + "    auth: true,\n".length));
   const model = builder.current!.snapshot.models.dev;
   assert.equal(model.routes.find((route) => route.id === "route:http:/graphql")?.auth, false);
   const target = model.targets.find((target) => target.ref === before.ref)!;

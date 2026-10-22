@@ -1,5 +1,6 @@
 import type { ModeModel } from "../../shared/model";
 import type { Scene } from "./build";
+import { matchesTagFilter } from "../tag-groups";
 
 export interface SearchMatches {
   readonly nodes: ReadonlySet<string>;
@@ -36,6 +37,7 @@ export function searchScene(scene: Scene, model: ModeModel, query: string): Sear
     const route = routes.get(node.id);
     if (wholeIslands.has(node.island) || bands.has(node.band) || matches(
       node.id, node.label, node.kindLabel, node.icon, node.roleIcon,
+      Object.entries(model.tagging?.[node.id]?.effective ?? {}).flat(),
       target && [target.title, target.id, target.role, target.directory, target.constructId, target.environment.map((entry) => entry.name)],
       route && [route.path, route.browserPath, route.target], resourceText(node.id),
     )) nodes.add(node.id);
@@ -50,6 +52,19 @@ export function searchScene(scene: Scene, model: ModeModel, query: string): Sear
   }
   for (const node of scene.nodes) if (nodes.has(node.id)) islands.add(node.island);
   for (const id of wholeIslands) islands.add(id);
+  return { nodes, props, islands };
+}
+
+/** Filtering changes emphasis only; topology, picking and entity identities stay intact. */
+export function tagSceneMatches(scene: Scene, model: ModeModel, key: string, value: string | null): SearchMatches {
+  const nodes = new Set<string>(), props = new Set<string>(), islands = new Set<string>();
+  for (const node of scene.nodes) if (matchesTagFilter(model, node.id, key, value)) { nodes.add(node.id); islands.add(node.island); }
+  for (const [id, representative] of Object.entries(scene.representatives)) if (matchesTagFilter(model, id, key, value)) {
+    nodes.add(representative); const node = scene.nodes.find(node => node.id === representative); if (node) islands.add(node.island);
+  }
+  for (const island of scene.islands) if (island.region === "network" && matchesTagFilter(model, island.id, key, value)) {
+    islands.add(island.id); for (const prop of scene.props) if (prop.serves.some(band => island.bands.some(item => item.id === band))) props.add(prop.id);
+  }
   return { nodes, props, islands };
 }
 

@@ -1,3 +1,4 @@
+import { markInfrastructure } from "./framework-inventory";
 import path from "node:path";
 import * as cdk from "aws-cdk-lib";
 import type * as ec2 from "aws-cdk-lib/aws-ec2";
@@ -174,6 +175,7 @@ function databaseLogin(scope: IConstruct, binding: ConnectsToBinding, instance: 
     throw new Error(`The database's IAM login bootstrap runs in VPC "${network.id}" private subnets and must read its master secret from Secrets Manager. Turn on egressOnlyInternetGateway or natGateway, or add "secretsmanager" to interfaceEndpoints in that VPC declaration. Endpoints in another VPC cannot provide this route.`);
   }
   const owner = new Construct(cdk.Stack.of(instance), "FrameworkDatabaseLogin");
+  markInfrastructure(owner, `resource:${binding.resource.path.join(".")}`, "supporting");
   const handler = new nodejs.NodejsFunction(owner, "Handler", {
     entry: LOGIN_HANDLER,
     runtime: lambda.Runtime.NODEJS_24_X,

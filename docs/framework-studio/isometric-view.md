@@ -192,8 +192,8 @@ subnet terraces inside the VPC foundation.
   - absent stacks have ghost nodes on the shared Stacks island;
   - an island with nodes but none enabled in the selected environment uses the same
     20 % opacity and grid outline; an island with any enabled node stays solid;
-  - the VPC is a translucent blueprint unless the graph is production and
-    `network.builtInProd` is true.
+  - development VPCs are translucent blueprint decks; production uses subnet terraces,
+    solid regardless of usage. `network.builtInProd` remains a deployment fact in captions and hover details.
 - Labels have no badge for entities available in both environments. A teal flask Dev
   badge marks Development only, a violet diamond Prod badge Production only, and Off
   marks disabled workloads. Execution location never gets a separate deployment badge.
@@ -240,19 +240,27 @@ Each island is drawn as continuous slabs, one per band, rather than a field of t
 - **Atmosphere.** A navy void, the grid under a vignette so it fades outward, and two soft
   additive blooms (teal upper left, violet lower right). Each island casts a soft
   shadow, drawn as four inflated layers, onto a floor five steps below it.
-- **Names on walls.** An island's title is written in perspective along its front-left
-  wall, in uppercase with letter spacing and in its trim colour, sheared to the wall's
-  slope. A terraced island names each terrace on its own stretch of wall instead. A name
-  is written only when it would be at least 9 px tall and fits its wall; otherwise the
-  flat title stands in for it.
+- **Readable names.** Island titles stay horizontal outside the left flank at every zoom.
+  Production subnet names use horizontal dark cards with 13 px detail text and a
+  short subnet-coloured cue. Each heading keeps its anchor above the terrace's back rim,
+  lifting vertically to clear icons and other headings. Clearance adjustments ease to
+  rest, while pan movement tracks the terrain exactly. They never become perspective
+  wall text or choose a different slot at a viewport edge: canvas clipping carries them
+  naturally offscreen. Overview zoom uses the node captions' smooth opacity curve and
+  25% text floor; cards dissolve faster than text. Below 0.65× zoom, typography and card
+  geometry also shrink gently with the node-caption scale to keep overviews compact.
+  Resource captions yield to these section
+  headings. Paused/reduced motion applies clearance adjustments immediately.
 - **Ghosts.**
-  - An unbuilt VPC (Development always; Production when nothing is placed in it) is one
+  - A development VPC is one
     raised deck of dark glass rather than a slice per subnet (the `DECK` values in
     `look.ts`). Its subnets are flush zones on that deck, each a faint wash of its own
-    colour with its name on the front wall, and nothing is drawn between them. A single
+    colour, without subnet names or lines between zones. Development hover titles also
+    omit subnet names. A single
     dashed rim in the VPC violet says it is not built here, a light cast shadow stands the
-    deck off the ground, and a pad under each solid building anchors it. A built VPC is
-    unchanged: separate terraces with a seam between them.
+    deck off the ground, and a pad under each solid building anchors it. Production VPCs
+    keep solid separate terraces and gateways/endpoints even when unused. Captions and
+    hover details explain that a network without consumers is not actually built.
   - Disabled islands draw at 30 % with a dashed trim.
 - **Focus.** With a selection, islands holding nothing in the spotlight dim their trim to
   40 %. Island trim stays static when a building is selected.
@@ -302,16 +310,21 @@ Network gateways and endpoints use the same icon plaques: AWS VPC gateway icons,
 and a VPC endpoint icon with a small service badge at its lower-right corner. The badge
 reuses the Lambda role-badge renderer and picking silhouette, including ghost/dimmed
 opacity. S3, DynamoDB and other locally mapped services use their service
-artwork; unmapped services use a generic box and retain their service name in the hover
-card. Every declared endpoint is shown, with no four-endpoint display limit.
+artwork from the endpoint picker's shared service/family catalog, including variant endpoints.
+Unknown services retain their ID and use the generic endpoint artwork. Selected SVGs are
+cached by the renderer and painted full-bleed in the mini badge. Every declared endpoint
+is shown, with no four-endpoint display limit.
 They are furniture, not model entities: clicking one selects its stable `prop:` id so
 the inspector can show its description. Each names the subnets whose traffic it
 carries (`Prop.serves`): the internet gateway serves public, the egress-only and NAT
 gateways serve private, and endpoints serve all three. With a selection, a fixture dims
 with everything outside the spotlight unless it serves the selected building's subnet
-(`SceneNode.band`). Furniture has its own lattice spacing so
-plaques do not overlap. Gateways and endpoints use translucent icons and dashed plinths
-whenever the selected graph does not build their VPC, including Development.
+(`SceneNode.band`). Fixtures wrap into compact grids after a separate compute area on
+each subnet. Width and depth come from the same measured cells used for placement, so
+adding endpoints grows both dimensions without pushing compute into the fixture rows.
+Gateways anchor to the left-facing subnet edges rather than the terrace centre.
+Every fixture retains its own cell and selectable silhouette. Production fixtures stay
+solid even when the VPC is unused; Development uses translucent icons and dashed plinths.
 
 Every icon shape returns its faces in paint order, a silhouette (`hull`) for picking,
 and a `top` point where arcs attach. Unused procedural buildings and sprite terrain have
@@ -434,7 +447,9 @@ been removed; the renderer has one visual style.
    bounds. Collisions with islands, buildings, cards or other titles move a title along
    the same flank; if no clear position exists, it is omitted like an entity card.
    Placement is recomputed with the camera, keeping the gap fixed through zoom and pan.
-   Terrace names and perspective wall names keep their existing placement.
+   Production subnet heading cards use horizontal screen-space typography and zoom opacity,
+   with camera-, scene- and font-dependent placement cached between settled frames. Development
+   omits subnet headings entirely; these remain production networking concepts.
 
 The loop draws on demand. A camera change, hover, selection, search or new data schedules one
 frame. Frames continue only while the selection animates (motion on) or the camera is
@@ -446,7 +461,7 @@ tweening. A still picture draws nothing.
   The device pixel ratio enters only the canvas transform, so one transform serves drawing,
   picking and input. Pointer coordinates are taken relative to the canvas's bounding
   rectangle.
-- **Zoom** runs from 0.18 to 2.5. Zooming about a point finds the world point before,
+- **Zoom** runs from 0.05 to 2.5, allowing larger topologies to fit narrow views. Zooming about a point finds the world point before,
   zooms, finds it after, and moves the camera by the difference.
   - Wheel deltas in lines and pages are normalized to pixels.
   - Each event's delta is clamped to ±240 px, and the factor is `exp(−px · 0.0015)`.
@@ -569,7 +584,7 @@ the query lives in the mounted isometric view and never writes configuration or 
   colors and presence rules apply, and clicking the tag selects its node.
 - **Clearance.** The four-cell lattice gives captions their own space. The shared wire
   router reserves their world envelopes. Captions that collide with icons, corner badges,
-  wall names, missing-input markers or canvas controls, or cross a viewport edge, are omitted
+  subnet headings, missing-input markers or canvas controls, or cross a viewport edge, are omitted
   until there is space. They never jump to another slot. Painting and picking use the same rectangles.
 
 ## Performance

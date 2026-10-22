@@ -1,6 +1,7 @@
 import type { Lanes, Mode, ModeModel, ModelResource, ModelRoute, ModelTarget, NetworkModel, TargetKind } from "../../shared/model";
 import { RELATION_CATEGORY, ROLE_LABEL, type EdgeCategory } from "../lookup";
 import { endpointServiceIcon, resourceBadge, resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
+import { endpointServiceDetails } from "../endpoint-services";
 import { availabilityBadge, deploymentBadge, developmentLocation, environments, type Availability, type DeploymentBadgeKind } from "../deployment";
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH, project } from "./iso";
 import { buildIconShape, NODE_SPACING, type Shape } from "./shapes";
@@ -85,6 +86,8 @@ export interface Island {
 }
 
 export interface SceneNode {
+  /** View-only tag filtering, rendered with the existing disabled-resource style. */
+  readonly tagFiltered?: true;
   readonly badge?: DeploymentBadgeKind;
   readonly icon: IconKey;
   readonly roleIcon?: IconKey;
@@ -109,9 +112,12 @@ export interface SceneNode {
 
 /** Network fixtures use stable prop IDs for selection and authored descriptions. */
 export interface Prop {
+  readonly tagFiltered?: true;
   readonly id: string;
   readonly icon: IconKey;
   readonly roleIcon?: IconKey;
+  /** Same versioned AWS service SVG used by the endpoint picker. */
+  readonly serviceIcon?: string;
   readonly gx: number;
   readonly gy: number;
   readonly h: number;
@@ -235,6 +241,7 @@ interface IslandSpec {
   readonly region: Region;
   readonly caption: readonly string[];
   readonly ghost?: Island["ghost"];
+  readonly propPresence?: Prop["presence"];
   readonly bands: readonly BandSpec[];
 }
 
@@ -389,7 +396,8 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
       id: `island:vpc:${network.id}`,
       title: `${network.name ?? network.id} · ${network.cidr}`,
       region: "network",
-      ghost: vpcBuilt ? undefined : "blueprint",
+      ghost: mode === "dev" ? "blueprint" : undefined,
+      propPresence: vpcBuilt ? "built" : "other",
       caption: [
         network ? `${network.zones} availability zones; a public, a private and an isolated subnet in each.` : "The application's network.",
         vpcBuilt
@@ -435,6 +443,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
             id: `prop:vpc:${network.id}:endpoint:${endpoint}`,
             icon: "endpoint" as const,
             roleIcon: endpointServiceIcon(endpoint),
+            serviceIcon: endpointServiceDetails(endpoint).icon,
             label: `${endpoint} endpoint`,
             caption: [
               network?.gatewayEndpoints.includes(endpoint)
@@ -537,34 +546,48 @@ interface Footprint {
   readonly length: number;
   readonly bandWidths: readonly number[];
   readonly placed: readonly PlacedItem[];
+  readonly furniture: readonly { readonly prop: NonNullable<BandSpec["props"]>[number]; readonly lx: number; readonly ly: number; readonly band: number }[];
 }
 
 function measure(spec: IslandSpec): Footprint {
   const placed: PlacedItem[] = [];
+  const furniture: Footprint["furniture"][number][] = [];
   const bandWidths: number[] = [];
   const bands = spec.bands.map((band) => {
     // Roles retain their order, but share the lattice: a small service group
     // must not strand the rest of its column when declarations change.
     const items = band.groups.flat();
     const perColumn = band.perColumn ?? Math.min(6, Math.max(2, Math.ceil(Math.sqrt(items.length))));
-    const columns = Math.max(1, Math.ceil(items.length / perColumn), band.props?.length ?? 0);
+    // Both compute and network fixtures wrap. Reserve distinct rows for each,
+    // rather than letting endpoint count turn a subnet into a single long strip.
+    const columns = Math.max(1, Math.ceil(items.length / perColumn), Math.ceil(Math.sqrt(band.props?.length ?? 0)));
     const rows = Math.ceil(items.length / columns);
-    return { items, columns, rows, furniture: !!band.props?.length };
+    return { items, columns, rows, props: band.props ?? [], furnitureRows: Math.ceil((band.props?.length ?? 0) / columns) };
   });
   let x = 0;
-  const rows = Math.max(1, ...bands.map((band) => band.rows + Number(band.furniture)));
+  const computeRows = Math.max(0, ...bands.map(band => band.rows));
+  const furnitureRows = Math.max(0, ...bands.map(band => band.furnitureRows));
+  const rows = Math.max(1, computeRows + furnitureRows);
   bands.forEach((band, bandIndex) => {
     const itemColumns = Math.ceil(band.items.length / Math.max(1, band.rows));
     const insetX = Math.floor((band.columns - itemColumns) * STEP / 2);
-    const insetY = Math.floor((rows - Number(band.furniture) - band.rows) * STEP / 2);
+    const insetY = Math.floor((computeRows - band.rows) * STEP / 2);
     band.items.forEach((item, index) => {
       placed.push({ item, lx: x + 1 + insetX + Math.floor(index / band.rows) * STEP, ly: 1 + insetY + index % band.rows * STEP, band: bandIndex });
+    });
+    band.props.forEach((prop, index) => {
+      const row = Math.floor(index / band.columns), column = index % band.columns;
+      const rowItems = Math.min(band.columns, band.props.length - row * band.columns);
+      const gateway = prop.icon === "internetGateway" || prop.icon === "natGateway";
+      furniture.push({ prop, band: bandIndex,
+        lx: x + 1 + (gateway ? 0 : Math.floor((band.columns - rowItems) * STEP / 2)) + column * STEP,
+        ly: gateway ? rows * STEP - 2 : computeRows * STEP + 2 + Math.floor((furnitureRows - band.furnitureRows) * STEP / 2) + row * STEP });
     });
     const width = band.columns * STEP;
     bandWidths.push(width);
     x += width;
   });
-  return { spec, width: x, length: rows * STEP, bandWidths, placed };
+  return { spec, width: x, length: rows * STEP, bandWidths, placed, furniture };
 }
 
 export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene {
@@ -641,7 +664,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
   function placeIsland(footprint: Footprint, gx0: number, gy0: number): void {
     const spec = footprint.spec;
     const allDisabled = footprint.placed.length > 0 && footprint.placed.every(({ item }) => item.presence !== "built" && item.presence !== "present");
-    const ghost = spec.ghost ?? (allDisabled ? "disabled" : undefined);
+    const ghost = spec.region === "network" ? spec.ghost : spec.ghost ?? (allDisabled ? "disabled" : undefined);
     // The lattice, with a one-cell rim around it.
     const islandWidth = footprint.width + 2;
     const islandLength = footprint.length + 2;
@@ -683,15 +706,12 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
       const anchor = project({ x: gx, y: gy, h });
       nodes.push({ ...item, ...(badgeById.has(item.id) ? { badge: badgeById.get(item.id) } : {}), gx, gy, h, island: spec.id, band: spec.bands[band]!.id, geometry: buildIconShape(anchor.x, anchor.y, !!item.roleIcon) });
     }
-    // Furniture stands on the last lattice row, clear of the buildings and the chamfers.
-    spec.bands.forEach((band, index) => {
-      (band.props ?? []).forEach((prop, position) => {
-        const gx = gx0 + 2 + bandStarts[index]! + position * STEP;
-        const gy = gy0 + footprint.length - 1;
-        const anchor = project({ x: gx, y: gy, h: band.h });
-        props.push({ ...prop, presence: ghost ? "other" : "built", gx, gy, h: band.h, geometry: buildIconShape(anchor.x, anchor.y, !!prop.roleIcon) });
-      });
-    });
+    // The measured fixture grid shares the same coordinates as terrain sizing.
+    for (const { prop, lx, ly, band } of footprint.furniture) {
+      const gx = gx0 + 1 + lx, gy = gy0 + 1 + ly, h = spec.bands[band]!.h;
+      const anchor = project({ x: gx, y: gy, h });
+      props.push({ ...prop, presence: spec.propPresence ?? (ghost ? "other" : "built"), gx, gy, h, geometry: buildIconShape(anchor.x, anchor.y, !!prop.roleIcon) });
+    }
     const heights = spec.bands.map((band) => band.h);
     islands.push({
       id: spec.id,

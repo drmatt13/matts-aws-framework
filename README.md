@@ -43,6 +43,10 @@ contains Compose controls in dev; workload identifiers use the ignored
 `.framework/local/resources.json` manifest. Export writes the client settings Vite reads,
 `client-app/.env.development.local` or `client-app/.env.production.local`; nothing is copied by hand.
 
+The [declaration directory guide](framework-config/README.md) explains the default
+workload/resource/shared layout. [Declaration tags](docs/framework-studio/declarations-and-tags.md)
+organize Studio across files and kinds and propagate through explicit AWS ownership.
+
 Application authorization, validation, public fields, and screen selections remain
 explicit source. Generators and agents handle the surrounding mechanics.
 
@@ -60,7 +64,7 @@ explicit source. Generators and agents handle the surrounding mechanics.
 | `packages/database/` | Prisma contract, migrations, and repositories |
 | `packages/framework/` | Framework implementation partitioned into config, runtime, and local execution; generation/check scripts |
 | `packages/api-contract/` | Browser-safe public routes and payload contracts |
-| `packages/models/` | Model providers every agent shares; their environment and IAM are declared once in `framework-config/models.ts` |
+| `packages/models/` | Model providers every agent shares; their environment and IAM are declared once in `framework-config/shared/models.ts` |
 | `local-api-dev-server/`, `local-ws-dev-server/`, `local-invocation-runner/` | Local execution |
 | `docs/playbooks/`, `.claude/skills/` | Coding-agent procedures that reference the human guides |
 

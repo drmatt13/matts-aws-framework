@@ -1,31 +1,24 @@
-import { studioTestVpc } from "./framework-config/networks/test";
 import { defineFrameworkConfig } from "@repo/framework/config";
 import { defaults } from "./framework-config/defaults";
 import { resources } from "./framework-config/resources";
 import { applicationVpc } from "./framework-config/networks/application";
+import { studioTestVpc } from "./framework-config/networks/test";
 import { applicationDatabase } from "./framework-config/databases/application";
-import { authRoutes } from "./framework-config/http/auth";
-import { graphqlRoutes } from "./framework-config/http/graphql";
-import { exampleRoutes } from "./framework-config/http/examples";
-import { workflowRoutes } from "./framework-config/http/workflows";
-import { taskRoutes } from "./framework-config/http/tasks";
-import { webSocketRoutes } from "./framework-config/websocket/routes";
-import { cognitoEvents } from "./framework-config/events/cognito";
-import { invocationTestEvents } from "./framework-config/events/invocation-tests";
-import { exampleService } from "./framework-config/services/example";
-import { databaseTasks } from "./framework-config/tasks/database";
-import { invocationTestTasks } from "./framework-config/tasks/invocation-tests";
-import { invocationTestWorkflows } from "./framework-config/workflows/invocation-tests";
-import { exampleTools } from "./framework-config/tools/example";
-import { exampleAgent } from "./framework-config/agents/example";
+import { http } from "./framework-config/workloads/http";
+import { webSocket } from "./framework-config/workloads/websocket";
+import { events } from "./framework-config/workloads/events";
+import { services } from "./framework-config/workloads/services";
+import { tasks } from "./framework-config/workloads/tasks";
+import { workflows } from "./framework-config/workloads/workflows";
+import { tools } from "./framework-config/workloads/tools";
+import { agents } from "./framework-config/workloads/agents";
 
 /**
  * The repository's inventory: every target, grouped by how it is invoked.
  *
- * This file composes rather than declares. Each section is one or more modules
- * under `framework-config/`, named for the architecture it describes, so a new
- * API surface is a new file and two of them can be written in parallel without
- * touching the same lines. A section listed as an array is merged in the order
+ * This file composes rather than declares. Each workload kind has one readable
+ * module under `framework-config/workloads/`; tags describe concerns across kinds.
+ * A growing section may explicitly compose smaller modules. Arrays merge in the order
  * written, and a key declared by two modules is an error naming both — which is
  * why sections compose as an array here and never as an object spread.
  *
@@ -51,14 +44,14 @@ const framework = defineFrameworkConfig({
     userPoolId: resources.cognito.userPool.userPoolId,
     userPoolClientId: resources.cognito.userPoolClient.userPoolClientId,
   },
-  http: [authRoutes, graphqlRoutes, exampleRoutes, workflowRoutes, taskRoutes],
-  webSocket: [webSocketRoutes],
-  events: [cognitoEvents, invocationTestEvents],
-  services: [exampleService],
-  tasks: [invocationTestTasks, databaseTasks],
-  workflows: [invocationTestWorkflows],
-  tools: [exampleTools],
-  agents: [exampleAgent],
+  http: [http],
+  webSocket: [webSocket],
+  events: [events],
+  services: [services],
+  tasks: [tasks],
+  workflows: [workflows],
+  tools: [tools],
+  agents: [agents],
 });
 
 export default framework;

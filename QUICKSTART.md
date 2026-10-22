@@ -134,7 +134,7 @@ secrets: { OPENAI_API_KEY: resources.openaiApiKey.value }
 environment: { OPENAI_API_KEY_SECRET_ARN: resources.openaiApiKey.arn }
 ```
 
-See `framework-config/agents/example.ts` for a real case.
+See `framework-config/workloads/agents.ts` for a real case.
 
 **3. Linked CDK stacks.** Any public field on one of your stacks becomes a resource.
 Cognito is the real example. It takes three steps:
@@ -155,9 +155,9 @@ export class CognitoStack extends cdk.Stack {
 cognito: resource.stack<CognitoStack>(),
 
 // 3. Any workload can now use its fields
-//    framework-config/http/auth.ts
+//    framework-config/workloads/http.ts
 environment: { COGNITO_DOMAIN_URL: resources.cognito.userPoolDomainUrl },
-//    framework-config/events/cognito.ts
+//    framework-config/workloads/events.ts
 environment: { FRONTEND_URL: resources.cognito.frontendUrl },
 ```
 
@@ -178,7 +178,7 @@ Handlers live in `cdk-app/lambda_functions/`. Wrap each handler in the matching 
 which hands the handler the user pool its token verifier reads:
 
 ```ts
-// framework-config/http/hello.ts
+// framework-config/workloads/http.ts
 "/hello": {
   directory: "/lambda_functions/http_functions/hello",
   methods: ["GET"],
@@ -205,7 +205,7 @@ captures the event, and your local dev server replays it through your code, so y
 debug real AWS events locally.
 
 ```ts
-// framework-config/events/cognito.ts
+// framework-config/workloads/events.ts
 "cognito-post-confirmation-trigger": {
   localReplay: true,
   // ...

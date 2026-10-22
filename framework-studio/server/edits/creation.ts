@@ -8,9 +8,10 @@ import { rewriteDescription } from "../descriptions";
 import { toRelative } from "../files";
 import { insertExpression } from "../resources-source";
 import type { StudioState } from "../snapshot";
-import { findProperty, parse, unwrap, declarationObject, expressionAt, propertyAt } from "../source/syntax";
+import { findProperty, parse, unwrap, declarationObject, expressionAt, propertyAt, literalKey } from "../source/syntax";
 import { parseOrigin } from "../model/origin";
 import { EditError } from "./io";
+import { readCatalogSource } from "../source/catalog";
 import { isCreationGeneratedFile } from "./creation-generation";
 
 export interface CreationExpectation { readonly select: string; readonly targets: readonly string[]; readonly resources: readonly string[]; readonly routes: readonly string[]; readonly kind: CreationRequest["kind"]; readonly network?: { readonly id: string; readonly cidr: string; readonly zones: number; readonly natGateway: boolean; readonly egressOnlyInternetGateway: boolean; readonly gatewayEndpoints: readonly string[]; readonly interfaceEndpoints: readonly string[] } }
@@ -57,6 +58,13 @@ function formatNewModule(file: string, text: string): string {
   const transformed = ts.transform(parse(file, text), [(context) => (source) => {
     const visit: ts.Visitor = (node) => {
       const visited = ts.visitEachChild(node, visit, context);
+      if (ts.isPropertyAssignment(visited)) {
+        const name = ts.isStringLiteral(visited.name) && /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(visited.name.text) ? ts.factory.createIdentifier(visited.name.text) : visited.name;
+        // Original property ranges can make the printer retain a one-line list
+        // even when its new object container is multiline. These nodes belong
+        // only to generated source; authored declarations are never reprinted.
+        return ts.factory.createPropertyAssignment(name, visited.initializer);
+      }
       return ts.isObjectLiteralExpression(visited) ? ts.factory.createObjectLiteralExpression(visited.properties, true) : visited;
     };
     return ts.visitNode(source, visit) as ts.SourceFile;
@@ -65,6 +73,28 @@ function formatNewModule(file: string, text: string): string {
     return ts.createPrinter({ newLine: ts.NewLineKind.LineFeed }).printFile(transformed.transformed[0]!)
       .replace(/^( +)/gm, (indent) => " ".repeat(Math.ceil(indent.length / 2)));
   } finally { transformed.dispose(); }
+}
+function formatNewExpression(file: string, expression: string, text: string, source: ts.SourceFile, container: ts.ObjectLiteralExpression): string {
+  const printed = formatNewModule(file, `const declaration = ${expression};\n`);
+  const generated = parse(file, printed);
+  const value = (generated.statements[0] as ts.VariableStatement).declarationList.declarations[0]!.initializer!;
+  const anchor = container.properties.at(-1) ?? container;
+  const start = anchor.getStart(source);
+  const leading = text.slice(text.lastIndexOf("\n", start - 1) + 1, start);
+  const containerStart = container.getStart(source);
+  const containerIndent = /^[ \t]*/.exec(text.slice(text.lastIndexOf("\n", containerStart - 1) + 1))![0];
+  const indent = /^\s*$/.test(leading) && container.properties.length ? leading : `${containerIndent}  `;
+  return value.getText(generated).replace(/\n/g, `\n${indent}`);
+}
+function insertGeneratedEntry(file: string, text: string, source: ts.SourceFile, container: ts.ObjectLiteralExpression, key: string, expression: string): string {
+  if (container.properties.length) return insertExpression(text, source, container, [key], formatNewExpression(file, expression, text, source, container));
+  if (/\/\*|\/\//.test(container.getText(source))) throw new EditError(422, "This empty section contains authored comments. Add its first entry in source so those comments are preserved deliberately.");
+  const printed = formatNewModule(file, `const declaration = { ${q(key)}: ${expression} };\n`);
+  const generated = parse(file, printed);
+  const value = (generated.statements[0] as ts.VariableStatement).declarationList.declarations[0]!.initializer!;
+  const start = container.getStart(source);
+  const indent = /^[ \t]*/.exec(text.slice(text.lastIndexOf("\n", start - 1) + 1))![0];
+  return text.slice(0, start) + value.getText(generated).replace(/\n/g, `\n${indent}`) + text.slice(container.end);
 }
 function addImport(text: string, statement: string, name: string): string {
   const source = parse("imports.ts", text);
@@ -75,7 +105,63 @@ function addImport(text: string, statement: string, name: string): string {
   };
   visit(source);
   if (identifiers.has(name)) throw new EditError(422, `The generated import ${name} conflicts with an existing source identifier.`);
-  return statement + "\n" + text;
+  const previous = source.statements.filter(ts.isImportDeclaration).at(-1);
+  if (!previous) return statement + "\n" + text;
+  const newline = text.indexOf("\n", previous.end);
+  const rest = text.slice(previous.end, newline === -1 ? text.length : newline).trim();
+  // Retain a header and any comment attached to the existing import. If the
+  // next statement shares its line, split only after the import's semicolon.
+  const at = !rest || rest.startsWith("//") || (rest.startsWith("/*") && rest.endsWith("*/")) ? newline === -1 ? text.length : newline + 1 : previous.end;
+  const prefix = at === text.length && !text.endsWith("\n") || at === previous.end ? "\n" : "";
+  return text.slice(0, at) + prefix + statement + "\n" + text.slice(at);
+}
+
+/** Reuse authored import aliases; rename references only in the new declaration. */
+function creationImports(file: string, text: string, imports: string, expression: string): { text: string; expression: string } {
+  const names = new Map<string, string>();
+  const moduleIdentity = (specifier: string) => specifier.startsWith(".") ? path.resolve(path.dirname(file), specifier).replace(/\.(?:js|ts)$/, "").replace(/\/index$/, "") : specifier;
+  for (const requested of parse("imports.ts", imports).statements) {
+    if (!ts.isImportDeclaration(requested) || !ts.isStringLiteral(requested.moduleSpecifier)) continue;
+    const requestedSpecifier = requested.moduleSpecifier.text;
+    const bindings = requested.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) throw new EditError(422, "Creation supports named declaration imports only.");
+    for (const binding of bindings.elements) {
+      const exported = binding.propertyName?.text ?? binding.name.text;
+      const source = parse(file, text);
+      let alias: string | undefined;
+      for (const existing of source.statements) {
+        if (!ts.isImportDeclaration(existing) || !ts.isStringLiteral(existing.moduleSpecifier) || moduleIdentity(existing.moduleSpecifier.text) !== moduleIdentity(requestedSpecifier) || existing.importClause?.isTypeOnly) continue;
+        const names = existing.importClause?.namedBindings;
+        if (names && ts.isNamedImports(names)) alias = names.elements.find(item => !item.isTypeOnly && (item.propertyName?.text ?? item.name.text) === exported)?.name.text;
+        if (alias) break;
+      }
+      if (!alias) {
+        const declared = new Set<string>();
+        const visit = (node: ts.Node): void => { if (ts.isIdentifier(node)) declared.add(node.text); ts.forEachChild(node, visit); };
+        visit(source);
+        alias = exported;
+        for (let suffix = 2; declared.has(alias); suffix++) alias = `${exported}${suffix}`;
+        const declaration = `${exported}${alias === exported ? "" : ` as ${alias}`}`;
+        const compatible = source.statements.find((statement): statement is ts.ImportDeclaration => ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && moduleIdentity(statement.moduleSpecifier.text) === moduleIdentity(requestedSpecifier) && !statement.importClause?.isTypeOnly && !!statement.importClause?.namedBindings && ts.isNamedImports(statement.importClause.namedBindings) && !/\/\*|\/\//.test(statement.importClause.namedBindings.getText(source)));
+        const named = compatible?.importClause?.namedBindings;
+        if (named && ts.isNamedImports(named)) {
+          const at = named.elements.at(-1)?.end ?? named.getStart(source) + 1;
+          text = text.slice(0, at) + `${named.elements.length ? ", " : " "}${declaration}` + text.slice(at);
+        } else text = addImport(text, `import { ${declaration} } from ${q(requestedSpecifier)};`, alias);
+      }
+      names.set(binding.name.text, alias);
+    }
+  }
+  const prefix = "const declaration = ";
+  const source = parse("declaration.ts", `${prefix}${expression};`);
+  const edits: { start: number; end: number; value: string }[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node) && names.has(node.text) && names.get(node.text) !== node.text && !(ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) && !(ts.isPropertyAssignment(node.parent) && node.parent.name === node)) edits.push({ start: node.getStart(source) - prefix.length, end: node.end - prefix.length, value: names.get(node.text)! });
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  for (const edit of edits.sort((a, b) => b.start - a.start)) expression = expression.slice(0, edit.start) + edit.value + expression.slice(edit.end);
+  return { text, expression };
 }
 export function setProperty(file: string, text: string, object: ts.ObjectLiteralExpression, source: ts.SourceFile, key: string, expression: string): string {
   const found = findProperty(object, key);
@@ -114,44 +200,120 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
   const impact = ["Creates the reviewed source as one undoable operation. AWS deployment and secret provisioning remain separate actions."];
   const selectedVpc = "vpc" in request && request.vpc ? state.built.located?.networks.find(network => network.id === request.vpc) : undefined;
   if ("vpc" in request && request.vpc && !selectedVpc) return refuse("vpc", "Select a registered VPC with a source declaration.");
-  function register(section: string, id: string, expression: string, imports = "") {
-    const relative = `framework-config/${section.toLowerCase()}/${id}.ts`;
-    const symbol = `studio${id.replace(/(^|-)([a-z0-9])/g, (_match, _prefix, letter: string) => letter.toUpperCase())}${section[0]!.toUpperCase() + section.slice(1)}`;
+  function register(section: string, _id: string, expression: string, imports = "") {
+    const relative = `framework-config/workloads/${section.toLowerCase()}.ts`;
+    const absolute = path.join(root, relative);
     const types: Record<string, string> = { http: "HttpSection", webSocket: "WebSocketSection", events: "EventsSection", workflows: "WorkflowsSection", services: "ServicesSection", tasks: "TasksSection", agents: "AgentsSection" };
-    const sectionType = section === "webSocket" && (request.kind === "function" || request.kind === "route")
-      ? `Pick<WebSocketSection, ${q(request.path)}>` : types[section];
+    let rootText = read("framework.config.ts");
+    const rootCall = objectCall("framework.config.ts", rootText, "defineFrameworkConfig");
+    const rootProperty = findProperty(rootCall.object, section);
+    if (rootProperty.spread || (rootProperty.property && !ts.isPropertyAssignment(rootProperty.property))) throw new EditError(422, "Compose workload sections as literal arrays before creating workloads.");
+    const array = rootProperty.property && unwrap(rootProperty.property.initializer);
+    if (array && (!ts.isArrayLiteralExpression(array) || array.elements.some(ts.isSpreadElement))) throw new EditError(422, "Compose workload sections as literal arrays before creating workloads.");
+    const composed: { local: string; exported: string }[] = [];
+    for (const statement of rootCall.source.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !statement.moduleSpecifier.text.startsWith(".") || statement.importClause?.isTypeOnly || path.resolve(root, statement.moduleSpecifier.text.replace(/\.(?:js|ts)$/, "")) !== absolute.replace(/\.ts$/, "")) continue;
+      if (!existsSync(absolute) && existsSync(path.join(absolute.replace(/\.ts$/, ""), "index.ts"))) throw new EditError(422, `Creating ${relative} would shadow a composed directory index. Import that existing module with its explicit /index path in framework.config.ts first, so both declarations keep their source ownership.`);
+      const bindings = statement.importClause?.namedBindings;
+      if (!bindings || !ts.isNamedImports(bindings)) continue;
+      for (const binding of bindings.elements) if (!binding.isTypeOnly && array && ts.isArrayLiteralExpression(array) && array.elements.some(item => ts.isIdentifier(item) && item.text === binding.name.text)) composed.push({ local: binding.name.text, exported: binding.propertyName?.text ?? binding.name.text });
+    }
+    if (composed.length > 1) throw new EditError(422, `The canonical ${relative} contributes several section exports. Choose its declaration owner in source before adding a workload here.`);
+    const exported = composed[0]?.exported ?? section;
+    let text = existsSync(absolute) ? read(relative) : "";
+    const existing = text.length > 0;
     if (selectedVpc) {
-      const specifier = path.relative(path.dirname(path.join(root, relative)), selectedVpc.file).replaceAll("\\", "/").replace(/\.ts$/, "").replace(/\/index$/, "");
+      const specifier = path.relative(path.dirname(absolute), selectedVpc.file).replaceAll("\\", "/").replace(/\.ts$/, "").replace(/\/index$/, "");
       imports += `import { ${selectedVpc.exportName} as studioVpc } from ${q(specifier.startsWith(".") ? specifier : `./${specifier}`)};\n`;
     }
-    fresh(relative, formatNewModule(relative, `${imports}import type { ${types[section]} } from "../contracts";\n\nexport const ${symbol} = ${expression} satisfies ${sectionType};\n`));
-    let text = read("framework.config.ts");
-    const { source, object } = objectCall("framework.config.ts", text, "defineFrameworkConfig");
-    const prop = findProperty(object, section);
-    if (prop.spread || (prop.property && !ts.isPropertyAssignment(prop.property))) throw new EditError(422, "Compose workload sections as literal arrays before creating workloads.");
-    if (prop.property) {
-      const array = unwrap(prop.property.initializer);
-      if (!ts.isArrayLiteralExpression(array) || array.elements.some(ts.isSpreadElement)) throw new EditError(422, "Compose workload sections as literal arrays before creating workloads.");
-      const end = array.end - 1;
-      text = text.slice(0, end) + `${array.elements.length && !array.elements.hasTrailingComma ? "," : ""} ${symbol}` + text.slice(end);
-    } else text = insertExpression(text, source, object, [section], `[${symbol}]`);
-    text = addImport(text, `import { ${symbol} } from ${q("./" + relative.replace(/\.ts$/, ""))};`, symbol);
-    put("framework.config.ts", text);
-  }
-  function catalog(keys: string[], expression: string) {
-    const relative = "framework-config/resources.ts";
-    const text = read(relative);
-    const { source, object } = objectCall(relative, text, "defineResources");
-    let container = object;
-    for (const [index, key] of keys.entries()) {
-      const found = findProperty(container, key);
-      if (container.properties.some(ts.isSpreadAssignment)) refuse("id", "The catalog contains a spread; make this declaration explicit in source first.");
-      if (!found.property) { put(relative, insertExpression(text, source, container, keys.slice(index), expression)); return; }
-      if (index === keys.length - 1) refuse("id", "This catalog identity already exists.");
-      const inner = ts.isPropertyAssignment(found.property) && unwrap(found.property.initializer);
-      if (!inner || !ts.isObjectLiteralExpression(inner)) refuse("group", "This catalog group is already used by another resource.");
-      container = inner as ts.ObjectLiteralExpression;
+    if (existing) {
+      const merged = creationImports(absolute, text, imports, expression);
+      text = merged.text; expression = merged.expression;
+      const source = parse(relative, text);
+      const declaration = source.statements.filter(ts.isVariableStatement).filter(statement => !!(statement.declarationList.flags & ts.NodeFlags.Const) && statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)).flatMap(statement => [...statement.declarationList.declarations]).find(declaration => ts.isIdentifier(declaration.name) && declaration.name.text === exported);
+      const object = declaration?.initializer && unwrap(declaration.initializer);
+      if (!object || !ts.isObjectLiteralExpression(object) || object.properties.some(ts.isSpreadAssignment)) throw new EditError(422, `Creation requires the root-composed ${exported} export in ${relative} to be a literal section object. Keep computed declarations source-owned.`);
+      const generated = parse("new-entry.ts", `export const declarations = ${expression};\n`);
+      const value = (generated.statements[0] as ts.VariableStatement).declarationList.declarations[0]!.initializer;
+      if (!value || !ts.isObjectLiteralExpression(value) || value.properties.length !== 1 || !ts.isPropertyAssignment(value.properties[0]!)) throw new EditError(422, "Creation requires one explicit workload entry.");
+      const property = value.properties[0] as ts.PropertyAssignment;
+      const key = literalKey(property)!;
+      if (findProperty(object, key).property) refuse("id", "This declaration key already exists in the canonical module.");
+      text = insertGeneratedEntry(relative, text, source, object, key, property.initializer.getText(generated));
+      put(relative, text);
+    } else {
+      const sectionType = section === "webSocket" ? "Partial<WebSocketSection>" : types[section];
+      const merged = creationImports(absolute, "", imports, expression);
+      fresh(relative, formatNewModule(relative, `${merged.text}import type { ${types[section]} } from "../contracts";\n\nexport const ${exported} = ${merged.expression} satisfies ${sectionType};\n`));
     }
+    if (composed.length) return;
+    const merged = creationImports(path.join(root, "framework.config.ts"), rootText, `import { ${exported} } from ${q("./" + relative.replace(/\.ts$/, ""))};\n`, exported);
+    rootText = merged.text;
+    const symbol = merged.expression;
+    const { source, object } = objectCall("framework.config.ts", rootText, "defineFrameworkConfig");
+    const prop = findProperty(object, section).property;
+    if (prop && ts.isPropertyAssignment(prop)) {
+      const current = unwrap(prop.initializer) as ts.ArrayLiteralExpression;
+      const end = current.end - 1;
+      rootText = rootText.slice(0, end) + `${current.elements.length && !current.elements.hasTrailingComma ? "," : ""} ${symbol}` + rootText.slice(end);
+    } else rootText = insertExpression(rootText, source, object, [section], `[${symbol}]`);
+    put("framework.config.ts", rootText);
+  }
+  function catalog(keys: string[], expression: string, extraImports = "") {
+    const catalogFile = "framework-config/resources.ts";
+    let relative = catalogFile;
+    let text = read(relative);
+    let { source, object } = objectCall(relative, text, "defineResources");
+    const key = keys.at(-1)!;
+    let existingGroup = false;
+    if (keys.length > 1) {
+      const group = findProperty(object, keys[0]!);
+      if (group.spread) refuse("group", "The catalog group comes from a spread. Make it explicit in source first.");
+      if (group.property) {
+        existingGroup = true;
+        const index = readCatalogSource(root, path.join(root, catalogFile), { start: source.statements.length ? object.parent.getStart(source) : 0, end: object.parent.end }, file => read(path.relative(root, file)));
+        const entry = index.get(keys[0]!);
+        if (!entry) refuse("group", "This catalog group cannot be located. Edit it in source.");
+        relative = entry.value.file;
+        text = read(relative); source = parse(relative, text);
+        const resolved = expressionAt(source, entry.value.start, entry.value.end);
+        if (!resolved || !ts.isObjectLiteralExpression(unwrap(resolved))) refuse("group", "This catalog group is computed. Edit it in source.");
+        object = unwrap(resolved) as ts.ObjectLiteralExpression;
+      }
+    }
+    if (object.properties.some(ts.isSpreadAssignment)) refuse("id", "The catalog contains a spread; make this declaration explicit in source first.");
+    if ((keys.length === 1 || existingGroup) && findProperty(object, key).property) refuse("id", "This catalog identity already exists.");
+    const ensureImports = (file: string, sourceText: string): string => {
+      const hasImport = (name: string, specifier: string) => parse(file, sourceText).statements.some(statement => ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && statement.moduleSpecifier.text === specifier && !statement.importClause?.isTypeOnly && statement.importClause?.namedBindings && ts.isNamedImports(statement.importClause.namedBindings) && statement.importClause.namedBindings.elements.some(binding => binding.name.text === name && (binding.propertyName?.text ?? binding.name.text) === name && !binding.isTypeOnly));
+      if (!hasImport("resource", "@repo/framework/config")) sourceText = addImport(sourceText, 'import { resource } from "@repo/framework/config";', "resource");
+      if (expression.includes("PROD_DEPLOYMENT") && !hasImport("PROD_DEPLOYMENT", "@repo/framework/config/source")) sourceText = addImport(sourceText, 'import { PROD_DEPLOYMENT } from "@repo/framework/config/source";', "PROD_DEPLOYMENT");
+      return sourceText;
+    };
+    // A cohesive imported namespace owns its entries directly. Keep its literal
+    // declarations together rather than creating a file for every new input.
+    if (existingGroup && relative !== catalogFile) {
+      text = insertGeneratedEntry(relative, text, source, object, key, expression);
+      put(relative, ensureImports(relative, text));
+      return;
+    }
+    const symbol = `${keys.join("-").replace(/-([a-zA-Z0-9])/g, (_match, letter: string) => letter.toUpperCase())}Resource`;
+    const createdCatalogFile = `framework-config/resources/${request.kind === "stack" ? "stacks" : "inputs"}.ts`;
+    let declarations = existsSync(path.join(root, createdCatalogFile)) ? read(createdCatalogFile) : "";
+    if (new RegExp(`\\b${symbol}\\b`).test(declarations)) refuse("id", "This declaration export already exists. Choose another identifier.");
+    declarations = ensureImports(createdCatalogFile, declarations);
+    if (extraImports) {
+      const imported = parse("new-import.ts", extraImports).statements[0] as ts.ImportDeclaration;
+      const bindings = imported.importClause?.namedBindings;
+      const name = bindings && ts.isNamedImports(bindings) ? bindings.elements[0]?.name.text : undefined;
+      if (name) declarations = addImport(declarations, extraImports.trim(), name);
+    }
+    const declaration = formatNewModule(createdCatalogFile, `export const ${symbol} = ${expression};\n`);
+    put(createdCatalogFile, declarations.replace(/\s*$/, "\n\n") + declaration);
+    const segments = keys.length > 1 && !existingGroup ? keys : [key];
+    text = insertExpression(text, source, object, segments, symbol);
+    let specifier = path.relative(path.dirname(path.join(root, relative)), path.join(root, createdCatalogFile)).replaceAll("\\", "/").replace(/\.ts$/, "");
+    if (!specifier.startsWith(".")) specifier = `./${specifier}`;
+    put(relative, addImport(text, `import { ${symbol} } from ${q(specifier)};`, symbol));
   }
   function binding(request: { bindingResource: string; bindingVariable: string }, container: boolean): string {
     if (!request.bindingResource) return "";
@@ -165,29 +327,13 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
   }
   const bindingImport = 'import { resources } from "../resources";\n';
   function scopeCatalog(expression: string, scope: "both" | "dev" | "prod"): string {
-    if (scope === "both") return expression;
-    let text = read("framework-config/resources.ts");
-    const source = parse("framework-config/resources.ts", text);
-    let alias: string | undefined;
-    for (const statement of source.statements) {
-      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || statement.moduleSpecifier.text !== "@repo/framework/config/source" || statement.importClause?.isTypeOnly) continue;
-      const names = statement.importClause?.namedBindings;
-      if (names && ts.isNamedImports(names)) alias = names.elements.find((item) => !item.isTypeOnly && (item.propertyName?.text ?? item.name.text) === "PROD_DEPLOYMENT")?.name.text;
-      if (alias) break;
-    }
-    if (!alias) {
-      alias = "studioProdDeployment";
-      for (let index = 2; new RegExp(`\\b${alias}\\b`).test(text); index++) alias = `studioProdDeployment${index}`;
-      text = addImport(text, `import { PROD_DEPLOYMENT as ${alias} } from "@repo/framework/config/source";`, alias);
-      put("framework-config/resources.ts", text);
-    }
-    return `${scope === "dev" ? "!" : ""}${alias} ? ${expression} : undefined`;
+    return scope === "both" ? expression : `${scope === "dev" ? "!" : ""}PROD_DEPLOYMENT ? ${expression} : undefined`;
   }
   const uniqueTarget = (id: string) => { if (targetExists(id)) refuse("id", "This workload identifier is already declared."); };
   if (request.kind === "input" || request.kind === "secret") {
     const keys = [...(request.group ? [request.group] : []), request.id];
     if (models.some((model) => model.resources.some((resource) => resource.fromEnv === request.envName))) refuse("envName", "This environment variable is already declared in the catalog.");
-    let expression = `resource.${request.kind === "secret" ? "secret" : "fromEnv"}(${q(request.envName)})`;
+    let expression = `resource.${request.kind === "secret" ? "secret" : "fromEnv"}(${q(request.envName)}${Object.keys(request.tags ?? {}).length ? `, { tags: ${q(request.tags)} }` : ""})`;
     if (request.required) expression += ".required()";
     if (request.kind === "input") {
       if (request.choices.length) expression += `.enum(${request.choices.map((choice) => q(choice)).join(", ")})`;
@@ -244,6 +390,7 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
     if (request.kind === "route" && request.existingTarget) {
       const existing = models[0]!.targets.find((target) => target.ref === request.existingTarget && target.role === request.category);
       if (!existing) return refuse("existingTarget", "Choose a routed Lambda of the same category.");
+      if (Object.keys(request.tags ?? {}).length && JSON.stringify(request.tags) !== JSON.stringify(models[0]!.tagging?.[existing.ref]?.authored ?? {})) return refuse("tags", "Routes sharing a function share its tags. Edit the existing function tags, then add this route.");
       const location = state.snapshot.source.entities[existing.ref]?.value;
       if (!location) throw new EditError(422, "The existing function's declaration could not be located.");
       const text = read(location.file);
@@ -263,7 +410,7 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
       const sectionObject = owner && ts.isPropertyAssignment(owner) ? owner.parent : undefined;
       if (!sectionObject || !ts.isObjectLiteralExpression(sectionObject) || sectionObject.properties.some(ts.isSpreadAssignment)) throw new EditError(422, "Reuse requires a literal section object, so its existing imports and local references can be preserved.");
       if (findProperty(sectionObject, request.path).property) return refuse("path", "This route key is already declared. Edit its methods in the existing declaration.");
-      put(location.file, insertExpression(text, source, sectionObject, [request.path], declaration));
+      put(location.file, insertGeneratedEntry(location.file, text, source, sectionObject, request.path, declaration));
       target = existing.ref;
       impact.push("The new route reuses the existing function's authentication and all target settings; its construct identity and handler are preserved.");
     } else {
@@ -279,7 +426,7 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
         ? 'import type { APIGatewayProxyWebsocketEventV2 } from "aws-lambda";\n\nexport const lambdaHandler = async (_event: APIGatewayProxyWebsocketEventV2) => ({ statusCode: 200, body: "Ready" });\n'
         : 'export interface Input { readonly message?: string }\nexport const lambdaHandler = async (input: Input) => ({ message: input.message ?? "Ready" });\n';
       fresh(`cdk-app${directory}/index.ts`, handler);
-      declaration = `{ directory: ${q(directory)}, ${request.category !== "event" ? `id: ${q(request.id)}, deploy: ${q(request.deploy)},` : ""} runtime: ${q(request.runtime)}, packaging: "zip", architecture: ${q(request.architecture)}, memorySize: ${request.memory}, timeoutSeconds: ${request.timeout}, subnet: ${q(request.subnet)}, ${selectedVpc ? "vpc: studioVpc," : ""} ${request.category === "http" ? `methods: ${request.method === "*" ? q("*") : `[${q(request.method)}]`}, ${auth ? "auth: true, userPool: true," : ""}` : ""} ${binding(request, false)} }`;
+      declaration = `{ tags: ${q(request.tags ?? {})}, directory: ${q(directory)}, ${request.category !== "event" ? `id: ${q(request.id)}, deploy: ${q(request.deploy)},` : ""} runtime: ${q(request.runtime)}, packaging: "zip", architecture: ${q(request.architecture)}, memorySize: ${request.memory}, timeoutSeconds: ${request.timeout}, subnet: ${q(request.subnet)}, ${selectedVpc ? "vpc: studioVpc," : ""} ${request.category === "http" ? `methods: ${request.method === "*" ? q("*") : `[${q(request.method)}]`}, ${auth ? "auth: true, userPool: true," : ""}` : ""} ${binding(request, false)} }`;
       register(section, request.id, `{ ${q(request.category === "event" ? request.id : request.path)}: ${declaration} }`, request.bindingResource ? bindingImport : "");
       expected.targets.push(target);
       impact.push(`Handler: cdk-app${directory}/index.ts. TypeScript zip packaging; other runtimes and images remain source-authored.`);
@@ -296,7 +443,7 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
     fresh(`cdk-app${directory}/index.mjs`, code);
     if (service) fresh(`cdk-app${directory}/package.json`, JSON.stringify({ name: `@repo/${request.id}`, private: true, scripts: { dev: "node --watch index.mjs" } }, null, 2) + "\n");
     fresh(`cdk-app${directory}/Dockerfile`, `FROM node:24-bookworm-slim\nWORKDIR /app\nCOPY cdk-app${directory}/index.mjs ./index.mjs\nUSER node\n${service ? `EXPOSE ${request.port}\n` : ""}CMD ["node", "index.mjs"]\n`);
-    register(service ? "services" : "tasks", request.id, `{ ${q(service ? request.path : request.id)}: { directory: ${q(directory)}, ${service ? `id: ${q(request.id)}, methods: "*", port: ${request.port}, healthCheckPath: "/health", ${request.auth ? "auth: true," : ""}` : ""} deploy: ${q(request.deploy)}, ${binding(request, true)} cloud: { vpc: studioVpc, cpu: ${request.cpu}, memoryMiB: ${request.memory}, architecture: ${q(request.architecture)}, subnet: ${q(request.subnet)} } } }`, request.bindingResource ? bindingImport : "");
+    register(service ? "services" : "tasks", request.id, `{ ${q(service ? request.path : request.id)}: { tags: ${q(request.tags ?? {})}, directory: ${q(directory)}, ${service ? `id: ${q(request.id)}, methods: "*", port: ${request.port}, healthCheckPath: "/health", ${request.auth ? "auth: true," : ""}` : ""} deploy: ${q(request.deploy)}, ${binding(request, true)} cloud: { vpc: studioVpc, cpu: ${request.cpu}, memoryMiB: ${request.memory}, architecture: ${q(request.architecture)}, subnet: ${q(request.subnet)} } } }`, request.bindingResource ? bindingImport : "");
     expected.select = `${request.kind}:${request.id}`; expected.targets.push(expected.select);
     if (service) expected.routes.push(`route:service:${request.path}`);
     if (service) impact.push("The new workspace requires rebuilding local development images with dev:containers. Source creation does not start containers.");
@@ -309,7 +456,7 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
       return `const step${index} = ${target.kind === "task" ? "runTask" : "invokeLambda"}(${q(target.id)}, { payload: ${index ? `step${index - 1}.output` : "input"} });`;
     });
     const result = request.steps.length ? `step${request.steps.length - 1}.output` : "input";
-    register("workflows", request.id, `{ ${q(request.id)}: workflow<Record<string, unknown>>(({ input }) => {\n    ${calls.join("\n    ")}\n    return ${calls.length ? `sequence(${calls.map((_call, index) => `step${index}`).join(", ")}, succeed(${result}))` : "succeed(input)"};\n  }, { deploy: ${q(request.deploy)}, timeoutSeconds: ${request.timeout} }) }`, 'import { workflow, succeed, sequence, invokeLambda, runTask } from "@repo/framework/config";\n');
+    register("workflows", request.id, `{ ${q(request.id)}: workflow<Record<string, unknown>>(({ input }) => {\n    ${calls.join("\n    ")}\n    return ${calls.length ? `sequence(${calls.map((_call, index) => `step${index}`).join(", ")}, succeed(${result}))` : "succeed(input)"};\n  }, { tags: ${q(request.tags ?? {})}, deploy: ${q(request.deploy)}, timeoutSeconds: ${request.timeout} }) }`, 'import { workflow, succeed, sequence, invokeLambda, runTask } from "@repo/framework/config";\n');
     expected.select = `workflow:${request.id}`; expected.targets.push(expected.select);
   } else if (request.kind === "agent") {
     uniqueTarget(request.id);
@@ -323,15 +470,13 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
     fresh(`agents/${request.id}/index.ts`, `import { agent } from "@repo/framework/runtime/agentcore";\nimport { getModel, extractText, toModelMessages } from "@repo/models";\nimport { HumanMessage, ToolMessage, type BaseMessage } from "@langchain/core/messages";\nimport { contract } from "./contract";\n\nexport const handler = agent(${q(request.id)}, contract).respond(async (input, { tools, signal }) => {\n  const base = await getModel();\n  const model = tools.specs.length ? base.bindTools(tools.specs.map((tool) => ({ type: "function" as const, function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } }))) : base;\n  const messages: BaseMessage[] = [new HumanMessage(input.message)];\n  for (let turn = 0; turn < 8; turn += 1) {\n    const response = await model.invoke(toModelMessages(messages), { signal });\n    messages.push(response);\n    if (!response.tool_calls?.length) return { text: extractText(response.content) };\n    for (const call of response.tool_calls) {\n      if (!call.id) throw new Error("The model returned a tool call without an ID.");\n      const result = await tools.call(call.name, call.args);\n      messages.push(new ToolMessage({ tool_call_id: call.id, content: JSON.stringify(result) }));\n    }\n  }\n  throw new Error("The agent reached its tool-call limit.");\n});\n`);
     const extra = binding(request, false);
     const extraEnv = extra ? extra.replace(/^environment: \{ /, "").replace(/ \},$/, "") : "";
-    register("agents", request.id, `{ ${q(request.id)}: { directory: ${q(`/agents/${request.id}`)}, deploy: ${q(request.deploy)}, ${request.auth ? "auth: true," : ""} ${request.path ? `route: ${q(request.path)},` : ""} tools: ${q(request.tools)}, environment: { ...models.environment, ${extraEnv} }, cloud: { access: models.access, requirements: models.requirements } } }`, 'import { models } from "../models";\n' + (request.bindingResource ? bindingImport : ""));
+    register("agents", request.id, `{ ${q(request.id)}: { tags: ${q(request.tags ?? {})}, directory: ${q(`/agents/${request.id}`)}, deploy: ${q(request.deploy)}, ${request.auth ? "auth: true," : ""} ${request.path ? `route: ${q(request.path)},` : ""} tools: ${q(request.tools)}, environment: { ...models.environment, ${extraEnv} }, cloud: { access: models.access, requirements: models.requirements } } }`, 'import { models } from "../shared/models";\n' + (request.bindingResource ? bindingImport : ""));
     expected.select = `agent:${request.id}`; expected.targets.push(expected.select);
     impact.push("Uses @repo/models' shared provider selection, model IDs, secrets and IAM. The request is stateless; each invocation has the framework's existing session ownership and cancellation behavior.", "Adds a workspace with declared dependencies and a TypeScript check. Rebuild local development images for the new workspace before invoking it locally.");
   } else if (request.kind === "stack") {
     const classFile = request.className.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
     const file = `cdk-app/lib/app/${classFile}.ts`;
-    catalog([request.id], scopeCatalog(`resource.stack<${request.className}>()`, request.scope));
-    let text = read("framework-config/resources.ts");
-    put("framework-config/resources.ts", addImport(text, `import type { ${request.className} } from ${q(`../cdk-app/lib/app/${classFile}`)};`, request.className));
+    catalog([request.id], scopeCatalog(`resource.stack<${request.className}>({ tags: ${q(request.tags ?? {})} })`, request.scope), `import type { ${request.className} } from ${q(`../../cdk-app/lib/app/${classFile}`)};\n`);
     fresh(file, `import { Stack, type StackProps, CfnOutput } from "aws-cdk-lib";\nimport { Queue } from "aws-cdk-lib/aws-sqs";\nimport type { Construct } from "constructs";\nimport { linkResources } from "../framework/framework-resources";\nimport { resources } from "../../../framework-config/resources";\n\nexport class ${request.className} extends Stack {\n  public readonly queue: Queue;\n\n  constructor(scope: Construct, id: string, props?: StackProps) {\n    super(scope, id, props);\n    this.queue = new Queue(this, "Queue", { enforceSSL: true });\n    new CfnOutput(this, "QueueUrl", { value: this.queue.queueUrl, exportName: this.stackName + ":QueueUrl" });\n    linkResources(this, resources.${request.id});\n  }\n}\n`);
     let app = read("cdk-app/bin/cdk-app.ts");
     const source = parse("cdk-app/bin/cdk-app.ts", app);
@@ -351,8 +496,8 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
     catch (error) { return refuse(/endpoint/i.test(String(error)) ? "endpoints" : "cidr", error instanceof Error ? error.message : String(error)); }
     if (models.some(model => model.networks?.some(network => network.id === request.id || network.constructId === declared.cloud.constructId))) return refuse("id", "This VPC identity or deployed construct identity already exists.");
     const file = `framework-config/networks/${request.id}/index.ts`;
-    const symbol = `studio${request.id.split("-").map(part => part[0]!.toUpperCase() + part.slice(1)).join("")}Vpc`;
-    fresh(file, formatNewModule(file, `import { defineNetwork } from "@repo/framework/config";\nexport const ${symbol} = defineNetwork(${JSON.stringify({ id: request.id, ...(request.name ? { name: request.name } : {}), cidr: request.cidr, zones: request.zones, natGateway: request.nat, egressOnlyInternetGateway: request.ipv6, gatewayEndpoints: { s3: request.s3, dynamodb: request.dynamodb }, interfaceEndpoints: request.endpoints })});\n`));
+    const symbol = `${request.id.replace(/-([a-z])/g, (_match, letter: string) => letter.toUpperCase())}Vpc`;
+    fresh(file, formatNewModule(file, `import { defineNetwork } from "@repo/framework/config";\nexport const ${symbol} = defineNetwork(${JSON.stringify({ id: request.id, tags: request.tags ?? {}, ...(request.name ? { name: request.name } : {}), cidr: request.cidr, zones: request.zones, natGateway: request.nat, egressOnlyInternetGateway: request.ipv6, gatewayEndpoints: { s3: request.s3, dynamodb: request.dynamodb }, interfaceEndpoints: request.endpoints })});\n`));
     let text = read("framework.config.ts");
     const { source, object } = objectCall("framework.config.ts", text, "defineFrameworkConfig");
     const property = findProperty(object, "networks");

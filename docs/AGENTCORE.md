@@ -11,22 +11,22 @@ deploy settings.
 ## Declaring them
 
 ```ts
-// framework-config/tools/support.ts
+// framework-config/workloads/tools.ts
 import { startsWorkflow } from "@repo/framework/config";
 import type { ToolsSection } from "../contracts";
 
-export const supportTools = {
+export const tools = {
   "lookup-case": { directory: "/lambda_functions/tool_functions/lookup-case", auth: true, database: true },
   "start-review": { directory: "/lambda_functions/tool_functions/start-review", auth: true, cloud: { bindings: [startsWorkflow("case-review")] } },
 } satisfies ToolsSection;
 ```
 
 ```ts
-// framework-config/agents/support.ts
+// framework-config/workloads/agents.ts
 import type { AgentsSection } from "../contracts";
-import { models } from "../models";
+import { models } from "../shared/models";
 
-export const supportAgents = {
+export const agents = {
   "support-agent": {
     directory: "/agents/support-agent",
     auth: true,
@@ -39,7 +39,7 @@ export const supportAgents = {
 } satisfies AgentsSection;
 ```
 
-Compose them in `framework.config.ts` as `tools: [supportTools]` and `agents: [supportAgents]`.
+Compose them in `framework.config.ts` as `tools: [tools]` and `agents: [agents]`.
 
 Tools have no authored `deploy` setting. Each tool runs in the union of the lanes of
 the agents that list it: local consumers enable local execution, cloud consumers
@@ -145,7 +145,7 @@ Bedrock, Bedrock Mantle or OpenAI as a LangChain chat model, chosen by
 `LANGGRAPH_MODEL_PROVIDER` in `cdk-app/.env.<mode>`. Depend on it in the agent's package.json
 (`"@repo/models": "*"`) rather than copying the providers into the agent.
 
-What the providers need is declared once, in `framework-config/models.ts`, and each agent
+What the providers need is declared once, in `framework-config/shared/models.ts`, and each agent
 spreads it — `...models.environment` in `environment`, `access: models.access` and
 `requirements: models.requirements` in `cloud` — as the declaration above does. A model is
 not something an application builds, so there is no construct to grant from; the access is
@@ -408,7 +408,7 @@ an application splits into deployments; the framework does not shard the stack.
 # a separate checkout or worktree, so the main cdk-app/.env.<mode> is untouched
 # cdk-app/cdk.json framework:targets: agents-smoke-<you> as a prod target pinned to your account,
 #   with an inputs file holding DATABASE_BACKUP_RETENTION_DAYS=0, optionally FRONTEND_URL + certificate
-# framework-config/agents/example.ts: the agent deploys "both"
+# framework-config/workloads/agents.ts: the agent deploys "both"
 # the example agent's tools follow its deployment automatically
 npm run deploy:resources -- --all -c prodDeployment=true -c deployment=agents-smoke-<you> --profile <PROFILE>
 npm run agents:smoke -- --app agents-smoke-<you> --profile <PROFILE> [--frontend <FRONTEND_URL>] [--include-expiry]

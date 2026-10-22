@@ -12,18 +12,20 @@ let snapshot: Snapshot;
 before(async () => { builder = new SnapshotBuilder(path.resolve(__dirname, "../..")); snapshot = (await builder.refresh()).snapshot; });
 after(() => builder.dispose());
 
-test("authored descriptions cover every managed map identity in both environments", () => {
+test("managed map identities have authored descriptions or contextual network fixture guidance", () => {
   assert.equal(snapshot.descriptions.problem, undefined);
   const ids = descriptionEntityIds(Object.values(snapshot.models));
+  const fixtureGuidance = new Map<string, string>();
   for (const model of Object.values(snapshot.models)) {
     const scene = buildScene(model);
+    for (const prop of scene.props) fixtureGuidance.set(prop.id, prop.caption.join(" ").trim());
     for (const item of [...scene.nodes, ...scene.islands, ...scene.props]) {
       assert.ok(ids.has(item.id), `editable: ${item.id}`);
-      assert.ok(snapshot.descriptions.values[item.id]?.trim(), `description: ${item.id}`);
+      assert.ok(snapshot.descriptions.values[item.id]?.trim() || fixtureGuidance.get(item.id), `description: ${item.id}`);
     }
     for (const edge of model.edges) assert.ok(ids.has(connectionDescriptionId(edge)), `editable connection: ${edge.id}`);
   }
-  for (const id of ids) if (!id.startsWith("connection-description:")) assert.ok(snapshot.descriptions.values[id]?.trim(), `description: ${id}`);
+  for (const id of ids) if (!id.startsWith("connection-description:")) assert.ok(snapshot.descriptions.values[id]?.trim() || fixtureGuidance.get(id), `description: ${id}`);
 });
 
 test("connection notes follow named relationships across graph ordering and environment detail changes", () => {

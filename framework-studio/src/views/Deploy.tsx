@@ -202,8 +202,8 @@ export function Deploy() {
 
   const reviewBusy = reviewKey ? runningFor(plansQuery.data?.find((plan) => plan.key === reviewKey)?.deployment)?.title : undefined;
 
-  if (overviewQuery.error) return <p className="empty">Deploy & Run could not be read: {overviewQuery.error instanceof Error ? overviewQuery.error.message : String(overviewQuery.error)}</p>;
-  if (!overview) return <p className="empty">Reading this machine and its AWS profiles…</p>;
+  if (overviewQuery.error) return <div className="deploy-empty" role="alert"><h1>Deploy & Run could not be read</h1><p className="diagnostic">{overviewQuery.error instanceof Error ? overviewQuery.error.message : String(overviewQuery.error)}</p><button className="quiet" onClick={() => void overviewQuery.refetch()}>Try again</button></div>;
+  if (!overview) return <p className="empty" role="status">Reading this machine and its AWS profiles…</p>;
 
   return (
     <div className="deploy-view">

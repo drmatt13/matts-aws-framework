@@ -42,10 +42,10 @@ function locate(repositoryRoot: string, sourceFile: ts.SourceFile, node: ts.Node
   return { file: toRelative(repositoryRoot, sourceFile.fileName), ...lineAndColumn(sourceFile, start), start, end: node.end };
 }
 
-function moduleFile(from: string, specifier: string): string | undefined {
+function moduleFile(from: string, specifier: string, exists: (file: string) => boolean = existsSync): string | undefined {
   if (!specifier.startsWith(".")) return undefined;
   const base = path.resolve(path.dirname(from), specifier);
-  return [base.replace(/\.js$/, ".ts"), `${base}.ts`, path.join(base, "index.ts")].find((candidate) => existsSync(candidate));
+  return [base.replace(/\.js$/, ".ts"), `${base}.ts`, path.join(base, "index.ts")].find((candidate) => exists(candidate));
 }
 
 function importedFrom(sourceFile: ts.SourceFile, name: string): string | undefined {
@@ -140,40 +140,65 @@ export function readCatalogSource(
   repositoryRoot: string,
   file: string,
   span: { readonly start: number; readonly end: number },
+  read: (file: string) => string = (file) => readFileSync(file, "utf8"),
 ): Map<string, CatalogEntrySource> {
   const entries = new Map<string, CatalogEntrySource>();
-  const sourceFile = parse(file, readFileSync(file, "utf8"));
+  const sourceFile = parse(file, read(file));
   const call = expressionAt(sourceFile, span.start, span.end);
   const unwrapped = call ? unwrap(call) : undefined;
   if (!unwrapped || !ts.isCallExpression(unwrapped)) return entries;
   const argument = unwrapped.arguments[0] ? unwrap(unwrapped.arguments[0]) : undefined;
   if (!argument || !ts.isObjectLiteralExpression(argument)) return entries;
 
-  const visit = (object: ts.ObjectLiteralExpression, prefix: readonly string[]): void => {
+  const resolve = (source: ts.SourceFile, expression: ts.Expression, seen = new Set<string>()): { source: ts.SourceFile; expression: ts.Expression } => {
+    const value = unwrap(expression);
+    if (!ts.isIdentifier(value)) return { source, expression: value };
+    const identity = `${source.fileName}:${value.text}`;
+    if (seen.has(identity)) throw new Error(`The resource declaration ${value.text} contains a circular source alias.`);
+    seen.add(identity);
+    const local = source.statements.filter(ts.isVariableStatement).filter(statement => !!(statement.declarationList.flags & ts.NodeFlags.Const)).flatMap(statement => [...statement.declarationList.declarations]).find(declaration => ts.isIdentifier(declaration.name) && declaration.name.text === value.text);
+    if (local?.initializer) return resolve(source, local.initializer, seen);
+    for (const statement of source.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !statement.moduleSpecifier.text.startsWith(".") || statement.importClause?.isTypeOnly) continue;
+      const bindings = statement.importClause?.namedBindings;
+      const binding = bindings && ts.isNamedImports(bindings) ? bindings.elements.find(binding => binding.name.text === value.text && !binding.isTypeOnly) : undefined;
+      if (!binding) continue;
+      const target = moduleFile(source.fileName, statement.moduleSpecifier.text, candidate => { try { read(candidate); return true; } catch { return false; } });
+      if (!target || !path.resolve(target).startsWith(path.join(path.resolve(repositoryRoot), "framework-config") + path.sep)) return { source, expression: value };
+      const imported = parse(target, read(target));
+      const name = binding.propertyName?.text ?? binding.name.text;
+      const declaration = imported.statements.filter(ts.isVariableStatement).filter(statement => !!(statement.declarationList.flags & ts.NodeFlags.Const) && statement.modifiers?.some(modifier => modifier.kind === ts.SyntaxKind.ExportKeyword)).flatMap(statement => [...statement.declarationList.declarations]).find(declaration => ts.isIdentifier(declaration.name) && declaration.name.text === name);
+      return declaration?.initializer ? resolve(imported, declaration.initializer, seen) : { source, expression: value };
+    }
+    return { source, expression: value };
+  };
+  const visit = (source: ts.SourceFile, object: ts.ObjectLiteralExpression, prefix: readonly string[]): void => {
     for (const property of object.properties) {
-      if (!ts.isPropertyAssignment(property)) continue;
+      if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) continue;
       const name = literalKey(property);
       if (name === undefined) continue;
       const path = [...prefix, name];
-      const value = unwrap(property.initializer);
-      const condition = ts.isConditionalExpression(value) ? value.condition.getText(sourceFile) : undefined;
+      const resolved = resolve(source, ts.isPropertyAssignment(property) ? property.initializer : property.name);
+      const value = resolved.expression;
+      const owner = resolved.source;
+      const condition = ts.isConditionalExpression(value) ? value.condition.getText(owner) : undefined;
       const className = stackClassName(value);
-      const classFile = className ? moduleFile(file, importedFrom(sourceFile, className) ?? "") : undefined;
+      const classFile = className ? moduleFile(owner.fileName, importedFrom(owner, className) ?? "") : undefined;
       const stack = className
         ? classFile
           ? stackMembers(repositoryRoot, classFile, className) ?? { className, members: [] }
           : { className, members: [] }
         : undefined;
       entries.set(path.join("."), {
-        key: locate(repositoryRoot, sourceFile, property.name),
-        value: locate(repositoryRoot, sourceFile, property.initializer),
+        key: locate(repositoryRoot, source, property.name),
+        value: locate(repositoryRoot, owner, value),
         ...(condition ? { condition } : {}),
         ...(stack ? { stack } : {}),
       });
-      if (ts.isObjectLiteralExpression(value) && prefix.length === 0) visit(value, path);
+      if (ts.isObjectLiteralExpression(value) && prefix.length === 0) visit(owner, value, path);
     }
   };
-  visit(argument, []);
+  visit(sourceFile, argument, []);
   return entries;
 }
 

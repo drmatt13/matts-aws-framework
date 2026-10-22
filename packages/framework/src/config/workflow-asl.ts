@@ -1383,6 +1383,7 @@ function taskLaunchArguments(
   return {
     Cluster: launch.cluster,
     TaskDefinition: launch.taskDefinitionFamily,
+    PropagateTags: "TASK_DEFINITION",
     LaunchType: "FARGATE",
     PlatformVersion: launch.platformVersion,
     NetworkConfiguration: {

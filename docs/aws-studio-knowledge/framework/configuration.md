@@ -15,6 +15,19 @@ related:
 ---
 # Configuration and normalized identities
 
+The canonical layout groups one workload module per kind under `framework-config/workloads/<kind>.ts`,
+catalog descriptors under `resources/`, and reusable fragments under `shared/`. The catalog
+facade remains an explicit `defineResources({ namedDescriptor, ... })` object. Each root array normally names its kind module (`http: [http]`). Grouped and
+smaller literal modules remain supported through direct imports when deliberately splitting a large section;
+directory depth does not define identity or registration. See the
+[authoring guide](../../framework-studio/declarations-and-tags.md).
+
+`DeclarationTags` uses ordinary string key/value metadata on each declaration; resource
+factory options use `{ tags, members }`. There are no global defaults. Stack members
+inherit owner tags and override keys explicitly; removing an override restores inheritance.
+Routes sharing compute must agree on tags. Reserved AWS/framework namespaces and portable
+AWS limits are validated before synthesis. Tags never rename targets or resolve secrets.
+
 [framework.config.ts](../../../framework.config.ts) composes `defaults`, `networks`, `resources`, application database/user-pool references, and arrays of `http`, `webSocket`, `events`, `services`, `tasks`, `workflows`, `tools`, and `agents` modules. [contracts.ts](../../../framework-config/contracts.ts) specializes section types from the catalog and exports only types.
 
 In [config/index.ts](../../../packages/framework/src/config/index.ts), `defineFrameworkConfig` merges sections and validates normalization eagerly. `mergeSection` detects duplicate keys before information is lost; an object spread could erase that evidence. `normalizeFrameworkConfig` / `getFrameworkTargets` give CDK, generation, runtime and Studio one target vocabulary.

@@ -26,20 +26,20 @@ interface Search {
 }
 
 function Root() {
-  const { data, error, isPending } = useSnapshot();
+  const { data, error, isPending, refetch, isFetching } = useSnapshot();
   const search = useSearch({ from: rootRoute.id });
   const navigate = useNavigate();
   const select = useCallback(
     (id: string | undefined) => void navigate({ to: ".", search: (previous: Search) => ({ ...previous, select: id }) }),
     [navigate],
   );
-  if (isPending) return <p className="empty">Evaluating the repository's configuration…</p>;
-  if (error || !data) {
-    return <p className="empty">The studio server did not answer: {error instanceof Error ? error.message : "no snapshot"}. Restart it with npm run studio.</p>;
+  if (isPending) return <main className="startup-state" aria-busy="true"><h1>AWS Studio</h1><p role="status">Evaluating the repository’s configuration…</p><p className="small muted">Loading the Development and Production maps.</p></main>;
+  if (!data) {
+    return <main className="startup-state"><h1>Studio couldn’t load the configuration</h1><p role="alert">{error instanceof Error ? error.message : "The server returned no snapshot."}</p><p className="muted">Check that <code>npm run studio</code> is running in this checkout, then try again.</p><button className="primary" disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Connecting…" : "Try again"}</button></main>;
   }
   return (
     <StudioProvider response={data} selected={search.select} select={select}>
-      <Shell>
+      <Shell notice={error ? <><span role="status">Studio couldn’t refresh the configuration. Your current map and draft are preserved.</span><button className="quiet" disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Connecting…" : "Try again"}</button></> : undefined}>
         <Outlet />
       </Shell>
     </StudioProvider>

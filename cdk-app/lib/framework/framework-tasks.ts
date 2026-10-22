@@ -72,7 +72,7 @@ export function ecsTask(
   const registered = appInvocationRegistry(scope).get(`task:${id}`);
   if (!registered || registered.kind !== "task") {
     throw new Error(
-      `Task "${id}" is not built in this app. Declare it under framework-config/tasks/ and construct EcsTasksStack before the stack that launches it. Built here: ${describeBuilt(scope, "task")}.`,
+      `Task "${id}" is not built in this app. Declare it under framework-config/workloads/tasks.ts and construct EcsTasksStack before the stack that launches it. Built here: ${describeBuilt(scope, "task")}.`,
     );
   }
   return registered;
@@ -86,7 +86,7 @@ export function frameworkWorkflow(
   const registered = appInvocationRegistry(scope).get(`workflow:${id}`);
   if (!registered || registered.kind !== "workflow") {
     throw new Error(
-      `Workflow "${id}" is not built in this app. Declare it under framework-config/workflows/ and construct WorkflowsStack before the stack that starts it. Built here: ${describeBuilt(scope, "workflow")}.`,
+      `Workflow "${id}" is not built in this app. Declare it under framework-config/workloads/workflows.ts and construct WorkflowsStack before the stack that starts it. Built here: ${describeBuilt(scope, "workflow")}.`,
     );
   }
   return registered;

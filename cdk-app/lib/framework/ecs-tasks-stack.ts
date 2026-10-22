@@ -1,3 +1,4 @@
+import { markInfrastructure } from "./framework-inventory";
 import { networkConstructId } from "@repo/framework/config";
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
@@ -105,7 +106,7 @@ export class EcsTasksStack extends cdk.Stack {
       const network = target.vpc!;
       const vpc = frameworkVpc(this, network);
       let cluster = clusters.get(network.id);
-      if (!cluster) { cluster = new ecs.Cluster(this, networkConstructId(network, "EcsTasksCluster"), { vpc }); clusters.set(network.id, cluster); }
+      if (!cluster) { cluster = new ecs.Cluster(this, networkConstructId(network, "EcsTasksCluster"), { vpc }); clusters.set(network.id, cluster); markInfrastructure(cluster, `island:vpc:${network.id}`, "supporting"); }
       const placement = containerPlacement(this, target, target.cloud.task!.subnet);
       let groups = placement.connectionGroups;
       if (groups.length === 0) {
@@ -117,6 +118,7 @@ export class EcsTasksStack extends cdk.Stack {
             allowAllOutbound: true,
             allowAllIpv6Outbound: true,
           });
+          markInfrastructure(group, `island:vpc:${network.id}`, "supporting");
           unconnected.set(network.id, group);
         }
         groups = [group];
@@ -337,6 +339,17 @@ export function grantRunTask(
       conditions: { ArnEquals: { "ecs:cluster": launch.cluster } },
     }),
   );
+
+  // ECS checks tagging permission when RunTask propagates definition tags.
+  // Limit it to task creation in this declared cluster.
+  grantee.grantPrincipal.addToPrincipalPolicy(new iam.PolicyStatement({
+    actions: ["ecs:TagResource"],
+    resources: [cdk.Stack.of(definition).formatArn({
+      service: "ecs", resource: "task", arnFormat: cdk.ArnFormat.SLASH_RESOURCE_NAME,
+      resourceName: cdk.Fn.join("", [cdk.Fn.select(1, cdk.Fn.split("/", launch.cluster)), "/*"]),
+    })],
+    conditions: { StringEquals: { "ecs:CreateAction": "RunTask" } },
+  }));
 
   const passable = [definition.taskRole.roleArn, definition.executionRole?.roleArn]
     .filter((arn): arn is string => typeof arn === "string");

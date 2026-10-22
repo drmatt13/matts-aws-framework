@@ -1,10 +1,6 @@
-// Type-only on purpose: a value import would carry the whole of aws-cdk-lib
-// into the dev servers and the invocation runner, which load this catalog.
-import type { CognitoStack } from "../cdk-app/lib/app/cognito-stack";
-import type { RdsStack } from "../cdk-app/lib/app/rds-stack";
-import type { ReferenceExampleStack } from "../cdk-app/lib/app/reference-example-stack";
-import { defineResources, resource } from "@repo/framework/config";
-import { PROD_DEPLOYMENT } from "@repo/framework/config/source";
+import { defineResources } from "@repo/framework/config";
+import { cognito, rds, referenceExamples } from "./resources/stacks";
+import { googleClientSecret, langgraph, openaiApiKey } from "./resources/inputs";
 
 /**
  * The application's resource catalog: what this application's workloads need
@@ -35,32 +31,11 @@ import { PROD_DEPLOYMENT } from "@repo/framework/config/source";
  * See docs/FRAMEWORK.md#resources-inputs-and-permissions.
  */
 export const resources = defineResources({
-  // One entry, every construct and computed value the stack exposes. The stack
-  // class is the declaration; `linkResources(this, ...)` beside it is the whole
-  // binding.
-  referenceExamples: resource.stack<ReferenceExampleStack>(),
-
-  // Constructs, plus this deployment's resolved frontend settings:
-  // `userPoolDomainUrl`, `trustedOriginsCsv`, `frontendUrl` and
-  // `skipEmailVerification` are all fields on CognitoStack.
-  cognito: resource.stack<CognitoStack>(),
-
-  // Only a production deployment builds a database, and `bin/cdk-app.ts`
-  // branches on the same mode (`-c prodDeployment=true`). Without it, `resources.rds.database` still compiles where
-  // framework.config.ts names it, and a workload's `database: true` places
-  // nothing in AWS: the local Postgres container stands in for it.
-  rds: PROD_DEPLOYMENT ? resource.stack<RdsStack>() : undefined,
-
-  openaiApiKey: resource.secret("OPENAI_API_KEY"),
-  googleClientSecret: resource.secret("GOOGLE_CLIENT_SECRET"),
-
-  langgraph: {
-    modelProvider: resource
-      .fromEnv("LANGGRAPH_MODEL_PROVIDER")
-      .enum("bedrock-mantle", "bedrock", "openai")
-      .default("bedrock-mantle"),
-    bedrockModelId: resource.fromEnv("LANGGRAPH_BEDROCK_MODEL_ID").default("global.amazon.nova-2-lite-v1:0"),
-    bedrockMantleModelId: resource.fromEnv("LANGGRAPH_BEDROCK_MANTLE_MODEL_ID").default("openai.gpt-oss-20b"),
-    openaiModelId: resource.fromEnv("LANGGRAPH_OPENAI_MODEL_ID").default("gpt-4.1-mini"),
-  },
+  // Names here are the public catalog contract. Module paths are organization.
+  referenceExamples,
+  cognito,
+  rds,
+  openaiApiKey,
+  googleClientSecret,
+  langgraph,
 });

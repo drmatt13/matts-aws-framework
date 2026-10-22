@@ -255,6 +255,7 @@ test("a task step launches the revision-pinned definition with the framework inp
   const args = state.Arguments as Json;
   // The family: a revision ARN would change with every change to the task.
   assert.equal(args.TaskDefinition, "worker");
+  assert.equal(args.PropagateTags, "TASK_DEFINITION", "running tasks inherit their declared definition tags");
   const overrides = (args.Overrides as Json).ContainerOverrides as readonly Json[];
   const [variable] = (overrides[0] as Json).Environment as readonly Json[];
   assert.equal(variable?.Name, "FRAMEWORK_TASK_INPUT");

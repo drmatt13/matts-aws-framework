@@ -32,7 +32,7 @@ Ordinary operations, OAuth reconciliation and migrations use the writer. Declare
 access on workloads that have reads which tolerate asynchronous replication:
 
 ```ts
-// framework-config/http/reports.ts
+// framework-config/workloads/http.ts
 database: { readers: true },
 
 // Handler: both repository handles can coexist.

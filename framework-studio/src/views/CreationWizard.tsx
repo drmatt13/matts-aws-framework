@@ -1,17 +1,21 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { CREATORS, CreationValidationError, networkCreationProblem, readCreationRequest, type CreationField } from "../../shared/creation";
 import type { CreationEntry } from "../draft";
 import { useStudio } from "../studio";
 import { InspectorSwitch } from "./InspectorUI";
 import { InterfaceEndpointPicker } from "./InterfaceEndpointPicker";
+import { TagRows } from "./Tags";
+import { deploymentSettingLabel } from "../deployment";
 
 /** Forms are part of InspectorDraft: review/back, source conflicts, navigation,
  * browser exit, discard and apply all share the existing session lifecycle. */
 export function CreationWizard({ entry, back }: { readonly entry: CreationEntry; readonly back: () => void }) {
-  const { draft, draftState, model } = useStudio();
+  const { draft, draftState, model, live } = useStudio();
   const dialog = useRef<HTMLDialogElement>(null);
   const prefix = useId();
+  const [tagError, setTagError] = useState<string>();
   const creator = CREATORS[entry.resourceKind];
+  const disabled = !!draftState.busy || draft.conflict || !!model.stale || live.evaluating;
   useEffect(() => {
     const element = dialog.current!;
     if (!draftState.reviewOpen && !draftState.pendingNavigation) element.showModal();
@@ -28,13 +32,14 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
     if (!lambda) return true;
     if (entry.form.category === "event" && ["path", "method", "auth", "deploy"].includes(field.key)) return false;
     if (entry.form.category === "webSocket" && ["method", "auth"].includes(field.key)) return false;
-    if (entry.resourceKind === "route" && entry.form.existingTarget && !["id", "description", "category", "path", "method", "existingTarget"].includes(field.key)) return false;
+    if (entry.resourceKind === "route" && entry.form.existingTarget && !["id", "description", "category", "path", "method", "existingTarget", "tags"].includes(field.key)) return false;
     return true;
   });
   const render = (field: CreationField) => {
     const id = `${prefix}-${field.key}`;
     const serverError = draftState.error?.startsWith(`${field.key}: `) ? draftState.error.slice(field.key.length + 2) : undefined;
     const error = problem?.field === field.key ? problem.message : serverError;
+    const describedBy = [field.help ? `${id}-help` : undefined, error ? `${id}-error` : undefined].filter(Boolean).join(" ") || undefined;
     const value = entry.form[field.key];
     const update = (next: string | number | boolean) => {
       const form = { ...entry.form, [field.key]: next };
@@ -64,33 +69,48 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
       : field.key === "existingTarget" ? ["", ...model.targets.filter((target) => target.kind === "lambda" && target.role === entry.form.category).map((target) => target.ref)] : field.options;
     const appendOptions = field.key === "steps" ? model.targets.filter((target) => target.kind === "task" || target.role === "event").map((target) => target.ref)
       : field.key === "tools" ? model.targets.filter((target) => target.role === "tool" && (entry.form.auth || !target.auth)).map((target) => target.id) : undefined;
+    const remainingOptions = appendOptions?.filter((option) => !String(value).split(",").map((part) => part.trim()).includes(option));
+    const optionLabel = (option: string) => {
+      if (field.key === "deploy") return deploymentSettingLabel(option, entry.form.category === "webSocket" ? model.webSocketApi : undefined);
+      if (field.key === "scope") return ({ both: "Dev + Prod", dev: "Development", prod: "Production" } as Record<string, string>)[option] ?? option;
+      if (field.key === "category") return ({ event: "Event Lambda", http: "HTTP Lambda", webSocket: "WebSocket Lambda" } as Record<string, string>)[option] ?? option;
+      if (field.key === "vpc") { const network = model.networks?.find(network => network.id === option); return network?.name ? `${network.name} (${network.id})` : option || "None"; }
+      return option || "None";
+    };
     const endpoints = entry.resourceKind === "vpc" && field.key === "endpoints";
-    return <div className={`creation-field ${field.type === "boolean" ? "creation-switch" : ""} ${endpoints ? "endpoint-creation-field" : ""}`} key={field.key}>
-      <label htmlFor={id}>{field.label}</label>
-      {endpoints ? <InterfaceEndpointPicker id={id} services={model.interfaceEndpointServices} selected={String(value ?? "").split(",").map(name => name.trim()).filter(Boolean)}
-        onChange={services => update(services.join(", "))} disabled={!!draftState.busy || draft.conflict || !!model.stale} invalid={!!error} describedBy={error ? `${id}-error` : `${id}-help`} />
-        : field.type === "boolean" ? <InspectorSwitch id={id} label={field.label} checked={value === true} onChange={update} invalid={!!error} describedBy={error ? `${id}-error` : field.help ? `${id}-help` : undefined} />
-        : options ? <select id={id} value={String(value)} onChange={(event) => update(event.target.value)} aria-invalid={!!error} aria-describedby={error ? `${id}-error` : `${id}-help`}>
-          {options.map((option) => <option key={option} value={option}>{option || "None"}</option>)}
+    const tagField = field.key === "tags";
+    return <div className={`creation-field ${field.type === "boolean" ? "creation-switch" : ""} ${endpoints ? "endpoint-creation-field" : ""} ${tagField || field.key === "description" || field.type === "list" ? "creation-field-wide" : ""}`} key={field.key}>
+      {tagField ? <span id={`${id}-label`} className="creation-field-label">{field.label}</span> : <label htmlFor={id}>{field.label}</label>}
+      <div className="creation-field-control" role={tagField ? "group" : undefined} aria-labelledby={tagField ? `${id}-label` : undefined} aria-describedby={tagField ? describedBy : undefined}>
+      {tagField ? <TagRows value={JSON.parse(String(value ?? "{}")) as Record<string, string>} disabled={disabled} onChange={(tags, error) => { setTagError(error); draft.setCreation(entry.resourceKind, { ...entry.form, tags: JSON.stringify(tags) }, error); }} />
+        : endpoints ? <InterfaceEndpointPicker id={id} services={model.interfaceEndpointServices} selected={String(value ?? "").split(",").map(name => name.trim()).filter(Boolean)}
+        onChange={services => update(services.join(", "))} disabled={disabled} invalid={!!error} describedBy={describedBy} />
+        : field.type === "boolean" ? <InspectorSwitch id={id} label={field.label} checked={value === true} onChange={update} disabled={disabled} invalid={!!error} describedBy={describedBy} />
+        : options ? <select id={id} value={String(value)} onChange={(event) => update(event.target.value)} disabled={disabled} aria-invalid={!!error} aria-describedby={describedBy}>
+          {options.map((option) => <option key={option} value={option}>{optionLabel(option)}</option>)}
         </select>
-          : <input id={id} type={field.type === "number" ? "number" : "text"} value={String(value)} onChange={(event) => update(field.type === "number" ? Number(event.target.value) : event.target.value)} aria-invalid={!!error} aria-describedby={error ? `${id}-error` : `${id}-help`} autoComplete="off" spellCheck={false} />}
-      {appendOptions ? <select aria-label={`Add ${field.key === "steps" ? "workflow step" : "agent tool"}`} value="" onChange={(event) => {
+          : <input id={id} type={field.type === "number" ? "number" : "text"} value={String(value)} onChange={(event) => update(field.type === "number" ? Number(event.target.value) : event.target.value)} disabled={disabled} aria-invalid={!!error} aria-describedby={describedBy} autoComplete="off" spellCheck={false} />}
+      {remainingOptions ? <select aria-label={`Add ${field.key === "steps" ? "workflow step" : "agent tool"}`} disabled={disabled || !remainingOptions.length} value="" onChange={(event) => {
         if (event.target.value) update([String(value), event.target.value].filter(Boolean).join(", "));
-      }}><option value="">Select an existing {field.key === "steps" ? "target" : "tool"}…</option>{appendOptions.filter((option) => !String(value).split(",").map((part) => part.trim()).includes(option)).map((option) => <option key={option} value={option}>{option}</option>)}</select> : null}
+      }}><option value="">{remainingOptions.length ? `Select an existing ${field.key === "steps" ? "target" : "tool"}…` : `No more ${field.key === "steps" ? "targets" : "tools"} available`}</option>{remainingOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select> : null}
       {field.help ? <p id={`${id}-help`} className="small muted">{field.help}</p> : null}
       {error ? <p id={`${id}-error`} className="reason small" role="status">{error}</p> : null}
+      </div>
     </div>;
   };
   return <dialog ref={dialog} className="preview creation-wizard" aria-labelledby={`${prefix}-title`} onCancel={(event) => { event.preventDefault(); back(); }}>
     <header><p className="small muted">Add to application · Configure → Review → Apply</p><h2 id={`${prefix}-title`}>{entry.resourceKind === "vpc" ? "Create VPC" : `Create ${creator.label.toLowerCase()}`}</h2></header>
-    <div className="body">
+    <div className="body" aria-busy={!!draftState.busy}>
       <p>{creator.help}</p>
+      <fieldset className="creation-form-fields" disabled={disabled} aria-label={`${creator.label} settings`}>
       <div className="creation-fields">{fields.filter((field) => !field.advanced).map(render)}</div>
       {fields.some((field) => field.advanced) ? <details><summary>Advanced settings</summary><div className="creation-fields">{fields.filter((field) => field.advanced).map(render)}</div></details> : null}
-      {draft.conflict ? <p className="reason" role="alert">Source changed while you were configuring this resource. Your form is preserved; discard it to load the latest configuration.</p> : null}
+      </fieldset>
+      {live.evaluating ? <p className="small muted" role="status">Refreshing configuration… Your form is preserved.</p> : null}
+      {draft.conflict ? <p className="reason" role="alert">Source changed while you were configuring this resource. Your form is preserved. Cancel creation to load the latest configuration.</p> : null}
       {draftState.error ? <p className="reason" role="alert">{draftState.error}</p> : null}
       <p className="small muted">Review shows every proposed file before anything is written. Apply saves source; deployment is a separate action.</p>
     </div>
-    <footer><button className="quiet" onClick={back}>Back to resource types</button><button className="quiet" onClick={() => draft.discard()}>Cancel creation</button><button className="primary" disabled={!!problem || draft.invalid || draft.conflict || !!draftState.busy} onClick={() => void draft.review()}>Review generated changes</button></footer>
+    <footer><button className="quiet" disabled={!!draftState.busy} onClick={back}>Back to resource types</button><button className="quiet" disabled={!!draftState.busy} onClick={() => draft.discard()}>Cancel creation</button><button className="primary" disabled={!!problem || !!tagError || draft.invalid || disabled} onClick={() => void draft.review()}>Review generated changes</button></footer>
   </dialog>;
 }

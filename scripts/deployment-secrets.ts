@@ -1,7 +1,9 @@
+import { validateTags, sameTags, type DeclarationTags } from "@repo/framework/config";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { CreateSecretCommand, DescribeSecretCommand, GetSecretValueCommand, PutSecretValueCommand, type SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
+import { CreateSecretCommand, DescribeSecretCommand, GetSecretValueCommand, PutSecretValueCommand, TagResourceCommand, UntagResourceCommand, type SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 
 export interface SecretRequirement {
+  readonly tags?: DeclarationTags;
   readonly version: 1;
   readonly path: readonly string[];
   readonly variable: string;
@@ -49,6 +51,8 @@ export interface BoundSecret {
   readonly current?: string;
   /** The authored value's HMAC, when one is authored. */
   readonly authored?: string;
+  readonly tags?: string;
+  readonly currentTags?: string;
 }
 
 /** What a review approved: the entries plan.json shows, and the binding behind them. */
@@ -71,9 +75,9 @@ export interface SecretPlan {
   apply(onUpdate?: (name: string) => void, reviewed?: ReviewedSecrets): Promise<SecretDeploymentResult>;
 }
 
-interface Planned { requirement: SecretRequirement; value?: string; arn?: string; current?: string; changed: boolean }
+interface Planned { requirement: SecretRequirement; value?: string; arn?: string; current?: string; changed: boolean; tagChanged: boolean; existingTags: DeclarationTags }
 
-const actionOf = (plan: Planned): SecretPlanEntry["action"] => (!plan.arn ? "create" : plan.changed ? "update" : "unchanged");
+const actionOf = (plan: Planned): SecretPlanEntry["action"] => (!plan.arn ? "create" : (plan.changed || plan.tagChanged) ? "update" : "unchanged");
 
 /** Every read and ownership check, and no write. Values are compared in memory and never returned. */
 export async function planDeploymentSecrets(
@@ -82,10 +86,11 @@ export async function planDeploymentSecrets(
 ): Promise<SecretPlan> {
   const plans = new Map<string, Planned>();
   for (const requirement of requirements) {
+    validateTags(requirement.tags, `Secret ${requirement.name}`);
     if (requirement.account !== identity.account || requirement.region !== identity.region) throw new Error("Selected AWS credentials/account or region do not match the synthesized secret requirements.");
     const previous = plans.get(requirement.name);
     if (previous) {
-      if (previous.requirement.variable !== requirement.variable || previous.requirement.deployment !== requirement.deployment || previous.requirement.path.join(".") !== requirement.path.join(".")) throw new Error(`Conflicting secret declarations for ${requirement.name}.`);
+      if (previous.requirement.variable !== requirement.variable || previous.requirement.deployment !== requirement.deployment || previous.requirement.path.join(".") !== requirement.path.join(".") || !sameTags(previous.requirement.tags, requirement.tags)) throw new Error(`Conflicting secret declarations for ${requirement.name}.`);
       continue;
     }
     const value = authored[requirement.variable] || undefined;
@@ -96,9 +101,11 @@ export async function planDeploymentSecrets(
     }
     let changed = value !== undefined;
     let version: string | undefined;
+    let existingTags: DeclarationTags = {};
     if (existing) {
       if (existing.DeletedDate) throw new Error(`${requirement.name} is scheduled for deletion. Restore it before deploying.`);
       const tags = Object.fromEntries((existing.Tags ?? []).map(tag => [tag.Key, tag.Value]));
+      existingTags = Object.fromEntries(Object.entries(tags).filter(([key, value]) => !/^(?:framework:|aws:)/i.test(key) && key !== "ManagedBy" && typeof value === "string")) as DeclarationTags;
       if (tags["framework:deployment"] !== requirement.deployment || tags["framework:resource"] !== requirement.path.join(".") || tags["framework:environment"] !== requirement.variable) throw new Error(`${requirement.name} is not owned by this deployment and resource declaration.`);
       assertArn(existing.ARN, identity, requirement.name);
       // An existing secret with no current value cannot satisfy a required consumer.
@@ -111,7 +118,7 @@ export async function planDeploymentSecrets(
     } else if (value === undefined) {
       throw new Error(`${requirement.variable} is required by the selected deployment. Supply it in cdk-app/.env.dev or cdk-app/.env.prod, or restore its existing managed secret.`);
     }
-    plans.set(requirement.name, { requirement, value, arn: existing?.ARN, current: version, changed });
+    plans.set(requirement.name, { requirement, value, arn: existing?.ARN, current: version, changed, tagChanged: !sameTags(existingTags, requirement.tags), existingTags });
   }
   const entries = [...plans.values()].map((plan): SecretPlanEntry => ({ name: plan.requirement.name, variable: plan.requirement.variable, action: actionOf(plan) }));
   const arns = Object.fromEntries([...plans.values()].flatMap(({ requirement, arn }) => (arn ? [[requirement.name, arn]] : [])));
@@ -156,6 +163,7 @@ function bindSecretPlan(plans: ReadonlyMap<string, Planned>, planId: string): Se
       action: actionOf(plan),
       ...(plan.arn ? { arn: plan.arn } : {}),
       ...(plan.current ? { current: plan.current } : {}),
+      ...(Object.keys(plan.requirement.tags ?? {}).length || Object.keys(plan.existingTags).length ? { tags: JSON.stringify(validateTags(plan.requirement.tags)), currentTags: JSON.stringify(validateTags(plan.existingTags)) } : {}),
       ...(plan.value !== undefined ? { authored: digest(key, name, plan.value) } : {}),
     };
   }
@@ -189,7 +197,8 @@ function secretPlanMismatch(plans: ReadonlyMap<string, Planned>, reviewed: Revie
     if (action !== shown.action) { problems.push(`${name} was reviewed as ${shown.action} but is now ${action}`); continue; }
     if ((bound.arn ?? "") !== (now.arn ?? "")) { problems.push(`${name} was replaced in Secrets Manager`); continue; }
     if (action === "update" && (!bound.current || !now.current || bound.current !== now.current)) problems.push(`${name} changed in Secrets Manager`);
-    if ((action === "create" || action === "update") && (bound.authored === undefined || now.value === undefined || !same(bound.authored, digest(key, name, now.value)))) {
+    if ((bound.tags ?? "{}") !== JSON.stringify(validateTags(now.requirement.tags)) || (bound.currentTags ?? "{}") !== JSON.stringify(validateTags(now.existingTags))) problems.push(`tags of ${name} changed`);
+    if ((action === "create" || now.changed) && (bound.authored === undefined || now.value === undefined || !same(bound.authored, digest(key, name, now.value)))) {
       problems.push(`the authored value of ${now.requirement.variable} (${name}) changed`);
     }
   }
@@ -202,6 +211,7 @@ async function createSecret(plan: Planned, identity: { account: string; region: 
     Name: requirement.name, SecretString: plan.value,
     Description: `Managed resource ${requirement.path.join(".")}; populated by npm run deploy:resources.`,
     Tags: [
+      ...Object.entries(requirement.tags ?? {}).map(([Key, Value]) => ({ Key, Value })),
       { Key: "ManagedBy", Value: requirement.deployment },
       { Key: "framework:deployment", Value: requirement.deployment },
       { Key: "framework:resource", Value: requirement.path.join(".") },
@@ -214,6 +224,8 @@ async function createSecret(plan: Planned, identity: { account: string; region: 
   plan.arn = result.ARN;
   plan.current = result.VersionId;
   plan.changed = false;
+  plan.tagChanged = false;
+  plan.existingTags = plan.requirement.tags ?? {};
 }
 
 async function createMissingSecrets(
@@ -240,12 +252,18 @@ async function applySecretPlan(
   const updated: string[] = [];
   for (const plan of plans.values()) {
     const { requirement } = plan;
+    const noteUpdate = () => { if (!updated.includes(requirement.name)) { updated.push(requirement.name); onUpdate(requirement.name); } };
     try {
       if (!plan.arn) {
-        await createSecret(plan, identity, client, () => { updated.push(requirement.name); onUpdate(requirement.name); });
-      } else if (plan.changed) {
-        await client.send(new PutSecretValueCommand({ SecretId: plan.arn, SecretString: plan.value }));
-        updated.push(requirement.name); onUpdate(requirement.name);
+        await createSecret(plan, identity, client, noteUpdate);
+      } else if (plan.changed || plan.tagChanged) {
+        if (plan.changed) { await client.send(new PutSecretValueCommand({ SecretId: plan.arn, SecretString: plan.value })); noteUpdate(); }
+        if (plan.tagChanged) {
+          const desired = requirement.tags ?? {};
+          const remove = Object.keys(plan.existingTags).filter(key => !Object.hasOwn(desired, key));
+          if (remove.length) { await client.send(new UntagResourceCommand({ SecretId: plan.arn, TagKeys: remove })); noteUpdate(); }
+          if (Object.keys(desired).length) { await client.send(new TagResourceCommand({ SecretId: plan.arn, Tags: Object.entries(desired).map(([Key, Value]) => ({ Key, Value })) })); noteUpdate(); }
+        }
       }
     } catch {
       throw new Error(`Secret synchronization failed for ${requirement.name}. Secret updates already performed: ${updated.join(", ") || "none"}. No infrastructure deployment was started.`);

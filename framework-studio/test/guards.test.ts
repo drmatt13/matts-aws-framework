@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { request as httpRequest, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { after, before, test } from "node:test";
 import express from "express";
 import { assertWritable } from "../server/files";
@@ -65,7 +67,7 @@ test("a change needs the token and the studio's own origin", async () => {
 
 test("only framework.config.ts and framework-config/*.ts are writable", () => {
   const repositoryRoot = path.resolve(__dirname, "..", "..");
-  assert.ok(assertWritable(repositoryRoot, "framework-config/services/example.ts").endsWith("example.ts"));
+  assert.ok(assertWritable(repositoryRoot, "framework-config/workloads/services.ts").endsWith("services.ts"));
   assert.ok(assertWritable(repositoryRoot, "framework.config.ts").endsWith("framework.config.ts"));
   for (const file of ["cdk-app/.env", "package.json", "framework-config/../package.json", "cdk-app/bin/cdk-app.ts", "framework-config/missing.ts"]) {
     assert.throws(() => assertWritable(repositoryRoot, file), Error, file);
@@ -79,4 +81,15 @@ test("edit requests retain boolean and numeric values and reject structured valu
   for (const value of [null, undefined, {}, []]) {
     assert.throws(() => readIntent({ intent: { target: "lambda:graphql-api", field: "lambda.bundling.minify", value } }), /string, number or boolean/);
   }
+});
+
+test("configuration modules cannot use a symlink parent to widen write authority", () => {
+  const root = mkdtempSync(path.join(tmpdir(), "studio-authority-"));
+  try {
+    mkdirSync(path.join(root, "framework-config"));
+    mkdirSync(path.join(root, "cdk-app"));
+    writeFileSync(path.join(root, "cdk-app/native.ts"), "// source-owned CDK\n");
+    symlinkSync(path.join(root, "cdk-app"), path.join(root, "framework-config/linked"));
+    assert.throws(() => assertWritable(root, "framework-config/linked/native.ts"), /symbolic link/i);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

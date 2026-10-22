@@ -10,8 +10,8 @@ export default function EcsServicePanel() {
       note={
         <>
           Disabled by default in production deployments. The service runs only under
-          Docker Compose because <code className="font-mono">exampleService</code> in
-          framework.config.ts (declared in framework-config/services/example.ts) sets{" "}
+          Docker Compose because its declaration in
+          framework-config/workloads/services.ts sets{" "}
           <code className="font-mono">deploy: "local-only"</code>. Change it to{" "}
           <code className="font-mono">"both"</code> to deploy it to AWS.
         </>

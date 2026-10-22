@@ -131,7 +131,7 @@ creative freedom over art direction.
 
 - `npm run verify` passed.
 - A real edit end to end: `example-service` `deploy` from `local-only` to `both`.
-  - The diff was one line in `framework-config/services/example.ts`.
+  - The diff was one line in `framework-config/workloads/services.ts`.
   - The board refreshed: prod AWS now holds it.
   - `framework:check`, run from the studio, passed in 2.1 s.
   - Undo restored the file byte for byte (`git diff` empty).
@@ -168,8 +168,8 @@ whatever stands behind it.
   | Amber hologram | Only Compose runs it |
   | Dashed ghost | It is absent, or runs nowhere |
 
-  The VPC is a blueprint wherever no deployment builds it. Switching graphs never moves
-  anything.
+  Development VPCs use blueprint decks. Production VPCs keep solid subnet terraces and fixtures
+  even when unused; deployment status remains explicit in captions and hover details. Switching graphs never moves their footprints.
 - **The model's typed relationships** are drawn as arcs in the Board's five categories.
   The selection lights its arcs, with a few moving packets, and dims everything else.
 - **Interaction:**

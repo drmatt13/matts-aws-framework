@@ -92,6 +92,7 @@ export class EcsServicesStack extends cdk.Stack {
       let cluster = clusters.get(network.id);
       if (!cluster) {
         cluster = new ecs.Cluster(this, networkConstructId(network, "EcsCluster"), { vpc: frameworkVpc(this, network) });
+        markInfrastructure(cluster, `island:vpc:${network.id}`, "supporting");
         clusters.set(network.id, cluster);
       }
       this.addService(cluster, target, context);
@@ -143,6 +144,7 @@ export class EcsServicesStack extends cdk.Stack {
         cpu: settings.cpu,
         memoryLimitMiB: settings.memoryMiB,
         desiredCount: settings.desiredCount,
+        propagateTags: ecs.PropagatedTagSource.SERVICE,
         ...(loadBalancer ? { loadBalancer } : { publicLoadBalancer: true }),
         taskSubnets: placement.subnets,
         assignPublicIp: placement.assignPublicIp,
@@ -164,6 +166,7 @@ export class EcsServicesStack extends cdk.Stack {
     );
 
     markInfrastructure(service, `service:${target.id}`, "supporting");
+    markInfrastructure(loadBalancer, `service:${target.id}`, "supporting");
     markInfrastructure(service.service, `service:${target.id}`);
 
     // A service with no `/` route — which is what the pattern health-checks by

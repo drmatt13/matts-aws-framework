@@ -66,7 +66,7 @@ export function Board() {
     return ids;
   }, [index, model.edges, selected]);
 
-  if (model.targets.length === 0) {
+  if (layout.nodes.length === 0) {
     return <p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p>;
   }
 
@@ -99,7 +99,7 @@ export function Board() {
         <DeploymentLegend />
         <AddMenu />
       </div>
-      <div ref={board} className="board" style={{ width: layout.width + 120, height: layout.height }} onClick={() => select(undefined)}>
+      <div ref={board} className="board" role="group" aria-label="Application architecture" style={{ width: layout.width + 120, height: layout.height }} onClick={() => select(undefined)}>
         <svg className="edges" width={layout.width + 120} height={layout.height} aria-label="Resource connections">
           <defs>
             <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -161,7 +161,7 @@ export function Board() {
                 event.stopPropagation();
                 select(selected === node.id ? undefined : node.id);
               }}
-              title={resource?.absent ? `Absent in the ${model.mode === "dev" ? "development" : "production"} graph` : undefined}
+              title={[target?.title, route?.browserPath ?? route?.path, resource ? `${resource.path.join(".")}${resource.typeText ? ` · ${resource.typeText}` : ""}` : undefined, localService?.title, resource?.absent ? `Absent in the ${model.mode === "dev" ? "development" : "production"} graph` : undefined].filter(Boolean).join("\n")}
             >
               <EntityIcon icon={localService ? "postgres" : target ? targetIcon(target) : route ? routeIcon(route) : resourceIcon(resource!)} badge={resource ? resourceBadge(resource) : undefined} />
               {localService ? <><span className="label">{localService.title}<span className="sub">{localService.image} · Compose</span></span><DeploymentBadge kind="dev" /></> : null}

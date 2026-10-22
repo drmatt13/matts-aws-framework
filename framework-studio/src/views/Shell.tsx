@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { AlertTriangle, Check, ClipboardCheck, Redo2, Undo2, X } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { CommandResult } from "../../shared/api";
 import type { Diagnostic } from "../../shared/model";
 import { api, ApiError } from "../api";
@@ -22,11 +22,20 @@ function Verdict(props: { readonly label: string; readonly diagnostics: readonly
 }
 
 function Drawer(props: { readonly title: string; readonly onClose: () => void; readonly children: ReactNode }) {
+  const id = useId();
+  const close = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const previous = document.activeElement;
+    close.current?.focus();
+    return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
+  }, []);
   return (
-    <aside className="drawer" aria-label={props.title}>
+    <aside className="drawer" aria-labelledby={id} onKeyDown={(event) => {
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); props.onClose(); }
+    }}>
       <header>
-        <h2>{props.title}</h2>
-        <button className="icon-button" onClick={props.onClose} aria-label="Close">
+        <h2 id={id}>{props.title}</h2>
+        <button ref={close} className="icon-button" onClick={props.onClose} aria-label={`Close ${props.title}`}>
           <X size={16} aria-hidden />
         </button>
       </header>
@@ -105,7 +114,7 @@ function CommandDrawer(props: { readonly result: CommandResult | undefined; read
   );
 }
 
-export function Shell(props: { readonly children: ReactNode }) {
+export function Shell(props: { readonly children: ReactNode; readonly notice?: ReactNode }) {
   const studio = useStudio();
   const { snapshot, response, mode, setMode, live, toast, toasts, selected } = studio;
   const [drawer, setDrawer] = useState<"health" | "command" | undefined>();
@@ -133,7 +142,7 @@ export function Shell(props: { readonly children: ReactNode }) {
   };
 
   return (
-    <div className="shell">
+    <div className={`shell ${props.notice ? "has-notice" : ""}`}>
       <header className="bar">
         <span className="wordmark">
           AWS Studio<small>{repository}</small>
@@ -182,6 +191,7 @@ export function Shell(props: { readonly children: ReactNode }) {
           </span>
         </div>
       </header>
+      {props.notice ? <div className="shell-notice">{props.notice}</div> : null}
       <div className={`workspace ${selected ? "" : "no-selection"}`}>
         <main className={`canvas ${studio.model.stale ? "stale" : ""}`}>
           {studio.model.stale ? (

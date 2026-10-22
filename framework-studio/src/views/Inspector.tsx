@@ -29,6 +29,7 @@ import { ConnectionMap } from "./ConnectionMap";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
 import { DeploymentSection, ResourceDeployment, TargetDeployment } from "./Deployment";
+import { Tags } from "./Tags";
 
 function PlacementText(props: { readonly placement: Placement }) {
   const { placement } = props;
@@ -51,14 +52,14 @@ function ApiAuthControl({ target }: { readonly target: ModelTarget }) {
   const { snapshot, model } = useStudio();
   const fact = model.fields[target.ref]?.find((fact) => fact.field === "http.auth");
   if (!fact) return null;
-  return <section className="api-auth"><BooleanField target={target} fact={fact} editability={snapshot.source.editability[target.ref]?.[fact.field]} /><p className="small muted">Uses the API's Cognito user pool to admit signed-in callers. Handler-side token checks still apply.</p></section>;
+  return <section className="api-auth"><BooleanField target={target} fact={fact} editability={snapshot.source.editability[target.ref]?.[fact.field]} description="Uses the API's Cognito user pool to admit signed-in callers. Handler-side token checks still apply." /></section>;
 }
 
 function LocalReplayControl({ target }: { readonly target: ModelTarget }) {
   const { snapshot, model } = useStudio();
   const fact = model.fields[target.ref]?.find((fact) => fact.field === "events.localReplay");
   if (!fact) return null;
-  return <section className="api-auth"><BooleanField target={target} fact={fact} editability={snapshot.source.editability[target.ref]?.[fact.field]} /><p className="small muted">Captures AWS invocations in development through DevLambdaReplayStack and replays them against the local handler. Production runs the handler in AWS. Review Changes updates the config and handler wrapper together.</p></section>;
+  return <section className="api-auth"><BooleanField target={target} fact={fact} editability={snapshot.source.editability[target.ref]?.[fact.field]} description="Captures AWS invocations in development through DevLambdaReplayStack and replays them against the local handler. Production runs the handler in AWS. Review Changes updates the config and handler wrapper together." /></section>;
 }
 
 function Relations(props: { readonly id: string }) {
@@ -174,8 +175,8 @@ function TargetView(props: { readonly target: ModelTarget }) {
   const workflow = model.workflows.find((candidate) => candidate.ref === target.ref);
   const compute = target.compute;
   const buildFields = new Set(["lambda.architecture", "lambda.packaging", "lambda.runtime", "lambda.bundling.minify", "lambda.bundling.sourceMap"]);
-  const settingOrder = ["lambda.memorySize", "lambda.timeoutSeconds", "lambda.subnet", "lambda.logRetentionDays"];
-  const settings = facts.filter((fact) => !buildFields.has(fact.field) && fact.field !== "deploy" && fact.field !== "http.auth" && fact.field !== "events.localReplay")
+  const settingOrder = ["lambda.memorySize", "lambda.timeoutSeconds", "lambda.logRetentionDays"];
+  const settings = facts.filter((fact) => !buildFields.has(fact.field) && !fact.field.endsWith("subnet") && fact.field !== "deploy" && fact.field !== "http.auth" && fact.field !== "events.localReplay")
     .sort((a, b) => (settingOrder.indexOf(a.field) < 0 ? 99 : settingOrder.indexOf(a.field)) - (settingOrder.indexOf(b.field) < 0 ? 99 : settingOrder.indexOf(b.field)));
   return (
     <>
@@ -185,10 +186,11 @@ function TargetView(props: { readonly target: ModelTarget }) {
         <code className="ref">{target.ref}</code>
         <Written location={snapshot.source.entities[target.ref]?.key} />
       </header>
+      <Tags entity={target.ref} />
       <TargetDeployment target={target} />
       <Description entity={target.ref} />
       {settings.length > 0 ? <InspectorSection title="Settings">
-        {settings.filter(fact => !fact.field.endsWith("subnet")).map((fact) => <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />)}
+        {settings.map((fact) => <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />)}
       </InspectorSection> : null}
       <ApiAuthControl target={target} />
       <LocalReplayControl target={target} />
@@ -215,7 +217,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
       </InspectorDisclosure>
       {workflow ? <Steps workflow={workflow} /> : null}
       <Relations id={target.ref} />
-      {target.environment.length > 0 ? (
+      {target.environment.length + target.secrets.length > 0 ? (
         <InspectorDisclosure title="Environment" count={target.environment.length + target.secrets.length}>
           <div className="env">
             {target.environment.map((entry) => (
@@ -267,6 +269,7 @@ function RouteView(props: { readonly route: ModelRoute }) {
         <code className="ref">{route.origin}</code>
         <Written location={snapshot.source.entities[route.id]?.key} />
       </header>
+      <Tags entity={target?.ref ?? route.id} route />
       {target ? <TargetDeployment target={target} route /> : null}
       <Description entity={route.id} />
       <section>
@@ -314,6 +317,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         {resource.typeText ? <code className="ref">{resource.typeText}</code> : null}
         <Written location={snapshot.source.entities[resource.id]?.key} label={resource.frameworkStack ? "Class in" : resource.kind === "member" ? "Declared on the stack in" : "Written in"} />
       </header>
+      <Tags entity={resource.id} />
       <ResourceDeployment resource={resource} />
       {members.some(member => member.id === model.managedDatabase?.resource) ? <InspectorSection title="Application database"><button className="button" onClick={() => select(model.managedDatabase!.resource)}>Configure application PostgreSQL</button><p className="small muted">One database declaration coordinates production RDS and local PostgreSQL.</p></InspectorSection> : null}
       <Description entity={resource.id} />
@@ -337,7 +341,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
           <Written key={`${link.file}:${link.line}`} location={link} label="Linked in" />
         ))}
       </InspectorDisclosure> : null}
-      {resource.kind === "stack" && members.length ? <InspectorDisclosure title="Public fields" count={members.length} defaultOpen className="stack-members"><ul className="relations">{members.map((member) => <li key={member.id}><button className="linkish" onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className="small muted">{member.typeText ?? member.kind}</code></li>)}</ul><p className="small muted">Declared by the stack class.</p></InspectorDisclosure> : null}
+      {resource.kind === "stack" && members.length ? <InspectorDisclosure title="Public fields" count={members.length} defaultOpen className="stack-members"><ul className="relations">{members.map((member) => <li key={member.id}><button className="linkish" onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className="small muted" title={member.typeText ?? member.kind}>{member.typeText ?? member.kind}</code></li>)}</ul><p className="small muted section-footnote">Declared by the stack class.</p></InspectorDisclosure> : null}
       {resource.kind === "member" ? <Triggers key={resource.id} resource={resource} /> : null}
       {manual.length ? <section>{manual.map((item) => <div key={`${item.source.file}:${item.source.start}`}><p className="small muted">{item.reason}</p><Written location={item.source} label="Wiring in" /></div>)}</section> : null}
       {resource.kind === "input" || resource.kind === "secret" ? <ResourceEditor key={`${resource.id}:${model.mode}`} resource={resource} /> : null}

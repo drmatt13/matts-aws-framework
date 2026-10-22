@@ -2,7 +2,7 @@
  * The model every agent builds its turns on, chosen by the deployment.
  *
  * The environment it reads and the IAM its providers call with are declared
- * once, in `framework-config/models.ts`; an agent that imports this package
+ * once, in `framework-config/shared/models.ts`; an agent that imports this package
  * spreads that declaration into its own, and a test fails if it does not. Every
  * variable a provider here reads is one of that declaration's keys.
  */

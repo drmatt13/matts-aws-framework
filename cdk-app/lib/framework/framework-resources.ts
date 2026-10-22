@@ -1,3 +1,4 @@
+import { applyFrameworkTags } from "./framework-tags";
 import { createHash } from "node:crypto";
 import * as cdk from "aws-cdk-lib";
 import type { IConstruct } from "constructs";
@@ -184,6 +185,9 @@ export function linkResources<T extends IConstruct>(scope: T, group: CdkResource
   if (!fields.size) {
     throw new Error(`resources.${group.path.join(".")} found nothing to link on ${scope.node.path}. Call linkResources() after the stack's public fields are assigned.`);
   }
+  for (const name of Object.keys(group.memberTags ?? {})) {
+    if (!fields.has(name)) throw new Error(`resources.${group.path.join(".")} declares tags for missing public member "${name}". Use a field exposed and linked by this stack.`);
+  }
   for (const [name, field] of fields) {
     linkResource(scope, (group as unknown as Record<string, CdkResource<IConstruct>>)[name]!, field as IConstruct);
   }
@@ -292,6 +296,7 @@ function deploymentSecret(scope: IConstruct, reference: ResourceReference, requi
       name: frameworkSecretName(options.deployment, reference.fromEnv), deployment: options.deployment,
       mode: options.mode, account: stack.account, region: stack.region,
       parameter: stack.getLogicalId(parameter),
+      tags: reference.effectiveTags ?? reference.tags,
     });
   }
   entry.required ||= required;
@@ -394,6 +399,10 @@ export function finalizeFrameworkResources(scope: IConstruct): void {
     stack.tags.setTag(IDENTITY_TAGS.mode, mode);
     stack.tags.setTag(IDENTITY_TAGS.contract, "2");
   }
+  applyFrameworkTags(scope.node.root, config, {
+    [IDENTITY_TAGS.owner]: FRAMEWORK_OWNER, [IDENTITY_TAGS.deployment]: deployment,
+    [IDENTITY_TAGS.mode]: mode, [IDENTITY_TAGS.contract]: "2",
+  });
   const active = new Set<cdk.Stack>();
   const done = new Set<cdk.Stack>();
   const visit = (stack: cdk.Stack, trail: string[]): void => {

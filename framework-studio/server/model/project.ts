@@ -50,6 +50,7 @@ import { DEFAULT_FIELDS, fieldFacts } from "../edits/fields";
 import { projectDefaults } from "../edits/defaults";
 import { lambdaSpec } from "./lambda-spec";
 import { declarationOf, originInMessage, parseOrigin } from "./origin";
+import { projectTagging } from "./tags";
 
 /**
  * One mode's application model, projected from the framework's own answers.
@@ -633,6 +634,7 @@ export function projectModel(
   const defaults = projectDefaults(config, targets, DEFAULT_FIELDS);
   return {
     mode: options.mode,
+    tagging: projectTagging(config, targets, routes),
     webSocketApi: options.webSocketApi,
     triggerAdapters: triggerAdapters(),
     interfaceEndpointServices: [...INTERFACE_ENDPOINT_SERVICES],

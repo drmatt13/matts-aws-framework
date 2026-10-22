@@ -56,7 +56,7 @@ test("writing back every editable literal's own value changes no byte", () => {
 
 test("replacing a literal is a one-line diff in the module that declares it", () => {
   const edit = planned(plan({ target: "service:example-service", field: "deploy", value: "both" }));
-  assert.equal(edit.relativeFile, "framework-config/services/example.ts");
+  assert.equal(edit.relativeFile, "framework-config/workloads/services.ts");
   assert.equal(edit.after, edit.before.replace('deploy: "local-only",', 'deploy: "both",'));
   assert.deepEqual(edit.diff.lines.filter((line) => line.kind !== "context").map((line) => `${line.kind} ${line.text.trim()}`), [
     'remove deploy: "local-only",',
@@ -68,9 +68,10 @@ test("replacing a literal is a one-line diff in the module that declares it", ()
 
 test("an absent field is inserted beside its neighbours, and its inverse removes it", () => {
   const edit = planned(plan({ target: "lambda:graphql-api", field: "deploy", value: "local-only" }));
+  const at = edit.before.indexOf("    timeoutSeconds: 30,\n", edit.before.indexOf('"/graphql":')) + "    timeoutSeconds: 30,\n".length;
   assert.equal(
     edit.after,
-    edit.before.replace("    timeoutSeconds: 30,\n", '    timeoutSeconds: 30,\n    deploy: "local-only",\n'),
+    edit.before.slice(0, at) + '    deploy: "local-only",\n' + edit.before.slice(at),
   );
   assert.deepEqual(edit.inverse, { origin: 'http["/graphql"]', path: ["deploy"], remove: true });
 });
@@ -119,13 +120,17 @@ test("a workflow's fields are its options object", () => {
 
 test("inherit removes the property, unless the author commented it", () => {
   const removed = planned(plan({ target: "lambda:graphql-api", field: "lambda.timeoutSeconds", inherit: true }));
+  const at = removed.before.indexOf("    timeoutSeconds: 30,", removed.before.indexOf('"/graphql":'));
+  const line = removed.before.slice(0, at).split("\n").length;
   assert.deepEqual(
     removed.diff.lines.filter((line) => line.kind !== "context").map((line) => [line.kind, line.text, line.oldLine]),
-    [["remove", "    timeoutSeconds: 30,", 12]],
+    [["remove", "    timeoutSeconds: 30,", line]],
   );
   assert.equal(removed.before.split("\n").length - 1, removed.after.split("\n").length);
-  const file = path.join(repositoryRoot, "framework-config/http/graphql.ts");
-  const overlay = readFileSync(file, "utf8").replace("    memorySize: 512,", "    // Keep the GraphQL memory allocation.\n    memorySize: 512,");
+  const file = path.join(repositoryRoot, "framework-config/workloads/http.ts");
+  const text = readFileSync(file, "utf8");
+  const memory = text.indexOf("    memorySize: 512,", text.indexOf('"/graphql":'));
+  const overlay = text.slice(0, memory) + "    // Keep the GraphQL memory allocation.\n" + text.slice(memory);
   const commented = plan({ target: "lambda:graphql-api", field: "lambda.memorySize", inherit: true }, new SourceFiles(new Map([[file, overlay]])));
   assert.ok("refused" in commented && /comment/.test(commented.refused));
 });
@@ -138,7 +143,7 @@ test("a value outside the field's domain is refused before any text is touched",
 });
 
 test("a value an expression computes is shown, never rewritten", () => {
-  const file = path.join(repositoryRoot, "framework-config", "tasks", "database.ts");
+  const file = path.join(repositoryRoot, "framework-config", "workloads", "tasks.ts");
   const overlay = readFileSync(file, "utf8").replace('deploy: "cloud-only"', "deploy: DATABASE_DEPLOY");
   const outcome = plan(
     { target: "task:db-migrate", field: "deploy", value: "both" },

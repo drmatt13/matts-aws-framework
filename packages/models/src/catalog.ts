@@ -12,7 +12,7 @@
  * drift. The two halves fail at different times otherwise: a deployment that
  * accepted a fourth value would synth and deploy clean, then leave every agent
  * throwing on its first turn. A new provider that calls AWS also needs its
- * permissions in `framework-config/models.ts`.
+ * permissions in `framework-config/shared/models.ts`.
  */
 
 export const MODEL_PROVIDERS = ["bedrock-mantle", "bedrock", "openai"] as const;

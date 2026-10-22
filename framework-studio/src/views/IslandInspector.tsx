@@ -13,6 +13,7 @@ import { RouteStatus } from "./RouteStatus";
 import { Description } from "./Description";
 import { ClientEnvironmentMappings } from "./ClientEnvironment";
 import { CLIENT_ENVIRONMENT_ISLAND } from "../../shared/client-environment";
+import { Tags } from "./Tags";
 
 const LAMBDAS = ["lambda", "http", "webSocket", "events", "tools"];
 const GROUPS: Readonly<Record<string, readonly string[]>> = {
@@ -71,6 +72,7 @@ export function IslandInspector({ id }: { readonly id: string }) {
   })}</ul></InspectorDisclosure>;
   return <>
     <header><span className="kind">Island settings</span><h2>{island.title}</h2><p className="small muted">{members.length} {members.length === 1 ? "entry" : "entries"}</p></header>
+    <Tags entity={id} />
     <Description entity={id} />
     <NetworkControls id={id} />
     {id === "island:environment" ? <EnvironmentFiles /> : null}

@@ -140,11 +140,11 @@ export function bandTrim(island: Pick<Island, "id" | "region" | "bands">, index:
 }
 
 /**
- * The unbuilt network (Development always; Production when nothing is placed in it) is one raised deck of dark
+ * A development network is one raised deck of dark
  * glass rather than a slice per subnet. Its single dashed rim in the VPC violet says it is not built here; the
- * subnets are quiet zones on its surface, each a faint wash of its own colour with its name on the front wall
+ * subnets are quiet zones on its surface, each a faint wash of its own colour without visible subnet headings
  * and nothing drawn between them, so the icons and labels stay the loudest things on it. Pads under the solid
- * buildings anchor them. A built network keeps its separate terraces.
+ * buildings anchor them. Production networks keep their separate terraces.
  */
 export const DECK = {
   /** The glass, mixed a little toward the VPC violet: its top and each kind of wall. */
@@ -159,8 +159,6 @@ export const DECK = {
   wallEdge: 0.4,
   /** The pad under each solid building: its fill (white) and its outline in the subnet's colour. */
   pad: { fill: 0.05, stroke: 0.42 },
-  /** A subnet's name on the front wall. */
-  label: 0.9,
   /** The share of a built island's cast shadow, so the deck stands off the ground. */
   shadow: 0.35,
 } as const;

@@ -80,9 +80,10 @@ test("unsafe or competing placement edits are refused before any file is written
     assert.throws(() => planDatabasePlacement(fixture, state(), relocation(), new Map([[file, text]])), /computed|unique|source|snapshot/);
   }
   assert.equal(readFileSync(file, "utf8"), before);
-  const taskFile = path.join(fixture, "framework-config/tasks/database.ts");
+  const taskFile = path.join(fixture, "framework-config/workloads/tasks.ts");
   const taskBefore = readFileSync(taskFile, "utf8");
-  for (const text of [taskBefore.replace("cloud: { vpc: applicationVpc }", "cloud: computedCloud"), taskBefore.replace("vpc: applicationVpc", "vpc: (/* retain network rationale */ applicationVpc)")]) {
+  const migration = taskBefore.indexOf('"db-migrate":');
+  for (const text of [taskBefore.replace("cloud: { vpc: applicationVpc }", "cloud: computedCloud"), taskBefore.slice(0, migration) + taskBefore.slice(migration).replace("vpc: applicationVpc", "vpc: (/* retain network rationale */ applicationVpc)")]) {
     assert.notEqual(text, taskBefore);
     assert.throws(() => planDatabasePlacement(fixture, state(), relocation(), new Map([[taskFile, text]])), /computed|comment/);
   }

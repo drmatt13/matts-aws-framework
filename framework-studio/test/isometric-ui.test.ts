@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { after, afterEach, before, test } from "node:test";
-import { createElement as h } from "react";
+import { createElement as h, useState } from "react";
 import type { SnapshotResponse } from "../shared/api";
 import { SnapshotBuilder } from "../server/snapshot";
 import { landscapeFocus, SEARCH_FADE } from "../src/scene/focus";
@@ -10,11 +10,13 @@ import { SceneRenderer, type RenderState } from "../src/scene/render";
 import { fitScene } from "../src/scene/fit";
 import { iconUrl } from "../src/icons";
 import { buildScene } from "../src/scene/build";
+import { filterSceneByTag } from "../src/scene/tag-filter";
+import { UNTAGGED_FILTER } from "../src/tag-groups";
 import { connectionMidpoint } from "../src/scene/routing";
 import { screenToWorld, worldToScreen, type Camera, type Viewport } from "../src/scene/camera";
 import { catalogAvailability } from "../src/deployment";
 import { DECK, hexRgb, ISLAND_TRIM } from "../src/scene/look";
-import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, rectanglesOverlap } from "../src/scene/labels";
+import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, SUBNET_LABEL, nodeCaptionPresentation, subnetLabelPresentation, rectanglesOverlap } from "../src/scene/labels";
 import { project } from "../src/scene/iso";
 import { insidePolygon, pickEntity, pickIsland } from "../src/scene/picking";
 import { islandDrawOrder, islandSlabs } from "../src/scene/slabs";
@@ -34,7 +36,7 @@ let nextFrame = 0;
 const images: { src: string; alpha: number }[] = [];
 const strokes: string[] = [];
 const labels: string[] = [];
-const labelPaints: { text: string; alpha: number; y: number }[] = [];
+const labelPaints: { text: string; alpha: number; x: number; y: number; font: string }[] = [];
 const iconStrokes: { icon: string; color: string; width: number }[] = [];
 const pathStrokes: { color: string; width: number }[] = [];
 let measurements = 0;
@@ -66,7 +68,7 @@ before(async () => {
       if (paintedIcon) iconStrokes.push({ icon: paintedIcon, color: this.strokeStyle, width: this.lineWidth });
       paintedIcon = "";
     },
-    fillText(text: string, _x: number, y: number) { labels.push(text); labelPaints.push({ text, alpha: this.globalAlpha, y }); },
+    fillText(text: string, x: number, y: number) { labels.push(text); labelPaints.push({ text, alpha: this.globalAlpha, x, y, font: String((this as unknown as { font: string }).font) }); },
     save() { alphaStack.push(this.globalAlpha); },
     restore() { this.globalAlpha = alphaStack.pop() ?? 1; },
     createLinearGradient: gradient, createRadialGradient: gradient,
@@ -90,7 +92,7 @@ before(async () => {
 after(async () => { await builder.dispose(); dom.window.close(); });
 afterEach(() => { ui.cleanup(); frames.clear(); images.length = 0; strokes.length = 0; labels.length = 0; labelPaints.length = 0; iconStrokes.length = 0; pathStrokes.length = 0; glyphWidth = 6; });
 
-interface Debug { search(): { active: boolean; nodes: string[]; opacityOf(id: string): number }; stats(): { focus: string } }
+interface Debug { search(): { active: boolean; nodes: string[]; opacityOf(id: string): number }; stats(): { focus: string }; tagFilter(): { key: string; value?: string | null; muted: readonly string[] } }
 const debug = () => (dom.window as unknown as { __studioLandscape: Debug }).__studioLandscape;
 const search = () => ui.screen.getByRole("searchbox", { name: "Search isometric map" });
 const draw = async () => ui.act(async () => {
@@ -98,7 +100,8 @@ const draw = async () => ui.act(async () => {
   for (const callback of pending) callback(performance.now() + 500);
 });
 
-async function mount(withInspector = false) {
+async function mount(withInspector = false, selection?: string, initialResponse = response) {
+  let updateResponse: (next: SnapshotResponse) => void;
   function Workbench() {
     const context = studio.useStudio();
     return h("div", null, h("output", { "aria-label": "Selection" }, context.selected ?? "none"), h(map.Isometric),
@@ -106,16 +109,77 @@ async function mount(withInspector = false) {
       withInspector ? h(inspector.Inspector) : null);
   }
   function Root() {
+    const [current, setCurrent] = useState(initialResponse);
+    updateResponse = setCurrent;
     const search = router.useSearch({ strict: false }) as { select?: string };
     const navigate = router.useNavigate();
-    return h(studio.StudioProvider, { response, selected: search.select, select: (id: string | undefined) => void navigate({ to: ".", search: { select: id } } as never), children: h(Workbench) });
+    return h(studio.StudioProvider, { response: current, selected: search.select, select: (id: string | undefined) => void navigate({ to: ".", search: { select: id } } as never), children: h(Workbench) });
   }
   const root = router.createRootRoute({ component: Root, validateSearch: (search) => ({ select: typeof search.select === "string" ? search.select : undefined }) });
-  const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null })]) });
+  const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: [selection ? `/?select=${encodeURIComponent(selection)}` : "/"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null })]) });
   const client = new query.QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
   ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
-  await ui.screen.findByRole("searchbox", { name: "Search isometric map" }); await draw();
+  await ui.waitFor(() => assert.ok(document.querySelector(".landscape, .empty"))); await draw();
+  return async (next: SnapshotResponse) => { await ui.act(async () => updateResponse(next)); await draw(); };
 }
+
+test("empty graphs show guidance and mount the renderer and wheel controls when source recovers", async () => {
+  const emptyModel = (mode: "dev" | "prod") => ({ ...response.snapshot.models[mode], targets: [], routes: [], resources: [], edges: [], networks: [], localServices: [], managedDatabase: undefined });
+  const empty = { ...response, snapshot: { ...response.snapshot, revision: `${response.snapshot.revision}-empty`, models: { dev: emptyModel("dev"), prod: emptyModel("prod") } } };
+  const update = await mount(false, undefined, empty);
+  assert.ok(ui.screen.getByText(/graph did not load/));
+  assert.equal(document.querySelector("canvas"), null);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await update(response);
+    assert.ok(search());
+    const canvas = document.querySelector("canvas")!;
+    assert.ok(canvas, "a recovered graph mounts its renderer");
+    const camera = () => (dom.window as unknown as { __studioLandscape: { camera(): Camera } }).__studioLandscape.camera();
+    const before = camera().zoom;
+    ui.fireEvent.wheel(canvas, { deltaY: -100, deltaMode: 0, clientX: 300, clientY: 200 }); await draw();
+    assert.ok(camera().zoom > before, "wheel zoom is registered on the recovered canvas");
+    await update(empty);
+    assert.ok(ui.screen.getByText(/graph did not load/));
+    assert.equal(document.querySelector("canvas"), null);
+  }
+  await update(response);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Fit the whole application" })); await draw();
+});
+
+test("clearing map search and tag filters returns focus to their surviving controls", async () => {
+  await mount();
+  ui.fireEvent.change(search(), { target: { value: "graphql" } });
+  const clear = ui.screen.getByRole("button", { name: "Clear map search" });
+  clear.focus();
+  ui.fireEvent.click(clear);
+  assert.equal((search() as HTMLInputElement).value, "");
+  assert.equal(document.activeElement, search());
+  const key = ui.screen.getByRole("combobox", { name: "Filter map by tag key" }) as HTMLSelectElement;
+  const available = [...key.options].find(option => option.value);
+  assert.ok(available, "the fixture contains declared tags");
+  ui.fireEvent.change(key, { target: { value: available.value } });
+  const reset = ui.screen.getByRole("button", { name: "Clear tag filter" });
+  reset.focus();
+  ui.fireEvent.click(reset);
+  assert.equal(key.value, "");
+  assert.equal(document.activeElement, key);
+});
+
+test("the keyboard entity navigator browses connections and returns focus to the canvas with Escape", async () => {
+  await mount();
+  const list = ui.screen.getByRole("list", { name: "Entities in the landscape" });
+  assert.ok(list.classList.contains("landscape-entity-list"), "the list becomes visible on keyboard focus");
+  assert.match(list.textContent!, /Escape to return to the map/);
+  const buttons = ui.within(list).getAllByRole("button");
+  buttons[0]!.focus();
+  ui.fireEvent.keyDown(buttons[0]!, { key: "ArrowDown" });
+  assert.equal(document.activeElement, buttons[1]);
+  ui.fireEvent.keyDown(buttons[1]!, { key: "End" });
+  assert.equal(document.activeElement, buttons.at(-1));
+  ui.fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  assert.equal(document.activeElement, document.querySelector("canvas"));
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "none", "keyboard navigation does not change source selection");
+});
 
 test("the map has one look and the real renderer fades nonmatches while highlighting matching icons", async () => {
   dom.window.localStorage.setItem("framework-studio:isometric-look", "classic");
@@ -163,12 +227,34 @@ test("zero-result searches fade the whole map and whitespace restores the overvi
 
 test("network fixtures can be selected from the map's accessible item list", async () => {
   await mount();
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "s3 endpoint" }));
+  ui.fireEvent.click(document.querySelector('button[data-entity-id="prop:vpc:application:endpoint:s3"]')!);
   await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "prop:vpc:application:endpoint:s3"));
   await draw();
   assert.equal(debug().stats().focus, "selection");
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Internet gateway" }));
+  ui.fireEvent.click(document.querySelector('button[data-entity-id="prop:vpc:application:internet-gateway"]')!);
   await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "prop:vpc:application:internet-gateway"));
+});
+
+test("gateways and endpoints use pointer cursors and open their inspectors from the canvas", async () => {
+  await mount(true);
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
+    resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
+  const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { kind: string; id: string } | undefined } }).__studioLandscape;
+  const canvas = document.querySelector("canvas")!;
+  for (const prop of scene.props) {
+    const hull = prop.geometry.hull;
+    const center = { x: 0, y: 0 };
+    for (let index = 0; index < hull.length; index += 2) { center.x += hull[index]! / (hull.length / 2); center.y += hull[index + 1]! / (hull.length / 2); }
+    const at = worldToScreen(state.camera(), state.viewport(), center);
+    assert.equal(state.pickAt(at.x, at.y)?.id, prop.id);
+    ui.fireEvent.pointerMove(canvas, { clientX: at.x, clientY: at.y }); await draw();
+    assert.equal(canvas.style.cursor, "pointer", prop.id);
+    ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
+    ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 }); await draw();
+    await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, prop.id));
+  }
+  ui.fireEvent.pointerLeave(canvas); await draw();
+  assert.equal(canvas.style.cursor, "grab");
 });
 
 test("missing required connections paint red X markers and clicking the marker selects its guidance", async () => {
@@ -348,6 +434,67 @@ test("in Development the real renderer strokes the unbuilt VPC as one deck with 
   const [r, g, b] = hexRgb(ISLAND_TRIM["island:vpc"]!);
   assert.ok(strokes.includes(`rgba(${r}, ${g}, ${b}, ${DECK.rim})`), "the dashed rim of the whole deck");
   assert.ok(strokes.includes(`rgba(${r}, ${g}, ${b}, ${DECK.wallEdge})`), "the dashed edge along its walls");
+});
+
+test("production subnet headings stay horizontal and legible across zoom; development draws none", () => {
+  const renderer = new SceneRenderer(document.createElement("canvas"));
+  const viewport = { width: 3840, height: 2160 };
+  for (const mode of ["dev", "prod"] as const) {
+    const full = buildScene(response.snapshot.models[mode]);
+    for (const island of full.islands.filter(island => island.region === "network")) {
+      const scene = { ...full, islands: [island], nodes: full.nodes.filter(node => node.island === island.id), props: full.props.filter(prop => prop.serves.some(id => island.bands.some(band => band.id === id))), frames: full.frames.filter(frame => frame.members.includes(island.id)), edges: [], routes: {} };
+      const { bounds } = islandSlabs(scene)[0]!;
+      for (const zoom of [0.05, 0.18, 0.3, 0.45, 0.7, 1, 1.8, 2.5]) {
+        const camera = { x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2, zoom };
+        labelPaints.length = 0;
+        renderer.setScene(scene);
+        renderer.render({ camera, viewport, dpr: 1, time: 0, motion: false, focus: landscapeFocus(scene) });
+        const headings = labelPaints.filter(label => /subnet$/i.test(label.text));
+        if (mode === "dev") assert.deepEqual(headings, [], `${mode} at ${zoom} has no subnet headings`);
+        else {
+          assert.deepEqual(headings.map(label => label.text).sort(), ["Isolated subnet", "Private subnet", "Public subnet"], `${island.id} at ${zoom} shows all section headings`);
+          const alpha = NODE_CAPTION.minOpacity + (1 - NODE_CAPTION.minOpacity) * nodeCaptionPresentation(zoom).detail;
+          assert.ok(headings.every(label => label.font === `600 ${SUBNET_LABEL.fontSize * subnetLabelPresentation(zoom).scale}px Barlow, system-ui, sans-serif` && Math.abs(label.alpha - alpha) < 0.0001), "every heading keeps legible screen-space typography and fades continuously with node captions");
+          const pan = { x: camera.x + 2400, y: camera.y + 1200, zoom };
+          labelPaints.length = 0;
+          renderer.render({ camera: pan, viewport, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene) });
+          const panned = labelPaints.filter(label => /subnet$/i.test(label.text));
+          assert.equal(panned.length, 3, "pan never hides or reflows headings at viewport edges");
+          panned.forEach((label, at) => {
+            assert.ok(Math.abs(label.x - headings[at]!.x + 2400 * zoom) < 0.0001);
+            assert.ok(Math.abs(label.y - headings[at]!.y + 1200 * zoom) < 0.0001);
+          });
+        }
+      }
+      const top = islandSlabs(scene)[0]!.bands.flatMap(band => band.top.filter((_, at) => at % 2 === 1));
+      labelPaints.length = 0;
+      renderer.render({ camera: { x: (bounds.minX + bounds.maxX) / 2, y: Math.min(...top) - viewport.height / 2 - 20, zoom: 1 }, viewport, dpr: 1, time: 0, motion: false, focus: landscapeFocus(scene) });
+      assert.equal(labelPaints.filter(label => /subnet$/i.test(label.text)).length, mode === "prod" ? 3 : 0, "headings continue beyond the canvas edges without disappearing or relocating");
+    }
+  }
+  renderer.dispose();
+});
+
+test("unused production VPCs and their fixtures paint identically to used production VPCs", () => {
+  const model = response.snapshot.models.prod;
+  const network = { ...model.networks![0]!, natGateway: true, gatewayEndpoints: ["s3", "dynamodb"], interfaceEndpoints: ["account", "execute-api", "apprunner.requests", "bedrock-fips"] };
+  const scenes = [false, true].map(builtInProd => buildScene({ ...model, networks: [{ ...network, builtInProd }] }));
+  const renderer = new SceneRenderer(document.createElement("canvas"));
+  const viewport = { width: 1920, height: 1000 }, camera = fitScene(scenes[0]!, viewport);
+  const paint = (scene: ReturnType<typeof buildScene>) => {
+    images.length = 0; strokes.length = 0; labelPaints.length = 0;
+    renderer.setScene(scene);
+    renderer.render({ camera, viewport, dpr: 1, time: 0, motion: false, focus: landscapeFocus(scene) });
+    return { icons: [...images], strokes: [...strokes], labels: [...labelPaints] };
+  };
+  const unused = paint(scenes[0]!);
+  assert.deepEqual(unused, paint(scenes[1]!), "unused networks have the same opacity, solid trim and fixtures");
+  assert.ok(unused.icons.some(icon => icon.src === iconUrl("internetGateway") && icon.alpha === 0.9));
+  for (const src of ["/icons/aws/endpoints/organizations.svg", "/icons/aws/api-gateway.svg", "/icons/aws/endpoints/app-runner.svg", "/icons/aws/endpoints/bedrock.svg"]) {
+    assert.ok(unused.icons.some(icon => icon.src === src && icon.alpha === 0.9), `mini badge paints the local AWS SVG: ${src}`);
+  }
+  assert.ok(scenes[0]!.props.every(prop => prop.presence === "other"), "actual deployment evidence remains unchanged");
+  renderer.dispose();
 });
 
 interface Pointing {
@@ -673,4 +820,185 @@ test("only visible moving content requests more animation frames", () => {
   renderer.setScene({ ...scene, edges: [], routes: {} });
   assert.equal(renderer.render({ ...state, selected, focus }).animating, false, "selecting a node does not animate its island; only connection packets keep repainting");
   renderer.dispose();
+});
+
+test("compact tag filtering persists without grouping, moving topology or clearing the selected entity", async () => {
+  const storageKey = "framework-studio:isometric-tag-filter";
+  const value = response.snapshot.models.dev.tagging!["lambda:sign-in"]!.effective.area!;
+  dom.window.localStorage.removeItem(storageKey);
+  await mount();
+  assert.equal(ui.screen.queryByRole("combobox", { name: "Group map by tag" }), null);
+  const picker = ui.screen.getByRole("combobox", { name: "Filter map by tag key" });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^graphql-api, HTTP Lambda/ })); await draw();
+  ui.fireEvent.change(picker, { target: { value: "area" } }); await draw();
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Filter map by tag value" }), { target: { value: JSON.stringify(value) } }); await draw();
+  assert.deepEqual(JSON.parse(dom.window.localStorage.getItem(storageKey)!), { key: "area", value });
+  assert.ok(!debug().tagFilter().muted.includes("lambda:sign-in"));
+  assert.ok(debug().tagFilter().muted.includes("lambda:graphql-api"));
+  assert.equal(debug().search().active, false, "tag filtering does not use the stronger search fade");
+  assert.equal(debug().stats().focus, "selection");
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "lambda:graphql-api");
+  assert.ok(ui.screen.getByRole("button", { name: "Serverless compute island settings" }));
+  ui.cleanup(); frames.clear();
+  await mount();
+  assert.equal((ui.screen.getByRole("combobox", { name: "Filter map by tag key" }) as HTMLSelectElement).value, "area");
+  assert.equal((ui.screen.getByRole("combobox", { name: "Filter map by tag value" }) as HTMLSelectElement).value, JSON.stringify(value));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Clear tag filter" })); await draw();
+  assert.deepEqual(debug().tagFilter().muted, []);
+  dom.window.localStorage.removeItem(storageKey);
+});
+
+test("tag dropdown totals and selected-match feedback update with the active mode", async () => {
+  dom.window.localStorage.removeItem("framework-studio:isometric-tag-filter");
+  const id = "resource:rds";
+  const modelFor = (mode: "dev" | "prod") => {
+    const model = response.snapshot.models[mode];
+    const facts = model.tagging![id]!;
+    return { ...model, tagging: { ...model.tagging, [id]: { ...facts, effective: { ModeOnly: "production" } } } };
+  };
+  await mount(true, undefined, { ...response, snapshot: { ...response.snapshot, models: { dev: modelFor("dev"), prod: modelFor("prod") } } });
+  const key = ui.screen.getByRole("combobox", { name: "Filter map by tag key" }) as HTMLSelectElement;
+  assert.ok(![...key.options].some(option => option.value === "ModeOnly"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
+  await ui.waitFor(() => assert.ok([...key.options].some(option => option.value === "ModeOnly")));
+  ui.fireEvent.change(key, { target: { value: "ModeOnly" } }); await draw();
+  assert.ok(ui.screen.getByRole("option", { name: "production (1)" }));
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Filter map by tag value" }), { target: { value: JSON.stringify("production") } }); await draw();
+  assert.ok(ui.screen.getByText("1 matching entity in production"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
+  assert.ok(ui.screen.getByRole("option", { name: "production (no matches)" }));
+  assert.ok(ui.screen.getByText("0 matching entities in development"));
+  dom.window.localStorage.removeItem("framework-studio:isometric-tag-filter");
+});
+
+test("the first tag selector offers no-tags filtering, restores it after reload, and clears it", async () => {
+  const storageKey = "framework-studio:isometric-tag-filter";
+  dom.window.localStorage.removeItem(storageKey);
+  await mount(true);
+  const key = ui.screen.getByRole("combobox", { name: "Filter map by tag key" });
+  assert.ok(ui.within(key).getByRole("option", { name: /^Untagged \(\d+\)$/ }));
+  ui.fireEvent.change(key, { target: { value: UNTAGGED_FILTER } }); await draw();
+  assert.equal(ui.screen.queryByRole("combobox", { name: "Filter map by tag value" }), null);
+  assert.ok(debug().tagFilter().muted.includes("lambda:sign-in"));
+  assert.ok(ui.screen.getByText(/matching entities in development/));
+  assert.deepEqual(JSON.parse(dom.window.localStorage.getItem(storageKey)!), { key: UNTAGGED_FILTER, value: null });
+  ui.cleanup(); frames.clear();
+  await mount(true);
+  assert.equal((ui.screen.getByRole("combobox", { name: "Filter map by tag key" }) as HTMLSelectElement).value, UNTAGGED_FILTER);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
+  assert.ok(ui.screen.getByText(/matching entities in production/));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Clear tag filter" })); await draw();
+  assert.deepEqual(debug().tagFilter().muted, []);
+  assert.equal(document.activeElement, ui.screen.getByRole("combobox", { name: "Filter map by tag key" }));
+  dom.window.localStorage.removeItem(storageKey);
+});
+
+test("filtered resources use exactly the existing disabled-resource paint without compounding existing opacity", () => {
+  const model = response.snapshot.models.dev, topology = buildScene(model), node = topology.nodes.find(node => node.id === "lambda:graphql-api")!;
+  const base = { ...topology, nodes: [node], props: [], edges: [], routes: {} };
+  const value = model.tagging!["lambda:sign-in"]!.effective.area!;
+  const filtered = filterSceneByTag(base, model, "area", value);
+  const disabled = { ...base, nodes: [{ ...node, presence: "other" as const }] };
+  const viewport = { width: 1920, height: 1000 }, camera = fitScene(base, viewport);
+  const renderer = new SceneRenderer(document.createElement("canvas"));
+  const paint = (scene: ReturnType<typeof buildScene>) => {
+    images.length = 0; iconStrokes.length = 0; labelPaints.length = 0;
+    renderer.setScene(scene);
+    renderer.render({ camera, viewport, dpr: 1, time: 0, motion: false, focus: landscapeFocus(scene) });
+    return { images: [...images], icons: [...iconStrokes], captions: [...labelPaints] };
+  };
+  const native = paint(disabled), tagged = paint(filtered);
+  assert.deepEqual(tagged, native);
+  assert.ok(tagged.images.some(image => image.alpha === 0.32));
+  assert.deepEqual(paint(filterSceneByTag(disabled, model, "area", value)), native, "an already disabled node is not faded twice");
+  renderer.dispose();
+});
+
+test("saved filters whose source tags disappeared show a clear zero-match state and can be cleared", async () => {
+  const storageKey = "framework-studio:isometric-tag-filter";
+  dom.window.localStorage.setItem(storageKey, JSON.stringify({ key: "removed-key", value: "former-value" }));
+  try {
+    await mount();
+    assert.ok(ui.screen.getByRole("option", { name: "removed-key (unavailable in this mode)" }));
+    assert.ok(ui.screen.getByRole("option", { name: "former-value (no matches)" }));
+    assert.ok(ui.screen.getByText("0 matching entities in development"));
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Clear tag filter" })); await draw();
+    assert.deepEqual(debug().tagFilter().muted, []);
+  } finally { dom.window.localStorage.removeItem(storageKey); }
+});
+
+test("a member overriding every stack tag still shows its parent and removal previews inheritance", async () => {
+  const original = response;
+  const member = response.snapshot.models.dev.resources.find(resource => resource.kind === "member" && resource.parent && !resource.frameworkManaged)!;
+  const parent = member.parent!;
+  const tagging = (entity: string, value: string) => ({ authored: { Team: value }, effective: { Team: value }, provenance: { Team: { entity, kind: "declared" as const } }, aws: { kind: "owned" as const, note: "Owned resource" } });
+  response = { ...response, snapshot: { ...response.snapshot,
+    models: { dev: { ...response.snapshot.models.dev, tagging: { ...response.snapshot.models.dev.tagging, [parent]: tagging(parent, "platform"), [member.id]: tagging(member.id, "orders") } }, prod: { ...response.snapshot.models.prod, tagging: { ...response.snapshot.models.prod.tagging, [parent]: tagging(parent, "platform"), [member.id]: tagging(member.id, "orders") } } },
+    source: { ...response.snapshot.source, editability: { ...response.snapshot.source.editability, [member.id]: { ...response.snapshot.source.editability[member.id], tags: { kind: "literal", text: '{ Team: "orders" }' } } } },
+  } };
+  try {
+    await mount(true, member.id);
+    assert.ok(ui.screen.getByText("Overridden"));
+    assert.ok(ui.screen.getByText("platform"));
+    assert.ok(ui.screen.getByRole("button", { name: parent.replace(/^resource:/, "resources.") }));
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Remove tag Team" }));
+    assert.ok(ui.screen.getByText("Inherited", { exact: true }));
+    assert.equal(ui.screen.queryByText("Overridden"), null);
+    assert.equal(ui.screen.queryByRole("textbox", { name: "Tag 1 value" }), null);
+    assert.ok(ui.screen.getByText("Unsaved · Review Changes to save."));
+  } finally { response = original; }
+});
+
+test("existing workload, catalog, network and database inspectors expose direct tag controls immediately below their header", async () => {
+  const model = response.snapshot.models.dev;
+  for (const selected of ["lambda:graphql-api", "resource:cognito", "resource:cognito.userPool", "island:vpc:application", model.managedDatabase!.resource]) {
+    await mount(true, selected);
+    const section = document.querySelector<HTMLElement>(".inspector-content > .declaration-tags")!;
+    assert.ok(section, selected);
+    assert.equal(section.previousElementSibling?.tagName, "HEADER", `${selected} tags are immediately visible after its header`);
+    const tags = ui.within(section);
+    assert.equal((tags.getByRole("button", { name: "Add tag" }) as HTMLButtonElement).disabled, false, selected);
+    const next = tags.queryAllByRole("textbox").length / 2 + 1;
+    ui.fireEvent.click(tags.getByRole("button", { name: "Add tag" }));
+    ui.fireEvent.change(tags.getByRole("textbox", { name: `Tag ${next} key` }), { target: { value: "StudioTest" } });
+    ui.fireEvent.change(tags.getByRole("textbox", { name: `Tag ${next} value` }), { target: { value: "reviewed" } });
+    assert.ok(tags.getByText("Unsaved · Review Changes to save."));
+    ui.fireEvent.click(tags.getByRole("button", { name: "Remove tag StudioTest" }));
+    assert.equal(tags.queryByText("Unsaved · Review Changes to save."), null);
+    ui.cleanup(); frames.clear();
+  }
+});
+
+test("a snapshot missing tag metadata offers an inline editor refresh", async () => {
+  const original = response;
+  response = { ...response, snapshot: { ...response.snapshot, models: { dev: { ...response.snapshot.models.dev, tagging: undefined }, prod: { ...response.snapshot.models.prod, tagging: undefined } } } };
+  try {
+    await mount(true, "lambda:graphql-api");
+    assert.ok(ui.screen.getByRole("heading", { name: "Tags" }));
+    assert.ok(ui.screen.getByRole("button", { name: "Refresh editor" }));
+  } finally { response = original; }
+});
+
+test("an older source index shows tag inputs and refresh instead of a read-only definition list", async () => {
+  const original = response, target = "lambda:graphql-api";
+  const { tags: _tags, ...fields } = response.snapshot.source.editability[target]!;
+  response = { ...response, snapshot: { ...response.snapshot, source: { ...response.snapshot.source, editability: { ...response.snapshot.source.editability, [target]: fields } } } };
+  try {
+    await mount(true, target);
+    assert.equal((ui.screen.getByRole("textbox", { name: "Tag 1 value" }) as HTMLInputElement).disabled, true);
+    assert.ok(ui.screen.getByRole("button", { name: "Refresh editor" }));
+    assert.equal(document.querySelector(".tag-readonly"), null);
+    assert.ok(ui.screen.getByRole("link", { name: "Open tag declaration in VS Code" }));
+  } finally { response = original; }
+});
+
+test("discarding invalid tag edits restores source rows and clears the local validation message", async () => {
+  await mount(true, "lambda:graphql-api");
+  const section = document.querySelector<HTMLElement>(".declaration-tags")!, tags = ui.within(section);
+  const first = tags.getByRole("textbox", { name: "Tag 1 key" });
+  ui.fireEvent.change(first, { target: { value: "aws:reserved" } });
+  assert.ok(tags.getByText(/reserved for AWS or framework ownership/));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard" }));
+  assert.equal(tags.queryByText(/reserved for AWS or framework ownership/), null);
+  assert.equal((tags.getByRole("textbox", { name: "Tag 1 key" }) as HTMLInputElement).value, "area");
 });

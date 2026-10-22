@@ -342,7 +342,7 @@ export function appEventRegistry(scope: IConstruct): FrameworkTargetRegistry {
 /**
  * The event Lambda `id` names, ready to hand to any AWS construct.
  *
- * This is the whole path from a declaration under `framework-config/events/` to
+ * This is the whole path from a declaration under `framework-config/workloads/events.ts` to
  * a native trigger: the stack creating the trigger asks for the function where
  * it needs it, instead of being handed one through props from the entrypoint.
  *
@@ -366,7 +366,7 @@ export function eventFunction(
       reference.slice("lambda:".length),
     );
     throw new Error(
-      `Event Lambda "${id}" is not built in this app. Declare it under framework-config/events/ and construct EventLambdaFunctionsStack (or call createEventLambda) before the stack that triggers it. Built here: ${
+      `Event Lambda "${id}" is not built in this app. Declare it under framework-config/workloads/events.ts and construct EventLambdaFunctionsStack (or call createEventLambda) before the stack that triggers it. Built here: ${
         built.length > 0 ? built.join(", ") : "nothing yet"
       }.`,
     );

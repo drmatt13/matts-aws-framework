@@ -131,7 +131,7 @@ outside the existing workspace installation.
 
 ### HTTP Lambdas
 
-Declarations live in `framework-config/http/`. Every row runs locally in development
+Declarations live in `framework-config/workloads/http/`. Every row runs locally in development
 and is cloud-enabled for production; development CDK builds none of these functions.
 Browser paths prepend `/api` to the declaration path. Unspecified `deploy` resolves to
 `both`. “Pool” below means `userPool: true`.
@@ -179,7 +179,7 @@ handlers when restoring.
 
 ### WebSocket functions
 
-Source: [websocket/routes.ts](../../framework-config/websocket/routes.ts).
+Source: [websocket/routes.ts](../../framework-config/workloads/websocket.ts).
 All five functions use ZIP/Node 24/ARM64/128 MB/30-day logs, outside the VPC. No route
 declares database access, invocation bindings or `manageConnections`.
 
@@ -206,8 +206,8 @@ that flag to `false`; private input-file overrides were not inspected.
 
 ### Event Lambdas
 
-Declarations: [events/cognito.ts](../../framework-config/events/cognito.ts) and
-[events/invocation-tests.ts](../../framework-config/events/invocation-tests.ts).
+Declarations: [events/cognito.ts](../../framework-config/workloads/events.ts) and
+[events/invocation-tests.ts](../../framework-config/workloads/events.ts).
 Directories are inferred as `cdk-app/lambda_functions/event_functions/<id>/`.
 All four are built in both AWS graphs and have no per-event `deploy` toggle.
 
@@ -235,7 +235,7 @@ the example state machine runs locally in development.
 
 ### AgentCore Lambda tools
 
-Source: [tools/example.ts](../../framework-config/tools/example.ts).
+Source: [tools/example.ts](../../framework-config/workloads/tools.ts).
 Directories: `cdk-app/lambda_functions/tool_functions/<id>/`, with `index.ts`,
 `contract.ts`, `package.json` and `tsconfig.json` in each.
 
@@ -253,7 +253,7 @@ deployment lanes. There is no independently authored tool `deploy` setting.
 
 ### Long-running ECS service
 
-Source: [services/example.ts](../../framework-config/services/example.ts).
+Source: [services/example.ts](../../framework-config/workloads/services.ts).
 
 | Property | Baseline |
 | --- | --- |
@@ -308,7 +308,7 @@ migration task is an environment-specific action, not part of restoring these fi
 
 ### Example workflow and invocation connections
 
-Source: [workflows/invocation-tests.ts](../../framework-config/workflows/invocation-tests.ts).
+Source: [workflows/invocation-tests.ts](../../framework-config/workloads/workflows.ts).
 Target `workflow:invocation-test-workflow`, construct ID `InvocationTestWorkflow`,
 `deploy: "both"`, total timeout **900 seconds**. A workflow has no implementation directory.
 
@@ -340,8 +340,8 @@ integration, callback binding or development bridge is declared in this applicat
 
 ### Example agent and shared model access
 
-Source: [agents/example.ts](../../framework-config/agents/example.ts),
-[models.ts](../../framework-config/models.ts), [agent implementation](../../agents/example-agent/).
+Source: [agents/example.ts](../../framework-config/workloads/agents.ts),
+[models.ts](../../framework-config/shared/models.ts), [agent implementation](../../agents/example-agent/).
 
 | Property | Baseline |
 | --- | --- |

@@ -64,7 +64,7 @@ instead send its callback directly to the local runner.
 Source: [replay stack](../cdk-app/lib/framework/dev-lambda-replay-stack.ts),
 [capture wrapper](../packages/framework/src/runtime/event-replay.ts),
 [callback runtime](../packages/framework/src/runtime/callbacks.ts), and
-[Cognito event declarations](../framework-config/events/cognito.ts).
+[Cognito event declarations](../framework-config/workloads/events.ts).
 
 ## Managed AWS dependencies selected by features
 
@@ -86,7 +86,7 @@ the application workflow instead of creating separate development bridges.
 Source: [local workflow execution](FRAMEWORK.md#local-execution-of-a-workflow),
 [bridge stack](../cdk-app/lib/framework/workflow-bridges-stack.ts),
 [local environment resolution](../packages/framework/src/local/environment.ts),
-[example agent declaration](../framework-config/agents/example.ts), and
+[example agent declaration](../framework-config/workloads/agents.ts), and
 [Cognito stack](../cdk-app/lib/app/cognito-stack.ts).
 
 ## Example resources and the deployed baseline
@@ -126,4 +126,4 @@ verification action.
 Source: [deployment mode table](FRAMEWORK.md),
 [composition factories](../cdk-app/lib/framework/framework-composition.ts),
 [Compose](../docker-compose.yml), and
-[sample agent declaration](../framework-config/agents/example.ts).
+[sample agent declaration](../framework-config/workloads/agents.ts).

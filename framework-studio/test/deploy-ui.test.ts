@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { after, afterEach, before, test } from "node:test";
-import { createElement as h } from "react";
+import { createElement as h, type ReactNode } from "react";
 import type { DeployOverview, DiscoveryView, DiscoveredDeploymentView, PlanSummaryView, PlanView, TeardownPlanView } from "../shared/deploy";
 import { STUDIO_PROTOCOL_VERSION } from "../shared/protocol";
 
@@ -14,6 +14,7 @@ let dom: { window: Window & typeof globalThis };
 let ui: typeof import("@testing-library/react");
 let query: typeof import("@tanstack/react-query");
 let page: typeof import("../src/views/Deploy");
+let dialogs: typeof import("../src/views/deploy/Teardown");
 const clients: import("@tanstack/react-query").QueryClient[] = [];
 let answers: Record<string, unknown>;
 let posted: { path: string; body: any }[];
@@ -86,16 +87,17 @@ before(async () => {
   ui = require("@testing-library/react");
   query = require("@tanstack/react-query");
   page = await import("../src/views/Deploy");
+  dialogs = await import("../src/views/deploy/Teardown");
 });
 after(() => dom.window.close());
 afterEach(() => { ui.cleanup(); clients.splice(0).forEach((client) => client.clear()); });
 
-function render(scripted: Record<string, unknown>) {
+function render(scripted: Record<string, unknown>, content?: ReactNode) {
   posted = [];
   answers = { "/deploy/plans": [], "/deploy/drift": null, ...scripted };
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   clients.push(client);
-  return ui.render(h(query.QueryClientProvider, { client }, h(page.Deploy)));
+  return ui.render(h(query.QueryClientProvider, { client }, content ?? h(page.Deploy)));
 }
 
 const operations = () => posted.filter((entry) => entry.path === "/deploy/operations").map((entry) => entry.body);
@@ -135,6 +137,12 @@ test("a production plan is applied only with its name typed", async () => {
   const apply = await ui.screen.findByRole("button", { name: `Apply to ${context.account}` });
   assert.equal((apply as HTMLButtonElement).disabled, true, "no name, no apply");
   assert.ok(ui.screen.getByText(/OPENAI_API_KEY/), "secrets are listed by name");
+  const disclosure = ui.screen.getByRole("button", { name: /CognitoStack/ });
+  assert.equal(disclosure.getAttribute("aria-expanded"), "false");
+  ui.fireEvent.click(disclosure);
+  assert.equal(disclosure.getAttribute("aria-expanded"), "true");
+  const changes = ui.screen.getByRole("table", { name: "Resource changes in CognitoStack" });
+  assert.deepEqual(ui.within(changes).getAllByRole("columnheader").map((cell) => cell.textContent), ["Action", "Resource", "Type", "Impact"]);
   ui.fireEvent.change(ui.screen.getByLabelText("Type my-aws-app-prod to apply"), { target: { value: "my-aws-app" } });
   assert.equal((apply as HTMLButtonElement).disabled, true, "a different name does not count");
   ui.fireEvent.change(ui.screen.getByLabelText("Type my-aws-app-prod to apply"), { target: { value: "my-aws-app-prod" } });
@@ -208,4 +216,58 @@ test("a target pinned to another region is read, and shown, from that region", a
   assert.ok(await ui.screen.findByText("Deployed · 1 stack", {}, { timeout: 3000 }));
   assert.equal(ui.screen.queryByText("Not deployed here"), null);
   assert.ok(requested.some((url) => url.startsWith("/deploy/status") && url.includes("region=us-west-2")), requested.join(" "));
+});
+
+test("the deployment actions menu supports arrow navigation, Escape and outside dismissal", async () => {
+  const value = { ...discovery([deployed("my-aws-app", "dev")]), deployment: "my-aws-app", detail: { ...deployed("my-aws-app", "dev"), events: [], changeSets: [], local: { compatible: true, exported: { client: false, fresh: false } } } };
+  render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: value }, "/deploy/status": { ok: true, value } });
+  const first = await ui.screen.findByRole("menuitem", { name: "Plan changes for review…" });
+  await ui.waitFor(() => assert.equal((first as HTMLButtonElement).disabled, false));
+  const trigger = ui.screen.getByLabelText("More actions");
+  trigger.focus();
+  ui.fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  await ui.waitFor(() => assert.equal(trigger.getAttribute("aria-expanded"), "true"));
+  assert.equal(document.activeElement, first);
+  ui.fireEvent.keyDown(first, { key: "End" });
+  assert.equal(document.activeElement, ui.screen.getByRole("menuitem", { name: "Delete deployment…" }));
+  ui.fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  await ui.waitFor(() => assert.equal(trigger.getAttribute("aria-expanded"), "false"));
+  assert.equal(document.activeElement, trigger);
+  ui.fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  await ui.waitFor(() => assert.equal(trigger.getAttribute("aria-expanded"), "true"));
+  ui.fireEvent.pointerDown(document.body);
+  await ui.waitFor(() => assert.equal(trigger.getAttribute("aria-expanded"), "false"));
+  assert.equal(operations().length, 0, "menu navigation never starts an operation");
+});
+
+test("a failed plan read offers retry without keeping its loading message", async () => {
+  const waiting: PlanSummaryView = { key: "my-aws-app-prod-abc123", deployment: "my-aws-app-prod", mode: "prod", status: "ready", createdAt: "2026-10-17T12:00:00Z", expired: false };
+  render({
+    "/deploy/overview": overview({ preferences: { profiles: {}, profile: "dev", deployment: "my-aws-app-prod" } }),
+    "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app-prod" } },
+    "/deploy/plans": [waiting],
+  });
+  ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }));
+  assert.ok(await ui.screen.findByRole("alert"));
+  assert.equal(ui.screen.queryByText("Reading the plan…"), null);
+  assert.ok(ui.screen.getByRole("button", { name: "Try again" }));
+  assert.equal(ui.screen.queryByRole("button", { name: /Apply to/ }), null);
+});
+
+test("refreshing container logs preserves a reader's position until they return to the bottom", async () => {
+  render({ "/deploy/local/logs": { text: "first log" } }, h(dialogs.ServiceLogs, { service: "example", onClose: () => {} }));
+  await ui.screen.findByText("first log");
+  const log = ui.screen.getByLabelText("Logs for example");
+  Object.defineProperties(log, { scrollHeight: { configurable: true, value: 1000 }, clientHeight: { configurable: true, value: 100 } });
+  log.scrollTop = 100;
+  ui.fireEvent.scroll(log);
+  ui.act(() => clients.at(-1)!.setQueryData(["deploy", "service-logs", "example"], { text: "second log" }));
+  await ui.waitFor(() => assert.equal(log.textContent, "second log"));
+  assert.equal(log.scrollTop, 100, "refresh does not jump away from earlier lines");
+  log.scrollTop = 900;
+  ui.fireEvent.scroll(log);
+  ui.act(() => clients.at(-1)!.setQueryData(["deploy", "service-logs", "example"], { text: "third log" }));
+  await ui.waitFor(() => assert.equal(log.textContent, "third log"));
+  assert.equal(log.scrollTop, 1000, "following resumes at the bottom");
+  assert.equal(log.getAttribute("tabindex"), "0", "keyboard users can scroll the log");
 });

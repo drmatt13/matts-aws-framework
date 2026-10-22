@@ -1,3 +1,4 @@
+import { validateTags } from "./tags";
 /**
  * The workflow language.
  *
@@ -1659,6 +1660,7 @@ export function workflow<In = unknown, Out = unknown>(
 
   return {
     root,
+    ...(options.tags === undefined ? {} : { tags: validateTags(options.tags, "workflow()") }),
     timeoutSeconds: options.timeoutSeconds,
     ...(options.deploy === undefined ? {} : { deploy: options.deploy }),
     ...(options.type === undefined ? {} : { type: options.type }),

@@ -15,6 +15,12 @@ related:
 ---
 # Graph entities and edge semantics
 
+`ModeModel.tagging` maps canonical entity IDs to authored/effective tags, per-key provenance
+and explicit AWS ownership/capability explanations. Targets, routes, networks, database,
+catalog entries and source-discovered public members share this metadata. It never contains
+secret values. Board and Isometric retain the same canonical selection and source identities;
+tag filtering is a rendering projection rather than a new infrastructure resource.
+
 [shared/model.ts](../../../framework-studio/shared/model.ts) is the serialized server/browser contract; avoid creating parallel graph types in a view. `projectModel`, `targetLanes` and `targetPlacement` in [model/project.ts](../../../framework-studio/server/model/project.ts) derive the graph from normalized declarations and mode predicates.
 
 | Model | Carries |

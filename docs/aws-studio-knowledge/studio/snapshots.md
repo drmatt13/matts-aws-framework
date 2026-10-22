@@ -40,6 +40,12 @@ framework support, not live regional availability.
 
 [main.tsx](../../../framework-studio/src/main.tsx) defines Board, Isometric, Database and Deploy routes. [StudioProvider](../../../framework-studio/src/studio.tsx) owns shared selection/mode/draft context; [api.ts](../../../framework-studio/src/api.ts) fetches snapshots and subscribes to server events. Dirty drafts keep their baseline visible and record a newer snapshot as a conflict rather than silently rebasing; see [editing](editing.md).
 
+An initial snapshot failure offers a connection retry. A failed background fetch with a
+cached snapshot keeps `StudioProvider` mounted, preserving selection and unsaved drafts;
+a persistent Shell notice offers retry. Successful retry removes the notice without
+recreating the editor. This is separate from server-side stale-model diagnostics, which
+continue to govern source editability.
+
 Disposable source previews travel through evaluator IPC. [evaluate.ts](../../../framework-studio/server/evaluator/evaluate.ts) resolves proposed new TypeScript modules and replaces compilation from an override map without writing preview files. Evaluation still runs authored config; it does not synthesize CDK or run handlers.
 
-Validate with [model](../../../framework-studio/test/model.test.ts), [guards](../../../framework-studio/test/guards.test.ts), [draft](../../../framework-studio/test/draft.test.ts) and [creation](../../../framework-studio/test/creation.test.ts) tests. Browser reconnect/render behavior needs browser verification beyond snapshot tests.
+Validate with [model](../../../framework-studio/test/model.test.ts), [guards](../../../framework-studio/test/guards.test.ts), [draft](../../../framework-studio/test/draft.test.ts), [startup/recovery UI](../../../framework-studio/test/startup-ui.test.ts) and [creation](../../../framework-studio/test/creation.test.ts) tests. Browser reconnect/render behavior needs browser verification beyond snapshot tests.

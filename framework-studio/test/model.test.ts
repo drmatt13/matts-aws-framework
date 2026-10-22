@@ -325,7 +325,7 @@ test("Cognito event Lambda build settings are editable and an outdated registry 
   for (const field of ["lambda.architecture", "lambda.packaging", "lambda.runtime", "lambda.bundling.minify", "lambda.bundling.sourceMap", "lambda.logRetentionDays"]) {
     assert.deepEqual(snapshot.source.editability[ref]?.[field], { kind: "absent" }, field);
   }
-  assert.equal(snapshot.source.entities[ref]?.key.file, "framework-config/events/cognito.ts");
+  assert.equal(snapshot.source.entities[ref]?.key.file, "framework-config/workloads/events.ts");
   assert.ok(state.built.located);
   const fact = snapshot.models.dev.fields[ref]![0]!;
   const result = fieldEditability(new SourceFiles(), state.built.located, 'events["cognito-pre-signup-trigger"]', { ...fact, field: "lambda.unloadedSetting" });

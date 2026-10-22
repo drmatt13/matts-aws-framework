@@ -8,11 +8,14 @@ import { searchOpacity, type LandscapeFocus } from "./focus";
 import { bandTrim, DECK, GRAPHITE, hexRgb, ICON_TINT, ROLE_BADGE, ROLE_BADGE_PLATE, trimColor } from "./look";
 import { connectionHoverEase, EDGE_HOVER_DURATION, offLens, restingAlpha } from "./connections";
 import { placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
-import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, nodeCaptionPresentation, rectanglesOverlap, visibleNodeCaptions, type LabelRect } from "./labels";
+import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, SUBNET_LABEL, nodeCaptionPresentation, subnetLabelPresentation, rectanglesOverlap, visibleNodeCaptions, type LabelRect } from "./labels";
 import { ICON_BADGE, type Face } from "./shapes";
 import { connectionMidpoint } from "./routing";
 import { missingConnectionInput } from "../connections";
 import { islandDrawOrder, islandSlabs, type BandSlab, type IslandSlab, type WallRun } from "./slabs";
+
+/** Production displays the declared network design, including unused gateways/endpoints. */
+const propIsGhost = (prop: Prop, mode: Scene["mode"]): boolean => !!prop.tagFiltered || (mode === "dev" && prop.presence === "other");
 
 /**
  * Draws a {@link Scene} onto a 2D canvas.
@@ -141,8 +144,6 @@ interface GraphiteBand {
   readonly deckEdges: Path2D;
   readonly front?: Path2D;
   readonly shade?: { readonly path: Path2D; readonly fill: CanvasGradient };
-  /** The wall a name can be written on: the left rim run's top-left corner, its length and its depth. */
-  readonly face?: { readonly x: number; readonly y: number; readonly length: number; readonly depth: number };
   /** Buildings and fixtures standing on this terrace, in painter's order. */
   readonly items: readonly Standing[];
 }
@@ -178,7 +179,7 @@ interface PlacedTag extends CardHit {
   readonly priority: number;
 }
 
-/** Time and motion do not affect screen geometry. Store scalar copies: callers may mutate cameras. */
+/** Compare the camera projection separately from animation state. Store scalar copies: callers may mutate cameras. */
 function sameView(a: RenderState, b: RenderState): boolean {
   return a.camera.x === b.camera.x && a.camera.y === b.camera.y && a.camera.zoom === b.camera.zoom &&
     a.viewport.width === b.viewport.width && a.viewport.height === b.viewport.height && a.dpr === b.dpr;
@@ -193,16 +194,18 @@ interface TitleLabel {
   readonly align: CanvasTextAlign;
   readonly x: number;
   readonly y: number;
+  readonly plate?: LabelRect & { readonly accent: string; readonly anchor: Point };
 }
 
 export class SceneRenderer {
   private readonly context: CanvasRenderingContext2D;
   private prepared: Prepared | undefined;
   private readonly widths = new Map<string, number>();
-  private cardLayout: { state: RenderState; placed: readonly PlacedCard[]; hits: readonly CardHit[]; tags: readonly PlacedTag[] } | undefined;
+  private cardLayout: { state: RenderState; placed: readonly PlacedCard[]; hits: readonly CardHit[]; tags: readonly PlacedTag[]; sections: readonly TitleLabel[] } | undefined;
   private titleLayout: { state: RenderState; cards: readonly CardHit[]; labels: readonly TitleLabel[] } | undefined;
+  private subnetLayout: { state: RenderState; labels: readonly TitleLabel[] } | undefined;
   private groundGrid: { state: RenderState; paths: readonly Path2D[] } | undefined;
-  private readonly icons = new Map<IconKey, HTMLImageElement>();
+  private readonly icons = new Map<string, HTMLImageElement>();
   private readonly badgePaths = new Map<DeploymentBadgeKind, readonly Path2D[]>();
   private readonly standPaths = new WeakMap<readonly Face[], { faces: readonly Path2D[]; lip?: Path2D }>();
   private readonly circle = new Path2D();
@@ -215,7 +218,6 @@ export class SceneRenderer {
   private snapEdgeHover = true;
   /** One screen pixel, in world units, for this frame. */
   private pixel = 1;
-  private zoom = 1;
   private dpr = 1;
   /** Search fades every paint layer, including plinths, shadows and badges. */
   private opacity = 1;
@@ -224,13 +226,10 @@ export class SceneRenderer {
   private contact: CanvasGradient | undefined;
   private plaque: { readonly face: CanvasGradient; readonly glass: CanvasGradient } | undefined;
   private atmosphere: { readonly width: number; readonly height: number; readonly base: CanvasGradient; readonly vignette: CanvasGradient; readonly blooms: readonly CanvasGradient[] } | undefined;
-  /** Islands and terraces whose names this frame wrote on a wall, so no flat title repeats them. */
-  private readonly walled = new Set<string>();
-  private readonly wallLabels: LabelRect[] = [];
   /** How many slabs and standing items the last frame drew, after culling. */
   drawnItems = 0;
 
-  constructor(private readonly canvas: HTMLCanvasElement, invalidate: () => void = () => {}) {
+  constructor(private readonly canvas: HTMLCanvasElement, private readonly invalidate: () => void = () => {}) {
     const context = canvas.getContext("2d", { alpha: false });
     if (!context) throw new Error("This browser offers no 2D canvas.");
     this.context = context;
@@ -241,11 +240,16 @@ export class SceneRenderer {
       this.badgePaths.set(kind, DEPLOYMENT_BADGES[kind].paths.map((d) => new Path2D(d)));
     }
     for (const key of Object.keys(ICONS) as IconKey[]) {
-      const icon = new Image();
-      icon.onload = () => { if (!this.disposed) invalidate(); };
-      icon.src = iconUrl(key);
-      this.icons.set(key, icon);
+      this.loadIcon(key, iconUrl(key));
     }
+  }
+
+  private loadIcon(key: string, url: string): void {
+    if (this.icons.has(key)) return;
+    const icon = new Image();
+    icon.onload = () => { if (!this.disposed) this.invalidate(); };
+    icon.src = url;
+    this.icons.set(key, icon);
   }
 
   dispose(): void {
@@ -260,15 +264,18 @@ export class SceneRenderer {
     this.widths.clear();
     this.cardLayout = undefined;
     this.titleLayout = undefined;
+    this.subnetLayout = undefined;
   }
 
   setScene(scene: Scene): void {
     if (this.prepared?.scene === scene) return;
+    for (const prop of scene.props) if (prop.serviceIcon) this.loadIcon(prop.serviceIcon, prop.serviceIcon);
     this.captionHovers.clear();
     this.edgeHovers.clear();
     this.snapEdgeHover = true;
     this.cardLayout = undefined;
     this.titleLayout = undefined;
+    this.subnetLayout = undefined;
     const items: Standing[] = [
       ...scene.nodes.map((node): Standing => ({ kind: "node", node })),
       ...scene.props.map((prop): Standing => ({ kind: "prop", prop })),
@@ -325,8 +332,8 @@ export class SceneRenderer {
   private prepareGraphite(scene: Scene, items: readonly Standing[]): GraphiteIsland[] {
     const context = this.context;
     const ghosts = new Set([
-      ...scene.nodes.filter((node) => node.roleIcon === "unattached" || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent").map((node) => node.id),
-      ...scene.props.filter((prop) => prop.presence === "other").map((prop) => prop.id),
+      ...scene.nodes.filter((node) => node.tagFiltered || node.roleIcon === "unattached" || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent").map((node) => node.id),
+      ...scene.props.filter((prop) => propIsGhost(prop, scene.mode)).map((prop) => prop.id),
     ]);
     return islandDrawOrder(islandSlabs(scene)).map((slab) => {
       const { island } = slab;
@@ -373,7 +380,6 @@ export class SceneRenderer {
           fill.addColorStop(1, "rgba(0, 0, 0, 0)");
           shade = { path: toPath(band.stepShade.polygon), fill };
         }
-        const face = band.walls.find((run) => run.side === "left" && run.rim);
         return {
           slab: band,
           trim,
@@ -387,7 +393,6 @@ export class SceneRenderer {
           deckEdges,
           ...(band.front.length >= 4 ? { front: toPath(band.front, false) } : {}),
           ...(shade ? { shade } : {}),
-          ...(face ? { face: { x: face.lip[0], y: face.lip[1], length: face.lip[2] - face.lip[0], depth: face.depth } } : {}),
           items: items
             .filter((item) => {
               const at = item.kind === "node" ? item.node : item.prop;
@@ -419,14 +424,11 @@ export class SceneRenderer {
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.fillStyle = this.atmosphereFor(viewport).base;
     context.fillRect(0, 0, viewport.width, viewport.height);
-    this.walled.clear();
-    this.wallLabels.length = 0;
     this.animating = false;
     if (!prepared) return { cards: [], badges: [], animating: false, ms: performance.now() - started };
 
     const zoom = camera.zoom;
     this.pixel = 1 / zoom;
-    this.zoom = zoom;
     this.dpr = dpr;
     const world = () =>
       context.setTransform(
@@ -559,12 +561,12 @@ export class SceneRenderer {
           } else {
             this.opacity = searchOpacity(state.focus, "props", item.prop.id);
             const factor = state.focus.kind === "selection" && !state.focus.props.has(item.prop.id) ? 0.32 : 1;
-            const ghost = item.prop.presence === "other";
+            const ghost = propIsGhost(item.prop, prepared.scene.mode);
             const matched = state.focus.kind === "search" && state.focus.props.has(item.prop.id);
             const tile = project({ x: item.prop.gx, y: item.prop.gy, h: item.prop.h });
             if (!ghost) this.drawStand(tile, item.prop.geometry.faces, item.prop.icon, factor);
             this.drawPlaqueGraphite(tile, item.prop.icon, (ghost ? 0.32 : 0.9) * factor, matched, ghost, false);
-            if (item.prop.roleIcon) this.drawRoleIconGraphite(tile, item.prop.roleIcon, (ghost ? 0.32 : 0.9) * factor, ghost);
+            if (item.prop.roleIcon) this.drawRoleIconGraphite(tile, item.prop.roleIcon, (ghost ? 0.32 : 0.9) * factor, ghost, item.prop.serviceIcon);
           }
         }
       }
@@ -574,7 +576,7 @@ export class SceneRenderer {
     return drawn;
   }
 
-  /** One terrace: its lit top, etched grid, pads and step shade, its walls and lips, its name, then the glowing trim. */
+  /** One terrace: its lit top, etched grid, pads and step shade, its walls and lips, then the glowing trim. */
   private drawBand(island: GraphiteIsland, band: GraphiteBand, focus: number): void {
     const context = this.context;
     context.globalAlpha = this.opacity;
@@ -612,7 +614,6 @@ export class SceneRenderer {
     }
     context.strokeStyle = `rgba(255, 255, 255, ${GRAPHITE.lip})`;
     context.stroke(band.lips);
-    this.drawWallName(island, band, rgba(mixRgb(trim, WHITE, 0.35), 0.92 * focus), rgba(trim, 0.7 * focus));
     // Static light along the front edges and a faint line at the wall's foot.
     context.globalCompositeOperation = "lighter";
     context.strokeStyle = rgba(trim, 0.22 * focus);
@@ -637,9 +638,9 @@ export class SceneRenderer {
   }
 
   /**
-   * One subnet of an unbuilt network, as a quiet zone on the single raised deck: the deck's dark glass
+   * One subnet of a development network, as a quiet zone on the single raised deck: the deck's dark glass
    * with a whisper of the subnet's colour and nothing drawn between subnets, one dashed rim around the whole
-   * deck (drawn with the last subnet), pads under the solid buildings, and the subnet's name on the wall.
+   * deck (drawn with the last subnet), and pads under the solid buildings.
    */
   private drawDeckBand(island: GraphiteIsland, band: GraphiteBand): void {
     const context = this.context;
@@ -676,64 +677,6 @@ export class SceneRenderer {
       context.lineWidth = pixel;
     }
     context.setLineDash([]);
-    this.drawWallName(island, band, rgba(mixRgb(band.trim, WHITE, 0.4), DECK.label));
-  }
-
-  /**
-   * The island's name on its front-left wall, in the wall's own perspective,
-   * or a terrace's name on its stretch of a terraced island's wall. Only when
-   * it would be legible and fits; otherwise the flat title stands in for it.
-   */
-  private drawWallName(island: GraphiteIsland, band: GraphiteBand, color: string, glow?: string): void {
-    const face = band.face;
-    const terraced = island.slab.island.bands.length > 1;
-    const meta = island.slab.island.bands[band.slab.index]!;
-    if (!face) return;
-    const text = (terraced ? meta.title : island.slab.island.title).toUpperCase();
-    const size = Math.min(face.depth * (terraced ? 0.3 : 0.42), terraced ? 13 : 20);
-    if (size * this.zoom < 9) return;
-    const font = `600 ${size}px "Barlow Semi Condensed", Barlow, system-ui, sans-serif`;
-    const spacing = size * 0.14;
-    const width = this.measureSpaced(text, font, spacing);
-    const inset = size * 0.9;
-    if (width + inset * 2 > face.length) return;
-    const context = this.context;
-    context.save();
-    // Wall space: x runs along the wall's top edge, y straight down its face.
-    context.transform(1, 0.5, 0, 1, face.x, face.y);
-    context.font = font;
-    this.setSpacing(spacing);
-    context.textBaseline = "middle";
-    context.fillStyle = color;
-    if (glow) {
-      context.shadowColor = glow;
-      context.shadowBlur = 8 * this.dpr;
-    }
-    context.fillText(text, inset, Math.min(face.depth * 0.45, size * 1.1));
-    context.restore();
-    this.setSpacing(0);
-    this.walled.add(terraced ? meta.id : island.slab.island.id);
-    // Reserve the projected ink envelope before placing floating node labels.
-    this.wallLabels.push({ x: face.x + inset,
-      y: face.y + inset * 0.5 + Math.min(face.depth * 0.45, size * 1.1) - size / 2,
-      width, height: width * 0.5 + size });
-  }
-
-  private setSpacing(spacing: number): void {
-    if ("letterSpacing" in this.context) this.context.letterSpacing = `${spacing}px`;
-  }
-
-  private measureSpaced(text: string, font: string, spacing: number): number {
-    const key = `${font}\u0000${spacing}\u0000${text}`;
-    let width = this.widths.get(key);
-    if (width === undefined) {
-      this.context.font = font;
-      this.setSpacing(spacing);
-      width = this.context.measureText(text).width;
-      this.setSpacing(0);
-      this.widths.set(key, width);
-    }
-    return width;
   }
 
   /** The VPC foundation, dark glass edged in its island's trim. */
@@ -900,7 +843,7 @@ export class SceneRenderer {
     context.restore();
   }
 
-  private drawRoleIconGraphite(tile: Point, key: IconKey, alpha: number, ghost: boolean): void {
+  private drawRoleIconGraphite(tile: Point, key: IconKey, alpha: number, ghost: boolean, artworkUrl?: string): void {
     const context = this.context;
     const { x, y, size, padding } = ICON_BADGE;
     const badge = ROLE_BADGE[key];
@@ -916,11 +859,12 @@ export class SceneRenderer {
     context.roundRect(x, y, size, size, 4);
     context.fillStyle = badge?.fill ?? ROLE_BADGE_PLATE;
     context.fill();
-    const icon = this.icons.get(artwork);
+    const serviceIcon = artworkUrl ? this.icons.get(artworkUrl) : undefined;
+    const icon = serviceIcon?.complete && serviceIcon.naturalWidth > 0 ? serviceIcon : this.icons.get(artwork);
     if (icon?.complete && icon.naturalWidth > 0) {
       context.imageSmoothingEnabled = true;
       context.imageSmoothingQuality = "high";
-      if (carriesOwnTile(artwork)) {
+      if (icon === serviceIcon || carriesOwnTile(artwork)) {
         // The service's own tile fills the badge, clipped to its corners, so no plate shows around it as a border.
         context.save();
         context.clip();
@@ -947,7 +891,7 @@ export class SceneRenderer {
     const selected = state.selected === node.id || (state.focus.kind === "search" && state.focus.nodes.has(node.id));
     const hovered = state.hovered === node.id;
     const unattached = node.roleIcon === "unattached";
-    const ghost = unattached || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
+    const ghost = !!node.tagFiltered || unattached || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
     const factor = dimmed ? 0.32 : 1;
     if (!ghost) this.drawStand(tile, node.geometry.faces, node.icon, factor);
     this.drawPlaqueGraphite(tile, node.icon, factor * (ghost ? 0.32 : 1), selected, ghost, hovered);
@@ -1089,8 +1033,9 @@ export class SceneRenderer {
   }
 
   private placeCards(prepared: Prepared, state: RenderState): NonNullable<SceneRenderer["cardLayout"]> {
+    const sections = this.placeSubnetTitles(prepared, state);
     const cached = this.cardLayout;
-    if (cached && sameView(cached.state, state) && cached.state.selected === state.selected &&
+    if (cached && cached.sections === sections && sameView(cached.state, state) && cached.state.selected === state.selected &&
       cached.state.hovered === state.hovered && cached.state.focus === state.focus) return cached;
     const { camera, viewport } = state;
     const { scale, gap } = nodeCaptionPresentation(camera.zoom);
@@ -1130,9 +1075,9 @@ export class SceneRenderer {
       { x: viewport.width - 184, y: 8, width: 176, height: 42 },
       { x: viewport.width - 64, y: viewport.height - 64, width: 64, height: 64 },
     ];
+    const sectionLabels = sections.flatMap(label => label.plate ? [label.plate] : []);
     const reserved = [
-      ...controls,
-      ...this.wallLabels.map((rect) => ({ ...worldToScreen(camera, viewport, rect), width: rect.width * camera.zoom, height: rect.height * camera.zoom })),
+      ...controls, ...sectionLabels,
       ...[...prepared.arcs.values()].filter((arc) => arc.missing).map((arc) => {
         const at = worldToScreen(camera, viewport, arc.midpoint);
         return { x: at.x - 10, y: at.y - 10, width: 20, height: 20 };
@@ -1141,8 +1086,8 @@ export class SceneRenderer {
     const placed = visibleNodeCaptions(candidates, [...buildings.values(), ...reserved], viewport, gap);
     // Tags intentionally sit on their own plinth; every other node and caption
     // remains an obstacle. This fixed slot never borrows width from the name.
-    const tags = visibleNodeCaptions(tagCandidates.filter((tag) => [...buildings].every(([id, rect]) => id === tag.id || !rectanglesOverlap(tag, rect))), [...controls, ...placed], viewport);
-    this.cardLayout = { state: copyView(state), placed, tags, hits: placed.map(({ id, x, y, width, height }) => ({ id, x, y, width, height })) };
+    const tags = visibleNodeCaptions(tagCandidates.filter((tag) => [...buildings].every(([id, rect]) => id === tag.id || !rectanglesOverlap(tag, rect))), [...controls, ...sectionLabels, ...placed], viewport);
+    this.cardLayout = { state: copyView(state), sections, placed, tags, hits: placed.map(({ id, x, y, width, height }) => ({ id, x, y, width, height })) };
     return this.cardLayout;
   }
 
@@ -1176,7 +1121,7 @@ export class SceneRenderer {
   private captionAlpha(node: SceneNode, state: RenderState, detail: number, hover: number): number {
     if (node.id === state.selected || (state.focus.kind === "search" && state.focus.nodes.has(node.id))) return 1;
     const quiet = state.focus.kind === "selection" && !state.focus.nodes.has(node.id);
-    const ghost = node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
+    const ghost = !!node.tagFiltered || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
     const prominence = node.roleIcon === "unattached" ? 1 : quiet ? 0.35 : ghost ? 0.7 : 1;
     const resting = NODE_CAPTION.minOpacity + (prominence - NODE_CAPTION.minOpacity) * detail;
     return resting + (1 - resting) * hover;
@@ -1204,7 +1149,7 @@ export class SceneRenderer {
       const padding = 7 * scale;
       const selected = node.id === state.selected || (state.focus.kind === "search" && state.focus.nodes.has(node.id));
       const unattached = node.roleIcon === "unattached";
-      const ghost = !unattached && (node.presence === "other" || node.presence === "nowhere" || node.presence === "absent");
+      const ghost = !unattached && (node.tagFiltered || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent");
       const hover = hovers.get(node.id)!;
       const alpha = this.captionAlpha(node, state, detail, hover);
       // Let the plate dissolve faster than its name so distant islands keep a quiet texture.
@@ -1269,6 +1214,36 @@ export class SceneRenderer {
     context.restore();
   }
 
+  /** A stable, horizontal heading rail stays visibly connected to each VPC terrace top. */
+  private placeSubnetTitles(prepared: Prepared, state: RenderState): readonly TitleLabel[] {
+    const cached = this.subnetLayout;
+    if (cached && sameView(cached.state, state)) return cached.labels;
+    const labels: TitleLabel[] = [];
+    const { scene } = prepared;
+    const { camera, viewport } = state;
+    if (scene.mode === "prod") {
+      const { scale } = subnetLabelPresentation(camera.zoom);
+      const baseFont = `600 ${SUBNET_LABEL.fontSize}px Barlow, system-ui, sans-serif`;
+      const font = `600 ${SUBNET_LABEL.fontSize * scale}px Barlow, system-ui, sans-serif`;
+      for (const island of scene.islands) {
+        if (island.region !== "network") continue;
+        for (const [index, band] of island.bands.entries()) {
+          // One consistent rail across the VPC. Each connector lands on its terrace top;
+          // resource collisions and viewport boundaries never displace an individual name.
+          const anchor = worldToScreen(camera, viewport, project({ x: (band.gx0 + band.gx1) / 2, y: island.gy1 - SUBNET_LABEL.anchorInset, h: band.h }));
+          const width = (this.measure(band.title, baseFont) + SUBNET_LABEL.padding * 2 + SUBNET_LABEL.cue) * scale;
+          const height = SUBNET_LABEL.height * scale;
+          const rect = { x: anchor.x - width / 2, y: anchor.y - height / 2, width, height };
+          labels.push({ island: island.id, text: band.title, font, color: "#f1f5f9", align: "left",
+            x: rect.x + (SUBNET_LABEL.padding + SUBNET_LABEL.cue) * scale, y: rect.y + rect.height / 2,
+            plate: { ...rect, anchor, accent: rgba(bandTrim(island, index)) } });
+        }
+      }
+    }
+    this.subnetLayout = { state: copyView(state), labels };
+    return labels;
+  }
+
   private placeTitles(prepared: Prepared, state: RenderState, cards: readonly CardHit[]): readonly TitleLabel[] {
     const cached = this.titleLayout;
     if (cached && sameView(cached.state, state) && cached.cards === cards) return cached.labels;
@@ -1290,6 +1265,7 @@ export class SceneRenderer {
       ...[...surfaces.values()].flat(),
       ...[...scene.nodes, ...scene.props].map((item) => screenPolygon(item.geometry.hull)),
       ...cards.map(rectangle),
+      ...this.placeSubnetTitles(prepared, state).flatMap(label => label.plate ? [rectangle(label.plate)] : []),
     ];
     const scale = Math.max(0.8, Math.min(1.15, camera.zoom * 1.6));
     context.textAlign = "right";
@@ -1297,7 +1273,6 @@ export class SceneRenderer {
     const titleFont = `600 ${15 * scale}px "Barlow Semi Condensed", Barlow, system-ui, sans-serif`;
     context.font = titleFont;
     for (const island of scene.islands) {
-      if (this.walled.has(island.id)) continue;
       const ink = context.measureText(island.title);
       const placed = placeIslandTitle(surfaces.get(island.id)!, {
         width: ink.actualBoundingBoxLeft + ink.actualBoundingBoxRight,
@@ -1309,20 +1284,7 @@ export class SceneRenderer {
       const color = island.ghost ? "rgba(214, 222, 234, 0.6)" : island.region === "network" ? network : "rgba(236, 239, 244, 0.94)";
       labels.push({ island: island.id, text: island.title, font: titleFont, color, align: "right", x: placed.x + placed.width - ink.actualBoundingBoxRight, y: placed.y + ink.actualBoundingBoxAscent });
     }
-    context.textAlign = "center";
-    if (camera.zoom >= 0.45) {
-      const bandFont = `500 ${11 * scale}px Barlow, system-ui, sans-serif`;
-      context.textBaseline = "middle";
-      for (const island of scene.islands) {
-        if (island.bands.length < 2) continue;
-        for (const band of island.bands) {
-          if (this.walled.has(band.id)) continue;
-          const ground = project({ x: band.gx, y: band.gy - 0.2, h: band.h });
-          const at = worldToScreen(camera, viewport, ground);
-          labels.push({ island: island.id, text: band.title, font: bandFont, color: "rgba(235, 240, 230, 0.72)", align: "center", x: at.x, y: at.y });
-        }
-      }
-    }
+    labels.push(...this.placeSubnetTitles(prepared, state));
     this.titleLayout = { state: copyView(state), cards, labels };
     return labels;
   }
@@ -1331,8 +1293,26 @@ export class SceneRenderer {
     const context = this.context;
     const labels = this.placeTitles(prepared, state, cards);
     context.textBaseline = "middle";
+    const { alpha, plateAlpha, scale } = subnetLabelPresentation(state.camera.zoom);
     for (const label of labels) {
-      context.globalAlpha = this.opacity * searchOpacity(state.focus, "islands", label.island);
+      const presence = this.opacity * searchOpacity(state.focus, "islands", label.island);
+      context.globalAlpha = presence;
+      if (label.plate) {
+        // Match node captions: the card dissolves faster than its readable name.
+        context.globalAlpha = presence * plateAlpha;
+        const { x, y, width, height, accent } = label.plate;
+        context.fillStyle = "rgba(13, 19, 28, 0.96)";
+        context.strokeStyle = "rgba(174, 192, 214, 0.3)";
+        context.lineWidth = scale;
+        context.beginPath();
+        context.roundRect(x, y, width, height, SUBNET_LABEL.radius * scale);
+        context.fill(); context.stroke();
+        context.fillStyle = accent;
+        context.beginPath();
+        context.roundRect(x + SUBNET_LABEL.padding * scale, y + 8 * scale, 3 * scale, height - 16 * scale, 1.5 * scale);
+        context.fill();
+      }
+      context.globalAlpha = presence * (label.plate ? alpha : 1);
       context.font = label.font;
       context.textAlign = label.align;
       context.fillStyle = label.color;

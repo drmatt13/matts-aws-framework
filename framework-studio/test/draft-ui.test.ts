@@ -57,7 +57,7 @@ beforeEach(() => {
     planCalls.push(edits);
     await reviewGate;
     if (failReview) throw new Error("Could not validate changes. Try reviewing again.");
-    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "databasePlacement" ? `database placement ${edit.database}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
+    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "tags" ? `tags ${edit.entity}` : edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "databasePlacement" ? `database placement ${edit.database}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
   });
   mock.method(apiModule.api, "applyBatch", async () => {
     applyCalls++; if (failApply) throw new Error("Source changed. Your draft is preserved.");
@@ -159,14 +159,54 @@ test("numeric defaults stay visible through overrides and restoring them stages 
   assert.ok(planCalls[0]?.some((edit) => edit.kind === "field" && edit.intent.target === target && edit.intent.field === "lambda.memorySize" && edit.intent.inherit));
 });
 
-test("every configurable workload starts with the shared Deployment section and previews its draft", async () => {
+test("field errors and boolean help are associated with the controls they explain", async () => {
+  await mount();
+  const authentication = ui.screen.getByRole("switch", { name: "API user-pool authorizer" });
+  const help = document.getElementById(authentication.getAttribute("aria-describedby")!);
+  assert.ok(help?.closest(".field")?.contains(authentication), "boolean help stays in its setting row");
+  assert.match(help!.textContent!, /Cognito user pool/);
+  ui.fireEvent.change(memory(), { target: { value: "1" } });
+  const descriptions = memory().getAttribute("aria-describedby")!.split(" ").map(id => document.getElementById(id));
+  assert.ok(descriptions.every(Boolean), "every description resolves to visible content");
+  assert.ok(descriptions.some(element => element!.getAttribute("role") === "alert"));
+  assert.ok(descriptions.some(element => element!.textContent?.startsWith("Default:")));
+  assert.equal(planCalls.length + applyCalls, 0);
+});
+
+test("route tag ownership guidance stays inside the shared Tags section", async () => {
+  const route = baseline.models.dev.routes.find(route => route.kind === "service")!;
+  await mount(route.id);
+  const section = document.querySelector<HTMLElement>(".declaration-tags")!;
+  assert.equal(section.previousElementSibling?.tagName, "HEADER");
+  assert.match(section.querySelector(".section-description")!.textContent!, /Route tags follow the workload declaration/);
+  assert.equal(document.querySelector(".inspector-content > p"), null, "supporting copy shares the panel gutters");
+  assert.equal(planCalls.length + applyCalls, 0);
+});
+
+test("placement-only workloads omit empty settings and secret-only bindings remain discoverable", async () => {
+  const service = baseline.models.dev.targets.find(item => item.kind === "service")!;
+  const secrets = [{ name: "EXAMPLE_SECRET", resource: "resource:example", display: "resources.example.arn" }];
+  assert.ok(service);
+  persisted = { ...baseline, models: { ...baseline.models, dev: { ...baseline.models.dev,
+    fields: { ...baseline.models.dev.fields, [service.ref]: baseline.models.dev.fields[service.ref]!.filter(fact => fact.field === "deploy" || fact.field.endsWith("subnet")) },
+    targets: baseline.models.dev.targets.map(item => item.ref === service.ref ? { ...item, environment: [], secrets } : item),
+  } } };
+  await mount(service.ref);
+  assert.equal(ui.screen.queryByRole("heading", { name: "Settings" }), null);
+  openSection("Environment");
+  for (const secret of secrets) assert.ok(ui.screen.getByText(secret.name, { selector: "code" }));
+  assert.equal(planCalls.length + applyCalls, 0);
+});
+
+test("every configurable workload places Tags before the shared Deployment section and previews its draft", async () => {
   for (const role of new Set(baseline.models.dev.targets.map((target) => target.role))) {
     const item = baseline.models.dev.targets.find((target) => target.role === role)!;
     if (!baseline.models.dev.fields[item.ref]?.some((fact) => fact.field === "deploy")) continue;
     await mount(item.ref);
     const section = document.querySelector(".inspector-content > .inspector-deployment")!;
     assert.ok(section, role);
-    assert.equal(section.previousElementSibling?.tagName, "HEADER", role);
+    assert.ok(section.previousElementSibling?.matches(".declaration-tags"), role);
+    assert.equal(section.previousElementSibling?.previousElementSibling?.tagName, "HEADER", role);
     assert.equal(section.querySelector("h3")?.textContent, "Deployment", role);
     assert.equal(section.querySelector(".field .name")?.textContent, "Deploy", role);
     const control = ui.within(section as HTMLElement).getByRole("combobox", { name: "Deploy" });
@@ -536,13 +576,18 @@ test("managed API routes show their target's environment cards and owning config
   for (const section of Object.values(sections)) assert.ok(ui.screen.getAllByText(`Managed by framework-config/${section}`).length);
 });
 
-test("catalog and local services share deployment cards while managed entries link to their owner", async () => {
+test("declared catalog and workload tags precede deployment cards while derived fixtures and local services keep header-first cards", async () => {
   const tool = baseline.models.dev.targets.find((target) => target.role === "tool")!;
-  for (const id of ["resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "prop:vpc:application:endpoint:s3", "lambda:cognito-post-confirmation-trigger", tool.ref]) {
+  const local = baseline.models.dev.localServices?.[0]?.id;
+  for (const id of ["resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "prop:vpc:application:endpoint:s3", "lambda:cognito-post-confirmation-trigger", tool.ref, ...(local ? [local] : [])]) {
+    persisted = id === local ? { ...baseline, models: { dev: { ...baseline.models.dev, managedDatabase: undefined }, prod: { ...baseline.models.prod, managedDatabase: undefined } } } : baseline;
     await mount(id);
     const section = document.querySelector(".inspector-content > .inspector-deployment");
     assert.ok(section, id);
-    assert.equal(section.previousElementSibling?.tagName, "HEADER", id);
+    if (baseline.models.dev.tagging?.[id]) {
+      assert.ok(section.previousElementSibling?.matches(".declaration-tags"), id);
+      assert.equal(section.previousElementSibling?.previousElementSibling?.tagName, "HEADER", id);
+    } else assert.equal(section.previousElementSibling?.tagName, "HEADER", id);
     assert.deepEqual([...section.querySelectorAll(".environment-name")].map((item) => item.textContent), ["Development", "Production"], id);
     assert.equal(ui.screen.queryByRole("combobox", { name: "Deploy" }), null, "managed availability has no independent deployment override");
     assert.equal(applyCalls + planCalls.length, 0);
@@ -881,6 +926,89 @@ test("all ten creation options enter the guarded wizard; review/back retains for
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Cancel creation" }));
   assert.equal(applyCalls, 0);
   assert.ok(!document.querySelector(".creation-wizard"));
+});
+
+test("creation tags use reviewed pairs and duplicate keys remain invalid after editing another field", async () => {
+  await mount();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add to application" }));
+  ui.fireEvent.click(ui.within(ui.screen.getByRole("dialog", { name: "Add to application" })).getByRole("button", { name: "Input parameter" }));
+  await waitDialog("Create input parameter");
+  const wizard = ui.within(ui.screen.getByRole("dialog", { name: "Create input parameter" }));
+  ui.fireEvent.change(wizard.getByRole("textbox", { name: "Stable identifier" }), { target: { value: "taggedInput" } });
+  ui.fireEvent.click(wizard.getByRole("button", { name: "Add tag" }));
+  ui.fireEvent.change(wizard.getByRole("textbox", { name: "Tag 1 key" }), { target: { value: "Team" } });
+  ui.fireEvent.change(wizard.getByRole("textbox", { name: "Tag 1 value" }), { target: { value: "orders" } });
+  ui.fireEvent.click(wizard.getByRole("button", { name: "Add tag" }));
+  ui.fireEvent.change(wizard.getByRole("textbox", { name: "Tag 2 key" }), { target: { value: "Team" } });
+  ui.fireEvent.change(wizard.getByRole("textbox", { name: "Description" }), { target: { value: "Metadata belongs in source" } });
+  assert.equal((wizard.getByRole("button", { name: "Review generated changes" }) as HTMLButtonElement).disabled, true);
+  assert.equal(planCalls.length, 0);
+  ui.fireEvent.change(wizard.getByRole("textbox", { name: "Tag 2 key" }), { target: { value: "Cost" } });
+  ui.fireEvent.click(wizard.getByRole("button", { name: "Review generated changes" }));
+  await waitDialog("Review 1 change");
+  const edit = planCalls[0]![0]!;
+  assert.equal(edit.kind, "create");
+  if (edit.kind === "create") assert.deepEqual(edit.request.tags, { Cost: "", Team: "orders" });
+  assert.equal(applyCalls, 0);
+});
+
+test("inspector tag rows focus additions, show delete controls, and stage edits for review", async () => {
+  await mount("lambda:ws-connect-route");
+  const tags = ui.within(document.querySelector<HTMLElement>(".declaration-tags")!);
+  assert.ok(tags.getByText("Key")); assert.ok(tags.getByText("Value"));
+  assert.equal((tags.getByRole("textbox", { name: "Tag 1 value" }) as HTMLInputElement).value, "realtime");
+  ui.fireEvent.click(tags.getByRole("button", { name: "Add tag" }));
+  const key = tags.getByRole("textbox", { name: "Tag 2 key" });
+  assert.equal(document.activeElement, key);
+  assert.equal(tags.queryByRole("status"), null, "a fresh blank row is ready for typing without an immediate error");
+  assert.equal((ui.screen.getByRole("button", { name: "Review Changes" }) as HTMLButtonElement).disabled, true);
+  ui.fireEvent.change(key, { target: { value: "Team" } });
+  ui.fireEvent.change(tags.getByRole("textbox", { name: "Tag 2 value" }), { target: { value: "realtime-ui" } });
+  const remove = tags.getByRole("button", { name: "Remove tag Team" });
+  assert.ok(remove.textContent?.includes("Delete"));
+  ui.fireEvent.click(remove);
+  assert.equal(tags.queryByRole("textbox", { name: "Tag 2 key" }), null);
+  assert.equal(document.activeElement, tags.getByRole("textbox", { name: "Tag 1 key" }), "deletion restores focus to a remaining key");
+  ui.fireEvent.change(tags.getByRole("textbox", { name: "Tag 1 value" }), { target: { value: "updated" } });
+  assert.equal(planCalls.length + applyCalls, 0);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "tags", entity: "lambda:ws-connect-route", tags: { area: "updated" } }]);
+});
+
+test("tag validation identifies invalid fields and removing the final row returns focus to Add tag", async () => {
+  await mount("lambda:ws-connect-route");
+  const tags = ui.within(document.querySelector<HTMLElement>(".declaration-tags")!);
+  const key = tags.getByRole("textbox", { name: "Tag 1 key" });
+  const value = tags.getByRole("textbox", { name: "Tag 1 value" });
+  ui.fireEvent.change(key, { target: { value: "aws:reserved" } });
+  assert.equal(key.getAttribute("aria-invalid"), "true");
+  assert.equal(value.getAttribute("aria-invalid"), "false");
+  assert.equal(document.getElementById(key.getAttribute("aria-describedby")!), tags.getByRole("status"));
+  ui.fireEvent.change(key, { target: { value: "Team" } });
+  assert.equal(key.getAttribute("aria-invalid"), "false");
+  assert.equal(key.getAttribute("aria-describedby"), null);
+  ui.fireEvent.change(value, { target: { value: "<>" } });
+  assert.equal(value.getAttribute("aria-invalid"), "true");
+  assert.equal(key.getAttribute("aria-invalid"), "false");
+  ui.fireEvent.click(tags.getByRole("button", { name: "Remove tag Team" }));
+  assert.equal(document.activeElement, tags.getByRole("button", { name: "Add tag" }));
+  assert.equal(tags.queryByRole("status"), null);
+  assert.equal(planCalls.length + applyCalls, 0);
+});
+
+test("refreshing an older inspector snapshot restores inline WebSocket tag editing", async () => {
+  const entity = "lambda:ws-connect-route";
+  const { tags: _tags, ...fields } = baseline.source.editability[entity]!;
+  persisted = { ...baseline, revision: "old-source-index", source: { ...baseline.source, editability: { ...baseline.source.editability, [entity]: fields } } };
+  await mount(entity);
+  assert.equal((ui.screen.getByRole("textbox", { name: "Tag 1 value" }) as HTMLInputElement).disabled, true);
+  persisted = baseline;
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Refresh editor" }));
+  await ui.waitFor(() => assert.equal((ui.screen.getByRole("textbox", { name: "Tag 1 value" }) as HTMLInputElement).disabled, false));
+  assert.equal(ui.screen.queryByRole("button", { name: "Refresh editor" }), null);
+  assert.equal((ui.screen.getByRole("textbox", { name: "Tag 1 value" }) as HTMLInputElement).value, "realtime");
+  assert.equal(planCalls.length + applyCalls, 0, "refresh never writes declarations");
 });
 
 test("starting creation respects existing inspector changes and creation guards navigation", async () => {
