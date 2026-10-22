@@ -15,7 +15,7 @@ let query: typeof import("@tanstack/react-query");
 let studio: typeof import("../src/studio");
 let add: typeof import("../src/views/AddMenu");
 let board: typeof import("../src/views/Board");
-let database: typeof import("../src/views/Database");
+let database: typeof import("../src/views/DatabaseDiagram");
 
 before(async () => {
   const require = createRequire(import.meta.url);
@@ -27,7 +27,7 @@ before(async () => {
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
-  studio = await import("../src/studio"); add = await import("../src/views/AddMenu"); board = await import("../src/views/Board"); database = await import("../src/views/Database");
+  studio = await import("../src/studio"); add = await import("../src/views/AddMenu"); board = await import("../src/views/Board"); database = await import("../src/views/DatabaseDiagram");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, history: {}, busy: null };
 });
@@ -113,10 +113,10 @@ test("the architecture board keeps valid resource-only applications visible and 
 });
 
 test("schema search offers a keyboard reset, retains input focus after clearing and bounds zoom controls", async () => {
-  await mount(database.Database);
+  await mount(() => h(database.DatabaseDiagram, { schema: response.snapshot.schema, onSelect: () => {}, onLocate: () => {} }));
   const search = ui.screen.getByRole("searchbox", { name: "Find a table or column" }) as HTMLInputElement;
   ui.fireEvent.change(search, { target: { value: "no-such-table-or-column" } });
-  assert.equal(ui.screen.getByRole("status").textContent, "No matching tables or columns");
+  assert.match(ui.screen.getByRole("status").textContent!, /^0 matching tables/);
   const clear = ui.screen.getByRole("button", { name: "Clear schema search" });
   clear.focus();
   ui.fireEvent.click(clear);

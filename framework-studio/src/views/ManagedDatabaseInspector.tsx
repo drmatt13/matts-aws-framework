@@ -6,7 +6,7 @@ import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
 import { EntityIcon } from "./EntityIcon";
 import { Description } from "./Description";
 import { Written } from "./Written";
-import { SchemaLink } from "./Database";
+import { SchemaLink } from "./SchemaDetails";
 import { ManagedDatabaseControls } from "./ManagedDatabaseControls";
 import { DatabasePlacement } from "./DatabasePlacement";
 import { Tags } from "./Tags";

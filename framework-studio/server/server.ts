@@ -22,6 +22,9 @@ import { deployRouter } from "./deploy/routes";
 import { sendJson } from "./http";
 import { STUDIO_PROTOCOL_VERSION, STUDIO_RESTART_MESSAGE } from "../shared/protocol";
 import { readDatabaseDraft, readDatabasePlacementDraft } from "../shared/managed-database";
+import { DatabaseWorkbenchService } from "./database-workbench";
+import { DatabaseHistoryService } from "./database-history";
+import { DatabaseApplicationService } from "./database-application";
 
 /**
  * The studio's HTTP surface: one origin, on the loopback interface only.
@@ -110,7 +113,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   app.use(hostGuard(port));
 
   const api = express.Router();
-  api.use(express.json({ limit: "64kb" }));
+  api.use(express.json({ limit: "640kb" }));
   api.use(apiGuard(token));
   api.use((request, response, next) => {
     if (request.method !== "GET" && request.get("x-studio-protocol") !== STUDIO_PROTOCOL_VERSION) {
@@ -119,6 +122,37 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     next();
   });
   const send = sendJson;
+  const database = new DatabaseWorkbenchService(repositoryRoot, () => refresh([]));
+  const databaseHistory = new DatabaseHistoryService(repositoryRoot);
+  const databaseApplication = new DatabaseApplicationService(repositoryRoot, database, () => databaseHistory.load());
+  const requestSignal = (request: Request, response: Response) => {
+    const controller = new AbortController();
+    request.on("aborted", () => controller.abort());
+    response.on("close", () => { if (!response.writableEnded) controller.abort(); });
+    return controller.signal;
+  };
+  api.get("/database/workbench", (_request, response) => send(response, () => database.load()));
+  api.post("/database/workbench/validate", (request, response) => send(response, () => database.validate(request.body?.source, requestSignal(request, response))));
+  api.post("/database/workbench/format", (request, response) => send(response, () => database.format(request.body?.source)));
+  api.post("/database/workbench/review", (request, response) => send(response, () => database.review(request.body?.source, String(request.body?.expectedRevision ?? ""))));
+  api.post("/database/workbench/save", (request, response) => send(response, () => database.save(String(request.body?.reviewId ?? ""))));
+  api.post("/database/workbench/inspect", (request, response) => send(response, async () => {
+    const history = await databaseHistory.load();
+    const result = await database.inspect(String(request.body?.targetId ?? ""), String(request.body?.expectedRevision ?? ""), history.revision, history);
+    const after = await databaseHistory.load();
+    return after.revision === history.revision ? result : { ...result, status: "stale", message: "Migration history changed during inspection. Inspect again before using this evidence." };
+  }));
+  api.get("/database/history", (_request, response) => send(response, () => databaseHistory.load()));
+  api.post("/database/history/compare", (request, response) => send(response, () => databaseHistory.compare(request.body, requestSignal(request, response))));
+  api.post("/database/history/plan", (request, response) => send(response, () => databaseHistory.plan(request.body, requestSignal(request, response))));
+  api.post("/database/history/install", (request, response) => send(response, async () => {
+    const result = await databaseHistory.install(request.body);
+    if (result.status === "installed") broadcast("database-history", {});
+    return result;
+  }));
+  api.post("/database/history/discard", (request, response) => send(response, () => databaseHistory.discard(String(request.body?.reviewId ?? ""))));
+  api.post("/database/application/review", (request, response) => send(response, () => databaseApplication.review(String(request.body?.targetId ?? ""), String(request.body?.sourceHash ?? ""))));
+  api.post("/database/application/apply", (request, response) => send(response, () => databaseApplication.apply(String(request.body?.reviewId ?? ""), String(request.body?.confirmation ?? ""))));
 
   api.get("/snapshot", (_request, response) => {
     const state = builder.current;
@@ -309,7 +343,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     // A file this studio just wrote, still holding exactly what it wrote, is
     // its own change; anything else was changed by someone else.
     const external = files.filter((file) => {
-      const owner = inputs.ownWrites.has(file) ? inputs.ownWrites : resources.ownWrites.has(file) ? resources.ownWrites : edits.ownWrites;
+      const owner = database.ownWrites.has(file) ? database.ownWrites : inputs.ownWrites.has(file) ? inputs.ownWrites : resources.ownWrites.has(file) ? resources.ownWrites : edits.ownWrites;
       const written = owner.get(file);
       if (written === undefined) return true;
       try {

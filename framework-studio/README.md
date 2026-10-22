@@ -12,24 +12,37 @@ Declarations use the same [code-first layout and tags](../docs/framework-studio/
 when authored by hand or created in Studio. Tag edits use source review. Isometric always keeps topology; its tag filter fades
 nonmatches without changing placement, identity or source.
 
-The **Database** tab (`/database`) visualizes the declared application schema from
-`packages/database/prisma/contract.prisma`. Select a table or foreign-key relationship
-to inspect mapped column names, types, nullability, defaults, primary/unique keys,
-indexes and referential actions, with links to source. Search finds tables and columns;
-zoom and fit help with larger diagrams. It reads the authored contract using Prisma's
-syntax parser, without running generation or querying a database. Contract edits refresh
-the view automatically. This is a read-only declaration view, not live migration status.
+The **Database** tab (`/database`) is a source-first Prisma 8 workbench with three
+workspaces: **Schema**, **History & migrations**, and **Database status**. Edit the
+authored `packages/database/prisma/contract.prisma` beside its diagram, navigate between
+fields and source, format and validate with the installed Prisma interpreter, then
+review the complete source change before saving. Invalid drafts preserve text and undo
+history; the retained diagram is explicitly marked as the last valid schema. CodeMirror
+supplies search/replace, completion suggestions, folding and familiar keyboard shortcuts.
+Suggestions are static and local; semantic completion and safe rename are unavailable.
 
-The **Deploy** tab (`/deploy`), after Database, is a placeholder for future deployment
-controls.
+History reads the actual migration graph, operations, SQL and semantic snapshots without
+executing migration code. Compare historical, saved and valid draft contracts, choose an
+explicit baseline, then plan with pinned Prisma in a disposable workspace. Review the
+actual migration files before saving new artifacts. Database status requires a selected
+target and read-only inspection; a matching marker alone never establishes physical
+schema compatibility. Local Compose PostgreSQL is supported through its existing literal
+loopback binding. Production IAM/TLS access remains outside this workbench. Database
+application is a separate target-bound review and typed approval; opening the page and
+inspection never start Compose. See the [Database workbench guide](../docs/framework-studio/database-workbench.md)
+for exact effects, evidence, keyboard behavior and limitations.
+
+The **Deploy** tab (`/deploy`) provides deployment discovery, reviewed operations and
+local development controls. See [Deploy & Run](../docs/framework-studio/deploy-and-run.md).
 
 Local PostgreSQL appears in Board and Isometric as the Compose `postgres`
 service. In Isometric it stands in the VPC's isolated subnet right beside RDS, solid in
 Development and faded in Production (it runs on your machine, not in AWS). Database edges from local execution
 reach PostgreSQL, while AWS bindings retain their catalog destination. Both databases
 offer **View schema** in the inspector. Image, named volumes and source come from
-the authored `docker-compose.yml`; connection credentials, container health and Compose
-runtime overrides are not inspected.
+the authored `docker-compose.yml`. These architecture nodes contain no credentials or
+runtime health. Database status performs a separate selected-target observation;
+arbitrary Compose runtime overrides remain unsupported.
 
 ```powershell
 npm run studio            # http://127.0.0.1:4590/  (--port <n>, or STUDIO_PORT)

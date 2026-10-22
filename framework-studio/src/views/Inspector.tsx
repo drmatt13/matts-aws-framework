@@ -6,7 +6,7 @@ import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
 import { resourceIcon, routeIcon, targetIcon } from "../icons";
 import type { LocalDatabase } from "../../shared/database";
-import { SchemaDetails, SchemaLink } from "./Database";
+import { SchemaDetails, SchemaLink } from "./SchemaDetails";
 import { ManagedDatabaseInspector } from "./ManagedDatabaseInspector";
 import { ResourceEditor } from "./ResourceEditor";
 import { HttpRoutes } from "./HttpRoutes";

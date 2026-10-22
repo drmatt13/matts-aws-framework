@@ -1,0 +1,26 @@
+.prisma-editor { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; height: 100%; --prisma-keyword: #7444a1; --prisma-type: #126575; --prisma-string: #97601f; --prisma-comment: #64756b; }
+.prisma-editor-host { flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+.prisma-editor-help { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.prisma-token-keyword, .prisma-token-attribute { color: var(--prisma-keyword); }
+.prisma-token-type, .prisma-token-function { color: var(--prisma-type); }
+.prisma-token-definition { color: var(--ink); font-weight: 600; }
+.prisma-token-string { color: var(--prisma-string); }
+.prisma-token-number { color: var(--dev); }
+.prisma-token-comment { color: var(--prisma-comment); font-style: italic; }
+.prisma-token-invalid { text-decoration: underline wavy var(--refuse); }
+.prisma-editor .cm-search { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 8px 28px 8px 10px; font-size: 12px; }
+.prisma-editor .cm-search input { min-height: 28px; font: 12px var(--mono); padding: 3px 6px; }
+.prisma-editor .cm-search label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.prisma-editor .cm-search input[type=checkbox] { min-height: initial; margin: 0; }
+.prisma-editor .cm-search button { min-height: 26px; font: 12px var(--sans); padding: 2px 6px; }
+.prisma-editor .cm-search button[name=close] { position: absolute; right: 4px; top: 5px; }
+.prisma-editor .cm-tooltip-autocomplete { max-width: min(520px, 80vw); }
+.prisma-editor .cm-tooltip-autocomplete ul { font: 12px/1.8 var(--mono); }
+.prisma-editor .cm-completionInfo { padding: 9px 12px; font: 12px/1.6 var(--sans); max-width: 330px; white-space: normal; }
+.prisma-editor .cm-diagnostic { font: 12px/1.6 var(--sans); }
+.prisma-editor .cm-diagnosticSource { font: 10px var(--mono); color: var(--graphite); }
+.prisma-editor .cm-lintRange-error { background-image: none; text-decoration: underline wavy var(--refuse); text-underline-offset: 3px; }
+.prisma-editor .cm-lintRange-warning { background-image: none; text-decoration: underline wavy var(--local); text-underline-offset: 3px; }
+@media (prefers-color-scheme: dark) {
+  .prisma-editor { --prisma-keyword: #c29be2; --prisma-type: #7bcbd1; --prisma-string: #dfb379; --prisma-comment: #95a99d; }
+}

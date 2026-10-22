@@ -116,6 +116,7 @@ export function useLiveUpdates(onExternal: (files: readonly string[]) => void): 
       if (data.external.length > 0) reportExternal.current(data.external);
     });
     source.addEventListener("infrastructure", () => void queryClient.invalidateQueries({ queryKey: ["infrastructure"] }));
+    source.addEventListener("database-history", () => void queryClient.invalidateQueries({ queryKey: ["snapshot"] }));
     source.onerror = () => setState((current) => ({ ...current, connected: false }));
     return () => source.close();
   }, [queryClient]);

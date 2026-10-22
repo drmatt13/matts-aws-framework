@@ -101,17 +101,22 @@ contract plus migration package. Check renames, drops, constraints, backfills, a
 whether existing rows can satisfy new required fields. Generation/planning are offline;
 neither applies the migration. A no-op storage plan is valid for execution-default changes.
 
-If planning reports MIGRATION.PLAN_ORIGIN_UNKNOWN on an unmigrated checkout, start from
-the newest migration's contract hash, after confirming it is the intended baseline.
-`migration:list` shows it as that migration's `toContract`:
+If planning reports `MIGRATION.PLAN_ORIGIN_UNKNOWN`, select the intended origin from
+the migration graph or a reviewed ref. Each package is an edge from one storage hash
+to another; branches and cycles are legal, and folder dates do not establish a current
+database or an implicit planning head. `migration:list` shows those edges:
 
 ```powershell
 npm --workspace @repo/database run migration:list
-npm --workspace @repo/database run migration:new -- --name <change_name> --from <latestContractHash>
+npm --workspace @repo/database run migration:new -- --name <change_name> --from <intendedOriginHash>
 ```
 
-Do not substitute an arbitrary snapshot. An abandoned plan can leave a snapshot that
-must not be mistaken for the intended baseline. Review before removing abandoned artifacts.
+Confirm the origin against the intended shipped contract, relevant ref, or separately
+observed database marker and physical schema. A graph tip is a useful candidate, not
+proof of that choice. Do not substitute an arbitrary snapshot: an abandoned plan can
+leave one outside any migration path. Review before removing abandoned artifacts.
+Planning is offline, does not inspect a database, and never advances a migration ref.
+Use an explicit empty origin only when creating a baseline from empty storage is intended.
 
 Continue the source change using Data features, regenerate artifacts, and run verification.
 Only then apply the reviewed migration to the explicitly selected environment:
@@ -179,6 +184,23 @@ Prefix each with `npm --workspace @repo/database run`:
 | `typecheck` / `test` | Check types / run offline database and scaffold tests |
 
 There is no supported `prisma db push` workflow in this repository.
+
+## Studio workbench
+
+`npm run studio` → **Database** offers Prisma source editing beside the diagram,
+reviewed source saves, migration-graph comparisons, and offline migration planning in
+a disposable workspace. Saving source, emitting application artifacts, installing a
+reviewed migration package and applying it to a database remain distinct actions.
+
+**Database status** compares a deliberately selected target with saved source, migration
+history and observed physical storage. Unknown, unreachable and unsupported targets
+remain unknown. The local target uses the existing literal Compose loopback port; Studio
+never starts Compose for inspection. Production connection access remains with the
+framework's IAM/TLS workflow. Local database application requires its own reviewed path,
+fresh physical historical baseline, target identity checks and typed approval.
+
+The [Database workbench guide](framework-studio/database-workbench.md) describes
+editor capabilities, evidence, limits and the source/artifact/database boundaries.
 
 ## Generation and verification
 

@@ -67,7 +67,11 @@ export function parseDeclaredSchema(text: string, file = CONTRACT_FILE): Declare
     const indexes: SchemaIndex[] = [];
     for (const item of attributes) {
       const name = nameOf(item);
-      if (name !== "id" && name !== "index" && name !== "unique") continue;
+      if (name !== "id" && name !== "index" && name !== "unique") {
+        if (name !== "map") problems.push(`${model}: ${raw(item)} is preserved in source at line ${location(item).line}; this annotation is not drawn in the diagram.`);
+        continue;
+      }
+      if (!fields(item).length) problems.push(`${model}: ${raw(item)} uses an expression or another index shape without projected field identities. Inspect source at line ${location(item).line}.`);
       indexes.push({
         name: value(item, "map") ?? value(item, "name"),
         kind: name === "id" ? "primary" : name === "unique" || value(item, "unique") === "true" ? "unique" : "index",
@@ -80,6 +84,9 @@ export function parseDeclaredSchema(text: string, file = CONTRACT_FILE): Declare
       const type = field.typeAnnotation();
       if (!name || !type) continue;
       const attrs = [...field.attributes()];
+      for (const item of attrs) if (!["id", "unique", "default", "map", "relation"].includes(nameOf(item))) {
+        problems.push(`${model}.${name}: ${raw(item)} is preserved in source at line ${location(item).line}; this field annotation is not drawn in the diagram.`);
+      }
       const relation = attribute(attrs, "relation");
       if (relation) {
         const localFields = fields(relation, "fields");

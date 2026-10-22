@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import { AlertTriangle, Check, ClipboardCheck, Redo2, Undo2, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { CommandResult } from "../../shared/api";
@@ -117,6 +117,8 @@ function CommandDrawer(props: { readonly result: CommandResult | undefined; read
 export function Shell(props: { readonly children: ReactNode; readonly notice?: ReactNode }) {
   const studio = useStudio();
   const { snapshot, response, mode, setMode, live, toast, toasts, selected } = studio;
+  const databasePage = useLocation({ select: location => location.pathname === "/database" });
+  const showInspector = !!selected && !(databasePage && selected.startsWith("schema:"));
   const [drawer, setDrawer] = useState<"health" | "command" | undefined>();
   const [result, setResult] = useState<CommandResult | undefined>();
   const repository = snapshot.repositoryRoot.replaceAll("\\", "/").split("/").pop();
@@ -161,7 +163,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
             Deploy
           </Link>
         </nav>
-        <span className="segmented" role="group" aria-label="Graph">
+        {!databasePage ? <span className="segmented" role="group" aria-label="Graph">
           {(["dev", "prod"] as const).map((candidate) => (
             <button
               key={candidate}
@@ -171,7 +173,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
               {candidate === "dev" ? "Development" : "Production"}
             </button>
           ))}
-        </span>
+        </span> : null}
         <span className="spacer" />
         <div className="bar-actions">
           <button className="health" onClick={() => setDrawer(drawer === "health" ? undefined : "health")} title="Configuration health · updates automatically" aria-label="Configuration health" aria-expanded={drawer === "health"}>
@@ -181,18 +183,18 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
               {snapshot.source.problems.length ? <span className="verdict warning"><AlertTriangle size={14} aria-hidden />{snapshot.source.problems.length}</span> : null}
             </>}
           </button>
-          <span className="history-actions" role="group" aria-label="Edit history">
+          {!databasePage ? <span className="history-actions" role="group" aria-label="Edit history">
             <button className="icon-button" aria-label="Undo" onClick={() => void history("undo")} disabled={!response.history.undo || studio.draft.dirty || !!studio.draftState.busy} title={response.history.undo ? `Undo ${response.history.undo}` : "Nothing to undo"}>
               <Undo2 size={16} aria-hidden />
             </button>
             <button className="icon-button" aria-label="Redo" onClick={() => void history("redo")} disabled={!response.history.redo || studio.draft.dirty || !!studio.draftState.busy} title={response.history.redo ? `Redo ${response.history.redo}` : "Nothing to redo"}>
               <Redo2 size={16} aria-hidden />
             </button>
-          </span>
+          </span> : null}
         </div>
       </header>
       {props.notice ? <div className="shell-notice">{props.notice}</div> : null}
-      <div className={`workspace ${selected ? "" : "no-selection"}`}>
+      <div className={`workspace ${showInspector ? "" : "no-selection"}`}>
         <main className={`canvas ${studio.model.stale ? "stale" : ""}`}>
           {studio.model.stale ? (
             <p className="stale-banner" role="status">
@@ -204,7 +206,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
           ) : null}
           {props.children}
         </main>
-        {selected ? <Inspector /> : null}
+        {showInspector ? <Inspector /> : null}
       </div>
       {studio.draftState.reviewOpen ? <EditDialog review={studio.draftState.review} /> : null}
       <UnsavedChangesDialog />

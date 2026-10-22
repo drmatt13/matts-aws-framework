@@ -10,6 +10,8 @@ source:
   - framework-studio/server/evaluator/pool.ts
   - framework-studio/server/evaluator/evaluate.ts
   - framework-studio/server/watch.ts
+  - framework-studio/src/database-session.ts
+  - framework-studio/server/database-history.ts
 related:
   - studio.source-indexing
   - studio.graph-model
@@ -47,5 +49,35 @@ recreating the editor. This is separate from server-side stale-model diagnostics
 continue to govern source editability.
 
 Disposable source previews travel through evaluator IPC. [evaluate.ts](../../../framework-studio/server/evaluator/evaluate.ts) resolves proposed new TypeScript modules and replaces compilation from an override map without writing preview files. Evaluation still runs authored config; it does not synthesize CDK or run handlers.
+
+Database editing is an independent exact-text session in
+[database-session.ts](../../../framework-studio/src/database-session.ts). A framework
+generation does not replace dirty Prisma text. The baseline uses the authored file's hash;
+validation responses also carry that draft's source hash and request generation. Invalid
+drafts retain a labeled last-valid diagram, while semantic errors stay distinct from
+unsupported diagram projections. Compilation caches source plus an opaque per-server
+config identity that covers imported local modules, relevant manifests and private inputs,
+and validates through installed Prisma without publishing generated files. Config changes
+invalidate same-text validation and diagrams; framework generations also expire/reload
+history comparisons, preserving dirty source.
+
+`DatabaseWorkbench.emitted` is a separate metadata-only observation of the generated JSON
+named by the actual Prisma config. The configured serializer and canonical storage/execution
+hashes verify its integrity on loading before saved-source comparison. Only status, safe
+file label, content revision, semantic hashes and time reach the browser; raw generated
+contracts and private config inputs do not. Missing/invalid/outside-checkout output stays
+explicitly unknown or unavailable. No file is emitted, and matching JSON does not prove
+generated TypeScript or downstream application consumers are current.
+
+Migration/config changes are watched independently and notify database views. History in
+[database-history.ts](../../../framework-studio/server/database-history.ts) hashes all
+migration/snapshot/ref bytes, Prisma config and relevant manifests/lockfile, and refuses a
+graph that changes during discovery. Comparisons and offline planning recheck source and
+history before returning. Artifact reviews are in memory and expire; generated artifacts
+from a disposable plan are installed only after explicit review and unchanged-input checks.
+Observations include target connection-identity hashes, saved-source/history revisions,
+baseline and freshness. Changing any relevant identity expires old evidence; a marker
+match never substitutes for physical-schema verification. See the
+[Database workbench guide](../../framework-studio/database-workbench.md).
 
 Validate with [model](../../../framework-studio/test/model.test.ts), [guards](../../../framework-studio/test/guards.test.ts), [draft](../../../framework-studio/test/draft.test.ts), [startup/recovery UI](../../../framework-studio/test/startup-ui.test.ts) and [creation](../../../framework-studio/test/creation.test.ts) tests. Browser reconnect/render behavior needs browser verification beyond snapshot tests.

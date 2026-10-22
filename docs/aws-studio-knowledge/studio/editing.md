@@ -15,6 +15,10 @@ source:
   - framework-studio/server/edits/plan.ts
   - framework-studio/server/edits/splice.ts
   - framework-studio/server/edits/io.ts
+  - framework-studio/src/database-session.ts
+  - framework-studio/server/database-workbench.ts
+  - framework-studio/server/database-history.ts
+  - framework-studio/server/database-application.ts
 related:
   - studio.source-indexing
   - studio.snapshots
@@ -36,6 +40,30 @@ Refresh editor, which reloads its snapshot without writing source; an expired se
 session reconnects through a page reload. Refresh is disabled while a draft is dirty.
 
 This is the canonical graph-to-source contract. Creators, trigger editors and resource tools reuse it; they do not gain arbitrary file-writing authority.
+
+Prisma has a separate fixed authority rather than extending the TypeScript configuration
+writer. `DatabaseSession` in [database-session.ts](../../../framework-studio/src/database-session.ts)
+owns draft text, exact request generations, external-source conflicts and last-valid diagram
+identity. CodeMirror retains selection/undo through validation, formatting and explicit
+discard; source review remains required before saving. The actual configured Prisma 8
+interpreter owns semantic diagnostics. Syntax/local-name suggestions do not promise a
+compatible language server or safe rename.
+
+`DatabaseWorkbenchService` in
+[database-workbench.ts](../../../framework-studio/server/database-workbench.ts) reviews,
+revalidates and hash-guards writes only to `packages/database/prisma/contract.prisma`.
+Source success is reported separately from snapshot-refresh failure. It neither generates
+artifacts nor applies storage. `DatabaseHistoryService` in
+[database-history.ts](../../../framework-studio/server/database-history.ts) runs pinned
+Prisma emission/planning in a disposable copy, exposes actual artifact bytes, then installs
+only reviewed new files after source/config/history checks. Existing migration packages
+remain immutable; history browsing never executes them. `DatabaseApplicationService` in
+[database-application.ts](../../../framework-studio/server/database-application.ts) owns
+the separate local target review, typed approval, input/path revalidation and canonical
+runner. Database effects and follow-up inspection failures remain separate. Production
+IAM/TLS access remains outside the workbench. See the
+[Database workbench guide](../../framework-studio/database-workbench.md) for precise actions,
+evidence and capability limits.
 
 `InspectorDraft` in [draft.ts](../../../framework-studio/src/draft.ts) owns baseline/latest snapshots, staged entries, validation, review and navigation protection. While dirty, the visible graph stays on the baseline. A different snapshot revision marks conflict; it does not auto-merge. Invalid/conflicting drafts cannot apply. `StudioProvider` in [studio.tsx](../../../framework-studio/src/studio.tsx) connects this lifecycle across routes and browser exit. The draft/history is in memory, not durable recovery storage.
 

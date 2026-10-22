@@ -14,12 +14,13 @@ import { createRoot } from "react-dom/client";
 import { useSnapshot } from "./api";
 import { StudioProvider } from "./studio";
 import { Shell } from "./views/Shell";
-import { Database } from "./views/Database";
 // This stylesheet also styles shared inspector controls. Preserve its original
 // cascade order while loading the Deploy component only when its route opens.
 import "./views/deploy/deploy.css";
 import "./styles.css";
 import "./inspector.css";
+import "./views/database-workbench.css";
+import "./views/prisma-editor.css";
 
 interface Search {
   readonly select?: string;
@@ -53,7 +54,7 @@ const rootRoute = createRootRoute({
 });
 const boardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: lazyRouteComponent(() => import("./views/Board"), "Board") });
 const isometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/isometric", component: lazyRouteComponent(() => import("./views/Isometric"), "Isometric") });
-const databaseRoute = createRoute({ getParentRoute: () => rootRoute, path: "/database", component: Database });
+const databaseRoute = createRoute({ getParentRoute: () => rootRoute, path: "/database", component: lazyRouteComponent(() => import("./views/Database"), "Database") });
 const deployRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deploy", component: lazyRouteComponent(() => import("./views/Deploy"), "Deploy") });
 const router = createRouter({ routeTree: rootRoute.addChildren([boardRoute, isometricRoute, databaseRoute, deployRoute]) });
 

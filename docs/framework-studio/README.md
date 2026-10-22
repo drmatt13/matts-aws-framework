@@ -6,9 +6,10 @@ the configuration declares, where each piece runs and how the pieces relate. It 
 declarations and edits supported settings and connections in TypeScript source, after a
 validated review.
 
-The framework never depends on it: everything it shows comes from the
-framework's own normalization, and everything it writes is an ordinary edit to
-`framework-config/`, which `framework:check`, synthesis and the dev servers read as usual.
+The framework never depends on it: declaration views use framework normalization,
+and reviewed writes remain ordinary source and migration files consumed by the existing
+framework and Prisma workflows. The Database workbench edits its fixed authored Prisma
+contract through a separate source authority; it does not expand the configuration writer.
 
 ```powershell
 npm run studio            # http://127.0.0.1:4590/   (--port <n>, or STUDIO_PORT)
@@ -21,7 +22,7 @@ npm run studio -- --print # the whole model as JSON, then exit
 | --- | --- | --- |
 | Board | `/` | Every route, workload and catalog entry in three columns, with typed relationship curves |
 | Isometric | `/isometric` | The same application as a lit, navigable landscape: gateways, compute, the VPC's subnet terraces, catalog stacks |
-| Database | `/database` | Read-only tables and foreign-key relationships from the authored Prisma contract, shared by local PostgreSQL and RDS |
+| Database | `/database` | Prisma source and diagram editing, semantic migration history, offline artifact review and selected-target database evidence |
 | Deploy | `/deploy` | Deployment discovery, reviewed plans, authorized operations and local development controls |
 | Inspector | beside any view | One entity: source location, resolved settings and where they come from, relationships, and the editable fields |
 
@@ -52,6 +53,7 @@ separate deployment states.
 | [Knowledge router](../aws-studio-knowledge/README.md) | You need current source-linked ownership, contracts, verification and selective architecture context |
 | [Declarations and tags](declarations-and-tags.md) | You are authoring declaration modules or changing metadata ownership and tag filtering |
 | [Network and database declarations](network-database-declarations.md) | You are changing explicit VPC/database ownership, placement or identity-sensitive infrastructure |
+| [Database workbench](database-workbench.md) | You are authoring Prisma, comparing migration contracts, planning artifacts or inspecting and reviewing a local database application |
 | [Report](report.md) | You need the original October 16 investigation and its design rationale |
 | [Architecture](architecture.md) | You need detailed implementation context; confirm current contracts through the knowledge router |
 | [Isometric view](isometric-view.md) | You are changing the landscape: layout, terrain, buildings, camera, picking or rendering |

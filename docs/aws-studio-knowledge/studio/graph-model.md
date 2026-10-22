@@ -1,6 +1,6 @@
 ---
 id: studio.graph-model
-summary: Serialized graph entities, lanes, provenance, edge aggregation, and read-only database projection.
+summary: Serialized graph entities, lanes, provenance, edge aggregation, and database source projections.
 read_when:
   - Adding graph nodes, relations, evidence, or Inspector facts
 source:
@@ -8,6 +8,8 @@ source:
   - framework-studio/server/model/project.ts
   - framework-studio/src/connections.ts
   - framework-studio/server/database.ts
+  - framework-studio/shared/database-workbench.ts
+  - framework-studio/shared/database-history.ts
 related:
   - studio.snapshots
   - studio.source-indexing
@@ -39,7 +41,29 @@ Declared/derived/source-inferred edges retain their evidence classification. [so
 
 `aggregateConnections` in [connections.ts](../../../framework-studio/src/connections.ts) groups directed visible endpoint pairs while retaining original members and mode availability. A rendered line may summarize several relations; selection/Inspector must preserve member-level evidence. Dev/prod union topology can stabilize layout while the active mode controls availability and styling. `lookup.ts` in [src/lookup.ts](../../../framework-studio/src/lookup.ts) centralizes entity/relationship lookup labels.
 
-The Database view uses `parseDeclaredSchema` in [server/database.ts](../../../framework-studio/server/database.ts) to parse the authored Prisma contract and inspect local Compose database metadata. It does not introspect a live database, apply a migration or provide a database schema editor.
+The Database workbench uses `parseDeclaredSchema` in
+[server/database.ts](../../../framework-studio/server/database.ts) for source-linked diagram
+projection. Semantic validity comes from the configured, installed Prisma interpreter in
+[server/database-workbench.ts](../../../framework-studio/server/database-workbench.ts),
+independently from the framework snapshot. The editor draft remains authoritative for its
+diagram; temporarily invalid drafts retain an explicitly marked last-valid diagram.
+Logical Prisma names and mapped storage names remain distinct. Unsupported valid source
+stays accessible instead of being regenerated from the projection.
+
+`DatabaseHistory` in [shared/database-history.ts](../../../framework-studio/shared/database-history.ts)
+describes migration graph edges and verified semantic snapshots; terminal nodes are hints,
+never implicit migration origins. `DatabaseObservation` in
+[shared/database-workbench.ts](../../../framework-studio/shared/database-workbench.ts)
+separates selected-target marker/ledger evidence from strict physical verification against
+saved and historical storage. A declaration graph, matching marker or valid source alone
+cannot establish database synchronization. Production access remains unsupported; local
+observation never starts Compose. Reviewed local application uses a separate target-bound
+approval. See the [workbench guide](../../framework-studio/database-workbench.md).
+
+`DatabaseWorkbench.emitted` separately observes the configured generated JSON's content
+revision and canonical storage/execution hashes against saved source. It carries safe
+metadata/status only, never the raw artifact. This evidence neither generates files nor
+proves generated TypeScript, downstream consumers, migration application or live storage.
 
 When adding a relation, update projection, shared types, lookup/category labels, aggregation, Inspector, layout direction/weight, focus/picking, and tests as applicable; use [change impact](../reference/change-impact.md). Start with [model tests](../../../framework-studio/test/model.test.ts), [database tests](../../../framework-studio/test/database.test.ts), and [rendering tests](rendering.md). Snapshot revisions and edit conflicts belong to [snapshots](snapshots.md) / [editing](editing.md).
 
