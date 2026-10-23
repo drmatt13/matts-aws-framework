@@ -23,10 +23,10 @@ export const deployApi = {
   overview: (force = false) => call<DeployOverview>(`/deploy/overview${query({ force })}`),
   discover: (profile: string, force = false) => call<Observation<DiscoveryView>>(`/deploy/discover${query({ profile, force })}`),
   status: (profile: string, deployment: string, force = false, region?: string) => call<Observation<StatusView>>(`/deploy/status${query({ profile, deployment, region, force })}`),
-  teardown: (profile: string, deployment: string, mode: DeployMode, region?: string) => call<Observation<TeardownPlanView>>(`/deploy/teardown${query({ profile, deployment, mode, region })}`),
+  teardown: (profile: string, deployment: string, mode: DeployMode, region?: string, retainFailed = false, disableProtection = false) => call<Observation<TeardownPlanView>>(`/deploy/teardown${query({ profile, deployment, mode, region, retainFailed, disableProtection })}`),
   plans: () => call<PlanSummaryView[]>("/deploy/plans"),
   plan: (key: string) => call<PlanView>(`/deploy/plans/${encodeURIComponent(key)}`),
-  drift: (deployment: string) => call<DriftView | null>(`/deploy/drift${query({ deployment })}`),
+  drift: (deployment: string, account?: string, region?: string) => call<DriftView | null>(`/deploy/drift${query({ deployment, account, region })}`),
   operate: (kind: OperationKind, params: Record<string, string | boolean | undefined>) => call<JobView>("/deploy/operations", { kind, params }),
   cancel: (id: string) => call<JobView>(`/deploy/jobs/${encodeURIComponent(id)}/cancel`, {}),
   log: (id: string, after = 0) => call<{ lines: JobLogLine[]; job: JobView }>(`/deploy/jobs/${encodeURIComponent(id)}/log${query({ after: after ? String(after) : undefined })}`),
@@ -60,7 +60,7 @@ export function useJobLog(id: string | undefined): readonly JobLogLine[] {
 
 export interface LiveHandlers {
   readonly onJob?: (job: JobView) => void;
-  readonly onEvent?: (deployment: string, event: StackEventView) => void;
+  readonly onEvent?: (deployment: string, event: StackEventView, context: { profile?: string; account?: string; region?: string }) => void;
 }
 
 /**
@@ -90,8 +90,8 @@ export function useDeployLive(handlers: LiveHandlers = {}): void {
       void queryClient.invalidateQueries({ queryKey: ["deploy", "status"], predicate: (entry) => entry.queryKey.includes(deployment) });
     });
     source.addEventListener("deploy-event", (event) => {
-      const { deployment, stack, event: detail } = parse<{ deployment: string; stack: string; event: Omit<StackEventView, "stack"> }>(event);
-      if (detail) current.current.onEvent?.(deployment, { ...detail, stack });
+      const { deployment, stack, event: detail, profile, account, region } = parse<{ deployment: string; stack: string; event: Omit<StackEventView, "stack">; profile?: string; account?: string; region?: string }>(event);
+      if (detail) current.current.onEvent?.(deployment, { ...detail, stack }, { profile, account, region });
     });
     source.addEventListener("deploy-changed", () => {
       void queryClient.invalidateQueries({ queryKey: ["deploy"] });

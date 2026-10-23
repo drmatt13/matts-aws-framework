@@ -12,7 +12,7 @@
  * Every call is appended to state.cdkCalls.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const statePath = process.env.FAKE_AWS_STATE;
@@ -47,6 +47,26 @@ if (command === "synth") {
     CDK_CONTEXT_JSON: JSON.stringify({ ...project, ...cached, ...context, "aws:cdk:bundling-stacks": [] }) };
   delete env.FRAMEWORK_MODE;
   const run = spawnSync(process.execPath, ["--import", "tsx", "bin/main.ts"], { cwd: process.cwd(), env, stdio: "inherit" });
+  if (run.status === 0) {
+    // Skipped bundling leaves source-checkout references. This fake never publishes
+    // real assets: save deterministic fixture bytes so integrity is tested without
+    // copying/building the checkout or weakening production staging validation.
+    const out = value("output");
+    for (const file of readdirSync(out).filter((name) => name.endsWith(".assets.json"))) {
+      const assets = JSON.parse(readFileSync(path.join(out, file), "utf8"));
+      for (const [key, asset] of [...Object.entries(assets.files ?? {}), ...Object.entries(assets.dockerImages ?? {})]) {
+        const sourceKey = asset.source?.path ? "path" : asset.source?.directory ? "directory" : undefined;
+        if (!sourceKey) continue;
+        const relative = path.relative(out, path.resolve(out, asset.source[sourceKey]));
+        if (!relative.startsWith("..") && !path.isAbsolute(relative)) continue;
+        const staged = "fixture-asset-" + key;
+        mkdirSync(path.join(out, staged), { recursive: true });
+        writeFileSync(path.join(out, staged, "fixture.txt"), "Offline fake CDK asset " + key + "\n");
+        asset.source[sourceKey] = staged;
+      }
+      writeFileSync(path.join(out, file), JSON.stringify(assets, null, 2));
+    }
+  }
   process.exit(run.status ?? 1);
 }
 
@@ -141,6 +161,10 @@ if (command === "deploy") {
 
 if (command === "diff") {
   const state = load();
+  if (state.fakeCdk?.securityFailure && args.includes("--security-only")) {
+    console.error("Unable to read IAM review evidence: AccessDenied");
+    process.exit(2);
+  }
   if (args.includes("--security-only")) {
     console.log(state.fakeCdk?.securityBroadening ? "IAM Statement Changes\n+ Allow s3:* on *" : "There were no security-related changes");
     process.exit(state.fakeCdk?.securityBroadening && args.includes("--fail") ? 1 : 0);

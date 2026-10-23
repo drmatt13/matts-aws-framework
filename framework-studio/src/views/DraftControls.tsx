@@ -6,7 +6,7 @@ export function DraftFooter() {
   if (!draft.dirty && !draftState.error) return null;
   return <footer className="draft-footer" aria-label="Pending inspector changes">
     <strong role="status">{draft.count} unsaved {draft.count === 1 ? "change" : "changes"}</strong>
-    {draft.conflict ? <p className="reason" role="alert">Source changed while you were editing. Your draft is preserved. Discard it to load the latest configuration.</p> : null}
+    {draft.conflict ? <div className="reason" role="alert"><p>Source changed while you were editing. Your draft is preserved. Review its changes against the latest source before applying.</p><button className="quiet" disabled={!!draftState.busy} onClick={() => draft.reviewAgainstLatest()}>Review against latest source</button></div> : null}
     {draftState.error ? <p className="reason" role="alert">{draftState.error}</p> : null}
     <div className="draft-actions"><button className="quiet" disabled={!!draftState.busy} onClick={() => draft.discard()}>Discard</button><button className="primary" disabled={!draft.dirty || draft.invalid || draft.conflict || !!draftState.busy} onClick={() => void draft.review()}>{draftState.busy === "review" ? "Checking all changes…" : draftState.busy === "apply" ? "Applying…" : "Review Changes"}</button></div>
   </footer>;

@@ -134,8 +134,9 @@ try {
 // --remove-orphans: a container of a service this file no longer declares is
 // removed rather than left running beside the stack. The runner's own task and
 // Lambda containers carry no Compose labels, so Compose never counts them.
-// --detach returns once the containers are started (one-shot services such as
-// migrations have run, as their dependents wait on them).
+// The default graph only verifies storage. Migration, orphan cleanup and test
+// identity services have explicit profiles and never run as startup effects.
+// --detach returns after creation; Studio separately verifies application readiness.
 const compose = detach ? ["compose", "up", "--detach", "--build", "--remove-orphans"] : ["compose", "up", "--build", "--watch", "--remove-orphans"];
 const child = spawn(dockerCommand.file, [...dockerCommand.prefix, ...compose], {
   cwd: repositoryRoot,
@@ -147,5 +148,6 @@ child.on("error", (error) => {
   process.exitCode = 1;
 });
 child.on("exit", (code, signal) => {
+  if (code !== 0 && !signal) console.error("Local startup is incomplete. PostgreSQL or other containers already started may remain running. No startup migrations, orphan cleanup or test identity writes were requested. Open Studio Database → Database status, inspect Local PostgreSQL, then separately review initialization or pending migrations. Retry Start local services after resolving the failed prerequisite; container logs identify other failures.");
   process.exitCode = code ?? (signal ? 1 : 0);
 });

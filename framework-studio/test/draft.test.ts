@@ -17,7 +17,7 @@ function fixture() {
   let resourceRequests = 0;
   let applies = 0;
   const transport: DraftTransport = {
-    planBatch: async (edits) => { requests.push(edits); return { planId: "review", ok: true, summaries: edits.map((edit) => edit.kind === "tags" ? `tags ${edit.entity}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "databasePlacement" ? `database placement ${edit.database}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? edit.intent.field : edit.kind === "description" ? edit.entity : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.route), changes: [{ file: "settings.ts", diff: { unified: "combined diff", lines: [] } }], preflight: { dev: verdict("dev"), prod: verdict("prod") }, impact: [] }; },
+    planBatch: async (edits) => { requests.push(edits); return { planId: "review", ok: true, summaries: edits.map((edit) => edit.kind === "implementation" || edit.kind === "connection" || edit.kind === "removeWorkload" ? `${edit.kind} ${edit.target}` : edit.kind === "tags" ? `tags ${edit.entity}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "databasePlacement" ? `database placement ${edit.database}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? edit.intent.field : edit.kind === "description" ? edit.entity : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.route), changes: [{ file: "settings.ts", diff: { unified: "combined diff", lines: [] } }], preflight: { dev: verdict("dev"), prod: verdict("prod") }, impact: [] }; },
     resourcePlan: async (intent) => { resourceRequests++; return { planId: "resource-review", ok: true, resource: intent.resource, nextResource: intent.resource, changes: [], diagnostics: [] }; },
     applyBatch: async () => { applies++; return { status: "applied", revision: "saved", message: "Applied all changes." }; },
     resourceApply: async () => { applies++; return { status: "applied", resource: "resource:updated", revision: "saved", message: "Applied resource changes.", history: {} }; },
@@ -179,6 +179,23 @@ test("external source updates preserve the baseline and draft and block stale re
   assert.equal(draft.value(target, fact("lambda.memorySize")), 768);
   await draft.review(); assert.equal(requests.length, 0);
   draft.discard(); assert.equal(draft.getSnapshot().baseline.revision, "external");
+});
+test("explicit review against latest source preserves typed operations and replans once", async () => {
+  const { draft, change, requests, fact } = fixture(); change();
+  draft.stageOperation({ kind: "implementation", target });
+  draft.sync({ ...baseline, revision: "external" }, target, "dev");
+  draft.reviewAgainstLatest();
+  await new Promise<void>(resolve => setImmediate(resolve));
+  assert.equal(draft.conflict, false);
+  assert.equal(draft.value(target, fact("lambda.memorySize")), 768);
+  assert.equal(requests.length, 1); assert.equal(requests[0]!.length, 2);
+  assert.equal(draft.getSnapshot().review?.kind, "batch");
+});
+test("distinct variable and scoped grant operations retain separate draft entries", () => {
+  const { draft } = fixture();
+  for (const variable of ["FIRST", "SECOND"]) draft.stageOperation({ kind: "connection", target, connection: "resource", destination: "resource:openaiApiKey", variable, enabled: true });
+  for (const scope of ["uploads/*", "reports/*"]) draft.stageOperation({ kind: "connection", target, connection: "grant", destination: "resource:uploads.bucket", grant: "grantRead", scope, enabled: true });
+  assert.equal(draft.count, 4);
 });
 test("island default groups share a draft and inherited switches reflect staged parent defaults", () => {
   const { draft } = fixture();

@@ -1070,7 +1070,7 @@ export class SceneRenderer {
       const chrome = 14 * scale + (node.auth ? 14 * scale : 0);
       const budget = Math.min(260 * scale, NODE_CAPTION.width * camera.zoom) - chrome;
       if (budget < 24 * scale) return;
-      const text = this.fit(node.label, font, budget);
+      const text = this.fit(`${node.sourceProblems?.length ? "⚠ " : ""}${node.label}`, font, budget);
       const textWidth = this.measure(text, font);
       const width = textWidth + chrome;
       const tile = project({ x: node.gx, y: node.gy, h: node.h });

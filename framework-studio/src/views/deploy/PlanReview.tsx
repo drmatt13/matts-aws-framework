@@ -25,6 +25,9 @@ function ChangeRow({ change }: { readonly change: ResourceChangeView }) {
         {change.stateful ? <span className="flag warn">holds data</span> : null}
         {change.action === "remove" && change.deletionPolicy && change.deletionPolicy !== "Delete" ? <span className="flag">{change.deletionPolicy.toLowerCase()}</span> : null}
         {change.details?.length ? <span className="change-details">{change.details.join(", ")}</span> : null}
+        {change.owner ? <span className="small muted">{change.owner}</span> : null}
+        {change.before !== undefined || change.after !== undefined ? <details><summary>Inspect property values</summary><div className="change-properties"><strong>Before</strong><pre>{JSON.stringify(change.before ?? null, null, 2)}</pre><strong>After</strong><pre>{JSON.stringify(change.after ?? null, null, 2)}</pre></div></details> : null}
+        {/AWS::(EC2::(VPCEndpoint|NatGateway)|ECS::Service|RDS::DBInstance|ElasticLoadBalancingV2::LoadBalancer)/.test(change.type) && change.action !== "remove" ? <span className="flag warn">ongoing AWS charges; review instance count, zones and usage</span> : null}
       </td>
     </tr>
   );
@@ -71,8 +74,10 @@ export function PlanReview(props: {
           <p className="small muted">
             {plan.review === "change-set" ? "CloudFormation change sets" : "Template comparison"} · {plan.identity.account} · {plan.identity.region} · made {relativeTime(plan.createdAt)}
             {plan.expired ? " · expired" : ` · expires ${new Date(plan.expiresAt).toLocaleString()}`}
+            {plan.profile ? ` · profile ${plan.profile}` : ""}
           </p>
         ) : null}
+        {plan?.inputsFile ? <p className="small muted">Reviewed inputs: <code>{plan.inputsFile}</code>{plan.sourceRevision?.commit ? <> · source <code>{plan.sourceRevision.commit.slice(0, 7)}{plan.sourceRevision.dirty ? "+ local edits" : ""}</code></> : null}</p> : null}
       </header>
       <div className="body" aria-busy={isPending}>
         {error ? <div className="deploy-read-error" role="alert"><p className="diagnostic">{error instanceof Error ? error.message : String(error)}</p><button className="quiet" onClick={() => void refetch()}>Try again</button></div> : null}
@@ -82,10 +87,12 @@ export function PlanReview(props: {
             {plan.result ? (
               <p className={`plan-banner ${plan.result.status === "succeeded" ? "ok" : "warn"}`}>
                 {plan.result.status === "succeeded" ? <Check size={15} aria-hidden /> : <AlertTriangle size={15} aria-hidden />}
-                {plan.result.status === "succeeded" ? "Applied and verified in AWS." : plan.result.status === "partial" ? `Applied. Still to plan now that their dependencies exist: ${plan.result.deferred.map((stack) => shortStack(stack, name)).join(", ")}.` : "Applied, but not every stack verified. See the stacks in CloudFormation."}
+                {plan.result.status === "succeeded" ? "Infrastructure applied and verified in AWS. Application health is a separate check." : plan.result.status === "partial" ? `Applied. Still to plan now that their dependencies exist: ${plan.result.deferred.map((stack) => shortStack(stack, name)).join(", ")}.` : plan.result.status === "export-failed" ? "Infrastructure verified; exporting local settings failed. Retry the export separately." : `Deployment outcome: ${plan.result.status}. Inspect completed and remaining work before planning again.`}
               </p>
             ) : plan.status === "no-changes" ? (
-              <p className="plan-banner ok"><Check size={15} aria-hidden /> AWS already holds exactly this. Nothing to apply.</p>
+              <p className="plan-banner ok"><Check size={15} aria-hidden /> Current assembly stacks have no template changes. Nothing to apply{plan.retainedStacks?.length ? "; other deployed stacks listed below are kept" : ""}. Drift and application health are separate checks.</p>
+            ) : plan.status === "blocked" ? (
+              <p className="plan-banner bad">Analysis is incomplete. Resolve the review errors and plan again; applying is blocked.</p>
             ) : plan.status === "needs-secrets" ? (
               <div className="plan-banner warn">
                 <AlertTriangle size={15} aria-hidden />
@@ -94,10 +101,16 @@ export function PlanReview(props: {
             ) : plan.expired ? (
               <p className="plan-banner warn"><AlertTriangle size={15} aria-hidden /> This plan expired. Plan again: AWS may have changed since.</p>
             ) : null}
+            <p className="small muted">This review deploys saved templates and staged asset bytes. Newer source edits are not included; plan current source to review them. Source application, database changes and local startup are separate actions.</p>
+            {plan.result?.problem ? <p className="diagnostic" role="alert">{plan.result.problem}</p> : null}
+            {plan.result?.secretUpdates?.length ? <p className="diagnostic">Secret writes already performed: {plan.result.secretUpdates.join(", ")}. Runtime readers may already use these versions.</p> : null}
+            {plan.result?.verification.stacks.map((stack) => <p key={stack.name} className={stack.problem ? "diagnostic" : "small"}>{shortStack(stack.name, name)}: {stack.problem ?? "template and identity verified"}</p>)}
+            {plan.retainedStacks?.length ? <section aria-label="Deployed stacks kept"><h3>Deployed stacks outside this assembly — kept</h3><p className="small">These remain in AWS, including their data and ongoing costs. Review identity-based deletion separately; this plan does not remove them.</p><ul>{plan.retainedStacks.map((stack) => <li key={stack.name}><code>{stack.name}</code> · {stack.status}</li>)}</ul></section> : null}
+            {plan.reviewEvidence ? <section aria-label="Review evidence"><h3>Review evidence</h3>{plan.reviewEvidence.problems.map((message) => <p className="diagnostic" role="alert" key={message}>{message}</p>)}<details open={plan.iamBroadening || Boolean(plan.reviewEvidence.problems.length)}><summary>IAM and security diff</summary><pre className="job-log">{plan.reviewEvidence.security}</pre></details><details><summary>Full template diff</summary><pre className="job-log">{plan.reviewEvidence.templates}</pre></details></section> : null}
 
             <div className="checks">
               <div className={`check ${plan.guard === "conflict" ? "refused" : "ok"}`}><strong><Check size={14} aria-hidden /> Ownership</strong><div className="message">{plan.guard === "absent" ? "A first deployment: nothing of this name exists." : `AWS holds ${name} (${plan.guard}); every stack is this deployment's.`}</div></div>
-              <div className={`check ${plan.iamBroadening ? "refused" : "ok"}`}><strong>{plan.iamBroadening ? <ShieldAlert size={14} aria-hidden /> : <Check size={14} aria-hidden />} Permissions</strong><div className="message">{plan.iamBroadening ? "IAM or security permissions broaden. Review the security diff in the plan's log." : "No IAM or security broadening."}</div></div>
+              <div className={`check ${plan.iamBroadening || plan.status === "blocked" ? "refused" : "ok"}`}><strong>{plan.iamBroadening ? <ShieldAlert size={14} aria-hidden /> : <Check size={14} aria-hidden />} Permissions</strong><div className="message">{plan.status === "blocked" ? "Impact unknown: analysis must succeed before applying." : plan.iamBroadening ? "IAM or security permissions broaden. Inspect the security diff in this review." : "No IAM or security broadening detected."}</div></div>
               <div className={`check ${replacing.length || removing.length || stateful.length ? "refused" : "ok"}`}><strong>Resources</strong><div className="message">{counts(changes)}{replacing.length ? `; ${replacing.length} replaced` : ""}{stateful.length ? `; ${stateful.length} holding data changed` : ""}.</div></div>
               <div className={`check ${exportsInUse.length ? "refused" : "ok"}`}><strong>Cross-stack exports</strong><div className="message">{exportsInUse.length ? exportsInUse.map((entry) => `${entry.exportName} is ${entry.change} but imported by ${entry.importers.join(", ")}`).join("; ") : "No export another stack imports is removed or changed."}</div></div>
             </div>
@@ -114,11 +127,11 @@ export function PlanReview(props: {
                       {stack.changes.some((change) => replaces(change) || change.action === "remove") ? <span className="flag bad">review</span> : null}
                     </button>
                     {open[stack.name] ? (
-                      <div className="change-table-scroll" role="region" aria-label={`Resource changes in ${shortStack(stack.name, name)}`} tabIndex={0}><table className="change-table">
+                      <div><p className="small muted">{stack.dependencies?.length ? "Runs after: " + stack.dependencies.map((dependency) => shortStack(dependency, name)).join(", ") : "No stack prerequisites in this assembly."}</p><div className="change-table-scroll" role="region" aria-label={`Resource changes in ${shortStack(stack.name, name)}`} tabIndex={0}><table className="change-table">
                         <caption className="sr-only">Resource changes in {shortStack(stack.name, name)}</caption>
                         <thead><tr><th scope="col">Action</th><th scope="col">Resource</th><th scope="col">Type</th><th scope="col">Impact</th></tr></thead>
                         <tbody>{stack.changes.map((change) => <ChangeRow key={change.logicalId} change={change} />)}</tbody>
-                      </table></div>
+                      </table></div></div>
                     ) : null}
                   </li>
                 ))}
@@ -154,7 +167,7 @@ export function PlanReview(props: {
         <button className="quiet" onClick={props.onClose}>Close</button>
         {plan && !plan.result ? <button className="quiet" onClick={() => props.onDiscard(plan)} disabled={Boolean(props.busy)}>Discard plan</button> : null}
         {plan?.status === "needs-secrets" && !plan.expired ? <button className="primary" onClick={() => props.onReplan(plan, true)} disabled={Boolean(props.busy)}>Create secrets and plan again</button> : null}
-        {plan?.expired && !plan.result ? <button className="primary" onClick={() => props.onReplan(plan, false)} disabled={Boolean(props.busy)}>Plan again</button> : null}
+        {plan && (plan.expired || plan.status === "blocked" || plan.result) ? <button className="primary" onClick={() => props.onReplan(plan, false)} disabled={Boolean(props.busy)}>Plan current source</button> : null}
         {applicable ? (
           <button className="primary" disabled={Boolean(props.busy) || (needsName && typed !== name)} onClick={() => props.onApply(plan, needsName ? typed : undefined)}>
             Apply to {plan.identity.account}

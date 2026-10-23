@@ -248,7 +248,7 @@ async function drift(options: Options) {
     }
     return { stack: stack.name, status: "UNKNOWN", detection: "TIMED_OUT", resources: [] };
   }));
-  return { deployment: name, checkedAt: new Date().toISOString(), note: "Drift detection covers resource types CloudFormation supports, and only properties set in the template.", stacks: results };
+  return { deployment: name, account: found.context.account, region: found.context.region, checkedAt: new Date().toISOString(), note: "Drift detection covers resource types CloudFormation supports, and only properties set in the template.", stacks: results };
 }
 
 function printHuman(command: string, value: any): void {

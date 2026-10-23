@@ -74,9 +74,9 @@ export class AwsObserver {
   }
 
   /** What deleting a deployment would remove and leave behind. Reads only. */
-  teardown(profile: string, deployment: string, mode: "dev" | "prod", region: string | undefined): Promise<Observation<TeardownPlanView>> {
+  teardown(profile: string, deployment: string, mode: "dev" | "prod", region: string | undefined, retainFailed = false, disableProtection = false): Promise<Observation<TeardownPlanView>> {
     return this.read(`teardown|${profile}|${region ?? ""}|${deployment}|${Date.now()}`, 0, true,
-      ["--deployment", deployment, "-c", `prodDeployment=${mode === "prod"}`, "--profile", profile, ...(region ? ["--region", region] : []), "--plan", "--json"], profile, DESTROY_SCRIPT);
+      ["--deployment", deployment, "-c", `prodDeployment=${mode === "prod"}`, "--profile", profile, ...(region ? ["--region", region] : []), ...(retainFailed ? ["--retain-failed"] : []), ...(disableProtection ? ["--allow-disable-protection"] : []), "--plan", "--json"], profile, DESTROY_SCRIPT);
   }
 
   /** A drift report from a drift job's output. */

@@ -1239,3 +1239,9 @@ offline, and checks that they share no stack, physical name or export.
 
 Review logical ids when moving constructs. The prod graph exposes cycles and resources
 absent from dev.
+
+### Reviewed deployment recovery
+
+Studio development and production deployments require explicit review. Saved plan application and discard consume the reviewed artifact and target rather than importing current declarations, so broken/new source does not block recovery. The saved assembly digest covers manifests, templates and staged asset bytes; changed bytes or external links require a new plan. Review lists deployed stacks absent from the selected assembly as retained, never silently deletes them, and does not equate no template changes with drift-free or healthy operation. Required analysis failures block apply.
+
+Teardown follows deployed identity, not synthesis. Prepare a saved, expiring deletion scope as documented in Production, then apply it with the typed deployment name. StackIds, account/region/mode, imports/data policies and opt-in protection/retain-failed choices are bound and rechecked. Unreadable required consequences block execution; phase/result journals distinguish completed stacks from remaining or unknown work.

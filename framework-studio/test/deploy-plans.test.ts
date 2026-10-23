@@ -43,3 +43,23 @@ test("a plan that prepared change sets before stopping is kept and listed as unf
     assert.equal(existsSync(directory), true);
   } finally { rmSync(state, { recursive: true, force: true }); }
 });
+
+test("live deployment journals remain active; stopped and unreadable outcomes stay visible for recovery", () => {
+  const { state, plans } = store();
+  const key = "my-aws-app-review1";
+  const directory = plans.path(key);
+  try {
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(path.join(directory, "plan.json"), JSON.stringify({ planId: "plan-x-abcdef", createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(), status: "ready", review: "template", identity: { deployment: "my-aws-app", mode: "dev", account: "734849394764", region: "us-east-1" } }));
+    const journal = path.join(directory, "operation.json");
+    writeFileSync(journal, JSON.stringify({ pid: process.pid, stage: "applying infrastructure", secretUpdates: ["API_KEY"] }));
+    assert.equal(new PlanStore(state).read(key)?.result, undefined, "another store must not mark the current process interrupted");
+    writeFileSync(journal, JSON.stringify({ pid: 999_999_999, stage: "applying infrastructure", secretUpdates: ["API_KEY"] }));
+    assert.equal(plans.read(key)?.result?.status, "interrupted");
+    assert.deepEqual(plans.read(key)?.result?.secretUpdates, ["API_KEY"]);
+    writeFileSync(journal, "broken");
+    assert.equal(plans.read(key)?.result?.status, "unverified");
+    writeFileSync(path.join(directory, "result.json"), "broken");
+    assert.equal(plans.list()[0]?.applied, "unverified", "corrupt results must not hide an uncertain release from history");
+  } finally { rmSync(state, { recursive: true, force: true }); }
+});

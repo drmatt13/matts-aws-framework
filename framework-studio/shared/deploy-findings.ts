@@ -94,7 +94,7 @@ export function deploymentFindings(input: FindingsInput): Finding[] {
     findings.push({
       code: "NOT_DECLARED", severity: "info", scope: "identity",
       title: "Discovered in this account, not declared here",
-      detail: `This repository does not declare ${name}, so Studio shows it read-only. A teammate's deployment, or an old name of yours.`,
+      detail: `Source and deployment controls are unavailable because this repository does not declare ${name}. Identity-based deletion remains available through a separate review.`,
       actions: deployment ? [cloud({ id: "delete", label: "Delete…", tone: "danger" })] : [],
     });
   }
@@ -115,11 +115,11 @@ export function deploymentFindings(input: FindingsInput): Finding[] {
     return findings;
   }
 
-  const deployLabel = (exists: boolean) => (mode === "dev" ? (exists ? "Update development" : "Deploy development") : exists ? "Plan changes" : "Plan production deployment");
+  const deployLabel = (_exists: boolean) => "Compare AWS templates";
   const deployAction = (exists: boolean): Action => cloud(mode === "dev" ? { id: "deploy", label: deployLabel(exists), tone: "primary" } : { id: "plan", label: deployLabel(exists), tone: "primary" });
 
   // Reviewed plans come first: one was made to be applied (unless it is being applied now).
-  const ours = input.plans.filter((entry) => entry.deployment === name);
+  const ours = input.plans.filter((entry) => entry.deployment === name && entry.mode === mode && entry.account === context?.account && entry.region === context?.region && (!entry.profile || entry.profile === input.profile));
   for (const plan of ours.filter((entry) => !entry.applied && entry.key !== running?.planId)) {
     if (plan.status === "unfinished") {
       findings.push({
@@ -129,10 +129,10 @@ export function deploymentFindings(input: FindingsInput): Finding[] {
       });
     } else if (plan.expired) {
       findings.push({ code: "PLAN_EXPIRED", severity: "info", scope: "aws", title: "An expired plan", detail: "Discarding it removes any change sets it prepared.", actions: [cloud({ id: "discard-plan", label: "Discard", plan: plan.key, tone: "quiet" })] });
-    } else if (plan.status !== "no-changes") {
+    } else if (plan.status !== "no-changes" || plan.retainedStacks) {
       findings.push({
         code: "PLAN_WAITING", severity: "attention", scope: "aws",
-        title: plan.status === "needs-secrets" ? "A plan needs new secrets created" : "A reviewed plan is waiting",
+        title: plan.retainedStacks ? `${plan.retainedStacks} deployed stack${plan.retainedStacks === 1 ? " is" : "s are"} kept outside current source` : plan.status === "blocked" ? "Deployment analysis is incomplete" : plan.status === "needs-secrets" ? "A plan needs new secrets created" : "A reviewed plan is waiting",
         detail: plan.status === "needs-secrets" ? "A change set can only reference a secret that exists." : `Made ${new Date(plan.createdAt).toLocaleString()}.`,
         actions: [cloud({ id: "review-plan", label: "Review plan", plan: plan.key, tone: "primary" }), cloud({ id: "discard-plan", label: "Discard", plan: plan.key, tone: "quiet" })],
       });
@@ -141,6 +141,9 @@ export function deploymentFindings(input: FindingsInput): Finding[] {
 
   // The newest plan was applied in part: what it deferred can be planned now.
   const latest = [...ours].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  if (latest?.applied && latest.applied !== "succeeded" && latest.applied !== "partial") findings.push({
+    code: "OPERATION_UNVERIFIED", severity: "blocking", scope: "aws", title: latest.applied === "export-failed" ? "Infrastructure verified; local settings export failed" : "The last deployment needs recovery", detail: "Outcome: " + latest.applied + ". Review the recorded result before planning further changes. CloudFormation completion does not establish application health.", actions: [cloud({ id: "review-plan", label: "Review deployment result", plan: latest.key, tone: "primary" }), ...(latest.applied === "export-failed" ? [cloud({ id: "export", label: "Retry settings export" })] : [])],
+  });
   if (latest?.applied === "partial" && latest.deferred?.length && target) {
     findings.push({
       code: "PLAN_PARTIAL", severity: "attention", scope: "aws",
@@ -175,7 +178,7 @@ export function deploymentFindings(input: FindingsInput): Finding[] {
   } else if (state?.kind === "rolled-back") {
     findings.push({ code: "ROLLED_BACK", severity: "attention", scope: "aws", title: "The last update was rolled back", detail: "AWS holds the version before it. Fix what failed (see Events), then deploy again.", actions: target ? [deployAction(true)] : [] });
   } else if (state?.kind === "ready") {
-    findings.push({ code: "DEPLOYED", severity: "info", scope: "aws", title: `Deployed · ${plural(deployment!.stacks.length, "stack")}`, actions: target ? [{ ...deployAction(true), tone: "quiet" }] : [] });
+    findings.push({ code: "DEPLOYED", severity: "info", scope: "aws", title: latest?.applied && latest.applied !== "succeeded" && latest.applied !== "partial" && latest.applied !== "export-failed" ? "CloudFormation stacks complete; release needs verification" : `Deployed · ${plural(deployment!.stacks.length, "stack")}`, actions: target ? [{ ...deployAction(true), tone: "quiet" }] : [] });
   }
   if (deployment?.contracts.includes(1)) {
     findings.push({ code: "CONTRACT_V1", severity: "info", scope: "identity", title: "Identity recorded the older way", detail: "Contract 1: the next deployment adds stack tags and template metadata, changing no resource.", actions: [] });
@@ -214,7 +217,7 @@ function machineFindings(input: FindingsInput, exists: boolean, usable: boolean,
         code: "EXPORT_ORPHAN", severity: "attention", scope: "local",
         title: `This machine's settings point at ${name}, which is not deployed here`,
         detail: "Local services would call AWS resources that no longer exist. Deploy it again, or stop development.",
-        actions: [busy ? { id: "deploy", label: "Deploy development", tone: "primary", disabled: busy } : { id: "deploy", label: "Deploy development", tone: "primary" }, ...(runningHere ? [stopAction] : [])],
+        actions: [busy ? { id: "deploy", label: "Compare AWS templates", tone: "primary", disabled: busy } : { id: "deploy", label: "Compare AWS templates", tone: "primary" }, ...(runningHere ? [stopAction] : [])],
       });
     }
     return findings;

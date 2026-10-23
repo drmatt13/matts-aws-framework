@@ -26,7 +26,9 @@ npm run studio -- --print # the whole model as JSON, then exit
 | Deploy | `/deploy` | Deployment discovery, reviewed plans, authorized operations and local development controls |
 | Inspector | beside any view | One entity: source location, resolved settings and where they come from, relationships, and the editable fields |
 
-A Development/Production switch picks which deployment graph the views describe. Automatic
+A Development/Production switch picks which deployment graph Board and Isometric describe.
+Deploy owns its named deployment/profile/account/region selection; Database requires an
+explicit database target and separate approval for database changes. Automatic
 health indicators for both graphs and compact undo/redo controls sit in the top bar.
 Configuration health contains an optional saved-source audit for generated files and local
 wiring under **Additional checks**. This runs `framework:check`; it is separate from the
@@ -39,7 +41,7 @@ Lucide outlines for generic concepts. Startup and watched CDK edits automaticall
 an ignored JSON index from linked stack source. Source-inferred edges
 have a separate filter and source links, including the resource flow in `referenceExamples`.
 
-Deployment is presented as two environments throughout Studio. Board and Isometric omit
+Declaration placement uses two framework modes. Board and Isometric omit
 badges for entities available in both; Dev (flask), Prod (diamond) and Off
 badges identify exceptions. The Inspector shows two environment cards. Development
 combines local execution and its AWS-managed workloads; it does not treat these as
@@ -50,10 +52,12 @@ separate deployment states.
 | Document | Read it when |
 | --- | --- |
 | [Resource baseline (2026-10-20)](resource-baseline-2026-10-20.md) | You are experimenting with resources and need the original application inventory, source revision and scoped restoration procedure |
+| [Product audit (2026-10-22)](product-audit-2026-10-22.md) | You need the original persona journeys, reproduced failures and sequenced implementation plan |
+| [Implementation and second pass](implementation-second-pass-2026-10-22.md) | You need the implemented changes, regression evidence and remaining live-verification boundaries |
 | [Knowledge router](../aws-studio-knowledge/README.md) | You need current source-linked ownership, contracts, verification and selective architecture context |
 | [Declarations and tags](declarations-and-tags.md) | You are authoring declaration modules or changing metadata ownership and tag filtering |
 | [Network and database declarations](network-database-declarations.md) | You are changing explicit VPC/database ownership, placement or identity-sensitive infrastructure |
-| [Database workbench](database-workbench.md) | You are authoring Prisma, comparing migration contracts, planning artifacts or inspecting and reviewing a local database application |
+| [Database workbench](database-workbench.md) | You are authoring Prisma, comparing migration contracts, planning artifacts or reviewing explicit local/private-task database operations |
 | [Report](report.md) | You need the original October 16 investigation and its design rationale |
 | [Architecture](architecture.md) | You need detailed implementation context; confirm current contracts through the knowledge router |
 | [Isometric view](isometric-view.md) | You are changing the landscape: layout, terrain, buildings, camera, picking or rendering |

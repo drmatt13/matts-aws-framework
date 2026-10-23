@@ -286,6 +286,35 @@ runs inside the network:
 npm run db:migrate:cloud -- --profile <PROFILE>
 ```
 
+With multiple production deployments, select the same target for resolution and execution:
+
+```sh
+npm run db:migrate:cloud -- --deployment <DEPLOYMENT> -c deployment=<DEPLOYMENT> --profile <PROFILE> --region <REGION>
+```
+
+Studio's Database status offers the reviewed VPC-task path: select the named production
+deployment/profile and check the destination using read-only AWS metadata. The exact
+stack-owned task definition, account, region, cluster, subnets/security groups, public-IP assignment and billed Fargate effects appear before a typed
+`Inspect <deployment>` approval launches read-only inspection. This requires deploying the
+task's reviewed protocol v1 source first; Studio refuses older write-only task revisions
+without starting them. Inspection returns the canonical path and SQL. A second typed
+`Apply <deployment>` approval launches a separate task bound to the exact review digest,
+authored source/image inputs, full marker/ledger state and destination. That task rechecks
+historical physical storage on the same transaction under canonical advisory locks before
+DDL. Task placement uses the declared VPC networking and may assign a public IP; the database remains private/IAM authenticated. Preparation and application bind the full launch/log descriptor, so changed networking/cluster/logs require a new review. Inspecting, source application, infrastructure deployment and database application are
+separate actions. Review application compatibility and data consequences before approval.
+For the first release's genuinely empty database, inspection instead offers reviewed
+initialization with all native SQL/parameters and control-table DDL. Type `Initialize
+<deployment>` separately to launch it. The writer rechecks exact additive operations and
+metadata-complete emptiness inside its transaction after acquiring canonical migration and
+initialization locks. No existing objects/extra user schemas/large objects, markers or ledger
+may be present; populated unknown or partial schemas are refused without adoption/reset.
+
+Task submission is not database success. Studio records the exact task ARN/request token,
+CloudWatch destination and confirmed outcome; unknown transport/output leaves writes
+unconfirmed, and tasks can continue if Studio closes. Inspect that task and database ledger
+before retrying. No cloud task, database write or cancellation happens automatically.
+
 It launches the task through the descriptor the deployment published, waits for it, and
 exits with Prisma's exit code; the task's log is in CloudWatch under the `db-migrate` stream
 prefix. The task declares `database: { connection: "direct" }`, bypasses Proxy, and logs in with IAM, so no
@@ -361,8 +390,8 @@ deleted with a final snapshot, and its automated backups are kept for their rete
 First see what would be deleted, in which order, and what would remain:
 
 ```powershell
-npm run destroy:resources -- --deployment <NAME> -c prodDeployment=true --profile <PROFILE> --plan
-npm run destroy:resources -- --deployment <NAME> -c prodDeployment=true --profile <PROFILE> --confirm <NAME>
+npm run destroy:resources -- --deployment <NAME> -c prodDeployment=true --profile <PROFILE> --region <REGION> --plan --save-plan .cache/delete-review.json
+npm run destroy:resources -- --apply .cache/delete-review.json --profile <PROFILE> --confirm <NAME>
 ```
 
 The stacks are the ones whose own records name the deployment, found in AWS rather than by
@@ -376,3 +405,5 @@ keeps those and deletes the rest. Managed secrets are kept (a returning deployme
 the deployment record is removed, and anything still tagged `framework:deployment=<NAME>`
 afterwards is listed. Avoid custom
 Cognito domains for disposable deployment tests when domain lifecycle is not under test.
+
+Deletion reviews expire after 15 minutes and bind immutable deployed stack identities, account/region, dependencies and data policies. Required unreadable evidence or external importers block deletion. If termination protection must be disabled, explicitly include `--allow-disable-protection` while preparing a new review; `--retain-failed` likewise belongs on that reviewed preparation, with the exact failed resource IDs shown. Applying cannot widen those choices. Changed or partially deleted scope requires a fresh review. `<review>.result.json` records completed stack IDs and any failing phase; managed secrets and retained resources remain separately visible. Explicit identity teardown never needs current source or synth.

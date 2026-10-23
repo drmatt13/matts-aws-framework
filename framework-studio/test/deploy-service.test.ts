@@ -30,8 +30,12 @@ let base: string;
 const events: { event: string; data: any }[] = [];
 let dockerState: string;
 let exportDirectory: string;
+let applicationServer: Server;
 
 before(async () => {
+  applicationServer = express().get("/", (_request, response) => response.send("fixture client ready")).listen(0, "127.0.0.1");
+  await new Promise<void>(resolve => applicationServer.once("listening", resolve));
+  const applicationPort = (applicationServer.address() as AddressInfo).port;
   account = fakeAccount({
     allowWrites: true,
     outputValues: {
@@ -44,7 +48,7 @@ before(async () => {
   mkdirSync(path.join(exportDirectory, "client-app"), { recursive: true });
   const inputs = path.join(account.directory, "inputs.env");
   writeFileSync(inputs, [
-    "CDK_APP_NAME=my-aws-app", "LOCAL_DEV_URL=http://localhost:3000", "LOCAL_AWS_REGION=us-east-1",
+    "CDK_APP_NAME=my-aws-app", `LOCAL_DEV_URL=http://127.0.0.1:${applicationPort}`, "LOCAL_AWS_REGION=us-east-1",
     "LOCAL_API_DEV_SERVER_HOST_PORT=8080", "LOCAL_WS_DEV_SERVER_HOST_PORT=8081", "LOCAL_INVOCATION_RUNNER_HOST_PORT=8090",
     "WS_TESTER_HOST_PORT=3001", "POSTGRES_HOST_PORT=5432", "PGADMIN_HOST_PORT=5050",
     "USE_FRONTEND_CUSTOM_DOMAIN=false", "USE_COGNITO_CUSTOM_DOMAIN=false", `OPENAI_API_KEY=${SECRET_VALUE}`, "",
@@ -60,7 +64,7 @@ before(async () => {
     FRAMEWORK_POLL_MS: "20",
   };
   // The project Studio names from this checkout's directory (or COMPOSE_PROJECT_NAME), whatever the checkout is called.
-  writeFileSync(dockerState, JSON.stringify({ engine: "stopped", desktop: true, compose: "5.1.0", project: composeProjectName(root, env), services: [{ name: "postgres", health: "healthy" }, { name: "prisma-migrate", oneShot: true }, { name: "api-dev-server" }] }));
+  writeFileSync(dockerState, JSON.stringify({ engine: "stopped", desktop: true, compose: "5.1.0", project: composeProjectName(root, env), services: [{ name: "postgres", health: "healthy" }, { name: "prisma-verify", oneShot: true }, { name: "api-dev-server" }] }));
   const idle = { file: process.execPath, args: ["-e", "console.log('ready'); setInterval(() => {}, 1000)"], cwd: root, display: "idle" };
   service = new DeployService(root, (event, data) => events.push({ event, data }), {
     env, stateDirectory: path.join(account.directory, "studio"),
@@ -77,6 +81,7 @@ before(async () => {
 after(async () => {
   await service.dispose();
   server.close();
+  applicationServer.close();
   account.dispose();
 });
 
@@ -141,10 +146,15 @@ test("operations are validated before anything runs", async () => {
   assert.equal((await post("/operations", { kind: "local-start", params: { deployment: "my-aws-app-prod", profile: "dev" } })).status, 400);
 });
 
-test("Deploy development plans, applies a plan that needs no confirmation, verifies and exports", async () => {
-  const job = await operate("deploy-plan", { deployment: "my-aws-app", profile: "dev", autoApply: true });
+test("Development waits for explicit review, then applies, verifies and exports", async () => {
+  const planned = await operate("deploy-plan", { deployment: "my-aws-app", profile: "dev" });
+  assert.equal(planned.status, "succeeded", logOf(planned));
+  const reviewed = (await get<PlanView>(`/plans/${planned.planId}`)).body;
+  assert.equal(reviewed.confirmation.level, "click");
+  assert.equal(reviewed.result, undefined);
+  const job = await operate("deploy-apply", { plan: planned.planId, profile: "dev" });
   assert.equal(job.status, "succeeded", logOf(job));
-  assert.deepEqual(job.steps?.map((step) => step.status), ["done", "done"]);
+  assert.deepEqual(job.steps?.map((step) => step.status), ["done"]);
   assert.match(job.summary ?? "", /deployed and verified/);
   const plan = await get<PlanView>(`/plans/${job.planId}`);
   assert.equal(plan.body.result?.status, "succeeded");
@@ -214,7 +224,9 @@ test("starting development needs Docker, starts the stack detached, then watches
   assert.equal(overview.local.watch.running, true);
   assert.equal(overview.local.client.running, true);
   assert.equal(overview.local.exported.deployment, "my-aws-app");
-  assert.deepEqual(overview.local.services.map((entry) => [entry.name, entry.state, entry.oneShot]), [["api-dev-server", "running", false], ["postgres", "running", false], ["prisma-migrate", "exited", true]]);
+  assert.deepEqual(overview.local.services.map((entry) => [entry.name, entry.state, entry.oneShot]), [["api-dev-server", "running", false], ["postgres", "running", false], ["prisma-verify", "exited", true]]);
+  assert.equal(overview.local.readiness?.state, "ready");
+  assert.match(logOf(job), /no startup data writes/);
   assert.equal(overview.local.services.find((entry) => entry.name === "postgres")?.health, "healthy");
   const up = readFileSync(`${dockerState}.calls.jsonl`, "utf8").split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line)).find((call: any) => call.args.join(" ") === "compose up --detach --build --remove-orphans");
   assert.equal(up.profile, "dev");
@@ -235,7 +247,7 @@ test("deleting needs the typed name; the teardown plan reads only, and the delet
   assert.ok(teardown.body.value.stacks.length >= 3);
   assert.equal(account.calls().filter((call) => !READ_VERB.test(call.key)).length, writesBefore, "the teardown plan wrote nothing");
 
-  const job = await operate("destroy", { deployment: "my-aws-app", mode: "dev", profile: "dev", confirm: "my-aws-app" });
+  const job = await operate("destroy", { deployment: "my-aws-app", mode: "dev", profile: "dev", confirm: "my-aws-app", review: teardown.body.value.key });
   assert.equal(job.status, "succeeded", logOf(job));
   const remaining = account.read().regions[REGION].stacks.filter((stack: any) => stack.StackStatus !== "DELETE_COMPLETE").map((stack: any) => stack.StackName);
   assert.deepEqual(remaining.filter((name: string) => name.startsWith("my-aws-app-")), [], "no development stack remains");

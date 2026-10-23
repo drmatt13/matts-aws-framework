@@ -44,8 +44,7 @@ Break one of these and the studio stops being trustworthy:
    or file endpoint.
 8. **AWS only through the repository's scripts.** The studio holds no AWS SDK or
    credentials. Observation (discover and status) is read-only. Cloud writes happen only
-   as an explicit Apply of a reviewed plan, through the same scripts the CLI uses. No
-   database action from the studio.
+   as an explicit Apply of a reviewed plan, through the same scripts the CLI uses. Database observation and application have their own target-bound review in the [database workbench](database-workbench.md).
 9. **Views are views.** Selecting, panning or laying out never writes. The isometric scene
    is a pure function of the model.
 10. **Graph switching shows facts, not new places.** Presence and ghosting change with the
@@ -161,9 +160,9 @@ Config-level checks are not a synth. Infrastructure claims still need both synth
 - **Compose Watch.** It restarts the dev servers and the invocation runner whenever
   `framework-config/` changes, so local executions in flight, and their histories, are
   lost. The edit preview says so.
-- **Generated files.** Some edits make generated files stale. Changing a service's
-  `deploy` changes `docker-compose.services.yml`, so `framework:check` fails until
-  `framework:generate` runs. The studio offers the generator after a failed check.
+- **Generated files.** Source reviews must include any framework projections changed by
+  the declaration. Always use the framework generator and verify source plus generated
+  output together; never hand-author the projection.
 - **The isometric canvas is always dark**, whatever the page's theme. Its chrome uses its
   own dark styles.
 - **Mid-gesture changes.** Events that change the canvas's size or the selection while a
@@ -172,77 +171,27 @@ Config-level checks are not a synth. Infrastructure claims still need both synth
 - **Two clicks inside a double-click.** A double-click toggles the selection on and off;
   the double-click handler then selects explicitly. Keep that when changing click handling.
 
-## Known limitations
+## Current boundaries and next work
 
-- **Editing:**
-  - Only five fields can be edited.
-  - No relationship, catalog, network or workflow editing yet.
-  - A target declared by two routes is read-only.
-  - Removing a commented property is refused.
-- **Workflows.** Shown as a step list in the inspector. There is no graph view and no run
-  overlay.
-- **Watching.** `fs.watch` behaviour on Windows under heavy saves is unmeasured; a polling
-  fallback may be needed. A refresh costs about 0.7 s (two child processes).
-- **Isometric:**
-  - Layout is computed only, with no manual arrangement or persistence.
-  - Cards are canvas text, and below 0.55× only island titles and emphasised cards show.
-  - Arcs are drawn between roofs and do not follow network topology.
-  - Performance was measured headless only.
-  - Narrow screens leave the canvas small when the inspector is open.
-- **No AWS observability.** Nothing from deployed accounts or CloudWatch is shown, and none
-  is claimed.
+Use the [capability matrix](../aws-studio-knowledge/reference/capabilities.md) and
+[product audit](product-audit-2026-10-22.md) for implementation scope. The old five-field,
+no-network/no-relationship/no-observability roadmap is superseded by source-reviewed
+creators, networks, resource references, database workbench and deployment operations.
 
-## Roadmap
+- Computed declarations and commented removals still require a deliberate source edit
+  when a lossless transformation cannot be proved.
+- The map represents declarations, with separately labeled CDK source inferences.
+  Deploy reports observed cloud/local status; neither view proves application health.
+- Native file watching has visible failure reporting, periodic content comparison and
+  retry. Platform-specific event delivery still needs real-device verification.
+- Layout remains computed. Search, filtering, selection and resource navigation never
+  change infrastructure identity. Manual arrangement is a future view preference.
+- CloudWatch application logs/metrics/traces and workflow execution overlays are future
+  capabilities; CloudFormation events and local container logs already exist.
+- Production deployment, private IAM database access, runtime model calls and recovery
+  require separately authorized live tests. Offline tests are evidence of their own scope.
 
-These are ranked by value for effort. Each is a separate change with its own tests.
-
-1. **Commit Phase 2.** It is verified and self-contained.
-2. **Local run overlay.**
-   - **Source.** The invocation runner already serves `GET /workflows` and
-     `GET /workflows/:executionId` (callback tokens redacted) on `127.0.0.1`, at
-     `LOCAL_INVOCATION_RUNNER_HOST_PORT`. Its history events name states exactly as
-     `workflow.names` does.
-   - **Plumbing.** Add a GET-only, read-only proxy route to the studio server, polled or
-     streamed over SSE. Then light buildings and arcs in the isometric view as executions
-     touch them.
-   - **Caveat.** Histories are in memory and are lost when Compose Watch restarts the
-     runner.
-3. **Workflow view.** A structured layout of the IR (sequence, parallel, map, choice,
-   retry, attempt) as nested boxes. The IR is a tree, so no graph-layout library is needed.
-   Clicking a workflow island could open it in place. Map steps to source by replaying
-   builder-call order against the source, and show nothing rather than guess when the
-   counts disagree.
-4. **Network panel and edits.**
-   - **Show:** what each workload can reach (IPv4, IPv6, endpoints, the database), and the
-     monthly cost from `NETWORK_PRICES`.
-   - **Edit:** `natGateway`, `egressOnlyInternetGateway` and endpoints, previewed with the
-     framework's endpoint and cost messages. This needs the non-section editing described
-     above.
-5. **Relationship edits.** Add or remove `runsTask`, `startsWorkflow` and grants, and
-   environment references to catalog attributes. This needs array-element splices and
-   import management, so design the transaction first.
-6. **Catalog authoring.** `resource.fromEnv` and `resource.secret` declarations, together
-   with the `cdk-app/.env.*.template` lines AGENTS.md requires. Native CDK stays code-first,
-   with links to the stack class and its `linkResources` site.
-7. **Isometric polish.** The two-environment presentation (Development/Production), quiet
-   exception badges, thin background grid, official AWS SVG icons, quieter
-   terrain and source-inferred CDK resource links are now implemented. The link index is
-   disposable under `.cache/framework-studio/cdk-links.json`, rebuilt on refresh; see
-   [Architecture](architecture.md#the-source-index) before extending its inference rules.
-   - **Layout overrides** in a separate, clearly non-configuration file (under `.cache`
-     for personal use, or a checked-in editor file if a team should share it), keyed by
-     entity id.
-   - **Text.** DOM overlays for card text at extreme zooms.
-   - **Keyboard.** Navigation between entities.
-   - **Touch.** Testing on real devices.
-   - **Performance.** A measured GPU profile, before any WebGL backend.
-8. **Machine-readable diagnostics.** Framework errors already name their fixes. Structured
-   fixes would let the studio offer them as one-click previews (for example "add `ecr.api`
-   to `interfaceEndpoints`").
-
-## Open questions for the owner
-
-- Should Phase 2 be committed as it is, or after further art direction?
-- Should layout overrides be personal (ignored) or shared (checked in)?
-- Which comes next: the run overlay, the workflow view, or network editing?
-- Should `AGENTS.md` point agents at these documents for studio work?
+Meaningful next additions include a read-only workflow execution overlay using the
+existing invocation runner, a structured workflow IR view, and measured touch/GPU
+performance work. Native resource templates should expand through the typed creator
+and exact-file review contract, not a generic code-writing endpoint.

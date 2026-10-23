@@ -30,6 +30,7 @@ let query: typeof import("@tanstack/react-query");
 let studio: typeof import("../src/studio");
 let database: typeof import("../src/views/Database");
 let history: typeof import("../src/views/DatabaseHistory");
+let cloud: typeof import("../src/views/DatabaseCloud");
 let dom: { window: Window & typeof globalThis };
 let persisted: DatabaseWorkbench;
 let sourceReviews: DatabaseSourceReview[];
@@ -38,6 +39,7 @@ let saveGate: Promise<void> | undefined;
 let refreshUnavailable: boolean;
 let fullscreenElement: Element | null = null;
 const clients: import("@tanstack/react-query").QueryClient[] = [];
+const cloudPlacement = { binding: "fixture-launch-and-logs", launch: { cluster: "arn:aws:ecs:us-east-1:123456789012:cluster/production", containerName: "Main", launchType: "FARGATE", platformVersion: "LATEST", subnets: ["subnet-public"], securityGroups: ["sg-task"], assignPublicIp: true }, logs: { group: "database-logs", streamPrefix: "task" } };
 
 function validate(text: string): DatabaseValidation {
   const parsed = parse(text, "contract.prisma");
@@ -82,6 +84,7 @@ before(async () => {
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
   ui.configure({ getElementError: message => new Error(message ?? "Element not found") });
   studio = await import("../src/studio"); database = await import("../src/views/Database"); history = await import("../src/views/DatabaseHistory");
+  cloud = await import("../src/views/DatabaseCloud");
 });
 beforeEach(() => {
   fullscreenElement = null;
@@ -333,4 +336,56 @@ test("inspection requires an explicit target and a late response cannot cross ta
   assert.ok(!ui.screen.queryByText("Local-only observation marker"));
   assert.ok(ui.screen.getByText("Database state is unknown until an explicit inspection succeeds."));
   assert.equal(bodies.length, 1, "target changes never implicitly inspect or write");
+});
+
+test("production database exposes pinned destination and billing before separate inspection and SQL approvals", async () => {
+  persisted = { ...persisted, targets: persisted.targets.map(target => target.id === "production" ? { ...target, handoffs: [{ deployment: "production", account: "123456789012", region: "us-east-1", command: "", detail: "Private IAM/TLS task" }] } : target) };
+  const identity = { deployment: "production", account: "123456789012", region: "us-east-1", taskDefinitionArn: "arn:aws:ecs:us-east-1:123456789012:task-definition/database:7" };
+  let preparations = 0, inspections = 0, applications = 0;
+  const destination = { ...cloudPlacement, id: "prepared", expiresAt: "2026-10-22T13:00:00Z", profile: "dev", protocol: 1 as const, identity, effects: ["Inspect starts one billed Fargate task.", "Inspection never applies database changes."] };
+  mock.method(cloud.databaseCloudApi, "prepare", async () => { preparations++; return destination; });
+  mock.method(cloud.databaseCloudApi, "review", async () => { inspections++; return { id: "approved", destination, profile: "dev", confirmation: "Apply production", expiresAt: destination.expiresAt, review: { version: 1 as const, identity, inputsDigest: "inputs", markerHash: "origin", markerIdentity: "markers", ledgerIdentity: "ledger", storageHash: "destination", helpers: [], digest: "exact-review", migrations: [{ spaceId: "app", dirName: "next", migrationHash: "edge", from: "origin", to: "destination", source: "Reviewed migration code", sql: [{ phase: "execute", sql: "ALTER TABLE entries ADD COLUMN archived boolean" }] }] } }; });
+  mock.method(cloud.databaseCloudApi, "apply", async () => { applications++; return { status: "applied" as const, database: "applied" as const, source: "unchanged" as const, artifacts: "unchanged" as const, targetId: "production", message: "Reviewed production SQL applied.", applied: [] }; });
+  await mount(); ui.fireEvent.click(ui.screen.getByRole("button", { name: "Database status" }));
+  ui.fireEvent.change(await ui.screen.findByRole("combobox", { name: "Database target" }), { target: { value: "production" } });
+  assert.equal((ui.screen.getByRole("button", { name: "Inspect database" }) as HTMLButtonElement).disabled, true);
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Production database deployment" }), { target: { value: "production" } });
+  assert.deepEqual([preparations, inspections, applications], [0, 0, 0]);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Check database task destination" }));
+  const preflight = await ui.screen.findByRole("dialog", { name: "Authorize billed read-only database inspection" });
+  assert.match(preflight.textContent!, /123456789012.*us-east-1/); assert.match(preflight.textContent!, /task-definition\/database:7/); assert.match(preflight.textContent!, /billed Fargate/); assert.match(preflight.textContent!, /Public IP assignment: Enabled/); assert.match(preflight.textContent!, /subnet-public/); assert.match(preflight.textContent!, /sg-task/);
+  assert.equal((ui.screen.getByRole("button", { name: "Start billed read-only task" }) as HTMLButtonElement).disabled, true);
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Confirm production database action" }), { target: { value: "Inspect production" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Start billed read-only task" }));
+  const review = await ui.screen.findByRole("dialog", { name: "Review production SQL and authorize application" });
+  assert.match(review.textContent!, /ALTER TABLE entries ADD COLUMN archived boolean/); assert.equal(applications, 0);
+  assert.equal((ui.screen.getByRole("button", { name: "Apply reviewed production SQL" }) as HTMLButtonElement).disabled, true);
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Confirm production database action" }), { target: { value: "Apply production" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Apply reviewed production SQL" }));
+  await ui.screen.findByText("Reviewed production SQL applied.");
+  assert.deepEqual([preparations, inspections, applications], [1, 1, 1]);
+});
+
+test("empty production initialization previews complete steps/control DDL and has a distinct typed write action", async () => {
+  persisted = { ...persisted, targets: persisted.targets.map(target => target.id === "production" ? { ...target, handoffs: [{ deployment: "production", account: "123456789012", region: "us-east-1", command: "", detail: "Private IAM/TLS" }] } : target) };
+  const identity = { deployment: "production", account: "123456789012", region: "us-east-1", taskDefinitionArn: "arn:aws:ecs:us-east-1:123456789012:task-definition/database:7" };
+  const destination = { ...cloudPlacement, id: "prepared", expiresAt: "2026-10-22T13:00:00Z", profile: "dev", protocol: 1 as const, identity, effects: ["A billed read-only Fargate inspection."] };
+  let writes = 0;
+  mock.method(cloud.databaseCloudApi, "prepare", async () => destination);
+  mock.method(cloud.databaseCloudApi, "review", async () => ({ id: "init-review", destination, profile: "dev", confirmation: "Initialize production", expiresAt: destination.expiresAt, review: { version: 1 as const, kind: "initialize" as const, identity, inputsDigest: "inputs", markerHash: "@empty", markerIdentity: "markers", ledgerIdentity: "ledger", storageHash: "current", digest: "complete-review", helpers: [], migrations: [], initialization: { operations: [{ id: "create", label: "Create entries", operationClass: "additive" }], operationsDigest: "all-native-ops", sql: ["CREATE TABLE entries (id uuid)"], statements: [{ operationId: "create", phase: "precheck", sql: "SELECT $1 AS result", params: [true] }, { operationId: "create", phase: "execute", sql: "CREATE TABLE entries (id uuid)" }], controlSql: [{ sql: "CREATE SCHEMA IF NOT EXISTS prisma_contract" }] } } }));
+  mock.method(cloud.databaseCloudApi, "apply", async (_id: string, confirmation: string) => { assert.equal(confirmation, "Initialize production"); writes++; return { status: "applied" as const, database: "applied" as const, source: "unchanged" as const, artifacts: "unchanged" as const, targetId: "production", message: "Reviewed initialization applied.", applied: [] }; });
+  await mount(); ui.fireEvent.click(ui.screen.getByRole("button", { name: "Database status" }));
+  ui.fireEvent.change(await ui.screen.findByRole("combobox", { name: "Database target" }), { target: { value: "production" } });
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Production database deployment" }), { target: { value: "production" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Check database task destination" }));
+  await ui.screen.findByRole("dialog", { name: "Authorize billed read-only database inspection" });
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Confirm production database action" }), { target: { value: "Inspect production" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Start billed read-only task" }));
+  const dialog = await ui.screen.findByRole("dialog", { name: "Review empty production database initialization" });
+  assert.match(dialog.textContent!, /SELECT \$1 AS result/); assert.match(dialog.textContent!, /Parameters: \[true\]/); assert.match(dialog.textContent!, /CREATE SCHEMA IF NOT EXISTS prisma_contract/);
+  const apply = ui.screen.getByRole("button", { name: "Initialize reviewed production database" }) as HTMLButtonElement;
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Confirm production database action" }), { target: { value: "Apply production" } });
+  assert.equal(apply.disabled, true); assert.equal(writes, 0);
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Confirm production database action" }), { target: { value: "Initialize production" } });
+  assert.equal(apply.disabled, false); ui.fireEvent.click(apply); await ui.screen.findByText("Reviewed initialization applied."); assert.equal(writes, 1);
 });

@@ -53,7 +53,7 @@ export function deployRouter(service: DeployService): express.Router {
   router.get("/teardown", (request, response) => send(response, async () => {
     const mode = request.query.mode;
     if (mode !== "dev" && mode !== "prod") throw new OperationError(400, "State the deployment's mode.");
-    return service.teardown(await service.requireProfile(request.query.profile), deployment(request.query.deployment), mode, region(request.query.region));
+    return service.teardown(await service.requireProfile(request.query.profile), deployment(request.query.deployment), mode, region(request.query.region), force(request.query.retainFailed), force(request.query.disableProtection));
   }));
 
   router.get("/plans", (_request, response) => send(response, () => service.listPlans()));
@@ -63,7 +63,7 @@ export function deployRouter(service: DeployService): express.Router {
     return plan;
   }));
 
-  router.get("/drift", (request, response) => send(response, () => service.driftReport(deployment(request.query.deployment))));
+  router.get("/drift", (request, response) => send(response, () => service.driftReport(deployment(request.query.deployment), typeof request.query.account === "string" ? request.query.account : undefined, region(request.query.region))));
 
   router.post("/operations", (request, response) => send(response, () => {
     const body = request.body as Partial<OperationRequest> | undefined;

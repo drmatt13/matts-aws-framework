@@ -30,6 +30,9 @@ export interface ResourceChange {
   readonly stateful: boolean;
   /** The properties or attributes the change touches, when CloudFormation says. */
   readonly details?: readonly string[];
+  readonly before?: unknown;
+  readonly after?: unknown;
+  readonly owner?: string;
 }
 
 export interface ExportInUse {
@@ -41,6 +44,7 @@ export interface ExportInUse {
 
 export interface StackFingerprint {
   readonly exists: boolean;
+  readonly stackId?: string;
   readonly status?: string;
   /** LastUpdatedTime, or CreationTime for a stack never updated. */
   readonly updated?: string;
@@ -59,16 +63,16 @@ export function templateChanges(deployed: Template | undefined, synthesized: Tem
   for (const [logicalId, resource] of Object.entries(after)) {
     const type = String(resource.Type ?? "Unknown");
     const previous = before[logicalId];
-    if (!previous) changes.push({ logicalId, type, action: "add", replacement: "Unknown", stateful: STATEFUL_TYPES.has(type) });
+    if (!previous) changes.push({ logicalId, type, action: "add", replacement: "Unknown", stateful: STATEFUL_TYPES.has(type), after: resource.Properties });
     else if (stable(previous) !== stable(resource)) {
       const typeChanged = previous.Type !== resource.Type;
-      changes.push({ logicalId, type, action: "modify", replacement: typeChanged ? "True" : "Unknown", stateful: STATEFUL_TYPES.has(type) || STATEFUL_TYPES.has(String(previous.Type)) });
+      changes.push({ logicalId, type, action: "modify", replacement: typeChanged ? "True" : "Unknown", stateful: STATEFUL_TYPES.has(type) || STATEFUL_TYPES.has(String(previous.Type)), before: previous.Properties, after: resource.Properties });
     }
   }
   for (const [logicalId, resource] of Object.entries(before)) {
     if (after[logicalId]) continue;
     const type = String(resource.Type ?? "Unknown");
-    changes.push({ logicalId, type, action: "remove", replacement: "Unknown", deletionPolicy: resource.DeletionPolicy ?? "Delete", stateful: STATEFUL_TYPES.has(type) });
+    changes.push({ logicalId, type, action: "remove", replacement: "Unknown", deletionPolicy: resource.DeletionPolicy ?? "Delete", stateful: STATEFUL_TYPES.has(type), before: resource.Properties });
   }
   return changes.sort((a, b) => a.action.localeCompare(b.action) || a.logicalId.localeCompare(b.logicalId));
 }
@@ -112,14 +116,14 @@ export function confirmationLevel(input: ConfirmationInput): { level: "none" | "
     if (input.firstDeploy) reasons.push("the first deployment of this target");
     return { level: reasons.length ? "name" : "click", reasons };
   }
-  return { level: reasons.length ? "click" : "none", reasons };
+  return { level: "click", reasons };
 }
 
 /** Why a plan no longer describes AWS, or undefined when it still does. */
 export function staleness(planned: Readonly<Record<string, StackFingerprint>>, current: Readonly<Record<string, StackFingerprint>>): string | undefined {
   for (const [stack, before] of Object.entries(planned)) {
     const now = current[stack] ?? { exists: false };
-    if (before.exists !== now.exists || before.status !== now.status || before.updated !== now.updated) {
+    if (before.exists !== now.exists || before.stackId !== now.stackId || before.status !== now.status || before.updated !== now.updated) {
       const describe = (fingerprint: StackFingerprint) => fingerprint.exists ? `${fingerprint.status} at ${fingerprint.updated}` : "absent";
       return `${stack} changed since the review (${describe(before)} then, ${describe(now)} now).`;
     }

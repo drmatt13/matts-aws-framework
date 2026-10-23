@@ -8,12 +8,15 @@ import { readCreationRequest, CreationValidationError } from "../shared/creation
 import type { DraftEdit, SnapshotResponse } from "../shared/api";
 import { COMMANDS, CommandRunner } from "./commands";
 import { EditError, EditService } from "./edits/transaction";
+import { SourceJournal } from "./edits/journal";
+import { readWorkloadOperation } from "../shared/workload-operations";
 import { apiGuard, hostGuard } from "./guards";
 import type { EditIntent } from "./edits/plan";
 import { sha256 } from "./files";
 import { ResourceService, readResourceIntent } from "./resources";
 import { SnapshotBuilder, type StudioState } from "./snapshot";
 import { watchRepository } from "./watch";
+import type { SourceWatchState } from "../shared/watch";
 import { InfrastructureService } from "./infrastructure";
 import { createDeploymentInput } from "./deployment-inputs";
 import { DeploymentInputService, inputMode, readInputEdits } from "./deployment-input-edits";
@@ -25,6 +28,7 @@ import { readDatabaseDraft, readDatabasePlacementDraft } from "../shared/managed
 import { DatabaseWorkbenchService } from "./database-workbench";
 import { DatabaseHistoryService } from "./database-history";
 import { DatabaseApplicationService } from "./database-application";
+import { DatabaseCloudService } from "./database-cloud";
 
 /**
  * The studio's HTTP surface: one origin, on the loopback interface only.
@@ -65,6 +69,41 @@ export function readIntent(body: unknown): EditIntent {
   return { target: intent.target, field: intent.field, value: intent.value };
 }
 
+
+export function readDraftEdits(entries: unknown): readonly DraftEdit[] {
+    if (!Array.isArray(entries) || !entries.length || entries.length > 100) throw new EditError(400, "A draft contains between 1 and 100 setting changes.");
+    return entries.map((edit: unknown): DraftEdit => {
+      const item = edit as Record<string, unknown> | undefined;
+      if (["implementation", "connection", "removeWorkload"].includes(String(item?.kind))) {
+        try { return readWorkloadOperation(item); } catch (error) { throw new EditError(400, error instanceof Error ? error.message : "Choose a supported workload operation."); }
+      }
+      if (item?.kind === "create") {
+        try { return { kind: "create", request: readCreationRequest(item.request) }; }
+        catch (error) { if (error instanceof CreationValidationError) throw new EditError(422, `${error.field}: ${error.message}`); throw error; }
+      }
+      if (item?.kind === "placement" || item?.kind === "network") {
+        try { return readNetworkDraft(item); }
+        catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
+      }
+      if (item?.kind === "removeNetwork" && Object.keys(item).every(key => ["kind", "network"].includes(key)) && typeof item.network === "string" && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(item.network)) return { kind: "removeNetwork", network: item.network };
+      if (item?.kind === "database") {
+        try { return readDatabaseDraft(item); } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
+      }
+      if (item?.kind === "databasePlacement") {
+        try { return readDatabasePlacementDraft(item); } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
+      }
+      if (item?.kind === "field") return { kind: "field", intent: readIntent(item) };
+      if (item?.kind === "clientEnvironment") return { kind: "clientEnvironment", mappings: item.mappings as never };
+      if (item?.kind === "tags" && Object.keys(item).every(key => ["kind", "entity", "tags"].includes(key)) && typeof item.entity === "string" && item.tags && typeof item.tags === "object" && !Array.isArray(item.tags)) return { kind: "tags", entity: item.entity, tags: item.tags as Readonly<Record<string, string>> };
+      if (item?.kind === "description" && typeof item.entity === "string" && typeof item.value === "string") return { kind: "description", entity: item.entity, value: item.value };
+      if (item?.kind === "route" && typeof item.route === "string" && typeof item.value === "string") return { kind: "route", route: item.route, value: item.value };
+      if (item?.kind === "triggers" && typeof item.event === "string" && Array.isArray(item.bindings)) return { kind: "triggers", event: item.event, bindings: item.bindings };
+      if (item?.kind === "nativeTrigger" && typeof item.edge === "string") return { kind: "nativeTrigger", edge: item.edge };
+      if (item?.kind === "onFailure" && typeof item.event === "string" && (item.value === null || (typeof item.value === "object" && !Array.isArray(item.value)))) return { kind: "onFailure", event: item.event, value: item.value as never };
+      throw new EditError(400, "A draft change names an editable field, description, HTTP route or trigger.");
+    });
+}
+
 export async function startServer(repositoryRoot: string, args: readonly string[]): Promise<Server> {
   const port = portFrom(args);
   const token = randomBytes(24).toString("hex");
@@ -76,6 +115,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   const inputs = new DeploymentInputService(repositoryRoot, builder);
   const commands = new CommandRunner(repositoryRoot);
   const clients = new Set<Response>();
+  let sourceWatch: SourceWatchState | undefined;
 
   const broadcast = (event: string, data: unknown) => {
     const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -122,9 +162,23 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     next();
   });
   const send = sendJson;
+  const sourceJournal = new SourceJournal(repositoryRoot);
+  const recoveryState = () => { try { return { sourceRecovery: sourceJournal.pending() }; } catch (error) { return { sourceRecoveryProblem: `Source recovery records cannot be read: ${error instanceof Error ? error.message : String(error)}. Source writes remain blocked; inspect .cache/framework-studio/transactions without discarding user files.` }; } };
+  api.get("/source-recovery", (_request, response) => send(response, async () => sourceJournal.pending()));
+  api.post("/source-recovery/restore", (request, response) => send(response, async () => {
+    const result = sourceJournal.restore(String(request.body?.id ?? ""), String(request.body?.approval ?? ""));
+    await refresh([]);
+    return result;
+  }));
+  api.post("/source-recovery/keep", (request, response) => send(response, async () => {
+    const state = await refresh([]);
+    if (!state || Object.values(state.snapshot.models).some(model => model.stale || model.status === "error" || model.targets.some(target => target.implementation && !target.implementation.ready))) throw new EditError(422, "Current source or implementation artifacts need attention. Fix the reported configuration/implementation errors, refresh, then review recovery again. No files were changed.");
+    return sourceJournal.keepCurrent(String(request.body?.id ?? ""), String(request.body?.fingerprint ?? ""), String(request.body?.approval ?? ""));
+  }));
   const database = new DatabaseWorkbenchService(repositoryRoot, () => refresh([]));
   const databaseHistory = new DatabaseHistoryService(repositoryRoot);
   const databaseApplication = new DatabaseApplicationService(repositoryRoot, database, () => databaseHistory.load());
+  const databaseCloud = new DatabaseCloudService(repositoryRoot);
   const requestSignal = (request: Request, response: Response) => {
     const controller = new AbortController();
     request.on("aborted", () => controller.abort());
@@ -151,8 +205,12 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     return result;
   }));
   api.post("/database/history/discard", (request, response) => send(response, () => databaseHistory.discard(String(request.body?.reviewId ?? ""))));
-  api.post("/database/application/review", (request, response) => send(response, () => databaseApplication.review(String(request.body?.targetId ?? ""), String(request.body?.sourceHash ?? ""))));
+  api.get("/database/application/operations", (_request, response) => send(response, () => databaseApplication.listOperations()));
+  api.post("/database/application/review", (request, response) => send(response, () => databaseApplication.review(String(request.body?.targetId ?? ""), String(request.body?.sourceHash ?? ""), request.body?.initialize === true)));
   api.post("/database/application/apply", (request, response) => send(response, () => databaseApplication.apply(String(request.body?.reviewId ?? ""), String(request.body?.confirmation ?? ""))));
+  api.post("/database/cloud/prepare", (request, response) => send(response, () => databaseCloud.prepare(String(request.body?.deployment ?? ""), String(request.body?.profile ?? ""))));
+  api.post("/database/cloud/review", (request, response) => send(response, () => databaseCloud.review(String(request.body?.deployment ?? ""), String(request.body?.profile ?? ""), String(request.body?.confirmation ?? ""), String(request.body?.preparationId ?? ""))));
+  api.post("/database/cloud/apply", (request, response) => send(response, () => databaseCloud.apply(String(request.body?.reviewId ?? ""), String(request.body?.confirmation ?? ""))));
 
   api.get("/snapshot", (_request, response) => {
     const state = builder.current;
@@ -161,6 +219,8 @@ export async function startServer(repositoryRoot: string, args: readonly string[
       return;
     }
     const body: SnapshotResponse = {
+      ...recoveryState(),
+      sourceWatch,
       snapshot: state.snapshot,
       history: edits.history(),
       evaluating,
@@ -172,9 +232,15 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     response.json(body);
   });
 
+  api.post("/snapshot/refresh", (_request, response) => send(response, async () => {
+    const state = await refresh([]);
+    if (!state) throw new EditError(503, "Source could not be reloaded. Check the Studio server output and retry.");
+    return { revision: state.snapshot.revision };
+  }));
+
   api.get("/events", (request, response) => {
     response.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive" });
-    response.write(`event: hello\ndata: ${JSON.stringify({ revision: builder.current?.snapshot.revision ?? null, evaluating })}\n\n`);
+    response.write(`event: hello\ndata: ${JSON.stringify({ revision: builder.current?.snapshot.revision ?? null, evaluating, sourceWatch })}\n\n`);
     clients.add(response);
     const heartbeat = setInterval(() => response.write(": keep-alive\n\n"), 25_000);
     request.on("close", () => {
@@ -232,38 +298,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   api.post("/edits/plan", (request, response) =>
     send(response, () => edits.plan(readIntent(request.body), String((request.body as { revision?: unknown })?.revision ?? ""))),
   );
-  api.post("/edits/batch/plan", (request, response) => send(response, () => {
-    const entries = request.body?.edits;
-    if (!Array.isArray(entries) || !entries.length || entries.length > 100) throw new EditError(400, "A draft contains between 1 and 100 setting changes.");
-    const parsed: DraftEdit[] = entries.map((edit: unknown) => {
-      const item = edit as Record<string, unknown> | undefined;
-      if (item?.kind === "create") {
-        try { return { kind: "create", request: readCreationRequest(item.request) }; }
-        catch (error) { if (error instanceof CreationValidationError) throw new EditError(422, `${error.field}: ${error.message}`); throw error; }
-      }
-      if (item?.kind === "placement" || item?.kind === "network") {
-        try { return readNetworkDraft(item); }
-        catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
-      }
-      if (item?.kind === "removeNetwork" && Object.keys(item).every(key => ["kind", "network"].includes(key)) && typeof item.network === "string" && /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(item.network)) return { kind: "removeNetwork", network: item.network };
-      if (item?.kind === "database") {
-        try { return readDatabaseDraft(item); } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
-      }
-      if (item?.kind === "databasePlacement") {
-        try { return readDatabasePlacementDraft(item); } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
-      }
-      if (item?.kind === "field") return { kind: "field", intent: readIntent(item) };
-      if (item?.kind === "clientEnvironment") return { kind: "clientEnvironment", mappings: item.mappings as never };
-      if (item?.kind === "tags" && Object.keys(item).every(key => ["kind", "entity", "tags"].includes(key)) && typeof item.entity === "string" && item.tags && typeof item.tags === "object" && !Array.isArray(item.tags)) return { kind: "tags", entity: item.entity, tags: item.tags as Readonly<Record<string, string>> };
-      if (item?.kind === "description" && typeof item.entity === "string" && typeof item.value === "string") return { kind: "description", entity: item.entity, value: item.value };
-      if (item?.kind === "route" && typeof item.route === "string" && typeof item.value === "string") return { kind: "route", route: item.route, value: item.value };
-      if (item?.kind === "triggers" && typeof item.event === "string" && Array.isArray(item.bindings)) return { kind: "triggers", event: item.event, bindings: item.bindings };
-      if (item?.kind === "nativeTrigger" && typeof item.edge === "string") return { kind: "nativeTrigger", edge: item.edge };
-      if (item?.kind === "onFailure" && typeof item.event === "string" && (item.value === null || (typeof item.value === "object" && !Array.isArray(item.value)))) return { kind: "onFailure", event: item.event, value: item.value as never };
-      throw new EditError(400, "A draft change names an editable field, description, HTTP route or trigger.");
-    });
-    return edits.planBatch(parsed, String(request.body?.revision ?? ""));
-  }));
+  api.post("/edits/batch/plan", (request, response) => send(response, () => edits.planBatch(readDraftEdits(request.body?.edits), String(request.body?.revision ?? ""))));
   api.post("/edits/batch/apply", (request, response) => send(response, async () => {
     const result = await edits.applyBatch(String(request.body?.planId ?? ""));
     published(result.revision);
@@ -357,7 +392,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
       return true;
     });
     if (external.length > 0) void refresh(external);
-  });
+  }, 200, { onStatus: status => { sourceWatch = status; broadcast("source-watch", status); } });
 
   log("Evaluating the repository…");
   await refresh([]);

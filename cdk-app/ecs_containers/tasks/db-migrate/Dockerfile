@@ -5,7 +5,7 @@
 # Applies the committed migrations to the deployment's database. The database
 # sits in the network's isolated subnets and nothing outside the VPC reaches it,
 # so this task is how a release migrates it: npm run db:migrate:cloud. Locally,
-# Compose's prisma-migrate service does the same job against Postgres.
+# Compose verifies storage; database writes are separately reviewed.
 #
 # The build context is the repository root, so npm workspaces resolve @repo/*.
 FROM node:24-bookworm-slim
@@ -28,8 +28,9 @@ RUN --mount=type=cache,target=/root/.npm \
 
 # The contract and the migration packages it applies, then the framework's
 # database helper and this task's entry point.
-COPY packages/database/prisma.config.ts ./packages/database/prisma.config.ts
-COPY packages/database/prisma ./packages/database/prisma
+COPY packages/database ./packages/database
+RUN --mount=type=bind,source=.,target=/source \
+    node --import tsx packages/database/scripts/copy-configuration-inputs.ts /source /workspace
 RUN npm --workspace @repo/database run generate
 COPY packages/framework/src ./packages/framework/src
 COPY cdk-app/ecs_containers/tasks/db-migrate ./cdk-app/ecs_containers/tasks/db-migrate

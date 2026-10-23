@@ -106,11 +106,7 @@ x-runtime-env: &runtime-env
 x-database-ready: &database-ready
   postgres:
     condition: service_healthy
-  prisma-migrate:
-    condition: service_completed_successfully
-  prune-cognito-orphans:
-    condition: service_completed_successfully
-  seed-test-user:
+  prisma-verify:
     condition: service_completed_successfully
 
 # The container a framework service runs in. framework:generate gives every
@@ -156,7 +152,20 @@ services:
       start_period: 20s
       start_interval: 1s
 
+  # Starting compute checks storage, never applies migrations or changes users.
+  # Open Studio's Database workspace for a separately reviewed application.
+  prisma-verify:
+    build: *build
+    working_dir: /workspace/packages/database
+    environment:
+      DATABASE_URL: postgresql://admin:password@postgres:5432/app_db
+    command: [npm, run, db:verify, --, --no-interactive]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   prisma-migrate:
+    profiles: [database-write]
     build: *build
     working_dir: /workspace/packages/database
     environment:
@@ -179,6 +188,7 @@ services:
   # It deletes only after listing the whole pool; if Cognito cannot be listed
   # (expired SSO, no USER_POOL_ID) it warns and leaves every row in place.
   prune-cognito-orphans:
+    profiles: [identity-cleanup]
     build: *build
     working_dir: /workspace/packages/database
     environment:
@@ -190,7 +200,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      prisma-migrate:
+      prisma-verify:
         condition: service_completed_successfully
 
   # Makes LOCAL_TEST_USER_EMAIL / LOCAL_TEST_USER_PASSWORD from cdk-app/.env.dev a
@@ -200,6 +210,7 @@ services:
   # wrote (LOCAL_FRAMEWORK_DEPLOYMENT); without the two settings, or if Cognito
   # fails, it says so and changes nothing.
   seed-test-user:
+    profiles: [identity-setup]
     build: *build
     working_dir: /workspace/packages/database
     environment:
@@ -212,7 +223,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      prune-cognito-orphans:
+      prisma-verify:
         condition: service_completed_successfully
 
   local-invocation-runner:

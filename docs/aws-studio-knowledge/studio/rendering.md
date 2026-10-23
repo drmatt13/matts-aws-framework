@@ -67,6 +67,8 @@ No independent heading animation runs at rest. Placement caches invalidate with
 camera, viewport, scene and font changes. Development shows no subnet names on the canvas
 or VPC hover title; the declaration and inspector still retain their networking configuration.
 
+The visible **Resources** navigator lists canonical map entities by name and type, shows search results and validation errors, and opens the same Inspector as a canvas click. It defaults open and can be collapsed; on narrow windows it sits above the canvas. Search/type filtering changes the list and map emphasis, never source or infrastructure identity. Missing implementation artifacts add an attention marker to the resource navigator, Board node and Isometric caption/hover; selecting that canonical resource exposes its configured path and reviewed repair. These source-health facts do not imply runtime readiness. Existing keyboard access to every connection and network fixture is retained. The navigator explicitly distinguishes the declaration map from running-state evidence in Deploy.
+
 Search and tag filters use the shared control geometry and inset chevrons. Clearing
 either restores keyboard focus to the surviving search/key control. Camera controls
 are a named group; long tag selections retain their full value in their tooltip.

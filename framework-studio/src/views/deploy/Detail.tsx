@@ -6,7 +6,7 @@ import { DeploymentBadge } from "../DeploymentBadge";
 import { callerName, eventTone, relativeTime, shortStack, stackTone } from "./format";
 import type { RailRow } from "./Rail";
 
-export type MoreAction = "plan" | "export" | "drift" | "delete";
+export type MoreAction = "plan" | "change-sets" | "export" | "drift" | "delete";
 
 function Panel(props: { readonly title: string; readonly tone?: string; readonly children: ReactNode }) {
   return (
@@ -119,7 +119,8 @@ export function Detail(props: {
             }}>
             <summary className="icon-button" aria-label="More actions" aria-haspopup="menu" aria-expanded={actionsOpen}><MoreHorizontal size={16} aria-hidden /></summary>
             <div className="menu" role="menu">
-              {row.target ? <button role="menuitem" onClick={() => props.onMore("plan")} disabled={props.busy || !context}>Plan changes for review…</button> : null}
+              {row.target ? <button role="menuitem" onClick={() => props.onMore("plan")} disabled={props.busy || !context}>Compare AWS templates (read-only)…</button> : null}
+              {row.target ? <button role="menuitem" onClick={() => props.onMore("change-sets")} disabled={props.busy || !context} title="Creates CloudFormation change sets and possibly empty review stacks in AWS; does not execute infrastructure changes.">Prepare CloudFormation change sets…</button> : null}
               {row.target && row.mode === "dev" && exists ? <button role="menuitem" onClick={() => props.onMore("export")} disabled={!context}>Export settings to this machine</button> : null}
               {exists ? <button role="menuitem" onClick={() => props.onMore("drift")} disabled={props.busy || !context} title="Starts CloudFormation drift detection. It changes no resource.">Check for drift</button> : null}
               {exists ? <button role="menuitem" className="danger" onClick={() => props.onMore("delete")} disabled={props.busy || !context}>Delete deployment…</button> : null}
@@ -127,6 +128,7 @@ export function Detail(props: {
           </details>
         </div>
       </header>
+      {row.target ? <p className="small muted">Template comparison reads AWS without creating review objects. Preparing CloudFormation change sets creates review objects and possibly empty stacks; new secrets require separate approval. Neither action applies infrastructure.</p> : null}
 
       <section className="findings" aria-label="What needs attention">
         {!props.awsKnown ? <p className="finding-loading muted">Reading what {context?.account ?? "the account"} holds…</p> : null}
@@ -158,6 +160,8 @@ export function Detail(props: {
         </Panel>
 
         <Panel title="AWS" tone={props.problem ? "unreadable" : undefined}>
+          {status?.observedAt ? <p className="small muted">Observed {new Date(status.observedAt).toLocaleString()}{props.statusLoading ? " · refreshing" : Date.now() - Date.parse(status.observedAt) > 90_000 ? " · stale; refresh before relying on this observation" : ""}. CloudFormation state; application health is separate.</p> : null}
+          {status?.unreadable.map((message) => <p className="diagnostic" key={message}>{message}</p>)}
           {props.problem ? <p className="muted">Not readable with this profile.</p>
             : !deployment && props.statusLoading ? <p className="muted">Reading CloudFormation…</p>
               : !exists ? <p className="muted">No stacks of {row.name}{context ? ` in ${context.account} · ${context.region}` : ""}.</p>
@@ -180,6 +184,8 @@ export function Detail(props: {
         </Panel>
 
         <Panel title="This machine" tone="machine">
+          {row.mode === "dev" ? <p className="small muted">Starting checks storage. Migrations, orphan cleanup and test identity setup are separate actions. <a href="/database">Review local database</a></p> : null}
+          {row.mode === "dev" && local?.readiness ? <p className={local.readiness.state === "blocked" ? "diagnostic" : "small"}>{local.readiness.message} · checked {relativeTime(local.readiness.observedAt)}</p> : null}
           {row.mode === "prod" ? <p className="muted">Local development runs against a development deployment.</p>
             : !local ? <p className="muted">Reading Docker…</p>
               : (

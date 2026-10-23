@@ -13,6 +13,7 @@ const options = [
   { kind: "task", icon: Container },
   { kind: "route", icon: Route },
   { kind: "agent", icon: Bot },
+  { kind: "tool", icon: SquareFunction },
   { kind: "input", icon: Plus },
   { kind: "secret", icon: KeyRound },
 ] satisfies { kind: CreationKind; icon: typeof Plus }[];

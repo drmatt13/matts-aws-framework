@@ -3,8 +3,9 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } f
 import path from "node:path";
 import { afterEach, test } from "node:test";
 import { ok, notOk } from "@prisma/orm-framework/utils/result";
-import { canonicalApplicationPath, DatabaseApplicationService, guardReviewedMigrationExecution } from "../server/database-application";
-import { hasMigrations } from "@prisma/orm-framework/components/control";
+import { canonicalApplicationPath, databaseFailure, DatabaseApplicationService, guardReviewedMigrationExecution } from "../server/database-application";
+import { DatabaseOperationStore } from "../server/database-operations";
+import { createControlStack, hasMigrations } from "@prisma/orm-framework/components/control";
 import { compileDatabaseSource, DatabaseWorkbenchService, resolvePrivateDatabaseTargets } from "../server/database-workbench";
 import { DatabaseHistoryService } from "../server/database-history";
 import type { DatabaseObservation } from "../shared/database-workbench";
@@ -126,7 +127,53 @@ test("pre-execution failure is unchanged, while runner failure is unconfirmed wi
   const unconfirmed = await during.service.apply(runnerReview.id, "Local PostgreSQL");
   assert.equal(unconfirmed.database, "unconfirmed");
   assert.equal(unconfirmed.status, "unconfirmed");
+  assert.equal(unconfirmed.diagnostic?.code, "RUNNER_FAILED");
+  assert.equal(unconfirmed.stage, "executing");
+  assert.equal(during.service.listOperations()[0]?.result?.diagnostic?.code, "RUNNER_FAILED");
   assert.equal(during.runs(), 1);
+});
+
+test("empty initialization previews SQL, rejects changed emptiness and requires its own typed approval", async () => {
+  const context = fixture();
+  const historyService = new DatabaseHistoryService(context.root);
+  let empty = true, executions = 0;
+  const { createFixtureControlClient } = await import("@prisma/orm-toolchain/cli/control-api/testing");
+  const initialization = { mode: "plan" as const, plan: { operations: [{ id: "create-table", label: "Create entries", operationClass: "additive" }], preview: { statements: [{ language: "sql", text: "CREATE TABLE entries (id uuid PRIMARY KEY)" }] } }, destination: { storageHash: "fixture" }, summary: "fixture" };
+  const service = new DatabaseApplicationService(context.root, { async inspect() { return { status: "observed", marker: { status: "missing" }, migrationState: { status: "unknown" } } as DatabaseObservation; } }, () => historyService.load(), {
+    async empty() { return empty; },
+    createReadClient(config) { const client = createFixtureControlClient(); return Object.assign(client, { async readAllMarkers() { return new Map(); }, async readLedger() { return []; }, async dbInit() {
+      const target = config.target; assert.ok(hasMigrations(target));
+      const runner = target.migrations.createRunner(config.family.create(createControlStack(config)));
+      await runner.execute({ driver: {} as never, perSpaceOptions: [{ space: "app", destinationContract: {}, plan: { operations: [{ ...initialization.plan.operations[0], precheck: [], execute: [{ sql: initialization.plan.preview.statements[0]!.text, params: [] }], postcheck: [] }] }, migrationEdges: [] }] } as never);
+      return ok(initialization);
+    } }); },
+    createWriteClient() { const client = createFixtureControlClient(); return Object.assign(client, { async dbInit() { executions++; return ok({ ...initialization, mode: "apply" }); } }); },
+  });
+  const review = await service.review("local:postgres", context.sourceHash, true);
+  assert.equal(review.kind, "initialize");
+  assert.equal(review.confirmation, "Initialize Local PostgreSQL");
+  assert.match(review.initialization!.sql[0]!, /CREATE TABLE/);
+  await assert.rejects(service.apply(review.id, "Local PostgreSQL"), /Type Initialize/);
+  empty = false;
+  await assert.rejects(service.apply(review.id, review.confirmation), /requires an empty/);
+  assert.equal(executions, 0);
+  empty = true;
+  const fresh = await service.review("local:postgres", context.sourceHash, true);
+  const result = await service.apply(fresh.id, fresh.confirmation);
+  assert.equal(result.status, "applied");
+  assert.equal(executions, 1);
+  assert.equal(new DatabaseOperationStore(context.root).list()[0]?.status, "applied");
+});
+
+test("interrupted database records survive restart without resuming writes and diagnostics contain only safe codes", () => {
+  const { root } = fixture();
+  const store = new DatabaseOperationStore(root);
+  store.write({ id: "abc-123", kind: "migrate", targetLabel: "Local PostgreSQL", targetIdentity: "private-digest", sourceHash: "source", startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), status: "running", stage: "executing", migrations: ["add_entries"] });
+  const recovered = new DatabaseOperationStore(root).list()[0]!;
+  assert.equal(recovered.status, "interrupted");
+  assert.equal(recovered.stage, "interrupted");
+  assert.deepEqual(databaseFailure({ code: "23505", message: "postgresql://private:password@host/database", meta: { private: "secret" } }).sqlState, "23505");
+  assert.ok(!JSON.stringify(databaseFailure({ code: "unsafe-password-in-code", message: "secret" })).includes("secret"));
 });
 
 test("actual native runner boundary refuses a different path selected after the earlier database review", async () => {
@@ -151,4 +198,26 @@ test("actual native runner boundary refuses a different path selected after the 
   inputsCurrent = true;
   await runner.execute(options);
   assert.equal(executions, 1);
+});
+
+test("journal keeps unresolved outcomes visible beyond newer inspections and old lock releases preserve replacement owners", () => {
+  const { root } = fixture(); const store = new DatabaseOperationStore(root);
+  const unresolved = { id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", kind: "migrate" as const, targetLabel: "Local PostgreSQL", targetIdentity: "target", sourceHash: "source", startedAt: "2026-10-01T00:00:00Z", updatedAt: "2026-10-01T00:00:00Z", status: "unconfirmed" as const, stage: "executing" as const, migrations: [] };
+  store.write(unresolved);
+  for (let index = 0; index < 55; index++) store.write({ ...unresolved, id: `${index.toString(16).padStart(8, "0")}-bbbb-bbbb-bbbb-bbbbbbbbbbbb`, startedAt: "2026-10-22T00:00:00Z", status: "reviewed", stage: "complete" });
+  assert.ok(store.list().some(record => record.id === unresolved.id));
+  const release = store.lock(); assert.ok(release); const file = path.join(root, ".cache/framework-studio/database-operations/active.lock");
+  const replacement = JSON.stringify({ pid: process.pid, token: "new-owner" }); writeFileSync(file, replacement);
+  release(); assert.equal(readFileSync(file, "utf8"), replacement); assert.equal(store.lock(), undefined);
+});
+
+test("a local application review refuses changed imported migration helper bytes", async () => {
+  const harness = await applicationHarness();
+  const helper = path.join(harness.root, "packages/database/migration-helper.ts"); writeFileSync(helper, "export const statement = 'SELECT 1';");
+  const migration = path.join(harness.root, harness.selectedMigration.sourcePath);
+  writeFileSync(migration, `import {statement} from '../../../../migration-helper';\n${readFileSync(migration, "utf8")}`);
+  const reviewed = await harness.service.review("local:postgres", harness.sourceHash);
+  writeFileSync(helper, "export const statement = 'DROP TABLE app';");
+  await assert.rejects(harness.service.apply(reviewed.id, reviewed.confirmation), /changed|effects|incomplete/);
+  assert.equal(harness.runs(), 0);
 });

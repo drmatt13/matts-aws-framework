@@ -40,9 +40,9 @@ test("exports another stack may import are flagged when removed or changed", () 
   ]);
 });
 
-test("development continues on its own unless something is removed or IAM broadens", () => {
+test("development always pauses, including routine and uncertain stateful changes", () => {
   const modify = templateChanges({ Resources: { Fn: deployed.Resources.Fn } }, { Resources: { Fn: synthesized.Resources.Fn } });
-  assert.equal(confirmationLevel({ mode: "dev", firstDeploy: true, iamBroadening: false, changes: modify, exportsInUse: [] }).level, "none");
+  assert.equal(confirmationLevel({ mode: "dev", firstDeploy: true, iamBroadening: false, changes: modify, exportsInUse: [] }).level, "click");
   assert.equal(confirmationLevel({ mode: "dev", firstDeploy: false, iamBroadening: true, changes: modify, exportsInUse: [] }).level, "click");
   assert.equal(confirmationLevel({ mode: "dev", firstDeploy: false, iamBroadening: false, changes: templateChanges(deployed, synthesized), exportsInUse: [] }).level, "click");
 });
@@ -64,4 +64,5 @@ test("a plan is stale once any stack it reviewed has changed", () => {
   assert.equal(staleness(planned, { a: { exists: true, status: "UPDATE_COMPLETE", updated: "t1" }, b: { exists: false } }), undefined);
   assert.match(staleness(planned, { a: { exists: true, status: "UPDATE_COMPLETE", updated: "t2" }, b: { exists: false } }) ?? "", /a changed since the review/);
   assert.match(staleness(planned, { a: { exists: true, status: "UPDATE_COMPLETE", updated: "t1" }, b: { exists: true, status: "CREATE_IN_PROGRESS", updated: "t3" } }) ?? "", /b changed since the review \(absent then/);
+  assert.match(staleness({ a: { ...planned.a, stackId: "original" } }, { a: { ...planned.a, stackId: "replacement" } }) ?? "", /a changed since the review/, "same name/status/time cannot hide replacement identity");
 });

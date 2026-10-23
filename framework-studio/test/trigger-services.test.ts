@@ -4,6 +4,7 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import { SnapshotBuilder } from "../server/snapshot";
 import { EditService } from "../server/edits/transaction";
+import { generateCreationArtifacts } from "../server/edits/creation-generation";
 import type { TriggerBinding } from "../shared/triggers";
 import { triggerTiming, triggerUnavailable } from "../shared/trigger-availability";
 
@@ -88,7 +89,23 @@ export class Storage extends cdk.Stack {
   writeFileSync(firstFile, 'import { resources } from "./resources";\nexport const first = { first: { directory: "/lambda_functions/first", cloud: { bindings: [resources.storage.plainBucket.grantReadWrite()] } } } as const;\n');
   secondFile = path.join(root, "framework-config/second.ts");
   writeFileSync(secondFile, 'export const second = { second: { directory: "/lambda_functions/second" } } as const;\n');
+  // Every reviewed edit runs the real generator. Include authentic inputs and
+  // the implementations declared by this intentionally small application.
+  for (const relative of ["package.json", "package-lock.json", "packages/framework/src", "packages/api-contract/src/generated"]) {
+    mkdirSync(path.dirname(path.join(root, relative)), { recursive: true });
+    cpSync(path.join(repository, relative), path.join(root, relative), { recursive: true });
+  }
+  writeFileSync(path.join(root, "docker-compose.yml"), "services: {}\n");
+  for (const id of ["first", "second"]) {
+    const directory = path.join(root, "cdk-app/lambda_functions", id);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(path.join(directory, "index.ts"), "export const lambdaHandler = async (event: unknown) => event;\n");
+  }
+  const generated = await generateCreationArtifacts(root, new Map());
+  for (const [file, text] of generated.overrides) { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text); }
+  for (const file of generated.deletions.keys()) rmSync(file);
   builder = new SnapshotBuilder(root); edits = new EditService(root, builder); await builder.refresh();
+  for (const target of builder.current!.snapshot.models.dev.targets) assert.ok(target.implementation?.ready, target.implementation?.problems.join("\n") ?? `${target.ref} implementation was not checked`);
 });
 after(async () => { await builder?.dispose(); assert.ok(root.startsWith(path.join(repository, ".cache/framework-studio") + path.sep)); rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
@@ -203,7 +220,7 @@ test("a capability source change after review expires the trigger plan", async (
   assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
   const original = readFileSync(stackFile, "utf8");
   writeFileSync(stackFile, original.replace("cdk.Duration.minutes(2)", "cdk.Duration.seconds(5)"));
-  try { await assert.rejects(edits.applyBatch(plan.planId), /source changed|Refresh/); }
+  try { await assert.rejects(edits.applyBatch(plan.planId), /cdk-app\/lib\/stacks\.ts changed after review/); }
   finally { writeFileSync(stackFile, original); await builder.refresh(); }
   assert.doesNotMatch(readFileSync(firstFile, "utf8"), /trigger/);
 });

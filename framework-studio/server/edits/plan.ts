@@ -1,4 +1,5 @@
 import path from "node:path";
+import { sourceDiff as diffOf } from "./diff";
 import ts from "typescript";
 import { locateConfigSource } from "../../../packages/framework/scripts/config-source";
 import type { DiffLine, EditIntent } from "../../shared/api";
@@ -56,31 +57,8 @@ function checkValue(field: FieldDefinition, intent: EditIntent): string | undefi
     : `${field.label} takes a whole number from ${field.domain.min} to ${field.domain.max} ${field.domain.unit}.`;
 }
 
-/** A unified diff of one contiguous change, with three lines of context. */
-export function diffOf(relativeFile: string, before: string, after: string, context = 3): PlannedEdit["diff"] {
-  const a = before.split("\n");
-  const b = after.split("\n");
-  let prefix = 0;
-  while (prefix < a.length && prefix < b.length && a[prefix] === b[prefix]) prefix += 1;
-  let suffix = 0;
-  while (suffix < a.length - prefix && suffix < b.length - prefix && a[a.length - 1 - suffix] === b[b.length - 1 - suffix]) suffix += 1;
-  const start = Math.max(0, prefix - context);
-  const tail = Math.min(suffix, context);
-  const lines: DiffLine[] = [];
-  for (let index = start; index < prefix; index += 1) lines.push({ kind: "context", text: a[index]!, oldLine: index + 1, newLine: index + 1 });
-  for (let index = prefix; index < a.length - suffix; index += 1) lines.push({ kind: "remove", text: a[index]!, oldLine: index + 1 });
-  for (let index = prefix; index < b.length - suffix; index += 1) lines.push({ kind: "add", text: b[index]!, newLine: index + 1 });
-  for (let offset = 0; offset < tail; offset += 1) {
-    const oldIndex = a.length - suffix + offset;
-    const newIndex = b.length - suffix + offset;
-    lines.push({ kind: "context", text: a[oldIndex]!, oldLine: oldIndex + 1, newLine: newIndex + 1 });
-  }
-  const oldCount = lines.filter((line) => line.kind !== "add").length;
-  const newCount = lines.filter((line) => line.kind !== "remove").length;
-  const header = `--- a/${relativeFile}\n+++ b/${relativeFile}\n@@ -${start + 1},${oldCount} +${start + 1},${newCount} @@`;
-  const body = lines.map((line) => `${line.kind === "add" ? "+" : line.kind === "remove" ? "-" : " "}${line.text}`).join("\n");
-  return { unified: `${header}\n${body}\n`, lines };
-}
+/** Multi-hunk source review shared by every writer. */
+export { sourceDiff as diffOf } from "./diff";
 
 /** What the property at `path` reads in `text`, through the framework's locator. */
 function readBack(

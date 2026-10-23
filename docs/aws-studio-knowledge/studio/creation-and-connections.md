@@ -10,6 +10,9 @@ source:
   - framework-studio/src/views/CreationWizard.tsx
   - framework-studio/server/edits/creation.ts
   - framework-studio/server/edits/creation-generation.ts
+  - framework-studio/server/edits/implementation-scaffold.ts
+  - framework-studio/server/edits/connections.ts
+  - framework-studio/server/edits/removal.ts
   - framework-studio/server/edits/triggers.ts
   - framework-studio/server/edits/native-triggers.ts
 related:
@@ -50,12 +53,47 @@ states do not change the reviewed-source transaction or deploy authorization.
 | Creator | Current source behavior / boundary |
 | --- | --- |
 | Function / API route | Node TypeScript zip handler plus literal section and root array registration; HTTP/WebSocket/event categories. Compatible existing routed Lambda aliases are appended to the original literal section, preserving local references, imports, settings and construct identity. New WebSocket modules use `Partial<WebSocketSection>`; existing modules retain their authored type. Other runtimes/images remain manually authored |
-| Stack | Application stack exposing an SQS queue, catalog type import/declaration and actual CDK entrypoint instantiation; custom members remain source-owned |
+| Stack | Application stack exposing an SQS queue or private, encrypted, retained S3 bucket, catalog type import/declaration and actual CDK entrypoint instantiation; custom members remain source-owned |
 | VPC | Create an independent VPC module and registry entry. Each has its own map island and settings; prod builds it when used. Placement edits generate imported references and subnet settings together |
 | Workflow | Identity workflow or initial sequence of existing event Lambdas/tasks through the existing DSL |
 | Service / task | Node source, Dockerfile, declaration; service manifest and generated Compose/lock changes join the review where needed. No new arbitrary Docker execution path |
-| Agent | Contract, agent/module/tool loop using shared model configuration and declared existing tools, workspace manifest and TypeScript configuration; not a tool creator or arbitrary agent-language generator |
+| Agent | Contract, deterministic echo starter by default or explicit model/tool loop using shared model configuration and declared existing tools, workspace manifest and TypeScript configuration; echo requires no provider/model setup |
+| Agent tool | Adjacent Zod request/response/description contract and `tool` or default `authenticatedTool` wrapper, configured Lambda directory, literal tools section registration; no separate user-pool declaration |
 | Input / secret | Catalog declaration and commented template keys; no authored environment values or secret provisioning |
+
+Workload creation accepts an explicit implementation directory and create/existing-code
+choice. `defaultImplementationDirectory` is shared by forms and backend. Existing code
+is never overwritten; use-existing adds declarations only, then canonical artifact and
+TypeScript validation checks the actual code. New agent/service manifests must match root
+workspace patterns. Path authority rejects traversal and symlink components.
+
+The target's Implementation section reports artifact diagnostics and stages the typed
+`implementation` operation through the exact HTTP draft parser. Repair writes only absent
+files at the configured path, previews each new file, typechecks partial scaffolds and
+hash-guards existing artifact bytes. Node ZIP: `index.ts` with configured export, HTTP
+JSON response/authenticated wrapper where declared, and replay wrapper where required.
+Tool: `contract.ts` plus validated wrapper. Agent: echo `index.ts`, `contract.ts`, manifest
+and tsconfig. ECS service: `index.mjs`, nonroot Dockerfile and local dev manifest; task:
+run-to-completion `index.mjs` and Dockerfile. Unauthenticated conventional Python ZIP
+repair creates `lambda_function.py`; authenticated Python/custom entry points/image
+Lambda repair deliberately requires source review. Incompatible existing contract exports
+produce a no-write compiler conflict, never a template overwrite.
+
+`connections.ts` supports purpose-based database IAM/VPC placement, pool identifiers,
+declared task/workflow/agent invocation and tools, catalog inputs/secrets, and native
+bucket/queue grants. Imports reuse existing catalog aliases. Secret delivery follows
+ARN/read for Lambda/agent and startup-value delivery for containers. Literal grants have
+optional bucket key scope; disconnect matches the exact resource/method/scope and
+preserves other bindings. Spreads, computed owners, commented arrays, custom grants and
+ambiguous shared bindings stay source-owned. Handler authentication is separate from
+providing pool identifiers.
+
+`removal.ts` checks consumers across both modes and refuses shared implementation roots.
+It reviews literal declaration removal, generated reference changes and an exact text
+archive in `archived-workloads/<kind>/<id>/`; exclusive original source files are removed
+only on Apply. Symlinks, env values, binary/large sets, dependencies and conflicting
+archives are refused before writes. Archive source is excluded from active TypeScript
+roots. Undo restores source. This never deletes already deployed infrastructure or data.
 
 The VPC creator separates immutable `id` / `cloud.constructId` from its optional
 display `name`. Changing a display name preserves deployed construct identity.

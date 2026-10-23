@@ -1,7 +1,6 @@
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
-import ts from "typescript";
 import { parseEnv } from "node:util";
 import type { Contract } from "@prisma/orm-framework/contract/types";
 import { computeExecutionHash } from "@prisma/orm-framework/contract/hashing";
@@ -18,6 +17,9 @@ import type { ControlClient } from "@prisma/orm-postgres/control";
 import { CONTRACT_FILE, parseDeclaredSchema } from "./database";
 import { EditError, writeSourceChange } from "./edits/io";
 import { sha256 } from "./files";
+import { repositoryTargets } from "@repo/framework/deploy/node";
+import { execFileSync } from "node:child_process";
+import { configurationSourceFiles } from "../../packages/database/scripts/configuration-inputs";
 
 const CONFIG_FILE = "packages/database/prisma.config.ts";
 const MAX_SOURCE = 512 * 1024;
@@ -27,29 +29,25 @@ const configurationSalt = randomBytes(32);
 // existed before that load is a genuine shell override of fresh root .env.
 const inheritedPostgresHostPort = process.env.POSTGRES_HOST_PORT;
 
+/** Compose resolves its own merges/interpolation without starting an engine or container. */
+function effectivePostgres(root: string) {
+  const replacement = process.env.FRAMEWORK_DOCKER_CLI;
+  const output = execFileSync(replacement ? process.execPath : "docker", [...(replacement ? [replacement] : []), "compose", "config", "--format", "json"], { cwd: root, encoding: "utf8", timeout: 15_000, maxBuffer: 4 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+  const service = parseCompose(output).services?.postgres;
+  if (!service) throw new Error("No effective PostgreSQL service");
+  return { environment: service.environment, ports: service.ports };
+}
+
 /** Private values contribute only through a per-process keyed digest, never browser-readable hashes. */
 export function databaseConfigurationRevision(root: string, files?: Set<string>): string {
   const digest = createHmac("sha256", configurationSalt);
-  const visited = new Set<string>();
   const visit = (file: string) => {
-    if (visited.has(file)) return;
-    if (visited.size > 128) throw new EditError(422, "The Prisma configuration imports too many local files for Studio. Use the Prisma CLI for this configuration.");
-    visited.add(file);
     files?.add(file);
     if (!existsSync(file)) { digest.update(file + ":missing\n"); return; }
     const contents = readFileSync(file, "utf8"); digest.update(file + "\0" + contents + "\0");
-    if (!/\.[cm]?[jt]s$/.test(file)) return;
-    for (const item of ts.preProcessFile(contents, true, true).importedFiles) {
-      if (!item.fileName.startsWith(".")) continue;
-      const candidate = path.resolve(path.dirname(file), item.fileName);
-      const choices = [candidate, ...[".ts", ".mts", ".cts", ".js", ".mjs", ".cjs", ".json", "/index.ts", "/index.js"].map(extension => candidate + extension)];
-      // TS imports often spell .js while the authored member is .ts.
-      if (/\.[cm]?js$/.test(candidate)) choices.unshift(candidate.replace(/\.[cm]?js$/, ".ts"));
-      const found = choices.find(value => existsSync(value) && lstatSync(value).isFile());
-      visit(found ?? candidate);
-    }
   };
-  for (const relative of [CONFIG_FILE, "package.json", "package-lock.json", "packages/database/package.json", ".env", "packages/database/.env"]) visit(path.join(root, relative));
+  for (const file of configurationSourceFiles(root)) visit(file);
+  for (const relative of [".env", "packages/database/.env"]) visit(path.join(root, relative));
   // Authored config may condition extension composition on inherited environment.
   for (const name of Object.keys(process.env).sort()) digest.update(name + "\0" + process.env[name] + "\0");
   return digest.digest("hex");
@@ -154,20 +152,33 @@ export interface PrivateDatabaseTarget { readonly public: DatabaseTarget; readon
 /** Resolve only the declared Compose PostgreSQL binding; never inherit DATABASE_URL. */
 export function resolvePrivateDatabaseTargets(root: string): readonly PrivateDatabaseTarget[] {
   let local: PrivateDatabaseTarget;
-  const production: PrivateDatabaseTarget = { public: { id: "production", label: "Production RDS", available: false, identity: sha256("unsupported-production"), detail: "Private IAM/TLS access is not connected to this workbench yet. Use the framework's authorized database task; Studio does not open ingress or accept connection URLs." } };
+  let handoffs: NonNullable<DatabaseTarget["handoffs"]> = [];
+  try { handoffs = repositoryTargets(root).filter(target => target.mode === "prod").map(target => ({ deployment: target.name, account: target.account, region: target.region, command: `npm run db:migrate:cloud -- --deployment ${target.name} -c deployment=${target.name} --profile <PROFILE>${target.region ? ` --region ${target.region}` : ""}`, detail: "Separately authorized database write: launches the declared db-migrate task inside its VPC with direct IAM/TLS access. Review migration SQL and old/new application compatibility first; task logs and exit code establish execution outcome." })); } catch { /* Invalid target catalogs remain an explicit setup prerequisite. */ }
+  const production: PrivateDatabaseTarget = { public: { id: "production", label: "Production RDS", available: false, identity: sha256(JSON.stringify(["production-task-review-v1", handoffs])), handoffs, detail: "Production database access uses the declared VPC db-migrate task with private-database IAM/TLS access. Select a named deployment and profile below, check the deployed task destination, then explicitly authorize a billed read-only task. Applying reviewed SQL requires a separate approval. Direct local inspection is unavailable; Studio never opens database ingress or accepts connection URLs." } };
   try {
     const compose = parseCompose(readFileSync(path.join(root, "docker-compose.yml"), "utf8"));
     const override = path.join(root, "docker-compose.override.yml");
-    if (existsSync(override) && parseCompose(readFileSync(override, "utf8")).services?.postgres) {
-      return [{ public: { id: "local:postgres", label: "Local PostgreSQL", available: false, identity: sha256("unsupported-postgres-override"), detail: "Compose overrides postgres. Studio cannot establish its effective connection identity safely; inspect that target with the framework CLI until override resolution is supported. Studio never starts Compose." } }, production];
+    const postgresOverride = existsSync(override) ? parseCompose(readFileSync(override, "utf8")).services?.postgres : undefined;
+    // Non-identity overrides do not change the safely established connection.
+    // Identity-changing Compose merge/interpolation remains fail-closed until
+    // its effective binding can be established; never silently use base ports.
+    const safeOverrideKeys = new Set(["healthcheck", "restart", "labels", "logging", "deploy", "mem_limit", "cpus", "shm_size", "stop_grace_period"]);
+    let postgres: { environment?: unknown; ports?: unknown } | undefined = compose.services?.postgres;
+    let effective = false;
+    if (postgresOverride && Object.keys(postgresOverride).some(key => !safeOverrideKeys.has(key))) {
+      try {
+        postgres = effectivePostgres(root); effective = true;
+      } catch {
+        return [{ public: { id: "local:postgres", label: "Local PostgreSQL", available: false, identity: sha256("unsupported-postgres-override"), detail: "Compose overrides PostgreSQL and its effective configuration could not be resolved. Install the Compose CLI and resolve docker compose config errors, then refresh. Studio does not start containers or expose connection values." } }, production];
+      }
     }
-    const postgres = compose.services?.postgres;
     const environment = postgres?.environment;
     const env = Array.isArray(environment) ? Object.fromEntries(environment.flatMap(item => typeof item === "string" && item.includes("=") ? [[item.slice(0, item.indexOf("=")), item.slice(item.indexOf("=") + 1)]] : [])) : environment;
     const inputs = existsSync(path.join(root, ".env")) ? parseEnv(readFileSync(path.join(root, ".env"), "utf8")) : {};
-    const portInput = inheritedPostgresHostPort ?? inputs.POSTGRES_HOST_PORT;
+    const effectiveBinding = effective && Array.isArray(postgres?.ports) ? postgres.ports.find((value: unknown) => !!value && typeof value === "object" && (value as Record<string, unknown>).host_ip === "127.0.0.1" && Number((value as Record<string, unknown>).target) === 5432 && ((value as Record<string, unknown>).protocol ?? "tcp") === "tcp") as Record<string, unknown> | undefined : undefined;
+    const portInput = effective ? String(effectiveBinding?.published ?? "") : inheritedPostgresHostPort ?? inputs.POSTGRES_HOST_PORT;
     const ports = postgres?.ports;
-    if (!postgres || !env || !Array.isArray(ports) || !ports.some(value => value === "127.0.0.1:${POSTGRES_HOST_PORT}:5432") || !portInput || !/^\d+$/.test(portInput) || Number(portInput) < 1 || Number(portInput) > 65535) throw new Error("Unsupported Compose connection");
+    if (!postgres || !env || !Array.isArray(ports) || (effective ? !effectiveBinding || ports.some((value: unknown) => !!value && typeof value === "object" && Number((value as Record<string, unknown>).target) === 5432 && (value as Record<string, unknown>).host_ip !== "127.0.0.1") : !ports.some(value => value === "127.0.0.1:${POSTGRES_HOST_PORT}:5432")) || !portInput || !/^\d+$/.test(portInput) || Number(portInput) < 1 || Number(portInput) > 65535) throw new Error("Unsupported Compose connection");
     const value = (key: string) => { const raw = (env as Record<string, unknown>)[key]; if (typeof raw !== "string" || raw.includes("${")) throw new Error("Nonliteral Compose connection"); return raw; };
     const connection = new URL(`postgresql://127.0.0.1:${Number(portInput)}`);
     connection.username = value("POSTGRES_USER"); connection.password = value("POSTGRES_PASSWORD"); connection.pathname = `/${value("POSTGRES_DB")}`;

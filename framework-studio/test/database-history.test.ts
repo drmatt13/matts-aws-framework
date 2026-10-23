@@ -136,6 +136,25 @@ test("real pinned Prisma plans actual artifacts in an overlay; install is review
   await assert.rejects(service.install({ reviewId: review.id }), /expired or was discarded/);
 });
 
+test("planning copies transitive authored config helpers and expires review when a helper changes", async () => {
+  const root = await fixture();
+  await mkdir(path.join(root, "packages/database/settings"));
+  await writeFile(path.join(root, "packages/database/settings/indent.ts"), "export const indent = 2;\n");
+  await writeFile(path.join(root, "packages/database/settings/index.ts"), 'export { indent } from "./indent.js";\n');
+  await writeFile(path.join(root, "packages/database/prisma.config.ts"), `import { definePrismaConfig } from "@prisma/cli-engine";
+import { defineConfig } from "@prisma/orm-postgres/config";
+import { indent } from "./settings/index.js";
+export default definePrismaConfig({orm:{...defineConfig({contract:"prisma/contract.prisma",output:"src/generated",migrations:{dir:"prisma/migrations"}}),formatter:{indent}}});
+`);
+  const service = new DatabaseHistoryService(root);
+  const history = await service.load();
+  const review = await service.plan({ name: "imported_config", from: history.heads[0]!, expectedSourceHash: history.sourceHash, expectedHistoryRevision: history.revision });
+  assert.equal(review.noOp, true);
+  await writeFile(path.join(root, "packages/database/settings/indent.ts"), "export const indent = 4;\n");
+  assert.notEqual((await service.load()).revision, history.revision);
+  await assert.rejects(service.install({ reviewId: review.id }), /changed after review/);
+});
+
 test("external source changes preserve the draft and refuse a reviewed artifact install", async () => {
   const root = await fixture();
   const service = new DatabaseHistoryService(root);

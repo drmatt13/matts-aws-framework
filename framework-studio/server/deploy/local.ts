@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } 
 import path from "node:path";
 import { parseEnv } from "node:util";
 import { parse as parseYaml } from "yaml";
+import { setTimeout as delay } from "node:timers/promises";
 import type { DockerView, LocalRunView, ManagedProcessView, ServiceView } from "../../shared/deploy";
 import type { Runner, Tools } from "./process";
 
@@ -176,7 +177,36 @@ export class LocalEnvironment {
       ...(record?.profile ? { profile: record.profile } : {}),
       ...(running.length || managed.client.running ? { appUrl: this.appUrl() } : {}),
       restartNeeded,
+      readiness: await this.readiness(services, managed),
     };
+  }
+
+  /** Observation, not an inference from a successful process launch. */
+  async readiness(services: readonly ServiceView[], managed: { readonly watch: ManagedProcessView; readonly client: ManagedProcessView }) {
+    const observedAt = new Date().toISOString();
+    const result = (state: "ready" | "starting" | "blocked" | "stopped", message: string) => ({ state, observedAt, message });
+    if (!services.some(service => service.state === "running") && !managed.client.running) return result("stopped", "Local services are stopped.");
+    const failed = services.filter(service => service.health === "unhealthy" || service.oneShot && service.exitCode !== undefined && service.exitCode !== 0 || !service.oneShot && service.state === "exited");
+    if (failed.length) return result("blocked", `Needs attention: ${failed.map(service => service.name).join(", ")}. Open its logs. Database verification never applies changes; review initialization or migrations in Database.`);
+    if (!services.length || services.some(service => !service.oneShot && (service.state !== "running" || service.health === "starting")) || !managed.watch.running || !managed.client.running) return result("starting", "Waiting for local services, source watch and web client.");
+    try {
+      const response = await fetch(this.appUrl(), { signal: AbortSignal.timeout(1500), redirect: "manual" });
+      await response.body?.cancel();
+      if (response.status >= 200 && response.status < 400) return result("ready", "Services are running and the web client is reachable. Authentication and application behavior require their own checks.");
+    } catch { /* A process can exist before binding its HTTP port. */ }
+    return result("starting", "Containers started; waiting for the web client to answer HTTP requests.");
+  }
+
+  async waitUntilReady(signal: AbortSignal, managed: () => { readonly watch: ManagedProcessView; readonly client: ManagedProcessView }, timeoutMs = 60_000): Promise<void> {
+    const deadline = Date.now() + Math.max(100, Math.min(120_000, timeoutMs));
+    while (!signal.aborted) {
+      const state = await this.readiness(await this.services(), managed());
+      if (state.state === "ready") return;
+      if (state.state === "blocked") throw new Error(state.message);
+      if (Date.now() >= deadline) throw new Error(`${state.message} Startup is not confirmed. Services already started remain running; inspect their logs before restarting.`);
+      await delay(500, undefined, { signal });
+    }
+    throw new Error("Readiness check stopped. Services already started remain running.");
   }
 
   async logs(service: string, tail = 300): Promise<string> {

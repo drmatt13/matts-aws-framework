@@ -96,6 +96,7 @@ afterEach(() => { ui.cleanup(); clients.splice(0).forEach((client) => client.cle
 function render(scripted: Record<string, unknown>, content?: ReactNode) {
   posted = [];
   answers = { "/deploy/plans": [], "/deploy/drift": null, ...scripted };
+  if (Array.isArray(answers["/deploy/plans"])) answers["/deploy/plans"] = (answers["/deploy/plans"] as PlanSummaryView[]).map((plan) => ({ account: context.account, region: context.region, ...plan }));
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   clients.push(client);
   return ui.render(h(query.QueryClientProvider, { client }, content ?? h(page.Deploy)));
@@ -165,13 +166,13 @@ test("a failed refresh keeps deployment evidence visible, reports the error and 
   assert.equal(operations().length, 0);
 });
 
-test("an absent development deployment is deployed with one click, as a plan that applies itself", async () => {
+test("an absent development deployment prepares a review without automatic application", async () => {
   render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app" } } });
-  const primary = await ui.screen.findByRole("button", { name: "Deploy development" }, { timeout: 3000 });
+  const primary = await ui.screen.findByRole("button", { name: "Compare AWS templates" }, { timeout: 3000 });
   assert.ok(await ui.screen.findByText("Not deployed here"));
   ui.fireEvent.click(primary);
   await ui.waitFor(() => assert.equal(operations().length, 1));
-  assert.deepEqual(operations()[0], { kind: "deploy-plan", params: { deployment: "my-aws-app", profile: "dev", autoApply: true } });
+  assert.deepEqual(operations()[0], { kind: "deploy-plan", params: { deployment: "my-aws-app", profile: "dev", review: "template" } });
 });
 
 test("an expired session offers Sign in, which signs in that profile", async () => {
@@ -216,6 +217,7 @@ test("a production plan is applied only with its name typed", async () => {
 
 test("deleting shows what AWS holds and what stays, and needs the typed name", async () => {
   const teardown: TeardownPlanView = {
+    key: "delete-review-abc123", expiresAt: "2099-01-01T00:00:00Z", digest: "reviewed", blockers: [],
     deployment: "my-aws-app", mode: "dev", account: context.account, region: context.region,
     stacks: [{ name: "my-aws-app-CognitoStack", status: "UPDATE_COMPLETE", terminationProtection: false, importedBy: [] }],
     leftInPlace: [], remains: [{ stack: "my-aws-app-CognitoStack", logicalId: "Pool", type: "AWS::Cognito::UserPool", policy: "Retain" }], secrets: [], record: true,
@@ -232,7 +234,7 @@ test("deleting shows what AWS holds and what stays, and needs the typed name", a
   assert.equal((remove as HTMLButtonElement).disabled, true);
   ui.fireEvent.change(ui.screen.getByLabelText("Type my-aws-app to delete it"), { target: { value: "my-aws-app" } });
   ui.fireEvent.click(remove);
-  await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "destroy", params: { deployment: "my-aws-app", mode: "dev", profile: "dev", confirm: "my-aws-app" } }));
+  await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "destroy", params: { deployment: "my-aws-app", mode: "dev", profile: "dev", confirm: "my-aws-app", review: "delete-review-abc123" } }));
 });
 
 test("a plan job finishing while another plan is under review does not replace it", async () => {
@@ -252,7 +254,7 @@ test("a plan job finishing while another plan is under review does not replace i
     "/deploy/plans/my-aws-app-prod-xxxxxx": plan("my-aws-app-prod-xxxxxx", "RdsStack"),
   });
   // A second plan is started from this page; then the waiting one is opened for review.
-  const planItem = await ui.screen.findByRole("menuitem", { name: "Plan changes for review…" }, { timeout: 3000 });
+  const planItem = await ui.screen.findByRole("menuitem", { name: "Compare AWS templates (read-only)…" }, { timeout: 3000 });
   await ui.waitFor(() => assert.equal((planItem as HTMLButtonElement).disabled, false), { timeout: 3000 });
   ui.fireEvent.click(planItem);
   await ui.waitFor(() => assert.equal(operations().length, 1));
@@ -284,7 +286,7 @@ test("a target pinned to another region is read, and shown, from that region", a
 test("the deployment actions menu supports arrow navigation, Escape and outside dismissal", async () => {
   const value = { ...discovery([deployed("my-aws-app", "dev")]), deployment: "my-aws-app", detail: { ...deployed("my-aws-app", "dev"), events: [], changeSets: [], local: { compatible: true, exported: { client: false, fresh: false } } } };
   render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: value }, "/deploy/status": { ok: true, value } });
-  const first = await ui.screen.findByRole("menuitem", { name: "Plan changes for review…" });
+  const first = await ui.screen.findByRole("menuitem", { name: "Compare AWS templates (read-only)…" });
   await ui.waitFor(() => assert.equal((first as HTMLButtonElement).disabled, false));
   const trigger = ui.screen.getByLabelText("More actions");
   trigger.focus();
@@ -333,4 +335,30 @@ test("refreshing container logs preserves a reader's position until they return 
   await ui.waitFor(() => assert.equal(log.textContent, "third log"));
   assert.equal(log.scrollTop, 1000, "following resumes at the bottom");
   assert.equal(log.getAttribute("tabindex"), "0", "keyboard users can scroll the log");
+});
+
+test("selected destination owns the header and survives unrelated discovery denial", async () => {
+  const west = { ...context, region: "us-west-2" };
+  const target = { name: "my-aws-app", mode: "dev" as const, origin: "declared" as const, account: context.account, region: west.region };
+  const deployment = { ...deployed("my-aws-app", "dev"), region: west.region };
+  render({
+    "/deploy/overview": overview({ targets: [target] }),
+    "/deploy/discover": { ok: false, problem: { kind: "denied", message: "Default region is denied" } },
+    "/deploy/status": { ok: true, value: { ...discovery([deployment]), context: west, deployment: target.name, targets: [{ ...target, status: "deployed" }], detail: { ...deployment, events: [], changeSets: [] } } },
+  });
+  const header = await ui.screen.findByRole("banner", { name: "AWS account" });
+  await ui.waitFor(() => assert.ok(header.textContent?.includes("us-west-2")));
+  assert.ok(await ui.screen.findByText("Deployed · 1 stack"));
+  assert.equal(ui.screen.queryByText("Not readable with this profile."), null);
+  assert.ok(ui.screen.getByText(/selected deployment's observation below is separate/));
+});
+
+test("incomplete security analysis stays inside review and cannot be applied", async () => {
+  const summary = { key: "blocked-review-abc123", deployment: "my-aws-app", mode: "dev" as const, account: context.account, region: context.region, status: "blocked" as const, createdAt: "2026-10-22T00:00:00Z", expired: false };
+  const plan: PlanView = { key: summary.key, planId: "plan-abc-123456", createdAt: summary.createdAt, expiresAt: "2099-01-01T00:00:00Z", expired: false, status: "blocked", review: "template", identity: { deployment: summary.deployment, mode: "dev", account: context.account, region: context.region }, guard: "ready", stacks: [], secrets: [], dockerImages: [], iamBroadening: false, confirmation: { level: "click", reasons: [] }, uncertainties: [], reviewEvidence: { security: "AccessDenied while inspecting IAM", templates: "Template comparison", problems: ["Security analysis failed"] } };
+  render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: summary.deployment } }, "/deploy/plans": [summary], [`/deploy/plans/${summary.key}`]: plan });
+  ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }));
+  assert.ok(await ui.screen.findByText("AccessDenied while inspecting IAM"));
+  assert.equal(ui.screen.queryByRole("button", { name: `Apply to ${context.account}` }), null);
+  assert.equal(operations().length, 0);
 });

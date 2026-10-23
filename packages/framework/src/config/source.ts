@@ -34,7 +34,22 @@ import {
 export interface FrameworkRootOptions {
   /** Repository root. Discovered from the current working directory when omitted. */
   readonly repositoryRoot?: string;
+  /** Read-only candidate filesystem used by source review tools. */
+  readonly sourceHost?: TargetSourceHost;
 }
+
+export interface TargetSourceHost {
+  readonly exists: (file: string) => boolean;
+  readonly isDirectory: (file: string) => boolean;
+  readonly realpath: (file: string) => string;
+  readonly entries: (directory: string) => readonly string[];
+}
+const diskSourceHost: TargetSourceHost = {
+  exists: existsSync,
+  isDirectory: file => existsSync(file) && statSync(file).isDirectory(),
+  realpath: realPath,
+  entries: directory => existsSync(directory) ? readdirSync(directory) : [],
+};
 
 /** Absolute location of a target's source, with the framework path it came from. */
 export interface ResolvedTargetSource {
@@ -138,14 +153,15 @@ export function resolveFrameworkDirectory(
   options: FrameworkRootOptions = {},
 ): string {
   const sourceRoot = getFrameworkSourceRoot(options);
+  const host = options.sourceHost ?? diskSourceHost;
   const candidate = path.resolve(sourceRoot, directory.slice(1));
-  const relative = path.relative(realPath(sourceRoot), realPath(candidate));
+  const relative = path.relative(host.realpath(sourceRoot), host.realpath(candidate));
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new Error(
       `${origin} directory "${directory}" resolves outside cdk-app (${candidate}).`,
     );
   }
-  if (!existsSync(candidate) || !statSync(candidate).isDirectory()) {
+  if (!host.isDirectory(candidate)) {
     throw new Error(
       `${origin} directory "${directory}" does not exist. Expected ${candidate}.`,
     );
@@ -163,22 +179,23 @@ export function resolveAgentSourcePath(config: FrameworkConfig, id: string, opti
   const target = getFrameworkTargets(config).find((candidate) => candidate.reference === `agent:${id}`);
   if (!target?.directory) throw new Error(`agent:${id} is not declared under agents.`);
   const repositoryRoot = options.repositoryRoot ?? findRepositoryRoot();
-  const boundary = realPath(path.join(repositoryRoot, AGENT_SOURCE_ROOT.slice(1)));
+  const host = options.sourceHost ?? diskSourceHost;
+  const boundary = host.realpath(path.join(repositoryRoot, AGENT_SOURCE_ROOT.slice(1)));
   const candidate = path.resolve(repositoryRoot, target.directory.slice(1));
-  const relative = path.relative(boundary, realPath(candidate));
+  const relative = path.relative(boundary, host.realpath(candidate));
   if (relative.startsWith("..") || path.isAbsolute(relative) || relative === "") {
     throw new Error(`${target.origins[0]} directory "${target.directory}" resolves outside the repository's ${AGENT_SOURCE_ROOT.slice(1)} directory.`);
   }
-  if (!existsSync(candidate) || !statSync(candidate).isDirectory()) {
+  if (!host.isDirectory(candidate)) {
     throw new Error(`${target.origins[0]} directory "${target.directory}" does not exist. Expected ${candidate}.`);
   }
   return candidate;
 }
 
 /** Case-insensitive Dockerfile lookup, because both spellings are in use. */
-export function findDockerfile(directory: string): string | undefined {
-  if (!existsSync(directory)) return undefined;
-  const entry = readdirSync(directory).find(
+export function findDockerfile(directory: string, host: TargetSourceHost = diskSourceHost): string | undefined {
+  if (!host.isDirectory(directory)) return undefined;
+  const entry = host.entries(directory).find(
     (name) => name.toLowerCase() === "dockerfile",
   );
   return entry ? path.join(directory, entry) : undefined;
@@ -322,15 +339,16 @@ export function assertTargetArtifacts(
   config: FrameworkConfig,
   target: NormalizedTarget,
   directory: string,
+  host: TargetSourceHost = diskSourceHost,
 ): void {
   const origin = target.origins[0] ?? target.reference;
 
   if (target.kind === "agent") {
-    if (!existsSync(path.join(directory, "index.ts"))) throw new Error(`${origin}: agents require index.ts exporting handler.`);
+    if (!host.exists(path.join(directory, "index.ts"))) throw new Error(`${origin}: agents require index.ts exporting handler.`);
     return;
   }
   if (target.kind === "service" || target.kind === "task") {
-    if (!findDockerfile(directory)) {
+    if (!findDockerfile(directory, host)) {
       throw new Error(
         `${origin} declares ${target.kind} "${target.id}", but ${directory} has no Dockerfile.`,
       );
@@ -341,7 +359,7 @@ export function assertTargetArtifacts(
 
   const spec = resolveLambdaTarget(config, target.id);
   if (spec.packaging === "container") {
-    if (!findDockerfile(directory)) {
+    if (!findDockerfile(directory, host)) {
       throw new Error(
         `${origin} is packaged as a container, but ${directory} has no Dockerfile.`,
       );
@@ -352,7 +370,7 @@ export function assertTargetArtifacts(
   const entry = isNodeLambdaRuntime(spec.runtime)
     ? "index.ts"
     : "lambda_function.py";
-  if (!existsSync(path.join(directory, entry))) {
+  if (!host.exists(path.join(directory, entry))) {
     throw new Error(
       `${origin} runs on ${spec.runtime} as a zip, but ${directory} has no ${entry}.`,
     );

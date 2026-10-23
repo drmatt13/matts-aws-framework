@@ -7,6 +7,7 @@ import type { ResourceIntent } from "../shared/resources";
 import { SnapshotBuilder } from "../server/snapshot";
 import { readResourceIntent, ResourceService } from "../server/resources";
 import { DeploymentInputService } from "../server/deployment-input-edits";
+import { SourceJournal } from "../server/edits/journal";
 
 const root = path.resolve(__dirname, "../..");
 const fixture = path.join(root, ".cache/framework-studio", `resources-${randomUUID()}`);
@@ -173,6 +174,9 @@ test("failed multi-file resource edits preserve an external deletion and restore
     writeFileSync(catalog, original);
     writeFileSync(route, http);
     await builder.refresh();
+    const journal = new SourceJournal(fixture), pending = journal.pending();
+    assert.equal(pending.length, 1, "conflicted source restoration requires explicit completion");
+    journal.keepCurrent(pending[0]!.id, pending[0]!.fingerprint, "KEEP CURRENT SOURCE");
   }
 });
 

@@ -67,7 +67,7 @@ export function Rail(props: {
       <ul className="rail-list">{repository.map(item)}</ul>
       {discovered.length ? (
         <>
-          <h2 className="rail-heading">Also in this account <span className="muted">read-only</span></h2>
+          <h2 className="rail-heading">Also in this account <span className="muted">not declared here</span></h2>
           <ul className="rail-list">{discovered.map(item)}</ul>
         </>
       ) : null}

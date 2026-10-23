@@ -39,21 +39,22 @@ test("one deployment of a name runs at a time", () => {
   });
 });
 
-test("a lock left by a process that no longer exists is replaced", () => {
+test("stale and incomplete locks require inspected recovery and are never reclaimed automatically", () => {
   withCache((cache) => {
-    writeFileSync(path.join(cache, "app.lock"), JSON.stringify({ pid: 999_999_999, startedAt: "2026-01-01T00:00:00.000Z" }));
-    const release = acquireDeploymentLock(cache, "app", () => false);
-    assert.equal(JSON.parse(readFileSync(path.join(cache, "app.lock"), "utf8")).pid, process.pid);
-    release();
-    writeFileSync(path.join(cache, "app.lock"), "not json");
-    acquireDeploymentLock(cache, "app", () => false)();
+    for (const contents of [JSON.stringify({ pid: 999_999_999, startedAt: "2026-01-01T00:00:00.000Z" }), "not json", ""]) {
+      writeFileSync(path.join(cache, "app.lock"), contents);
+      assert.throws(() => acquireDeploymentLock(cache, "app", () => false), /Inspect recorded progress and AWS/);
+      assert.equal(readFileSync(path.join(cache, "app.lock"), "utf8"), contents);
+    }
+    rmSync(path.join(cache, "app.lock"));
+    acquireDeploymentLock(cache, "app")();
   });
 });
 
 test("releasing never removes a lock another run now holds", () => {
   withCache((cache) => {
     const release = acquireDeploymentLock(cache, "app");
-    writeFileSync(path.join(cache, "app.lock"), JSON.stringify({ pid: process.pid + 1, startedAt: new Date().toISOString() }));
+    writeFileSync(path.join(cache, "app.lock"), JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString(), token: "a replacement in the same process" }));
     release();
     assert.equal(existsSync(path.join(cache, "app.lock")), true);
   });

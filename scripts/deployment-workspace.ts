@@ -1,5 +1,6 @@
-import { chmodSync, closeSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeSync } from "node:fs";
+import { chmodSync, closeSync, fsyncSync, linkSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 /**
  * The deploy wrapper's local working state under .cache/deploy: its temporary
@@ -83,33 +84,31 @@ export function defaultIsAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 }
 
-/** Takes `<cache>/<deployment>.lock`, replacing one whose process is gone. Returns the release. */
+/** Takes `<cache>/<deployment>.lock`. Unknown/stale owners require deliberate
+ * recovery: auto-unlinking can remove a contender's newly acquired lock.
+ */
 export function acquireDeploymentLock(cache: string, deployment: string, isAlive: (pid: number) => boolean = defaultIsAlive): () => void {
   if (!/^[a-z][a-z0-9-]*$/.test(deployment)) throw new Error(`Cannot lock deployment name ${JSON.stringify(deployment)}.`);
   mkdirSync(cache, { recursive: true });
   const file = join(cache, `${deployment}.lock`);
-  const record = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() });
-  for (let attempt = 0; ; attempt++) {
-    try {
-      const descriptor = openSync(file, "wx", 0o600);
-      try { writeSync(descriptor, record); } finally { closeSync(descriptor); }
-      break;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      let holder: { pid?: unknown; startedAt?: unknown } | undefined;
-      try { holder = JSON.parse(readFileSync(file, "utf8")); } catch { holder = undefined; }
-      if (attempt > 0 || (typeof holder?.pid === "number" && isAlive(holder.pid))) {
-        const who = typeof holder?.pid === "number" ? `pid ${holder.pid}, started ${String(holder.startedAt)}` : "another process";
-        throw new Error(`Another deployment of ${deployment} is running (${who}). Wait for it to finish, or delete ${file} if that process no longer exists.`);
-      }
-      rmSync(file, { force: true });
-    }
+  const record = JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString(), token: randomUUID() });
+  try {
+    const descriptor = openSync(file, "wx", 0o600);
+    try { writeSync(descriptor, record); fsyncSync(descriptor); } finally { closeSync(descriptor); }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    let holder: { pid?: unknown; startedAt?: unknown } | undefined;
+    try { holder = JSON.parse(readFileSync(file, "utf8")); } catch { holder = undefined; }
+    const known = typeof holder?.pid === "number" && Number.isSafeInteger(holder.pid) && holder.pid > 0;
+    const who = known ? `pid ${holder!.pid}, started ${String(holder!.startedAt)}` : "unknown owner";
+    const message = known && isAlive(holder!.pid as number) ? `Another deployment of ${deployment} is running (${who}). Wait for it to finish.` : `A deployment lock for ${deployment} exists (${who}); its previous outcome is unconfirmed.`;
+    throw new Error(`${message} Inspect recorded progress and AWS before explicitly removing ${file}; no lock was automatically reclaimed.`);
   }
   return () => {
     try {
-      if (JSON.parse(readFileSync(file, "utf8")).pid === process.pid) rmSync(file, { force: true });
+      if (readFileSync(file, "utf8") === record) rmSync(file, { force: true });
     } catch {
-      // Already gone, or replaced by a run that found this one dead.
+      // Already gone, or explicitly replaced during inspected recovery.
     }
   };
 }

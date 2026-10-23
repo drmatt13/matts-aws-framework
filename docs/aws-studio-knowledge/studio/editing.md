@@ -15,6 +15,7 @@ source:
   - framework-studio/server/edits/plan.ts
   - framework-studio/server/edits/splice.ts
   - framework-studio/server/edits/io.ts
+  - framework-studio/server/edits/journal.ts
   - framework-studio/src/database-session.ts
   - framework-studio/server/database-workbench.ts
   - framework-studio/server/database-history.ts
@@ -59,16 +60,24 @@ Source success is reported separately from snapshot-refresh failure. It neither 
 artifacts nor applies storage. `DatabaseHistoryService` in
 [database-history.ts](../../../framework-studio/server/database-history.ts) runs pinned
 Prisma emission/planning in a disposable copy, exposes actual artifact bytes, then installs
-only reviewed new files after source/config/history checks. Existing migration packages
+only reviewed new files after source/config/history checks, including the bounded imported
+configuration helpers used by source validation and copied into offline planning. Existing migration packages
 remain immutable; history browsing never executes them. `DatabaseApplicationService` in
 [database-application.ts](../../../framework-studio/server/database-application.ts) owns
 the separate local target review, typed approval, input/path revalidation and canonical
-runner. Database effects and follow-up inspection failures remain separate. Production
-IAM/TLS access remains outside the workbench. See the
+runner. Empty local initialization has its own metadata-only emptiness check, SQL review and
+typed authorization; populated unknown storage remains blocked. Redacted database operation
+records survive restart and never replay writes. Database effects and follow-up inspection
+failures remain separate. `DatabaseCloudService` and the versioned VPC task add production
+inspection/application: read-only metadata preparation pins a named destination and stack-owned
+task revision and full launch/log descriptor, showing actual public-IP/subnet/security-group placement (database stays private/IAM), then typed billed inspection returns SQL/source for a separately typed write
+approval. Old write-only tasks fail before launch. Full marker/ledger and strict historical
+storage checks run under the canonical runner's transaction lock before DDL. Durable task ARN,
+request token and CloudWatch evidence survive restart without automatic write retries. Local and production empty initialization share a full-native-operation/SQL-parameter review and under-transaction empty metadata proof; production requires its distinct typed Initialize approval. Populated/partial unknown storage is never adopted or reset. See the
 [Database workbench guide](../../framework-studio/database-workbench.md) for precise actions,
 evidence and capability limits.
 
-`InspectorDraft` in [draft.ts](../../../framework-studio/src/draft.ts) owns baseline/latest snapshots, staged entries, validation, review and navigation protection. While dirty, the visible graph stays on the baseline. A different snapshot revision marks conflict; it does not auto-merge. Invalid/conflicting drafts cannot apply. `StudioProvider` in [studio.tsx](../../../framework-studio/src/studio.tsx) connects this lifecycle across routes and browser exit. The draft/history is in memory, not durable recovery storage.
+`InspectorDraft` in [draft.ts](../../../framework-studio/src/draft.ts) owns baseline/latest snapshots, staged entries, validation, review and navigation protection. While dirty, the visible graph stays on the baseline. A different snapshot revision marks conflict; it does not auto-merge. Invalid/conflicting drafts cannot apply. An explicit Review against latest source preserves ordinary typed entries and requests a fresh proposal; protected resource/input forms require their own reload. `StudioProvider` in [studio.tsx](../../../framework-studio/src/studio.tsx) connects this lifecycle across routes and browser exit. Draft/history remain in memory; interrupted source writes have a separate durable journal.
 
 During apply, draft setters and discard are inert until the server responds, preserving
 the accepted review payload. Network creation/settings and workload placement controls
@@ -106,7 +115,7 @@ flowchart LR
 
 `EditService` in [transaction.ts](../../../framework-studio/server/edits/transaction.ts) serializes its operations and keeps plans/history. `BatchEditor` in [batch.ts](../../../framework-studio/server/edits/batch.ts) composes field, route, trigger, failure destination, replay wrapper, description, mapping and creation changes into source overrides. Resource and environment details have specialized services with their own validation/private data; see [secrets](../deployment/secrets.md).
 
-`planEdit` in [plan.ts](../../../framework-studio/server/edits/plan.ts) uses [source locations](source-indexing.md), narrow parsing and semantic patches; `diffOf` emits a compact contiguous diff. [splice.ts](../../../framework-studio/server/edits/splice.ts) replaces/inserts/removes supported literal ranges while preserving surrounding source/quotes. It refuses unsafe computed shapes/comments instead of reprinting entire files.
+`planEdit` in [plan.ts](../../../framework-studio/server/edits/plan.ts) uses [source locations](source-indexing.md), narrow parsing and semantic patches; the shared diff engine preserves interior unchanged runs and emits contextual hunks. [splice.ts](../../../framework-studio/server/edits/splice.ts) replaces/inserts/removes supported literal ranges while preserving surrounding source/quotes. It refuses unsafe computed shapes/comments instead of reprinting entire files.
 
 Comment protection belongs in the shared source operations: inserting the first property
 into a commented empty object is refused, and `setProperty` refuses replacing a literal
@@ -116,13 +125,17 @@ VPC settings use the registered declaration's source span, including official im
 aliases and modules containing multiple declarations; a helper's spelling or file layout
 does not identify the declaration to edit.
 
-Plans capture revision and file hashes; both fresh mode evaluations must pass. Trigger/CDK/creation changes also use TypeScript checks where implemented. Normal Inspector edits preserve target/construct identity. Creation permits expected additions while preserving existing identities and includes [preview-generated artifacts](creation-and-connections.md) in review/history. Plans expire after relevant source changes. Review approval saves authored/generated source; it does not synthesize or deploy infrastructure.
+Plans capture revision and file hashes; both fresh mode evaluations must pass. Canonical source resolution and artifact validation check configured directories, handlers and Dockerfiles against proposed files. Missing implementation is projected independently from declaration validity so repair remains available. Type-aware connection/creation/repair changes use TypeScript checks. Normal Inspector edits preserve target/construct identity. Creation permits expected additions and explicit removal permits only the selected removed identity. Projection-affecting edits, including the legacy route/deployment APIs, run real generation in a private copy and include changed/generated/deleted outputs in review/history. Generator input hashes include existing implementations, contracts and Dockerfiles even when no output changes. Review approval saves authored/generated source; it does not synthesize or deploy infrastructure.
 
 Apply checks source before and after preflight, then checks each write's expected contents. `writeSourceChange` in [io.ts](../../../framework-studio/server/edits/io.ts) distinguishes absent files (`null`) from empty files, creates through an exclusive link, and replaces existing files by temporary-file rename. After refresh, the batch compares relevant actual identities/settings/routes/triggers/creation relationships with the reviewed model.
 
-**Multi-file apply is not a crash-atomic filesystem transaction.** On caught failure it restores written files in reverse only while they still equal its own written contents. Concurrent edits are preserved and can produce `unconfirmed`; inspect those files. Undo/redo uses expected contents and inverse validation, including creator-owned file deletion. Server restart loses in-memory review/history; no durable journal makes interrupted writes automatically recoverable. Revision/hash checks also do not eliminate every external-editor race between a check and rename.
+**Multi-file apply is not a crash-atomic filesystem transaction.** On caught failure it restores written files in reverse only while they still equal its own written contents. Concurrent edits are preserved and can produce `unconfirmed`; inspect those files. Undo/redo uses expected contents and inverse validation, including creator-owned file deletion. Server restart loses in-memory review/history. [journal.ts](../../../framework-studio/server/edits/journal.ts) writes a private fsynced write-ahead source record before batch/resource multi-file writes. An exclusive checkout lock spans writes and post-write verification; competing Studio processes cannot begin another journaled transaction. Begin never reclaims a stale lock. Restart exposes dead-owner records (including a lock acquired before journaling) through Source recovery. Typed Restore source restores matching bytes and preserves later edits; typed Keep current source completes recovery only after current-source revalidation and a fingerprint check. A separate exclusive recovery lock serializes explicit recovery. A shared active registry excludes in-flight transactions across service instances and rejects recovery against them. Record/root/path/symlink validation applies on reads as well as writes. Corrupt metadata or an interrupted recovery lock requires explicit inspection while snapshots remain inspectable and source writes remain blocked. Environment values and database operations have separate service boundaries. Revision/hash checks do not eliminate every external-editor race between a check and rename; editors outside Studio do not honor its lock.
 
 The single-edit API and resource editor follow the same expected-contents write guard during recovery.
+Journal records retain per-file authority: recognized native CDK edits first pass the
+linked-stack ownership check and record a bounded native source entry; generated/new
+files retain creator authority. A mixed native/source/generated transaction can recover
+without broadening the normal configuration writer or accepting HTTP-selected paths.
 Post-write snapshot exceptions and stale/error models trigger restoration, never a
 successful history entry. An external edit or deletion remains untouched and yields
 `unconfirmed`. If refresh still fails after recovery, the response distinguishes restored

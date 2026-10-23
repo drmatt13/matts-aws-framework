@@ -48,6 +48,25 @@ export class DeploymentInterrupt {
     if (this.interrupted) throw new Error(INTERRUPTED);
   }
 
+  /** Capture review evidence while preserving the ordinary live diagnostic log. */
+  capture(file: string, args: readonly string[], cwd: string): Promise<{ code: number | null; output: string }> {
+    this.assertContinuing();
+    return new Promise((accept, reject) => {
+      const child = (this.options.spawn ?? nodeSpawn)(process.execPath, [file, ...args], { cwd, stdio: ["ignore", "pipe", "pipe"], env: process.env });
+      this.current = child;
+      let output = "";
+      const collect = (chunk: Buffer) => { output += chunk.toString(); process.stdout.write(chunk); };
+      child.stdout?.on("data", collect);
+      child.stderr?.on("data", collect);
+      child.once("error", () => { this.current = undefined; reject(new Error("Unable to start deployment review tooling.")); });
+      child.once("exit", (code) => {
+        this.current = undefined;
+        if (this.interrupted) reject(new Error(INTERRUPTED));
+        else accept({ code, output });
+      });
+    });
+  }
+
   /** Runs a Node script to completion; refuses to start once interrupted. */
   run(file: string, args: readonly string[], cwd: string): Promise<void> {
     if (this.interrupted) return Promise.reject(new Error(INTERRUPTED));

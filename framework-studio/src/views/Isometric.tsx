@@ -1,4 +1,4 @@
-import { Crosshair, Maximize2, Minus, Pause, Play, Plus, Search, X } from "lucide-react";
+import { Crosshair, List, Maximize2, Minus, Pause, Play, Plus, Search, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { RELATION_LABEL, endpointLabel, indexModel } from "../lookup";
 import { buildScene, type Scene, type SceneNode } from "../scene/build";
@@ -81,6 +81,8 @@ export function Isometric() {
   const rendererRef = useRef<SceneRenderer | undefined>(undefined);
   const [motion, setMotion] = useState(() => !reducedMotion());
   const [query, setQuery] = useState("");
+  const [navigatorOpen, setNavigatorOpen] = useState(true);
+  const [resourceKind, setResourceKind] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const tagKeyRef = useRef<HTMLSelectElement>(null);
   const [tagFilter, setTagFilter] = useState(rememberedTagFilter);
@@ -112,6 +114,9 @@ export function Isometric() {
   const matches = useMemo(() => searchScene(scene, model, query), [scene, model, query]);
   const focusState = useMemo(() => landscapeFocus(scene, visibleSelected, matches), [scene, visibleSelected, matches]);
   const nodes = useMemo(() => new Map(scene.nodes.map((node) => [node.id, node])), [scene]);
+  const resourceKinds = useMemo(() => [...new Set(scene.nodes.map(node => node.kindLabel.split(",")[0]!))].sort(), [scene]);
+  const navigatorNodes = useMemo(() => scene.nodes.filter(node => (!matches || matches.nodes.has(node.id)) && (!resourceKind || node.kindLabel.split(",")[0] === resourceKind))
+    .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)), [scene, matches, resourceKind]);
   const slabs = useMemo(() => islandDrawOrder(islandSlabs(scene)), [scene]);
   const arcs = useMemo(
     () =>
@@ -578,7 +583,7 @@ export function Isometric() {
       {scene.islands.map((island) => <li key={island.id}><button onClick={() => select(island.id)} aria-current={visibleSelected === island.id}>{island.title} island settings</button></li>)}
       {scene.props.map((prop) => <li key={prop.id}><button data-entity-id={prop.id} aria-description={prop.id} onClick={() => select(prop.id)} aria-current={visibleSelected === prop.id}>{prop.label}</button></li>)}
       {scene.nodes.map((node) => <li key={node.id}><button onClick={() => select(node.id)} aria-current={visibleSelected === node.id}>
-        {node.label}, {node.kindLabel}. {node.presenceText}
+        {node.label}, {node.kindLabel}. {node.presenceText}{node.sourceProblems?.length ? ". Implementation needs attention" : ""}
       </button></li>)}
     </ul>
   ), [scene, visibleSelected, index, select]);
@@ -614,6 +619,7 @@ export function Isometric() {
           {activeTagKey && filterValue !== undefined ? <span className="landscape-search-status" role="status">{tagMatchCount} matching {tagMatchCount === 1 ? "entity" : "entities"} in {model.mode === "dev" ? "development" : "production"}</span> : null}
         </div>
         <div className="landscape-tools" role="group" aria-label="Map view controls">
+          <button onClick={() => setNavigatorOpen(open => !open)} aria-expanded={navigatorOpen} aria-controls="map-resource-navigator" aria-label="Browse map resources" title="Browse resources by name and type"><List size={16} aria-hidden /><span>Resources</span></button>
           <button onClick={() => zoomBy(0.8)} aria-label="Zoom out" title="Zoom out (−)">
             <Minus size={16} aria-hidden />
           </button>
@@ -631,6 +637,19 @@ export function Isometric() {
           </button>
         </div>
       </div>
+      <div className="landscape-content">
+      {navigatorOpen ? <nav id="map-resource-navigator" className="map-resource-navigator" aria-label="Map resource navigator">
+        <header><strong>{matches ? "Search results" : "Resources"}</strong><span className="small muted">{navigatorNodes.length}</span></header>
+        <p className="small muted">Select a resource to inspect its settings and connections. The map shows declarations; Deploy shows running state.</p>
+        <label className="small">Resource type<select aria-label="Map resource type" value={resourceKind} onChange={event => setResourceKind(event.target.value)}><option value="">All types</option>{resourceKinds.map(kind => <option key={kind} value={kind}>{kind}</option>)}</select></label>
+        <ul>{navigatorNodes.map(node => <li key={node.id}><button className="map-resource-result" aria-current={visibleSelected === node.id} onClick={() => select(node.id)} title={node.id}>
+          <strong>{node.label}</strong><span>{node.kindLabel}{node.tagFiltered ? " · Outside tag filter" : ""}</span>
+          {node.sourceProblems?.length || model.diagnostics.some(diagnostic => diagnostic.entity === node.id && diagnostic.severity === "error") ? <span className="reason">Needs attention</span> : null}
+        </button></li>)}</ul>
+        {!navigatorNodes.length ? <p className="small">No resources match. Clear the search or choose another type.</p> : null}
+        {matches?.props.size ? <details><summary>Network fixtures ({matches.props.size})</summary>{scene.props.filter(prop => matches.props.has(prop.id)).map(prop => <button className="map-resource-result" key={prop.id} onClick={() => select(prop.id)}>{prop.label}</button>)}</details> : null}
+        {selected ? <button className="quiet" onClick={() => { select(undefined); searchRef.current?.focus(); }}>Clear selection</button> : null}
+      </nav> : null}
       <div className="landscape" ref={containerRef}>
         <canvas
           ref={canvasRef}
@@ -658,6 +677,7 @@ export function Isometric() {
         </div>
         {hover ? <HoverCard hover={hover} scene={scene} nodes={nodes} index={index} viewport={live.current.viewport} /> : null}
         {accessibleEntities}
+      </div>
       </div>
     </div>
   );
@@ -688,7 +708,7 @@ function HoverCard(props: {
     // The draft's value, so an unsaved edit previews here as it does in the inspector.
     description = draft.description(node.id).trim();
     subtitle = node.kindLabel;
-    lines = description ? [] : [NO_DESCRIPTION];
+    lines = [...(node.sourceProblems?.length ? [...node.sourceProblems.slice(0, 3), "Select this resource to review implementation repairs."] : []), ...(description ? [] : [NO_DESCRIPTION])];
   } else if (current.kind === "edge") {
     const sceneEdge = props.scene.edges.find((candidate) => candidate.id === current.id);
     const edge = sceneEdge?.edge;

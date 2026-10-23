@@ -31,7 +31,8 @@ export interface NetworkEntry { readonly kind: "network"; readonly key: string; 
 export interface NetworkRemovalEntry { readonly kind: "removeNetwork"; readonly key: string; readonly network: string; readonly error?: string }
 export interface DatabaseEntry { readonly kind: "database"; readonly key: string; readonly database: string; readonly settings: DatabaseSettingsInput; readonly error?: string }
 export interface DatabasePlacementEntry { readonly kind: "databasePlacement"; readonly key: string; readonly edit: DatabasePlacementEdit; readonly error?: string }
-export type DraftEntry = TagsEntry | DatabasePlacementEntry | DatabaseEntry | NetworkRemovalEntry | PlacementEntry | NetworkEntry | CreationEntry | FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry | ClientMappingEntry;
+export interface OperationEntry { readonly kind: "operation"; readonly key: string; readonly operation: Extract<DraftEdit, { kind: "implementation" | "connection" | "removeWorkload" }>; readonly error?: string }
+export type DraftEntry = OperationEntry | TagsEntry | DatabasePlacementEntry | DatabaseEntry | NetworkRemovalEntry | PlacementEntry | NetworkEntry | CreationEntry | FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry | ClientMappingEntry;
 export interface DraftState {
   readonly baseline: Snapshot;
   readonly latest: Snapshot;
@@ -73,6 +74,13 @@ export class InspectorDraft {
   get dirty(): boolean { return this.count > 0; }
   get conflict(): boolean { return this.dirty && this.state.baseline.revision !== this.state.latest.revision; }
   get invalid(): boolean { return this.state.entries.some((entry) => !!entry.error); }
+  reviewAgainstLatest(): void {
+    if (this.state.busy || !this.conflict) return;
+    if (this.state.entries.some(entry => entry.kind === "environment" || entry.kind === "resource")) { this.publish({ ...this.state, error: "The selected input file or catalog changed. Preserve your values, then reload that inspector before reviewing." }); return; }
+    ++this.serial;
+    this.publish({ ...this.state, baseline: this.state.latest, reviewOpen: false, review: undefined, error: undefined });
+    void this.review();
+  }
   private publish(state: DraftState): void { this.state = state; this.listeners.forEach((listener) => listener()); }
   sync(snapshot: Snapshot, selected: string | undefined, mode: Mode): void {
     if (this.state.latest === snapshot && this.state.selected === selected && this.state.mode === mode) return;
@@ -86,6 +94,10 @@ export class InspectorDraft {
     ++this.serial;
     this.publish({ ...this.state, entries: [...this.state.entries.filter((item) => item.key !== key), ...(entry ? [entry] : [])], reviewOpen: false, review: undefined, error: undefined, busy: undefined });
     if (!this.dirty && this.state.baseline !== this.state.latest) this.publish({ ...this.state, baseline: this.state.latest });
+  }
+  stageOperation(operation: OperationEntry["operation"]): void {
+    const key = `operation:${operation.kind}:${operation.target}:${operation.kind === "connection" ? JSON.stringify([operation.connection, operation.destination, operation.variable, operation.grant, operation.scope]) : ""}`;
+    this.put(key, { kind: "operation", key, operation });
   }
   placement(target: string): PlacementEdit | undefined {
     return this.state.entries.find((entry): entry is PlacementEntry => entry.kind === "placement" && entry.edit.target === target)?.edit;
@@ -335,6 +347,7 @@ export class InspectorDraft {
         : resource
         ? { kind: "resource", plan: await this.transport.resourcePlan(resource.intent, state.baseline.revision, state.mode) }
         : { kind: "batch", plan: await this.transport.planBatch(state.entries.map((entry): DraftEdit => {
+          if (entry.kind === "operation") return entry.operation;
           if (entry.kind === "removeNetwork") return { kind: "removeNetwork", network: entry.network };
           if (entry.kind === "database") return { kind: "database", database: entry.database, settings: entry.settings };
           if (entry.kind === "databasePlacement") return entry.edit;

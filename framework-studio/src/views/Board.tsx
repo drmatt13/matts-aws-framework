@@ -1,4 +1,4 @@
-import { Lock } from "lucide-react";
+import { AlertTriangle, Lock } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ModelResource, ModelTarget } from "../../shared/model";
 import { layoutBoard, type BoardNode } from "../layout";
@@ -24,6 +24,7 @@ function TargetNode(props: { readonly target: ModelTarget }) {
         </span>
       </span>
       <DeploymentBadge kind={deploymentBadge(target.lanes)} />
+      {target.implementation?.ready === false ? <AlertTriangle size={15} className="source-problem" aria-label="Implementation needs attention" /> : null}
     </>
   );
 }
@@ -147,6 +148,7 @@ export function Board() {
           const classes = [
             "node",
             node.shape,
+            target?.implementation?.ready === false ? "source-problem" : "",
             neighbours && !neighbours.has(node.id) ? "dimmed" : "",
             resource?.absent || (localService && !localService.enabled) ? "absent" : "",
             resource && node.shape === "member" && !read.has(node.id) ? "unread" : "",

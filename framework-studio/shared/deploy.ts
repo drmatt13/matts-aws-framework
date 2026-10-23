@@ -151,6 +151,7 @@ export interface ManagedProcessView {
 }
 
 export interface LocalRunView {
+  readonly readiness?: { readonly state: "ready" | "starting" | "blocked" | "stopped"; readonly observedAt: string; readonly message: string };
   readonly project: string;
   readonly docker: DockerView;
   readonly services: readonly ServiceView[];
@@ -206,6 +207,9 @@ export interface JobLogLine {
 }
 
 export interface ResourceChangeView {
+  readonly before?: unknown;
+  readonly after?: unknown;
+  readonly owner?: string;
   readonly logicalId: string;
   readonly type: string;
   readonly action: "add" | "modify" | "remove";
@@ -216,6 +220,8 @@ export interface ResourceChangeView {
 }
 
 export interface PlanView {
+  readonly inputsFile?: string;
+  readonly sourceRevision?: { readonly commit?: string; readonly dirty: boolean };
   /** Studio's name for the plan: its directory under .cache/framework-studio/plans. */
   readonly key: string;
   readonly planId: string;
@@ -223,13 +229,14 @@ export interface PlanView {
   readonly profile?: string;
   readonly createdAt: string;
   readonly expiresAt: string;
-  readonly status: "ready" | "no-changes" | "needs-secrets";
+  readonly status: "ready" | "no-changes" | "needs-secrets" | "blocked";
   readonly review: "template" | "change-set";
   readonly identity: { readonly deployment: string; readonly mode: DeployMode; readonly account: string; readonly region: string };
   readonly guard: string;
   readonly stacks: readonly {
     readonly name: string;
-    readonly fingerprint: { readonly exists: boolean; readonly status?: string; readonly updated?: string };
+    readonly dependencies?: readonly string[];
+    readonly fingerprint: { readonly exists: boolean; readonly stackId?: string; readonly status?: string; readonly updated?: string };
     readonly changes: readonly ResourceChangeView[];
     readonly exportsInUse: readonly { readonly exportName: string; readonly change: string; readonly importers: readonly string[] }[];
     readonly noChanges: boolean;
@@ -241,15 +248,24 @@ export interface PlanView {
   readonly iamBroadening: boolean;
   readonly confirmation: { readonly level: "none" | "click" | "name"; readonly reasons: readonly string[] };
   readonly uncertainties: readonly string[];
-  readonly result?: { readonly status: "succeeded" | "partial" | "unverified"; readonly deferred: readonly string[]; readonly verification: { readonly verified: boolean; readonly stacks: readonly { readonly name: string; readonly problem?: string }[] } };
+  readonly retainedStacks?: readonly { readonly name: string; readonly status: string }[];
+  readonly reviewEvidence?: { readonly security: string; readonly templates: string; readonly problems: readonly string[] };
+  readonly result?: { readonly status: "succeeded" | "partial" | "unverified" | "export-failed" | "failed" | "interrupted"; readonly secretUpdates?: readonly string[]; readonly problem?: string; readonly deferred: readonly string[]; readonly verification: { readonly verified: boolean; readonly stacks: readonly { readonly name: string; readonly problem?: string }[] } };
 }
 
 export interface TeardownPlanView {
+  readonly policy?: { readonly retainFailed: boolean; readonly disableProtection: boolean };
+  readonly key?: string;
+  readonly createdAt?: string;
+  readonly expiresAt?: string;
+  readonly digest?: string;
+  readonly blockers?: readonly string[];
+  readonly warnings?: readonly string[];
   readonly deployment: string;
   readonly mode: DeployMode;
   readonly account: string;
   readonly region: string;
-  readonly stacks: readonly { readonly name: string; readonly status: string; readonly terminationProtection: boolean; readonly importedBy: readonly string[] }[];
+  readonly stacks: readonly { readonly name: string; readonly id?: string; readonly failedResources?: readonly string[]; readonly status: string; readonly terminationProtection: boolean; readonly importedBy: readonly string[] }[];
   readonly leftInPlace: readonly { readonly name: string; readonly reason: string }[];
   readonly remains: readonly { readonly stack: string; readonly logicalId: string; readonly type: string; readonly policy: string }[];
   readonly secrets: readonly string[];
@@ -257,6 +273,8 @@ export interface TeardownPlanView {
 }
 
 export interface DriftView {
+  readonly account?: string;
+  readonly region?: string;
   readonly deployment: string;
   readonly checkedAt: string;
   readonly note: string;
@@ -281,6 +299,10 @@ export interface DeployOverview {
 }
 
 export interface PlanSummaryView {
+  readonly account?: string;
+  readonly region?: string;
+  readonly profile?: string;
+  readonly retainedStacks?: number;
   readonly key: string;
   readonly deployment: string;
   readonly mode: DeployMode;
@@ -288,7 +310,7 @@ export interface PlanSummaryView {
   readonly status: PlanView["status"] | "unfinished";
   readonly createdAt: string;
   readonly expired: boolean;
-  readonly applied?: "succeeded" | "partial" | "unverified";
+  readonly applied?: "succeeded" | "partial" | "unverified" | "export-failed" | "failed" | "interrupted";
   /** After a partial apply: the stacks to plan now that what they import exists. */
   readonly deferred?: readonly string[];
 }

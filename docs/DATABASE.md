@@ -134,12 +134,19 @@ connection. Agents preparing application code must leave application as a separa
 
 ## Local database
 
-Compose starts postgres and runs prisma-migrate before database consumers. Its normal
-mode applies committed migrations. `PRISMA_LOCAL_SCHEMA_SYNC=push` selects direct
-`db:update` instead; it is an explicit local opt-in, not the production release path.
-Starting Compose can therefore mutate the local database.
+Compose starts PostgreSQL and runs read-only `prisma-verify` before database consumers.
+Starting or recreating compute never applies migrations, prunes users or sets up test
+identity. Missing/pending storage blocks consumers while leaving PostgreSQL available.
+In Studio, inspect **Database → Database status → Local PostgreSQL**, then separately
+review and authorize initialization or migration application. For terminal application,
+review the intended SQL/target first, then explicitly run
+`docker compose --profile database-write run --rm prisma-migrate`.
+`PRISMA_LOCAL_SCHEMA_SYNC=push` selects direct `db:update` only for that explicitly invoked
+write service; it is not startup behavior or a production release path.
 
-After migrating, Compose runs prune-cognito-orphans before any consumer starts.
+Orphan cleanup is a separate destructive action, never a startup dependency. After
+inspecting the intended pool and affected users/projects, separately authorize
+`docker compose --profile identity-cleanup run --rm prune-cognito-orphans`.
 postgres_data outlives the dev Cognito pool: after the dev stack is destroyed and
 redeployed, a users row can hold a sub the new pool does not, which can never sign in
 and whose email makes signing up again fail with CognitoIdentityConflictError. The
@@ -149,7 +156,8 @@ owns, such as its projects. If the pool cannot be listed (no USER_POOL_ID, expir
 credentials, a deleted pool) it warns and deletes nothing. It refuses any database
 other than the Compose or loopback one.
 
-Then seed-test-user makes `LOCAL_TEST_USER_EMAIL` a working account: it creates the
+Separately authorize `docker compose --profile identity-setup run --rm seed-test-user`
+to make `LOCAL_TEST_USER_EMAIL` a working account: it creates the
 user in the dev pool if needed, sets its password from cdk-app/.env.dev, and writes its
 users row through `ensureCognitoUser`. An admin-created account never fires the
 post-confirmation trigger, so this step writes the row itself. It keeps an existing
@@ -178,8 +186,8 @@ Prefix each with `npm --workspace @repo/database run`:
 | `db:schema` | Inspect the live database schema |
 | `db:init` | Initialize an empty database additively and sign it |
 | `db:update` | Directly synchronize storage; does not author a migration package |
-| `db:prune-cognito-orphans` | Delete local users absent from the dev Cognito pool; Compose runs it |
-| `db:seed-test-user` | Create the cdk-app/.env.dev test user in the dev pool and local database; Compose runs it |
+| `db:prune-cognito-orphans` | Separately authorized deletion of local users absent from the dev Cognito pool, cascading owned data; never ordinary startup |
+| `db:seed-test-user` | Separately authorized creation/password update of the dev test user and its local row; never ordinary startup |
 | `scaffold -- <Model> --dry-run` | Preview a new owned-list/create feature; see Data features |
 | `typecheck` / `test` | Check types / run offline database and scaffold tests |
 
@@ -195,9 +203,34 @@ reviewed migration package and applying it to a database remain distinct actions
 **Database status** compares a deliberately selected target with saved source, migration
 history and observed physical storage. Unknown, unreachable and unsupported targets
 remain unknown. The local target uses the existing literal Compose loopback port; Studio
-never starts Compose for inspection. Production connection access remains with the
-framework's IAM/TLS workflow. Local database application requires its own reviewed path,
-fresh physical historical baseline, target identity checks and typed approval.
+never starts Compose for inspection. Safe operational PostgreSQL overrides remain supported;
+connection-changing overrides use read-only `docker compose config` resolution and require
+a unique loopback-only binding. Unresolved bindings remain unavailable. Production requires
+a named account/region target and profile. **Check database task destination** reads AWS
+metadata; after displaying the exact stack-owned task definition and billing, typed
+**Inspect &lt;deployment&gt;** launches a billed VPC task with a database session forced read-only and private-database IAM/TLS access. The task uses its declared subnets/security groups and may receive a public IP; Studio displays the actual assignment before approval. Changes to its full launch/log descriptor invalidate review.
+An old write-only task is refused as an actionable deployment prerequisite. Inspecting never
+applies SQL; **Apply &lt;deployment&gt;** separately approves a second task after SQL/source review.
+Task/source currency, marker/ledger identities and historical physical storage are rechecked
+under the canonical PostgreSQL migration lock before DDL. No task or write runs automatically.
+Local application requires a reviewed path, fresh physical historical baseline, target
+identity checks and typed approval. A marker-less local target can instead request a
+reviewed initialization: Studio verifies the absence of application tables, views, sequences,
+functions and enum/domain types, previews Prisma's initialization SQL, and requires typing
+`Initialize Local PostgreSQL`. A populated unknown target is never reset/adopted implicitly.
+Production can initialize a genuinely empty target through the same reviewed additive
+initializer, with distinct `Initialize <deployment>` approval. It binds full native operations,
+every statement/parameter and canonical control DDL; the writer repeats empty-marker/ledger
+and metadata checks inside its canonical transaction before any DDL. Empty means no extra
+user schemas, relational/unmodeled objects or large-object metadata. Missing history alone
+does not block a fresh schema; populated or partial unknown storage remains refused.
+Redacted operation records survive restart; interrupted writes remain unconfirmed and are
+never replayed. Inspect the database/ledger before another review. Stable failure codes,
+execution stage and known results remain available without connection values.
+Production records include the exact task ARN, request token and CloudWatch destination;
+submitted tasks can outlive Studio. Unknown outcomes require read-only task/ledger inspection
+before retry, never an automatic repeat. Journal locks are checkout-scoped and never removed
+automatically; see the workbench guide's deliberate stale-owner recovery procedure.
 
 The [Database workbench guide](framework-studio/database-workbench.md) describes
 editor capabilities, evidence, limits and the source/artifact/database boundaries.

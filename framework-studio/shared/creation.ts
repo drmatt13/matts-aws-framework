@@ -1,12 +1,13 @@
 import { validateTags, type DeclarationTags } from "@repo/framework/config/tags";
 
 /** Source creation uses the inspector's batch transaction, never a file-writing API. */
-export const CREATION_KINDS = ["function", "stack", "vpc", "workflow", "service", "task", "route", "agent", "input", "secret"] as const;
+export const CREATION_KINDS = ["function", "stack", "vpc", "workflow", "service", "task", "route", "agent", "tool", "input", "secret"] as const;
 export type CreationKind = typeof CREATION_KINDS[number];
 export type CreationDeploy = "both" | "local-only" | "cloud-only" | "none";
-interface Named { readonly id: string; readonly description: string; readonly tags?: DeclarationTags }
+interface Named { readonly id: string; readonly description: string; readonly tags?: DeclarationTags; readonly implementation?: "create" | "existing" }
 interface Binding { readonly bindingResource: string; readonly bindingVariable: string }
 interface Lambda extends Named, Binding {
+  readonly directory: string;
   readonly category: "event" | "http" | "webSocket";
   readonly runtime: "nodejs24" | "nodejs22";
   readonly memory: number;
@@ -22,12 +23,13 @@ interface Lambda extends Named, Binding {
 export type CreationRequest =
   | (Lambda & { readonly kind: "function" })
   | (Lambda & { readonly kind: "route"; readonly existingTarget: string })
-  | (Named & { readonly kind: "stack"; readonly className: string; readonly scope: "both" | "dev" | "prod" })
+  | (Named & { readonly kind: "stack"; readonly className: string; readonly template: "queue" | "bucket"; readonly scope: "both" | "dev" | "prod" })
   | (Named & { readonly kind: "vpc"; readonly name: string; readonly cidr: string; readonly zones: 2 | 3; readonly nat: boolean; readonly ipv6: boolean; readonly s3: boolean; readonly dynamodb: boolean; readonly endpoints: readonly string[] })
   | (Named & { readonly kind: "workflow"; readonly deploy: CreationDeploy; readonly timeout: number; readonly steps: readonly string[] })
-  | (Named & Binding & { readonly kind: "service"; readonly path: string; readonly port: number; readonly auth: boolean; readonly deploy: CreationDeploy; readonly cpu: number; readonly memory: number; readonly architecture: "arm64" | "x86_64"; readonly vpc: string; readonly subnet: "public" | "private" })
-  | (Named & Binding & { readonly kind: "task"; readonly deploy: CreationDeploy; readonly cpu: number; readonly memory: number; readonly architecture: "arm64" | "x86_64"; readonly vpc: string; readonly subnet: "public" | "private" })
-  | (Named & Binding & { readonly kind: "agent"; readonly deploy: CreationDeploy; readonly auth: boolean; readonly path: string; readonly tools: readonly string[] })
+  | (Named & Binding & { readonly kind: "service"; readonly directory: string; readonly path: string; readonly port: number; readonly auth: boolean; readonly deploy: CreationDeploy; readonly cpu: number; readonly memory: number; readonly architecture: "arm64" | "x86_64"; readonly vpc: string; readonly subnet: "public" | "private" })
+  | (Named & Binding & { readonly kind: "task"; readonly directory: string; readonly deploy: CreationDeploy; readonly cpu: number; readonly memory: number; readonly architecture: "arm64" | "x86_64"; readonly vpc: string; readonly subnet: "public" | "private" })
+  | (Named & Binding & { readonly kind: "agent"; readonly directory: string; readonly starter: "echo" | "model"; readonly deploy: CreationDeploy; readonly auth: boolean; readonly path: string; readonly tools: readonly string[] })
+  | (Named & Binding & { readonly kind: "tool"; readonly directory: string; readonly auth: boolean })
   | (Named & { readonly kind: "input"; readonly envName: string; readonly group: string; readonly required: boolean; readonly defaultValue: string; readonly choices: readonly string[]; readonly consumer: string; readonly consumerVariable: string })
   | (Named & { readonly kind: "secret"; readonly envName: string; readonly group: string; readonly required: boolean; readonly consumer: string; readonly consumerVariable: string });
 
@@ -43,12 +45,14 @@ export interface CreationField {
 const id: CreationField = { key: "id", label: "Stable identifier", initial: "", help: "Used for source paths and canonical identity. Lowercase letters, digits and hyphens." };
 const description: CreationField = { key: "description", label: "Description", initial: "" };
 const tags: CreationField = { key: "tags", label: "Tags", initial: "{}", type: "tags", help: "String key/value metadata. Review source changes before applying." };
+const directory: CreationField = { key: "directory", label: "Implementation directory", initial: "", help: "Leave empty for the conventional folder. Lambda/container paths start under /lambda_functions or /ecs_containers in cdk-app; agents under /agents at the repository root. Starter files never overwrite existing code." };
+const implementation: CreationField = { key: "implementation", label: "Implementation source", initial: "create", options: ["create", "existing"], help: "Create reviewed starter files, or use existing code after artifact/contract validation. Existing files are never overwritten." };
 const deploy: CreationField = { key: "deploy", label: "Execution lanes", initial: "both", options: ["both", "local-only", "cloud-only", "none"] };
 const binding: CreationField[] = [
   { key: "bindingResource", label: "Catalog resource", initial: "", advanced: true, help: "Optional input or secret reference. Secrets use automatic framework delivery and permissions." },
   { key: "bindingVariable", label: "Consumer environment variable", initial: "", advanced: true },
 ];
-const lambda: CreationField[] = [id, description, tags,
+const lambda: CreationField[] = [id, description, tags, directory, implementation,
   { key: "category", label: "Function category", initial: "event", options: ["event", "http", "webSocket"] },
   { key: "path", label: "Route path or WebSocket key", initial: "", help: "HTTP paths begin with /. WebSocket routes use an action or $connect, $disconnect, $default." },
   { key: "method", label: "HTTP method", initial: "POST", options: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "*"] },
@@ -60,7 +64,7 @@ const lambda: CreationField[] = [id, description, tags,
   { key: "vpc", label: "VPC", initial: "", options: [] },
   { key: "subnet", label: "Network placement", initial: "none", options: ["none", "private", "isolated"], advanced: true }, ...binding,
 ];
-const container: CreationField[] = [id, description, tags, deploy,
+const container: CreationField[] = [id, description, tags, directory, implementation, deploy,
   { key: "vpc", label: "VPC", initial: "", options: [] },
   { key: "cpu", label: "Fargate CPU units", initial: 256, type: "number", advanced: true },
   { key: "memory", label: "Memory (MiB)", initial: 512, type: "number", advanced: true },
@@ -78,12 +82,13 @@ const input: CreationField[] = [
 export const CREATORS: Record<CreationKind, { readonly label: string; readonly help: string; readonly fields: readonly CreationField[] }> = {
   function: { label: "Function", help: "Creates a TypeScript zip Lambda and its section registration. Events are AWS-invoked and have no deployment toggle; add their triggers in the Inspector.", fields: lambda },
   route: { label: "API route", help: "Register an HTTP or WebSocket route with a new handler, or reuse a compatible routed Lambda. Existing targets keep their runtime, bindings and construct identity.", fields: [...lambda.map((field) => field.key === "category" ? { ...field, initial: "http", options: ["http", "webSocket"] } : field), { key: "existingTarget", label: "Existing compatible function (optional)", initial: "" }] },
-  stack: { label: "Stack", help: "Creates and instantiates an application CDK stack exposing a private SQS queue. SQS usage is billed when deployed. Custom CDK members remain source-owned.", fields: [{ ...id, help: "TypeScript resource catalog property." }, description, tags, { key: "className", label: "Stack class name", initial: "" }, { key: "scope", label: "Deployment graphs", initial: "both", options: ["both", "dev", "prod"] }] },
+  stack: { label: "Stack", help: "Creates an application stack exposing a queue or private encrypted upload bucket. Infrastructure is billed only after separate deployment. Bucket data is retained on removal; custom CDK members remain source-owned.", fields: [{ ...id, help: "TypeScript resource catalog property." }, description, tags, { key: "className", label: "Stack class name", initial: "" }, { key: "template", label: "Resource template", initial: "queue", options: ["queue", "bucket"] }, { key: "scope", label: "Deployment graphs", initial: "both", options: ["both", "dev", "prod"] }] },
   vpc: { label: "VPC", help: "Create an independent framework VPC. Each zone has public, private and isolated subnets. Production builds it when a workload or native resource uses it. Changing CIDR or zones can replace existing infrastructure on deployment.", fields: [id, { key: "name", label: "Display name", initial: "", help: "Optional friendly name. You can change it later without changing the VPC identity." }, description, tags, { key: "cidr", label: "Private IPv4 /16", initial: "10.0.0.0/16", help: "Choose an unused range. Studio refuses overlapping ranges to avoid future connectivity conflicts." }, { key: "zones", label: "Availability zones", initial: 2, type: "number" }, { key: "nat", label: "One NAT gateway (billed hourly and per GB)", initial: false, type: "boolean" }, { key: "ipv6", label: "IPv6 egress-only gateway", initial: true, type: "boolean" }, { key: "s3", label: "S3 gateway endpoint", initial: true, type: "boolean" }, { key: "dynamodb", label: "DynamoDB gateway endpoint", initial: true, type: "boolean" }, { key: "endpoints", label: "Interface endpoints", initial: "", type: "list", advanced: true, help: "Each service incurs hourly charges in each zone and per GB." }] },
   workflow: { label: "Workflow", help: "An executable identity workflow, or an initial sequence of existing event Lambdas and tasks. Input flows through the existing workflow DSL and interpreter.", fields: [id, description, tags, deploy, { key: "timeout", label: "Execution timeout (seconds)", initial: 900, type: "number" }, { key: "steps", label: "Initial targets, in order (comma-separated)", initial: "", type: "list", help: "Use canonical refs such as lambda:validate or task:process." }] },
   service: { label: "Container service", help: "Creates a Node HTTP service, Dockerfile and declaration. Local Compose is derived from the declaration. Cloud services incur ECS, load balancer and IPv4 charges after a separate deployment.", fields: [...container.map((field) => field.key === "deploy" ? { ...field, initial: "local-only" } : field), { key: "path", label: "Public mount", initial: "", help: "For example /reports/*; requests reach the service without this prefix." }, { key: "port", label: "Container port", initial: 5000, type: "number" }, { key: "auth", label: "Require a signed-in user", initial: true, type: "boolean" }] },
   task: { label: "Container task", help: "Creates a run-to-completion Node container reading FRAMEWORK_TASK_INPUT. Invoke it through a declared runsTask binding or workflow step; timeouts belong to the invocation.", fields: container },
-  agent: { label: "Agent", help: "Creates an AgentCore JSON agent with a validated contract and a model/tool loop using the repository's shared provider configuration. Local sessions use the same adapter. Model calls incur provider charges when invoked.", fields: [id, description, tags, deploy, { key: "auth", label: "Require a signed-in user", initial: true, type: "boolean" }, { key: "path", label: "Browser route (optional, authenticated agents)", initial: "" }, { key: "tools", label: "Declared tool IDs (comma-separated)", initial: "", type: "list" }, ...binding] },
+  agent: { label: "Agent", help: "Creates a validated JSON agent. Echo runs without a model call or provider prerequisites; Model and tools uses shared provider configuration and incurs provider charges when invoked.", fields: [id, description, tags, directory, implementation, deploy, { key: "starter", label: "Starter behavior", initial: "echo", options: ["echo", "model"] }, { key: "auth", label: "Require a signed-in user", initial: true, type: "boolean" }, { key: "path", label: "Browser route (optional, authenticated agents)", initial: "" }, { key: "tools", label: "Declared tool IDs (comma-separated)", initial: "", type: "list" }, ...binding] },
+  tool: { label: "Agent tool", help: "Creates a Lambda tool with a validated request/response contract. A tool runs where an agent that lists it runs; add it to an agent after source review.", fields: [id, description, tags, directory, implementation, { key: "auth", label: "Act as the signed-in user", initial: true, type: "boolean" }, ...binding] },
   input: { label: "Input parameter", help: "Inputs are strings in this framework; choices constrain recognized values. Defaults belong to declarations. No environment-specific values are overwritten.", fields: [...input, { key: "defaultValue", label: "Declaration default (optional)", initial: "" }, { key: "choices", label: "Allowed string values (comma-separated)", initial: "", type: "list", advanced: true }] },
   secret: { label: "Secret", help: "Declares a secret without a value. Use the protected environment-file Inspector to author values separately. AWS provisioning requires a separately authorized deployment.", fields: input },
 };
@@ -105,6 +110,13 @@ export function networkCreationProblem(request: Pick<Extract<CreationRequest, { 
 }
 export function creationDefaults(kind: CreationKind): Record<string, string | number | boolean> {
   return { ...Object.fromEntries(CREATORS[kind].fields.map((field) => [field.key, field.initial])), tags: "{}" };
+}
+export function defaultImplementationDirectory(kind: CreationKind, id: string, category = "event"): string | undefined {
+  if (kind === "function" || kind === "route") return `/lambda_functions/${category === "http" ? "http_functions" : category === "webSocket" ? "websocket_functions" : "event_functions"}/${id}`;
+  if (kind === "tool") return `/lambda_functions/tool_functions/${id}`;
+  if (kind === "agent") return `/agents/${id}`;
+  if (kind === "service" || kind === "task") return `/ecs_containers/${kind === "service" ? "services" : "tasks"}/${id}`;
+  return undefined;
 }
 /** Validate untrusted HTTP input without reflecting submitted values into diagnostics. */
 export function readCreationRequest(raw: unknown): CreationRequest {
@@ -134,6 +146,10 @@ export function readCreationRequest(raw: unknown): CreationRequest {
     }
   }
   const safeProperty = (value: unknown) => typeof value === "string" && /^[A-Za-z][A-Za-z0-9]*$/.test(value) && !["constructor", "prototype", "__proto__"].includes(value);
+  if (result.directory) {
+    const prefix = kind === "agent" ? "/agents/" : kind === "service" || kind === "task" ? "/ecs_containers/" : "/lambda_functions/";
+    if (!String(result.directory).startsWith(prefix) || !/^\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+$/.test(String(result.directory))) return fail("directory", `Choose an implementation directory under ${prefix}, without traversal, dots or backslashes.`);
+  }
   if ((kind === "input" || kind === "secret" || kind === "stack" ? !safeProperty(result.id) : !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(String(result.id)))) return fail("id", "Enter a safe, unique identifier using the naming convention shown above.");
   if (["input", "secret"].includes(kind)) {
     if (!/^[A-Z][A-Z0-9_]*$/.test(String(result.envName))) return fail("envName", "Use an uppercase environment variable name.");

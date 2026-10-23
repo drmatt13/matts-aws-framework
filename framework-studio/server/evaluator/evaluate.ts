@@ -6,6 +6,7 @@ import type { FrameworkConfig } from "@repo/framework/config";
 import type { Mode } from "../../shared/model";
 import { failedModel, projectModel } from "../model/project";
 import { preflight, type PreflightRequest } from "../model/preflight";
+import { withImplementationHealth } from "../implementation";
 
 /**
  * One mode's evaluator: a child process that loads framework.config.ts the way
@@ -46,11 +47,13 @@ function frameworkFrom(loaded: Record<string, unknown>): FrameworkConfig {
 
 const started = performance.now();
 let config: FrameworkConfig | undefined;
+let loadedOverrides: Readonly<Record<string, string>> = {};
 // Source previews travel over IPC and never touch authored files or module caches in
 // the live evaluators. tsx ultimately uses _compile for these CommonJS config modules.
 process.once("message", (message: { type?: string; overrides?: Record<string, string> }) => {
   if (message.type !== "load") throw new Error("Expected evaluator initialization.");
   const overrides = message.overrides ?? {};
+  loadedOverrides = overrides;
   // Resolve and load proposed modules that do not exist on disk yet. This is
   // confined to the disposable evaluator; approval never writes preview files.
   const loader = Module as unknown as {
@@ -81,7 +84,7 @@ process.once("message", (message: { type?: string; overrides?: Record<string, st
     // process share one instance of @repo/framework/config.
     const loaded = require(path.join(repositoryRoot, "framework.config.ts")) as Record<string, unknown>;
     config = frameworkFrom(loaded);
-    send({ type: "model", model: projectModel(config, { mode, webSocketApi }, Math.round(performance.now() - started)) });
+    send({ type: "model", model: withImplementationHealth(config, projectModel(config, { mode, webSocketApi }, Math.round(performance.now() - started)), repositoryRoot, overrides) });
   } catch (error) {
     send({ type: "model", model: failedModel(mode, error, Math.round(performance.now() - started)) });
   }
@@ -91,7 +94,7 @@ process.once("message", (message: { type?: string; overrides?: Record<string, st
 process.on("message", (message: { readonly type?: string; readonly id?: number; readonly request?: PreflightRequest }) => {
   if (message?.type !== "preflight" || typeof message.id !== "number" || !message.request) return;
   const result = config
-    ? preflight(config, message.request, { mode, webSocketApi })
+    ? preflight(config, message.request, { mode, webSocketApi }, { root: repositoryRoot, overrides: loadedOverrides })
     : {
         mode,
         ok: false,

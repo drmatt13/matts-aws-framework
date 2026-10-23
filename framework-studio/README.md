@@ -73,13 +73,14 @@ the existing Inspector edits, for every resource family.
 | Entry | Authored source | Supported creation choices |
 | --- | --- | --- |
 | Function | Existing `framework-config/workloads/events.ts`, `http.ts` or `websocket.ts` map; registration only if absent; `cdk-app/lambda_functions/<category>/<id>/index.ts` | Event, HTTP and WebSocket; Node 22/24 zip; memory, timeout, architecture, subnet; authenticated HTTP wrapper and pool binding; optional input/secret binding |
-| Stack | `cdk-app/lib/app/<class-name>.ts`, typed catalog entry, import and instantiation in `cdk-app/bin/cdk-app.ts` | Actual SQS queue exposed as a typed public field, `linkResources`, deployment-prefixed stack/output identity; both/dev/prod scope |
+| Stack | `cdk-app/lib/app/<class-name>.ts`, typed catalog entry, import and instantiation in `cdk-app/bin/cdk-app.ts` | SQS queue or encrypted, private, retained S3 bucket exposed as a typed public field, `linkResources`, deployment-prefixed stack/output identity; both/dev/prod scope |
 | VPC | New `framework-config/networks/<id>/index.ts` and a literal registry reference | Independent VPCs with private /16, two/three zones, NAT, IPv6 egress and endpoints; unused VPCs appear as blueprints |
 | Workflow | Existing workflows.ts map; registration only if absent | Executable pass-through workflow, or a sequence of existing event Lambdas/tasks; deployment lanes and execution timeout; native workflow DSL and IR |
 | Container service | Existing services.ts section, `cdk-app/ecs_containers/services/<id>/{index.mjs,Dockerfile,package.json}` | Node HTTP server and health endpoint; mount, port, gateway auth, CPU/memory, architecture, subnet, input/secret binding; local-only default |
 | Container task | Existing tasks.ts section, `cdk-app/ecs_containers/tasks/<id>/{index.mjs,Dockerfile}` | Run-to-completion Node container reading `FRAMEWORK_TASK_INPUT`; sizing, architecture, subnet, deployment lanes, input/secret binding; timeout belongs to its invocation |
 | API route | Existing HTTP/WebSocket section; optional new handler | New Lambda or an existing routed Lambda of the same category. Reused functions retain their authentication, bindings, handler and construct identity. HTTP methods and literal route paths use normal conflict validation |
-| Agent | Existing agents.ts section, `agents/<id>/{index,contract}.ts`, workspace manifest and tsconfig | AgentCore JSON responder; validated Zod contract; bounded model/tool loop using `@repo/models`; existing tools; authenticated browser route or IAM service agent; input/secret reference |
+| Agent | Existing agents.ts section, configured agent directory with `{index,contract}.ts`, workspace manifest and tsconfig | Deterministic echo by default (no provider/model prerequisite), or an explicit model/tool loop using `@repo/models`; validated Zod contract; existing tools; authenticated browser route or IAM service agent; input/secret reference |
+| Agent tool | Existing tools.ts section, configured Lambda directory with `{index,contract}.ts` | Validated Zod request/response, authenticated tool wrapper by default; delivered to agents through declared tools |
 | Input parameter | Resource catalog; commented keys in both input templates; optional consumer section/import | String or enumerated string, declaration default, required flag, description, group, existing consumer mapping |
 | Secret | Resource catalog; commented keys in both input templates; optional consumer section/import | Declaration only, required flag, description, group, existing consumer mapping; automatic ARN/read permissions for Lambdas/agents and startup-value delivery for containers |
 
@@ -89,6 +90,18 @@ examples and Compose are included when needed. Service and agent workspace metad
 uses npm 11's offline lockfile generator; it never installs dependencies into the
 application. Start Studio with npm 11. New workspaces require rebuilding local
 development images with `dev:containers`; creation does not start containers.
+
+Workload forms offer **Create starter files** or **Use existing code** at the configured
+implementation directory. The preview lists new files as well as declarations. Existing
+code is never overwritten; selecting existing code validates the framework's actual
+entry point and packaging artifacts. New service/agent manifests must fit the root's
+registered workspace patterns. Directory traversal, symlinks and unsafe paths are refused.
+The Implementation section shows missing artifacts at the selected node and offers
+**Create missing starter files** at that same configured path. A partial folder receives
+only absent files; incompatible existing contracts fail TypeScript validation without
+writes. Node ZIP functions, agent tools, echo agents and ECS services/tasks have bounded
+starters. Unauthenticated Python ZIP repair supports the conventional entry point;
+authenticated Python and image Lambda repair require the linked source editor.
 
 Source creation never synthesizes, deploys, provisions secret values or writes
 authored environment files. Inputs and secrets share declarations across graphs;
@@ -105,8 +118,12 @@ source hashes, generator-input hashes and absence checks. New files are installe
 exclusively through temporary files; undo removes them only while their bytes still
 match. Both modes must match the reviewed resource identities and semantics after
 writing. Failed writes or verification restore unchanged files and remove generated
-files; concurrent edits are preserved and reported as unconfirmed. As with existing
-batch edits, this is compensating restoration, not a durable crash-recovery journal.
+files; concurrent edits are preserved and reported as unconfirmed. A durable source
+journal records batch/resource multi-file writes before applying. After interruption,
+Source recovery offers reviewed restoration of matching bytes or explicit completion
+with the revalidated current source. Later user edits are preserved. In-flight applies
+are excluded from recovery. Drafts and ordinary undo history still live in memory;
+the journal does not record environment values or execute cloud/database operations.
 
 The initial creators deliberately support the repository's conventional literal
 section layout and TypeScript zip handlers. Python/image Lambda scaffolding,
@@ -115,10 +132,19 @@ dependencies, agent streaming/history implementations, multi-binding editors and
 arbitrary workflow graph construction remain source-authored. Event triggers and
 failure destinations use the existing Inspector after creation. Adding a route to
 an existing function preserves that function's settings rather than generating a
-second implementation. The framework has one VPC and string-valued inputs; the
-creator does not introduce additional VPCs, numeric inputs or a second configuration
-model. Computed declarations that cannot be safely spliced are refused before any
+second implementation. Inputs remain string-valued. Computed declarations that cannot be safely spliced are refused before any
 application file is written.
+
+**Connect workload** stages database IAM/VPC access, user-pool identifiers, declared
+task/workflow/agent invocation, agent tools, input/secret delivery and literal native
+bucket/queue grants. Bucket grants accept an explicit object-key scope. Disconnect
+removes the selected exact literal binding, preserving unrelated bindings. Computed
+maps, spreads, commented lists, custom grants and ambiguous ownership link back to
+source. Providing pool identifiers does not install handler authentication. Workload
+removal first checks consumers, then reviews the declaration, generated artifacts and
+an exact text source archive under `archived-workloads/`; shared folders, environment files,
+linked or binary source folders require manual ownership review. This source action
+does not remove deployed infrastructure or data. Undo restores the reviewed files.
 
 The design, history and roadmap are in [docs/framework-studio](../docs/framework-studio/README.md).
 
@@ -486,8 +512,8 @@ updates the authored HTTP key and validates both graphs while checking that targ
 and deployed construct ids stay unchanged. Applying refreshes the Lambda label and its
 API Gateway node together; the normal Undo/Redo controls restore the exact source bytes.
 Duplicate paths, invalid paths and overlapping routes are refused. Run
-`framework:generate` after applying a rename to update the generated browser API contract,
-and update callers of the old path. Studio does not deploy the gateway.
+the application checks and update callers of the old path. Generated browser API
+contracts join the rename's review, apply and undo. Studio does not deploy the gateway.
 
 Selecting an authored input or secret loads its current value from the selected mode's inputs file.
 **Local value** edits that variable in place, showing the environment and file destination.
@@ -533,8 +559,10 @@ Every editable inspector is one draft session:
 Changing node, island, view or graph mode, closing the inspector, and browser back/forward
 offer **Keep Editing**, **Discard and Continue** or **Review Changes** when dirty. Browser
 refresh and tab closure use the native browser warning. Clean sessions have no warning.
-External source changes preserve the draft and block review/apply; discard explicitly
-to load the latest source. A stale review is also refused by server revision/hash checks.
+External source changes preserve the draft and block apply. **Review against latest
+source** explicitly replans ordinary drafts without losing typed values; protected
+input/catalog forms require their own reload. A stale review is refused by server
+revision/hash checks, including existing implementation bytes used during validation.
 Drafts live only in the current tab and are not saved across a reload.
 
 The checks are config-level. They do not prove a CDK synth or a deployment: run those
@@ -546,14 +574,16 @@ separately, as Framework describes.
 - It answers only to `127.0.0.1:<port>` or `localhost:<port>` as the Host.
 - The API needs a per-process token that is served in the page.
 - Changes must come from the studio's own origin.
-- Workload edits write only `framework.config.ts` and `framework-config/**/*.ts`.
+- Workload settings write only `framework.config.ts` and `framework-config/**/*.ts`.
+  Typed creation, starter repair and removal also use bounded implementation/archive
+  paths and generator-owned outputs in their reviewed transaction.
   Resource moves can also update references in authored TypeScript modules. The server
   derives those paths from the catalog imports; requests cannot choose arbitrary files.
 - Input values are available only through the token-guarded selected-resource endpoint.
   It accepts a defined catalog resource id, never an arbitrary environment key or file.
   Disposable evaluation inputs and the CDK link index live under `.cache/framework-studio/`.
-- It runs two commands, `framework:check` and `framework:generate`, with fixed arguments
-  and no shell. The generator runs only after you confirm it.
+- Check/generation commands have fixed arguments and no shell. Preview generation runs
+  in a disposable copy; only the reviewed Apply action installs its generated files.
 - Explicit infrastructure synthesis uses the local CDK CLI through a separate runner,
   without a shell. Requests can select a mode and validated profile name, not arbitrary
   commands, context keys or input paths. Its temporary inputs and assembly are removed

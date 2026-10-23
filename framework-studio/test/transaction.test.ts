@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, globSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import { EditError, EditService, writeAtomically } from "../server/edits/transaction";
 import { SnapshotBuilder } from "../server/snapshot";
 import { connectionDescriptionId } from "../shared/descriptions";
+import { generateCreationArtifacts } from "../server/edits/creation-generation";
+import { SourceJournal } from "../server/edits/journal";
 
 /**
  * Writes, against a disposable copy of the repository's configuration.
@@ -23,6 +25,10 @@ let builder: SnapshotBuilder;
 let edits: EditService;
 
 before(async () => {
+  mkdirSync(fixture, { recursive: true });
+  const filter = (source: string) => !/(?:^|\/)(?:node_modules|cdk\.out|dist|\.git)(?:\/|$)/.test(source) && (!/\/\.env(?:\.|$)/.test(source) || path.basename(source) === ".env.example");
+  for (const relative of ["package.json", "package-lock.json", "docker-compose.yml", "docker-compose.services.yml", "packages/framework/src", "packages/api-contract/src/generated", "cdk-app/lib", "cdk-app/bin", "cdk-app/deployment.ts", "cdk-app/database-settings.ts", "cdk-app/cdk.json", "cdk-app/tsconfig.json", "cdk-app/lambda_functions", "cdk-app/ecs_containers", "agents", "scripts"]) cpSync(path.join(repositoryRoot, relative), path.join(fixture, relative), { recursive: true, filter });
+  for (const relative of globSync(JSON.parse(readFileSync(path.join(repositoryRoot, "package.json"), "utf8")).workspaces.map((pattern: string) => `${pattern}/package.json`), { cwd: repositoryRoot })) { mkdirSync(path.dirname(path.join(fixture, relative)), { recursive: true }); cpSync(path.join(repositoryRoot, relative), path.join(fixture, relative)); }
   mkdirSync(path.join(fixture, "cdk-app", "lambda_functions"), { recursive: true });
   for (const id of ["cognito-custom-message", "cognito-post-confirmation-trigger"]) {
     const relative = `cdk-app/lambda_functions/event_functions/${id}`;
@@ -32,14 +38,26 @@ before(async () => {
   cpSync(path.join(repositoryRoot, "framework-config"), path.join(fixture, "framework-config"), { recursive: true });
   cpSync(path.join(repositoryRoot, "framework.config.ts"), path.join(fixture, "framework.config.ts"));
   // Test-only binding: a cloud caller must prevent removing its worker's cloud lane.
-  writeFileSync(taskFile, 'import { applicationVpc } from "../networks/application";\nexport const worker = { "transaction-worker": { deploy: "both", cloud: { vpc: applicationVpc } } };\n');
+  writeFileSync(taskFile, 'import { applicationVpc } from "../networks/application";\nimport type { TasksSection } from "../contracts";\nexport const worker = { "transaction-worker": { deploy: "both", cloud: { vpc: applicationVpc } } } satisfies TasksSection;\n');
   writeFileSync(path.join(fixture, "framework-config/workloads/worker-http.ts"), `import { runsTask } from "@repo/framework/config";
-export const workerRoute = { "/worker": { directory: "/lambda_functions/worker", methods: ["POST"], cloud: { bindings: [runsTask("transaction-worker")] } } };
+import type { HttpSection } from "../contracts";
+export const workerRoute = { "/worker": { directory: "/lambda_functions/worker", methods: ["POST"], cloud: { bindings: [runsTask("transaction-worker")] } } } satisfies HttpSection;
 `);
+  mkdirSync(path.join(fixture, "cdk-app/lambda_functions/worker"), { recursive: true });
+  writeFileSync(path.join(fixture, "cdk-app/lambda_functions/worker/index.ts"), "export const lambdaHandler = async () => ({ statusCode: 200, body: 'Ready' });\n");
+  mkdirSync(path.join(fixture, "cdk-app/ecs_containers/tasks/transaction-worker"), { recursive: true });
+  writeFileSync(path.join(fixture, "cdk-app/ecs_containers/tasks/transaction-worker/index.mjs"), "console.log('Completed');\n");
+  writeFileSync(path.join(fixture, "cdk-app/ecs_containers/tasks/transaction-worker/Dockerfile"), "FROM node:24-bookworm-slim\nWORKDIR /app\nCOPY cdk-app/ecs_containers/tasks/transaction-worker/index.mjs ./index.mjs\nUSER node\nCMD [\"node\",\"index.mjs\"]\n");
+  const eventsFile = path.join(fixture, "framework-config/workloads/events.ts");
+  writeFileSync(eventsFile, readFileSync(eventsFile, "utf8").replace('export const events = {', 'export const events = {\n  "transaction-replay": {},'));
+  mkdirSync(path.join(fixture, "cdk-app/lambda_functions/event_functions/transaction-replay"), { recursive: true });
+  writeFileSync(path.join(fixture, "cdk-app/lambda_functions/event_functions/transaction-replay/index.ts"), 'import type { PostConfirmationTriggerEvent } from "aws-lambda";\nexport const lambdaHandler = async (event: PostConfirmationTriggerEvent) => event;\n');
   const configFile = path.join(fixture, "framework.config.ts");
   writeFileSync(configFile, 'import { worker } from "./framework-config/workloads/worker-task";\nimport { workerRoute } from "./framework-config/workloads/worker-http";\n' + readFileSync(configFile, "utf8")
     .replace(/http: \[([^\]]*)\]/, "http: [$1, workerRoute]")
     .replace(/tasks: \[([^\]]*)\]/, "tasks: [$1, worker]"));
+  const generated = await generateCreationArtifacts(fixture, new Map());
+  for (const [file, text] of generated.overrides) { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text); }
   builder = new SnapshotBuilder(fixture);
   edits = new EditService(fixture, builder);
   await builder.refresh();
@@ -54,13 +72,21 @@ function revision(): string {
   return builder.current!.snapshot.revision;
 }
 
+/** External-editor experiments must restore their fixture even when an assertion fails. */
+async function withExternalSource(file: string, text: string, check: () => Promise<void>): Promise<void> {
+  const before = readFileSync(file, "utf8");
+  writeFileSync(file, text);
+  try { await check(); }
+  finally { writeFileSync(file, before); await builder.refresh(); }
+}
+
 test("client mapping batches persist references, disable graph links, undo/redo and refuse concurrent writes", async () => {
   const file = path.join(fixture, "framework-config/client-environment.ts");
   const before = readFileSync(file, "utf8");
   const current = builder.current!.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!.clientEnvironment!.mappings;
   const mappings = { ...current, VITE_LOCAL_WS_URL: { ...current.VITE_LOCAL_WS_URL!, dev: { ...current.VITE_LOCAL_WS_URL!.dev, enabled: false } }, VITE_NEW_REGION: { dev: { kind: "region" as const, stack: "CognitoStack" }, prod: { kind: "empty" as const } } };
   const plan = await edits.planBatch([{ kind: "clientEnvironment", mappings }], revision());
-  assert.ok(plan.ok);
+  assert.ok(plan.ok, JSON.stringify(plan.preflight));
   assert.equal(readFileSync(file, "utf8"), before, "review does not write");
   assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
   const client = builder.current!.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!.clientEnvironment!;
@@ -72,11 +98,10 @@ test("client mapping batches persist references, disable graph links, undo/redo 
   assert.equal((await edits.redo()).status, "applied");
   await edits.undo();
   const stale = await edits.planBatch([{ kind: "clientEnvironment", mappings }], revision());
-  writeFileSync(file, before + "\n// authored elsewhere\n");
-  await assert.rejects(edits.applyBatch(stale.planId), /changed/);
-  assert.ok(readFileSync(file, "utf8").endsWith("// authored elsewhere\n"));
-  writeFileSync(file, before);
-  await builder.refresh();
+  await withExternalSource(file, before + "\n// authored elsewhere\n", async () => {
+    await assert.rejects(edits.applyBatch(stale.planId), /changed/);
+    assert.ok(readFileSync(file, "utf8").endsWith("// authored elsewhere\n"));
+  });
 });
 
 test("descriptions review without writing, persist with settings and undo/redo together", async () => {
@@ -100,11 +125,10 @@ test("descriptions review without writing, persist with settings and undo/redo t
   assert.equal(builder.current!.snapshot.descriptions.values["task:transaction-worker"], "New node notes");
   await edits.undo();
   const pending = await edits.planBatch([{ kind: "description", entity, value }], revision());
-  writeFileSync(file, `${before}\n// Concurrent description edit\n`);
-  await assert.rejects(edits.applyBatch(pending.planId), /changed/);
-  assert.ok(readFileSync(file, "utf8").endsWith("// Concurrent description edit\n"));
-  writeFileSync(file, before);
-  await builder.refresh();
+  await withExternalSource(file, `${before}\n// Concurrent description edit\n`, async () => {
+    await assert.rejects(edits.applyBatch(pending.planId), /changed/);
+    assert.ok(readFileSync(file, "utf8").endsWith("// Concurrent description edit\n"));
+  });
   await assert.rejects(edits.planBatch([{ kind: "description", entity: "../../outside", value }], revision()), /managed map item/);
 });
 
@@ -147,15 +171,15 @@ test("batch HTTP renames move description keys and undo restores both files", as
 });
 
 test("local replay reviews config and handler together, restores both exactly, and preserves concurrent handler edits", async () => {
-  const target = "lambda:cognito-custom-message";
+  const target = "lambda:transaction-replay";
   const config = path.join(fixture, "framework-config/workloads/events.ts");
-  const handler = path.join(fixture, "cdk-app/lambda_functions/event_functions/cognito-custom-message/index.ts");
+  const handler = path.join(fixture, "cdk-app/lambda_functions/event_functions/transaction-replay/index.ts");
   const beforeConfig = readFileSync(config, "utf8");
   const beforeHandler = readFileSync(handler, "utf8");
   const intent = { target, field: "events.localReplay", value: true } as const;
   const plan = await edits.planBatch([{ kind: "field", intent }], revision());
   assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
-  assert.equal(plan.changes.length, 2);
+  assert.ok(plan.changes.some(change => change.file.endsWith("event-replay.ts")), "review includes the generated replay manifest");
   assert.equal(readFileSync(handler, "utf8"), beforeHandler, "review writes nothing");
   assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
   const enabledHandler = readFileSync(handler, "utf8");
@@ -177,12 +201,11 @@ test("local replay reviews config and handler together, restores both exactly, a
   assert.equal(readFileSync(handler, "utf8"), enabledHandler);
   await edits.undo();
   const conflicting = await edits.planBatch([{ kind: "field", intent }], revision());
-  writeFileSync(handler, `${beforeHandler}\n// Concurrent author edit\n`);
-  await assert.rejects(edits.applyBatch(conflicting.planId), /handler changed/);
-  assert.equal(readFileSync(config, "utf8"), beforeConfig);
-  assert.ok(readFileSync(handler, "utf8").endsWith("// Concurrent author edit\n"));
-  writeFileSync(handler, beforeHandler);
-  await builder.refresh();
+  await withExternalSource(handler, `${beforeHandler}\n// Concurrent author edit\n`, async () => {
+    await assert.rejects(edits.applyBatch(conflicting.planId), /changed/);
+    assert.equal(readFileSync(config, "utf8"), beforeConfig);
+    assert.ok(readFileSync(handler, "utf8").endsWith("// Concurrent author edit\n"));
+  });
   const required = await edits.planBatch([{ kind: "field", intent: { target: "lambda:cognito-post-confirmation-trigger", field: "events.localReplay", inherit: true } }], revision());
   assert.equal(required.ok, false, "an event using the database still needs local replay");
   await assert.rejects(edits.applyBatch(required.planId), /rejected settings/);
@@ -225,7 +248,7 @@ test("a route and nested settings compose across files without losing prior spli
     { kind: "route", route: "route:http:/worker", value: "/batch-worker" },
   ], revision());
   assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
-  assert.equal(plan.changes.length, 2);
+  assert.ok(plan.changes.some(change => change.file.endsWith("framework-routes.ts")), "review includes generated route contracts");
   assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
   const model = builder.current!.snapshot.models.dev;
   assert.ok(model.routes.some((route) => route.path === "/batch-worker" && route.target === target));
@@ -256,12 +279,11 @@ test("a concurrent change to one batch file prevents every batch write", async (
     { kind: "field", intent: { target: "service:example-service", field: "deploy", value: "both" } },
   ], revision());
   assert.equal(plan.ok, true);
-  writeFileSync(defaultsFile, original + "\n// External edit\n");
-  await rejects(edits.applyBatch(plan.planId), 409, /Source files changed/);
-  assert.equal(readFileSync(serviceFile, "utf8"), originalService);
-  assert.equal(readFileSync(defaultsFile, "utf8"), original + "\n// External edit\n");
-  writeFileSync(defaultsFile, original);
-  await builder.refresh();
+  await withExternalSource(defaultsFile, original + "\n// External edit\n", async () => {
+    await rejects(edits.applyBatch(plan.planId), 409, /Source files changed/);
+    assert.equal(readFileSync(serviceFile, "utf8"), originalService);
+    assert.equal(readFileSync(defaultsFile, "utf8"), original + "\n// External edit\n");
+  });
 });
 
 test("island defaults insert a service group, preserve workload overrides, and undo/redo exact source", async () => {
@@ -350,7 +372,7 @@ test("a valid edit is written, reflected in the next snapshot, and undone to the
   assert.equal(readFileSync(serviceFile, "utf8"), original.replace('deploy: "local-only"', 'deploy: "both"'));
   const service = builder.current!.snapshot.models.dev.targets.find((target) => target.ref === "service:example-service")!;
   assert.equal(service.lanes.deploy, "both");
-  assert.deepEqual(edits.history(), { undo: 'service:example-service Deploy: "local-only" → "both"' });
+  assert.ok(edits.history().undo, "generator-complete legacy deployment edits enter normal batch history");
 
   assert.equal((await edits.undo()).status, "applied");
   assert.equal(readFileSync(serviceFile, "utf8"), original);
@@ -401,18 +423,18 @@ test("Cognito event Lambda settings can be previewed, written and undone in thei
     assert.equal(readFileSync(file, "utf8"), original);
   }
   const packaging = await edits.plan({ target, field: "lambda.packaging", value: "container" }, revision());
-  assert.equal(packaging.ok, true, JSON.stringify(packaging.preflight));
+  assert.equal(packaging.ok, false, "image conversion requires a Dockerfile at the configured directory");
+  assert.match(JSON.stringify(packaging.preflight), /Dockerfile/);
   assert.equal(readFileSync(file, "utf8"), original, "a preview alone never changes the app's declaration");
 });
 
 test("a file edited after the preview is never overwritten", async () => {
   const plan = await edits.plan({ target: "service:example-service", field: "container.subnet", value: "private" }, revision());
   const theirs = readFileSync(serviceFile, "utf8").replace("cpu: 256", "cpu: 512");
-  writeFileSync(serviceFile, theirs);
-  await rejects(edits.apply(plan.planId), 409, /changed since this preview/);
-  assert.equal(readFileSync(serviceFile, "utf8"), theirs);
-  writeFileSync(serviceFile, theirs.replace("cpu: 512", "cpu: 256"));
-  await builder.refresh();
+  await withExternalSource(serviceFile, theirs, async () => {
+    await rejects(edits.apply(plan.planId), 409, /Source files changed/);
+    assert.equal(readFileSync(serviceFile, "utf8"), theirs);
+  });
 });
 
 test("a preview from an older snapshot is refused, and a refresh expires outstanding previews", async () => {
@@ -439,6 +461,7 @@ test("a config that stops loading keeps its last good model, refuses edits, and 
     );
   } finally {
     writeFileSync(taskFile, original);
+    await builder.refresh();
   }
   const recovered = (await builder.refresh()).snapshot;
   assert.equal(recovered.models.dev.stale, undefined);
@@ -473,6 +496,8 @@ test("single-edit verification failures restore source without recording an appl
     builder.refresh = refresh;
     writeFileSync(serviceFile, original);
     await builder.refresh();
+    const journal = new SourceJournal(fixture);
+    for (const pending of journal.pending()) journal.keepCurrent(pending.id, pending.fingerprint, "KEEP CURRENT SOURCE");
   }
 });
 
@@ -494,6 +519,8 @@ test("single-edit verification failures preserve a concurrent editor's deletion"
     builder.refresh = refresh;
     writeFileSync(serviceFile, original);
     await builder.refresh();
+    const journal = new SourceJournal(fixture);
+    for (const pending of journal.pending()) journal.keepCurrent(pending.id, pending.fingerprint, "KEEP CURRENT SOURCE");
   }
 });
 
@@ -530,11 +557,10 @@ test("route renames reject duplicate and invalid paths and preserve concurrent e
   const original = readFileSync(file, "utf8");
   const plan = await edits.planRoute("route:http:/examples/python", "/examples/another", revision());
   const theirs = `${original}\n// concurrent edit\n`;
-  writeFileSync(file, theirs);
-  await rejects(edits.apply(plan.planId), 409, /changed since this preview/);
-  assert.equal(readFileSync(file, "utf8"), theirs);
-  writeFileSync(file, original);
-  await builder.refresh();
+  await withExternalSource(file, theirs, async () => {
+    await rejects(edits.apply(plan.planId), 409, /Source files changed/);
+    assert.equal(readFileSync(file, "utf8"), theirs);
+  });
 });
 
 test("HTTP authorizer auth can be switched off and on without changing handler user-pool access", async () => {

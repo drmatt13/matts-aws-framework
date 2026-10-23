@@ -47,7 +47,7 @@ test("a development plan deploys only when applied, then verifies, records and e
     assert.equal(planned.status, 0, planned.output);
     const plan = JSON.parse(readFileSync(path.join(planDirectory, "plan.json"), "utf8"));
     assert.deepEqual([plan.status, plan.review, plan.identity.deployment, plan.identity.mode, plan.guard], ["ready", "template", "my-aws-app", "dev", "absent"]);
-    assert.equal(plan.confirmation.level, "none", "a first development deployment continues on its own");
+    assert.equal(plan.confirmation.level, "click", "a first development deployment waits for review");
     assert.ok(plan.stacks.length >= 3 && plan.stacks.every((stack: any) => stack.changes.every((change: any) => change.action === "add")));
     assert.equal(account.read().regions?.[REGION]?.stacks?.length ?? 0, 0, "planning deploys nothing");
     assert.deepEqual(account.calls().map((call) => call.key).filter((key) => !READ_VERB.test(key)), [], "planning writes nothing to AWS");
@@ -130,6 +130,25 @@ test("discarding a change-set plan removes its change sets and the empty stacks 
     assert.equal(discarded.status, 0, discarded.output);
     assert.ok(account.read().regions[REGION].stacks.every((stack: any) => stack.StackStatus === "DELETE_COMPLETE"));
     assert.equal(existsSync(planDirectory), false);
+  } finally { account.dispose(); }
+});
+
+test("discard cannot remove a same-name replacement review stack", () => {
+  const { account, prodInputs, deploy } = setup();
+  const planDirectory = path.join(account.directory, "replacement-discard-plan");
+  try {
+    const planned = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--all", "-c", "prodDeployment=true", "--profile", "dev", "--plan", planDirectory);
+    assert.equal(planned.status, 0, planned.output);
+    const state = account.read();
+    const review = state.regions[REGION].stacks.find((stack: any) => stack.StackStatus === "REVIEW_IN_PROGRESS");
+    review.StackId += "-replacement";
+    account.write(state);
+    const before = account.calls().length;
+    const discarded = deploy({ FRAMEWORK_INPUTS_FILE: prodInputs }, "--discard", planDirectory, "--profile", "dev");
+    assert.notEqual(discarded.status, 0);
+    assert.match(discarded.output, /exact stack identity/);
+    assert.deepEqual(account.calls().slice(before).filter(call => !READ_VERB.test(call.key)), []);
+    assert.equal(existsSync(planDirectory), true, "uncertain cleanup preserves the review");
   } finally { account.dispose(); }
 });
 

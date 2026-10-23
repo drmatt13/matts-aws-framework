@@ -27,7 +27,7 @@ import { resolve } from "node:path";
 import { parseEnv } from "node:util";
 import { SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { contextFromArgs, readCdkContext, resolveRepositoryTarget, type RepositoryTarget } from "@repo/framework/deploy/node";
-import type { DeploymentState } from "@repo/framework/deploy";
+import { stackEvidence, type DeploymentState } from "@repo/framework/deploy";
 import { runAwsSync, type AwsTarget } from "./aws-cli";
 import { deploymentArguments, inspectDeploymentAssembly } from "./deployment-assembly";
 import { assertDeploymentAllowed, productionDeployArguments } from "./deployment-guard";
@@ -37,12 +37,15 @@ import {
   type ExportInUse, type ResourceChange, type StackFingerprint,
 } from "./deployment-plan";
 import {
-  cliSecretsClient, deployedTemplate, describeChangeSet, describeStack, dockerImages, fingerprintOf, stackOrder,
+  cliSecretsClient, deployedTemplate, describeChangeSet, describeStack, dockerImages, fingerprintOf, stackOrder, stackImporters, deploymentSourceRevision,
   verifyDeployment, writeDeploymentRecord, type AssemblyStackEntry, type ChangeSetReview,
 } from "./deployment-review";
 import { planDeploymentSecrets, type SecretBinding, type SecretPlanEntry } from "./deployment-secrets";
 import { acquireDeploymentLock, secretBindings, sweepStaleAssemblies } from "./deployment-workspace";
 import { readDeploymentStackPages } from "./resource-export";
+import { assemblyDigest } from "./deployment-integrity";
+import { writeDeploymentRecordAtomic } from "./deployment-artifact";
+import { inspectInfrastructureAssembly } from "./infrastructure-inventory";
 
 const root = resolve(__dirname, "..");
 const cdk = process.env.FRAMEWORK_CDK_CLI ?? require.resolve("aws-cdk/bin/cdk");
@@ -92,6 +95,7 @@ function wrapperOptions(args: readonly string[]): Wrapper {
 }
 
 interface PlanStack {
+  readonly dependencies?: readonly string[];
   readonly id: string;
   readonly name: string;
   readonly fingerprint: StackFingerprint;
@@ -108,7 +112,7 @@ export interface DeploymentPlanDocument {
   readonly planId: string;
   readonly createdAt: string;
   readonly expiresAt: string;
-  readonly status: "ready" | "no-changes" | "needs-secrets";
+  readonly status: "ready" | "no-changes" | "needs-secrets" | "blocked";
   readonly review: "template" | "change-set";
   readonly target: { readonly name: string; readonly mode: "dev" | "prod"; readonly inputsFile: string; readonly account?: string; readonly region?: string };
   readonly identity: { readonly deployment: string; readonly mode: "dev" | "prod"; readonly account: string; readonly region: string };
@@ -122,12 +126,9 @@ export interface DeploymentPlanDocument {
   readonly confirmation: { readonly level: "none" | "click" | "name"; readonly reasons: readonly string[] };
   readonly uncertainties: readonly string[];
   readonly assemblyDigest: string;
-}
-
-function digestOf(stacks: readonly AssemblyStackEntry[]): string {
-  const hash = createHash("sha256");
-  for (const stack of stacks) hash.update(stack.name).update(JSON.stringify(stack.template));
-  return hash.digest("hex").slice(0, 16);
+  readonly retainedStacks?: readonly { name: string; status: string }[];
+  readonly reviewEvidence?: { security: string; templates: string; problems: readonly string[] };
+  readonly sourceRevision?: { commit?: string; dirty: boolean };
 }
 
 interface Prepared {
@@ -145,7 +146,7 @@ interface Prepared {
 }
 
 /** Everything every path shares, up to (not including) the first secret read or write. */
-async function prepare(args: readonly string[], assembly: { directory: string; synthesize: boolean }, overrides: { inputsFile?: string; plannedReviews?: ReadonlySet<string> } = {}): Promise<Prepared> {
+async function prepare(args: readonly string[], assembly: { directory: string; synthesize: boolean }, overrides: { inputsFile?: string; reviewedTarget?: DeploymentPlanDocument["target"]; plannedReviews?: ReadonlySet<string> } = {}): Promise<Prepared> {
   const selection = deploymentArguments(args);
   // The target the CDK app will build for these arguments, resolved the same way
   // (bin/app.ts): -c prodDeployment / -c deployment and framework:targets. Its
@@ -153,8 +154,12 @@ async function prepare(args: readonly string[], assembly: { directory: string; s
   if (overrides.inputsFile) process.env.FRAMEWORK_INPUTS_FILE = overrides.inputsFile;
   if (!process.env.FRAMEWORK_INPUTS_FILE?.trim()) delete process.env.FRAMEWORK_INPUTS_FILE;
   const argumentContext = contextFromArgs(args);
-  const projectContext = readCdkContext(root);
-  const target = resolveRepositoryTarget({ root, get: (key) => argumentContext[key] ?? projectContext[key], env: process.env });
+  const reviewed = overrides.reviewedTarget;
+  const projectContext = reviewed ? {} : readCdkContext(root);
+  const target: RepositoryTarget = reviewed ? {
+    target: { name: reviewed.name, mode: reviewed.mode, origin: "named", ...(reviewed.account ? { account: reviewed.account } : {}), ...(reviewed.region ? { region: reviewed.region } : {}) },
+    mode: reviewed.mode, inputsFile: reviewed.inputsFile, warnings: [],
+  } : resolveRepositoryTarget({ root, get: (key) => argumentContext[key] ?? projectContext[key], env: process.env });
   target.warnings.forEach((warning) => console.warn(warning));
   // Hand every child the path this process read, absolute: synth runs in cdk-app/
   // and would otherwise resolve the target again from its own working directory.
@@ -227,7 +232,7 @@ function finishVerified(prepared: Prepared, deployedStacks: readonly AssemblySta
   }
   const warning = writeDeploymentRecord(prepared.aws, {
     identity: prepared.graph.identity, deployedBy: prepared.callerArn, planId,
-    stacks: deployedStacks.map((stack) => stack.name), assemblyDigest: digestOf(prepared.stacks),
+    stacks: deployedStacks.map((stack) => stack.name), assemblyDigest: assemblyDigest(prepared.assembly),
   });
   if (warning) console.warn(warning);
   return verification;
@@ -281,7 +286,9 @@ async function plan(wrapper: Wrapper): Promise<void> {
   secretBindings.sweep(bindings, Date.now(), PLAN_LIFETIME_MS + 60 * 60 * 1000);
   const prepared = await prepare(wrapper.rest, { directory: assembly, synthesize: true });
   try {
+    const reviewedDigest = assemblyDigest(assembly);
     const { graph, aws } = prepared;
+    const inventory = inspectInfrastructureAssembly(assembly);
     const review = wrapper.review ?? (graph.identity.mode === "prod" ? "change-set" : "template");
     const secrets = secretsClient(aws);
     let secretPlan;
@@ -293,10 +300,14 @@ async function plan(wrapper: Wrapper): Promise<void> {
       const current = describeStack(aws, entry.name);
       const fingerprint = fingerprintOf(current);
       const previous = fingerprint.exists ? deployedTemplate(aws, entry.name) : undefined;
-      const changes = templateChanges(previous, entry.template);
+      const changes = templateChanges(previous, entry.template).map((change) => {
+        const resource = inventory.resources.find((candidate) => candidate.stack === entry.id && candidate.logicalId === change.logicalId);
+        return { ...change, owner: resource?.owners.length ? resource.owners.join(", ") : resource?.constructPath ?? "Ownership not identified in synthesis" };
+      });
       const exportsInUse: ExportInUse[] = changedExports(previous, entry.template).flatMap(({ exportName, change }) => {
         let importers: string[] = [];
-        try { importers = runAwsSync(["cloudformation", "list-imports", "--export-name", exportName], aws).Imports ?? []; } catch { importers = []; }
+        try { importers = stackImporters(aws, exportName); }
+        catch (error) { throw new Error("Cannot establish importers of " + exportName + ". Resolve CloudFormation list-imports access before planning. " + (error instanceof Error ? error.message : "")); }
         return importers.length ? [{ stack: entry.name, exportName, change, importers }] : [];
       });
       return { entry, fingerprint, changes, exportsInUse, previous };
@@ -304,20 +315,23 @@ async function plan(wrapper: Wrapper): Promise<void> {
 
     // IAM and security broadening, from the CDK CLI's own security diff, and its full text diff for the record.
     const selectors = prepared.stacks.map((stack) => stack.name);
-    let iamBroadening = false;
-    try {
-      await run(cdk, ["diff", "--app", assembly, ...selectors, "--security-only", "--fail", "--method", "template"], cdkDirectory);
-    } catch (error) {
-      if (interrupt.isInterrupted) throw error;
-      iamBroadening = true;
-    }
-    try { await run(cdk, ["diff", "--app", assembly, ...selectors, "--method", "template"], cdkDirectory); } catch (error) { if (interrupt.isInterrupted) throw error; }
+    const security = await interrupt.capture(cdk, ["diff", "--app", assembly, ...selectors, "--security-only", "--fail", "--method", "template"], cdkDirectory);
+    const iamBroadening = security.code === 1 && /IAM (Statement|Policy) Changes|Security Group Changes/i.test(security.output) && !/AccessDenied|NoCredentials|Error:|Unable to |Need to perform AWS calls|not authorized/i.test(security.output);
+    const templateDiff = await interrupt.capture(cdk, ["diff", "--app", assembly, ...selectors, "--method", "template"], cdkDirectory);
+    const problems = [
+      ...(security.code !== 0 && !iamBroadening ? ["Security analysis failed; permissions impact is unknown. Resolve the error and plan again."] : []),
+      ...(templateDiff.code !== 0 ? ["Template diff failed. Resolve the error and plan again."] : []),
+    ];
+    const retainedStacks = prepared.deployed.kind === "absent" ? [] : prepared.deployed.stacks.filter((stack) => !prepared.stacks.some((entry) => entry.name === stack.name)).map((stack) => ({ name: stack.name, status: stack.status }));
 
     const creating = secretPlan.entries.filter((secret) => secret.action === "create");
     let status: DeploymentPlanDocument["status"] = "ready";
     let createdSecrets: readonly string[] = [];
     const stacks: PlanStack[] = [];
-    if (review === "change-set" && creating.length && !wrapper.createSecrets) {
+    if (problems.length) {
+      status = "blocked";
+      for (const { entry, fingerprint, changes, exportsInUse } of reviewed) stacks.push({ id: entry.id, name: entry.name, fingerprint, changes, exportsInUse, noChanges: fingerprint.exists && !changes.length });
+    } else if (review === "change-set" && creating.length && !wrapper.createSecrets) {
       // A change set can only reference a secret that exists. Creating one is a
       // write, so it waits for an explicit --create-secrets.
       status = "needs-secrets";
@@ -344,8 +358,8 @@ async function plan(wrapper: Wrapper): Promise<void> {
       const created = new Set(reviewed.filter((item) => !item.fingerprint.exists).map((item) => item.entry.id));
       // Written before each change set is prepared: a plan that stops part-way
       // (a failure, Ctrl+C, a killed process) can still be discarded.
-      const preparing = { version: PLAN_VERSION, planId, createdAt: new Date().toISOString(), identity: graph.identity, ...(prepared.profile ? { profile: prepared.profile } : {}), stacks: [] as { name: string; createdByPlan: boolean }[] };
-      const recordPreparing = () => writeFileSync(resolve(directory, "preparing.json"), `${JSON.stringify(preparing, null, 2)}\n`);
+      const preparing = { version: PLAN_VERSION, planId, createdAt: new Date().toISOString(), identity: graph.identity, ...(prepared.profile ? { profile: prepared.profile } : {}), stacks: [] as { name: string; createdByPlan: boolean; stackId?: string }[] };
+      const recordPreparing = () => writeDeploymentRecordAtomic(resolve(directory, "preparing.json"), preparing);
       for (const { entry, fingerprint, changes, exportsInUse } of reviewed) {
         // Imports resolve when a change set is created, so a stack that imports
         // from one this plan creates (or defers) can only be planned after it runs.
@@ -363,15 +377,25 @@ async function plan(wrapper: Wrapper): Promise<void> {
         const parameters = graph.requirements.filter((requirement) => requirement.stack === entry.name).map((requirement) => `${entry.name}:${requirement.parameter}=${arns[requirement.name]}`);
         preparing.stacks.push({ name: entry.name, createdByPlan: !fingerprint.exists });
         recordPreparing();
-        await run(cdk, ["deploy", "--app", assembly, entry.name, "--exclusively", "--method", "prepare-change-set", "--change-set-name", planId, "--require-approval", "never", ...parameters.flatMap((value) => ["--parameters", value])], cdkDirectory);
+        try {
+          await run(cdk, ["deploy", "--app", assembly, entry.name, "--exclusively", "--method", "prepare-change-set", "--change-set-name", planId, "--require-approval", "never", ...parameters.flatMap((value) => ["--parameters", value])], cdkDirectory);
+        } finally {
+          // A failed command can still have created an empty review stack.
+          // Preserve its observed immutable identity before propagating failure.
+          preparing.stacks[preparing.stacks.length - 1]!.stackId = fingerprintOf(describeStack(aws, entry.name)).stackId;
+          recordPreparing();
+        }
         const set = describeChangeSet(aws, entry.name, planId);
         if (set.noChanges) {
           try { runAwsSync(["cloudformation", "delete-change-set", "--stack-name", entry.name, "--change-set-name", planId], aws); } catch { /* Reported as no changes either way. */ }
         }
         const { changes: authoritative, ...summary } = set;
+        const detailed = authoritative.map((change) => ({ ...changes.find((candidate) => candidate.logicalId === change.logicalId), ...change }));
         // What apply should find: preparing a change set for a new stack creates it, awaiting review.
         const prepared = fingerprintOf(describeStack(aws, entry.name));
-        stacks.push({ id: entry.id, name: entry.name, fingerprint: prepared, changes: set.noChanges ? [] : authoritative, exportsInUse, noChanges: set.noChanges, changeSet: summary, ...(!fingerprint.exists ? { createdByPlan: true } : {}) });
+        preparing.stacks[preparing.stacks.length - 1]!.stackId = prepared.stackId;
+        recordPreparing();
+        stacks.push({ id: entry.id, name: entry.name, fingerprint: prepared, changes: set.noChanges ? [] : detailed, exportsInUse, noChanges: set.noChanges, changeSet: summary, ...(!fingerprint.exists ? { createdByPlan: true } : {}) });
       }
       status = statusOf(stacks, secretPlan.entries);
     } else {
@@ -390,17 +414,21 @@ async function plan(wrapper: Wrapper): Promise<void> {
       target: { name: prepared.target.target.name, mode: prepared.target.mode, inputsFile: prepared.target.inputsFile, ...(prepared.target.target.account ? { account: prepared.target.target.account } : {}), ...(prepared.target.target.region ? { region: prepared.target.target.region } : {}) },
       identity: graph.identity, ...(prepared.profile ? { profile: prepared.profile } : {}),
       forwarded: prepared.selection.forwarded, guard: prepared.deployed.kind,
-      stacks,
+      stacks: stacks.map((stack) => ({ ...stack, dependencies: prepared.stacks.find((entry) => entry.id === stack.id)?.dependencies.map((id) => prepared.stacks.find((entry) => entry.id === id)?.name ?? id) ?? [] })),
       secrets: secretPlan.entries,
       dockerImages: dockerImages(assembly).map(({ stack, asset }) => ({ stack, asset })),
       iamBroadening,
       confirmation: confirmationLevel({ mode: graph.identity.mode, firstDeploy: prepared.deployed.kind === "absent", iamBroadening, changes: allChanges, exportsInUse }),
       uncertainties: [...PLAN_UNCERTAINTIES[review], ...(createdSecrets.length ? [`Created before review so the change sets could reference them: ${createdSecrets.join(", ")}. Nothing reads them until this plan is applied.`] : [])],
-      assemblyDigest: digestOf(prepared.stacks),
+      assemblyDigest: reviewedDigest,
+      retainedStacks,
+      reviewEvidence: { security: security.output, templates: templateDiff.output, problems },
+      sourceRevision: deploymentSourceRevision(),
     };
+    if (assemblyDigest(assembly) !== reviewedDigest) throw new Error("Staged release changed while preparing review. Discard any prepared change sets and plan again.");
     // The binding is what apply holds the secret writes to; plan.json shows names and actions only.
     if (status !== "needs-secrets" && secretPlan.entries.length) secretBindings.write(bindings, planId, secretPlan.bind(planId));
-    writeFileSync(resolve(directory, "plan.json"), `${JSON.stringify(document, null, 2)}\n`);
+    writeDeploymentRecordAtomic(resolve(directory, "plan.json"), document);
     rmSync(resolve(directory, "preparing.json"), { force: true });
     console.log(`Plan ${planId} for ${graph.identity.deployment} (${graph.identity.mode}, ${graph.identity.account}/${graph.identity.region}): ${status}.`);
     for (const stack of stacks) {
@@ -435,8 +463,10 @@ async function apply(wrapper: Wrapper): Promise<void> {
   const directory = resolve(wrapper.apply!);
   const document = readPlan(directory);
   if (existsSync(resolve(directory, "result.json"))) throw new Error(`Plan ${document.planId} was already applied. Plan again for further changes.`);
+  if (existsSync(resolve(directory, "operation.json"))) throw new Error("An application attempt already started for this review. Inspect its recorded progress and AWS, then create a new plan; never retry uncertain writes blindly.");
   if (Date.parse(document.expiresAt) < Date.now()) throw new Error(`Plan ${document.planId} expired at ${document.expiresAt}. Plan again.`);
   if (document.status === "needs-secrets") throw new Error(`Plan ${document.planId} could not prepare change sets until its new secrets exist. Plan again with --create-secrets.`);
+  if (document.status === "blocked" || document.reviewEvidence?.problems.length) throw new Error("The review has incomplete analysis. Resolve its errors and plan again. Nothing was changed.");
   if (document.status === "no-changes") { console.log(`Plan ${document.planId} has nothing to change.`); return; }
   if (document.confirmation.level === "name" && wrapper.confirm !== document.identity.deployment) {
     throw new Error(`Plan ${document.planId} needs --confirm ${document.identity.deployment} (${document.confirmation.reasons.join("; ")}). Nothing was changed.`);
@@ -446,13 +476,13 @@ async function apply(wrapper: Wrapper): Promise<void> {
     throw new Error(`Plan ${document.planId} has no secret binding in ${bindings}: it was planned in another checkout, or the binding was removed. Plan again. Nothing was changed.`);
   }
   const plannedReviews = new Set(document.stacks.filter((stack) => stack.createdByPlan).map((stack) => stack.name));
-  const prepared = await prepare(planArguments(document, wrapper.rest), { directory: resolve(directory, "assembly"), synthesize: false }, { inputsFile: document.target.inputsFile, plannedReviews });
+  const prepared = await prepare(planArguments(document, wrapper.rest), { directory: resolve(directory, "assembly"), synthesize: false }, { inputsFile: document.target.inputsFile, reviewedTarget: document.target, plannedReviews });
   try {
     const { graph, aws } = prepared;
     if (graph.identity.deployment !== document.identity.deployment || graph.identity.mode !== document.identity.mode || graph.identity.account !== document.identity.account || graph.identity.region !== document.identity.region) {
       throw new Error("The plan's assembly no longer resolves to the identity it was reviewed for. Plan again.");
     }
-    if (digestOf(prepared.stacks) !== document.assemblyDigest) throw new Error("The plan's assembly changed after it was reviewed. Plan again.");
+    if (assemblyDigest(prepared.assembly) !== document.assemblyDigest) throw new Error("The plan's templates, manifests or staged assets changed after review. Plan again. Nothing was changed.");
     const stale = staleness(Object.fromEntries(document.stacks.map((stack) => [stack.name, stack.fingerprint])), Object.fromEntries(document.stacks.map((stack) => [stack.name, fingerprintOf(describeStack(aws, stack.name))])));
     if (stale) throw new Error(`${stale} Plan again: the review no longer describes what AWS holds. Nothing was changed.`);
     const changing = document.stacks.filter((stack) => !stack.noChanges && !stack.deferred);
@@ -467,13 +497,19 @@ async function apply(wrapper: Wrapper): Promise<void> {
     // The secret writes must be the ones reviewed: the same names and actions,
     // the same authored values, and the same AWS versions they replace.
     interrupt.assertContinuing();
+    const journal = (stage: string, secretUpdates: readonly string[] = []) => writeDeploymentRecordAtomic(resolve(directory, "operation.json"), { planId: document.planId, pid: process.pid, identity: document.identity, stage, secretUpdates, updatedAt: new Date().toISOString() });
     const secrets = secretsClient(aws);
     let result;
     try {
       const again = await planDeploymentSecrets(graph.requirements, prepared.authored, graph.identity, secrets.client);
+      const mismatch = again.mismatch({ entries: document.secrets, binding });
+      if (mismatch) throw new Error(mismatch + " Plan again. Nothing was changed.");
       // Refuses, before any write, unless every write is the reviewed one.
-      result = await again.apply((name) => console.log(`Updated managed secret ${name}.`), { entries: document.secrets, binding });
+      journal("writing reviewed secrets");
+      const updated: string[] = [];
+      result = await again.apply((name) => { updated.push(name); journal("writing reviewed secrets", updated); console.log(`Updated managed secret ${name}.`); }, { entries: document.secrets, binding });
     } finally { secrets.close(); }
+    journal("applying infrastructure", result.updated);
     const deploying = prepared.stacks.filter((stack) => changing.some((entry) => entry.id === stack.id));
     try {
       if (document.review === "change-set") {
@@ -483,56 +519,76 @@ async function apply(wrapper: Wrapper): Promise<void> {
         await run(cdk, ["deploy", ...prepared.selection.forwarded, "--app", prepared.assembly, "--require-approval", "never", "--progress", "events", ...result.parameters.flatMap((value) => ["--parameters", value])], cdkDirectory);
       }
     } catch (error) {
+      const observed = verifyDeployment(aws, graph.identity, deploying);
+      writeDeploymentRecordAtomic(resolve(directory, "result.json"), {
+        planId: document.planId, finishedAt: new Date().toISOString(), status: interrupt.isInterrupted ? "interrupted" : "failed", problem: error instanceof Error ? error.message : "Infrastructure deployment failed.", secretUpdates: result.updated,
+        verification: observed, deferred: document.stacks.filter((stack) => stack.deferred).map((stack) => stack.name),
+      });
       throw new Error(`${error instanceof Error ? error.message : "Infrastructure deployment failed."} Secret updates already performed: ${result.updated.join(", ") || "none"}.`);
     }
     const verification = finishVerified(prepared, document.review === "change-set" ? deploying : prepared.stacks, document.planId);
+    journal("infrastructure verification finished", result.updated);
     const deferred = document.stacks.filter((stack) => stack.deferred).map((stack) => stack.name);
-    writeFileSync(resolve(directory, "result.json"), `${JSON.stringify({
+    const resultDocument = {
       planId: document.planId, finishedAt: new Date().toISOString(),
       status: !verification.verified ? "unverified" : deferred.length ? "partial" : "succeeded",
-      verification, deferred,
-    }, null, 2)}\n`);
+      verification, deferred, secretUpdates: result.updated,
+    };
+    writeDeploymentRecordAtomic(resolve(directory, "result.json"), resultDocument);
     secretBindings.remove(bindings, document.planId);
     if (deferred.length) console.log(`Applied. Still to plan, now that the stacks they depend on exist: ${deferred.join(", ")}.`);
-    if (verification.verified) await exportDevelopment(prepared);
+    if (verification.verified) {
+      await exportDevelopment(prepared);
+      if (process.exitCode === 2) writeDeploymentRecordAtomic(resolve(directory, "result.json"), { ...resultDocument, status: "export-failed", problem: "Infrastructure verified, but development settings export failed. Retry export separately." });
+    }
   } finally {
     prepared.release(); cleanups.delete(prepared.release);
   }
 }
 
 /** What a plan directory prepared in AWS: from plan.json, or from the record of a plan that stopped part-way. */
-function preparedByPlan(directory: string): { planId: string; region: string; profile?: string; stacks: { name: string; createdByPlan: boolean }[] } {
+function preparedByPlan(directory: string): { planId: string; identity: DeploymentPlanDocument["identity"]; region: string; profile?: string; stacks: { name: string; createdByPlan: boolean; stackId?: string }[] } {
   if (existsSync(resolve(directory, "plan.json"))) {
     const document = readPlan(directory);
     return {
-      planId: document.planId, region: document.identity.region, ...(document.profile ? { profile: document.profile } : {}),
-      stacks: document.stacks.filter((entry) => entry.changeSet && !entry.changeSet.noChanges).map((entry) => ({ name: entry.name, createdByPlan: Boolean(entry.createdByPlan) })),
+      planId: document.planId, identity: document.identity, region: document.identity.region, ...(document.profile ? { profile: document.profile } : {}),
+      stacks: document.stacks.filter((entry) => entry.changeSet && !entry.changeSet.noChanges).map((entry) => ({ name: entry.name, createdByPlan: Boolean(entry.createdByPlan), stackId: entry.fingerprint.stackId })),
     };
   }
   const file = resolve(directory, "preparing.json");
   if (!existsSync(file)) throw new Error(`${directory} holds no plan.`);
   const unfinished = JSON.parse(readFileSync(file, "utf8"));
   if (unfinished.version !== PLAN_VERSION) throw new Error(`${directory} holds a plan from another version of this tool.`);
-  return { planId: unfinished.planId, region: unfinished.identity.region, ...(unfinished.profile ? { profile: unfinished.profile } : {}), stacks: unfinished.stacks };
+  return { planId: unfinished.planId, identity: unfinished.identity, region: unfinished.identity.region, ...(unfinished.profile ? { profile: unfinished.profile } : {}), stacks: unfinished.stacks };
 }
 
 async function discard(wrapper: Wrapper): Promise<void> {
   const directory = resolve(wrapper.discard!);
   const document = preparedByPlan(directory);
+  const release = acquireDeploymentLock(resolve(root, ".cache/deploy"), document.identity.deployment);
+  try {
   const profile = deploymentArguments(wrapper.rest).profile ?? document.profile;
   const aws: AwsTarget = { region: document.region, ...(profile ? { profile } : {}) };
+  if (document.stacks.length && String(runAwsSync(["sts", "get-caller-identity"], aws).Account) !== document.identity.account) throw new Error("The selected profile reaches another account than the saved review. Nothing was discarded.");
   for (const stack of document.stacks) {
-    try { runAwsSync(["cloudformation", "delete-change-set", "--stack-name", stack.name, "--change-set-name", document.planId], aws); console.log(`Deleted change set ${document.planId} on ${stack.name}.`); }
-    catch { /* Already executed, expired or removed. */ }
-    if (stack.createdByPlan && describeStack(aws, stack.name)?.StackStatus === "REVIEW_IN_PROGRESS") {
+    const current = describeStack(aws, stack.name);
+    const identity = current ? stackEvidence(current).identity : undefined;
+    if (current && (!identity || identity.deployment !== document.identity.deployment || identity.mode !== document.identity.mode)) throw new Error("The reviewed stack identity changed: " + stack.name + ". Nothing else was discarded.");
+    let stackId = stack.stackId;
+    if (current && !stackId) stackId = describeChangeSet(aws, current.StackId!, document.planId).stackId;
+    if (current && (!stackId || stackId !== current.StackId)) throw new Error("The saved review cannot confirm this exact stack identity: " + stack.name + ". Preserve the review and inspect its change set before cleanup.");
+    try { runAwsSync(["cloudformation", "delete-change-set", "--stack-name", stackId ?? stack.name, "--change-set-name", document.planId], aws); console.log(`Deleted change set ${document.planId} on ${stack.name}.`); }
+    catch (error) { if (current) throw error; }
+    if (stack.createdByPlan && stackId && describeStack(aws, stackId)?.StackStatus === "REVIEW_IN_PROGRESS") {
       // Created only to hold the change set: it has no resources.
-      runAwsSync(["cloudformation", "delete-stack", "--stack-name", stack.name], aws);
+      runAwsSync(["cloudformation", "delete-stack", "--stack-name", stackId], aws);
       console.log(`Removed ${stack.name}, which the plan created and which holds no resources.`);
     }
   }
   secretBindings.remove(bindings, document.planId);
   rmSync(directory, { recursive: true, force: true });
   console.log(`Discarded plan ${document.planId}.`);
+  } finally { release(); }
 }
 
 async function main(): Promise<void> {
@@ -540,14 +596,15 @@ async function main(): Promise<void> {
   if (args.includes("--help") || args.includes("-h")) { await run(cdk, ["deploy", "--help"]); return; }
   process.on("SIGINT", (signal) => interrupt.handle(signal));
   process.on("SIGTERM", (signal) => interrupt.handle(signal));
+  const wrapper = wrapperOptions(args);
+  // Recovery consumes reviewed artifacts, never the current declarations.
+  if (wrapper.discard) return discard(wrapper);
+  if (wrapper.apply) return apply(wrapper);
   // Validate inside main so declaration errors name their owners cleanly,
   // before synth, identity checks, secret synchronization or AWS deployment.
   const { default: framework } = await import("../framework.config");
   const { validateFrameworkConfig } = await import("@repo/framework/config");
   validateFrameworkConfig(framework);
-  const wrapper = wrapperOptions(args);
-  if (wrapper.discard) return discard(wrapper);
-  if (wrapper.apply) return apply(wrapper);
   if (wrapper.plan) return plan(wrapper);
   return deployDirectly(wrapper);
 }

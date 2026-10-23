@@ -68,6 +68,18 @@ test("shell health exposes both verdicts and follows validated snapshot changes"
   await ui.waitFor(() => assert.equal(description(), "Development: valid. Production: valid"));
 });
 
+test("watch failures expose polling and recover without replacing the editor", async () => {
+  const initial = { ...response, sourceWatch: { status: "polling" as const, checkedAt: new Date().toISOString(), pollIntervalMs: 5000, problems: [{ path: "framework-config", code: "EMFILE" }] } };
+  const update = await mount(() => h(shell.Shell, { children: h("input", { "aria-label": "Preserved draft", defaultValue: "draft" }) }), initial);
+  const editor = ui.screen.getByRole("textbox", { name: "Preserved draft" });
+  assert.ok(ui.screen.getByText(/Checking for changes every 5s/));
+  assert.ok(ui.screen.getByRole("button", { name: "Reload source" }));
+  assert.ok(ui.screen.getByText(/framework-config: EMFILE/));
+  await update({ ...initial, sourceWatch: { ...initial.sourceWatch, status: "watching", problems: [] } });
+  assert.equal(ui.screen.queryByRole("button", { name: "Reload source" }), null);
+  assert.equal(ui.screen.getByRole("textbox", { name: "Preserved draft" }), editor);
+});
+
 test("creation chooser supports directional navigation and Escape returns focus to its trigger", async () => {
   await mount(add.AddMenu);
   const trigger = ui.screen.getByRole("button", { name: "Add to application" });

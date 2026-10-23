@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { writeModeInputs } from "../inputs";
 import { sha256, toRelative } from "../files";
@@ -11,7 +11,7 @@ export function isCreationGeneratedFile(relative: string): boolean {
   return /^packages\/framework\/src\/generated\/(?:target-ids|agentcore|event-replay|vpc-endpoint-services)\.ts$/.test(relative)
     || /^packages\/api-contract\/src\/generated\/(?:framework-(?:contracts|routes)|contracts\/[A-Za-z0-9_-]+)\.ts$/.test(relative)
     || relative === "docker-compose.services.yml"
-    || /^cdk-app\/ecs_containers\/services\/[a-z][a-z0-9-]*\/\.env\.example$/.test(relative)
+    || /^cdk-app\/ecs_containers\/(?:[A-Za-z0-9_-]+\/)+\.env\.example$/.test(relative)
     || relative === "package-lock.json";
 }
 function run(command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv): Promise<string> {
@@ -29,7 +29,7 @@ function run(command: string, args: readonly string[], cwd: string, env: NodeJS.
 /** A private copy contains authored source and manifests, never authored env
  * values, dependencies, database artifacts or deployment outputs. Generation
  * writes there first so its exact results join the same review and journal. */
-export async function generateCreationArtifacts(root: string, overrides: ReadonlyMap<string, string>): Promise<{ overrides: Map<string, string>; before: Map<string, string | null>; inputs: Record<string, string> }> {
+export async function generateCreationArtifacts(root: string, overrides: ReadonlyMap<string, string>, removedSourceFiles: readonly string[] = []): Promise<{ overrides: Map<string, string>; before: Map<string, string | null>; inputs: Record<string, string>; deletions: Map<string, string> }> {
   const parent = path.join(root, ".cache/framework-studio/previews");
   mkdirSync(parent, { recursive: true });
   const directory = mkdtempSync(path.join(parent, "creation-"));
@@ -66,6 +66,10 @@ export async function generateCreationArtifacts(root: string, overrides: Readonl
       }
     };
     capture(directory);
+    for (const file of removedSourceFiles) {
+      const removed = path.join(directory, toRelative(root, file)); rmSync(removed, { force: true });
+      for (let folder = path.dirname(removed); folder !== directory; folder = path.dirname(folder)) { try { rmdirSync(folder); } catch { break; } }
+    }
     for (const [file, text] of overrides) {
       const destination = path.join(directory, toRelative(root, file));
       mkdirSync(path.dirname(destination), { recursive: true });
@@ -102,9 +106,8 @@ export async function generateCreationArtifacts(root: string, overrides: Readonl
       }
     };
     visit(directory);
-    for (const relative of baseline.keys()) {
-      if (!existsSync(path.join(directory, relative))) throw new EditError(422, "Existing generated artifacts need reconciliation. Run framework:generate before creating this resource.");
-    }
-    return { overrides: result, before, inputs };
+    const deletions = new Map<string, string>();
+    for (const [relative, bytes] of baseline) if (!existsSync(path.join(directory, relative))) deletions.set(path.join(root, relative), bytes);
+    return { overrides: result, before, inputs, deletions };
   } finally { rmSync(directory, { recursive: true, force: true }); }
 }

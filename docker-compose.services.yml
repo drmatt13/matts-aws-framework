@@ -74,11 +74,7 @@ x-service: &service
   depends_on:
     postgres:
       condition: service_healthy
-    prisma-migrate:
-      condition: service_completed_successfully
-    prune-cognito-orphans:
-      condition: service_completed_successfully
-    seed-test-user:
+    prisma-verify:
       condition: service_completed_successfully
 x-service-environment: &service-environment
   AWS_PROFILE: ${LOCAL_AWS_PROFILE:-default}

@@ -3,7 +3,7 @@ import type { AwsProfileInfo, DeployMode, DockerView, DriftView, JobView, Operat
 import type { JobManager, JobSpec, JobStep } from "./jobs";
 import type { LocalEnvironment } from "./local";
 import { AwsObserver } from "./observe";
-import type { PlanStore } from "./plans";
+import type { PlanStore, TeardownStore } from "./plans";
 import { clientCommand, composePlugin } from "./local-commands";
 import { studioEnvironment, tethered, type CommandSpec, type Runner, type Tools } from "./process";
 
@@ -37,6 +37,7 @@ export interface OperationContext {
   readonly exportDirectory: string;
   readonly jobs: JobManager;
   readonly plans: PlanStore;
+  readonly teardowns: TeardownStore;
   readonly local: LocalEnvironment;
   readonly observer: AwsObserver;
   profiles(): Promise<readonly AwsProfileInfo[]>;
@@ -125,7 +126,7 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     const declared = target(context, name);
     const credentials = await profile(context, params);
     const regionName = region(params) ?? declared.region;
-    const review = text(params, "review");
+    const review = text(params, "review") ?? (declared.mode === "prod" ? "change-set" : "template");
     if (review !== undefined && review !== "template" && review !== "change-set") throw new OperationError(400, "A review is template or change-set.");
     const createSecrets = flag(params, "createSecrets");
     const autoApply = flag(params, "autoApply");
@@ -136,7 +137,7 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     let stopFollowing: (() => void) | undefined;
     const steps: JobStep[] = [
       {
-        label: declared.mode === "prod" ? "Synthesize and prepare change sets" : "Synthesize and compare",
+        label: review === "change-set" ? "Synthesize and prepare change sets in AWS" : "Synthesize and compare AWS templates (read-only)",
         command: () => context.tools.script("scripts/deploy.ts", [
           "--all", ...cdkContext(name, declared.mode), ...awsArguments(credentials.name, regionName),
           "--plan", directory, ...(review ? ["--review", review] : []), ...(createSecrets ? ["--create-secrets"] : []),
@@ -188,12 +189,12 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     const plan = context.plans.read(key);
     if (!plan) throw new OperationError(404, "That plan no longer exists. Plan again.");
     const name = plan.identity.deployment;
-    target(context, name);
     const credentials = await profile(context, { ...params, profile: text(params, "profile") ?? plan.profile });
     if (plan.result) throw new OperationError(409, "This plan was already applied. Plan again for further changes.");
     if (plan.expired) throw new OperationError(409, `This plan expired at ${plan.expiresAt}. Plan again.`);
     if (plan.status === "no-changes") throw new OperationError(409, "This plan changes nothing.");
     if (plan.status === "needs-secrets") throw new OperationError(409, "This plan could not prepare change sets until its new secrets exist. Plan again, creating them.");
+    if (plan.status === "blocked" || plan.reviewEvidence?.problems.length) throw new OperationError(409, "Analysis is incomplete. Resolve its errors and plan again.");
     const confirm = text(params, "confirm");
     if (plan.confirmation.level === "name" && confirm !== name) throw new OperationError(428, `Type ${name} to apply this plan: ${plan.confirmation.reasons.join("; ")}.`);
     if (confirm !== undefined && confirm !== name) throw new OperationError(400, `${confirm} does not name ${name}.`);
@@ -239,20 +240,27 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     const name = deploymentName(params);
     const deployMode = mode(params);
     const credentials = await profile(context, params);
-    const regionName = region(params) ?? context.targets().find((entry) => entry.name === name)?.region;
+    const regionName = region(params);
     const confirm = text(params, "confirm");
     if (confirm !== name) throw new OperationError(428, `Type ${name} to delete it.`);
+    const review = text(params, "review");
+    if (!review) throw new OperationError(428, "Review the exact deployed stack set before deleting it.");
+    const reviewed = context.teardowns.read(review);
+    if (regionName && regionName !== reviewed.region) throw new OperationError(409, "The selected region differs from the reviewed deletion.");
+    if (reviewed.deployment !== name || reviewed.mode !== deployMode || !reviewed.digest || !reviewed.expiresAt || Date.parse(reviewed.expiresAt) < Date.now()) throw new OperationError(409, "This deletion review expired or names another destination. Review deletion again.");
+    if (reviewed.blockers?.length) throw new OperationError(409, reviewed.blockers.join("; "));
     const retainFailed = flag(params, "retainFailed");
+    if (retainFailed !== Boolean(reviewed.policy?.retainFailed)) throw new OperationError(409, "Retained-resource policy changed. Review deletion again.");
     let stopFollowing: (() => void) | undefined;
     return {
       kind: "destroy", title: `Delete ${name}`, params: { deployment: name, mode: deployMode, profile: credentials.name, ...(retainFailed ? { retainFailed } : {}) },
       deployment: name, locks: [`deployment:${name}`], cancelNote: CLOUD_CANCEL_NOTE,
       steps: [{
         label: "Delete stacks, importers first",
-        run: async (step) => { stopFollowing = context.followStacks(step.job, credentials.name, name, regionName); },
+        run: async (step) => { stopFollowing = context.followStacks(step.job, credentials.name, name, reviewed.region); },
         command: () => context.tools.script("scripts/destroy.ts", [
-          "--deployment", name, "-c", `prodDeployment=${deployMode === "prod"}`, ...awsArguments(credentials.name, regionName),
-          "--confirm", name, ...(retainFailed ? ["--retain-failed"] : []),
+          "--apply", context.teardowns.path(review), ...awsArguments(credentials.name, reviewed.region),
+          "--confirm", name,
         ], studioEnvironment(context.env, { profile: credentials.name })),
         after: (_result, step) => step.setSummary(`${name} is deleted.`),
       }],
@@ -300,14 +308,16 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
           if (exported.deployment !== name) throw new Error(exported.deployment ? `This machine's settings point at ${exported.deployment}, not ${name}. Export ${name} first.` : `This machine has no exported settings. Export ${name} first.`);
         },
       },
-      { label: "Generate and start containers", command: () => context.tools.node("scripts/dev.mjs", ["--detach", "--profile", credentials.name], env) },
+      { label: "Generate source projections, verify database and start containers", command: () => context.tools.node("scripts/dev.mjs", ["--detach", "--profile", credentials.name], env) },
       {
         label: "Watch source and start the web client",
         run: async (step) => {
           context.local.writeRunRecord({ profile: credentials.name, deployment: name, startedAt: new Date().toISOString() });
           context.startManaged("local-watch", credentials.name);
           context.startManaged("local-client", credentials.name);
-          step.setSummary(`Development is running against ${name}.`);
+          step.log("Starting local compute. Database migrations, orphan cleanup and test identity setup are separate actions; no startup data writes are authorized.");
+          await context.local.waitUntilReady(step.signal, () => ({ watch: { running: !!context.jobs.holder("local-watch") }, client: { running: !!context.jobs.holder("local-client") } }), Number(context.env.FRAMEWORK_LOCAL_READY_TIMEOUT_MS ?? 60_000));
+          step.setSummary(`Local services for ${name} are ready; the web client answers HTTP requests.`);
         },
       },
     );
@@ -345,7 +355,11 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     const credentials = await profile(context, params);
     return {
       kind: "local-restart", title: "Apply changes to running containers", params: { profile: credentials.name }, locks: ["local"],
-      steps: [{ label: "Recreate containers whose settings changed", command: () => context.tools.node("scripts/dev.mjs", ["--detach", "--profile", credentials.name], studioEnvironment(context.env, { profile: credentials.name })), after: (_result, step) => step.setSummary("Containers run with the current settings.") }],
+      steps: [{ label: "Verify storage and recreate containers with current settings", command: () => context.tools.node("scripts/dev.mjs", ["--detach", "--profile", credentials.name], studioEnvironment(context.env, { profile: credentials.name })) },
+        { label: "Confirm local application readiness", run: async step => {
+          await context.local.waitUntilReady(step.signal, () => ({ watch: { running: !!context.jobs.holder("local-watch") }, client: { running: !!context.jobs.holder("local-client") } }), Number(context.env.FRAMEWORK_LOCAL_READY_TIMEOUT_MS ?? 60_000));
+          step.setSummary("Containers use current settings and the web client answers HTTP requests. Database and identity writes remain separate.");
+        } }],
       onSettled: () => context.changed(undefined, undefined),
     };
   },

@@ -26,6 +26,7 @@ export interface DatabaseTarget {
   readonly detail: string;
   /** Hash of resolved private identity, never a connection string or credential. */
   readonly identity: string;
+  readonly handoffs?: readonly { readonly deployment: string; readonly account?: string; readonly region?: string; readonly command: string; readonly detail: string }[];
 }
 
 export interface DatabaseWorkbench {

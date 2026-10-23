@@ -94,10 +94,23 @@ Views, triggers, functions and other objects outside Prisma's supported comparis
 need separate review.
 
 The local target resolves the existing literal Compose PostgreSQL binding and configured
-loopback port. Connection values remain server-side. Inspection enforces a read-only
-PostgreSQL session and never starts Compose: startup can apply migrations and clean data.
-Production RDS inspection/application is deliberately unavailable until a private IAM/TLS
-access path is integrated. The Development/Production graph switch never selects a database.
+loopback port. Operational-only overrides preserve it; connection-changing overrides use
+read-only `docker compose config` resolution and require a unique loopback-only binding.
+Missing or ambiguous effective configuration remains unavailable. Connection values stay
+server-side. Inspection enforces a read-only session and never starts Compose. Local startup
+only verifies storage; migrations, orphan cleanup and test identity setup are separate actions.
+Production RDS uses the existing VPC `db-migrate` task with private-database IAM/TLS access. Select the named production
+deployment and AWS profile, then **Check database task destination** to read AWS metadata.
+Studio verifies the pinned account/region, stable tasks stack and stack-owned task definition.
+An old task lacking reviewed protocol v1 is a deployment prerequisite, never launched for
+inspection. The destination dialog displays the exact task ARN/revision, cluster, subnets,
+security groups, public-IP assignment, CloudWatch destination and billing effects. The task
+uses its declared VPC networking and may receive a public IP; the database remains private
+and IAM/TLS authenticated. Preparation and application bind the full resolved launch/log
+descriptor; changed placement, cluster or log routing requires a new review.
+Type **Inspect &lt;deployment&gt;** to authorize one billed Fargate read-only inspection task.
+No task starts merely from selecting a target, refreshing or preparing its destination.
+The Development/Production graph switch never selects a database.
 
 ## History and migration planning
 
@@ -122,7 +135,9 @@ hint. Studio never guesses the newest folder, an abandoned snapshot or an unknow
 origin. An empty baseline is offered for a new migration graph.
 
 Pinned Prisma runs `contract emit` and `migration plan` in a disposable source copy with
-private environment inputs excluded. The review contains the actual proposed TypeScript,
+the same bounded authored configuration dependency closure used by validation. Imported
+local helpers participate in review identity; changing one expires artifact installation.
+Private environment inputs and dotenv files remain excluded. The review contains the actual proposed TypeScript,
 metadata, operations and snapshot bytes. A no-op storage plan is a valid result. Required
 fields, narrowing changes or data transformations may produce placeholders and incomplete
 emitted operations; fill `migration.ts` and self-emit through the supported terminal workflow
@@ -167,12 +182,64 @@ marker, baseline and path. Prisma's runner executes the selected migrations and 
 their application; migration code can transform or delete data. No reset, direct schema
 synchronization, signing, repair or ref advancement is offered as an automatic recovery.
 
+For a marker-less target, **Review empty database initialization** separately verifies the
+absence of application objects (including views, functions, enums, sequences, extra user
+schemas and large objects), previews every native initialization statement/parameter plus
+Prisma control-table DDL and requires typing **Initialize Local PostgreSQL**.
+Emptiness, source, target identity and exact native plan are checked again inside the writer
+transaction under canonical migration/initialization locks before any DDL.
+Unknown populated databases are never adopted, reset or automatically signed.
+
 Source/artifact effects, database execution and refresh are reported separately. An
 inspection failure after successful application does not undo it or justify repeating it.
 An interrupted/failed execution can leave unconfirmed database effects; inspect and review
-the target before retrying. This release's offline suites exercise pinned parsing, diffs
+the target before retrying. Redacted operation records survive restart and show execution
+stage, reviewed package names, stable error codes, SQLSTATE when available and confirmed
+results. A dead process's running record becomes interrupted and never resumes a write.
+An exclusive local operation lock prevents concurrent Studio processes from applying in
+the same checkout. This release's offline suites exercise pinned parsing, diffs
 and planning; local live runner behavior requires a deliberately disposable PostgreSQL
 integration test and explicit authorization before use against application data.
+
+Production inspection reads metadata, marker and ledger through a session forced read-only;
+it returns canonical pending packages, SQL and executable source in bounded, correlated
+CloudWatch envelope chunks. Review binds the image's authored config/migration inputs,
+full marker-map and ledger identities, SQL, account, region and exact task definition.
+Literal relative migration helper imports are included in source currency, image copying
+and preview; computed imports and workspace aliases are refused until made explicit.
+Type **Apply &lt;deployment&gt;** separately to launch the reviewed write task. The task rechecks
+source, exact pending edges and review digest, then acquires the pinned canonical runner's
+PostgreSQL advisory transaction locks and rechecks marker/ledger and strict historical
+physical schema on that same connection before any DDL. These locks coordinate Prisma
+migrations, not arbitrary external SQL clients. Schema verification has the same modeled
+storage limits as local inspection. A marker-less production target has a distinct reviewed
+initialization path only when the metadata-complete empty proof and absent marker/ledger
+succeed. It previews all native precheck/execute/postcheck SQL and parameters, plus canonical
+control-table DDL, and requires typing **Initialize &lt;deployment&gt;** before a second task.
+The initializer captures complete canonical runner inputs using a replacement runner on
+the forced-read-only connection; no real writer runner is constructed during inspection.
+Presentation-only DDL previews never authorize execution. The writer binds the full native
+operations digest, rechecks exact additive SQL and emptiness under its transaction locks,
+and refuses changed parameters, checks, non-DDL operations or occupied storage. No migration
+graph is needed for a genuinely empty app schema. Populated or partially initialized unknown
+storage is never adopted/reset. Source undo never rolls back database data.
+
+Cloud tasks persist a redacted pre-submission record before launch, then task ARN, client
+token/started-by ID, destination, CloudWatch group/stream and terminal result. Missing chunks,
+unexpected task versions, timeouts and transport loss cannot establish write success; a
+submitted task can continue after Studio closes. Inspect the exact recorded task and database
+before requesting another write. If no ARN returned, locate it with ECS `list-tasks
+--started-by <requestId>` in the recorded cluster/profile/region. No task is automatically
+retried or cancelled. Confirmed application remains applied even if local journal refresh fails.
+
+Operation journals live in `.cache/framework-studio/database-operations/` (or the configured
+Studio state directory), with fsynced atomic records. Unreadable records are explicit unknown
+outcomes, and unresolved records remain visible beyond newer inspections. An existing
+`active.lock` is never removed automatically. After inspecting the database/ledger or cloud
+task, proving its owner stopped and deciding an appropriate recovery, an operator can preserve
+the journal and remove only that stale lock. Never use lock removal to run concurrent writes.
+The checkout lock does not coordinate other checkouts; the database-side Prisma/advisory
+initialization locks provide the cooperating-database boundary.
 
 ## Implementation ownership
 
@@ -186,6 +253,12 @@ integration test and explicit authorization before use against application data.
   comparison and disposable, reviewed migration-artifact planning/installation.
 - `server/database-application.ts` owns separately reviewed local execution through the
   canonical Prisma path and runner.
+- `server/database-empty.ts` performs metadata-only emptiness checks; `server/database-operations.ts`
+  persists redacted effects and the cross-process application lock without replaying writes.
+- `server/database-cloud.ts` and `src/views/DatabaseCloud.tsx` own explicit cloud preparation,
+  task inspection/application, typed approvals, outcomes and recovery evidence. The task's
+  `review-task.ts` and `packages/database/scripts/studio-migrations.ts` own the versioned
+  read-only/reviewed-write protocol and pinned runner guard.
 - `server/server.ts` exposes the existing loopback/session/same-origin guarded APIs.
 
 Generated application artifacts, Prisma configuration and framework declarations keep their

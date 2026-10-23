@@ -207,6 +207,38 @@ test("the keyboard entity navigator browses connections and returns focus to the
   assert.equal(ui.screen.getByLabelText("Selection").textContent, "none", "keyboard navigation does not change source selection");
 });
 
+test("the visible resource navigator searches, filters and inspects canonical entities without source changes", async () => {
+  await mount();
+  const navigator = ui.screen.getByRole("navigation", { name: "Map resource navigator" });
+  assert.match(navigator.textContent!, /map shows declarations/);
+  ui.fireEvent.change(search(), { target: { value: "graphql" } });
+  const results = ui.within(navigator);
+  assert.ok(results.getByRole("button", { name: /graphql-api.*HTTP Lambda/ }));
+  assert.equal(results.queryByRole("button", { name: /sign-in/ }), null);
+  ui.fireEvent.change(results.getByRole("combobox", { name: "Map resource type" }), { target: { value: "HTTP Lambda" } });
+  ui.fireEvent.click(results.getByRole("button", { name: /graphql-api.*HTTP Lambda/ }));
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "lambda:graphql-api"));
+  assert.equal((search() as HTMLInputElement).value, "graphql");
+  ui.fireEvent.click(results.getByRole("button", { name: "Clear selection" }));
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "none"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Browse map resources" }));
+  assert.equal(ui.screen.queryByRole("navigation", { name: "Map resource navigator" }), null);
+  assert.equal((search() as HTMLInputElement).value, "graphql");
+});
+
+test("missing implementation is visible at its canonical map resource without changing topology", async () => {
+  const breakImplementation = (model: typeof response.snapshot.models.dev) => ({ ...model, targets: model.targets.map(target => target.ref === "lambda:graphql-api" ? { ...target, implementation: { ready: false, problems: ["Configured handler index.ts is missing."] } } : target) });
+  const failed = { ...response, snapshot: { ...response.snapshot, models: { dev: breakImplementation(response.snapshot.models.dev), prod: breakImplementation(response.snapshot.models.prod) } } };
+  const healthyScene = buildScene(response.snapshot.models.dev), brokenScene = buildScene(failed.snapshot.models.dev);
+  assert.deepEqual(brokenScene.nodes.map(node => [node.id, node.gx, node.gy]), healthyScene.nodes.map(node => [node.id, node.gx, node.gy]));
+  assert.deepEqual(brokenScene.nodes.find(node => node.id === "lambda:graphql-api")?.sourceProblems, ["Configured handler index.ts is missing."]);
+  await mount(false, undefined, failed);
+  const list = ui.screen.getByRole("navigation", { name: "Map resource navigator" });
+  const resource = ui.within(list).getByRole("button", { name: /graphql-api.*Needs attention/ });
+  ui.fireEvent.click(resource);
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "lambda:graphql-api"));
+});
+
 test("the map has one look and the real renderer fades nonmatches while highlighting matching icons", async () => {
   dom.window.localStorage.setItem("framework-studio:isometric-look", "classic");
   await mount();

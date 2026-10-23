@@ -17,6 +17,9 @@ export interface EditIntent {
 }
 
 export type DraftEdit =
+  | { readonly kind: "implementation"; readonly target: string }
+  | { readonly kind: "connection"; readonly target: string; readonly connection: "database" | "userPool" | "runsTask" | "startsWorkflow" | "invokesAgent" | "tool" | "resource" | "grant"; readonly destination?: string; readonly enabled: boolean; readonly variable?: string; readonly grant?: "grantRead" | "grantWrite" | "grantReadWrite" | "grantSendMessages" | "grantConsumeMessages"; readonly scope?: string }
+  | { readonly kind: "removeWorkload"; readonly target: string }
   | { readonly kind: "tags"; readonly entity: string; readonly tags: Readonly<Record<string, string>> }
   | import("./managed-database").DatabasePlacementEdit
   | { readonly kind: "removeNetwork"; readonly network: string }
@@ -46,6 +49,8 @@ export interface BatchPlanResponse {
 }
 
 export interface DiffLine {
+  /** First line of a separate unified-diff hunk. */
+  readonly hunk?: string;
   readonly kind: "context" | "remove" | "add";
   readonly text: string;
   readonly oldLine?: number;
@@ -65,6 +70,8 @@ export interface PreflightResult {
 }
 
 export interface PlanResponse {
+  /** Legacy single-edit callers must review these additional generated/source files when present. */
+  readonly changes?: BatchPlanResponse["changes"];
   readonly planId: string;
   readonly target: string;
   readonly field: string;
@@ -107,6 +114,9 @@ export interface CommandResult {
 }
 
 export interface SnapshotResponse {
+  readonly sourceRecovery?: readonly import("./source-recovery").SourceRecovery[];
+  readonly sourceRecoveryProblem?: string;
+  readonly sourceWatch?: import("./watch").SourceWatchState;
   readonly snapshot: Snapshot;
   readonly history: HistoryState;
   readonly evaluating: boolean;

@@ -175,6 +175,8 @@ export type EnvironmentValue =
   | { readonly kind: "reference"; readonly resource: string; readonly display: string };
 
 export interface ModelTarget {
+  /** Source artifacts only; never evidence that a process or AWS resource runs. */
+  readonly implementation?: { readonly ready: boolean; readonly problems: readonly string[] };
   /** `lambda:sign-in`: the framework's canonical reference, and this model's id. */
   readonly ref: string;
   readonly kind: TargetKind;

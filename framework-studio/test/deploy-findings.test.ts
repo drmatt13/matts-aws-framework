@@ -31,8 +31,9 @@ function input(overrides: Partial<FindingsInput> = {}): FindingsInput {
     name: "my-aws-app",
     target: { name: "my-aws-app", mode: "dev", origin: "personal" },
     context, profileKind: "sso",
-    local: local(), plans: [], jobs: [],
+    local: local(), jobs: [],
     ...overrides,
+    plans: (overrides.plans ?? []).map((plan) => ({ account: context.account, region: context.region, ...plan })),
   };
 }
 
@@ -46,11 +47,11 @@ test("an expired session is the one thing to fix, and Sign in is offered", () =>
   assert.equal(nextAction(deploymentFindings(keys))?.id, "refresh", "static keys do not sign in through a browser");
 });
 
-test("an absent development target is deployed in one step; production is planned for review", () => {
-  assert.deepEqual(nextAction(deploymentFindings(input()))?.label, "Deploy development");
+test("both development and production prepare explicit reviews", () => {
+  assert.deepEqual(nextAction(deploymentFindings(input()))?.label, "Compare AWS templates");
   const production = input({ name: "my-aws-app-prod", target: { name: "my-aws-app-prod", mode: "prod", origin: "declared", account: context.account } });
   const action = nextAction(deploymentFindings(production));
-  assert.deepEqual([action?.id, action?.label], ["plan", "Plan production deployment"]);
+  assert.deepEqual([action?.id, action?.label], ["plan", "Compare AWS templates"]);
 });
 
 test("a deployed development target whose outputs this machine lacks offers to export and start", () => {
@@ -183,4 +184,15 @@ test("a deployment read from another region than its pin offers nothing to do th
   });
   assert.equal(codes(value).includes("TARGET_ABSENT"), false, "absence in this region says nothing about the pinned one");
   assert.equal(deploymentFindings(value).flatMap((finding) => finding.actions).some((action) => action.id === "deploy" || action.id === "delete"), false);
+});
+
+test("a failed verification is persistent recovery evidence, while another account's plan is excluded", () => {
+  const plan = { key: "saved-review-abc123", deployment: "my-aws-app", mode: "dev" as const, account: context.account, region: context.region, status: "ready" as const, createdAt: "2026-10-22T10:00:00Z", expired: false, applied: "unverified" as const };
+  const ours = input({ deployment: deployed(), plans: [plan] });
+  const recovery = deploymentFindings(ours).find((finding) => finding.code === "OPERATION_UNVERIFIED");
+  assert.equal(recovery?.severity, "blocking");
+  assert.equal(nextAction(deploymentFindings(ours))?.plan, plan.key);
+  assert.equal(deploymentFindings(ours).some((finding) => /^Deployed ·/.test(finding.title)), false);
+  const foreign = input({ deployment: deployed(), plans: [{ ...plan, account: "111122223333" }] });
+  assert.equal(codes(foreign).includes("OPERATION_UNVERIFIED"), false);
 });

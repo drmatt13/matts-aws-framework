@@ -2,7 +2,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { defineNetwork, type InterfaceEndpointService } from "@repo/framework/config";
-import { readCreationRequest, CreationValidationError, networkCreationProblem, type CreationRequest } from "../../shared/creation";
+import { readCreationRequest, CreationValidationError, defaultImplementationDirectory, networkCreationProblem, type CreationRequest } from "../../shared/creation";
 import { DESCRIPTION_FILE } from "../../shared/descriptions";
 import { rewriteDescription } from "../descriptions";
 import { toRelative } from "../files";
@@ -13,6 +13,7 @@ import { parseOrigin } from "../model/origin";
 import { EditError } from "./io";
 import { readCatalogSource } from "../source/catalog";
 import { isCreationGeneratedFile } from "./creation-generation";
+import { assertWorkspaceDirectory } from "./workspace";
 
 export interface CreationExpectation { readonly select: string; readonly targets: readonly string[]; readonly resources: readonly string[]; readonly routes: readonly string[]; readonly kind: CreationRequest["kind"]; readonly network?: { readonly id: string; readonly cidr: string; readonly zones: number; readonly natGateway: boolean; readonly egressOnlyInternetGateway: boolean; readonly gatewayEndpoints: readonly string[]; readonly interfaceEndpoints: readonly string[] } }
 export interface CreationSource { readonly overrides: ReadonlyMap<string, string>; readonly before: ReadonlyMap<string, string | null>; readonly expected: CreationExpectation; readonly impact: readonly string[] }
@@ -23,9 +24,10 @@ function refuse(field: string, message: string): never { throw new CreationValid
  * This authority is used only for a server-generated creation batch. */
 export function assertCreationFile(root: string, relative: string): string {
   const allowed = isCreationGeneratedFile(relative) || relative === "framework.config.ts" || /^framework-config\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\.ts$/.test(relative)
-    || /^cdk-app\/lambda_functions\/(?:http_functions|event_functions|websocket_functions)\/[a-z][a-z0-9-]*\/index\.ts$/.test(relative)
-    || /^cdk-app\/ecs_containers\/(?:tasks|services)\/[a-z][a-z0-9-]*\/(?:index\.mjs|Dockerfile|package\.json)$/.test(relative)
-    || /^agents\/[a-z][a-z0-9-]*\/(?:(?:index|contract)\.ts|package\.json|tsconfig\.json)$/.test(relative)
+    || /^(?:cdk-app\/(?:lambda_functions|ecs_containers)|agents|archived-workloads\/(?:lambda|service|task|agent))\/(?:[A-Za-z0-9_-]+\/)+(?:[A-Za-z0-9_.-]+\.(?:ts|tsx|js|mjs|cjs|json|py|txt|md)|Dockerfile|\.env\.example)$/.test(relative)
+    || /^cdk-app\/lambda_functions\/(?:[A-Za-z0-9_-]+\/)+(?:index\.ts|contract\.ts|lambda_function\.py|Dockerfile|requirements\.txt)$/.test(relative)
+    || /^cdk-app\/ecs_containers\/(?:[A-Za-z0-9_-]+\/)+(?:index\.mjs|Dockerfile|package\.json)$/.test(relative)
+    || /^agents\/(?:[A-Za-z0-9_-]+\/)+(?:(?:index|contract)\.ts|package\.json|tsconfig\.json)$/.test(relative)
     || /^cdk-app\/lib\/app\/[a-z][a-z0-9-]*-stack\.ts$/.test(relative)
     || relative === "cdk-app/bin/cdk-app.ts" || /^cdk-app\/\.env\.(?:dev|prod)\.template$/.test(relative);
   if (!allowed || relative.split("/").some((part) => part === ".." || part === ".") || relative.includes("\\")) throw new EditError(422, "This is not a creator-owned source path.");
@@ -192,7 +194,9 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
   };
   const fresh = (relative: string, text: string) => {
     const file = assertCreationFile(root, relative);
-    if (existsSync(file) || overrides.has(file)) refuse("id", "A source file already exists for this identity. Choose another identifier.");
+    if (request.implementation === "existing") return;
+    if (path.basename(relative) === "package.json") assertWorkspaceDirectory(root, path.dirname(relative));
+    if (existsSync(file) || overrides.has(file)) refuse("directory", `The starter file ${relative} already exists. Existing code was preserved. Choose Use existing code or another implementation directory.`);
     put(relative, text);
   };
   const models = Object.values(state.snapshot.models);
@@ -204,7 +208,7 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
   function register(section: string, _id: string, expression: string, imports = "") {
     const relative = `framework-config/workloads/${section.toLowerCase()}.ts`;
     const absolute = path.join(root, relative);
-    const types: Record<string, string> = { http: "HttpSection", webSocket: "WebSocketSection", events: "EventsSection", workflows: "WorkflowsSection", services: "ServicesSection", tasks: "TasksSection", agents: "AgentsSection" };
+    const types: Record<string, string> = { http: "HttpSection", webSocket: "WebSocketSection", events: "EventsSection", workflows: "WorkflowsSection", services: "ServicesSection", tasks: "TasksSection", agents: "AgentsSection", tools: "ToolsSection" };
     let rootText = read("framework.config.ts");
     const rootCall = objectCall("framework.config.ts", rootText, "defineFrameworkConfig");
     const rootProperty = findProperty(rootCall.object, section);
@@ -416,8 +420,7 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
       impact.push("The new route reuses the existing function's authentication and all target settings; its construct identity and handler are preserved.");
     } else {
       uniqueTarget(request.id);
-      const group = request.category === "event" ? "event_functions" : request.category === "http" ? "http_functions" : "websocket_functions";
-      const directory = `/lambda_functions/${group}/${request.id}`;
+      const directory = request.directory || defaultImplementationDirectory(request.kind, request.id, request.category)!;
       const auth = request.category === "http" && request.auth;
       const handler = auth
         ? 'import { authenticated } from "@repo/framework/runtime/auth";\nimport { jsonResponse } from "@repo/framework/runtime/http";\n\nexport const lambdaHandler = authenticated(async (_event, session) => {\n  return jsonResponse(200, { message: "Ready", userId: session.payload.sub });\n});\n'
@@ -437,7 +440,7 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
   } else if (request.kind === "task" || request.kind === "service") {
     uniqueTarget(request.id);
     const service = request.kind === "service";
-    const directory = `/ecs_containers/${service ? "services" : "tasks"}/${request.id}`;
+    const directory = request.directory || defaultImplementationDirectory(request.kind, request.id)!;
     const code = service
       ? `import { createServer } from "node:http";\n\ncreateServer((request, response) => {\n  response.setHeader("content-type", "application/json");\n  response.end(JSON.stringify(request.url === "/health" ? { status: "ok" } : { message: "Ready" }));\n}).listen(${request.port}, "0.0.0.0");\n`
       : 'const input = JSON.parse(process.env.FRAMEWORK_TASK_INPUT ?? "{}");\nif (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("Task input must be an object.");\n// Implement run-to-completion work here. A zero exit code reports success.\nconsole.log("Task completed");\n';
@@ -461,24 +464,36 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
     expected.select = `workflow:${request.id}`; expected.targets.push(expected.select);
   } else if (request.kind === "agent") {
     uniqueTarget(request.id);
+    const directory = (request.directory || defaultImplementationDirectory("agent", request.id)!).replace(/^\//, "");
+    const modelStarter = request.starter === "model";
     for (const tool of request.tools) if (!models[0]!.targets.some((target) => target.role === "tool" && target.id === tool)) refuse("tools", "Choose existing tool IDs.");
-    const modelDependencies = JSON.parse(readFileSync(path.join(root, "packages/models/package.json"), "utf8")).dependencies as Record<string, string>;
+    const modelDependencies = modelStarter ? JSON.parse(readFileSync(path.join(root, "packages/models/package.json"), "utf8")).dependencies as Record<string, string> : {};
     const frameworkDependencies = JSON.parse(readFileSync(path.join(root, "packages/framework/package.json"), "utf8")).dependencies as Record<string, string>;
-    if (!modelDependencies["@langchain/core"] || !frameworkDependencies.zod) throw new EditError(422, "The shared agent model and contract dependencies could not be resolved.");
-    fresh(`agents/${request.id}/package.json`, JSON.stringify({ name: `@repo/${request.id}`, private: true, scripts: { typecheck: "tsc --noEmit" }, dependencies: { "@repo/framework": "*", "@repo/models": "*", "@langchain/core": modelDependencies["@langchain/core"], zod: frameworkDependencies.zod } }, null, 2) + "\n");
-    fresh(`agents/${request.id}/tsconfig.json`, JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", strict: true, noEmit: true, types: ["node"], skipLibCheck: true }, include: ["*.ts"] }, null, 2) + "\n");
-    fresh(`agents/${request.id}/contract.ts`, 'import { z } from "zod";\n\nexport const contract = {\n  request: z.object({ message: z.string().min(1).max(8000) }),\n  response: z.object({ text: z.string() }),\n} as const;\n');
-    fresh(`agents/${request.id}/index.ts`, `import { agent } from "@repo/framework/runtime/agentcore";\nimport { getModel, extractText, toModelMessages } from "@repo/models";\nimport { HumanMessage, ToolMessage, type BaseMessage } from "@langchain/core/messages";\nimport { contract } from "./contract";\n\nexport const handler = agent(${q(request.id)}, contract).respond(async (input, { tools, signal }) => {\n  const base = await getModel();\n  const model = tools.specs.length ? base.bindTools(tools.specs.map((tool) => ({ type: "function" as const, function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } }))) : base;\n  const messages: BaseMessage[] = [new HumanMessage(input.message)];\n  for (let turn = 0; turn < 8; turn += 1) {\n    const response = await model.invoke(toModelMessages(messages), { signal });\n    messages.push(response);\n    if (!response.tool_calls?.length) return { text: extractText(response.content) };\n    for (const call of response.tool_calls) {\n      if (!call.id) throw new Error("The model returned a tool call without an ID.");\n      const result = await tools.call(call.name, call.args);\n      messages.push(new ToolMessage({ tool_call_id: call.id, content: JSON.stringify(result) }));\n    }\n  }\n  throw new Error("The agent reached its tool-call limit.");\n});\n`);
+    if (modelStarter && !modelDependencies["@langchain/core"] || !frameworkDependencies.zod) throw new EditError(422, "The shared agent model and contract dependencies could not be resolved.");
+    fresh(`${directory}/package.json`, JSON.stringify({ name: `@repo/${request.id}`, private: true, scripts: { typecheck: "tsc --noEmit" }, dependencies: { "@repo/framework": "*", ...(modelStarter ? { "@repo/models": "*", "@langchain/core": modelDependencies["@langchain/core"] } : {}), zod: frameworkDependencies.zod } }, null, 2) + "\n");
+    fresh(`${directory}/tsconfig.json`, JSON.stringify({ compilerOptions: { target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", strict: true, noEmit: true, types: ["node"], skipLibCheck: true }, include: ["*.ts"] }, null, 2) + "\n");
+    fresh(`${directory}/contract.ts`, 'import { z } from "zod";\n\nexport const contract = {\n  request: z.object({ message: z.string().min(1).max(8000) }),\n  response: z.object({ text: z.string() }),\n} as const;\n');
+    fresh(`${directory}/index.ts`, modelStarter ? `import { agent } from "@repo/framework/runtime/agentcore";\nimport { getModel, extractText, toModelMessages } from "@repo/models";\nimport { HumanMessage, ToolMessage, type BaseMessage } from "@langchain/core/messages";\nimport { contract } from "./contract";\n\nexport const handler = agent(${q(request.id)}, contract).respond(async (input, { tools, signal }) => {\n  const base = await getModel();\n  const model = tools.specs.length ? base.bindTools(tools.specs.map((tool) => ({ type: "function" as const, function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } }))) : base;\n  const messages: BaseMessage[] = [new HumanMessage(input.message)];\n  for (let turn = 0; turn < 8; turn += 1) {\n    const response = await model.invoke(toModelMessages(messages), { signal });\n    messages.push(response);\n    if (!response.tool_calls?.length) return { text: extractText(response.content) };\n    for (const call of response.tool_calls) {\n      if (!call.id) throw new Error("The model returned a tool call without an ID.");\n      const result = await tools.call(call.name, call.args);\n      messages.push(new ToolMessage({ tool_call_id: call.id, content: JSON.stringify(result) }));\n    }\n  }\n  throw new Error("The agent reached its tool-call limit.");\n});\n` : `import { agent } from "@repo/framework/runtime/agentcore";\nimport { contract } from "./contract";\n\nexport const handler = agent(${q(request.id)}, contract).respond(async input => ({ text: input.message }));\n`);
     const extra = binding(request, false);
     const extraEnv = extra ? extra.replace(/^environment: \{ /, "").replace(/ \},$/, "") : "";
-    register("agents", request.id, `{ ${q(request.id)}: { tags: ${q(request.tags ?? {})}, directory: ${q(`/agents/${request.id}`)}, deploy: ${q(request.deploy)}, ${request.auth ? "auth: true," : ""} ${request.path ? `route: ${q(request.path)},` : ""} tools: ${q(request.tools)}, environment: { ...models.environment, ${extraEnv} }, cloud: { access: models.access, requirements: models.requirements } } }`, 'import { models } from "../shared/models";\n' + (request.bindingResource ? bindingImport : ""));
+    register("agents", request.id, `{ ${q(request.id)}: { tags: ${q(request.tags ?? {})}, directory: ${q(`/${directory}`)}, deploy: ${q(request.deploy)}, ${request.auth ? "auth: true," : ""} ${request.path ? `route: ${q(request.path)},` : ""} tools: ${q(request.tools)}, environment: { ${modelStarter ? "...models.environment," : ""} ${extraEnv} }, ${modelStarter ? "cloud: { access: models.access, requirements: models.requirements }" : ""} } }`, (modelStarter ? 'import { models } from "../shared/models";\n' : '') + (request.bindingResource ? bindingImport : ""));
     expected.select = `agent:${request.id}`; expected.targets.push(expected.select);
-    impact.push("Uses @repo/models' shared provider selection, model IDs, secrets and IAM. The request is stateless; each invocation has the framework's existing session ownership and cancellation behavior.", "Adds a workspace with declared dependencies and a TypeScript check. Rebuild local development images for the new workspace before invoking it locally.");
+    impact.push(modelStarter ? "Uses @repo/models shared provider selection, secrets and IAM. Model calls incur provider charges." : "Echo returns the message without calling a model or requiring model provider inputs.", "Adds a workspace with declared dependencies and a TypeScript check. Rebuild local development images for the new workspace before invoking it locally.");
+  } else if (request.kind === "tool") {
+    uniqueTarget(request.id);
+    const directory = request.directory || defaultImplementationDirectory("tool", request.id)!;
+    fresh(`cdk-app${directory}/contract.ts`, 'import { z } from "zod";\n\nexport const contract = {\n  description: "Return the supplied message.",\n  request: z.object({ message: z.string().min(1).max(8000) }),\n  response: z.object({ message: z.string() }),\n} as const;\n');
+    fresh(`cdk-app${directory}/index.ts`, `import { ${request.auth ? "authenticatedTool" : "tool"} } from "@repo/framework/runtime/tools";\nimport { contract } from "./contract";\n\nexport const lambdaHandler = ${request.auth ? "authenticatedTool" : "tool"}(contract, async input => ({ message: input.message }));\n`);
+    register("tools", request.id, `{ ${q(request.id)}: { tags: ${q(request.tags ?? {})}, directory: ${q(directory)}, ${request.auth ? "auth: true," : ""} ${binding(request, false)} } }`, request.bindingResource ? bindingImport : "");
+    expected.select = `lambda:${request.id}`; expected.targets.push(expected.select);
+    impact.push("A tool follows the agents that declare it. Add this tool to an agent to enable execution; creation neither invokes a model nor deploys a Gateway.");
   } else if (request.kind === "stack") {
     const classFile = request.className.replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
     const file = `cdk-app/lib/app/${classFile}.ts`;
     catalog([request.id], scopeCatalog(`resource.stack<${request.className}>({ tags: ${q(request.tags ?? {})} })`, request.scope), `import type { ${request.className} } from ${q(`../../cdk-app/lib/app/${classFile}`)};\n`);
-    fresh(file, `import { Stack, type StackProps, CfnOutput } from "aws-cdk-lib";\nimport { Queue } from "aws-cdk-lib/aws-sqs";\nimport type { Construct } from "constructs";\nimport { linkResources } from "../framework/framework-resources";\nimport { resources } from "../../../framework-config/resources";\n\nexport class ${request.className} extends Stack {\n  public readonly queue: Queue;\n\n  constructor(scope: Construct, id: string, props?: StackProps) {\n    super(scope, id, props);\n    this.queue = new Queue(this, "Queue", { enforceSSL: true });\n    new CfnOutput(this, "QueueUrl", { value: this.queue.queueUrl, exportName: this.stackName + ":QueueUrl" });\n    linkResources(this, resources.${request.id});\n  }\n}\n`);
+    const bucket = request.template === "bucket";
+    const member = bucket ? "bucket" : "queue", construct = bucket ? "Bucket" : "Queue", output = bucket ? "BucketName" : "QueueUrl";
+    fresh(file, `import { Stack, type StackProps, CfnOutput${bucket ? ", RemovalPolicy" : ""} } from "aws-cdk-lib";\n${bucket ? 'import { Bucket, BucketEncryption, BlockPublicAccess } from "aws-cdk-lib/aws-s3";' : 'import { Queue } from "aws-cdk-lib/aws-sqs";'}\nimport type { Construct } from "constructs";\nimport { linkResources } from "../framework/framework-resources";\nimport { resources } from "../../../framework-config/resources";\n\nexport class ${request.className} extends Stack {\n  public readonly ${member}: ${construct};\n\n  constructor(scope: Construct, id: string, props?: StackProps) {\n    super(scope, id, props);\n    this.${member} = new ${construct}(this, "${construct}", { enforceSSL: true${bucket ? ", encryption: BucketEncryption.S3_MANAGED, blockPublicAccess: BlockPublicAccess.BLOCK_ALL, removalPolicy: RemovalPolicy.RETAIN, autoDeleteObjects: false" : ""} });\n    new CfnOutput(this, "${output}", { value: this.${member}.${bucket ? "bucketName" : "queueUrl"}, exportName: this.stackName + ":${output}" });\n    linkResources(this, resources.${request.id});\n  }\n}\n`);
     let app = read("cdk-app/bin/cdk-app.ts");
     const source = parse("cdk-app/bin/cdk-app.ts", app);
     const orchestration = source.statements.find((statement) => ts.isVariableStatement(statement) && statement.declarationList.declarations.some((node) => ts.isIdentifier(node.name) && node.name.text === "orchestration"));

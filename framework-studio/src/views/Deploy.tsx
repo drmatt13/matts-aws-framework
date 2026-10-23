@@ -92,7 +92,8 @@ export function Deploy() {
   });
   const status = statusQuery.data?.ok ? statusQuery.data.value : undefined;
   const discovery = discoveryQuery.data?.ok ? discoveryQuery.data.value : status;
-  const problem = discoveryQuery.data && !discoveryQuery.data.ok ? discoveryQuery.data.problem : statusQuery.data && !statusQuery.data.ok ? statusQuery.data.problem : undefined;
+  const problem = statusQuery.data && !statusQuery.data.ok ? statusQuery.data.problem : !statusQuery.data && discoveryQuery.data && !discoveryQuery.data.ok ? discoveryQuery.data.problem : undefined;
+  const selectedContext = status?.context ?? (selectedRegion && selectedRegion !== discovery?.context.region ? undefined : discovery?.context);
 
   const rows: RailRow[] = useMemo(() => {
     const targets = overview?.targets ?? [];
@@ -111,7 +112,7 @@ export function Deploy() {
   }, [overview?.targets, discovery, status]);
   const row = rows.find((entry) => entry.name === selectedName) ?? rows[0];
   const plansQuery = useQuery({ queryKey: ["deploy", "plans"], queryFn: () => deployApi.plans() });
-  const driftQuery = useQuery({ queryKey: ["deploy", "drift", row?.name], queryFn: () => deployApi.drift(row!.name), enabled: Boolean(row) });
+  const driftQuery = useQuery({ queryKey: ["deploy", "drift", selectedContext?.account, selectedContext?.region, row?.name], queryFn: () => deployApi.drift(row!.name, selectedContext?.account, selectedContext?.region), enabled: Boolean(row && selectedContext) });
 
   useDeployLive({
     onJob: (job) => {
@@ -127,7 +128,11 @@ export function Deploy() {
       if (startedHere.current.has(job.id) && job.status === "failed") toast(`${job.title} failed: ${job.summary ?? "see Activity"}`);
       if (startedHere.current.has(job.id) && job.status === "succeeded" && job.summary && job.summary !== "Done." && job.kind !== "deploy-plan") toast(job.summary, "info");
     },
-    onEvent: (deployment, event) => setLiveEvents((current) => ({ ...current, [deployment]: [event, ...(current[deployment] ?? []).filter((entry) => entry.id !== event.id)].slice(0, 100) })),
+    onEvent: (deployment, event, destination) => {
+      if (!destination.account || !destination.region || !destination.profile) return;
+      const key = [destination.profile, destination.account, destination.region, deployment].join("|");
+      setLiveEvents((current) => ({ ...current, [key]: [event, ...(current[key] ?? []).filter((entry) => entry.id !== event.id)].slice(0, 100) }));
+    },
   });
 
   const operate = useCallback(async (kind: OperationKind, params: Record<string, string | boolean | undefined>): Promise<JobView | undefined> => {
@@ -167,10 +172,10 @@ export function Deploy() {
     // The selected deployment as its own status read it (in its pinned region), else as discovery saw it.
     name: row.name, target: row.target, match: status ? status.targets.find((entry) => entry.name === row.name) : row.match,
     deployment: status ? status.detail : row.deployment, detail: status?.detail,
-    context: status?.context ?? discovery?.context, profile, problem,
+    context: selectedContext, profile, problem,
     profileKind: overview.profiles.find((entry) => entry.name === profile)?.kind,
     local: overview.local, plans: plansQuery.data ?? [], jobs,
-  }) : []), [row, overview, awsKnown, status, discovery, profile, problem, plansQuery.data, jobs]);
+  }) : []), [row, overview, awsKnown, status, discovery, selectedContext, profile, problem, plansQuery.data, jobs]);
   const next = nextAction(findings);
 
   const act = (action: Action) => {
@@ -179,8 +184,8 @@ export function Deploy() {
     switch (action.id) {
       case "sign-in": void operate("aws-login", { profile }); break;
       case "refresh": refreshAll(); break;
-      case "deploy": void operate("deploy-plan", { deployment: name, profile, autoApply: row.mode === "dev" }); break;
-      case "plan": void operate("deploy-plan", { deployment: name, profile }); break;
+      case "deploy": void operate("deploy-plan", { deployment: name, profile, review: "template" }); break;
+      case "plan": void operate("deploy-plan", { deployment: name, profile, review: "template" }); break;
       case "review-plan": setReviewKey(action.plan); break;
       case "discard-plan": void operate("deploy-discard", { plan: action.plan, profile }); break;
       case "export": void operate("export", { deployment: name, profile }); break;
@@ -196,7 +201,8 @@ export function Deploy() {
 
   const more = (action: MoreAction) => {
     if (!row || !profile) return;
-    if (action === "plan") void operate("deploy-plan", { deployment: row.name, profile });
+    if (action === "plan") void operate("deploy-plan", { deployment: row.name, profile, review: "template" });
+    if (action === "change-sets") void operate("deploy-plan", { deployment: row.name, profile, review: "change-set" });
     if (action === "export") void operate("export", { deployment: row.name, profile });
     if (action === "drift") void operate("drift", { deployment: row.name, profile });
     if (action === "delete") setTeardown({ deployment: row.name, mode: row.mode, region: row.target?.region });
@@ -207,9 +213,10 @@ export function Deploy() {
   const events = useMemo(() => {
     if (!row) return [];
     const merged = new Map<string, StackEventView>();
-    for (const event of [...(liveEvents[row.name] ?? []), ...(status?.detail?.events ?? [])]) if (!merged.has(event.id)) merged.set(event.id, event);
+    const key = [profile, selectedContext?.account, selectedContext?.region, row.name].join("|");
+    for (const event of [...(liveEvents[key] ?? []), ...(status?.detail?.events ?? [])]) if (!merged.has(event.id)) merged.set(event.id, event);
     return [...merged.values()].sort((a, b) => b.time.localeCompare(a.time));
-  }, [row, liveEvents, status]);
+  }, [row, liveEvents, status, profile, selectedContext]);
 
   const reviewBusy = reviewKey ? runningFor(plansQuery.data?.find((plan) => plan.key === reviewKey)?.deployment)?.title : undefined;
 
@@ -223,10 +230,11 @@ export function Deploy() {
         profiles={overview.profiles}
         profile={profile}
         onProfile={setProfile}
-        context={discovery?.context}
+        context={selectedContext}
         problem={problem}
         loading={refreshing || overviewQuery.isFetching || discoveryQuery.isFetching || statusQuery.isFetching}
         readError={readError ? readError.message : undefined}
+        scopeNotice={discoveryQuery.data && !discoveryQuery.data.ok && status ? "Account discovery in the profile's default region could not be read: " + discoveryQuery.data.problem.message + ". The selected deployment's observation below is separate." : undefined}
         onRefresh={refreshAll}
         onSignIn={() => profile && void operate("aws-login", { profile })}
         prerequisites={overview.prerequisites}
@@ -243,10 +251,10 @@ export function Deploy() {
           {row ? (
             <Detail
               row={row}
-              context={status?.context ?? discovery?.context}
+              context={selectedContext}
               problem={problem}
               status={status}
-              statusLoading={statusQuery.isPending || discoveryQuery.isPending}
+              statusLoading={statusQuery.isFetching}
               record={discovery?.records[row.name]}
               findings={findings}
               awsKnown={awsKnown}
@@ -280,8 +288,9 @@ export function Deploy() {
           onDiscard={(plan) => { setReviewKey(undefined); void operate("deploy-discard", { plan: plan.key, profile: plan.profile ?? profile }); }}
           onReplan={(plan, createSecrets) => {
             setReviewKey(undefined);
+            if (plan.result) { void operate("deploy-plan", { deployment: plan.identity.deployment, profile: plan.profile ?? profile, review: plan.review }); return; }
             void operate("deploy-discard", { plan: plan.key, profile: plan.profile ?? profile }).then((job) => {
-              if (job) afterSuccess.current.set(job.id, () => void operate("deploy-plan", { deployment: plan.identity.deployment, profile: plan.profile ?? profile, ...(createSecrets ? { createSecrets: true } : {}) }));
+              if (job) afterSuccess.current.set(job.id, () => void operate("deploy-plan", { deployment: plan.identity.deployment, profile: plan.profile ?? profile, review: plan.review, ...(createSecrets ? { createSecrets: true } : {}) }));
             });
           }}
         />
@@ -294,10 +303,10 @@ export function Deploy() {
           region={teardown.region}
           busy={runningFor(teardown.deployment)?.title}
           onClose={() => setTeardown(undefined)}
-          onDelete={({ confirm, retainFailed }) => {
+          onDelete={({ confirm, retainFailed, review }) => {
             const target = teardown;
             setTeardown(undefined);
-            void operate("destroy", { deployment: target.deployment, mode: target.mode, profile, confirm, ...(target.region ? { region: target.region } : {}), ...(retainFailed ? { retainFailed: true } : {}) });
+            void operate("destroy", { deployment: target.deployment, mode: target.mode, profile, confirm, review, ...(target.region ? { region: target.region } : {}), ...(retainFailed ? { retainFailed: true } : {}) });
           }}
         />
       ) : null}

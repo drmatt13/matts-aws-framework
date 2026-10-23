@@ -86,6 +86,7 @@ export interface Island {
 }
 
 export interface SceneNode {
+  readonly sourceProblems?: readonly string[];
   /** View-only tag filtering, rendered with the existing disabled-resource style. */
   readonly tagFiltered?: true;
   readonly badge?: DeploymentBadgeKind;
@@ -209,6 +210,7 @@ function targetPresence(lanes: Lanes, mode: Mode): { presence: Presence; text: s
 // ---------------------------------------------------------------------------
 
 interface Item {
+  readonly sourceProblems?: readonly string[];
   readonly badge?: DeploymentBadgeKind;
   readonly icon: IconKey;
   readonly roleIcon?: IconKey;
@@ -248,6 +250,7 @@ interface IslandSpec {
 function targetItem(target: ModelTarget, mode: Mode): Item {
   const { presence, text } = targetPresence(target.lanes, mode);
   const base = {
+    sourceProblems: target.implementation?.ready === false ? target.implementation.problems : undefined,
     badge: deploymentBadge(target.lanes),
     icon: targetIcon(target),
     id: target.ref,

@@ -15,7 +15,7 @@ related:
 ---
 # Capability matrix
 
-Source inspected 2026-10-20. **Implemented** describes a code path, not successful browser/Docker/live-AWS validation in this documentation task. Use linked pages for exact symbols/tests and current boundaries.
+Source inspected 2026-10-22. **Implemented** describes a code path, not successful Docker/live-AWS validation. The implementation second-pass report records browser, isolated fixture and offline checks separately. Use linked pages for exact symbols/tests and current boundaries.
 
 | Surface | Status | Boundary / canonical page |
 | --- | --- | --- |
@@ -23,16 +23,18 @@ Source inspected 2026-10-20. **Implemented** describes a code path, not successf
 | Native resource attributes/grants | Implemented | Public linked CDK fields; required references must resolve; [resources/CDK](../framework/resources-and-cdk.md) |
 | Board / Isometric source graph | Implemented | Evaluated declarations plus bounded inference, not live topology; [graph](../studio/graph-model.md), [rendering](../studio/rendering.md) |
 | Inspector settings/defaults/routes | Implemented, bounded | Recognized fields/source shapes; reviewed source transformations; [editing](../studio/editing.md) |
-| Multi-file edit, undo/redo | Implemented, bounded | In-memory history; guarded restoration, no crash-atomic/durable transaction; [editing](../studio/editing.md) |
+| Multi-file edit, undo/redo | Implemented, bounded | Batch source application has a durable recovery journal; undo/redo history remains process-local. Recovery preserves subsequent edits; specialized editors retain their own boundaries; [editing](../studio/editing.md) |
 | General arbitrary code/CDK editing | Not implemented as a general UI editor | Narrow splices/native removals/creator scaffolds do not establish arbitrary editing |
-| Add to Application | Implemented in current source | Function, stack, independent VPC, workflow, service, task, route, agent, input, secret wizards; fixed templates/options and reviewed batch; [creation](../studio/creation-and-connections.md) |
-| Arbitrary resource CRUD / new tool wizard | Not provided by current creators | Native family support/handwritten tools may exist independently of creator UI; [extensions](../guides/extensions.md) |
+| Add to Application / implementation repair | Implemented, bounded | Function, tool, stack, independent VPC, workflow, service, task, route, agent, input and secret creators; configured paths, fixed runnable templates, missing-file repair and reviewed generated artifacts; [creation](../studio/creation-and-connections.md) |
+| Workload connections / removal | Implemented for supported literal declarations | Database, user pool, task, workflow, agent, tool, input/secret and scoped bucket/queue adapters; removal checks consumers and reviews an implementation archive. Arbitrary code and native resource CRUD remain source-owned; [creation](../studio/creation-and-connections.md), [extensions](../guides/extensions.md) |
 | Triggers/failure destinations/native edge removal | Implemented for supported adapters/source shapes | Capability/type compatibility and safe removal evidence required; [connections](../studio/creation-and-connections.md) |
-| Database schema visualization | Implemented read-only | Parses contract/Compose; no live introspection/migration editor; [graph](../studio/graph-model.md) |
+| Database schema and migration workbench | Implemented, bounded | Schema source review, offline migration planning, explicit read-only inspection and separately authorized database application. Production requires a deployed protocol-capable private IAM migration task; [database workbench](../../framework-studio/database-workbench.md) |
 | Input/secret declaration and protected value editing | Implemented, bounded | Fixed mode files/private details/redacted reviews; provisioning separate; [secrets](../deployment/secrets.md) |
 | Reviewed deployment, typed approval and ownership | Implemented | Saved assembly, fingerprints, account/identity and exact secret-write binding; [planning](../deployment/planning-and-safety.md) |
 | Staging | Named target using dev/prod semantics | No third mode/promotion pipeline; Studio graph remains binary; [environments](../deployment/environments.md) |
 | CF status/events/drift, synth inventory | Implemented | Observed vs synthesized vs source evidence kept separate; [operations](../deployment/operations.md) |
+| Deployed-stack teardown | Implemented, guarded | Immutable deployed identities and reviewed template/import/protection evidence; unreadable evidence blocks. Rechecks between dependency phases; current declarations are not the deletion target; [planning](../deployment/planning-and-safety.md) |
+| Source freshness and map discovery | Implemented | Visible watch degradation, polling fallback and manual reload; searchable resource navigator and source-artifact warnings. These are declaration checks, not running-service health; [snapshots](../studio/snapshots.md), [rendering](../studio/rendering.md) |
 | Deployment/job logs and local Docker logs | Implemented | Job stream/replay and bounded per-container fetch; [operations](../deployment/operations.md) |
 | CloudWatch application log/metric/trace explorer | Not implemented in Studio operational paths | CDK log groups and CloudFormation events are different capabilities; [operations](../deployment/operations.md) |
 | Node zip / container Lambda / services / tasks locally | Implemented | Node workers or Docker; Python zip local lane not implied; local trust/credentials differ; [local](../runtime/local-execution.md) |

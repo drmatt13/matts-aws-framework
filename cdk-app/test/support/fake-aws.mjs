@@ -97,6 +97,10 @@ switch (key) {
     const stack = requireStack();
     reply({ StackEvents: [...(stack.Events ?? [])] });
   }
+  case "cloudformation list-stack-resources": {
+    const stack = requireStack();
+    reply({ StackResourceSummaries: stack.Resources ?? [...new Map([...(stack.Events ?? [])].reverse().map(event => [event.LogicalResourceId, event])).values()] });
+  }
   case "cloudformation list-change-sets": {
     const stack = requireStack();
     reply({ Summaries: (stack.ChangeSets ?? []).map(({ Changes, ...summary }) => summary) });
@@ -105,10 +109,10 @@ switch (key) {
     const stack = requireStack();
     const set = (stack.ChangeSets ?? []).find((entry) => entry.ChangeSetName === options["change-set-name"] || entry.ChangeSetId === options["change-set-name"]);
     if (!set) fail("not-found");
-    reply(set);
+    reply({ ...set, StackId: stack.StackId });
   }
   case "cloudformation list-imports":
-    reply({ Imports: (account.imports ?? {})[options["export-name"]] ?? [] });
+    reply({ Imports: ((account.imports ?? {})[options["export-name"]] ?? []).filter((name) => !account.stacks.some((stack) => stack.StackName === name && stack.StackStatus === "DELETE_COMPLETE")) });
   case "cloudformation list-exports":
     reply({ Exports: account.exports ?? [] });
   case "cloudformation describe-stack-resources": {

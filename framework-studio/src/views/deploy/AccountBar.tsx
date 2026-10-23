@@ -16,6 +16,7 @@ export function AccountBar(props: {
   readonly problem?: AwsProblem;
   readonly loading: boolean;
   readonly readError?: string;
+  readonly scopeNotice?: string;
   readonly onRefresh: () => void;
   readonly onSignIn?: () => void;
   readonly prerequisites: readonly PrerequisiteView[];
@@ -65,6 +66,7 @@ export function AccountBar(props: {
         </button>
       </div>
       {props.readError ? <p className="account-read-error" role="alert"><AlertTriangle size={14} aria-hidden /><span>Some information could not be refreshed. {props.readError} Try Refresh again.</span></p> : null}
+      {props.scopeNotice ? <p className="account-read-error" role="status">{props.scopeNotice}</p> : null}
       {props.prerequisites.length ? <div className="machine-health">
         {ready.length ? <button className="machine-checks-toggle" aria-expanded={showReady} aria-controls={readyId} onClick={() => setShowReady(!showReady)}>
           <Check size={13} className="ok-mark" aria-hidden />

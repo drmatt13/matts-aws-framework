@@ -479,7 +479,7 @@ Framework Studio's **Deploy** tab (`framework-studio/src/views/Deploy.tsx`, comp
 | Part | What it shows and does |
 | --- | --- |
 | Account bar | The chosen profile resolved through the AWS CLI to account, region and caller, or a classified problem (expired session → **Sign in**). Healthy machine checks collapse into a named disclosure; warnings and remedies stay visible. Refresh shows progress, preserves previous results on partial failure, and remains available before profiles are configured. Uses the shared workspace toolbar. |
-| Rail | This repository's targets, other framework deployments in the account (read-only), and unrecognized lookalike stacks. Which deployment this machine's settings point at, and whether local development is running. |
+| Rail | This repository's targets, other framework deployments in the account (not declared here), and unrecognized lookalike stacks. Which deployment this machine's settings point at, and whether local development is running. |
 | Detail | Findings, most pressing first, with one primary action. Three panels: Repository (intent, mode, inputs, pins), AWS (stacks, pending change sets), This machine (Docker, settings, watch, web client, containers with logs). CloudFormation events, live during operations. |
 | Activity | Every operation as a job: its steps, a live numbered log, Cancel. The watch and the web client are jobs too, until stopped. |
 
@@ -492,7 +492,7 @@ own guards stay in the scripts.
 | Module (`framework-studio/server/deploy/`) | Responsibility |
 | --- | --- |
 | `routes.ts` | `/api/deploy`: GET overview, discover, status, teardown, plans, drift, job logs, container logs; POST operations, cancel, preferences. Behind the existing token, host and origin guards. |
-| `registry.ts` | The only operations: `deploy-plan` (optionally `autoApply` for dev), `deploy-apply`, `deploy-discard`, `destroy`, `export`, `local-start`, `local-stop`, `local-restart`, `local-attach-watch`, `deps-install`, `docker-start`, `aws-login`, `drift`. Parameters are validated (profile must be configured, names match the deployment pattern, plans are Studio's own); argv is fixed; no shell. |
+| `registry.ts` | The only operations: `deploy-plan` (review required for both modes), `deploy-apply`, `deploy-discard`, `destroy`, `export`, `local-start`, `local-stop`, `local-restart`, `local-attach-watch`, `deps-install`, `docker-start`, `aws-login`, `drift`. Parameters are validated (profile must be configured, names match the deployment pattern, plans are Studio's own); argv is fixed; no shell. |
 | `jobs.ts` | Attached children, numbered log lines (memory plus JSONL on disk), a lock per deployment and for local work, process-tree cancellation, records that survive a restart (a job that was running is reported interrupted, never resumed). |
 | `observe.ts` | AWS reads only through `deploy:status` (profiles, discover, status, watch) and `destroy:resources --plan`, with short caches and shared in-flight reads. |
 | `prereqs.ts`, `local.ts`, `local-commands.ts` | Tool probes; containers by Compose label; exported files; the direct commands for the web client and the watch. |
@@ -505,8 +505,8 @@ own guards stay in the scripts.
   and its apply needs the typed name when the plan says so (428 otherwise).
 - Deletion always needs the typed name, for development too, and shows the teardown plan
   (order, termination protection, what is retained or snapshotted, managed secrets) first.
-- A deployment discovered in the account but not declared here is read-only, except for
-  deletion.
+- A deployment discovered in the account but not declared here has no source/deploy controls;
+  identity-based deletion remains separately reviewed.
 - Secret values never reach Studio: plans, logs and events carry names only (tested with a
   sentinel value through a full deploy).
 - A change-set plan records each change set before preparing it (`preparing.json` in the
@@ -532,8 +532,7 @@ containers by label and offers **Resume watching**.
 - **Restart reconciliation** reports interrupted jobs and rereads AWS; it does not keep a
   separate intent record per operation. The job record is the record.
 - **Reconcile** is not a separate plan type: the findings name the next step, and every
-  step is an ordinary operation. Development's one click is plan-then-apply in one job, and
-  continues to apply only when the plan needs no confirmation.
+  step is an ordinary operation. Both modes pause for explicit review before applying.
 - **Adoption, orphan-stack removal and recovery operations** (continue-update-rollback,
   deleting a failed stack on its own) are not built. Failed first creates and paused updates
   recover by deploying again (the CDK CLI handles both); a stuck rollback is shown with
@@ -563,3 +562,13 @@ plan that first needs its secret created, local start and stop, teardown.
 A deploy, apply or teardown against real AWS, and starting the real Docker stack, need your
 authorization and were not run. Read-only discovery and status were run with the `dev`
 profile against 734849394764/us-east-1.
+
+## Safety and recovery update (2026-10-22)
+
+This update supersedes historical one-click development and template-only digest statements above. Both modes now follow **Compare AWS templates → Review → Apply saved plan**. CloudFormation change-set preparation is a separate explicitly named action; replan preserves the selected review method. Template comparison reads AWS but creates no review objects; production change-set preparation explicitly creates CloudFormation review objects and optional missing secrets. Failed security/template analysis is unknown and blocks apply. Security/template evidence and before/after resource properties are inspectable inside review; whole deployed stacks absent from the assembly are explicitly retained, including their ongoing costs. No-change wording covers current assembly templates only.
+
+One selected deployment/account/region controls the header and operations. Default-region discovery errors remain scoped separately. Observations show time, stale/partial evidence, and plans/drift/events use destination keys. Unverified, failed, interrupted and export-failed outcomes remain visible with recorded work and specific recovery; infrastructure completion is separate from app health. Stop-command controls disclose that AWS can continue.
+
+Saved apply/discard no longer evaluate current declarations. Complete staged assembly bytes are hashed; external asset links are refused. Atomic, fsynced phase/results preserve interrupted-attempt evidence and prevent blind retries. Teardown saves a 15-minute review of exact StackIds, account/region/mode, template/deletion policies/imports and explicit retain-failed/protection choices. Required missing consequence reads/external imports block deletion; changed scope must be reviewed again. Deletion uses immutable IDs throughout, journals each phase and reports retained-resource discovery failures as unknown. See Production's teardown commands and the deployment knowledge pages for the exact CLI contract.
+
+Deployment and saved teardown share a checkout lock. Unknown or stopped owners require inspecting recorded progress and AWS before explicitly removing their lock; Studio does not automatically reclaim uncertain ownership. Release only removes the exact unique owner record.

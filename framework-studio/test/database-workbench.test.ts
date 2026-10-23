@@ -293,15 +293,38 @@ test("valid native CHECK constraints remain valid with an explicit source-backed
   assert.ok(result.validation.schema?.problems.some(item => item.includes("@@check") && item.includes("preserved in source")));
 });
 
-test("a PostgreSQL Compose override is unsupported rather than silently observing the base target", async () => {
+test("an unresolved PostgreSQL Compose override never silently observes the base target", async () => {
   const { root, service } = fixture(); composeFixture(root);
   writeFileSync(path.join(root, "docker-compose.override.yml"), "services:\n  postgres:\n    ports: ['127.0.0.1:6543:5432']\n");
-  const target = (await service.load()).targets.find(item => item.id === "local:postgres")!;
-  assert.equal(target.available, false);
-  assert.match(target.detail, /overrides postgres/);
-  const observation = await service.inspect("local:postgres", sha256(source));
-  assert.equal(observation.status, "unsupported");
-  assert.equal(observation.physical.status, "unknown");
+  const simulator = path.join(root, "compose-unavailable.cjs"); writeFileSync(simulator, "process.exit(1)");
+  const previous = process.env.FRAMEWORK_DOCKER_CLI; process.env.FRAMEWORK_DOCKER_CLI = simulator;
+  try {
+    const target = (await service.load()).targets.find(item => item.id === "local:postgres")!;
+    assert.equal(target.available, false);
+    assert.match(target.detail, /overrides PostgreSQL/);
+    const observation = await service.inspect("local:postgres", sha256(source));
+    assert.equal(observation.status, "unsupported");
+    assert.equal(observation.physical.status, "unknown");
+  } finally { if (previous === undefined) delete process.env.FRAMEWORK_DOCKER_CLI; else process.env.FRAMEWORK_DOCKER_CLI = previous; }
+});
+
+test("operational PostgreSQL overrides preserve inspection and effective Compose resolves changed bindings privately", async () => {
+  const { root, service } = fixture();
+  composeFixture(root);
+  writeFileSync(path.join(root, "docker-compose.override.yml"), "services:\n  postgres:\n    healthcheck:\n      interval: 10s\n");
+  assert.equal((await service.load()).targets.find(target => target.id === "local:postgres")?.available, true);
+  writeFileSync(path.join(root, "docker-compose.override.yml"), "services:\n  postgres:\n    ports: ['127.0.0.1:5544:5432']\n");
+  const simulator = path.join(root, "compose-resolution.cjs");
+  writeFileSync(simulator, `process.stdout.write(JSON.stringify({services:{postgres:{environment:{POSTGRES_USER:"fixture",POSTGRES_PASSWORD:"effective-secret-never-exposed",POSTGRES_DB:"fixture"},ports:[{host_ip:"127.0.0.1",published:"5544",target:5432,protocol:"tcp"}]}}}));`);
+  const previous = process.env.FRAMEWORK_DOCKER_CLI;
+  process.env.FRAMEWORK_DOCKER_CLI = simulator;
+  try {
+    const loaded = await service.load();
+    const target = loaded.targets.find(target => target.id === "local:postgres")!;
+    assert.equal(target.available, true);
+    assert.match(target.detail, /5544/);
+    assert.ok(!JSON.stringify(loaded).includes("effective-secret-never-exposed"));
+  } finally { if (previous === undefined) delete process.env.FRAMEWORK_DOCKER_CLI; else process.env.FRAMEWORK_DOCKER_CLI = previous; }
 });
 
 test("a root dotenv port edit changes target identity after the Prisma config has injected its old port", { skip: process.env.POSTGRES_HOST_PORT !== undefined }, async () => {

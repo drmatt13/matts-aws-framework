@@ -8,6 +8,16 @@ the local development lane and the types.
 Read [Framework](FRAMEWORK.md) first; this guide assumes its declarations, resources and
 deploy settings.
 
+Studio's **Add to application → Agent** creates a deterministic echo responder by
+default, so its first request does not require a model provider or paid model call.
+Choose the model/tool-loop starter explicitly when that behavior is needed. **Agent
+tool** creates an adjacent Zod contract and an authenticated tool wrapper by default.
+Both creators review declarations, starter files and generated artifacts together.
+The configured directory can use existing code; missing-file repair never overwrites
+it. Incompatible partial contracts need a source edit. See the
+[Studio creation guide](../framework-studio/README.md#add-to-application) for supported
+templates and review boundaries. Saving source does not start or deploy an agent.
+
 ## Declaring them
 
 ```ts

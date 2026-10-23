@@ -24,12 +24,22 @@ export function describeStack(aws: AwsTarget, name: string): ObservedStack & { E
 
 export function fingerprintOf(stack: ObservedStack | undefined): StackFingerprint {
   return stack && stack.StackStatus !== "DELETE_COMPLETE"
-    ? { exists: true, status: stack.StackStatus, updated: stack.LastUpdatedTime ?? stack.CreationTime }
+    ? { exists: true, stackId: stack.StackId, status: stack.StackStatus, updated: stack.LastUpdatedTime ?? stack.CreationTime }
     : { exists: false };
 }
 
 export function deployedTemplate(aws: AwsTarget, name: string): any {
-  return runAwsSync(["cloudformation", "get-template", "--stack-name", name, "--template-stage", "Original"], aws).TemplateBody;
+  const template = runAwsSync(["cloudformation", "get-template", "--stack-name", name, "--template-stage", "Original"], aws).TemplateBody;
+  return typeof template === "string" ? JSON.parse(template) : template;
+}
+
+/** AWS may report an unimported export as a validation error; other failures are unknown. */
+export function stackImporters(aws: AwsTarget, exportName: string): string[] {
+  try { return runAwsSync(["cloudformation", "list-imports", "--export-name", exportName], aws).Imports ?? []; }
+  catch (error) {
+    if (error instanceof AwsCliError && /not imported by any stack/i.test(error.detail)) return [];
+    throw error;
+  }
 }
 
 export interface AssemblyStackEntry { readonly id: string; readonly name: string; readonly template: any; readonly dependencies: readonly string[] }
@@ -68,6 +78,7 @@ export function dockerImages(assembly: string): { stack: string; asset: string; 
 export interface ChangeSetReview {
   readonly name: string;
   readonly id?: string;
+  readonly stackId?: string;
   readonly status?: string;
   readonly executionStatus?: string;
   readonly statusReason?: string;
@@ -92,7 +103,7 @@ export function describeChangeSet(aws: AwsTarget, stack: string, name: string): 
       details: (change.Details ?? []).map((detail: any) => detail.Target?.Name ?? detail.Target?.Attribute).filter(Boolean),
     }];
   });
-  return { name, id: set.ChangeSetId, status: set.Status, executionStatus: set.ExecutionStatus, statusReason: set.StatusReason, noChanges, changes };
+  return { name, id: set.ChangeSetId, stackId: set.StackId, status: set.Status, executionStatus: set.ExecutionStatus, statusReason: set.StatusReason, noChanges, changes };
 }
 
 const stable = (value: unknown): string => JSON.stringify(value, (_key, inner) =>
@@ -106,15 +117,20 @@ export interface Verification {
 /** Success is what AWS holds afterwards: a completed status, this deployment's identity, and the reviewed template. */
 export function verifyDeployment(aws: AwsTarget, identity: DeploymentIdentity, stacks: readonly AssemblyStackEntry[]): Verification {
   const results = stacks.map((entry) => {
-    const stack = describeStack(aws, entry.name);
+    let stack;
+    try { stack = describeStack(aws, entry.name); }
+    catch (error) { return { name: entry.name, identity: false, template: false, problem: "Cannot inspect completion: " + (error instanceof Error ? error.message : String(error)) }; }
     if (!stack) return { name: entry.name, identity: false, template: false, problem: "not found after the deployment" };
     const status = stack.StackStatus;
     const complete = ["CREATE_COMPLETE", "UPDATE_COMPLETE", "IMPORT_COMPLETE"].includes(String(status));
-    const found = stackEvidence(stack).identity;
+    let found;
+    try { found = stackEvidence(stack).identity; }
+    catch { return { name: entry.name, status, identity: false, template: false, problem: "Its deployed identity is unreadable or inconsistent." }; }
     const identityMatches = !!found && found.deployment === identity.deployment && found.mode === identity.mode && found.account === identity.account && found.region === identity.region;
     let template = false;
-    try { template = stable(deployedTemplate(aws, entry.name)) === stable(entry.template); } catch { template = false; }
-    const problem = !complete ? `ended ${status}` : !identityMatches ? "its deployment identity does not match" : !template ? "its deployed template differs from the reviewed one" : undefined;
+    let templateProblem: string | undefined;
+    try { template = stable(deployedTemplate(aws, entry.name)) === stable(entry.template); } catch (error) { templateProblem = "Cannot verify deployed template: " + (error instanceof Error ? error.message : String(error)); }
+    const problem = !complete ? `ended ${status}` : !identityMatches ? "its deployment identity does not match" : templateProblem ?? (!template ? "its deployed template differs from the reviewed one" : undefined);
     return { name: entry.name, status, identity: identityMatches, template, ...(problem ? { problem } : {}) };
   });
   return { verified: results.every((result) => !result.problem), stacks: results };
@@ -124,6 +140,11 @@ export const RECORD_PATH = "/framework/deployments/";
 
 function git(args: string[]): string | undefined {
   try { return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], windowsHide: true }).trim(); } catch { return undefined; }
+}
+
+export function deploymentSourceRevision(): { commit?: string; dirty: boolean } {
+  const commit = git(["rev-parse", "HEAD"]);
+  return { ...(commit ? { commit } : {}), dirty: (git(["status", "--porcelain"]) ?? "").length > 0 };
 }
 
 /** Advisory: which revision was deployed, by whom and how. Never used for a safety decision; a failure is a warning. */

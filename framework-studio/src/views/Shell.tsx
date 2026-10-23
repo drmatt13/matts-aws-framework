@@ -8,6 +8,7 @@ import { useStudio } from "../studio";
 import { EditDialog } from "./EditDialog";
 import { Inspector } from "./Inspector";
 import { UnsavedChangesDialog } from "./DraftControls";
+import { SourceRecoveryPanel } from "./SourceRecovery";
 
 function Verdict(props: { readonly label: string; readonly diagnostics: readonly Diagnostic[] }) {
   const errors = props.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
@@ -118,6 +119,16 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
   const studio = useStudio();
   const { snapshot, response, mode, setMode, live, toast, toasts, selected } = studio;
   const databasePage = useLocation({ select: location => location.pathname === "/database" });
+  const deployPage = useLocation({ select: location => location.pathname === "/deploy" });
+  const sourceWatch = live.sourceWatch ?? response.sourceWatch;
+  const watchProblem = sourceWatch && sourceWatch.status !== "watching";
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshSource = async () => {
+    setRefreshing(true);
+    try { await api.refreshSource(); toast("Source reloaded. Any draft is preserved for review."); }
+    catch (error) { toast(error instanceof Error ? error.message : String(error), "refuse"); }
+    finally { setRefreshing(false); }
+  };
   const showInspector = !!selected && !(databasePage && selected.startsWith("schema:"));
   const [drawer, setDrawer] = useState<"health" | "command" | undefined>();
   const [result, setResult] = useState<CommandResult | undefined>();
@@ -151,7 +162,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
   };
 
   return (
-    <div className={`shell ${props.notice ? "has-notice" : ""}`}>
+    <div className={`shell ${props.notice || watchProblem ? "has-notice" : ""}`}>
       <header className="bar">
         <span className="wordmark">
           AWS Studio<small title={repository}>{repository}</small>
@@ -170,7 +181,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
             Deploy
           </Link>
         </nav>
-        {!databasePage ? <span className="segmented" role="group" aria-label="Environment">
+        {!databasePage && !deployPage ? <span className="segmented" role="group" aria-label="Environment">
           {(["dev", "prod"] as const).map((candidate) => (
             <button
               key={candidate}
@@ -183,7 +194,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
         </span> : null}
         <span className="spacer" />
         <div className="bar-actions">
-          {!databasePage ? <span className="history-actions" role="group" aria-label="Edit history">
+          {!databasePage && !deployPage ? <span className="history-actions" role="group" aria-label="Edit history">
             <button className="icon-button" aria-label="Undo" onClick={() => void history("undo")} disabled={!response.history.undo || studio.draft.dirty || !!studio.draftState.busy} title={response.history.undo ? `Undo ${response.history.undo}` : "Nothing to undo"}>
               <Undo2 size={16} aria-hidden />
             </button>
@@ -201,8 +212,12 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
         </div>
         <span id={healthDescriptionId} className="sr-only">{healthDescription}</span>
       </header>
-      {props.notice ? <div className="shell-notice">{props.notice}</div> : null}
+      {props.notice || watchProblem ? <div className="shell-notice">{props.notice}{watchProblem ? <>
+        <span role="status">{sourceWatch.status === "polling" ? `Source watching is interrupted. Checking for changes every ${sourceWatch.pollIntervalMs / 1000}s.` : "Source freshness is unknown. Some files could not be read."} <details><summary>Source observation details</summary><ul>{sourceWatch.problems.map((problem, at) => <li key={at}>{problem.path}: {problem.code}</li>)}</ul></details></span>
+        <button className="quiet" disabled={refreshing || live.evaluating} onClick={() => void refreshSource()}>{refreshing ? "Reloading source…" : "Reload source"}</button>
+      </> : null}</div> : null}
       <div className={`workspace ${showInspector ? "" : "no-selection"}`}>
+        <SourceRecoveryPanel initial={response.sourceRecovery} problem={response.sourceRecoveryProblem} />
         <main className={`canvas ${studio.model.stale ? "stale" : ""}`}>
           {studio.model.stale ? (
             <p className="stale-banner" role="status">

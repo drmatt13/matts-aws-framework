@@ -28,6 +28,7 @@ There are exactly two `DeploymentMode`s: **dev** and **prod**. A named deploymen
 | Bootstrap | [main.ts](../../../cdk-app/bin/main.ts) / [app.ts](../../../cdk-app/bin/app.ts) establish mode/target before loading the composition |
 | Identity | `DeploymentIdentity`: deployment, mode, account, region; output contract plus newer template metadata/tags establish ownership |
 | Studio graph | [inputs.ts](../../../framework-studio/server/inputs.ts) / evaluators build fixed dev/prod projections, not one graph for every named target's custom input file |
+| Studio operations | `/deploy` owns its named target, profile, resolved account and region. Graph-mode/undo controls are hidden there. Status, plan, drift and teardown evidence is keyed to the selected destination; changing destination clears transient approvals. Database operations require their own explicit target and approval, independent of graph mode |
 
 Dev AWS builds Cognito, AWS-invoked event Lambdas and replay support; normal routed workloads/tasks/workflows/agents execute locally. Prod builds the cloud-enabled application, network/database/frontend as configured. The WebSocket API flag is a separate switch. `deploy` lanes remain distinct from these modes; see [configuration predicates](../framework/configuration.md).
 

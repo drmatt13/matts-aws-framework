@@ -11,6 +11,7 @@ import { fieldById } from "./fields";
 import { planEdit, type EditIntent } from "./plan";
 import { planHttpRoute, validateHttpRoute, type RouteChange } from "./route";
 import { BatchEditor, type BatchJournal } from "./batch";
+import { SourceJournal } from "./journal";
 
 /**
  * Plans, writes, and takes back field edits — one at a time, and never over a
@@ -30,6 +31,7 @@ export type { ApplyResponse, HistoryState, PlanResponse };
 type EditMeaning = { readonly kind: "field"; readonly forward: SemanticPatch; readonly inverse: SemanticPatch } | { readonly kind: "route"; readonly change: RouteChange };
 
 interface StoredPlan {
+  readonly batchPlanId?: string;
   readonly response: PlanResponse;
   readonly revision: string;
   readonly file: string;
@@ -63,7 +65,7 @@ function impactOf(target: ModelTarget, fieldId: string, after: PreflightResult):
     const lane = (lanes: Lanes) => [lanes.local ? "local" : null, lanes.dev ? "dev AWS" : null, lanes.prod ? "prod AWS" : null].filter(Boolean).join(", ") || "nowhere";
     if (lane(lanesBefore) !== lane(lanesAfter)) notes.push(`Runs in ${lane(lanesBefore)} → ${lane(lanesAfter)}.`);
     if (target.kind === "service" && lanesBefore.local !== lanesAfter.local) {
-      notes.push("Changes which services docker-compose.services.yml runs locally: run framework:generate (npm run dev:containers runs it first).");
+      notes.push("The reviewed generated Compose changes update which services run locally. Rebuild/start development separately after saving source.");
     }
   }
   if (fieldId.endsWith("subnet") && after.placement && JSON.stringify(target.placement) !== JSON.stringify(after.placement)) {
@@ -142,7 +144,8 @@ export class EditService {
       assertWritable(this.repositoryRoot, planned.relativeFile);
       if (sha256(readFileSync(planned.file, "utf8")) !== snapshot.files[planned.relativeFile]) throw new EditError(409, "The setting's source changed. Wait for refresh and preview again.");
       const preflight = await evaluation.preflight({ target: intent.target, field: field.id, patch: planned.forward });
-      const ok = preflight.dev.ok && preflight.prod.ok;
+      const batch = preflight.dev.ok && preflight.prod.ok ? await this.batches.plan([{ kind: "field", intent }], baseRevision) : undefined;
+      const ok = preflight.dev.ok && preflight.prod.ok && (batch?.ok ?? true);
       const response: PlanResponse = {
         planId: randomUUID(),
         target: intent.target,
@@ -150,7 +153,8 @@ export class EditService {
         summary: planned.summary,
         file: planned.relativeFile,
         diff: planned.diff,
-        preflight,
+        ...(batch ? { changes: batch.changes } : {}),
+        preflight: batch ? { dev: { ...preflight.dev, ...batch.preflight.dev }, prod: { ...preflight.prod, ...batch.preflight.prod } } : preflight,
         ok,
         impact: ok ? target ? impactOf(target, field.id, preflight.dev) : [
           `${fact.usage?.inherited ?? 0} current workloads inherit this setting; ${fact.usage?.overridden ?? 0} have overrides.`,
@@ -161,6 +165,7 @@ export class EditService {
       };
       this.plans.set(response.planId, {
         response,
+        ...(batch ? { batchPlanId: batch.planId } : {}),
         revision: snapshot.revision,
         file: planned.file,
         relativeFile: planned.relativeFile,
@@ -185,29 +190,32 @@ export class EditService {
       const preflight = await validateHttpRoute(this.repositoryRoot, state, planned.file, planned.after, planned.change);
       if (this.state().snapshot.revision !== revision || sha256(readFileSync(planned.file, "utf8")) !== planned.beforeHash) throw new EditError(409, "The route changed while validating it. Preview again.");
       const target = state.snapshot.models.dev.targets.find((target) => target.ref === planned.change.target)!;
+      const batch = preflight.dev.ok && preflight.prod.ok ? await this.batches.plan([{ kind: "route", route: id, value: nextPath }], revision) : undefined;
       const response: PlanResponse = {
         planId: randomUUID(), target: target.ref, field: "http.route", summary: `Route: ${planned.change.before} → ${nextPath}`,
-        file: planned.relativeFile, diff: planned.diff, preflight, ok: preflight.dev.ok && preflight.prod.ok,
+        file: planned.relativeFile, diff: planned.diff, ...(batch ? { changes: batch.changes } : {}), preflight: batch ? { dev: { ...preflight.dev, ...batch.preflight.dev }, prod: { ...preflight.prod, ...batch.preflight.prod } } : preflight, ok: preflight.dev.ok && preflight.prod.ok && (batch?.ok ?? true),
         lanesBefore: target.lanes, placementBefore: target.placement,
         impact: [
           `Changes the browser path from /api${planned.change.before} to /api${nextPath} and the corresponding API Gateway route.`,
           "The Lambda target, handler and deployed construct identity are preserved.",
-          "Run framework:generate to update the browser API contract, then update callers of the old path. Deployment is a separate action.",
+          "The generated browser API contract is included in the reviewed files. Update callers of the old path. Deployment is a separate action.",
         ],
       };
-      this.plans.set(response.planId, { response, revision, file: planned.file, relativeFile: planned.relativeFile, beforeHash: planned.beforeHash, after: planned.after, afterHash: planned.afterHash, edit: { kind: "route", change: planned.change } });
+      this.plans.set(response.planId, { response, ...(batch ? { batchPlanId: batch.planId } : {}), revision, file: planned.file, relativeFile: planned.relativeFile, beforeHash: planned.beforeHash, after: planned.after, afterHash: planned.afterHash, edit: { kind: "route", change: planned.change } });
       return response;
     });
   }
 
   apply(planId: string): Promise<ApplyResponse> {
     return this.exclusive(async () => {
+      if (new SourceJournal(this.repositoryRoot).pending().length) throw new EditError(409, "Resolve the interrupted source transaction in Source recovery before applying another edit.");
       const plan = this.plans.get(planId);
       if (!plan) throw new EditError(410, "This preview has expired. The repository changed, or another edit was applied; preview it again.");
       if (!plan.response.ok) throw new EditError(422, "The framework refuses this change, so it cannot be written.");
       if (this.state().snapshot.revision !== plan.revision) {
         throw new EditError(409, "The repository changed since this preview. Preview it again.");
       }
+      if (plan.batchPlanId) return this.batches.apply(plan.batchPlanId, entry => { this.undoStack.push(entry); this.redoStack.length = 0; this.plans.clear(); });
       const file = assertWritable(this.repositoryRoot, plan.relativeFile);
       const before = readFileSync(file, "utf8");
       if (sha256(before) !== plan.beforeHash) {
@@ -243,6 +251,7 @@ export class EditService {
 
   /** Writes a journal entry's other side, after checking the file is still the side it left. */
   private async replay(direction: "undo" | "redo"): Promise<ApplyResponse> {
+    if (new SourceJournal(this.repositoryRoot).pending().length) throw new EditError(409, "An interrupted source transaction needs recovery before undo or redo. Open Source recovery.");
     const stack = direction === "undo" ? this.undoStack : this.redoStack;
     const entry = stack.at(-1);
     if (!entry) throw new EditError(404, `Nothing to ${direction}.`);

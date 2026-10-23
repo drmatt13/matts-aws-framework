@@ -28,7 +28,7 @@ tag filtering is a rendering projection rather than a new infrastructure resourc
 | Model | Carries |
 | --- | --- |
 | `Snapshot` | Revision, dev/prod `ModeModel`s, source index, file hashes, schema and descriptions |
-| `ModelTarget` | Canonical ref/kind/role, directory/origin, construct ID, compute, placement, lanes, environment and permission facts |
+| `ModelTarget` | Canonical ref/kind/role, directory/origin, construct ID, compute, placement, lanes, environment and permission facts; optional implementation artifact readiness/problems |
 | `ModelRoute` | Public route/method semantics and target; route and target identities are distinct |
 | `ModelResource` | Catalog path/kind, member/input/secret metadata, capabilities and stack usage; not resolved secret contents |
 | `ModelEdge` | Directed `from`/`to`, relation, provenance, source evidence and supported removal information |
@@ -38,6 +38,12 @@ tag filtering is a rendering projection rather than a new infrastructure resourc
 Relations cover routing, authorization, environment/secret reads, native grants, database access, invocation bindings, workflow steps/integrations, event triggers, callbacks and failure destinations. Their meanings differ: a grant is permission; an invocation binding is capability; neither proves an actual runtime call. Schedule triggers may have no catalog resource endpoint.
 
 Declared/derived/source-inferred edges retain their evidence classification. [source-indexing](source-indexing.md) defines inference limits. Studio is a declaration/source graph, not an authoritative live AWS topology or full IAM analysis.
+
+Implementation health is separate from declaration validity: a missing handler can leave
+the declaration graph readable so its node offers repair. Board, Isometric and Inspector
+show this warning without inventing a replacement target, changing topology or asserting
+runtime health. Reviewed source application checks canonical artifacts against the proposed
+file overlay; current files are never silently scaffolded during evaluation.
 
 `aggregateConnections` in [connections.ts](../../../framework-studio/src/connections.ts) groups directed visible endpoint pairs while retaining original members and mode availability. A rendered line may summarize several relations; selection/Inspector must preserve member-level evidence. Dev/prod union topology can stabilize layout while the active mode controls availability and styling. `lookup.ts` in [src/lookup.ts](../../../framework-studio/src/lookup.ts) centralizes entity/relationship lookup labels.
 
@@ -56,9 +62,11 @@ never implicit migration origins. `DatabaseObservation` in
 [shared/database-workbench.ts](../../../framework-studio/shared/database-workbench.ts)
 separates selected-target marker/ledger evidence from strict physical verification against
 saved and historical storage. A declaration graph, matching marker or valid source alone
-cannot establish database synchronization. Production access remains unsupported; local
-observation never starts Compose. Reviewed local application uses a separate target-bound
-approval. See the [workbench guide](../../framework-studio/database-workbench.md).
+cannot establish database synchronization. Local observation never starts Compose. Local
+database application needs a target-bound review. Production uses an explicitly approved
+private IAM task: metadata preparation, billed read-only inspection and reviewed application
+are distinct actions. No database action follows the graph-mode switch. See the
+[workbench guide](../../framework-studio/database-workbench.md).
 
 `DatabaseWorkbench.emitted` separately observes the configured generated JSON's content
 revision and canonical storage/execution hashes against saved source. It carries safe

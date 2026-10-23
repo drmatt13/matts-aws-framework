@@ -44,15 +44,23 @@ The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) a
 | `render.ts` | no (canvas) | `SceneRenderer`: caches per scene, draws per frame |
 | `grid.ts` | yes | Viewport-bounded, world-anchored ground grid with zoom-dependent spacing |
 | `../icons.ts` | yes | Shared mapping from model entities to local AWS/Lucide SVG assets |
-| `views/Isometric.tsx` | no (React) | Mounting, input, the render loop, toolbar, add menu, hover card, accessible list, debug hook |
+| `views/Isometric.tsx` | no (React) | Mounting, input, the render loop, toolbar, resource navigator, add menu, hover card, accessible list, debug hook |
 
 Everything marked pure runs under Node and is unit-tested in
 [test/landscape.test.ts](../../framework-studio/test/landscape.test.ts).
 
-The circular plus button at the bottom right opens an **Add to application** menu.
-Its function, stack, VPC, workflow, container service/task, API route, agent, input
-parameter and secret options are placeholders until creation tools are implemented.
+The **Add to application** button opens the supported creators for functions, stacks,
+VPCs, workflows, container services/tasks, routes, agents, agent tools, inputs and secrets.
+Each creator previews declarations, implementation files and generated artifacts before
+application. See the [current creation guide](../../framework-studio/README.md#add-to-application)
+for the bounded templates and existing-code options.
 Close the menu with its close button, Escape, or by clicking outside it.
+
+The collapsible **Resources** navigator shares map search and canonical selection with
+the canvas. A resource-type filter narrows the list; searching/filtering does not move
+nodes or change infrastructure identity. The navigator moves above the map on narrow
+screens. Missing implementation artifacts appear on the relevant resource, plaque,
+hover card and Inspector; these warnings describe source readiness, not deployed health.
 
 Stack plaques carry an unplug badge when the configured CDK app has no constructor
 reference for their class in its local runtime import graph. These unattached stacks

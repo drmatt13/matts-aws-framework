@@ -57,7 +57,7 @@ beforeEach(() => {
     planCalls.push(edits);
     await reviewGate;
     if (failReview) throw new Error("Could not validate changes. Try reviewing again.");
-    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "tags" ? `tags ${edit.entity}` : edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "databasePlacement" ? `database placement ${edit.database}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
+    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "implementation" || edit.kind === "connection" || edit.kind === "removeWorkload" ? `${edit.kind} ${edit.target}` : edit.kind === "tags" ? `tags ${edit.entity}` : edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "databasePlacement" ? `database placement ${edit.database}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
   });
   mock.method(apiModule.api, "applyBatch", async () => {
     applyCalls++; if (failApply) throw new Error("Source changed. Your draft is preserved.");
@@ -1373,5 +1373,31 @@ test("VPC removal is unavailable while used and stages an unused declaration thr
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" }));
   assert.equal(openRemoval().disabled, true, "a pending removal cannot be staged twice");
   assert.equal(planCalls.length, 1);
+  assert.equal(applyCalls, 0);
+});
+
+test("purpose-based native grants default to matching queue or bucket permissions before review", async () => {
+  const capabilities = baseline.source.triggerCapabilities ?? [];
+  const queue = capabilities.find(item => item.canonicalTypes.some(type => /^aws-sqs:I?Queue$/.test(type)) && baseline.models.dev.resources.some(resource => resource.id === item.resource));
+  const bucket = capabilities.find(item => item.canonicalTypes.some(type => /^aws-s3:I?Bucket$/.test(type)) && baseline.models.dev.resources.some(resource => resource.id === item.resource));
+  assert.ok(queue); assert.ok(bucket);
+  await mount(); openSection("Connect workload");
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Purpose" }), { target: { value: "grant" } });
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Destination" }), { target: { value: queue.resource } });
+  assert.equal((ui.screen.getByRole("combobox", { name: "Permission" }) as HTMLSelectElement).value, "grantSendMessages");
+  assert.equal(ui.screen.queryByRole("option", { name: "Read bucket objects" }), null);
+  assert.equal(ui.screen.queryByRole("textbox", { name: "Bucket object scope" }), null);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Stage connection change" }));
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Destination" }), { target: { value: bucket.resource } });
+  assert.equal((ui.screen.getByRole("combobox", { name: "Permission" }) as HTMLSelectElement).value, "grantRead");
+  assert.equal((ui.screen.getByRole("textbox", { name: "Bucket object scope" }) as HTMLInputElement).value, "uploads/*");
+  assert.equal(ui.screen.queryByRole("option", { name: "Send queue messages" }), null);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Stage connection change" }));
+  assert.equal(planCalls.length + applyCalls, 0);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); await waitDialog("Review 2 changes");
+  assert.deepEqual(planCalls[0], [
+    { kind: "connection", target, connection: "grant", destination: queue.resource, grant: "grantSendMessages", scope: "", enabled: true },
+    { kind: "connection", target, connection: "grant", destination: bucket.resource, grant: "grantRead", scope: "uploads/*", enabled: true },
+  ]);
   assert.equal(applyCalls, 0);
 });

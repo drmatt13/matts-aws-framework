@@ -54,6 +54,14 @@ help visible; the catalog does not verify regional service availability.
 
 ## Information order
 
+Workload **Implementation** shows the configured directory, artifact readiness and an
+editor link. **Create missing starter files** stages a review; it does not immediately
+write, start or deploy anything. Existing code stays intact. **Connect workload** uses
+purpose-based choices and compatible declared destinations. Queue permissions omit
+bucket scopes; bucket permissions start with a bounded object-key scope. Source removal
+reviews dependencies and an implementation archive, with an explicit explanation that
+deployed resources and their costs require a separate operation.
+
 Workload, route and catalog inspectors begin with identity, source access and a compact **Tags** disclosure,
 followed by the shared **Deployment** section (`src/views/Deployment.tsx`).
 Tags show their effective count without opening the editor, and retain **Modified** or

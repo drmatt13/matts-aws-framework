@@ -18,14 +18,15 @@ export function Teardown(props: {
   readonly region?: string;
   readonly busy: string | undefined;
   readonly onClose: () => void;
-  readonly onDelete: (options: { confirm: string; retainFailed: boolean }) => void;
+  readonly onDelete: (options: { confirm: string; retainFailed: boolean; review: string }) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [typed, setTyped] = useState("");
   const [retainFailed, setRetainFailed] = useState(false);
+  const [disableProtection, setDisableProtection] = useState(false);
   const { data, error, isPending } = useQuery({
-    queryKey: ["deploy", "teardown", props.profile, props.deployment, props.mode],
-    queryFn: () => deployApi.teardown(props.profile, props.deployment, props.mode, props.region),
+    queryKey: ["deploy", "teardown", props.profile, props.region, props.deployment, props.mode, retainFailed, disableProtection],
+    queryFn: () => deployApi.teardown(props.profile, props.deployment, props.mode, props.region, retainFailed, disableProtection),
     staleTime: 0, gcTime: 0, refetchOnWindowFocus: false,
   });
   useEffect(() => {
@@ -34,6 +35,7 @@ export function Teardown(props: {
     return () => element.close();
   }, []);
   const plan = data?.ok ? data.value : undefined;
+  useEffect(() => { setTyped(""); }, [plan?.key]);
   const failed = plan?.stacks.some((stack) => stack.status === "DELETE_FAILED");
 
   return (
@@ -49,13 +51,17 @@ export function Teardown(props: {
         {plan ? (
           <>
             <p className="plan-banner bad"><AlertOctagon size={15} aria-hidden /> Deleting removes these stacks and everything they created{plan.mode === "prod" ? ", including production data not kept below" : ""}. It cannot be undone.</p>
+            {plan.expiresAt ? <p className="small muted">Fixed deletion scope, expires {new Date(plan.expiresAt).toLocaleString()}. Changes to deployed identities, policies or dependencies require another review.</p> : null}
+            {plan.blockers?.map((message) => <p className="diagnostic" role="alert" key={message}>{message}</p>)}
+            {plan.warnings?.map((message) => <p className="diagnostic" key={message}>{message}</p>)}
             <section aria-label="Deletion order">
               <h3 className="section-title">Deleted in this order</h3>
               <ol className="plain-list teardown-order">
                 {plan.stacks.map((stack) => (
                   <li key={stack.name}>
                     <strong>{shortStack(stack.name, plan.deployment)}</strong> <span className="muted small">{stack.status.replaceAll("_", " ").toLowerCase()}</span>
-                    {stack.terminationProtection ? <span className="flag warn"><Lock size={11} aria-hidden /> protection lifted on confirm</span> : null}
+                    {stack.id ? <details><summary className="small">Deployed stack identity</summary><code className="small">{stack.id}</code></details> : null}
+                    {stack.terminationProtection ? <span className="flag warn"><Lock size={11} aria-hidden /> termination protection enabled</span> : null}
                     {stack.importedBy.length ? <span className="small muted"> · imported by {stack.importedBy.map((name) => shortStack(name, plan.deployment)).join(", ")}</span> : null}
                   </li>
                 ))}
@@ -72,6 +78,8 @@ export function Teardown(props: {
             {failed ? (
               <label className="check-row small"><input type="checkbox" checked={retainFailed} onChange={(event) => setRetainFailed(event.target.checked)} /> Keep the resources CloudFormation could not delete last time, and delete the rest</label>
             ) : null}
+            {failed ? <ul className="small">{plan.stacks.filter((stack) => stack.failedResources?.length).map((stack) => <li key={stack.name}>{stack.name}: {stack.failedResources!.join(", ")}</li>)}</ul> : null}
+            {plan.stacks.some((stack) => stack.terminationProtection) ? <label className="check-row small"><input type="checkbox" checked={disableProtection} onChange={(event) => setDisableProtection(event.target.checked)} /> Allow disabling termination protection on the protected stacks listed above. This creates a new deletion review.</label> : null}
           </>
         ) : null}
       </div>
@@ -83,7 +91,7 @@ export function Teardown(props: {
           </label>
         ) : <span className="reason">{props.busy ?? ""}</span>}
         <button className="quiet" onClick={props.onClose}>Cancel</button>
-        <button className="primary danger" disabled={!plan || typed !== props.deployment || Boolean(props.busy)} onClick={() => props.onDelete({ confirm: typed, retainFailed })}>Delete {props.deployment}</button>
+        <button className="primary danger" disabled={!plan?.key || Boolean(plan.blockers?.length) || Boolean(plan.expiresAt && Date.parse(plan.expiresAt) < Date.now()) || typed !== props.deployment || Boolean(props.busy)} onClick={() => plan?.key && props.onDelete({ confirm: typed, retainFailed, review: plan.key })}>Delete {props.deployment}</button>
       </footer>
     </dialog>
   );

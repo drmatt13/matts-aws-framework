@@ -30,6 +30,7 @@ import { EnvironmentPills } from "./DeploymentBadge";
 import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
 import { DeploymentSection, ResourceDeployment, TargetDeployment } from "./Deployment";
 import { Tags } from "./Tags";
+import { ImplementationStatus, WorkloadConnections } from "./WorkloadActions";
 
 function PlacementText(props: { readonly placement: Placement }) {
   const { placement } = props;
@@ -189,6 +190,8 @@ function TargetView(props: { readonly target: ModelTarget }) {
       <Tags entity={target.ref} />
       <TargetDeployment target={target} />
       <Description entity={target.ref} />
+      <ImplementationStatus target={target} />
+      <WorkloadConnections key={target.ref} target={target} />
       {settings.length > 0 ? <InspectorSection title="Settings">
         {settings.map((fact) => <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />)}
       </InspectorSection> : null}

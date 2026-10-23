@@ -80,7 +80,7 @@ export function Activity(props: {
                 </div>
                 {job.status === "running" ? (
                   <button className="quiet" onClick={() => props.onCancel(job.id)} title={job.kind.startsWith("deploy") || job.kind === "destroy" ? "Stops the command. A CloudFormation operation already started continues in AWS." : undefined}>
-                    <Square size={12} aria-hidden /> {job.kind === "local-watch" || job.kind === "local-client" ? "Stop" : "Cancel"}
+                    <Square size={12} aria-hidden /> {job.kind.startsWith("deploy") || job.kind === "destroy" ? "Stop command; AWS may continue" : job.kind === "local-watch" || job.kind === "local-client" ? "Stop" : "Cancel"}
                   </button>
                 ) : null}
               </header>

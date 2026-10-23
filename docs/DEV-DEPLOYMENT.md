@@ -90,7 +90,7 @@ changed since the plan was made. Assemblies that an
 interrupted run left in `.cache/deploy` are removed after a day. Deploy and export read
 authored inputs from `FRAMEWORK_INPUTS_FILE` when it is set, otherwise from the target's
 inputs file: `cdk-app/.env.dev` for development, `cdk-app/.env.prod` with `-c prodDeployment=true`.
-There is no `cdk-app/.env.dev`.
+There is no mode-less `cdk-app/.env`.
 
 The dev graph holds Cognito, AWS-invoked event handlers, and replay resources. Routed
 HTTP handlers, services, tasks, and workflows run locally; no ECS image is published by a
@@ -321,16 +321,21 @@ the unknown npm config option. The `--` form passes the flag directly to the
 dev script. Use the same profile for deployment and local execution when they
 must access the same AWS account.
 
-Compose runs postgres, migration, the local API/WebSocket servers, invocation runner,
+Compose runs postgres, read-only database verification, the local API/WebSocket servers, invocation runner,
 the declared services (generated into docker-compose.services.yml; see
 [Framework](FRAMEWORK.md#local-service-containers)), WebSocket tester, and pgAdmin. Postgres and pgAdmin listen on 127.0.0.1 only.
 Each Node Lambda you call keeps a warm process for its next call, as a warm Lambda does, up
 to LOCAL_LAMBDA_WARM_MAX processes, each stopped after LOCAL_LAMBDA_WARM_IDLE_SECONDS idle;
 set LOCAL_LAMBDA_WARM=false in cdk-app/.env.dev to start every call cold. See
 [Framework](FRAMEWORK.md#local-resource-delivery). Services use the framework launcher, so adding
-a resource environment reference or secret requires no Compose interpolation change. It applies local migrations before consumers
-start, then deletes local users the current dev Cognito pool does not hold and creates the
-local test user; see [Database](DATABASE.md#local-database). The React client runs separately.
+a resource environment reference or secret requires no Compose interpolation change. The
+`prisma-verify` prerequisite checks the existing schema without applying migrations,
+deleting users or changing Cognito. On a fresh or out-of-date database, consumers remain
+blocked while PostgreSQL stays available: open Studio **Database → Database status**, inspect
+Local PostgreSQL, and separately review/authorize initialization or the pending migration.
+Restart local compute after that database action. See [Database](DATABASE.md#local-database).
+The React client runs separately. Studio checks container health and the client's HTTP
+response before reporting readiness; a process launch alone is not application success.
 Use the configured LOCAL_DEV_URL and host ports rather than assuming defaults.
 
 The image owns Linux dependencies and generated database artifacts. Only postgres_data
@@ -358,15 +363,17 @@ Concurrent submissions may share a build, but each run gets its own container/in
 
 ## Verification and troubleshooting
 
-Set `LOCAL_TEST_USER_EMAIL` and `LOCAL_TEST_USER_PASSWORD` in ignored `cdk-app/.env.dev`
-and every `npm run dev:containers` makes them a working account. Its seed-test-user
-step creates the user in the dev pool if it is missing, with the email marked verified
+Set `LOCAL_TEST_USER_EMAIL` and `LOCAL_TEST_USER_PASSWORD` in ignored `cdk-app/.env.dev`.
+Setting these inputs and starting compute do not create or modify any account. After
+verifying the intended development pool/profile and authorizing its AWS/local database
+writes, run `docker compose --profile identity-setup run --rm seed-test-user`.
+This explicit action creates the user in the dev pool if it is missing, with the email marked verified
 and no invitation sent, sets its password to `LOCAL_TEST_USER_PASSWORD`, and writes
 its local users row. An existing row is kept, with any name edited in the app. The
 password must meet the pool's policy (12 characters). It runs only for the pool a
 development export wrote to root `.env` (`LOCAL_FRAMEWORK_DEPLOYMENT`, which a production
 export never writes); without both settings, or if Cognito rejects a call,
-it says so in `docker compose logs seed-test-user` and changes nothing. Sign in as
+the command reports the problem and changes nothing. Sign in as
 this user in the browser or headlessly. Use an address you control: the account is
 marked verified, so a password reset mails a code there.
 These are local CLI credentials, not workload environment variables or deployment
@@ -415,7 +422,7 @@ when changing tasks or workflows.
 | Auth endpoints return Forbidden origin | Re-export LOCAL_BROWSER_ORIGINS and recreate containers; use the frontend's /api proxy |
 | Service returns 502 | The route exists but its upstream is unavailable; inspect that service's startup logs |
 | Missing table/column | Check the selected database and reviewed migrations; generation alone changes no tables |
-| "A user already exists ... with a different Cognito identity" | The local row predates the current dev pool. Restart Compose; if `docker compose logs prune-cognito-orphans` says it skipped, fix the credentials or USER_POOL_ID it names |
+| "A user already exists ... with a different Cognito identity" | The local row may predate the dev pool. Inspect users and their owned data before separately authorizing orphan cleanup; restarting compute never deletes them. See Database's cleanup consequences |
 | Google redirect fails on a LAN HTTP origin | Hosted UI needs HTTPS except loopback; use localhost or configured HTTPS |
 | Prisma config missing during image installation | Use the current Dockerfile.dev, which defers root generation until its inputs exist |
 

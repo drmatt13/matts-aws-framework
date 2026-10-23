@@ -4,6 +4,8 @@ import { DEFAULT_FIELDS, fieldFacts } from "../edits/fields";
 import { projectDefaults } from "../edits/defaults";
 import { applyPatch, type SemanticPatch } from "./origin";
 import { targetLanes, targetPlacement, validateForMode, type ProjectionOptions } from "./project";
+import { withImplementationHealth } from "../implementation";
+import { projectModel } from "./project";
 
 /**
  * What a change would do, decided before anything is written.
@@ -26,6 +28,7 @@ export function preflight(
   config: FrameworkConfig,
   request: PreflightRequest,
   options: ProjectionOptions,
+  source?: { readonly root: string; readonly overrides?: Readonly<Record<string, string>> },
 ): PreflightResult {
   let patched: FrameworkConfig;
   try {
@@ -48,6 +51,10 @@ export function preflight(
     };
   }
   const diagnostics = validateForMode(patched, options, targets);
+  if (source) {
+    const candidate = withImplementationHealth(patched, projectModel(patched, options, 0), source.root, source.overrides);
+    for (const target of candidate.targets.filter(target => target.ref === request.target)) for (const message of target.implementation?.problems ?? []) diagnostics.push({ severity: "error", stage: "validate", entity: target.ref, message });
+  }
   const target = targets.find((candidate) => candidate.reference === request.target);
   const ok = !diagnostics.some((diagnostic) => diagnostic.severity === "error");
   const predicted = ok ? request.target.startsWith("defaults:")

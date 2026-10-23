@@ -11,6 +11,7 @@ import { hashEditableFiles, sha256, toRelative } from "./files";
 import type { SnapshotBuilder, StudioState } from "./snapshot";
 import { assertResourceFile, consumesResource, planResourceSource, resourceTypeErrors } from "./resources-source";
 import { inputText, selectedDeploymentInput } from "./deployment-inputs";
+import { SourceJournal } from "./edits/journal";
 
 interface Change { file: string; before: string; after: string }
 interface Plan { response: ResourcePlan; revision: string; hashes: Record<string, string>; changes: readonly Change[] }
@@ -129,6 +130,8 @@ export class ResourceService {
       if (sha256(readFileSync(change.file, "utf8")) !== sha256(change.before)) throw new EditError(409, `${toRelative(this.root, change.file)} changed. Nothing was written.`);
     }
     const written: Change[] = [];
+    const journal = new SourceJournal(this.root);
+    const journalId = journal.begin("Resource configuration", changes, "resource");
     try {
       for (const change of changes) {
         // Recheck immediately before each write; never clobber an intervening editor save.
@@ -139,6 +142,7 @@ export class ResourceService {
       }
       const state = await this.builder.refresh();
       if ([state.snapshot.models.dev, state.snapshot.models.prod].some((model) => model.stale || model.status === "error")) throw new Error("The written configuration did not validate.");
+      journal.finish(journalId, "complete");
       record();
       this.expirePlans();
       return { status: "applied", message: "Wrote resource configuration.", resource: inverse ? entry.resource : entry.nextResource, revision: state.snapshot.revision, history: this.history() };
@@ -151,6 +155,7 @@ export class ResourceService {
           this.ownWrites.set(toRelative(this.root, change.file), sha256(change.before));
         } catch { conflicted = true; }
       }
+      journal.finish(journalId, conflicted ? "conflicted" : "restored");
       const state = await this.builder.refresh().catch(() => undefined);
       this.expirePlans();
       const message = conflicted ? "The resource edit could not be confirmed. Concurrent edits were preserved; review the changed files." : "The resource edit was reverted because it could not be confirmed.";

@@ -364,7 +364,7 @@ function writeRequirements(root: string, overrides: Record<string, string>, targ
 }
 
 /** Type-check candidate modules and their imports, without writing or emitting. */
-export function resourceTypeErrors(root: string, overrides: Readonly<Record<string, string>>): string[] {
+export function resourceTypeErrors(root: string, overrides: Readonly<Record<string, string>>, deletedFiles: ReadonlySet<string> = new Set()): string[] {
   const configPath = path.join(root, "cdk-app/tsconfig.json");
   let options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, strict: true, skipLibCheck: true, noEmit: true, types: ["node"] };
   if (existsSync(configPath)) {
@@ -375,10 +375,10 @@ export function resourceTypeErrors(root: string, overrides: Readonly<Record<stri
   const read = host.readFile;
   const exists = host.fileExists;
   const directoryExists = host.directoryExists?.bind(host);
-  host.readFile = (name) => overrides[path.resolve(name)] ?? read(name);
-  host.fileExists = (name) => path.resolve(name) in overrides || exists(name);
+  host.readFile = (name) => deletedFiles.has(path.resolve(name)) ? undefined : overrides[path.resolve(name)] ?? read(name);
+  host.fileExists = (name) => !deletedFiles.has(path.resolve(name)) && (path.resolve(name) in overrides || exists(name));
   host.directoryExists = (name) => Object.keys(overrides).some((file) => file.startsWith(path.resolve(name) + path.sep)) || !!directoryExists?.(name);
-  const roots = [...new Set([...editableFiles(root).map((name) => path.join(root, name)), ...Object.keys(overrides).filter((file) => /\.tsx?$/.test(file))])];
+  const roots = [...new Set([...editableFiles(root).map((name) => path.join(root, name)), ...Object.keys(overrides).filter((file) => /\.tsx?$/.test(file) && !path.relative(root, file).startsWith(`archived-workloads${path.sep}`))])].filter(file => !deletedFiles.has(file));
   const program = ts.createProgram(roots, options, host);
   return ts.getPreEmitDiagnostics(program).filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error).slice(0, 12).map((diagnostic) => `${diagnostic.file ? toRelative(root, diagnostic.file.fileName) + ": " : ""}${ts.flattenDiagnosticMessageText(diagnostic.messageText, " ")}`);
 }

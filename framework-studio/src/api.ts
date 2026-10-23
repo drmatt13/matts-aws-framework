@@ -13,6 +13,7 @@ import type { Mode } from "../shared/model";
 import type { InfrastructureState } from "../shared/infrastructure";
 import type { DeploymentInputDetails, DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
 import { STUDIO_PROTOCOL_VERSION, studioProtocolProblem } from "../shared/protocol";
+import type { SourceWatchState } from "../shared/watch";
 
 /**
  * The studio's server, from the page's side.
@@ -57,6 +58,10 @@ async function callInfrastructure(path: string, body?: unknown): Promise<Infrast
 }
 
 export const api = {
+  sourceRecovery: () => call<readonly import("../shared/source-recovery").SourceRecovery[]>("/source-recovery"),
+  restoreSource: (id: string, approval: string) => call<readonly import("../shared/source-recovery").SourceRecovery[]>("/source-recovery/restore", { id, approval }),
+  keepSource: (id: string, fingerprint: string, approval: string) => call<readonly import("../shared/source-recovery").SourceRecovery[]>("/source-recovery/keep", { id, fingerprint, approval }),
+  refreshSource: () => call<{ revision: string }>("/snapshot/refresh", {}),
   snapshot: () => call<SnapshotResponse>("/snapshot"),
   createDeploymentInput: (mode: Mode) => call<{ file: string; created: boolean }>("/deployment-inputs/create", { mode }),
   inputDetails: (mode: Mode, signal?: AbortSignal) => call<DeploymentInputDetails>(`/deployment-inputs/details?mode=${mode}`, undefined, signal),
@@ -87,6 +92,7 @@ export function useSnapshot() {
 }
 
 export interface LiveState {
+  readonly sourceWatch?: SourceWatchState;
   readonly connected: boolean;
   readonly evaluating: boolean;
   readonly running: string | null;
@@ -100,7 +106,17 @@ export function useLiveUpdates(onExternal: (files: readonly string[]) => void): 
   const [state, setState] = useState<LiveState>({ connected: false, evaluating: false, running: null });
   useEffect(() => {
     const source = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
-    source.addEventListener("hello", () => setState((current) => ({ ...current, connected: true })));
+    source.addEventListener("hello", (event) => {
+      const data = JSON.parse((event as MessageEvent<string>).data || "{}") as { sourceWatch?: SourceWatchState };
+      setState(current => ({ ...current, connected: true, sourceWatch: data.sourceWatch }));
+      // Events can be missed while the browser is disconnected. Re-read on every
+      // reconnect; dirty drafts retain their baseline and expose a source conflict.
+      void queryClient.invalidateQueries({ queryKey: ["snapshot"] });
+    });
+    source.addEventListener("source-watch", event => {
+      const sourceWatch = JSON.parse((event as MessageEvent<string>).data) as SourceWatchState;
+      setState(current => ({ ...current, sourceWatch }));
+    });
     source.addEventListener("status", (event) => {
       const { evaluating } = JSON.parse((event as MessageEvent<string>).data) as { evaluating: boolean };
       setState((current) => ({ ...current, evaluating }));

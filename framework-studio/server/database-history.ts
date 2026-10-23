@@ -21,9 +21,10 @@ import type {
   DatabaseMigrationReview, DatabaseSchemaComparison, DatabaseSemanticChange,
 } from "../shared/database-history";
 import { CONTRACT_FILE } from "./database";
-import { compileDatabaseSource } from "./database-workbench";
+import { compileDatabaseSource, databaseConfigurationSourceFiles } from "./database-workbench";
 import { EditError, sourceContents, writeSourceChange } from "./edits/io";
 import { sha256 } from "./files";
+import { databaseMigrationSourceFiles } from "../../packages/database/scripts/studio-migrations";
 
 export const MIGRATIONS_DIRECTORY = "packages/database/prisma/migrations";
 const CONFIG_FILE = "packages/database/prisma.config.ts";
@@ -75,6 +76,14 @@ export function databaseHistoryFiles(root: string): Map<string, string> {
   if (existsSync(path.join(root, MIGRATIONS_DIRECTORY))) walk(MIGRATIONS_DIRECTORY);
   files.set(CONFIG_FILE, readText(root, CONFIG_FILE));
   for (const file of ["package.json", "package-lock.json", "packages/database/package.json"]) if (existsSync(path.join(root, file))) files.set(file, readText(root, file));
+  // The same dependency closure used by validation belongs to the offline
+  // planner and its review identity. Never copy private dotenv inputs.
+  for (const absolute of [...databaseConfigurationSourceFiles(root), ...databaseMigrationSourceFiles(root)]) {
+    const relative = path.relative(root, absolute).replaceAll("\\", "/");
+    if (/(?:^|\/)\.env(?:\.|$)/.test(relative)) continue;
+    if (!relative || relative.startsWith("../") || path.isAbsolute(relative)) throw new EditError(422, "Prisma configuration imports outside this checkout. Move its authored helpers into the checkout before planning in Studio.");
+    if (existsSync(absolute)) files.set(relative, readText(root, relative));
+  }
   return files;
 }
 
