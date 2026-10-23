@@ -30,7 +30,7 @@ let router: typeof import("@tanstack/react-router");
 let query: typeof import("@tanstack/react-query");
 let studio: typeof import("../src/studio");
 let map: typeof import("../src/views/Isometric");
-let inspector: typeof import("../src/views/Inspector");
+let dialogs: typeof import("../src/views/DraftControls");
 const frames = new Map<number, FrameRequestCallback>();
 let nextFrame = 0;
 const images: { src: string; alpha: number }[] = [];
@@ -47,8 +47,10 @@ before(async () => {
   const require = createRequire(import.meta.url);
   const { JSDOM } = require("jsdom");
   dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/", pretendToBeVisual: true });
-  for (const name of ["window", "self", "document", "navigator", "HTMLElement", "HTMLCanvasElement", "Node", "MutationObserver", "getComputedStyle"] as const) Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] });
+  for (const name of ["window", "self", "document", "navigator", "HTMLElement", "HTMLCanvasElement", "HTMLDialogElement", "Node", "MutationObserver", "getComputedStyle"] as const) Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] });
   Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} close() {} } });
+  dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+  dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   Object.defineProperty(globalThis, "scrollTo", { configurable: true, value: () => {} });
   Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: class { observe() {} disconnect() {} } });
   Object.defineProperty(globalThis, "requestAnimationFrame", { configurable: true, value: (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; } });
@@ -93,7 +95,7 @@ before(async () => {
   Object.defineProperty(dom.window, "PointerEvent", { configurable: true, value: Pointer });
   Object.defineProperty(globalThis, "PointerEvent", { configurable: true, value: Pointer });
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
-  studio = await import("../src/studio"); map = await import("../src/views/Isometric"); inspector = await import("../src/views/Inspector");
+  studio = await import("../src/studio"); map = await import("../src/views/Isometric"); dialogs = await import("../src/views/DraftControls");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, history: {}, busy: null };
 });
@@ -114,7 +116,7 @@ async function mount(withInspector = false, selection?: string, initialResponse 
     const context = studio.useStudio();
     return h("div", null, h("output", { "aria-label": "Selection" }, context.selected ?? "none"), h(map.Isometric),
       withInspector ? h("button", { onClick: () => context.setMode(context.mode === "dev" ? "prod" : "dev") }, "Switch environment") : null,
-      withInspector ? h(inspector.Inspector) : null);
+      h(dialogs.UnsavedChangesDialog));
   }
   function Root() {
     const [current, setCurrent] = useState(initialResponse);
@@ -207,23 +209,89 @@ test("the keyboard entity navigator browses connections and returns focus to the
   assert.equal(ui.screen.getByLabelText("Selection").textContent, "none", "keyboard navigation does not change source selection");
 });
 
-test("the visible resource navigator searches, filters and inspects canonical entities without source changes", async () => {
+test("Resources opens from the toolbar, inspects in place and Back returns to the same search and type", async () => {
   await mount();
-  const navigator = ui.screen.getByRole("navigation", { name: "Map resource navigator" });
-  assert.match(navigator.textContent!, /map shows declarations/);
+  assert.equal(ui.screen.queryByRole("complementary"), null, "the panel starts closed");
+  const toggle = ui.screen.getByRole("button", { name: "Resources" });
+  assert.equal(toggle.getAttribute("aria-expanded"), "false");
+  ui.fireEvent.click(toggle);
+  const panel = ui.screen.getByRole("complementary", { name: "Resources" });
+  assert.equal(toggle.getAttribute("aria-expanded"), "true");
+  assert.match(panel.textContent!, /map shows declarations/);
   ui.fireEvent.change(search(), { target: { value: "graphql" } });
-  const results = ui.within(navigator);
+  const results = ui.within(panel);
   assert.ok(results.getByRole("button", { name: /graphql-api.*HTTP Lambda/ }));
   assert.equal(results.queryByRole("button", { name: /sign-in/ }), null);
+  assert.ok(panel.querySelector('.resource-row img[src$="aws/lambda.svg"]'), "rows reuse the shared icon registry");
   ui.fireEvent.change(results.getByRole("combobox", { name: "Map resource type" }), { target: { value: "HTTP Lambda" } });
   ui.fireEvent.click(results.getByRole("button", { name: /graphql-api.*HTTP Lambda/ }));
   await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "lambda:graphql-api"));
+  assert.equal(ui.screen.getByRole("complementary", { name: "Inspector" }), panel, "the inspector replaces the list in the same panel");
+  assert.equal(ui.screen.queryByRole("complementary", { name: "Resources" }), null);
+  assert.equal(toggle.getAttribute("aria-expanded"), "false");
+  const back = ui.screen.getByRole("button", { name: "Back to Resources" });
+  assert.equal(document.activeElement, back, "opening a row keeps the keyboard in the panel");
+  ui.fireEvent.click(back);
+  await ui.waitFor(() => assert.ok(ui.screen.getByRole("complementary", { name: "Resources" })));
   assert.equal((search() as HTMLInputElement).value, "graphql");
-  ui.fireEvent.click(results.getByRole("button", { name: "Clear selection" }));
+  assert.equal((ui.screen.getByRole("combobox", { name: "Map resource type" }) as HTMLSelectElement).value, "HTTP Lambda");
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "none", "Back ends the selection");
+  const opened = document.activeElement as HTMLElement;
+  assert.equal(opened.dataset.resourceId, "lambda:graphql-api", "focus returns to the row that was opened");
+  ui.fireEvent.click(opened);
+  await ui.waitFor(() => assert.ok(ui.screen.getByRole("complementary", { name: "Inspector" }), "the row reopens its inspector"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Close panel" }));
   await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "none"));
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Browse map resources" }));
-  assert.equal(ui.screen.queryByRole("navigation", { name: "Map resource navigator" }), null);
+  assert.equal(ui.screen.queryByRole("complementary"), null);
+  assert.equal(document.activeElement, document.querySelector("canvas"), "closing returns the keyboard to the map");
   assert.equal((search() as HTMLInputElement).value, "graphql");
+  ui.fireEvent.click(toggle);
+  assert.ok(ui.screen.getByRole("complementary", { name: "Resources" }));
+  ui.fireEvent.click(toggle);
+  assert.equal(ui.screen.queryByRole("complementary"), null);
+});
+
+test("a map selection opens the inspector directly, and Back from it opens Resources", async () => {
+  await mount(false, "lambda:sign-in");
+  assert.ok(ui.screen.getByRole("complementary", { name: "Inspector" }));
+  assert.equal(document.querySelector(".inspector-content .ref")!.textContent, "lambda:sign-in");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^graphql-api, HTTP Lambda/ }));
+  await ui.waitFor(() => assert.equal(document.querySelector(".inspector-content .ref")!.textContent, "lambda:graphql-api"));
+  assert.equal(document.querySelectorAll(".workspace-panel").length, 1, "another selection reuses the open panel");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Resources" }));
+  await ui.waitFor(() => assert.ok(ui.screen.getByRole("complementary", { name: "Resources" })));
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "none", "Back ends the selection");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^sign-in, HTTP Lambda/ }));
+  await ui.waitFor(() => assert.ok(ui.screen.getByRole("complementary", { name: "Inspector" })));
+  const canvas = document.querySelector("canvas")!;
+  ui.fireEvent.pointerDown(canvas, { pointerId: 1, button: 0, clientX: 2, clientY: 2 });
+  ui.fireEvent.pointerUp(canvas, { pointerId: 1, button: 0, clientX: 2, clientY: 2 });
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "none"));
+  assert.ok(ui.screen.getByRole("complementary", { name: "Resources" }), "clearing the selection on the map returns to the open list");
+});
+
+test("Back, Close and the Resources toggle keep unsaved inspector edits behind the navigation warning", async () => {
+  await mount(false, "lambda:graphql-api");
+  const description = () => document.querySelector<HTMLTextAreaElement>('.workspace-panel textarea[aria-label="Description"]')!;
+  ui.fireEvent.change(description(), { target: { value: "Pending panel edit" } });
+  for (const name of ["Back to Resources", "Close panel", "Resources"]) {
+    ui.fireEvent.click(ui.screen.getByRole("button", { name }));
+    await ui.waitFor(() => assert.ok(document.querySelector("dialog[open]"), `${name} asks first`));
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Keep Editing" }));
+    await ui.waitFor(() => assert.equal(document.querySelector("dialog[open]"), null));
+    assert.ok(ui.screen.getByRole("complementary", { name: "Inspector" }));
+    assert.equal(ui.screen.getByLabelText("Selection").textContent, "lambda:graphql-api");
+    assert.equal(description().value, "Pending panel edit");
+  }
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Resources" }));
+  await ui.waitFor(() => assert.ok(document.querySelector("dialog[open]")));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard and Continue" }));
+  await ui.waitFor(() => assert.ok(ui.screen.getByRole("complementary", { name: "Resources" })));
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "none");
+  assert.equal(document.querySelector("dialog[open]"), null);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Close panel" }));
+  assert.equal(ui.screen.queryByRole("complementary"), null);
+  assert.equal(document.querySelector("dialog[open]"), null, "nothing pending, nothing to confirm");
 });
 
 test("missing implementation is visible at its canonical map resource without changing topology", async () => {
@@ -233,7 +301,8 @@ test("missing implementation is visible at its canonical map resource without ch
   assert.deepEqual(brokenScene.nodes.map(node => [node.id, node.gx, node.gy]), healthyScene.nodes.map(node => [node.id, node.gx, node.gy]));
   assert.deepEqual(brokenScene.nodes.find(node => node.id === "lambda:graphql-api")?.sourceProblems, ["Configured handler index.ts is missing."]);
   await mount(false, undefined, failed);
-  const list = ui.screen.getByRole("navigation", { name: "Map resource navigator" });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Resources" }));
+  const list = ui.screen.getByRole("complementary", { name: "Resources" });
   const resource = ui.within(list).getByRole("button", { name: /graphql-api.*Needs attention/ });
   ui.fireEvent.click(resource);
   await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "lambda:graphql-api"));

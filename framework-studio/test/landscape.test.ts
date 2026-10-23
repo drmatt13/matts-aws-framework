@@ -5,7 +5,7 @@ import type { Snapshot } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
 import { offLens, restingAlpha } from "../src/scene/connections";
 import { buildScene, chamfered, chamferSize, titleRoom, type Island, type Scene } from "../src/scene/build";
-import { fitBounds, pan, resizeCamera, screenToWorld, wheelFactor, worldToScreen, zoomAt, MAX_ZOOM, MIN_ZOOM, type Camera } from "../src/scene/camera";
+import { fitBounds, pan, resizeCamera, revealSelection, screenToWorld, wheelFactor, worldToScreen, zoomAt, MAX_ZOOM, MIN_ZOOM, type Camera } from "../src/scene/camera";
 import { project, unprojectAt } from "../src/scene/iso";
 import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickIsland, surfaceOutline } from "../src/scene/picking";
 import { buildIconShape, ICON_BADGE, NODE_SPACING } from "../src/scene/shapes";
@@ -583,6 +583,47 @@ test("inspector and window resizes preserve screen positions without cumulative 
     assert.equal(camera.zoom, zoom);
     assert.ok(Math.abs(camera.x - initial.x) < 1e-7 && Math.abs(camera.y - initial.y) < 1e-7);
   }
+});
+
+test("a panel opening on the left narrows the map without sliding it", () => {
+  const wide = { width: 1512, height: 750 };
+  const narrow = { width: 1032, height: 750 };
+  for (const zoom of [MIN_ZOOM, 0.43, 1, MAX_ZOOM]) {
+    const initial = { x: 640, y: -210, zoom };
+    const point = { x: 900, y: 120 };
+    const before = worldToScreen(initial, wide, point);
+    const opened = resizeCamera(initial, wide, narrow, { x: 480, y: 0 });
+    const after = worldToScreen(opened, narrow, point);
+    assert.ok(Math.abs(after.x + 480 - before.x) < 1e-7 && Math.abs(after.y - before.y) < 1e-7, "the point keeps its window position");
+    const closed = resizeCamera(opened, narrow, wide, { x: -480, y: 0 });
+    assert.ok(Math.abs(closed.x - initial.x) < 1e-7 && Math.abs(closed.y - initial.y) < 1e-7 && closed.zoom === zoom, "closing restores the camera exactly");
+  }
+});
+
+test("a new selection comes into view: cut-off ones slide just far enough, unseen ones are centred", () => {
+  const viewport = { width: 1000, height: 700 };
+  const camera = { x: 0, y: 0, zoom: 1 };
+  // World x and y equal screen x - 500 and y - 350 for this camera.
+  const box = (minX: number, maxX: number, minY = -20, maxY = 20) => ({ minX, maxX, minY, maxY });
+  const screen = (next: Camera, x: number, y = 0) => worldToScreen(next, viewport, { x, y });
+  assert.equal(revealSelection(camera, viewport, box(-100, 100)), undefined, "already whole");
+  const left = revealSelection(camera, viewport, box(-540, -480))!;
+  assert.equal(Math.round(screen(left, -540).x), 16, "cut by the left edge: slides to the inset");
+  assert.equal(left.y, 0); assert.equal(left.zoom, 1);
+  const right = revealSelection(camera, viewport, box(480, 540))!;
+  assert.equal(Math.round(screen(right, 540).x), 1000 - 16, "cut by the right edge");
+  const top = revealSelection(camera, viewport, box(-50, 50, -380, -300))!;
+  assert.equal(Math.round(screen(top, 0, -380).y), 16, "cut by the top edge");
+  assert.equal(top.x, 0, "only the cut axis moves");
+  const bottom = revealSelection(camera, viewport, box(-50, 50, 300, 380))!;
+  assert.equal(Math.round(screen(bottom, 0, 380).y), 700 - 16, "cut by the bottom edge");
+  const unseen = revealSelection(camera, viewport, box(2000, 2100, 900, 1000))!;
+  assert.deepEqual(unseen, { x: 2050, y: 950, zoom: 1 }, "never on screen: centred at the same zoom");
+  const covered = revealSelection(camera, viewport, box(700, 760), { left: 0, right: 1480 })!;
+  assert.equal(Math.round(screen(covered, 760).x), 1000 - 16, "under a panel that just opened: slides out beside it");
+  assert.equal(revealSelection(camera, viewport, box(-700, 700, -20, 20)), undefined, "wider than the view and only cut sideways: left alone");
+  const tall = revealSelection(camera, viewport, box(450, 520, -500, 500))!;
+  assert.equal(tall.y, 0, "too tall to fit: no vertical move"); assert.equal(Math.round(screen(tall, 520).x), 1000 - 16);
 });
 
 test("zooming keeps the world point under the pointer within a pixel", () => {

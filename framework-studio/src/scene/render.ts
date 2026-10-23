@@ -29,6 +29,12 @@ const propIsGhost = (prop: Prop, mode: Scene["mode"]): boolean => !!prop.tagFilt
 export interface RenderState {
   readonly camera: Camera;
   readonly viewport: Viewport;
+  /**
+   * The map's whole horizontal span in viewport coordinates, side panel included. The
+   * atmosphere is lit across it, so a panel covering part of the map leaves it in place.
+   * Defaults to the viewport.
+   */
+  readonly stage?: Stage;
   readonly dpr: number;
   readonly selected?: string;
   readonly hovered?: string;
@@ -37,6 +43,11 @@ export interface RenderState {
   readonly time: number;
   readonly motion: boolean;
   readonly focus: LandscapeFocus;
+}
+
+export interface Stage {
+  readonly left: number;
+  readonly width: number;
 }
 
 export interface FrameResult {
@@ -226,7 +237,7 @@ export class SceneRenderer {
   private readonly tints = new Map<string, CanvasGradient>();
   private contact: CanvasGradient | undefined;
   private plaque: { readonly face: CanvasGradient; readonly glass: CanvasGradient } | undefined;
-  private atmosphere: { readonly width: number; readonly height: number; readonly base: CanvasGradient; readonly vignette: CanvasGradient; readonly blooms: readonly CanvasGradient[] } | undefined;
+  private atmosphere: { readonly left: number; readonly width: number; readonly height: number; readonly base: CanvasGradient; readonly vignette: CanvasGradient; readonly blooms: readonly CanvasGradient[] } | undefined;
   /** How many slabs and standing items the last frame drew, after culling. */
   drawnItems = 0;
 
@@ -426,7 +437,7 @@ export class SceneRenderer {
     }
 
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
-    context.fillStyle = this.atmosphereFor(viewport).base;
+    context.fillStyle = this.atmosphereFor(viewport, state.stage).base;
     context.fillRect(0, 0, viewport.width, viewport.height);
     this.animating = false;
     if (!prepared) return { cards: [], badges: [], animating: false, ms: performance.now() - started };
@@ -459,7 +470,7 @@ export class SceneRenderer {
       context.strokeStyle = at ? GRAPHITE.grid.major : GRAPHITE.grid.minor;
       context.stroke(path);
     }
-    const atmosphere = this.atmosphereFor(viewport);
+    const atmosphere = this.atmosphereFor(viewport, state.stage);
     context.setTransform(dpr, 0, 0, dpr, 0, 0);
     context.fillStyle = atmosphere.vignette;
     context.fillRect(0, 0, viewport.width, viewport.height);
@@ -491,25 +502,28 @@ export class SceneRenderer {
   // Graphite
   // -------------------------------------------------------------------------
 
-  private atmosphereFor(viewport: Viewport): NonNullable<SceneRenderer["atmosphere"]> {
+  private atmosphereFor(viewport: Viewport, stage: Stage = { left: 0, width: viewport.width }): NonNullable<SceneRenderer["atmosphere"]> {
     const cached = this.atmosphere;
-    if (cached && cached.width === viewport.width && cached.height === viewport.height) return cached;
+    const { left, width } = stage;
+    const { height } = viewport;
+    if (cached && cached.left === left && cached.width === width && cached.height === height) return cached;
     const context = this.context;
-    const { width, height } = viewport;
     const reach = Math.max(width, height);
     const base = context.createLinearGradient(0, 0, 0, height);
     base.addColorStop(0, GRAPHITE.void.top);
     base.addColorStop(1, GRAPHITE.void.bottom);
-    const vignette = context.createRadialGradient(width / 2, height * 0.45, reach * 0.22, width / 2, height * 0.45, reach * 0.78);
+    const centre = left + width / 2;
+    const vignette = context.createRadialGradient(centre, height * 0.45, reach * 0.22, centre, height * 0.45, reach * 0.78);
     vignette.addColorStop(0, rgba(GRAPHITE.void.vignette, 0));
     vignette.addColorStop(1, rgba(GRAPHITE.void.vignette, 0.82));
     const blooms = GRAPHITE.blooms.map((bloom) => {
-      const gradient = context.createRadialGradient(width * bloom.x, height * bloom.y, 0, width * bloom.x, height * bloom.y, reach * bloom.radius);
+      const x = left + width * bloom.x;
+      const gradient = context.createRadialGradient(x, height * bloom.y, 0, x, height * bloom.y, reach * bloom.radius);
       gradient.addColorStop(0, rgba(bloom.color, bloom.alpha));
       gradient.addColorStop(1, rgba(bloom.color, 0));
       return gradient;
     });
-    this.atmosphere = { width, height, base, vignette, blooms };
+    this.atmosphere = { left, width, height, base, vignette, blooms };
     return this.atmosphere;
   }
 

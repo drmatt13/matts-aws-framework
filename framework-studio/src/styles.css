@@ -723,18 +723,52 @@ a {
 
 .landscape-workspace { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .landscape-content { display: flex; flex: 1; min-width: 0; min-height: 0; }
-.map-resource-navigator { flex: 0 0 248px; min-width: 0; overflow: auto; padding: var(--space-3); border-right: 1px solid var(--rule); background: var(--paper); }
-.map-resource-navigator header { display: flex; justify-content: space-between; gap: var(--space-2); }
-.map-resource-navigator label { display: grid; gap: var(--space-1); }
-.map-resource-navigator ul { padding: 0; margin: var(--space-2) 0; list-style: none; }
-.map-resource-navigator .map-resource-result { display: grid; gap: 3px; width: 100%; padding: var(--space-2); text-align: left; border: 0; border-bottom: 1px solid var(--rule); background: transparent; color: var(--ink); overflow-wrap: anywhere; cursor: pointer; }
-.map-resource-result span { font-size: var(--text-caption); color: var(--graphite); }
-.map-resource-result:is(:hover, [aria-current=true]) { background: var(--wash) !important; }
-.landscape-tools button[aria-controls="map-resource-navigator"] { width: auto; gap: var(--space-1); padding: 0 var(--space-2); }
 .diff .hunk { color: var(--graphite); background: var(--paper); }
+
+/* The map's one contextual panel: Resources or the Inspector, never both, below the
+   workspace toolbar on the map's right. Same width as Board's inspector; the map takes the rest. */
+.panel-toggle { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; min-height: var(--control-height); padding: 0 var(--space-3) 0 var(--space-2); border: 1px solid var(--rule-strong); border-radius: var(--radius); background: var(--paper); color: var(--graphite); font: 500 var(--text-label)/1 var(--sans); cursor: pointer; }
+.panel-toggle:hover { background: var(--wash); color: var(--ink); }
+.panel-toggle[aria-expanded="true"] { background: var(--wash); border-color: var(--graphite); color: var(--ink); }
+.workspace-panel { display: flex; flex-direction: column; flex: 0 0 var(--inspector); width: var(--inspector); min-width: 0; min-height: 0; border-left: 1px solid var(--rule); background: var(--sheet); color: var(--ink); }
+.workspace-panel-header { display: flex; align-items: center; gap: var(--space-2); flex: none; min-height: 44px; padding: var(--space-1) var(--space-3) var(--space-1) var(--panel-padding); border-bottom: 1px solid var(--rule); }
+.workspace-panel-heading { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; }
+.workspace-panel-title { margin: 0; font: 600 var(--text-label)/1.3 var(--sans); }
+.workspace-panel-heading .section-count { margin-left: 0; }
+.workspace-panel-back { display: inline-flex; align-items: center; gap: 2px; min-height: var(--control-height-sm); margin-left: calc(-1 * var(--space-2)); padding: 0 var(--space-2) 0 var(--space-1); border: 0; border-radius: var(--radius); background: transparent; color: var(--ink); font: 600 var(--text-label)/1 var(--sans); cursor: pointer; }
+.workspace-panel-back > svg { color: var(--graphite); }
+.workspace-panel-back:hover { background: var(--wash); }
+.workspace-panel-header .icon-button { border-color: transparent; background: transparent; color: var(--graphite); }
+.workspace-panel-header .icon-button:hover:not(:disabled) { border-color: transparent; background: var(--wash); color: var(--ink); }
+.workspace-panel-body { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.workspace-panel .inspector { border: 0; max-height: none; background: transparent; }
+
+.resource-browser { overflow: hidden; }
+.resource-browser-filters { display: grid; gap: var(--space-2); flex: none; padding: var(--space-3) var(--panel-padding); border-bottom: 1px solid var(--rule); }
+.resource-browser-filters select { width: 100%; }
+.resource-browser-status { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin: 0; font-size: var(--text-caption); color: var(--graphite); }
+.resource-browser-list { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 var(--space-2) var(--space-4); }
+.resource-group h3 { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-4) var(--space-3) var(--space-1); background: var(--sheet); color: var(--graphite); font: 600 var(--text-caption)/1.4 var(--sans); }
+.resource-group h3 > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resource-group-count { margin-left: auto; font-weight: 500; font-variant-numeric: tabular-nums; }
+.resource-group ul { list-style: none; margin: 0; padding: 0; }
+.resource-row { position: relative; display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 44px; padding: var(--space-1) var(--space-3); border: 0; border-radius: var(--radius); background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.resource-row:hover { background: var(--wash); }
+.resource-row:focus-visible { outline: 2px solid var(--prod); outline-offset: -2px; }
+.resource-row.outside-filter .resource-row-icon, .resource-row.outside-filter strong { opacity: .55; }
+.resource-row-icon { display: inline-flex; flex: none; }
+.resource-row .entity-icon { width: 24px; height: 24px; flex-basis: 24px; }
+.resource-row .entity-icon-badge { right: -4px; bottom: -4px; width: 14px; height: 14px; padding: 1px; }
+.resource-row-text { display: grid; flex: 1; min-width: 0; line-height: 1.35; }
+.resource-row-text strong { overflow: hidden; font-size: var(--text-label); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.resource-row-text > span { overflow: hidden; color: var(--graphite); font-size: var(--text-caption); text-overflow: ellipsis; white-space: nowrap; }
+.resource-row-attention { display: inline-flex; flex: none; color: var(--refuse); }
+.resource-browser-empty { display: grid; justify-items: start; gap: var(--space-3); padding: var(--space-5) var(--space-3) 0; color: var(--graphite); font-size: var(--text-label); }
+.resource-browser-empty p { margin: 0; }
+.resource-browser-note { margin: var(--space-5) var(--space-3) 0; color: var(--faint); font-size: var(--text-caption); }
 @media (max-width: 800px) {
   .landscape-content { flex-direction: column; }
-  .map-resource-navigator { flex: 0 1 200px; border-right: 0; border-bottom: 1px solid var(--rule); }
+  .workspace-panel { flex: 0 1 55%; width: auto; border-left: 0; border-top: 1px solid var(--rule); }
   .landscape-content .landscape { min-height: 180px; }
 }
 .landscape {
@@ -847,7 +881,7 @@ a {
 .landscape-search input { min-width: 0; width: 100%; height: calc(var(--control-height) - 2px); min-height: 0; padding: 0; border: 0; outline: none; background: transparent; color: var(--ink); font: inherit; font-size: var(--text-label); }
 .landscape-search input::-webkit-search-cancel-button { display: none; }
 .landscape-search .icon-button { width: var(--control-height-sm); height: var(--control-height-sm); min-height: var(--control-height-sm); margin-right: calc(-1 * var(--space-2)); background: transparent; border-color: transparent; color: inherit; }
-.landscape-search-status { order: 1; flex-basis: 100%; font-size: var(--text-caption); color: var(--graphite); }
+.landscape-search-count { display: inline-flex; align-items: center; gap: var(--space-1); flex: none; font-size: var(--text-caption); color: var(--graphite); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .landscape-tools button:hover:not(:disabled) {
   background: var(--wash);
@@ -882,6 +916,7 @@ a {
   padding: 0 4px 6px;
   max-width: calc(100% - 72px);
 }
+.landscape-stats strong { font-weight: 500; color: #c9d3df; }
 
 .landscape-hover {
   position: absolute;
@@ -1090,9 +1125,10 @@ a {
 .board-head .landscape-add-menu { top: calc(100% + var(--space-3)); bottom: auto; }
 @media (max-width: 900px) { .board-head .landscape-add-menu { top: auto; bottom: var(--space-4); } }
 /* Tag filters belong to the workspace, not the canvas rendering theme. */
-.landscape-tag-controls { display: flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 100%; flex: 0 1 360px; color: var(--graphite); font-size: var(--text-caption); }
+.landscape-tag-controls { display: flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 100%; flex: 0 1 auto; color: var(--graphite); font-size: var(--text-caption); }
 .landscape-tag-controls > label { flex: none; }
-.landscape-tag-controls select { min-width: 0; width: 0; flex: 1; }
+/* Fixed widths: the clear control follows the last select without resizing either one. */
+.landscape-tag-controls select { min-width: 0; width: 168px; flex: 0 1 168px; }
 .landscape-tag-controls .icon-button { color: inherit; background: transparent; }
 .studio-add-toolbar button:focus-visible { outline-color: var(--prod); }
 .studio-add-toolbar .landscape-add-menu { background: var(--sheet); color: var(--ink); border-color: var(--rule-strong); }

@@ -60,25 +60,40 @@ export function pan(camera: Camera, dx: number, dy: number): Camera {
   return { ...camera, x: camera.x - dx / camera.zoom, y: camera.y - dy / camera.zoom };
 }
 
-/** Resize the viewport while keeping every world point at the same position from its top-left. */
-export function resizeCamera(camera: Camera, previous: Viewport, next: Viewport): Camera {
+/**
+ * Resize the viewport while keeping every world point at the same position in the window.
+ * `moved` is how far the viewport's top-left corner travelled, so a panel opening on the
+ * left narrows the map without sliding it.
+ */
+export function resizeCamera(camera: Camera, previous: Viewport, next: Viewport, moved: Point = { x: 0, y: 0 }): Camera {
   return {
     ...camera,
-    x: camera.x + (next.width - previous.width) / (2 * camera.zoom),
-    y: camera.y + (next.height - previous.height) / (2 * camera.zoom),
+    x: camera.x + (next.width - previous.width + 2 * moved.x) / (2 * camera.zoom),
+    y: camera.y + (next.height - previous.height + 2 * moved.y) / (2 * camera.zoom),
   };
 }
 
-/** Reveal a fitting selection covered by the right-hand inspector, preserving zoom and vertical position. */
-export function revealInspectorSelection(camera: Camera, unobscured: Viewport, viewport: Viewport, bounds: Bounds, padding = 16): Camera | undefined {
-  if (viewport.width >= unobscured.width) return undefined;
-  const left = worldToScreen(camera, viewport, { x: bounds.minX, y: bounds.minY });
-  const right = worldToScreen(camera, viewport, { x: bounds.maxX, y: bounds.maxY });
-  const width = right.x - left.x, height = right.y - left.y;
-  if (width > viewport.width || height > viewport.height) return undefined;
-  if (right.x <= viewport.width || left.x >= unobscured.width || right.y <= 0 || left.y >= viewport.height) return undefined;
-  const inset = Math.min(padding, (viewport.width - width) / 2);
-  return { ...camera, x: camera.x + (right.x - viewport.width + inset) / camera.zoom };
+/**
+ * Bring a new selection into view, keeping the zoom. One the viewport's edges cut, or a side
+ * panel that just opened over it, slides just far enough to be whole; one the map was not
+ * showing at all is centred. An axis the selection cannot fit on is left alone.
+ * `shown` is the horizontal span the map showed before this change, in viewport coordinates:
+ * wider than the viewport when a panel has just opened over part of it.
+ */
+export function revealSelection(camera: Camera, viewport: Viewport, bounds: Bounds, shown: { readonly left: number; readonly right: number } = { left: 0, right: viewport.width }, padding = 16): Camera | undefined {
+  const low = worldToScreen(camera, viewport, { x: bounds.minX, y: bounds.minY });
+  const high = worldToScreen(camera, viewport, { x: bounds.maxX, y: bounds.maxY });
+  if (low.x >= 0 && high.x <= viewport.width && low.y >= 0 && high.y <= viewport.height) return undefined;
+  if (high.x <= shown.left || low.x >= shown.right || high.y <= 0 || low.y >= viewport.height) {
+    return { ...camera, x: (bounds.minX + bounds.maxX) / 2, y: (bounds.minY + bounds.maxY) / 2 };
+  }
+  const slide = (from: number, to: number, size: number) => {
+    if (to - from > size) return 0;
+    const inset = Math.min(padding, (size - (to - from)) / 2);
+    return from < 0 ? from - inset : to > size ? to - size + inset : 0;
+  };
+  const dx = slide(low.x, high.x, viewport.width), dy = slide(low.y, high.y, viewport.height);
+  return dx || dy ? { ...camera, x: camera.x + dx / camera.zoom, y: camera.y + dy / camera.zoom } : undefined;
 }
 
 /**

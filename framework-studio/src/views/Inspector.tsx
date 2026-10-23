@@ -379,9 +379,25 @@ function NetworkFixtureView({ id }: { readonly id: string }) {
   </>;
 }
 
+/** The right-hand inspector beside Board and Database. Isometric hosts the same content in its workspace panel. */
 export function Inspector() {
-  const { index, snapshot, selected, select, model } = useStudio();
+  const { selected, select } = useStudio();
   if (!selected) return null;
+  return (
+    <aside className="inspector" aria-label="Inspector">
+      <div className="inspector-toolbar"><span>Inspector</span>
+        <button className="icon-button" onClick={() => select(undefined)} aria-label="Close the inspector">
+          <X size={16} aria-hidden />
+        </button>
+      </div>
+      <InspectorContent selected={selected} />
+    </aside>
+  );
+}
+
+/** Every section, setting, action and source link for one selection, with its pending-change footer. */
+export function InspectorContent({ selected }: { readonly selected: string }) {
+  const { index, snapshot, model } = useStudio();
   const target = index.targets.get(selected);
   const route = index.routes.get(selected);
   const resource = index.resources.get(selected);
@@ -394,12 +410,7 @@ export function Inspector() {
   const island = selected.startsWith("island:");
   const fixture = (model.networks ?? []).flatMap(networkFixtureIds).includes(selected);
   return (
-    <aside className="inspector" aria-label="Inspector">
-      <div className="inspector-toolbar"><span>Inspector</span>
-        <button className="icon-button" onClick={() => select(undefined)} aria-label="Close the inspector">
-          <X size={16} aria-hidden />
-        </button>
-      </div>
+    <>
       <div className="inspector-content" key={selected}>
       {target ? <TargetView target={target} /> : null}
       {route ? <RouteView route={route} /> : null}
@@ -412,6 +423,6 @@ export function Inspector() {
       {resource?.kind === "stack" && !resource.frameworkStack ? <StackInfrastructure id={resource.id} /> : null}
       {!target && !route && !resource && !connection && !groupedConnection && !otherLens && !localDatabase && !schemaEntity && !island && !fixture ? <p className="empty">{selected} is not in this graph.</p> : null}
       </div><DraftFooter />
-    </aside>
+    </>
   );
 }

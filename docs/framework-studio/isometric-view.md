@@ -44,7 +44,7 @@ The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) a
 | `render.ts` | no (canvas) | `SceneRenderer`: caches per scene, draws per frame |
 | `grid.ts` | yes | Viewport-bounded, world-anchored ground grid with zoom-dependent spacing |
 | `../icons.ts` | yes | Shared mapping from model entities to local AWS/Lucide SVG assets |
-| `views/Isometric.tsx` | no (React) | Mounting, input, the render loop, toolbar, resource navigator, add menu, hover card, accessible list, debug hook |
+| `views/Isometric.tsx` | no (React) | Mounting, input, the render loop, toolbar, side-panel view, add menu, hover card, accessible list, debug hook |
 
 Everything marked pure runs under Node and is unit-tested in
 [test/landscape.test.ts](../../framework-studio/test/landscape.test.ts).
@@ -56,11 +56,28 @@ application. See the [current creation guide](../../framework-studio/README.md#a
 for the bounded templates and existing-code options.
 Close the menu with its close button, Escape, or by clicking outside it.
 
-The collapsible **Resources** navigator shares map search and canonical selection with
-the canvas. A resource-type filter narrows the list; searching/filtering does not move
-nodes or change infrastructure identity. The navigator moves above the map on narrow
-screens. Missing implementation artifacts appear on the relevant resource, plaque,
-hover card and Inspector; these warnings describe source readiness, not deployed health.
+Isometric has one side panel (`views/WorkspacePanel.tsx`), directly below its toolbar,
+that shows **Resources** or the **Inspector**, never both; Board and Database keep their
+right-hand inspector, and Isometric's panel also sits on the map's right. The panel starts
+closed. The **Resources** toggle at the toolbar's far right, after the view controls, opens
+the list (`views/ResourceBrowser.tsx`): registry icons, names and types, grouped by the
+island each resource stands on. It shares map search and canonical
+selection with the canvas, and a resource-type filter narrows it; searching/filtering does
+not move nodes or change infrastructure identity. Any selection (list, canvas, keyboard
+entity list or link) shows its inspector in the same panel, so the map does not resize
+between the two. **Back to Resources** ends the selection and returns to the list's
+search, type, scroll position and row. **Close panel** ends the selection and returns focus
+to the map. Back, Close and the toggle use the draft's navigation warning only while edits
+are pending. The panel view is derived from the selection plus whether Resources is open
+beneath it; the panel moves below the map on narrow screens. Opening or closing it keeps
+every world point at the same window position (`resizeCamera`'s `moved` origin), and the
+renderer lights its gradient, vignette and blooms across the whole map span (`RenderState.stage`),
+so the panel covers the background rather than recentring it. Every new selection comes
+into view at the same zoom (`revealSelection`): one cut by the map's edge, or by a panel
+that just opened over it, slides just far enough to be whole; one the map was not showing is
+centred; an axis it cannot fit on stays put. Missing implementation artifacts appear
+on the relevant resource, plaque, hover card and Inspector; these warnings describe source
+readiness, not deployed health.
 
 Stack plaques carry an unplug badge when the configured CDK app has no constructor
 reference for their class in its local runtime import graph. These unattached stacks

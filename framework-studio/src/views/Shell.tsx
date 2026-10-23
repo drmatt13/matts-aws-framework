@@ -120,6 +120,8 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
   const { snapshot, response, mode, setMode, live, toast, toasts, selected } = studio;
   const databasePage = useLocation({ select: location => location.pathname === "/database" });
   const deployPage = useLocation({ select: location => location.pathname === "/deploy" });
+  // Isometric hosts the inspector in its own side panel, below the map toolbar.
+  const isometricPage = useLocation({ select: location => location.pathname === "/isometric" });
   const sourceWatch = live.sourceWatch ?? response.sourceWatch;
   const watchProblem = sourceWatch && sourceWatch.status !== "watching";
   const [refreshing, setRefreshing] = useState(false);
@@ -129,7 +131,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
     catch (error) { toast(error instanceof Error ? error.message : String(error), "refuse"); }
     finally { setRefreshing(false); }
   };
-  const showInspector = !!selected && !(databasePage && selected.startsWith("schema:"));
+  const showInspector = !!selected && !isometricPage && !(databasePage && selected.startsWith("schema:"));
   const [drawer, setDrawer] = useState<"health" | "command" | undefined>();
   const [result, setResult] = useState<CommandResult | undefined>();
   const healthDescriptionId = useId();
