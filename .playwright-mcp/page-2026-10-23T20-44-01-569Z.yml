@@ -1,0 +1,99 @@
+- generic [ref=f1e3]:
+  - banner [ref=f1e4]:
+    - generic [ref=f1e5]:
+      - text: AWS Studio
+      - generic "cloud2" [ref=f1e6]
+    - navigation "Views" [ref=f1e7]:
+      - link "Board" [ref=f1e8] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=f1e9] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [ref=f1e10] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f1e11] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f1e12] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f1e13] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=f1e15] [cursor=pointer]:
+      - generic [ref=f1e18]: Source valid
+    - generic [ref=f1e19]: "Development: valid. Production: valid"
+  - main [ref=f1e21]:
+    - generic [ref=f1e22]:
+      - heading "Database" [level=1] [ref=f1e23]
+      - generic [ref=f1e24]:
+        - navigation "Database workspace" [ref=f1e25]:
+          - button "Schema" [ref=f1e26] [cursor=pointer]
+          - button "History & migrations" [ref=f1e32] [cursor=pointer]
+          - button "Database status" [active] [pressed] [ref=f1e37] [cursor=pointer]
+          - button "Saved SQL" [ref=f1e42] [cursor=pointer]
+          - button "Data retention" [ref=f1e47] [cursor=pointer]
+        - button "How this works" [ref=f1e52] [cursor=pointer]
+      - generic [ref=f1e289]:
+        - generic [ref=f1e290]:
+          - generic [ref=f1e291]:
+            - heading "What does this database actually contain?" [level=2] [ref=f1e292]
+            - paragraph [ref=f1e293]: Compare saved source, migration history, and modeled physical storage. Every inspection is a read-only observation of the target you choose.
+          - button "Refresh source & targets" [ref=f1e294] [cursor=pointer]
+        - generic [ref=f1e300]:
+          - generic [ref=f1e301]:
+            - text: Database target
+            - combobox "Database target" [ref=f1e302]:
+              - option "Choose a database…" [selected]
+              - option "Local PostgreSQL"
+              - option "Production RDS · VPC task review"
+          - button "Inspect database" [disabled] [ref=f1e303]
+        - paragraph [ref=f1e304]: The Development / Production graph is not a database selection. Choose a target explicitly.
+        - region "Schema representations" [ref=f1e305]:
+          - heading "Five distinct sources of evidence" [level=3] [ref=f1e306]
+          - generic [ref=f1e307]:
+            - generic [ref=f1e308]:
+              - term [ref=f1e309]: Editor draft
+              - definition [ref=f1e310]: Same text as saved source
+            - generic [ref=f1e311]:
+              - term [ref=f1e312]: Saved Prisma source
+              - definition [ref=f1e313]:
+                - text: Valid contract ·
+                - code [ref=f1e314]: 2757f22b663b
+            - generic [ref=f1e315]:
+              - term [ref=f1e316]: Emitted contract & migration graph
+              - definition [ref=f1e317]:
+                - text: Emitted storage and execution hashes match saved source. This does not establish migration or live database state.
+                - generic [ref=f1e318]: packages/database/src/generated/contract.json · read 4:43:54 PM · 1 migration graph heads
+            - generic [ref=f1e319]:
+              - term [ref=f1e320]: Database marker & ledger
+              - definition [ref=f1e321]: Unknown · no successful target observation
+            - generic [ref=f1e322]:
+              - term [ref=f1e323]: Physical PostgreSQL schema
+              - definition [ref=f1e324]: Unknown · marker equality alone is insufficient
+        - generic [ref=f1e325]:
+          - generic [ref=f1e326]:
+            - heading "Saved source → migration history" [level=3] [ref=f1e327]
+            - generic [ref=f1e328]: Storage has a graph head
+            - paragraph [ref=f1e329]: Saved storage matches a terminal contract in the on-disk migration graph. This does not establish whether any database has applied it.
+            - paragraph [ref=f1e330]:
+              - code [ref=f1e331]: 518f79d59ebe
+              - text: · 3 migration packages
+          - generic [ref=f1e332]:
+            - heading "Database migration evidence" [level=3] [ref=f1e333]
+            - generic [ref=f1e334]: Unknown
+            - paragraph [ref=f1e335]: No current observation for this target. A schema file and migration folders alone cannot establish database state.
+          - generic [ref=f1e336]:
+            - heading "Observed physical schema" [level=3] [ref=f1e337]
+            - generic [ref=f1e338]: Unknown
+            - paragraph [ref=f1e339]: Inspect to compare PostgreSQL’s modeled schema with saved source. Matching a migration marker alone never proves a physical match.
+        - generic [ref=f1e340]: Database state is unknown until an explicit inspection succeeds.
+        - generic [ref=f1e341]:
+          - heading "The next safe action" [level=3] [ref=f1e342]
+          - list [ref=f1e343]:
+            - listitem [ref=f1e344]: Review and save the source proposal.
+            - listitem [ref=f1e345]:
+              - text: Generate application artifacts with
+              - code [ref=f1e346]: npm --workspace @repo/database run generate
+              - text: and review repositories, GraphQL authorization and client impact.
+            - listitem [ref=f1e347]: Choose the intended historical baseline and plan a migration offline.
+            - listitem [ref=f1e348]: Review SQL, constraints, destructive changes and data transformations.
+            - listitem [ref=f1e349]: Apply the reviewed migration only with explicit target approval, then inspect again.
+          - paragraph [ref=f1e350]: Local startup verifies storage without applying migrations, pruning users or setting up test identity. A failed verification leaves PostgreSQL available for inspection and a separately reviewed initialization/migration. Production retains private IAM/TLS access.
+  - status

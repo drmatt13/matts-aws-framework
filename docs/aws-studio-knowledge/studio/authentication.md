@@ -11,6 +11,8 @@ source:
   - framework-studio/src/views/IdentityPolicyEditor.tsx
   - framework-studio/src/views/CognitoManagement.tsx
   - framework-studio/server/identity/service.ts
+  - packages/framework/src/runtime/auth.ts
+  - packages/framework/src/runtime/cognito.ts
 related:
   - studio.editing
   - deployment.planning-safety
@@ -67,6 +69,17 @@ Keep these evidence classes separate in every status and empty state:
 | External provider configuration | Requires provider-side verification independent of AWS metadata |
 | Sign-in and effective access | Require actual authentication/authorization observations; IAM simulation is a separate bounded diagnostic |
 
+Handler-side `authenticated` verifies ID tokens with the configured pool/client and
+fetches remote Cognito signing keys over HTTPS. `userPool: true` delivers the
+identifiers; it does not create a network path to that JWKS endpoint. API Gateway
+JWT admission is a separate layer. An isolated handler can therefore receive a
+valid admitted token but return503 when signing keys cannot be read; an invalid
+token returns401. Keep the authentication entry point where that fetch is reachable
+and delegate private work through declared bindings, or explicitly provide the
+required network reachability. An S3 gateway endpoint alone does not provide it.
+The [Job 3 evidence](../../framework-studio/job3-execution-2026-10-23.md) distinguishes
+this observed network failure from missing S3 permissions and retained-pool reuse.
+
 `IdentityService` resolves owned physical IDs rather than accepting arbitrary pool
 IDs. It allowlists public provider metadata and never requests secret values.
 Google setup links to the exact mode input file in the editor; it never requests
@@ -77,7 +90,11 @@ The existing generic environment and resource value editors are separate
 boundaries that can load stored values into component state for masked display.
 `identityPoolAccess` keeps default authenticated and optional guest roles
 permissionless; reader-group grants and explicit Deny statements remain distinct
-from application RBAC. See the [identity/domain guide](../../framework-studio/identity-and-domains.md)
+from application RBAC. Native code may pass a newly created bucket's unresolved
+CDK `bucket.bucketArn` to `readBucketArn`; synthesis preserves that CloudFormation
+reference and the selected object prefix. Studio's literal ARN editor still
+requires a concrete scoped string and never evaluates arbitrary expressions.
+See the [identity/domain guide](../../framework-studio/identity-and-domains.md)
 for supported source shapes, operation approvals and limitations.
 
 New custom-domain settings are production-only. An existing development custom

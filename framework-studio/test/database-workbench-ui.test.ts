@@ -198,11 +198,15 @@ test("route navigation and browser exit protect an unsaved schema and allow expl
   window.dispatchEvent(exit); assert.equal(exit.defaultPrevented, true);
   ui.fireEvent.click(ui.screen.getByRole("link", { name: "Open other view" }));
   await ui.screen.findByRole("dialog", { name: "Leave your schema draft?" });
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Keep editing" }));
-  await ui.waitFor(() => assert.equal(application.state.location.pathname, "/database"));
+  await ui.act(async () => { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Keep editing" })); });
+  // The pathname never changed while blocked. Wait for cancellation and the
+  // actual guard dismissal before requesting another navigation.
+  await ui.waitFor(() => assert.equal(ui.screen.queryByRole("dialog", { name: "Leave your schema draft?" }), null));
+  assert.equal(application.state.location.pathname, "/database");
   assert.match(editor().state.doc.toString(), /title String\?/);
   ui.fireEvent.click(ui.screen.getByRole("link", { name: "Open other view" }));
-  ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Discard and continue" }));
+  const nextGuard = await ui.screen.findByRole("dialog", { name: "Leave your schema draft?" });
+  ui.fireEvent.click(ui.within(nextGuard).getByRole("button", { name: "Discard and continue" }));
   await ui.screen.findByText("Other view reached");
   assert.equal(saves.length, 0);
 });

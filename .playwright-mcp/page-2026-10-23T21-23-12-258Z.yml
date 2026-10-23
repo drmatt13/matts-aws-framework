@@ -1,0 +1,286 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - generic [ref=f3e5]:
+      - text: AWS Studio
+      - generic "cloud2" [ref=f3e6]
+    - navigation "Views" [ref=f3e7]:
+      - link "Board" [ref=f3e8] [cursor=pointer]:
+        - /url: /?select=lambda%3Areceipt-ingested
+      - link "Isometric" [ref=f3e9] [cursor=pointer]:
+        - /url: /isometric?select=lambda%3Areceipt-ingested
+      - link "Database" [ref=f3e10] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f3e11] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f3e12] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f3e13] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=f3e15] [cursor=pointer]:
+      - generic [ref=f3e18]: Source valid
+    - generic [ref=f3e19]: "Development: valid. Production: valid"
+  - main [ref=f3e21]:
+    - generic [ref=f3e22]:
+      - generic [ref=f3e23]:
+        - generic [ref=f3e24]:
+          - group "Source environment" [ref=f3e25]:
+            - generic [ref=f3e26]: Source
+            - generic [ref=f3e27]:
+              - button "Development" [pressed] [ref=f3e28] [cursor=pointer]
+              - button "Production" [ref=f3e29] [cursor=pointer]
+          - group "Source edit history" [ref=f3e30]:
+            - button "Undo" [ref=f3e31] [cursor=pointer]
+            - button "Redo" [disabled] [ref=f3e35]
+            - status [ref=f3e39]
+        - generic [ref=f3e40]:
+          - search "Map search" [ref=f3e41]:
+            - searchbox "Search isometric map" [ref=f3e45]
+          - group "Map tag filters" [ref=f3e46]:
+            - generic [ref=f3e47]: Tags
+            - combobox "Filter map by tag key" [ref=f3e48]:
+              - option "All tags" [selected]
+              - option "Untagged (15)"
+        - group "Map view controls" [ref=f3e49]:
+          - button "Zoom out" [ref=f3e50] [cursor=pointer]
+          - button "Zoom in" [ref=f3e52] [cursor=pointer]
+          - button "Fit the whole application" [ref=f3e54] [cursor=pointer]
+          - button "Focus the selection" [ref=f3e60] [cursor=pointer]
+          - button "Pause motion" [ref=f3e63] [cursor=pointer]
+        - button "Resources" [ref=f3e67] [cursor=pointer]
+      - generic [ref=f3e71]:
+        - generic [ref=f3e72]:
+          - generic "Isometric landscape of the application. Use the list of entities below, or arrow keys to pan, plus and minus to zoom, 0 to fit, F to focus the selection." [ref=f3e73]
+          - generic:
+            - generic [ref=f3e74]: 17 resources · 14 connections
+            - button "Add to application" [ref=f3e76] [cursor=pointer]
+          - list "Entities in the landscape" [ref=f3e78]:
+            - listitem [ref=f3e79]:
+              - strong [ref=f3e80]: Map resources and connections
+              - generic [ref=f3e81]: Use arrow keys or Tab to browse, Enter to inspect, Escape to return to the map.
+            - listitem [ref=f3e82]:
+              - 'button "Connection: Environment file: client-app/.env to Environment file: cdk-app/.env.prod, 1 relationship (Prod)" [ref=f3e83] [cursor=pointer]'
+            - listitem [ref=f3e84]:
+              - 'button "Connection: Environment file: client-app/.env to Stack: FrontendWebsiteS3Stack, 1 relationship (Prod)" [ref=f3e85] [cursor=pointer]'
+            - listitem [ref=f3e86]:
+              - 'button "Connection: Environment file: client-app/.env to Stack: WebSocketApiStack, 1 relationship (Off)" [ref=f3e87] [cursor=pointer]'
+            - listitem [ref=f3e88]:
+              - 'button "Connection: Environment file: client-app/.env to Environment file: cdk-app/.env.dev, 4 relationships (4 · Dev)" [ref=f3e89] [cursor=pointer]'
+            - listitem [ref=f3e90]:
+              - 'button "Connection: Environment file: client-app/.env to Stack: cognito, 4 relationships (4)" [ref=f3e91] [cursor=pointer]'
+            - listitem [ref=f3e92]:
+              - 'button "Connection: HTTP: /receipts to Stack: cognito, 2 relationships (2)" [ref=f3e93] [cursor=pointer]'
+            - listitem [ref=f3e94]:
+              - 'button "Connection: HTTP: /receipts to Stack: receiptStore, 2 relationships (2)" [ref=f3e95] [cursor=pointer]'
+            - listitem [ref=f3e96]:
+              - 'button "Connection: Event Lambda: receipt-ingested to Stack: receiptStore, 2 relationships (2)" [ref=f3e97] [cursor=pointer]'
+            - listitem [ref=f3e98]:
+              - 'button "Connection: Event Lambda: cognito-pre-signup-trigger to Stack: cognito, 1 relationship" [ref=f3e99] [cursor=pointer]'
+            - listitem [ref=f3e100]:
+              - 'button "Connection: API: /api/receipts to HTTP: /receipts, 1 relationship" [ref=f3e101] [cursor=pointer]'
+            - listitem [ref=f3e102]:
+              - 'button "Connection: Stack: cognito to Event Lambda: cognito-custom-message, 1 relationship" [ref=f3e103] [cursor=pointer]'
+            - listitem [ref=f3e104]:
+              - 'button "Connection: Stack: cognito to Event Lambda: cognito-post-confirmation-trigger, 1 relationship" [ref=f3e105] [cursor=pointer]'
+            - listitem [ref=f3e106]:
+              - 'button "Connection: Stack: cognito to Event Lambda: cognito-pre-signup-trigger, 1 relationship" [ref=f3e107] [cursor=pointer]'
+            - listitem [ref=f3e108]:
+              - 'button "Connection: Stack: receiptStore to Event Lambda: receipt-ingested, 1 relationship" [ref=f3e109] [cursor=pointer]'
+            - listitem [ref=f3e110]:
+              - button "Serverless compute island settings" [ref=f3e111] [cursor=pointer]
+            - listitem [ref=f3e112]:
+              - button "Receipt network · 10.2.0.0/16 island settings" [ref=f3e113] [cursor=pointer]
+            - listitem [ref=f3e114]:
+              - button "APIs island settings" [ref=f3e115] [cursor=pointer]
+            - listitem [ref=f3e116]:
+              - button "Client-app environment file island settings" [ref=f3e117] [cursor=pointer]
+            - listitem [ref=f3e118]:
+              - button "CDK environment files island settings" [ref=f3e119] [cursor=pointer]
+            - listitem [ref=f3e120]:
+              - button "Input parameters and secrets island settings" [ref=f3e121] [cursor=pointer]
+            - listitem [ref=f3e122]:
+              - button "Stacks island settings" [ref=f3e123] [cursor=pointer]
+            - listitem [ref=f3e124]:
+              - button "Internet gateway" [ref=f3e125] [cursor=pointer]
+            - listitem [ref=f3e126]:
+              - button "Egress-only gateway" [ref=f3e127] [cursor=pointer]
+            - listitem [ref=f3e128]:
+              - button "s3 endpoint" [ref=f3e129] [cursor=pointer]
+            - listitem [ref=f3e132]:
+              - 'button "/api/receipts, HTTP route. Follows receipt-api: enabled in development · on your machine." [ref=f3e133] [cursor=pointer]'
+            - listitem [ref=f3e134]:
+              - button "client-app/.env, Client-app environment mappings. Client-app variables mapped from CDK inputs and stack outputs. Select to inspect the mappings." [ref=f3e135] [cursor=pointer]
+            - listitem [ref=f3e130]:
+              - button "receipt-api, HTTP Lambda. Enabled in development · on your machine." [ref=f3e131] [cursor=pointer]
+            - listitem [ref=f3e138]:
+              - 'button "cdk-app/.env.dev, CDK development environment file. cdk-app/.env.dev: not generated; select the island to generate it. Values stay outside the graph." [ref=f3e139] [cursor=pointer]'
+            - listitem [ref=f3e136]:
+              - button "receipt-ingested, Event Lambda. Enabled in development · your machine + aws." [ref=f3e137] [cursor=pointer]
+            - listitem [ref=f3e142]:
+              - button "cognito-custom-message, Event Lambda. Enabled in development · your machine + aws." [ref=f3e143] [cursor=pointer]
+            - listitem [ref=f3e144]:
+              - button "googleClientSecret, Secret, GOOGLE_CLIENT_SECRET. Held by the development graph." [ref=f3e145] [cursor=pointer]
+            - listitem [ref=f3e146]:
+              - 'button "cdk-app/.env.prod, CDK production environment file. cdk-app/.env.prod: local file. Values stay outside the graph." [ref=f3e147] [cursor=pointer]'
+            - listitem [ref=f3e140]:
+              - button "cognito-pre-signup-trigger, Event Lambda. Enabled in development · your machine + aws." [ref=f3e141] [cursor=pointer]
+            - listitem [ref=f3e148]:
+              - button "cognito-post-confirmation-trigger, Event Lambda. Enabled in development · your machine + aws." [ref=f3e149] [cursor=pointer]
+            - listitem [ref=f3e150]:
+              - button "CognitoStack, Stack, CognitoStack. Framework-managed stack exporting root .env values." [ref=f3e151] [cursor=pointer]
+            - listitem [ref=f3e152]:
+              - button "ReceiptStoreStack, Stack, ReceiptStoreStack. Held by the development graph." [ref=f3e153] [cursor=pointer]
+            - listitem [ref=f3e154]:
+              - button "FrontendWebsiteS3Stack, Stack, FrontendWebsiteS3Stack. Framework-managed stack exporting root .env values; absent in the development graph. Not defined in resources." [ref=f3e155] [cursor=pointer]
+            - listitem [ref=f3e156]:
+              - button "ReceiptIdentityStack, Stack, ReceiptIdentityStack. Held by the development graph." [ref=f3e157] [cursor=pointer]
+            - listitem [ref=f3e158]:
+              - button "DevLambdaReplayStack, Stack, DevLambdaReplayStack. Framework-managed stack exporting root .env values. Not defined in resources." [ref=f3e159] [cursor=pointer]
+            - listitem [ref=f3e160]:
+              - button "WebSocketApiStack, Stack, WebSocketApiStack. Framework-managed stack exporting root .env values; absent in the development graph. Not defined in resources." [ref=f3e161] [cursor=pointer]
+            - listitem [ref=f3e162]:
+              - button "HttpApiGatewayStack, Stack, HttpApiGatewayStack. Framework-managed stack exporting root .env values; absent in the development graph. Not defined in resources." [ref=f3e163] [cursor=pointer]
+        - complementary "Inspector" [ref=f3e618]:
+          - generic [ref=f3e165]:
+            - button "Back to Resources" [active] [ref=f3e619] [cursor=pointer]: Resources
+            - button "Close panel" [ref=f3e170] [cursor=pointer]
+          - generic [ref=f3e622]:
+            - generic [ref=f3e623]:
+              - text: Event Lambda
+              - heading "receipt-ingested" [level=2] [ref=f3e624]
+              - code [ref=f3e626]: lambda:receipt-ingested
+              - generic [ref=f3e627]:
+                - generic [ref=f3e628]: Source
+                - link "Open framework-config/workloads/receipt-events.ts:5 in VS Code" [ref=f3e629] [cursor=pointer]:
+                  - /url: vscode://file//Users/matt/Desktop/code/framework-fix/matts-aws-framework/.cache/job3/cloud2/framework-config/workloads/receipt-events.ts:5:1
+                  - code [ref=f3e630]: receipt-events.ts:5
+            - group [ref=f3e636]:
+              - generic "Tags 0" [ref=f3e637] [cursor=pointer]:
+                - generic [ref=f3e640]: Tags
+                - generic [ref=f3e641]: "0"
+            - region [ref=f3e642]:
+              - heading "Deployment" [level=3] [ref=f3e644]
+              - generic [ref=f3e645]:
+                - generic [ref=f3e646]:
+                  - generic [ref=f3e647]:
+                    - generic [ref=f3e648]: Development
+                    - strong [ref=f3e653]: Enabled
+                    - generic [ref=f3e654]: In AWS
+                  - generic [ref=f3e655]:
+                    - generic [ref=f3e656]: Production
+                    - strong [ref=f3e659]: Enabled
+                    - generic [ref=f3e660]: In AWS
+                - paragraph [ref=f3e661]: AWS invokes this function in both environments.
+            - region "Node description" [ref=f3e662]:
+              - group [ref=f3e663]:
+                - generic "Description Edit" [ref=f3e664] [cursor=pointer]:
+                  - text: Description
+                  - generic [ref=f3e665]: Edit
+              - paragraph [ref=f3e666]: Independent uploaded receipt event consumer
+            - region [ref=f3e667]:
+              - heading "Implementation" [level=3] [ref=f3e669]
+              - generic [ref=f3e670]:
+                - code [ref=f3e671]: /lambda_functions/event_functions/receipt-ingested
+                - paragraph [ref=f3e672]: Required source artifacts present. Runtime and deployment checks are separate.
+                - link "Open implementation in editor" [ref=f3e673] [cursor=pointer]:
+                  - /url: vscode://file//Users/matt/Desktop/code/framework-fix/matts-aws-framework/.cache/job3/cloud2/cdk-app/lambda_functions/event_functions/receipt-ingested/index.ts:1:1
+            - group [ref=f3e675]:
+              - generic "Connect workload" [ref=f3e676] [cursor=pointer]
+              - option "Use application database (IAM)" [selected]
+              - option "Provide user-pool identifiers"
+              - option "Run a container task"
+              - option "Start a workflow"
+              - option "Invoke a JSON agent"
+              - option "Deliver input or secret"
+              - option "Grant bucket or queue access"
+              - option "Connect" [selected]
+              - option "Disconnect"
+            - region [ref=f3e680]:
+              - heading "Settings" [level=3] [ref=f3e682]
+              - generic [ref=f3e683]:
+                - generic [ref=f3e684]:
+                  - generic [ref=f3e685]: Memory
+                  - generic [ref=f3e686]:
+                    - spinbutton "Memory in MB" [ref=f3e687]: "128"
+                    - generic [ref=f3e688]: MB
+                  - generic [ref=f3e689]:
+                    - generic [ref=f3e690]:
+                      - generic "defaults.lambda.memorySize" [ref=f3e691]: "Default: 128 MB"
+                      - button "Use default memory" [ref=f3e692] [cursor=pointer]: Use default
+                    - group [ref=f3e693]:
+                      - generic "Configured here" [ref=f3e694] [cursor=pointer]
+                - generic [ref=f3e695]:
+                  - generic [ref=f3e696]: Timeout
+                  - generic [ref=f3e697]:
+                    - spinbutton "Timeout in s" [ref=f3e698]: "10"
+                    - generic [ref=f3e699]: s
+                  - generic [ref=f3e700]:
+                    - generic [ref=f3e701]:
+                      - generic "defaults.lambda.timeoutSeconds" [ref=f3e702]: "Default: 10 s"
+                      - button "Use default timeout" [ref=f3e703] [cursor=pointer]: Use default
+                    - group [ref=f3e704]:
+                      - generic "Configured here" [ref=f3e705] [cursor=pointer]
+                - generic [ref=f3e706]:
+                  - generic [ref=f3e707]: Log retention
+                  - combobox "Log retention" [ref=f3e709]:
+                    - option "1 day" [selected]
+                    - option "3 days"
+                    - option "5 days"
+                    - option "7 days"
+                    - option "14 days"
+                    - option "30 days"
+                    - option "60 days"
+                    - option "90 days"
+                    - option "120 days"
+                    - option "150 days"
+                    - option "180 days"
+                    - option "365 days"
+                    - option "400 days"
+                    - option "545 days"
+                    - option "731 days"
+                    - option "1096 days"
+                    - option "1827 days"
+                    - option "2192 days"
+                    - option "2557 days"
+                    - option "2922 days"
+                    - option "3288 days"
+                    - option "3653 days"
+                    - option "Inherit · 30 days"
+                  - group [ref=f3e711]:
+                    - generic "Configured here" [ref=f3e712] [cursor=pointer]
+            - generic [ref=f3e714]:
+              - generic [ref=f3e715]: Local replay
+              - switch "Local replay" [ref=f3e717] [cursor=pointer]:
+                - generic [ref=f3e718]: "Off"
+              - generic [ref=f3e721]: Captures AWS invocations in development through DevLambdaReplayStack and replays them against the local handler. Production runs the handler in AWS. Review Changes updates the config and handler wrapper together.
+              - group [ref=f3e722]:
+                - generic "Inherited value" [ref=f3e723] [cursor=pointer]
+            - group [ref=f3e725]:
+              - generic "Triggers 1" [ref=f3e726] [cursor=pointer]:
+                - generic [ref=f3e729]: Triggers
+                - generic [ref=f3e730]: "1"
+            - group [ref=f3e732]:
+              - generic "Build and runtime" [ref=f3e733] [cursor=pointer]
+              - option "arm64" [selected]
+              - option "x86_64"
+              - option "Inherit · arm64"
+              - option "Source bundle (ZIP)" [selected]
+              - option "Container image (Dockerfile)"
+              - option "Inherit · Source bundle (ZIP)"
+              - option "nodejs24" [selected]
+              - option "nodejs22"
+              - option "python3.13"
+              - option "python3.12"
+              - option "Inherit · nodejs24"
+            - group [ref=f3e738]:
+              - generic "Production placement" [ref=f3e739] [cursor=pointer]
+              - option "Outside VPCs" [selected]
+              - option "receipts · 10.2.0.0/16"
+            - group [ref=f3e744]:
+              - generic "Connections 3" [ref=f3e745] [cursor=pointer]:
+                - generic [ref=f3e748]: Connections
+                - generic [ref=f3e749]: "3"
+            - group [ref=f3e751]:
+              - generic "Environment 1" [ref=f3e752] [cursor=pointer]:
+                - generic [ref=f3e755]: Environment
+                - generic [ref=f3e756]: "1"
+  - status

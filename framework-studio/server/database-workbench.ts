@@ -359,7 +359,7 @@ export class DatabaseWorkbenchService {
         message: stale ? "Source or connection identity changed during inspection. Inspect again before using this evidence." : migrationState.status === "pending" || migrationState.status === "divergent" ? migrationState.message : physical.ok && markerMatches ? "The saved storage contract and marker match this database's modeled physical schema. Data and application correctness remain separate." : physical.ok ? "The modeled physical schema matches saved source, but migration marker evidence differs or is missing. Review history before selecting a migration baseline." : "The physical schema differs from saved source. A pending migration can explain this; compare the marker's historical contract before calling it drift." };
     } catch {
       // Driver and PostgreSQL error messages may embed credentials or URLs. Never return them.
-      return { ...base, status: "unreachable", message: "This target could not be inspected. No database writes were requested. Confirm the existing Compose PostgreSQL is running and POSTGRES_HOST_PORT matches its published loopback port, then retry. Studio does not start Compose because startup can apply migrations." };
+      return { ...base, status: "unreachable", message: "This target could not be inspected. No database writes were requested. Confirm the selected Compose project's PostgreSQL is running and POSTGRES_HOST_PORT matches its published loopback port, then retry. Start the project separately if needed; inspection never starts containers or applies migrations." };
     } finally { try { await client.close(); } catch { /* Connection cleanup failure does not change observation evidence. */ } }
   }
 }

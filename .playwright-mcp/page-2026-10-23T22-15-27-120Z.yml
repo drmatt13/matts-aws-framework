@@ -1,0 +1,354 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - text: AWS Studio
+      - generic "recovery2" [ref=e6]
+    - navigation "Views" [ref=e7]:
+      - link "Board" [ref=e8] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=e9] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [ref=e10] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=e11] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=e12] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=e13] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=e15] [cursor=pointer]:
+      - generic [ref=e18]: Source valid
+    - generic [ref=e19]: "Development: valid. Production: valid"
+  - main [ref=e21]:
+    - generic [ref=e22]:
+      - generic "AWS account" [ref=e23]:
+        - generic [ref=e24]:
+          - generic [ref=e25]:
+            - generic [ref=e26]: AWS profile
+            - combobox "AWS profile" [ref=e27]:
+              - option "default"
+              - option "dev" [selected]
+              - option "dev2"
+          - generic [ref=e151]:
+            - generic [ref=e152]:
+              - generic [ref=e153]: Account
+              - strong [ref=e154]: "734849394764"
+            - generic [ref=e155]:
+              - generic [ref=e156]: Region
+              - generic [ref=e157]: us-east-1
+            - generic "arn:aws:iam::734849394764:user/matthew" [ref=e158]:
+              - img "Signed in" [ref=e159]
+              - text: matthew
+          - button "Refresh" [ref=e32] [cursor=pointer]
+        - generic [ref=e38]:
+          - button "This machine · 5 checks passed" [ref=e39] [cursor=pointer]
+          - list "Machine issues" [ref=e45]:
+            - 'listitem "Dependencies: cdk-app/package.json changed after the last install." [ref=e46]':
+              - generic [ref=e49]: cdk-app/package.json changed after the last install.
+              - button "Install" [ref=e50] [cursor=pointer]
+      - generic [ref=e51]:
+        - navigation "Deployments" [ref=e52]:
+          - heading "In this repository" [level=2] [ref=e53]
+          - list [ref=e54]:
+            - listitem [ref=e55]:
+              - button "job3-20261023-p2-reuse-local-1720 Development only Not deployed" [ref=e161] [cursor=pointer]:
+                - strong [ref=e59]: job3-20261023-p2-reuse-local-1720
+                - generic [ref=e60]:
+                  - generic "Development only" [ref=e61]: Dev
+                  - generic [ref=e65]: Not deployed
+            - listitem [ref=e66]:
+              - button "job3-20261023-p2-reuse-1720 Production only Deployed" [ref=e371] [cursor=pointer]:
+                - strong [ref=e70]: job3-20261023-p2-reuse-1720
+                - generic [ref=e71]:
+                  - generic "Production only" [ref=e72]: Prod
+                  - generic [ref=e77]: Deployed
+          - heading "Also in this account not declared here" [level=2] [ref=e163]
+          - list [ref=e164]:
+            - listitem [ref=e165]:
+              - button "job3-20261023-p2-1630 Production only Updating" [ref=e166] [cursor=pointer]:
+                - strong [ref=e169]: job3-20261023-p2-1630
+                - generic [ref=e170]:
+                  - generic "Production only" [ref=e171]: Prod
+                  - generic [ref=e176]: Updating
+          - generic "Local development" [ref=e78]: This machineNo exported settings
+        - region [ref=e238]:
+          - generic [ref=e83]:
+            - generic [ref=e84]:
+              - paragraph [ref=e85]: Declared in cdk-app/cdk.json
+              - heading [level=1] [ref=e239]:
+                - text: job3-20261023-p2-reuse-1720
+                - generic "Production only" [ref=e240]: Prod
+              - paragraph [ref=e177]:
+                - generic [ref=e178]: 734849394764 · us-east-1
+                - generic [ref=e372]: contract 2
+                - generic "arn:aws:iam::734849394764:user/matthew" [ref=e373]:
+                  - text: Deployed 5 min ago by matthew via Studio from
+                  - code [ref=e374]: 0167ca7+
+            - group [ref=e93]:
+              - generic "More actions" [active] [ref=e94] [cursor=pointer]
+              - menu [ref=e375]:
+                - menuitem "Compare AWS templates (read-only)…" [ref=e376] [cursor=pointer]
+                - menuitem "Prepare CloudFormation change sets…" [ref=e377] [cursor=pointer]
+                - menuitem "Check for drift" [ref=e378] [cursor=pointer]
+                - menuitem "Delete deployment…" [ref=e379] [cursor=pointer]
+          - paragraph [ref=e99]: Template comparison reads AWS without creating review objects. Preparing CloudFormation change sets creates review objects and possibly empty stacks; new secrets require separate approval. Neither action applies infrastructure.
+          - region "What needs attention" [ref=e100]:
+            - article [ref=e380]:
+              - strong [ref=e385]: Deployed · 1 stack
+              - button "Compare AWS templates" [ref=e387] [cursor=pointer]
+          - generic [ref=e108]:
+            - region "Repository" [ref=e109]:
+              - heading "Repository" [level=3] [ref=e110]
+              - generic [ref=e111]:
+                - term [ref=e112]: Intent
+                - definition [ref=e113]: framework:targets in cdk.json
+                - term [ref=e114]: Mode
+                - definition [ref=e115]: Production · fixed when created
+                - term [ref=e116]: Inputs
+                - definition [ref=e117]:
+                  - code [ref=e118]: cdk-app/.env.prod
+                - term [ref=e119]: Account
+                - definition [ref=e120]:
+                  - code [ref=e243]: "734849394764"
+                - term [ref=e244]: Region
+                - definition [ref=e245]:
+                  - code [ref=e246]: us-east-1
+            - region "AWS" [ref=e121]:
+              - heading "AWS" [level=3] [ref=e122]
+              - paragraph [ref=e247]: Observed 10/23/2026, 6:14:59 PM. CloudFormation state; application health is separate.
+              - list [ref=e388]:
+                - listitem [ref=e389]:
+                  - generic "job3-20261023-p2-reuse-1720-CognitoStack" [ref=e391]: CognitoStack
+                  - generic [ref=e392]: create complete
+            - region "This machine" [ref=e124]:
+              - heading "This machine" [level=3] [ref=e125]
+              - paragraph [ref=e248]: Local development runs against a development deployment.
+          - region "CloudFormation events" [ref=e393]:
+            - heading "Events" [level=3] [ref=e394]
+            - list [ref=e395]:
+              - listitem [ref=e396]:
+                - time [ref=e397]: 6:10:44 PM
+                - generic [ref=e398]: CognitoStack
+                - generic [ref=e399]: stack
+                - generic [ref=e400]: create complete
+              - listitem [ref=e401]:
+                - time [ref=e402]: 6:10:44 PM
+                - generic [ref=e403]: CognitoStack
+                - generic [ref=e404]: ReferenceIdentityE65B18D9
+                - generic [ref=e405]: create complete
+              - listitem [ref=e406]:
+                - time [ref=e407]: 6:10:43 PM
+                - generic [ref=e408]: CognitoStack
+                - generic [ref=e409]: CDKMetadata
+                - generic [ref=e410]: create complete
+              - listitem [ref=e411]:
+                - time [ref=e412]: 6:10:43 PM
+                - generic [ref=e413]: CognitoStack
+                - generic [ref=e414]: ReferenceIdentityE65B18D9
+                - generic [ref=e415]: create in progress
+                - generic [ref=e416]: Resource creation Initiated
+              - listitem [ref=e417]:
+                - time [ref=e418]: 6:10:43 PM
+                - generic [ref=e419]: CognitoStack
+                - generic [ref=e420]: CDKMetadata
+                - generic [ref=e421]: create in progress
+                - generic [ref=e422]: Resource creation Initiated
+              - listitem [ref=e423]:
+                - time [ref=e424]: 6:10:42 PM
+                - generic [ref=e425]: CognitoStack
+                - generic [ref=e426]: CDKMetadata
+                - generic [ref=e427]: create in progress
+              - listitem [ref=e428]:
+                - time [ref=e429]: 6:10:42 PM
+                - generic [ref=e430]: CognitoStack
+                - generic [ref=e431]: ReferenceIdentityE65B18D9
+                - generic [ref=e432]: create in progress
+              - listitem [ref=e433]:
+                - time [ref=e434]: 6:10:40 PM
+                - generic [ref=e435]: CognitoStack
+                - generic [ref=e436]: stack
+                - generic [ref=e437]: create in progress
+                - generic [ref=e438]: User Initiated
+              - listitem [ref=e439]:
+                - time [ref=e440]: 6:10:34 PM
+                - generic [ref=e441]: CognitoStack
+                - generic [ref=e442]: stack
+                - generic [ref=e443]: review in progress
+                - generic [ref=e444]: User Initiated
+          - group [ref=e138]:
+            - generic "Development & production deployment names" [ref=e139] [cursor=pointer]
+            - option "Development" [selected]
+            - option "Production / staging"
+          - group [ref=e249]:
+            - generic "Client environment & frontend release" [ref=e250] [cursor=pointer]
+          - group [ref=e190]:
+            - generic "Stateful retention and retained-resource references" [ref=e191] [cursor=pointer]
+            - region "Stateful retention and reuse" [ref=e192]:
+              - heading "Retention and reuse" [level=2] [ref=e193]
+              - paragraph [ref=e194]:
+                - text: Configure each resource in TypeScript, review the change, then deploy separately. Existing policies inherit
+                - code [ref=e195]: RETAIN_STATEFUL_RESOURCES
+                - text: until explicitly changed.
+              - generic [ref=e196]:
+                - text: Environment
+                - combobox "Retention environment" [disabled] [ref=e197]:
+                  - option "Development"
+                  - option "Production" [selected]
+              - generic [ref=e198]:
+                - generic [ref=e199]:
+                  - heading "Database" [level=3] [ref=e200]
+                  - paragraph [ref=e201]:
+                    - strong [ref=e202]: "Configured intent:"
+                    - text: Remove · inherited legacy policy
+                  - paragraph [ref=e203]:
+                    - strong [ref=e204]: "Management:"
+                    - text: Framework-managed when deployed.
+                  - generic [ref=e205]:
+                    - text: Database policy
+                    - combobox "Database retention policy" [ref=e206]:
+                      - option "Inherit legacy input" [selected]
+                      - option "Retain"
+                      - option "Remove"
+                - generic [ref=e208]:
+                  - heading "Cognito User Pool" [level=3] [ref=e209]
+                  - paragraph [ref=e210]:
+                    - strong [ref=e211]: "Configured intent:"
+                    - text: Remove · explicit TypeScript policy
+                  - paragraph [ref=e212]:
+                    - strong [ref=e213]: "Management:"
+                    - text: Externally referenced; the original resource stays outside this stack’s management.
+                  - paragraph [ref=e445]:
+                    - code [ref=e446]: us-east-1_WY7PmTg0R
+                  - generic [ref=e214]:
+                    - text: Cognito User Pool policy
+                    - combobox "Cognito User Pool retention policy" [disabled] [ref=e215]:
+                      - option "Inherit legacy input"
+                      - option "Retain"
+                      - option "Remove" [selected]
+                  - paragraph [ref=e447]: This policy applies to managed creation only. Deleting this deployment does not delete the externally referenced resource or change its protection.
+              - paragraph [ref=e448]:
+                - code [ref=e449]: framework-config/stateful-resources.ts
+                - text: · legacy fallback from
+                - code [ref=e450]: cdk-app/.env.prod
+                - text: ": absent; existing default false. Deployment context overrides and custom input files require review in Deploy."
+              - region "Retained resource references" [ref=e254]:
+                - heading "Inspect protection and retained resources" [level=3] [ref=e255]
+                - paragraph [ref=e256]: Read deployed templates and saved teardown evidence, then review an explicit reference. A saved observation alone does not prove that a resource is still available.
+                - generic [ref=e257]:
+                  - generic [ref=e258]:
+                    - text: AWS profile
+                    - textbox "Lifecycle AWS profile" [disabled] [ref=e259]: dev
+                  - generic [ref=e260]:
+                    - text: Destination deployment
+                    - combobox "Lifecycle destination" [disabled] [ref=e261]:
+                      - option "Select destination"
+                      - option "job3-20261023-p2-reuse-1720" [selected]
+                  - generic [ref=e262]:
+                    - text: Region
+                    - textbox "Lifecycle region" [disabled] [ref=e263]: us-east-1
+                - button "Inspect deployed protection and inventory" [ref=e264] [cursor=pointer]
+                - paragraph [ref=e265]:
+                  - strong [ref=e266]: "Deployed retention:"
+                  - text: Unverified for this destination.
+                - group [ref=e267]:
+                  - generic "Reference a retained resource" [ref=e268] [cursor=pointer]
+                  - paragraph [ref=e269]: Only an available resource with proven original ownership and compatible dependencies can pass review. Managed resources, conflicting claims and unsafe in-place transitions are refused.
+                  - generic [ref=e270]:
+                    - text: Resource
+                    - combobox "Reference resource kind" [ref=e271]:
+                      - option "Database"
+                      - option "Cognito User Pool" [selected]
+                  - generic [ref=e272]:
+                    - text: Original deployment
+                    - textbox "Original resource deployment" [ref=e273]: job3-20261023-p2-1630
+                  - generic [ref=e274]:
+                    - text: Physical resource ID
+                    - textbox "Retained resource ID" [ref=e275]: us-east-1_WY7PmTg0R
+                  - generic [ref=e278]:
+                    - text: Existing app client ID
+                    - textbox "Retained Cognito app client ID" [ref=e279]: 5srn6nj5f287vao5grio4b3s9g
+                  - button "Inspect and review reference source" [ref=e276] [cursor=pointer]
+                  - paragraph [ref=e277]: After saving, review and deploy supporting infrastructure in Deploy. Verify actual database records or Cognito sign-in separately. CloudFormation import, snapshot restoration and permanent resource deletion are separate operations.
+              - group [ref=e234]:
+                - generic "Local PostgreSQL persistence" [ref=e235] [cursor=pointer]
+              - group [ref=e236]:
+                - generic "Retain, reference, import and restore" [ref=e237] [cursor=pointer]
+      - region "Activity" [ref=e142]:
+        - button "Activity Apply plan to job3-20261023-p2-reuse-1720 · Done · job3-20261023-p2-reuse-1720 is deployed and verified." [expanded] [ref=e451] [cursor=pointer]:
+          - strong [ref=e144]: Activity
+          - generic [ref=e145]:
+            - text: Apply plan to job3-20261023-p2-reuse-1720
+            - generic [ref=e317]: · Done
+            - generic [ref=e452]: · job3-20261023-p2-reuse-1720 is deployed and verified.
+        - generic [ref=e320]:
+          - list "Operations" [ref=e321]:
+            - listitem [ref=e358]:
+              - button "Apply plan to job3-20261023-p2-reuse-1720 Done · 5 min ago" [ref=e453] [cursor=pointer]:
+                - generic [ref=e360]: Apply plan to job3-20261023-p2-reuse-1720
+                - generic [ref=e361]: Done · 5 min ago
+            - listitem [ref=e322]:
+              - button "Plan job3-20261023-p2-reuse-1720 Done · 7 min ago" [ref=e454] [cursor=pointer]:
+                - generic [ref=e324]: Plan job3-20261023-p2-reuse-1720
+                - generic [ref=e325]: Done · 7 min ago
+          - generic [ref=e326]:
+            - generic [ref=e328]:
+              - strong [ref=e329]: Apply plan to job3-20261023-p2-reuse-1720
+              - text: Done
+              - paragraph [ref=e455]: job3-20261023-p2-reuse-1720 is deployed and verified.
+            - list [ref=e333]:
+              - listitem [ref=e334]:
+                - img "done" [ref=e456]
+                - text: Deploy and verify
+            - generic "Log" [ref=e337]:
+              - generic [ref=e368]: $ tsx scripts/deploy.ts --apply /Users/matt/Desktop/code/framework-fix/matts-aws-framework/.cache/job3/recovery2/.cache/framework-studio/plans/job3-20261023-p2-reuse-1720-mvliul3n-ef5c --profile dev --confirm job3-20261023-p2-reuse-1720
+              - generic [ref=e458]: "> @repo/database@1.0.0 generate"
+              - generic [ref=e459]: "> prisma contract emit"
+              - generic [ref=e460]: "{\"kind\":\"step-started\",\"step\":\"Resolving contract source...\",\"id\":\"resolveSource\",\"commandId\":\"contract.emit\",\"timestamp\":\"2026-10-23T22:10:32.821Z\"}"
+              - generic [ref=e461]: "{\"kind\":\"step-finished\",\"step\":\"Resolving contract source...\",\"id\":\"resolveSource\",\"outcome\":\"ok\",\"commandId\":\"contract.emit\",\"timestamp\":\"2026-10-23T22:10:32.842Z\"}"
+              - generic [ref=e462]: "{\"kind\":\"step-started\",\"step\":\"Emitting contract...\",\"id\":\"emit\",\"commandId\":\"contract.emit\",\"timestamp\":\"2026-10-23T22:10:32.842Z\"}"
+              - generic [ref=e463]: "{\"kind\":\"step-finished\",\"step\":\"Emitting contract...\",\"id\":\"emit\",\"outcome\":\"ok\",\"commandId\":\"contract.emit\",\"timestamp\":\"2026-10-23T22:10:32.932Z\"}"
+              - generic [ref=e464]: "{\"kind\":\"result\",\"envelope\":{\"ok\":true,\"commandId\":\"contract.emit\",\"result\":{\"ok\":true,\"storageHash\":\"518f79d59ebe3ed7d871ed006f788079416d1da9cdafa9b9ff66b18457871881\",\"executionHash\":\"20b7da0ecf81ebef8d77b5f2092ce14d5b77be45ca8a2f67dd7e9682793afc6d\",\"profileHash\":\"3916f444a8a17ad749191acf9e08dad97d1a327b88c2f1d45d12f240296aa8b2\",\"outDir\":\"/Users/matt/Desktop/code/framework-fix/matts-aws-framework/.cache/job3/recovery2/packages/database/src/generated\",\"files\":{\"json\":\"/Users/matt/Desktop/code/framework-fix/matts-aws-framework/.cache/job3/recovery2/packages/database/src/generated/contract.json\",\"dts\":\"/Users/matt/Desktop/code/framework-fix/matts-aws-framework/.cache/job3/recovery2/packages/database/src/generated/contract.d.ts\"},\"timings\":{\"total\":116}},\"exitCode\":0,\"diagnostics\":[],\"nextActions\":[]},\"commandId\":\"contract.emit\",\"timestamp\":\"2026-10-23T22:10:32.937Z\"}"
+              - generic [ref=e465]: "Prisma agent skills are out of date (installed @prisma/orm-postgres 8.0.0-rc.14, synced none). Run: prisma skills sync"
+              - generic [ref=e466]: WARNING The selected Cognito pool, app client, domain, providers, groups and triggers remain externally managed. Source auth settings and retention do not reconfigure or protect them. Verify existing callbacks, providers and Lambda dependencies before deployment; metadata does not prove sign-in. (Construct Annotations)
+              - generic [ref=e467]: job3-20261023-p2-reuse-1720-CognitoStack
+              - generic [ref=e468]: Acknowledge with 'Annotation::warning-annotation'
+              - generic [ref=e469]: "✨ Synthesis time: 1s"
+              - generic [ref=e470]: "job3-20261023-p2-reuse-1720-CognitoStack: start: Building job3-20261023-p2-reuse-1720-CognitoStack Template"
+              - generic [ref=e471]: "job3-20261023-p2-reuse-1720-CognitoStack: success: Built job3-20261023-p2-reuse-1720-CognitoStack Template"
+              - generic [ref=e472]: "job3-20261023-p2-reuse-1720-CognitoStack: start: Publishing job3-20261023-p2-reuse-1720-CognitoStack Template (734849394764-us-east-1-1e2db84f)"
+              - generic [ref=e473]: "job3-20261023-p2-reuse-1720-CognitoStack: success: Published job3-20261023-p2-reuse-1720-CognitoStack Template (734849394764-us-east-1-1e2db84f)"
+              - generic [ref=e474]: "job3-20261023-p2-reuse-1720-CognitoStack: creating CloudFormation changeset..."
+              - generic [ref=e475]: CloudFormation · CognitoStack REVIEW_IN_PROGRESS
+              - generic [ref=e476]: "job3-20261023-p2-reuse-1720-CognitoStack: deploying... [1/1]"
+              - generic [ref=e477]: job3-20261023-p2-reuse-1720-CognitoStack | 0/3 | 6:10:34 PM | REVIEW_IN_PROGRESS | AWS::CloudFormation::Stack | job3-20261023-p2-reuse-1720-CognitoStack User Initiated
+              - generic [ref=e478]: job3-20261023-p2-reuse-1720-CognitoStack | 0/3 | 6:10:40 PM | CREATE_IN_PROGRESS | AWS::CloudFormation::Stack | job3-20261023-p2-reuse-1720-CognitoStack User Initiated
+              - generic [ref=e479]: job3-20261023-p2-reuse-1720-CognitoStack | 0/3 | 6:10:42 PM | CREATE_IN_PROGRESS | AWS::SSM::Parameter | ReferenceIdentity (ReferenceIdentityE65B18D9)
+              - generic [ref=e480]: job3-20261023-p2-reuse-1720-CognitoStack | 0/3 | 6:10:42 PM | CREATE_IN_PROGRESS | AWS::CDK::Metadata | CDKMetadata/Default (CDKMetadata)
+              - generic [ref=e481]: CloudFormation · CognitoStack CREATE_IN_PROGRESS
+              - generic [ref=e482]: CloudFormation · CognitoStack · ReferenceIdentityE65B18D9 CREATE_IN_PROGRESS
+              - generic [ref=e483]: CloudFormation · CognitoStack · CDKMetadata CREATE_IN_PROGRESS
+              - generic [ref=e484]: CloudFormation · CognitoStack · CDKMetadata CREATE_IN_PROGRESS — Resource creation Initiated
+              - generic [ref=e485]: CloudFormation · CognitoStack · ReferenceIdentityE65B18D9 CREATE_IN_PROGRESS — Resource creation Initiated
+              - generic [ref=e486]: CloudFormation · CognitoStack · CDKMetadata CREATE_COMPLETE
+              - generic [ref=e487]: job3-20261023-p2-reuse-1720-CognitoStack | 0/3 | 6:10:43 PM | CREATE_IN_PROGRESS | AWS::CDK::Metadata | CDKMetadata/Default (CDKMetadata) Resource creation Initiated
+              - generic [ref=e488]: job3-20261023-p2-reuse-1720-CognitoStack | 0/3 | 6:10:43 PM | CREATE_IN_PROGRESS | AWS::SSM::Parameter | ReferenceIdentity (ReferenceIdentityE65B18D9) Resource creation Initiated
+              - generic [ref=e489]: job3-20261023-p2-reuse-1720-CognitoStack | 1/3 | 6:10:43 PM | CREATE_COMPLETE | AWS::CDK::Metadata | CDKMetadata/Default (CDKMetadata)
+              - generic [ref=e490]: job3-20261023-p2-reuse-1720-CognitoStack | 2/3 | 6:10:44 PM | CREATE_COMPLETE | AWS::SSM::Parameter | ReferenceIdentity (ReferenceIdentityE65B18D9)
+              - generic [ref=e491]: job3-20261023-p2-reuse-1720-CognitoStack | 3/3 | 6:10:44 PM | CREATE_COMPLETE | AWS::CloudFormation::Stack | job3-20261023-p2-reuse-1720-CognitoStack
+              - generic [ref=e492]: ✅ job3-20261023-p2-reuse-1720-CognitoStack
+              - generic [ref=e493]: "✨ Deployment time: 5.86s"
+              - generic [ref=e494]: "Outputs:"
+              - generic [ref=e495]: "job3-20261023-p2-reuse-1720-CognitoStack.FrameworkDeployment = {\"version\":1,\"deployment\":\"job3-20261023-p2-reuse-1720\",\"mode\":\"prod\",\"account\":\"734849394764\",\"region\":\"us-east-1\"}"
+              - generic [ref=e496]: job3-20261023-p2-reuse-1720-CognitoStack.OAuthProviderRedirectUri = https://job3-20261023-p2-1630.auth.us-east-1.amazoncognito.com/oauth2/idpresponse
+              - generic [ref=e497]: job3-20261023-p2-reuse-1720-CognitoStack.UserPoolClientId = 5srn6nj5f287vao5grio4b3s9g
+              - generic [ref=e498]: job3-20261023-p2-reuse-1720-CognitoStack.UserPoolDomainUrl = https://job3-20261023-p2-1630.auth.us-east-1.amazoncognito.com
+              - generic [ref=e499]: job3-20261023-p2-reuse-1720-CognitoStack.UserPoolId = us-east-1_WY7PmTg0R
+              - generic [ref=e500]: job3-20261023-p2-reuse-1720-CognitoStack.UserPoolManagement = external-reference
+              - generic [ref=e501]: job3-20261023-p2-reuse-1720-CognitoStack.UserPoolOriginalDeployment = job3-20261023-p2-1630
+              - generic [ref=e502]: "Stack ARN:"
+              - generic [ref=e503]: arn:aws:cloudformation:us-east-1:734849394764:stack/job3-20261023-p2-reuse-1720-CognitoStack/91ab6490-cf2e-11f1-8fff-0affee1c3383
+              - generic [ref=e504]: "✨ Total time: 13.93s"
+              - generic [ref=e505]: ✔ job3-20261023-p2-reuse-1720-CognitoStack verified
+              - generic [ref=e506]: CloudFormation · CognitoStack CREATE_COMPLETE
+      - status
+  - status

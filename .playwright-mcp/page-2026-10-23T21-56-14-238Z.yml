@@ -1,0 +1,366 @@
+- generic [ref=f8e7]:
+  - banner [ref=f8e8]:
+    - generic [ref=f8e9]:
+      - text: AWS Studio
+      - generic "cloud2" [ref=f8e10]
+    - navigation "Views" [ref=f8e11]:
+      - link "Board" [ref=f8e12] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=f8e13] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [ref=f8e14] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f8e15] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f8e16] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f8e17] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=f8e19] [cursor=pointer]:
+      - generic [ref=f8e22]: Source valid
+    - generic [ref=f8e23]: "Development: valid. Production: valid"
+  - main [ref=f8e25]:
+    - generic [ref=f8e26]:
+      - generic "AWS account" [ref=f8e27]:
+        - generic [ref=f8e28]:
+          - generic [ref=f8e29]:
+            - generic [ref=f8e30]: AWS profile
+            - combobox "AWS profile" [ref=f8e31]:
+              - option "default"
+              - option "dev" [selected]
+              - option "dev2"
+          - generic [ref=f8e32]:
+            - generic [ref=f8e33]:
+              - generic [ref=f8e34]: Account
+              - strong [ref=f8e35]: "734849394764"
+            - generic [ref=f8e36]:
+              - generic [ref=f8e37]: Region
+              - generic [ref=f8e38]: us-east-1
+            - generic "arn:aws:iam::734849394764:user/matthew" [ref=f8e39]:
+              - img "Signed in" [ref=f8e40]
+              - text: matthew
+          - button "Refresh" [ref=f8e42] [cursor=pointer]
+        - generic [ref=f8e48]:
+          - button "This machine · 5 checks passed" [ref=f8e49] [cursor=pointer]
+          - list "Machine issues" [ref=f8e55]:
+            - 'listitem "Dependencies: cdk-app/package.json changed after the last install." [ref=f8e56]':
+              - generic [ref=f8e59]: cdk-app/package.json changed after the last install.
+              - button "Install" [ref=f8e60] [cursor=pointer]
+      - generic [ref=f8e61]:
+        - navigation "Deployments" [ref=f8e62]:
+          - heading "In this repository" [level=2] [ref=f8e63]
+          - list [ref=f8e64]:
+            - listitem [ref=f8e65]:
+              - button "matts-aws-framework Development only Not deployed" [ref=f8e66] [cursor=pointer]:
+                - strong [ref=f8e69]: matts-aws-framework
+                - generic [ref=f8e70]:
+                  - generic "Development only" [ref=f8e71]: Dev
+                  - generic [ref=f8e75]: Not deployed
+            - listitem [ref=f8e76]:
+              - button "job3-20261023-p2-1630 Production only Deployed" [ref=f8e77] [cursor=pointer]:
+                - strong [ref=f8e80]: job3-20261023-p2-1630
+                - generic [ref=f8e81]:
+                  - generic "Production only" [ref=f8e82]: Prod
+                  - generic [ref=f8e87]: Deployed
+          - generic "Local development" [ref=f8e88]: This machineNo exported settings
+        - region [ref=f8e92]:
+          - generic [ref=f8e93]:
+            - generic [ref=f8e94]:
+              - paragraph [ref=f8e95]: Declared in cdk-app/cdk.json
+              - heading [level=1] [ref=f8e96]:
+                - text: job3-20261023-p2-1630
+                - generic "Production only" [ref=f8e97]: Prod
+              - paragraph [ref=f8e102]:
+                - generic [ref=f8e103]: 734849394764 · us-east-1
+                - generic [ref=f8e104]: contract 2
+                - generic "arn:aws:iam::734849394764:user/matthew" [ref=f8e105]:
+                  - text: Deployed 7 min ago by matthew via Studio from
+                  - code [ref=f8e106]: 0167ca7+
+            - group [ref=f8e108]:
+              - generic "More actions" [ref=f8e109] [cursor=pointer]
+          - paragraph [ref=f8e114]: Template comparison reads AWS without creating review objects. Preparing CloudFormation change sets creates review objects and possibly empty stacks; new secrets require separate approval. Neither action applies infrastructure.
+          - region "What needs attention" [ref=f8e115]:
+            - article [ref=f8e415]:
+              - generic [ref=f8e419]:
+                - strong [ref=f8e420]: Apply plan to job3-20261023-p2-1630
+                - paragraph [ref=f8e421]: Its progress is in Activity. Other changes to this deployment wait until it ends.
+            - article [ref=f8e123]:
+              - strong [ref=f8e128]: Deployed · 8 stacks
+              - button "Compare AWS templates" [disabled] [ref=f8e130]
+          - generic [ref=f8e131]:
+            - region "Repository" [ref=f8e132]:
+              - heading "Repository" [level=3] [ref=f8e133]
+              - generic [ref=f8e134]:
+                - term [ref=f8e135]: Intent
+                - definition [ref=f8e136]: framework:targets in cdk.json
+                - term [ref=f8e137]: Mode
+                - definition [ref=f8e138]: Production · fixed when created
+                - term [ref=f8e139]: Inputs
+                - definition [ref=f8e140]:
+                  - code [ref=f8e141]: cdk-app/.env.prod
+                - term [ref=f8e142]: Account
+                - definition [ref=f8e143]:
+                  - code [ref=f8e144]: "734849394764"
+                - term [ref=f8e145]: Region
+                - definition [ref=f8e146]:
+                  - code [ref=f8e147]: us-east-1
+            - region "AWS" [ref=f8e148]:
+              - heading "AWS" [level=3] [ref=f8e149]
+              - paragraph [ref=f8e150]: Observed 10/23/2026, 5:55:25 PM. CloudFormation state; application health is separate.
+              - list [ref=f8e151]:
+                - listitem [ref=f8e152]:
+                  - generic "job3-20261023-p2-1630-HttpApiGatewayStack" [ref=f8e154]: HttpApiGatewayStack
+                  - generic [ref=f8e155]: update complete
+                - listitem [ref=f8e156]:
+                  - generic "job3-20261023-p2-1630-SynchronousLambdaFunctionsStack" [ref=f8e158]: SynchronousLambdaFunctionsStack
+                  - generic [ref=f8e159]: update complete
+                - listitem [ref=f8e160]:
+                  - generic "job3-20261023-p2-1630-ReceiptIdentityStack" [ref=f8e162]: ReceiptIdentityStack
+                  - generic [ref=f8e163]: update complete
+                - listitem [ref=f8e164]:
+                  - generic "job3-20261023-p2-1630-CognitoStack" [ref=f8e166]: CognitoStack
+                  - generic [ref=f8e167]: update complete
+                - listitem [ref=f8e168]:
+                  - generic "job3-20261023-p2-1630-AsynchronousLambdaFunctionsStack" [ref=f8e170]: AsynchronousLambdaFunctionsStack
+                  - generic [ref=f8e171]: update complete
+                - listitem [ref=f8e172]:
+                  - generic "job3-20261023-p2-1630-FrontendWebsiteS3Stack" [ref=f8e174]: FrontendWebsiteS3Stack
+                  - generic [ref=f8e175]: create complete
+                - listitem [ref=f8e176]:
+                  - generic "job3-20261023-p2-1630-ReceiptsNetworkStack" [ref=f8e178]: ReceiptsNetworkStack
+                  - generic [ref=f8e179]: create complete
+                - listitem [ref=f8e180]:
+                  - generic "job3-20261023-p2-1630-ReceiptStoreStack" [ref=f8e182]: ReceiptStoreStack
+                  - generic [ref=f8e183]: create complete
+            - region "This machine" [ref=f8e184]:
+              - heading "This machine" [level=3] [ref=f8e185]
+              - paragraph [ref=f8e186]: Local development runs against a development deployment.
+          - region "CloudFormation events" [ref=f8e187]:
+            - heading "Events" [level=3] [ref=f8e188]
+            - list [ref=f8e189]:
+              - listitem [ref=f8e190]:
+                - time [ref=f8e191]: 5:49:02 PM
+                - generic [ref=f8e192]: HttpApiGatewayStack
+                - generic [ref=f8e193]: stack
+                - generic [ref=f8e194]: update complete
+              - listitem [ref=f8e195]:
+                - time [ref=f8e196]: 5:49:01 PM
+                - generic [ref=f8e197]: HttpApiGatewayStack
+                - generic [ref=f8e198]: stack
+                - generic [ref=f8e199]: update complete cleanup in progress
+              - listitem [ref=f8e200]:
+                - time [ref=f8e201]: 5:49:00 PM
+                - generic [ref=f8e202]: HttpApiGatewayStack
+                - generic [ref=f8e203]: FrontendRoutingRoutingEntries12B6E75A
+                - generic [ref=f8e204]: update complete
+              - listitem [ref=f8e205]:
+                - time [ref=f8e206]: 5:48:59 PM
+                - generic [ref=f8e207]: HttpApiGatewayStack
+                - generic [ref=f8e208]: HttpApiGETreceipthealth7DD24689
+                - generic [ref=f8e209]: create complete
+              - listitem [ref=f8e210]:
+                - time [ref=f8e211]: 5:48:58 PM
+                - generic [ref=f8e212]: HttpApiGatewayStack
+                - generic [ref=f8e213]: HttpApiGETreceipthealth7DD24689
+                - generic [ref=f8e214]: create in progress
+                - generic [ref=f8e215]: Resource creation Initiated
+              - listitem [ref=f8e216]:
+                - time [ref=f8e217]: 5:48:57 PM
+                - generic [ref=f8e218]: HttpApiGatewayStack
+                - generic [ref=f8e219]: HttpApiGETreceipthealth7DD24689
+                - generic [ref=f8e220]: create in progress
+              - listitem [ref=f8e221]:
+                - time [ref=f8e222]: 5:48:57 PM
+                - generic [ref=f8e223]: HttpApiGatewayStack
+                - generic [ref=f8e224]: HttpApiGETreceipthealthReceiptHealthIntegration49535D19
+                - generic [ref=f8e225]: create complete
+              - listitem [ref=f8e226]:
+                - time [ref=f8e227]: 5:48:57 PM
+                - generic [ref=f8e228]: HttpApiGatewayStack
+                - generic [ref=f8e229]: HttpApiGETreceipthealthReceiptHealthIntegrationPermission8E499187
+                - generic [ref=f8e230]: create complete
+              - listitem [ref=f8e231]:
+                - time [ref=f8e232]: 5:48:57 PM
+                - generic [ref=f8e233]: HttpApiGatewayStack
+                - generic [ref=f8e234]: CDKMetadata
+                - generic [ref=f8e235]: update complete
+              - listitem [ref=f8e236]:
+                - time [ref=f8e237]: 5:48:56 PM
+                - generic [ref=f8e238]: HttpApiGatewayStack
+                - generic [ref=f8e239]: HttpApiGETreceipthealthReceiptHealthIntegrationPermission8E499187
+                - generic [ref=f8e240]: create in progress
+                - generic [ref=f8e241]: Resource creation Initiated
+              - listitem [ref=f8e242]:
+                - time [ref=f8e243]: 5:48:56 PM
+                - generic [ref=f8e244]: HttpApiGatewayStack
+                - generic [ref=f8e245]: HttpApiGETreceipthealthReceiptHealthIntegration49535D19
+                - generic [ref=f8e246]: create in progress
+                - generic [ref=f8e247]: Resource creation Initiated
+              - listitem [ref=f8e248]:
+                - time [ref=f8e249]: 5:48:56 PM
+                - generic [ref=f8e250]: HttpApiGatewayStack
+                - generic [ref=f8e251]: CDKMetadata
+                - generic [ref=f8e252]: update in progress
+              - listitem [ref=f8e253]:
+                - time [ref=f8e254]: 5:48:55 PM
+                - generic [ref=f8e255]: HttpApiGatewayStack
+                - generic [ref=f8e256]: HttpApiGETreceipthealthReceiptHealthIntegration49535D19
+                - generic [ref=f8e257]: create in progress
+              - listitem [ref=f8e258]:
+                - time [ref=f8e259]: 5:48:55 PM
+                - generic [ref=f8e260]: HttpApiGatewayStack
+                - generic [ref=f8e261]: HttpApiGETreceipthealthReceiptHealthIntegrationPermission8E499187
+                - generic [ref=f8e262]: create in progress
+              - listitem [ref=f8e263]:
+                - time [ref=f8e264]: 5:48:52 PM
+                - generic [ref=f8e265]: HttpApiGatewayStack
+                - generic [ref=f8e266]: stack
+                - generic [ref=f8e267]: update in progress
+                - generic [ref=f8e268]: User Initiated
+              - listitem [ref=f8e269]:
+                - time [ref=f8e270]: 5:48:39 PM
+                - generic [ref=f8e271]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e272]: stack
+                - generic [ref=f8e273]: update complete
+              - listitem [ref=f8e274]:
+                - time [ref=f8e275]: 5:48:39 PM
+                - generic [ref=f8e276]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e277]: stack
+                - generic [ref=f8e278]: update complete cleanup in progress
+              - listitem [ref=f8e279]:
+                - time [ref=f8e280]: 5:48:37 PM
+                - generic [ref=f8e281]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e282]: ReceiptHealthLogGroup6901B96A
+                - generic [ref=f8e283]: create complete
+              - listitem [ref=f8e284]:
+                - time [ref=f8e285]: 5:48:28 PM
+                - generic [ref=f8e286]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e287]: ReceiptHealthLogGroup6901B96A
+                - generic [ref=f8e288]: create in progress
+                - generic [ref=f8e289]: Resource creation Initiated
+              - listitem [ref=f8e290]:
+                - time [ref=f8e291]: 5:48:27 PM
+                - generic [ref=f8e292]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e293]: ReceiptApi84A58835
+                - generic [ref=f8e294]: update complete
+              - listitem [ref=f8e295]:
+                - time [ref=f8e296]: 5:48:27 PM
+                - generic [ref=f8e297]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e298]: ReceiptHealthLogGroup6901B96A
+                - generic [ref=f8e299]: create in progress
+              - listitem [ref=f8e300]:
+                - time [ref=f8e301]: 5:48:27 PM
+                - generic [ref=f8e302]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e303]: ReceiptHealthD8FBF01B
+                - generic [ref=f8e304]: create complete
+              - listitem [ref=f8e305]:
+                - time [ref=f8e306]: 5:48:21 PM
+                - generic [ref=f8e307]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e308]: ReceiptHealthD8FBF01B
+                - generic [ref=f8e309]: create in progress
+                - generic [ref=f8e310]: Resource creation Initiated
+              - listitem [ref=f8e311]:
+                - time [ref=f8e312]: 5:48:20 PM
+                - generic [ref=f8e313]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e314]: ReceiptApi84A58835
+                - generic [ref=f8e315]: update in progress
+              - listitem [ref=f8e316]:
+                - time [ref=f8e317]: 5:48:19 PM
+                - generic [ref=f8e318]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e319]: ReceiptHealthD8FBF01B
+                - generic [ref=f8e320]: create in progress
+              - listitem [ref=f8e321]:
+                - time [ref=f8e322]: 5:48:19 PM
+                - generic [ref=f8e323]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e324]: ReceiptHealthServiceRole6168A587
+                - generic [ref=f8e325]: create complete
+              - listitem [ref=f8e326]:
+                - time [ref=f8e327]: 5:48:18 PM
+                - generic [ref=f8e328]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e329]: ReceiptApiServiceRole8EA7B520
+                - generic [ref=f8e330]: update complete
+              - listitem [ref=f8e331]:
+                - time [ref=f8e332]: 5:48:03 PM
+                - generic [ref=f8e333]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e334]: CDKMetadata
+                - generic [ref=f8e335]: update complete
+              - listitem [ref=f8e336]:
+                - time [ref=f8e337]: 5:48:02 PM
+                - generic [ref=f8e338]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e339]: ReceiptHealthServiceRole6168A587
+                - generic [ref=f8e340]: create in progress
+                - generic [ref=f8e341]: Resource creation Initiated
+              - listitem [ref=f8e342]:
+                - time [ref=f8e343]: 5:48:02 PM
+                - generic [ref=f8e344]: SynchronousLambdaFunctionsStack
+                - generic [ref=f8e345]: ReceiptApiServiceRole8EA7B520
+                - generic [ref=f8e346]: update in progress
+          - group [ref=f8e347]:
+            - generic "Development & production deployment names" [ref=f8e348] [cursor=pointer]
+            - option "Development" [selected]
+            - option "Production / staging"
+          - group [ref=f8e349]:
+            - generic "Client environment & frontend release" [ref=f8e350] [cursor=pointer]
+          - group [ref=f8e351]:
+            - generic "Stateful retention and retained-resource references" [ref=f8e352] [cursor=pointer]
+      - region "Activity" [ref=f8e353]:
+        - button "Activity Apply plan to job3-20261023-p2-1630 · Deploy and verify" [expanded] [ref=f8e422] [cursor=pointer]:
+          - strong [ref=f8e355]: Activity
+          - generic [ref=f8e356]:
+            - text: Apply plan to job3-20261023-p2-1630
+            - generic [ref=f8e359]: · Deploy and verify
+        - generic [ref=f8e362]:
+          - list "Operations" [ref=f8e363]:
+            - listitem [ref=f8e425]:
+              - button "Apply plan to job3-20261023-p2-1630 Running · just now" [ref=f8e426] [cursor=pointer]:
+                - generic [ref=f8e427]: Apply plan to job3-20261023-p2-1630
+                - generic [ref=f8e428]: Running · just now
+            - listitem [ref=f8e364]:
+              - button "Plan job3-20261023-p2-1630 Done · 2 min ago" [ref=f8e429] [cursor=pointer]:
+                - generic [ref=f8e366]: Plan job3-20261023-p2-1630
+                - generic [ref=f8e367]: Done · 2 min ago
+            - listitem [ref=f8e368]:
+              - button "Apply plan to job3-20261023-p2-1630 Done · 7 min ago" [ref=f8e430] [cursor=pointer]:
+                - generic [ref=f8e370]: Apply plan to job3-20261023-p2-1630
+                - generic [ref=f8e371]: Done · 7 min ago
+            - listitem [ref=f8e372]:
+              - button "Plan job3-20261023-p2-1630 Done · 16 min ago" [ref=f8e431] [cursor=pointer]:
+                - generic [ref=f8e374]: Plan job3-20261023-p2-1630
+                - generic [ref=f8e375]: Done · 16 min ago
+            - listitem [ref=f8e376]:
+              - button "Apply plan to job3-20261023-p2-1630 Failed · 24 min ago" [ref=f8e432] [cursor=pointer]:
+                - generic [ref=f8e378]: Apply plan to job3-20261023-p2-1630
+                - generic [ref=f8e379]: Failed · 24 min ago
+            - listitem [ref=f8e380]:
+              - button "Plan job3-20261023-p2-1630 Done · 29 min ago" [ref=f8e433] [cursor=pointer]:
+                - generic [ref=f8e382]: Plan job3-20261023-p2-1630
+                - generic [ref=f8e383]: Done · 29 min ago
+            - listitem [ref=f8e384]:
+              - button "Apply plan to job3-20261023-p2-1630 Done · 38 min ago" [ref=f8e434] [cursor=pointer]:
+                - generic [ref=f8e386]: Apply plan to job3-20261023-p2-1630
+                - generic [ref=f8e387]: Done · 38 min ago
+            - listitem [ref=f8e388]:
+              - button "Plan job3-20261023-p2-1630 Done · 40 min ago" [ref=f8e435] [cursor=pointer]:
+                - generic [ref=f8e390]: Plan job3-20261023-p2-1630
+                - generic [ref=f8e391]: Done · 40 min ago
+            - listitem [ref=f8e392]:
+              - button "Apply plan to job3-20261023-p2-1630 Done · 45 min ago" [ref=f8e436] [cursor=pointer]:
+                - generic [ref=f8e394]: Apply plan to job3-20261023-p2-1630
+                - generic [ref=f8e395]: Done · 45 min ago
+            - listitem [ref=f8e396]:
+              - button "Plan job3-20261023-p2-1630 Done · 1 h ago" [ref=f8e397] [cursor=pointer]:
+                - generic [ref=f8e398]: Plan job3-20261023-p2-1630
+                - generic [ref=f8e399]: Done · 1 h ago
+          - generic [ref=f8e400]:
+            - generic [ref=f8e401]:
+              - generic [ref=f8e402]:
+                - strong [ref=f8e403]: Apply plan to job3-20261023-p2-1630
+                - text: Running
+              - button "Stop command; AWS may continue" [ref=f8e437] [cursor=pointer]
+            - list [ref=f8e407]:
+              - listitem [ref=f8e408]:
+                - img "running" [ref=f8e440]
+                - text: Deploy and verify
+            - generic "Log" [ref=f8e411]: $ tsx scripts/deploy.ts --apply /Users/matt/Desktop/code/framework-fix/matts-aws-framework/.cache/job3/cloud2/.cache/framework-studio/plans/job3-20261023-p2-1630-mvlibib0-ffb1 --profile dev --confirm job3-20261023-p2-1630
+      - status
+  - status

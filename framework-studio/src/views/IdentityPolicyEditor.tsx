@@ -33,10 +33,11 @@ export function IdentityPolicyEditor({ profile, region, account: selectedAccount
     }
   }, [query.data, target]);
   const loadSource = () => {
+    setResult(undefined); setError("");
     if (!source) {
       baseline.current = undefined;
       setStatements([]); setAllowUnauthenticated(false); setResources("");
-      setSourceChanged(false); setOrigin(undefined); setResult(undefined); setError("");
+      setSourceChanged(false); setOrigin(undefined);
       setTarget(query.data?.sources[0]?.target ?? "");
       return;
     }

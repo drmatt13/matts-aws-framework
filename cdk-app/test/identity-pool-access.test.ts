@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { App, Stack } from "aws-cdk-lib";
 import { Match, Template } from "aws-cdk-lib/assertions";
 import { UserPool } from "aws-cdk-lib/aws-cognito";
+import { Bucket } from "aws-cdk-lib/aws-s3";
 import { identityPoolAccess } from "../lib/app/identity-pool-access";
 import { identityPolicyStatements } from "../lib/app/identity-policy";
 
@@ -40,6 +41,19 @@ test("wildcard buckets and wildcard/object-path prefixes are refused before synt
   assert.throws(() => synth("arn:aws:s3:::*"), /explicit S3 bucket ARN/);
   assert.throws(() => synth("arn:aws:s3:::campaign-private", "tenant/*"), /cannot contain wildcards/);
   assert.throws(() => synth("arn:aws:s3:::campaign-private/object"), /explicit S3 bucket ARN/);
+});
+test("a newly created native bucket ARN stays a CloudFormation reference with a scoped read grant", () => {
+  const stack = new Stack(new App(), "FreshNativeResources", { env: { account: "111122223333", region: "us-east-1" } });
+  const userPool = new UserPool(stack, "Pool");
+  const bucket = new Bucket(stack, "Objects");
+  identityPoolAccess(stack, { userPool, userPoolClient: userPool.addClient("Client"), groupName: "reader", readBucketArn: bucket.bucketArn, readPrefix: "tenant/" });
+  const template = Template.fromStack(stack);
+  const bucketId = Object.keys(template.findResources("AWS::S3::Bucket"))[0]!;
+  template.hasResourceProperties("AWS::IAM::Policy", {
+    PolicyDocument: { Version: "2012-10-17", Statement: [{ Action: "s3:GetObject", Effect: "Allow", Resource: { "Fn::Join": ["", [{ "Fn::GetAtt": [bucketId, "Arn"] }, "/tenant/*"]] } }] },
+  });
+  assert.doesNotMatch(JSON.stringify(template.findResources("AWS::IAM::Policy")), /s3:PutObject|s3:DeleteObject|s3:ListBucket/);
+  assert.throws(() => identityPoolAccess(new Stack(new App(), "WildcardToken"), { userPool, userPoolClient: userPool.addClient("AnotherClient"), groupName: "reader", readBucketArn: `${bucket.bucketArn}/*` }), /without wildcards/);
 });
 test("custom policies bind exact ReaderRole Allow/Deny and opted-in guests remain permissionless", () => {
   const app = new App(); const env = { account: "111122223333", region: "us-east-1" };

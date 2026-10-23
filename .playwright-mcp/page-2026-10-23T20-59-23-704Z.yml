@@ -1,0 +1,311 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - text: AWS Studio
+      - generic "cloud2" [ref=e6]
+    - navigation "Views" [ref=e7]:
+      - link "Board" [ref=e8] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=e9] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [ref=e10] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=e11] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=e12] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=e13] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=e15] [cursor=pointer]:
+      - generic [ref=e18]: Source valid
+    - generic [ref=e19]: "Development: valid. Production: valid"
+  - main [ref=e21]:
+    - generic [ref=e22]:
+      - generic "AWS account" [ref=e23]:
+        - generic [ref=e24]:
+          - generic [ref=e25]:
+            - generic [ref=e26]: AWS profile
+            - combobox "AWS profile" [ref=e27]:
+              - option "default"
+              - option "dev" [selected]
+              - option "dev2"
+          - generic [ref=e28]:
+            - generic [ref=e29]:
+              - generic [ref=e30]: Account
+              - strong [ref=e31]: "734849394764"
+            - generic [ref=e32]:
+              - generic [ref=e33]: Region
+              - generic [ref=e34]: us-east-1
+            - generic "arn:aws:iam::734849394764:user/matthew" [ref=e35]:
+              - img "Signed in" [ref=e36]
+              - text: matthew
+          - button "Refresh" [disabled] [ref=e38]: Refreshing…
+        - generic [ref=e44]:
+          - button "This machine · 5 checks passed" [ref=e45] [cursor=pointer]
+          - list "Machine issues" [ref=e51]:
+            - 'listitem "Dependencies: cdk-app/package.json changed after the last install." [ref=e52]':
+              - generic [ref=e55]: cdk-app/package.json changed after the last install.
+              - button "Install" [ref=e56] [cursor=pointer]
+      - generic [ref=e57]:
+        - navigation "Deployments" [ref=e58]:
+          - heading "In this repository" [level=2] [ref=e59]
+          - list [ref=e60]:
+            - listitem [ref=e61]:
+              - button "matts-aws-framework Development only Not deployed" [ref=e62] [cursor=pointer]:
+                - strong [ref=e65]: matts-aws-framework
+                - generic [ref=e66]:
+                  - generic "Development only" [ref=e67]: Dev
+                  - generic [ref=e71]: Not deployed
+            - listitem [ref=e72]:
+              - button "job3-20261023-p2-1630 Production only Updating" [ref=e321] [cursor=pointer]:
+                - strong [ref=e76]: job3-20261023-p2-1630
+                - generic [ref=e77]:
+                  - generic "Production only" [ref=e78]: Prod
+                  - generic [ref=e83]: Updating
+          - heading "Also in this account not declared here" [level=2] [ref=e84]
+          - list [ref=e85]:
+            - listitem [ref=e86]:
+              - button "job3-20261023-p1-1608 Production only Deployed" [ref=e87] [cursor=pointer]:
+                - strong [ref=e90]: job3-20261023-p1-1608
+                - generic [ref=e91]:
+                  - generic "Production only" [ref=e92]: Prod
+                  - generic [ref=e97]: Deployed
+          - generic "Local development" [ref=e98]: This machineNo exported settings
+        - region [ref=e102]:
+          - generic [ref=e103]:
+            - generic [ref=e104]:
+              - paragraph [ref=e105]: Declared in cdk-app/cdk.json
+              - heading [level=1] [ref=e106]:
+                - text: job3-20261023-p2-1630
+                - generic "Production only" [ref=e107]: Prod
+              - paragraph [ref=e112]:
+                - generic [ref=e113]: 734849394764 · us-east-1
+                - generic [ref=e322]: contract 2
+                - generic [ref=e323]: Updated 2 min ago
+            - group [ref=e116]:
+              - generic "More actions" [ref=e117] [cursor=pointer]
+          - paragraph [ref=e122]: Template comparison reads AWS without creating review objects. Preparing CloudFormation change sets creates review objects and possibly empty stacks; new secrets require separate approval. Neither action applies infrastructure.
+          - region "What needs attention" [ref=e123]:
+            - article [ref=e284]:
+              - generic [ref=e288]:
+                - strong [ref=e289]: Apply plan to job3-20261023-p2-1630
+                - paragraph [ref=e290]: Its progress is in Activity. Other changes to this deployment wait until it ends.
+            - article [ref=e324]:
+              - generic [ref=e328]:
+                - strong [ref=e329]: CloudFormation is working on 1 stack
+                - paragraph [ref=e330]: FrontendWebsiteS3Stack CREATE_IN_PROGRESS
+          - generic [ref=e142]:
+            - region "Repository" [ref=e143]:
+              - heading "Repository" [level=3] [ref=e144]
+              - generic [ref=e145]:
+                - term [ref=e146]: Intent
+                - definition [ref=e147]: framework:targets in cdk.json
+                - term [ref=e148]: Mode
+                - definition [ref=e149]: Production · fixed when created
+                - term [ref=e150]: Inputs
+                - definition [ref=e151]:
+                  - code [ref=e152]: cdk-app/.env.prod
+                - term [ref=e153]: Account
+                - definition [ref=e154]:
+                  - code [ref=e155]: "734849394764"
+                - term [ref=e156]: Region
+                - definition [ref=e157]:
+                  - code [ref=e158]: us-east-1
+            - region "AWS" [ref=e159]:
+              - heading "AWS" [level=3] [ref=e160]
+              - paragraph [ref=e161]: Observed 10/23/2026, 4:59:12 PM · refreshing. CloudFormation state; application health is separate.
+              - list [ref=e331]:
+                - listitem [ref=e332]:
+                  - generic "job3-20261023-p2-1630-FrontendWebsiteS3Stack" [ref=e334]: FrontendWebsiteS3Stack
+                  - generic [ref=e335]: create in progress
+                - listitem [ref=e336]:
+                  - generic "job3-20261023-p2-1630-ReceiptsNetworkStack" [ref=e338]: ReceiptsNetworkStack
+                  - generic [ref=e339]: create complete
+                - listitem [ref=e340]:
+                  - generic "job3-20261023-p2-1630-ReceiptStoreStack" [ref=e342]: ReceiptStoreStack
+                  - generic [ref=e343]: create complete
+            - region "This machine" [ref=e163]:
+              - heading "This machine" [level=3] [ref=e164]
+              - paragraph [ref=e165]: Local development runs against a development deployment.
+          - region "CloudFormation events" [ref=e344]:
+            - heading "Events" [level=3] [ref=e345]
+            - list [ref=e346]:
+              - listitem [ref=e347]:
+                - time [ref=e348]: 4:58:16 PM
+                - generic [ref=e349]: FrontendWebsiteS3Stack
+                - generic [ref=e350]: FrontendDistribution
+                - generic [ref=e351]: create in progress
+                - generic [ref=e352]: Eventual consistency check initiated
+              - listitem [ref=e353]:
+                - time [ref=e354]: 4:58:16 PM
+                - generic [ref=e355]: FrontendWebsiteS3Stack
+                - generic [ref=e356]: FrontendDistribution
+                - generic [ref=e357]: create in progress
+                - generic [ref=e358]: Resource creation Initiated
+              - listitem [ref=e359]:
+                - time [ref=e360]: 4:58:13 PM
+                - generic [ref=e361]: FrontendWebsiteS3Stack
+                - generic [ref=e362]: FrontendDistribution
+                - generic [ref=e363]: create in progress
+              - listitem [ref=e364]:
+                - time [ref=e365]: 4:58:13 PM
+                - generic [ref=e366]: FrontendWebsiteS3Stack
+                - generic [ref=e367]: CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F
+                - generic [ref=e368]: create complete
+              - listitem [ref=e369]:
+                - time [ref=e370]: 4:58:11 PM
+                - generic [ref=e371]: FrontendWebsiteS3Stack
+                - generic [ref=e372]: StripApiPrefixFunction
+                - generic [ref=e373]: create complete
+              - listitem [ref=e374]:
+                - time [ref=e375]: 4:58:08 PM
+                - generic [ref=e376]: FrontendWebsiteS3Stack
+                - generic [ref=e377]: CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F
+                - generic [ref=e378]: create in progress
+                - generic [ref=e379]: Eventual consistency check initiated
+              - listitem [ref=e380]:
+                - time [ref=e381]: 4:58:07 PM
+                - generic [ref=e382]: FrontendWebsiteS3Stack
+                - generic [ref=e383]: CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F
+                - generic [ref=e384]: create in progress
+                - generic [ref=e385]: Resource creation Initiated
+              - listitem [ref=e386]:
+                - time [ref=e387]: 4:58:05 PM
+                - generic [ref=e388]: FrontendWebsiteS3Stack
+                - generic [ref=e389]: CustomS3AutoDeleteObjectsCustomResourceProviderHandler9D90184F
+                - generic [ref=e390]: create in progress
+              - listitem [ref=e391]:
+                - time [ref=e392]: 4:58:05 PM
+                - generic [ref=e393]: FrontendWebsiteS3Stack
+                - generic [ref=e394]: CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092
+                - generic [ref=e395]: create complete
+              - listitem [ref=e396]:
+                - time [ref=e397]: 4:58:02 PM
+                - generic [ref=e398]: FrontendWebsiteS3Stack
+                - generic [ref=e399]: StripApiPrefixFunction
+                - generic [ref=e400]: create in progress
+                - generic [ref=e401]: Resource creation Initiated
+              - listitem [ref=e402]:
+                - time [ref=e403]: 4:58:02 PM
+                - generic [ref=e404]: FrontendWebsiteS3Stack
+                - generic [ref=e405]: FrontendWebsiteBucket00A62811
+                - generic [ref=e406]: create complete
+              - listitem [ref=e407]:
+                - time [ref=e408]: 4:58:00 PM
+                - generic [ref=e409]: FrontendWebsiteS3Stack
+                - generic [ref=e410]: FrontendRoutingStore
+                - generic [ref=e411]: create complete
+              - listitem [ref=e412]:
+                - time [ref=e413]: 4:57:50 PM
+                - generic [ref=e414]: FrontendWebsiteS3Stack
+                - generic [ref=e415]: StripApiPrefixFunction
+                - generic [ref=e416]: create in progress
+              - listitem [ref=e417]:
+                - time [ref=e418]: 4:57:50 PM
+                - generic [ref=e419]: FrontendWebsiteS3Stack
+                - generic [ref=e420]: SpaRewriteFunction
+                - generic [ref=e421]: create complete
+              - listitem [ref=e422]:
+                - time [ref=e423]: 4:57:50 PM
+                - generic [ref=e424]: FrontendWebsiteS3Stack
+                - generic [ref=e425]: FrontendRoutingStore
+                - generic [ref=e426]: create in progress
+                - generic [ref=e427]: Eventual consistency check initiated
+              - listitem [ref=e428]:
+                - time [ref=e429]: 4:57:49 PM
+                - generic [ref=e430]: FrontendWebsiteS3Stack
+                - generic [ref=e431]: SpaRewriteFunction
+                - generic [ref=e432]: create in progress
+                - generic [ref=e433]: Resource creation Initiated
+              - listitem [ref=e434]:
+                - time [ref=e435]: 4:57:49 PM
+                - generic [ref=e436]: FrontendWebsiteS3Stack
+                - generic [ref=e437]: FrontendSecurityHeadersPolicy
+                - generic [ref=e438]: create complete
+              - listitem [ref=e439]:
+                - time [ref=e440]: 4:57:49 PM
+                - generic [ref=e441]: FrontendWebsiteS3Stack
+                - generic [ref=e442]: FrontendOriginAccessControl
+                - generic [ref=e443]: create complete
+              - listitem [ref=e444]:
+                - time [ref=e445]: 4:57:49 PM
+                - generic [ref=e446]: FrontendWebsiteS3Stack
+                - generic [ref=e447]: FrontendRoutingStore
+                - generic [ref=e448]: create in progress
+                - generic [ref=e449]: Resource creation Initiated
+              - listitem [ref=e450]:
+                - time [ref=e451]: 4:57:48 PM
+                - generic [ref=e452]: FrontendWebsiteS3Stack
+                - generic [ref=e453]: CDKMetadata
+                - generic [ref=e454]: create complete
+              - listitem [ref=e455]:
+                - time [ref=e456]: 4:57:48 PM
+                - generic [ref=e457]: FrontendWebsiteS3Stack
+                - generic [ref=e458]: FrontendWebsiteBucket00A62811
+                - generic [ref=e459]: create in progress
+                - generic [ref=e460]: Resource creation Initiated
+              - listitem [ref=e461]:
+                - time [ref=e462]: 4:57:48 PM
+                - generic [ref=e463]: FrontendWebsiteS3Stack
+                - generic [ref=e464]: FrontendSecurityHeadersPolicy
+                - generic [ref=e465]: create in progress
+                - generic [ref=e466]: Resource creation Initiated
+              - listitem [ref=e467]:
+                - time [ref=e468]: 4:57:48 PM
+                - generic [ref=e469]: FrontendWebsiteS3Stack
+                - generic [ref=e470]: CDKMetadata
+                - generic [ref=e471]: create in progress
+                - generic [ref=e472]: Resource creation Initiated
+              - listitem [ref=e473]:
+                - time [ref=e474]: 4:57:48 PM
+                - generic [ref=e475]: FrontendWebsiteS3Stack
+                - generic [ref=e476]: FrontendOriginAccessControl
+                - generic [ref=e477]: create in progress
+                - generic [ref=e478]: Resource creation Initiated
+              - listitem [ref=e479]:
+                - time [ref=e480]: 4:57:48 PM
+                - generic [ref=e481]: FrontendWebsiteS3Stack
+                - generic [ref=e482]: CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092
+                - generic [ref=e483]: create in progress
+                - generic [ref=e484]: Resource creation Initiated
+              - listitem [ref=e485]:
+                - time [ref=e486]: 4:57:47 PM
+                - generic [ref=e487]: FrontendWebsiteS3Stack
+                - generic [ref=e488]: CDKMetadata
+                - generic [ref=e489]: create in progress
+              - listitem [ref=e490]:
+                - time [ref=e491]: 4:57:47 PM
+                - generic [ref=e492]: FrontendWebsiteS3Stack
+                - generic [ref=e493]: SpaRewriteFunction
+                - generic [ref=e494]: create in progress
+              - listitem [ref=e495]:
+                - time [ref=e496]: 4:57:47 PM
+                - generic [ref=e497]: FrontendWebsiteS3Stack
+                - generic [ref=e498]: FrontendOriginAccessControl
+                - generic [ref=e499]: create in progress
+              - listitem [ref=e500]:
+                - time [ref=e501]: 4:57:47 PM
+                - generic [ref=e502]: FrontendWebsiteS3Stack
+                - generic [ref=e503]: FrontendRoutingStore
+                - generic [ref=e504]: create in progress
+              - listitem [ref=e505]:
+                - time [ref=e506]: 4:57:47 PM
+                - generic [ref=e507]: FrontendWebsiteS3Stack
+                - generic [ref=e508]: CustomS3AutoDeleteObjectsCustomResourceProviderRole3B1BD092
+                - generic [ref=e509]: create in progress
+          - group [ref=e166]:
+            - generic "Development & production deployment names" [ref=e167] [cursor=pointer]
+            - option "Development" [selected]
+            - option "Production / staging"
+          - group [ref=e168]:
+            - generic "Client environment & frontend release" [ref=e169] [cursor=pointer]
+          - group [ref=e170]:
+            - generic "Stateful retention and retained-resource references" [ref=e171] [cursor=pointer]
+      - region "Activity" [ref=e172]:
+        - button "Activity Apply plan to job3-20261023-p2-1630 · Deploy and verify" [active] [ref=e291] [cursor=pointer]:
+          - strong [ref=e174]: Activity
+          - generic [ref=e175]:
+            - text: Apply plan to job3-20261023-p2-1630
+            - generic [ref=e176]: · Deploy and verify
+      - status
+  - status

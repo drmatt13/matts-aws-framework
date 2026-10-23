@@ -227,6 +227,27 @@ the same checkout. This release's offline suites exercise pinned parsing, diffs
 and planning; local live runner behavior requires a deliberately disposable PostgreSQL
 integration test and explicit authorization before use against application data.
 
+The opt-in Compose lifecycle regression creates a random labeled PostgreSQL project,
+executes Studio's actual reviewed initialization, saved SQL and forward migration,
+then replaces compute while retaining its volume and checks original rows, marker,
+physical schema and once-only ledger. It also verifies stale reviews, drift refusal,
+constraint rollback, read-only denial, rejected retained credentials and unavailable
+storage. It removes only that invocation's independently labeled containers/volume;
+it never uses the ordinary `postgres_data` volume. With Docker running, explicitly
+authorize the disposable run using:
+
+```sh
+STUDIO_DATABASE_LIVE=job3-disposable node --conditions=development --import tsx --test framework-studio/test/database-lifecycle-live.test.ts
+```
+
+Unset inherited `POSTGRES_HOST_PORT`, `FRAMEWORK_STUDIO_STATE_DIRECTORY` and
+`COMPOSE_FILE` before running it. The test refuses these overrides before setup
+so target resolution, operation history and Compose cannot escape its own fixture.
+
+This is real local service/driver evidence. Browser acceptance, application recovery,
+RDS IAM/networking, CloudFormation import and snapshot restoration remain separate.
+See the [Job 3 database execution evidence](job3-database-evidence-2026-10-23.md).
+
 Production inspection reads metadata, marker and ledger through a session forced read-only;
 it returns canonical pending packages, SQL and executable source in bounded, correlated
 CloudWatch envelope chunks. Review binds the image's authored config/migration inputs,

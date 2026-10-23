@@ -1,0 +1,391 @@
+- generic [ref=f6e3]:
+  - banner [ref=f6e4]:
+    - generic [ref=f6e5]:
+      - text: AWS Studio
+      - generic "cloud2" [ref=f6e6]
+    - navigation "Views" [ref=f6e7]:
+      - link "Board" [ref=f6e8] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=f6e9] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [ref=f6e10] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f6e11] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f6e12] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f6e13] [cursor=pointer]:
+        - /url: /domains
+    - button "Checking source…. Configuration health" [ref=f6e370] [cursor=pointer]:
+      - generic [ref=f6e18]: Checking source…
+    - generic [ref=f6e19]: Validating configuration
+  - main [ref=f6e21]:
+    - generic [ref=f6e22]:
+      - generic "AWS account" [ref=f6e23]:
+        - generic [ref=f6e24]:
+          - generic [ref=f6e25]:
+            - generic [ref=f6e26]: AWS profile
+            - combobox "AWS profile" [ref=f6e27]:
+              - option "default"
+              - option "dev" [selected]
+              - option "dev2"
+          - generic [ref=f6e136]:
+            - generic [ref=f6e137]:
+              - generic [ref=f6e138]: Account
+              - strong [ref=f6e139]: "734849394764"
+            - generic [ref=f6e140]:
+              - generic [ref=f6e141]: Region
+              - generic [ref=f6e142]: us-east-1
+            - generic "arn:aws:iam::734849394764:user/matthew" [ref=f6e143]:
+              - img "Signed in" [ref=f6e144]
+              - text: matthew
+          - button "Refresh" [disabled] [ref=f6e29]: Refreshing…
+        - generic [ref=f6e35]:
+          - button "This machine · 5 checks passed" [ref=f6e36] [cursor=pointer]
+          - list "Machine issues" [ref=f6e42]:
+            - 'listitem "Dependencies: cdk-app/package.json changed after the last install." [ref=f6e43]':
+              - generic [ref=f6e46]: cdk-app/package.json changed after the last install.
+              - button "Install" [ref=f6e47] [cursor=pointer]
+      - generic [ref=f6e48]:
+        - navigation "Deployments" [ref=f6e49]:
+          - heading "In this repository" [level=2] [ref=f6e50]
+          - list [ref=f6e51]:
+            - listitem [ref=f6e52]:
+              - button "matts-aws-framework Development only Not deployed" [ref=f6e146] [cursor=pointer]:
+                - strong [ref=f6e56]: matts-aws-framework
+                - generic [ref=f6e57]:
+                  - generic "Development only" [ref=f6e58]: Dev
+                  - generic [ref=f6e62]: Not deployed
+            - listitem [ref=f6e63]:
+              - button "job3-20261023-p2-1630 Production only Rolled back" [ref=f6e147] [cursor=pointer]:
+                - strong [ref=f6e67]: job3-20261023-p2-1630
+                - generic [ref=f6e68]:
+                  - generic "Production only" [ref=f6e69]: Prod
+                  - generic [ref=f6e74]: Rolled back
+          - generic "Local development" [ref=f6e75]: This machineNo exported settings
+        - region [ref=f6e79]:
+          - generic [ref=f6e80]:
+            - generic [ref=f6e81]:
+              - paragraph [ref=f6e82]: Declared in cdk-app/cdk.json
+              - heading [level=1] [ref=f6e83]:
+                - text: job3-20261023-p2-1630
+                - generic "Production only" [ref=f6e84]: Prod
+              - paragraph [ref=f6e148]:
+                - generic [ref=f6e149]: 734849394764 · us-east-1
+                - generic [ref=f6e150]: contract 2
+                - generic "arn:aws:iam::734849394764:user/matthew" [ref=f6e151]:
+                  - text: Deployed 21 min ago by matthew via Studio from
+                  - code [ref=f6e152]: 0167ca7+
+            - group [ref=f6e90]:
+              - generic "More actions" [ref=f6e91] [cursor=pointer]
+          - paragraph [ref=f6e96]: Template comparison reads AWS without creating review objects. Preparing CloudFormation change sets creates review objects and possibly empty stacks; new secrets require separate approval. Neither action applies infrastructure.
+          - region "What needs attention" [ref=f6e97]:
+            - article [ref=f6e373]:
+              - generic [ref=f6e377]:
+                - strong [ref=f6e378]: Plan job3-20261023-p2-1630
+                - paragraph [ref=f6e379]: Its progress is in Activity. Other changes to this deployment wait until it ends.
+            - article [ref=f6e154]:
+              - generic [ref=f6e158]:
+                - strong [ref=f6e159]: The last deployment needs recovery
+                - paragraph [ref=f6e160]: "Outcome: failed. Review the recorded result before planning further changes. CloudFormation completion does not establish application health."
+              - button "Review deployment result" [disabled] [ref=f6e381]
+            - article [ref=f6e161]:
+              - generic [ref=f6e165]:
+                - strong [ref=f6e166]: The last update was rolled back
+                - paragraph [ref=f6e167]: AWS holds the version before it. Fix what failed (see Events), then deploy again.
+              - button "Compare AWS templates" [disabled] [ref=f6e169]
+          - generic [ref=f6e99]:
+            - region "Repository" [ref=f6e100]:
+              - heading "Repository" [level=3] [ref=f6e101]
+              - generic [ref=f6e102]:
+                - term [ref=f6e103]: Intent
+                - definition [ref=f6e104]: framework:targets in cdk.json
+                - term [ref=f6e105]: Mode
+                - definition [ref=f6e106]: Production · fixed when created
+                - term [ref=f6e107]: Inputs
+                - definition [ref=f6e108]:
+                  - code [ref=f6e109]: cdk-app/.env.prod
+                - term [ref=f6e110]: Account
+                - definition [ref=f6e111]:
+                  - code [ref=f6e112]: "734849394764"
+                - term [ref=f6e113]: Region
+                - definition [ref=f6e114]:
+                  - code [ref=f6e115]: us-east-1
+            - region "AWS" [ref=f6e116]:
+              - heading "AWS" [level=3] [ref=f6e117]
+              - paragraph [ref=f6e211]: Observed 10/23/2026, 5:38:09 PM · refreshing. CloudFormation state; application health is separate.
+              - list [ref=f6e170]:
+                - listitem [ref=f6e171]:
+                  - generic "job3-20261023-p2-1630-HttpApiGatewayStack" [ref=f6e173]: HttpApiGatewayStack
+                  - generic [ref=f6e174]: create complete
+                - listitem [ref=f6e175]:
+                  - generic "job3-20261023-p2-1630-SynchronousLambdaFunctionsStack" [ref=f6e177]: SynchronousLambdaFunctionsStack
+                  - generic [ref=f6e178]: update rollback complete
+                - listitem [ref=f6e179]:
+                  - generic "job3-20261023-p2-1630-ReceiptIdentityStack" [ref=f6e181]: ReceiptIdentityStack
+                  - generic [ref=f6e182]: create complete
+                - listitem [ref=f6e183]:
+                  - generic "job3-20261023-p2-1630-CognitoStack" [ref=f6e185]: CognitoStack
+                  - generic [ref=f6e186]: update complete
+                - listitem [ref=f6e187]:
+                  - generic "job3-20261023-p2-1630-AsynchronousLambdaFunctionsStack" [ref=f6e189]: AsynchronousLambdaFunctionsStack
+                  - generic [ref=f6e190]: update complete
+                - listitem [ref=f6e191]:
+                  - generic "job3-20261023-p2-1630-FrontendWebsiteS3Stack" [ref=f6e193]: FrontendWebsiteS3Stack
+                  - generic [ref=f6e194]: create complete
+                - listitem [ref=f6e195]:
+                  - generic "job3-20261023-p2-1630-ReceiptsNetworkStack" [ref=f6e197]: ReceiptsNetworkStack
+                  - generic [ref=f6e198]: create complete
+                - listitem [ref=f6e199]:
+                  - generic "job3-20261023-p2-1630-ReceiptStoreStack" [ref=f6e201]: ReceiptStoreStack
+                  - generic [ref=f6e202]: create complete
+            - region "This machine" [ref=f6e119]:
+              - heading "This machine" [level=3] [ref=f6e120]
+              - paragraph [ref=f6e121]: Local development runs against a development deployment.
+          - region "CloudFormation events" [ref=f6e212]:
+            - heading "Events" [level=3] [ref=f6e213]
+            - list [ref=f6e214]:
+              - listitem [ref=f6e215]:
+                - time [ref=f6e216]: 5:31:48 PM
+                - generic [ref=f6e217]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e218]: stack
+                - generic [ref=f6e219]: update rollback complete
+              - listitem [ref=f6e220]:
+                - time [ref=f6e221]: 5:31:47 PM
+                - generic [ref=f6e222]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e223]: stack
+                - generic [ref=f6e224]: update rollback complete cleanup in progress
+              - listitem [ref=f6e225]:
+                - time [ref=f6e226]: 5:31:47 PM
+                - generic [ref=f6e227]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e228]: ReceiptApi84A58835
+                - generic [ref=f6e229]: update complete
+              - listitem [ref=f6e230]:
+                - time [ref=f6e231]: 5:31:39 PM
+                - generic [ref=f6e232]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e233]: ReceiptApi84A58835
+                - generic [ref=f6e234]: update in progress
+              - listitem [ref=f6e235]:
+                - time [ref=f6e236]: 5:31:38 PM
+                - generic [ref=f6e237]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e238]: ReceiptApiServiceRole8EA7B520
+                - generic [ref=f6e239]: update complete
+              - listitem [ref=f6e240]:
+                - time [ref=f6e241]: 5:31:22 PM
+                - generic [ref=f6e242]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e243]: CDKMetadata
+                - generic [ref=f6e244]: update complete
+              - listitem [ref=f6e245]:
+                - time [ref=f6e246]: 5:31:22 PM
+                - generic [ref=f6e247]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e248]: ReceiptApiServiceRole8EA7B520
+                - generic [ref=f6e249]: update in progress
+              - listitem [ref=f6e250]:
+                - time [ref=f6e251]: 5:31:22 PM
+                - generic [ref=f6e252]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e253]: CDKMetadata
+                - generic [ref=f6e254]: update in progress
+              - listitem [ref=f6e255]:
+                - time [ref=f6e256]: 5:31:18 PM
+                - generic [ref=f6e257]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e258]: stack
+                - generic [ref=f6e259]: update rollback in progress
+                - generic [ref=f6e260]: "The following resource(s) failed to update: [ReceiptApi84A58835]."
+              - listitem [ref=f6e261]:
+                - time [ref=f6e262]: 5:31:18 PM
+                - generic [ref=f6e263]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e264]: ReceiptApi84A58835
+                - generic [ref=f6e265]: update failed
+                - generic [ref=f6e266]: "Resource handler returned message: \"Ipv6AllowedForDualStack cannot be true without subnet or security groups. Please remove Ipv6AllowedForDualStack value from your request and try again. (Service: Lambda, Status Code: 400, Request ID: 2ee4a244-9fb3-436c-a7ff-5956a893a431) (SDK Attempt Count: 1)\" (RequestToken: 52176cef-136b-c0f5-4819-209138272e7a, HandlerErrorCode: InvalidRequest)"
+              - listitem [ref=f6e267]:
+                - time [ref=f6e268]: 5:31:16 PM
+                - generic [ref=f6e269]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e270]: ReceiptApi84A58835
+                - generic [ref=f6e271]: update in progress
+              - listitem [ref=f6e272]:
+                - time [ref=f6e273]: 5:31:15 PM
+                - generic [ref=f6e274]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e275]: ReceiptApiServiceRole8EA7B520
+                - generic [ref=f6e276]: update complete
+              - listitem [ref=f6e277]:
+                - time [ref=f6e278]: 5:30:59 PM
+                - generic [ref=f6e279]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e280]: CDKMetadata
+                - generic [ref=f6e281]: update complete
+              - listitem [ref=f6e282]:
+                - time [ref=f6e283]: 5:30:58 PM
+                - generic [ref=f6e284]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e285]: ReceiptApiServiceRole8EA7B520
+                - generic [ref=f6e286]: update in progress
+              - listitem [ref=f6e287]:
+                - time [ref=f6e288]: 5:30:58 PM
+                - generic [ref=f6e289]: SynchronousLambdaFunctionsStack
+                - generic [ref=f6e290]: CDKMetadata
+                - generic [ref=f6e291]: update in progress
+              - listitem [ref=f6e292]:
+                - time [ref=f6e293]: 5:30:47 PM
+                - generic [ref=f6e294]: CognitoStack
+                - generic [ref=f6e295]: stack
+                - generic [ref=f6e296]: update complete
+              - listitem [ref=f6e297]:
+                - time [ref=f6e298]: 5:30:46 PM
+                - generic [ref=f6e299]: CognitoStack
+                - generic [ref=f6e300]: stack
+                - generic [ref=f6e301]: update complete cleanup in progress
+              - listitem [ref=f6e302]:
+                - time [ref=f6e303]: 5:30:45 PM
+                - generic [ref=f6e304]: CognitoStack
+                - generic [ref=f6e305]: UserPoolPreSignUpCognito3AFF8F1F
+                - generic [ref=f6e306]: update complete
+              - listitem [ref=f6e307]:
+                - time [ref=f6e308]: 5:30:45 PM
+                - generic [ref=f6e309]: CognitoStack
+                - generic [ref=f6e310]: UserPoolUserPoolDomain9F01E991
+                - generic [ref=f6e311]: update complete
+              - listitem [ref=f6e312]:
+                - time [ref=f6e313]: 5:30:45 PM
+                - generic [ref=f6e314]: CognitoStack
+                - generic [ref=f6e315]: UserPoolPostConfirmationCognito0E6001F8
+                - generic [ref=f6e316]: update complete
+              - listitem [ref=f6e317]:
+                - time [ref=f6e318]: 5:30:45 PM
+                - generic [ref=f6e319]: CognitoStack
+                - generic [ref=f6e320]: UserPoolCustomMessageCognitoF0A0255B
+                - generic [ref=f6e321]: update complete
+              - listitem [ref=f6e322]:
+                - time [ref=f6e323]: 5:30:44 PM
+                - generic [ref=f6e324]: CognitoStack
+                - generic [ref=f6e325]: UserPoolClient2F5918F7
+                - generic [ref=f6e326]: update complete
+              - listitem [ref=f6e327]:
+                - time [ref=f6e328]: 5:30:44 PM
+                - generic [ref=f6e329]: CognitoStack
+                - generic [ref=f6e330]: UserPool6BA7E5F2
+                - generic [ref=f6e331]: update complete
+              - listitem [ref=f6e332]:
+                - time [ref=f6e333]: 5:30:42 PM
+                - generic [ref=f6e334]: CognitoStack
+                - generic [ref=f6e335]: CDKMetadata
+                - generic [ref=f6e336]: update complete
+              - listitem [ref=f6e337]:
+                - time [ref=f6e338]: 5:30:41 PM
+                - generic [ref=f6e339]: CognitoStack
+                - generic [ref=f6e340]: CDKMetadata
+                - generic [ref=f6e341]: update in progress
+              - listitem [ref=f6e342]:
+                - time [ref=f6e343]: 5:30:41 PM
+                - generic [ref=f6e344]: CognitoStack
+                - generic [ref=f6e345]: UserPool6BA7E5F2
+                - generic [ref=f6e346]: update in progress
+              - listitem [ref=f6e347]:
+                - time [ref=f6e348]: 5:30:38 PM
+                - generic [ref=f6e349]: CognitoStack
+                - generic [ref=f6e350]: stack
+                - generic [ref=f6e351]: update in progress
+                - generic [ref=f6e352]: User Initiated
+              - listitem [ref=f6e353]:
+                - time [ref=f6e354]: 5:30:30 PM
+                - generic [ref=f6e355]: AsynchronousLambdaFunctionsStack
+                - generic [ref=f6e356]: stack
+                - generic [ref=f6e357]: update complete
+              - listitem [ref=f6e358]:
+                - time [ref=f6e359]: 5:30:29 PM
+                - generic [ref=f6e360]: AsynchronousLambdaFunctionsStack
+                - generic [ref=f6e361]: stack
+                - generic [ref=f6e362]: update complete cleanup in progress
+              - listitem [ref=f6e363]:
+                - time [ref=f6e364]: 5:30:25 PM
+                - generic [ref=f6e365]: AsynchronousLambdaFunctionsStack
+                - generic [ref=f6e366]: ReceiptIngested1E94F4DD
+                - generic [ref=f6e367]: update complete
+          - group [ref=f6e122]:
+            - generic "Development & production deployment names" [ref=f6e123] [cursor=pointer]
+            - option "Development" [selected]
+            - option "Production / staging"
+          - group [ref=f6e124]:
+            - generic "Client environment & frontend release" [ref=f6e125] [cursor=pointer]
+            - paragraph [ref=f6e203]: Generate public client settings from this deployment without starting Docker. A release then builds locally, reviews exact files and destination, publishes to S3, and requests CloudFront invalidation.
+            - paragraph [ref=f6e204]:
+              - text: "Selected:"
+              - strong [ref=f6e205]: job3-20261023-p2-1630
+              - text: · dev · us-east-1. Infrastructure deployment is a separate operation.
+            - generic [ref=f6e206]:
+              - button "Generate / refresh client env" [ref=f6e207] [cursor=pointer]
+              - button "Build & review release" [ref=f6e208] [cursor=pointer]
+            - group [ref=f6e209]:
+              - generic "Frontend project and publication settings" [ref=f6e210] [cursor=pointer]
+            - status [ref=f6e382]: Build complete. Review publication below; no assets have been uploaded.
+            - region "Frontend publication review" [ref=f6e383]:
+              - heading "Review frontend publication" [level=4] [ref=f6e384]
+              - generic [ref=f6e385]:
+                - term [ref=f6e386]: Destination
+                - definition [ref=f6e387]: 734849394764 · us-east-1 · prod · s3://job3-20261023-p2-1630-fro-frontendwebsitebucket00a-pskojcuxklso/
+                - term [ref=f6e388]: Public env
+                - definition [ref=f6e389]: web/.env.production.local
+                - term [ref=f6e390]: CloudFront
+                - definition [ref=f6e391]: "ERA0LSZ03BRQE: /*"
+                - term [ref=f6e392]: Expires
+                - definition [ref=f6e393]: 5:53:47 PM
+              - paragraph [ref=f6e394]: Publication and CloudFront invalidation are separate AWS effects; infrastructure is not deployed by this operation.
+              - paragraph [ref=f6e395]: Uploads can be partial. Old assets are retained by default; replacing HTML or deleting objects has no automatic rollback. Keep a previous artifact for a separately reviewed release.
+              - paragraph [ref=f6e396]: Invalidation submission does not prove cache completion or application health. HTTP evidence is reported separately.
+              - group [ref=f6e397]:
+                - generic "Artifact manifest (2 files)" [ref=f6e398] [cursor=pointer]
+              - generic [ref=f6e399]:
+                - text: Type
+                - code [ref=f6e400]: Publish job3-20261023-p2-1630 to job3-20261023-p2-1630-fro-frontendwebsitebucket00a-pskojcuxklso
+                - textbox "Frontend publication approval" [ref=f6e401]
+              - button "Publish assets & request invalidation" [disabled] [ref=f6e402]
+            - group [ref=f6e403]:
+              - generic "Recent frontend release outcomes" [ref=f6e404] [cursor=pointer]
+          - group [ref=f6e126]:
+            - generic "Stateful retention and retained-resource references" [ref=f6e127] [cursor=pointer]
+      - region "Activity" [ref=f6e128]:
+        - button "Activity Plan job3-20261023-p2-1630 · Synthesize and compare AWS templates (read-only)" [expanded] [ref=f6e405] [cursor=pointer]:
+          - strong [ref=f6e130]: Activity
+          - generic [ref=f6e131]:
+            - text: Plan job3-20261023-p2-1630
+            - generic [ref=f6e132]: · Synthesize and compare AWS templates (read-only)
+        - generic [ref=f6e410]:
+          - list "Operations" [ref=f6e411]:
+            - listitem [ref=f6e412]:
+              - button "Plan job3-20261023-p2-1630 Running · just now" [ref=f6e413] [cursor=pointer]:
+                - generic [ref=f6e414]: Plan job3-20261023-p2-1630
+                - generic [ref=f6e415]: Running · just now
+            - listitem [ref=f6e416]:
+              - button "Apply plan to job3-20261023-p2-1630 Failed · 7 min ago" [ref=f6e417] [cursor=pointer]:
+                - generic [ref=f6e418]: Apply plan to job3-20261023-p2-1630
+                - generic [ref=f6e419]: Failed · 7 min ago
+            - listitem [ref=f6e420]:
+              - button "Plan job3-20261023-p2-1630 Done · 12 min ago" [ref=f6e421] [cursor=pointer]:
+                - generic [ref=f6e422]: Plan job3-20261023-p2-1630
+                - generic [ref=f6e423]: Done · 12 min ago
+            - listitem [ref=f6e424]:
+              - button "Apply plan to job3-20261023-p2-1630 Done · 21 min ago" [ref=f6e425] [cursor=pointer]:
+                - generic [ref=f6e426]: Apply plan to job3-20261023-p2-1630
+                - generic [ref=f6e427]: Done · 21 min ago
+            - listitem [ref=f6e428]:
+              - button "Plan job3-20261023-p2-1630 Done · 23 min ago" [ref=f6e429] [cursor=pointer]:
+                - generic [ref=f6e430]: Plan job3-20261023-p2-1630
+                - generic [ref=f6e431]: Done · 23 min ago
+            - listitem [ref=f6e432]:
+              - button "Apply plan to job3-20261023-p2-1630 Done · 28 min ago" [ref=f6e433] [cursor=pointer]:
+                - generic [ref=f6e434]: Apply plan to job3-20261023-p2-1630
+                - generic [ref=f6e435]: Done · 28 min ago
+            - listitem [ref=f6e436]:
+              - button "Plan job3-20261023-p2-1630 Done · 59 min ago" [ref=f6e437] [cursor=pointer]:
+                - generic [ref=f6e438]: Plan job3-20261023-p2-1630
+                - generic [ref=f6e439]: Done · 59 min ago
+          - generic [ref=f6e440]:
+            - generic [ref=f6e441]:
+              - generic [ref=f6e442]:
+                - strong [ref=f6e443]: Plan job3-20261023-p2-1630
+                - text: Running
+              - button "Stop command; AWS may continue" [ref=f6e444] [cursor=pointer]
+            - list [ref=f6e447]:
+              - listitem [ref=f6e448]:
+                - img "running" [ref=f6e449]
+                - text: Synthesize and compare AWS templates (read-only)
+            - generic "Log" [ref=f6e451]: $ tsx scripts/deploy.ts --all -c deployment=job3-20261023-p2-1630 -c prodDeployment=true --profile dev --region us-east-1 --plan /Users/matt/Desktop/code/framework-fix/matts-aws-framework/.cache/job3/cloud2/.cache/framework-studio/plans/job3-20261023-p2-1630-mvlhsvvs-fad2 --review template
+      - status
+  - status

@@ -1,0 +1,191 @@
+- generic [ref=f1e3]:
+  - banner [ref=f1e4]:
+    - generic [ref=f1e5]:
+      - text: AWS Studio
+      - generic "cloud2" [ref=f1e6]
+    - navigation "Views" [ref=f1e7]:
+      - link "Board" [ref=f1e8] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=f1e9] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [ref=f1e10] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f1e11] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f1e12] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f1e13] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=f1e15] [cursor=pointer]:
+      - generic [ref=f1e18]: Source valid
+    - generic [ref=f1e19]: "Development: valid. Production: valid"
+  - main [ref=f1e21]:
+    - generic [ref=f1e22]:
+      - heading "Database" [level=1] [ref=f1e23]
+      - generic [ref=f1e24]:
+        - navigation "Database workspace" [ref=f1e25]:
+          - button "Schema" [ref=f1e26] [cursor=pointer]
+          - button "History & migrations" [ref=f1e32] [cursor=pointer]
+          - button "Database status" [pressed] [ref=f1e37] [cursor=pointer]
+          - button "Saved SQL" [ref=f1e42] [cursor=pointer]
+          - button "Data retention" [ref=f1e47] [cursor=pointer]
+        - button "How this works" [ref=f1e52] [cursor=pointer]
+      - generic [ref=f1e289]:
+        - generic [ref=f1e290]:
+          - generic [ref=f1e291]:
+            - heading "What does this database actually contain?" [level=2] [ref=f1e292]
+            - paragraph [ref=f1e293]: Compare saved source, migration history, and modeled physical storage. Every inspection is a read-only observation of the target you choose.
+          - button "Refresh source & targets" [ref=f1e294] [cursor=pointer]
+        - generic [ref=f1e300]:
+          - generic [ref=f1e301]:
+            - text: Database target
+            - combobox "Database target" [ref=f1e302]:
+              - option "Choose a database…"
+              - option "Local PostgreSQL" [selected]
+              - option "Production RDS · VPC task review"
+          - button "Inspect database" [ref=f1e303] [cursor=pointer]
+          - button "Review empty database initialization" [ref=f1e351] [cursor=pointer]
+        - paragraph [ref=f1e304]: Compose postgres · loopback port 15464 · existing database only
+        - region "Schema representations" [ref=f1e305]:
+          - heading "Five distinct sources of evidence" [level=3] [ref=f1e306]
+          - generic [ref=f1e307]:
+            - generic [ref=f1e308]:
+              - term [ref=f1e309]: Editor draft
+              - definition [ref=f1e310]: Same text as saved source
+            - generic [ref=f1e311]:
+              - term [ref=f1e312]: Saved Prisma source
+              - definition [ref=f1e313]:
+                - text: Valid contract ·
+                - code [ref=f1e314]: 2757f22b663b
+            - generic [ref=f1e315]:
+              - term [ref=f1e316]: Emitted contract & migration graph
+              - definition [ref=f1e317]:
+                - text: Emitted storage and execution hashes match saved source. This does not establish migration or live database state.
+                - generic [ref=f1e318]: packages/database/src/generated/contract.json · read 4:43:54 PM · 1 migration graph heads
+            - generic [ref=f1e319]:
+              - term [ref=f1e320]: Database marker & ledger
+              - definition [ref=f1e321]: missing · 0 recorded applications
+            - generic [ref=f1e322]:
+              - term [ref=f1e323]: Physical PostgreSQL schema
+              - definition [ref=f1e324]: Differs from saved storage
+        - generic [ref=f1e325]:
+          - generic [ref=f1e326]:
+            - heading "Saved source → migration history" [level=3] [ref=f1e327]
+            - generic [ref=f1e328]: Storage has a graph head
+            - paragraph [ref=f1e329]: Saved storage matches a terminal contract in the on-disk migration graph. This does not establish whether any database has applied it.
+            - paragraph [ref=f1e330]:
+              - code [ref=f1e331]: 518f79d59ebe
+              - text: · 3 migration packages
+          - generic [ref=f1e332]:
+            - heading "Database migration evidence" [level=3] [ref=f1e333]
+            - generic [ref=f1e334]: Unknown
+            - paragraph [ref=f1e335]: No Prisma migration marker was found. The physical schema may still exist; do not infer an origin or sign it automatically.
+          - generic [ref=f1e336]:
+            - heading "Observed physical schema" [level=3] [ref=f1e337]
+            - generic [ref=f1e338]: Differs from saved storage
+            - paragraph [ref=f1e339]: Physical evidence is incomplete or differs. Review detailed issues before deciding what changes are needed.
+        - generic [ref=f1e352]:
+          - heading "Local PostgreSQL · observation" [level=3] [ref=f1e353]
+          - status [ref=f1e354]: The physical schema differs from saved source. A pending migration can explain this; compare the marker's historical contract before calling it drift.
+          - generic [ref=f1e355]:
+            - generic [ref=f1e356]: Observed 10/23/2026, 4:44:10 PM
+            - generic [ref=f1e357]: "Baseline: Saved authored contract"
+            - generic [ref=f1e358]:
+              - text: "Source revision:"
+              - code [ref=f1e359]: 2757f22b663b
+            - generic [ref=f1e360]:
+              - text: "Target identity:"
+              - code [ref=f1e361]: 66515f631f4b
+          - group [ref=f1e362]:
+            - generic "Physical comparison findings" [ref=f1e363] [cursor=pointer]
+            - generic [ref=f1e364]: "{\"path\":[\"database\",\"public\",\"users\"],\"expected\":{\"nodeKind\":\"postgres-table\",\"name\":\"users\",\"columns\":{\"id\":{\"nodeKind\":\"sql-column\",\"name\":\"id\",\"nativeType\":\"uuid\",\"nullable\":false,\"resolvedNativeType\":\"uuid\"},\"cognito_sub\":{\"nodeKind\":\"sql-column\",\"name\":\"cognito_sub\",\"nativeType\":\"text\",\"nullable\":false,\"resolvedNativeType\":\"text\"},\"email\":{\"nodeKind\":\"sql-column\",\"name\":\"email\",\"nativeType\":\"text\",\"nullable\":false,\"resolvedNativeType\":\"text\"},\"first_name\":{\"nodeKind\":\"sql-column\",\"name\":\"first_name\",\"nativeType\":\"text\",\"nullable\":false,\"resolvedNativeType\":\"text\"},\"last_name\":{\"nodeKind\":\"sql-column\",\"name\":\"last_name\",\"nativeType\":\"text\",\"nullable\":false,\"resolvedNativeType\":\"text\"},\"created_at\":{\"nodeKind\":\"sql-column\",\"name\":\"created_at\",\"nativeType\":\"timestamptz(6)\",\"nullable\":false,\"resolvedNativeType\":\"timestamptz(6)\",\"resolvedDefault\":{\"kind\":\"function\",\"expression\":\"now()\"}},\"updated_at\":{\"nodeKind\":\"sql-column\",\"name\":\"updated_at\",\"nativeType\":\"timestamptz(6)\",\"nullable\":false,\"resolvedNativeType\":\"timestamptz(6)\"}},\"foreignKeys\":[],\"uniques\":[],\"indexes\":[{\"nodeKind\":\"sql-index\",\"name\":\"users_cognito_sub_key\",\"unique\":true,\"columns\":[\"cognito_sub\"]},{\"nodeKind\":\"sql-index\",\"name\":\"users_email_key\",\"unique\":true,\"columns\":[\"email\"]}],\"policies\":[],\"rlsEnabled\":false,\"primaryKey\":{\"nodeKind\":\"sql-primary-key\",\"columns\":[\"id\"],\"name\":\"users_pkey\"}}}"
+            - generic [ref=f1e365]: "{\"path\":[\"database\",\"public\",\"users\",\"column:id\"],\"expected\":{\"nodeKind\":\"sql-column\",\"name\":\"id\",\"nativeType\":\"uuid\",\"nullable\":false,\"resolvedNativeType\":\"uuid\"}}"
+            - generic [ref=f1e366]: "{\"path\":[\"database\",\"public\",\"users\",\"column:cognito_sub\"],\"expected\":{\"nodeKind\":\"sql-column\",\"name\":\"cognito_sub\",\"nativeType\":\"text\",\"nullable\":false,\"resolvedNativeType\":\"text\"}}"
+            - generic [ref=f1e367]: "{\"path\":[\"database\",\"public\",\"users\",\"column:email\"],\"expected\":{\"nodeKind\":\"sql-column\",\"name\":\"email\",\"nativeType\":\"text\",\"nullable\":false,\"resolvedNativeType\":\"text\"}}"
+            - generic [ref=f1e368]: "{\"path\":[\"database\",\"public\",\"users\",\"column:first_name\"],\"expected\":{\"nodeKind\":\"sql-column\",\"name\":\"first_name\",\"nativeType\":\"text\",\"nullable\":false,\"resolvedNativeType\":\"text\"}}"
+            - generic [ref=f1e369]: "{\"path\":[\"database\",\"public\",\"users\",\"column:last_name\"],\"expected\":{\"nodeKind\":\"sql-column\",\"name\":\"last_name\",\"nativeType\":\"text\",\"nullable\":false,\"resolvedNativeType\":\"text\"}}"
+            - generic [ref=f1e370]: "{\"path\":[\"database\",\"public\",\"users\",\"column:created_at\"],\"expected\":{\"nodeKind\":\"sql-column\",\"name\":\"created_at\",\"nativeType\":\"timestamptz(6)\",\"nullable\":false,\"resolvedNativeType\":\"timestamptz(6)\",\"resolvedDefault\":{\"kind\":\"function\",\"expression\":\"now()\"}}}"
+            - generic [ref=f1e371]: "{\"path\":[\"database\",\"public\",\"users\",\"column:created_at\",\"default\"],\"expected\":{\"nodeKind\":\"sql-column-default\",\"resolved\":{\"kind\":\"function\",\"expression\":\"now()\"},\"nativeTypeContext\":\"timestamptz(6)\"}}"
+            - generic [ref=f1e372]: "{\"path\":[\"database\",\"public\",\"users\",\"column:updated_at\"],\"expected\":{\"nodeKind\":\"sql-column\",\"name\":\"updated_at\",\"nativeType\":\"timestamptz(6)\",\"nullable\":false,\"resolvedNativeType\":\"timestamptz(6)\"}}"
+            - generic [ref=f1e373]: "{\"path\":[\"database\",\"public\",\"users\",\"primary-key\"],\"expected\":{\"nodeKind\":\"sql-primary-key\",\"columns\":[\"id\"],\"name\":\"users_pkey\"},\"dependsOn\":[[\"database\",\"public\",\"users\",\"column:id\"]]}"
+            - generic [ref=f1e374]: "{\"path\":[\"database\",\"public\",\"users\",\"index:users_cognito_sub_key\"],\"expected\":{\"nodeKind\":\"sql-index\",\"name\":\"users_cognito_sub_key\",\"unique\":true,\"columns\":[\"cognito_sub\"]},\"dependsOn\":[[\"database\",\"public\",\"users\",\"column:cognito_sub\"]]}"
+            - generic [ref=f1e375]: "{\"path\":[\"database\",\"public\",\"users\",\"index:users_email_key\"],\"expected\":{\"nodeKind\":\"sql-index\",\"name\":\"users_email_key\",\"unique\":true,\"columns\":[\"email\"]},\"dependsOn\":[[\"database\",\"public\",\"users\",\"column:email\"]]}"
+            - generic [ref=f1e376]: "{\"path\":[\"database\",\"public\",\"projects\"],\"expected\":{\"nodeKind\":\"postgres-table\",\"name\":\"projects\",\"columns\":{\"id\":{\"nodeKind\":\"sql-column\",\"name\":\"id\",\"nativeType\":\"uuid\",\"nullable\":false,\"resolvedNativeType\":\"uuid\"},\"owner_id\":{\"nodeKind\":\"sql-column\",\"name\":\"owner_id\",\"nativeType\":\"uuid\",\"nullable\":false,\"resolvedNativeType\":\"uuid\"},\"name\":{\"nodeKind\":\"sql-column\",\"name\":\"name\",\"nativeType\":\"text\",\"nullable\":false,\"resolvedNativeType\":\"text\"},\"archived\":{\"nodeKind\":\"sql-column\",\"name\":\"archived\",\"nativeType\":\"bool\",\"nullable\":false,\"resolvedNativeType\":\"bool\",\"resolvedDefault\":{\"kind\":\"literal\",\"value\":false}},\"created_at\":{\"nodeKind\":\"sql-column\",\"name\":\"created_at\",\"nativeType\":\"timestamptz(6)\",\"nullable\":false,\"resolvedNativeType\":\"timestamptz(6)\",\"resolvedDefault\":{\"kind\":\"function\",\"expression\":\"now()\"}},\"updated_at\":{\"nodeKind\":\"sql-column\",\"name\":\"updated_at\",\"nativeType\":\"timestamptz(6)\",\"nullable\":false,\"resolvedNativeType\":\"timestamptz(6)\"}},\"foreignKeys\":[{\"nodeKind\":\"sql-foreign-key\",\"columns\":[\"owner_id\"],\"referencedTable\":\"users\",\"referencedColumns\":[\"id\"],\"referencedSchema\":\"public\",\"onDelete\":\"cascade\",\"resolvedReferencedNamespace\":\"public\"}],\"uniques\":[],\"indexes\":[{\"nodeKind\":\"sql-index\",\"name\":\"projects_owner_id_idx\",\"unique\":false,\"columns\":[\"owner_id\"]}],\"policies\":[],\"rlsEnabled\":false,\"primaryKey\":{\"nodeKind\":\"sql-primary-key\",\"columns\":[\"id\"],\"name\":\"projects_pkey\"}}}"
+            - generic [ref=f1e377]: "{\"path\":[\"database\",\"public\",\"projects\",\"column:id\"],\"expected\":{\"nodeKind\":\"sql-column\",\"name\":\"id\",\"nativeType\":\"uuid\",\"nullable\":false,\"resolvedNativeType\":\"uuid\"}}"
+            - generic [ref=f1e378]: "{\"path\":[\"database\",\"public\",\"projects\",\"column:owner_id\"],\"expected\":{\"nodeKind\":\"sql-column\",\"name\":\"owner_id\",\"nativeType\":\"uuid\",\"nullable\":false,\"resolvedNativeType\":\"uuid\"}}"
+            - generic [ref=f1e379]: "{\"path\":[\"database\",\"public\",\"projects\",\"column:name\"],\"expected\":{\"nodeKind\":\"sql-column\",\"name\":\"name\",\"nativeType\":\"text\",\"nullable\":false,\"resolvedNativeType\":\"text\"}}"
+            - generic [ref=f1e380]: "{\"path\":[\"database\",\"public\",\"projects\",\"column:archived\"],\"expected\":{\"nodeKind\":\"sql-column\",\"name\":\"archived\",\"nativeType\":\"bool\",\"nullable\":false,\"resolvedNativeType\":\"bool\",\"resolvedDefault\":{\"kind\":\"literal\",\"value\":false}}}"
+            - generic [ref=f1e381]: "{\"path\":[\"database\",\"public\",\"projects\",\"column:archived\",\"default\"],\"expected\":{\"nodeKind\":\"sql-column-default\",\"resolved\":{\"kind\":\"literal\",\"value\":false},\"nativeTypeContext\":\"bool\"}}"
+            - generic [ref=f1e382]: "{\"path\":[\"database\",\"public\",\"projects\",\"column:created_at\"],\"expected\":{\"nodeKind\":\"sql-column\",\"name\":\"created_at\",\"nativeType\":\"timestamptz(6)\",\"nullable\":false,\"resolvedNativeType\":\"timestamptz(6)\",\"resolvedDefault\":{\"kind\":\"function\",\"expression\":\"now()\"}}}"
+            - generic [ref=f1e383]: "{\"path\":[\"database\",\"public\",\"projects\",\"column:created_at\",\"default\"],\"expected\":{\"nodeKind\":\"sql-column-default\",\"resolved\":{\"kind\":\"function\",\"expression\":\"now()\"},\"nativeTypeContext\":\"timestamptz(6)\"}}"
+            - generic [ref=f1e384]: "{\"path\":[\"database\",\"public\",\"projects\",\"column:updated_at\"],\"expected\":{\"nodeKind\":\"sql-column\",\"name\":\"updated_at\",\"nativeType\":\"timestamptz(6)\",\"nullable\":false,\"resolvedNativeType\":\"timestamptz(6)\"}}"
+            - generic [ref=f1e385]: "{\"path\":[\"database\",\"public\",\"projects\",\"primary-key\"],\"expected\":{\"nodeKind\":\"sql-primary-key\",\"columns\":[\"id\"],\"name\":\"projects_pkey\"},\"dependsOn\":[[\"database\",\"public\",\"projects\",\"column:id\"]]}"
+            - generic [ref=f1e386]: "{\"path\":[\"database\",\"public\",\"projects\",\"foreign-key:owner_id->public.users(id)\"],\"expected\":{\"nodeKind\":\"sql-foreign-key\",\"columns\":[\"owner_id\"],\"referencedTable\":\"users\",\"referencedColumns\":[\"id\"],\"referencedSchema\":\"public\",\"onDelete\":\"cascade\",\"resolvedReferencedNamespace\":\"public\"},\"dependsOn\":[[\"database\",\"public\",\"users\"],[\"database\",\"public\",\"projects\",\"column:owner_id\"]]}"
+            - generic [ref=f1e387]: "{\"path\":[\"database\",\"public\",\"projects\",\"index:projects_owner_id_idx\"],\"expected\":{\"nodeKind\":\"sql-index\",\"name\":\"projects_owner_id_idx\",\"unique\":false,\"columns\":[\"owner_id\"]},\"dependsOn\":[[\"database\",\"public\",\"projects\",\"column:owner_id\"]]}"
+          - group [ref=f1e388]:
+            - generic "Evidence limits" [ref=f1e389] [cursor=pointer]
+        - generic [ref=f1e341]:
+          - heading "The next safe action" [level=3] [ref=f1e342]
+          - list [ref=f1e343]:
+            - listitem [ref=f1e344]: Review and save the source proposal.
+            - listitem [ref=f1e345]:
+              - text: Generate application artifacts with
+              - code [ref=f1e346]: npm --workspace @repo/database run generate
+              - text: and review repositories, GraphQL authorization and client impact.
+            - listitem [ref=f1e347]: Choose the intended historical baseline and plan a migration offline.
+            - listitem [ref=f1e348]: Review SQL, constraints, destructive changes and data transformations.
+            - listitem [ref=f1e349]: Apply the reviewed migration only with explicit target approval, then inspect again.
+          - paragraph [ref=f1e350]: Local startup verifies storage without applying migrations, pruning users or setting up test identity. A failed verification leaves PostgreSQL available for inspection and a separately reviewed initialization/migration. Production retains private IAM/TLS access.
+        - dialog "Authorize reviewed database application" [ref=f1e390]:
+          - generic [ref=f1e391]:
+            - heading "Authorize reviewed database application" [level=2] [ref=f1e392]
+            - button "Close Authorize reviewed database application" [active] [ref=f1e393] [cursor=pointer]
+          - generic [ref=f1e397]:
+            - paragraph [ref=f1e398]:
+              - strong [ref=f1e399]: Local PostgreSQL
+              - text: · Initialize verified empty storage · target identity
+              - code [ref=f1e400]: 66515f631f4b
+              - text: · @empty → 518f79d59ebe
+            - list [ref=f1e401]:
+              - listitem [ref=f1e402]: Creates the reviewed saved schema and its marker using Prisma's additive initialization in an explicitly verified empty local database. Existing migration packages are not executed or rewritten.
+              - listitem [ref=f1e403]: Prisma updates physical storage and contract markers. Migration execution can transform or delete application data.
+              - listitem [ref=f1e404]: Source and migration artifacts remain unchanged. This does not deploy infrastructure, start Compose, prune users, set up test identity, or provide database rollback.
+              - listitem [ref=f1e405]: The target, saved source, package bytes and physical baseline are checked again immediately before execution.
+            - generic [ref=f1e406]:
+              - heading "Reviewed initialization SQL" [level=3] [ref=f1e407]
+              - paragraph [ref=f1e408]: Create table "projects" · additive
+              - paragraph [ref=f1e409]: Create table "users" · additive
+              - paragraph [ref=f1e410]: Create index "projects_owner_id_idx" on "projects" · additive
+              - paragraph [ref=f1e411]: Create index "users_cognito_sub_key" on "users" · additive
+              - paragraph [ref=f1e412]: Create index "users_email_key" on "users" · additive
+              - paragraph [ref=f1e413]: Add foreign key "projects_owner_id_fkey" on "projects" · additive
+              - generic [ref=f1e414]: "table.projects · precheck SELECT (to_regclass($1)) IS NULL AS \"result\" Parameters: [\"\\\"public\\\".\\\"projects\\\"\"]"
+              - generic [ref=f1e415]: table.projects · execute CREATE TABLE "public"."projects" ( "id" uuid NOT NULL, "owner_id" uuid NOT NULL, "name" text NOT NULL, "archived" bool DEFAULT false NOT NULL, "created_at" timestamptz(6) DEFAULT (now()) NOT NULL, "updated_at" timestamptz(6) NOT NULL, CONSTRAINT "projects_pkey" PRIMARY KEY ("id") )
+              - generic [ref=f1e416]: "table.projects · postcheck SELECT (to_regclass($1)) IS NOT NULL AS \"result\" Parameters: [\"\\\"public\\\".\\\"projects\\\"\"]"
+              - generic [ref=f1e417]: "table.users · precheck SELECT (to_regclass($1)) IS NULL AS \"result\" Parameters: [\"\\\"public\\\".\\\"users\\\"\"]"
+              - generic [ref=f1e418]: table.users · execute CREATE TABLE "public"."users" ( "id" uuid NOT NULL, "cognito_sub" text NOT NULL, "email" text NOT NULL, "first_name" text NOT NULL, "last_name" text NOT NULL, "created_at" timestamptz(6) DEFAULT (now()) NOT NULL, "updated_at" timestamptz(6) NOT NULL, CONSTRAINT "users_pkey" PRIMARY KEY ("id") )
+              - generic [ref=f1e419]: "table.users · postcheck SELECT (to_regclass($1)) IS NOT NULL AS \"result\" Parameters: [\"\\\"public\\\".\\\"users\\\"\"]"
+              - generic [ref=f1e420]: "index.projects.projects_owner_id_idx · precheck SELECT (to_regclass($1)) IS NULL AS \"result\" Parameters: [\"\\\"public\\\".\\\"projects_owner_id_idx\\\"\"]"
+              - generic [ref=f1e421]: index.projects.projects_owner_id_idx · execute CREATE INDEX "projects_owner_id_idx" ON "public"."projects" ("owner_id")
+              - generic [ref=f1e422]: "index.projects.projects_owner_id_idx · postcheck SELECT (to_regclass($1)) IS NOT NULL AS \"result\" Parameters: [\"\\\"public\\\".\\\"projects_owner_id_idx\\\"\"]"
+              - generic [ref=f1e423]: "index.users.users_cognito_sub_key · precheck SELECT (to_regclass($1)) IS NULL AS \"result\" Parameters: [\"\\\"public\\\".\\\"users_cognito_sub_key\\\"\"]"
+              - generic [ref=f1e424]: index.users.users_cognito_sub_key · execute CREATE UNIQUE INDEX "users_cognito_sub_key" ON "public"."users" ("cognito_sub")
+              - generic [ref=f1e425]: "index.users.users_cognito_sub_key · postcheck SELECT (to_regclass($1)) IS NOT NULL AS \"result\" Parameters: [\"\\\"public\\\".\\\"users_cognito_sub_key\\\"\"]"
+              - generic [ref=f1e426]: "index.users.users_email_key · precheck SELECT (to_regclass($1)) IS NULL AS \"result\" Parameters: [\"\\\"public\\\".\\\"users_email_key\\\"\"]"
+              - generic [ref=f1e427]: index.users.users_email_key · execute CREATE UNIQUE INDEX "users_email_key" ON "public"."users" ("email")
+              - generic [ref=f1e428]: "index.users.users_email_key · postcheck SELECT (to_regclass($1)) IS NOT NULL AS \"result\" Parameters: [\"\\\"public\\\".\\\"users_email_key\\\"\"]"
+              - generic [ref=f1e429]: "foreignKey.projects.projects_owner_id_fkey · precheck SELECT NOT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\" Parameters: [\"projects_owner_id_fkey\",\"public\",\"\\\"public\\\".\\\"projects\\\"\"]"
+              - generic [ref=f1e430]: foreignKey.projects.projects_owner_id_fkey · execute ALTER TABLE "public"."projects" ADD CONSTRAINT "projects_owner_id_fkey" FOREIGN KEY ("owner_id") REFERENCES "public"."users" ("id") ON DELETE CASCADE
+              - generic [ref=f1e431]: "foreignKey.projects.projects_owner_id_fkey · postcheck SELECT EXISTS (SELECT 1 AS \"one\" FROM \"pg_constraint\" AS \"c\" INNER JOIN \"pg_namespace\" AS \"n\" ON \"n\".\"oid\" = \"c\".\"connamespace\" WHERE (\"c\".\"conname\" = $1 AND \"n\".\"nspname\" = $2 AND \"c\".\"conrelid\" = to_regclass($3))) AS \"result\" Parameters: [\"projects_owner_id_fkey\",\"public\",\"\\\"public\\\".\\\"projects\\\"\"]"
+              - group [ref=f1e432]:
+                - generic "Prisma control schema and table DDL" [ref=f1e433] [cursor=pointer]
+            - paragraph [ref=f1e434]: This changes the selected database and may transform or delete data. Source undo does not roll back a database. The reviewed target and historical schema are checked again before execution.
+            - generic [ref=f1e435]:
+              - text: Type
+              - strong [ref=f1e436]: Initialize Local PostgreSQL
+              - text: to authorize this application
+              - textbox "Confirm database target" [ref=f1e437]
+          - generic [ref=f1e438]:
+            - button "Back to database status" [ref=f1e439] [cursor=pointer]
+            - button "Initialize reviewed empty database" [disabled] [ref=f1e440]
+  - status

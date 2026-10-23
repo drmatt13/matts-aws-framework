@@ -1,4 +1,5 @@
 import { CfnIdentityPool, CfnIdentityPoolRoleAttachment, CfnUserPoolGroup, type IUserPool, type IUserPoolClient } from "aws-cdk-lib/aws-cognito";
+import { Token } from "aws-cdk-lib";
 import { Effect, FederatedPrincipal, PolicyStatement, Role } from "aws-cdk-lib/aws-iam";
 import type { Construct } from "constructs";
 import { identityPolicyStatements, type IdentityPolicyStatement } from "./identity-policy";
@@ -21,7 +22,10 @@ export function identityPoolAccess(scope: Construct, props: IdentityPoolAccessPr
   if (isExternalCognitoReference(props.userPool)) throw new Error("Identity-pool source cannot create or replace groups and role mappings on an externally referenced User Pool. Preserve and inspect its existing identity-pool roles, or separately review explicit group/role reconciliation before deployment.");
   if (props.readerPolicyStatements !== undefined && (props.readBucketArn !== undefined || props.readPrefix !== undefined)) throw new Error("Choose readerPolicyStatements or the convenience read bucket/prefix, never both policy authorities.");
   const statements = props.readerPolicyStatements === undefined ? undefined : identityPolicyStatements(props.readerPolicyStatements);
-  if (props.readBucketArn && !/^arn:aws:s3:::[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(props.readBucketArn)) throw new Error("Identity-pool read access requires one explicit S3 bucket ARN, without wildcards or object paths.");
+  // A native bucket's ARN is unresolved until CloudFormation creates it. Keep
+  // its reference intact rather than requiring callers to duplicate a physical
+  // name. Studio's literal source editor still validates concrete ARN strings.
+  if (props.readBucketArn && (/[*?\x00-\x1f\x7f]/.test(props.readBucketArn) || (!Token.isUnresolved(props.readBucketArn) && !/^arn:aws:s3:::[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(props.readBucketArn)))) throw new Error("Identity-pool read access requires one explicit S3 bucket ARN or native CDK bucket reference, without wildcards or object paths.");
   if (props.readPrefix && (!props.readBucketArn || /[*?\x00-\x1f\x7f]/.test(props.readPrefix) || props.readPrefix.startsWith("/"))) throw new Error("An object prefix needs an explicit bucket and cannot contain wildcards, control characters or start with a slash.");
   const identityPool = new CfnIdentityPool(scope, "IdentityPool", {
     allowUnauthenticatedIdentities: props.allowUnauthenticated === true,

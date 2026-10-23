@@ -1,0 +1,117 @@
+- generic [ref=f7e3]:
+  - banner [ref=f7e4]:
+    - generic [ref=f7e5]:
+      - text: AWS Studio
+      - generic "job3-db" [ref=f7e6]
+    - navigation "Views" [ref=f7e7]:
+      - link "Board" [ref=f7e8] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=f7e9] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [ref=f7e10] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f7e11] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f7e12] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f7e13] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=f7e15] [cursor=pointer]:
+      - generic [ref=f7e18]: Source valid
+    - generic [ref=f7e19]: "Development: valid. Production: valid"
+  - main [ref=f7e21]:
+    - generic [ref=f7e22]:
+      - heading "Database" [level=1] [ref=f7e23]
+      - generic [ref=f7e24]:
+        - navigation "Database workspace" [ref=f7e25]:
+          - button "Schema" [ref=f7e26] [cursor=pointer]
+          - button "History & migrations" [ref=f7e32] [cursor=pointer]
+          - button "Database status" [ref=f7e37] [cursor=pointer]
+          - button "Saved SQL" [pressed] [ref=f7e42] [cursor=pointer]
+          - button "Data retention" [ref=f7e47] [cursor=pointer]
+        - button "How this works" [ref=f7e52] [cursor=pointer]
+      - generic [ref=f7e189]:
+        - generic [ref=f7e191]:
+          - heading "Saved SQL" [level=2] [ref=f7e192]
+          - paragraph [ref=f7e193]:
+            - text: Save reusable SQL in
+            - code [ref=f7e194]: packages/database/sql/
+            - text: ", then review execution against an explicitly selected database. Saving never runs SQL. Schema migrations remain in History & migrations."
+        - generic [ref=f7e195]:
+          - generic [ref=f7e196]:
+            - text: Saved command
+            - combobox "Saved SQL command" [ref=f7e197]:
+              - option "New command" [selected]
+          - button "Refresh SQL catalog" [ref=f7e198] [cursor=pointer]
+        - group "Repository command" [ref=f7e199]:
+          - generic [ref=f7e201]:
+            - text: Name
+            - textbox "SQL command name" [ref=f7e202]: job3_browser_seed
+          - generic [ref=f7e203]:
+            - text: Category
+            - combobox "SQL category" [ref=f7e204]:
+              - option "Seed / demo data" [selected]
+              - option "One-time backfill"
+              - option "Operational SQL"
+              - option "Read-only inspection"
+          - generic [ref=f7e205]:
+            - text: Execution intent
+            - combobox "SQL execution intent" [ref=f7e206]:
+              - option "Repeatable — SQL owns idempotence" [selected]
+              - option "Once per command and parameter set"
+          - generic [ref=f7e207]:
+            - text: Description
+            - textbox "SQL description" [ref=f7e208]: Job 3 real PostgreSQL seed saved and executed through browser
+          - generic [ref=f7e209]:
+            - text: Parameter names, in $1, $2 order
+            - textbox "SQL parameter names" [ref=f7e210]: label
+          - generic [ref=f7e211]:
+            - text: SQL
+            - textbox "SQL source" [ref=f7e212]: INSERT INTO demo_items(label) VALUES ($1) ON CONFLICT (label) DO NOTHING RETURNING label;
+          - generic [ref=f7e213]:
+            - paragraph [ref=f7e214]: Changing the name or category creates a new file and preserves the original command.
+            - button "Review SQL source" [ref=f7e215] [cursor=pointer]
+        - group "Explicit execution" [ref=f7e216]:
+          - generic [ref=f7e218]:
+            - text: Database target
+            - combobox "SQL database target" [ref=f7e219]:
+              - option "Local PostgreSQL" [selected]
+              - option "Production RDS — protected task required"
+          - paragraph [ref=f7e220]: Compose postgres · loopback port 15463 · existing database only
+          - generic [ref=f7e221]:
+            - text: Parameter values as a JSON array
+            - textbox "SQL parameter values" [ref=f7e222]: "[\"Studio demo\"]"
+          - paragraph [ref=f7e223]: Use public or disposable data. Parameter values and result rows are excluded from persistent Studio history. One statement runs in a transaction; a connection lost during COMMIT can leave an uncertain outcome.
+          - button "Review execution" [disabled] [ref=f7e224]
+          - paragraph [ref=f7e225]: Save and reload the reviewed command before executing it.
+        - region "SQL operation history" [ref=f7e226]:
+          - heading "Operation history" [level=3] [ref=f7e227]
+          - paragraph [ref=f7e228]: Restart never replays writes. Interrupted records remain uncertain until the target is inspected. Source edits and rows are not database rollback.
+          - paragraph [ref=f7e229]: No saved SQL executions recorded.
+        - dialog "Review saved SQL source" [ref=f7e230]:
+          - generic [ref=f7e231]:
+            - heading "Review saved SQL source" [level=2] [ref=f7e232]
+            - button "Close Review saved SQL source" [active] [ref=f7e233] [cursor=pointer]
+          - generic [ref=f7e237]:
+            - paragraph [ref=f7e238]:
+              - code [ref=f7e239]: packages/database/sql/seed/job3_browser_seed.sql
+            - paragraph [ref=f7e240]: Writes the reviewed repository file only. No database is contacted.
+            - generic [ref=f7e241]:
+              - generic [ref=f7e242]:
+                - heading "Saved source" [level=3] [ref=f7e243]
+                - generic "Saved source" [ref=f7e244]:
+                  - generic [aria-hidden] [ref=f7e246]: "1"
+              - generic [ref=f7e247]:
+                - heading "Proposed source" [level=3] [ref=f7e248]
+                - generic "Proposed source" [ref=f7e249]:
+                  - generic [ref=f7e250]:
+                    - generic [aria-hidden] [ref=f7e251]: "1"
+                    - text: "-- framework-sql: {\"version\":1,\"name\":\"job3_browser_seed\",\"kind\":\"seed\",\"intent\":\"repeatable\",\"description\":\"Job 3 real PostgreSQL seed saved and executed through browser\",\"parameters\":[\"label\"]}"
+                  - generic [ref=f7e252]:
+                    - generic [aria-hidden] [ref=f7e253]: "2"
+                    - text: INSERT INTO demo_items(label) VALUES ($1) ON CONFLICT (label) DO NOTHING RETURNING label;
+                  - generic [aria-hidden] [ref=f7e255]: "3"
+          - generic [ref=f7e256]:
+            - button "Back" [ref=f7e257] [cursor=pointer]
+            - button "Save SQL source" [ref=f7e258] [cursor=pointer]
+  - status

@@ -48,6 +48,24 @@ Application stacks own native constructors/options and expose public constructs/
 
 `frameworkLambda` in [framework-lambda.ts](../../../cdk-app/lib/framework/framework-lambda.ts) resolves packaging/runtime and denies manual VPC/subnet/security-group options. `database: true` gives IAM database access and placement; use [network declarations](../../../framework-config/networks/application/index.ts) for NAT/endpoints. Native grants and explicit IAM requirements are inputs to role construction, not a complete effective-permission viewer.
 
+When no VPC placement is selected, the factory explicitly synthesizes empty
+subnet/security-group lists and `Ipv6AllowedForDualStack: false`. This clears
+previously enabled IPv6 when the same function moves to `subnet: "none"`;
+omitting `VpcConfig` can fail that update. The common factory covers Node/Python
+zip and container packaging without changing construct identities or adding VPC
+permissions. Application declarations still own placement; no application-level
+CDK override is required. AWS documents detachment with empty lists and limits
+outbound IPv6 to VPC functions in its [Lambda VPC guide](https://docs.aws.amazon.com/lambda/latest/dg/configuration-vpc.html).
+
+Detachment does not synchronously remove Hyperplane ENIs. AWS uses the creator
+function's execution-role permissions for cleanup; deleting that role too early
+can leave unused interfaces behind. The Lambda VPC guide above describes manual
+removal in this case. Studio's stack teardown does not automatically remove these
+orphan interfaces. Job 3 observed this after a VPC-to-none update followed by
+teardown; interface cleanup requires separate verification of exact ownership,
+remaining function/version/mapping use and released interface state, rather than
+name-prefix deletion or forced detachment.
+
 For a new family: expose/link a native public member first; add explicit framework semantics only when needed; separately extend [Studio discovery/trigger adapters](../studio/source-indexing.md). Validate with [native resource](../../../cdk-app/test/native-resources.test.ts), [stack resource](../../../cdk-app/test/stack-resources.test.ts), network/trigger tests and both synth modes. See the [extension recipe](../guides/extensions.md).
 
 Native VPC-backed resources use `frameworkVpc(this, importedVpc)`. Network state,

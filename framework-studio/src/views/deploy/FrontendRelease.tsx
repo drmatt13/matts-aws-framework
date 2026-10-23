@@ -16,7 +16,7 @@ export function FrontendRelease({ deployment, profile, region }: { deployment: s
   const [busy, setBusy] = useState(""); const [message, setMessage] = useState(""); const [error, setError] = useState("");
   useEffect(() => { if (settingsQuery.data) setSettings(settingsQuery.data.settings); }, [settingsQuery.data]);
   useEffect(() => { setReview(undefined); setResult(undefined); setApproval(""); setMessage(""); setError(""); }, [deployment, profile, region]);
-  const work = async (label: string, action: () => Promise<void>) => { setBusy(label); setError(""); try { await action(); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(""); void historyQuery.refetch(); } };
+  const work = async (label: string, action: () => Promise<void>) => { setBusy(label); setMessage(""); setError(""); try { await action(); } catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(""); void historyQuery.refetch(); } };
   const destination = { deployment, profile, region };
   const history = Array.isArray(historyQuery.data) ? historyQuery.data : [];
   const settingsChanged = !!settings && !!settingsQuery.data && JSON.stringify(settings) !== JSON.stringify(settingsQuery.data.settings);

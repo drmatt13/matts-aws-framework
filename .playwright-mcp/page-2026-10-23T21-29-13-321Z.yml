@@ -1,0 +1,434 @@
+- generic [ref=f4e3]:
+  - banner [ref=f4e4]:
+    - generic [ref=f4e5]:
+      - text: AWS Studio
+      - generic "cloud2" [ref=f4e6]
+    - navigation "Views" [ref=f4e7]:
+      - link "Board" [ref=f4e8] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=f4e9] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [ref=f4e10] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f4e11] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f4e12] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f4e13] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=f4e15] [cursor=pointer]:
+      - generic [ref=f4e18]: Source valid
+    - generic [ref=f4e19]: "Development: valid. Production: valid"
+  - main [ref=f4e21]:
+    - generic [ref=f4e22]:
+      - generic "AWS account" [ref=f4e23]:
+        - generic [ref=f4e24]:
+          - generic [ref=f4e25]:
+            - generic [ref=f4e26]: AWS profile
+            - combobox "AWS profile" [ref=f4e27]:
+              - option "default"
+              - option "dev" [selected]
+              - option "dev2"
+          - generic [ref=f4e181]:
+            - generic [ref=f4e182]:
+              - generic [ref=f4e183]: Account
+              - strong [ref=f4e184]: "734849394764"
+            - generic [ref=f4e185]:
+              - generic [ref=f4e186]: Region
+              - generic [ref=f4e187]: us-east-1
+            - generic "arn:aws:iam::734849394764:user/matthew" [ref=f4e188]:
+              - img "Signed in" [ref=f4e189]
+              - text: matthew
+          - button "Refresh" [ref=f4e29] [cursor=pointer]
+        - generic [ref=f4e35]:
+          - button "This machine · 5 checks passed" [ref=f4e36] [cursor=pointer]
+          - list "Machine issues" [ref=f4e42]:
+            - 'listitem "Dependencies: cdk-app/package.json changed after the last install." [ref=f4e43]':
+              - generic [ref=f4e46]: cdk-app/package.json changed after the last install.
+              - button "Install" [ref=f4e47] [cursor=pointer]
+      - generic [ref=f4e48]:
+        - navigation "Deployments" [ref=f4e49]:
+          - heading "In this repository" [level=2] [ref=f4e50]
+          - list [ref=f4e51]:
+            - listitem [ref=f4e52]:
+              - button "matts-aws-framework Development only Not deployed" [ref=f4e191] [cursor=pointer]:
+                - strong [ref=f4e56]: matts-aws-framework
+                - generic [ref=f4e57]:
+                  - generic "Development only" [ref=f4e58]: Dev
+                  - generic [ref=f4e62]: Not deployed
+            - listitem [ref=f4e63]:
+              - button "job3-20261023-p2-1630 Production only Deployed" [ref=f4e192] [cursor=pointer]:
+                - strong [ref=f4e67]: job3-20261023-p2-1630
+                - generic [ref=f4e68]:
+                  - generic "Production only" [ref=f4e69]: Prod
+                  - generic [ref=f4e74]: Deployed
+          - heading "Also in this account not declared here" [level=2] [ref=f4e193]
+          - list [ref=f4e194]:
+            - listitem [ref=f4e195]:
+              - button "job3-20261023-p1-1608 Production only Updating" [ref=f4e196] [cursor=pointer]:
+                - strong [ref=f4e199]: job3-20261023-p1-1608
+                - generic [ref=f4e200]:
+                  - generic "Production only" [ref=f4e201]: Prod
+                  - generic [ref=f4e206]: Updating
+          - generic "Local development" [ref=f4e75]: This machineNo exported settings
+        - region [ref=f4e79]:
+          - generic [ref=f4e80]:
+            - generic [ref=f4e81]:
+              - paragraph [ref=f4e82]: Declared in cdk-app/cdk.json
+              - heading [level=1] [ref=f4e83]:
+                - text: job3-20261023-p2-1630
+                - generic "Production only" [ref=f4e84]: Prod
+              - paragraph [ref=f4e207]:
+                - generic [ref=f4e208]: 734849394764 · us-east-1
+                - generic [ref=f4e209]: contract 2
+                - generic "arn:aws:iam::734849394764:user/matthew" [ref=f4e210]:
+                  - text: Deployed 11 min ago by matthew via Studio from
+                  - code [ref=f4e211]: 0167ca7+
+            - group [ref=f4e90]:
+              - generic "More actions" [ref=f4e91] [cursor=pointer]
+          - paragraph [ref=f4e96]: Template comparison reads AWS without creating review objects. Preparing CloudFormation change sets creates review objects and possibly empty stacks; new secrets require separate approval. Neither action applies infrastructure.
+          - region "What needs attention" [ref=f4e97]:
+            - article [ref=f4e470]:
+              - generic [ref=f4e474]:
+                - strong [ref=f4e475]: Apply plan to job3-20261023-p2-1630
+                - paragraph [ref=f4e476]: Its progress is in Activity. Other changes to this deployment wait until it ends.
+            - article [ref=f4e212]:
+              - strong [ref=f4e217]: Deployed · 8 stacks
+              - button "Compare AWS templates" [disabled] [ref=f4e219]
+          - generic [ref=f4e99]:
+            - region "Repository" [ref=f4e100]:
+              - heading "Repository" [level=3] [ref=f4e101]
+              - generic [ref=f4e102]:
+                - term [ref=f4e103]: Intent
+                - definition [ref=f4e104]: framework:targets in cdk.json
+                - term [ref=f4e105]: Mode
+                - definition [ref=f4e106]: Production · fixed when created
+                - term [ref=f4e107]: Inputs
+                - definition [ref=f4e108]:
+                  - code [ref=f4e109]: cdk-app/.env.prod
+                - term [ref=f4e110]: Account
+                - definition [ref=f4e111]:
+                  - code [ref=f4e112]: "734849394764"
+                - term [ref=f4e113]: Region
+                - definition [ref=f4e114]:
+                  - code [ref=f4e115]: us-east-1
+            - region "AWS" [ref=f4e116]:
+              - heading "AWS" [level=3] [ref=f4e117]
+              - paragraph [ref=f4e220]: Observed 10/23/2026, 5:28:26 PM. CloudFormation state; application health is separate.
+              - list [ref=f4e221]:
+                - listitem [ref=f4e222]:
+                  - generic "job3-20261023-p2-1630-HttpApiGatewayStack" [ref=f4e224]: HttpApiGatewayStack
+                  - generic [ref=f4e225]: create complete
+                - listitem [ref=f4e226]:
+                  - generic "job3-20261023-p2-1630-SynchronousLambdaFunctionsStack" [ref=f4e228]: SynchronousLambdaFunctionsStack
+                  - generic [ref=f4e229]: create complete
+                - listitem [ref=f4e230]:
+                  - generic "job3-20261023-p2-1630-ReceiptIdentityStack" [ref=f4e232]: ReceiptIdentityStack
+                  - generic [ref=f4e233]: create complete
+                - listitem [ref=f4e234]:
+                  - generic "job3-20261023-p2-1630-CognitoStack" [ref=f4e236]: CognitoStack
+                  - generic [ref=f4e237]: create complete
+                - listitem [ref=f4e238]:
+                  - generic "job3-20261023-p2-1630-AsynchronousLambdaFunctionsStack" [ref=f4e240]: AsynchronousLambdaFunctionsStack
+                  - generic [ref=f4e241]: update complete
+                - listitem [ref=f4e242]:
+                  - generic "job3-20261023-p2-1630-FrontendWebsiteS3Stack" [ref=f4e244]: FrontendWebsiteS3Stack
+                  - generic [ref=f4e245]: create complete
+                - listitem [ref=f4e246]:
+                  - generic "job3-20261023-p2-1630-ReceiptsNetworkStack" [ref=f4e248]: ReceiptsNetworkStack
+                  - generic [ref=f4e249]: create complete
+                - listitem [ref=f4e250]:
+                  - generic "job3-20261023-p2-1630-ReceiptStoreStack" [ref=f4e252]: ReceiptStoreStack
+                  - generic [ref=f4e253]: create complete
+            - region "This machine" [ref=f4e119]:
+              - heading "This machine" [level=3] [ref=f4e120]
+              - paragraph [ref=f4e121]: Local development runs against a development deployment.
+          - region "CloudFormation events" [ref=f4e254]:
+            - heading "Events" [level=3] [ref=f4e255]
+            - list [ref=f4e256]:
+              - listitem [ref=f4e257]:
+                - time [ref=f4e258]: 5:18:18 PM
+                - generic [ref=f4e259]: AsynchronousLambdaFunctionsStack
+                - generic [ref=f4e260]: stack
+                - generic [ref=f4e261]: update complete
+              - listitem [ref=f4e262]:
+                - time [ref=f4e263]: 5:18:17 PM
+                - generic [ref=f4e264]: AsynchronousLambdaFunctionsStack
+                - generic [ref=f4e265]: stack
+                - generic [ref=f4e266]: update complete cleanup in progress
+              - listitem [ref=f4e267]:
+                - time [ref=f4e268]: 5:18:14 PM
+                - generic [ref=f4e269]: AsynchronousLambdaFunctionsStack
+                - generic [ref=f4e270]: CognitoPreSignupTrigger4594B18D
+                - generic [ref=f4e271]: update complete
+              - listitem [ref=f4e272]:
+                - time [ref=f4e273]: 5:18:07 PM
+                - generic [ref=f4e274]: AsynchronousLambdaFunctionsStack
+                - generic [ref=f4e275]: CDKMetadata
+                - generic [ref=f4e276]: update complete
+              - listitem [ref=f4e277]:
+                - time [ref=f4e278]: 5:18:07 PM
+                - generic [ref=f4e279]: AsynchronousLambdaFunctionsStack
+                - generic [ref=f4e280]: CognitoPreSignupTrigger4594B18D
+                - generic [ref=f4e281]: update in progress
+              - listitem [ref=f4e282]:
+                - time [ref=f4e283]: 5:18:06 PM
+                - generic [ref=f4e284]: AsynchronousLambdaFunctionsStack
+                - generic [ref=f4e285]: CDKMetadata
+                - generic [ref=f4e286]: update in progress
+              - listitem [ref=f4e287]:
+                - time [ref=f4e288]: 5:18:03 PM
+                - generic [ref=f4e289]: AsynchronousLambdaFunctionsStack
+                - generic [ref=f4e290]: stack
+                - generic [ref=f4e291]: update in progress
+                - generic [ref=f4e292]: User Initiated
+              - listitem [ref=f4e293]:
+                - time [ref=f4e294]: 5:10:41 PM
+                - generic [ref=f4e295]: HttpApiGatewayStack
+                - generic [ref=f4e296]: stack
+                - generic [ref=f4e297]: create complete
+              - listitem [ref=f4e298]:
+                - time [ref=f4e299]: 5:10:40 PM
+                - generic [ref=f4e300]: HttpApiGatewayStack
+                - generic [ref=f4e301]: FrontendRoutingRoutingEntries12B6E75A
+                - generic [ref=f4e302]: create complete
+              - listitem [ref=f4e303]:
+                - time [ref=f4e304]: 5:10:40 PM
+                - generic [ref=f4e305]: HttpApiGatewayStack
+                - generic [ref=f4e306]: FrontendRoutingRoutingEntries12B6E75A
+                - generic [ref=f4e307]: create in progress
+                - generic [ref=f4e308]: Resource creation Initiated
+              - listitem [ref=f4e309]:
+                - time [ref=f4e310]: 5:10:37 PM
+                - generic [ref=f4e311]: HttpApiGatewayStack
+                - generic [ref=f4e312]: FrontendRoutingRoutingProviderframeworkonEventLogGroupFA9238DA
+                - generic [ref=f4e313]: create complete
+              - listitem [ref=f4e314]:
+                - time [ref=f4e315]: 5:10:37 PM
+                - generic [ref=f4e316]: HttpApiGatewayStack
+                - generic [ref=f4e317]: FrontendRoutingRoutingProviderframeworkonEventLogGroupFA9238DA
+                - generic [ref=f4e318]: create in progress
+                - generic [ref=f4e319]: Eventual consistency check initiated
+              - listitem [ref=f4e320]:
+                - time [ref=f4e321]: 5:10:33 PM
+                - generic [ref=f4e322]: HttpApiGatewayStack
+                - generic [ref=f4e323]: FrontendRoutingRoutingEntries12B6E75A
+                - generic [ref=f4e324]: create in progress
+              - listitem [ref=f4e325]:
+                - time [ref=f4e326]: 5:10:33 PM
+                - generic [ref=f4e327]: HttpApiGatewayStack
+                - generic [ref=f4e328]: FrontendRoutingRoutingProviderframeworkonEvent84BB6005
+                - generic [ref=f4e329]: create complete
+              - listitem [ref=f4e330]:
+                - time [ref=f4e331]: 5:10:28 PM
+                - generic [ref=f4e332]: HttpApiGatewayStack
+                - generic [ref=f4e333]: FrontendRoutingRoutingProviderframeworkonEventLogGroupFA9238DA
+                - generic [ref=f4e334]: create in progress
+                - generic [ref=f4e335]: Resource creation Initiated
+              - listitem [ref=f4e336]:
+                - time [ref=f4e337]: 5:10:28 PM
+                - generic [ref=f4e338]: HttpApiGatewayStack
+                - generic [ref=f4e339]: FrontendRoutingRoutingProviderframeworkonEventLogGroupFA9238DA
+                - generic [ref=f4e340]: create in progress
+              - listitem [ref=f4e341]:
+                - time [ref=f4e342]: 5:10:27 PM
+                - generic [ref=f4e343]: HttpApiGatewayStack
+                - generic [ref=f4e344]: FrontendRoutingRoutingProviderframeworkonEvent84BB6005
+                - generic [ref=f4e345]: create in progress
+                - generic [ref=f4e346]: Eventual consistency check initiated
+              - listitem [ref=f4e347]:
+                - time [ref=f4e348]: 5:10:27 PM
+                - generic [ref=f4e349]: HttpApiGatewayStack
+                - generic [ref=f4e350]: FrontendRoutingRoutingProviderframeworkonEvent84BB6005
+                - generic [ref=f4e351]: create in progress
+                - generic [ref=f4e352]: Resource creation Initiated
+              - listitem [ref=f4e353]:
+                - time [ref=f4e354]: 5:10:25 PM
+                - generic [ref=f4e355]: HttpApiGatewayStack
+                - generic [ref=f4e356]: FrontendRoutingRoutingProviderframeworkonEvent84BB6005
+                - generic [ref=f4e357]: create in progress
+              - listitem [ref=f4e358]:
+                - time [ref=f4e359]: 5:10:24 PM
+                - generic [ref=f4e360]: HttpApiGatewayStack
+                - generic [ref=f4e361]: FrontendRoutingRoutingProviderframeworkonEventServiceRoleDefaultPolicyED52B84A
+                - generic [ref=f4e362]: create complete
+              - listitem [ref=f4e363]:
+                - time [ref=f4e364]: 5:10:13 PM
+                - generic [ref=f4e365]: HttpApiGatewayStack
+                - generic [ref=f4e366]: FrontendRoutingRoutingHandlerAC36992B
+                - generic [ref=f4e367]: create complete
+              - listitem [ref=f4e368]:
+                - time [ref=f4e369]: 5:10:09 PM
+                - generic [ref=f4e370]: HttpApiGatewayStack
+                - generic [ref=f4e371]: FrontendRoutingRoutingProviderframeworkonEventServiceRoleDefaultPolicyED52B84A
+                - generic [ref=f4e372]: create in progress
+                - generic [ref=f4e373]: Resource creation Initiated
+              - listitem [ref=f4e374]:
+                - time [ref=f4e375]: 5:09:19 PM
+                - generic [ref=f4e376]: SynchronousLambdaFunctionsStack
+                - generic [ref=f4e377]: stack
+                - generic [ref=f4e378]: create complete
+              - listitem [ref=f4e379]:
+                - time [ref=f4e380]: 5:09:18 PM
+                - generic [ref=f4e381]: SynchronousLambdaFunctionsStack
+                - generic [ref=f4e382]: ReceiptApi84A58835
+                - generic [ref=f4e383]: create complete
+              - listitem [ref=f4e384]:
+                - time [ref=f4e385]: 5:05:44 PM
+                - generic [ref=f4e386]: SynchronousLambdaFunctionsStack
+                - generic [ref=f4e387]: ReceiptApiLogGroupF9C708DC
+                - generic [ref=f4e388]: create complete
+              - listitem [ref=f4e389]:
+                - time [ref=f4e390]: 5:05:44 PM
+                - generic [ref=f4e391]: SynchronousLambdaFunctionsStack
+                - generic [ref=f4e392]: stack
+                - generic [ref=f4e393]: create in progress
+                - generic [ref=f4e394]: Eventual consistency check initiated
+              - listitem [ref=f4e395]:
+                - time [ref=f4e396]: 5:05:44 PM
+                - generic [ref=f4e397]: SynchronousLambdaFunctionsStack
+                - generic [ref=f4e398]: ReceiptApiLogGroupF9C708DC
+                - generic [ref=f4e399]: create in progress
+                - generic [ref=f4e400]: Eventual consistency check initiated
+              - listitem [ref=f4e401]:
+                - time [ref=f4e402]: 5:05:36 PM
+                - generic [ref=f4e403]: SynchronousLambdaFunctionsStack
+                - generic [ref=f4e404]: ReceiptApiLogGroupF9C708DC
+                - generic [ref=f4e405]: create in progress
+                - generic [ref=f4e406]: Resource creation Initiated
+              - listitem [ref=f4e407]:
+                - time [ref=f4e408]: 5:05:35 PM
+                - generic [ref=f4e409]: SynchronousLambdaFunctionsStack
+                - generic [ref=f4e410]: ReceiptApiLogGroupF9C708DC
+                - generic [ref=f4e411]: create in progress
+              - listitem [ref=f4e412]:
+                - time [ref=f4e413]: 5:05:35 PM
+                - generic [ref=f4e414]: SynchronousLambdaFunctionsStack
+                - generic [ref=f4e415]: ReceiptApi84A58835
+                - generic [ref=f4e416]: create in progress
+                - generic [ref=f4e417]: Eventual consistency check initiated
+          - group [ref=f4e122]:
+            - generic "Development & production deployment names" [ref=f4e123] [cursor=pointer]
+            - option "Development" [selected]
+            - option "Production / staging"
+          - group [ref=f4e124]:
+            - generic "Client environment & frontend release" [ref=f4e125] [cursor=pointer]
+          - group [ref=f4e126]:
+            - generic "Stateful retention and retained-resource references" [ref=f4e127] [cursor=pointer]
+            - region "Stateful retention and reuse" [ref=f4e136]:
+              - heading "Retention and reuse" [level=2] [ref=f4e137]
+              - paragraph [ref=f4e138]:
+                - text: Configure each resource in TypeScript, review the change, then deploy separately. Existing policies inherit
+                - code [ref=f4e139]: RETAIN_STATEFUL_RESOURCES
+                - text: until explicitly changed.
+              - generic [ref=f4e140]:
+                - text: Environment
+                - combobox "Retention environment" [disabled] [ref=f4e141]:
+                  - option "Development"
+                  - option "Production" [selected]
+              - generic [ref=f4e142]:
+                - generic [ref=f4e143]:
+                  - heading "Database" [level=3] [ref=f4e144]
+                  - paragraph [ref=f4e145]:
+                    - strong [ref=f4e146]: "Configured intent:"
+                    - text: Remove · inherited legacy policy
+                  - paragraph [ref=f4e147]:
+                    - strong [ref=f4e148]: "Management:"
+                    - text: Framework-managed when deployed.
+                  - generic [ref=f4e149]:
+                    - text: Database policy
+                    - combobox "Database retention policy" [ref=f4e150]:
+                      - option "Inherit legacy input" [selected]
+                      - option "Retain"
+                      - option "Remove"
+                - generic [ref=f4e151]:
+                  - heading "Cognito User Pool" [level=3] [ref=f4e152]
+                  - paragraph [ref=f4e153]:
+                    - strong [ref=f4e154]: "Configured intent:"
+                    - text: Retain · explicit TypeScript policy
+                  - paragraph [ref=f4e155]:
+                    - strong [ref=f4e156]: "Management:"
+                    - text: Framework-managed when deployed.
+                  - generic [ref=f4e157]:
+                    - text: Cognito User Pool policy
+                    - combobox "Cognito User Pool retention policy" [ref=f4e158]:
+                      - option "Inherit legacy input"
+                      - option "Retain" [selected]
+                      - option "Remove"
+              - paragraph [ref=f4e477]:
+                - code [ref=f4e478]: framework-config/stateful-resources.ts
+                - text: · legacy fallback from
+                - code [ref=f4e479]: cdk-app/.env.prod
+                - text: ": false. Deployment context overrides and custom input files require review in Deploy."
+              - region "Retained resource references" [ref=f4e162]:
+                - heading "Inspect protection and retained resources" [level=3] [ref=f4e163]
+                - paragraph [ref=f4e164]: Read deployed templates and saved teardown evidence, then review an explicit reference. A saved observation alone does not prove that a resource is still available.
+                - generic [ref=f4e165]:
+                  - generic [ref=f4e166]:
+                    - text: AWS profile
+                    - textbox "Lifecycle AWS profile" [disabled] [ref=f4e167]: dev
+                  - generic [ref=f4e168]:
+                    - text: Destination deployment
+                    - combobox "Lifecycle destination" [disabled] [ref=f4e169]:
+                      - option "Select destination"
+                      - option "job3-20261023-p2-1630" [selected]
+                  - generic [ref=f4e170]:
+                    - text: Region
+                    - textbox "Lifecycle region" [disabled] [ref=f4e171]: us-east-1
+                - button "Inspect deployed protection and inventory" [ref=f4e172] [cursor=pointer]
+                - paragraph [ref=f4e173]:
+                  - strong [ref=f4e174]: "Deployed retention:"
+                  - text: Unverified for this destination.
+                - group [ref=f4e175]:
+                  - generic "Reference a retained resource" [ref=f4e176] [cursor=pointer]
+                  - option "Database" [selected]
+                  - option "Cognito User Pool"
+              - group [ref=f4e177]:
+                - generic "Local PostgreSQL persistence" [ref=f4e178] [cursor=pointer]
+              - group [ref=f4e179]:
+                - generic "Retain, reference, import and restore" [ref=f4e180] [cursor=pointer]
+      - region "Activity" [ref=f4e128]:
+        - button "Activity Apply plan to job3-20261023-p2-1630 · Deploy and verify" [expanded] [ref=f4e480] [cursor=pointer]:
+          - strong [ref=f4e130]: Activity
+          - generic [ref=f4e131]:
+            - text: Apply plan to job3-20261023-p2-1630
+            - generic [ref=f4e132]: · Deploy and verify
+        - generic [ref=f4e433]:
+          - list "Operations" [ref=f4e434]:
+            - listitem [ref=f4e483]:
+              - button "Apply plan to job3-20261023-p2-1630 Running · just now" [ref=f4e484] [cursor=pointer]:
+                - generic [ref=f4e485]: Apply plan to job3-20261023-p2-1630
+                - generic [ref=f4e486]: Running · just now
+            - listitem [ref=f4e435]:
+              - button "Plan job3-20261023-p2-1630 Done · 2 min ago" [ref=f4e487] [cursor=pointer]:
+                - generic [ref=f4e437]: Plan job3-20261023-p2-1630
+                - generic [ref=f4e438]: Done · 2 min ago
+            - listitem [ref=f4e439]:
+              - button "Apply plan to job3-20261023-p2-1630 Done · 11 min ago" [ref=f4e488] [cursor=pointer]:
+                - generic [ref=f4e441]: Apply plan to job3-20261023-p2-1630
+                - generic [ref=f4e442]: Done · 11 min ago
+            - listitem [ref=f4e443]:
+              - button "Plan job3-20261023-p2-1630 Done · 13 min ago" [ref=f4e489] [cursor=pointer]:
+                - generic [ref=f4e445]: Plan job3-20261023-p2-1630
+                - generic [ref=f4e446]: Done · 13 min ago
+            - listitem [ref=f4e447]:
+              - button "Apply plan to job3-20261023-p2-1630 Done · 18 min ago" [ref=f4e490] [cursor=pointer]:
+                - generic [ref=f4e449]: Apply plan to job3-20261023-p2-1630
+                - generic [ref=f4e450]: Done · 18 min ago
+            - listitem [ref=f4e451]:
+              - button "Plan job3-20261023-p2-1630 Done · 49 min ago" [ref=f4e491] [cursor=pointer]:
+                - generic [ref=f4e453]: Plan job3-20261023-p2-1630
+                - generic [ref=f4e454]: Done · 49 min ago
+          - generic [ref=f4e455]:
+            - generic [ref=f4e456]:
+              - generic [ref=f4e457]:
+                - strong [ref=f4e458]: Apply plan to job3-20261023-p2-1630
+                - text: Running
+              - button "Stop command; AWS may continue" [ref=f4e492] [cursor=pointer]
+            - list [ref=f4e462]:
+              - listitem [ref=f4e463]:
+                - img "running" [ref=f4e495]
+                - text: Deploy and verify
+            - generic "Log" [ref=f4e466]: $ tsx scripts/deploy.ts --apply /Users/matt/Desktop/code/framework-fix/matts-aws-framework/.cache/job3/cloud2/.cache/framework-studio/plans/job3-20261023-p2-1630-mvlhchdf-19bb --profile dev --confirm job3-20261023-p2-1630
+      - status
+  - status

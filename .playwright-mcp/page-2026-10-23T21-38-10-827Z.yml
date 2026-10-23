@@ -1,0 +1,167 @@
+- generic [ref=f6e3]:
+  - banner [ref=f6e4]:
+    - generic [ref=f6e5]:
+      - text: AWS Studio
+      - generic "cloud2" [ref=f6e6]
+    - navigation "Views" [ref=f6e7]:
+      - link "Board" [ref=f6e8] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=f6e9] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [ref=f6e10] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f6e11] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f6e12] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f6e13] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=f6e15] [cursor=pointer]:
+      - generic [ref=f6e18]: Source valid
+    - generic [ref=f6e19]: "Development: valid. Production: valid"
+  - main [ref=f6e21]:
+    - generic [ref=f6e22]:
+      - generic "AWS account" [ref=f6e23]:
+        - generic [ref=f6e24]:
+          - generic [ref=f6e25]:
+            - generic [ref=f6e26]: AWS profile
+            - combobox "AWS profile" [ref=f6e27]:
+              - option "default"
+              - option "dev" [selected]
+              - option "dev2"
+          - generic [ref=f6e136]:
+            - generic [ref=f6e137]:
+              - generic [ref=f6e138]: Account
+              - strong [ref=f6e139]: "734849394764"
+            - generic [ref=f6e140]:
+              - generic [ref=f6e141]: Region
+              - generic [ref=f6e142]: us-east-1
+            - generic "arn:aws:iam::734849394764:user/matthew" [ref=f6e143]:
+              - img "Signed in" [ref=f6e144]
+              - text: matthew
+          - button "Refresh" [disabled] [ref=f6e29]: Refreshing…
+        - generic [ref=f6e35]:
+          - button "This machine · 5 checks passed" [ref=f6e36] [cursor=pointer]
+          - list "Machine issues" [ref=f6e42]:
+            - 'listitem "Dependencies: cdk-app/package.json changed after the last install." [ref=f6e43]':
+              - generic [ref=f6e46]: cdk-app/package.json changed after the last install.
+              - button "Install" [ref=f6e47] [cursor=pointer]
+      - generic [ref=f6e48]:
+        - navigation "Deployments" [ref=f6e49]:
+          - heading "In this repository" [level=2] [ref=f6e50]
+          - list [ref=f6e51]:
+            - listitem [ref=f6e52]:
+              - button "matts-aws-framework Development only Not deployed" [ref=f6e146] [cursor=pointer]:
+                - strong [ref=f6e56]: matts-aws-framework
+                - generic [ref=f6e57]:
+                  - generic "Development only" [ref=f6e58]: Dev
+                  - generic [ref=f6e62]: Not deployed
+            - listitem [ref=f6e63]:
+              - button "job3-20261023-p2-1630 Production only Rolled back" [ref=f6e147] [cursor=pointer]:
+                - strong [ref=f6e67]: job3-20261023-p2-1630
+                - generic [ref=f6e68]:
+                  - generic "Production only" [ref=f6e69]: Prod
+                  - generic [ref=f6e74]: Rolled back
+          - generic "Local development" [ref=f6e75]: This machineNo exported settings
+        - region [ref=f6e79]:
+          - generic [ref=f6e80]:
+            - generic [ref=f6e81]:
+              - paragraph [ref=f6e82]: Declared in cdk-app/cdk.json
+              - heading [level=1] [ref=f6e83]:
+                - text: job3-20261023-p2-1630
+                - generic "Production only" [ref=f6e84]: Prod
+              - paragraph [ref=f6e148]:
+                - generic [ref=f6e149]: 734849394764 · us-east-1
+                - generic [ref=f6e150]: contract 2
+                - generic "arn:aws:iam::734849394764:user/matthew" [ref=f6e151]:
+                  - text: Deployed 20 min ago by matthew via Studio from
+                  - code [ref=f6e152]: 0167ca7+
+            - generic [ref=f6e89]:
+              - button "Review deployment result" [ref=f6e153] [cursor=pointer]
+              - group [ref=f6e90]:
+                - generic "More actions" [ref=f6e91] [cursor=pointer]
+          - paragraph [ref=f6e96]: Template comparison reads AWS without creating review objects. Preparing CloudFormation change sets creates review objects and possibly empty stacks; new secrets require separate approval. Neither action applies infrastructure.
+          - region "What needs attention" [ref=f6e97]:
+            - article [ref=f6e154]:
+              - generic [ref=f6e158]:
+                - strong [ref=f6e159]: The last deployment needs recovery
+                - paragraph [ref=f6e160]: "Outcome: failed. Review the recorded result before planning further changes. CloudFormation completion does not establish application health."
+            - article [ref=f6e161]:
+              - generic [ref=f6e165]:
+                - strong [ref=f6e166]: The last update was rolled back
+                - paragraph [ref=f6e167]: AWS holds the version before it. Fix what failed (see Events), then deploy again.
+              - button "Compare AWS templates" [ref=f6e169] [cursor=pointer]
+          - generic [ref=f6e99]:
+            - region "Repository" [ref=f6e100]:
+              - heading "Repository" [level=3] [ref=f6e101]
+              - generic [ref=f6e102]:
+                - term [ref=f6e103]: Intent
+                - definition [ref=f6e104]: framework:targets in cdk.json
+                - term [ref=f6e105]: Mode
+                - definition [ref=f6e106]: Production · fixed when created
+                - term [ref=f6e107]: Inputs
+                - definition [ref=f6e108]:
+                  - code [ref=f6e109]: cdk-app/.env.prod
+                - term [ref=f6e110]: Account
+                - definition [ref=f6e111]:
+                  - code [ref=f6e112]: "734849394764"
+                - term [ref=f6e113]: Region
+                - definition [ref=f6e114]:
+                  - code [ref=f6e115]: us-east-1
+            - region "AWS" [ref=f6e116]:
+              - heading "AWS" [level=3] [ref=f6e117]
+              - list [ref=f6e170]:
+                - listitem [ref=f6e171]:
+                  - generic "job3-20261023-p2-1630-HttpApiGatewayStack" [ref=f6e173]: HttpApiGatewayStack
+                  - generic [ref=f6e174]: create complete
+                - listitem [ref=f6e175]:
+                  - generic "job3-20261023-p2-1630-SynchronousLambdaFunctionsStack" [ref=f6e177]: SynchronousLambdaFunctionsStack
+                  - generic [ref=f6e178]: update rollback complete
+                - listitem [ref=f6e179]:
+                  - generic "job3-20261023-p2-1630-ReceiptIdentityStack" [ref=f6e181]: ReceiptIdentityStack
+                  - generic [ref=f6e182]: create complete
+                - listitem [ref=f6e183]:
+                  - generic "job3-20261023-p2-1630-CognitoStack" [ref=f6e185]: CognitoStack
+                  - generic [ref=f6e186]: update complete
+                - listitem [ref=f6e187]:
+                  - generic "job3-20261023-p2-1630-AsynchronousLambdaFunctionsStack" [ref=f6e189]: AsynchronousLambdaFunctionsStack
+                  - generic [ref=f6e190]: update complete
+                - listitem [ref=f6e191]:
+                  - generic "job3-20261023-p2-1630-FrontendWebsiteS3Stack" [ref=f6e193]: FrontendWebsiteS3Stack
+                  - generic [ref=f6e194]: create complete
+                - listitem [ref=f6e195]:
+                  - generic "job3-20261023-p2-1630-ReceiptsNetworkStack" [ref=f6e197]: ReceiptsNetworkStack
+                  - generic [ref=f6e198]: create complete
+                - listitem [ref=f6e199]:
+                  - generic "job3-20261023-p2-1630-ReceiptStoreStack" [ref=f6e201]: ReceiptStoreStack
+                  - generic [ref=f6e202]: create complete
+            - region "This machine" [ref=f6e119]:
+              - heading "This machine" [level=3] [ref=f6e120]
+              - paragraph [ref=f6e121]: Local development runs against a development deployment.
+          - group [ref=f6e122]:
+            - generic "Development & production deployment names" [ref=f6e123] [cursor=pointer]
+            - option "Development" [selected]
+            - option "Production / staging"
+          - group [ref=f6e124]:
+            - generic "Client environment & frontend release" [active] [ref=f6e125] [cursor=pointer]
+            - paragraph [ref=f6e203]: Generate public client settings from this deployment without starting Docker. A release then builds locally, reviews exact files and destination, publishes to S3, and requests CloudFront invalidation.
+            - paragraph [ref=f6e204]:
+              - text: "Selected:"
+              - strong [ref=f6e205]: job3-20261023-p2-1630
+              - text: · dev · us-east-1. Infrastructure deployment is a separate operation.
+            - generic [ref=f6e206]:
+              - button "Generate / refresh client env" [ref=f6e207] [cursor=pointer]
+              - button "Build & review release" [ref=f6e208] [cursor=pointer]
+            - group [ref=f6e209]:
+              - generic "Frontend project and publication settings" [ref=f6e210] [cursor=pointer]
+          - group [ref=f6e126]:
+            - generic "Stateful retention and retained-resource references" [ref=f6e127] [cursor=pointer]
+      - region "Activity" [ref=f6e128]:
+        - 'button "Activity Apply plan to job3-20261023-p2-1630 · Failed · Deployment tooling exited with status 1. Secret updates already performed: none." [ref=f6e129] [cursor=pointer]':
+          - strong [ref=f6e130]: Activity
+          - generic [ref=f6e131]:
+            - text: Apply plan to job3-20261023-p2-1630
+            - generic [ref=f6e132]: · Failed
+            - generic [ref=f6e133]: "· Deployment tooling exited with status 1. Secret updates already performed: none."
+      - status
+  - status

@@ -175,6 +175,16 @@ export function frameworkLambda(
   if ("logGroup" in shared) markInfrastructure(shared.logGroup, `lambda:${spec.id}`, "supporting");
 
   const retained = <T extends lambda.Function>(fn: T): T => {
+    if (!placement) {
+      // Omitting VpcConfig leaves a previously enabled IPv6 flag behind when
+      // CloudFormation detaches a function. Explicitly clear all three fields;
+      // CDK's L2 omits the config entirely when no VPC is supplied.
+      const resource = fn.node.defaultChild;
+      if (!(resource instanceof lambda.CfnFunction)) {
+        throw new Error(`Framework Lambda target "${spec.id}": CDK did not create the function's native resource.`);
+      }
+      resource.vpcConfig = { subnetIds: [], securityGroupIds: [], ipv6AllowedForDualStack: false };
+    }
     if (cdkManagesLogGroup) applyLogRetention(fn, spec);
     return fn;
   };

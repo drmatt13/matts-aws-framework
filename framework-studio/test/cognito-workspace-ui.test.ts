@@ -191,6 +191,26 @@ test("local scoped-policy edits survive panel navigation, cannot follow a change
   assert.equal(context.draft.dirty, false);
 });
 
+test("discarding rejected local policy edits clears validation errors and restores the saved source without a proposal", async () => {
+  const api = await workspaceApi(true);
+  mock.method(api.deploy.deployApi, "overview", async () => api.overview);
+  const saved = JSON.stringify(api.policies.sources);
+  await mount(api.workspace.AuthenticationWorkspace, "/cognito/permissions");
+  const actions = await ui.screen.findByLabelText("Policy actions 1") as HTMLTextAreaElement;
+  ui.fireEvent.change(actions, { target: { value: "s3:*" } });
+  ui.fireEvent.change(ui.screen.getByLabelText("Policy resources 1"), { target: { value: "*" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review reader policy source" }));
+  await ui.waitFor(() => assert.ok(ui.screen.queryAllByRole("alert").some(element => /Name concrete IAM actions without wildcards/.test(element.textContent!))));
+  assert.equal(context.draft.dirty, false, "rejected policy must not become a source proposal");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard local policy edits" }));
+  await ui.waitFor(() => assert.ok(!ui.screen.queryAllByRole("alert").some(element => /Name concrete IAM actions without wildcards/.test(element.textContent!)), "discard must clear the rejected edits' validation error"));
+  assert.equal((ui.screen.getByLabelText("Policy actions 1") as HTMLTextAreaElement).value, "s3:GetObject");
+  assert.equal((ui.screen.getByLabelText("Policy resources 1") as HTMLTextAreaElement).value, "arn:aws:s3:::qa-fixture/tenant/*");
+  assert.equal(ui.screen.queryByRole("button", { name: "Discard local policy edits" }), null);
+  assert.equal(context.draft.dirty, false);
+  assert.equal(JSON.stringify(api.policies.sources), saved, "discard must preserve saved policy bytes rather than stage or apply a change");
+});
+
 test("leaving Cognito protects unproposed local policy edits and cancelled departure retains their exact values", async () => {
   const api = await workspaceApi(true);
   mock.method(api.deploy.deployApi, "overview", async () => api.overview);
