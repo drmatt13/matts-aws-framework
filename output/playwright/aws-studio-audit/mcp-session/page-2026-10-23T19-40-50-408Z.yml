@@ -1,0 +1,205 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - generic [ref=f3e5]: AWS Studio
+    - navigation "Views" [ref=f3e6]:
+      - link "Board" [ref=f3e7] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=f3e8] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [active] [ref=f3e9] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f3e10] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f3e11] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f3e12] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=f3e8309] [cursor=pointer]:
+      - generic [ref=f3e17]: Source valid
+    - generic [ref=f3e18]: "Development: valid. Production: valid"
+  - main [ref=f3e20]:
+    - generic [ref=f3e8687]:
+      - heading "Database" [level=1] [ref=f3e8688]
+      - generic [ref=f3e8689]:
+        - navigation "Database workspace" [ref=f3e8690]:
+          - button "Schema" [pressed] [ref=f3e8691] [cursor=pointer]
+          - button "History & migrations" [ref=f3e8697] [cursor=pointer]
+          - button "Database status" [ref=f3e8702] [cursor=pointer]
+          - button "Saved SQL" [ref=f3e8707] [cursor=pointer]
+          - button "Data retention" [ref=f3e8712] [cursor=pointer]
+        - button "How this works" [ref=f3e8717] [cursor=pointer]
+      - generic [ref=f3e8721]:
+        - generic [ref=f3e8722]:
+          - generic [ref=f3e8723]:
+            - code [ref=f3e8724]: contract.prisma
+            - generic [ref=f3e8725]: Saved source
+            - status [ref=f3e8726]: Valid Prisma 8
+          - generic [ref=f3e8729]:
+            - group "Editing layout" [ref=f3e8730]:
+              - button "Focus source" [ref=f3e8731] [cursor=pointer]
+              - button "Split source and diagram" [pressed] [ref=f3e8736] [cursor=pointer]
+              - button "Focus diagram" [ref=f3e8739] [cursor=pointer]
+            - button "Validate draft" [ref=f3e8742] [cursor=pointer]
+            - button "Discard" [disabled] [ref=f3e8743]
+            - button "Review source changes" [disabled] [ref=f3e8744]
+        - generic [ref=f3e8745]:
+          - region "Prisma source pane" [ref=f3e8746]:
+            - generic [ref=f3e8747]:
+              - generic [ref=f3e8748]: Prisma source
+              - generic [ref=f3e8753]:
+                - button "Format" [ref=f3e8754] [cursor=pointer]
+                - link "Open in editor" [ref=f3e8755] [cursor=pointer]:
+                  - /url: vscode://file//Users/matt/Desktop/code/framework-fix/matts-aws-framework/packages/database/prisma/contract.prisma:1:1
+                - button "Fullscreen Prisma source" [ref=f3e8760] [cursor=pointer]
+            - generic [ref=f3e8766]:
+              - generic [ref=f3e8769]:
+                - generic [aria-hidden] [ref=f3e8770]:
+                  - generic [ref=f3e8771]:
+                    - generic [ref=f3e8772]: "1"
+                    - generic [ref=f3e8773]: "2"
+                    - generic [ref=f3e8774]: "3"
+                    - generic [ref=f3e8775]: "4"
+                    - generic [ref=f3e8776]: "5"
+                    - generic [ref=f3e8777]: "6"
+                    - generic [ref=f3e8778]: "7"
+                    - generic [ref=f3e8779]: "8"
+                    - generic [ref=f3e8780]: "9"
+                    - generic [ref=f3e8781]: "10"
+                    - generic [ref=f3e8782]: "11"
+                    - generic [ref=f3e8783]: "12"
+                    - generic [ref=f3e8784]: "13"
+                    - generic [ref=f3e8785]: "14"
+                    - generic [ref=f3e8786]: "15"
+                    - generic [ref=f3e8787]: "16"
+                    - generic [ref=f3e8788]: "17"
+                    - generic [ref=f3e8789]: "18"
+                    - generic [ref=f3e8790]: "19"
+                    - generic [ref=f3e8791]: "20"
+                    - generic [ref=f3e8792]: "21"
+                    - generic [ref=f3e8793]: "22"
+                    - generic [ref=f3e8794]: "23"
+                    - generic [ref=f3e8795]: "24"
+                    - generic [ref=f3e8796]: "25"
+                    - generic [ref=f3e8797]: "26"
+                    - generic [ref=f3e8798]: "27"
+                    - generic [ref=f3e8799]: "28"
+                    - generic [ref=f3e8800]: "29"
+                    - generic [ref=f3e8801]: "30"
+                    - generic [ref=f3e8802]: "31"
+                    - generic [ref=f3e8803]: "32"
+                  - generic [ref=f3e8806]:
+                    - generic [ref=f3e8808]: ⌄
+                    - generic [ref=f3e8809]: ⌄
+                - textbox "Prisma schema source" [ref=f3e8810]:
+                  - generic [ref=f3e8811]: // use prisma-8
+                  - generic [ref=f3e8813]: "// The application data contract. This is the source of truth for the schema:"
+                  - generic [ref=f3e8814]: "// `prisma contract emit` generates the client artifacts from it, and"
+                  - generic [ref=f3e8815]: "// `prisma migration plan` turns changes to it into on-disk migrations."
+                  - generic [ref=f3e8816]: "model User {"
+                  - generic [ref=f3e8817]: "id Uuid @id(map: \"users_pkey\") @default(uuid())"
+                  - generic [ref=f3e8818]: cognitoSub String @map("cognito_sub")
+                  - generic [ref=f3e8819]: email String
+                  - generic [ref=f3e8820]: firstName String @map("first_name")
+                  - generic [ref=f3e8821]: lastName String @map("last_name")
+                  - generic [ref=f3e8822]: createdAt TimestamptzString(6) @default(now()) @map("created_at")
+                  - generic [ref=f3e8823]: "updatedAt temporal.timestamptzString(6, onCreate: now, onUpdate: now) @map(\"updated_at\")"
+                  - generic [ref=f3e8825]: "@@index([cognitoSub], map: \"users_cognito_sub_key\", unique: true)"
+                  - generic [ref=f3e8826]: "@@index([email], map: \"users_email_key\", unique: true)"
+                  - generic [ref=f3e8827]: "@@map(\"users\")"
+                  - generic [ref=f3e8828]: "}"
+                  - generic [ref=f3e8830]: "model Project {"
+                  - generic [ref=f3e8831]: "id Uuid @id(map: \"projects_pkey\") @default(uuid())"
+                  - generic [ref=f3e8832]: ownerId Uuid @map("owner_id")
+                  - generic [ref=f3e8833]: "owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)"
+                  - generic [ref=f3e8834]: name String
+                  - generic [ref=f3e8835]: archived Boolean @default(false)
+                  - generic [ref=f3e8836]: createdAt TimestamptzString(6) @default(now()) @map("created_at")
+                  - generic [ref=f3e8837]: "updatedAt temporal.timestamptzString(6, onCreate: now, onUpdate: now) @map(\"updated_at\")"
+                  - generic [ref=f3e8839]: "@@index([ownerId], map: \"projects_owner_id_idx\")"
+                  - generic [ref=f3e8840]: "@@map(\"projects\")"
+                  - generic [ref=f3e8841]: "}"
+              - generic [ref=f3e8843]: Prisma 8 source editor. Tab indents; press Escape then Tab to leave. Control or Command F searches, Control or Command S reviews source changes, F12 goes to a definition. Completion suggests syntax; validation checks the contract.
+            - generic [ref=f3e8844]:
+              - generic [ref=f3e8845]: Ln 1, Col 1
+              - generic [ref=f3e8846]: Prisma 8 · static suggestions
+          - region "Schema diagram pane" [ref=f3e8847]:
+            - generic [ref=f3e8848]:
+              - generic [ref=f3e8849]: Schema diagram
+              - button "Fullscreen schema diagram" [ref=f3e8852] [cursor=pointer]
+            - generic [ref=f3e8858]:
+              - generic [ref=f3e8859]:
+                - searchbox "Find a table or column" [ref=f3e8864]
+                - group "Schema view controls" [ref=f3e8865]:
+                  - button "Zoom out" [ref=f3e8866] [cursor=pointer]
+                  - generic [ref=f3e8868]: 80%
+                  - button "Zoom in" [ref=f3e8869] [cursor=pointer]
+                  - button "Fit schema" [ref=f3e8871] [cursor=pointer]
+              - generic "Database relationship diagram" [ref=f3e8877]:
+                - generic [ref=f3e8879]:
+                  - img [aria-hidden] [ref=f3e8880]:
+                    - generic [ref=f3e8881]:
+                      - generic [ref=f3e8883] [cursor=pointer]
+                      - generic [ref=f3e8884]: N:1
+                  - article [ref=f3e8885]:
+                    - button "Select table users" [ref=f3e8886]:
+                      - generic [ref=f3e8887]:
+                        - strong [ref=f3e8888]: User
+                        - generic [ref=f3e8889]: public.users
+                    - button "Locate User.id" [ref=f3e8892] [cursor=pointer]:
+                      - generic [ref=f3e8893]: PK
+                      - code [ref=f3e8894]: id
+                      - generic [ref=f3e8895]: Uuid
+                    - button "Locate User.cognitoSub" [ref=f3e8896] [cursor=pointer]:
+                      - generic [ref=f3e8897]: UQ
+                      - code [ref=f3e8898]: cognitoSub
+                      - generic [ref=f3e8899]: String
+                    - button "Locate User.email" [ref=f3e8900] [cursor=pointer]:
+                      - generic [ref=f3e8901]: UQ
+                      - code [ref=f3e8902]: email
+                      - generic [ref=f3e8903]: String
+                    - button "Locate User.firstName" [ref=f3e8904] [cursor=pointer]:
+                      - code [ref=f3e8905]: firstName
+                      - generic [ref=f3e8906]: String
+                    - button "Locate User.lastName" [ref=f3e8907] [cursor=pointer]:
+                      - code [ref=f3e8908]: lastName
+                      - generic [ref=f3e8909]: String
+                    - button "Locate User.createdAt" [ref=f3e8910] [cursor=pointer]:
+                      - code [ref=f3e8911]: createdAt
+                      - generic [ref=f3e8912]: TimestamptzString(6)
+                    - button "Locate User.updatedAt" [ref=f3e8913] [cursor=pointer]:
+                      - code [ref=f3e8914]: updatedAt
+                      - generic [ref=f3e8915]: "temporal.timestamptzString(6, onCreate: now, onUpdate: now)"
+                    - generic [ref=f3e8916]: 3 keys / indexes
+                  - article [ref=f3e8917]:
+                    - button "Select table projects" [ref=f3e8918]:
+                      - generic [ref=f3e8919]:
+                        - strong [ref=f3e8920]: Project
+                        - generic [ref=f3e8921]: public.projects
+                    - button "Locate Project.id" [ref=f3e8924] [cursor=pointer]:
+                      - generic [ref=f3e8925]: PK
+                      - code [ref=f3e8926]: id
+                      - generic [ref=f3e8927]: Uuid
+                    - button "Locate Project.ownerId" [ref=f3e8928] [cursor=pointer]:
+                      - generic [ref=f3e8929]: FK
+                      - code [ref=f3e8930]: ownerId
+                      - generic [ref=f3e8931]: Uuid
+                    - button "Locate Project.name" [ref=f3e8932] [cursor=pointer]:
+                      - code [ref=f3e8933]: name
+                      - generic [ref=f3e8934]: String
+                    - button "Locate Project.archived" [ref=f3e8935] [cursor=pointer]:
+                      - code [ref=f3e8936]: archived
+                      - generic [ref=f3e8937]: Boolean
+                    - button "Locate Project.createdAt" [ref=f3e8938] [cursor=pointer]:
+                      - code [ref=f3e8939]: createdAt
+                      - generic [ref=f3e8940]: TimestamptzString(6)
+                    - button "Locate Project.updatedAt" [ref=f3e8941] [cursor=pointer]:
+                      - code [ref=f3e8942]: updatedAt
+                      - generic [ref=f3e8943]: "temporal.timestamptzString(6, onCreate: now, onUpdate: now)"
+                    - generic [ref=f3e8944]: 2 keys / indexes
+              - generic [ref=f3e8945]:
+                - generic [ref=f3e8946]: 2 tables · 1 relationships
+                - generic [ref=f3e8947]:
+                  - checkbox "Focus selection" [disabled] [ref=f3e8948]
+                  - text: Focus selection
+              - paragraph [ref=f3e8950]: Select a table, field or relationship to locate its source. PK primary key · FK foreign key · UQ unique.
+  - status

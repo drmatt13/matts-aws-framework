@@ -12,6 +12,15 @@ Declarations use the same [code-first layout and tags](../docs/framework-studio/
 when authored by hand or created in Studio. Tag edits use source review. Isometric always keeps topology; its tag filter fades
 nonmatches without changing placement, identity or source.
 
+The shared navigation stays stable across all six views. **Source valid** reports
+declaration validation, with details on demand; AWS credentials, deployments and runtime
+health are inspected separately. Board, Isometric and Cognito expose the **Source**
+Development/Production selector in their workspace controls. Domains edits Production
+domain intent. Named deployments (including staging targets declared with production
+semantics) keep their own target/profile/account context. See the
+[UI design system](../docs/framework-studio/ui-design-system.md) for shared layout and
+interaction conventions.
+
 The **Database** tab (`/database`) is a source-first Prisma 8 workbench with three
 workspaces: **Schema**, **History & migrations**, and **Database status**. Edit the
 authored `packages/database/prisma/contract.prisma` beside its diagram, navigate between

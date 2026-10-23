@@ -32,6 +32,12 @@ There are exactly two `DeploymentMode`s: **dev** and **prod**. A named deploymen
 
 Dev AWS builds Cognito, AWS-invoked event Lambdas and replay support; normal routed workloads/tasks/workflows/agents execute locally. Prod builds the cloud-enabled application, network/database/frontend as configured. The WebSocket API flag is a separate switch. `deploy` lanes remain distinct from these modes; see [configuration predicates](../framework/configuration.md).
 
+Deploy's account toolbar selects credentials by AWS profile name and labels the resolved
+account and region. A profile's default region is supporting information; the selected
+named deployment's region pin takes precedence. The deployment rail retains every
+declared target, including multiple targets using prod mode, and identifies unread
+deployment state as unverified.
+
 Selection checks require command/target mode agreement and refuse accidental production inference. `prepare` in [deploy.ts](../../../scripts/deploy.ts) then compares the synthesized identity with selection and actual STS account. Ownership classification prevents a dev graph from updating stacks owned by prod or another deployment. Named targets do not provide a separate secret namespace if someone deliberately aliases identities/inputs; identity and selected inputs must be reviewed together.
 
 Development export supplies generated root environment/resource manifest and browser settings. Production output/export uses its production destinations rather than seeding development. Protected Studio input editing addresses only the two fixed mode files; custom target input paths are not a general file browser. [Secrets](secrets.md) owns the private-value boundaries.

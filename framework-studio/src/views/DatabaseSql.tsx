@@ -37,10 +37,10 @@ export function DatabaseSql({ active }: { readonly active: boolean }) {
     const next = item?.command ?? empty(); setSelected(item?.path); setCommand(next); setRevision(item?.revision ?? null); setParameterNames(next.parameters.join(", ")); setResult(undefined); setMessage(undefined); setError(undefined);
   };
   return <div className="database-sql">
-    <header><h2>Saved SQL</h2><p>Save reusable SQL in <code>packages/database/sql/</code>, then review execution against an explicitly selected database. Saving never runs SQL. Schema migrations remain in History & migrations.</p></header>
+    <header className="workbench-content-heading"><div><h2>Saved SQL</h2><p>Save reusable SQL in <code>packages/database/sql/</code>, then review execution against an explicitly selected database. Saving never runs SQL. Schema migrations remain in History & migrations.</p></div></header>
     {error ? <p className="workbench-notice warning" role="alert">{error}</p> : null}
     {message ? <p role="status">{message}</p> : null}
-    <div className="workbench-actions"><label>Saved command <select aria-label="Saved SQL command" value={selected ?? ""} disabled={busy} onChange={event => choose(event.target.value || undefined)}><option value="">New command</option>{catalog?.commands.map(item => <option key={item.path} value={item.path}>{item.command.kind} / {item.command.name}</option>)}</select></label><button className="quiet" disabled={busy} onClick={() => void run(load)}>Refresh SQL catalog</button></div>
+    <div className="workbench-actions sql-catalog"><label>Saved command <select aria-label="Saved SQL command" value={selected ?? ""} disabled={busy} onChange={event => choose(event.target.value || undefined)}><option value="">New command</option>{catalog?.commands.map(item => <option key={item.path} value={item.path}>{item.command.kind} / {item.command.name}</option>)}</select></label><button className="quiet" disabled={busy} onClick={() => void run(load)}>Refresh SQL catalog</button></div>
     {catalog?.issues.map(issue => <p key={issue} className="reason small">{issue}</p>)}
     <fieldset disabled={busy} className="sql-fields"><legend>Repository command</legend>
       <label>Name <input aria-label="SQL command name" value={command.name} onChange={event => { setCommand({ ...command, name: event.target.value }); if (persisted) { setSelected(undefined); setRevision(null); } }} /></label>
@@ -49,8 +49,8 @@ export function DatabaseSql({ active }: { readonly active: boolean }) {
       <label>Description <input aria-label="SQL description" value={command.description} onChange={event => setCommand({ ...command, description: event.target.value })} /></label>
       <label>Parameter names, in $1, $2 order <input aria-label="SQL parameter names" value={parameterNames} onChange={event => setParameterNames(event.target.value)} /></label>
       <label className="sql-source">SQL <textarea aria-label="SQL source" spellCheck={false} rows={10} value={command.sql} onChange={event => setCommand({ ...command, sql: event.target.value })} /></label>
-      <p className="small muted">Changing the name or category creates a new file and preserves the original command.</p>
-      <button className="primary" disabled={!dirty} onClick={() => void run(async () => setSourceReview(await databaseSqlApi.review(current, revision)))}>Review SQL source</button>
+      <div className="sql-source sql-source-actions"><p className="small muted">Changing the name or category creates a new file and preserves the original command.</p>
+      <button className="primary" disabled={!dirty} onClick={() => void run(async () => setSourceReview(await databaseSqlApi.review(current, revision)))}>Review SQL source</button></div>
     </fieldset>
     <fieldset disabled={busy}><legend>Explicit execution</legend>
       <label>Database target <select aria-label="SQL database target" value={target} onChange={event => { setTarget(event.target.value); setExecutionReview(undefined); }}><option value="local:postgres">Local PostgreSQL</option><option value="production">Production RDS — protected task required</option></select></label>

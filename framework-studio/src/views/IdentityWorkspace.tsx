@@ -3,11 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import type { DomainsObservation, IdentitySelection, IdentitySource } from "../../shared/identity";
 import { domainSettingsProblems } from "../../shared/domain-settings";
 import { deployApi } from "../deploy/api";
-import { identityApi } from "../identity-api";
+import { identityApi, inspectionErrorMessage } from "../identity-api";
 import { useStudio } from "../studio";
 import { DraftFooter } from "./DraftControls";
 import { InspectorSwitch } from "./InspectorUI";
 import { DomainOperations } from "./DomainOperations";
+import { SourceHistory } from "./SourceContext";
 import "./identity-workspace.css";
 
 export { identityApi } from "../identity-api";
@@ -56,13 +57,18 @@ export function Domains() {
     request.current?.abort(); const controller = new AbortController(); request.current = controller;
     setBusy(true); setError("");
     try { const next = await identityApi.inspect<DomainsObservation>("domains", selection, undefined, undefined, controller.signal); if (!controller.signal.aborted) { setResult(next); setObservedHash(source.data?.hash ?? ""); } }
-    catch (error) { if (!controller.signal.aborted) setError(error instanceof Error ? error.message : "Inspection failed."); }
+    catch (error) { if (!controller.signal.aborted) setError(inspectionErrorMessage(error)); }
     finally { if (!controller.signal.aborted) setBusy(false); }
   };
-  return <div className="identity-workspace"><header><h1>DNS / Domains</h1><p>Source intent, deployed metadata and actual application health have independent evidence.</p></header>
-    {source.error ? <p role="alert">{source.error.message}</p> : null}
+  return <div className="identity-workspace"><header className="workspace-toolbar identity-workspace-header"><div className="workspace-page-width"><div className="workspace-heading"><h1 className="workspace-page-title">DNS / Domains</h1><span className="workspace-scope"><span className="context-label">Source</span> Production</span><span className="spacer" /><SourceHistory /></div><p>Source intent, deployed metadata and actual application health have independent evidence.</p></div></header>
+    <div className="workspace-page-width identity-content">
+    {source.error ? <div className="workspace-alert" role="alert"><span>{source.error.message}</span><button className="quiet" disabled={source.isFetching} onClick={() => void source.refetch()}>Retry source</button></div> : null}
+    {source.isFetching && !source.data && !source.error ? <p className="muted" role="status">Loading source declaration…</p> : null}
     {source.data && !source.data.exists ? <section className="identity-card"><p>{source.data.file} does not exist. Generate it from its own template before staging settings.</p><button className="quiet" onClick={() => select("envfile:prod")}>Open environment file</button></section> : null}
-    <section className="identity-card"><h2>Read-only deployment inspection</h2><div className="identity-toolbar">
+    <section className="identity-card"><h2>Read-only deployment inspection</h2>
+      {overview.error ? <div className="workspace-alert" role="alert"><span>{overview.error.message}</span><button className="quiet" disabled={overview.isFetching} onClick={() => void overview.refetch()}>Retry deployments</button></div> : null}
+      {overview.isFetching && !overview.data && !overview.error ? <p className="muted" role="status">Loading deployment context…</p> : null}
+      <div className="identity-toolbar inspection-controls">
       <label>Profile<input aria-label="Identity AWS profile" value={selection.profile} onChange={event => setSelection({ ...selection, profile: event.target.value })} list="identity-profiles" /><datalist id="identity-profiles">{overview.data?.profiles.map(profile => <option key={profile.name}>{profile.name}</option>)}</datalist></label>
       <label>Deployment<select aria-label="Identity deployment" value={selection.deployment} onChange={event => { const target = overview.data?.targets.find(target => target.name === event.target.value); setSelection({ ...selection, deployment: event.target.value, region: target?.region ?? selection.region }); }}><option value="">Select a deployment</option>{overview.data?.targets.filter(target => target.mode === "prod").map(target => <option key={target.name} value={target.name}>{target.name} · {target.mode}</option>)}</select></label>
       <label>Region<input aria-label="Identity AWS region" value={selection.region} onChange={event => setSelection({ ...selection, region: event.target.value })} /></label>
@@ -73,6 +79,7 @@ export function Domains() {
       {result?.warnings.map(warning => <p className="muted" key={warning}>{warning}</p>)}
     </section>
     {source.data ? <DomainControls source={source.data} /> : null}<DomainEvidence result={result} /><DomainOperations selection={selection} />
-    {draftState.error ? <p role="alert">{draftState.error}</p> : null}{draft.dirty ? <DraftFooter /> : null}
+    {draftState.error ? <p className="workspace-alert" role="alert">{draftState.error}</p> : null}{draft.dirty ? <DraftFooter /> : null}
+    </div>
   </div>;
 }

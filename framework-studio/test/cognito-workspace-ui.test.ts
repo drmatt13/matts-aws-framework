@@ -130,6 +130,46 @@ test("context controls wait for Deploy authority instead of silently replacing a
   assert.equal((ui.screen.getByLabelText("Identity AWS region") as HTMLInputElement).readOnly, true);
 });
 
+test("source failures keep a local retry action across panels and recovery preserves entered values without inspecting AWS", async () => {
+  const api = await workspaceApi();
+  const source = await api.identity.identityApi.source("dev");
+  let sourceReads = 0, inspections = 0;
+  mock.method(api.deploy.deployApi, "overview", async () => api.overview);
+  mock.method(api.identity.identityApi, "source", async () => {
+    if (++sourceReads === 1) throw new Error("Studio returned an invalid API response. Reload the page and retry the operation.");
+    return source;
+  });
+  mock.method(api.identity.identityApi, "inspect", async () => { inspections++; throw new Error("Unexpected AWS inspection"); });
+  const app = await mount(api.workspace.AuthenticationWorkspace);
+  const retry = await ui.screen.findByRole("button", { name: "Retry source" });
+  assert.match(retry.closest('[role="alert"]')?.textContent ?? "", /Studio returned an invalid API response/);
+  ui.fireEvent.change(ui.screen.getByLabelText("Search Cognito users"), { target: { value: "retained-search" } });
+  ui.fireEvent.click(ui.within(ui.screen.getByRole("navigation", { name: "Cognito sections" })).getByRole("link", { name: "Identity Pools" }));
+  await ui.waitFor(() => assert.equal(app.state.location.pathname, "/cognito/identity-pools"));
+  assert.ok(ui.screen.getByRole("button", { name: "Create identity pool source", description: /Reviewed native source connects the application pool\/client/ }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Retry source" }));
+  await ui.waitFor(() => assert.ok(ui.screen.queryByRole("button", { name: "Retry source" }) === null));
+  assert.equal(sourceReads, 2);
+  assert.equal(inspections, 0, "recovering a source read must not trigger a cloud inspection");
+  ui.fireEvent.click(ui.within(ui.screen.getByRole("navigation", { name: "Cognito sections" })).getByRole("link", { name: "User Pools" }));
+  await ui.waitFor(() => assert.equal((ui.screen.getByLabelText("Search Cognito users") as HTMLInputElement).value, "retained-search"));
+});
+
+test("source input context avoids duplicate paths while retaining custom-target mismatch evidence", async () => {
+  const api = await workspaceApi();
+  const standard = { ...api.overview, targets: api.overview.targets.map(target => target.mode === "dev" ? { ...target, inputs: "./cdk-app/.env.dev" } : target) };
+  mock.method(api.deploy.deployApi, "overview", async () => standard);
+  await mount(api.workspace.AuthenticationWorkspace);
+  await ui.waitFor(() => assert.equal((ui.screen.getByLabelText("Identity deployment") as HTMLSelectElement).value, "qa-dev"));
+  const provenance = ui.screen.getByText("Source inputs").parentElement!;
+  assert.equal(provenance.querySelectorAll("code").length, 1, "the same normalized input path should be shown once");
+  assert.doesNotMatch(provenance.textContent!, /Deployment inputs/);
+  ui.act(() => queryClient.setQueryData(["deploy", "overview"], { ...standard, targets: standard.targets.map(target => target.mode === "dev" ? { ...target, inputs: "cdk-app/.env.qa" } : target) }));
+  await ui.screen.findByText(/This deployment uses different inputs/);
+  assert.match(provenance.textContent!, /Source inputs.*cdk-app\/\.env.dev.*Deployment inputs.*cdk-app\/\.env.qa/);
+  assert.ok(ui.screen.getByText(/Retention editing is unavailable for this deployment’s custom inputs/));
+});
+
 test("local scoped-policy edits survive panel navigation, cannot follow a changed environment, and remain discardable", async () => {
   const api = await workspaceApi(true);
   mock.method(api.deploy.deployApi, "overview", async () => api.overview);
@@ -203,12 +243,12 @@ test("a delayed policy simulation never appears under another profile or an inac
   assert.doesNotMatch(document.body.textContent!, /late-simulation-sentinel/);
 });
 
-test("partial inspection notes, stale evidence and refresh errors remain visible across panels without claiming sign-in", async () => {
+for (const failure of [new Error("Credentials expired. Sign in to profile dev and retry."), new TypeError("Failed to fetch")]) test(`partial inspection notes and ${failure instanceof TypeError ? "connection" : "server"} errors retain evidence across panels without claiming sign-in`, async () => {
   const api = await workspaceApi();
   mock.method(api.deploy.deployApi, "overview", async () => api.overview);
   let fail = false;
-  mock.method(api.identity.identityApi, "inspect", async (kind: string): Promise<CognitoObservation | IdentityPoolsObservation> => {
-    if (fail) throw new Error("Credentials expired. Sign in to profile dev and retry.");
+  const inspections = mock.method(api.identity.identityApi, "inspect", async (kind: string): Promise<CognitoObservation | IdentityPoolsObservation> => {
+    if (fail) throw failure;
     const context = { profile: "dev", deployment: "qa-dev", region: "us-east-1", account: "111122223333", observedAt: "2020-01-01T00:00:00Z" };
     return kind === "cognito" ? { context, poolId: "fixture-pool", pool: { name: "Observed QA pool" }, clients: [], providers: [], groups: [], users: [], warnings: ["Provider details could not be read; this is partial metadata."] } : { context, pools: [], warnings: ["Role mappings unverified."] };
   });
@@ -225,9 +265,19 @@ test("partial inspection notes, stale evidence and refresh errors remain visible
   assert.equal(ui.screen.getByRole("navigation", { name: "Cognito sections" }).querySelector('[aria-current="page"]')?.textContent, "Providers");
   fail = true;
   ui.fireEvent.click(inspect);
-  await ui.waitFor(() => assert.ok(ui.screen.getAllByRole("alert").some(element => /Credentials expired.*Previous metadata remains visible/.test(element.textContent!))));
+  await ui.waitFor(() => assert.ok(ui.screen.getAllByRole("alert").some(element => element.textContent?.includes(failure.message) && /Previous metadata remains visible/.test(element.textContent))));
+  assert.equal(inspections.mock.callCount(), 4, "a failed inspection must not automatically retry either read");
+  if (failure instanceof TypeError) {
+    const alert = ui.screen.getAllByRole("alert").find(element => element.textContent?.includes("Failed to fetch"))!;
+    assert.match(alert.textContent!, /Check the Studio connection, then retry inspection/);
+    assert.doesNotMatch(alert.textContent!, /credentials/i, "offline transport failures must not blame AWS credentials");
+  }
   ui.act(() => { void app.navigate({ to: "/cognito/user-pools" }); });
   await ui.screen.findByRole("heading", { name: "Observed QA pool" });
+  fail = false;
+  ui.fireEvent.click(inspect);
+  await ui.waitFor(() => assert.ok(!ui.screen.queryAllByRole("alert").some(element => element.textContent?.includes(failure.message))));
+  assert.equal(inspections.mock.callCount(), 6, "only the explicit retry may start another pair of AWS reads");
 });
 
 test("changing environment keeps the source draft in its original target until explicitly discarded", async () => {

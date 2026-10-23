@@ -16,6 +16,7 @@ let router: typeof import("@tanstack/react-router");
 let studio: typeof import("../src/studio");
 let component: typeof import("../src/views/Infrastructure");
 let shell: typeof import("../src/views/Shell");
+let sourceContext: typeof import("../src/views/SourceContext");
 let inputs: typeof import("../src/views/DeploymentInputs");
 let clientInputs: typeof import("../src/views/ClientEnvironment");
 let controls: typeof import("../src/views/DraftControls");
@@ -45,6 +46,7 @@ before(async () => {
   ui = require("@testing-library/react"); query = require("@tanstack/react-query"); router = require("@tanstack/react-router");
   studio = await import("../src/studio"); component = await import("../src/views/Infrastructure"); api = await import("../src/api");
   shell = await import("../src/views/Shell");
+  sourceContext = await import("../src/views/SourceContext");
   inputs = await import("../src/views/DeploymentInputs");
   clientInputs = await import("../src/views/ClientEnvironment");
   controls = await import("../src/views/DraftControls"); review = await import("../src/views/EditDialog");
@@ -58,6 +60,7 @@ async function mount(navigate: (id: string) => void = () => {}, initialOwner?: s
   function Workbench() {
     const context = studio.useStudio();
     if (withShell) return h(shell.Shell, null,
+      h("div", { className: "workspace-toolbar" }, h(sourceContext.SourceEnvironment), h(sourceContext.SourceHistory)),
       h("button", { onClick: () => context.select("island:stacks") }, "Stacks island settings"),
       h("button", { onClick: () => {
         const fact = context.model.fields["lambda:graphql-api"]!.find((fact) => fact.field === "lambda.memorySize")!;
@@ -74,21 +77,22 @@ async function mount(navigate: (id: string) => void = () => {}, initialOwner?: s
   const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null })]) });
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); clients.push(client);
   ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
-  if (withShell) await ui.screen.findByRole("button", { name: "Configuration health" });
+  if (withShell) await ui.screen.findByRole("button", { name: /Configuration health/ });
   else if (environmentFile) await ui.screen.findByRole("heading", { name: environmentFile.clientEnvironment ? ".env" : environmentFile.path[0] });
   else await ui.screen.findByRole("button", { name: /Synthesize CDK|Refresh from CDK/ });
 }
 
-test("the header keeps automatic health and compact history; the saved-source audit is available in health", async () => {
+test("the header keeps automatic health, source history belongs to the workspace, and saved-source audits stay explicit", async () => {
   const commands: unknown[][] = [];
   mock.method(api.api, "command", async (...args: unknown[]) => { commands.push(args); return { command: "framework:check", exitCode: 0, output: "All checks passed", durationMs: 20 }; });
   await mount(() => {}, undefined, undefined, true);
   const header = document.querySelector(".bar")! as HTMLElement;
   assert.equal(ui.within(header).queryByRole("button", { name: "Check" }), null);
   assert.equal(ui.within(header).queryByRole("button", { name: "Infrastructure" }), null);
-  assert.equal(ui.within(header).getByRole("button", { name: "Undo" }).textContent, "");
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Configuration health" }));
-  assert.ok(ui.screen.getByText(/Configuration validation updates automatically/));
+  assert.equal(ui.within(header).queryByRole("button", { name: "Undo" }), null);
+  assert.equal(ui.within(ui.screen.getByRole("group", { name: "Source edit history" })).getByRole("button", { name: "Undo" }).textContent, "");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /Configuration health/ }));
+  assert.ok(ui.screen.getByText(/Source validation checks the saved declarations/));
   assert.equal(commands.length, 0);
   ui.fireEvent.click(ui.screen.getByText("Additional checks", { selector: "summary" }));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Check generated files and wiring" }));

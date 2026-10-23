@@ -1,0 +1,477 @@
+- generic [ref=f4e3]:
+  - banner [ref=f4e4]:
+    - generic [ref=f4e5]:
+      - text: AWS Studio
+      - generic "matts-aws-framework" [ref=f4e479]
+    - navigation "Views" [ref=f4e6]:
+      - link "Board" [active] [ref=f4e7] [cursor=pointer]:
+        - /url: /?select=lambda%3Asign-in
+      - link "Isometric" [ref=f4e8] [cursor=pointer]:
+        - /url: /isometric?select=lambda%3Asign-in
+      - link "Database" [ref=f4e9] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f4e10] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f4e11] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f4e12] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=f4e14] [cursor=pointer]:
+      - generic [ref=f4e17]: Source valid
+    - generic [ref=f4e18]: "Development: valid. Production: valid"
+  - generic [ref=f4e19]:
+    - main [ref=f4e20]:
+      - generic [ref=f4e2274]:
+        - generic [ref=f4e2275]:
+          - group "Source environment" [ref=f4e2276]:
+            - generic [ref=f4e2277]: Source
+            - generic [ref=f4e2278]:
+              - button "Development" [pressed] [ref=f4e2279] [cursor=pointer]
+              - button "Production" [ref=f4e2280] [cursor=pointer]
+          - group "Source edit history" [ref=f4e2281]:
+            - button "Undo" [disabled] [ref=f4e2282]
+            - button "Redo" [disabled] [ref=f4e2286]
+            - status [ref=f4e2290]
+        - group "Relations shown" [ref=f4e2291]:
+          - button "Routes" [pressed] [ref=f4e2292] [cursor=pointer]
+          - button "Environment and secrets" [pressed] [ref=f4e2293] [cursor=pointer]
+          - button "Grants and database" [pressed] [ref=f4e2294] [cursor=pointer]
+          - button "Invocations" [pressed] [ref=f4e2295] [cursor=pointer]
+          - button "Workflow integrations" [pressed] [ref=f4e2296] [cursor=pointer]
+          - button "CDK resource links" [pressed] [ref=f4e2297] [cursor=pointer]
+        - generic [ref=f4e2298]:
+          - generic [ref=f4e2299]:
+            - generic [ref=f4e2300]: Unmarked · Dev + Prod
+            - generic "Development only" [ref=f4e2301]: Dev
+            - generic "Production only" [ref=f4e2305]: Prod
+          - button "Add to application" [ref=f4e2311] [cursor=pointer]
+      - group "Application architecture" [ref=f4e2314]:
+        - img "Resource connections":
+          - generic: /api/sign-in
+          - generic: USER_POOL_ID
+          - generic: USER_POOL_CLIENT_ID
+          - generic: TRUSTED_FRONTEND_ORIGINS
+        - generic [ref=f4e2315]: Entry points
+        - generic [ref=f4e2316]: Compute
+        - generic [ref=f4e2317]: Catalog
+        - generic [ref=f4e2318]: HTTP Lambdas
+        - generic [ref=f4e2319]: WebSocket Lambdas
+        - generic [ref=f4e2320]: Event Lambdas
+        - generic [ref=f4e2321]: Agents
+        - generic [ref=f4e2322]: Agent tools
+        - generic [ref=f4e2323]: Container services
+        - generic [ref=f4e2324]: Container tasks
+        - generic [ref=f4e2325]: Workflows
+        - generic [ref=f4e2326]: HTTP routes
+        - generic [ref=f4e2327]: Service mounts
+        - generic [ref=f4e2328]: WebSocket route keys
+        - generic [ref=f4e2329]: Agent routes
+        - generic [ref=f4e2330]: Local development
+        - button "/sign-in HTTP Lambda, sign-in" [ref=f4e2331] [cursor=pointer]:
+          - generic [ref=f4e2333]:
+            - text: /sign-in
+            - generic [ref=f4e2334]: HTTP Lambda, sign-in
+        - button "/sign-out HTTP Lambda, sign-out" [ref=f4e2335] [cursor=pointer]:
+          - generic [ref=f4e2337]:
+            - text: /sign-out
+            - generic [ref=f4e2338]: HTTP Lambda, sign-out
+        - button "/oauth/callback HTTP Lambda, oauth-callback" [ref=f4e2339] [cursor=pointer]:
+          - generic [ref=f4e2341]:
+            - text: /oauth/callback
+            - generic [ref=f4e2342]: HTTP Lambda, oauth-callback
+        - button "/verify-session HTTP Lambda, verify-session" [ref=f4e2343] [cursor=pointer]:
+          - generic [ref=f4e2345]:
+            - text: /verify-session
+            - generic [ref=f4e2346]: HTTP Lambda, verify-session
+        - button "/refresh HTTP Lambda, refresh" [ref=f4e2347] [cursor=pointer]:
+          - generic [ref=f4e2349]:
+            - text: /refresh
+            - generic [ref=f4e2350]: HTTP Lambda, refresh
+        - button "/mfa HTTP Lambda, mfa" [ref=f4e2351] [cursor=pointer]:
+          - generic [ref=f4e2353]:
+            - text: /mfa
+            - generic [ref=f4e2354]: HTTP Lambda, mfa
+        - button "/graphql HTTP Lambda, graphql-api" [ref=f4e2355] [cursor=pointer]:
+          - generic [ref=f4e2357]:
+            - text: /graphql
+            - generic [ref=f4e2358]: HTTP Lambda, graphql-api
+        - button "/examples/python HTTP Lambda, python-example" [ref=f4e2359] [cursor=pointer]:
+          - generic [ref=f4e2361]:
+            - text: /examples/python
+            - generic [ref=f4e2362]: HTTP Lambda, python-example
+        - button "/test/start-workflow HTTP Lambda, test-start-workflow" [ref=f4e2363] [cursor=pointer]:
+          - generic [ref=f4e2365]:
+            - text: /test/start-workflow
+            - generic [ref=f4e2366]: HTTP Lambda, test-start-workflow
+        - button "/test/run-task HTTP Lambda, test-run-task" [ref=f4e2367] [cursor=pointer]:
+          - generic [ref=f4e2369]:
+            - text: /test/run-task
+            - generic [ref=f4e2370]: HTTP Lambda, test-run-task
+        - button "$connect WebSocket Lambda, ws-connect-route Development only" [ref=f4e2371] [cursor=pointer]:
+          - generic [ref=f4e2373]:
+            - text: $connect
+            - generic [ref=f4e2374]: WebSocket Lambda, ws-connect-route
+          - generic "Development only" [ref=f4e2375]: Dev
+        - button "$connect authorizer WebSocket authorizer, ws-authorizer Development only" [ref=f4e2379] [cursor=pointer]:
+          - generic [ref=f4e2381]:
+            - text: $connect authorizer
+            - generic [ref=f4e2382]: WebSocket authorizer, ws-authorizer
+          - generic "Development only" [ref=f4e2383]: Dev
+        - button "$default WebSocket Lambda, ws-default-route Development only" [ref=f4e2387] [cursor=pointer]:
+          - generic [ref=f4e2389]:
+            - text: $default
+            - generic [ref=f4e2390]: WebSocket Lambda, ws-default-route
+          - generic "Development only" [ref=f4e2391]: Dev
+        - button "$disconnect WebSocket Lambda, ws-disconnect-route Development only" [ref=f4e2395] [cursor=pointer]:
+          - generic [ref=f4e2397]:
+            - text: $disconnect
+            - generic [ref=f4e2398]: WebSocket Lambda, ws-disconnect-route
+          - generic "Development only" [ref=f4e2399]: Dev
+        - button "customAction WebSocket Lambda, ws-custom-action-route Development only" [ref=f4e2403] [cursor=pointer]:
+          - generic [ref=f4e2405]:
+            - text: customAction
+            - generic [ref=f4e2406]: WebSocket Lambda, ws-custom-action-route
+          - generic "Development only" [ref=f4e2407]: Dev
+        - button "cognito-pre-signup-trigger Event Lambda" [ref=f4e2411] [cursor=pointer]:
+          - generic [ref=f4e2413]:
+            - text: cognito-pre-signup-trigger
+            - generic [ref=f4e2414]: Event Lambda
+        - button "cognito-custom-message Event Lambda" [ref=f4e2415] [cursor=pointer]:
+          - generic [ref=f4e2417]:
+            - text: cognito-custom-message
+            - generic [ref=f4e2418]: Event Lambda
+        - button "cognito-post-confirmation-trigger Event Lambda" [ref=f4e2419] [cursor=pointer]:
+          - generic [ref=f4e2421]:
+            - text: cognito-post-confirmation-trigger
+            - generic [ref=f4e2422]: Event Lambda
+        - button "invocation-test-step Event Lambda" [ref=f4e2423] [cursor=pointer]:
+          - generic [ref=f4e2425]:
+            - text: invocation-test-step
+            - generic [ref=f4e2426]: Event Lambda
+        - button "example-agent AgentCore agent" [ref=f4e2427] [cursor=pointer]:
+          - generic [ref=f4e2429]:
+            - text: example-agent
+            - generic [ref=f4e2430]: AgentCore agent
+        - button "add-numbers Agent tool" [ref=f4e2431] [cursor=pointer]:
+          - generic [ref=f4e2433]:
+            - text: add-numbers
+            - generic [ref=f4e2434]: Agent tool
+        - button "multiply-numbers Agent tool" [ref=f4e2435] [cursor=pointer]:
+          - generic [ref=f4e2437]:
+            - text: multiply-numbers
+            - generic [ref=f4e2438]: Agent tool
+        - button "/example-service/* Container service, example-service Development only" [ref=f4e2439] [cursor=pointer]:
+          - generic [ref=f4e2441]:
+            - text: /example-service/*
+            - generic [ref=f4e2442]: Container service, example-service
+          - generic "Development only" [ref=f4e2443]: Dev
+        - button "invocation-test-task Container task" [ref=f4e2447] [cursor=pointer]:
+          - generic [ref=f4e2449]:
+            - text: invocation-test-task
+            - generic [ref=f4e2450]: Container task
+        - button "db-migrate Container task Production only" [ref=f4e2451] [cursor=pointer]:
+          - generic [ref=f4e2453]:
+            - text: db-migrate
+            - generic [ref=f4e2454]: Container task
+          - generic "Production only" [ref=f4e2455]: Prod
+        - button "invocation-test-workflow Workflow" [ref=f4e2460] [cursor=pointer]:
+          - generic [ref=f4e2462]:
+            - text: invocation-test-workflow
+            - generic [ref=f4e2463]: Workflow
+        - button "/api/sign-in" [ref=f4e2464] [cursor=pointer]
+        - button "/api/sign-out" [ref=f4e2467] [cursor=pointer]
+        - button "/api/oauth/callback" [ref=f4e2470] [cursor=pointer]
+        - button "/api/verify-session Requires a signed-in user" [ref=f4e2473] [cursor=pointer]:
+          - generic [ref=f4e2475]: /api/verify-session
+          - img "Requires a signed-in user" [ref=f4e2476]
+        - button "/api/refresh" [ref=f4e2479] [cursor=pointer]
+        - button "/api/mfa Requires a signed-in user" [ref=f4e2482] [cursor=pointer]:
+          - generic [ref=f4e2484]: /api/mfa
+          - img "Requires a signed-in user" [ref=f4e2485]
+        - button "/api/graphql Requires a signed-in user" [ref=f4e2488] [cursor=pointer]:
+          - generic [ref=f4e2490]: /api/graphql
+          - img "Requires a signed-in user" [ref=f4e2491]
+        - button "/api/examples/python Requires a signed-in user" [ref=f4e2494] [cursor=pointer]:
+          - generic [ref=f4e2496]: /api/examples/python
+          - img "Requires a signed-in user" [ref=f4e2497]
+        - button "/api/test/start-workflow Requires a signed-in user" [ref=f4e2500] [cursor=pointer]:
+          - generic [ref=f4e2502]: /api/test/start-workflow
+          - img "Requires a signed-in user" [ref=f4e2503]
+        - button "/api/test/run-task Requires a signed-in user" [ref=f4e2506] [cursor=pointer]:
+          - generic [ref=f4e2508]: /api/test/run-task
+          - img "Requires a signed-in user" [ref=f4e2509]
+        - button "/api/example-service Development only Requires a signed-in user" [ref=f4e2512] [cursor=pointer]:
+          - generic [ref=f4e2514]: /api/example-service
+          - generic "Development only" [ref=f4e2515]: Dev
+          - img "Requires a signed-in user" [ref=f4e2519]
+        - button "$connect Development only Requires a signed-in user" [ref=f4e2522] [cursor=pointer]:
+          - generic [ref=f4e2524]: $connect
+          - generic "Development only" [ref=f4e2525]: Dev
+          - img "Requires a signed-in user" [ref=f4e2529]
+        - button "$default Development only" [ref=f4e2532] [cursor=pointer]:
+          - generic [ref=f4e2534]: $default
+          - generic "Development only" [ref=f4e2535]: Dev
+        - button "$disconnect Development only" [ref=f4e2539] [cursor=pointer]:
+          - generic [ref=f4e2541]: $disconnect
+          - generic "Development only" [ref=f4e2542]: Dev
+        - button "customAction Development only" [ref=f4e2546] [cursor=pointer]:
+          - generic [ref=f4e2548]: customAction
+          - generic "Development only" [ref=f4e2549]: Dev
+        - button "/chat/example Requires a signed-in user" [ref=f4e2553] [cursor=pointer]:
+          - generic [ref=f4e2555]: /chat/example
+          - img "Requires a signed-in user" [ref=f4e2556]
+        - button "Framework managed cognito CognitoStack" [ref=f4e2559] [cursor=pointer]:
+          - img "Framework managed" [ref=f4e2562]
+          - generic [ref=f4e2563]: cognito
+          - generic [ref=f4e2564]: CognitoStack
+        - button "userPoolDomainUrl string" [ref=f4e2565] [cursor=pointer]:
+          - generic [ref=f4e2567]: userPoolDomainUrl
+          - generic [ref=f4e2568]: string
+        - button "trustedOriginsCsv string" [ref=f4e2569] [cursor=pointer]:
+          - generic [ref=f4e2571]: trustedOriginsCsv
+          - generic [ref=f4e2572]: string
+        - button "userPool cognito.IUserPool" [ref=f4e2573] [cursor=pointer]:
+          - generic [ref=f4e2575]: userPool
+          - generic [ref=f4e2576]: cognito.IUserPool
+        - button "userPoolClient cognito.IUserPoolClient" [ref=f4e2577] [cursor=pointer]:
+          - generic [ref=f4e2579]: userPoolClient
+          - generic [ref=f4e2580]: cognito.IUserPoolClient
+        - button "skipEmailVerification string" [ref=f4e2581] [cursor=pointer]:
+          - generic [ref=f4e2583]: skipEmailVerification
+          - generic [ref=f4e2584]: string
+        - button "frontendUrl string" [ref=f4e2585] [cursor=pointer]:
+          - generic [ref=f4e2587]: frontendUrl
+          - generic [ref=f4e2588]: string
+        - button "oauthProviderRedirectUri string" [ref=f4e2589] [cursor=pointer]:
+          - generic [ref=f4e2591]: oauthProviderRedirectUri
+          - generic [ref=f4e2592]: string
+        - button "openaiApiKey secret" [ref=f4e2593] [cursor=pointer]:
+          - generic [ref=f4e2595]: openaiApiKey
+          - generic [ref=f4e2596]: secret
+        - button "langgraph group" [ref=f4e2597] [cursor=pointer]:
+          - generic [ref=f4e2599]: langgraph
+          - generic [ref=f4e2600]: group
+        - button "modelProvider" [ref=f4e2601] [cursor=pointer]
+        - button "bedrockModelId" [ref=f4e2604] [cursor=pointer]
+        - button "bedrockMantleModelId" [ref=f4e2607] [cursor=pointer]
+        - button "openaiModelId" [ref=f4e2610] [cursor=pointer]
+        - button "Framework managed rds RdsStack Production only" [ref=f4e2613] [cursor=pointer]:
+          - img "Framework managed" [ref=f4e2616]
+          - generic [ref=f4e2617]: rds
+          - generic [ref=f4e2618]: RdsStack
+          - generic "Production only" [ref=f4e2619]: Prod
+        - button "Framework managed database rds.IDatabaseInstance Production only" [ref=f4e2624] [cursor=pointer]:
+          - img "Framework managed" [ref=f4e2627]
+          - generic [ref=f4e2628]: database
+          - generic [ref=f4e2629]: rds.IDatabaseInstance
+          - generic "Production only" [ref=f4e2630]: Prod
+        - button "Not added to CDK app referenceExamples ReferenceExampleStack" [ref=f4e2635] [cursor=pointer]:
+          - img "Not added to CDK app" [ref=f4e2638]
+          - generic [ref=f4e2639]: referenceExamples
+          - generic [ref=f4e2640]: ReferenceExampleStack
+        - button "documentsBucket s3.Bucket" [ref=f4e2641] [cursor=pointer]:
+          - generic [ref=f4e2643]: documentsBucket
+          - generic [ref=f4e2644]: s3.Bucket
+        - button "recordsTable dynamodb.TableV2" [ref=f4e2645] [cursor=pointer]:
+          - generic [ref=f4e2647]: recordsTable
+          - generic [ref=f4e2648]: dynamodb.TableV2
+        - button "notificationsTopic sns.Topic" [ref=f4e2649] [cursor=pointer]:
+          - generic [ref=f4e2651]: notificationsTopic
+          - generic [ref=f4e2652]: sns.Topic
+        - button "processingQueue sqs.Queue" [ref=f4e2653] [cursor=pointer]:
+          - generic [ref=f4e2655]: processingQueue
+          - generic [ref=f4e2656]: sqs.Queue
+        - button "deadLetterQueue sqs.Queue" [ref=f4e2657] [cursor=pointer]:
+          - generic [ref=f4e2659]: deadLetterQueue
+          - generic [ref=f4e2660]: sqs.Queue
+        - button "googleClientSecret secret" [ref=f4e2661] [cursor=pointer]:
+          - generic [ref=f4e2663]: googleClientSecret
+          - generic [ref=f4e2664]: secret
+        - button "Framework managed FrontendWebsiteS3Stack FrontendWebsiteS3Stack Production only" [ref=f4e2665] [cursor=pointer]:
+          - img "Framework managed" [ref=f4e2668]
+          - generic [ref=f4e2669]: FrontendWebsiteS3Stack
+          - generic [ref=f4e2670]: FrontendWebsiteS3Stack
+          - generic "Production only" [ref=f4e2671]: Prod
+        - button "Framework managed DevLambdaReplayStack DevLambdaReplayStack Development only" [ref=f4e2676] [cursor=pointer]:
+          - img "Framework managed" [ref=f4e2679]
+          - generic [ref=f4e2680]: DevLambdaReplayStack
+          - generic [ref=f4e2681]: DevLambdaReplayStack
+          - generic "Development only" [ref=f4e2682]: Dev
+        - button "Framework managed HttpApiGatewayStack HttpApiGatewayStack Production only" [ref=f4e2686] [cursor=pointer]:
+          - img "Framework managed" [ref=f4e2689]
+          - generic [ref=f4e2690]: HttpApiGatewayStack
+          - generic [ref=f4e2691]: HttpApiGatewayStack
+          - generic "Production only" [ref=f4e2692]: Prod
+        - button "Framework managed WebSocketApiStack WebSocketApiStack Not enabled in development or production" [ref=f4e2697] [cursor=pointer]:
+          - img "Framework managed" [ref=f4e2700]
+          - generic [ref=f4e2701]: WebSocketApiStack
+          - generic [ref=f4e2702]: WebSocketApiStack
+          - generic "Not enabled in development or production" [ref=f4e2703]: "Off"
+        - button "cdk-app/.env.dev Development only" [ref=f4e2706] [cursor=pointer]:
+          - generic [ref=f4e2708]: cdk-app/.env.dev
+          - generic "Development only" [ref=f4e2709]: Dev
+        - button "cdk-app/.env.prod Production only" [ref=f4e2713] [cursor=pointer]:
+          - generic [ref=f4e2715]: cdk-app/.env.prod
+          - generic "Production only" [ref=f4e2716]: Prod
+        - button "client-app/.env" [ref=f4e2721] [cursor=pointer]
+        - button "Local PostgreSQL postgres:16 · Compose Development only" [ref=f4e2724] [cursor=pointer]:
+          - generic [ref=f4e2726]:
+            - text: Local PostgreSQL
+            - generic [ref=f4e2727]: postgres:16 · Compose
+          - generic "Development only" [ref=f4e2728]: Dev
+    - complementary "Inspector" [ref=f4e2732]:
+      - generic [ref=f4e2733]:
+        - generic [ref=f4e2734]: Inspector
+        - button "Close the inspector" [ref=f4e2735] [cursor=pointer]
+      - generic [ref=f4e2739]:
+        - generic [ref=f4e2740]:
+          - text: HTTP Lambda
+          - heading "/sign-in" [level=2] [ref=f4e2741]
+          - code [ref=f4e2743]: lambda:sign-in
+          - generic [ref=f4e2744]:
+            - generic [ref=f4e2745]: Source
+            - link "Open framework-config/workloads/http.ts:24 in VS Code" [ref=f4e2746] [cursor=pointer]:
+              - /url: vscode://file//Users/matt/Desktop/code/framework-fix/matts-aws-framework/framework-config/workloads/http.ts:24:3
+              - code [ref=f4e2747]: http.ts:24
+        - group [ref=f4e2753]:
+          - generic "Tags 1" [ref=f4e2754] [cursor=pointer]:
+            - generic [ref=f4e2757]: Tags
+            - generic [ref=f4e2758]: "1"
+        - region [ref=f4e2759]:
+          - heading "Deployment" [level=3] [ref=f4e2761]
+          - generic [ref=f4e2762]:
+            - generic [ref=f4e2763]:
+              - generic [ref=f4e2764]:
+                - generic [ref=f4e2765]: Development
+                - strong [ref=f4e2770]: Enabled
+                - generic [ref=f4e2771]: On your machine
+              - generic [ref=f4e2772]:
+                - generic [ref=f4e2773]: Production
+                - strong [ref=f4e2776]: Enabled
+                - generic [ref=f4e2777]: In AWS
+            - generic [ref=f4e2778]:
+              - generic [ref=f4e2779]: Deploy
+              - combobox "Deploy" [ref=f4e2781]:
+                - option "Dev + Prod"
+                - option "Prod only"
+                - option "Dev only"
+                - option "Off"
+                - option "Inherit · Dev + Prod" [selected]
+              - group [ref=f4e2783]:
+                - generic "Inherited value" [ref=f4e2784] [cursor=pointer]
+        - region "Node description" [ref=f4e2785]:
+          - group [ref=f4e2786]:
+            - generic "Description Edit" [ref=f4e2787] [cursor=pointer]:
+              - text: Description
+              - generic [ref=f4e2788]: Edit
+          - paragraph [ref=f4e2789]: Signs users in with Cognito and establishes their browser session. Handles password authentication and sign-in challenges.
+        - region [ref=f4e2790]:
+          - heading "Implementation" [level=3] [ref=f4e2792]
+          - generic [ref=f4e2793]:
+            - code [ref=f4e2794]: /lambda_functions/http_functions/sign-in
+            - paragraph [ref=f4e2795]: Required source artifacts present. Runtime and deployment checks are separate.
+            - link "Open implementation in editor" [ref=f4e2796] [cursor=pointer]:
+              - /url: vscode://file//Users/matt/Desktop/code/framework-fix/matts-aws-framework/cdk-app/lambda_functions/http_functions/sign-in/index.ts:1:1
+        - group [ref=f4e2798]:
+          - generic "Connect workload" [ref=f4e2799] [cursor=pointer]
+          - option "Use application database (IAM)" [selected]
+          - option "Provide user-pool identifiers"
+          - option "Run a container task"
+          - option "Start a workflow"
+          - option "Invoke a JSON agent"
+          - option "Deliver input or secret"
+          - option "Grant bucket or queue access"
+          - option "Connect" [selected]
+          - option "Disconnect"
+        - region [ref=f4e2803]:
+          - heading "Settings" [level=3] [ref=f4e2805]
+          - generic [ref=f4e2806]:
+            - generic [ref=f4e2807]:
+              - generic [ref=f4e2808]: Memory
+              - generic [ref=f4e2809]:
+                - spinbutton "Memory in MB" [ref=f4e2810]
+                - generic [ref=f4e2811]: MB
+              - generic [ref=f4e2812]:
+                - generic "defaults.lambda.memorySize" [ref=f4e2814]: "Default: 128 MB"
+                - group [ref=f4e2815]:
+                  - generic "Inherited value" [ref=f4e2816] [cursor=pointer]
+            - generic [ref=f4e2817]:
+              - generic [ref=f4e2818]: Timeout
+              - generic [ref=f4e2819]:
+                - spinbutton "Timeout in s" [ref=f4e2820]
+                - generic [ref=f4e2821]: s
+              - generic [ref=f4e2822]:
+                - generic "defaults.lambda.timeoutSeconds" [ref=f4e2824]: "Default: 10 s"
+                - group [ref=f4e2825]:
+                  - generic "Inherited value" [ref=f4e2826] [cursor=pointer]
+            - generic [ref=f4e2827]:
+              - generic [ref=f4e2828]: Log retention
+              - combobox "Log retention" [ref=f4e2830]:
+                - option "1 day"
+                - option "3 days"
+                - option "5 days"
+                - option "7 days"
+                - option "14 days"
+                - option "30 days"
+                - option "60 days"
+                - option "90 days"
+                - option "120 days"
+                - option "150 days"
+                - option "180 days"
+                - option "365 days"
+                - option "400 days"
+                - option "545 days"
+                - option "731 days"
+                - option "1096 days"
+                - option "1827 days"
+                - option "2192 days"
+                - option "2557 days"
+                - option "2922 days"
+                - option "3288 days"
+                - option "3653 days"
+                - option "Inherit · 30 days" [selected]
+              - group [ref=f4e2832]:
+                - generic "Inherited value" [ref=f4e2833] [cursor=pointer]
+        - generic [ref=f4e2835]:
+          - generic [ref=f4e2836]: API user-pool authorizer
+          - switch "API user-pool authorizer" [ref=f4e2838] [cursor=pointer]:
+            - generic [ref=f4e2839]: "Off"
+          - generic [ref=f4e2842]: Uses the API's Cognito user pool to admit signed-in callers. Handler-side token checks still apply.
+          - group [ref=f4e2843]:
+            - generic "Inherited value" [ref=f4e2844] [cursor=pointer]
+        - region [ref=f4e2845]:
+          - heading "HTTP routes" [level=3] [ref=f4e2847]
+          - generic [ref=f4e2849]:
+            - generic [ref=f4e2850]:
+              - generic [ref=f4e2851]: Route path
+              - textbox "HTTP route /sign-in" [ref=f4e2852]: /sign-in
+            - paragraph [ref=f4e2853]:
+              - text: "Browser path:"
+              - code [ref=f4e2854]: /api/sign-in
+        - group [ref=f4e2856]:
+          - generic "Build and runtime" [ref=f4e2857] [cursor=pointer]
+          - option "arm64"
+          - option "x86_64"
+          - option "Inherit · arm64" [selected]
+          - option "Source bundle (ZIP)"
+          - option "Container image (Dockerfile)"
+          - option "Inherit · Source bundle (ZIP)" [selected]
+          - option "nodejs24"
+          - option "nodejs22"
+          - option "python3.13"
+          - option "python3.12"
+          - option "Inherit · nodejs24" [selected]
+        - group [ref=f4e2862]:
+          - generic "Production placement" [ref=f4e2863] [cursor=pointer]
+          - option "Outside VPCs" [selected]
+          - option "application · 10.0.0.0/16"
+          - option "test · 10.1.0.0/16"
+        - group [ref=f4e2868]:
+          - generic "Connections 4" [ref=f4e2869] [cursor=pointer]:
+            - generic [ref=f4e2872]: Connections
+            - generic [ref=f4e2873]: "4"
+        - group [ref=f4e2875]:
+          - generic "Environment 3" [ref=f4e2876] [cursor=pointer]:
+            - generic [ref=f4e2879]: Environment
+            - generic [ref=f4e2880]: "3"
+  - status

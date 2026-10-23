@@ -1,0 +1,27 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e5]:
+      - text: AWS Studio
+      - generic "matts-aws-framework" [ref=e6]
+    - navigation "Views" [ref=e7]:
+      - link "Board" [ref=e8] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=e9] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [active] [ref=e10] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=e11] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=e12] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=e13] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=e15] [cursor=pointer]:
+      - generic [ref=e18]: Source valid
+    - generic [ref=e19]: "Development: valid. Production: valid"
+  - main [ref=e21]:
+    - generic [ref=e850]:
+      - heading "Database" [level=1] [ref=e851]
+      - generic [ref=e852]
+      - generic [ref=e884]
+  - status

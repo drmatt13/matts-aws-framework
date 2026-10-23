@@ -35,9 +35,15 @@ pinned and the runtime remains Rust-free.
 
 ## Authoring and navigation
 
-The page starts with workspace tabs; the help icon opens guidance on demand.
+The page starts with shared workspace tabs; the help icon opens guidance on demand.
+Tabs scroll horizontally in narrow windows and retain their normal control size,
+keeping every workspace reachable without expanding the toolbar into several rows.
 **Open in editor** sits in the Prisma source pane header. The default split workspace
 favors sustained source editing while showing its structure.
+All tabs use the workbench's shared horizontal gutters. Saved SQL and retention forms
+use Studio's standard control height, label spacing and surface colors; field actions
+align with their controls and wrap at narrow widths. SQL source and execution remain
+separate bordered groups, with review actions kept beside their relevant guidance.
 Source, split and diagram controls stay in the shared toolbar in every layout. Each pane
 has a fullscreen button; Escape or **Exit fullscreen** restores the previous layout and
 keyboard focus. Fullscreen keeps source review, validation and layout controls available

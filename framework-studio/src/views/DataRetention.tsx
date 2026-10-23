@@ -13,7 +13,7 @@ const resourceType = (kind: StatefulKind) => kind === "database" ? "AWS::RDS::DB
 
 export function LifecycleDisclosure({ selection }: { readonly selection: StatefulSelection }) {
   const [open, setOpen] = useState(false);
-  return <details onToggle={event => setOpen(event.currentTarget.open)}><summary>Stateful retention and retained-resource references</summary>{open ? <DataRetention selection={selection} /> : null}</details>;
+  return <details className="state-panel" onToggle={event => setOpen(event.currentTarget.open)}><summary>Stateful retention and retained-resource references</summary>{open ? <DataRetention selection={selection} /> : null}</details>;
 }
 
 export function DataRetention({ kind, selection: suppliedSelection }: { readonly kind?: StatefulKind; readonly selection?: StatefulSelection }) {

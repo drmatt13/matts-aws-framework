@@ -14,7 +14,7 @@ export interface RailRow {
 }
 
 function statusOf(row: RailRow, known: boolean): { label: string; tone: string } {
-  if (!known) return { label: "—", tone: "unknown" };
+  if (!known) return { label: "Unverified", tone: "unknown" };
   if (row.match?.status === "conflict" || row.deployment?.state.kind === "conflict") return { label: "Conflict", tone: "bad" };
   if (row.match?.status === "elsewhere") return { label: "Elsewhere", tone: "unknown" };
   const kind = row.deployment?.state.kind ?? "absent";
@@ -49,7 +49,7 @@ export function Rail(props: {
         <button className={`rail-item ${props.selected === row.name ? "selected" : ""} ${row.mode}`} aria-current={props.selected === row.name ? "true" : undefined} onClick={() => props.onSelect(row.name)}>
           <span className="rail-name">
             <span className={`status-dot ${status.tone}`} aria-hidden />
-            <strong>{row.name}</strong>
+            <strong title={row.name}>{row.name}</strong>
           </span>
           <span className="rail-meta">
             <DeploymentBadge kind={row.mode} />

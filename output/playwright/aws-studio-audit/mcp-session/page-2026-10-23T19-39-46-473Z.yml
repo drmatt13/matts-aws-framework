@@ -1,0 +1,144 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - generic [ref=f3e5]: AWS Studio
+    - navigation "Views" [ref=f3e6]:
+      - link "Board" [ref=f3e7] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=f3e8] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [ref=f3e9] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [active] [ref=f3e10] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f3e11] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f3e12] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=f3e14] [cursor=pointer]:
+      - generic [ref=f3e17]: Source valid
+    - generic [ref=f3e18]: "Development: valid. Production: valid"
+  - main [ref=f3e20]:
+    - generic [ref=f3e6103]:
+      - generic "AWS account" [ref=f3e6104]:
+        - generic [ref=f3e6105]:
+          - generic [ref=f3e6106]:
+            - generic [ref=f3e6107]: AWS profile
+            - combobox "AWS profile" [ref=f3e6108]:
+              - option "default"
+              - option "dev" [selected]
+              - option "dev2"
+          - generic [ref=f3e6109]:
+            - generic [ref=f3e6110]:
+              - generic [ref=f3e6111]: Account
+              - strong [ref=f3e6112]: "734849394764"
+            - generic [ref=f3e6113]:
+              - generic [ref=f3e6114]: Region
+              - generic [ref=f3e6115]: us-east-1
+            - generic "arn:aws:iam::734849394764:user/matthew" [ref=f3e6116]:
+              - img "Signed in" [ref=f3e6117]
+              - text: matthew
+          - button "Refresh" [ref=f3e6119] [cursor=pointer]
+        - generic [ref=f3e6125]:
+          - button "This machine · 4 checks passed" [ref=f3e6126] [cursor=pointer]
+          - list "Machine issues" [ref=f3e6132]:
+            - 'listitem "Dependencies: cdk-app/package.json changed after the last install." [ref=f3e6133]':
+              - generic [ref=f3e6136]: cdk-app/package.json changed after the last install.
+              - button "Install" [ref=f3e6137] [cursor=pointer]
+            - 'listitem "Docker: Docker Desktop is not running." [ref=f3e6138]':
+              - generic [ref=f3e6141]: Docker Desktop is not running.
+              - button "Start" [ref=f3e6142] [cursor=pointer]
+      - generic [ref=f3e6143]:
+        - navigation "Deployments" [ref=f3e6144]:
+          - heading "In this repository" [level=2] [ref=f3e6145]
+          - list [ref=f3e6146]:
+            - listitem [ref=f3e6147]:
+              - button "my-aws-app Development only Not deployed" [ref=f3e6148] [cursor=pointer]:
+                - strong [ref=f3e6151]: my-aws-app
+                - generic [ref=f3e6152]:
+                  - generic "Development only" [ref=f3e6153]: Dev
+                  - generic [ref=f3e6157]: Not deployed
+            - listitem [ref=f3e6158]:
+              - button "my-aws-app-prod Production only Not deployed" [ref=f3e6159] [cursor=pointer]:
+                - strong [ref=f3e6162]: my-aws-app-prod
+                - generic [ref=f3e6163]:
+                  - generic "Production only" [ref=f3e6164]: Prod
+                  - generic [ref=f3e6169]: Not deployed
+          - generic "Local development" [ref=f3e6170]:
+            - generic [ref=f3e6173]:
+              - text: This machineSettings for
+              - strong [ref=f3e6174]: my-aws-app
+        - region [ref=f3e6175]:
+          - generic [ref=f3e6176]:
+            - generic [ref=f3e6177]:
+              - paragraph [ref=f3e6178]: Your development deployment
+              - heading [level=1] [ref=f3e6179]:
+                - text: my-aws-app
+                - generic "Development only" [ref=f3e6180]: Dev
+              - paragraph [ref=f3e6184]:
+                - generic [ref=f3e6185]: 734849394764 · us-east-1
+            - generic [ref=f3e6186]:
+              - button "Compare AWS templates" [ref=f3e6187] [cursor=pointer]
+              - group [ref=f3e6188]:
+                - generic "More actions" [ref=f3e6189] [cursor=pointer]
+          - paragraph [ref=f3e6194]: Template comparison reads AWS without creating review objects. Preparing CloudFormation change sets creates review objects and possibly empty stacks; new secrets require separate approval. Neither action applies infrastructure.
+          - region "What needs attention" [ref=f3e6195]:
+            - article [ref=f3e6196]:
+              - generic [ref=f3e6200]:
+                - strong [ref=f3e6201]: Not deployed here
+                - paragraph [ref=f3e6202]: Nothing of my-aws-app exists in 734849394764 · us-east-1.
+            - article [ref=f3e6203]:
+              - generic [ref=f3e6207]:
+                - strong [ref=f3e6208]: This machine's settings point at my-aws-app, which is not deployed here
+                - paragraph [ref=f3e6209]: Local services would call AWS resources that no longer exist. Deploy it again, or stop development.
+          - generic [ref=f3e6210]:
+            - region "Repository" [ref=f3e6211]:
+              - heading "Repository" [level=3] [ref=f3e6212]
+              - generic [ref=f3e6213]:
+                - term [ref=f3e6214]: Intent
+                - definition [ref=f3e6215]: CDK_APP_NAME in your development inputs
+                - term [ref=f3e6216]: Mode
+                - definition [ref=f3e6217]: Development · fixed when created
+                - term [ref=f3e6218]: Inputs
+                - definition [ref=f3e6219]:
+                  - code [ref=f3e6220]: cdk-app/.env.dev
+                - term [ref=f3e6221]: Account
+                - definition [ref=f3e6222]: the profile's
+            - region "AWS" [ref=f3e6223]:
+              - heading "AWS" [level=3] [ref=f3e6224]
+              - paragraph [ref=f3e6225]: Observed 10/23/2026, 3:39:45 PM. CloudFormation state; application health is separate.
+              - paragraph [ref=f3e6226]: No stacks of my-aws-app in 734849394764 · us-east-1.
+            - region "This machine" [ref=f3e6227]:
+              - heading "This machine" [level=3] [ref=f3e6228]
+              - paragraph [ref=f3e6229]:
+                - text: Starting checks storage. Migrations, orphan cleanup and test identity setup are separate actions.
+                - link "Review local database" [ref=f3e6230] [cursor=pointer]:
+                  - /url: /database
+              - paragraph [ref=f3e6231]: Local services are stopped. · checked just now
+              - generic [ref=f3e6232]:
+                - term [ref=f3e6233]: Docker
+                - definition [ref=f3e6234]: not running
+                - term [ref=f3e6235]: Settings
+                - definition [ref=f3e6236]:
+                  - text: for
+                  - strong [ref=f3e6237]: my-aws-app
+                - term [ref=f3e6238]: Watch
+                - definition [ref=f3e6239]: "off"
+                - term [ref=f3e6240]: Web client
+                - definition [ref=f3e6241]: "off"
+          - group [ref=f3e6242]:
+            - generic "Development & production deployment names" [ref=f3e6243] [cursor=pointer]
+            - option "Development" [selected]
+            - option "Production / staging"
+          - group [ref=f3e6244]:
+            - generic "Client environment & frontend release" [ref=f3e6245] [cursor=pointer]
+          - group [ref=f3e6246]:
+            - generic "Stateful retention and retained-resource references" [ref=f3e6247] [cursor=pointer]
+      - region "Activity" [ref=f3e6248]:
+        - button "Activity Delete my-aws-app · Done · my-aws-app is deleted." [ref=f3e6249] [cursor=pointer]:
+          - strong [ref=f3e6250]: Activity
+          - generic [ref=f3e6251]:
+            - text: Delete my-aws-app
+            - generic [ref=f3e6252]: · Done
+            - generic [ref=f3e6253]: · my-aws-app is deleted.
+      - status
+  - status

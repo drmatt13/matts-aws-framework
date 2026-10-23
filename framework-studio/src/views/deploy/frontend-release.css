@@ -1,10 +1,12 @@
-.frontend-release { margin-top: var(--space-4); }
-.frontend-release > summary { cursor: pointer; font-weight: 600; }
-.frontend-release details { margin: var(--space-3) 0; }
+.frontend-release summary { cursor: pointer; font-weight: 600; padding-block: var(--space-2); }
+.frontend-release details[open] > :not(summary), .frontend-release section > * + * { margin-block: var(--space-3) 0; }
+.frontend-release details { min-width: 0; }
 .frontend-release pre { max-height: 300px; max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: var(--space-3); background: var(--paper); }
 .frontend-release code { overflow-wrap: anywhere; }
 .release-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.release-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: var(--space-3); margin: var(--space-3) 0; }
-.frontend-release label { display: grid; gap: var(--space-1); min-width: 0; }
+.release-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); align-items: start; gap: var(--space-3); margin: var(--space-3) 0; }
+.frontend-release label { display: grid; gap: var(--space-1); min-width: 0; font-size: var(--text-label); }
+.frontend-release label:has(input[type=checkbox]) { display: flex; align-items: flex-start; gap: var(--space-2); grid-column: 1 / -1; }
+.frontend-release label > input[type=checkbox] { margin-top: 2px; }
 .frontend-release input:not([type=checkbox]), .frontend-release textarea, .frontend-release select { width: 100%; box-sizing: border-box; min-width: 0; }
 .frontend-release textarea { min-height: 70px; resize: vertical; }

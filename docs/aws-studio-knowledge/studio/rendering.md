@@ -77,6 +77,11 @@ canvas container. The toolbar participates in normal flow, so wrapping and searc
 feedback reduce the canvas viewport without obscuring resources. Resize, picking,
 hover and fit keep using the inner scene container. Renderer timing remains in
 `window.__studioLandscape.stats()`; normal chrome shows resource/connection counts.
+Board and Isometric compose `SourceEnvironment` and `SourceHistory` into their own
+toolbars. These select the declaration projection and edit source; named AWS targets
+remain in operational workspaces. The shared primary bar contains only navigation,
+repository identity and source validation. Empty graph states retain source controls
+so a failed mode does not prevent switching to another mode or undoing a source edit.
 See the [UI design system](../../framework-studio/ui-design-system.md) for route gutters,
 surface and responsive ownership. Board uses a labeled creation action and a themed
 chooser; its trailing legend and action wrap together.

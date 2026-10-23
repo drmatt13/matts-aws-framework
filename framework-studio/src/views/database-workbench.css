@@ -1,14 +1,12 @@
 .database-workbench { padding: 0 var(--workspace-gutter) var(--space-3); gap: var(--space-4); }
-.workbench-navigation, .workbench-tabs, .workbench-actions, .workbench-source-bar, .workbench-source-bar > div, .workbench-pane-heading, .workbench-pane-heading > span, .workbench-pane-heading > div, .workbench-editor-status, .workbench-diagram-caption, .workbench-detail-heading, .workbench-pane-toolbar, .workbench-view-modes { display: flex; align-items: center; gap: 10px; }
-.workbench-navigation { justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-2); margin-inline: calc(-1 * var(--workspace-gutter)); }
-.workbench-tabs { gap: var(--space-1); flex-wrap: wrap; flex: 1; min-width: 0; }
+.workbench-navigation, .workbench-actions, .workbench-source-bar, .workbench-source-bar > div, .workbench-pane-heading, .workbench-pane-heading > span, .workbench-pane-heading > div, .workbench-editor-status, .workbench-diagram-caption, .workbench-detail-heading, .workbench-pane-toolbar, .workbench-view-modes { display: flex; align-items: center; gap: var(--space-2); }
+.workbench-navigation { justify-content: space-between; gap: var(--space-2); margin-inline: calc(-1 * var(--workspace-gutter)); }
+.workbench-tabs { flex: 1; min-width: 0; }
+.workbench-actions { flex-wrap: wrap; min-width: 0; }
 .workbench-help-toggle { flex-shrink: 0; background: transparent; border-color: transparent; color: var(--graphite); }
-.workbench-tabs button { min-height: var(--control-height); border: 1px solid transparent; border-radius: var(--radius); background: transparent; padding: var(--space-1) var(--space-3); display: flex; align-items: center; gap: var(--space-2); color: var(--graphite); font: 500 var(--text-label)/1.5 var(--sans); cursor: pointer; }
-.workbench-tabs button:hover { color: var(--ink); background: var(--wash); }
-.workbench-tabs button[aria-pressed="true"] { color: var(--ink); border-color: var(--rule-strong); background: var(--wash); }
 .workbench-help { border: 1px solid var(--rule); background: var(--sheet); padding: 16px; border-radius: 6px; }
 .workbench-help p { max-width: 110ch; margin: 8px 0 0; }
-.workbench-notice { padding: 10px 14px; border: 1px solid var(--rule); background: var(--sheet); font-size: 12px; line-height: 1.6; }
+.workbench-notice { padding: var(--space-3) var(--space-4); border: 1px solid var(--rule); border-radius: var(--radius); background: var(--sheet); font-size: var(--text-caption); line-height: 1.6; overflow-wrap: anywhere; }
 .workbench-notice.warning { border-left: 3px solid var(--local); background: color-mix(in srgb, var(--local) 8%, var(--sheet)); }
 .workbench-notice button { margin-left: 8px; }
 .workbench-loading { padding: 64px 24px; text-align: center; color: var(--graphite); }
@@ -129,8 +127,6 @@
   .workbench-source-bar { gap: 10px; }
 }
 @media (max-width: 480px) {
-  .workbench-tabs button { padding-inline: var(--space-2); font-size: var(--text-caption); gap: var(--space-1); }
-  .workbench-tabs button svg { width: 13px; }
   .workbench-observation-heading select { min-width: 0; width: 100%; }
   .workbench-observation-heading label { width: 100%; }
   .workbench-diagnostic { flex-wrap: wrap; }
@@ -163,14 +159,19 @@
 .workbench-representations dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 700px) { .workbench-representations dl > div { grid-template-columns: 1fr; gap: 5px; } }
 
-.database-sql, .data-retention { padding: 16px; max-width: 1100px; }
-.database-sql h2, .data-retention h2 { margin-top: 0; }
-.database-sql fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 18px 0; padding: 16px; }
-.database-sql label, .data-retention > label { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
-.database-sql .sql-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.database-sql { min-width: 0; }
+.database-sql fieldset { display: grid; gap: var(--space-3); min-width: 0; border: 1px solid var(--rule); border-radius: var(--radius-lg); background: var(--sheet); margin: var(--space-4) 0; padding: var(--space-4); }
+.database-sql legend { padding: 0 var(--space-1); font-size: var(--text-label); font-weight: 600; }
+.database-sql label { display: grid; gap: var(--space-1); min-width: 0; font-size: var(--text-label); }
+.database-sql :is(input, select, textarea) { width: 100%; min-width: 0; }
+.database-sql fieldset > button { justify-self: start; }
+.database-sql fieldset p { margin: 0; }
+.database-sql .sql-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sql-catalog { align-items: flex-end; gap: var(--space-2); }
+.sql-catalog > label { flex: 0 1 320px; }
 .database-sql .sql-source { grid-column: 1 / -1; }
-.database-sql textarea { width: 100%; box-sizing: border-box; font: 13px/1.5 var(--font-mono, monospace); padding: 10px; resize: vertical; }
-.database-sql pre, .data-retention pre { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
-.database-sql details, .data-retention details { margin: 12px 0; }
-.data-retention > label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; }
-@media (max-width: 650px) { .database-sql .sql-fields { grid-template-columns: 1fr; } .workbench-tabs { flex-wrap: wrap; } }
+.sql-source-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.database-sql textarea { box-sizing: border-box; font: var(--text-label)/1.5 var(--mono); padding: var(--space-2) var(--space-3); resize: vertical; }
+.database-sql pre { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.database-sql details { margin: var(--space-3) 0; }
+@media (max-width: 650px) { .database-sql .sql-fields { grid-template-columns: 1fr; } }

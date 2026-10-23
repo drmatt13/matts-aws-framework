@@ -303,6 +303,29 @@ test("a target pinned to another region is read, and shown, from that region", a
   assert.ok(requested.some((url) => url.startsWith("/deploy/status") && url.includes("region=us-west-2")), requested.join(" "));
 });
 
+test("named staging remains a production-mode destination with its own resolved region", async () => {
+  const staging = { name: "my-aws-app-staging", mode: "prod" as const, origin: "declared" as const, account: context.account, region: "us-west-2", inputs: "cdk-app/.env.staging" };
+  const targets = [...overview().targets, staging];
+  const west = { ...context, region: staging.region };
+  render({
+    "/deploy/overview": overview({ targets, preferences: { profiles: {}, profile: "dev", deployment: staging.name } }),
+    "/deploy/discover": { ok: true, value: discovery() },
+    "/deploy/status": { ok: true, value: { ...discovery(), context: west, deployment: staging.name, targets: targets.map(target => ({ ...target, status: "absent" })) } },
+  });
+  const rail = await ui.screen.findByRole("navigation", { name: "Deployments" });
+  for (const target of targets) assert.ok(ui.within(rail).getByTitle(target.name).closest("button"));
+  const selected = ui.within(rail).getByTitle(staging.name).closest("button")!;
+  await ui.waitFor(() => assert.equal(selected.getAttribute("aria-current"), "true"));
+  assert.ok(selected.textContent?.includes("Prod"));
+  const header = ui.screen.getByRole("banner", { name: "AWS account" });
+  await ui.waitFor(() => assert.ok(ui.within(header).getByText(staging.region)));
+  assert.equal(ui.within(header).queryByText(context.region), null, "profile defaults are not presented as the selected deployment region");
+  const profile = ui.within(header).getByRole("combobox", { name: "AWS profile" }) as HTMLSelectElement;
+  assert.equal(profile.selectedOptions[0]?.text, "dev", "credential profile names are independent of deployment mode");
+  assert.match(profile.title, /Profile default region: us-east-1/);
+  assert.equal(operations().length, 0);
+});
+
 test("the deployment actions menu supports arrow navigation, Escape and outside dismissal", async () => {
   const value = { ...discovery([deployed("my-aws-app", "dev")]), deployment: "my-aws-app", detail: { ...deployed("my-aws-app", "dev"), events: [], changeSets: [], local: { compatible: true, exported: { client: false, fresh: false } } } };
   render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: value }, "/deploy/status": { ok: true, value } });

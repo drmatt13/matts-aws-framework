@@ -1,0 +1,104 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - generic [ref=f3e5]:
+      - text: AWS Studio
+      - generic "matts-aws-framework" [ref=f3e743]
+    - navigation "Views" [ref=f3e6]:
+      - link "Board" [ref=f3e7] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=f3e8] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [ref=f3e9] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f3e10] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f3e11] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [active] [ref=f3e12] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=f3e14] [cursor=pointer]:
+      - generic [ref=f3e17]: Source valid
+    - generic [ref=f3e18]: "Development: valid. Production: valid"
+  - main [ref=f3e20]:
+    - generic [ref=f3e2094]:
+      - generic [ref=f3e2096]:
+        - generic [ref=f3e2097]:
+          - heading "DNS / Domains" [level=1] [ref=f3e2098]
+          - generic [ref=f3e2099]:
+            - generic [ref=f3e2100]: Source
+            - text: Production
+          - group "Source edit history" [ref=f3e2101]:
+            - button "Undo" [disabled] [ref=f3e2102]
+            - button "Redo" [disabled] [ref=f3e2106]
+            - status [ref=f3e2110]
+        - paragraph [ref=f3e2111]: Source intent, deployed metadata and actual application health have independent evidence.
+      - generic [ref=f3e2112]:
+        - generic [ref=f3e2113]:
+          - heading "Read-only deployment inspection" [level=2] [ref=f3e2114]
+          - generic [ref=f3e2115]:
+            - generic [ref=f3e2116]:
+              - text: Profile
+              - combobox "Identity AWS profile" [ref=f3e2117]: dev
+            - generic [ref=f3e2118]:
+              - text: Deployment
+              - combobox "Identity deployment" [ref=f3e2119]:
+                - option "Select a deployment"
+                - option "my-aws-app-prod · prod" [selected]
+            - generic [ref=f3e2120]:
+              - text: Region
+              - textbox "Identity AWS region" [ref=f3e2121]: us-east-1
+            - button "Inspect deployed settings" [ref=f3e2122] [cursor=pointer]
+          - paragraph [ref=f3e2123]: Reads verified owned CloudFormation resources using the selected credentials. No users, policies, DNS, certificates or stacks are modified.
+          - paragraph [ref=f3e2124]: "Deployed state: unverified. Choose Inspect to read AWS."
+        - generic [ref=f3e2125]:
+          - heading "Production domain intent" [level=2] [ref=f3e2126]
+          - paragraph [ref=f3e2127]:
+            - text: These settings edit the same protected
+            - code [ref=f3e2128]: cdk-app/.env.prod
+            - text: inputs used by Deploy. Source approval does not request a certificate, write DNS or deploy.
+          - group "Cognito authentication" [ref=f3e2129]:
+            - generic [ref=f3e2131]:
+              - text: Use custom domain
+              - switch "Use Cognito authentication custom domain" [ref=f3e2132] [cursor=pointer]:
+                - generic [ref=f3e2133]: "Off"
+            - generic [ref=f3e2136]:
+              - text: COGNITO_DOMAIN_NAME
+              - textbox "COGNITO_DOMAIN_NAME" [ref=f3e2137]:
+                - /placeholder: auth.example.com
+            - generic [ref=f3e2138]:
+              - text: COGNITO_DOMAIN_CERTIFICATE_ARN
+              - textbox "COGNITO_DOMAIN_CERTIFICATE_ARN" [ref=f3e2139]:
+                - /placeholder: arn:aws:acm:us-east-1:123456789012:certificate/…
+          - group "Frontend" [ref=f3e2140]:
+            - generic [ref=f3e2142]:
+              - text: Use custom domain
+              - switch "Use Frontend custom domain" [ref=f3e2143] [cursor=pointer]:
+                - generic [ref=f3e2144]: "Off"
+            - generic [ref=f3e2147]:
+              - text: FRONTEND_URL
+              - textbox "FRONTEND_URL" [ref=f3e2148]:
+                - /placeholder: https://app.example.com
+            - generic [ref=f3e2149]:
+              - text: FRONTEND_CLOUDFRONT_CERTIFICATE_ARN
+              - textbox "FRONTEND_CLOUDFRONT_CERTIFICATE_ARN" [ref=f3e2150]:
+                - /placeholder: arn:aws:acm:us-east-1:123456789012:certificate/…
+          - paragraph [ref=f3e2151]: Both certificates must be in us-east-1 in the deployment account and cover the configured hostname. Cognito additionally needs an A record for the immediate parent hostname. Issued certificate metadata, DNS answers and actual application health are separate evidence.
+          - paragraph [ref=f3e2152]:
+            - link "Cognito domain prerequisites" [ref=f3e2153] [cursor=pointer]:
+              - /url: https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-add-custom-domain.html
+            - text: ·
+            - link "CloudFront certificate requirements" [ref=f3e2154] [cursor=pointer]:
+              - /url: https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/cnames-and-https-requirements.html
+        - generic [ref=f3e2155]:
+          - heading "Live domain health and managed DNS" [level=2] [ref=f3e2156]
+          - paragraph [ref=f3e2157]: These explicit operations use only the saved production hostname and the selected account/deployment above. Source approval, TLS/HTTP inspection and DNS routing changes are separate actions.
+          - generic [ref=f3e2158]:
+            - text: Configured domain purpose
+            - combobox "Domain operation purpose" [ref=f3e2159]:
+              - option "Frontend" [selected]
+              - option "Cognito authentication"
+          - generic [ref=f3e2160]:
+            - button "Inspect live DNS / TLS / HTTP" [ref=f3e2161] [cursor=pointer]
+            - button "Discover managed DNS zones" [ref=f3e2162] [cursor=pointer]
+          - paragraph [ref=f3e2163]: Public addresses are pinned for TLS/HTTP; local/private/reserved and mixed DNS answers are blocked. Redirects are not followed. A 200 response, HTML title or Route53 INSYNC does not establish application runtime or successful sign-in.
+  - status

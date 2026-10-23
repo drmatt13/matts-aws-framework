@@ -1,6 +1,14 @@
 import type { IdentitySelection, IdentitySource } from "../shared/identity";
 import { call } from "./api";
 
+/** Keep server diagnostics intact while making browser transport failures actionable. */
+export function inspectionErrorMessage(reason: unknown): string {
+  if (reason instanceof TypeError && /^(Failed to fetch|fetch failed|Load failed|Network request failed|NetworkError when attempting to fetch resource\.?)$/i.test(reason.message.trim())) {
+    return `Inspection could not reach Studio. Check the Studio connection, then retry inspection. Details: ${reason.message}`;
+  }
+  return reason instanceof Error && reason.message ? reason.message : "Inspection failed. Retry inspection.";
+}
+
 /** Shared read-only transport for authentication and production domains. */
 export const identityApi = {
   source: async (mode: "dev" | "prod", signal?: AbortSignal) => {

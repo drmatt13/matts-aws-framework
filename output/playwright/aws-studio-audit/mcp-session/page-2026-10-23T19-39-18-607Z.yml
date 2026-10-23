@@ -1,0 +1,154 @@
+- generic [ref=f3e3]:
+  - banner [ref=f3e4]:
+    - generic [ref=f3e5]:
+      - text: AWS Studio
+      - generic "matts-aws-framework" [ref=f3e743]
+    - navigation "Views" [ref=f3e6]:
+      - link "Board" [ref=f3e7] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=f3e8] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [ref=f3e9] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f3e10] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f3e11] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f3e12] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=f3e14] [cursor=pointer]:
+      - generic [ref=f3e17]: Source valid
+    - generic [ref=f3e18]: "Development: valid. Production: valid"
+  - main [ref=f3e20]:
+    - generic [ref=f3e4833]:
+      - navigation "Cognito sections" [ref=f3e4835]:
+        - link "User Pools" [ref=f3e4836] [cursor=pointer]:
+          - /url: /cognito/user-pools
+        - link "Identity Pools" [ref=f3e4837] [cursor=pointer]:
+          - /url: /cognito/identity-pools
+        - link "Providers" [ref=f3e4838] [cursor=pointer]:
+          - /url: /cognito/providers
+        - link "Permissions & RBAC" [ref=f3e4839] [cursor=pointer]:
+          - /url: /cognito/permissions
+      - generic [ref=f3e4841]:
+        - generic [ref=f3e4842]:
+          - heading "Cognito" [level=1] [ref=f3e4843]
+          - group "Source environment" [ref=f3e4844]:
+            - generic [ref=f3e4845]: Source
+            - generic [ref=f3e4846]:
+              - button "Development" [pressed] [ref=f3e4847] [cursor=pointer]
+              - button "Production" [ref=f3e4848] [cursor=pointer]
+          - group "Source edit history" [ref=f3e4849]:
+            - button "Undo" [disabled] [ref=f3e4850]
+            - button "Redo" [disabled] [ref=f3e4854]
+            - status [ref=f3e4858]
+        - generic [ref=f3e4859]:
+          - generic [ref=f3e4860]:
+            - text: Profile
+            - combobox "Identity AWS profile" [ref=f3e4861]: dev
+          - generic [ref=f3e4862]:
+            - text: Deployment
+            - combobox "Identity deployment" [ref=f3e4863]:
+              - option "Select a deployment"
+              - option "my-aws-app" [selected]
+          - generic [ref=f3e4864]:
+            - text: Region
+            - textbox "Identity AWS region" [ref=f3e4865]: us-east-1
+          - button "Inspect authentication" [ref=f3e4866] [cursor=pointer]
+        - status [ref=f3e4867]:
+          - generic [ref=f3e4868]:
+            - strong [ref=f3e4869]: Source
+            - text: Development declarations
+          - generic [ref=f3e4870]:
+            - strong [ref=f3e4871]: AWS metadata
+            - text: Unverified for this context
+          - generic [ref=f3e4872]:
+            - strong [ref=f3e4873]: Sign-in / effective access
+            - text: Unverified
+        - generic [ref=f3e4874]:
+          - paragraph [ref=f3e4875]:
+            - strong [ref=f3e4876]: Source inputs
+            - code [ref=f3e4877]: cdk-app/.env.dev
+          - group [ref=f3e4878]:
+            - generic "Evidence and action boundaries" [ref=f3e4879] [cursor=pointer]
+      - generic [ref=f3e4880]:
+        - heading "User Pools" [active] [level=2] [ref=f3e4881]
+        - generic [ref=f3e4882]:
+          - generic [ref=f3e4883]:
+            - generic [ref=f3e4884]:
+              - generic [ref=f3e4885]:
+                - heading "Application user pool" [level=2] [ref=f3e4886]
+                - paragraph [ref=f3e4887]:
+                  - generic [ref=f3e4888]: Deployment unverified
+                  - generic [ref=f3e4889]: A source declaration alone does not prove a deployed pool.
+              - button "Inspect source declaration" [ref=f3e4890] [cursor=pointer]
+            - paragraph [ref=f3e4891]: Select a deployment and inspect authentication to load its pool, app clients, users and groups.
+            - generic [ref=f3e4892]:
+              - link "Set up federation" [ref=f3e4893] [cursor=pointer]:
+                - /url: /cognito/providers
+              - link "Connect AWS access" [ref=f3e4894] [cursor=pointer]:
+                - /url: /cognito/identity-pools
+              - link "Inspect permissions" [ref=f3e4895] [cursor=pointer]:
+                - /url: /cognito/permissions
+          - generic [ref=f3e4896]:
+            - heading "App clients" [level=2] [ref=f3e4897]
+            - paragraph [ref=f3e4898]: Inspect authentication to observe app-client configuration.
+          - generic [ref=f3e4899]:
+            - heading "Users" [level=2] [ref=f3e4900]
+            - generic [ref=f3e4901]:
+              - generic [ref=f3e4902]:
+                - text: Username starts with
+                - textbox "Search Cognito users" [ref=f3e4903]
+              - button "Search users" [ref=f3e4904] [cursor=pointer]
+            - paragraph [ref=f3e4905]: Users are unverified until an explicit AWS inspection.
+          - generic [ref=f3e4906]:
+            - heading "Groups and role claims" [level=2] [ref=f3e4907]
+            - paragraph [ref=f3e4908]: Inspect authentication to read groups from the selected deployment-owned user pool.
+            - paragraph [ref=f3e4909]: Cognito groups influence token claims. Application RBAC, identity-pool role selection and IAM authorization are independent.
+          - region "Cognito user and group management" [ref=f3e4910]:
+            - heading "User and group operations" [level=2] [ref=f3e4911]
+            - paragraph [ref=f3e4912]: Review one action against the verified deployment-owned pool, then explicitly approve its exact user/group, pool and account. Creating users sends no invitation. Password, reset and user-deletion operations are unavailable.
+            - paragraph [ref=f3e4913]:
+              - text: Profile
+              - code [ref=f3e4914]: dev
+              - text: · deployment
+              - code [ref=f3e4915]: my-aws-app
+              - text: · us-east-1. Review reads AWS; it does not write. Production requires separate operation-specific authorization.
+            - group "Requested action" [ref=f3e4916]:
+              - generic [ref=f3e4918]:
+                - text: Action
+                - combobox "Cognito management action" [ref=f3e4919]:
+                  - option "Create user without invitation" [selected]
+                  - option "Create group without IAM role"
+                  - option "Add user to group"
+                  - option "Remove user from group"
+                  - option "Enable user"
+                  - option "Disable user"
+              - generic [ref=f3e4920]:
+                - text: Username
+                - textbox "Cognito management username" [ref=f3e4921]:
+                  - /placeholder: campaign.user@example.invalid
+              - generic [ref=f3e4922]:
+                - text: Email
+                - textbox "Cognito management email" [ref=f3e4923]:
+                  - /placeholder: campaign.user@example.invalid
+              - generic [ref=f3e4924]:
+                - text: Given name
+                - textbox "Cognito management given name" [ref=f3e4925]
+              - generic [ref=f3e4926]:
+                - text: Family name
+                - textbox "Cognito management family name" [ref=f3e4927]
+              - paragraph [ref=f3e4928]: Cognito generates a temporary credential server-side. It is never retrieved or delivered here; this tool does not complete sign-in or assert email verification.
+              - button "Review Cognito operation" [ref=f3e4929] [cursor=pointer]
+            - group [ref=f3e4930]:
+              - generic "Operation history (0)" [ref=f3e4931] [cursor=pointer]
+          - group [ref=f3e4932]:
+            - generic "Retention and retained pool reuse" [ref=f3e4933] [cursor=pointer]
+            - option "Development" [selected]
+            - option "Production"
+            - option "Inherit legacy input" [selected]
+            - option "Retain"
+            - option "Remove"
+            - option "Select destination"
+            - option "my-aws-app" [selected]
+  - status

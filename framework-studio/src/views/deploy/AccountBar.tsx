@@ -32,14 +32,13 @@ export function AccountBar(props: {
       <div className="account-identity">
         <label className="profile-picker">
           <span className="small muted">AWS profile</span>
-          <select value={props.profile ?? ""} onChange={(event) => props.onProfile(event.target.value)} aria-label="AWS profile">
+          <select value={props.profile ?? ""} onChange={(event) => props.onProfile(event.target.value)} aria-label="AWS profile" title={selected?.region ? `Profile default region: ${selected.region}. A deployment's pinned region takes precedence.` : undefined}>
             {!props.profile ? <option value="">Choose a profile</option> : null}
             {props.profiles.map((entry) => (
-              <option key={entry.name} value={entry.name}>{entry.name}{entry.region ? ` · ${entry.region}` : ""}</option>
+              <option key={entry.name} value={entry.name}>{entry.name}</option>
             ))}
           </select>
         </label>
-        <span className="account-arrow" aria-hidden>→</span>
         {props.problem ? (
           <span className={`account-resolved problem ${props.problem.kind}`} role="status">
             <AlertTriangle size={15} aria-hidden />
@@ -49,18 +48,14 @@ export function AccountBar(props: {
             ) : null}
           </span>
         ) : props.context ? (
-          <span className="account-resolved" title={props.context.arn}>
-            <strong className="account-number">{props.context.account}</strong>
-            <span className="account-sep">·</span>
-            <span>{props.context.region}</span>
-            <span className="account-sep">·</span>
-            <span className="muted">{callerName(props.context.arn)}</span>
-            <Check size={14} className="ok-mark" aria-label="Signed in" />
+          <span className="account-resolved">
+            <span className="account-fact"><span className="small muted">Account</span><strong className="account-number">{props.context.account}</strong></span>
+            <span className="account-fact"><span className="small muted">Region</span><span>{props.context.region}</span></span>
+            <span className="account-caller muted" title={props.context.arn}><Check size={14} className="ok-mark" aria-label="Signed in" />{callerName(props.context.arn)}</span>
           </span>
         ) : (
-          <span className="account-resolved muted">{props.profile ? (props.loading ? "Resolving the account…" : "") : "Choose the profile whose account to inspect."}</span>
+          <span className="account-resolved muted" role="status">{props.profile ? (props.loading ? "Resolving the account…" : "AWS account unverified") : "Choose the profile whose account to inspect."}</span>
         )}
-        <span className="spacer" />
         <button className="quiet account-refresh" onClick={props.onRefresh} disabled={props.loading} aria-label="Refresh" aria-busy={props.loading} title="Read AWS and this machine again">
           <RefreshCw size={14} className={props.loading ? "spin" : undefined} aria-hidden /> {props.loading ? "Refreshing…" : "Refresh"}
         </button>

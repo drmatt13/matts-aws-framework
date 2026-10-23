@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
@@ -28,7 +29,8 @@ interface Search {
   readonly select?: string;
 }
 
-function Root() {
+// An exported component gives the entry a React Refresh boundary.
+export function Root() {
   const { data, error, isPending, refetch, isFetching } = useSnapshot();
   const search = useSearch({ from: rootRoute.id });
   const navigate = useNavigate();
@@ -66,7 +68,16 @@ const permissionsRoute = createRoute({ getParentRoute: () => cognitoRoute, path:
 const identityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/identity-pools", beforeLoad: () => { throw redirect({ to: "/cognito/identity-pools", replace: true }); } });
 const legacyIdentityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/identity", beforeLoad: () => { throw redirect({ to: "/cognito/identity-pools", replace: true }); } });
 const domainsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/domains", component: lazyRouteComponent(() => import("./views/IdentityWorkspace"), "Domains") });
-const router = createRouter({ routeTree: rootRoute.addChildren([boardRoute, isometricRoute, databaseRoute, deployRoute, cognitoRoute.addChildren([userPoolsRoute, identityPoolsRoute, providersRoute, permissionsRoute]), identityRoute, legacyIdentityRoute, domainsRoute]) });
+const routeTree = rootRoute.addChildren([boardRoute, isometricRoute, databaseRoute, deployRoute, cognitoRoute.addChildren([userPoolsRoute, identityPoolsRoute, providersRoute, permissionsRoute]), identityRoute, legacyIdentityRoute, domainsRoute]);
+function createStudioRouter() { return createRouter({ routeTree }); }
+interface Application {
+  readonly root: ReturnType<typeof createRoot>;
+  readonly queryClient: QueryClient;
+  readonly router: ReturnType<typeof createStudioRouter>;
+}
+const previous = import.meta.hot?.data.application as Application | undefined;
+const router = previous?.router ?? createStudioRouter();
+if (previous) router.update({ routeTree });
 
 declare module "@tanstack/react-router" {
   interface Register {
@@ -74,11 +85,21 @@ declare module "@tanstack/react-router" {
   }
 }
 
-const queryClient = new QueryClient();
+const application = previous ?? { root: createRoot(document.getElementById("root")!), queryClient: new QueryClient(), router };
+if (import.meta.hot) {
+  // Replacing an entry must retain React ownership, caches and the mounted draft.
+  // React Refresh updates components; unmount only when the entry is removed.
+  import.meta.hot.dispose(data => { data.application = application; });
+  import.meta.hot.prune(() => {
+    application.root.unmount();
+    application.queryClient.clear();
+    application.router.history.destroy();
+  });
+}
 
-createRoot(document.getElementById("root")!).render(
+if (!previous) application.root.render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={application.queryClient}>
       <RouterProvider router={router} />
     </QueryClientProvider>
   </StrictMode>,

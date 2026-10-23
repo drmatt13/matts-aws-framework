@@ -1,26 +1,15 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { AlertTriangle, Check, ClipboardCheck, Redo2, Undo2, X } from "lucide-react";
+import { AlertTriangle, Check, ClipboardCheck, LoaderCircle, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { CommandResult } from "../../shared/api";
-import type { Diagnostic } from "../../shared/model";
+import type { Mode } from "../../shared/model";
 import { api, ApiError } from "../api";
 import { useStudio } from "../studio";
 import { EditDialog } from "./EditDialog";
 import { Inspector } from "./Inspector";
 import { UnsavedChangesDialog } from "./DraftControls";
 import { SourceRecoveryPanel } from "./SourceRecovery";
-
-function Verdict(props: { readonly label: string; readonly diagnostics: readonly Diagnostic[] }) {
-  const errors = props.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
-  const warnings = props.diagnostics.filter((diagnostic) => diagnostic.severity === "warning").length;
-  return (
-    <span className={`verdict ${errors ? "bad" : warnings ? "warning" : "good"}`}>
-      {errors || warnings ? <AlertTriangle size={14} aria-hidden /> : <Check size={14} aria-hidden />}
-      {props.label}
-      {errors || warnings ? ` ${errors || warnings}` : ""}
-    </span>
-  );
-}
+import { NavigationStrip } from "./NavigationStrip";
 
 function Drawer(props: { readonly title: string; readonly onClose: () => void; readonly children: ReactNode }) {
   const id = useId();
@@ -47,14 +36,14 @@ function Drawer(props: { readonly title: string; readonly onClose: () => void; r
 
 function DiagnosticsDrawer(props: { readonly onClose: () => void; readonly onCheck: () => void }) {
   const { snapshot, select, live } = useStudio();
-  const all = (["dev", "prod"] as const).flatMap((mode) =>
+  const all = (Object.keys(snapshot.models) as Mode[]).flatMap((mode) =>
     snapshot.models[mode].diagnostics.map((diagnostic) => ({ mode, diagnostic })),
   );
   return (
     <Drawer title="Configuration health" onClose={props.onClose}>
-      <p className="small muted">Configuration validation updates automatically for Development and Production as saved source changes. Inspector changes are validated before applying.</p>
+      <p className="small muted">Source validation checks the saved declarations in each framework mode. It does not establish AWS credentials, deployment status or application health. Inspector changes are validated before applying.</p>
       {all.length === 0 && snapshot.source.problems.length === 0 ? (
-        <p>Both graphs load and pass configuration validation.</p>
+        <p>All source graphs load and pass configuration validation.</p>
       ) : null}
       {all.map(({ mode, diagnostic }, position) => (
         <div key={position} className={`diagnostic ${diagnostic.severity}`}>
@@ -117,10 +106,9 @@ function CommandDrawer(props: { readonly result: CommandResult | undefined; read
 
 export function Shell(props: { readonly children: ReactNode; readonly notice?: ReactNode }) {
   const studio = useStudio();
-  const { snapshot, response, mode, setMode, live, toast, toasts, selected } = studio;
+  const { snapshot, response, live, toast, toasts, selected } = studio;
+  const pathname = useLocation({ select: location => location.pathname });
   const databasePage = useLocation({ select: location => location.pathname === "/database" });
-  const deployPage = useLocation({ select: location => location.pathname === "/deploy" });
-  const domainsPage = useLocation({ select: location => location.pathname === "/domains" });
   // Isometric hosts the inspector in its own side panel, below the map toolbar.
   const isometricPage = useLocation({ select: location => location.pathname === "/isometric" });
   const sourceWatch = live.sourceWatch ?? response.sourceWatch;
@@ -136,22 +124,18 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
   const [drawer, setDrawer] = useState<"health" | "command" | undefined>();
   const [result, setResult] = useState<CommandResult | undefined>();
   const healthDescriptionId = useId();
-  const healthDescription = live.evaluating ? "Validating configuration" : (["dev", "prod"] as const).map(candidate => {
+  const modes = Object.keys(snapshot.models) as Mode[];
+  const diagnostics = modes.flatMap(candidate => snapshot.models[candidate].diagnostics);
+  const errorCount = diagnostics.filter(item => item.severity === "error").length;
+  const warningCount = diagnostics.filter(item => item.severity === "warning").length + snapshot.source.problems.length;
+  const healthLabel = live.evaluating ? "Checking source…" : errorCount ? `Source: ${errorCount} ${errorCount === 1 ? "error" : "errors"}` : warningCount ? `Source: ${warningCount} ${warningCount === 1 ? "warning" : "warnings"}` : "Source valid";
+  const healthDescription = live.evaluating ? "Validating configuration" : modes.map(candidate => {
     const diagnostics = snapshot.models[candidate].diagnostics;
     const errors = diagnostics.filter(item => item.severity === "error").length;
     const warnings = diagnostics.filter(item => item.severity === "warning").length;
     return `${candidate === "dev" ? "Development" : "Production"}: ${errors ? `${errors} ${errors === 1 ? "error" : "errors"}` : "valid"}${warnings ? `, ${warnings} ${warnings === 1 ? "warning" : "warnings"}` : ""}`;
   }).join(". ") + (snapshot.source.problems.length ? `. ${snapshot.source.problems.length} source problems` : "");
   const repository = snapshot.repositoryRoot.replaceAll("\\", "/").split("/").pop();
-
-  const history = async (direction: "undo" | "redo") => {
-    try {
-      const outcome = await (direction === "undo" ? api.undo() : api.redo());
-      toast(outcome.message, outcome.status === "applied" ? "plain" : "refuse");
-    } catch (error) {
-      toast(error instanceof ApiError ? error.message : String(error), "refuse");
-    }
-  };
 
   const run = async (name: string, confirmed: boolean) => {
     setResult(undefined);
@@ -170,7 +154,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
         <span className="wordmark">
           AWS Studio<small title={repository}>{repository}</small>
         </span>
-        <nav className="tabs" aria-label="Views">
+        <NavigationStrip className="tabs" label="Views" activeKey={pathname}>
           <Link to="/" search={(previous: { select?: string }) => previous} className="tab" activeOptions={{ exact: true, includeSearch: false }}>
             Board
           </Link>
@@ -185,34 +169,10 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
           </Link>
           <Link to="/cognito" search={{}} className="tab" activeOptions={{ includeSearch: false }}>Cognito</Link>
           <Link to="/domains" search={{}} className="tab" activeOptions={{ includeSearch: false }}>Domains</Link>
-        </nav>
-        {!databasePage && !deployPage && !domainsPage ? <span className="segmented" role="group" aria-label="Environment">
-          {(["dev", "prod"] as const).map((candidate) => (
-            <button
-              key={candidate}
-              aria-pressed={mode === candidate}
-              onClick={() => setMode(candidate)}
-            >
-              {candidate === "dev" ? "Development" : "Production"}
-            </button>
-          ))}
-        </span> : null}
-        <span className="spacer" />
+        </NavigationStrip>
         <div className="bar-actions">
-          {!databasePage && !deployPage ? <span className="history-actions" role="group" aria-label="Edit history">
-            <button className="icon-button" aria-label="Undo" onClick={() => void history("undo")} disabled={!response.history.undo || studio.draft.dirty || !!studio.draftState.busy} title={response.history.undo ? `Undo ${response.history.undo}` : "Nothing to undo"}>
-              <Undo2 size={16} aria-hidden />
-            </button>
-            <button className="icon-button" aria-label="Redo" onClick={() => void history("redo")} disabled={!response.history.redo || studio.draft.dirty || !!studio.draftState.busy} title={response.history.redo ? `Redo ${response.history.redo}` : "Nothing to redo"}>
-              <Redo2 size={16} aria-hidden />
-            </button>
-          </span> : null}
-          <button className="health" onClick={() => setDrawer(drawer === "health" ? undefined : "health")} title="Configuration health · updates automatically" aria-label="Configuration health" aria-describedby={healthDescriptionId} aria-expanded={drawer === "health"}>
-            {live.evaluating ? <span className="evaluating">Validating…</span> : <>
-              <Verdict label="Dev" diagnostics={snapshot.models.dev.diagnostics} />
-              <Verdict label="Prod" diagnostics={snapshot.models.prod.diagnostics} />
-              {snapshot.source.problems.length ? <span className="verdict warning"><AlertTriangle size={14} aria-hidden />{snapshot.source.problems.length}</span> : null}
-            </>}
+          <button className={`health ${live.evaluating ? "evaluating" : errorCount ? "bad" : warningCount ? "warning" : "good"}`} onClick={() => setDrawer(drawer === "health" ? undefined : "health")} title="Source validation · deployment and runtime health are inspected separately" aria-label={`${healthLabel}. Configuration health`} aria-describedby={healthDescriptionId} aria-expanded={drawer === "health"}>
+            {live.evaluating ? <LoaderCircle size={14} aria-hidden /> : errorCount || warningCount ? <AlertTriangle size={14} aria-hidden /> : <Check size={14} aria-hidden />}<span>{healthLabel}</span>
           </button>
         </div>
         <span id={healthDescriptionId} className="sr-only">{healthDescription}</span>

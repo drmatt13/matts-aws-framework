@@ -47,7 +47,7 @@ export function CognitoManagement({ selection, onChanged, active = true }: { rea
   return <section className="identity-card" aria-label="Cognito user and group management"><h2>User and group operations</h2>
     <p>Review one action against the verified deployment-owned pool, then explicitly approve its exact user/group, pool and account. Creating users sends no invitation. Password, reset and user-deletion operations are unavailable.</p>
     <p className="muted">Profile <code>{selection.profile}</code> · deployment <code>{selection.deployment || "not selected"}</code> · {selection.region}. Review reads AWS; it does not write. Production requires separate operation-specific authorization.</p>
-    {error ? <p role="alert">{error}</p> : null}
+    {error ? <p className="workspace-alert" role="alert">{error}</p> : null}
     <fieldset disabled={busy}><legend>Requested action</legend>
       <label>Action<select aria-label="Cognito management action" value={action} onChange={event => { setAction(event.target.value as CognitoAction); setReview(undefined); setResult(undefined); }}>{Object.entries(labels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       {action !== "create-group" ? <label>Username<input aria-label="Cognito management username" autoComplete="off" value={username} onChange={event => setUsername(event.target.value)} placeholder="campaign.user@example.invalid" /></label> : null}

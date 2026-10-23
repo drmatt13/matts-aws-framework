@@ -1,0 +1,230 @@
+{
+  "date": "2026-10-23",
+  "task": "AWS Studio independent UI/UX second pass",
+  "comparisonMethod": "Matching regions captured at the same viewport and scale, displayed side by side; full-page screenshots retained as context.",
+  "artifacts": {
+    "desktop": "after-regions-1440.png",
+    "narrow": "after-regions-768.png",
+    "mapBeforeAfter": "before-after-map-search-768.png",
+    "inspectionBeforeAfter": "before-after-inspection-regions-768.png",
+    "inspectors": "after-inspectors-side-by-side.png",
+    "geometry": "viewport-matrix.json",
+    "keyboardFocus": "after-navigation-focus-320.png"
+  },
+  "improvements": [
+    {
+      "area": "Isometric search",
+      "before": "At 768px, entering a query left the editable input 0px wide.",
+      "after": "383.48px editable width with count/reset visible; toolbar stayed 97px tall."
+    },
+    {
+      "area": "Source controls",
+      "before": "320px toolbar controls extended to x=314.77, violating the 16px gutter.",
+      "after": "Controls remain within x=16\u2026304 and history wraps."
+    },
+    {
+      "area": "Inspection forms",
+      "before": "Cognito and Domains used different flex bases and wrapping; Domains action wrapped at 768px.",
+      "after": "Shared inspection-controls rules align 32px fields and keep Domains action alongside them at 768px."
+    },
+    {
+      "area": "Cognito context",
+      "before": "216.25px context header.",
+      "after": "185.78px context header with provenance and evidence disclosure sharing a wrapping row."
+    },
+    {
+      "area": "History actions",
+      "before": "Repeated/opposite requests could be queued during undo/redo.",
+      "after": "Immediate request gating, both buttons disabled while pending/evaluating/running and accessible progress."
+    },
+    {
+      "area": "Hot updates",
+      "before": "Entry re-evaluation called createRoot again, duplicating UI and logging a React error.",
+      "after": "React root, router and QueryClient survive HMR; real browser entry update preserved an unsaved tag and inspector DOM."
+    },
+    {
+      "area": "Inspection errors",
+      "before": "Offline inspection alert only said Failed to fetch.",
+      "after": "Connection and explicit retry guidance; server details and earlier observations retained."
+    },
+    {
+      "area": "Source validation",
+      "before": "Checking state retained a verdict icon.",
+      "after": "Neutral progress icon while source is evaluated."
+    }
+  ],
+  "browser": {
+    "tools": [
+      "Playwright MCP",
+      "Chrome DevTools MCP"
+    ],
+    "pages": [
+      "Board",
+      "Isometric",
+      "Database",
+      "Deploy",
+      "Cognito",
+      "Domains"
+    ],
+    "viewportWidths": [
+      1600,
+      1440,
+      1280,
+      1024,
+      768,
+      320
+    ],
+    "matrixCases": 36,
+    "documentHorizontalOverflowCases": 0,
+    "shellHeight": {
+      "desktop": 52,
+      "narrow320": 89
+    },
+    "interactions": [
+      "Primary navigation, including off-screen links reached by Tab at 320px and 2px visible focus",
+      "Board relation toggles, Add chooser and Escape focus restoration; toolbar remained pinned during graph scrolling",
+      "Source Development/Production switching, unsaved-change dialog, Escape and local draft discard",
+      "Isometric search, zero matches, search clear focus, tag key/value/clear focus, resource type filtering and inspector selection",
+      "All five Database workspace sections and help dismissal",
+      "Deploy development/production rail selection, machine-check disclosure, action-menu arrow navigation and Escape",
+      "All four Cognito sections, heading focus, retained username filter and mode-bound deployment/input context",
+      "Domains operation-purpose selector and safe offline read-only inspection error",
+      "Real entry HMR with pending inspector tag retained; no source apply",
+      "Fresh Chrome DevTools navigation of all six pages with no console warnings/errors"
+    ],
+    "limitations": [
+      "Populated live AWS and database mutation workflows were not executed.",
+      "No application deployment, migration application or infrastructure change was performed.",
+      "Chrome DevTools file export rejected this workspace path; Playwright provided all screenshot artifacts. DevTools inline snapshots, geometry, network and console inspection worked."
+    ],
+    "sessionsClosed": true
+  },
+  "sourceSafety": "Existing working-tree changes preserved. The temporary browser draft was discarded; source apply, undo/redo writes and AWS modification controls were not invoked in the actual checkout.",
+  "remainingOpportunities": [
+    "Build warns that main and Database chunks exceed 500kB; investigate bundle splitting separately.",
+    "Verify populated live AWS/database states in an authorized environment."
+  ],
+  "verification": {
+    "rootVerify": {
+      "command": "npm run verify",
+      "exit_status": 0,
+      "workspaces": [
+        {
+          "workspace": "GraphQL schema",
+          "runner": "Node",
+          "tests": 22,
+          "pass": 22,
+          "fail": 0,
+          "skipped": 0
+        },
+        {
+          "workspace": "client-app",
+          "runner": "Vitest",
+          "tests": 65,
+          "pass": 65,
+          "fail": 0,
+          "skipped": 0
+        },
+        {
+          "workspace": "local-api-dev-server@1.0.0",
+          "runner": "Node",
+          "tests": 16,
+          "pass": 16,
+          "fail": 0,
+          "skipped": 0
+        },
+        {
+          "workspace": "@repo/local-invocation-runner@1.0.0",
+          "runner": "Node",
+          "tests": 27,
+          "pass": 27,
+          "fail": 0,
+          "skipped": 0
+        },
+        {
+          "workspace": "cdk-app@0.1.0",
+          "runner": "Node",
+          "tests": 270,
+          "pass": 269,
+          "fail": 0,
+          "skipped": 1
+        },
+        {
+          "workspace": "@repo/database@1.0.0",
+          "runner": "Node",
+          "tests": 28,
+          "pass": 28,
+          "fail": 0,
+          "skipped": 0
+        },
+        {
+          "workspace": "@repo/framework@1.0.0",
+          "runner": "Node",
+          "tests": 480,
+          "pass": 480,
+          "fail": 0,
+          "skipped": 0
+        },
+        {
+          "workspace": "ws-tester",
+          "runner": "Vitest",
+          "tests": 4,
+          "pass": 4,
+          "fail": 0,
+          "skipped": 0
+        },
+        {
+          "workspace": "framework-studio",
+          "runner": "Node",
+          "tests": 811,
+          "pass": 810,
+          "fail": 0,
+          "skipped": 1
+        }
+      ],
+      "total": {
+        "tests": 1723,
+        "pass": 1721,
+        "fail": 0,
+        "skipped": 2
+      },
+      "skipped_tests": [
+        "\ufe63 campaign-owned PostgreSQL retains rows across stop/start and complete surrounding container recreation (0.660625ms) # SKIP",
+        "\ufe63 real disposable PostgreSQL: seed rerun, once ledger, query and constraint rollback (0.641583ms) # SKIP"
+      ]
+    },
+    "productionBuild": {
+      "command": "npm --workspace framework-studio run build",
+      "exitCode": 0,
+      "warnings": [
+        "main chunk 558.80kB and Database chunk 525.41kB exceed the 500kB warning threshold"
+      ]
+    },
+    "knowledgeCheck": {
+      "command": "node docs/aws-studio-knowledge/check.mjs",
+      "exitCode": 0,
+      "pages": 30,
+      "localLinks": 579,
+      "sourceReferences": 165
+    },
+    "diffCheck": {
+      "command": "git diff --check",
+      "exitCode": 0
+    },
+    "database": "Offline generation and suites passed; two opt-in real PostgreSQL scenarios skipped. No live database application or mutation verification.",
+    "synth": "Generated declaration fixture development/production offline synthesis passed inside Studio tests. Application infrastructure was not changed or separately synthesized.",
+    "deployed": "Deployment discovery and local context display inspected read-only. No deployments, migration application, live Cognito changes or DNS writes.",
+    "toolNotes": [
+      "The first verify launch hit sandbox IPC EPERM before tests. The authorized run outside sandbox completed successfully.",
+      "Browser testing used the existing Studio endpoint. A sandboxed redundant server launch could not bind and was stopped; the existing server remained available (HTTP 200)."
+    ],
+    "logs": {
+      "verify": "/tmp/aws-studio-verify.log",
+      "build": "/tmp/aws-studio-build.log"
+    },
+    "otherNonFatalWarnings": [
+      "Vite config native-loader compatibility/deprecated module.register()",
+      "Circular-export warnings emitted by several React test files"
+    ]
+  }
+}

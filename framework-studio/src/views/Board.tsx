@@ -4,6 +4,7 @@ import type { ModelResource, ModelTarget } from "../../shared/model";
 import { layoutBoard, type BoardNode } from "../layout";
 import { CATEGORY_LABEL, ROLE_LABEL, type EdgeCategory } from "../lookup";
 import { AddMenu } from "./AddMenu";
+import { SourceEnvironment, SourceHistory } from "./SourceContext";
 import { useStudio } from "../studio";
 import { DeploymentBadge, DeploymentLegend } from "./DeploymentBadge";
 import { availabilityBadge, catalogAvailability, deploymentBadge, type DeploymentBadgeKind } from "../deployment";
@@ -68,7 +69,7 @@ export function Board() {
   }, [index, model.edges, selected]);
 
   if (layout.nodes.length === 0) {
-    return <p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p>;
+    return <><div className="workspace-toolbar board-head"><div className="source-controls"><SourceEnvironment /><SourceHistory /></div></div><p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p></>;
   }
 
   const visible = layout.edges.filter((edge) => shown.has(edge.category));
@@ -77,6 +78,7 @@ export function Board() {
   return (
     <>
       <div className="workspace-toolbar board-head">
+        <div className="source-controls"><SourceEnvironment /><SourceHistory /></div>
         <div className="chips" role="group" aria-label="Relations shown">
           {CATEGORIES.map((category) => (
             <button

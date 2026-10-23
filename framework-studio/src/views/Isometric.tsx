@@ -30,6 +30,7 @@ import { catalogAvailability } from "../deployment";
 import { connectionLabel, missingConnectionInput } from "../connections";
 import { AddMenu } from "./AddMenu";
 import { useStudio } from "../studio";
+import { SourceEnvironment, SourceHistory } from "./SourceContext";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { InspectorContent } from "./Inspector";
 import { ResourceBrowser, type BrowserMemory } from "./ResourceBrowser";
@@ -654,12 +655,13 @@ export function Isometric() {
   ), [scene, visibleSelected, index, inspect]);
 
   if (!hasEntities) {
-    return <p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p>;
+    return <div className="landscape-workspace"><div className="workspace-toolbar landscape-top"><div className="source-controls"><SourceEnvironment /><SourceHistory /></div></div><p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p></div>;
   }
 
   return (
     <div className="landscape-workspace">
       <div className="workspace-toolbar landscape-top">
+        <div className="source-controls"><SourceEnvironment /><SourceHistory /></div>
         <div className="landscape-search-panel">
           <div className="landscape-search" role="search" aria-label="Map search">
             <Search size={16} aria-hidden />

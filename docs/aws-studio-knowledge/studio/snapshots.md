@@ -58,6 +58,12 @@ a persistent Shell notice offers retry. Successful retry removes the notice with
 recreating the editor. This is separate from server-side stale-model diagnostics, which
 continue to govern source editability.
 
+During frontend hot replacement, the entry retains its React root, query cache and router
+through Vite's per-module HMR data. Its exported root component remains a React Refresh
+boundary, and replacement updates the retained router's route tree without remounting
+the application or discarding its inspector draft. Removing the entry releases the root,
+cache and browser history; ordinary replacement does not unmount them.
+
 Disposable source previews travel through evaluator IPC. [evaluate.ts](../../../framework-studio/server/evaluator/evaluate.ts) resolves proposed new TypeScript modules and replaces compilation from an override map without writing preview files. Evaluation still runs authored config; it does not synthesize CDK or run handlers.
 
 Database editing is an independent exact-text session in

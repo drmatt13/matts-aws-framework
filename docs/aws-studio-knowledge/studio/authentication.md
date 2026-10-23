@@ -5,6 +5,7 @@ read_when:
   - Changing Cognito navigation, federation, identity pools or permissions diagnostics
 source:
   - framework-studio/src/views/AuthenticationWorkspace.tsx
+  - framework-studio/src/views/SourceContext.tsx
   - framework-studio/src/identity-api.ts
   - framework-studio/src/views/IdentityWorkspace.tsx
   - framework-studio/src/views/IdentityPolicyEditor.tsx
@@ -23,6 +24,17 @@ owns context and preserves its panels while moving between subsections. These
 routes organize the UI; Cognito User Pools and Identity Pools retain separate AWS
 resources, APIs and authorization boundaries. `/identity-pools` remains a compatible
 entry point. Domains remain a separate production workspace.
+
+Subsection navigation sits immediately below the application bar, ahead of inspection
+controls and errors, using the shared workspace tabs. It remains a stable destination
+while context loads or fails. The context toolbar and cards share the bounded workspace
+width used by Domains. The source-environment selector and source edit history live in
+the Cognito context toolbar; selecting a source mode does not inspect or deploy AWS.
+Card typography, form spacing and action alignment come from the shared identity
+workspace styles. Source actions stay grouped with their explanation, and failed
+context/source reads use an inline alert with a visible retry action. Keep long messages
+and identifiers wrapping inside the workspace; subsection navigation scrolls
+independently on narrow screens.
 
 The workspace inherits Studio's selected development/production mode. Inspection
 uses one profile, declared deployment and region across the subsections. Deploy's

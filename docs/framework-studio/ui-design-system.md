@@ -20,13 +20,28 @@ information order and source-review workflow.
 
 ## Navigation and workspace rhythm
 
-The application bar owns view navigation, the **Environment** selector, edit history and
-configuration health. Health stays at the right edge across routes and exposes both
-environments' verdicts to assistive technology. Database edits one shared source contract,
-so it omits the graph selector and configuration undo/redo; selected-target database
-operations keep their own explicit target controls.
-At narrow widths the view tabs scroll within their navigation row, keeping each
-name on one line without widening the document as workspaces are added.
+The application bar owns the repository identity, six view links and **Source valid**
+(or source validation problems). It has the same geometry on every route: a 52px row
+on desktop and an 89px, two-row layout at 760px and below. Validation stays at the right
+edge, exposes each source mode's verdict to assistive technology and opens configuration
+details. It is not a deployment, credential or runtime health indicator.
+
+`SourceEnvironment` and `SourceHistory` compose into the Board, Isometric and Cognito
+toolbars. The **Source** selector reflects the framework's Development/Production
+projections and retains the existing unsaved-change guard. Domains labels its fixed
+Production source scope beside source history. Database edits one shared contract and
+keeps its own draft history. Deploy, Database and inspection forms own their named-target,
+profile and account controls; a named staging deployment uses its declared mode and must
+not become an invented third source projection.
+
+Source history pauses both actions during an undo/redo request, source evaluation or
+a Studio command, announces its pending operation and rejects repeated activation.
+Source control groups stay within their toolbar's gutters; history wraps when necessary.
+
+`NavigationStrip` provides the shared link/button geometry for primary navigation,
+Cognito sections and Database workspaces. Native links and buttons retain their keyboard
+behavior. Overflow scrolls within the strip; active items and keyboard focus are revealed
+without moving the surrounding page. Keep each name on one line.
 
 Every route starts immediately below navigation with `.workspace-toolbar`. It owns
 `--workspace-gutter` (16px), `--toolbar-padding` (12px vertically), `--toolbar-height`
@@ -35,6 +50,32 @@ Controls are 32px tall. Content follows the same horizontal gutter. Additional r
 accommodate genuine controls, warnings or narrow widths; do not add a route-specific
 heading spacer or an inset rule above the first toolbar. Keep shell and map responsive
 rules in `styles.css`, not in inspector or feature stylesheets.
+
+Composition preserves each workspace's purpose. Board and Isometric devote their area
+to the graph, without a redundant page heading. Database leads with its workspace tabs
+and editor controls. Deploy leads with account context, then a target rail and operational
+detail. Cognito and Domains use compact page identity and a shared reading width; Cognito's
+section navigation precedes variable inspection evidence so its position remains stable.
+
+Document workspaces (Cognito and Domains) use `.workspace-page-width` for their
+header, subsection navigation and content: one centered 1280px maximum including
+16px gutters. Their `.workspace-page-title` is 18px. Shared `.identity-card` rules
+own card headings, padding and 12px spacing between content groups; avoid per-route
+card overrides. Inspection/search rows align control bottoms, with no bottom margin
+on toolbar labels. Source actions group their button and supporting explanation;
+on narrow screens the actions wrap within the card. Flow-spacing selectors exclude
+native dialogs so browser modal centering remains intact.
+
+Cognito and Domains share `.inspection-controls` for profile, deployment and region
+fields, including label spacing, 32px inputs and responsive wrapping. Cognito groups
+source provenance and its evidence disclosure on one wrapping support row. Inspection
+transport failures explain how to restore the Studio connection and retry; server
+diagnostics and earlier observations remain available.
+
+Load failures use a contained `.workspace-alert` in the same content column, with
+wrapping details and a nearby retry action. Keep independent source and deployment
+context failures independently recoverable, and show progress during retry. Alerts
+must remain visible without widening the document or separating them from their controls.
 
 Board relationship toggles and Database workspace choices use the same restrained
 selected treatment: wash surface, rule border, regular radius and readable foreground.
@@ -49,10 +90,16 @@ Isometric search, tag filters and camera controls occupy a normal-flow toolbar o
 the measured canvas. Wrapping controls must reduce the canvas viewport rather than cover
 resources. The scene remains dark in both themes; its toolbar follows the application
 theme. Use the existing scene container for pointer coordinates, resize and camera fit.
+At 701–1100px, search and tag filters share a full-width row below source and camera
+actions. Search counts and reset actions must leave the input editable at every width.
 The map footer gives resource/connection counts; tile counts and frame timing belong
 to the existing diagnostics API, not normal application chrome.
 
-Deploy's account toolbar uses the same geometry. Healthy machine checks collapse into
+Deploy's account toolbar uses the same geometry. Profile and refresh remain aligned;
+account, effective region and credential identity are distinct observations. A profile's
+default region never overrides a selected target's pinned region. Uninspected deployment
+status says **Unverified**. Related deployment disclosures share one summary target.
+Healthy machine checks collapse into
 one named disclosure with versions/details on demand. Warnings, failures and remedies
 remain visible. Refresh reports pending state and partial failures, keeps prior results
 available and works when no profile is configured. Never communicate refresh failure
@@ -127,7 +174,8 @@ and log refreshes losing the reader's place. Initial connection failures offer r
 background failures preserve the current map and draft with a persistent retry notice.
 
 Interaction regressions live in `navigation-polish.test.ts`, `isometric-ui.test.ts`,
-`draft-ui.test.ts`, `startup-ui.test.ts`, and `deploy-ui.test.ts`. Browser checks should include desktop,
+`draft-ui.test.ts`, `startup-ui.test.ts`, `cognito-workspace-ui.test.ts`,
+`domains-workspace-ui.test.ts`, and `deploy-ui.test.ts`. Browser checks should include desktop,
 380px inspector panels and 320–420px windows, expanded disclosures, long identifiers,
 creation and unsaved-change dialogs, forced colors, and both themes. Deployment review
 and deletion can be exercised with mocked API responses while refusing all operation

@@ -1,0 +1,87 @@
+- generic [ref=f2e7]:
+  - banner [ref=f2e8]:
+    - generic [ref=f2e9]: AWS Studio
+    - navigation "Views" [ref=f2e10]:
+      - link "Board" [ref=f2e11] [cursor=pointer]:
+        - /url: /
+      - link "Isometric" [ref=f2e12] [cursor=pointer]:
+        - /url: /isometric
+      - link "Database" [ref=f2e13] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f2e14] [cursor=pointer]:
+        - /url: /deploy
+      - link "Cognito" [ref=f2e15] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f2e16] [cursor=pointer]:
+        - /url: /domains
+    - button "Source valid. Configuration health" [ref=f2e18] [cursor=pointer]:
+      - generic [ref=f2e21]: Source valid
+    - generic [ref=f2e22]: "Development: valid. Production: valid"
+  - main [ref=f2e24]:
+    - generic [ref=f2e938]:
+      - heading "Database" [level=1] [ref=f2e939]
+      - generic [ref=f2e940]:
+        - navigation "Database workspace" [ref=f2e941]:
+          - button "Schema" [ref=f2e942] [cursor=pointer]
+          - button "History & migrations" [ref=f2e948] [cursor=pointer]
+          - button "Database status" [ref=f2e953] [cursor=pointer]
+          - button "Saved SQL" [ref=f2e958] [cursor=pointer]
+          - button "Data retention" [active] [pressed] [ref=f2e963] [cursor=pointer]
+        - button "How this works" [ref=f2e968] [cursor=pointer]
+      - region "Stateful retention and reuse" [ref=f2e1364]:
+        - heading "Retention and reuse" [level=2] [ref=f2e1365]
+        - paragraph [ref=f2e1366]:
+          - text: Configure each resource in TypeScript, review the change, then deploy separately. Existing policies inherit
+          - code [ref=f2e1367]: RETAIN_STATEFUL_RESOURCES
+          - text: until explicitly changed.
+        - generic [ref=f2e1368]:
+          - text: Environment
+          - combobox "Retention environment" [ref=f2e1369]:
+            - option "Development" [selected]
+            - option "Production"
+        - generic [ref=f2e1371]:
+          - heading "Database" [level=3] [ref=f2e1372]
+          - paragraph [ref=f2e1373]:
+            - strong [ref=f2e1374]: "Configured intent:"
+            - text: Remove · inherited legacy policy
+          - paragraph [ref=f2e1375]:
+            - strong [ref=f2e1376]: "Management:"
+            - text: Framework-managed when deployed.
+          - generic [ref=f2e1377]:
+            - text: Database policy
+            - combobox "Database retention policy" [ref=f2e1378]:
+              - option "Inherit legacy input" [selected]
+              - option "Retain"
+              - option "Remove"
+          - paragraph [ref=f2e1379]: Development uses local PostgreSQL. This AWS policy does not control Docker volumes.
+        - paragraph [ref=f2e1380]:
+          - code [ref=f2e1381]: framework-config/stateful-resources.ts
+          - text: · legacy fallback from
+          - code [ref=f2e1382]: cdk-app/.env.dev
+          - text: ": absent; existing default false. Deployment context overrides and custom input files require review in Deploy."
+        - region "Retained resource references" [ref=f2e1383]:
+          - heading "Inspect protection and retained resources" [level=3] [ref=f2e1384]
+          - paragraph [ref=f2e1385]: Read deployed templates and saved teardown evidence, then review an explicit reference. A saved observation alone does not prove that a resource is still available.
+          - generic [ref=f2e1386]:
+            - generic [ref=f2e1387]:
+              - text: AWS profile
+              - textbox "Lifecycle AWS profile" [ref=f2e1388]: dev
+            - generic [ref=f2e1389]:
+              - text: Destination deployment
+              - combobox "Lifecycle destination" [ref=f2e1390]:
+                - option "Select destination" [selected]
+                - option "my-aws-app"
+            - generic [ref=f2e1391]:
+              - text: Region
+              - textbox "Lifecycle region" [ref=f2e1392]
+          - button "Inspect deployed protection and inventory" [disabled] [ref=f2e1393]
+          - paragraph [ref=f2e1394]:
+            - strong [ref=f2e1395]: "Deployed retention:"
+            - text: Unverified for this destination.
+          - group [ref=f2e1396]:
+            - generic "Reference a retained resource" [ref=f2e1397] [cursor=pointer]
+        - group [ref=f2e1398]:
+          - generic "Local PostgreSQL persistence" [ref=f2e1399] [cursor=pointer]
+        - group [ref=f2e1400]:
+          - generic "Retain, reference, import and restore" [ref=f2e1401] [cursor=pointer]
+  - status

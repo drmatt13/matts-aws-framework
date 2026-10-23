@@ -169,6 +169,26 @@ test("empty graphs show guidance and mount the renderer and wheel controls when 
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Fit the whole application" })); await draw();
 });
 
+test("an empty development graph retains source controls to open the working production graph", async () => {
+  const development = response.snapshot.models.dev;
+  const emptyDevelopment = { ...development, targets: [], routes: [], resources: [], edges: [], networks: [], localServices: [], managedDatabase: undefined };
+  await mount(false, undefined, { ...response, snapshot: { ...response.snapshot, models: { ...response.snapshot.models, dev: emptyDevelopment } } });
+  assert.ok(ui.screen.getByText(/development graph did not load/));
+  assert.ok(ui.screen.getByRole("group", { name: "Source edit history" }));
+  const environment = () => ui.within(ui.screen.getByRole("group", { name: "Source environment" }));
+  ui.fireEvent.click(environment().getByRole("button", { name: "Production" }));
+  await ui.waitFor(() => assert.ok(ui.screen.queryByRole("searchbox", { name: "Search isometric map" })));
+  await draw();
+  assert.ok(document.querySelector("canvas"), "the alternate source mode mounts its working map");
+  assert.equal(environment().getByRole("button", { name: "Production" }).getAttribute("aria-pressed"), "true");
+  assert.ok(ui.screen.queryByText(/graph did not load/) === null);
+  ui.fireEvent.click(environment().getByRole("button", { name: "Development" }));
+  await ui.screen.findByText(/development graph did not load/);
+  assert.ok(ui.screen.getByRole("group", { name: "Source edit history" }));
+  assert.equal(environment().getByRole("button", { name: "Development" }).getAttribute("aria-pressed"), "true");
+  assert.ok(document.querySelector("canvas") === null);
+});
+
 test("drag cursors track gesture completion and cancellation without renderer statistics updates", async () => {
   await mount();
   const canvas = document.querySelector("canvas")!;

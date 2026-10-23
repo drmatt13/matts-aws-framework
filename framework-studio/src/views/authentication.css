@@ -1,71 +1,58 @@
 .authentication-workspace { width: 100%; height: 100%; overflow: auto; min-width: 0; color: var(--ink); }
-.auth-context { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+.auth-context { padding-inline: 0; }
+.auth-context-content { display: flex; flex-direction: column; align-items: stretch; gap: var(--space-3); }
 .auth-workspace-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.auth-workspace-title h1 { margin: 0 8px 0 0; font-size: 18px; line-height: 1.3; }
-.auth-mode, .auth-evidence-tag { display: inline-block; border: 1px solid var(--rule); border-radius: 4px; padding: 2px 6px; font-size: 11px; line-height: 1.5; background: var(--wash); }
-.auth-mode.prod { color: var(--prod); }
-.auth-mode.dev { color: var(--dev); }
-.auth-context-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
-.auth-context-controls label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; flex: 1 1 160px; min-width: 0; max-width: 320px; }
-.auth-context-controls input, .auth-context-controls select { box-sizing: border-box; width: 100%; height: 32px; }
-.auth-context-controls label:nth-of-type(3) { max-width: 180px; }
+.auth-evidence-tag { display: inline-block; border: 1px solid var(--rule); border-radius: 4px; padding: 2px 6px; font-size: 11px; line-height: 1.5; background: var(--wash); }
+.auth-context-support { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2) var(--space-5); }
+.auth-context-support > .auth-boundaries[open] { flex-basis: 100%; }
 .auth-context-evidence { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
 .auth-context-evidence strong { font-weight: 600; margin-right: 4px; }
 .auth-context p { margin: 0; font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
-.auth-notice { padding: 8px 10px; border-left: 2px solid var(--warning, var(--rule)); background: var(--wash); }
+.auth-notice { padding: 8px 10px; border-left: 2px solid var(--local); background: var(--wash); }
 .auth-boundaries { font-size: 12px; }
 .auth-boundaries summary { cursor: pointer; width: fit-content; padding: 2px 0; }
 .auth-boundaries p { margin-top: 8px; max-width: 1000px; }
-.auth-navigation { display: flex; gap: 4px; overflow-x: auto; padding: 8px var(--workspace-gutter, 16px); border-bottom: 1px solid var(--rule); background: var(--sheet); }
-.auth-navigation a { flex: 0 0 auto; white-space: nowrap; font-size: 13px; color: var(--muted); padding: 7px 12px; border: 1px solid transparent; border-radius: 6px; text-decoration: none; }
-.auth-navigation a:hover, .auth-navigation a.active { color: var(--ink); background: var(--wash); }
-.auth-navigation a.active { border-color: var(--rule); font-weight: 600; }
-.auth-content { padding: 16px var(--workspace-gutter, 16px) 24px; max-width: 1280px; box-sizing: border-box; margin: 0 auto; }
+.auth-navigation { padding-inline: 0; }
+.auth-content { padding-block: var(--space-4) var(--space-6); }
 .auth-section-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
 .auth-section-title:focus { outline: none; }
 .auth-panel { min-width: 0; }
 .auth-panel[hidden] { display: none; }
-.authentication-workspace .identity-card { max-width: none; margin: 0 0 12px; padding: 16px; border-radius: 6px; }
-.authentication-workspace .identity-card h2 { font-size: 15px; margin: 0 0 8px; }
-.authentication-workspace .identity-card h3 { font-size: 13px; }
-.authentication-workspace .identity-card p { margin: 0 0 10px; line-height: 1.5; }
-.authentication-workspace .identity-card p:last-child { margin-bottom: 0; }
-.authentication-workspace .identity-card label { font-size: 12px; gap: 4px; margin-bottom: 8px; }
-.authentication-workspace .identity-card input, .authentication-workspace .identity-card select { min-height: 32px; }
+.authentication-workspace .identity-card { margin-bottom: var(--space-3); }
 .authentication-workspace .identity-card input[type=checkbox] { width: 16px; min-height: 16px; flex: 0 0 16px; }
 .authentication-workspace .identity-card label:has(> input[type=checkbox]) { flex-direction: row; align-items: start; gap: 8px; }
-.authentication-workspace .identity-card fieldset { padding: 12px; margin: 12px 0; }
 .authentication-workspace .identity-card > fieldset > label { max-width: 640px; }
 .authentication-workspace .identity-card textarea { width: 100%; box-sizing: border-box; min-height: 80px; resize: vertical; }
-.authentication-workspace .identity-toolbar { gap: 8px; }
 .authentication-workspace .identity-toolbar > label { flex: 1 1 180px; }
 .authentication-workspace form.identity-toolbar > label { flex: 0 1 480px; }
-.authentication-workspace .identity-card details { margin-top: 10px; }
-.authentication-workspace .identity-card summary { cursor: pointer; font-size: 13px; padding: 5px 0; }
 .authentication-workspace .identity-card pre { max-width: 100%; box-sizing: border-box; }
 .authentication-workspace .identity-card table { display: table; width: 100%; font-size: 12px; }
 .authentication-workspace .identity-card th, .authentication-workspace .identity-card td { padding: 8px; font-size: 12px; }
 .auth-table { max-width: 100%; overflow: auto; margin: 8px 0; }
-.auth-table table small { display: block; font-weight: normal; margin-top: 4px; color: var(--muted); white-space: nowrap; }
+.auth-table table small { display: block; font-weight: normal; margin-top: 4px; color: var(--graphite); white-space: nowrap; }
 .auth-table[aria-label="Provider verification evidence"] table { min-width: 820px; }
-.auth-metadata { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px 20px; margin: 12px 0 0 !important; }
+.auth-metadata { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); gap: 12px 20px; }
 .auth-metadata > div { min-width: 0; }
-.authentication-workspace .auth-metadata dt { color: var(--muted); font-size: 12px; font-weight: normal; margin-bottom: 4px; }
+.authentication-workspace .auth-metadata dt { color: var(--graphite); font-size: 12px; font-weight: normal; margin-bottom: 4px; }
 .authentication-workspace .auth-metadata dd { font-size: 13px; margin: 0; overflow-wrap: anywhere; }
-.auth-related { display: flex; gap: 8px 20px; flex-wrap: wrap; margin-top: 16px; font-size: 13px; }
-.auth-inline-action { display: flex; align-items: center; gap: 16px; justify-content: space-between; }
-.auth-inline-action > div { max-width: 800px; }
-.auth-inline-action > button { flex: 0 0 auto; }
+.auth-related { display: flex; gap: 8px 20px; flex-wrap: wrap; font-size: 13px; }
+.auth-inline-action { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-3) var(--space-4); justify-content: space-between; }
+.auth-inline-action > div { min-width: 0; flex: 1 1 360px; }
+.auth-inline-action > button { flex: 0 1 auto; }
+.auth-inline-action > div > h2 { margin-bottom: var(--space-2); }
+.auth-inline-action > div > p { margin: 0; }
+.auth-summary-evidence { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2); }
+.auth-source-action { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-2); }
+.auth-source-action > p { margin: 0; }
 .auth-access-chain { display: grid; grid-template-columns: repeat(3, 1fr); padding: 0; gap: 12px; list-style: none; margin: 12px 0; }
 .auth-access-chain li { background: var(--wash); padding: 10px 12px; border-left: 2px solid var(--rule); font-size: 13px; }
-.auth-access-chain span { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.auth-access-chain span { display: block; font-size: 12px; color: var(--graphite); margin-top: 4px; }
 .authentication-workspace .draft-footer { position: sticky; bottom: 0; background: var(--sheet); border: 1px solid var(--rule); border-radius: 6px; margin-top: 12px; }
 @media (max-width: 720px) {
-  .auth-context-controls label, .auth-context-controls label:nth-of-type(3) { max-width: none; flex: 1 1 140px; }
-  .auth-context-controls > button { flex: 1 1 100%; }
   .auth-content { padding-top: 12px; }
-  .auth-inline-action { align-items: stretch; flex-direction: column; gap: 12px; }
-  .authentication-workspace .identity-card { padding: 12px; }
+  .auth-inline-action { align-items: stretch; flex-direction: column; }
+  .auth-inline-action > div { flex-basis: auto; }
+  .auth-source-action { align-items: stretch; }
   .authentication-workspace .identity-toolbar > label { flex: 1 1 100%; }
   .authentication-workspace form.identity-toolbar > label { flex: 1 1 100%; }
   .authentication-workspace .identity-toolbar > button { width: 100%; }
