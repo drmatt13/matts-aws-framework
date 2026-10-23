@@ -7,6 +7,7 @@ source:
   - framework-studio/server/index.ts
   - framework-studio/server/server.ts
   - framework-studio/server/snapshot.ts
+  - scripts/atomic-replace.cjs
   - framework-studio/server/evaluator/pool.ts
   - framework-studio/server/evaluator/evaluate.ts
   - framework-studio/server/watch.ts
@@ -38,9 +39,18 @@ framework support, not live regional availability.
 
 `lastGood` retains a previous nonempty graph after a new load failure, marks it stale/error and carries new diagnostics. It is display continuity, not permission to edit old source. Models are rebuilt, not incrementally patched node by node. A generation change may occur even for equal content.
 
+If indexing or writing the disposable CDK-link projection fails after a successful
+snapshot, `SnapshotBuilder` publishes a new revision retaining the previous source
+and graphs as stale/error. It disposes the failed generation's evaluators and
+provides a failed preflight with a safe error code and contained file path. Old
+graphs cannot authorize edits after their evaluator processes have been replaced.
+Resolve the filesystem/index failure and refresh to recover. An initial failure
+without a previous snapshot still rejects. Atomic projection replacement retries
+only transient Windows sharing errors; a permanent failure remains visible.
+
 [watchRepository](../../../framework-studio/server/watch.ts) watches configuration, framework config implementation, CDK sources, Prisma contract, Compose and mode input/template files using directory watches and a debounce. Workload implementation roots (Lambda handlers, container contexts and agents) are also watched, excluding dependencies/build output. Source changes expire reviews and publish revision/status events. Native watch errors expose a persistent source-health notice and activate the same five-second content comparison used to detect missed events and newly created directories. Failed watches retry; recovery clears the notice. The notice includes paths/error codes and a read-only **Reload source** action. Environment contents never enter health events. A reconnect re-fetches the snapshot while preserving dirty drafts.
 
-[main.tsx](../../../framework-studio/src/main.tsx) defines Board, Isometric, Database and Deploy routes. [StudioProvider](../../../framework-studio/src/studio.tsx) owns shared selection/mode/draft context; [api.ts](../../../framework-studio/src/api.ts) fetches snapshots and subscribes to server events. Dirty drafts keep their baseline visible and record a newer snapshot as a conflict rather than silently rebasing; see [editing](editing.md).
+[main.tsx](../../../framework-studio/src/main.tsx) defines Board, Isometric, Database, Deploy, the nested Cognito workspace and Domains routes. [StudioProvider](../../../framework-studio/src/studio.tsx) owns shared selection/mode/draft context; [api.ts](../../../framework-studio/src/api.ts) fetches snapshots and subscribes to server events. Snapshot and Deploy observers share one reference-counted EventSource per tab through `src/events.ts`, preserving each observer's listeners during navigation and leaving HTTP/1 connections available for reads and approvals with several tabs open. Six or more simultaneous tab streams can still reach the browser's per-origin connection limit. Unknown API routes return JSON 404; an older server's HTML fallback is rejected as an invalid API response instead of appearing as empty successful data. Dirty drafts keep their baseline visible and record a newer snapshot as a conflict rather than silently rebasing; see [editing](editing.md).
 
 An initial snapshot failure offers a connection retry. A failed background fetch with a
 cached snapshot keeps `StudioProvider` mounted, preserving selection and unsaved drafts;
@@ -80,4 +90,4 @@ baseline and freshness. Changing any relevant identity expires old evidence; a m
 match never substitutes for physical-schema verification. See the
 [Database workbench guide](../../framework-studio/database-workbench.md).
 
-Validate with [model](../../../framework-studio/test/model.test.ts), [guards](../../../framework-studio/test/guards.test.ts), [draft](../../../framework-studio/test/draft.test.ts), [startup/recovery UI](../../../framework-studio/test/startup-ui.test.ts) and [creation](../../../framework-studio/test/creation.test.ts) and [watch failure/recovery](../../../framework-studio/test/watch.test.ts) tests. Browser reconnect/render behavior needs browser verification beyond snapshot tests.
+Validate with [model](../../../framework-studio/test/model.test.ts), [guards](../../../framework-studio/test/guards.test.ts), [draft](../../../framework-studio/test/draft.test.ts), [startup/recovery UI](../../../framework-studio/test/startup-ui.test.ts), [snapshot I/O recovery](../../../framework-studio/test/snapshot-recovery.test.ts), [creation](../../../framework-studio/test/creation.test.ts) and [watch failure/recovery](../../../framework-studio/test/watch.test.ts) tests. Browser reconnect/render behavior needs browser verification beyond snapshot tests.

@@ -1,0 +1,22 @@
+.identity-workspace { padding: 24px; overflow: auto; width: 100%; height: 100%; box-sizing: border-box; }
+.identity-workspace > header, .identity-card { max-width: 1100px; margin: 0 auto 18px; }
+.identity-workspace h1 { font-size: 24px; margin-top: 0; }
+.identity-card { border: 1px solid var(--rule); border-radius: var(--radius-lg); padding: 20px; background: var(--sheet); color: var(--ink); }
+.identity-card h2 { font-size: 17px; margin: 0 0 14px; }
+.identity-card h3 { font-size: 14px; margin-bottom: 6px; }
+.identity-card p, .identity-card td { font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.identity-toolbar { display: flex; gap: 14px; flex-wrap: wrap; align-items: end; }
+.identity-card label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; margin-bottom: 12px; min-width: 0; }
+.identity-card input, .identity-card select { width: 100%; box-sizing: border-box; min-height: 34px; }
+.identity-card fieldset { border: 1px solid var(--rule); border-radius: 6px; padding: 14px; margin: 16px 0; }
+.identity-card legend { font-size: 14px; padding: 0 6px; }
+.identity-card .identity-switch { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }
+.identity-card table { width: 100%; border-collapse: collapse; display: block; overflow-x: auto; }
+.identity-card th, .identity-card td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+.identity-card th { font-size: 12px; }
+.identity-card dl { margin: 0; }
+.identity-card dt { font-weight: 600; }
+.identity-card dd { margin: 0 0 8px; }
+.identity-card pre { max-height: 350px; overflow: auto; font-size: 12px; }
+.identity-workspace .draft-footer { max-width: 1100px; margin: 0 auto; position: sticky; bottom: 0; background: var(--sheet); }
+@media (max-width: 720px) { .identity-workspace { padding: 12px; } .identity-card { padding: 14px; } .identity-toolbar > label { flex: 1 1 100%; } .identity-toolbar > button { width: 100%; } .bar .tabs { overflow-x: auto; min-width: 0; } }

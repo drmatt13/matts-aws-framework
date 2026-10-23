@@ -572,3 +572,10 @@ One selected deployment/account/region controls the header and operations. Defau
 Saved apply/discard no longer evaluate current declarations. Complete staged assembly bytes are hashed; external asset links are refused. Atomic, fsynced phase/results preserve interrupted-attempt evidence and prevent blind retries. Teardown saves a 15-minute review of exact StackIds, account/region/mode, template/deletion policies/imports and explicit retain-failed/protection choices. Required missing consequence reads/external imports block deletion; changed scope must be reviewed again. Deletion uses immutable IDs throughout, journals each phase and reports retained-resource discovery failures as unknown. See Production's teardown commands and the deployment knowledge pages for the exact CLI contract.
 
 Deployment and saved teardown share a checkout lock. Unknown or stopped owners require inspecting recorded progress and AWS before explicitly removing their lock; Studio does not automatically reclaim uncertain ownership. Release only removes the exact unique owner record.
+
+Stateful lifecycle details offer independent TypeScript retention policies, deployed
+protection inspection and retained-resource reference review. Teardown now saves
+physical-resource evidence under `.framework/retained-resources` before deleting
+anything and blocks destruction of required retained dependencies. Reference reuse
+validates ownership and compatibility before deployment writes; import and snapshot
+restore remain separate operations. See [Stateful retention and reference reuse](stateful-resources.md).

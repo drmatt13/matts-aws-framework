@@ -23,11 +23,12 @@ const serviceFile = path.join(fixture, "framework-config", "workloads", "service
 const taskFile = path.join(fixture, "framework-config", "workloads", "worker-task.ts");
 let builder: SnapshotBuilder;
 let edits: EditService;
+const evaluatorLog: string[] = [];
 
 before(async () => {
   mkdirSync(fixture, { recursive: true });
   const filter = (source: string) => !/(?:^|\/)(?:node_modules|cdk\.out|dist|\.git)(?:\/|$)/.test(source) && (!/\/\.env(?:\.|$)/.test(source) || path.basename(source) === ".env.example");
-  for (const relative of ["package.json", "package-lock.json", "docker-compose.yml", "docker-compose.services.yml", "packages/framework/src", "packages/api-contract/src/generated", "cdk-app/lib", "cdk-app/bin", "cdk-app/deployment.ts", "cdk-app/database-settings.ts", "cdk-app/cdk.json", "cdk-app/tsconfig.json", "cdk-app/lambda_functions", "cdk-app/ecs_containers", "agents", "scripts"]) cpSync(path.join(repositoryRoot, relative), path.join(fixture, relative), { recursive: true, filter });
+  for (const relative of ["package.json", "package-lock.json", "docker-compose.yml", "docker-compose.services.yml", "packages/framework/src", "packages/api-contract/src/generated", "cdk-app/lib", "cdk-app/bin", "cdk-app/deployment.ts", "cdk-app/database-settings.ts", "cdk-app/stateful-resources.ts", "cdk-app/cdk.json", "cdk-app/tsconfig.json", "cdk-app/lambda_functions", "cdk-app/ecs_containers", "agents", "scripts"]) cpSync(path.join(repositoryRoot, relative), path.join(fixture, relative), { recursive: true, filter });
   for (const relative of globSync(JSON.parse(readFileSync(path.join(repositoryRoot, "package.json"), "utf8")).workspaces.map((pattern: string) => `${pattern}/package.json`), { cwd: repositoryRoot })) { mkdirSync(path.dirname(path.join(fixture, relative)), { recursive: true }); cpSync(path.join(repositoryRoot, relative), path.join(fixture, relative)); }
   mkdirSync(path.join(fixture, "cdk-app", "lambda_functions"), { recursive: true });
   for (const id of ["cognito-custom-message", "cognito-post-confirmation-trigger"]) {
@@ -58,7 +59,7 @@ export const workerRoute = { "/worker": { directory: "/lambda_functions/worker",
     .replace(/tasks: \[([^\]]*)\]/, "tasks: [$1, worker]"));
   const generated = await generateCreationArtifacts(fixture, new Map());
   for (const [file, text] of generated.overrides) { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, text); }
-  builder = new SnapshotBuilder(fixture);
+  builder = new SnapshotBuilder(fixture, line => { evaluatorLog.push(line); if (evaluatorLog.length > 60) evaluatorLog.shift(); });
   edits = new EditService(fixture, builder);
   await builder.refresh();
 });
@@ -70,6 +71,15 @@ after(async () => {
 
 function revision(): string {
   return builder.current!.snapshot.revision;
+}
+
+function applyDiagnostics(result: { readonly status: string; readonly message: string }): string {
+  return JSON.stringify({ result, models: Object.fromEntries((["dev", "prod"] as const).map(mode => [mode, { status: builder.current?.snapshot.models[mode].status, stale: builder.current?.snapshot.models[mode].stale, diagnostics: builder.current?.snapshot.models[mode].diagnostics }])), evaluatorLog });
+}
+
+async function assertApplied(operation: Promise<{ readonly status: string; readonly message: string }>): Promise<void> {
+  const result = await operation;
+  assert.equal(result.status, "applied", applyDiagnostics(result));
 }
 
 /** External-editor experiments must restore their fixture even when an assertion fails. */
@@ -88,14 +98,14 @@ test("client mapping batches persist references, disable graph links, undo/redo 
   const plan = await edits.planBatch([{ kind: "clientEnvironment", mappings }], revision());
   assert.ok(plan.ok, JSON.stringify(plan.preflight));
   assert.equal(readFileSync(file, "utf8"), before, "review does not write");
-  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  await assertApplied(edits.applyBatch(plan.planId));
   const client = builder.current!.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!.clientEnvironment!;
   assert.equal(client.entries.find((entry) => entry.name === "VITE_LOCAL_WS_URL")!.status, "disabled");
   assert.ok(client.entries.some((entry) => entry.name === "VITE_NEW_REGION"));
   assert.ok(!builder.current!.snapshot.models.dev.edges.some((edge) => edge.relation === "maps" && edge.label === "VITE_LOCAL_WS_URL"));
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.undo());
   assert.equal(readFileSync(file, "utf8"), before);
-  assert.equal((await edits.redo()).status, "applied");
+  await assertApplied(edits.redo());
   await edits.undo();
   const stale = await edits.planBatch([{ kind: "clientEnvironment", mappings }], revision());
   await withExternalSource(file, before + "\n// authored elsewhere\n", async () => {
@@ -113,15 +123,15 @@ test("descriptions review without writing, persist with settings and undo/redo t
   assert.equal(plan.ok, true);
   assert.equal(plan.changes.length, 2);
   assert.equal(readFileSync(file, "utf8"), before);
-  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  await assertApplied(edits.applyBatch(plan.planId));
   assert.equal(builder.current!.snapshot.descriptions.values[entity], value);
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.undo());
   assert.equal(readFileSync(file, "utf8"), before);
-  assert.equal((await edits.redo()).status, "applied");
+  await assertApplied(edits.redo());
   assert.equal(builder.current!.snapshot.descriptions.values[entity], value);
   await edits.undo();
   const newNode = await edits.planBatch([{ kind: "description", entity: "task:transaction-worker", value: "New node notes" }], revision());
-  assert.equal((await edits.applyBatch(newNode.planId)).status, "applied");
+  await assertApplied(edits.applyBatch(newNode.planId));
   assert.equal(builder.current!.snapshot.descriptions.values["task:transaction-worker"], "New node notes");
   await edits.undo();
   const pending = await edits.planBatch([{ kind: "description", entity, value }], revision());
@@ -141,15 +151,15 @@ test("connection descriptions review, persist, clear and undo without changing g
   const plan = await edits.planBatch([{ kind: "description", entity, value }], revision());
   assert.ok(plan.ok);
   assert.equal(readFileSync(file, "utf8"), before, "review does not write");
-  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  await assertApplied(edits.applyBatch(plan.planId));
   assert.equal(builder.current!.snapshot.descriptions.values[entity], value);
   assert.deepEqual(builder.current!.snapshot.models.dev.edges.find((item) => item.id === edge.id), edge);
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.undo());
   assert.equal(readFileSync(file, "utf8"), before);
-  assert.equal((await edits.redo()).status, "applied");
+  await assertApplied(edits.redo());
   assert.equal(builder.current!.snapshot.descriptions.values[entity], value);
   const clear = await edits.planBatch([{ kind: "description", entity, value: "" }], revision());
-  assert.equal((await edits.applyBatch(clear.planId)).status, "applied");
+  await assertApplied(edits.applyBatch(clear.planId));
   assert.equal(builder.current!.snapshot.descriptions.values[entity], "");
   await edits.undo();
   await edits.undo();
@@ -163,7 +173,7 @@ test("batch HTTP renames move description keys and undo restores both files", as
   const value = builder.current!.snapshot.descriptions.values[route];
   const plan = await edits.planBatch([{ kind: "route", route, value: "/examples/documented" }], revision());
   assert.equal(plan.ok, true);
-  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  await assertApplied(edits.applyBatch(plan.planId));
   assert.equal(builder.current!.snapshot.descriptions.values["route:http:/examples/documented"], value);
   assert.equal(builder.current!.snapshot.descriptions.values[route], undefined);
   await edits.undo();
@@ -181,23 +191,23 @@ test("local replay reviews config and handler together, restores both exactly, a
   assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
   assert.ok(plan.changes.some(change => change.file.endsWith("event-replay.ts")), "review includes the generated replay manifest");
   assert.equal(readFileSync(handler, "utf8"), beforeHandler, "review writes nothing");
-  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  await assertApplied(edits.applyBatch(plan.planId));
   const enabledHandler = readFileSync(handler, "utf8");
   const enabledConfig = readFileSync(config, "utf8");
   assert.match(enabledHandler, /lambdaHandler = withLocalReplay\(async/);
   assert.equal(builder.current!.snapshot.models.dev.fields[target].find((fact) => fact.field === "events.localReplay")?.effective, true);
   const off = await edits.planBatch([{ kind: "field", intent: { target, field: "events.localReplay", inherit: true } }], revision());
   assert.equal(off.ok, true, JSON.stringify(off.preflight));
-  assert.equal((await edits.applyBatch(off.planId)).status, "applied");
+  await assertApplied(edits.applyBatch(off.planId));
   assert.ok(!readFileSync(handler, "utf8").includes("withLocalReplay(async"));
   assert.equal(builder.current!.snapshot.models.dev.fields[target].find((fact) => fact.field === "events.localReplay")?.effective, false);
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.undo());
   assert.equal(readFileSync(handler, "utf8"), enabledHandler);
   assert.equal(readFileSync(config, "utf8"), enabledConfig);
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.undo());
   assert.equal(readFileSync(handler, "utf8"), beforeHandler);
   assert.equal(readFileSync(config, "utf8"), beforeConfig);
-  assert.equal((await edits.redo()).status, "applied");
+  await assertApplied(edits.redo());
   assert.equal(readFileSync(handler, "utf8"), enabledHandler);
   await edits.undo();
   const conflicting = await edits.planBatch([{ kind: "field", intent }], revision());
@@ -223,15 +233,15 @@ test("five settings are reviewed together, persisted together and undone as one 
   assert.equal(plan.summaries.length, 5);
   assert.equal(plan.changes.length, 1, "same-file changes share one diff");
   assert.equal(readFileSync(file, "utf8"), original, "review writes no source");
-  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  await assertApplied(edits.applyBatch(plan.planId));
   for (const [field, value] of values) assert.equal(builder.current!.snapshot.models.dev.fields[target].find((fact) => fact.field === field)!.authored, value);
   const changed = readFileSync(file, "utf8");
   assert.match(edits.history().undo!, /5 inspector changes/);
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.undo());
   assert.equal(readFileSync(file, "utf8"), original);
-  assert.equal((await edits.redo()).status, "applied");
+  await assertApplied(edits.redo());
   assert.equal(readFileSync(file, "utf8"), changed);
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.undo());
   assert.equal(readFileSync(file, "utf8"), original, "comments, imports and formatting return byte for byte");
 });
 
@@ -249,12 +259,12 @@ test("a route and nested settings compose across files without losing prior spli
   ], revision());
   assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
   assert.ok(plan.changes.some(change => change.file.endsWith("framework-routes.ts")), "review includes generated route contracts");
-  assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+  await assertApplied(edits.applyBatch(plan.planId));
   const model = builder.current!.snapshot.models.dev;
   assert.ok(model.routes.some((route) => route.path === "/batch-worker" && route.target === target));
   assert.equal(model.fields[target].find((fact) => fact.field === "lambda.memorySize")!.effective, 256);
   assert.equal(model.fields[target].find((fact) => fact.field === "lambda.bundling.minify")!.effective, false);
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.undo());
   for (const [file, original] of originals) assert.equal(readFileSync(file, "utf8"), original);
 });
 
@@ -266,8 +276,8 @@ test("interdependent edits validate as a complete configuration and rejected dra
   await rejects(edits.applyBatch(invalid.planId), 422, /rejected settings/);
   const combined = await edits.planBatch([worker, { kind: "field", intent: { target: route.target, field: "deploy", value: "local-only" } }], revision());
   assert.equal(combined.ok, true, JSON.stringify(combined.preflight));
-  assert.equal((await edits.applyBatch(combined.planId)).status, "applied");
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.applyBatch(combined.planId));
+  await assertApplied(edits.undo());
 });
 
 test("a concurrent change to one batch file prevents every batch write", async () => {
@@ -301,7 +311,7 @@ test("island defaults insert a service group, preserve workload overrides, and u
   assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
   assert.equal(plan.file, "framework-config/defaults.ts");
   assert.equal(readFileSync(file, "utf8"), original, "preview never writes");
-  assert.equal((await edits.apply(plan.planId)).status, "applied");
+  await assertApplied(edits.apply(plan.planId));
   assert.equal(facts().find((fact) => fact.field === field.field)!.authored, 384);
   for (const [ref, old] of before) {
     const next = model().fields[ref].find((fact) => fact.field === "lambda.memorySize")!;
@@ -309,16 +319,16 @@ test("island defaults insert a service group, preserve workload overrides, and u
     assert.equal(next.effective, old.authored === undefined ? 384 : old.effective);
   }
   const authored = readFileSync(file, "utf8");
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.undo());
   assert.equal(readFileSync(file, "utf8"), original);
-  assert.equal((await edits.redo()).status, "applied");
+  await assertApplied(edits.redo());
   assert.equal(readFileSync(file, "utf8"), authored);
   const inherit = await edits.plan({ target: "defaults:http", field: field.field, inherit: true }, revision());
-  assert.equal((await edits.apply(inherit.planId)).status, "applied");
+  await assertApplied(edits.apply(inherit.planId));
   assert.equal(facts().find((fact) => fact.field === field.field)!.effective, 128);
   // Return the disposable file to its original bytes for neighboring tests.
-  assert.equal((await edits.undo()).status, "applied");
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.undo());
+  await assertApplied(edits.undo());
   assert.equal(readFileSync(file, "utf8"), original);
 });
 
@@ -329,9 +339,9 @@ test("shared default switches, required baselines and numeric domains use the ex
   const original = readFileSync(file, "utf8");
   const plan = await edits.plan({ target: "defaults:lambda", field: "defaults.lambda.bundling.minify", value: false }, revision());
   assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
-  assert.equal((await edits.apply(plan.planId)).status, "applied");
+  await assertApplied(edits.apply(plan.planId));
   assert.equal(builder.current!.snapshot.models.dev.fields["defaults:lambda"].find((fact) => fact.field === plan.field)!.effective, false);
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.undo());
   assert.equal(readFileSync(file, "utf8"), original);
 });
 
@@ -344,9 +354,9 @@ test("container and database pool defaults retain their own nested source paths"
   ] as const) {
     const plan = await edits.plan({ target, field, value }, revision());
     assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
-    assert.equal((await edits.apply(plan.planId)).status, "applied");
+    await assertApplied(edits.apply(plan.planId));
     assert.equal(builder.current!.snapshot.models.dev.fields[target].find((fact) => fact.field === field)!.effective, value);
-    assert.equal((await edits.undo()).status, "applied");
+    await assertApplied(edits.undo());
     assert.equal(readFileSync(file, "utf8"), original);
   }
 });
@@ -374,9 +384,9 @@ test("a valid edit is written, reflected in the next snapshot, and undone to the
   assert.equal(service.lanes.deploy, "both");
   assert.ok(edits.history().undo, "generator-complete legacy deployment edits enter normal batch history");
 
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.undo());
   assert.equal(readFileSync(serviceFile, "utf8"), original);
-  assert.equal((await edits.redo()).status, "applied");
+  await assertApplied(edits.redo());
   assert.equal(readFileSync(serviceFile, "utf8"), original.replace('deploy: "local-only"', 'deploy: "both"'));
   await edits.undo();
   assert.equal(readFileSync(serviceFile, "utf8"), original);
@@ -398,9 +408,9 @@ test("Lambda build controls round-trip architecture, numeric retention and boole
     const plan = await edits.plan({ target: "lambda:graphql-api", field, value }, revision());
     assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
     assert.equal(plan.preflight.dev.predicted?.effective, value);
-    assert.equal((await edits.apply(plan.planId)).status, "applied");
+    await assertApplied(edits.apply(plan.planId));
     assert.equal(builder.current!.snapshot.models.dev.fields["lambda:graphql-api"]!.find((fact) => fact.field === field)?.effective, value);
-    assert.equal((await edits.undo()).status, "applied");
+    await assertApplied(edits.undo());
     assert.equal(readFileSync(file, "utf8"), original);
   }
   const refused = await edits.plan({ target: "lambda:graphql-api", field: "lambda.packaging", value: "container" }, revision());
@@ -417,9 +427,9 @@ test("Cognito event Lambda settings can be previewed, written and undone in thei
     const plan = await edits.plan({ target, field, value }, revision());
     assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
     assert.equal(plan.file, "framework-config/workloads/events.ts");
-    assert.equal((await edits.apply(plan.planId)).status, "applied");
+    await assertApplied(edits.apply(plan.planId));
     assert.equal(builder.current!.snapshot.models.dev.fields[target]!.find((fact) => fact.field === field)?.effective, value);
-    assert.equal((await edits.undo()).status, "applied");
+    await assertApplied(edits.undo());
     assert.equal(readFileSync(file, "utf8"), original);
   }
   const packaging = await edits.plan({ target, field: "lambda.packaging", value: "container" }, revision());
@@ -532,7 +542,7 @@ test("an HTTP route rename updates its gateway and preserves the Lambda identity
   const plan = await edits.planRoute("route:http:/examples/python", "/examples/renamed", revision());
   assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
   assert.equal(readFileSync(file, "utf8"), original);
-  assert.equal((await edits.apply(plan.planId)).status, "applied");
+  await assertApplied(edits.apply(plan.planId));
   for (const mode of ["dev", "prod"] as const) {
     assert.deepEqual(identity(mode), before[mode]);
     const model = builder.current!.snapshot.models[mode];
@@ -540,9 +550,9 @@ test("an HTTP route rename updates its gateway and preserves the Lambda identity
     assert.equal(model.routes.find((route) => route.id === "route:http:/examples/renamed")?.browserPath, "/api/examples/renamed");
     assert.ok(!model.routes.some((route) => route.id === "route:http:/examples/python"));
   }
-  assert.equal((await edits.undo()).status, "applied");
+  await assertApplied(edits.undo());
   assert.equal(readFileSync(file, "utf8"), original);
-  assert.equal((await edits.redo()).status, "applied");
+  await assertApplied(edits.redo());
   await edits.undo();
   assert.equal(readFileSync(file, "utf8"), original);
 });
@@ -570,7 +580,8 @@ test("HTTP authorizer auth can be switched off and on without changing handler u
   const disabled = await edits.plan({ target: before.ref, field: "http.auth", inherit: true }, revision());
   assert.equal(disabled.ok, true, JSON.stringify(disabled.preflight));
   assert.equal(disabled.preflight.dev.predicted?.effective, false);
-  assert.equal((await edits.apply(disabled.planId)).status, "applied");
+  const disabledResult = await edits.apply(disabled.planId);
+  assert.equal(disabledResult.status, "applied", applyDiagnostics(disabledResult));
   const at = original.indexOf("    auth: true,\n", original.indexOf('"/graphql":'));
   assert.equal(readFileSync(file, "utf8"), original.slice(0, at) + original.slice(at + "    auth: true,\n".length));
   const model = builder.current!.snapshot.models.dev;
@@ -581,7 +592,8 @@ test("HTTP authorizer auth can be switched off and on without changing handler u
   assert.deepEqual(target.environment, before.environment);
   const enabled = await edits.plan({ target: before.ref, field: "http.auth", value: true }, revision());
   assert.equal(enabled.ok, true, JSON.stringify(enabled.preflight));
-  assert.equal((await edits.apply(enabled.planId)).status, "applied");
+  const enabledResult = await edits.apply(enabled.planId);
+  assert.equal(enabledResult.status, "applied", applyDiagnostics(enabledResult));
   assert.equal(builder.current!.snapshot.models.prod.routes.find((route) => route.id === "route:http:/graphql")?.auth, true);
   assert.ok(!readFileSync(file, "utf8").includes("auth: false"));
   await edits.undo();
@@ -597,7 +609,7 @@ test("HTTP service mounts expose the same API authorizer control and event Lambd
   assert.ok(!model.fields["lambda:cognito-pre-signup-trigger"]!.some((field) => field.field === "http.auth"));
   const plan = await edits.plan({ target: "service:example-service", field: "http.auth", inherit: true }, revision());
   assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
-  assert.equal((await edits.apply(plan.planId)).status, "applied");
+  await assertApplied(edits.apply(plan.planId));
   assert.equal(builder.current!.snapshot.models.dev.routes.find((route) => route.id === "route:service:/example-service/*")?.auth, false);
   await edits.undo();
   assert.equal(readFileSync(serviceFile, "utf8"), original);

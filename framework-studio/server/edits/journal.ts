@@ -75,7 +75,9 @@ export class SourceJournal {
     mkdirSync(this.folder, { recursive: true, mode: 0o700 });
     const file = path.join(this.folder, `${journal.id}.json`), temporary = path.join(this.folder, `${journal.id}-${randomUUID()}.tmp`);
     writeFileSync(temporary, JSON.stringify(journal), { mode: 0o600, flag: "wx" });
-    const fd = openSync(temporary, "r"); try { fsyncSync(fd); } finally { closeSync(fd); }
+    // Windows FlushFileBuffers requires a handle opened for writing. The file
+    // is ours; keep the durable write-ahead flush on every supported platform.
+    const fd = openSync(temporary, "r+"); try { fsyncSync(fd); } finally { closeSync(fd); }
     renameSync(temporary, file);
     try { const directory = openSync(this.folder, "r"); try { fsyncSync(directory); } finally { closeSync(directory); } }
     catch (error) { const code = (error as NodeJS.ErrnoException).code ?? ""; if (!["EINVAL", "ENOTSUP", "EISDIR"].includes(code) && !(process.platform === "win32" && ["EPERM", "EACCES"].includes(code))) throw error; }
@@ -84,10 +86,12 @@ export class SourceJournal {
     const root = realpathSync(this.root);
     if (active.get(root)?.size) throw new EditError(409, "A source transaction is still applying. Wait for its result before writing more source.");
     this.assertFolder();
-    if (existsSync(this.folder) && readdirSync(this.folder).filter(file => /^[0-9a-f-]{36}\.json$/.test(file)).map(file => this.read(file.slice(0, -5))).some(journal => journal.status === "pending" && this.isActive(journal))) throw new EditError(409, "Another Studio process is still applying source in this checkout. Wait for its result before editing.");
-    if (this.pending().length) throw new EditError(409, "An interrupted source transaction needs recovery before applying more source changes. Open Source recovery.");
+    // Serialize before reading records: another owner may have exclusively
+    // created its lock but not finished writing that lock's metadata yet.
     const id = randomUUID(); this.lock(id);
     try {
+    if (existsSync(this.folder) && readdirSync(this.folder).filter(file => /^[0-9a-f-]{36}\.json$/.test(file)).map(file => this.read(file.slice(0, -5))).some(journal => journal.status === "pending" && this.isActive(journal))) throw new EditError(409, "Another Studio process is still applying source in this checkout. Wait for its result before editing.");
+    if (this.pending().length) throw new EditError(409, "An interrupted source transaction needs recovery before applying more source changes. Open Source recovery.");
     const reviewed = changes.map(change => ({ ...change, file: toRelative(this.root, change.file) }));
     for (const change of reviewed) this.sourceFile({ authority }, change.file, change.authority);
     this.save({ version: 1, id, root, ownerPid: process.pid, ...(authority ? { authority } : {}), label, createdAt: new Date().toISOString(), status: "pending", changes: reviewed });

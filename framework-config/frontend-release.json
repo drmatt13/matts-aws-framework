@@ -1,0 +1,11 @@
+{
+  "projectDirectory": "client-app",
+  "buildScript": "build",
+  "buildArgs": [],
+  "outputDirectory": "dist",
+  "include": ["**/*"],
+  "exclude": ["**/.env*", "**/*.map"],
+  "prefix": "",
+  "deleteRemote": false,
+  "invalidationPaths": ["/*"]
+}

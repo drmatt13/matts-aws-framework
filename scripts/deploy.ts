@@ -46,6 +46,9 @@ import { readDeploymentStackPages } from "./resource-export";
 import { assemblyDigest } from "./deployment-integrity";
 import { writeDeploymentRecordAtomic } from "./deployment-artifact";
 import { inspectInfrastructureAssembly } from "./infrastructure-inventory";
+import { assertCognitoDomainReview, cognitoDomainChanges, type CognitoDomainChange } from "./deployment-cognito-domains";
+import { assertStatefulOwnershipTransitions, validateAssemblyStatefulReferences } from "./stateful-references";
+import { acquireStatefulReferenceLocks } from "./stateful-reference-locks";
 
 const root = resolve(__dirname, "..");
 const cdk = process.env.FRAMEWORK_CDK_CLI ?? require.resolve("aws-cdk/bin/cdk");
@@ -129,6 +132,8 @@ export interface DeploymentPlanDocument {
   readonly retainedStacks?: readonly { name: string; status: string }[];
   readonly reviewEvidence?: { security: string; templates: string; problems: readonly string[] };
   readonly sourceRevision?: { commit?: string; dirty: boolean };
+  /** Explicitly reviewed compatibility migration for an existing development custom domain. */
+  readonly cognitoDomainChanges?: readonly CognitoDomainChange[];
 }
 
 interface Prepared {
@@ -179,7 +184,9 @@ async function prepare(args: readonly string[], assembly: { directory: string; s
   }
   const region = graph.identity.region;
   if (selection.region && selection.region !== region) throw new Error("--region differs from the synthesized deployment region.");
-  const release = acquireDeploymentLock(resolve(root, ".cache/deploy"), graph.identity.deployment);
+  const releaseDeployment = acquireDeploymentLock(resolve(root, ".cache/deploy"), graph.identity.deployment);
+  let releaseReferences = () => {};
+  const release = () => { releaseReferences(); releaseDeployment(); };
   cleanups.add(release);
   try {
     const aws: AwsTarget = { region, ...(profile ? { profile } : {}) };
@@ -197,7 +204,13 @@ async function prepare(args: readonly string[], assembly: { directory: string; s
     if (deployed.kind === "failed") console.log(`${graph.identity.deployment} has failed stacks the CDK CLI recovers itself: it recreates a stack whose first create failed, and retries or first rolls back one that --no-rollback paused.`);
     // Users cannot override framework-owned parameters with a hand-authored ARN map.
     if (args.some((arg) => graph.requirements.some((requirement) => arg.includes(requirement.parameter)))) throw new Error("Managed secret parameters are supplied automatically; remove their --parameters overrides.");
-    return { selection, target, authored, profile, aws, graph, assembly: assembly.directory, stacks: stackOrder(assembly.directory, graph.stacks), deployed, callerArn: String(caller.Arn ?? ""), release };
+    // Revalidate external identities before change-set preparation, secret writes
+    // or deployment. Saved plans use descriptors from their immutable templates.
+    const stacks = stackOrder(assembly.directory, graph.stacks);
+    releaseReferences = acquireStatefulReferenceLocks(resolve(root, ".cache/deploy/references"), stacks, graph.identity);
+    validateAssemblyStatefulReferences(stacks, aws, graph.identity);
+    if (deployed.kind !== "absent") for (const stack of stacks) if (deployed.stacks.some(existing => existing.name === stack.name)) assertStatefulOwnershipTransitions(deployedTemplate(aws, stack.name), stack.template);
+    return { selection, target, authored, profile, aws, graph, assembly: assembly.directory, stacks, deployed, callerArn: String(caller.Arn ?? ""), release };
   } catch (error) {
     release(); cleanups.delete(release);
     throw error;
@@ -208,6 +221,14 @@ function secretsClient(aws: AwsTarget) {
   if (process.env.FRAMEWORK_AWS_CLI) return { client: cliSecretsClient(aws), close: () => {} };
   const client = new SecretsManagerClient({ region: aws.region });
   return { client, close: () => client.destroy() };
+}
+
+/** Read only selected, already-owned stacks. Missing template evidence refuses before secret writes. */
+function developmentCognitoDomainChanges(prepared: Prepared): CognitoDomainChange[] {
+  if (prepared.graph.identity.mode !== "dev" || prepared.deployed.kind === "absent") return [];
+  const existing = new Set(prepared.deployed.stacks.map(stack => stack.name));
+  return prepared.stacks.filter(stack => existing.has(stack.name)).flatMap(stack =>
+    cognitoDomainChanges(stack.name, deployedTemplate(prepared.aws, stack.name), stack.template));
 }
 
 async function exportDevelopment(prepared: Prepared): Promise<void> {
@@ -251,6 +272,8 @@ async function deployDirectly(wrapper: Wrapper): Promise<void> {
   try {
     try {
       prepared = await prepare(wrapper.rest, { directory: assembly, synthesize: true });
+      const domainChanges = developmentCognitoDomainChanges(prepared);
+      if (domainChanges.length) throw new Error(`${domainChanges.map(change => change.consequence).join(" ")} Direct deployment is refused. Create and review a saved deployment plan with --plan <directory>, then apply it with --confirm ${prepared.graph.identity.deployment}. Nothing was changed.`);
       // A Ctrl+C during the synchronous checks above lands here: write nothing.
       interrupt.assertContinuing();
       const secrets = secretsClient(prepared.aws);
@@ -407,6 +430,8 @@ async function plan(wrapper: Wrapper): Promise<void> {
 
     const allChanges = stacks.flatMap((stack) => stack.changes);
     const exportsInUse = stacks.flatMap((stack) => stack.exportsInUse);
+    const domainChanges = graph.identity.mode === "dev" ? reviewed.flatMap(({ entry, previous }) => cognitoDomainChanges(entry.name, previous, entry.template)) : [];
+    const confirmation = confirmationLevel({ mode: graph.identity.mode, firstDeploy: prepared.deployed.kind === "absent", iamBroadening, changes: allChanges, exportsInUse });
     const document: DeploymentPlanDocument = {
       version: PLAN_VERSION, planId,
       createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + PLAN_LIFETIME_MS).toISOString(),
@@ -418,7 +443,8 @@ async function plan(wrapper: Wrapper): Promise<void> {
       secrets: secretPlan.entries,
       dockerImages: dockerImages(assembly).map(({ stack, asset }) => ({ stack, asset })),
       iamBroadening,
-      confirmation: confirmationLevel({ mode: graph.identity.mode, firstDeploy: prepared.deployed.kind === "absent", iamBroadening, changes: allChanges, exportsInUse }),
+      confirmation: domainChanges.length ? { level: "name", reasons: [...confirmation.reasons, ...domainChanges.map(change => change.consequence)] } : confirmation,
+      ...(domainChanges.length ? { cognitoDomainChanges: domainChanges } : {}),
       uncertainties: [...PLAN_UNCERTAINTIES[review], ...(createdSecrets.length ? [`Created before review so the change sets could reference them: ${createdSecrets.join(", ")}. Nothing reads them until this plan is applied.`] : [])],
       assemblyDigest: reviewedDigest,
       retainedStacks,
@@ -483,6 +509,7 @@ async function apply(wrapper: Wrapper): Promise<void> {
       throw new Error("The plan's assembly no longer resolves to the identity it was reviewed for. Plan again.");
     }
     if (assemblyDigest(prepared.assembly) !== document.assemblyDigest) throw new Error("The plan's templates, manifests or staged assets changed after review. Plan again. Nothing was changed.");
+    assertCognitoDomainReview(developmentCognitoDomainChanges(prepared), document, graph.identity.deployment, wrapper.confirm);
     const stale = staleness(Object.fromEntries(document.stacks.map((stack) => [stack.name, stack.fingerprint])), Object.fromEntries(document.stacks.map((stack) => [stack.name, fingerprintOf(describeStack(aws, stack.name))])));
     if (stale) throw new Error(`${stale} Plan again: the review no longer describes what AWS holds. Nothing was changed.`);
     const changing = document.stacks.filter((stack) => !stack.noChanges && !stack.deferred);

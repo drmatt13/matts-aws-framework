@@ -36,6 +36,18 @@ Selection checks require command/target mode agreement and refuse accidental pro
 
 Development export supplies generated root environment/resource manifest and browser settings. Production output/export uses its production destinations rather than seeding development. Protected Studio input editing addresses only the two fixed mode files; custom target input paths are not a general file browser. [Secrets](secrets.md) owns the private-value boundaries.
 
+Deploy's **Development & production deployment names** editor adds independent target
+keys through a reviewed source change; it never renames an existing key or resource.
+Changing the personal dev default preserves its old identity as an explicit target.
+The prod/staging target key remains authoritative; no competing `.env.prod`
+CDK_APP_NAME is added. Missing conventional input files use their own mode's template.
+The output exporter resolves a declared named target's custom `inputs` path from that
+same target, checks account/region pins against deployed identity, and offers
+`--client-only` for public client env refresh without Docker or Compose-control outputs.
+See [frontend release](../../framework-studio/frontend-release.md) and the implementations
+[deployment-identities.ts](../../../framework-studio/server/deployment-identities.ts),
+[frontend-release.ts](../../../framework-studio/server/frontend-release.ts).
+
 ## Region belongs to the deployment
 
 One application deployment uses one account and region. Keep `region` on a named

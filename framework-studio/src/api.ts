@@ -14,6 +14,7 @@ import type { InfrastructureState } from "../shared/infrastructure";
 import type { DeploymentInputDetails, DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
 import { STUDIO_PROTOCOL_VERSION, studioProtocolProblem } from "../shared/protocol";
 import type { SourceWatchState } from "../shared/watch";
+import { connectStudioEvents } from "./events";
 
 /**
  * The studio's server, from the page's side.
@@ -43,7 +44,9 @@ export async function call<T>(path: string, body?: unknown, signal?: AbortSignal
     headers: { "x-studio-token": token, "x-studio-protocol": STUDIO_PROTOCOL_VERSION, ...(body === undefined ? {} : { "content-type": "application/json" }) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  const payload = (await response.json().catch(() => ({}))) as { error?: string };
+  const payload = (await response.json().catch(() => {
+    throw new ApiError(response.ok ? 502 : response.status, "Studio returned an invalid API response. Restart npm run studio in this checkout, reload the page, and retry the operation.");
+  })) as { error?: string };
   if (!response.ok) throw new ApiError(response.status, payload.error ?? response.statusText);
   return payload as T;
 }
@@ -105,7 +108,7 @@ export function useLiveUpdates(onExternal: (files: readonly string[]) => void): 
   reportExternal.current = onExternal;
   const [state, setState] = useState<LiveState>({ connected: false, evaluating: false, running: null });
   useEffect(() => {
-    const source = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
+    const source = connectStudioEvents(token);
     source.addEventListener("hello", (event) => {
       const data = JSON.parse((event as MessageEvent<string>).data || "{}") as { sourceWatch?: SourceWatchState };
       setState(current => ({ ...current, connected: true, sourceWatch: data.sourceWatch }));
@@ -133,7 +136,7 @@ export function useLiveUpdates(onExternal: (files: readonly string[]) => void): 
     });
     source.addEventListener("infrastructure", () => void queryClient.invalidateQueries({ queryKey: ["infrastructure"] }));
     source.addEventListener("database-history", () => void queryClient.invalidateQueries({ queryKey: ["snapshot"] }));
-    source.onerror = () => setState((current) => ({ ...current, connected: false }));
+    source.addEventListener("error", () => setState((current) => ({ ...current, connected: false })));
     return () => source.close();
   }, [queryClient]);
   return state;

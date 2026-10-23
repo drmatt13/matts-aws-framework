@@ -25,6 +25,8 @@ configuration health. Health stays at the right edge across routes and exposes b
 environments' verdicts to assistive technology. Database edits one shared source contract,
 so it omits the graph selector and configuration undo/redo; selected-target database
 operations keep their own explicit target controls.
+At narrow widths the view tabs scroll within their navigation row, keeping each
+name on one line without widening the document as workspaces are added.
 
 Every route starts immediately below navigation with `.workspace-toolbar`. It owns
 `--workspace-gutter` (16px), `--toolbar-padding` (12px vertically), `--toolbar-height`
@@ -55,6 +57,17 @@ one named disclosure with versions/details on demand. Warnings, failures and rem
 remain visible. Refresh reports pending state and partial failures, keeps prior results
 available and works when no profile is configured. Never communicate refresh failure
 only through a disappearing notification.
+
+Cognito uses one persistent workspace below the application bar. Its internal route
+navigation has the same restrained selected treatment, followed by one wrapping
+profile/deployment/region toolbar and compact evidence status. User Pools starts
+with pool identity and app clients; provider setup and policy tools have their own
+routes. Use bounded, horizontally scrollable tables for long provider/role metadata,
+wrapping identifiers and associated form labels. Keep source declarations, AWS
+observations and simulation evidence individually labeled. Technical limitations
+belong in contextual disclosures; failed reads, missing prerequisites and stale
+evidence remain visible and actionable. Subsection navigation preserves mounted
+forms and must not invoke the leave-workspace discard flow.
 
 ## Inspector density and disclosure
 

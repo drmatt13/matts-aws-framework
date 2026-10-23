@@ -24,6 +24,7 @@ test("background snapshot errors and retry preserve the mounted editor and its p
     readonly listeners = new Map<string, (event: { data: string }) => void>();
     constructor() { sources.push(this); }
     addEventListener(name: string, listener: (event: { data: string }) => void) { this.listeners.set(name, listener); }
+    removeEventListener(name: string) { this.listeners.delete(name); }
     close() { sources.splice(sources.indexOf(this), 1); }
   } });
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };

@@ -36,6 +36,7 @@ import { planConnection } from "./connections";
 import { planWorkloadRemoval } from "./removal";
 import { SourceJournal } from "./journal";
 import { readWorkloadOperation } from "../../shared/workload-operations";
+import { planIdentityPolicy } from "../identity-policy-source";
 
 interface Change { readonly file: string; readonly before: string | null; readonly after: string | null }
 export interface BatchJournal {
@@ -119,6 +120,7 @@ export class BatchEditor {
     let generationInputs: Readonly<Record<string, string>> | undefined;
     const generatedFiles = new Set<string>();
     const implementationFiles = new Set<string>();
+    const policyFiles = new Set<string>();
     if (creation) {
       const generated = await generateCreationArtifacts(this.root, overrides);
       for (const [file, text] of generated.overrides) overrides.set(file, text);
@@ -134,6 +136,13 @@ export class BatchEditor {
     const replayTargets: string[] = [];
     const handlerBefore = new Map<string, string>();
     for (const edit of edits) {
+      if (edit.kind === "identityPolicy") {
+        if (edits.filter(item => item.kind === "identityPolicy" && item.target === edit.target).length !== 1) throw new EditError(422, "Review one policy change per identity-pool stack.");
+        const policy = planIdentityPolicy(this.root, state, edit, overrides);
+        policyFiles.add(policy.file); triggerSources = { ...triggerSources, ...policy.hashes };
+        summaries.push(`${edit.target} — replace ReaderRole policy with ${edit.statements.length} explicit Allow/Deny statements; permissionless guests ${edit.allowUnauthenticated ? "enabled" : "disabled"}; default authenticated role and its trust stay unchanged`);
+        continue;
+      }
       if (["implementation", "connection", "removeWorkload"].includes(edit.kind)) readWorkloadOperation(edit);
       if (edit.kind === "create") { summaries.push(`Create ${edit.request.kind}: ${creation!.expected.select}`); continue; }
       if (edit.kind === "implementation") {
@@ -282,7 +291,7 @@ export class BatchEditor {
       } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
     }
     const preliminary = !creation ? await this.validate(Object.fromEntries(overrides), state, routes, undefined, undefined, false, edits.filter(edit => edit.kind === "removeWorkload").map(edit => edit.target), [...deletions.keys()]) : undefined;
-    if (!creation && preliminary?.preflight.dev.ok && preliminary.preflight.prod.ok && edits.some(edit => !["description", "tags", "clientEnvironment", "network", "database", "databasePlacement", "placement", "removeNetwork"].includes(edit.kind))) {
+    if (!creation && preliminary?.preflight.dev.ok && preliminary.preflight.prod.ok && edits.some(edit => !["identityPolicy", "description", "tags", "clientEnvironment", "network", "database", "databasePlacement", "placement", "removeNetwork"].includes(edit.kind))) {
       const generated = await generateCreationArtifacts(this.root, overrides, [...deletions.keys()]);
       for (const [file, text] of generated.overrides) overrides.set(file, text);
       for (const [file, text] of generated.before) creationBefore.set(file, text);
@@ -350,8 +359,9 @@ export class BatchEditor {
         "Compose Watch may restart local workloads after the source files are written. Deployment is a separate action."],
     };
     const replaySources = [...handlerBefore].map(([file, before]) => ({ file, before, after: overrides.get(file)! }));
+    if (edits.some(edit => edit.kind === "identityPolicy")) (response.impact as string[]).push("ReaderRole IAM and explicit guest opt-in changes take effect only after a separate synth/diff/deployment review. Enabled guests can obtain a separate permissionless unauthenticated identity role; ReaderRole grants never attach to guests. Source statements and policy simulation do not prove group claims, trust, boundaries/SCPs, resource policies or runtime API authorization. The default authenticated role remains permissionless.");
     const addedDirectories = changes.filter(change => change.before === null).flatMap(change => { const folders: string[] = []; for (let folder = path.dirname(change.file); folder !== this.root && !existsSync(folder); folder = path.dirname(folder)) folders.push(folder); return folders; });
-    this.plans.set(response.planId, { kind: "batch", label: creation ? `Create ${creation.expected.select}` : `${edits.length} inspector changes`, response, revision, hashes, changes, edits, routes, replayTargets, replaySources, triggerSources, generatedFiles: [...generatedFiles], generationInputs, ...(addedDirectories.length ? { createdDirectories: [...new Set(addedDirectories)] } : {}), implementationFiles: [...implementationFiles], ...(edits.some(edit => edit.kind === "connection" || edit.kind === "removeWorkload") ? { operationModels: { forward: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, inverse: { dev: creationSignature(state.snapshot.models.dev), prod: creationSignature(state.snapshot.models.prod) } } } : {}), ...(deletions.size ? { networkRemovals: [...deletions.keys()], createdDirectories: [...new Set([...addedDirectories, ...[...deletions.keys()].map(file => path.dirname(file))])] } : {}), ...(native ? { cdkSources: [...native.changes.keys()] } : {}), ...(creation ? { creation: creation.expected, creationModels: { forward: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, inverse: { dev: creationSignature(state.snapshot.models.dev), prod: creationSignature(state.snapshot.models.prod) } }, createdDirectories: [...new Set(changes.filter((change) => change.before === null).flatMap((change) => {
+    this.plans.set(response.planId, { kind: "batch", label: creation ? `Create ${creation.expected.select}` : `${edits.length} inspector changes`, response, revision, hashes, changes, edits, routes, replayTargets, replaySources, triggerSources, generatedFiles: [...generatedFiles], generationInputs, ...(addedDirectories.length ? { createdDirectories: [...new Set(addedDirectories)] } : {}), implementationFiles: [...implementationFiles], ...(edits.some(edit => edit.kind === "connection" || edit.kind === "removeWorkload") ? { operationModels: { forward: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, inverse: { dev: creationSignature(state.snapshot.models.dev), prod: creationSignature(state.snapshot.models.prod) } } } : {}), ...(deletions.size ? { networkRemovals: [...deletions.keys()], createdDirectories: [...new Set([...addedDirectories, ...[...deletions.keys()].map(file => path.dirname(file))])] } : {}), ...((native || policyFiles.size) ? { cdkSources: [...new Set([...(native?.changes.keys() ?? []), ...policyFiles])] } : {}), ...(creation ? { creation: creation.expected, creationModels: { forward: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, inverse: { dev: creationSignature(state.snapshot.models.dev), prod: creationSignature(state.snapshot.models.prod) } }, createdDirectories: [...new Set(changes.filter((change) => change.before === null).flatMap((change) => {
       const directories: string[] = [];
       for (let directory = path.dirname(change.file); directory !== this.root && !existsSync(directory); directory = path.dirname(directory)) directories.push(directory);
       return directories;
@@ -508,7 +518,7 @@ export class BatchEditor {
         if (!inverse && entry.creation.kind === "stack") {
           const resource = actual.snapshot.models.dev.resources.find((resource) => resource.id === entry.creation!.select);
           if (resource?.stackUsage?.status !== "referenced") throw new Error("The new stack was not registered in the CDK application.");
-          if (!actual.snapshot.models.dev.resources.some((item) => ["queue", "bucket"].some(member => item.id === `${entry.creation!.select}.${member}`) && item.parent === entry.creation!.select && item.kind === "member")) throw new Error("The stack's typed public resource was not exposed in the resource catalog.");
+          if (!actual.snapshot.models.dev.resources.some((item) => ["queue", "bucket", "identityPool"].some(member => item.id === `${entry.creation!.select}.${member}`) && item.parent === entry.creation!.select && item.kind === "member")) throw new Error("The stack's typed public resource was not exposed in the resource catalog.");
         }
       }
       this.journal.finish(journalId, "complete");

@@ -4,7 +4,10 @@ import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as cognito from "aws-cdk-lib/aws-cognito";
+import * as ssm from "aws-cdk-lib/aws-ssm";
 import { eventFunction } from "../framework/framework-events";
+import { additionalAuthProviderOptions, type AdditionalAuthProvider } from "./auth-providers";
+import { markExternalCognitoReference, validateCognitoReference, type CognitoReference } from "./cognito-lifecycle";
 
 export interface CognitoStackProps extends cdk.StackProps {
   cognitoDomainPrefix?: string;
@@ -40,13 +43,16 @@ export interface CognitoStackProps extends cdk.StackProps {
   sesFromName?: string;
   /** Region of the SES identity. Defaults to this stack's region. */
   sesRegion?: string;
+  additionalProviders?: readonly AdditionalAuthProvider[];
+  /** Reference an already configured pool/client/domain without managing or mutating them. */
+  reference?: CognitoReference;
 }
 
 export class CognitoStack extends cdk.Stack {
   // The constructs themselves: `resources.cognito` reads its attributes from
   // these, so nothing here restates a user pool id as a string.
-  public readonly userPool: cognito.UserPool;
-  public readonly userPoolClient: cognito.UserPoolClient;
+  public readonly userPool: cognito.IUserPool;
+  public readonly userPoolClient: cognito.IUserPoolClient;
   // The strings this stack answers for, which no construct can be asked for:
   // `domain.baseUrl()` is a method, and the rest are this deployment's frontend
   // settings resolved. They are resources exactly as the constructs above are —
@@ -63,6 +69,29 @@ export class CognitoStack extends cdk.Stack {
 
   constructor(scope: Construct, id: string, props: CognitoStackProps) {
     super(scope, id, props);
+    if (props.reference) {
+      validateCognitoReference(props.reference, { account: this.account, region: this.region });
+      this.userPool = cognito.UserPool.fromUserPoolId(this, "ReferencedUserPool", props.reference.userPoolId);
+      this.userPoolClient = cognito.UserPoolClient.fromUserPoolClientId(this, "ReferencedUserPoolClient", props.reference.userPoolClientId);
+      markExternalCognitoReference(this.userPool);
+      this.userPoolDomainUrl = props.reference.userPoolDomainUrl;
+      this.oauthProviderRedirectUri = `${this.userPoolDomainUrl}/oauth2/idpresponse`;
+      this.trustedOriginsCsv = (props.trustedFrontendUrls ?? []).join(",");
+      this.frontendUrl = props.frontendUrl ?? "";
+      this.skipEmailVerification = props.skipEmailVerification ? "true" : "false";
+      // CloudFormation rejects output-only templates. This stack owns a small
+      // nonsecret reference manifest, never the existing Cognito resources.
+      new ssm.StringParameter(this, "ReferenceIdentity", {
+        description: "Framework Cognito external reference; does not transfer resource ownership.",
+        stringValue: JSON.stringify({ version: 1, userPoolId: props.reference.userPoolId, userPoolClientId: props.reference.userPoolClientId, originalDeployment: props.reference.originalDeployment }),
+      });
+      linkResources(this, resources.cognito);
+      this.publishCognitoOutputs(props.reference.userPoolDomainCloudFrontEndpoint);
+      new cdk.CfnOutput(this, "UserPoolManagement", { value: "external-reference" });
+      new cdk.CfnOutput(this, "UserPoolOriginalDeployment", { value: props.reference.originalDeployment });
+      cdk.Annotations.of(this).addWarning("The selected Cognito pool, app client, domain, providers, groups and triggers remain externally managed. Source auth settings and retention do not reconfigure or protect them. Verify existing callbacks, providers and Lambda dependencies before deployment; metadata does not prove sign-in.");
+      return;
+    }
     if (hasFrameworkResources(this) && props.googleClientId && !props.googleClientSecret) {
       const handle = resolveDeploymentSecret(this, resources.googleClientSecret, true)!;
       props = { ...props, googleClientSecret: cdk.SecretValue.secretsManager(handle.secretArn) };
@@ -276,12 +305,18 @@ export class CognitoStack extends cdk.Stack {
       );
     }
 
+    // Keep the pool's native wiring visible here. The settings helper receives
+    // declarations, never the pool, so it cannot conceal extra Lambda hooks.
+    const providers = additionalAuthProviderOptions(this, props.additionalProviders ?? []).map(provider => provider.type === "oidc"
+      ? new cognito.UserPoolIdentityProviderOidc(this, provider.id, { userPool, ...provider.options })
+      : new cognito.UserPoolIdentityProviderSaml(this, provider.id, { userPool, ...provider.options }));
     const supportedIdentityProviders = googleProvider
       ? [
           cognito.UserPoolClientIdentityProvider.COGNITO,
           cognito.UserPoolClientIdentityProvider.GOOGLE,
         ]
       : [cognito.UserPoolClientIdentityProvider.COGNITO];
+    supportedIdentityProviders.push(...providers.map(provider => cognito.UserPoolClientIdentityProvider.custom(provider.providerName)));
 
     const userPoolClient = new cognito.UserPoolClient(this, "UserPoolClient", {
       userPool,
@@ -324,8 +359,23 @@ export class CognitoStack extends cdk.Stack {
     if (googleProvider) {
       userPoolClient.node.addDependency(googleProvider);
     }
+    for (const provider of providers) userPoolClient.node.addDependency(provider);
 
     domain.node.addDependency(userPoolClient);
+
+    // Retaining only the pool preserves users but lets CloudFormation delete
+    // its independently declared auth configuration. Keep the selected client,
+    // domain and federation declarations together, with their existing IDs.
+    if (retainStatefulResources) {
+      for (const dependent of [userPoolClient, domain, ...providers, ...(googleProvider ? [googleProvider] : [])]) {
+        dependent.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+      }
+      // Declarative trigger attachments finalize after this constructor. Visit
+      // at synthesis as well so their pool-scoped invoke grants survive too.
+      cdk.Aspects.of(userPool).add({ visit(child) {
+        if (child instanceof cdk.CfnResource && child.cfnResourceType === "AWS::Lambda::Permission") child.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+      } });
+    }
 
     this.userPool = userPool;
     this.userPoolClient = userPoolClient;
@@ -340,33 +390,33 @@ export class CognitoStack extends cdk.Stack {
     // linked.
     linkResources(this, resources.cognito);
 
-    new cdk.CfnOutput(this, "UserPoolId", {
-      value: userPool.userPoolId,
-    });
+    this.publishCognitoOutputs(props.cognitoDomainName ? domain.cloudFrontEndpoint : undefined);
+  }
 
-    new cdk.CfnOutput(this, "UserPoolClientId", {
-      value: userPoolClient.userPoolClientId,
-    });
+  /** Keep native output declarations within their owning class so Studio's
+   * static source reader and synthesis share the same public output contract. */
+  private publishCognitoOutputs(cloudFrontEndpoint?: string): void {
+    new cdk.CfnOutput(this, "UserPoolId", { value: this.userPool.userPoolId });
+
+    new cdk.CfnOutput(this, "UserPoolClientId", { value: this.userPoolClient.userPoolClientId });
 
     new cdk.CfnOutput(this, "UserPoolDomainUrl", {
-      value: userPoolDomainUrl,
+      value: this.userPoolDomainUrl,
       exportName: `${this.stackName}:UserPoolDomainUrl`,
     });
 
-    if (props.cognitoDomainName) {
+    if (cloudFrontEndpoint !== undefined) {
       new cdk.CfnOutput(this, "UserPoolDomainCloudFrontEndpoint", {
-        value: domain.cloudFrontEndpoint,
+        value: cloudFrontEndpoint,
         exportName: `${this.stackName}:UserPoolDomainCloudFrontEndpoint`,
-        description:
-          "CloudFront endpoint to use as the DNS target for the Cognito custom domain.",
+        description: "CloudFront endpoint to use as the DNS target for the Cognito custom domain.",
       });
     }
 
     new cdk.CfnOutput(this, "OAuthProviderRedirectUri", {
       value: this.oauthProviderRedirectUri,
       exportName: `${this.stackName}:OAuthProviderRedirectUri`,
-      description:
-        "Redirect URI to register with external OAuth providers such as Google.",
+      description: "Redirect URI to register with external OAuth providers such as Google.",
     });
   }
 }

@@ -14,6 +14,7 @@ composes every declaration. Files are never registered by scanning a directory.
 | `contracts.ts` | Type-only section types specialized to this resource catalog |
 | `defaults.ts` | Shared compute and connection defaults |
 | `descriptions.ts`, `client-environment.ts` | Studio descriptions and client mappings |
+| `frontend-release.json` | Static frontend project/script/output and reviewed publication filters; deployed website outputs own its destination |
 
 Start with the existing kind module: add HTTP routes to `workloads/http.ts`, event handlers
 to `workloads/events.ts`, and tasks to `workloads/tasks.ts`. Shared fragments and comments

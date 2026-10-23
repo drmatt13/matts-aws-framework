@@ -29,7 +29,8 @@ test("review patches apply byte-for-byte for sparse, repeated, empty and newline
     for (const [before, after] of cases) {
       writeFileSync(path.join(root, "sample.txt"), before!);
       const patch = sourceDiff("sample.txt", before!, after!).unified;
-      const result = spawnSync("git", ["apply", "--no-index", "--whitespace=nowarn", "-"], { cwd: root, input: patch, encoding: "utf8" });
+      // This fixture verifies authored bytes, independent of the user's checkout policy.
+      const result = spawnSync("git", ["-c", "core.autocrlf=false", "apply", "--no-index", "--whitespace=nowarn", "-"], { cwd: root, input: patch, encoding: "utf8" });
       assert.equal(result.status, 0, `${JSON.stringify([before, after])}: ${result.stderr}\n${patch}`);
       assert.equal(readFileSync(path.join(root, "sample.txt"), "utf8"), after);
     }

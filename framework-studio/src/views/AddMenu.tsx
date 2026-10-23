@@ -16,6 +16,7 @@ const options = [
   { kind: "tool", icon: SquareFunction },
   { kind: "input", icon: Plus },
   { kind: "secret", icon: KeyRound },
+  { kind: "auth-provider", icon: KeyRound },
 ] satisfies { kind: CreationKind; icon: typeof Plus }[];
 
 /** Creation shares the Inspector's guarded draft and complete diff review. */

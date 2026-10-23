@@ -23,7 +23,7 @@ before(async () => {
   const { JSDOM } = require("jsdom");
   dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/", pretendToBeVisual: true });
   for (const name of ["window", "self", "document", "navigator", "HTMLElement", "HTMLDialogElement", "Node", "MutationObserver", "getComputedStyle"] as const) Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] });
-  Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} close() {} } });
+  Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} removeEventListener() {} close() {} } });
   Object.defineProperty(globalThis, "scrollTo", { configurable: true, value: () => {} });
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
@@ -93,7 +93,7 @@ test("creation chooser supports directional navigation and Escape returns focus 
   ui.fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });
   assert.equal(document.activeElement, options.getByRole("button", { name: "Workflow" }));
   ui.fireEvent.keyDown(document.activeElement!, { key: "End" });
-  assert.equal(document.activeElement, options.getByRole("button", { name: "Secret" }));
+  assert.equal(document.activeElement, options.getByRole("button", { name: "Authentication provider" }));
   ui.fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   assert.equal(ui.screen.queryByRole("dialog"), null);
   assert.equal(document.activeElement, trigger);

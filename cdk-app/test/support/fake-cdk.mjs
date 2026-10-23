@@ -12,8 +12,9 @@
  * Every call is appended to state.cdkCalls.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { replaceFileAtomic } from "../../../scripts/atomic-replace.cjs";
 
 const statePath = process.env.FAKE_AWS_STATE;
 const args = process.argv.slice(2);
@@ -25,12 +26,7 @@ const load = () => JSON.parse(readFileSync(statePath, "utf8"));
 function writeAtomic(file, text) {
   const temporary = `${file}.${process.pid}.tmp`;
   writeFileSync(temporary, text);
-  for (let attempt = 0; ; attempt++) {
-    try { renameSync(temporary, file); return; } catch (error) {
-      if (attempt > 100 || !["EPERM", "EBUSY", "EACCES"].includes(error.code)) throw error;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    }
-  }
+  replaceFileAtomic(temporary, file);
 }
 const save = (state) => writeAtomic(statePath, JSON.stringify(state, null, 2));
 { const state = load(); state.cdkCalls = [...(state.cdkCalls ?? []), args]; save(state); }

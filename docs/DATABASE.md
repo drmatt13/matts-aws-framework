@@ -193,6 +193,69 @@ Prefix each with `npm --workspace @repo/database run`:
 
 There is no supported `prisma db push` workflow in this repository.
 
+## Retaining and referencing PostgreSQL
+
+Local PostgreSQL and production RDS have independent data. Ordinary Compose stop,
+down, rebuild and container recreation reuse `postgres_data`; removing that volume
+deletes its records. Reusing a local volume does not prove RDS recovery. The opt-in
+`cdk-app/test/database-local-persistence.test.ts` creates its own random labelled
+volume, verifies records through the real framework connection helper across both
+stop/start and complete container recreation, then removes only its fixtures:
+
+```powershell
+$env:FRAMEWORK_DATABASE_PERSISTENCE = 'job2-disposable'
+node --import tsx --test cdk-app/test/database-local-persistence.test.ts
+Remove-Item Env:FRAMEWORK_DATABASE_PERSISTENCE
+```
+
+AWS PostgreSQL uses one RDS instance, optional read replicas and an optional writer
+Proxy. A development deployment creates no RDS instance or VPC. Resource-specific
+retention is selected per deployment mode in `framework-config/stateful-resources.ts`;
+an omitted policy inherits the existing `RETAIN_STATEFUL_RESOURCES` setting. Saving
+source does not update deployed policies. Review and deploy that change before
+teardown, then inspect actual deployed deletion policies.
+
+With database retention enabled, `RdsStack` retains the writer, configured replicas,
+generated master secret and attachment, database security groups, subnet/parameter
+groups, and its complete declared network. Keeping only the instance can strand its
+data or cause stack deletion to fail. The retained network includes IPv6 associations,
+routes, gateways, endpoints and client security groups, so NAT gateways and interface
+endpoints can continue charging. An unretained writer still uses a final snapshot;
+that snapshot is a separate restore pathway and is not a running database reference.
+
+The supported reconnection method is an explicit `reference` in the selected
+mode's `database` lifecycle policy. The public `DatabaseReference` contract and offline
+validator live in `cdk-app/lib/app/database-lifecycle.ts`. It records exact account,
+region, original deployment/StackId, immutable DB resource ID, PostgreSQL endpoint,
+engine/database name, IAM login, encryption key and master-secret identities,
+security groups, VPC, and all subnet/route-table identities ordered by availability
+zone. Current AWS discovery and deployment preflight must establish that evidence;
+a resource name or a source assertion alone does not prove ownership or availability.
+
+Reference mode creates no replacement database, master secret, IAM SQL login or
+VPC. It connects new compute to the original VPC, adds explicitly managed client
+security-group admission rules and grants `rds-db:connect` only for the original
+immutable DB resource ID and `app_user`. It never reads the master password. Existing
+IAM authentication and the already bootstrapped `app_user` are prerequisites. The
+original database and network remain externally managed: source settings do not
+resize, upgrade, change backups, alter retention or adopt ownership of them.
+
+The first supported reference path uses the direct writer. Disable Proxy and read
+replicas in the selected source/input settings before review; their recovery and
+ownership require separate work. Account, region, PostgreSQL major version, database
+name and original network must match. Missing secrets/KMS/network dependencies,
+active conflicting owners and uncertain evidence must be resolved before deployment.
+References cannot attach an isolated instance through a newly created VPC.
+
+After separately authorizing a deployment, inspect the selected migration task
+destination and use the existing read-only Database workbench inspection to verify
+connectivity and schema. Separately authorize a targeted query of known retained
+records. Do not run migrations, initialization, seed SQL or login repairs as part
+of reconnection. Those writes need their own review.
+CloudFormation import, snapshot restoration, permanent retained-resource deletion,
+cluster/Aurora recovery and cross-account/cross-VPC moves are separate operations;
+the reference path does not perform them.
+
 ## Studio workbench
 
 `npm run studio` → **Database** offers Prisma source editing beside the diagram,

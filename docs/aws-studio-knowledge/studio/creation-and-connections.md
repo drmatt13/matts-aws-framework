@@ -15,6 +15,9 @@ source:
   - framework-studio/server/edits/removal.ts
   - framework-studio/server/edits/triggers.ts
   - framework-studio/server/edits/native-triggers.ts
+  - framework-config/auth-providers.ts
+  - cdk-app/lib/app/auth-providers.ts
+  - cdk-app/lib/app/identity-pool-access.ts
 related:
   - studio.editing
   - studio.source-indexing
@@ -22,7 +25,7 @@ related:
 ---
 # Creation and resource connections
 
-Every creator accepts the same optional string key/value tags. Workloads append a literal
+Workload/catalog creators accept optional string key/value tags. Workloads append a literal
 entry to the canonical `framework-config/workloads/<section>.ts` export (`http`, `events`,
 `tasks`, etc.). Existing imports, comments and fragments are preserved; the existing root
 array registration remains in place. A missing kind module is created and explicitly
@@ -37,6 +40,24 @@ Existing catalog groups retain their declaring module. The explicit facade impor
 each public name; descriptor filenames are never public catalog identity.
 
 Current source implements **Add to Application**, not a disabled menu. [AddMenu](../../../framework-studio/src/views/AddMenu.tsx) opens [CreationWizard](../../../framework-studio/src/views/CreationWizard.tsx); `CREATORS`, `CreationRequest` and `readCreationRequest` in [shared/creation.ts](../../../framework-studio/shared/creation.ts) define forms and server-revalidated inputs. `InspectorDraft.beginCreation` stages one complete creation; it cannot be mixed with unrelated edits in a batch.
+
+The Cognito view's federation creator reuses this transaction for literal
+`framework-config/auth-providers.ts` entries. OIDC declares/reuses a catalog secret
+reference; SAML authors metadata URL and explicit claim mappings. The native existing
+Cognito stack/client consumes environment-scoped entries, preserving Google/pool/client
+identities. External provider configuration, secret access and actual sign-in remain
+unverified until separately observed. Provider metadata reads are allowlisted and never
+request secret values. See the [identity guide](../../framework-studio/identity-and-domains.md).
+
+The Stack creator also supplies an authenticated-only identity-pool template through
+native `identityPoolAccess`. Guest/classic flows are disabled, web-identity trust is
+constrained by pool audience and authenticated amr, and ambiguous token role mapping
+denies credentials. The default authenticated role is always permissionless. A distinct
+reader role supplies the reader-group claim (precedence10) and alone receives optional
+`s3:GetObject` for an explicit bucket/prefix; no listing/write/admin grants are added.
+This separation preserves the missing-group boundary if Cognito falls back to its
+default role. Group assignment, effective IAM and retained-resource reattachment are
+separate operations; source/synth success is not runtime authorization proof.
 
 The chooser supports arrow keys, Home/End and Escape with focus returned to its trigger.
 Unavailable choices explain their configuration/validation blocker in the menu.

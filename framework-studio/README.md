@@ -32,8 +32,26 @@ application is a separate target-bound review and typed approval; opening the pa
 inspection never start Compose. See the [Database workbench guide](../docs/framework-studio/database-workbench.md)
 for exact effects, evidence, keyboard behavior and limitations.
 
+**Data retention** and the Cognito User Pools/Deploy lifecycle panels review
+independent Database/Cognito policies and explicit references to compatible retained
+resources. Source authority, legacy compatibility, durable inventory, dependency
+guards and CLI parity are documented in the [stateful lifecycle guide](../docs/framework-studio/stateful-resources.md).
+
 The **Deploy** tab (`/deploy`) provides deployment discovery, reviewed operations and
 local development controls. See [Deploy & Run](../docs/framework-studio/deploy-and-run.md).
+Its deployment detail also offers reviewed **Development & production deployment
+names** and **Client environment & frontend release** controls: public env generation
+without Docker, configurable static frontend builds, exact S3 publication review and
+separate CloudFront invalidation. See the [frontend release guide](../docs/framework-studio/frontend-release.md).
+
+The **Cognito** tab (`/cognito`) is one authentication workspace with directly
+linked User Pools, Identity Pools, Providers and Permissions & RBAC subsections.
+One profile/deployment/region context follows Studio's environment selection;
+subsection navigation preserves inspection and source proposals. Old
+`/identity-pools` bookmarks remain compatible. Source intent, deployed metadata,
+simulation and actual sign-in/access have separate evidence. See the
+[authentication guide](../docs/framework-studio/identity-and-domains.md) and
+[component ownership](../docs/aws-studio-knowledge/studio/authentication.md).
 
 Local PostgreSQL appears in Board and Isometric as the Compose `postgres`
 service. In Isometric it stands in the VPC's isolated subnet right beside RDS, solid in

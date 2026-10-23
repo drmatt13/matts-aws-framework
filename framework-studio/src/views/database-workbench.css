@@ -161,3 +161,15 @@
 .workbench-representations dt { font-weight: 600; }
 .workbench-representations dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 700px) { .workbench-representations dl > div { grid-template-columns: 1fr; gap: 5px; } }
+
+.database-sql, .data-retention { padding: 16px; max-width: 1100px; }
+.database-sql h2, .data-retention h2 { margin-top: 0; }
+.database-sql fieldset { border: 1px solid var(--border); border-radius: 8px; margin: 18px 0; padding: 16px; }
+.database-sql label, .data-retention > label { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.database-sql .sql-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.database-sql .sql-source { grid-column: 1 / -1; }
+.database-sql textarea { width: 100%; box-sizing: border-box; font: 13px/1.5 var(--font-mono, monospace); padding: 10px; resize: vertical; }
+.database-sql pre, .data-retention pre { max-width: 100%; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.database-sql details, .data-retention details { margin: 12px 0; }
+.data-retention > label:has(input[type="checkbox"]) { flex-direction: row; align-items: center; }
+@media (max-width: 650px) { .database-sql .sql-fields { grid-template-columns: 1fr; } .workbench-tabs { flex-wrap: wrap; } }

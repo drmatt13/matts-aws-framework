@@ -191,13 +191,13 @@ function TargetView(props: { readonly target: ModelTarget }) {
       <TargetDeployment target={target} />
       <Description entity={target.ref} />
       <ImplementationStatus target={target} />
-      <WorkloadConnections key={target.ref} target={target} />
+      <WorkloadConnections key={`connections:${target.ref}`} target={target} />
       {settings.length > 0 ? <InspectorSection title="Settings">
         {settings.map((fact) => <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />)}
       </InspectorSection> : null}
       <ApiAuthControl target={target} />
       <LocalReplayControl target={target} />
-      {target.role === "event" ? <Triggers key={target.ref} target={target} /> : null}
+      {target.role === "event" ? <Triggers key={`triggers:${target.ref}`} target={target} /> : null}
       <HttpRoutes target={target} />
       {compute.kind === "lambda" ? <InspectorDisclosure title="Build and runtime">
         <dl className="lambda-build">

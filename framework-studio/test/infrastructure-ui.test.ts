@@ -38,7 +38,7 @@ before(async () => {
   const { JSDOM } = require("jsdom");
   dom = new JSDOM(`<!doctype html><html><head><meta name="studio-protocol" content="${STUDIO_PROTOCOL_VERSION}"></head><body></body></html>`, { url: "http://localhost/", pretendToBeVisual: true });
   for (const name of ["window", "self", "document", "navigator", "HTMLElement", "Node", "MutationObserver", "getComputedStyle"] as const) Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] });
-  Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} close() {} } });
+  Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} removeEventListener() {} close() {} } });
   Object.defineProperty(globalThis, "scrollTo", { configurable: true, value: () => {} });
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
@@ -351,7 +351,7 @@ test("an outdated running server explains how to recover instead of offering a s
 test("the inventory API rejects an old server's HTML fallback even when its HTTP status is successful", async () => {
   mock.method(globalThis, "fetch", async () => new Response("<!doctype html><html></html>", { status: 200, headers: { "content-type": "text/html" } }));
   for (const request of [() => api.api.infrastructure("dev"), () => api.api.synthesize("dev")]) {
-    await assert.rejects(request(), (error: unknown) => error instanceof api.ApiError && error.status === 404);
+    await assert.rejects(request(), (error: unknown) => error instanceof api.ApiError && error.status === 502 && /Restart npm run studio/.test(error.message));
   }
 });
 

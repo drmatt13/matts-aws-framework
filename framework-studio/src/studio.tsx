@@ -57,6 +57,10 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
   // router navigation. The same session guard handles graph-mode changes below.
   const shouldBlockFn = useCallback(({ current, next }: { current: { pathname: string; search: unknown }; next: { pathname: string; search: unknown } }) => {
       if (current.pathname === next.pathname && JSON.stringify(current.search) === JSON.stringify(next.search)) return false;
+      // Authentication panels share one mounted workspace and source draft. A
+      // subsection change does not leave that editing session or change target.
+      const inAuthentication = (path: string) => path === "/cognito" || path.startsWith("/cognito/");
+      if (inAuthentication(current.pathname) && inAuthentication(next.pathname) && JSON.stringify(current.search) === JSON.stringify(next.search)) return false;
       return new Promise<boolean>((resolve) => draft.requestNavigation(() => resolve(false), () => resolve(true)));
   }, [draft]);
   useBlocker({ shouldBlockFn, enableBeforeUnload: false });
@@ -68,9 +72,13 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
   }, [draft, draftState.entries]);
 
   const applyDraft = async () => {
+    const authenticationProvider = draft.creation()?.resourceKind === "auth-provider";
     const result = await draft.apply();
     if (!result) return;
     toast(result.message);
+    // Federation creation can return its new secret as the generic source target.
+    // Keep this workflow in place without opening an inspector that reads values.
+    if (authenticationProvider && result.status === "applied") { setCreated(undefined); props.select(undefined); return; }
     if (result.select) { setCreated({ id: result.select, revision: result.revision }); props.select(result.select); }
     else if ("resource" in result && result.resource !== draftState.selected) props.select(result.resource);
   };

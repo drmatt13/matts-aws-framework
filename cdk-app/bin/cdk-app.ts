@@ -20,6 +20,8 @@ import { initializeFrameworkResources, finalizeFrameworkResources } from "../lib
 import { describeFrameworkNetwork } from "../lib/framework/framework-network";
 import { describeFrameworkDatabase } from "../lib/framework/framework-database";
 import framework from "../../framework.config";
+import { authenticationProviders } from "../../framework-config/auth-providers";
+import { statefulResources } from "../../framework-config/stateful-resources";
 
 import {
   loadDeploymentEnvironment,
@@ -53,6 +55,7 @@ const deployment = resolveDeploymentInputs({
   env: process.env,
   target: selection.target,
   databaseSettings: isFrameworkDatabase(framework.database) ? framework.database.settings : undefined,
+  statefulResources,
 });
 deployment.warnings.forEach((warning) => console.warn(warning));
 const { stackEnv, mode } = deployment;
@@ -113,7 +116,8 @@ const rdsStack = mode === "prod"
   ? new RdsStack(app, stackId("RdsStack"), {
       env: stackEnv,
       definition: isFrameworkDatabase(framework.database) ? framework.database : undefined,
-      retainStatefulResources: deployment.retainStatefulResources,
+      retainStatefulResources: deployment.databaseRetention,
+      reference: deployment.stateful.database.reference,
       backupRetentionDays: deployment.databaseBackupRetentionDays,
       databaseSettings: deployment.database,
     })
@@ -158,10 +162,11 @@ if (tasks.stack) {
   eventHandlers.addStackDependency(tasks.stack);
 }
 
-// Create Cognito User Pool + Client + Identity Pool
+// Create the application's Cognito user pool and app client.
 const cognitoStack = new CognitoStack(app, stackId("CognitoStack"), {
   env: stackEnv,
-  retainStatefulResources: deployment.retainStatefulResources,
+  retainStatefulResources: deployment.cognitoRetention,
+  reference: deployment.stateful.cognito.reference,
   skipEmailVerification: frontend.skipEmailVerification,
   sesFromEmail: deployment.cognitoSesFromEmail,
   sesFromName: deployment.cognitoSesFromName,
@@ -170,6 +175,7 @@ const cognitoStack = new CognitoStack(app, stackId("CognitoStack"), {
   cognitoDomainName: deployment.cognitoDomainName,
   cognitoDomainCertificateArn: deployment.cognitoDomainCertificateArn,
   googleClientId: deployment.googleClientId,
+  additionalProviders: authenticationProviders.filter(provider => provider.scope === "both" || provider.scope === mode),
   callbackUrls: frontend.authCallbackUrls,
   logoutUrls: frontend.cognitoFrontendUrls,
   // The resolved frontend settings this deployment's workloads read back as
@@ -179,6 +185,14 @@ const cognitoStack = new CognitoStack(app, stackId("CognitoStack"), {
   trustedFrontendUrls: frontend.trustedFrontendUrls,
   frontendUrl: frontend.frontendUrl,
 });
+
+// Reference descriptors travel with the saved assembly. Apply validates these
+// immutable public identities again without evaluating changed source.
+if (rdsStack && deployment.stateful.database.reference) {
+  const network = isFrameworkDatabase(framework.database) ? framework.database.vpc : undefined;
+  rdsStack.templateOptions.metadata = { ...rdsStack.templateOptions.metadata, "framework:stateful-reference": { kind: "database", reference: deployment.stateful.database.reference, networkPolicy: network ? { natGateway: network.natGateway, egressOnlyInternetGateway: network.egressOnlyInternetGateway, gatewayEndpoints: network.gatewayEndpoints, interfaceEndpoints: network.interfaceEndpoints } : undefined } };
+}
+if (deployment.stateful.cognito.reference) cognitoStack.templateOptions.metadata = { ...cognitoStack.templateOptions.metadata, "framework:stateful-reference": { kind: "cognito", reference: deployment.stateful.cognito.reference, callbackUrls: frontend.authCallbackUrls, logoutUrls: frontend.cognitoFrontendUrls, providers: ["COGNITO", ...(deployment.googleClientId ? ["Google"] : []), ...authenticationProviders.filter(provider => provider.scope === "both" || provider.scope === mode).map(provider => provider.name)] } };
 
 // ─── Your application stacks go here ───────────────────────────────────────
 // Built after the event handlers, so a stack can attach a trigger with

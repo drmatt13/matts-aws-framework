@@ -1,4 +1,4 @@
-import type { UserPool } from "aws-cdk-lib/aws-cognito";
+import type { IUserPool } from "aws-cdk-lib/aws-cognito";
 import type { IEventBus } from "aws-cdk-lib/aws-events";
 import type { IQueue } from "aws-cdk-lib/aws-sqs";
 import type { ITopic } from "aws-cdk-lib/aws-sns";
@@ -146,7 +146,10 @@ export const COGNITO_TRIGGER_OPERATIONS = {
 export type CognitoTriggerHook = keyof typeof COGNITO_TRIGGER_OPERATIONS;
 export const COGNITO_TRIGGER_HOOKS = Object.keys(COGNITO_TRIGGER_OPERATIONS) as readonly CognitoTriggerHook[];
 
-const cognito = defineTriggerAdapter<UserPool, { readonly operation: CognitoTriggerHook }>({
+// The catalog may expose a native pool through its honest IUserPool interface.
+// CDK still verifies concrete ownership before attaching any hook; accepting a
+// descriptor never makes an imported or externally referenced pool mutable.
+const cognito = defineTriggerAdapter<IUserPool, { readonly operation: CognitoTriggerHook }>({
   kind: "cognito", label: "Cognito", types: [{ module: "aws-cognito", name: "UserPool", mutable: true }, { module: "aws-cognito", name: "IUserPool" }],
   guide: {
     requirements: ["An owned cognito.UserPool created in the stack, not UserPool.fromUserPoolId.", "Each hook is one slot; a hook already wired in lambdaTriggers stays native.", "Hooks answer synchronously within five seconds; only postConfirmation supports local replay."],

@@ -36,7 +36,7 @@ before(async () => {
   const { JSDOM } = createRequire(import.meta.url)("jsdom");
   dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/", pretendToBeVisual: true });
   for (const name of ["window", "self", "document", "navigator", "HTMLElement", "HTMLDialogElement", "Node", "MutationObserver", "getComputedStyle"] as const) Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] });
-  Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} close() {} } });
+  Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} removeEventListener() {} close() {} } });
   Object.defineProperty(globalThis, "scrollTo", { configurable: true, value: () => {} });
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
@@ -57,7 +57,7 @@ beforeEach(() => {
     planCalls.push(edits);
     await reviewGate;
     if (failReview) throw new Error("Could not validate changes. Try reviewing again.");
-    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "implementation" || edit.kind === "connection" || edit.kind === "removeWorkload" ? `${edit.kind} ${edit.target}` : edit.kind === "tags" ? `tags ${edit.entity}` : edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "databasePlacement" ? `database placement ${edit.database}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
+    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "implementation" || edit.kind === "connection" || edit.kind === "removeWorkload" || edit.kind === "identityPolicy" ? `${edit.kind} ${edit.target}` : edit.kind === "tags" ? `tags ${edit.entity}` : edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "databasePlacement" ? `database placement ${edit.database}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
   });
   mock.method(apiModule.api, "applyBatch", async () => {
     applyCalls++; if (failApply) throw new Error("Source changed. Your draft is preserved.");
@@ -607,14 +607,15 @@ test("managed API routes show their target's environment cards and owning config
     assert.ok(ui.within(header).getByText(`Managed by framework-config/${section}`));
     assert.ok(ui.within(header).getByText(route.origin));
     const target = baseline.models.dev.targets.find((target) => target.ref === route.target)!;
+    const productionTarget = baseline.models.prod.targets.find((item) => item.ref === route.target)!;
     const cards = [...document.querySelectorAll(".lane-line")];
     assert.equal(cards.length, 2);
     assert.equal(cards[0]!.querySelector(".environment-name")?.textContent, "Development");
     assert.equal(cards[0]!.querySelector("strong")?.textContent, target.lanes.local || target.lanes.dev ? "Enabled" : "Not enabled");
     assert.equal(cards[0]!.querySelector(".small")?.textContent, target.lanes.local && target.lanes.dev ? "Your machine + AWS" : target.lanes.local ? "On your machine" : target.lanes.dev ? "In AWS" : undefined);
     assert.equal(cards[1]!.querySelector(".environment-name")?.textContent, "Production");
-    assert.equal(cards[1]!.querySelector("strong")?.textContent, target.lanes.prod ? "Enabled" : "Not enabled");
-    assert.equal(cards[1]!.querySelector(".small")?.textContent, target.lanes.prod ? "In AWS" : undefined);
+    assert.equal(cards[1]!.querySelector("strong")?.textContent, productionTarget.lanes.prod ? "Enabled" : "Not enabled");
+    assert.equal(cards[1]!.querySelector(".small")?.textContent, productionTarget.lanes.prod ? "In AWS" : undefined);
     const control = ui.screen.getByRole("combobox", { name: "Deploy" });
     ui.fireEvent.change(control, { target: { value: "none" } });
     assert.equal(document.querySelector(".lane-line.dev strong")?.textContent, "Not enabled");

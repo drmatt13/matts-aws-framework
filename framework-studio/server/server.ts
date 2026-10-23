@@ -22,6 +22,11 @@ import { createDeploymentInput } from "./deployment-inputs";
 import { DeploymentInputService, inputMode, readInputEdits } from "./deployment-input-edits";
 import { DeployService } from "./deploy/service";
 import { deployRouter } from "./deploy/routes";
+import { FrontendReleaseService } from "./frontend-release";
+import { DeploymentIdentityService } from "./deployment-identities";
+import { frontendReleaseRouter } from "./frontend-release-routes";
+import { readIdentityPolicyEdit } from "./identity-policy-source";
+import { IdentityPolicyService, identityPolicyRouter } from "./identity-policy";
 import { sendJson } from "./http";
 import { STUDIO_PROTOCOL_VERSION, STUDIO_RESTART_MESSAGE } from "../shared/protocol";
 import { readDatabaseDraft, readDatabasePlacementDraft } from "../shared/managed-database";
@@ -29,6 +34,11 @@ import { DatabaseWorkbenchService } from "./database-workbench";
 import { DatabaseHistoryService } from "./database-history";
 import { DatabaseApplicationService } from "./database-application";
 import { DatabaseCloudService } from "./database-cloud";
+import { databaseSqlRouter } from "./database-sql";
+import { IdentityService } from "./identity/service";
+import { identityRouter } from "./identity/routes";
+import { CognitoOperations } from "./identity/operations";
+import { StatefulResourceService, statefulResourceRouter } from "./stateful-resources";
 
 /**
  * The studio's HTTP surface: one origin, on the loopback interface only.
@@ -93,6 +103,7 @@ export function readDraftEdits(entries: unknown): readonly DraftEdit[] {
         try { return readDatabasePlacementDraft(item); } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
       }
       if (item?.kind === "field") return { kind: "field", intent: readIntent(item) };
+      if (item?.kind === "identityPolicy") return readIdentityPolicyEdit(item);
       if (item?.kind === "clientEnvironment") return { kind: "clientEnvironment", mappings: item.mappings as never };
       if (item?.kind === "tags" && Object.keys(item).every(key => ["kind", "entity", "tags"].includes(key)) && typeof item.entity === "string" && item.tags && typeof item.tags === "object" && !Array.isArray(item.tags)) return { kind: "tags", entity: item.entity, tags: item.tags as Readonly<Record<string, string>> };
       if (item?.kind === "description" && typeof item.entity === "string" && typeof item.value === "string") return { kind: "description", entity: item.entity, value: item.value };
@@ -123,11 +134,13 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   };
   const infrastructure = new InfrastructureService(repositoryRoot, () => builder.current?.snapshot, undefined, () => broadcast("infrastructure", {}));
   const deploy = new DeployService(repositoryRoot, broadcast);
+  const stateful = new StatefulResourceService(repositoryRoot, builder, deploy);
   /** Every preview was offered against one snapshot; a new one expires them all, whoever wrote it. */
   const published = (revision: string, external: readonly string[] = []) => {
     edits.expirePlans();
     resources.expirePlans();
     inputs.expirePlans();
+    stateful.expirePlans();
     broadcast("snapshot", { revision, external, history: edits.history() });
   };
   let evaluating = false;
@@ -162,6 +175,12 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     next();
   });
   const send = sendJson;
+  api.use("/identity-policy", identityPolicyRouter(new IdentityPolicyService(repositoryRoot, () => builder.current)));
+  api.use("/database/sql", databaseSqlRouter(repositoryRoot));
+  api.use("/frontend-release", frontendReleaseRouter(new FrontendReleaseService(repositoryRoot), new DeploymentIdentityService(repositoryRoot), () => { void refresh([]); }));
+  const identityService = new IdentityService(repositoryRoot, deploy);
+  api.use("/identity", identityRouter(identityService, new CognitoOperations(repositoryRoot, identityService)));
+  api.use("/stateful-resources", statefulResourceRouter(stateful, revision => published(revision)));
   const sourceJournal = new SourceJournal(repositoryRoot);
   const recoveryState = () => { try { return { sourceRecovery: sourceJournal.pending() }; } catch (error) { return { sourceRecoveryProblem: `Source recovery records cannot be read: ${error instanceof Error ? error.message : String(error)}. Source writes remain blocked; inspect .cache/framework-studio/transactions without discarding user files.` }; } };
   api.get("/source-recovery", (_request, response) => send(response, async () => sourceJournal.pending()));
@@ -340,6 +359,9 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   );
 
   api.use("/deploy", deployRouter(deploy));
+  api.use((_request, response) => {
+    response.status(404).json({ error: "This API is unavailable in the running Studio server. Restart npm run studio in this checkout and reload the page." });
+  });
 
   app.use("/api", api);
 
@@ -347,6 +369,9 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   const { createServer: createVite } = await import("vite");
   const vite = await createVite({
     root: STUDIO_ROOT,
+    // Separate Studio processes may share installed dependencies. Each needs
+    // its own optimizer cache so one server cannot replace another's modules.
+    cacheDir: path.join(repositoryRoot, ".cache/framework-studio/vite", String(port)),
     configFile: path.join(STUDIO_ROOT, "vite.config.mts"),
     appType: "custom",
     server: {
@@ -378,7 +403,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     // A file this studio just wrote, still holding exactly what it wrote, is
     // its own change; anything else was changed by someone else.
     const external = files.filter((file) => {
-      const owner = database.ownWrites.has(file) ? database.ownWrites : inputs.ownWrites.has(file) ? inputs.ownWrites : resources.ownWrites.has(file) ? resources.ownWrites : edits.ownWrites;
+      const owner = stateful.ownWrites.has(file) ? stateful.ownWrites : database.ownWrites.has(file) ? database.ownWrites : inputs.ownWrites.has(file) ? inputs.ownWrites : resources.ownWrites.has(file) ? resources.ownWrites : edits.ownWrites;
       const written = owner.get(file);
       if (written === undefined) return true;
       try {

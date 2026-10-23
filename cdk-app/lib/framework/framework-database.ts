@@ -102,7 +102,8 @@ export interface DatabaseConnectionTarget {
   readonly readers: readonly DatabaseEndpoint[];
   readonly databaseName: string;
   readonly login: string;
-  bootstrap(binding: ConnectsToBinding): cdk.CustomResource;
+  /** Referenced databases retain their existing IAM login and perform no SQL bootstrap. */
+  bootstrap(binding: ConnectsToBinding): cdk.CustomResource | void;
 }
 
 /** Attach a connection adapter beside an application construct, before finalization. */

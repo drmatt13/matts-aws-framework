@@ -27,7 +27,7 @@ let edits: EditService;
 before(async () => {
   mkdirSync(fixture, { recursive: true });
   const include = (source: string) => !/(?:^|\/)(?:node_modules|cdk\.out|dist|\.git)(?:\/|$)/.test(source) && (!/\/\.env(?:\.|$)/.test(source) || path.basename(source) === ".env.example");
-  for (const relative of ["framework-config", "framework.config.ts", "package.json", "package-lock.json", "docker-compose.yml", "docker-compose.services.yml", "packages/framework/src", "packages/api-contract/src/generated", "cdk-app/lib", "cdk-app/bin", "cdk-app/deployment.ts", "cdk-app/database-settings.ts", "cdk-app/cdk.json", "cdk-app/tsconfig.json", "cdk-app/lambda_functions", "cdk-app/ecs_containers", "agents", "scripts"]) cpSync(path.join(root, relative), path.join(fixture, relative), { recursive: true, filter: include });
+  for (const relative of ["framework-config", "framework.config.ts", "package.json", "package-lock.json", "docker-compose.yml", "docker-compose.services.yml", "packages/framework/src", "packages/api-contract/src/generated", "cdk-app/lib", "cdk-app/bin", "cdk-app/deployment.ts", "cdk-app/database-settings.ts", "cdk-app/stateful-resources.ts", "cdk-app/cdk.json", "cdk-app/tsconfig.json", "cdk-app/lambda_functions", "cdk-app/ecs_containers", "agents", "scripts"]) cpSync(path.join(root, relative), path.join(fixture, relative), { recursive: true, filter: include });
   const manifests = require("node:fs").globSync(JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")).workspaces.map((pattern: string) => `${pattern}/package.json`), { cwd: root }) as string[];
   for (const relative of manifests) { mkdirSync(path.dirname(path.join(fixture, relative)), { recursive: true }); cpSync(path.join(root, relative), path.join(fixture, relative)); }
   for (const mode of ["dev", "prod"]) cpSync(path.join(root, `cdk-app/.env.${mode}.template`), path.join(fixture, `cdk-app/.env.${mode}.template`));
@@ -80,6 +80,19 @@ for (const kind of CREATION_KINDS) test(`${kind}: complete reviewed creation, di
   assert.equal(readFileSync(file, "utf8"), after + "\n// Concurrent user edit\n");
   writeFileSync(file, after);
   assert.equal((await edits.undo()).status, "applied");
+});
+
+test("identity-pool: reviewed native stack exposes its pool, preserves existing identities and undoes exact source", async () => {
+  const intent = valid("stack", { id: "campaignIdentity", className: "CampaignIdentityStack", template: "identity-pool", scope: "dev", readBucketArn: "arn:aws:s3:::campaign-private", readPrefix: "tenant/" });
+  const plan = await edits.planBatch([{ kind: "create", request: intent }], revision());
+  assert.ok(plan.ok, JSON.stringify(plan.preflight));
+  assert.ok(plan.changes.some(change => change.file === "cdk-app/lib/app/campaign-identity-stack.ts"));
+  const result = await edits.applyBatch(plan.planId); assert.equal(result.status, "applied", result.message);
+  assert.ok(state().snapshot.models.dev.resources.some(resource => resource.id === "resource:campaignIdentity.identityPool"));
+  assert.match(readFileSync(path.join(fixture, "cdk-app/bin/cdk-app.ts"), "utf8"), /userPool: cognitoStack.userPool, userPoolClient: cognitoStack.userPoolClient/);
+  assert.match(readFileSync(path.join(fixture, "cdk-app/lib/app/campaign-identity-stack.ts"), "utf8"), /identityPoolAccess/);
+  assert.equal((await edits.undo()).status, "applied");
+  assert.equal(existsSync(path.join(fixture, "cdk-app/lib/app/campaign-identity-stack.ts")), false);
 });
 
 test("prod-only stack tags remain editable in the local graph and undo restores their source", async () => {

@@ -59,6 +59,7 @@ export function Detail(props: {
   readonly onAction: (action: Action) => void;
   readonly onMore: (action: MoreAction) => void;
   readonly onServiceLogs: (service: string) => void;
+  readonly frontend?: ReactNode;
 }) {
   const { row, context, status, record, local } = props;
   const actions = useRef<HTMLDetailsElement>(null);
@@ -249,6 +250,7 @@ export function Detail(props: {
           </ol>
         </section>
       ) : null}
+      {props.frontend}
     </section>
   );
 }

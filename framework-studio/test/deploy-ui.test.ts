@@ -4,6 +4,7 @@ import { after, afterEach, before, test } from "node:test";
 import { createElement as h, type ReactNode } from "react";
 import type { DeployOverview, DiscoveryView, DiscoveredDeploymentView, PlanSummaryView, PlanView, TeardownPlanView } from "../shared/deploy";
 import { STUDIO_PROTOCOL_VERSION } from "../shared/protocol";
+import { DEFAULT_FRONTEND_RELEASE } from "../shared/frontend-release";
 
 /**
  * The Deploy & Run page in a DOM, against scripted /api/deploy answers: what it
@@ -64,6 +65,7 @@ before(async () => {
     readonly listeners = new Map<string, ((event: { data: string }) => void)[]>();
     constructor() { sources.push(this); }
     addEventListener(name: string, listener: (event: { data: string }) => void) { this.listeners.set(name, [...(this.listeners.get(name) ?? []), listener]); }
+    removeEventListener(name: string, listener: (event: { data: string }) => void) { this.listeners.set(name, (this.listeners.get(name) ?? []).filter(candidate => candidate !== listener)); }
     close() { sources.splice(sources.indexOf(this), 1); }
   } });
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -95,7 +97,11 @@ afterEach(() => { ui.cleanup(); clients.splice(0).forEach((client) => client.cle
 
 function render(scripted: Record<string, unknown>, content?: ReactNode) {
   posted = [];
-  answers = { "/deploy/plans": [], "/deploy/drift": null, ...scripted };
+  answers = { "/deploy/plans": [], "/deploy/drift": null,
+    "/frontend-release/settings": { settings: DEFAULT_FRONTEND_RELEASE, hash: "settings-review-hash" },
+    "/frontend-release/history": [],
+    "/frontend-release/identities": { hash: "target-review-hash", authority: "Names are source-owned deployment selections.", targets: overview().targets },
+    ...scripted };
   if (Array.isArray(answers["/deploy/plans"])) answers["/deploy/plans"] = (answers["/deploy/plans"] as PlanSummaryView[]).map((plan) => ({ account: context.account, region: context.region, ...plan }));
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   clients.push(client);
@@ -103,6 +109,20 @@ function render(scripted: Record<string, unknown>, content?: ReactNode) {
 }
 
 const operations = () => posted.filter((entry) => entry.path === "/deploy/operations").map((entry) => entry.body);
+
+test("unapplied frontend settings block env generation and builds with a source-review explanation", async () => {
+  render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app" } } });
+  ui.fireEvent.click(await ui.screen.findByText("Client environment & frontend release", { exact: true }));
+  ui.fireEvent.click(await ui.screen.findByText("Frontend project and publication settings", { exact: true }));
+  const build = () => ui.screen.getByRole("button", { name: "Build & review release" }) as HTMLButtonElement;
+  const generate = () => ui.screen.getByRole("button", { name: "Generate / refresh client env" }) as HTMLButtonElement;
+  // Destination resolution deliberately remounts this panel to clear old approvals.
+  await ui.waitFor(() => assert.equal(build().disabled, false));
+  ui.fireEvent.change(ui.screen.getByLabelText("Bucket prefix (blank or ending in /)"), { target: { value: "unapplied/" } });
+  assert.equal(build().disabled, true); assert.equal(generate().disabled, true);
+  assert.ok(ui.screen.getByText(/settings have unapplied changes/));
+  assert.equal(posted.length, 0, "changing a field neither saves source nor starts a release");
+});
 
 test("passed machine checks are available on demand while issues and their remedies stay visible", async () => {
   render({

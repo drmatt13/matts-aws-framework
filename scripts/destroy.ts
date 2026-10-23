@@ -25,6 +25,8 @@ import { profileRegion } from "./aws-profiles";
 import { RECORD_PATH, stackImporters } from "./deployment-review";
 import { writeDeploymentRecordAtomic } from "./deployment-artifact";
 import { acquireDeploymentLock } from "./deployment-workspace";
+import { statefulTeardownConsequences } from "./stateful-teardown";
+import { recordRetainedResources, type RetainedResourceEvidence } from "./retained-resources";
 
 const root = path.resolve(__dirname, "..");
 const POLL_MS = Number(process.env.FRAMEWORK_POLL_MS ?? 5000);
@@ -46,7 +48,7 @@ function options(args: readonly string[]): Options {
   };
 }
 
-interface Remains { stack: string; logicalId: string; type: string; policy: string }
+interface Remains extends RetainedResourceEvidence {}
 
 function failedResources(aws: AwsTarget, stackId: string): string[] {
   const resources = runAwsSync(["cloudformation", "list-stack-resources", "--stack-name", stackId], aws).StackResourceSummaries;
@@ -127,13 +129,42 @@ function teardownPlan(aws: AwsTarget, account: string, region: string, name: str
   };
   for (const stack of owned) visit(stack.name, new Set());
   const remains: Remains[] = [];
+  const deployedTemplates = new Map<string, any>();
   for (const stackName of ordered) {
     try {
       const raw = runAwsSync(["cloudformation", "get-template", "--stack-name", stackName, "--template-stage", "Original"], aws).TemplateBody;
       const template = typeof raw === "string" ? JSON.parse(raw) : raw;
+      deployedTemplates.set(stackName, template);
       templates.set(stackName, digest(template));
+      const candidates = Object.entries<any>(template?.Resources ?? {}).filter(([, resource]) => ["Retain", "RetainExceptOnCreate", "Snapshot"].includes(resource.DeletionPolicy));
+      const physicalIds = new Map<string, string>();
+      if (candidates.length) {
+        let token: string | undefined;
+        const seen = new Set<string>();
+        do {
+          const page = runAwsSync(["cloudformation", "list-stack-resources", "--stack-name", described.get(stackName)!.StackId!, "--no-paginate", ...(token ? ["--next-token", token] : [])], aws);
+          for (const resource of page.StackResourceSummaries ?? []) if (resource.PhysicalResourceId) physicalIds.set(resource.LogicalResourceId, resource.PhysicalResourceId);
+          token = page.NextToken;
+          if (token && seen.has(token)) throw new Error("Stack resource inventory repeated a pagination token.");
+          if (token) seen.add(token);
+        } while (token);
+      }
       for (const [logicalId, resource] of Object.entries<any>(template?.Resources ?? {})) {
-        if (["Retain", "RetainExceptOnCreate", "Snapshot"].includes(resource.DeletionPolicy)) remains.push({ stack: stackName, logicalId, type: resource.Type, policy: resource.DeletionPolicy });
+        if (["Retain", "RetainExceptOnCreate", "Snapshot"].includes(resource.DeletionPolicy)) {
+          const physicalId = physicalIds.get(logicalId);
+          const dependencyPhysicalIds = new Set<string>();
+          const scan = (value: any): void => {
+            if (!value || typeof value !== "object") return;
+            const ref = value.Ref ?? (typeof value["Fn::GetAtt"] === "string" ? value["Fn::GetAtt"].split(".")[0] : value["Fn::GetAtt"]?.[0]);
+            if (typeof ref === "string" && physicalIds.has(ref)) dependencyPhysicalIds.add(physicalIds.get(ref)!);
+            const sub = typeof value["Fn::Sub"] === "string" ? value["Fn::Sub"] : value["Fn::Sub"]?.[0];
+            if (typeof sub === "string") for (const match of sub.matchAll(/\$\{([^!}][^}.]*)(?:\.[^}]*)?\}/g)) if (physicalIds.has(match[1]!)) dependencyPhysicalIds.add(physicalIds.get(match[1]!)!);
+            Object.values(value).forEach(scan);
+          };
+          scan(resource.Properties);
+          remains.push({ stack: stackName, stackId: described.get(stackName)!.StackId!, logicalId, type: resource.Type, policy: resource.DeletionPolicy, ...(physicalId ? { physicalId } : {}), templateDigest: digest(template), ...(dependencyPhysicalIds.size ? { dependencyPhysicalIds: [...dependencyPhysicalIds].sort() } : {}) });
+          if (!physicalId) warnings.push(`Retained resource ${stackName}/${logicalId} has no physical identity in the deployed inventory. Its availability/recovery will remain uncertain.`);
+        }
       }
     } catch (error) { blockers.push("Cannot read deletion policies for " + stackName + ": " + (error instanceof Error ? error.message : String(error))); }
     if (described.get(stackName)?.StackStatus === "DELETE_FAILED") {
@@ -141,6 +172,9 @@ function teardownPlan(aws: AwsTarget, account: string, region: string, name: str
       catch (error) { blockers.push("Cannot identify failed resources for " + stackName + ": " + (error instanceof Error ? error.message : String(error))); }
     }
   }
+  const consequences = statefulTeardownConsequences(deployedTemplates);
+  blockers.push(...consequences.blockers);
+  warnings.push(...consequences.warnings);
   let secrets: string[] = [];
   try {
     secrets = (runAwsSync(["secretsmanager", "list-secrets", "--filters", "Key=tag-key,Values=framework:deployment", `Key=tag-value,Values=${name}`], aws).SecretList ?? []).map((secret: any) => String(secret.Name));
@@ -235,6 +269,10 @@ async function main(): Promise<void> {
   const completed: string[] = [];
   let pending: string | undefined;
   const journal = (state: string, problem?: string) => writeDeploymentRecordAtomic(path.resolve(opts.apply!) + ".result.json", { digest: saved.digest, deployment: name, account, region, state, completed, pending, ...(problem ? { problem } : {}), updatedAt: new Date().toISOString() });
+  const retainedEvidence = (phase: "before-teardown" | "teardown-completed" | "teardown-failed", problem?: string) => recordRetainedResources(root, { account, region, deployment: name, mode: plan.mode }, { reviewDigest: saved.digest, createdAt: new Date().toISOString(), phase, resources: plan.remains, completedStackIds: [...completed], ...(problem ? { problem } : {}) });
+  // Persist physical identities before the first destructive request. Failure to
+  // preserve this evidence prevents teardown; no write is silently best effort.
+  retainedEvidence("before-teardown");
   journal("running");
   try {
   for (const stack of plan.stacks) {
@@ -262,7 +300,8 @@ async function main(): Promise<void> {
     console.log("✔ " + stack.name + " deleted.");
   }
   journal("succeeded");
-  } catch (error) { journal("failed", error instanceof Error ? error.message : String(error)); throw error; }
+  retainedEvidence("teardown-completed");
+  } catch (error) { const message = error instanceof Error ? error.message : String(error); journal("failed", message); retainedEvidence("teardown-failed", message); throw error; }
   if (plan.record) {
     try { runAwsSync(["ssm", "delete-parameter", "--name", `${RECORD_PATH}${name}`], aws); } catch { console.warn(`The deployment record ${RECORD_PATH}${name} could not be removed.`); }
   }

@@ -6,6 +6,26 @@ prepares migration artifacts. **Database status** reports evidence for an explic
 selected database. These workspaces share a source proposal without treating a diagram,
 folder name or migration marker as another schema authority.
 
+**Saved SQL** reviews and saves reusable seed, backfill, operational and read-only
+commands under `packages/database/sql/`, then separately reviews execution against
+the resolved local PostgreSQL target. Parameters are bound values, file/target changes
+invalidate approval, and durable redacted history distinguishes confirmed COMMIT,
+acknowledged rollback, skipped once-only runs and uncertain outcomes. Source saving
+never executes SQL. Production saved SQL is unavailable; production retains the
+existing versioned IAM/TLS migration-task boundary. See the
+[saved-command contract](../../packages/database/sql/README.md).
+
+**Data retention** reviews independent Database/Cognito policies in
+`framework-config/stateful-resources.ts`, with separate development/production
+choices and the existing `RETAIN_STATEFUL_RESOURCES` fallback for omitted settings.
+Source saving never deploys protection. Deployed-template inspection and durable
+teardown evidence are separate from configured intent. Compatible retained RDS
+writers and Cognito pools have an explicit inspected reference workflow; import
+and snapshot restore remain separate procedures. Development PostgreSQL uses its
+independent `postgres_data` volume. See the [stateful lifecycle guide](stateful-resources.md)
+for dependency protection, code-only commands, continuing costs and post-deployment
+verification requirements.
+
 The authored contract is `packages/database/prisma/contract.prisma`.
 `packages/database/prisma.config.ts` owns the configured target, source, generated output,
 migration directory and terminal connection input. Studio uses the installed Prisma 8
@@ -255,6 +275,10 @@ initialization locks provide the cooperating-database boundary.
   canonical Prisma path and runner.
 - `server/database-empty.ts` performs metadata-only emptiness checks; `server/database-operations.ts`
   persists redacted effects and the cross-process application lock without replaying writes.
+- `server/database-sql.ts`, `shared/database-sql.ts` and `src/views/DatabaseSql.tsx`
+  own reviewed repository commands, local transactional execution and redacted SQL history.
+- `src/views/DataRetention.tsx` presents the existing deployment input policy with
+  explicit environment, source review and recovery limitations.
 - `server/database-cloud.ts` and `src/views/DatabaseCloud.tsx` own explicit cloud preparation,
   task inspection/application, typed approvals, outcomes and recovery evidence. The task's
   `review-task.ts` and `packages/database/scripts/studio-migrations.ts` own the versioned
@@ -263,4 +287,5 @@ initialization locks provide the cooperating-database boundary.
 
 Generated application artifacts, Prisma configuration and framework declarations keep their
 existing owners. Source-review and application approvals live in memory; restarting Studio
-expires them. There is no durable browser-draft recovery or general-purpose SQL console.
+expires them. There is no durable browser-draft recovery. Saved SQL commands are
+bounded and local-only; there is no arbitrary-connection or production SQL console.

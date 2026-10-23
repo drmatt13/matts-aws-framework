@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { after, afterEach, before, test } from "node:test";
+import { after, afterEach, before, mock, test } from "node:test";
 import { createElement as h, useState } from "react";
 import type { SnapshotResponse } from "../shared/api";
 import { SnapshotBuilder } from "../server/snapshot";
@@ -48,7 +48,7 @@ before(async () => {
   const { JSDOM } = require("jsdom");
   dom = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost/", pretendToBeVisual: true });
   for (const name of ["window", "self", "document", "navigator", "HTMLElement", "HTMLCanvasElement", "HTMLDialogElement", "Node", "MutationObserver", "getComputedStyle"] as const) Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] });
-  Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} close() {} } });
+  Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} removeEventListener() {} close() {} } });
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   Object.defineProperty(globalThis, "scrollTo", { configurable: true, value: () => {} });
@@ -132,6 +132,19 @@ async function mount(withInspector = false, selection?: string, initialResponse 
   await ui.waitFor(() => assert.ok(document.querySelector(".landscape, .empty"))); await draw();
   return async (next: SnapshotResponse) => { await ui.act(async () => updateResponse(next)); await draw(); };
 }
+
+test("event inspectors keep connection and trigger component identities distinct across refresh", async () => {
+  const event = response.snapshot.models.dev.targets.find(target => target.role === "event")!;
+  assert.ok(event, "the real framework fixture includes an event Lambda");
+  const errors: string[] = [];
+  const captured = mock.method(console, "error", (...args: unknown[]) => { errors.push(args.map(String).join(" ")); });
+  try {
+    const update = await mount(true, event.ref);
+    await update({ ...response, snapshot: { ...response.snapshot, revision: `${response.snapshot.revision}-refreshed` } });
+    assert.equal(errors.filter(message => /same key|Encountered two children/.test(message)).length, 0, errors.join("\n"));
+    assert.ok(ui.screen.getByRole("heading", { name: event.title }));
+  } finally { captured.mock.restore(); }
+});
 
 test("empty graphs show guidance and mount the renderer and wheel controls when source recovers", async () => {
   const emptyModel = (mode: "dev" | "prod") => ({ ...response.snapshot.models[mode], targets: [], routes: [], resources: [], edges: [], networks: [], localServices: [], managedDatabase: undefined });

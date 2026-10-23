@@ -132,14 +132,44 @@ Apply checks source before and after preflight, then checks each write's expecte
 **Multi-file apply is not a crash-atomic filesystem transaction.** On caught failure it restores written files in reverse only while they still equal its own written contents. Concurrent edits are preserved and can produce `unconfirmed`; inspect those files. Undo/redo uses expected contents and inverse validation, including creator-owned file deletion. Server restart loses in-memory review/history. [journal.ts](../../../framework-studio/server/edits/journal.ts) writes a private fsynced write-ahead source record before batch/resource multi-file writes. An exclusive checkout lock spans writes and post-write verification; competing Studio processes cannot begin another journaled transaction. Begin never reclaims a stale lock. Restart exposes dead-owner records (including a lock acquired before journaling) through Source recovery. Typed Restore source restores matching bytes and preserves later edits; typed Keep current source completes recovery only after current-source revalidation and a fingerprint check. A separate exclusive recovery lock serializes explicit recovery. A shared active registry excludes in-flight transactions across service instances and rejects recovery against them. Record/root/path/symlink validation applies on reads as well as writes. Corrupt metadata or an interrupted recovery lock requires explicit inspection while snapshots remain inspectable and source writes remain blocked. Environment values and database operations have separate service boundaries. Revision/hash checks do not eliminate every external-editor race between a check and rename; editors outside Studio do not honor its lock.
 
 The single-edit API and resource editor follow the same expected-contents write guard during recovery.
+
+`DatabaseSqlService` in
+[database-sql.ts](../../../framework-studio/server/database-sql.ts) owns a separate
+fixed source authority under `packages/database/sql/`. A `.sql` file contains versioned
+metadata and one parameterized statement. Hash-guarded review/save does not contact
+storage. A separate expiring, single-use execution review binds saved bytes, positional
+values and private loopback target identity; production is refused rather than bypassing
+its IAM/TLS task. Inspection is a PostgreSQL read-only transaction; writes require
+acknowledged COMMIT and once-only intent uses a database-side ledger in that transaction.
+Redacted fsynced history records uncertain outcomes without replay. The service reuses
+private target resolution, the database operation lock and the installed PostgreSQL
+driver, never a second connection configuration or startup runner. `DataRetention.tsx`
+reuses the protected environment-input service for mode-specific
+`RETAIN_STATEFUL_RESOURCES`; saving it is distinct from deploying protection, teardown
+and actual recovery.
 Journal records retain per-file authority: recognized native CDK edits first pass the
 linked-stack ownership check and record a bounded native source entry; generated/new
 files retain creator authority. A mixed native/source/generated transaction can recover
 without broadening the normal configuration writer or accepting HTTP-selected paths.
+`identityPolicy` batches edit only the recognized linked native stack's literal
+`identityPoolAccess` options. ReaderRole Allow/Deny statements replace convenience
+bucket settings; default/guest roles stay permissionless and guest issuance is an
+explicit opt-in. Stack/helper/validator hashes expire reviews. Custom shapes and
+authored comments refuse replacement. The separate read-only IAM simulator uses
+saved statements and an STS-pinned account; it rechecks all three source authorities
+after the asynchronous request and does not prove credential claims, boundaries,
+SCPs, resource policies or runtime access. See the
+[identity guide](../../framework-studio/identity-and-domains.md#identity-pools).
 Post-write snapshot exceptions and stale/error models trigger restoration, never a
 successful history entry. An external edit or deletion remains untouched and yields
 `unconfirmed`. If refresh still fails after recovery, the response distinguishes restored
 source from an unavailable snapshot and asks the user to refresh after resolving it.
+`SourceJournal.begin` acquires its exclusive checkout lock before inspecting pending
+records. A competing writer is refused even while the owner is initializing lock
+metadata; it cannot misread that live lock as a corrupt record. Pending records
+still block new writes, and a refused attempt releases only its own token. Incomplete
+or abandoned locks remain explicit inspection/recovery work. See the deterministic
+[lock race tests](../../../framework-studio/test/source-lock-race.test.ts).
 Resource rollback attempts every written file even when one was externally deleted or
 cannot be restored, reports `unconfirmed`, and leaves successful undo history untouched.
 

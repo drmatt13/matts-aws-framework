@@ -51,6 +51,14 @@ to check the account, then deploy with `npm run deploy:resources -- --all --prof
 Without a profile flag or an authored `AWS_PROFILE`, deployment uses the AWS
 default credential chain.
 
+Stateful intent lives in `framework-config/stateful-resources.ts`: development
+Cognito retention is independent of production and of the database policy. Omitted
+fields preserve the existing `RETAIN_STATEFUL_RESOURCES` fallback. Review source,
+then deploy protection separately. A released compatible User Pool and existing
+client can be selected through the explicit inspected reference workflow; this
+does not import or reconfigure them. Development PostgreSQL still uses its local
+volume, never an AWS database reference. See [stateful lifecycle](framework-studio/stateful-resources.md).
+
 The deploy command synchronizes only the selected graph's configured/required secrets,
 supplies ARN parameters, deploys, then exports development files. Existing managed secrets
 are reused when no local value is supplied; unchanged values create no version. Synth and
@@ -436,6 +444,13 @@ Use `docker compose stop` to stop or `docker compose down` to remove containers/
 The runner removes the task/container-Lambda containers it owns. Local run history is
 in memory and is lost on runner restart. Keep the same Compose project name to reuse
 postgres_data. Do not use `down --volumes` during routine updates.
+
+Local persistence and AWS retention are independent. Recreating application
+containers with that same volume preserves rows; changed project/volume identity,
+missing schema and connection failures require explicit diagnosis. AWS teardown
+records exact retained identities under `.framework/retained-resources` and refuses
+unsafe retained dependency deletion. Preserve that evidence with the checkout;
+retention alone does not establish a working recovered application.
 
 A deliberate database reset requires stopping the project, identifying its exact
 postgres_data volume, and removing that volume. This deletes local application data;

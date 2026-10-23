@@ -8,6 +8,7 @@ import { deploymentInputPath, inputText, sensitiveName } from "./deployment-inpu
 import { EditError } from "./edits/io";
 import { diffOf } from "./edits/plan";
 import { sha256 } from "./files";
+import { domainSettingsProblems } from "../shared/domain-settings";
 
 export function inputMode(value: unknown): Mode {
   if (value !== "dev" && value !== "prod") throw new EditError(400, "Choose development or production inputs.");
@@ -99,6 +100,8 @@ export class DeploymentInputService {
       if (edit.name === "PROD_DEPLOYMENT" && edit.value !== String(mode === "prod")) throw new EditError(422, "PROD_DEPLOYMENT must match the environment file's mode.");
     }
     const after = updateInputText(before, edits);
+    const domainProblems = domainSettingsProblems(mode, parseEnv(after), edits.map(edit => edit.name));
+    if (domainProblems.length) throw new EditError(422, domainProblems.join(" "));
     const file = deploymentInputPath(mode);
     const response: DeploymentInputPlan = { planId: randomUUID(), ok: true,
       summaries: edits.map((edit) => `${edit.create ? "Add" : "Update"} ${edit.name}`),

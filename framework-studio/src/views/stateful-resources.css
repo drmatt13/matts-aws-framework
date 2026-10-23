@@ -1,0 +1,15 @@
+.data-retention { display: grid; gap: 16px; max-width: 1040px; padding: 20px; }
+.data-retention h2, .data-retention h3, .data-retention p { margin: 0; }
+.data-retention label { display: grid; gap: 6px; max-width: 100%; }
+.data-retention input, .data-retention select { width: 100%; min-width: 0; }
+.data-retention button { justify-self: start; white-space: normal; }
+.stateful-policies, .stateful-context { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 16px; }
+.stateful-policy, .stateful-recovery { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--rule); border-radius: 8px; min-width: 0; }
+.data-retention details { padding: 12px 0; }
+.data-retention details[open] > :not(summary) { margin-top: 12px; }
+.data-retention summary { cursor: pointer; font-weight: 600; }
+.data-retention code, .data-retention pre { overflow-wrap: anywhere; white-space: pre-wrap; }
+.stateful-candidates { padding-left: 18px; }
+.stateful-candidates li { margin: 8px 0; }
+.stateful-candidates span { display: block; font-size: 12px; }
+@media (max-width: 600px) { .data-retention { padding: 12px; } .stateful-policy, .stateful-recovery { padding: 12px; } }

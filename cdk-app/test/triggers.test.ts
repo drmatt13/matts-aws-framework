@@ -14,7 +14,7 @@ import { initializeFrameworkResources, linkResource, finalizeFrameworkResources 
 import { appEventRegistry } from "../lib/framework/framework-events";
 
 const env = { account: "111122223333", region: "us-east-1" };
-const catalog = defineResources({ pool: resource.cdk<cognito.UserPool>(), bus: resource.cdk<events.IEventBus>(), dlq: resource.cdk<sqs.IQueue>() });
+const catalog = defineResources({ pool: resource.cdk<cognito.IUserPool>(), bus: resource.cdk<events.IEventBus>(), dlq: resource.cdk<sqs.IQueue>() });
 function setup(triggers: readonly EventTrigger[] = [], mode: "dev" | "prod" = "dev", native = false) {
   const config = defineFrameworkConfig({ networks: [fixtureVpc], resources: catalog, defaults, http: [], services: [], webSocket: [], events: [{ event: { directory: "/test/fixtures/workload-handler", triggers } }] }) as unknown as FrameworkConfig;
   const app = new App();
@@ -54,10 +54,10 @@ test("native hooks, imported pools, unknown ownership and missing actual resourc
   const pool = cognito.UserPool.fromUserPoolId(imported.owner, "Imported", "us-east-1_fixture");
   // Exercise the adapter directly with a linked imported pool in an isolated app.
   const { attachFrameworkTriggers } = require("../lib/framework/framework-triggers") as typeof import("../lib/framework/framework-triggers");
-  const otherCatalog = defineResources({ imported: resource.cdk<cognito.UserPool>() });
+  const otherCatalog = defineResources({ imported: resource.cdk<cognito.IUserPool>() });
   const config = { ...defineFrameworkConfig({ networks: [fixtureVpc], resources: otherCatalog, defaults, http: [], webSocket: [], services: [], events: [] }), events: { event: { triggers: [trigger.cognito(otherCatalog.imported, { id: "signup", operation: "preSignUp", accepts: "cognito" })] } } } as unknown as FrameworkConfig;
   assert.throws(() => attachFrameworkTriggers(imported.app, config), /not linked in this graph/);
-  linkResource(imported.owner, otherCatalog.imported, pool as cognito.UserPool);
+  linkResource(imported.owner, otherCatalog.imported, pool);
   assert.throws(() => attachFrameworkTriggers(imported.app, config), /imported pools do not support mutation/);
   const unknown = setup(descriptors);
   (unknown.pool.node.defaultChild as cognito.CfnUserPool).lambdaConfig = { "Fn::If": ["Condition", {}, {}] } as never;

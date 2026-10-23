@@ -12,7 +12,7 @@ test("deploy reports both conflicting route owners before synth or secret synchr
   try {
     mkdirSync(path.join(fixture, "scripts"));
     // Every script, so the copy keeps working as deploy.ts gains helpers.
-    for (const name of readdirSync(path.join(root, "scripts")).filter((entry) => /\.(ts|mjs)$/.test(entry))) {
+    for (const name of readdirSync(path.join(root, "scripts")).filter((entry) => /\.(ts|mjs|cjs)$/.test(entry))) {
       copyFileSync(path.join(root, "scripts", name), path.join(fixture, "scripts", name));
     }
     writeFileSync(path.join(fixture, "framework.config.ts"), `

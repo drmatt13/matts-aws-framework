@@ -120,6 +120,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
   const { snapshot, response, mode, setMode, live, toast, toasts, selected } = studio;
   const databasePage = useLocation({ select: location => location.pathname === "/database" });
   const deployPage = useLocation({ select: location => location.pathname === "/deploy" });
+  const domainsPage = useLocation({ select: location => location.pathname === "/domains" });
   // Isometric hosts the inspector in its own side panel, below the map toolbar.
   const isometricPage = useLocation({ select: location => location.pathname === "/isometric" });
   const sourceWatch = live.sourceWatch ?? response.sourceWatch;
@@ -182,8 +183,10 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
           <Link to="/deploy" search={{}} className="tab" activeOptions={{ includeSearch: false }}>
             Deploy
           </Link>
+          <Link to="/cognito" search={{}} className="tab" activeOptions={{ includeSearch: false }}>Cognito</Link>
+          <Link to="/domains" search={{}} className="tab" activeOptions={{ includeSearch: false }}>Domains</Link>
         </nav>
-        {!databasePage && !deployPage ? <span className="segmented" role="group" aria-label="Environment">
+        {!databasePage && !deployPage && !domainsPage ? <span className="segmented" role="group" aria-label="Environment">
           {(["dev", "prod"] as const).map((candidate) => (
             <button
               key={candidate}

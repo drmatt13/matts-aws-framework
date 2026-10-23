@@ -3,9 +3,10 @@ import path from "node:path";
 import test from "node:test";
 import { defineFrameworkConfig, type FrameworkHttp, type FrameworkEvents } from "../src/config/index";
 import { locateConfigSource, type ConfigSourceHost } from "../scripts/config-source";
+const repositoryRoot = path.resolve("/repo");
 
 function host(files: Record<string, string>): ConfigSourceHost {
-  const entries = new Map(Object.entries(files).map(([file, value]) => [path.resolve("/repo", file), value]));
+  const entries = new Map(Object.entries(files).map(([file, value]) => [path.resolve(repositoryRoot, file), value]));
   return { exists: file => entries.has(file), readFile: file => { const text = entries.get(file); assert.notEqual(text, undefined, file); return text!; } };
 }
 
@@ -18,11 +19,11 @@ export default defineFrameworkConfig({ http: [identityRoutes, reports], events: 
 export const identityEvents = { confirmed: { directory: "/confirmed" } } satisfies EventsSection;`,
     "framework-config/workloads/http/reports/index.ts": `export const reportRoutes = { "/reports": { directory: "/reports" } } satisfies HttpSection;`,
   });
-  const located = locateConfigSource("/repo/framework.config.ts", { repositoryRoot: "/repo", host: source });
+  const located = locateConfigSource(path.join(repositoryRoot, "framework.config.ts"), { repositoryRoot, host: source });
   assert.deepEqual(located.sections.http.map(entry => entry.key), ["/sign-in", "/refresh", "/reports"]);
   assert.deepEqual(located.sections.events.map(entry => entry.key), ["confirmed"]);
-  assert.equal(located.sections.http[0]!.file, "/repo/framework-config/features/identity.ts");
-  assert.equal(located.sections.http[2]!.file, "/repo/framework-config/workloads/http/reports/index.ts");
+  assert.equal(located.sections.http[0]!.file, path.join(repositoryRoot, "framework-config/features/identity.ts"));
+  assert.equal(located.sections.http[2]!.file, path.join(repositoryRoot, "framework-config/workloads/http/reports/index.ts"));
 });
 
 test("duplicate diagnostics name both source owners regardless of module depth", () => {
@@ -31,7 +32,7 @@ test("duplicate diagnostics name both source owners regardless of module depth",
     "framework-config/a.ts": 'export const a = { "/same": { directory: "/a" } };',
     "framework-config/features/nested/b.ts": 'export const b = { "/same": { directory: "/b" } };',
   });
-  assert.throws(() => locateConfigSource("/repo/framework.config.ts", { repositoryRoot: "/repo", host: source }), error => {
+  assert.throws(() => locateConfigSource(path.join(repositoryRoot, "framework.config.ts"), { repositoryRoot, host: source }), error => {
     assert.match(String(error), /framework-config\/a\.ts/);
     assert.match(String(error), /framework-config\/features\/nested\/b\.ts/);
     return true;

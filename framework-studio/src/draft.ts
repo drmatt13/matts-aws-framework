@@ -31,7 +31,7 @@ export interface NetworkEntry { readonly kind: "network"; readonly key: string; 
 export interface NetworkRemovalEntry { readonly kind: "removeNetwork"; readonly key: string; readonly network: string; readonly error?: string }
 export interface DatabaseEntry { readonly kind: "database"; readonly key: string; readonly database: string; readonly settings: DatabaseSettingsInput; readonly error?: string }
 export interface DatabasePlacementEntry { readonly kind: "databasePlacement"; readonly key: string; readonly edit: DatabasePlacementEdit; readonly error?: string }
-export interface OperationEntry { readonly kind: "operation"; readonly key: string; readonly operation: Extract<DraftEdit, { kind: "implementation" | "connection" | "removeWorkload" }>; readonly error?: string }
+export interface OperationEntry { readonly kind: "operation"; readonly key: string; readonly operation: Extract<DraftEdit, { kind: "implementation" | "connection" | "removeWorkload" | "identityPolicy" }>; readonly error?: string }
 export type DraftEntry = OperationEntry | TagsEntry | DatabasePlacementEntry | DatabaseEntry | NetworkRemovalEntry | PlacementEntry | NetworkEntry | CreationEntry | FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry | ClientMappingEntry;
 export interface DraftState {
   readonly baseline: Snapshot;

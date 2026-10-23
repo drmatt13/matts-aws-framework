@@ -15,7 +15,8 @@ const { CLIENT_ENVIRONMENT_FILE } = require("./client-environment-mapping.ts");
 const { collectDeploymentStacks, collectDevelopmentResources, readDeploymentStackPages, writeDevelopmentFiles } = require("./resource-export.ts");
 const { collectProductionOutputs } = require("./production-export.ts");
 const { RESOURCE_MANIFEST_FILE, listResourceDeclarations } = require("@repo/framework/config");
-const { contextFromArgs, deploymentInputsFile, resolveRepositoryTarget } = require("@repo/framework/deploy/node");
+const { contextFromArgs, deploymentInputsFile, resolveRepositoryTarget, readCdkContext } = require("@repo/framework/deploy/node");
+const { parseTargets, TARGETS_CONTEXT_KEY } = require("@repo/framework/deploy");
 const { runAwsSync } = require("./aws-cli.ts");
 const { default: framework } = require("../framework.config.ts");
 
@@ -178,11 +179,20 @@ try { listed = readDeploymentStackPages(token => runAws(["cloudformation", "desc
 catch { throw new Error("Unable to read deployment stacks. Check AWS credentials and permissions; existing local files were preserved."); }
 const { identity } = collectDeploymentStacks(listed, deploymentName);
 if (region && identity.region !== region) throw new Error("The requested region differs from the deployed resources.");
+if (getOption("expected-mode") && getOption("expected-mode") !== identity.mode) throw new Error("The requested mode differs from the deployed resources. Existing local files were preserved.");
 // The deployed mode is authoritative. A direct production export must never read
 // its custom client inputs from the development file just because no CDK flag was passed.
-const clientInputsPath = process.env.FRAMEWORK_INPUTS_FILE
-  ? resolve(process.env.FRAMEWORK_INPUTS_FILE)
-  : deploymentInputsFile(process.cwd(), identity.mode);
+const declaredTarget = parseTargets(readCdkContext(process.cwd())[TARGETS_CONTEXT_KEY]).find(target => target.name === deploymentName);
+const clientSelection = declaredTarget ? resolveRepositoryTarget({
+  root: process.cwd(),
+  get: (key) => key === "deployment" ? deploymentName : key === "prodDeployment" ? identity.mode === "prod" : undefined,
+  env: process.env,
+}) : { target: {}, inputsFile: process.env.FRAMEWORK_INPUTS_FILE ? resolve(process.env.FRAMEWORK_INPUTS_FILE) : deploymentInputsFile(process.cwd(), identity.mode) };
+if ((clientSelection.target.account && clientSelection.target.account !== identity.account) ||
+    (clientSelection.target.region && clientSelection.target.region !== identity.region)) {
+  throw new Error("The declared target pins differ from the deployed resources. Existing local files were preserved.");
+}
+const clientInputsPath = clientSelection.inputsFile;
 const clientInputs = existsSync(clientInputsPath) ? parseEnv(readFileSync(clientInputsPath, "utf8")) : {};
 const declarations = listResourceDeclarations(framework.resources);
 // Deploy can export into a separate directory. Its mappings still belong to
@@ -194,6 +204,18 @@ const client = resolveClientEnvironmentMappings(clientMappings, {
   defaults: Object.fromEntries(declarations.filter((reference) => reference.kind === "string" && !reference.secretArn && reference.fromEnv && reference.default !== undefined).map((reference) => [reference.fromEnv, reference.default])),
   sensitiveInputs: new Set(declarations.filter((reference) => reference.kind === "secret" || reference.secretArn).flatMap((reference) => reference.fromEnv ? [reference.fromEnv] : [])),
 });
+// A frontend can refresh its public settings without Docker, replay/control outputs,
+// or writes to root .env and the local resource manifest. Release builds use this
+// same exporter; alternate frontends choose their project's public env destination.
+if (args.has("client-only")) {
+  const destination = resolve(process.cwd(), getOption("client-env-file") ?? CLIENT_ENVIRONMENT_FILES[identity.mode]);
+  if ([envPath, clientInputsPath, ...authoredInputPaths, resolve(process.cwd(), RESOURCE_MANIFEST_FILE)].some(file => file.toLowerCase() === destination.toLowerCase())) {
+    throw new Error("Client output cannot overwrite authored inputs, root environment or the resource manifest.");
+  }
+  writeDevelopmentFiles([{ path: destination, contents: renderClientEnvironmentFile(client, { deployment: deploymentName, mode: identity.mode }) }]);
+  console.log(`Wrote public client settings for ${deploymentName} (${identity.mode}) without starting Docker.`);
+  process.exit(0);
+}
 if (identity.mode === "prod") {
   // Root .env belongs to local development (Compose reads it), so a production
   // export leaves it alone: its outputs and the client build settings live apart.

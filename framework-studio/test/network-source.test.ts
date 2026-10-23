@@ -128,7 +128,7 @@ test("unused VPC removal handles registry separators and refuses custom modules 
       for (const removed of ["alpha", "beta"]) {
         const changes = planNetworkRemoval(root, state, removed, new SourceFiles());
         const rootChange = changes.find(change => change.file === config)!;
-        assert.equal(changes.find(change => change.file.endsWith(`/${removed}/index.ts`))!.after, null);
+        assert.equal(changes.find(change => change.file === path.join(root, `framework-config/networks/${removed}/index.ts`))!.after, null);
         const overlay = new Map([[config, rootChange.after!]]);
         assert.deepEqual(locateConfigSource(config, { repositoryRoot: root, host: new SourceFiles(overlay).host() }).networks.map(network => network.id), [removed === "alpha" ? "beta" : "alpha"]);
       }

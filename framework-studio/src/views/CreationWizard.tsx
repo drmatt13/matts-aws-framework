@@ -30,6 +30,12 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
   }
   catch (error) { if (error instanceof CreationValidationError) problem = error; }
   const fields = creator.fields.filter((field) => {
+    if (entry.resourceKind === "auth-provider") {
+      if (["issuer", "clientId", "secretEnvName", "scopes"].includes(field.key)) return entry.form.providerType === "oidc";
+      if (field.key === "metadataUrl") return entry.form.providerType === "saml";
+      if (["description", "tags"].includes(field.key)) return false;
+    }
+    if (entry.resourceKind === "stack" && ["readBucketArn", "readPrefix"].includes(field.key)) return entry.form.template === "identity-pool";
     const lambda = entry.resourceKind === "function" || entry.resourceKind === "route";
     if (!lambda) return true;
     if (entry.form.category === "event" && ["path", "method", "auth", "deploy"].includes(field.key)) return false;
@@ -77,7 +83,7 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
     const optionLabel = (option: string) => {
       if (field.key === "implementation") return option === "existing" ? "Use existing code" : "Create starter files";
       if (field.key === "starter") return option === "model" ? "Model and tools (provider charges)" : "Echo (no model call)";
-      if (field.key === "template") return option === "bucket" ? "Private encrypted bucket (retain data)" : "SQS queue";
+      if (field.key === "template") return option === "bucket" ? "Private encrypted bucket (retain data)" : option === "identity-pool" ? "Cognito identity pool (authenticated only)" : "SQS queue";
       if (field.key === "deploy") return deploymentSettingLabel(option, entry.form.category === "webSocket" ? model.webSocketApi : undefined);
       if (field.key === "scope") return ({ both: "Dev + Prod", dev: "Development", prod: "Production" } as Record<string, string>)[option] ?? option;
       if (field.key === "category") return ({ event: "Event Lambda", http: "HTTP Lambda", webSocket: "WebSocket Lambda" } as Record<string, string>)[option] ?? option;

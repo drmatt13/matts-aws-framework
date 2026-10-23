@@ -83,6 +83,8 @@ test("deployed stacks absent from the saved assembly stay visible; broken curren
     const applicable = path.join(copy.directory, "saved-release");
     const reviewedRelease = run(copy.directory, env, "deploy.ts", "--all", "--profile", "dev", "--plan", applicable);
     assert.equal(reviewedRelease.code, 0, reviewedRelease.output);
+    const savedRelease = JSON.parse(readFileSync(path.join(applicable, "plan.json"), "utf8"));
+    assert.equal(savedRelease.reviewEvidence.problems.length, 0, "The recovery fixture needs a fully analyzed saved release. Plan output:\n" + reviewedRelease.output + "\nEvidence:\n" + JSON.stringify(savedRelease.reviewEvidence));
     writeFileSync(path.join(copy.directory, "framework.config.ts"), 'throw new Error("SOURCE_CHANGED_AFTER_REVIEW");');
     const discarded = run(copy.directory, env, "deploy.ts", "--discard", directory, "--profile", "dev");
     assert.equal(discarded.code, 0, discarded.output);

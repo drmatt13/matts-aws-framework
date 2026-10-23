@@ -7,9 +7,11 @@ source:
   - scripts/deploy.ts
   - scripts/deployment-plan.ts
   - scripts/deployment-guard.ts
+  - scripts/deployment-cognito-domains.ts
   - scripts/deployment-workspace.ts
   - scripts/deployment-integrity.ts
   - scripts/deployment-artifact.ts
+  - scripts/atomic-replace.cjs
   - packages/framework/src/deploy/classify.ts
 related:
   - deployment.environments
@@ -27,7 +29,9 @@ The enforcement core is [scripts/deploy.ts](../../../scripts/deploy.ts), not onl
 | Select/synthesize | `prepare`: resolve mode/target/input file; synth assembly or reopen reviewed assembly; compare selection and synthesized identity |
 | Lock/account | Per-checkout `acquireDeploymentLock` in [deployment-workspace.ts](../../../scripts/deployment-workspace.ts), then STS account comparison; shared with saved teardown; unknown/dead locks require inspected manual recovery, and release checks a unique token. It is not distributed coordination across checkouts/machines |
 | Ownership/status | `assertDeploymentAllowed` in [deployment-guard.ts](../../../scripts/deployment-guard.ts) consumes [deployment classification](../../../packages/framework/src/deploy/classify.ts); unknown ownership, other mode/account/region and in-progress/stuck states refuse before secret reads/writes |
+| Stateful references | [stateful-references.ts](../../../scripts/stateful-references.ts) validates saved-template physical identities, released ownership, exact original DB network/KMS/secret or Cognito client/domain/trigger prerequisites before writes; managed/reference transitions refuse implicit identity loss. [Physical reference locks](../../../scripts/stateful-reference-locks.ts) exclude concurrent operations across different deployment names in this checkout, with sorted acquisition and failed-attempt cleanup; they are not distributed locks |
 | Production flags | `unsafeProductionFlags` rejects hotswap/express/no-rollback/yes/unreviewed approval bypasses; direct production deploy forces CDK broadening review |
+| Legacy development Cognito domains | Compare exact owned deployed/next domain templates before secret writes. Direct removal/replacement refuses; saved review must include the domain and authentication consequence and require typed deployment name. Apply repeats comparison and rejects older reviews without it; [domain guide](../../framework-studio/identity-and-domains.md) |
 | Managed parameters | Handwritten overrides of framework-managed secret ARN parameters are rejected |
 | Plan | Save staged assembly bytes, inspectable template/security diffs, stack fingerprints, retained deployed stacks, secret names/actions and uncertainty; failed analysis blocks apply; default prod change-set review, dev template review |
 | Confirmation | `confirmationLevel` in [deployment-plan.ts](../../../scripts/deployment-plan.ts) always requires an explicit click in dev and derives click/name in prod from first deploy, stateful/destructive/replacement/security/export impact; consequential prod changes require typed deployment name |
@@ -42,4 +46,12 @@ Template comparison cannot determine replacement certainty or drift. Change-set 
 
 Safeguards are local-tool contracts, not protection against a user bypassing the wrapper or tampering with all local artifacts. `assemblyDigest` in `scripts/deployment-integrity.ts` hashes every saved manifest, template and staged asset byte plus entry types, internal symlink targets and executable/file permissions and rejects links outside the assembly. Phase/result records use atomic writes and file fsync; an attempt without a terminal record is surfaced as interrupted, never blindly retried. Removed whole stacks are explicitly listed as retained outside the selected assembly; a no-change result covers current assembly templates only, not drift or full convergence. Stack fingerprints bind immutable StackIds plus observed status/timestamps, not a distributed lock or complete drift proof. [Operations](operations.md) owns status/drift and identity-scoped teardown.
 
+On Windows, journal replacement retries only sharing-related rename failures for
+at most five seconds. The same atomic rename preserves the previous record until
+success; exhausted/permanent errors still fail. No unlink/permission fallback or
+cloud request replay is introduced. Tests cover byte preservation and bounded
+failure in [deployment artifact tests](../../../cdk-app/test/deployment-artifact.test.ts).
+
 Tests: [plan](../../../cdk-app/test/deployment-plan.test.ts), [plan/apply](../../../cdk-app/test/deployment-plan-apply.test.ts), [guard](../../../cdk-app/test/deployment-guard.test.ts), [interrupt](../../../cdk-app/test/deployment-interrupt.test.ts), [secret review](../../../cdk-app/test/deployment-secret-review.test.ts), Studio [plans](../../../framework-studio/test/deploy-plans.test.ts). Preserve refusal-before-write assertions, saved-assembly identity and typed approval across CLI/UI changes.
+
+Stateful intent is the literal per-mode [source policy](../../../framework-config/stateful-resources.ts), with absent values preserving legacy shared inputs. Actual deployed policies govern teardown: [dependency analysis](../../../scripts/stateful-teardown.ts) refuses retained RDS dependency deletion and retained pool trigger removal. [Retained evidence](../../../scripts/retained-resources.ts) records physical identities/relationships locally before the first deletion and preserves failed/completed attempts beyond removed source/stacks. It proves observed history, never current availability or distributed ownership. See [canonical retention/reuse contract](../../FRAMEWORK.md#stateful-retention-and-explicit-reuse) and the [Studio lifecycle workflow](../../framework-studio/stateful-resources.md).

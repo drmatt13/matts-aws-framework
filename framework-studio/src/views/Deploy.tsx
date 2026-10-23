@@ -10,6 +10,8 @@ import { Detail, type MoreAction } from "./deploy/Detail";
 import { PlanReview } from "./deploy/PlanReview";
 import { Rail, type RailRow } from "./deploy/Rail";
 import { ServiceLogs, Teardown } from "./deploy/Teardown";
+import { DeploymentIdentities, FrontendRelease } from "./deploy/FrontendRelease";
+import { LifecycleDisclosure } from "./DataRetention";
 import "./deploy/deploy.css";
 
 /**
@@ -266,6 +268,7 @@ export function Deploy() {
               onAction={act}
               onMore={more}
               onServiceLogs={setServiceLogs}
+              frontend={<><DeploymentIdentities account={selectedContext?.account} region={selectedRegion ?? selectedContext?.region} onCreated={select} /><FrontendRelease key={[row.name, profile, selectedRegion ?? selectedContext?.region].join("|")} deployment={row.name} profile={profile} region={selectedRegion ?? selectedContext?.region} />{row.target && row.mode && profile && (selectedRegion ?? selectedContext?.region) ? <LifecycleDisclosure selection={{ deployment: row.name, mode: row.mode, profile, region: (selectedRegion ?? selectedContext?.region)! }} /> : null}</>}
             />
           ) : <p className="empty">No deployments are declared in this repository.</p>}
         </div>

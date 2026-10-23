@@ -3,7 +3,6 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -22,6 +21,7 @@ import {
   TOOL_SOURCE_ROOT,
 } from "../src/config/conventions";
 import { readSectionKeys } from "./config-source";
+import { replaceGeneratedFile } from "./replace-generated-file";
 import { vpcEndpointServicesModule } from "./vpc-endpoint-services";
 import {
   agentCoreModule,
@@ -182,7 +182,7 @@ function commit(file: string, contents: string): void {
   mkdirSync(path.dirname(file), { recursive: true });
   const temporary = `${file}.generating-${process.pid}`;
   writeFileSync(temporary, contents);
-  renameSync(temporary, file);
+  replaceGeneratedFile(temporary, file);
   console.log(`Generated ${path.relative(repositoryRoot, file)}`);
 }
 

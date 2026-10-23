@@ -7,6 +7,7 @@ import { resources } from "../../../framework-config/resources";
 import { defaults } from "../../../framework-config/defaults";
 import { resolveDatabaseSettings } from "../../database-settings";
 import { RdsStack } from "../../lib/app/rds-stack";
+import type { DatabaseReference } from "../../lib/app/database-lifecycle";
 import { SynchronousLambdaFunctionsStack } from "../../lib/framework/synchronous-lambda-functions-stack";
 import { initializeFrameworkResources, finalizeFrameworkResources } from "../../lib/framework/framework-resources";
 
@@ -25,9 +26,10 @@ const app = new cdk.App({ context: { "@aws-cdk/aws-rds:setCorrectValueForDatabas
 initializeFrameworkResources(app, { config, mode: "prod", deployment: "example", readers: { env: {} } });
 new RdsStack(app, "example-RdsStack", {
   env, definition: database, retainStatefulResources: process.env.RETAIN_STATEFUL_RESOURCES === "true",
+  reference: process.env.FRAMEWORK_DATABASE_REFERENCE ? JSON.parse(process.env.FRAMEWORK_DATABASE_REFERENCE) as DatabaseReference : undefined,
   databaseSettings: resolveDatabaseSettings({ env: process.env, getContext: () => undefined, defaults: database.settings }),
 });
-new SynchronousLambdaFunctionsStack(app, "Lambdas", { env, config, cloud: { mode: "prod" } });
+if (process.env.FRAMEWORK_DATABASE_NO_CONSUMERS !== "true") new SynchronousLambdaFunctionsStack(app, "Lambdas", { env, config, cloud: { mode: "prod" } });
 finalizeFrameworkResources(app);
 app.synth(); // Includes cross-stack dependency cycle validation.
 writeFileSync(process.argv[2]!, JSON.stringify(Object.fromEntries(

@@ -37,6 +37,7 @@ after(() => builder.dispose());
 test("managed output stacks match the root exporter, reuse catalog ids, and carry only public symbolic outputs", () => {
   for (const model of Object.values(snapshot.models)) {
     const stacks = model.resources.filter((item) => item.kind === "stack" && item.stackOutputs?.length);
+    for (const stack of stacks) assert.equal(new Set(stack.stackOutputs!.map(output => output.name)).size, stack.stackOutputs!.length, `${stack.stackClass} exposes each symbolic output once`);
     assert.deepEqual(stacks.map((item) => item.stackClass).sort(), Object.keys(ROOT_ENV_STACK_OUTPUTS).sort());
     assert.equal(stacks.find((item) => item.stackClass === "CognitoStack")?.id, "resource:cognito");
     assert.equal(stacks.find((item) => item.stackClass === "RdsStack")?.id, "resource:rds");
@@ -237,11 +238,17 @@ test("referenceExamples exposes source-backed CDK flow in both graphs", () => {
 test("the three native Cognito hooks connect the public pool to their events in both lenses", () => {
   for (const model of Object.values(snapshot.models)) {
     const hooks = model.edges.filter((edge) => edge.relation === "trigger");
-    assert.deepEqual(hooks.map((edge) => [edge.from, edge.to, edge.label, edge.source?.line]).sort(), [
-      ["resource:cognito.userPool", "lambda:cognito-pre-signup-trigger", "preSignUp", 215],
-      ["resource:cognito.userPool", "lambda:cognito-custom-message", "customMessage", 216],
-      ["resource:cognito.userPool", "lambda:cognito-post-confirmation-trigger", "postConfirmation", 217],
+    assert.deepEqual(hooks.map((edge) => [edge.from, edge.to, edge.label]).sort(), [
+      ["resource:cognito.userPool", "lambda:cognito-pre-signup-trigger", "preSignUp"],
+      ["resource:cognito.userPool", "lambda:cognito-custom-message", "customMessage"],
+      ["resource:cognito.userPool", "lambda:cognito-post-confirmation-trigger", "postConfirmation"],
     ].sort());
+    for (const edge of hooks) {
+      assert.ok(edge.source);
+      assert.ok(edge.source.file.endsWith("cognito-stack.ts"));
+      const line = readFileSync(path.resolve(repositoryRoot, edge.source.file), "utf8").split(/\r?\n/)[edge.source.line - 1];
+      assert.ok(line?.includes(`${edge.label}: eventFunction(this, "${edge.to.replace("lambda:", "")}")`), `Hook evidence must locate its current native declaration: ${edge.label}`);
+    }
     assert.ok(hooks.every((edge) => edge.evidence?.some((item) => item.role === "wired")));
   }
 });

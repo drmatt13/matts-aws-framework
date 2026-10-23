@@ -1,5 +1,5 @@
 import type { ModeModel, ModelResource, Snapshot } from "../shared/model";
-import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { EvaluatorPool, type Evaluation } from "./evaluator/pool";
@@ -15,6 +15,8 @@ import { withConnectionEvidence } from "./source/evidence";
 import { withClientEnvironment } from "./client-environment";
 import { readClientMappings } from "./client-environment-source";
 import { STACK_MEMBER_TAGGING, tagFacts, withAbsentTagging } from "./model/tags";
+import { failedModel } from "./model/project";
+import { replaceFileAtomic } from "../../scripts/atomic-replace.cjs";
 
 /**
  * The studio's current understanding of the repository, rebuilt as a whole.
@@ -119,7 +121,33 @@ export class SnapshotBuilder {
   }
 
   private start(): Promise<StudioState> {
-    this.running = this.build().finally(() => {
+    this.running = this.build().catch(async (error: unknown) => {
+      // evaluate() has already replaced the previous workers. Never leave the
+      // previous graph looking current while its preflight workers are gone.
+      await this.pool.dispose();
+      const previous = this.latest;
+      if (!previous) throw error;
+      const failure = error as NodeJS.ErrnoException | undefined;
+      const code = typeof failure?.code === "string" && /^[A-Z][A-Z0-9_]{1,30}$/.test(failure.code) ? failure.code : undefined;
+      const relative = typeof failure?.path === "string" && path.isAbsolute(failure.path) ? path.relative(this.repositoryRoot, failure.path) : undefined;
+      const file = relative && !path.isAbsolute(relative) && relative !== ".." && !relative.startsWith(`..${path.sep}`) ? relative.replaceAll("\\", "/").replace(/[\r\n\t]/g, " ").slice(0, 300) : undefined;
+      // Source evaluation has its own diagnostics. This path handles refresh
+      // I/O/index failures without copying arbitrary authored exception values.
+      const reason = new Error(`Snapshot refresh failed${code ? ` (${code}${file ? `: ${file}` : ""})` : ""}. The last successful graph is retained and cannot be edited. Resolve the refresh failure and refresh Studio.`);
+      const dev = failedModel("dev", reason, 0), prod = failedModel("prod", reason, 0);
+      const evaluation: Evaluation = { dev, prod, preflight: async () => ({
+        dev: { mode: "dev", ok: false, diagnostics: dev.diagnostics },
+        prod: { mode: "prod", ok: false, diagnostics: prod.diagnostics },
+      }) };
+      this.generation += 1;
+      const stale = (model: ModeModel, failed: ModeModel): ModeModel => ({ ...model, status: "error", stale: true, diagnostics: failed.diagnostics });
+      this.latest = { ...previous, evaluation, snapshot: { ...previous.snapshot,
+        revision: `${this.generation}-${sha256(`${previous.snapshot.revision}\n${reason.message}`).slice(0, 12)}`,
+        generatedAt: new Date().toISOString(),
+        models: { dev: stale(previous.snapshot.models.dev, dev), prod: stale(previous.snapshot.models.prod, prod) },
+      } };
+      return this.latest;
+    }).finally(() => {
       this.running = undefined;
     });
     return this.running;
@@ -157,7 +185,7 @@ export class SnapshotBuilder {
     const temporary = path.join(directory, `cdk-links-${randomUUID()}.tmp`);
     try {
       writeFileSync(temporary, `${JSON.stringify(built.index.cdkLinks, null, 2)}\n`, "utf8");
-      renameSync(temporary, path.join(directory, "cdk-links.json"));
+      replaceFileAtomic(temporary, path.join(directory, "cdk-links.json"));
     } finally {
       rmSync(temporary, { force: true });
     }

@@ -12,18 +12,14 @@
  * scripts run several of these at once (a watch beside a deployment).
  */
 import { randomUUID } from "node:crypto";
-import { appendFileSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { replaceFileAtomic } from "../../../scripts/atomic-replace.cjs";
 
 /** Replaces the state file whole, so a concurrent reader never sees half of it. */
 function writeAtomic(file, text) {
   const temporary = `${file}.${process.pid}.tmp`;
   writeFileSync(temporary, text);
-  for (let attempt = 0; ; attempt++) {
-    try { renameSync(temporary, file); return; } catch (error) {
-      if (attempt > 100 || !["EPERM", "EBUSY", "EACCES"].includes(error.code)) throw error;
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    }
-  }
+  replaceFileAtomic(temporary, file);
 }
 
 

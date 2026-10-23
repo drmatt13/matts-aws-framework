@@ -38,4 +38,15 @@ A task calling AWS locally declares `local: { resources: ["awsCredentials"] }`; 
 
 Common failures: stale/wrong-identity manifest, absent required catalog field, invalid enum/default, missing local secret field, unauthorized stack-secret read, undeclared invocation capability, or missing dev AWS bridge. Debug names, presence and identity first; do not print resolved environment objects or credential values.
 
+Browser environment recipes remain public references in
+`framework-config/client-environment.ts`. The existing output exporter resolves them
+against completed deployed identity and the named target's own input file. Its
+`--client-only` mode writes the selected public client env without Docker, root
+Compose settings or the local manifest. Studio's static frontend release invokes that
+same exporter before its configured package script, binds mapping/input/package hashes
+and exact artifact bytes, then separately reviews S3 publication and CloudFront
+invalidation. Build settings live in `framework-config/frontend-release.json`;
+[frontend release](../../framework-studio/frontend-release.md) owns that workflow and
+the distinction between upload, invalidation submission and observed application health.
+
 Validate changes through framework environment/resource/runtime tests, [database runtime tests](../../../packages/framework/test/database-runtime.test.ts), [export tests](../../../cdk-app/test/environment-export.test.ts), [resource deployment tests](../../../cdk-app/test/resource-deployment.test.ts), and local worker/runner tests. Cloud grants, SDK endpoint behavior and real IAM remain separate synth/live checks.

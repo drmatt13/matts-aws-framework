@@ -6,6 +6,7 @@ import type {
 } from "../../shared/deploy";
 import { call, token } from "../api";
 import { LogStore } from "./log-store";
+import { connectStudioEvents } from "../events";
 
 /**
  * Deploy & Run, from the page's side: typed reads of /api/deploy, one way to
@@ -72,7 +73,7 @@ export function useDeployLive(handlers: LiveHandlers = {}): void {
   const current = useRef(handlers);
   current.current = handlers;
   useEffect(() => {
-    const source = new EventSource(`/api/events?token=${encodeURIComponent(token)}`);
+    const source = connectStudioEvents(token);
     const parse = <T,>(event: Event) => JSON.parse((event as MessageEvent<string>).data) as T;
     source.addEventListener("deploy-job", (event) => {
       const job = parse<JobView>(event);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, test } from "node:test";
-import { DatabaseWorkbenchService, compileDatabaseSource, databaseConfigurationRevision, databasePrismaConfig } from "../server/database-workbench";
+import { DatabaseWorkbenchService, compileDatabaseSource, databaseConfigurationRevision, databasePrismaConfig, databaseContractPath } from "../server/database-workbench";
 import type { DatabaseHistory } from "../shared/database-history";
 import { CONTRACT_FILE } from "../server/database";
 import { sha256 } from "../server/files";
@@ -34,6 +34,11 @@ export default definePrismaConfig({orm: defineConfig({contract:"prisma/contract.
 }
 
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+
+test("fixed contract authority accepts the native Windows path without allowing a different repository path", () => {
+  const { root, file } = fixture();
+  assert.equal(databaseContractPath(root), file);
+});
 
 test("real installed Prisma validates dialect semantics with exact UTF-16 source ranges without emitting", async () => {
   const { root, file, service } = fixture();

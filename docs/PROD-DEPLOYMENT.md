@@ -28,7 +28,9 @@ share settings or secret values. Set:
 - USE_FRONTEND_CUSTOM_DOMAIN=false to use the generated HTTPS CloudFront hostname,
   or true with FRONTEND_URL and FRONTEND_CLOUDFRONT_CERTIFICATE_ARN for a custom domain.
 - Optional Cognito custom-domain/certificate pair and Google credentials.
-- RETAIN_STATEFUL_RESOURCES deliberately. The resolver defaults to false; use true when
+- Resource-specific retention in `framework-config/stateful-resources.ts`, independently
+  for database/Cognito and dev/prod. Missing policies inherit RETAIN_STATEFUL_RESOURCES;
+  its resolver still defaults to false. Use retain when
   Cognito/RDS data and the database secret must survive stack removal. Either way the
   database keeps DATABASE_BACKUP_RETENTION_DAYS of automated backups (7 by default), and
   deleting it without retention leaves a final snapshot.
@@ -138,6 +140,14 @@ extensions. This release keeps one logical PostgreSQL database and the `app_user
 model. Database names and custom parameter groups belong in application CDK source.
 
 ## Custom domains and Google
+
+Cognito and frontend custom-domain inputs apply to production. Existing development
+deployments created before that rule can still own a custom Cognito domain.
+Switching them to the generated domain changes hosted-login/federation URLs and
+can remove the custom-domain CloudFront output. The deployment wrapper refuses a
+direct transition; use a new saved plan with the explicit authentication
+consequence and typed deployment-name approval. Source approval and synth alone
+do not authorize that migration. See the [compatibility guard](framework-studio/identity-and-domains.md#production-domain-intent).
 
 For a custom frontend or Cognito hostname, issue a matching ACM certificate in us-east-1
 in the deployment account. Keep its DNS validation records and wait for ISSUED. The
@@ -328,6 +338,13 @@ for reviewing a production migration.
 
 ## Publish the client
 
+Studio's Deploy view also offers a reviewed static frontend release: target-bound
+public env generation, local project build, exact artifact/destination manifest,
+separate S3 publication and CloudFront invalidation, and durable partial outcomes.
+Settings in `framework-config/frontend-release.json` support other static frontend
+projects. See [frontend release](framework-studio/frontend-release.md) for approval,
+retry and rollback limits. Infrastructure deployment never implicitly publishes it.
+
 Export, then build: `vite build` reads `client-app/.env.production.local`, which export
 wrote. It holds the production Cognito region, pool, client and domain; the CloudFront
 URL as VITE_API_GATEWAY_URL, which only the Vite dev server's proxy reads; the deployed
@@ -385,7 +402,7 @@ and dependent resources. Custom-domain CloudFront creation/deletion can take tim
 
 ## Teardown
 
-Teardown is a separate deliberate action. Without RETAIN_STATEFUL_RESOURCES the database is
+Teardown is a separate deliberate action. Without effective database retention the database is
 deleted with a final snapshot, and its automated backups are kept for their retention window.
 First see what would be deleted, in which order, and what would remain:
 
@@ -407,3 +424,15 @@ afterwards is listed. Avoid custom
 Cognito domains for disposable deployment tests when domain lifecycle is not under test.
 
 Deletion reviews expire after 15 minutes and bind immutable deployed stack identities, account/region, dependencies and data policies. Required unreadable evidence or external importers block deletion. If termination protection must be disabled, explicitly include `--allow-disable-protection` while preparing a new review; `--retain-failed` likewise belongs on that reviewed preparation, with the exact failed resource IDs shown. Applying cannot widen those choices. Changed or partially deleted scope requires a fresh review. `<review>.result.json` records completed stack IDs and any failing phase; managed secrets and retained resources remain separately visible. Explicit identity teardown never needs current source or synth.
+
+The review checks actual deployed retained-resource dependencies. A retained RDS
+instance with deletable networking/credentials, or retained User Pool with a
+deletable trigger function, blocks teardown until a separately reviewed update
+protects or reconfigures those dependencies. Physical identities and resolved
+relationships are saved durably under `.framework/retained-resources` before any
+deletion, including partial outcomes. Preserve that evidence outside disposable
+checkouts. Retained RDS/network resources keep their costs; reference-only shells
+do not own or delete those external resources. Retention does not reconnect a new
+deployment automatically. Use the explicit inspected source-reference workflow
+in [Framework](FRAMEWORK.md#stateful-retention-and-explicit-reuse); import, restore,
+SQL, user operations and permanent deletion remain separate actions.

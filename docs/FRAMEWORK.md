@@ -1075,6 +1075,83 @@ declared authorizer is always attached, a leftover `true` is ignored with a warn
 reference for accepted context keys and legacy aliases. Avoid adding new aliases or copying
 legacy precedence exceptions.
 
+### Stateful retention and explicit reuse
+
+`framework-config/stateful-resources.ts` is the shared code/Studio source for
+resource-specific policy, with separate `dev` and `prod` objects:
+
+```ts
+export const statefulResources = {
+  dev: { database: { retention: "remove" }, cognito: { retention: "retain" } },
+  prod: { database: { retention: "retain" }, cognito: { retention: "retain" } },
+} satisfies StatefulResourcesConfiguration;
+```
+
+The checked-in empty objects preserve existing behavior. An omitted resource
+policy inherits `RETAIN_STATEFUL_RESOURCES` from that target's existing inputs;
+the shared context flag, historical misspelling and false fallback keep their
+existing precedence. Explicit source retention overrides that fallback for one
+resource/environment. Source approval changes configuration only: deploy a saved
+review before the new policy protects anything in AWS. Development's database
+policy does not create RDS or change Compose volume lifecycle.
+
+RDS retention also protects its original VPC, subnets, route tables, gateways,
+endpoints, security groups, subnet/parameter groups and generated secret. NAT and
+PrivateLink costs continue when those resources remain. User Pool retention
+preserves users plus its native app client, domain and provider declarations;
+other stacks' triggers, groups, Identity Pools and IAM roles remain independent.
+Teardown reads actual deployed templates and refuses deleted database
+dependencies or a retained pool whose declared trigger Lambda would be removed.
+Older deployments must first deploy their dependency policies or separately
+reconfigure their trigger before teardown. Historical retention did not protect
+the underlying generated database secret correctly; a missing original secret
+is a recovery prerequisite failure, never replaced or guessed automatically.
+
+Retain keeps a physical resource; reference reconnects to an externally managed
+one; CloudFormation import transfers ownership; restore creates a resource from
+a snapshot/backup. Only explicit reference reuse is implemented here. Add an
+inspected `reference` descriptor to that resource's environment policy to reuse
+a released same-account/region resource. Cognito keeps its exact pool/client IDs;
+RDS keeps its immutable resource ID and original network, uses the existing IAM
+`app_user`, and performs no SQL bootstrap, migration or seed. External resource
+configuration remains outside CDK management. Database references currently use
+the direct PostgreSQL writer only; clusters, Proxy and replicas are unsupported.
+
+Code-only users obtain nonsecret descriptors through the read-only inspector:
+
+```powershell
+node --import tsx scripts/stateful-references.ts list --deployment <NEW> --mode prod --profile <PROFILE> --region <REGION> --json
+node --import tsx scripts/stateful-references.ts inspect --kind database --id <DB-IDENTIFIER> --original-deployment <OLD> --deployment <NEW> --mode prod --profile <PROFILE> --region <REGION> --json
+node --import tsx scripts/stateful-references.ts inspect --kind cognito --id <POOL-ID> --client-id <CLIENT-ID> --original-deployment <OLD> --deployment <NEW> --mode prod --profile <PROFILE> --region <REGION> --json
+```
+
+Review the returned descriptor in source, synthesize and use normal saved
+deployment review/apply. Inspection checks ownership, current release/availability
+and original dependencies; saved-assembly deploy repeats it before cloud writes,
+including intended Cognito redirects/providers and declared database network
+routes/endpoints. An actively managed resource, another deployment's reference,
+uncertain teardown, or an implicit managed/reference identity transition refuses.
+Generated CloudFront callback origins resolve only through stable deployed
+exports owned by the selected destination. For a fresh production website,
+deploy that supporting stack first, configure the existing external client's
+exact callback/logout origins separately, then review the reference deployment.
+Reference changes require a separately reviewed lifecycle/replacement operation.
+Queries, sign-in, migrations, import, snapshot restore and permanent deletion each
+need their own verification/authorization; successful inspection proves none of
+those operations happened.
+
+Teardown atomically saves physical identities and dependency relationships to
+`.framework/retained-resources/<account>/<region>/<deployment>.json` before its
+first destructive request, then records completion or partial failure. This
+local evidence survives removed source and stacks; preserve/copy it when moving
+checkouts. Physical-resource locks under `.cache/deploy/references` exclude
+concurrent recovery deployments in the same checkout even when destination names
+differ, and release with the deployment operation. It is not a distributed
+ownership registry. Live AWS inspection is required before reuse, and a missing
+resource remains missing. Concurrent cloud operations from other machines still
+require operational coordination. See the
+[Studio lifecycle guide](framework-studio/stateful-resources.md).
+
 Both custom and generated CloudFront hostnames serve same-origin /api and declared agent
 paths. With a custom frontend origin, auth/CORS use the configured URL and the website
 references the backends directly. With a generated hostname, Cognito and the handlers
@@ -1126,6 +1203,20 @@ policy. Another named target may deploy an independent application into another 
 it adds no database replication, traffic failover, or connectivity between VPCs.
 
 ## Authentication
+
+Additional OIDC/SAML federation is declared as a literal, environment-scoped array
+in `framework-config/auth-providers.ts`; the native Cognito stack and its existing
+app client consume it without changing Google/pool/client construct identities.
+OIDC client secrets are catalog `resource.secret` references resolved through managed
+ARN parameters, never authored values in TypeScript. Studio's Cognito creator uses
+the same declarations and reviewed source journal. The Identity Pools stack template
+uses native `identityPoolAccess` with pool-scoped authenticated trust, guest access
+off by default, classic flows disabled, deny-on-ambiguous token mapping and no API
+permissions by default. Recognized native stacks support reviewed ReaderRole
+Allow/Deny statements and an explicit permissionless guest opt-in; IAM simulation
+is read-only and separate from deployment and runtime authorization evidence.
+See [Cognito, identity pools and domains](framework-studio/identity-and-domains.md)
+for source paths, provider verification and retention boundaries.
 
 The shared auth implementation spans client-app/src/lib/auth.ts, the auth and HTTP
 entry points in framework/runtime, Cognito infrastructure, and auth Lambdas. Feature

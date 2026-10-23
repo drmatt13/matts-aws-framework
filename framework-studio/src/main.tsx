@@ -6,6 +6,7 @@ import {
   createRoute,
   createRouter,
   lazyRouteComponent,
+  redirect,
   useNavigate,
   useSearch,
 } from "@tanstack/react-router";
@@ -21,6 +22,7 @@ import "./styles.css";
 import "./inspector.css";
 import "./views/database-workbench.css";
 import "./views/prisma-editor.css";
+import "./views/stateful-resources.css";
 
 interface Search {
   readonly select?: string;
@@ -56,7 +58,15 @@ const boardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", com
 const isometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/isometric", component: lazyRouteComponent(() => import("./views/Isometric"), "Isometric") });
 const databaseRoute = createRoute({ getParentRoute: () => rootRoute, path: "/database", component: lazyRouteComponent(() => import("./views/Database"), "Database") });
 const deployRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deploy", component: lazyRouteComponent(() => import("./views/Deploy"), "Deploy") });
-const router = createRouter({ routeTree: rootRoute.addChildren([boardRoute, isometricRoute, databaseRoute, deployRoute]) });
+const cognitoRoute = createRoute({ getParentRoute: () => rootRoute, path: "/cognito", component: lazyRouteComponent(() => import("./views/AuthenticationWorkspace"), "AuthenticationWorkspace") });
+const userPoolsRoute = createRoute({ getParentRoute: () => cognitoRoute, path: "user-pools", component: () => null });
+const identityPoolsRoute = createRoute({ getParentRoute: () => cognitoRoute, path: "identity-pools", component: () => null });
+const providersRoute = createRoute({ getParentRoute: () => cognitoRoute, path: "providers", component: () => null });
+const permissionsRoute = createRoute({ getParentRoute: () => cognitoRoute, path: "permissions", component: () => null });
+const identityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/identity-pools", beforeLoad: () => { throw redirect({ to: "/cognito/identity-pools", replace: true }); } });
+const legacyIdentityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/identity", beforeLoad: () => { throw redirect({ to: "/cognito/identity-pools", replace: true }); } });
+const domainsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/domains", component: lazyRouteComponent(() => import("./views/IdentityWorkspace"), "Domains") });
+const router = createRouter({ routeTree: rootRoute.addChildren([boardRoute, isometricRoute, databaseRoute, deployRoute, cognitoRoute.addChildren([userPoolsRoute, identityPoolsRoute, providersRoute, permissionsRoute]), identityRoute, legacyIdentityRoute, domainsRoute]) });
 
 declare module "@tanstack/react-router" {
   interface Register {

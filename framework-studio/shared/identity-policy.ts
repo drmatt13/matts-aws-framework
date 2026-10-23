@@ -1,0 +1,5 @@
+export { identityPolicyStatements, type IdentityPolicyStatement } from "../../cdk-app/lib/app/identity-policy";
+import type { IdentityPolicyStatement } from "../../cdk-app/lib/app/identity-policy";
+export interface IdentityPolicyEdit { readonly kind: "identityPolicy"; readonly target: string; readonly statements: readonly IdentityPolicyStatement[]; readonly allowUnauthenticated: boolean }
+export interface IdentityPolicySource { readonly target: string; readonly file: string; readonly statements: readonly IdentityPolicyStatement[]; readonly allowUnauthenticated: boolean; readonly problem?: string }
+export interface IdentityPolicySimulation { readonly engine: "aws-iam" | "source-empty-policy"; readonly role: "reader" | "default"; readonly account: string; readonly profile: string; readonly region: string; readonly observedAt: string; readonly results: readonly { readonly action: string; readonly resource: string; readonly decision: string; readonly missingContext: readonly string[] }[]; readonly limitations: readonly string[] }

@@ -1,5 +1,6 @@
 import * as cdk from "aws-cdk-lib";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
+import * as ssm from "aws-cdk-lib/aws-ssm";
 import type { Construct, IConstruct } from "constructs";
 import {
   formatMonthlyCost,
@@ -22,6 +23,7 @@ import { deferResourceAttachment, frameworkResourceOptions } from "./framework-r
 
 import { databaseConnectionTarget, type DatabaseEndpoint } from "./framework-database";
 import { markInfrastructure } from "./framework-inventory";
+import { assertRetainedDatabaseNetwork, type RetainedDatabaseNetwork } from "../app/database-lifecycle";
 
 /**
  * One declared VPC, built by a production deployment the first time a native
@@ -39,16 +41,33 @@ import { markInfrastructure } from "./framework-inventory";
  * are what it costs.
  */
 export class NetworkStack extends cdk.Stack {
-  public readonly vpc: ec2.Vpc;
+  public readonly vpc: ec2.IVpc;
   public readonly network: FrameworkNetwork;
 
   public constructor(
     scope: Construct,
     id: string,
-    props: cdk.StackProps & { readonly network: FrameworkNetwork },
+    props: cdk.StackProps & { readonly network: FrameworkNetwork; readonly reference?: RetainedDatabaseNetwork },
   ) {
     super(scope, id, props);
     const network = this.network = props.network;
+    if (props.reference) {
+      const reference = props.reference;
+      assertRetainedDatabaseNetwork(reference);
+      if (reference.vpcCidrBlock !== network.cidr) throw new Error(`Retained VPC ${reference.vpcId} CIDR differs from network "${network.id}". Review the declaration against the retained network before deployment.`);
+      this.vpc = ec2.Vpc.fromVpcAttributes(this, "ReferencedVpc", {
+        vpcId: reference.vpcId, vpcCidrBlock: reference.vpcCidrBlock,
+        availabilityZones: [...reference.availabilityZones],
+        publicSubnetIds: [...reference.publicSubnetIds], privateSubnetIds: [...reference.privateSubnetIds], isolatedSubnetIds: [...reference.isolatedSubnetIds],
+        publicSubnetRouteTableIds: [...reference.publicSubnetRouteTableIds], privateSubnetRouteTableIds: [...reference.privateSubnetRouteTableIds], isolatedSubnetRouteTableIds: [...reference.isolatedSubnetRouteTableIds],
+      });
+      new ssm.StringParameter(this, "ReferencedVpcIdentity", {
+        description: "Externally managed retained VPC identity; this stack owns only new application support",
+        stringValue: JSON.stringify({ version: 1, vpcId: reference.vpcId }),
+      });
+      markInfrastructure(this, `island:vpc:${network.id}`, "supporting");
+      return;
+    }
     this.vpc = new ec2.Vpc(this, "Vpc", {
       ipAddresses: ec2.IpAddresses.cidr(network.cidr),
       ipProtocol: ec2.IpProtocol.DUAL_STACK,
@@ -148,6 +167,8 @@ export function networkSubnets(tier: NetworkSubnet): ec2.SubnetSelection {
 
 interface NetworkState {
   stack?: NetworkStack;
+  reference?: RetainedDatabaseNetwork;
+  retain?: boolean;
   /** The group the database admits, once a workload uses it. */
   databaseClients?: ec2.SecurityGroup;
   databaseProxyClients?: ec2.SecurityGroup;
@@ -205,8 +226,39 @@ function networkStack(scope: IConstruct, reason: string, reference: FrameworkNet
   network.stack = new NetworkStack(scope.node.root as Construct, `${options.deployment}-${reference.cloud.constructId}`, {
     ...(env ? { env } : {}),
     network: resolveNetwork(options.config, reference),
+    reference: network.reference,
   });
+  if (network.retain) retainNetworkStack(network.stack);
   return network.stack;
+}
+
+/** Select the original VPC before constructing any resource in the database's network. */
+export function referenceFrameworkNetwork(scope: IConstruct, reference: FrameworkNetwork, attributes: RetainedDatabaseNetwork): void {
+  assertRetainedDatabaseNetwork(attributes);
+  const network = state(scope, reference);
+  if (network.stack) throw new Error("Select the retained database network before constructing workloads or native resources in that VPC.");
+  if (network.reference && JSON.stringify(network.reference) !== JSON.stringify(attributes)) throw new Error("A framework network cannot reference two retained VPCs.");
+  network.reference = attributes;
+}
+
+const retainedNetworkStacks = new WeakSet<NetworkStack>();
+function retainNetworkStack(stack: NetworkStack): void {
+  if (retainedNetworkStacks.has(stack)) return;
+  retainedNetworkStacks.add(stack);
+  // Retaining just VPC/subnets fails when gateways, IPv6 associations, routes,
+  // endpoints or client groups are removed. Preserve this complete declared
+  // network, including resources created after this call. NAT/endpoints cost
+  // money until separately removed; teardown reports this explicitly.
+  cdk.Aspects.of(stack).add({ visit(node) {
+    if (cdk.CfnResource.isCfnResource(node)) node.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
+  } });
+}
+
+/** Preserve the database's complete network rather than leave detached, unusable data. */
+export function retainFrameworkNetwork(scope: IConstruct, reference: FrameworkNetwork): void {
+  const network = state(scope, reference);
+  network.retain = true;
+  if (network.stack) retainNetworkStack(network.stack);
 }
 
 /**
@@ -406,6 +458,7 @@ function describeNetwork(built: NetworkState): string | undefined {
   if (!built.stack) return undefined;
   const { network } = built.stack;
   const placed = built.placed.length > 0 ? built.placed.join(", ") : "nothing yet";
+  if (built.reference) return `Network ${network.id}: ${placed} run in externally referenced VPC ${built.reference.vpcId}. Existing routes, gateways, endpoints and their continuing costs remain externally managed; source declarations do not reconfigure them.`;
   const egress = network.natGateway && network.egressOnlyInternetGateway
     ? "The private subnets leave over IPv6 and IPv4"
     : network.natGateway
@@ -424,5 +477,5 @@ function describeNetwork(built: NetworkState): string | undefined {
       ? [`${network.interfaceEndpoints.length} interface endpoint${network.interfaceEndpoints.length === 1 ? "" : "s"} in ${network.zones} zones, about ${formatMonthlyCost(interfaceEndpointsMonthlyCost(network, network.interfaceEndpoints.length))} a month plus $0.01 per GB`]
       : []),
   ];
-  return `Network ${network.id}: ${placed} run in the VPC. ${egress}${endpoints.length > 0 ? `, with ${endpoints.join(" and ")}` : ""}. ${costs.length > 0 ? `It costs ${costs.join(", and ")}, as the selected VPC declaration specifies.` : "It costs nothing."}`;
+  return `Network ${network.id}: ${placed} run in the VPC. ${egress}${endpoints.length > 0 ? `, with ${endpoints.join(" and ")}` : ""}. ${costs.length > 0 ? `It costs ${costs.join(", and ")}, as the selected VPC declaration specifies.` : "It costs nothing."}${built.retain ? " Database retention also retains this complete network and any ongoing NAT/endpoint charges after stack deletion." : ""}`;
 }

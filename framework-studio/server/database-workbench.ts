@@ -143,7 +143,7 @@ export function databaseContractPath(root: string): string {
     current = path.join(current, segment);
     if (lstatSync(current).isSymbolicLink()) throw new EditError(422, "The authored contract uses a symbolic link. Save it in your editor; Studio does not write through links.");
   }
-  if (path.relative(canonicalRoot, realpathSync(current)) !== CONTRACT_FILE) throw new EditError(422, "The contract resolves outside its fixed source authority.");
+  if (path.relative(canonicalRoot, realpathSync(current)).replaceAll("\\", "/") !== CONTRACT_FILE) throw new EditError(422, "The contract resolves outside its fixed source authority.");
   return current;
 }
 

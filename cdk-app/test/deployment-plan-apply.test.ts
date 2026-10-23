@@ -59,7 +59,8 @@ test("a development plan deploys only when applied, then verifies, records and e
     assert.equal(result.status, "succeeded");
     const state = account.read();
     assert.ok(state.regions[REGION].stacks.every((stack: any) => stack.Tags.some((tag: any) => tag.Key === "framework:contract" && tag.Value === "2")), "deployed stacks carry the contract-2 tags");
-    const record = state.regions[REGION].parameters.find((parameter: any) => parameter.Name === "/framework/deployments/my-aws-app");
+    const record = state.regions[REGION].parameters?.find((parameter: any) => parameter.Name === "/framework/deployments/my-aws-app");
+    assert.ok(record, "The fake deployment must persist its advisory SSM record. Apply output:\n" + applied.output);
     assert.equal(JSON.parse(record.Value).planId, plan.planId);
     assert.ok(existsSync(path.join(exportDirectory, "client-app", ".env.development.local")), "export wrote the client settings");
     assert.match(readFileSync(path.join(exportDirectory, ".env"), "utf8"), /LOCAL_FRAMEWORK_DEPLOYMENT=my-aws-app/);

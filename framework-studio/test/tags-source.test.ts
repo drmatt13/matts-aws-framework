@@ -245,7 +245,7 @@ test("post-apply verification failure restores tag edits through the guarded tra
 test("creation accepts validated string pairs and emits readable modules with authored tags", () => {
   const request = readCreationRequest({ kind: "input", id: "invoiceRegion", envName: "INVOICE_REGION", tags: { Feature: "Billing" } });
   const proposal = planCreation(fixture, state(), request);
-  const module = [...proposal.overrides].find(([file]) => file.endsWith("resources/inputs.ts"))!;
+  const module = [...proposal.overrides].find(([file]) => file === path.join(fixture, "framework-config/resources/inputs.ts"))!;
   assert.match(module[1], /export const invoiceRegionResource/);
   assert.match(module[1], /Feature: "Billing"|"Feature": "Billing"/);
   assert.match(proposal.overrides.get(path.join(fixture, "framework-config/resources.ts"))!, /invoiceRegion: invoiceRegionResource/);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { UserPool } from "aws-cdk-lib/aws-cognito";
+import type { IUserPool } from "aws-cdk-lib/aws-cognito";
 import type { IEventBus } from "aws-cdk-lib/aws-events";
 import type { IQueue } from "aws-cdk-lib/aws-sqs";
 import type { ITopic } from "aws-cdk-lib/aws-sns";
@@ -8,7 +8,7 @@ import type { ITable } from "aws-cdk-lib/aws-dynamodb";
 import type { Bucket } from "aws-cdk-lib/aws-s3";
 import { defineResources, normalizeFailureDestinations, normalizeTriggers, resource, trigger, triggerAdapters, validateTrigger, type EventTrigger } from "../src/config";
 
-const catalog = defineResources({ sources: resource.stack<{ pool: UserPool; bus: IEventBus; queue: IQueue; dlq: IQueue; topic: ITopic; table: ITable; bucket: Bucket }>() });
+const catalog = defineResources({ sources: resource.stack<{ pool: IUserPool; bus: IEventBus; queue: IQueue; dlq: IQueue; topic: ITopic; table: ITable; bucket: Bucket }>() });
 const signup = () => trigger.cognito(catalog.sources.pool, { id: "signup", operation: "preSignUp", accepts: "cognito" });
 
 test("typed triggers are serializable symbolic descriptors and normalize stable event attachment identities", () => {

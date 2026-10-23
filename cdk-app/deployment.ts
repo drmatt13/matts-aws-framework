@@ -4,6 +4,7 @@ import * as fs from "fs";
 import type { CloudMode } from "@repo/framework/config";
 import { modeFromContext, type DeploymentTarget } from "@repo/framework/deploy";
 import { resolveDatabaseSettings, type DatabaseSettingsInput } from "./database-settings";
+import { resolveStatefulResources, type StatefulResourcesConfiguration } from "./stateful-resources";
 
 /** Application-owned deployment policy. See docs/FRAMEWORK.md#configuration-and-environment.
  * Importing this module never reads .env, creates an App, or generates code.
@@ -15,9 +16,10 @@ export interface DeploymentSources {
   target?: Pick<DeploymentTarget, "name" | "mode" | "account" | "region">;
   /** The primary database declaration, before explicit deployment overrides. */
   databaseSettings?: DatabaseSettingsInput;
+  statefulResources?: StatefulResourcesConfiguration;
 }
 
-export function resolveDeploymentInputs({ getContext, env, target, databaseSettings }: DeploymentSources) {
+export function resolveDeploymentInputs({ getContext, env, target, databaseSettings, statefulResources }: DeploymentSources) {
   const warnings: string[] = [];
   // New ordinary flags use these readers: context, environment, then fallback.
   const stringFlag = (context: string, envKey: string) =>
@@ -144,6 +146,7 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
       "RETAIN_STATEFUL_RESOURCES in cdk-app/.env.dev or cdk-app/.env.prod",
     ) ??
     false;
+  const stateful = resolveStatefulResources(statefulResources, mode, retainStatefulResources);
 
   // WebSocket configuration.
   //
@@ -258,8 +261,8 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     "PROD_CLOUDFRONT_CERTIFICATE_ARN",
   );
 
-  // Mirrors USE_COGNITO_CUSTOM_DOMAIN, but unlike that one this is meaningful
-  // only in cloud mode: the CloudFront distribution that would carry the
+  // Like USE_COGNITO_CUSTOM_DOMAIN this is meaningful only in production:
+  // the CloudFront distribution that would carry the
   // alternate domain name is not created at all in local dev stack mode. Set it
   // false to keep the domain and certificate parked in the inputs file while deploying on
   // the generated CloudFront URL.
@@ -306,11 +309,8 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
 
   const cognitoDomainPrefix = getGeneratedCognitoDomainPrefix(deploymentName, account, region);
 
-  // Deliberately independent of the mode: a dev-stack deploy can
-  // legitimately use the custom auth domain, which is why this is not folded into
-  // the production DNS gate above. Defaults to using the values when they are
-  // present, so existing deployments are unaffected; set it false to park the
-  // values in .env and fall back to the generated prefix without deleting them.
+  // Both custom-domain controls belong to production. Park authored dev values
+  // without requesting a Cognito-managed CloudFront distribution in development.
   const useCognitoCustomDomain = booleanFlag({
     context: "useCognitoCustomDomain",
     env: "USE_COGNITO_CUSTOM_DOMAIN",
@@ -319,7 +319,11 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
   });
 
   const cognitoDomainNameContext = getContext("cognitoDomainName");
-  const configuredCognitoDomainName = useCognitoCustomDomain
+  const applyCognitoCustomDomain = mode === "prod" && useCognitoCustomDomain;
+  if (mode === "dev" && useCognitoCustomDomain && (optionalString(getContext("cognitoDomainName")) || optionalString(env.COGNITO_DOMAIN_NAME))) {
+    warnings.push("[cdk-app] Cognito custom domains apply only to production. Development custom-domain inputs are ignored; an existing custom domain may be removed or replaced. deploy:resources refuses a direct migration and requires a reviewed saved plan with the typed deployment name before changing it.");
+  }
+  const configuredCognitoDomainName = applyCognitoCustomDomain
     ? (optionalString(cognitoDomainNameContext) ??
       optionalString(env.COGNITO_DOMAIN_NAME))
     : undefined;
@@ -334,7 +338,7 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
   );
   // Dropped together with the domain name: CognitoStack rejects one without the
   // other, so gating only half of the pair would turn the toggle into an error.
-  const cognitoDomainCertificateArn = useCognitoCustomDomain
+  const cognitoDomainCertificateArn = applyCognitoCustomDomain
     ? (optionalString(cognitoDomainCertificateArnContext) ??
       optionalString(env.COGNITO_DOMAIN_CERTIFICATE_ARN))
     : undefined;
@@ -399,6 +403,9 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     cognitoSesFromName,
     cognitoSesRegion,
     retainStatefulResources,
+    stateful,
+    databaseRetention: stateful.database.retention === "retain",
+    cognitoRetention: stateful.cognito.retention === "retain",
     deployProdWebSocketApi,
     useFrontendCustomDomain,
     configuredFrontendUrl,
