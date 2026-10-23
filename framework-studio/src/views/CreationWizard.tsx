@@ -14,6 +14,8 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
   const dialog = useRef<HTMLDialogElement>(null);
   const prefix = useId();
   const [tagError, setTagError] = useState<string>();
+  const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set());
+  const touch = (field: string) => setTouched(current => current.has(field) ? current : new Set([...current, field]));
   const creator = CREATORS[entry.resourceKind];
   const disabled = !!draftState.busy || draft.conflict || !!model.stale || live.evaluating;
   useEffect(() => {
@@ -38,10 +40,11 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
   const render = (field: CreationField) => {
     const id = `${prefix}-${field.key}`;
     const serverError = draftState.error?.startsWith(`${field.key}: `) ? draftState.error.slice(field.key.length + 2) : undefined;
-    const error = problem?.field === field.key ? problem.message : serverError;
+    const error = serverError ?? (problem?.field === field.key && touched.has(field.key) ? problem.message : undefined);
     const describedBy = [field.help ? `${id}-help` : undefined, error ? `${id}-error` : undefined].filter(Boolean).join(" ") || undefined;
     const value = entry.form[field.key];
     const update = (next: string | number | boolean) => {
+      touch(field.key);
       const form = { ...entry.form, [field.key]: next };
       const envName = (value: string) => value.replace(/([a-z0-9])([A-Z])/g, "$1_$2").replaceAll("-", "_").toUpperCase();
       const route = (name: string, category: unknown) => entry.resourceKind === "service" ? `/${name}/*` : category === "webSocket" ? name : `/${name}`;
@@ -79,7 +82,8 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
     };
     const endpoints = entry.resourceKind === "vpc" && field.key === "endpoints";
     const tagField = field.key === "tags";
-    return <div className={`creation-field ${field.type === "boolean" ? "creation-switch" : ""} ${endpoints ? "endpoint-creation-field" : ""} ${tagField || field.key === "description" || field.type === "list" ? "creation-field-wide" : ""}`} key={field.key}>
+    return <div className={`creation-field ${field.type === "boolean" ? "creation-switch" : ""} ${endpoints ? "endpoint-creation-field" : ""} ${tagField || field.key === "description" || field.type === "list" ? "creation-field-wide" : ""}`} key={field.key}
+      onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) touch(field.key); }}>
       {tagField ? <span id={`${id}-label`} className="creation-field-label">{field.label}</span> : <label htmlFor={id}>{field.label}</label>}
       <div className="creation-field-control" role={tagField ? "group" : undefined} aria-labelledby={tagField ? `${id}-label` : undefined} aria-describedby={tagField ? describedBy : undefined}>
       {tagField ? <TagRows value={JSON.parse(String(value ?? "{}")) as Record<string, string>} disabled={disabled} onChange={(tags, error) => { setTagError(error); draft.setCreation(entry.resourceKind, { ...entry.form, tags: JSON.stringify(tags) }, error); }} />

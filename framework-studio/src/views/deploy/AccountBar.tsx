@@ -1,4 +1,5 @@
-import { AlertTriangle, Check, CircleDashed, LogIn, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, CircleDashed, LogIn, RefreshCw, X } from "lucide-react";
+import { useId, useState } from "react";
 import type { AccountContext, AwsProblem, AwsProfileInfo, OperationRequest, PrerequisiteView } from "../../../shared/deploy";
 import { callerName } from "./format";
 
@@ -14,14 +15,19 @@ export function AccountBar(props: {
   readonly context?: AccountContext;
   readonly problem?: AwsProblem;
   readonly loading: boolean;
+  readonly readError?: string;
   readonly onRefresh: () => void;
   readonly onSignIn?: () => void;
   readonly prerequisites: readonly PrerequisiteView[];
   readonly onRemedy: (request: OperationRequest) => void;
 }) {
   const selected = props.profiles.find((entry) => entry.name === props.profile);
+  const [showReady, setShowReady] = useState(false);
+  const readyId = useId();
+  const ready = props.prerequisites.filter((item) => item.status === "ok");
+  const attention = props.prerequisites.filter((item) => item.status !== "ok");
   return (
-    <header className="deploy-account" aria-label="AWS account">
+    <header className="deploy-account workspace-toolbar" aria-label="AWS account">
       <div className="account-identity">
         <label className="profile-picker">
           <span className="small muted">AWS profile</span>
@@ -54,24 +60,34 @@ export function AccountBar(props: {
           <span className="account-resolved muted">{props.profile ? (props.loading ? "Resolving the account…" : "") : "Choose the profile whose account to inspect."}</span>
         )}
         <span className="spacer" />
-        <button className="quiet" onClick={props.onRefresh} disabled={!props.profile} title="Read AWS and this machine again">
-          <RefreshCw size={14} className={props.loading ? "spin" : undefined} aria-hidden /> Refresh
+        <button className="quiet account-refresh" onClick={props.onRefresh} disabled={props.loading} aria-label="Refresh" aria-busy={props.loading} title="Read AWS and this machine again">
+          <RefreshCw size={14} className={props.loading ? "spin" : undefined} aria-hidden /> {props.loading ? "Refreshing…" : "Refresh"}
         </button>
       </div>
-      <ul className="prerequisites" aria-label="This machine">
-        {props.prerequisites.map((item) => (
-          <li key={item.id} className={`prerequisite ${item.status}`} title={item.detail ?? item.summary}>
-            {item.status === "ok" ? <Check size={12} aria-hidden /> : item.status === "fail" ? <X size={12} aria-hidden /> : item.status === "warn" ? <AlertTriangle size={12} aria-hidden /> : <CircleDashed size={12} aria-hidden />}
-            <span className="prerequisite-label">{item.label}</span>
-            {item.status !== "ok" ? <span className="prerequisite-summary">{item.summary}</span> : null}
-            {item.remedy ? (
-              <button className="linkish small" onClick={() => props.onRemedy(item.remedy!)}>
-                {item.remedy.kind === "docker-start" ? "Start" : item.remedy.kind === "deps-install" ? "Install" : "Fix"}
-              </button>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+      {props.readError ? <p className="account-read-error" role="alert"><AlertTriangle size={14} aria-hidden /><span>Some information could not be refreshed. {props.readError} Try Refresh again.</span></p> : null}
+      {props.prerequisites.length ? <div className="machine-health">
+        {ready.length ? <button className="machine-checks-toggle" aria-expanded={showReady} aria-controls={readyId} onClick={() => setShowReady(!showReady)}>
+          <Check size={13} className="ok-mark" aria-hidden />
+          <span>This machine · {ready.length} {ready.length === 1 ? "check" : "checks"} passed</span>
+          <ChevronDown size={13} className="machine-checks-chevron" aria-hidden />
+        </button> : null}
+        {attention.length ? <ul className="prerequisites" aria-label="Machine issues">
+          {attention.map((item) => (
+            <li key={item.id} className={`prerequisite ${item.status}`} aria-label={`${item.label}: ${item.summary}`} title={item.detail ?? item.summary}>
+              {item.status === "fail" ? <X size={13} aria-hidden /> : item.status === "warn" ? <AlertTriangle size={13} aria-hidden /> : <CircleDashed size={13} aria-hidden />}
+              <span className="prerequisite-summary">{item.summary}</span>
+              {item.remedy ? (
+                <button className="linkish small" onClick={() => props.onRemedy(item.remedy!)}>
+                  {item.remedy.kind === "docker-start" ? "Start" : item.remedy.kind === "deps-install" ? "Install" : "Fix"}
+                </button>
+              ) : null}
+            </li>
+          ))}
+        </ul> : null}
+        <ul id={readyId} className="prerequisite-checks" aria-label="Passed machine checks" hidden={!showReady || !ready.length}>
+          {ready.map((item) => <li key={item.id} title={item.detail}><Check size={13} className="ok-mark" aria-hidden /><strong>{item.label}</strong><span>{item.summary}</span></li>)}
+        </ul>
+      </div> : null}
     </header>
   );
 }

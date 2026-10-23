@@ -89,14 +89,18 @@
 .section-content > :first-child { margin-top: 0; }
 .section-content > :last-child { margin-bottom: 0; }
 .inspector .section-footnote { margin-top: var(--ui-space-2); }
-.inspector-disclosure > details > summary { display: flex; align-items: center; gap: var(--ui-space-2); list-style: none; min-height: var(--ui-icon-target); font-weight: 600; cursor: pointer; font-size: var(--ui-label); }
+.inspector-disclosure > details > summary { display: flex; align-items: center; gap: var(--ui-space-2); list-style: none; min-height: var(--ui-icon-target); font-weight: 600; cursor: pointer; font-size: var(--ui-label); margin-inline: calc(-1 * var(--ui-space-1)); padding-inline: var(--ui-space-1); border-radius: var(--radius-sm); }
+.inspector-disclosure > details > summary:hover { background: var(--wash); }
 .inspector-disclosure > details > summary > span:first-of-type { min-width: 0; overflow-wrap: anywhere; }
 .inspector-disclosure > details > summary > svg, .section-count { flex-shrink: 0; }
 .inspector-disclosure > details > summary::-webkit-details-marker { display: none; }
 .inspector-disclosure > details > summary > svg { color: var(--graphite); transition: transform .15s; }
 .inspector-disclosure > details[open] > summary > svg { transform: rotate(90deg); }
-.inspector-disclosure > details[open] > .section-content { padding-top: var(--ui-space-3); }
+.inspector-disclosure > details[open] > .section-content { padding-block: var(--ui-space-3) var(--ui-space-2); }
 .section-count { font-size: 11px; color: var(--graphite); background: var(--wash); border-radius: var(--radius-sm); padding: 0 var(--ui-space-2); font-weight: 500; margin-left: auto; }
+.section-state { margin-left: auto; font-size: var(--ui-caption); font-weight: 500; color: var(--dev); }
+.section-state.invalid { color: var(--refuse); }
+.section-state + .section-count { margin-left: 0; }
 .inspector .form-group { border: 0; border-top: 1px solid var(--rule); padding: var(--ui-space-3) 0 0; margin: var(--ui-space-4) 0 0; min-width: 0; }
 .inspector .form-group legend { font-size: var(--ui-label); font-weight: 600; padding: 0 var(--ui-space-2) 0 0; }
 .inspector .form-group:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
@@ -214,6 +218,7 @@
   padding: var(--ui-space-4) var(--ui-space-5);
   border-bottom: 1px solid var(--rule);
 }
+.inspector-content > .inspector-disclosure { padding-block: var(--ui-space-2); }
 
 .inspector h3 {
   font-size: var(--ui-label);
@@ -261,6 +266,8 @@
 }
 .section-content > .field:first-child { padding-top: 0; }
 .section-content > .field:last-child { padding-bottom: 0; }
+.api-auth > .field { padding-block: 0; }
+.http-route-editor:first-child .resource-control { margin-top: 0; }
 
 .field .name {
   min-width: 0;
@@ -535,6 +542,10 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .connection-description .node-description { padding: 10px 0 0; }
 .field-origin > summary { color: var(--graphite); cursor: pointer; font-size: var(--ui-caption); min-height: var(--ui-caption-target); line-height: 1.5; padding-block: var(--ui-space-1); }
 .field-origin[open] > span { display: block; padding-top: var(--ui-space-1); overflow-wrap: anywhere; }
+.field-support { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--ui-space-3); }
+.field-support:empty { display: none; }
+.field-support > .field-origin { min-width: 0; }
+.field-support > .field-origin[open] { flex-basis: 100%; }
 .numeric-default { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--ui-space-1) var(--ui-space-3); }
 .numeric-default > button { font: inherit; }
 .field .note button.linkish { min-height: var(--ui-caption-target); }
@@ -713,43 +724,10 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .environment-search { flex: 1; min-width: 0; }
 
 @media (max-width: 700px) {
-  .bar { gap: 6px var(--ui-space-2); padding: var(--ui-space-2) var(--ui-space-3); font-size: 12px; }
-  .wordmark small { display: none; }
-  .bar .tabs { margin-left: auto; }
-  .tab { padding: 6px var(--ui-space-2); }
-  .bar .spacer { display: none; }
-  .bar .health { margin-left: auto; }
-  .landscape-top { flex-wrap: wrap; gap: var(--ui-space-2); }
-  .landscape-search-panel { width: 100%; }
-  .landscape-tools { max-width: 100%; }
-  .landscape-tools button { width: 30px; height: 30px; }
-  .landscape-stats { font-size: 10px; white-space: normal; max-width: calc(100% - 64px); }
-}
-
-/* The environment switch never collapses when the shell shares space with an inspector. */
-.bar > .segmented, .bar > .tabs { flex-shrink: 0; }
-@media (max-width: 1400px) {
-  .bar { gap: 10px; }
-  .wordmark small { display: none; }
-  .tab { padding: 6px 8px; }
-  .bar .health > .small { display: none; }
-}
-@media (min-width: 901px) and (max-width: 1200px) {
-  .shell { grid-template-rows: auto minmax(0,1fr); }
-  .bar { flex-wrap: wrap; padding: 8px 16px; }
-}
-@media (max-width: 700px) {
-  .bar { gap: 6px 8px; }
-  .bar .health { gap: 6px; padding: 5px 8px; }
-  .bar .icon-button { padding: 5px 8px; gap: 4px; }
   .drawer { top: 12px; max-height: calc(100dvh - 24px); }
 }
 
 .field .locked[role=alert] { color: var(--refuse); border-left-color: var(--refuse); }
-
-@media (max-width: 900px) {
-  .landscape-add-menu { position: fixed; right: 16px; bottom: 16px; width: min(360px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); z-index: 30; }
-}
 
 /* The application database has two implementations and one reviewed declaration. */
 .database-environments { display: grid; gap: var(--ui-space-2); }

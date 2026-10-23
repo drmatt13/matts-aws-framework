@@ -70,6 +70,14 @@ or VPC hover title; the declaration and inspector still retain their networking 
 Search and tag filters use the shared control geometry and inset chevrons. Clearing
 either restores keyboard focus to the surviving search/key control. Camera controls
 are a named group; long tag selections retain their full value in their tooltip.
+All controls sit in the shared workspace toolbar outside the measured `.landscape`
+canvas container. The toolbar participates in normal flow, so wrapping and search
+feedback reduce the canvas viewport without obscuring resources. Resize, picking,
+hover and fit keep using the inner scene container. Renderer timing remains in
+`window.__studioLandscape.stats()`; normal chrome shows resource/connection counts.
+See the [UI design system](../../framework-studio/ui-design-system.md) for route gutters,
+surface and responsive ownership. Board uses a labeled creation action and a themed
+chooser; its trailing legend and action wrap together.
 Board keeps resource-only and local-service graphs visible even before any compute
 is declared; its creation menu remains available on those valid graphs.
 The landscape entity list becomes a bounded visible navigator while it contains

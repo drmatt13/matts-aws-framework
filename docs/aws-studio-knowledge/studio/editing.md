@@ -35,7 +35,10 @@ removal restores inheritance. See [tag authoring](../../framework-studio/declara
 The tag Inspector uses labeled key/value inputs, an Add tag action that focuses the new
 key, and visible Delete buttons. Validation is associated with its fields; deleting a
 row returns keyboard focus to a remaining key or Add tag. Route ownership help stays
-inside the Tags section. An open page with missing tag editability offers
+inside the Tags disclosure. Its compact heading retains the effective count and any
+Modified/Needs attention draft state while collapsed. Registry-backed boolean fields
+dispatch through `FieldRow` to the shared switch, including build options and defaults.
+An open page with missing tag editability offers
 Refresh editor, which reloads its snapshot without writing source; an expired server
 session reconnects through a page reload. Refresh is disabled while a draft is dirty.
 

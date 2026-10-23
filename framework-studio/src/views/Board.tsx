@@ -75,7 +75,7 @@ export function Board() {
 
   return (
     <>
-      <div className="board-head">
+      <div className="workspace-toolbar board-head">
         <div className="chips" role="group" aria-label="Relations shown">
           {CATEGORIES.map((category) => (
             <button
@@ -95,9 +95,10 @@ export function Board() {
             </button>
           ))}
         </div>
-        <span className="spacer" />
-        <DeploymentLegend />
-        <AddMenu />
+        <div className="board-actions">
+          <DeploymentLegend />
+          <AddMenu presentation="toolbar" />
+        </div>
       </div>
       <div ref={board} className="board" role="group" aria-label="Application architecture" style={{ width: layout.width + 120, height: layout.height }} onClick={() => select(undefined)}>
         <svg className="edges" width={layout.width + 120} height={layout.height} aria-label="Resource connections">

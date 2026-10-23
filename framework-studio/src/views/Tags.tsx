@@ -5,7 +5,7 @@ import { MAX_DECLARATION_TAGS, validateTags } from "@repo/framework/config/tags"
 import { api, ApiError } from "../api";
 import { editorLink } from "../lookup";
 import { useStudio } from "../studio";
-import { InspectorSection } from "./InspectorUI";
+import { InspectorDisclosure } from "./InspectorUI";
 
 type Tags = Readonly<Record<string, string>>;
 const entries = (value: Tags) => Object.entries(value).map(([key, value]) => ({ key, value }));
@@ -90,7 +90,7 @@ export function Tags({ entity, route = false }: { readonly entity: string; reado
     const known = model.targets.some(target => target.ref === entity) || resource || model.networks?.some(network => `island:vpc:${network.id}` === entity) || (model.managedDatabase && `database:${model.managedDatabase.id}` === entity);
     if (!known) return null;
     const generated = resource && (resource.frameworkStack || resource.kind === "envFile" || resource.kind === "group" || resource.deploymentFile || resource.clientEnvironment);
-    return <InspectorSection title="Tags" className="declaration-tags">{generated || model.tagging ? <p className="small muted">This generated or logical resource has no independently authored tag declaration. Its producing declaration owns its tags; follow the source link above.</p> : <RefreshTagEditor entity={entity} />}</InspectorSection>;
+    return <InspectorDisclosure title="Tags" className="declaration-tags">{generated || model.tagging ? <p className="small muted">This generated or logical resource has no independently authored tag declaration. Its producing declaration owns its tags; follow the source link above.</p> : <RefreshTagEditor entity={entity} />}</InspectorDisclosure>;
   }
   const editability = snapshot.source.editability[entity]?.tags;
   const editable = editability?.kind === "literal" || editability?.kind === "absent";
@@ -100,9 +100,11 @@ export function Tags({ entity, route = false }: { readonly entity: string; reado
   const inherited = Object.entries(facts.inherited?.values ?? (inheritedSource ? model.tagging?.[inheritedSource]?.effective ?? {} : {}));
   const parent = inheritedSource;
   const source = snapshot.source.entities[entity]?.value;
-  const staged = draftState.entries.some(entry => entry.kind === "tags" && entry.entity === entity);
+  const staged = draftState.entries.find(entry => entry.kind === "tags" && entry.entity === entity);
+  const count = Object.keys({ ...Object.fromEntries(inherited), ...current }).length;
   const disabled = !!draftState.busy || live.evaluating || !!model.stale || draft.conflict || draftState.entries.some(entry => ["create", "resource", "environment"].includes(entry.kind));
-  return <InspectorSection title="Tags" className="declaration-tags" description={route ? "Route tags follow the workload declaration. A route has no independently taggable AWS resource." : "String key/value metadata, shared across environments."}>
+  return <InspectorDisclosure title="Tags" className="declaration-tags" count={count} status={staged ? staged.error ? "invalid" : "modified" : undefined}>
+    <p className="section-description">{route ? "Route tags follow the workload declaration. A route has no independently taggable AWS resource." : "Shared across development and production."}</p>
     {inherited.length ? <div className="inherited-tags"><span className="small muted">Inherited from {parent ? <button className="linkish" onClick={() => select(parent)}>{parent.replace(/^resource:/, "resources.")}</button> : "producer"}</span>{inherited.map(([key, value]) => <div className="inherited-tag" key={key}><code>{key}</code><span>{value || "(empty)"}</span><span className="small muted">{Object.hasOwn(current, key) ? "Overridden" : "Inherited"}</span></div>)}</div> : null}
     {editable || !editability ? <TagRows value={current} disabled={disabled || !editable} onChange={(tags, error) => draft.changeTags(entity, tags, error)} /> : <><dl className="tag-readonly">{Object.entries(facts.effective).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value || "(empty)"}</dd></div>)}</dl><p className="small muted">{reason}</p></>}
     {!editability ? <RefreshTagEditor entity={entity} /> : null}
@@ -110,5 +112,5 @@ export function Tags({ entity, route = false }: { readonly entity: string; reado
     <p className="small muted">{facts.aws.note}</p>
     {staged ? <p className="small muted">Unsaved · Review Changes to save.</p> : null}
     {source ? <a className="small" href={editorLink(snapshot.repositoryRoot, source)}>Open tag declaration in VS Code</a> : null}
-  </InspectorSection>;
+  </InspectorDisclosure>;
 }

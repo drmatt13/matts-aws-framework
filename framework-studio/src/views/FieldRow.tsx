@@ -18,7 +18,12 @@ export function lockedReason(editability: Editability | undefined, fact: FieldFa
 interface Props { readonly target: { readonly ref: string; readonly role?: ModelTarget["role"] }; readonly fact: FieldFact; readonly editability: Editability | undefined; readonly allowInherit?: boolean; readonly description?: string }
 const INHERIT = "\u0000inherit";
 
-export function FieldRow({ target, fact, editability, allowInherit }: Props) {
+export function FieldRow(props: Props) {
+  return props.fact.domain.kind === "enum" && props.fact.domain.values.includes(true) && props.fact.domain.values.includes(false)
+    ? <BooleanField {...props} /> : <ValueField {...props} />;
+}
+
+function ValueField({ target, fact, editability, allowInherit }: Props) {
   const id = useId();
   const { draft, draftState, live, model, snapshot } = useStudio();
   const locked = model.stale ? "Editing is paused until the configuration loads again." : lockedReason(editability, fact);
@@ -32,7 +37,7 @@ export function FieldRow({ target, fact, editability, allowInherit }: Props) {
   const display = (value: unknown) => {
     if (fact.field === "deploy") return deploymentSettingLabel(String(value), webSocketApi);
     if (fact.field.endsWith(".packaging")) return value === "container" ? "Container image (Dockerfile)" : "Source bundle (ZIP)";
-    if (fact.field.endsWith(".logRetentionDays")) return `${value} days`;
+    if (fact.field.endsWith(".logRetentionDays")) return `${value} ${value === 1 ? "day" : "days"}`;
     if (typeof value === "boolean") return value ? "On" : "Off";
     return String(value);
   };
@@ -49,11 +54,14 @@ export function FieldRow({ target, fact, editability, allowInherit }: Props) {
       </select> : <><input id={id} type="number" min={fact.domain.min} max={fact.domain.max} required={allowInherit === false} value={value === undefined ? "" : String(value)} placeholder={inherited === undefined ? "" : String(inherited)} onChange={(event) => draft.setField(target.ref, fact, event.target.validity.badInput ? "Invalid number" : event.target.value === "" ? undefined : event.target.value)} aria-label={`${fact.label} in ${fact.domain.unit}`} aria-invalid={!!entry?.error} aria-describedby={describedBy} disabled={!!draftState.busy || live.evaluating} /><span className="muted small">{fact.domain.unit}</span></>}
     </span>
     {entry?.error ? <span className="locked" role="alert" id={`${id}-error`}>{entry.error}</span> : null}
-    {numericDefault ? <div className="note numeric-default">
+    <div className="note field-support">
+    {numericDefault ? <div className="numeric-default">
       <span id={`${id}-default`} title={fact.inherited?.from}>Default: {display(inherited)}{unit}</span>
       {value !== undefined && allowInherit !== false && !locked ? <button className="linkish" aria-label={`Use default ${fact.label.toLowerCase()}`} disabled={!!draftState.busy || live.evaluating} onClick={() => draft.setField(target.ref, fact, undefined)}>Use default</button> : null}
     </div> : null}
-    {locked ? <span className="locked">{locked}</span> : <details className="note field-origin"><summary>{entry ? "Unsaved change" : fact.authored === undefined ? "Inherited value" : "Configured here"}</summary><span>{entry ? `Unsaved: ${value === undefined ? inheritLabel : display(value) + unit}.` : fact.authored === undefined ? `Inherited: ${display(draft.effective(target.ref, fact))}${unit} from ${fact.provenance}.` : `Written as ${describeValue(fact.authored)}.`}</span></details>}
+    {locked ? null : <details className="field-origin"><summary>{entry ? "Unsaved change" : fact.authored === undefined ? "Inherited value" : "Configured here"}</summary><span>{entry ? `Unsaved: ${value === undefined ? inheritLabel : display(value) + unit}.` : fact.authored === undefined ? `Inherited: ${display(draft.effective(target.ref, fact))}${unit} from ${fact.provenance}.` : `Written as ${describeValue(fact.authored)}.`}</span></details>}
+    </div>
+    {locked ? <span className="locked">{locked}</span> : null}
   </div>;
 }
 

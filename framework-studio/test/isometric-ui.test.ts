@@ -154,6 +154,24 @@ test("empty graphs show guidance and mount the renderer and wheel controls when 
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Fit the whole application" })); await draw();
 });
 
+test("drag cursors track gesture completion and cancellation without renderer statistics updates", async () => {
+  await mount();
+  const canvas = document.querySelector("canvas")!;
+  assert.equal(canvas.style.cursor, "grab");
+  const startDrag = () => {
+    ui.fireEvent.pointerDown(canvas, { pointerId: 1, button: 0, clientX: 2, clientY: 2 });
+    ui.fireEvent.pointerMove(canvas, { pointerId: 1, clientX: 42, clientY: 42 });
+    assert.equal(canvas.style.cursor, "grabbing");
+  };
+  startDrag();
+  ui.fireEvent.pointerUp(canvas, { pointerId: 1, button: 0, clientX: 42, clientY: 42 });
+  assert.equal(canvas.style.cursor, "grab");
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "none", "a pan never selects a resource");
+  startDrag();
+  ui.fireEvent.pointerCancel(canvas, { pointerId: 1 });
+  assert.equal(canvas.style.cursor, "grab");
+});
+
 test("clearing map search and tag filters returns focus to their surviving controls", async () => {
   await mount();
   ui.fireEvent.change(search(), { target: { value: "graphql" } });
@@ -985,6 +1003,7 @@ test("a member overriding every stack tag still shows its parent and removal pre
   } };
   try {
     await mount(true, member.id);
+    ui.fireEvent.click(document.querySelector(".declaration-tags summary")!);
     assert.ok(ui.screen.getByText("Overridden"));
     assert.ok(ui.screen.getByText("platform"));
     assert.ok(ui.screen.getByRole("button", { name: parent.replace(/^resource:/, "resources.") }));
@@ -996,13 +1015,15 @@ test("a member overriding every stack tag still shows its parent and removal pre
   } finally { response = original; }
 });
 
-test("existing workload, catalog, network and database inspectors expose direct tag controls immediately below their header", async () => {
+test("existing workload, catalog, network and database inspectors expose tag controls in a disclosure below their header", async () => {
   const model = response.snapshot.models.dev;
   for (const selected of ["lambda:graphql-api", "resource:cognito", "resource:cognito.userPool", "island:vpc:application", model.managedDatabase!.resource]) {
     await mount(true, selected);
     const section = document.querySelector<HTMLElement>(".inspector-content > .declaration-tags")!;
     assert.ok(section, selected);
     assert.equal(section.previousElementSibling?.tagName, "HEADER", `${selected} tags are immediately visible after its header`);
+    assert.equal(section.querySelector("details")!.open, false);
+    ui.fireEvent.click(section.querySelector("summary")!);
     const tags = ui.within(section);
     assert.equal((tags.getByRole("button", { name: "Add tag" }) as HTMLButtonElement).disabled, false, selected);
     const next = tags.queryAllByRole("textbox").length / 2 + 1;
@@ -1021,7 +1042,7 @@ test("a snapshot missing tag metadata offers an inline editor refresh", async ()
   response = { ...response, snapshot: { ...response.snapshot, models: { dev: { ...response.snapshot.models.dev, tagging: undefined }, prod: { ...response.snapshot.models.prod, tagging: undefined } } } };
   try {
     await mount(true, "lambda:graphql-api");
-    assert.ok(ui.screen.getByRole("heading", { name: "Tags" }));
+    ui.fireEvent.click(document.querySelector(".declaration-tags summary")!);
     assert.ok(ui.screen.getByRole("button", { name: "Refresh editor" }));
   } finally { response = original; }
 });
@@ -1032,6 +1053,7 @@ test("an older source index shows tag inputs and refresh instead of a read-only 
   response = { ...response, snapshot: { ...response.snapshot, source: { ...response.snapshot.source, editability: { ...response.snapshot.source.editability, [target]: fields } } } };
   try {
     await mount(true, target);
+    ui.fireEvent.click(document.querySelector(".declaration-tags summary")!);
     assert.equal((ui.screen.getByRole("textbox", { name: "Tag 1 value" }) as HTMLInputElement).disabled, true);
     assert.ok(ui.screen.getByRole("button", { name: "Refresh editor" }));
     assert.equal(document.querySelector(".tag-readonly"), null);
@@ -1042,6 +1064,7 @@ test("an older source index shows tag inputs and refresh instead of a read-only 
 test("discarding invalid tag edits restores source rows and clears the local validation message", async () => {
   await mount(true, "lambda:graphql-api");
   const section = document.querySelector<HTMLElement>(".declaration-tags")!, tags = ui.within(section);
+  ui.fireEvent.click(section.querySelector("summary")!);
   const first = tags.getByRole("textbox", { name: "Tag 1 key" });
   ui.fireEvent.change(first, { target: { value: "aws:reserved" } });
   assert.ok(tags.getByText(/reserved for AWS or framework ownership/));

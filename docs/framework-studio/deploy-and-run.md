@@ -478,7 +478,7 @@ Framework Studio's **Deploy** tab (`framework-studio/src/views/Deploy.tsx`, comp
 
 | Part | What it shows and does |
 | --- | --- |
-| Account bar | The chosen profile resolved through the AWS CLI to account, region and caller, or a classified problem (expired session → **Sign in**). Below it, this machine's tools: Node, npm, AWS CLI, dependency freshness, Docker engine, Compose, each with its remedy (Install, Start). |
+| Account bar | The chosen profile resolved through the AWS CLI to account, region and caller, or a classified problem (expired session → **Sign in**). Healthy machine checks collapse into a named disclosure; warnings and remedies stay visible. Refresh shows progress, preserves previous results on partial failure, and remains available before profiles are configured. Uses the shared workspace toolbar. |
 | Rail | This repository's targets, other framework deployments in the account (read-only), and unrecognized lookalike stacks. Which deployment this machine's settings point at, and whether local development is running. |
 | Detail | Findings, most pressing first, with one primary action. Three panels: Repository (intent, mode, inputs, pins), AWS (stacks, pending change sets), This machine (Docker, settings, watch, web client, containers with logs). CloudFormation events, live during operations. |
 | Activity | Every operation as a job: its steps, a live numbered log, Cancel. The watch and the web client are jobs too, until stopped. |

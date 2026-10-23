@@ -25,6 +25,8 @@ export function Deploy() {
   const overview = overviewQuery.data;
   const [profile, setProfileState] = useState<string>();
   const [selected, setSelected] = useState<string>();
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshInFlight = useRef(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [activityJob, setActivityJob] = useState<string>();
   const [reviewKey, setReviewKey] = useState<string>();
@@ -143,11 +145,20 @@ export function Deploy() {
     }
   }, [queryClient, toast]);
 
-  const refreshAll = () => {
-    void deployApi.overview(true).then((value) => queryClient.setQueryData(["deploy", "overview"], value)).catch(() => {});
-    if (profile) void deployApi.discover(profile, true).then((value) => queryClient.setQueryData(["deploy", "discover", profile], value)).catch(() => {});
-    if (profile && row) void deployApi.status(profile, row.name, true, row.target?.region).then((value) => queryClient.setQueryData(["deploy", "status", profile, row.name, row.target?.region], value)).catch(() => {});
-    void queryClient.invalidateQueries({ queryKey: ["deploy", "plans"] });
+  const refreshAll = async () => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
+    setRefreshing(true);
+    // Fetch through the query cache so pending/errors are observable and a failed
+    // refresh keeps the last successful evidence on screen.
+    await Promise.allSettled([
+      queryClient.fetchQuery({ queryKey: ["deploy", "overview"], queryFn: () => deployApi.overview(true), staleTime: 0 }),
+      ...(profile ? [queryClient.fetchQuery({ queryKey: ["deploy", "discover", profile], queryFn: () => deployApi.discover(profile, true), staleTime: 0 })] : []),
+      ...(profile && row ? [queryClient.fetchQuery({ queryKey: ["deploy", "status", profile, row.name, row.target?.region], queryFn: () => deployApi.status(profile, row.name, true, row.target?.region), staleTime: 0 })] : []),
+      queryClient.fetchQuery({ queryKey: ["deploy", "plans"], queryFn: () => deployApi.plans(), staleTime: 0 }),
+    ]);
+    refreshInFlight.current = false;
+    setRefreshing(false);
   };
 
   // Until AWS has answered (or refused), nothing is said about what it holds.
@@ -202,7 +213,8 @@ export function Deploy() {
 
   const reviewBusy = reviewKey ? runningFor(plansQuery.data?.find((plan) => plan.key === reviewKey)?.deployment)?.title : undefined;
 
-  if (overviewQuery.error) return <div className="deploy-empty" role="alert"><h1>Deploy & Run could not be read</h1><p className="diagnostic">{overviewQuery.error instanceof Error ? overviewQuery.error.message : String(overviewQuery.error)}</p><button className="quiet" onClick={() => void overviewQuery.refetch()}>Try again</button></div>;
+  const readError = overviewQuery.error ?? discoveryQuery.error ?? statusQuery.error ?? plansQuery.error;
+  if (overviewQuery.error && !overview) return <div className="deploy-empty" role="alert"><h1>Deploy & Run could not be read</h1><p className="diagnostic">{overviewQuery.error instanceof Error ? overviewQuery.error.message : String(overviewQuery.error)}</p><button className="quiet" onClick={() => void overviewQuery.refetch()}>Try again</button></div>;
   if (!overview) return <p className="empty" role="status">Reading this machine and its AWS profiles…</p>;
 
   return (
@@ -213,7 +225,8 @@ export function Deploy() {
         onProfile={setProfile}
         context={discovery?.context}
         problem={problem}
-        loading={discoveryQuery.isFetching || statusQuery.isFetching}
+        loading={refreshing || overviewQuery.isFetching || discoveryQuery.isFetching || statusQuery.isFetching}
+        readError={readError ? readError.message : undefined}
         onRefresh={refreshAll}
         onSignIn={() => profile && void operate("aws-login", { profile })}
         prerequisites={overview.prerequisites}

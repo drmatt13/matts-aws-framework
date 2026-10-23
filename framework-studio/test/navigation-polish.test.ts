@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { after, afterEach, before, test } from "node:test";
-import { createElement as h, useState } from "react";
+import { createElement as h, useState, type ComponentType } from "react";
 import type { SnapshotResponse } from "../shared/api";
 import { SnapshotBuilder } from "../server/snapshot";
 
@@ -16,6 +16,7 @@ let studio: typeof import("../src/studio");
 let add: typeof import("../src/views/AddMenu");
 let board: typeof import("../src/views/Board");
 let database: typeof import("../src/views/DatabaseDiagram");
+let shell: typeof import("../src/views/Shell");
 
 before(async () => {
   const require = createRequire(import.meta.url);
@@ -28,13 +29,14 @@ before(async () => {
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
   studio = await import("../src/studio"); add = await import("../src/views/AddMenu"); board = await import("../src/views/Board"); database = await import("../src/views/DatabaseDiagram");
+  shell = await import("../src/views/Shell");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, history: {}, busy: null };
 });
 after(async () => { await builder?.dispose(); dom.window.close(); });
 afterEach(() => ui.cleanup());
 
-async function mount(Component: () => ReturnType<typeof h>, initial = response) {
+async function mount(Component: ComponentType, initial = response) {
   let updateResponse: (next: SnapshotResponse) => void;
   const client = new query.QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
   function Root() {
@@ -51,6 +53,20 @@ async function mount(Component: () => ReturnType<typeof h>, initial = response) 
     await ui.act(async () => updateResponse(next));
   };
 }
+
+test("shell health exposes both verdicts and follows validated snapshot changes", async () => {
+  const initial = { ...response, snapshot: { ...response.snapshot, models: { ...response.snapshot.models,
+    dev: { ...response.snapshot.models.dev, diagnostics: [] },
+    prod: { ...response.snapshot.models.prod, diagnostics: [{ severity: "error" as const, stage: "validate" as const, message: "Invalid production configuration" }, { severity: "warning" as const, stage: "validate" as const, message: "Check production inputs" }] },
+  } } };
+  const update = await mount(() => h(shell.Shell, { children: null }), initial);
+  assert.ok(ui.screen.getByRole("group", { name: "Environment" }));
+  const health = ui.screen.getByRole("button", { name: "Configuration health" });
+  const description = () => document.getElementById(health.getAttribute("aria-describedby")!)!.textContent;
+  assert.match(description()!, /Development: valid\. Production: 1 error, 1 warning/);
+  await update({ ...initial, snapshot: { ...initial.snapshot, revision: `${initial.snapshot.revision}-valid`, models: { ...initial.snapshot.models, prod: { ...initial.snapshot.models.prod, diagnostics: [] } } } });
+  await ui.waitFor(() => assert.equal(description(), "Development: valid. Production: valid"));
+});
 
 test("creation chooser supports directional navigation and Escape returns focus to its trigger", async () => {
   await mount(add.AddMenu);
@@ -71,6 +87,22 @@ test("creation chooser supports directional navigation and Escape returns focus 
   assert.equal(document.activeElement, trigger);
 });
 
+test("toolbar creation has a visible action label and preserves chooser dismissal focus", async () => {
+  await mount(() => h(add.AddMenu, { presentation: "toolbar" }));
+  const trigger = ui.screen.getByRole("button", { name: "Add to application" });
+  assert.equal(trigger.textContent, "Add to application");
+  ui.fireEvent.click(trigger);
+  const chooser = ui.screen.getByRole("dialog", { name: "Add to application" });
+  assert.equal(trigger.getAttribute("aria-expanded"), "true");
+  assert.equal(trigger.getAttribute("aria-controls"), chooser.id);
+  const close = ui.within(chooser).getByRole("button", { name: "Close add menu" });
+  assert.equal(document.activeElement, close);
+  ui.fireEvent.click(close);
+  assert.equal(ui.screen.queryByRole("dialog"), null);
+  assert.equal(trigger.getAttribute("aria-expanded"), "false");
+  assert.equal(document.activeElement, trigger);
+});
+
 test("unavailable creation explains the reason beside disabled resource choices", async () => {
   const snapshot = response.snapshot;
   await mount(add.AddMenu, { ...response, snapshot: { ...snapshot, models: { ...snapshot.models, dev: { ...snapshot.models.dev, stale: true } } } });
@@ -87,6 +119,11 @@ test("creation helpers and validation stay associated with controls and source c
   const wizard = await ui.screen.findByRole("dialog", { name: "Create input parameter" });
   const controls = ui.within(wizard);
   const id = controls.getByRole("textbox", { name: "Stable identifier" });
+  assert.equal(id.getAttribute("aria-invalid"), "false", "a fresh form offers guidance before showing a validation error");
+  assert.equal(id.getAttribute("aria-describedby")!.split(" ").length, 1);
+  assert.equal((controls.getByRole("button", { name: "Review generated changes" }) as HTMLButtonElement).disabled, true, "untouched required fields still block review");
+  ui.fireEvent.blur(id);
+  assert.equal(id.getAttribute("aria-invalid"), "true", "leaving an empty required field reveals its error");
   const describedBy = id.getAttribute("aria-describedby")!.split(" ");
   assert.equal(describedBy.length, 2, "validation retains the naming help alongside its error");
   for (const reference of describedBy) assert.ok(document.getElementById(reference));

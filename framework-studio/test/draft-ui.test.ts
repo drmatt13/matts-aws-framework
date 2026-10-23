@@ -140,6 +140,52 @@ test("inspectors prioritize controls, disclose supporting details, and reset scr
   assert.equal(planCalls.length + applyCalls, 0, "inspecting and expanding never saves source");
 });
 
+test("tag metadata stays compact while collapsed drafts and errors remain discoverable", async () => {
+  await mount("lambda:ws-connect-route");
+  const section = document.querySelector<HTMLElement>(".declaration-tags")!;
+  const details = section.querySelector("details")!;
+  const summary = details.querySelector("summary")!;
+  assert.equal(details.open, false);
+  assert.equal(summary.querySelector(".section-count")?.textContent, "1");
+  openSection("Tags");
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Tag 1 key" }), { target: { value: "aws:reserved" } });
+  ui.fireEvent.click(summary);
+  assert.equal(details.open, false);
+  assert.equal(summary.querySelector(".section-state")?.textContent, "Needs attention");
+  assert.equal((ui.screen.getByRole("button", { name: "Review Changes" }) as HTMLButtonElement).disabled, true);
+  openSection("Tags");
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Tag 1 key" }), { target: { value: "Team" } });
+  ui.fireEvent.click(summary);
+  assert.equal(summary.querySelector(".section-state")?.textContent, "Modified");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard" }));
+  assert.equal(summary.querySelector(".section-state"), null);
+  assert.equal(summary.querySelector(".section-count")?.textContent, "1");
+  assert.equal(planCalls.length + applyCalls, 0);
+});
+
+test("workload build booleans share switches and preserve staged inheritance through review", async () => {
+  await mount();
+  openSection("Build and runtime");
+  const fact = baseline.models.dev.fields[target]!.find(fact => fact.field === "lambda.bundling.minify")!;
+  const minify = ui.screen.getByRole("switch", { name: "Minify" });
+  assert.equal(ui.screen.queryByRole("combobox", { name: "Minify" }), null);
+  assert.ok(ui.screen.getByRole("switch", { name: "Source maps" }));
+  assert.equal(minify.getAttribute("aria-checked"), String(fact.effective));
+  ui.fireEvent.click(minify);
+  assert.equal(minify.getAttribute("aria-checked"), String(!fact.effective));
+  ui.fireEvent.click(minify);
+  assert.equal(ui.screen.queryByLabelText("Pending inspector changes"), null, "a second flip restores the declared setting");
+  ui.fireEvent.click(minify);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "field", intent: { target, field: fact.field, value: !fact.effective } }]);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" }));
+  assert.equal(minify.getAttribute("aria-checked"), String(!fact.effective));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard" }));
+  assert.equal(minify.getAttribute("aria-checked"), String(fact.effective));
+  assert.equal(applyCalls, 0);
+});
+
 test("numeric defaults stay visible through overrides and restoring them stages inheritance for review", async () => {
   await mount();
   const fact = baseline.models.dev.fields[target]!.find((fact) => fact.field === "lambda.memorySize")!;
@@ -170,6 +216,13 @@ test("field errors and boolean help are associated with the controls they explai
   assert.ok(descriptions.every(Boolean), "every description resolves to visible content");
   assert.ok(descriptions.some(element => element!.getAttribute("role") === "alert"));
   assert.ok(descriptions.some(element => element!.textContent?.startsWith("Default:")));
+  const route = ui.screen.getByRole("textbox", { name: "HTTP route /graphql" });
+  ui.fireEvent.change(route, { target: { value: "invalid route" } });
+  const routeDescriptions = route.getAttribute("aria-describedby")!.split(" ").map(id => document.getElementById(id));
+  assert.equal(route.getAttribute("aria-invalid"), "true");
+  assert.ok(routeDescriptions.every(Boolean));
+  assert.ok(routeDescriptions.some(element => element!.getAttribute("role") === "alert"));
+  assert.ok(routeDescriptions.some(element => element!.textContent?.startsWith("Browser path:")));
   assert.equal(planCalls.length + applyCalls, 0);
 });
 
@@ -954,6 +1007,7 @@ test("creation tags use reviewed pairs and duplicate keys remain invalid after e
 
 test("inspector tag rows focus additions, show delete controls, and stage edits for review", async () => {
   await mount("lambda:ws-connect-route");
+  openSection("Tags");
   const tags = ui.within(document.querySelector<HTMLElement>(".declaration-tags")!);
   assert.ok(tags.getByText("Key")); assert.ok(tags.getByText("Value"));
   assert.equal((tags.getByRole("textbox", { name: "Tag 1 value" }) as HTMLInputElement).value, "realtime");
@@ -978,6 +1032,7 @@ test("inspector tag rows focus additions, show delete controls, and stage edits 
 
 test("tag validation identifies invalid fields and removing the final row returns focus to Add tag", async () => {
   await mount("lambda:ws-connect-route");
+  openSection("Tags");
   const tags = ui.within(document.querySelector<HTMLElement>(".declaration-tags")!);
   const key = tags.getByRole("textbox", { name: "Tag 1 key" });
   const value = tags.getByRole("textbox", { name: "Tag 1 value" });
@@ -1002,6 +1057,7 @@ test("refreshing an older inspector snapshot restores inline WebSocket tag editi
   const { tags: _tags, ...fields } = baseline.source.editability[entity]!;
   persisted = { ...baseline, revision: "old-source-index", source: { ...baseline.source, editability: { ...baseline.source.editability, [entity]: fields } } };
   await mount(entity);
+  openSection("Tags");
   assert.equal((ui.screen.getByRole("textbox", { name: "Tag 1 value" }) as HTMLInputElement).disabled, true);
   persisted = baseline;
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Refresh editor" }));

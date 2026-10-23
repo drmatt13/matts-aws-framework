@@ -81,7 +81,8 @@ before(async () => {
         return new Response(JSON.stringify(reply), { status: 200 });
       }
       const key = Object.keys(answers).find((candidate) => path === candidate || path.startsWith(`${candidate}?`)) ?? path;
-      return key in answers ? new Response(JSON.stringify(answers[key]), { status: 200 }) : new Response(JSON.stringify({ error: `unscripted ${path}` }), { status: 404 });
+      const answer = typeof answers[key] === "function" ? await answers[key](url) : answers[key];
+      return answer instanceof Response ? answer : key in answers ? new Response(JSON.stringify(answer), { status: 200 }) : new Response(JSON.stringify({ error: `unscripted ${path}` }), { status: 404 });
     },
   });
   ui = require("@testing-library/react");
@@ -101,6 +102,68 @@ function render(scripted: Record<string, unknown>, content?: ReactNode) {
 }
 
 const operations = () => posted.filter((entry) => entry.path === "/deploy/operations").map((entry) => entry.body);
+
+test("passed machine checks are available on demand while issues and their remedies stay visible", async () => {
+  render({
+    "/deploy/overview": overview({ prerequisites: [
+      { id: "node", label: "Node.js", status: "ok", summary: "Node 24.1.0" },
+      { id: "npm", label: "npm", status: "ok", summary: "npm 11.4.0" },
+      { id: "docker", label: "Docker", status: "warn", summary: "Docker Desktop is not running.", remedy: { kind: "docker-start", params: {} } },
+    ] }),
+    "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app" } },
+  });
+  const checks = await ui.screen.findByRole("button", { name: "This machine · 2 checks passed" });
+  assert.equal(checks.getAttribute("aria-expanded"), "false");
+  assert.equal(ui.screen.queryByRole("list", { name: "Passed machine checks" }), null);
+  const issues = ui.screen.getByRole("list", { name: "Machine issues" });
+  assert.ok(ui.within(issues).getByText("Docker Desktop is not running."));
+  ui.fireEvent.click(checks);
+  assert.equal(checks.getAttribute("aria-expanded"), "true");
+  const ready = ui.screen.getByRole("list", { name: "Passed machine checks" });
+  assert.ok(ui.within(ready).getByText("Node 24.1.0"));
+  assert.ok(ui.within(ready).getByText("npm 11.4.0"));
+  ui.fireEvent.click(checks);
+  assert.equal(ui.screen.queryByRole("list", { name: "Passed machine checks" }), null);
+  assert.equal(operations().length, 0, "reading tool checks starts no operation");
+  ui.fireEvent.click(ui.within(issues).getByRole("button", { name: "Start" }));
+  await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "docker-start", params: {} }));
+});
+
+test("the empty profile state can refresh and discover a newly configured profile", async () => {
+  render({
+    "/deploy/overview": overview({ targets: [], profiles: [], preferences: { profiles: {} } }),
+    "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app" } },
+  });
+  await ui.screen.findByRole("heading", { name: "No AWS profiles on this machine" });
+  const refresh = ui.screen.getByRole("button", { name: "Refresh" });
+  assert.equal((refresh as HTMLButtonElement).disabled, false);
+  answers["/deploy/overview"] = overview();
+  ui.fireEvent.click(refresh);
+  await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
+  assert.equal((ui.screen.getByLabelText("AWS profile") as HTMLSelectElement).value, "dev");
+  assert.equal(operations().length, 0);
+});
+
+test("a failed refresh keeps deployment evidence visible, reports the error and supports retry", async () => {
+  render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app" } } });
+  await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
+  const refresh = ui.screen.getByRole("button", { name: "Refresh" });
+  await ui.waitFor(() => assert.equal((refresh as HTMLButtonElement).disabled, false));
+  let finish!: (response: Response) => void;
+  answers["/deploy/overview"] = () => new Promise<Response>((resolve) => { finish = resolve; });
+  ui.fireEvent.click(refresh);
+  await ui.waitFor(() => assert.equal(refresh.getAttribute("aria-busy"), "true"));
+  assert.equal((refresh as HTMLButtonElement).disabled, true);
+  finish(new Response(JSON.stringify({ error: "Machine probes timed out." }), { status: 503 }));
+  const error = await ui.screen.findByRole("alert");
+  assert.match(error.textContent ?? "", /Machine probes timed out/);
+  assert.ok(ui.screen.getByRole("heading", { name: /my-aws-app Dev/ }), "last successful overview remains visible");
+  await ui.waitFor(() => assert.equal((refresh as HTMLButtonElement).disabled, false));
+  answers["/deploy/overview"] = overview();
+  ui.fireEvent.click(refresh);
+  await ui.waitFor(() => assert.equal(Boolean(ui.screen.queryByRole("alert")), false));
+  assert.equal(operations().length, 0);
+});
 
 test("an absent development deployment is deployed with one click, as a plan that applies itself", async () => {
   render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: "my-aws-app" } } });

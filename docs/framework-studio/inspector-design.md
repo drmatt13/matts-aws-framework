@@ -54,9 +54,13 @@ help visible; the catalog does not verify regional service availability.
 
 ## Information order
 
-Workload, route and catalog inspectors begin with identity, source access and **Tags**,
-followed by the shared **Deployment** section (`src/views/Deployment.tsx`). Generated
-fixtures and local services keep their deployment summary immediately after identity.
+Workload, route and catalog inspectors begin with identity, source access and a compact **Tags** disclosure,
+followed by the shared **Deployment** section (`src/views/Deployment.tsx`).
+Tags show their effective count without opening the editor, and retain **Modified** or
+**Needs attention** on the collapsed heading while a draft exists. Supporting disclosure
+headings use a 32px target with 8px vertical padding on each side and the shared panel gutter;
+expanded forms keep their normal spacing.
+Generated fixtures and local services keep their deployment summary immediately after identity.
 Development always
 precedes Production; both cards remain visible when disabled. Configurable workloads
 and their routes expose the same **Deploy** selector beneath the cards. A route edits
@@ -91,6 +95,8 @@ migration/cutover planning and separate deployment; routine policy toggles never
 For compute, a compact description preview follows Deployment and precedes memory,
 timeout and other lifecycle settings. Numeric fields keep their
 inherited default visible after an override and offer a direct way to restore it.
+Default, reset and collapsed provenance share one wrapping support row; expanding
+provenance uses the full width below it.
 Routing, authentication and event controls follow.
 Build configuration, placement, connections, environment bindings and
 IAM remain available through explicit disclosures.

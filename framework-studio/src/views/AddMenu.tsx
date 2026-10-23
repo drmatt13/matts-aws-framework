@@ -18,7 +18,7 @@ const options = [
 ] satisfies { kind: CreationKind; icon: typeof Plus }[];
 
 /** Creation shares the Inspector's guarded draft and complete diff review. */
-export function AddMenu() {
+export function AddMenu({ presentation = "floating" }: { readonly presentation?: "floating" | "toolbar" }) {
   const { draft, draftState, live } = useStudio();
   const [choosing, setChoosing] = useState(false);
   const creation = draft.creation();
@@ -51,14 +51,14 @@ export function AddMenu() {
   }, [open]);
 
   return (
-    <><div className="landscape-add" ref={root} onBlur={(event) => {
+    <><div className={`landscape-add ${presentation === "toolbar" ? "studio-add-toolbar" : ""}`} ref={root} onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
     }}>
       {open ? (
         <div className="landscape-add-menu" id={id} role="dialog" aria-labelledby={`${id}-title`} aria-describedby={`${id}-description`}>
           <div className="landscape-add-heading">
             <h2 id={`${id}-title`}>Add to application</h2>
-            <button ref={close} className="landscape-add-close" aria-label="Close add menu" onClick={() => { setOpen(false); trigger.current?.focus(); }}><X size={16} aria-hidden /></button>
+            <button ref={close} className="icon-button landscape-add-close" aria-label="Close add menu" onClick={() => { setOpen(false); trigger.current?.focus(); }}><X size={16} aria-hidden /></button>
           </div>
           <p id={`${id}-description`}>Choose what to add, configure it, then review the source changes.</p>
           {disabled ? <p className="reason" role="status">{unavailable ? "Fix the configuration errors in Configuration health before adding resources." : "Wait for the current validation to finish before adding a resource."}</p> : null}
@@ -82,11 +82,12 @@ export function AddMenu() {
           </div>
         </div>
       ) : null}
-      <button ref={trigger} className="landscape-add-trigger" aria-label="Add to application" title="Add to application" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => {
+      <button ref={trigger} className={presentation === "toolbar" ? "quiet studio-add-button" : "landscape-add-trigger"} aria-label="Add to application" title="Add to application" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => {
         const show = () => { setChoosing(true); setOpen((value) => !value); };
         if (creation) show(); else draft.requestNavigation(show);
       }}>
-        <Plus size={20} strokeWidth={1.75} aria-hidden />
+        <Plus size={presentation === "toolbar" ? 16 : 20} strokeWidth={1.75} aria-hidden />
+        {presentation === "toolbar" ? <span>Add to application</span> : null}
       </button>
     </div>{creation && !choosing ? <CreationWizard entry={creation} back={() => { setChoosing(true); setOpen(true); }} /> : null}</>
   );

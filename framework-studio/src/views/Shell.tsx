@@ -121,6 +121,13 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
   const showInspector = !!selected && !(databasePage && selected.startsWith("schema:"));
   const [drawer, setDrawer] = useState<"health" | "command" | undefined>();
   const [result, setResult] = useState<CommandResult | undefined>();
+  const healthDescriptionId = useId();
+  const healthDescription = live.evaluating ? "Validating configuration" : (["dev", "prod"] as const).map(candidate => {
+    const diagnostics = snapshot.models[candidate].diagnostics;
+    const errors = diagnostics.filter(item => item.severity === "error").length;
+    const warnings = diagnostics.filter(item => item.severity === "warning").length;
+    return `${candidate === "dev" ? "Development" : "Production"}: ${errors ? `${errors} ${errors === 1 ? "error" : "errors"}` : "valid"}${warnings ? `, ${warnings} ${warnings === 1 ? "warning" : "warnings"}` : ""}`;
+  }).join(". ") + (snapshot.source.problems.length ? `. ${snapshot.source.problems.length} source problems` : "");
   const repository = snapshot.repositoryRoot.replaceAll("\\", "/").split("/").pop();
 
   const history = async (direction: "undo" | "redo") => {
@@ -147,7 +154,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
     <div className={`shell ${props.notice ? "has-notice" : ""}`}>
       <header className="bar">
         <span className="wordmark">
-          AWS Studio<small>{repository}</small>
+          AWS Studio<small title={repository}>{repository}</small>
         </span>
         <nav className="tabs" aria-label="Views">
           <Link to="/" search={(previous: { select?: string }) => previous} className="tab" activeOptions={{ exact: true, includeSearch: false }}>
@@ -163,7 +170,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
             Deploy
           </Link>
         </nav>
-        {!databasePage ? <span className="segmented" role="group" aria-label="Graph">
+        {!databasePage ? <span className="segmented" role="group" aria-label="Environment">
           {(["dev", "prod"] as const).map((candidate) => (
             <button
               key={candidate}
@@ -176,13 +183,6 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
         </span> : null}
         <span className="spacer" />
         <div className="bar-actions">
-          <button className="health" onClick={() => setDrawer(drawer === "health" ? undefined : "health")} title="Configuration health · updates automatically" aria-label="Configuration health" aria-expanded={drawer === "health"}>
-            {live.evaluating ? <span className="evaluating">Validating…</span> : <>
-              <Verdict label="Dev" diagnostics={snapshot.models.dev.diagnostics} />
-              <Verdict label="Prod" diagnostics={snapshot.models.prod.diagnostics} />
-              {snapshot.source.problems.length ? <span className="verdict warning"><AlertTriangle size={14} aria-hidden />{snapshot.source.problems.length}</span> : null}
-            </>}
-          </button>
           {!databasePage ? <span className="history-actions" role="group" aria-label="Edit history">
             <button className="icon-button" aria-label="Undo" onClick={() => void history("undo")} disabled={!response.history.undo || studio.draft.dirty || !!studio.draftState.busy} title={response.history.undo ? `Undo ${response.history.undo}` : "Nothing to undo"}>
               <Undo2 size={16} aria-hidden />
@@ -191,7 +191,15 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
               <Redo2 size={16} aria-hidden />
             </button>
           </span> : null}
+          <button className="health" onClick={() => setDrawer(drawer === "health" ? undefined : "health")} title="Configuration health · updates automatically" aria-label="Configuration health" aria-describedby={healthDescriptionId} aria-expanded={drawer === "health"}>
+            {live.evaluating ? <span className="evaluating">Validating…</span> : <>
+              <Verdict label="Dev" diagnostics={snapshot.models.dev.diagnostics} />
+              <Verdict label="Prod" diagnostics={snapshot.models.prod.diagnostics} />
+              {snapshot.source.problems.length ? <span className="verdict warning"><AlertTriangle size={14} aria-hidden />{snapshot.source.problems.length}</span> : null}
+            </>}
+          </button>
         </div>
+        <span id={healthDescriptionId} className="sr-only">{healthDescription}</span>
       </header>
       {props.notice ? <div className="shell-notice">{props.notice}</div> : null}
       <div className={`workspace ${showInspector ? "" : "no-selection"}`}>

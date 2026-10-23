@@ -18,6 +18,7 @@ Read this router, **one first page**, then only its relevant dependency links. V
 
 | Task | Read first | Then consult if affected |
 | --- | --- | --- |
+| Studio styling, workspace chrome or control consistency | [UI design system](../framework-studio/ui-design-system.md) | [Inspector conventions](../framework-studio/inspector-design.md), [Rendering](studio/rendering.md) |
 | Inspector property or source diff | [Editing](studio/editing.md) | [Source indexing](studio/source-indexing.md), [extension recipe](guides/extensions.md) |
 | Prisma editor, migration history or database evidence | [Editing](studio/editing.md) | [Database workbench](../framework-studio/database-workbench.md), [Snapshots](studio/snapshots.md), [Graph model](studio/graph-model.md) |
 | Add to Application or triggers | [Creation/connections](studio/creation-and-connections.md) | [Editing](studio/editing.md), [resources/CDK](framework/resources-and-cdk.md) |

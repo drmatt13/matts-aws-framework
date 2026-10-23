@@ -85,7 +85,7 @@ export function Isometric() {
   const tagKeyRef = useRef<HTMLSelectElement>(null);
   const [tagFilter, setTagFilter] = useState(rememberedTagFilter);
   const [hover, setHover] = useState<Hover | undefined>();
-  const [stats, setStats] = useState({ ms: 0 });
+  const [dragging, setDragging] = useState(false);
   const [aspect, setAspect] = useState(16 / 9);
   const previousLayout = useRef<LayoutResult | undefined>(undefined);
   const pendingLayoutFit = useRef(false);
@@ -143,7 +143,6 @@ export function Isometric() {
     frame: undefined as number | undefined,
     fitted: rememberedCamera !== undefined,
     samples: [] as number[],
-    published: 0,
     frames: 0,
   });
   live.current.scene = scene;
@@ -179,14 +178,8 @@ export function Isometric() {
     state.cards = result.cards;
     state.badges = result.badges;
     state.frames += 1;
-    // The readout: a moving average over recent frames, published twice a
-    // second at most while animating, and at once when the picture settles.
+    // Keep frame timings in diagnostics without triggering React renders.
     state.samples = [...state.samples.slice(-59), result.ms];
-    const settles = !result.animating && !state.tween;
-    if (settles || now - state.published > 500) {
-      state.published = now;
-      setStats({ ms: state.samples.reduce((sum, value) => sum + value, 0) / state.samples.length });
-    }
     if (result.animating || state.tween) state.frame = requestAnimationFrame(draw);
   }, []);
 
@@ -394,6 +387,7 @@ export function Isometric() {
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
       gesture.current = { start: point, last: point, dragging: true, pinch: Math.hypot(a!.x - b!.x, a!.y - b!.y) };
+      setDragging(true);
     } else {
       gesture.current = { start: point, last: point, dragging: false };
     }
@@ -419,6 +413,7 @@ export function Isometric() {
     }
     if (!current.dragging && Math.hypot(point.x - current.start.x, point.y - current.start.y) >= DRAG_THRESHOLD) {
       current.dragging = true;
+      setDragging(true);
       setHovered(undefined);
     }
     if (current.dragging) {
@@ -433,6 +428,7 @@ export function Isometric() {
     pointers.current.delete(event.pointerId);
     if (pointers.current.size > 0) return;
     gesture.current = undefined;
+    setDragging(false);
     if (!current || current.dragging) return;
     const hit = pick(local(event));
     if (hit?.kind === "node" || hit?.kind === "island" || hit?.kind === "edge" || hit?.kind === "prop") select(selected === hit.id ? undefined : hit.id);
@@ -442,7 +438,10 @@ export function Isometric() {
   const onPointerCancel = (event: React.PointerEvent<HTMLCanvasElement>) => {
     cancelHover();
     pointers.current.delete(event.pointerId);
-    if (pointers.current.size === 0) gesture.current = undefined;
+    if (pointers.current.size === 0) {
+      gesture.current = undefined;
+      setDragging(false);
+    }
   };
 
   const onDoubleClick = (event: React.MouseEvent<HTMLCanvasElement>) => {
@@ -589,25 +588,8 @@ export function Isometric() {
   }
 
   return (
-    <div className="landscape" ref={containerRef}>
-      <canvas
-        ref={canvasRef}
-        className="landscape-canvas"
-        tabIndex={0}
-        aria-label="Isometric landscape of the application. Use the list of entities below, or arrow keys to pan, plus and minus to zoom, 0 to fit, F to focus the selection."
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerCancel}
-        onPointerLeave={() => {
-          cancelHover();
-          if (!gesture.current) setHovered(undefined);
-        }}
-        onDoubleClick={onDoubleClick}
-        onKeyDown={onKeyDown}
-        style={{ cursor: gesture.current?.dragging ? "grabbing" : hover ? "pointer" : "grab" }}
-      />
-      <div className="landscape-bar landscape-top">
+    <div className="landscape-workspace">
+      <div className="workspace-toolbar landscape-top">
         <div className="landscape-search-panel">
           <div className="landscape-search" role="search" aria-label="Map search">
             <Search size={16} aria-hidden />
@@ -631,7 +613,6 @@ export function Isometric() {
           </div>
           {activeTagKey && filterValue !== undefined ? <span className="landscape-search-status" role="status">{tagMatchCount} matching {tagMatchCount === 1 ? "entity" : "entities"} in {model.mode === "dev" ? "development" : "production"}</span> : null}
         </div>
-        <span className="spacer" />
         <div className="landscape-tools" role="group" aria-label="Map view controls">
           <button onClick={() => zoomBy(0.8)} aria-label="Zoom out" title="Zoom out (−)">
             <Minus size={16} aria-hidden />
@@ -650,15 +631,34 @@ export function Isometric() {
           </button>
         </div>
       </div>
-      <div className="landscape-bar landscape-bottom">
-        <span className="landscape-stats">
-          {scene.nodes.length} entities on {scene.tiles.length} tiles, {stats.ms.toFixed(1)} ms a frame
-        </span>
-        <span className="spacer" />
-        <AddMenu />
+      <div className="landscape" ref={containerRef}>
+        <canvas
+          ref={canvasRef}
+          className="landscape-canvas"
+          tabIndex={0}
+          aria-label="Isometric landscape of the application. Use the list of entities below, or arrow keys to pan, plus and minus to zoom, 0 to fit, F to focus the selection."
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerCancel}
+          onPointerLeave={() => {
+            cancelHover();
+            if (!gesture.current) setHovered(undefined);
+          }}
+          onDoubleClick={onDoubleClick}
+          onKeyDown={onKeyDown}
+          style={{ cursor: dragging ? "grabbing" : hover ? "pointer" : "grab" }}
+        />
+        <div className="landscape-bar landscape-bottom">
+          <span className="landscape-stats">
+            {scene.nodes.length} resources · {scene.edges.length} connections
+          </span>
+          <span className="spacer" />
+          <AddMenu />
+        </div>
+        {hover ? <HoverCard hover={hover} scene={scene} nodes={nodes} index={index} viewport={live.current.viewport} /> : null}
+        {accessibleEntities}
       </div>
-      {hover ? <HoverCard hover={hover} scene={scene} nodes={nodes} index={index} viewport={live.current.viewport} /> : null}
-      {accessibleEntities}
     </div>
   );
 }

@@ -57,7 +57,9 @@ test("background snapshot errors and retry preserve the mounted editor and its p
       return root;
     });
     await ui.act(async () => { await import("../src/main"); });
-    const key = await ui.screen.findByRole("textbox", { name: "Tag 1 key" }, { timeout: 10000 });
+    await ui.waitFor(() => assert.ok(document.querySelector(".declaration-tags summary")), { timeout: 10000 });
+    ui.fireEvent.click(document.querySelector(".declaration-tags summary")!);
+    const key = await ui.screen.findByRole("textbox", { name: "Tag 1 key" });
     const original = (key as HTMLInputElement).value;
     ui.fireEvent.change(key, { target: { value: `${original}-pending` } });
     await ui.screen.findByLabelText("Pending inspector changes");
