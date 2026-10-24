@@ -14,6 +14,7 @@ import type { InfrastructureState } from "../shared/infrastructure";
 import type { DeploymentInputDetails, DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
 import { STUDIO_PROTOCOL_VERSION, studioProtocolProblem } from "../shared/protocol";
 import type { SourceWatchState } from "../shared/watch";
+import type { WebSocketDefaults } from "../shared/websockets";
 import { connectStudioEvents } from "./events";
 
 /**
@@ -82,6 +83,7 @@ export const api = {
   undo: () => call<ApplyResponse>("/edits/undo", {}),
   redo: () => call<ApplyResponse>("/edits/redo", {}),
   command: (name: string, confirmed = false) => call<CommandResult>(`/commands/${encodeURIComponent(name)}`, { confirmed }),
+  webSocketDefaults: () => call<WebSocketDefaults>("/websockets/defaults"),
 };
 
 export function useSnapshot() {

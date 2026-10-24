@@ -56,8 +56,9 @@ const rootRoute = createRootRoute({
   validateSearch: (search: Record<string, unknown>): Search =>
     typeof search.select === "string" ? { select: search.select } : {},
 });
-const boardRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: lazyRouteComponent(() => import("./views/Board"), "Board") });
-const isometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/isometric", component: lazyRouteComponent(() => import("./views/Isometric"), "Isometric") });
+// The landscape is the home view. The Board (views/Board.tsx) is set aside, unrouted.
+const isometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: lazyRouteComponent(() => import("./views/Isometric"), "Isometric") });
+const legacyIsometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/isometric", beforeLoad: ({ search }) => { throw redirect({ to: "/", search, replace: true }); } });
 const databaseRoute = createRoute({ getParentRoute: () => rootRoute, path: "/database", component: lazyRouteComponent(() => import("./views/Database"), "Database") });
 const deployRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deploy", component: lazyRouteComponent(() => import("./views/Deploy"), "Deploy") });
 const cognitoRoute = createRoute({ getParentRoute: () => rootRoute, path: "/cognito", component: lazyRouteComponent(() => import("./views/AuthenticationWorkspace"), "AuthenticationWorkspace") });
@@ -68,7 +69,8 @@ const permissionsRoute = createRoute({ getParentRoute: () => cognitoRoute, path:
 const identityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/identity-pools", beforeLoad: () => { throw redirect({ to: "/cognito/identity-pools", replace: true }); } });
 const legacyIdentityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/identity", beforeLoad: () => { throw redirect({ to: "/cognito/identity-pools", replace: true }); } });
 const domainsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/domains", component: lazyRouteComponent(() => import("./views/IdentityWorkspace"), "Domains") });
-const routeTree = rootRoute.addChildren([boardRoute, isometricRoute, databaseRoute, deployRoute, cognitoRoute.addChildren([userPoolsRoute, identityPoolsRoute, providersRoute, permissionsRoute]), identityRoute, legacyIdentityRoute, domainsRoute]);
+const webSocketsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/websockets", component: lazyRouteComponent(() => import("./views/websockets/WebSockets"), "WebSockets") });
+const routeTree = rootRoute.addChildren([isometricRoute, legacyIsometricRoute, databaseRoute, deployRoute, cognitoRoute.addChildren([userPoolsRoute, identityPoolsRoute, providersRoute, permissionsRoute]), identityRoute, legacyIdentityRoute, domainsRoute, webSocketsRoute]);
 function createStudioRouter() { return createRouter({ routeTree }); }
 interface Application {
   readonly root: ReturnType<typeof createRoot>;

@@ -49,7 +49,7 @@ async function mount(Component: ComponentType, initial = response) {
     return h(studio.StudioProvider, { response: current, selected: undefined, select: () => {}, children: h(Component) });
   }
   const root = router.createRootRoute({ component: Root });
-  const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/"] }), routeTree: root.addChildren(["/", "/isometric", "/database", "/deploy", "/cognito", "/domains"].map(route => router.createRoute({ getParentRoute: () => root, path: route, component: () => null }))) });
+  const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/"] }), routeTree: root.addChildren(["/", "/database", "/deploy", "/cognito", "/domains", "/websockets"].map(route => router.createRoute({ getParentRoute: () => root, path: route, component: () => null }))) });
   const render = () => h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app }));
   ui.render(render());
   await ui.waitFor(() => assert.ok(document.querySelector("button")));
@@ -79,7 +79,7 @@ test("shell health exposes both verdicts and follows validated snapshot changes"
 test("primary navigation retains all six destinations and source validation without source editing controls", async () => {
   await mount(() => h(shell.Shell, { children: h("p", null, "Workspace content") }));
   const navigation = ui.screen.getByRole("navigation", { name: "Views" });
-  const destinations = ["Board", "Isometric", "Database", "Deploy", "Cognito", "Domains"];
+  const destinations = ["Map", "Database", "Deploy", "Cognito", "Domains", "WebSockets"];
   assert.deepEqual(ui.within(navigation).getAllByRole("link").map(link => link.textContent), destinations);
   const health = ui.screen.getByRole("button", { name: /Configuration health/ });
   for (const name of destinations) {

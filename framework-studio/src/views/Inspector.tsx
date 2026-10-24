@@ -379,7 +379,7 @@ function NetworkFixtureView({ id }: { readonly id: string }) {
   </>;
 }
 
-/** The right-hand inspector beside Board and Database. Isometric hosts the same content in its workspace panel. */
+/** The right-hand inspector beside Database. Isometric hosts the same content in its workspace panel. */
 export function Inspector() {
   const { selected, select } = useStudio();
   if (!selected) return null;

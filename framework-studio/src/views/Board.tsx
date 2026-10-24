@@ -45,6 +45,7 @@ function ResourceNode(props: { readonly resource: ModelResource; readonly shape:
   );
 }
 
+/** Set aside: not routed while the isometric landscape serves `/`. Kept, with its tests, to revive or retire. */
 export function Board() {
   const { model, index, selected, select, snapshot, created } = useStudio();
   const board = useRef<HTMLDivElement>(null);

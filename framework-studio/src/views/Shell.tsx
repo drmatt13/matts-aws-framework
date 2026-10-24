@@ -110,7 +110,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
   const pathname = useLocation({ select: location => location.pathname });
   const databasePage = useLocation({ select: location => location.pathname === "/database" });
   // Isometric hosts the inspector in its own side panel, below the map toolbar.
-  const isometricPage = useLocation({ select: location => location.pathname === "/isometric" });
+  const isometricPage = useLocation({ select: location => location.pathname === "/" });
   const sourceWatch = live.sourceWatch ?? response.sourceWatch;
   const watchProblem = sourceWatch && sourceWatch.status !== "watching";
   const [refreshing, setRefreshing] = useState(false);
@@ -156,10 +156,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
         </span>
         <NavigationStrip className="tabs" label="Views" activeKey={pathname}>
           <Link to="/" search={(previous: { select?: string }) => previous} className="tab" activeOptions={{ exact: true, includeSearch: false }}>
-            Board
-          </Link>
-          <Link to="/isometric" search={(previous: { select?: string }) => previous} className="tab" activeOptions={{ includeSearch: false }}>
-            Isometric
+            Map
           </Link>
           <Link to="/database" search={{}} className="tab" activeOptions={{ includeSearch: false }}>
             Database
@@ -169,6 +166,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
           </Link>
           <Link to="/cognito" search={{}} className="tab" activeOptions={{ includeSearch: false }}>Cognito</Link>
           <Link to="/domains" search={{}} className="tab" activeOptions={{ includeSearch: false }}>Domains</Link>
+          <Link to="/websockets" search={{}} className="tab" activeOptions={{ includeSearch: false }}>WebSockets</Link>
         </NavigationStrip>
         <div className="bar-actions">
           <button className={`health ${live.evaluating ? "evaluating" : errorCount ? "bad" : warningCount ? "warning" : "good"}`} onClick={() => setDrawer(drawer === "health" ? undefined : "health")} title="Source validation · deployment and runtime health are inspected separately" aria-label={`${healthLabel}. Configuration health`} aria-describedby={healthDescriptionId} aria-expanded={drawer === "health"}>

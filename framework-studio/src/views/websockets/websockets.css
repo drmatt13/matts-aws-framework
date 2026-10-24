@@ -1,0 +1,61 @@
+/*
+ * WebSockets: two connection panels side by side, laid out as ws-tester lays them
+ * out (payload above, a taller message log below), in Studio's tokens.
+ */
+
+.websockets-workspace { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.websockets-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-4); }
+.websockets-head .context-label { margin: 0; }
+.websockets-alert { margin: var(--space-4) var(--workspace-gutter) 0; }
+
+.websockets-panels {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: var(--workspace-page-max);
+  margin-inline: auto;
+  padding: var(--space-6) var(--workspace-gutter);
+}
+.websockets-divider { display: flex; flex: 0 0 41px; justify-content: center; }
+.websockets-divider::before { content: ""; align-self: center; width: 1px; height: 85%; background: linear-gradient(to bottom, transparent, var(--rule-strong), transparent); }
+
+.ws-tester { display: flex; flex: 1 1 0; flex-direction: column; gap: var(--space-3); min-width: 0; min-height: 0; }
+.ws-tester-heading { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; }
+.ws-tester-heading h2 { margin: 0; font: 600 var(--text-body)/1.3 var(--sans); }
+.ws-tester-heading span { min-width: 0; overflow: hidden; color: var(--graphite); font-size: var(--text-caption); text-overflow: ellipsis; white-space: nowrap; }
+
+.ws-tester-connection { display: flex; gap: var(--space-3); min-width: 0; height: var(--control-height); }
+.ws-tester .ws-tester-url { flex: 1; min-width: 0; height: 100%; min-height: 0; padding: 0 var(--space-3); border: 1px solid var(--rule-strong); border-radius: var(--radius); background: var(--sheet); color: var(--ink); font: var(--text-caption)/1 var(--mono); }
+.ws-tester-url.connecting { animation: ws-tester-pulse 1.6s ease-in-out infinite; }
+.ws-tester-url.connected { display: flex; align-items: center; border-color: color-mix(in srgb, var(--accept) 45%, var(--rule)); color: var(--accept); user-select: none; }
+.ws-tester-url.connected span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes ws-tester-pulse { 50% { opacity: 0.5; } }
+
+.ws-tester-connect { flex: none; height: 100%; padding: 0 var(--space-5); border: 1px solid transparent; border-radius: var(--radius); font: 600 var(--text-caption)/1 var(--sans); cursor: pointer; transition: background-color 75ms ease-in, color 75ms ease-in; }
+.ws-tester-connect.connect { background: var(--accept); color: var(--paper); }
+.ws-tester-connect.connect:hover:not(:disabled) { background: color-mix(in srgb, var(--accept) 85%, var(--ink)); }
+.ws-tester-connect.disconnect { background: var(--refuse); color: var(--paper); }
+.ws-tester-connect.disconnect:hover:not(:disabled) { background: color-mix(in srgb, var(--refuse) 85%, var(--ink)); }
+.ws-tester-connect.unavailable { border-color: var(--rule-strong); background: var(--wash); color: var(--faint); }
+
+.ws-tester-label { margin: 0 0 calc(-1 * var(--space-1)) var(--space-1); color: var(--graphite); font-size: var(--text-label); font-weight: 500; }
+
+.ws-tester-payload { position: relative; flex: 1 1 0; min-height: 96px; }
+.ws-tester .ws-tester-payload textarea { width: 100%; height: 100%; max-width: none; padding: var(--space-3); background: var(--sheet); font: var(--text-caption)/1.5 var(--mono); resize: none; }
+.ws-tester-send { position: absolute; bottom: 6px; transition: opacity 200ms ease-out, right 100ms; opacity: 0; pointer-events: none; }
+.ws-tester-send[data-visible="true"] { transition-duration: 100ms; transition-timing-function: ease-in; opacity: 1; pointer-events: auto; }
+.ws-tester-send .icon-button { border-color: transparent; background: transparent; color: var(--faint); }
+.ws-tester-send .icon-button:hover:not(:disabled) { border-color: transparent; background: transparent; color: var(--prod); }
+
+.ws-tester-messages { display: flex; flex: 2 1 0; flex-direction: column; gap: var(--space-2); min-height: 140px; overflow-y: auto; padding: var(--space-3); border: 1px solid var(--rule); border-radius: var(--radius-lg); background: var(--sheet); font-size: var(--text-caption); overscroll-behavior: contain; }
+.ws-tester-message { min-width: 0; overflow-wrap: anywhere; }
+.ws-tester-event { font-weight: 500; }
+.ws-tester-event.opened { color: var(--accept); }
+.ws-tester-event.closed { color: var(--refuse); }
+
+@media (max-width: 760px) {
+  .websockets-panels { flex-direction: column; gap: var(--space-6); overflow-y: auto; }
+  .websockets-divider { display: none; }
+  .ws-tester { flex: none; min-height: 520px; }
+}

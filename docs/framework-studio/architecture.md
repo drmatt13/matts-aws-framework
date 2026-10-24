@@ -7,7 +7,7 @@ The isometric landscape has [its own document](isometric-view.md).
 
 ```text
 Browser (React 19, TanStack Router + Query)
-  Board · Isometric · Database · Deploy · Inspector · Edit preview
+  Isometric · Database · Deploy · Cognito · Domains · WebSockets · Inspector · Edit preview
         │  JSON over /api, server-sent events on /api/events
         │  per-process token, same origin, Host = 127.0.0.1|localhost:<port>
         ▼
@@ -542,8 +542,8 @@ infrastructure inventory carry references and identifiers, never resolved input 
 
 [src/](../../framework-studio/src)
 
-- **Routing.** [main.tsx](../../framework-studio/src/main.tsx) declares the routes `/`,
-  `/isometric`, `/database` and `/deploy`. The selection is the `?select=<id>` search parameter, shared
+- **Routing.** [main.tsx](../../framework-studio/src/main.tsx) declares the routes `/` (the isometric
+  landscape; `/isometric` redirects to it), `/database`, `/deploy`, `/cognito`, `/domains` and `/websockets`. The selection is the `?select=<id>` search parameter, shared
   by every view.
 - **State.** [studio.tsx](../../framework-studio/src/studio.tsx) is the context every view
   reads: the snapshot, the selected mode, the model and an index, the selection, live
@@ -554,7 +554,7 @@ infrastructure inventory carry references and identifiers, never resolved input 
 - **Views.**
   - [Board](../../framework-studio/src/views/Board.tsx), laid out by
     [layout.ts](../../framework-studio/src/layout.ts): absolutely positioned DOM nodes
-    over an SVG of curves.
+    over an SVG of curves. Set aside and not routed.
   - [Isometric](../../framework-studio/src/views/Isometric.tsx).
   - [Database](../../framework-studio/src/views/Database.tsx).
   - [Deploy](../../framework-studio/src/views/Deploy.tsx): deployment discovery, reviewed plans, authorized operations and local lifecycle controls; see [current operations](../aws-studio-knowledge/deployment/operations.md).
@@ -566,7 +566,7 @@ infrastructure inventory carry references and identifiers, never resolved input 
 - **Styles.** [styles.css](../../framework-studio/src/styles.css) holds the shell and map tokens. [inspector.css](../../framework-studio/src/inspector.css) holds shared interaction tokens, panels, forms, disclosures and reviews; see the [inspector conventions](inspector-design.md). The
   light theme is "drafting film and ink". Compact exception badges use teal for Dev and violet for Prod;
   shared entities have no badge. `src/deployment.ts` supplies the same availability,
-  badge paths and descriptions to Board, Inspector and the canvas renderer.
+  badge paths and descriptions to Inspector and the canvas renderer.
 
 ## API
 
@@ -581,6 +581,7 @@ infrastructure inventory carry references and identifiers, never resolved input 
 | `POST /api/edits/undo`, `/redo` | `{}` | As apply |
 | `POST /api/commands/:name` | `{ confirmed? }` | `{ command, exitCode, output, durationMs }` |
 | `GET /api/infrastructure?mode=dev\|prod` | | Mode state, freshness, last-good inventory and generation evidence |
+| `GET /api/websockets/defaults` | | `{ local, apiGateway }`: the WebSockets page's starting URLs, from two keys of root `.env` |
 | `POST /api/infrastructure/synthesize` | `{ mode, profile? }` | Explicit synthesis result; last-good inventory retained on failure |
 
 The types are in [shared/api.ts](../../framework-studio/shared/api.ts).

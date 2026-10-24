@@ -1,7 +1,8 @@
 # The isometric view
 
-`/isometric` draws the snapshot's selected-mode model as a landscape of floating islands
-on a 2D canvas. This document covers how the scene is laid out, drawn and interacted with.
+`/`, Studio's home view and its **Map** tab, draws the snapshot's selected-mode model as a landscape of floating islands
+on a 2D canvas. The former `/isometric` path redirects to `/` and keeps its `?select=`.
+This document covers how the scene is laid out, drawn and interacted with.
 
 The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) and
 [src/views/Isometric.tsx](../../framework-studio/src/views/Isometric.tsx).
@@ -57,7 +58,7 @@ for the bounded templates and existing-code options.
 Close the menu with its close button, Escape, or by clicking outside it.
 
 Isometric has one side panel (`views/WorkspacePanel.tsx`), directly below its toolbar,
-that shows **Resources** or the **Inspector**, never both; Board and Database keep their
+that shows **Resources** or the **Inspector**, never both; Database keeps its
 right-hand inspector, and Isometric's panel also sits on the map's right. The panel starts
 closed. The **Resources** toggle at the toolbar's far right, after the view controls, opens
 the list (`views/ResourceBrowser.tsx`): registry icons, names and types, grouped by the

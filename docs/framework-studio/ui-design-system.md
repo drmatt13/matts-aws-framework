@@ -26,8 +26,8 @@ on desktop and an 89px, two-row layout at 760px and below. Validation stays at t
 edge, exposes each source mode's verdict to assistive technology and opens configuration
 details. It is not a deployment, credential or runtime health indicator.
 
-`SourceEnvironment` and `SourceHistory` compose into the Board, Isometric and Cognito
-toolbars. The **Source** selector reflects the framework's Development/Production
+`SourceEnvironment` and `SourceHistory` compose into the Isometric and Cognito
+toolbars (and the unrouted Board's). The **Source** selector reflects the framework's Development/Production
 projections and retains the existing unsaved-change guard. Domains labels its fixed
 Production source scope beside source history. Database edits one shared contract and
 keeps its own draft history. Deploy, Database and inspection forms own their named-target,
@@ -51,8 +51,8 @@ accommodate genuine controls, warnings or narrow widths; do not add a route-spec
 heading spacer or an inset rule above the first toolbar. Keep shell and map responsive
 rules in `styles.css`, not in inspector or feature stylesheets.
 
-Composition preserves each workspace's purpose. Board and Isometric devote their area
-to the graph, without a redundant page heading. Database leads with its workspace tabs
+Composition preserves each workspace's purpose. Isometric devotes its area
+to the map, without a redundant page heading. Database leads with its workspace tabs
 and editor controls. Deploy leads with account context, then a target rail and operational
 detail. Cognito and Domains use compact page identity and a shared reading width; Cognito's
 section navigation precedes variable inspection evidence so its position remains stable.
@@ -77,6 +77,7 @@ wrapping details and a nearby retry action. Keep independent source and deployme
 context failures independently recoverable, and show progress during retry. Alerts
 must remain visible without widening the document or separating them from their controls.
 
+The Board is set aside and not routed; the rules below still describe its source.
 Board relationship toggles and Database workspace choices use the same restrained
 selected treatment: wash surface, rule border, regular radius and readable foreground.
 Keep Board's toolbar pinned during horizontal and vertical graph scrolling.

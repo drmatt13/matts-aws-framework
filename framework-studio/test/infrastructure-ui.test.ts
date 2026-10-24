@@ -74,7 +74,8 @@ async function mount(navigate: (id: string) => void = () => {}, initialOwner?: s
     return h(studio.StudioProvider, { response, selected: search.select, select: (id) => { if (id) navigate(id); void select({ to: ".", search: { select: id } } as never); }, children: h(Workbench) });
   }
   const root = router.createRootRoute({ component: Root, validateSearch: (search) => ({ select: typeof search.select === "string" ? search.select : undefined }) });
-  const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null })]) });
+  // Off the map's path, where the shell itself hosts the inspector beside a workspace.
+  const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/workbench"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/workbench", component: () => null })]) });
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); clients.push(client);
   ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
   if (withShell) await ui.screen.findByRole("button", { name: /Configuration health/ });

@@ -20,13 +20,16 @@ npm run studio -- --print # the whole model as JSON, then exit
 
 | View | Path | What it is for |
 | --- | --- | --- |
-| Board | `/` | Every route, workload and catalog entry in three columns, with typed relationship curves |
-| Isometric | `/isometric` | The same application as a lit, navigable landscape: gateways, compute, the VPC's subnet terraces, catalog stacks |
+| Map | `/` | The isometric view: the application as a lit, navigable landscape: gateways, compute, the VPC's subnet terraces, catalog stacks. `/isometric` redirects here |
 | Database | `/database` | Prisma source and diagram editing, semantic migration history, offline artifact review and selected-target database evidence |
 | Deploy | `/deploy` | Deployment discovery, reviewed plans, authorized operations and local development controls |
+| WebSockets | `/websockets` | ws-tester's two connection panels, local-ws-dev-server and the deployed API Gateway stage, with its launch-link handoff |
 | Inspector | beside any view | One entity: source location, resolved settings and where they come from, relationships, and the editable fields |
 
-A Development/Production switch picks which deployment graph Board and Isometric describe.
+The Board (`views/Board.tsx`, three columns of routes, workloads and catalog entries) is set
+aside: its source and tests remain, but no route or navigation link opens it.
+
+A Development/Production switch picks which deployment graph Isometric describes.
 Deploy owns its named deployment/profile/account/region selection; Database requires an
 explicit database target and separate approval for database changes. Automatic
 health indicators for both graphs and compact undo/redo controls sit in the top bar.
@@ -41,7 +44,7 @@ Lucide outlines for generic concepts. Startup and watched CDK edits automaticall
 an ignored JSON index from linked stack source. Source-inferred edges
 have a separate filter and source links, including the resource flow in `referenceExamples`.
 
-Declaration placement uses two framework modes. Board and Isometric omit
+Declaration placement uses two framework modes. Isometric omits
 badges for entities available in both; Dev (flask), Prod (diamond) and Off
 badges identify exceptions. The Inspector shows two environment cards. Development
 combines local execution and its AWS-managed workloads; it does not treat these as

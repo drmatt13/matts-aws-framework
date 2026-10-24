@@ -1,11 +1,12 @@
 # Job 2: stateful retention and reference reuse — 2026-10-23
 
-**Handoff status at 12:27 EDT:** implementation and independent review are
-finished. The final complete `npm run verify` is still running in the background
-at the user's requested report handoff. CDK, framework, database, schema and
-typechecks have passed in that run; Studio's complete suite is still in progress
-with no failures reported so far. **The final gate is not yet a passing gate.**
-Its log is `.cache/job2-verify-6.log`; terminal acceptance remains pending.
+**Final verification status at 14:44 EDT:** implementation and independent review
+are finished. The final complete `npm run verify` **passed, exit 0**: 1,702 tests
+passed, zero failed and three were explicitly skipped. Generation checks and all
+workspace/script typechecks passed. An independent read-only observer of the
+verified npm process (PID 20252) captured exit 0 at
+`2026-10-23T18:44:00.8325897Z` (14:44 EDT). Suite counts and skip reasons are below;
+the complete gate log is `.cache/job2-verify-6.log`.
 
 This campaign extends the actual dirty checkout, including Job 1's unified Cognito
 workspace and domain guard. Existing uncommitted changes were preserved. Four roles
@@ -142,7 +143,7 @@ and [Cognito recovery](cognito-lifecycle.md) for source examples and exact bound
 | Cognito/CDK and identity service | Passed targeted retention, external provenance, duplicate/mutation refusal, late trigger permission and existing operation regressions |
 | Development/production synth and identity comparison | Passed normal bundled explicit CLI synths; 3 dev stacks/33 application resources/23 outputs and 9 prod stacks/220 application resources/65 outputs; no changed historical stack names, logical IDs/types, existing outputs or export names |
 | Real browser desktop/narrow workflows | Passed independent disposable fixture at 1920×945 and 420×900; source cancel/save, four independent policies, missing/invalid client and credential refusals; exact evidence appended below |
-| Final `npm run verify` | **Running at 12:27 EDT**, `.cache/job2-verify-6.log`: typechecks passed; schema 22/22, local API 16/16, invocation 27/27, CDK 269 passed/0 failed/1 opt-in skip, database 28/28, framework 480/480. Studio incomplete, no failures reported so far. Acceptance pending terminal exit; targeted results do not substitute for this gate. |
+| Final `npm run verify` | **Passed, exit 0**, observed 14:44 EDT on 2026-10-23; `.cache/job2-verify-6.log`. Generation/checks and all workspace/script typechecks passed. Schemas 22/22; client 65/65 (10 files); local API 16/16; invocation 27/27; CDK 269 passed/0 failed/1 skipped (270 total); database 28/28; framework 480/480; ws-tester 4/4 (1 file); Studio 791 passed/0 failed/2 skipped (793 total). Aggregate: 1,702 passed, zero failed, three skipped. Skips are the opt-in PostgreSQL persistence and SQL live fixtures, plus the POSIX-only npm symlink-layout case on Windows. The independently verified npm process PID 20252 reported actual exit 0. |
 | Live RDS/Cognito recovery | Not executed; no resource-specific AWS mutation packet was authorized |
 
 An initial root-directory UI test invocation used the wrong tsx JSX configuration

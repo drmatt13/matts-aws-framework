@@ -46,7 +46,7 @@ const code = `async (page) => {
     const loads = [];
     for (let at = 0; at < 5; at++) {
       const start = Date.now();
-      await page.goto(${JSON.stringify(origin + "/isometric")}, { waitUntil: 'domcontentloaded' });
+      await page.goto(${JSON.stringify(origin + "/")}, { waitUntil: 'domcontentloaded' });
       await page.waitForFunction(size => window.__studioLandscape?.stats().nodes === size, fixture.size);
       loads.push(Date.now() - start);
     }
@@ -80,18 +80,18 @@ const code = `async (page) => {
     state.heap = (await cdp.send('Runtime.getHeapUsage')).usedSize;
     results.push({ size: fixture.size, loads: summary(loads), searches: summary(searches), inspectors: summary(inspectors), drawing: summary(paint.draws), frameIntervals: summary(paint.intervals), ...state });
   }
-  // Warm the lazy Board module before comparing retained memory across navigation.
-  await page.getByRole('link', { name: 'Board', exact: true }).click();
-  await page.getByRole('group', { name: 'Application architecture', exact: true }).waitFor();
-  await page.getByRole('link', { name: 'Isometric', exact: true }).click();
+  // Warm the lazy Database module before comparing retained memory across navigation.
+  await page.getByRole('link', { name: 'Database', exact: true }).click();
+  await page.getByRole('navigation', { name: 'Database workspace', exact: true }).waitFor();
+  await page.getByRole('link', { name: 'Map', exact: true }).click();
   await page.getByRole('searchbox', { name: 'Search isometric map' }).waitFor();
   await settle(); await cdp.send('HeapProfiler.collectGarbage');
   const retainedBefore = (await cdp.send('Runtime.getHeapUsage')).usedSize;
   const cycles = 30;
   for (let at = 0; at < cycles; at++) {
-    await page.getByRole('link', { name: 'Board', exact: true }).click();
-    await page.getByRole('group', { name: 'Application architecture', exact: true }).waitFor();
-    await page.getByRole('link', { name: 'Isometric', exact: true }).click();
+    await page.getByRole('link', { name: 'Database', exact: true }).click();
+    await page.getByRole('navigation', { name: 'Database workspace', exact: true }).waitFor();
+    await page.getByRole('link', { name: 'Map', exact: true }).click();
     await page.getByRole('searchbox', { name: 'Search isometric map' }).waitFor();
     await page.getByRole('searchbox', { name: 'Search isometric map' }).fill('fixture 7');
     await page.getByRole('searchbox', { name: 'Search isometric map' }).fill('');

@@ -39,6 +39,7 @@ import { IdentityService } from "./identity/service";
 import { identityRouter } from "./identity/routes";
 import { CognitoOperations } from "./identity/operations";
 import { StatefulResourceService, statefulResourceRouter } from "./stateful-resources";
+import { webSocketDefaults } from "./websockets";
 
 /**
  * The studio's HTTP surface: one origin, on the loopback interface only.
@@ -360,6 +361,7 @@ async function configureServer(
     });
   });
 
+  api.get("/websockets/defaults", (_request, response) => send(response, () => webSocketDefaults(repositoryRoot)));
   api.get("/infrastructure", (request, response) => send(response, async () => infrastructure.get(request.query.mode === "prod" ? "prod" : "dev")));
   api.post("/deployment-inputs/create", (request, response) => send(response, async () => {
     if (request.body?.mode !== "dev" && request.body?.mode !== "prod") throw new EditError(400, "Choose development or production inputs.");

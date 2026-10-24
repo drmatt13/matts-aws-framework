@@ -14,7 +14,7 @@ nonmatches without changing placement, identity or source.
 
 The shared navigation stays stable across all six views. **Source valid** reports
 declaration validation, with details on demand; AWS credentials, deployments and runtime
-health are inspected separately. Board, Isometric and Cognito expose the **Source**
+health are inspected separately. **Map** (the isometric home view, `/`) and Cognito expose the **Source**
 Development/Production selector in their workspace controls. Domains edits Production
 domain intent. Named deployments (including staging targets declared with production
 semantics) keep their own target/profile/account context. See the
@@ -62,7 +62,7 @@ simulation and actual sign-in/access have separate evidence. See the
 [authentication guide](../docs/framework-studio/identity-and-domains.md) and
 [component ownership](../docs/aws-studio-knowledge/studio/authentication.md).
 
-Local PostgreSQL appears in Board and Isometric as the Compose `postgres`
+Local PostgreSQL appears in Isometric as the Compose `postgres`
 service. In Isometric it stands in the VPC's isolated subnet right beside RDS, solid in
 Development and faded in Production (it runs on your machine, not in AWS). Database edges from local execution
 reach PostgreSQL, while AWS bindings retain their catalog destination. Both databases
@@ -86,7 +86,7 @@ does not reload the server's edit registry.
 
 ## Add to application
 
-Use **Add to application** in Board or Isometric, choose a resource, and configure
+Use **Add to application** in Isometric, choose a resource, and configure
 its form. Advanced settings contain runtime sizing, placement and catalog bindings.
 **Review generated changes** checks both deployment graphs and TypeScript, then
 shows the complete patch grouped by file, including new files and generator output.
@@ -338,7 +338,8 @@ for the reusable reader, runner and current limits.
 
 ## The isometric view
 
-`/isometric` draws the same model as a landscape of floating islands, on a 2D canvas.
+`/` draws the model as a landscape of floating islands, on a 2D canvas; `/isometric`
+redirects there. The earlier Board view (`src/views/Board.tsx`) is set aside and not routed.
 
 Relationships between the same visible source and destination share one connection.
 Connection hover popups, inspectors and relationship rows show Dev and Prod pills, with
@@ -471,6 +472,26 @@ branches, loops, dynamic member names and runtime behavior remain unresolved.
 
 `window.__studioLandscape` exposes read-only camera, picking and frame statistics, for
 tests and the browser console.
+
+## WebSockets
+
+`/websockets` is ws-tester ported into Studio, on the way to retiring the separate
+`ws-tester` workspace and its Compose service. Two panels connect from the browser:
+local-ws-dev-server on the left, the deployed API Gateway WebSocket stage on the right.
+The connection lifecycle, the `customAction` example payload, the JSON check before
+sending and the message log are ws-tester's own (`src/views/websockets/WebSocketTester.tsx`).
+
+The page accepts ws-tester's launch link unchanged (`src/websockets/launch.ts`):
+`?localWsUrl=` and `?apiGatewayWsUrl=` name the panels' URLs, and a `#token=` fragment
+fills each URL's `token` query. The fragment is cleared from the address bar as the page
+loads. Opened without a link, the panels start from the URLs Compose gives ws-tester,
+which `GET /api/websockets/defaults` reads from two keys of the exported root `.env`:
+`LOCAL_WS_DEV_SERVER_HOST_PORT` and `VITE_API_GATEWAY_WS_URL`.
+
+local-ws-dev-server refuses an upgrade from an origin outside `LOCAL_BROWSER_ORIGINS`,
+which the export derives from `LOCAL_DEV_URL` and ws-tester's port. Until Studio's origin
+is trusted there, the local panel reports **Failed to connect to WebSocket**. The deployed
+stage does not check the origin.
 
 ## What it edits
 

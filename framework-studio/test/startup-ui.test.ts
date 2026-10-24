@@ -6,6 +6,7 @@ import { act } from "react";
 import type { SnapshotResponse } from "../shared/api";
 import { SnapshotBuilder } from "../server/snapshot";
 import { STUDIO_PROTOCOL_VERSION } from "../shared/protocol";
+import { installMapShims } from "./support/map-shims";
 
 test("background snapshot errors and retry preserve the mounted editor and its pending draft", async () => {
   const require = createRequire(import.meta.url);
@@ -19,6 +20,8 @@ test("background snapshot errors and retry preserve the mounted editor and its p
   Object.defineProperty(globalThis, "cancelAnimationFrame", { configurable: true, value: dom.window.cancelAnimationFrame.bind(dom.window) });
   Object.defineProperty(globalThis, "scrollTo", { configurable: true, value: () => {} });
   Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, writable: true, value: true });
+  // The selection opens in the home page's map panel.
+  installMapShims(dom.window);
   const sources: { listeners: Map<string, (event: { data: string }) => void> }[] = [];
   Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class {
     readonly listeners = new Map<string, (event: { data: string }) => void>();

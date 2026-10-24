@@ -9,6 +9,7 @@ import ts from "typescript";
 import type { SnapshotResponse } from "../shared/api";
 import { SnapshotBuilder } from "../server/snapshot";
 import { STUDIO_PROTOCOL_VERSION } from "../shared/protocol";
+import { installMapShims } from "./support/map-shims";
 
 test("entry replacement retains one React root, query cache and pending inspector draft", async () => {
   const require = createRequire(import.meta.url);
@@ -20,6 +21,8 @@ test("entry replacement retains one React root, query cache and pending inspecto
   Object.defineProperty(globalThis, "cancelAnimationFrame", { configurable: true, value: dom.window.cancelAnimationFrame.bind(dom.window) });
   Object.defineProperty(globalThis, "scrollTo", { configurable: true, value: () => {} });
   Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, writable: true, value: true });
+  // The selection opens in the home page's map panel.
+  installMapShims(dom.window);
   const refresh = await import(pathToFileURL(path.join(path.dirname(require.resolve("@vitejs/plugin-react")), "refresh-runtime.js")).href) as {
     injectIntoGlobalHook(target: typeof globalThis): void;
     registerExportsForReactRefresh(id: string, exports: Record<string, unknown>): void;
@@ -85,7 +88,7 @@ test("entry replacement retains one React root, query cache and pending inspecto
       assert.equal(roots, 1, "entry replacement must reuse the container's React root");
       assert.equal(clients.size, 1, "entry replacement must retain the mounted query cache");
       assert.equal(document.querySelectorAll(".shell").length, 1);
-      assert.equal(document.querySelectorAll(".board-head").length, 1);
+      assert.equal(document.querySelectorAll(".landscape-top").length, 1);
       assert.equal(document.querySelector(".inspector"), inspector, "Fast Refresh must preserve the mounted draft provider");
       assert.equal((ui.screen.getByRole("textbox", { name: "Tag 1 key" }) as HTMLInputElement).value, value);
       assert.ok(ui.screen.getByLabelText("Pending inspector changes"));
