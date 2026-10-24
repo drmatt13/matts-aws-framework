@@ -38,8 +38,10 @@ const MESSAGES: Record<AwsErrorKind, string> = {
 export function classifyAwsError(stderr: string): AwsErrorKind {
   if (/ENOENT|is not recognized|command not found/i.test(stderr)) return "missing-cli";
   if (/The config profile \(.*\) could not be found|ProfileNotFound/i.test(stderr)) return "profile";
-  if (/ExpiredToken|token has expired|session (associated with this profile )?has expired|Error loading SSO Token|SSO session .* expired|refresh failed|aws (sso )?login/i.test(stderr)) return "expired";
+  if (/ExpiredToken|token has expired|session (associated with this profile )?has expired|Error loading SSO Token|SSO session .* expired|refresh failed/i.test(stderr)) return "expired";
+  // Newer CLI versions suggest aws login for missing credentials too.
   if (/Unable to locate credentials|NoCredentials|InvalidClientTokenId|could not be found in the credential/i.test(stderr)) return "no-credentials";
+  if (/aws (sso )?login/i.test(stderr)) return "expired";
   if (/AccessDenied|UnauthorizedOperation|not authorized to perform/i.test(stderr)) return "denied";
   if (/does not exist|NotFound|ResourceNotFoundException|ParameterNotFound/i.test(stderr)) return "not-found";
   if (/Throttling|Rate exceeded|TooManyRequests/i.test(stderr)) return "throttled";

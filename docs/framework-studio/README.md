@@ -55,6 +55,7 @@ separate deployment states.
 | [Product audit (2026-10-22)](product-audit-2026-10-22.md) | You need the original persona journeys, reproduced failures and sequenced implementation plan |
 | [Implementation and second pass](implementation-second-pass-2026-10-22.md) | You need the implemented changes, regression evidence and remaining live-verification boundaries |
 | [Knowledge router](../aws-studio-knowledge/README.md) | You need current source-linked ownership, contracts, verification and selective architecture context |
+| [Job 4 performance and developer acceptance](job4-performance-2026-10-23.md) | You need reproducible source, graph, build and runtime measurements and the current campaign verification status |
 | [Declarations and tags](declarations-and-tags.md) | You are authoring declaration modules or changing metadata ownership and tag filtering |
 | [Network and database declarations](network-database-declarations.md) | You are changing explicit VPC/database ownership, placement or identity-sensitive infrastructure |
 | [Database workbench](database-workbench.md) | You are authoring Prisma, comparing migration contracts, planning artifacts or reviewing explicit local/private-task database operations |

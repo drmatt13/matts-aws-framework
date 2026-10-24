@@ -4119,6 +4119,15 @@ export function resolveLambdaTarget(
   );
 }
 
+/** Every Lambda, resolved against one fresh normalization of this config. */
+export function getLambdaTargets(config: FrameworkConfig): readonly ResolvedLambdaTarget[] {
+  return [...normalize(config).targets.values()]
+    .filter((target) => target.kind === "lambda")
+    .map((target) => resolveLambdaTargetDefinition(
+      config, target.id, target.directory!, target.definition, target.section,
+    ));
+}
+
 export function resolveServiceTarget(
   config: FrameworkConfig,
   id: string,
@@ -4245,7 +4254,7 @@ export function getCloudTargets(
   return getFrameworkTargets(config).filter(
     (target) =>
       roles.includes(target.role) &&
-      isTargetDeployed(config, target.kind, target.id, mode, graph),
+      normalizedTargetDeployed(target, mode, graph),
   );
 }
 
@@ -4264,7 +4273,7 @@ export function getLocalTargets(
   return getFrameworkTargets(config).filter(
     (target) =>
       roles.includes(target.role) &&
-      isTargetEnabled(config, target.kind, target.id, "local"),
+      isDeploySettingEnabled(target.deploy, "local"),
   );
 }
 
@@ -4382,10 +4391,30 @@ export function isTargetEnabled(
   id: string,
   scope: DeployScope,
 ): boolean {
-  const setting =
-    normalize(config).targets.get(`${kind}:${id}` as TargetReference)?.deploy ??
-    "both";
-  return setting === "both" || setting === `${scope}-only`;
+  return normalizedTargetEnabled(normalize(config).targets.get(`${kind}:${id}` as TargetReference), scope);
+}
+
+function normalizedTargetEnabled(target: NormalizedTarget | undefined, scope: DeployScope): boolean {
+  return isDeploySettingEnabled(target?.deploy ?? "both", scope);
+}
+
+function normalizedTargetDeployed(target: NormalizedTarget | undefined, mode: CloudMode, graph: CloudGraphOptions): boolean {
+  if (!normalizedTargetEnabled(target, "cloud")) return false;
+  if (mode === "prod") return true;
+  const role = target?.role;
+  return role !== undefined && (isAwsInvokedRole(role) || graph.webSocketApi === true && WEB_SOCKET_ROLES.has(role));
+}
+
+/** A fresh, operation-local view of the canonical execution and deployment rules. */
+export function createTargetAvailability(config: FrameworkConfig): {
+  enabled(kind: TargetKind, id: string, scope: DeployScope): boolean;
+  deployed(kind: TargetKind, id: string, mode: CloudMode, graph?: CloudGraphOptions): boolean;
+} {
+  const targets = normalize(config).targets;
+  return {
+    enabled: (kind, id, scope) => normalizedTargetEnabled(targets.get(`${kind}:${id}` as TargetReference), scope),
+    deployed: (kind, id, mode, graph = {}) => normalizedTargetDeployed(targets.get(`${kind}:${id}` as TargetReference), mode, graph),
+  };
 }
 
 /**
@@ -4408,11 +4437,7 @@ export function isTargetDeployed(
   mode: CloudMode,
   graph: CloudGraphOptions = {},
 ): boolean {
-  if (!isTargetEnabled(config, kind, id, "cloud")) return false;
-  if (mode === "prod") return true;
-  const role = normalize(config).targets.get(`${kind}:${id}` as TargetReference)?.role;
-  if (role === undefined) return false;
-  return isAwsInvokedRole(role) || (graph.webSocketApi === true && WEB_SOCKET_ROLES.has(role));
+  return normalizedTargetDeployed(normalize(config).targets.get(`${kind}:${id}` as TargetReference), mode, graph);
 }
 
 /**
@@ -4438,22 +4463,23 @@ export function assertCloudEdgesResolvable(
   mode: CloudMode,
   graph: CloudGraphOptions = {},
 ): void {
+  const normalized = normalize(config);
   const builds = (reference: TargetReference): boolean => {
     const { kind, id } = parseTargetReference(reference);
-    return isTargetDeployed(config, kind, id, mode, graph);
+    return normalizedTargetDeployed(normalized.targets.get(`${kind}:${id}` as TargetReference), mode, graph);
   };
   const servedLocally = (caller: NormalizedTarget): string =>
     WEB_SOCKET_ROLES.has(caller.role)
       ? "Turn DEPLOY_PROD_WEBSOCKET_API off to serve it under Compose, or deploy with PROD_DEPLOYMENT=true."
       : "Call it from an http target, which runs under Compose alongside it, or deploy with PROD_DEPLOYMENT=true.";
 
-  for (const caller of getFrameworkTargets(config)) {
-    if (!isTargetDeployed(config, caller.kind, caller.id, mode, graph)) continue;
+  for (const caller of normalized.targets.values()) {
+    if (!normalizedTargetDeployed(caller, mode, graph)) continue;
 
     if (mode === "dev" && WEB_SOCKET_ROLES.has(caller.role)) {
       const origin = caller.origins[0] ?? caller.reference;
       const database = getConnectsToBindings(caller.cloud.bindings).length > 0;
-      const subnet = caller.kind === "lambda" ? resolveLambdaTarget(config, caller.id).subnet : "none";
+      const subnet = caller.kind === "lambda" ? resolveLambdaTargetDefinition(config, caller.id, caller.directory, caller.definition, caller.section).subnet : "none";
       if (database || subnet !== "none") {
         throw new Error(
           `${origin} ${database ? "declares database: true" : `has subnet: "${subnet}"`}, but a dev deployment builds no ${database ? "database" : "network"}, and DEPLOY_PROD_WEBSOCKET_API builds this WebSocket handler in AWS. ${servedLocally(caller)}`,
@@ -4473,7 +4499,7 @@ export function assertCloudEdgesResolvable(
     );
     for (const binding of getAgentInvocationBindings(caller.cloud.bindings)) edges.push([`agent:${binding.agent}`, `invokesAgent("${binding.agent}")`]);
     if (caller.kind === "workflow") {
-      for (const reference of getWorkflowStepTargets(config, caller.id)) {
+      for (const reference of caller.workflow.targets) {
         edges.push([reference as TargetReference, `states task("${reference}")`]);
       }
     }
@@ -4683,12 +4709,12 @@ export function validateFrameworkConfig(config: FrameworkConfig): void {
     );
   }
 
-  for (const route of getAllHttpRoutes(config)) {
+  const normalized = normalizeFrameworkConfig(config);
+  for (const route of normalized.http) {
     // Dead config is worth surfacing, but toggling has to stay fast, so this
     // never blocks a synth or a local boot.
     if (
-      !isTargetEnabled(config, route.type, route.target, "cloud") &&
-      !isTargetEnabled(config, route.type, route.target, "local")
+      normalized.targets.get(`${route.type}:${route.target}` as TargetReference)?.deploy === "none"
     ) {
       console.warn(
         `HTTP route "${route.path}" targets ${route.type} "${route.target}", which is disabled in both cloud and local. The route is unreachable everywhere.`,

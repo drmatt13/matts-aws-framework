@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, test } from "node:test";
@@ -15,9 +15,11 @@ after(() => rmSync(directory, { recursive: true, force: true }));
 const handlerFile = path.join(directory, "handler.mjs");
 writeFileSync(
   handlerFile,
-  `let invocations = 0;
+  `import { writeFileSync } from "node:fs";
+let invocations = 0;
 export async function lambdaHandler(event, context) {
   invocations += 1;
+  if (event.started) writeFileSync(event.started, String(process.pid));
   if (event.fail) throw new Error("handler failed on purpose");
   if (event.sleepMs) await new Promise((resolve) => setTimeout(resolve, event.sleepMs));
   return {
@@ -141,4 +143,62 @@ test("LOCAL_LAMBDA_WARM=false turns the pool off, and bad limits are refused", (
     () => LambdaWorkerPool.fromEnvironment(repositoryRoot, { LOCAL_LAMBDA_WARM_MAX: "0" }),
     /LOCAL_LAMBDA_WARM_MAX must be a whole number/,
   );
+});
+
+async function waitFor(check: () => boolean): Promise<void> {
+  const deadline = Date.now() + 10_000;
+  while (!check()) {
+    assert.ok(Date.now() < deadline, "worker reached its expected state");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+function running(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch { return false; }
+}
+
+test("closing the pool cancels both warm and overflow invocations and refuses new work", async () => {
+  const pool = new LambdaWorkerPool({ repositoryRoot, maxWarm: 1, idleSeconds: 30 });
+  const warmMarker = path.join(directory, "close-warm");
+  const coldMarker = path.join(directory, "close-overflow");
+  const invocations: Promise<unknown>[] = [];
+  try {
+    const warm = pool.invoke("lambda:a", environment("one"), request({ started: warmMarker, sleepMs: 30_000 }, 60));
+    invocations.push(warm);
+    // Attach a rejection handler before close can reject either invocation.
+    const warmStopped = assert.rejects(warm, /shutting down|closed|exited before/);
+    await waitFor(() => existsSync(warmMarker));
+    const overflow = pool.invoke("lambda:a", environment("one"), request({ started: coldMarker, sleepMs: 30_000 }, 60));
+    invocations.push(overflow);
+    const overflowStopped = assert.rejects(overflow, /shutting down|closed/);
+    await waitFor(() => existsSync(coldMarker));
+    const pids = [warmMarker, coldMarker].map((file) => Number(readFileSync(file, "utf8")));
+    pool.close();
+    pool.close();
+    await Promise.all([warmStopped, overflowStopped]);
+    await waitFor(() => pids.every((pid) => !running(pid)));
+    assert.equal(pool.size, 0);
+    await assert.rejects(pool.invoke("lambda:a", environment("one"), request()), /shutting down|closed/);
+  } finally {
+    pool.close();
+    await Promise.allSettled(invocations);
+  }
+});
+
+test("an already cancelled request never starts or replaces a handler", async () => {
+  const pool = new LambdaWorkerPool({ repositoryRoot, maxWarm: 1, idleSeconds: 30 });
+  const controller = new AbortController();
+  controller.abort(new Error("cancelled before invocation"));
+  const marker = path.join(directory, "cancelled-before-invocation");
+  try {
+    await assert.rejects(pool.invoke("lambda:a", environment("one"), request({ started: marker }), controller.signal), /cancelled before invocation/);
+    assert.equal(pool.size, 0);
+    assert.equal(existsSync(marker), false);
+    const before = await pool.invoke("lambda:a", environment("one"), request()) as Result;
+    // A different environment would ordinarily replace the current worker.
+    await assert.rejects(pool.invoke("lambda:a", environment("two"), request({ started: marker }), controller.signal), /cancelled before invocation/);
+    assert.equal(existsSync(marker), false);
+    const after = await pool.invoke("lambda:a", environment("one"), request()) as Result;
+    assert.equal(after.pid, before.pid);
+  } finally { pool.close(); }
 });

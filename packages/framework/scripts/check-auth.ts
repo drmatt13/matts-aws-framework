@@ -2,10 +2,12 @@ import ts from "typescript";
 import {
   COGNITO_VERIFIER_ENVIRONMENT,
   getFrameworkTargets,
+  getLambdaTargets,
   isNodeLambdaRuntime,
   resolveLambdaTarget,
   USER_POOL_DECLARATION_EXAMPLE,
   type FrameworkConfig,
+  type NormalizedTarget,
 } from "../src/config/index";
 
 /**
@@ -76,15 +78,26 @@ export function assertCognitoVerifierInputs(
   config: FrameworkConfig,
   read: (reference: string) => string | undefined,
 ): void {
+  const assertInput = createCognitoVerifierInputValidator(config);
   for (const target of getFrameworkTargets(config)) {
-    if (target.kind !== "lambda") continue;
-    const spec = resolveLambdaTarget(config, target.id);
-    if (spec.packaging !== "zip" || !isNodeLambdaRuntime(spec.runtime)) continue;
+    assertInput(target, read);
+  }
+}
+
+/** Resolve build settings once for one invocation of the source checks. */
+export function createCognitoVerifierInputValidator(config: FrameworkConfig): (
+  target: NormalizedTarget, read: (reference: string) => string | undefined,
+) => void {
+  const lambdas = new Map(getLambdaTargets(config).map((spec) => [spec.id, spec] as const));
+  return (target, read) => {
+    if (target.kind !== "lambda") return;
+    const spec = lambdas.get(target.id) ?? resolveLambdaTarget(config, target.id);
+    if (spec.packaging !== "zip" || !isNodeLambdaRuntime(spec.runtime)) return;
     const source = read(target.reference);
     const verifier = source === undefined ? undefined : calledVerifier(source);
-    if (verifier === undefined) continue;
+    if (verifier === undefined) return;
     const missing = COGNITO_VERIFIER_ENVIRONMENT.filter((name) => target.environment[name] === undefined);
-    if (missing.length === 0) continue;
+    if (missing.length === 0) return;
     const origin = target.origins[0] ?? target.reference;
     const verifies = `${origin}'s handler verifies a Cognito token with ${verifier}(), which reads ${COGNITO_VERIFIER_ENVIRONMENT.join(" and ")}`;
     // One of the two named by hand is a workload choosing its own pool.
@@ -96,5 +109,5 @@ export function assertCognitoVerifierInputs(
         ? `${verifies}, and is handed neither, so every signed-in request would fail. Name the application's pool once in framework.config.ts, as ${USER_POOL_DECLARATION_EXAMPLE}, then add userPool: true to this declaration.`
         : `${verifies}, and is handed neither, so every signed-in request would fail. Add userPool: true to this declaration.`,
     );
-  }
+  };
 }

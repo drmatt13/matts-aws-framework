@@ -67,6 +67,22 @@ tag validators through `@repo/framework/config/tags` reduced the production entr
 from 624.41 kB (191.48 kB gzip) to 605.82 kB (186.01 kB gzip), without adding another
 validator implementation. The chunk still exceeds Vite's 500 kB warning threshold.
 
+## Job 4 graph scaling
+
+The [Job 4 frontend evidence](job4-frontend-evidence-2026-10-23.md) measures current
+25/100/250/500-entity fixtures and isolates connection routing as a scene-construction
+cost. Conservative path/segment envelopes now skip impossible intersections before
+the existing strict geometry predicates. On the measured 500-entity fixture,
+retained-position scene rebuilding fell from 139.69 ms to 67.21 ms median over five
+samples; complete routed-point/length hashes matched at every size. Cold scene
+construction fell from 173.15 ms to 95.22 ms (one sample each).
+
+Fresh-context production-browser load at 500 entities fell from 430 ms to 328 ms
+median. Drawing and software-rendered RAF intervals remained essentially unchanged;
+this does not establish an FPS improvement. The report includes reproducible Node
+and browser harnesses, exact geometry reference tests, forced-GC memory observations,
+independent review and the remaining large-graph rasterization boundary.
+
 ## Remaining opportunities
 
 - **GPU painting is still the main cost.** Shadows, glow, text and SVG draws
@@ -94,7 +110,9 @@ scene construction and graph quality, not interactive rendering speed.
 
 ## Server evaluation, review and source index
 
-A second October 2026 pass removed repeated work on the server, which every
+The following measurements are historical, from the earlier October 2026 pass.
+Job 4 below supersedes its projection and review implementation descriptions.
+That earlier pass removed repeated work on the server, which every
 save, review and apply waits on. Outputs are unchanged: both mode models,
 preflight answers for every field, the source index, export stacks, capability
 facts and type-check diagnostics (including an error case) were byte-identical
@@ -111,3 +129,59 @@ before and after, measured in-process on a clean export of the same commit.
 `SnapshotBuilder` also parses each source file once per refresh for the index and
 both modes' connection evidence. Evaluator process start-up and the framework's own
 normalization (about 0.5 ms per call, deliberately not memoized) are unchanged.
+
+## Job 4 source and projection procedures
+
+The [integrated Job 4 report](job4-performance-2026-10-23.md) records current
+source review, Apply/Undo, generation, runtime and acceptance evidence. Reproduce
+the source measurements in a private, env-free copy with:
+
+```sh
+node --import tsx framework-studio/scripts/benchmark-source.ts --samples 5 --output .framework/job4/source-replay.json
+node --import tsx framework-studio/scripts/benchmark-projection.ts --sizes=100,500 --samples=3
+```
+
+The first command performs real review, Apply and Undo only in its disposable
+fixture. It records evaluator, generator and validation spans, exact diff cost,
+response bytes and parent RSS. Spans nest; adding them would double-count work.
+Five samples support a median and observed maximum, not meaningful tail
+percentiles. Run comparisons serially with the same fixture and dependencies;
+keep CPU-heavy builds and other campaign benchmarks out of that window.
+
+Current batch review generates the final candidate in a disposable workspace,
+then evaluates both modes once. Apply still revalidates and checks written
+semantics. Binding comparisons exclude only source-location display evidence;
+permissions, scopes and invocation relationships retain their authority. A no-op
+draft is refused before generation. Final review rechecks independently captured
+trigger and generator inputs without allowing one hash set to overwrite another.
+
+Projection and implementation health resolve all Lambda settings once per
+operation. Availability queries reuse the canonical deployment predicates over
+fresh normalized targets. The synchronous projection scope restores or deletes
+its temporary Lambda map in `finally`; a later projection observes source/config
+mutations. There is no cross-request normalized-config cache. Existing parsed
+TypeScript dependency caching remains compiler/options/lockfile keyed and expires
+after ten idle minutes. Recreate artifact and authentication validators after
+changing configuration. Structural tests enforce bounded normalization and fresh
+results rather than brittle millisecond thresholds.
+
+At 500 synthetic targets, projection fell from one 73,973 ms baseline sample to
+a 205 ms median over three after samples. This measures model computation alone,
+not full source refresh, HTTP latency or rendering. See the build evidence for
+the full model-byte and infrastructure-identity comparisons and remaining limits.
+
+Studio's ordinary test script runs two files concurrently. Its source suites
+build substantial independent TypeScript programs; the Job 4 four-case experiment
+observed less paging at two files with about 5% extra wall time. This is an
+execution budget, not fewer checks. Run the complete `npm run verify` after
+integration, keep competing heavy checks out of measured windows, and inspect
+failed model diagnostics before attributing a semantic conflict to source edits.
+Candidate validation failures are refused before valid-model signature comparison.
+
+Keep the host awake during long measurements. On the tested macOS environment,
+`caffeinate -i npm run verify` holds a temporary idle-sleep assertion only for
+that command; it does not change saved power settings. Check `pmset -g assertions`
+while it runs and correlate apparent long stalls with `pmset -g log`. Job 4 found
+50- and 258-second host suspensions inside otherwise normal commands. Preserve
+interrupted receipts and rerun an uninterrupted window before interpreting their
+wall times as application regressions.

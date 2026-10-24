@@ -18,14 +18,33 @@ import { failedModel } from "../model/project";
 const EVALUATOR = path.join(path.dirname(fileURLToPath(import.meta.url)), "evaluate.ts");
 const LOAD_TIMEOUT_MS = 60_000;
 const PREFLIGHT_TIMEOUT_MS = 30_000;
+const DISPOSE_GRACE_MS = 1_000;
 
 interface Pending {
   readonly resolve: (result: PreflightResult) => void;
   readonly timer: NodeJS.Timeout;
 }
 
+/** One Studio owner's active evaluators, including short-lived review pools. */
+export class EvaluatorLifetime {
+  private readonly evaluators = new Set<Evaluator>();
+  private closed = false;
+  private disposal: Promise<void> | undefined;
+
+  assertOpen(): void { if (this.closed) throw new Error("The Studio evaluator lifetime is closed."); }
+  retain(evaluator: Evaluator): void { this.assertOpen(); this.evaluators.add(evaluator); }
+  release(evaluator: Evaluator): void { this.evaluators.delete(evaluator); }
+  dispose(): Promise<void> {
+    if (this.disposal) return this.disposal;
+    this.closed = true;
+    this.disposal = Promise.all([...this.evaluators].map(evaluator => evaluator.dispose())).then(() => undefined);
+    return this.disposal;
+  }
+}
+
 class Evaluator {
   private child: ChildProcess | undefined;
+  private disposal: Promise<void> | undefined;
   private readonly pending = new Map<number, Pending>();
   private nextId = 1;
   readonly model: Promise<ModeModel>;
@@ -36,7 +55,9 @@ class Evaluator {
     webSocketApi: boolean,
     log: (line: string) => void,
     overrides: Readonly<Record<string, string>> = {},
+    lifetime?: EvaluatorLifetime,
   ) {
+    lifetime?.assertOpen();
     this.model = new Promise<ModeModel>((resolve) => {
       const started = Date.now();
       const child = fork(EVALUATOR, [], {
@@ -53,6 +74,8 @@ class Evaluator {
         stdio: ["ignore", "pipe", "pipe", "ipc"],
       });
       this.child = child;
+      lifetime?.retain(this);
+      child.once("exit", () => lifetime?.release(this));
       child.send({ type: "load", overrides });
       const relay = (chunk: Buffer) => {
         for (const line of chunk.toString("utf8").split(/\r?\n/)) if (line.trim()) log(`[${mode}] ${line}`);
@@ -106,13 +129,21 @@ class Evaluator {
 
   /** Stops the process, resolving once it has exited. */
   dispose(): Promise<void> {
+    if (this.disposal) return this.disposal;
     const child = this.child;
     if (!child || child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
-    return new Promise<void>((resolve) => {
-      child.once("exit", () => resolve());
+    this.disposal = new Promise<void>((resolve) => {
+      // Authored configuration can register SIGTERM and then block the event
+      // loop. Bound disposal of this exact owned child even in that case.
+      const timer = setTimeout(() => {
+        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      }, DISPOSE_GRACE_MS);
+      timer.unref();
+      child.once("exit", () => { clearTimeout(timer); resolve(); });
       if (child.connected) child.disconnect();
       child.kill();
     });
+    return this.disposal;
   }
 }
 
@@ -129,13 +160,14 @@ export class EvaluatorPool {
   constructor(
     private readonly repositoryRoot: string,
     private readonly log: (line: string) => void = () => {},
+    private readonly lifetime?: EvaluatorLifetime,
   ) {}
 
   async evaluate(webSocketApi: boolean, overrides: Readonly<Record<string, string>> = {}): Promise<Evaluation> {
     void this.dispose();
     const pair = {
-      dev: new Evaluator("dev", this.repositoryRoot, readModeWebSocketApi(this.repositoryRoot, "dev", webSocketApi), this.log, overrides),
-      prod: new Evaluator("prod", this.repositoryRoot, readModeWebSocketApi(this.repositoryRoot, "prod", webSocketApi), this.log, overrides),
+      dev: new Evaluator("dev", this.repositoryRoot, readModeWebSocketApi(this.repositoryRoot, "dev", webSocketApi), this.log, overrides, this.lifetime),
+      prod: new Evaluator("prod", this.repositoryRoot, readModeWebSocketApi(this.repositoryRoot, "prod", webSocketApi), this.log, overrides, this.lifetime),
     };
     this.current = pair;
     const [dev, prod] = await Promise.all([pair.dev.model, pair.prod.model]);

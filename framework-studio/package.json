@@ -7,7 +7,7 @@
   "scripts": {
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json",
-    "test": "node --conditions=development --import tsx --test --test-concurrency=4 test/*.test.ts"
+    "test": "node --conditions=development --import tsx --test --test-concurrency=2 test/*.test.ts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "6.20.4",

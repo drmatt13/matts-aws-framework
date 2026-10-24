@@ -8,6 +8,7 @@ import { SnapshotBuilder } from "../server/snapshot";
 import { connectionDescriptionId } from "../shared/descriptions";
 import { generateCreationArtifacts } from "../server/edits/creation-generation";
 import { SourceJournal } from "../server/edits/journal";
+import { EvaluatorPool } from "../server/evaluator/pool";
 
 /**
  * Writes, against a disposable copy of the repository's configuration.
@@ -72,6 +73,40 @@ after(async () => {
 function revision(): string {
   return builder.current!.snapshot.revision;
 }
+
+test("reviews evaluate the exact generated candidate once and no-op drafts start no evaluators", async t => {
+  const evaluate = t.mock.method(EvaluatorPool.prototype, "evaluate");
+  const file = path.join(fixture, "framework-config/workloads/http.ts");
+  const before = readFileSync(file, "utf8");
+  const plan = await edits.planBatch([{ kind: "field", intent: { target: "lambda:graphql-api", field: "lambda.memorySize", value: 768 } }], revision());
+  assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
+  assert.equal(evaluate.mock.callCount(), 1, "one fresh dev/prod pair validates the complete candidate");
+  assert.equal(readFileSync(file, "utf8"), before, "review writes no authored files");
+  const description = builder.current!.snapshot.descriptions.values["lambda:graphql-api"] ?? "";
+  await assert.rejects(edits.planBatch([{ kind: "description", entity: "lambda:graphql-api", value: description }], revision()), /no source changes/);
+  assert.equal(evaluate.mock.callCount(), 1, "unchanged intent does not evaluate or generate");
+});
+
+test("generator inputs edited during final validation expire a review without source writes", async t => {
+  const handler = path.join(fixture, "cdk-app/lambda_functions/http_functions/graphql-api/index.ts");
+  const before = readFileSync(handler, "utf8");
+  const config = path.join(fixture, "framework-config/workloads/http.ts");
+  const originalConfig = readFileSync(config, "utf8");
+  const original = EvaluatorPool.prototype.evaluate;
+  const evaluate = t.mock.method(EvaluatorPool.prototype, "evaluate", async function (this: EvaluatorPool, ...args: Parameters<typeof original>) {
+    const result = await original.apply(this, args);
+    writeFileSync(handler, `${before}\n// External edit during review\n`);
+    return result;
+  });
+  try {
+    await assert.rejects(edits.planBatch([{ kind: "field", intent: { target: "lambda:graphql-api", field: "lambda.memorySize", value: 768 } }], revision()), /changed after review/);
+    assert.equal(readFileSync(config, "utf8"), originalConfig);
+    assert.ok(readFileSync(handler, "utf8").endsWith("// External edit during review\n"));
+  } finally {
+    evaluate.mock.restore();
+    writeFileSync(handler, before);
+  }
+});
 
 function applyDiagnostics(result: { readonly status: string; readonly message: string }): string {
   return JSON.stringify({ result, models: Object.fromEntries((["dev", "prod"] as const).map(mode => [mode, { status: builder.current?.snapshot.models[mode].status, stale: builder.current?.snapshot.models[mode].stale, diagnostics: builder.current?.snapshot.models[mode].diagnostics }])), evaluatorLog });

@@ -25,6 +25,18 @@ tag filtering is a rendering projection rather than a new infrastructure resourc
 
 [shared/model.ts](../../../framework-studio/shared/model.ts) is the serialized server/browser contract; avoid creating parallel graph types in a view. `projectModel`, `targetLanes` and `targetPlacement` in [model/project.ts](../../../framework-studio/server/model/project.ts) derive the graph from normalized declarations and mode predicates.
 
+Each synchronous `projectModel` call creates fresh operation-local availability
+from the canonical framework enabled/deployed predicates. Cloud selection and
+cloud-edge validation likewise share one normalized target map per call. Lambda
+settings for fields, compute and placement are batch-resolved into a temporary
+projection scope in [lambda-spec.ts](../../../framework-studio/server/model/lambda-spec.ts)
+and restored/released in `finally`. The next projection refreshes this scope even
+if its config object was changed in place. No persistent graph or availability
+cache crosses operations. Standalone predicate calls keep their current-config
+semantics. [Projection regression tests](../../../framework-studio/test/projection-performance.test.ts)
+check bounded declaration enumeration, fresh subsequent projections and complete
+lane-byte equivalence with the standalone predicate path.
+
 | Model | Carries |
 | --- | --- |
 | `Snapshot` | Revision, dev/prod `ModeModel`s, source index, file hashes, schema and descriptions |

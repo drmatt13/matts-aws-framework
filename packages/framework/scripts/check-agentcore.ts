@@ -1,4 +1,4 @@
-import { getFrameworkTargets, type FrameworkConfig } from "../src/config/index";
+import { getFrameworkTargets, type FrameworkConfig, type NormalizedTarget } from "../src/config/index";
 
 /**
  * Each tool and agent entry point uses the wrapper its declaration implies.
@@ -25,43 +25,45 @@ export function assertAgentCoreEntries(
   read: (reference: string) => string | undefined,
 ): void {
   for (const target of getFrameworkTargets(config)) {
-    if (target.role === "tool") {
-      const source = read(target.reference);
-      if (source === undefined) continue;
-      const origin = `tools["${target.id}"]`;
-      const declaredAuth = config.tools?.[target.id]?.auth === true;
-      const usesAuthenticated = AUTHENTICATED_TOOL_CALL.test(source);
-      if (declaredAuth && !usesAuthenticated) {
-        throw new Error(
-          `${origin} declares auth: true, but its handler does not use authenticatedTool. Export it as:\n  export const lambdaHandler = authenticatedTool(contract, async (input, session) => { ... });\nfrom "@repo/framework/runtime/tools".`,
-        );
-      }
-      if (!declaredAuth && usesAuthenticated) {
-        throw new Error(
-          `${origin} uses authenticatedTool, but does not declare auth: true, so no user's token is ever sent and every call would be refused. Add auth: true, or use tool().`,
-        );
-      }
-      if (!declaredAuth && !TOOL_CALL.test(source)) {
-        throw new Error(
-          `${origin}'s handler does not use tool(). Export it as:\n  export const lambdaHandler = tool(contract, async (input) => { ... });\nfrom "@repo/framework/runtime/tools", so its arguments and result are checked against its contract.`,
-        );
-      }
+    if (target.role === "tool" || target.role === "agent") assertAgentCoreEntry(config, target, read(target.reference));
+  }
+}
+
+/** The canonical wrapper check for one target in an already evaluated config. */
+export function assertAgentCoreEntry(config: FrameworkConfig, target: NormalizedTarget, source: string | undefined): void {
+  if (source === undefined) return;
+  if (target.role === "tool") {
+    const origin = `tools["${target.id}"]`;
+    const declaredAuth = config.tools?.[target.id]?.auth === true;
+    const usesAuthenticated = AUTHENTICATED_TOOL_CALL.test(source);
+    if (declaredAuth && !usesAuthenticated) {
+      throw new Error(
+        `${origin} declares auth: true, but its handler does not use authenticatedTool. Export it as:\n  export const lambdaHandler = authenticatedTool(contract, async (input, session) => { ... });\nfrom "@repo/framework/runtime/tools".`,
+      );
     }
-    if (target.role === "agent") {
-      const source = read(target.reference);
-      if (source === undefined) continue;
-      const origin = `agents["${target.id}"]`;
-      const declared = AGENT_CALL.exec(source)?.[1];
-      if (declared === undefined) {
-        throw new Error(
-          `${origin}'s index.ts does not export agent("${target.id}", contract). Export it as:\n  export const handler = agent("${target.id}", contract).stream(async function* (input, context) { ... });\nor .respond(async (input, context) => ...) for a contract with a response, from "@repo/framework/runtime/agentcore".`,
-        );
-      }
-      if (declared !== target.id) {
-        throw new Error(
-          `${origin} exports agent("${declared}", ...). The id names the declaration whose tools the agent is typed and served against; write agent("${target.id}", ...).`,
-        );
-      }
+    if (!declaredAuth && usesAuthenticated) {
+      throw new Error(
+        `${origin} uses authenticatedTool, but does not declare auth: true, so no user's token is ever sent and every call would be refused. Add auth: true, or use tool().`,
+      );
+    }
+    if (!declaredAuth && !TOOL_CALL.test(source)) {
+      throw new Error(
+        `${origin}'s handler does not use tool(). Export it as:\n  export const lambdaHandler = tool(contract, async (input) => { ... });\nfrom "@repo/framework/runtime/tools", so its arguments and result are checked against its contract.`,
+      );
+    }
+  }
+  if (target.role === "agent") {
+    const origin = `agents["${target.id}"]`;
+    const declared = AGENT_CALL.exec(source)?.[1];
+    if (declared === undefined) {
+      throw new Error(
+        `${origin}'s index.ts does not export agent("${target.id}", contract). Export it as:\n  export const handler = agent("${target.id}", contract).stream(async function* (input, context) { ... });\nor .respond(async (input, context) => ...) for a contract with a response, from "@repo/framework/runtime/agentcore".`,
+      );
+    }
+    if (declared !== target.id) {
+      throw new Error(
+        `${origin} exports agent("${declared}", ...). The id names the declaration whose tools the agent is typed and served against; write agent("${target.id}", ...).`,
+      );
     }
   }
 }

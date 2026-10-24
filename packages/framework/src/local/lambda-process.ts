@@ -81,6 +81,7 @@ function invokeOnce(
   request: ChildRequest,
   options: { readonly repositoryRoot: string; readonly signal?: AbortSignal },
 ): Promise<unknown> {
+  if (options.signal?.aborted) return Promise.reject(options.signal.reason);
   return new Promise((resolve, reject) => {
     const child = spawnChild(environment, options.repositoryRoot);
     let settled = false;
@@ -145,6 +146,7 @@ class Worker {
   }
 
   public invoke(request: ChildRequest, signal: AbortSignal | undefined, idleSeconds: number): Promise<unknown> {
+    if (signal?.aborted) return Promise.reject(signal.reason);
     this.busy = true;
     clearTimeout(this.idleTimer);
     const id = this.nextId++;
@@ -208,6 +210,7 @@ class Worker {
  */
 export class LambdaWorkerPool {
   private readonly workers = new Map<LambdaTarget, Worker>();
+  private readonly lifetime = new AbortController();
 
   public constructor(private readonly options: LambdaWorkerPoolOptions) {}
 
@@ -250,6 +253,13 @@ export class LambdaWorkerPool {
     request: ChildRequest,
     signal?: AbortSignal,
   ): Promise<unknown> {
+    this.lifetime.signal.throwIfAborted();
+    signal?.throwIfAborted();
+    // Overflow invocations belong to this pool too. A shared lifetime cancels
+    // them on close without retaining completed children or their payloads.
+    const invocationSignal = signal
+      ? AbortSignal.any([this.lifetime.signal, signal])
+      : this.lifetime.signal;
     // A fingerprint rather than the values themselves, so the pool never
     // holds a second copy of a workload's secrets.
     const fingerprint = createHash("sha256").update(JSON.stringify(environment)).digest("hex");
@@ -259,22 +269,23 @@ export class LambdaWorkerPool {
       worker = undefined;
     }
     if (worker?.busy || (worker && worker.fingerprint !== fingerprint)) {
-      return invokeOnce(target, environment, request, { repositoryRoot: this.options.repositoryRoot, signal });
+      return invokeOnce(target, environment, request, { repositoryRoot: this.options.repositoryRoot, signal: invocationSignal });
     }
     if (!worker) {
       if (!this.makeRoom()) {
-        return invokeOnce(target, environment, request, { repositoryRoot: this.options.repositoryRoot, signal });
+        return invokeOnce(target, environment, request, { repositoryRoot: this.options.repositoryRoot, signal: invocationSignal });
       }
       worker = new Worker(target, fingerprint, spawnChild(environment, this.options.repositoryRoot), (gone) => {
         if (this.workers.get(gone.target) === gone) this.workers.delete(gone.target);
       });
       this.workers.set(target, worker);
     }
-    return worker.invoke(request, signal, this.options.idleSeconds);
+    return worker.invoke(request, invocationSignal, this.options.idleSeconds);
   }
 
-  /** Stops every warm process. */
+  /** Stops all owned invocations, including cold overflow, and refuses new work. */
   public close(): void {
+    this.lifetime.abort(new Error("Local Lambda worker pool is closed."));
     for (const worker of [...this.workers.values()]) worker.kill();
   }
 

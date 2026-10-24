@@ -117,15 +117,101 @@ export function readDraftEdits(entries: unknown): readonly DraftEdit[] {
 
 export async function startServer(repositoryRoot: string, args: readonly string[]): Promise<Server> {
   const port = portFrom(args);
+  const app = express();
+  const server = createServer(app);
+  const cleanups: (() => void | Promise<unknown>)[] = [];
+  let ready = false;
+  let closing = false;
+  let startup: Promise<void> | undefined;
+  let disposal: Promise<void> | undefined;
+  app.use((_request, response, next) => {
+    if (!ready) { response.status(503).send("Studio is starting. Try again shortly."); return; }
+    next();
+  });
+  const dispose = (): Promise<void> => {
+    if (disposal) return disposal;
+    closing = true;
+    ready = false;
+    disposal = (async () => {
+      const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+      server.closeAllConnections();
+      const failures: unknown[] = [];
+      const drain = async () => {
+        while (cleanups.length) {
+          try { await cleanups.pop()!(); } catch (error) { failures.push(error); }
+        }
+      };
+      // Stop existing evaluators before joining startup: a declaration may be
+      // synchronously blocked and unable to service an IPC disconnect itself.
+      await drain();
+      await startup?.catch(() => undefined);
+      // An in-flight asynchronous acquisition may have registered its disposer
+      // while startup settled. Release those resources before exiting too.
+      await drain();
+      await closed;
+      process.off("SIGINT", shutdown);
+      process.off("SIGTERM", shutdown);
+      if (failures.length) throw new AggregateError(failures, "Studio cleanup failed.");
+    })();
+    return disposal;
+  };
+  const shutdown = () => void dispose().then(() => process.exit(0), (error) => {
+    process.stderr.write(`${String(error)}\n`);
+    process.exit(1);
+  });
+  // Keep ownership visible while asynchronous cleanup runs. Dependencies that
+  // re-emit an otherwise unhandled signal must not bypass the pending disposer.
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+  try {
+    startup = (async () => {
+      // Claim the port before Vite, watchers or evaluators acquire resources.
+      await new Promise<void>((resolve, reject) => {
+        const failed = (error: Error) => reject(error);
+        server.once("error", failed);
+        server.listen(port, "127.0.0.1", () => { server.off("error", failed); resolve(); });
+      });
+      if (closing) return;
+      await configureServer(repositoryRoot, port, app, server, (cleanup) => cleanups.push(cleanup), () => closing);
+    })();
+    await startup;
+    if (closing) { await dispose(); return server; }
+    ready = true;
+  } catch (error) {
+    await dispose().catch((cleanupError) => process.stderr.write(`${String(cleanupError)}\n`));
+    throw error;
+  }
+  process.stderr.write(`Framework Studio is running at http://127.0.0.1:${port}/\n`);
+  return server;
+}
+
+async function configureServer(
+  repositoryRoot: string,
+  port: number,
+  app: ReturnType<typeof express>,
+  server: Server,
+  defer: (cleanup: () => void | Promise<unknown>) => void,
+  isClosing: () => boolean,
+): Promise<void> {
   const token = randomBytes(24).toString("hex");
   const log = (line: string) => process.stderr.write(`${line}\n`);
 
   const builder = new SnapshotBuilder(repositoryRoot, log);
+  const refreshes = new Set<Promise<StudioState | undefined>>();
+  defer(async () => {
+    // Close every snapshot/review evaluator before joining refresh wrappers;
+    // terminal disposal also refuses already queued follow-up acquisitions.
+    await builder.dispose();
+    await Promise.allSettled([...refreshes]);
+    await builder.dispose();
+  });
   const edits = new EditService(repositoryRoot, builder);
   const resources = new ResourceService(repositoryRoot, builder);
   const inputs = new DeploymentInputService(repositoryRoot, builder);
   const commands = new CommandRunner(repositoryRoot);
+  defer(() => commands.dispose());
   const clients = new Set<Response>();
+  defer(() => { for (const client of clients) client.end(); clients.clear(); });
   let sourceWatch: SourceWatchState | undefined;
 
   const broadcast = (event: string, data: unknown) => {
@@ -134,6 +220,7 @@ export async function startServer(repositoryRoot: string, args: readonly string[
   };
   const infrastructure = new InfrastructureService(repositoryRoot, () => builder.current?.snapshot, undefined, () => broadcast("infrastructure", {}));
   const deploy = new DeployService(repositoryRoot, broadcast);
+  defer(() => deploy.dispose());
   const stateful = new StatefulResourceService(repositoryRoot, builder, deploy);
   /** Every preview was offered against one snapshot; a new one expires them all, whoever wrote it. */
   const published = (revision: string, external: readonly string[] = []) => {
@@ -144,23 +231,28 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     broadcast("snapshot", { revision, external, history: edits.history() });
   };
   let evaluating = false;
-  const refresh = async (external: readonly string[]): Promise<StudioState | undefined> => {
-    evaluating = true;
-    broadcast("status", { evaluating: true });
-    try {
-      const state = await builder.refresh();
-      published(state.snapshot.revision, external);
-      return state;
-    } catch (error) {
-      log(`Refresh failed: ${error instanceof Error ? error.message : String(error)}`);
-      return undefined;
-    } finally {
-      evaluating = false;
-      broadcast("status", { evaluating: false });
-    }
+  const refresh = (external: readonly string[]): Promise<StudioState | undefined> => {
+    if (isClosing()) return Promise.resolve(undefined);
+    const task = (async () => {
+      evaluating = true;
+      broadcast("status", { evaluating: true });
+      try {
+        const state = await builder.refresh();
+        published(state.snapshot.revision, external);
+        return state;
+      } catch (error) {
+        log(`Refresh failed: ${error instanceof Error ? error.message : String(error)}`);
+        return undefined;
+      } finally {
+        evaluating = false;
+        broadcast("status", { evaluating: false });
+      }
+    })();
+    refreshes.add(task);
+    void task.finally(() => refreshes.delete(task));
+    return task;
   };
 
-  const app = express();
   app.disable("x-powered-by");
 
   app.use(hostGuard(port));
@@ -365,8 +457,8 @@ export async function startServer(repositoryRoot: string, args: readonly string[
 
   app.use("/api", api);
 
-  const server = createServer(app);
   const { createServer: createVite } = await import("vite");
+  if (isClosing()) return;
   const vite = await createVite({
     root: STUDIO_ROOT,
     // Separate Studio processes may share installed dependencies. Each needs
@@ -381,6 +473,8 @@ export async function startServer(repositoryRoot: string, args: readonly string[
       fs: { strict: true, allow: [STUDIO_ROOT, path.join(repositoryRoot, "node_modules")] },
     },
   });
+  defer(() => vite.close());
+  if (isClosing()) return;
   app.use(vite.middlewares);
   app.use(async (request: Request, response: Response, next: NextFunction) => {
     if (request.method !== "GET") {
@@ -418,25 +512,8 @@ export async function startServer(repositoryRoot: string, args: readonly string[
     });
     if (external.length > 0) void refresh(external);
   }, 200, { onStatus: status => { sourceWatch = status; broadcast("source-watch", status); } });
+  defer(stopWatching);
 
   log("Evaluating the repository…");
   await refresh([]);
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(port, "127.0.0.1", () => resolve());
-  });
-  log(`Framework Studio is running at http://127.0.0.1:${port}/`);
-
-  const shutdown = async () => {
-    stopWatching();
-    for (const client of clients) client.end();
-    await deploy.dispose();
-    await vite.close();
-    await builder.dispose();
-    server.close();
-    process.exit(0);
-  };
-  process.once("SIGINT", () => void shutdown());
-  process.once("SIGTERM", () => void shutdown());
-  return server;
 }

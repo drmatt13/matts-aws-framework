@@ -6,6 +6,7 @@ read_when:
 source:
   - framework-studio/server/index.ts
   - framework-studio/server/server.ts
+  - framework-studio/server/commands.ts
   - framework-studio/server/snapshot.ts
   - scripts/atomic-replace.cjs
   - framework-studio/server/evaluator/pool.ts
@@ -22,13 +23,37 @@ related:
 
 `main` in [server/index.ts](../../../framework-studio/server/index.ts) discovers the checkout using `findRepositoryRoot` in [inputs.ts](../../../framework-studio/server/inputs.ts), then prints a snapshot (`--print`) or calls `startServer`. [server.ts](../../../framework-studio/server/server.ts) binds loopback (default port 4590), builds services/routes, starts watching and serves the Vite frontend.
 
+The listener claims its port before acquiring Vite, source watchers or evaluator
+processes. It returns 503 while initialization is pending. Port conflicts therefore
+exit before creating those resources. Signal supervision is installed before
+startup and remains registered while asynchronous cleanup runs. Partial startup
+failures release every registered resource and the listener. Shutdown closes
+incoming connections, stops watching and closes the builder's explicit
+`EvaluatorLifetime`: snapshot, batch-review, route-review and resource-review
+pools all belong to that owner, and live evaluators are released from its registry
+on exit. Terminal builder disposal refuses new or already queued refreshes. Cleanup
+joins startup and tracked refreshes, then drains any late acquisition; interrupted
+startup never reports readiness. Local compute/storage started separately through Deploy & Run keeps
+its existing ownership rules; closing Studio does not delete persistent volumes.
+Evaluator disposal first disconnects IPC and sends SIGTERM, then escalates after
+one second to SIGKILL against only that owned child if it has not exited. This also
+bounds cleanup when authored code installs a signal handler and blocks its event
+loop. The escalation timer is cleared on exit, and repeated disposal shares the
+same completion.
+The fixed generator/check commands in [commands.ts](../../../framework-studio/server/commands.ts)
+also belong to this lifetime. Shutdown stops their supervised process tree and
+waits for the active command to settle before exiting; a closed runner refuses
+new commands and never advances to a later step. The existing tether also stops
+those children if Studio is killed outright. Commands still use fixed argv without
+a shell, and generation still requires explicit confirmation.
+
 [guards.ts](../../../framework-studio/server/guards.ts) checks exact local Host/port, a random session token, same-origin POSTs and no-store caching; SSE carries the token in its query. Vite filesystem access is restricted. This is a trusted local tool executing repository code, not a remotely hosted multi-user service or hostile-code sandbox.
 
 `SnapshotBuilder.refresh` in [snapshot.ts](../../../framework-studio/server/snapshot.ts) serializes/coalesces refreshes:
 
 1. Hash editable files and read deployment settings.
 2. `EvaluatorPool` loads dev and prod in separate forked module graphs. Synthetic inputs select mode; graph evaluation does not need resolved secret values. A narrow mode flag is read from the authored mode files. Forks inherit host trust/environment; do not describe them as secret-proof isolation.
-3. `projectModel` normalizes/validates declarations into each `ModeModel`. `lambdaSpec` in [lambda-spec.ts](../../../framework-studio/server/model/lambda-spec.ts) asks `resolveLambdaTarget` once per Lambda per evaluated config; Studio never mutates an evaluated config (`applyPatch` copies).
+3. `projectModel` normalizes/validates declarations into each `ModeModel`. A fresh availability resolver supplies canonical lane predicates for that projection. `withLambdaSpecs` in [lambda-spec.ts](../../../framework-studio/server/model/lambda-spec.ts) temporarily seeds build settings from one fresh batch; `finally` restores or removes that scope. Later projections re-read mutated settings. The ordinary evaluator treats loaded configuration as immutable (`applyPatch` copies).
 4. [Source indexing](source-indexing.md) supplies locations, capabilities and CDK evidence. Prisma contract parsing, Compose metadata, client mappings, descriptions and input **metadata** enrich the snapshot.
 5. Increment generation and combine it with a content hash for `revision`; atomically cache disposable CDK-link evidence under `.cache/framework-studio`.
 

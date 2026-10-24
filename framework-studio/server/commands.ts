@@ -1,7 +1,8 @@
-import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
 import type { CommandInfo, CommandResult } from "../shared/api";
+import { start, stopTree, tethered } from "./deploy/process";
 
 /**
  * The repository commands the studio can run, and no others.
@@ -40,6 +41,10 @@ const TIMEOUT_MS = 5 * 60_000;
 
 export class CommandRunner {
   private running: string | undefined;
+  private child: ChildProcess | undefined;
+  private pending: Promise<CommandResult> | undefined;
+  private closed = false;
+  private disposal: Promise<void> | undefined;
 
   constructor(private readonly repositoryRoot: string) {}
 
@@ -48,45 +53,62 @@ export class CommandRunner {
   }
 
   async run(name: string, confirmed: boolean): Promise<CommandResult> {
-    const command = COMMANDS[name];
+    if (this.closed) throw Object.assign(new Error("The Studio command runner is closed."), { status: 503 });
+    const command = Object.hasOwn(COMMANDS, name) ? COMMANDS[name] : undefined;
     if (!command) throw Object.assign(new Error(`${name} is not a command the studio runs.`), { status: 404 });
     if (command.writes && !confirmed) {
       throw Object.assign(new Error(`${name} writes files; confirm it first.`), { status: 428 });
     }
     if (this.running) throw Object.assign(new Error(`${this.running} is still running.`), { status: 409 });
     this.running = name;
+    const pending = this.execute(name, command);
+    this.pending = pending;
+    try { return await pending; }
+    finally { this.pending = undefined; this.running = undefined; }
+  }
+
+  /** Commands and their descendants belong to this Studio lifetime. */
+  dispose(): Promise<void> {
+    if (this.disposal) return this.disposal;
+    this.closed = true;
+    if (this.child) stopTree(this.child);
+    this.disposal = (async () => { await this.pending?.catch(() => undefined); })();
+    return this.disposal;
+  }
+
+  private async execute(name: string, command: CommandDefinition): Promise<CommandResult> {
     const started = Date.now();
     const tsx = createRequire(path.join(this.repositoryRoot, "package.json")).resolve("tsx/cli");
     let output = "";
     let exitCode: number | null = 0;
-    try {
-      for (const step of command.steps) {
-        output += `$ tsx ${step.join(" ")}\n`;
-        exitCode = await new Promise<number | null>((resolve) => {
-          const child = spawn(process.execPath, [tsx, ...step], {
-            cwd: this.repositoryRoot,
-            env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
-            shell: false,
-            windowsHide: true,
-          });
-          const append = (chunk: Buffer) => {
-            if (output.length < OUTPUT_LIMIT) output += chunk.toString("utf8");
-          };
-          child.stdout.on("data", append);
-          child.stderr.on("data", append);
-          const timer = setTimeout(() => child.kill(), TIMEOUT_MS);
-          child.on("error", (error) => {
-            output += `${error.message}\n`;
-          });
-          child.on("close", (code) => {
-            clearTimeout(timer);
-            resolve(code);
-          });
+    for (const step of command.steps) {
+      if (this.closed) { exitCode = null; break; }
+      output += `$ tsx ${step.join(" ")}\n`;
+      exitCode = await new Promise<number | null>((resolve) => {
+        const child = start(tethered({
+          file: process.execPath,
+          args: [tsx, ...step],
+          cwd: this.repositoryRoot,
+          env: { ...process.env, FORCE_COLOR: "0", NO_COLOR: "1" },
+          display: `tsx ${step.join(" ")}`,
+        }));
+        this.child = child;
+        const append = (chunk: Buffer) => {
+          if (output.length < OUTPUT_LIMIT) output += chunk.toString("utf8");
+        };
+        child.stdout!.on("data", append);
+        child.stderr!.on("data", append);
+        const timer = setTimeout(() => stopTree(child), TIMEOUT_MS);
+        child.on("error", (error) => {
+          output += `${error.message}\n`;
         });
-        if (exitCode !== 0) break;
-      }
-    } finally {
-      this.running = undefined;
+        child.on("close", (code) => {
+          clearTimeout(timer);
+          this.child = undefined;
+          resolve(code);
+        });
+      });
+      if (exitCode !== 0) break;
     }
     return { command: name, exitCode, output: output.slice(0, OUTPUT_LIMIT), durationMs: Date.now() - started };
   }

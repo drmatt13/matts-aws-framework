@@ -115,6 +115,17 @@ flowchart LR
 
 `EditService` in [transaction.ts](../../../framework-studio/server/edits/transaction.ts) serializes its operations and keeps plans/history. `BatchEditor` in [batch.ts](../../../framework-studio/server/edits/batch.ts) composes field, route, trigger, failure destination, replay wrapper, description, mapping and creation changes into source overrides. Resource and environment details have specialized services with their own validation/private data; see [secrets](../deployment/secrets.md).
 
+Batch review rejects unchanged source before expensive work. Applicable framework
+artifacts are generated in the existing disposable copy, then the complete candidate
+is evaluated in fresh dev/prod processes once, with the relevant TypeScript checks.
+Generator errors still block otherwise valid intent; rejected intent retains normal
+both-mode diagnostics. Binding comparisons exclude only snapshot display evidence,
+so source excerpts/locations do not cause unrelated candidate type-checks. Grant
+scope, permission, destination and invocation changes remain validation dependencies.
+The final review rechecks all captured generator-input hashes after validation.
+Apply repeats validation and confirms actual written models; no review result is
+reused across source changes. See the [performance evidence and replay procedure](../../framework-studio/job4-performance-2026-10-23.md).
+
 `planEdit` in [plan.ts](../../../framework-studio/server/edits/plan.ts) uses [source locations](source-indexing.md), narrow parsing and semantic patches; the shared diff engine preserves interior unchanged runs and emits contextual hunks. [splice.ts](../../../framework-studio/server/edits/splice.ts) replaces/inserts/removes supported literal ranges while preserving surrounding source/quotes. It refuses unsafe computed shapes/comments instead of reprinting entire files.
 
 Comment protection belongs in the shared source operations: inserting the first property

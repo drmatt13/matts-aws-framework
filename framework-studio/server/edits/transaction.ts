@@ -187,7 +187,7 @@ export class EditService {
       try { planned = planHttpRoute(this.repositoryRoot, state, id, nextPath); }
       catch (error) { throw new EditError(422, error instanceof Error ? error.message : "The route cannot be renamed here."); }
       assertWritable(this.repositoryRoot, planned.relativeFile);
-      const preflight = await validateHttpRoute(this.repositoryRoot, state, planned.file, planned.after, planned.change);
+      const preflight = await validateHttpRoute(this.repositoryRoot, state, planned.file, planned.after, planned.change, this.builder.evaluators);
       if (this.state().snapshot.revision !== revision || sha256(readFileSync(planned.file, "utf8")) !== planned.beforeHash) throw new EditError(409, "The route changed while validating it. Preview again.");
       const target = state.snapshot.models.dev.targets.find((target) => target.ref === planned.change.target)!;
       const batch = preflight.dev.ok && preflight.prod.ok ? await this.batches.plan([{ kind: "route", route: id, value: nextPath }], revision) : undefined;
@@ -267,7 +267,7 @@ export class EditService {
     }
     const state = this.state();
     const preflight = edit.kind === "route"
-      ? await validateHttpRoute(this.repositoryRoot, state, entry.file, replacement, edit.change)
+      ? await validateHttpRoute(this.repositoryRoot, state, entry.file, replacement, edit.change, this.builder.evaluators)
       : await state.evaluation.preflight({ target: entry.target, field: entry.field, patch: direction === "undo" ? edit.inverse : edit.forward });
     if (!preflight.dev.ok || !preflight.prod.ok) {
       const message = [...preflight.dev.diagnostics, ...preflight.prod.diagnostics].find((diagnostic) => diagnostic.severity === "error")?.message;

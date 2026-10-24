@@ -10,6 +10,7 @@ import {
 } from "./secret-bindings";
 import {
   getFrameworkTargets,
+  getLambdaTargets,
   isNodeLambdaRuntime,
   isSourcedTarget,
   resolveLambdaTarget,
@@ -18,6 +19,7 @@ import {
   type FrameworkConfig,
   type FrameworkDirectory,
   type NormalizedTarget,
+  type ResolvedLambdaTarget,
   type TargetReference,
 } from "./index";
 
@@ -341,6 +343,28 @@ export function assertTargetArtifacts(
   directory: string,
   host: TargetSourceHost = diskSourceHost,
 ): void {
+  assertArtifactFiles(target, directory, host, () => resolveLambdaTarget(config, target.id));
+}
+
+/**
+ * One source-validation operation shares resolved build settings. Recreate this
+ * validator for each config evaluation; it is not a cache across source edits.
+ */
+export function createTargetArtifactValidator(
+  config: FrameworkConfig,
+  host: TargetSourceHost = diskSourceHost,
+): (target: NormalizedTarget, directory: string) => void {
+  const lambdas = new Map(getLambdaTargets(config).map((spec) => [spec.id, spec] as const));
+  return (target, directory) => assertArtifactFiles(target, directory, host,
+    () => lambdas.get(target.id) ?? resolveLambdaTarget(config, target.id));
+}
+
+function assertArtifactFiles(
+  target: NormalizedTarget,
+  directory: string,
+  host: TargetSourceHost,
+  lambda: () => ResolvedLambdaTarget,
+): void {
   const origin = target.origins[0] ?? target.reference;
 
   if (target.kind === "agent") {
@@ -357,7 +381,7 @@ export function assertTargetArtifacts(
   }
   if (target.kind === "workflow") return;
 
-  const spec = resolveLambdaTarget(config, target.id);
+  const spec = lambda();
   if (spec.packaging === "container") {
     if (!findDockerfile(directory, host)) {
       throw new Error(

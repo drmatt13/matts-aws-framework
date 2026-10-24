@@ -2,10 +2,10 @@ import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "n
 import ts from "typescript";
 import path from "node:path";
 import { getFrameworkTargets, type FrameworkConfig } from "@repo/framework/config";
-import { assertTargetArtifacts, resolveAgentSourcePath, resolveFrameworkDirectory, type TargetSourceHost } from "@repo/framework/config/source";
+import { createTargetArtifactValidator, resolveAgentSourcePath, resolveFrameworkDirectory, type TargetSourceHost } from "@repo/framework/config/source";
 import type { ModeModel } from "../shared/model";
-import { assertAgentCoreEntries } from "../../packages/framework/scripts/check-agentcore";
-import { assertCognitoVerifierInputs } from "../../packages/framework/scripts/check-auth";
+import { assertAgentCoreEntry } from "../../packages/framework/scripts/check-agentcore";
+import { createCognitoVerifierInputValidator } from "../../packages/framework/scripts/check-auth";
 
 /** Candidate files are visible to the canonical source/artifact validators without writing them. */
 export function overlaySourceHost(overrides: Readonly<Record<string, string>> = {}): TargetSourceHost {
@@ -27,16 +27,18 @@ export function overlaySourceHost(overrides: Readonly<Record<string, string>> = 
 export function withImplementationHealth(config: FrameworkConfig, model: ModeModel, root: string, overrides: Readonly<Record<string, string>> = {}): ModeModel {
   const host = overlaySourceHost(overrides);
   const targets = new Map<string, ReturnType<typeof getFrameworkTargets>[number]>(getFrameworkTargets(config).map(target => [target.reference, target]));
+  const assertArtifacts = createTargetArtifactValidator(config, host);
+  const assertCognitoInput = createCognitoVerifierInputValidator(config);
   return { ...model, targets: model.targets.map(target => {
     const declaration = targets.get(target.ref);
     if (!declaration?.directory || target.kind === "workflow") return target;
     const problems: string[] = [];
     try {
       const directory = target.kind === "agent" ? resolveAgentSourcePath(config, target.id, { repositoryRoot: root, sourceHost: host }) : resolveFrameworkDirectory(declaration.directory, target.ref, { repositoryRoot: root, sourceHost: host });
-      assertTargetArtifacts(config, declaration, directory, host);
+      assertArtifacts(declaration, directory);
       const read = (file: string) => overrides[path.resolve(file)] ?? readFileSync(file, "utf8");
       if (target.kind === "agent" || target.compute.kind === "lambda" && target.compute.packaging === "zip" && target.compute.implementation === "typescript") {
-        const file = path.join(directory, "index.ts"), source = ts.createSourceFile(file, read(file), ts.ScriptTarget.Latest, true);
+        const file = path.join(directory, "index.ts"), sourceText = read(file), source = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true);
         const name = target.kind === "agent" ? "handler" : target.compute.kind === "lambda" ? target.compute.handler ?? "lambdaHandler" : "lambdaHandler";
         const exports = new Set(source.statements.flatMap(statement => {
           if (ts.isExportDeclaration(statement) && statement.exportClause && ts.isNamedExports(statement.exportClause)) return statement.exportClause.elements.map(item => item.name.text);
@@ -45,9 +47,8 @@ export function withImplementationHealth(config: FrameworkConfig, model: ModeMod
           return ts.isVariableStatement(statement) ? statement.declarationList.declarations.flatMap(item => ts.isIdentifier(item.name) ? [item.name.text] : []) : [];
         }));
         if (!exports.has(name) && !source.statements.some(statement => ts.isExportDeclaration(statement) && !statement.exportClause)) problems.push(`${target.ref} requires index.ts to export ${name}. Restore the configured handler; existing code is preserved.`);
-        const selectedSource = (reference: string) => reference === target.ref ? read(file) : undefined;
-        assertAgentCoreEntries(config, selectedSource);
-        assertCognitoVerifierInputs(config, selectedSource);
+        assertAgentCoreEntry(config, declaration, sourceText);
+        assertCognitoInput(declaration, () => sourceText);
       }
       if ((target.role === "agent" || target.role === "tool") && !host.exists(path.join(directory, "contract.ts")) && !host.exists(path.join(directory, "contract.schema.json"))) problems.push(`${target.ref} needs an adjacent contract.ts or contract.schema.json before generation.`);
       if (target.kind === "service" && target.lanes.local) {

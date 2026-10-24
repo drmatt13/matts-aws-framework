@@ -10,12 +10,6 @@ export const RUNNER_IMAGE_PREFIX = "matts-framework-";
 /** The kinds of image this runner builds, as the kind label names them. */
 const RUNNER_IMAGE_KINDS = new Set(["task", "lambda"]);
 
-/**
- * The only label container-Lambda images carried before images were scoped to
- * a project. Such an image cannot say whose it is.
- */
-const LEGACY_LAMBDA_LABEL = "com.matts-aws-framework.local-lambda";
-
 /** A task build's private tag. The task supervisor releases these itself. */
 const PREPARATION_TAG = /^matts-framework-task-[^:]+:prepare-[0-9a-f]+$/;
 
@@ -53,13 +47,9 @@ export function planImageReclaim(
 
 function ownedBy(image: RunnerImage, project: string): boolean {
   const owner = image.labels[TASK_CONTAINER_PROJECT_LABEL];
-  if (owner !== undefined) {
-    return owner === project && RUNNER_IMAGE_KINDS.has(image.labels[TASK_CONTAINER_KIND_LABEL] ?? "");
-  }
-  // Built before images named their project, so no runner can tell whose it
-  // is. Any runner may reclaim it: it is a cache of source on disk, and the
-  // next invocation of a declared target rebuilds it from the build cache.
-  return image.labels[LEGACY_LAMBDA_LABEL] === "true";
+  // Older images without a project label cannot prove ownership. A cache can
+  // still be another checkout's current image, so leave it for manual review.
+  return owner === project && RUNNER_IMAGE_KINDS.has(image.labels[TASK_CONTAINER_KIND_LABEL] ?? "");
 }
 
 export interface LocalImageJanitorOptions {

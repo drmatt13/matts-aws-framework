@@ -483,6 +483,7 @@ function assertConfigMatchesRepository(
   const problems: string[] = [];
   const directories = new Map<string, string>();
   const declaredContainerDirectories = new Set<string>();
+  const assertArtifacts = source.createTargetArtifactValidator(config);
 
   for (const target of framework.getFrameworkTargets(config)) {
     // A workflow has no directory to resolve, artifact to demand or contract to
@@ -494,7 +495,7 @@ function assertConfigMatchesRepository(
         target.origins[0] ?? target.reference,
         { repositoryRoot },
       );
-      source.assertTargetArtifacts(config, target, directory);
+      assertArtifacts(target, directory);
       directories.set(target.reference, directory);
       if (target.kind === "service" || target.kind === "task") {
         declaredContainerDirectories.add(target.directory);

@@ -2,6 +2,7 @@ import {
   isFrameworkDatabase, databaseSettings,
   WORKFLOW_REFERENCE,
   assertCloudEdgesResolvable,
+  createTargetAvailability,
   endpointServices,
   DEFAULT_DATABASE_POOL,
   INTERFACE_ENDPOINT_SERVICES,
@@ -48,7 +49,7 @@ import type {
 } from "../../shared/model";
 import { DEFAULT_FIELDS, fieldFacts } from "../edits/fields";
 import { projectDefaults } from "../edits/defaults";
-import { lambdaSpec } from "./lambda-spec";
+import { lambdaSpec, withLambdaSpecs } from "./lambda-spec";
 import { declarationOf, originInMessage, parseOrigin } from "./origin";
 import { projectTagging } from "./tags";
 
@@ -84,18 +85,18 @@ function title(target: NormalizedTarget): string {
   return target.id;
 }
 
-export function targetLanes(config: FrameworkConfig, target: NormalizedTarget, options: ProjectionOptions): Lanes {
+export function targetLanes(config: FrameworkConfig, target: NormalizedTarget, options: ProjectionOptions, availability?: ReturnType<typeof createTargetAvailability>): Lanes {
   const graph = { webSocketApi: options.webSocketApi };
   const declaration = target.origins[0] ? declarationOf(config, parseOrigin(target.origins[0])!) : undefined;
   const base = {
     deploy: target.deploy,
-    local: isTargetEnabled(config, target.kind, target.id, "local"),
-    cloud: isTargetEnabled(config, target.kind, target.id, "cloud"),
-    dev: isTargetDeployed(config, target.kind, target.id, "dev", graph),
+    local: availability ? availability.enabled(target.kind, target.id, "local") : isTargetEnabled(config, target.kind, target.id, "local"),
+    cloud: availability ? availability.enabled(target.kind, target.id, "cloud") : isTargetEnabled(config, target.kind, target.id, "cloud"),
+    dev: availability ? availability.deployed(target.kind, target.id, "dev", graph) : isTargetDeployed(config, target.kind, target.id, "dev", graph),
     // A prod deployment answers for WebSocket handlers whether or not it builds
     // their API; the composition skips them when it does not.
     prod:
-      isTargetDeployed(config, target.kind, target.id, "prod", graph) &&
+      (availability ? availability.deployed(target.kind, target.id, "prod", graph) : isTargetDeployed(config, target.kind, target.id, "prod", graph)) &&
       (!WEB_SOCKET_ROLES.has(target.role) || options.webSocketApi),
   };
   const webSocketNote =
@@ -526,7 +527,7 @@ function routesOf(config: FrameworkConfig): ModelRoute[] {
   return routes;
 }
 
-function targetModel(config: FrameworkConfig, target: NormalizedTarget, options: ProjectionOptions): ModelTarget {
+function targetModel(config: FrameworkConfig, target: NormalizedTarget, options: ProjectionOptions, availability: ReturnType<typeof createTargetAvailability>): ModelTarget {
   const origin = target.origins[0] ? parseOrigin(target.origins[0]) : undefined;
   const declaration = origin ? declarationOf(config, origin) : undefined;
   const cloud = declaration?.cloud as Record<string, unknown> | undefined;
@@ -541,7 +542,7 @@ function targetModel(config: FrameworkConfig, target: NormalizedTarget, options:
     origins: [...target.origins],
     constructId: target.cloud.constructId,
     constructIdPinned: typeof cloud?.constructId === "string",
-    lanes: targetLanes(config, target, options),
+    lanes: targetLanes(config, target, options, availability),
     compute: compute(config, target),
     placement: targetPlacement(config, target),
     ...(declaration?.auth === true ? { auth: true } : {}),
@@ -621,12 +622,17 @@ export function projectModel(
   options: ProjectionOptions,
   evaluatedInMs = 0,
 ): ModeModel {
+  return withLambdaSpecs(config, () => projectModelSnapshot(config, options, evaluatedInMs));
+}
+
+function projectModelSnapshot(config: FrameworkConfig, options: ProjectionOptions, evaluatedInMs: number): ModeModel {
+  const availability = createTargetAvailability(config);
   const targets = getFrameworkTargets(config);
   const routes = routesOf(config);
   const { edges, readPaths } = edgesOf(config, targets, routes);
   const diagnostics = validateForMode(config, options, targets);
   const defaults = projectDefaults(config, targets, DEFAULT_FIELDS);
-  const projectedTargets = targets.map(target => targetModel(config, target, options));
+  const projectedTargets = targets.map(target => targetModel(config, target, options, availability));
   return {
     mode: options.mode,
     tagging: projectTagging(config, targets, routes),

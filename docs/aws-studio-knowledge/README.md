@@ -18,7 +18,8 @@ Read this router, **one first page**, then only its relevant dependency links. V
 
 | Task | Read first | Then consult if affected |
 | --- | --- | --- |
-| Current integrated campaign evidence, real AWS vs local validation, cleanup | [Job 3 execution](../framework-studio/job3-execution-2026-10-23.md) | [Capabilities](reference/capabilities.md), [Planning/safety](deployment/planning-and-safety.md) |
+| Current local performance, developer acceptance and lifecycle evidence | [Job 4 performance](../framework-studio/job4-performance-2026-10-23.md) | [Performance procedures](../framework-studio/performance.md), [Local execution](runtime/local-execution.md) |
+| Historical real AWS validation and cleanup | [Job 3 execution](../framework-studio/job3-execution-2026-10-23.md) | [Capabilities](reference/capabilities.md), [Planning/safety](deployment/planning-and-safety.md) |
 | Studio styling, workspace chrome or control consistency | [UI design system](../framework-studio/ui-design-system.md) | [Inspector conventions](../framework-studio/inspector-design.md), [Rendering](studio/rendering.md) |
 | Cognito workspace, federation, identity pools or permission evidence | [Authentication workspace](studio/authentication.md) | [Identity/domain guide](../framework-studio/identity-and-domains.md), [Planning/safety](deployment/planning-and-safety.md) |
 | Inspector property or source diff | [Editing](studio/editing.md) | [Source indexing](studio/source-indexing.md), [extension recipe](guides/extensions.md) |

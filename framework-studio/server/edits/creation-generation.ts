@@ -1,9 +1,9 @@
-import { spawn } from "node:child_process";
 import { cpSync, existsSync, globSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { writeModeInputs } from "../inputs";
 import { sha256, toRelative } from "../files";
 import { EditError } from "./io";
+import { start, stopTree, tethered } from "../deploy/process";
 
 /** Generator-owned output only. Creation runs the real generator; these files
  * are never authored by templates or accepted as HTTP write destinations. */
@@ -14,16 +14,27 @@ export function isCreationGeneratedFile(relative: string): boolean {
     || /^cdk-app\/ecs_containers\/(?:[A-Za-z0-9_-]+\/)+\.env\.example$/.test(relative)
     || relative === "package-lock.json";
 }
-function run(command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv): Promise<string> {
+/** Fixed internal commands share Studio's owner lifeline and process-tree cleanup. */
+export function runCreationCommand(command: string, args: readonly string[], cwd: string, env: NodeJS.ProcessEnv, timeoutMs = 90_000): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, [...args], { cwd, env, stdio: ["ignore", "pipe", "pipe"], shell: false });
+    const child = start(tethered({ file: command, args, cwd, env, display: `${command} ${args.join(" ")}` }));
     let output = "";
     let stdout = "";
+    let failure: Error | undefined;
+    let timedOut = false;
     const append = (chunk: Buffer) => { output = (output + chunk.toString("utf8")).slice(-6000); };
-    child.stdout.on("data", (chunk: Buffer) => { stdout = (stdout + chunk.toString("utf8")).slice(-6000); append(chunk); }); child.stderr.on("data", append);
-    const timeout = setTimeout(() => { child.kill(); reject(new EditError(422, "Creation artifact generation timed out. Nothing was written.")); }, 90_000);
-    child.once("error", (error) => { clearTimeout(timeout); reject(error); });
-    child.once("exit", (code) => { clearTimeout(timeout); if (code === 0) resolve(stdout); else reject(new EditError(422, `Creation artifact generation failed. ${output.trim()}`)); });
+    child.stdout!.on("data", (chunk: Buffer) => { stdout = (stdout + chunk.toString("utf8")).slice(-6000); append(chunk); }); child.stderr!.on("data", append);
+    // Stopping first and settling only on close keeps the preview alive until
+    // the command and inherited output pipes have actually been released.
+    const timeout = setTimeout(() => { timedOut = true; stopTree(child); }, timeoutMs);
+    child.once("error", (error) => { failure = error; });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      if (timedOut) reject(new EditError(422, "Creation artifact generation timed out. Nothing was written."));
+      else if (failure) reject(failure);
+      else if (code === 0) resolve(stdout);
+      else reject(new EditError(422, `Creation artifact generation failed. ${output.trim()}`));
+    });
   });
 }
 /** A private copy contains authored source and manifests, never authored env
@@ -81,14 +92,14 @@ export async function generateCreationArtifacts(root: string, overrides: Readonl
       const npm = process.env.npm_execpath;
       const command = npm ? process.execPath : "npm";
       const prefix = npm ? [npm] : [];
-      const version = await run(command, [...prefix, "--version"], directory, env);
+      const version = await runCreationCommand(command, [...prefix, "--version"], directory, env);
       if (!version.trim().startsWith("11.")) throw new EditError(422, "Start Studio with npm 11 to preserve native lockfile metadata.");
-      await run(command, [...prefix, "install", "--package-lock-only", "--ignore-scripts", "--offline", "--no-audit", "--no-fund"], directory, env);
+      await runCreationCommand(command, [...prefix, "install", "--package-lock-only", "--ignore-scripts", "--offline", "--no-audit", "--no-fund"], directory, env);
     }
     // Resolve the implementation from this running Studio, even when its
     // repository target is a disposable integration-test copy.
     const generator = path.resolve(__dirname, "../../..", "packages/framework/scripts/generate-contracts.ts");
-    await run(process.execPath, ["--import", "tsx", generator, "--repository-root", directory], directory, env);
+    await runCreationCommand(process.execPath, ["--import", "tsx", generator, "--repository-root", directory], directory, env);
     const result = new Map<string, string>();
     const before = new Map<string, string | null>();
     const visit = (folder: string): void => {

@@ -2,7 +2,7 @@ import type { ModeModel, ModelResource, Snapshot } from "../shared/model";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { EvaluatorPool, type Evaluation } from "./evaluator/pool";
+import { EvaluatorLifetime, EvaluatorPool, type Evaluation } from "./evaluator/pool";
 import { hashEditableFiles, sha256 } from "./files";
 import { readDeploymentSettings } from "./inputs";
 import { buildSourceIndex, SourceFiles, type BuiltSourceIndex } from "./source";
@@ -84,6 +84,8 @@ export interface StudioState {
 }
 
 export class SnapshotBuilder {
+  private closed = false;
+  readonly evaluators = new EvaluatorLifetime();
   private generation = 0;
   private running: Promise<StudioState> | undefined;
   private pending: Promise<StudioState> | undefined;
@@ -94,7 +96,7 @@ export class SnapshotBuilder {
     readonly repositoryRoot: string,
     log: (line: string) => void = () => {},
   ) {
-    this.pool = new EvaluatorPool(repositoryRoot, log);
+    this.pool = new EvaluatorPool(repositoryRoot, log, this.evaluators);
   }
 
   get current(): StudioState | undefined {
@@ -107,6 +109,7 @@ export class SnapshotBuilder {
    * one extra evaluation is ever queued.
    */
   refresh(): Promise<StudioState> {
+    if (this.closed) return Promise.reject(new Error("The snapshot builder is closed."));
     if (this.pending) return this.pending;
     if (this.running) {
       this.pending = this.running
@@ -121,6 +124,7 @@ export class SnapshotBuilder {
   }
 
   private start(): Promise<StudioState> {
+    if (this.closed) return Promise.reject(new Error("The snapshot builder is closed."));
     this.running = this.build().catch(async (error: unknown) => {
       // evaluate() has already replaced the previous workers. Never leave the
       // previous graph looking current while its preflight workers are gone.
@@ -216,6 +220,7 @@ export class SnapshotBuilder {
   }
 
   dispose(): Promise<void> {
-    return this.pool.dispose();
+    this.closed = true;
+    return this.evaluators.dispose();
   }
 }

@@ -3,7 +3,7 @@ import { locateConfigSource } from "../../../packages/framework/scripts/config-s
 import type { PreflightResult } from "../../shared/api";
 import type { ModeModel } from "../../shared/model";
 import type { StudioState } from "../snapshot";
-import { EvaluatorPool } from "../evaluator/pool";
+import { EvaluatorPool, type EvaluatorLifetime } from "../evaluator/pool";
 import { sha256, toRelative } from "../files";
 import { SourceFiles } from "../source";
 import { formatLiteral } from "./splice";
@@ -38,8 +38,8 @@ export function planHttpRoute(root: string, state: StudioState, id: string, next
 
 /** Validate the real candidate source in two isolated module graphs. Lambda identities
  * must match the current graph exactly; changing a public path must not replace a function. */
-export async function validateHttpRoute(root: string, state: StudioState, file: string, text: string, change: RouteChange): Promise<{ dev: PreflightResult; prod: PreflightResult }> {
-  const pool = new EvaluatorPool(root);
+export async function validateHttpRoute(root: string, state: StudioState, file: string, text: string, change: RouteChange, lifetime?: EvaluatorLifetime): Promise<{ dev: PreflightResult; prod: PreflightResult }> {
+  const pool = new EvaluatorPool(root, undefined, lifetime);
   try {
     const evaluation = await pool.evaluate(state.snapshot.webSocketApi, { [file]: text });
     const result = (model: ModeModel): PreflightResult => {

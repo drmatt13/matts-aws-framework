@@ -35,7 +35,15 @@ child.on("error", (error) => {
   process.stderr.write(`${error.message}\n`);
   process.exit(127);
 });
-child.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+child.on("exit", (code, signal) => {
+  // The program may exit before descendants that ignored its termination
+  // signal. Its detached group belongs to this tether, so finish that group
+  // before exiting and canceling the escalation timer. Never signal our group.
+  if (process.platform !== "win32" && child.pid !== undefined) {
+    try { process.kill(-child.pid, "SIGKILL"); } catch { /* Owned group already gone. */ }
+  }
+  process.exit(code ?? (signal ? 1 : 0));
+});
 process.stdin.on("end", stop);
 process.stdin.on("close", stop);
 process.stdin.on("error", stop);

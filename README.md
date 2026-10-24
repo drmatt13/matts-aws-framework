@@ -7,7 +7,7 @@ workload declarations drive AWS infrastructure and the local development servers
 
 ## Start here
 
-Use Node 24+, npm, an AWS CLI profile, and Docker Desktop with Linux containers.
+Use Node 24+, npm 11, an AWS CLI profile, and Docker Desktop with Linux containers.
 The CDK CLI is installed in the workspace; a global installation is unnecessary.
 
 | I want to… | Read |

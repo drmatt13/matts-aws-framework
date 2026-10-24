@@ -46,6 +46,23 @@ In [config/index.ts](../../../packages/framework/src/config/index.ts), `defineFr
 
 `assertCloudEdgesResolvable` rejects cloud consumers whose required declared targets/resources cannot resolve. Source validation also checks literal routes, overlap, handler wrappers, invocation cycles, workflow semantics and runtime packaging. `npm run framework:generate` emits projections; `framework:check` detects drift and authoring violations. Neither is a live deployment check.
 
+Batch tooling uses `getLambdaTargets` and `createTargetArtifactValidator` from the
+configuration/source entry points to resolve Lambda build settings once per
+operation. Studio implementation health uses the canonical per-target tool/agent
+and Cognito checks, avoiding a whole-application scan for each handler. These are
+invocation-local snapshots, never a persistent cache of a mutable config. Recreate
+them after edits; standalone resolution remains fresh. Local target selection and
+route validation likewise use one fresh normalization. The
+[artifact benchmark](../../../packages/framework/scripts/benchmark-artifacts.ts)
+provides timing/CPU/RSS samples without brittle unit-test timing limits; see
+[campaign evidence](../../framework-studio/job4-build-evidence-2026-10-23.md).
+
+`createTargetAvailability` shares the exact canonical enabled/deployed predicates
+within an operation. Standalone predicates remain fresh, including their existing
+unknown-target behavior. Cloud selection and edge validation use one fresh target
+map; no cache crosses those calls. Studio model projection uses operation-local
+availability and a temporary batch of Lambda settings, restored in `finally`.
+
 Extend a DSL field through its type, normalization/defaults, validation, CDK/local consumers, generated projections and Studio projection/editability as applicable; use [extension recipes](../guides/extensions.md). Start from existing [Framework guidance](../../FRAMEWORK.md), then use [change impact](../reference/change-impact.md). Resource references belong to [resources/CDK](resources-and-cdk.md), not new environment-specific import tables.
 
 VPC declarations are exported `defineNetwork({ id, ... })` values, one module under

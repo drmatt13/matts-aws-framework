@@ -1311,6 +1311,29 @@ cdk-app/.env.*.template templates alone. Adjacent contract.ts or contract.schema
 provide optional workload payload contracts; TypeScript contracts must be self-contained
 apart from Zod imports. No custom handler-import arrays are needed.
 
+Batch source checks use `getLambdaTargets` and `createTargetArtifactValidator` to
+resolve build settings once per operation. Studio's implementation checks use the
+same per-target tool/agent and Cognito checks. These snapshots belong to one config
+evaluation: recreate them after a source edit. Standalone resolution still reads
+the current config, including in-place changes. Local target selection and route
+validation also inspect one fresh normalization instead of normalizing per target.
+No validation or generated output is skipped, and unchanged generated contents
+retain their existing files and timestamps.
+
+`createTargetAvailability` captures the same canonical lane/deployment predicates
+for one operation. Cloud selection, cloud-edge checks and Studio projection use
+fresh operation snapshots. Studio temporarily batch-resolves Lambda settings
+throughout each synchronous projection and releases that scope in `finally`;
+subsequent projections refresh settings even after in-place config changes.
+
+For a repeatable source-artifact scaling check, run
+`node --import tsx packages/framework/scripts/benchmark-artifacts.ts`.
+Add `--standalone --sizes=20,100 --samples=5` to compare standalone per-target
+resolution. The harness uses synthetic in-memory artifacts, warms each size once,
+and reports sample counts, latency, CPU and RSS; it does not measure disk or the
+whole generator. Full CLI/build and disposable-application measurements are
+recorded in [Job 4 build evidence](framework-studio/job4-build-evidence-2026-10-23.md).
+
 `framework:check` also refuses workflow declarations that use a symbolic value where
 JavaScript cannot honour it — a condition, a coercion, a template literal, a spread.
 

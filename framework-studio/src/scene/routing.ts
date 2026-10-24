@@ -1,6 +1,6 @@
-import type { Point } from "./camera";
+import type { Bounds, Point } from "./camera";
 import { arcPoints } from "./picking";
-import { pathHits, pathLength, pathsCross, type Obstacle } from "./layout-geometry";
+import { intersects, pathBounds, pathHits, pathLength, pathsCross, type Obstacle } from "./layout-geometry";
 import type { LayoutLink } from "./layout-graph";
 import { ELEVATION_STEP } from "./iso";
 
@@ -40,7 +40,7 @@ export function connectionMidpoint(points: readonly Point[]): Point {
  * Related edges share a direction corridor but retain distinct endpoints and lanes. */
 export function routeConnections(links: readonly LayoutLink[], obstacles: readonly Obstacle[]): ConnectionRoutes {
   const result: Record<string, ConnectionRoute> = {};
-  const accepted: { link: LayoutLink; points: readonly Point[] }[] = [];
+  const accepted: { link: LayoutLink; points: readonly Point[]; bounds: Bounds }[] = [];
   const lanes = new Map<string, number>();
   for (const link of [...links].sort((a, b) => b.weight - a.weight || (a.id < b.id ? -1 : 1))) {
     const { from: a, to: b } = link;
@@ -58,14 +58,18 @@ export function routeConnections(links: readonly LayoutLink[], obstacles: readon
     const recent = accepted.slice(-96);
     for (const control of controls) {
       const points = arcPoints(a, control, b, 8);
-      const hits = obstacles.reduce((sum, obstacle) => sum + Number(obstacle.id !== a.island && obstacle.id !== b.island && obstacle.id !== a.id && obstacle.id !== b.id && pathHits(points, obstacle.bounds)), 0);
-      const crossings = recent.reduce((sum, other) => sum + (other.link.from.id !== a.id && other.link.to.id !== a.id && other.link.from.id !== b.id && other.link.to.id !== b.id && pathsCross(points, other.points) ? Math.sqrt(other.link.weight * link.weight) : 0), 0);
+      // Envelopes only reject impossible intersections. Keep the same sampled
+      // curves, exact geometry, scores and candidate order for all possible hits.
+      const bounds = pathBounds(points);
+      const hits = obstacles.reduce((sum, obstacle) => sum + Number(obstacle.id !== a.island && obstacle.id !== b.island && obstacle.id !== a.id && obstacle.id !== b.id && intersects(bounds, obstacle.bounds) && pathHits(points, obstacle.bounds)), 0);
+      const crossings = recent.reduce((sum, other) => sum + (other.link.from.id !== a.id && other.link.to.id !== a.id && other.link.from.id !== b.id && other.link.to.id !== b.id && intersects(bounds, other.bounds) && pathsCross(points, other.points) ? Math.sqrt(other.link.weight * link.weight) : 0), 0);
       const cost = hits * 20000 + crossings * 1200 + pathLength(points);
       if (cost < score) { bestControl = control; score = cost; }
     }
     const best = arcPoints(a, bestControl, b, 24);
     result[link.id] = { points: best, length: pathLength(best) };
-    accepted.push({ link, points: best.filter((_, at) => at % 3 === 0) });
+    const points = best.filter((_, at) => at % 3 === 0);
+    accepted.push({ link, points, bounds: pathBounds(points) });
   }
   return result;
 }

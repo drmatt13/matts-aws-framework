@@ -93,7 +93,7 @@ export class ResourceService {
     });
   }
   private async validate(overrides: Record<string, string>, webSocketApi: boolean): Promise<ResourcePlan["diagnostics"]> {
-    const pool = new EvaluatorPool(this.root);
+    const pool = new EvaluatorPool(this.root, undefined, this.builder.evaluators);
     try {
       const evaluation = await pool.evaluate(webSocketApi, overrides);
       const diagnostics = [evaluation.dev, evaluation.prod].flatMap((model) => model.diagnostics.map((diagnostic) => ({ ...diagnostic, message: `${model.mode}: ${diagnostic.message}` })));

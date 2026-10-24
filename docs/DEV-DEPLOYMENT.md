@@ -9,7 +9,7 @@ declarations and the exact `route` for agents. The Vite proxy preserves those pa
 
 ## First setup
 
-Install Node 24+, npm, AWS CLI credentials for the intended dev account, and Docker
+Install Node 24+, npm 11, AWS CLI credentials for the intended dev account, and Docker
 Desktop using Linux containers with Compose Watch support (Compose 2.32+). The workspace
 provides the CDK CLI; use `npm --workspace cdk-app exec -- cdk ...`.
 
@@ -471,9 +471,14 @@ container uses, running or stopped, is kept until a later pass:
 Runner images carry `com.matts-aws-framework.kind` (`task` or `lambda`), `.project` and
 `.target`, so `docker image ls --filter label=com.matts-aws-framework.target=<id>` finds a
 workload's image. The runner touches only images labelled with its own Compose project.
-The exception is a container-Lambda image built before project labels existed, which any
-runner may remove because it is only a cache. A reverted edit rebuilds from the build cache
-in seconds. `--remove-orphans` removes containers of services removed from the file.
+Older container-Lambda images without project labels are preserved because their
+ownership cannot be proved. Inspect their labels and container references before any
+manual removal. `--remove-orphans` removes containers of services removed from the file.
 Build cache is left to Docker's builder garbage collection (`docker builder prune` reclaims
 it by hand). Checkouts with the same directory name share one Compose project, and with it
 these images, container names and postgres_data.
+
+`LocalLambdaExecutor.close()` cancels its active calls, including cold-only Node
+handlers. `LambdaWorkerPool.close()` cancels warm and concurrent overflow handlers;
+both reject new invocations after closing. Handler processes also exit when the
+parent IPC channel disconnects. Closing compute does not remove images or storage.

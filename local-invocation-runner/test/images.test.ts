@@ -83,15 +83,13 @@ test("another project's images are never touched", () => {
   assert.deepEqual(plan, []);
 });
 
-test("a container-Lambda image built before project labels is reclaimable", () => {
+test("an old container-Lambda image without proven project ownership is preserved", () => {
   const legacy: RunnerImage = {
     id: "sha256:legacy",
     tags: ["matts-framework-python-example:d9208a381dd948f1-arm64"],
     labels: { "com.matts-aws-framework.local-lambda": "true", "com.amazonaws.lambda.platform.version": "sbxv2only" },
   };
-  assert.deepEqual(planImageReclaim([legacy], { project: PROJECT, keep: new Set() }), [
-    "matts-framework-python-example:d9208a381dd948f1-arm64",
-  ]);
+  assert.deepEqual(planImageReclaim([legacy], { project: PROJECT, keep: new Set() }), []);
   assert.deepEqual(
     planImageReclaim([legacy], { project: PROJECT, keep: new Set(["matts-framework-python-example:d9208a381dd948f1-arm64"]) }),
     [],

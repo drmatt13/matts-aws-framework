@@ -111,6 +111,20 @@ Board's [layout.ts](../../../framework-studio/src/layout.ts) arranges entry, com
 
 Keep optimization bounded for large graphs. Preserve layout stability across selection/mode switches and avoid recomputing source models during a pointer move. Rendering and picking must share geometric assumptions, especially curve sampling and visible endpoints. Avoid claiming a node-count ceiling or browser FPS guarantee from a synthetic timing fixture.
 
+Routing rejects disjoint sampled-path envelopes before exact obstacle/crossing
+checks. Path helpers reject segment pairs and segment/box pairs whose envelopes
+cannot intersect before applying the original strict orientation tests. Envelopes
+must cover every sampled point, including interior extrema and zero-width paths.
+Touching boundaries retain the existing strict intersection semantics. Candidate
+samples, scores, ordering, final route resolution and picking remain unchanged.
+These envelopes belong to one routing call; they do not cache source or scenes.
+Use `framework-studio/scripts/benchmark-graph.ts` with 25/100/250/500 or a sanitized
+snapshot JSON path to measure cold scene creation and retained-position rebuilds
+separately from rendering. `prepare-browser-graph.ts` prepares a Playwright CLI
+fixture runner against an existing production preview; API requests stay intercepted
+in that browser tab. See the [Job 4 evidence](../../framework-studio/job4-frontend-evidence-2026-10-23.md)
+for procedure, comparisons and remaining software-rendering limits.
+
 Bulk tag grouping and filtering reuse `ModelIndex` resource/local-service maps and a
 scene node map. Build local group buckets by appending members, then sort once; copying
 the growing bucket for every entity makes a shared tag value quadratic. Hidden member

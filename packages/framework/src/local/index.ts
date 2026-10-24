@@ -87,6 +87,7 @@ export class LocalLambdaExecutor {
   private readonly repositoryRoot: string;
   private readonly runnerUrl: string;
   private readonly pool: LambdaWorkerPool | undefined;
+  private readonly lifetime = new AbortController();
 
   public constructor(options: LocalLambdaExecutorOptions) {
     this.config = options.config;
@@ -109,6 +110,7 @@ export class LocalLambdaExecutor {
     event: unknown,
     context?: LocalInvocationContext,
   ): Promise<Result> {
+    this.lifetime.signal.throwIfAborted();
     if (!this.allowedTargets.has(target)) {
       throw new Error(
         `Local Lambda target "${target}" is not declared under http, webSocket, events or tools in the framework config.`,
@@ -126,13 +128,15 @@ export class LocalLambdaExecutor {
     return invokeLocalNodeLambda(this.config, target, event, {
       repositoryRoot: this.repositoryRoot,
       runnerUrl: this.runnerUrl,
+      signal: this.lifetime.signal,
       ...(context ? { context } : {}),
       ...(this.pool ? { pool: this.pool } : {}),
     }) as Promise<Result>;
   }
 
-  /** Stops any warm handler processes. They also exit on their own with this process. */
+  /** Cancels owned calls and closes warm workers; further invocations are refused. */
   public close(): void {
+    this.lifetime.abort(new Error("Local Lambda executor is closed."));
     this.pool?.close();
   }
 
@@ -147,6 +151,7 @@ export class LocalLambdaExecutor {
   ): Promise<Result> {
     const response = await fetch(`${this.runnerUrl}/invoke`, {
       method: "POST",
+      signal: this.lifetime.signal,
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ target, event, context }),
     });
