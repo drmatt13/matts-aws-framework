@@ -1,3 +1,4 @@
+import type { DeployLane } from "@repo/framework/config";
 import type { ApplicationListener } from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import type { IGrantable } from "aws-cdk-lib/aws-iam";
 import type { IFunction } from "aws-cdk-lib/aws-lambda";
@@ -223,12 +224,7 @@ export interface SkippedTargets {
    * deployment produces these, and only for targets a developer invokes.
    */
   readonly notInThisDeployment: readonly TargetReference[];
-  /**
-   * WebSocket handlers with no WebSocket API to route to them, because this
-   * deployment does not build one (DEPLOY_PROD_WEBSOCKET_API is off). Built,
-   * they would be Lambdas nothing can invoke.
-   */
-  readonly withoutWebSocketApi: readonly TargetReference[];
+  readonly conditionNotMet: readonly TargetReference[];
 }
 
 /**
@@ -245,13 +241,13 @@ export function assertFrameworkTargetsComplete(
   registry: FrameworkTargetRegistry,
   options: {
     readonly mode: CloudMode;
-    /** Targets deliberately left unbuilt because their router is not built. */
-    readonly withoutWebSocketApi?: ReadonlySet<TargetReference>;
+    /** Inputs for conditional workload selection. */
+    readonly inputs?: DeployLane;
   },
 ): SkippedTargets {
   const disabled: TargetReference[] = [];
   const notInThisDeployment: TargetReference[] = [];
-  const withoutWebSocketApi: TargetReference[] = [];
+  const conditionNotMet: TargetReference[] = [];
   for (const [kind, ids] of [
     ["lambda", getLambdaTargetIds(config)],
     ["service", getServiceTargetIds(config)],
@@ -265,7 +261,7 @@ export function assertFrameworkTargetsComplete(
       // checks below: the point is to remove the resource, not just the route
       // that points at it.
       const registered = Boolean(registry.get(reference));
-      if (!isTargetEnabled(config, kind, id, "cloud")) {
+      if (!isTargetEnabled(config, kind, id, "cloud", "unconditioned")) {
         if (registered) {
           throw new Error(
             `Framework target "${reference}" is disabled for the cloud scope in framework.config.ts but a stack registered it.`,
@@ -274,24 +270,18 @@ export function assertFrameworkTargetsComplete(
         disabled.push(reference);
         continue;
       }
-      // Asked as if the WebSocket API were built, in either mode: whether it
-      // is decides `withoutWebSocketApi`, which is reported for its own reason.
-      if (!isTargetDeployed(config, kind, id, options.mode, { webSocketApi: true })) {
+      if (!isTargetEnabled(config, kind, id, "cloud", options.inputs)) {
+        if (registered) throw new Error(`Framework target "${reference}" was built although its deployment condition is false.`);
+        conditionNotMet.push(reference);
+        continue;
+      }
+      if (!isTargetDeployed(config, kind, id, options.mode, { inputs: options.inputs })) {
         if (registered) {
           throw new Error(
             `Framework target "${reference}" is not built by a ${options.mode} deployment but a stack registered it. A ${options.mode} deployment holds only what AWS invokes; everything else runs under Docker Compose.`,
           );
         }
         notInThisDeployment.push(reference);
-        continue;
-      }
-      if (options.withoutWebSocketApi?.has(reference)) {
-        if (registered) {
-          throw new Error(
-            `Framework target "${reference}" was built although this deployment has no WebSocket API to route to it.`,
-          );
-        }
-        withoutWebSocketApi.push(reference);
         continue;
       }
       if (!registered) {
@@ -318,5 +308,5 @@ export function assertFrameworkTargetsComplete(
     }
   }
 
-  return { disabled, notInThisDeployment, withoutWebSocketApi };
+  return { disabled, notInThisDeployment, conditionNotMet };
 }

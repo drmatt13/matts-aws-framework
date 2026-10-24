@@ -1,3 +1,4 @@
+import type { DeployLane } from "@repo/framework/config";
 import type * as cdk from "aws-cdk-lib";
 import type { Construct } from "constructs";
 import {
@@ -36,6 +37,7 @@ export interface FrameworkCompositionProps {
   readonly env: cdk.Environment;
   readonly stackId: (name: string) => string;
   readonly mode: CloudMode;
+  readonly inputs?: DeployLane;
 }
 
 export interface FrameworkFoundation {
@@ -69,7 +71,7 @@ export interface FrameworkTasksProps {
    * would let an event call a task that depends on Cognito, which depends on
    * events.
    */
-  readonly cloud: { readonly mode: CloudMode };
+  readonly cloud: { readonly mode: CloudMode; readonly inputs?: DeployLane };
   readonly readers?: ResourceEnvironmentReaders;
 }
 
@@ -90,10 +92,10 @@ export function createFrameworkTasks(
   scope: Construct,
   props: FrameworkTasksProps,
 ): { readonly stack?: EcsTasksStack } {
-  const targets = getCloudTargets(props.config, ["task"], props.cloud.mode);
+  const targets = getCloudTargets(props.config, ["task"], props.cloud.mode, { inputs: props.cloud.inputs });
   if (targets.length === 0) return {};
 
-  const cloud = { mode: props.cloud.mode };
+  const cloud = props.cloud;
 
   return {
     stack: new EcsTasksStack(scope, props.stackId("EcsTasksStack"), {
@@ -116,6 +118,7 @@ export interface FrameworkOrchestrationProps {
    * answers instead.
    */
   readonly mode: CloudMode;
+  readonly inputs?: DeployLane;
   /** The user pool an agent with `auth: true` accepts tokens from. */
   readonly cognito: CognitoResources;
   /** Stacks whose targets this graph invokes, so the reference edge is explicit. */
@@ -155,7 +158,7 @@ export function createFrameworkOrchestration(
   // local runner reaches them with the developer's credentials.
   if (props.mode === "dev") publishLocalWorkflowIntegrations(scope, props.config);
 
-  if (!hasOrchestrationCloudResources(props.config, props.mode)) return bridges ? { bridges } : {};
+  if (!hasOrchestrationCloudResources(props.config, props.mode, props.inputs)) return bridges ? { bridges } : {};
 
   // `WorkflowsStack` is the deployed name of this stack, from before it held
   // agents too; it is kept so existing state machines are not replaced.
@@ -163,8 +166,9 @@ export function createFrameworkOrchestration(
     env: props.env,
     config: props.config,
     mode: props.mode,
+    inputs: props.inputs,
     cognito: props.cognito,
-    workflows: getCloudTargets(props.config, ["workflow"], props.mode),
+    workflows: getCloudTargets(props.config, ["workflow"], props.mode, { inputs: props.inputs }),
   });
   for (const dependency of props.dependencies ?? []) {
     stack.addStackDependency(dependency);
@@ -188,7 +192,7 @@ export interface FrameworkWorkloadsProps {
    *
    * `mode` is the graph, so no separate `useLocalDevStack` is passed here.
    */
-  readonly cloud: { readonly mode: CloudMode };
+  readonly cloud: { readonly mode: CloudMode; readonly inputs?: DeployLane };
   readonly cognito: CognitoResources;
   /**
    * Where declarations that name their own `fromEnv` are read. Passed in, never
@@ -197,7 +201,6 @@ export interface FrameworkWorkloadsProps {
    */
   readonly readers?: ResourceEnvironmentReaders;
   readonly frontendUrls: string[];
-  readonly deployWebSocketApi: boolean;
   /**
    * AgentCore, from the orchestration stack, so its tool Lambdas join the
    * target inventory. Built before this factory runs: a routed handler that
@@ -248,7 +251,7 @@ export function createFrameworkWorkloads(
   // not - which is how a dev deployment ended up with Lambdas behind no API
   // and two images in ECR. `getCloudTargets` applies the one rule to all of
   // them: a dev deployment holds only what AWS invokes.
-  const httpTargets = getCloudTargets(config, ["http"], mode);
+  const httpTargets = getCloudTargets(config, ["http"], mode, { inputs: props.cloud.inputs });
   // WebSocket handlers exist to be routed to. Without a WebSocket API in this
   // deployment nothing could invoke them, so none are built; locally the
   // WebSocket dev server runs the same handlers either way. With one, they are
@@ -257,16 +260,17 @@ export function createFrameworkWorkloads(
     config,
     ["webSocket", "webSocketAuthorizer"],
     mode,
-    { webSocketApi: true },
+    { inputs: props.cloud.inputs },
   );
-  const webSocketTargets = props.deployWebSocketApi ? declaredWebSocketTargets : [];
+  const webSocketTargets = declaredWebSocketTargets.some(target => target.role === "webSocket") ? declaredWebSocketTargets : [];
   const serviceTargets: readonly NormalizedTarget[] = getCloudTargets(
     config,
     ["service"],
     mode,
+    { inputs: props.cloud.inputs },
   );
 
-  const cloud = { mode };
+  const cloud = props.cloud;
 
   const agentcore = props.agentcore;
   const httpHandlers = httpTargets.length > 0
@@ -307,14 +311,12 @@ export function createFrameworkWorkloads(
     ...(webSocketHandlers ? [webSocketHandlers.targets] : []),
     ...(services ? [services.targets] : []),
   );
-  Object.values(getEventReplayManifest(config)).forEach((target) =>
+  Object.values(getEventReplayManifest(config, props.cloud.inputs)).forEach((target) =>
     targets.requireLambda(target as LambdaTarget),
   );
   const skippedTargets = assertFrameworkTargetsComplete(config, targets, {
     mode,
-    withoutWebSocketApi: new Set(
-      props.deployWebSocketApi ? [] : declaredWebSocketTargets.map((target) => target.reference),
-    ),
+    inputs: props.cloud.inputs,
   });
 
   // A router with nothing to route is not built. In a dev deployment there are
@@ -322,7 +324,7 @@ export function createFrameworkWorkloads(
   // themselves are absent rather than deployed behind no API.
   const httpApi = mode === "prod"
     ? new HttpApiGatewayStack(scope, stackId("HttpApiGatewayStack"), {
-        env, config, targets, frontendUrls: props.frontendUrls,
+        env, config, targets, inputs: props.cloud.inputs, frontendUrls: props.frontendUrls,
         cognito: props.cognito,
       })
     : undefined;
@@ -334,7 +336,7 @@ export function createFrameworkWorkloads(
 
   const webSocketApi = webSocketTargets.length > 0
     ? new WebSocketApiStack(scope, stackId("WebSocketApiStack"), {
-        env, config, targets, mode,
+        env, config, targets, mode, inputs: props.cloud.inputs,
       })
     : undefined;
 

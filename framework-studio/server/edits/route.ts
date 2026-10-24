@@ -41,7 +41,7 @@ export function planHttpRoute(root: string, state: StudioState, id: string, next
 export async function validateHttpRoute(root: string, state: StudioState, file: string, text: string, change: RouteChange, lifetime?: EvaluatorLifetime): Promise<{ dev: PreflightResult; prod: PreflightResult }> {
   const pool = new EvaluatorPool(root, undefined, lifetime);
   try {
-    const evaluation = await pool.evaluate(state.snapshot.webSocketApi, { [file]: text });
+    const evaluation = await pool.evaluate({ [file]: text });
     const result = (model: ModeModel): PreflightResult => {
       const previous = state.snapshot.models[model.mode];
       const diagnostics = [...model.diagnostics];

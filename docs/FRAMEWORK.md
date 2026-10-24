@@ -151,22 +151,38 @@ architecture inherits `defaults.lambda.architecture` and can be overridden by
 the section or target. Both the container image platform and ECS runtime are
 always pinned to the resolved architecture, independent of the build host.
 
-`deploy` is one of both, local-only, cloud-only, or none. It says where a target is enabled.
-Tools infer these lanes from the agents that list them and do not accept `deploy`:
-a shared tool runs in the union of its consuming agents' lanes, and an unused tool
-runs in neither.
+`deploy` accepts `both`, `local-only`, `cloud-only`, `none`, or a condition:
+
+```ts
+deploy: { when: { resource: resources.realtimeEnabled, equals: "true" } }
+```
+
+A condition enables the workload in both execution lanes only when a declared `fromEnv`
+string input matches. Each environment reads its own inputs file; CDK context takes
+precedence, then the file, then the declared default. An unset optional input means off.
+Use canonical enum values in `equals`. Secrets, stack members and unresolved CDK tokens
+cannot select deployment. The selector need not also be a workload environment variable.
+A caller of a conditional destination must carry the identical condition. Routes sharing
+compute must agree. Event Lambdas accept the same deployment policies; enabled cloud
+events are included in both AWS graphs. Their native hooks and framework trigger
+descriptors are omitted when disabled. Native owners use
+`eventFunction(scope, id, { optional: true })` to omit a disabled hook; a required lookup
+still refuses missing or disabled functions. An unknown id never silently disappears.
+Tools infer deployment from consuming agents unless they declare `deploy`. Inherit restores
+that union (or no lanes for an unused tool). Explicit policies, including conditions,
+must still provide every active agent with its declared tools in the same lane.
 Deployment mode separately says what the AWS graph constructs:
 
 | Surface | Dev AWS graph | Prod AWS graph |
 | --- | --- | --- |
-| Cognito and declared AWS-invoked event Lambdas | Yes | Yes |
+| Cognito and AWS-invoked event Lambdas | Cognito; cloud-enabled events | Cognito; cloud-enabled events |
 | Replay infrastructure | Yes | No |
 | Website, RDS, HTTP gateway | No | Yes |
 | Routed Lambdas, services, tasks, workflows | No; execute locally | If cloud-enabled |
-| WebSocket API and its handlers | When DEPLOY_PROD_WEBSOCKET_API is on | When DEPLOY_PROD_WEBSOCKET_API is on |
+| WebSocket API and its handlers | Yes, for enabled route handlers | Yes, for enabled route handlers |
 | Network (VPC) and database | No | Once a Lambda has a `subnet` or `database: true`, or a container is built |
 
-Events are invoked by AWS and do not have a per-target deploy toggle. A dev deployment
+Events have per-target Deploy controls, including conditions. A dev deployment
 publishes no task/service images. Compose independently runs targets enabled in the local
 lane. The example service currently opts into local-only; change its declaration to deploy it in AWS.
 
@@ -1066,10 +1082,21 @@ create, or one from before the output existed) is identified from its deployed t
 or refused.
 
 The principal deployment settings are the target (`-c prodDeployment`, `-c deployment`,
-`framework:targets`, CDK_APP_NAME), RETAIN_STATEFUL_RESOURCES, DATABASE_BACKUP_RETENTION_DAYS, DEPLOY_PROD_WEBSOCKET_API,
+`framework:targets`, CDK_APP_NAME), RETAIN_STATEFUL_RESOURCES, DATABASE_BACKUP_RETENTION_DAYS,
 COGNITO_SES_FROM_EMAIL (with optional COGNITO_SES_FROM_NAME and COGNITO_SES_REGION),
 SKIP_EMAIL_VERIFICATION (development only), frontend/Cognito custom-domain toggles and
-certificate pairs, and optional Google credentials. USE_CUSTOM_WS_AUTHORIZER is retired: the
+certificate pairs, and optional Google credentials. WebSocket API Gateway is framework managed;
+`DEPLOY_PROD_WEBSOCKET_API` and its context aliases are retired (`true` warns, `false`
+is refused). Remove those settings and control handlers with `deploy` instead. A gateway
+is omitted only when no route handler is deployed; an authorizer alone creates no API.
+The application's catalog declares `resources.enableWebSocketApi` from
+`ENABLE_WEBSOCKET_API`, an enum input accepting `"true"` or `"false"` and defaulting
+to `"true"`. Each WebSocket handler and its authorizer declares the same
+`deploy: { when: { resource: resources.enableWebSocketApi, equals: "true" } }`.
+Both environment templates set it to true. This is an ordinary workload condition,
+not a deployment-wide CDK switch; it gates local execution as well as AWS deployment.
+When `$connect` declares an authorizer, every route must fit inside its deployment lanes
+and condition, and `$connect` must fit inside the authorizer’s. USE_CUSTOM_WS_AUTHORIZER is retired: the
 declared authorizer is always attached, a leftover `true` is ignored with a warning, and
 `false` is refused. Environment examples list authored settings; deployment.ts is the exact
 reference for accepted context keys and legacy aliases. Avoid adding new aliases or copying
@@ -1345,7 +1372,7 @@ reads its own target's inputs file:
 
 ```powershell
 npm --workspace cdk-app exec -- cdk synth --quiet
-npm --workspace cdk-app exec -- cdk synth -c prodDeployment=true -c deployProdWebSocketApi=true --quiet
+npm --workspace cdk-app exec -- cdk synth -c prodDeployment=true --quiet
 ```
 
 `cdk-app/test/deployment-isolation.test.ts` synthesizes both through the same entry point,

@@ -1,3 +1,4 @@
+import type { DeployLane } from "@repo/framework/config";
 import { networkConstructId, getFrameworkTargets, type FrameworkNetwork } from "@repo/framework/config";
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
@@ -39,6 +40,7 @@ export type CognitoResources = {
 
 export interface HttpApiGatewayStackProps extends cdk.StackProps {
   config: FrameworkConfig;
+  inputs?: DeployLane;
   targets: FrameworkTargetRegistry;
   /**
    * The user pool this API authorizes against, supplied by the composition root
@@ -103,7 +105,7 @@ export class HttpApiGatewayStack extends cdk.Stack {
         allowOrigins: props.frontendUrls,
         // Derived from the manifest, not listed: the preflight surface stays
         // exactly as wide as the routes that exist.
-        allowMethods: getDeclaredHttpMethods(props.config, "cloud").map(
+        allowMethods: getDeclaredHttpMethods(props.config, "cloud", props.inputs).map(
           (method) => CORS_METHODS[method],
         ),
         allowHeaders: ["Content-Type", "Authorization"],
@@ -195,7 +197,7 @@ export class HttpApiGatewayStack extends cdk.Stack {
     // Routes whose target is disabled for the cloud scope are skipped here, so
     // a deploy toggle in framework.config.ts removes the resource and the route
     // that would have pointed at nothing.
-    for (const [, route] of getHttpRoutes(props.config, "cloud")) {
+    for (const [, route] of getHttpRoutes(props.config, "cloud", props.inputs)) {
       // The `-api` suffix is redundant in a CloudFormation id, and dropping it
       // is what the existing logical ids already do. Kept for that reason only.
       const idPrefix = constructName(route.target.replace(/-api$/, ""));

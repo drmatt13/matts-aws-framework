@@ -8,7 +8,8 @@ import type { EdgeCategory } from "../lookup";
  * the model records it, from the workload to what it references.
  *
  * Solid lines are the exceptions, each named: an API route, a Lambda or container leaving for another
- * workload, an authorizer, an agent calling a tool and a workflow step. Everything else is dashed.
+ * workload, permission to launch an ECS task, an authorizer, an agent calling a tool and a workflow step.
+ * Conditional deployment connections are always dashed orange. Everything else is dashed.
  *
  * What a workload references decides the colour: a value being read takes the look of an environment file
  * supplying an input, while a secret and a grant are red, so a parameter being read never looks like a
@@ -34,6 +35,8 @@ export function connectionStyle(
   destination: Pick<ModelResource, "kind"> | undefined,
 ): ConnectionStyle {
   const { relation } = edge;
+  if (relation === "deployWhen") return { color: COMPUTE_EDGE_COLOR, dashed: true };
+  if (relation === "runsTask") return { color: GUARD_EDGE_COLOR, dashed: false };
   if (relation === "trigger") return { color: TRIGGER_EDGE_COLOR, dashed: false };
   if (relation === "maps") return { color: READ_EDGE_COLOR, dashed: true };
   // An authorizer guards its route.
@@ -86,8 +89,8 @@ const inLens = (node: Pick<SceneNode, "presence" | "tagFiltered"> | undefined): 
  * Whether a connection is outside the environment being viewed: the other environment alone holds it, or
  * either end is enabled only there, in neither, or a catalog entry the viewed graph declares undefined.
  */
-export function offLens(edge: { readonly otherLens?: Mode }, from: Pick<SceneNode, "presence" | "tagFiltered"> | undefined, to: Pick<SceneNode, "presence" | "tagFiltered"> | undefined): boolean {
-  return edge.otherLens !== undefined || !inLens(from) || !inLens(to);
+export function offLens(edge: { readonly otherLens?: Mode; readonly enabledInLens?: boolean }, from: Pick<SceneNode, "presence" | "tagFiltered"> | undefined, to: Pick<SceneNode, "presence" | "tagFiltered"> | undefined): boolean {
+  return edge.enabledInLens === false || edge.otherLens !== undefined || !inLens(from) || !inLens(to);
 }
 
 export function restingAlpha(provenance: ModelEdge["provenance"], outOfLens: boolean): number {

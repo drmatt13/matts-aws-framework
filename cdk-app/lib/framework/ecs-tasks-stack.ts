@@ -1,3 +1,4 @@
+import type { DeployLane } from "@repo/framework/config";
 import { markInfrastructure } from "./framework-inventory";
 import { networkConstructId } from "@repo/framework/config";
 import * as cdk from "aws-cdk-lib";
@@ -52,7 +53,7 @@ import { registerAppTask } from "./framework-tasks";
 export interface EcsTasksStackProps extends cdk.StackProps {
   readonly config: FrameworkConfig;
   /** Which CDK graph this is. */
-  readonly cloud: { readonly mode: "dev" | "prod" };
+  readonly cloud: { readonly mode: "dev" | "prod"; readonly inputs?: DeployLane };
   /** The selection the composition factory validated, when there is one. */
   readonly targets?: readonly NormalizedTarget[];
 }
@@ -84,7 +85,7 @@ export class EcsTasksStack extends cdk.Stack {
     super(scope, id, props);
 
     const tasks =
-      props.targets ?? getCloudTargets(props.config, ["task"], props.cloud.mode);
+      props.targets ?? getCloudTargets(props.config, ["task"], props.cloud.mode, { inputs: props.cloud.inputs });
     // An empty stack asks for no network, exactly as the service stack's does.
     if (tasks.length === 0) return;
 

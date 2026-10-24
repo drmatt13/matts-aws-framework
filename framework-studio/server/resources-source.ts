@@ -320,7 +320,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
 }
 
 export function consumesResource(target: ModelTarget, id: string): boolean {
-  return target.environment.some((item) => item.value.kind === "reference" && item.value.resource === id) || target.secrets.some((item) => item.resource === id) || (target.requirementRules ?? []).some((rule) => rule.require.includes(id) || rule.when?.resource === id);
+  return target.lanes.when?.resource === id || target.environment.some((item) => item.value.kind === "reference" && item.value.resource === id) || target.secrets.some((item) => item.resource === id) || (target.requirementRules ?? []).some((rule) => rule.require.includes(id) || rule.when?.resource === id);
 }
 
 function reference(id: string, alias = "studioResources"): string {

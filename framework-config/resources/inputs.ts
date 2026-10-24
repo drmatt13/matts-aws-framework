@@ -5,6 +5,11 @@ import { resource } from "@repo/framework/config";
 export const openaiApiKey = resource.secret("OPENAI_API_KEY", { tags: { area: "examples" } });
 export const googleClientSecret = resource.secret("GOOGLE_CLIENT_SECRET", { tags: { area: "auth" } });
 
+export const enableWebSocketApi = resource
+  .fromEnv("ENABLE_WEBSOCKET_API", { tags: { area: "realtime" } })
+  .enum("true", "false")
+  .default("true");
+
 // Cohesive inputs stay together; their catalog paths do not depend on this file.
 export const langgraph = {
   modelProvider: resource

@@ -1,3 +1,4 @@
+import type { DeployLane } from "@repo/framework/config";
 import { Construct, type IConstruct } from "constructs";
 import { Stack } from "aws-cdk-lib";
 import * as lambda from "aws-cdk-lib/aws-lambda";
@@ -9,6 +10,7 @@ import {
   getConnectsToBindings,
   getEventReplayManifest,
   getEventReplayTarget,
+  isTargetDeployed,
   normalizeFrameworkConfig,
   resolveLambdaTarget,
   type CloudMode,
@@ -41,7 +43,7 @@ export interface EventLambdaContext<C extends FrameworkConfig> {
   readonly config: C;
   readonly targets: FrameworkTargetRegistry;
   /** Provider values, before resolving env-backed inputs. */
-  readonly cloud: { readonly mode: CloudMode };
+  readonly cloud: { readonly mode: CloudMode; readonly inputs?: DeployLane };
   readonly readers?: ResourceEnvironmentReaders;
   readonly replay?: {
     readonly bucket: s3.IBucket;
@@ -86,7 +88,7 @@ function validateEvent<C extends FrameworkConfig>(
   }
   const capture =
     local &&
-    !!getEventReplayTarget(getEventReplayManifest(context.config), targetId);
+    !!getEventReplayTarget(getEventReplayManifest(context.config, context.cloud.inputs), targetId);
   if (capture) {
     const missing = [
       !context.replay?.bucket?.bucketName && "replay.bucket",
@@ -115,7 +117,13 @@ function prepareEvents<C extends FrameworkConfig>(
   if (new Set(ids).size !== ids.length) {
     throw new Error("Framework event selection contains duplicate target ids.");
   }
-  const events = ids.map((id) => validateEvent(context, id));
+  const events = ids.map((id) => {
+    const event = validateEvent(context, id);
+    if (!isTargetDeployed(context.config, "lambda", id, context.cloud.mode, { inputs: context.cloud.inputs })) {
+      throw new Error(`Event Lambda "${id}" is disabled in this deployment. Its native owner must omit construction and wiring.`);
+    }
+    return event;
+  });
   // The one image a dev deployment can still publish, named before it happens.
   // An event Lambda deploys in every graph because AWS invokes it, and a
   // container-packaged Lambda cannot deploy without an image - so this follows
@@ -243,7 +251,15 @@ export function buildEventLambdas<C extends FrameworkConfig>(
   context: EventLambdaContext<C>,
   ids: readonly EventTargetId<C>[],
 ): void {
-  const events = prepareEvents(scope, context, ids);
+  if (new Set(ids).size !== ids.length) throw new Error("Framework event selection contains duplicate target ids.");
+  const disabled = disabledEvents(scope);
+  const selected = ids.filter(id => {
+    if (!context.config.events[id]) throw new Error(`Event Lambda "${id}" is not declared.`);
+    const enabled = isTargetDeployed(context.config, "lambda", id, context.cloud.mode, { inputs: context.cloud.inputs });
+    if (enabled) disabled.delete(id); else disabled.add(id);
+    return enabled;
+  });
+  const events = prepareEvents(scope, context, selected);
   for (const event of events) {
     createPreparedEvent(scope, event.target.cloud.constructId, context, event);
   }
@@ -328,6 +344,13 @@ function registerPreparedEvent<
  * is added to the construct tree, so no template changes.
  */
 const APP_EVENT_REGISTRIES = new WeakMap<IConstruct, FrameworkTargetRegistry>();
+const DISABLED_EVENTS = new WeakMap<IConstruct, Set<string>>();
+function disabledEvents(scope: IConstruct): Set<string> {
+  const root = scope.node.root;
+  let ids = DISABLED_EVENTS.get(root);
+  if (!ids) { ids = new Set(); DISABLED_EVENTS.set(root, ids); }
+  return ids;
+}
 
 export function appEventRegistry(scope: IConstruct): FrameworkTargetRegistry {
   const root = scope.node.root;
@@ -353,10 +376,17 @@ export function appEventRegistry(scope: IConstruct): FrameworkTargetRegistry {
  * stack, so that stack depends on the source's, and a forced edge back would
  * close the cycle.
  */
+export function eventFunction(scope: IConstruct, id: SuggestedEventId, options: { readonly optional: true }): lambda.Function | undefined;
+export function eventFunction(scope: IConstruct, id: SuggestedEventId): lambda.Function;
 export function eventFunction(
   scope: IConstruct,
   id: SuggestedEventId,
-): lambda.Function {
+  options?: { readonly optional: true },
+): lambda.Function | undefined {
+  if (disabledEvents(scope).has(id)) {
+    if (options?.optional) return undefined;
+    throw new Error(`Event Lambda "${id}" is disabled. Omit its native trigger with eventFunction(scope, id, { optional: true }), or enable its deployment.`);
+  }
   const registry = appEventRegistry(scope);
   const registered = registry.get(`lambda:${id}`);
   if (!registered) {

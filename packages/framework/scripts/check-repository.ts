@@ -44,8 +44,8 @@ export function undocumentedRequiredInputs(
   const required = new Map<string, { readonly graphs: Set<"dev" | "prod">; readonly origin: string; readonly why: string }>();
   for (const target of getFrameworkTargets(config)) {
     const graphs = new Set<"dev" | "prod">();
-    if (isTargetEnabled(config, target.kind, target.id, "local") || isTargetDeployed(config, target.kind, target.id, "dev")) graphs.add("dev");
-    if (isTargetDeployed(config, target.kind, target.id, "prod")) graphs.add("prod");
+    if (isTargetEnabled(config, target.kind, target.id, "local", "unconditioned") || isTargetDeployed(config, target.kind, target.id, "dev", { inputs: "unconditioned" })) graphs.add("dev");
+    if (isTargetDeployed(config, target.kind, target.id, "prod", { inputs: "unconditioned" })) graphs.add("prod");
     if (graphs.size === 0) continue;
     for (const requirement of target.cloud.requirements) {
       const when = requirement.when

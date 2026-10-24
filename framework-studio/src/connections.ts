@@ -1,3 +1,4 @@
+import { drawnAs } from "./drawn-as";
 import type { Mode, ModeModel, ModelEdge, Snapshot } from "../shared/model";
 import { availabilityBadge, connectionDisabledEndpoints, type Availability, type DeploymentBadgeKind } from "./deployment";
 import { indexModel } from "./lookup";
@@ -27,14 +28,14 @@ export interface ConnectionGroup {
   readonly availability: Availability;
   readonly badge?: DeploymentBadgeKind;
   readonly otherLens?: Mode;
+  readonly enabledInLens?: boolean;
 }
 
 /** Group directed relationships by the nodes the landscape actually draws, across both graphs. */
 export function aggregateConnections(model: ModeModel, layoutModels: readonly ModeModel[] = [model]): readonly ConnectionGroup[] {
   const models = [model, ...layoutModels.filter((other) => other.mode !== model.mode)];
   const indexes = new Map(models.map((item) => [item.mode, indexModel(item)]));
-  const representatives = new Map(models.flatMap((item) => item.resources.flatMap((resource) =>
-    resource.kind === "member" && resource.parent && !(resource.frameworkManaged && resource.networkPlacement) ? [[resource.id, resource.parent] as const] : [])));
+  const representatives = Object.assign({}, ...models.map(drawnAs)) as Readonly<Record<string, string>>;
   const members = new Map<string, Partial<Record<Mode, ModelEdge>>>();
   for (const item of models) for (const edge of item.edges) {
     const versions = members.get(edge.id) ?? {};
@@ -44,8 +45,8 @@ export function aggregateConnections(model: ModeModel, layoutModels: readonly Mo
   const groups = new Map<string, { from: string; to: string; members: ConnectionMember[] }>();
   for (const versions of members.values()) {
     const edge = versions[model.mode] ?? versions.dev ?? versions.prod!;
-    const from = representatives.get(edge.from) ?? edge.from;
-    const to = representatives.get(edge.to) ?? edge.to;
+    const from = representatives[edge.from] ?? edge.from;
+    const to = representatives[edge.to] ?? edge.to;
     if (from === to) continue;
     const key = JSON.stringify([from, to]);
     const group = groups.get(key) ?? { from, to, members: [] };
@@ -65,7 +66,7 @@ export function aggregateConnections(model: ModeModel, layoutModels: readonly Mo
     const availability = { dev: members.some((item) => item.availability.dev), prod: members.some((item) => item.availability.prod) };
     const otherLens = members.some((item) => item.models[model.mode]) ? undefined : models.find((item) => item.mode !== model.mode)?.mode;
     return { id: members.length === 1 ? edge.id : `connection:${encodeURIComponent(from)}:${encodeURIComponent(to)}`,
-      from, to, edge, members, availability, badge: availabilityBadge(availability), ...(otherLens ? { otherLens } : {}) };
+      from, to, edge, members, availability, enabledInLens: availability[model.mode], badge: availabilityBadge(availability), ...(otherLens ? { otherLens } : {}) };
   }).sort((a, b) => a.id.localeCompare(b.id));
 }
 

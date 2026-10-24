@@ -22,7 +22,7 @@ for (const size of sizes) {
   for (let sample = 0; sample < samples; sample++) {
     enumerations = 0;
     const cpu = process.cpuUsage(), started = performance.now();
-    const model = projectModel(config, { mode: "dev", webSocketApi: false });
+    const model = projectModel(config, { mode: "dev" });
     assert.equal(model.targets.length, size);
     records.push({ size, sample, durationMs: performance.now() - started, declarationEnumerations: enumerations, cpu: process.cpuUsage(cpu), rssBytes: process.memoryUsage().rss });
   }

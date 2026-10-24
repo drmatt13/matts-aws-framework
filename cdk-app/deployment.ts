@@ -148,55 +148,18 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     false;
   const stateful = resolveStatefulResources(statefulResources, mode, retainStatefulResources);
 
-  // WebSocket configuration.
-  //
-  // deployProdWebSocketApi creates the AWS WebSocket API Gateway
-  // (WebSocketApiStack) and the handler Lambdas it routes to
-  // (WebSocketLambdaFunctionsStack), in either mode; off, neither is built,
-  // because a handler nothing can route to is dead weight. In a dev deployment
-  // it is the one exception to "only what AWS invokes": API Gateway becomes the
-  // handlers' AWS caller. It says nothing about whether WebSockets work locally:
-  // local-ws-dev-server runs the same handlers through docker-compose either
-  // way, which is what the old "enableWebSockets" name got wrong.
-  //
-  // Renamed from DEPLOY_WEBSOCKET_API / -c deployWebSocketApi. The old names are
-  // refused rather than ignored: a stale DEPLOY_WEBSOCKET_API=true would
-  // otherwise drop the WebSocket API with no sign that the flag stopped meaning
-  // anything.
-  const renamedWebSocketFlags = [
-    ...(getContext("deployWebSocketApi") !== undefined ? ["-c deployWebSocketApi"] : []),
-    ...(env.DEPLOY_WEBSOCKET_API !== undefined ? ["DEPLOY_WEBSOCKET_API"] : []),
-  ];
-  if (renamedWebSocketFlags.length > 0) {
-    throw new Error(
-      `${renamedWebSocketFlags.join(" and ")} ${renamedWebSocketFlags.length > 1 ? "were" : "was"} renamed. Use DEPLOY_PROD_WEBSOCKET_API in cdk-app/.env.dev or cdk-app/.env.prod, or -c deployProdWebSocketApi.`,
-    );
+  // API Gateways are framework managed. Stale flags must never silently change a graph.
+  for (const [label, raw] of [
+    ["DEPLOY_PROD_WEBSOCKET_API", env.DEPLOY_PROD_WEBSOCKET_API],
+    ["DEPLOY_WEBSOCKET_API", env.DEPLOY_WEBSOCKET_API],
+    ["-c deployProdWebSocketApi", getContext("deployProdWebSocketApi")],
+    ["-c deployWebSocketApi", getContext("deployWebSocketApi")],
+    ["-c enableWebSockets", getContext("enableWebSockets")],
+  ] as const) {
+    const value = optionalBoolean(raw, label);
+    if (value === false) throw new Error(`${label}=false is no longer supported. WebSocket API Gateway is framework managed. Remove this setting; use deploy: "local-only" or deploy: { when: { resource: resources.input, equals: "value" } } on handlers to control deployment.`);
+    if (value === true) warnings.push(`[cdk-app] ${label} is no longer read. WebSocket API Gateway is framework managed; remove the setting.`);
   }
-  const deployProdWebSocketApiContext = optionalBoolean(
-    getContext("deployProdWebSocketApi"),
-    "-c deployProdWebSocketApi",
-  );
-  const enableWebSocketsLegacyContext = optionalBoolean(
-    getContext("enableWebSockets"),
-    "-c enableWebSockets",
-  );
-
-  // Still honored rather than dropped: silently ignoring a stale
-  // -c enableWebSockets=true would skip the WebSocket API with no indication that
-  // the flag stopped meaning anything.
-  if (enableWebSocketsLegacyContext !== undefined) {
-    warnings.push(
-      "[cdk-app] -c enableWebSockets is deprecated and will be removed. Use -c deployProdWebSocketApi, or set DEPLOY_PROD_WEBSOCKET_API in cdk-app/.env.dev or cdk-app/.env.prod. The old name implied it controlled WebSocket support; it only ever controlled the AWS WebSocket API Gateway.",
-    );
-  }
-
-  const deployProdWebSocketApi =
-    deployProdWebSocketApiContext ??
-    enableWebSocketsLegacyContext ??
-    booleanFlag({
-      context: "deployProdWebSocketApi",
-      env: "DEPLOY_PROD_WEBSOCKET_API",
-    });
 
   // Retired. The $connect authorizer declared in framework-config is the one
   // switch now, in both lanes. A leftover `true` changes nothing; a `false` is
@@ -406,7 +369,6 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     stateful,
     databaseRetention: stateful.database.retention === "retain",
     cognitoRetention: stateful.cognito.retention === "retain",
-    deployProdWebSocketApi,
     useFrontendCustomDomain,
     configuredFrontendUrl,
     configuredFrontendCloudFrontCertificateArn,

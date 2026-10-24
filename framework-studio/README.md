@@ -660,3 +660,12 @@ its own Isometric island, subnet bands, gateway/endpoint selection and settings 
 Workload Inspectors review VPC and subnet changes together. Database callers must use
 the database's selected VPC. Compose keeps its existing shared network; configuration
 checks and local Lambda egress use the selected VPC. Creation and editing never deploy.
+
+Deploy accepts an input condition through **Only when an input matches…**. Choose a
+non-secret input from Input parameters and secrets and its matching value; review shows
+separate development and production outcomes. Values remain in the server's private
+input reader. Events follow their owning AWS resource; tools follow their agents.
+
+The APIs island shows actual HTTP and WebSocket gateways. Routes are listed in their
+gateway inspector, and agent browser routes belong to their agent. Both gateways are
+framework managed; workload Deploy settings control their routes and handlers.

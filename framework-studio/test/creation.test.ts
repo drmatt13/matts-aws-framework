@@ -63,7 +63,7 @@ for (const kind of CREATION_KINDS) test(`${kind}: complete reviewed creation, di
     const ids = new Set([...model.targets.map((item) => item.ref), ...model.resources.map((item) => item.id), ...model.routes.map((item) => item.id)]);
     for (const id of [...planned.expected.targets, ...planned.expected.resources, ...planned.expected.routes]) assert.ok(ids.has(id), `${mode} discovers ${id}`);
     const scene = buildScene(model);
-    assert.ok(scene.nodes.some((node) => node.id === planned.expected.select) || scene.islands.some((island) => island.id === planned.expected.select), "the canonical resource appears in the actual graph projection");
+    assert.ok(scene.nodes.some((node) => node.id === (scene.representatives[planned.expected.select] ?? planned.expected.select)) || scene.islands.some((island) => island.id === planned.expected.select), "the canonical resource appears in the actual graph projection");
     assert.equal(model.status, "ok");
     assert.equal(model.tagging?.[planned.expected.select]?.effective.Feature, "Studio fixtures", `${mode} reads the created tags from TypeScript`);
   }
@@ -162,12 +162,43 @@ test("route aliases preserve target identity and WebSocket creation uses canonic
   assert.equal(state().snapshot.models.dev.targets.find((item) => item.ref === target.ref)!.constructId, target.constructId);
   assert.equal(state().snapshot.models.dev.routes.find((item) => item.id === "route:http:/route-alias")!.target, target.ref);
   assert.equal((await edits.undo()).status, "applied");
-  const ws = await edits.planBatch([{ kind: "create", request: valid("route", { id: "ws-action", category: "webSocket", path: "studioAction" }) }], revision());
-  assert.ok(ws.ok, JSON.stringify(ws.preflight));
-  const result = await edits.applyBatch(ws.planId);
-  assert.equal(result.status, "applied", result.message);
-  assert.equal(result.select, "route:ws:studioAction");
-  assert.equal((await edits.undo()).status, "applied");
+  const websocketFile = path.join(fixture, "framework-config/workloads/websocket.ts");
+  const originalWebSocket = readFileSync(websocketFile, "utf8");
+  const conditionSource = originalWebSocket.replace('import { resources }', 'import { resources as creationInputs }')
+    .replaceAll('resource: resources.enableWebSocketApi, equals: "true"', 'resource: creationInputs.langgraph.modelProvider, equals: "bedrock-mantle"');
+  writeFileSync(websocketFile, conditionSource);
+  try {
+    await builder.refresh();
+    const request = valid("route", { id: "ws-action", category: "webSocket", path: "studioAction" });
+    for (const deploy of ["local-only", "cloud-only"]) assert.throws(() => planCreation(fixture, state(), { ...request, deploy } as typeof request), /must use the \$connect condition/);
+    const disabled = planCreation(fixture, state(), { ...request, deploy: "none" } as typeof request);
+    assert.match(disabled.overrides.get(websocketFile)!, /deploy: "none"/);
+    const proposed = planCreation(fixture, state(), request);
+    assert.match(proposed.overrides.get(websocketFile)!, /resource: creationInputs\["langgraph"\]\["modelProvider"\]/, "creation reuses the existing alias and actual catalog selector path");
+    assert.match(proposed.overrides.get(websocketFile)!, /equals: "bedrock-mantle"/);
+    assert.ok(proposed.impact.some(message => /Copies \$connect deployment condition: LANGGRAPH_MODEL_PROVIDER/.test(message)));
+    const ws = await edits.planBatch([{ kind: "create", request }], revision());
+    assert.ok(ws.ok, JSON.stringify(ws.preflight));
+    const result = await edits.applyBatch(ws.planId);
+    assert.equal(result.status, "applied", result.message);
+    assert.equal(result.select, "route:ws:studioAction");
+    for (const model of Object.values(state().snapshot.models)) {
+      const when = model.targets.find(target => target.ref === "lambda:ws-action")!.lanes.when!;
+      assert.equal(when.resource, "resource:langgraph.modelProvider");
+      assert.equal(when.equals, "bedrock-mantle");
+    }
+    assert.equal((await edits.undo()).status, "applied");
+    assert.equal(readFileSync(websocketFile, "utf8"), conditionSource, "undo restores the exact conditional handshake declarations");
+  } finally { writeFileSync(websocketFile, originalWebSocket); await builder.refresh(); }
+});
+
+test("an unguarded conditional WebSocket handshake keeps independent creation scope", () => {
+  const snapshot = state().snapshot;
+  const unguarded = (model: typeof snapshot.models.dev) => ({ ...model, routes: model.routes.map(({ authorizer: _authorizer, ...route }) => route) });
+  const independent = { ...state(), snapshot: { ...snapshot, models: { dev: unguarded(snapshot.models.dev), prod: unguarded(snapshot.models.prod) } } };
+  const proposed = planCreation(fixture, independent, valid("route", { id: "independent-action", category: "webSocket", path: "independentAction", deploy: "cloud-only" }));
+  const source = proposed.overrides.get(path.join(fixture, "framework-config/workloads/websocket.ts"))!;
+  assert.match(source, /deploy: "cloud-only"/, "no authorization guard requires this independent handler to copy the handshake condition");
 });
 
 test("catalog creation preserves authored environment values and secret consumers use automatic ARN delivery", async () => {
@@ -485,7 +516,7 @@ test("generated declarations and stack registration survive full offline develop
       const outdir = path.join(assemblyDirectory, mode);
       const env = { ...process.env };
       for (const key of Object.keys(env)) if (/^(CDK_|FRAMEWORK_|AWS_PROFILE$|PROD_DEPLOYMENT$|DEPLOY_PROD_WEBSOCKET_API$|DATABASE_)/.test(key)) delete env[key];
-      const synth = spawnSync(process.execPath, ["--import", "tsx", "bin/main.ts"], { cwd: path.join(fixture, "cdk-app"), encoding: "utf8", timeout: 120_000, env: { ...env, CDK_OUTDIR: outdir, CDK_DEFAULT_ACCOUNT: "734849394764", CDK_DEFAULT_REGION: "us-east-1", AWS_EC2_METADATA_DISABLED: "true", CDK_CONTEXT_JSON: JSON.stringify({ ...project, ...cached, "aws:cdk:bundling-stacks": [], prodDeployment: String(mode === "prod"), deployProdWebSocketApi: String(mode === "prod") }), FRAMEWORK_INPUTS_FILE: inputs } });
+      const synth = spawnSync(process.execPath, ["--import", "tsx", "bin/main.ts"], { cwd: path.join(fixture, "cdk-app"), encoding: "utf8", timeout: 120_000, env: { ...env, CDK_OUTDIR: outdir, CDK_DEFAULT_ACCOUNT: "734849394764", CDK_DEFAULT_REGION: "us-east-1", AWS_EC2_METADATA_DISABLED: "true", CDK_CONTEXT_JSON: JSON.stringify({ ...project, ...cached, "aws:cdk:bundling-stacks": [], prodDeployment: String(mode === "prod") }), FRAMEWORK_INPUTS_FILE: inputs } });
       assert.equal(synth.status, 0, `${synth.stdout}\n${synth.stderr}`);
       const manifest = JSON.parse(readFileSync(path.join(outdir, "manifest.json"), "utf8"));
       const stacks = Object.keys(manifest.artifacts);

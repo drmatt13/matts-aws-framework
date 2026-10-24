@@ -17,6 +17,7 @@ import { buildOperation, exportDirectory, managedSpec, OperationError, type Mana
  */
 
 export interface DeployServiceOptions {
+  readonly disabledLocalServices?: () => ReadonlySet<string>;
   readonly run?: Runner;
   readonly env?: NodeJS.ProcessEnv;
   /** Where jobs, plans, preferences and the local run record live (default .cache/framework-studio). */
@@ -49,7 +50,7 @@ export class DeployService {
     this.jobs = new JobManager({ directory: path.join(state, "jobs"), emit: broadcast });
     this.plans = new PlanStore(state);
     this.teardowns = new TeardownStore(state);
-    this.local = new LocalEnvironment(root, this.tools, this.run, this.env, exportDirectory(root, this.env), state);
+    this.local = new LocalEnvironment(root, this.tools, this.run, this.env, exportDirectory(root, this.env), state, options.disabledLocalServices);
     this.observer = new AwsObserver(this.tools, this.run, this.env);
     this.preferences = new Preferences(state);
     this.context = {

@@ -66,6 +66,7 @@ export type DeployOrigin =
 
 export interface Lanes {
   readonly deploy: DeploySetting;
+  readonly when?: { readonly resource: string; readonly equals: string; readonly dev: "holds" | "fails" | "unset"; readonly prod: "holds" | "fails" | "unset" };
   readonly origin: DeployOrigin;
   /** For a derived tool lane: the agents it was derived from. */
   readonly derivedFrom?: readonly string[];
@@ -291,6 +292,7 @@ export interface ModelResource {
 
 export type Relation =
   /** A stack owns a resource shown independently on the map. */
+  | "deployWhen"
   | "contains"
   /** A route reaches its target. */
   | "routes"
@@ -399,8 +401,9 @@ export interface Diagnostic {
 export interface ModeModel {
   /** Canonical entity IDs, including database declarations and VPC islands. No resolved inputs. */
   readonly tagging?: Readonly<Record<string, TagFacts>>;
-  /** This graph's AWS WebSocket API flag, including when all its handlers are off. */
-  readonly webSocketApi?: boolean;
+  /** Framework-projected token previews, including role-specific development placement. */
+  readonly deployChoices?: Readonly<Record<TargetRole, Readonly<Record<string, { readonly local: boolean; readonly cloud: boolean; readonly dev: boolean; readonly prod: boolean }>>>>;
+  readonly gateways?: readonly import("./gateways").ModelGateway[];
   readonly triggers?: readonly import("./triggers").TriggerBinding[];
   readonly triggerAdapters?: readonly import("./triggers").TriggerAdapterMetadata[];
   /** The framework's CDK-derived supported names, independent of regional availability. */
@@ -445,6 +448,7 @@ export interface ModeModel {
  * literal, and anything an expression produces is shown and left alone.
  */
 export type Editability =
+  | { readonly kind: "condition"; readonly text: string }
   | { readonly kind: "literal"; readonly text: string }
   | { readonly kind: "absent" }
   | { readonly kind: "computed"; readonly text: string }
@@ -534,8 +538,6 @@ export interface Snapshot {
   /** Changes whenever any watched file or input changes. */
   readonly revision: string;
   readonly generatedAt: string;
-  /** DEPLOY_PROD_WEBSOCKET_API as authored, which decides whether a dev graph holds WebSocket handlers. */
-  readonly webSocketApi: boolean;
   readonly repositoryRoot: string;
   readonly models: { readonly dev: ModeModel; readonly prod: ModeModel };
   readonly source: SourceIndex;

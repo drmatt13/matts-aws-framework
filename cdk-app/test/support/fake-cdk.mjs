@@ -82,7 +82,9 @@ const selectors = args.slice(1).filter((arg, index, all) => !arg.startsWith("-")
 function outputsOf(state, stack) {
   return Object.entries(stack.template.Outputs ?? {}).map(([key, output]) => ({
     OutputKey: key, Description: output.Description,
-    OutputValue: state.outputValues?.[key] ?? (typeof output.Value === "string" ? output.Value : `fake-${key}`),
+    OutputValue: state.outputValues?.[key] ?? (key === "WebSocketAPIEndpoint"
+      ? "wss://fake.execute-api.us-east-1.amazonaws.com/prod"
+      : typeof output.Value === "string" ? output.Value : `fake-${key}`),
     ...(output.Export?.Name ? { ExportName: output.Export.Name } : {}),
   }));
 }

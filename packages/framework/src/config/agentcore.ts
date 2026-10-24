@@ -22,7 +22,7 @@ import type {
   TargetEnvironment,
 } from "./index";
 import { AGENT_SOURCE_ROOT, TOOL_SOURCE_ROOT } from "./conventions";
-import { isDeploySettingEnabled } from "./deploy";
+import { isDeploySettingEnabled, deployKey } from "./deploy";
 import { COGNITO_VERIFIER_ENVIRONMENT, USER_POOL_DECLARATION_EXAMPLE, userPoolDelivery } from "./user-pool";
 import { LAMBDA_SOURCE_DIRECTORY_BY_ID } from "../generated/target-ids";
 import type { ToolLambdaId } from "../generated/target-ids";
@@ -45,8 +45,8 @@ export type ToolTargetDefinition<Catalog = AnyResourceCatalog> = LambdaTargetDef
      * model never sees the token and cannot supply one.
      */
     readonly auth?: true;
-    /** Deployment follows the union of the agents that list this tool. */
-    readonly deploy?: never;
+    /** Overrides the default union of consuming agents' deployment lanes. */
+    readonly deploy?: DeploySetting;
     readonly cloud?: HttpCloudSettings<Catalog>;
   };
 
@@ -127,13 +127,21 @@ export function getDefaultAgentDirectory(id: string): FrameworkDirectory {
 
 /** Internal deployment projection: shared tools run in every consuming agent's lane. */
 export function getToolDeploySetting(config: FrameworkConfig, toolId: string): DeploySetting {
+  return config.tools?.[toolId]?.deploy ?? getInheritedToolDeploySetting(config, toolId);
+}
+
+/** Default policy when a tool has no authored override. */
+export function getInheritedToolDeploySetting(config: FrameworkConfig, toolId: string): DeploySetting {
+  const consumers = Object.values(config.agents ?? {}).filter(agent => agent.tools?.includes(toolId));
+  const first = consumers[0]?.deploy ?? "both";
+  if (typeof first !== "string" && consumers.every(agent => deployKey(agent.deploy ?? "both") === deployKey(first))) return first;
   let cloud = false;
   let local = false;
   for (const agent of Object.values(config.agents ?? {})) {
     if (!agent.tools?.includes(toolId)) continue;
     const deploy = agent.deploy ?? "both";
-    cloud ||= isDeploySettingEnabled(deploy, "cloud");
-    local ||= isDeploySettingEnabled(deploy, "local");
+    cloud ||= isDeploySettingEnabled(deploy, "cloud", "unconditioned");
+    local ||= isDeploySettingEnabled(deploy, "local", "unconditioned");
   }
   return cloud ? (local ? "both" : "cloud-only") : (local ? "local-only" : "none");
 }

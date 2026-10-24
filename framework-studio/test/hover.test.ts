@@ -1,8 +1,8 @@
+import { gatewayModels } from "../shared/gateways";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import type { Mode, ModeModel, Snapshot } from "../shared/model";
-import { readModeWebSocketApi } from "../server/inputs";
 import { SnapshotBuilder } from "../server/snapshot";
 import { catalogAvailability } from "../src/deployment";
 import { indexModel } from "../src/lookup";
@@ -27,24 +27,20 @@ after(async () => { await builder.dispose(); });
 const indexes = (models: Readonly<Record<Mode, ModeModel>> = snapshot.models) => ({ dev: indexModel(models.dev), prod: indexModel(models.prod) });
 
 function sceneOf(mode: Mode): Scene {
-  return buildScene(snapshot.models[mode], { webSocketApi: snapshot.webSocketApi, resourceAvailability: catalogAvailability(snapshot.models), layoutModels: Object.values(snapshot.models) });
+  return buildScene(snapshot.models[mode], { resourceAvailability: catalogAvailability(snapshot.models), layoutModels: Object.values(snapshot.models) });
 }
 
 function factsOf(id: string, mode: Mode = "dev", models?: Readonly<Record<Mode, ModeModel>>): HoverFacts {
-  const node = sceneOf(mode).nodes.find((candidate) => candidate.id === id);
+  const scene = sceneOf(mode);
+  const node = scene.nodes.find((candidate) => candidate.id === (scene.representatives[id] ?? id));
+  if (id.startsWith("route:")) return nodeHoverFacts({ ...scene.nodes[0]!, id, entity: "route" }, indexes(models));
   assert.ok(node, `${id} stands in the ${mode} landscape`);
   return nodeHoverFacts(node, indexes(models));
 }
 
 const WEB_SOCKET_ROLES = new Set(["webSocket", "webSocketAuthorizer"]);
 
-/**
- * Whether a graph builds the AWS WebSocket API is DEPLOY_PROD_WEBSOCKET_API in
- * that environment's cdk-app/.env.<mode>, a file this machine owns and the
- * repository does not. These models are the snapshot with development building it
- * and production not, as each environment's evaluator projects that, so the
- * labels asserted against them do not depend on the files present.
- */
+/** Pin an explicitly dev-only workload without depending on this machine’s input files. */
 function webSocketInDevelopmentOnly(): Record<Mode, ModeModel> {
   const pin = (mode: Mode): ModeModel => ({ ...snapshot.models[mode], targets: snapshot.models[mode].targets.map((target) =>
     WEB_SOCKET_ROLES.has(target.role) ? { ...target, lanes: { ...target.lanes, ...(mode === "dev" ? { dev: true } : { prod: false }) } } : target) });
@@ -66,12 +62,8 @@ test("a workload deployed to both environments shows a Dev label and a Prod labe
   assert.deepEqual(labels(factsOf("lambda:cognito-post-confirmation-trigger")), ["dev: Your machine + AWS Lambda · private subnet", "prod: AWS Lambda · private subnet"]);
 });
 
-test("each environment's WebSocket lanes follow its own inputs file", () => {
-  // What the pinned models below stand for: each graph's WebSocket handlers deploy exactly when its file says so.
-  for (const mode of ["dev", "prod"] as const) {
-    const built = readModeWebSocketApi(repositoryRoot, mode, snapshot.webSocketApi);
-    for (const target of snapshot.models[mode].targets.filter((item) => WEB_SOCKET_ROLES.has(item.role))) assert.equal(target.lanes[mode], built, `${mode}: ${target.ref}`);
-  }
+test("unconditional WebSocket handlers are deployed in both AWS graphs", () => {
+  for (const mode of ["dev", "prod"] as const) for (const target of snapshot.models[mode].targets.filter(item => WEB_SOCKET_ROLES.has(item.role))) assert.equal(target.lanes[mode], true);
 });
 
 test("a workload deployed to one environment shows only that label", () => {
@@ -98,11 +90,11 @@ test("framework-managed resources are flagged and application declarations are n
   assert.deepEqual(labels(factsOf("resource:rds")), ["prod: CloudFormation stack"]);
   assert.equal(factsOf("resource:rds").frameworkManaged, true);
   assert.deepEqual(labels(factsOf("framework-stack:DevLambdaReplayStack")), ["dev: CloudFormation stack"]);
-  assert.deepEqual(labels(factsOf("framework-stack:HttpApiGatewayStack")), ["prod: CloudFormation stack"]);
+  assert.deepEqual(labels(factsOf("gateway:http")), ["dev: Your machine", "prod: API Gateway HTTP API"]);
   assert.equal(factsOf("resource:openaiApiKey").frameworkManaged, false);
   assert.deepEqual(labels(factsOf("resource:openaiApiKey")), ["dev: AWS Secrets Manager", "prod: AWS Secrets Manager"]);
   const index = indexes();
-  for (const node of sceneOf("prod").nodes.filter((candidate) => candidate.entity !== "resource")) assert.equal(nodeHoverFacts(node, index).frameworkManaged, false, node.id);
+  for (const node of sceneOf("prod").nodes.filter((candidate) => candidate.entity !== "resource" && candidate.entity !== "gateway")) assert.equal(nodeHoverFacts(node, index).frameworkManaged, false, node.id);
 });
 
 test("an item no environment deploys gives its specific reason", () => {

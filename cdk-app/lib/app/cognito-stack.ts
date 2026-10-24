@@ -241,9 +241,9 @@ export class CognitoStack extends cdk.Stack {
       // stack; `eventFunction` finds each one by id, so nothing is threaded
       // through the entrypoint and Cognito's trigger names stay with Cognito.
       lambdaTriggers: {
-        preSignUp: eventFunction(this, "cognito-pre-signup-trigger"),
-        customMessage: eventFunction(this, "cognito-custom-message"),
-        postConfirmation: eventFunction(this, "cognito-post-confirmation-trigger"),
+        preSignUp: eventFunction(this, "cognito-pre-signup-trigger", { optional: true }),
+        customMessage: eventFunction(this, "cognito-custom-message", { optional: true }),
+        postConfirmation: eventFunction(this, "cognito-post-confirmation-trigger", { optional: true }),
       },
 
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,

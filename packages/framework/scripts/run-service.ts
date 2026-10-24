@@ -1,5 +1,6 @@
+import { isTargetEnabled } from "../src/config/index";
 import { spawn } from "node:child_process";
-import { findRepositoryRoot, resolveServicePort } from "../src/config/source";
+import { findRepositoryRoot, localDeployInputs, resolveServicePort } from "../src/config/source";
 import { resolveLocalWorkloadEnvironment } from "../src/local/environment";
 import framework from "../../../framework.config";
 
@@ -7,6 +8,10 @@ async function main(): Promise<void> {
   const [id, separator, command, ...args] = process.argv.slice(2);
   if (!id || separator !== "--" || !command) throw new Error("Usage: run-service <service-id> -- <command> [...args]");
   const repositoryRoot = findRepositoryRoot();
+  if (!isTargetEnabled(framework, "service", id, "local", localDeployInputs(repositoryRoot))) {
+    console.log(`Service ${id} does not run locally: its deployment setting or condition is disabled.`);
+    return;
+  }
   const env = await resolveLocalWorkloadEnvironment(framework, `service:${id}`, { repositoryRoot });
   // Ports belong to the container and the declaration, not to resource inputs:
   // the container's PORT when it sets one (framework:generate checks that it

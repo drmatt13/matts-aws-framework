@@ -203,7 +203,7 @@ export function Detail(props: {
                         const stopped = local.startedBy === "none";
                         const tone = service.state === "running" ? (service.health === "unhealthy" ? "bad" : service.health === "starting" ? "busy" : "ok")
                           : service.oneShot && service.exitCode === 0 ? "done" : stopped ? "none" : service.state === "exited" && service.exitCode !== 0 ? "bad" : "none";
-                        const label = service.oneShot && service.exitCode === 0 ? "completed" : service.state === "running" ? service.health ?? "running" : stopped ? "stopped" : service.exitCode ? `exited ${service.exitCode}` : service.state;
+                        const label = service.disabledByDeploy ? "Disabled by Deploy" : service.oneShot && service.exitCode === 0 ? "completed" : service.state === "running" ? service.health ?? "running" : stopped ? "stopped" : service.exitCode ? `exited ${service.exitCode}` : service.state;
                         return (
                           <li key={service.container}>
                             <button className="service" onClick={() => props.onServiceLogs(service.name)} title={`Logs of ${service.name}`}>

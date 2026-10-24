@@ -53,6 +53,8 @@ function physicalNames(templates: Record<string, any>): Set<string> {
       for (const [key, value] of Object.entries<any>(resource.Properties ?? {})) {
         // An inline policy's name is unique only within the role it is attached to.
         if (resource.Type === "AWS::IAM::Policy" && key === "PolicyName") continue;
+        // Gateway display names are reusable, and authorizers/stages belong to an API ID.
+        if (resource.Type === "AWS::ApiGatewayV2::Api" && key === "Name" || resource.Type === "AWS::ApiGatewayV2::Authorizer" && key === "Name" || resource.Type === "AWS::ApiGatewayV2::Stage" && key === "StageName") continue;
         if (typeof value === "string" && (/Name$/.test(key) || (resource.Type === "AWS::Cognito::UserPoolDomain" && key === "Domain"))) names.add(`${resource.Type}.${key}:${value}`);
       }
     }

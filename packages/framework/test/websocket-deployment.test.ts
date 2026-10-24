@@ -36,11 +36,11 @@ const config = (overrides: Partial<FrameworkConfigInput> = {}, defaultRoute: Rec
     ...overrides,
   } as never);
 
-test("a dev deployment holds the WebSocket handlers only when it builds the WebSocket API", () => {
+test("dev and prod deployments always hold enabled WebSocket handlers", () => {
   const built = config();
-  assert.deepEqual(getCloudTargets(built, webSocketRoles, "dev"), []);
+  assert.equal(getCloudTargets(built, webSocketRoles, "dev").length, 4);
 
-  const withApi = getCloudTargets(built, webSocketRoles, "dev", { webSocketApi: true });
+  const withApi = getCloudTargets(built, webSocketRoles, "dev", { });
   assert.equal(withApi.length, 4, "three routes and the $connect authorizer");
   assert.ok(withApi.some((target) => target.role === "webSocketAuthorizer"));
   assert.deepEqual(
@@ -49,33 +49,31 @@ test("a dev deployment holds the WebSocket handlers only when it builds the WebS
   );
 
   // The exception is the WebSocket API's handlers, nothing else it might reach.
-  assert.equal(isTargetDeployed(built, "lambda", "verify-session", "dev", { webSocketApi: true }), false);
+  assert.equal(isTargetDeployed(built, "lambda", "verify-session", "dev", { }), false);
   assert.equal(isTargetDeployed(built, "lambda", "verify-session", "prod"), true);
-  assert.doesNotThrow(() => assertCloudEdgesResolvable(built, "dev", { webSocketApi: true }));
+  assert.doesNotThrow(() => assertCloudEdgesResolvable(built, "dev", { }));
 });
 
 test("a WebSocket handler a dev deployment builds may not need what the dev graph lacks", () => {
   const callsTask = config({ tasks: [{ worker: { cloud: { vpc: fixtureVpc }, directory: "/test/fixtures/task-worker", deploy: "both" } }] }, { cloud: { bindings: [runsTask("worker")] } });
   // Served under Compose, it reaches the local task, as before.
-  assert.doesNotThrow(() => assertCloudEdgesResolvable(callsTask, "dev"));
-  assert.doesNotThrow(() => assertCloudEdgesResolvable(callsTask, "prod", { webSocketApi: true }));
+  assert.doesNotThrow(() => assertCloudEdgesResolvable(callsTask, "prod", { }));
   assert.throws(
-    () => assertCloudEdgesResolvable(callsTask, "dev", { webSocketApi: true }),
-    /declares runsTask\("worker"\), which a dev deployment does not build.*Turn DEPLOY_PROD_WEBSOCKET_API off to serve it under Compose/,
+    () => assertCloudEdgesResolvable(callsTask, "dev", { }),
+    /declares runsTask\("worker"\), which a dev deployment does not build.*Use deploy: "local-only"/,
   );
 
   const inside = config({}, { vpc: fixtureVpc, subnet: "private" });
-  assert.doesNotThrow(() => assertCloudEdgesResolvable(inside, "dev"));
   assert.throws(
-    () => assertCloudEdgesResolvable(inside, "dev", { webSocketApi: true }),
-    /has subnet: "private", but a dev deployment builds no network, and DEPLOY_PROD_WEBSOCKET_API builds this WebSocket handler in AWS/,
+    () => assertCloudEdgesResolvable(inside, "dev", { }),
+    /has subnet: "private", but a dev deployment builds no network, and API Gateway calls this WebSocket handler in AWS/,
   );
 
   const catalog = defineResources({ rds: resource.stack<{ readonly database: { readonly connections: object; readonly node: { readonly id: string; readonly path: string } } }>() });
   const connected = config({ resources: catalog, database: { resource: catalog.rds.database, vpc: fixtureVpc } } as never, { vpc: fixtureVpc, database: true });
-  assert.doesNotThrow(() => assertCloudEdgesResolvable(connected, "prod", { webSocketApi: true }));
+  assert.doesNotThrow(() => assertCloudEdgesResolvable(connected, "prod", { }));
   assert.throws(
-    () => assertCloudEdgesResolvable(connected, "dev", { webSocketApi: true }),
+    () => assertCloudEdgesResolvable(connected, "dev", { }),
     /declares database: true, but a dev deployment builds no database/,
   );
 });

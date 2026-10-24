@@ -13,10 +13,27 @@ export function layoutAspect(width: number, height: number): number {
 function proxyGraph(graph: LayoutGraph): LayoutGraph {
   const groups = new Map<string, LayoutLink[]>();
   for (const link of graph.links) { const key = `${link.from.island}>${link.to.island}:${link.category}`; const bucket = groups.get(key); if (bucket) bucket.push(link); else groups.set(key, [link]); }
-  const links = [...groups.values()].map((group): LayoutLink => {
+  const weight = (group: readonly LayoutLink[]) => group.reduce((sum, link) => sum + link.weight, 0);
+  const buckets = [...groups.values()].sort((a, b) => weight(b) - weight(a) || a[0]!.id.localeCompare(b[0]!.id)).slice(0, 36);
+  // Spend the remaining proxy budget on geometric spread. A whole fan of
+  // different inputs/handlers at one mean attachment hides its wire crossings.
+  while (buckets.length < 36) {
+    const splits = buckets.flatMap((group, at) => group.length < 2 ? [] : (["from", "to"] as const).flatMap(end => (["x", "y"] as const).map(axis => {
+      let min = Infinity, max = -Infinity;
+      for (const link of group) { min = Math.min(min, link[end][axis]); max = Math.max(max, link[end][axis]); }
+      return { at, end, axis, score: group.length * (max - min) ** 2 };
+    }))).sort((a, b) => b.score - a.score);
+    const split = splits[0];
+    if (!split || !split.score) break;
+    const group = [...buckets[split.at]!].sort((a, b) => a[split.end][split.axis] - b[split.end][split.axis] || a.id.localeCompare(b.id));
+    const middle = Math.ceil(group.length / 2);
+    buckets.splice(split.at, 1, group.slice(0, middle), group.slice(middle));
+  }
+  const links = buckets.map((group): LayoutLink => {
     const first = group[0]!, weight = group.reduce((sum, link) => sum + link.weight, 0);
     const mean = (end: "from" | "to", axis: "x" | "y") => group.reduce((sum, link) => sum + link[end][axis] * link.weight, 0) / weight;
-    return { ...first, from: { ...first.from, id: `${first.from.island}:${first.category}:out`, x: mean("from", "x"), y: mean("from", "y") }, to: { ...first.to, id: `${first.to.island}:${first.category}:in`, x: mean("to", "x"), y: mean("to", "y") }, weight };
+    const endpoint = (end: "from" | "to") => group.every(link => link[end].id === first[end].id) ? first[end].id : `${first.id}:${end}:mean`;
+    return { ...first, from: { ...first.from, id: endpoint("from"), x: mean("from", "x"), y: mean("from", "y") }, to: { ...first.to, id: endpoint("to"), x: mean("to", "x"), y: mean("to", "y") }, weight };
   }).sort((a, b) => b.weight - a.weight || (a.id < b.id ? -1 : 1));
   // Retain a deterministic bounded proxy; full relationships are routed/measured separately.
   return { ...graph, links: links.slice(0, 36) };
@@ -117,7 +134,13 @@ export function optimizeLayout(islands: readonly IslandFootprint[], graph: Layou
   };
   if (old.size) consider(best.map((p) => settings.pins?.[p.id] ?? old.get(p.id) ?? p));
   const centreScale = Math.max(0.6, Math.min(3, before.aspect / aspect));
-  if (!old.size && Math.abs(centreScale - 1) > 0.15) consider(baseline.map((p) => { const size = islands.find((item) => item.id === p.id)!.size; return { ...p, top: Math.round((p.top + size / 2) * centreScale - size / 2) }; }));
+  if (!old.size && Math.abs(centreScale - 1) > 0.15) {
+    // Gateway aggregation can make the API island much smaller. Repair the
+    // monitor-shaped seed's clearance after scaling instead of discarding an
+    // otherwise useful arrangement because fixed-size islands now overlap.
+    const scaled = baseline.map((p) => { const size = islands.find((item) => item.id === p.id)!.size; return { ...p, top: Math.round((p.top + size / 2) * centreScale - size / 2) }; });
+    consider(clearanceSeed(sorted, scaled, settings.pins));
+  }
   const order = layerOrder(sorted, graph);
   // A dependency-ordered, multi-row seed complements the semantic seed. Aspect
   // controls columns; constraints decide whether this alternative is admissible.

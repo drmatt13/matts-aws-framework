@@ -1,3 +1,4 @@
+import type { DeployLane } from "@repo/framework/config";
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
@@ -6,8 +7,8 @@ import * as authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import * as iam from "aws-cdk-lib/aws-iam";
 import {
   getCloudTargets,
-  getWebSocketAuthorizer,
-  getWebSocketRoutes,
+  getWebSocketAuthorizerIn,
+  getWebSocketRoutesIn,
   toTargetReference,
   validateFrameworkConfig,
   type CloudMode,
@@ -18,6 +19,7 @@ import { FrameworkTargetRegistry } from "./framework-target-registry";
 
 export interface WebSocketApiStackProps extends cdk.StackProps {
   config: FrameworkConfig;
+  inputs?: DeployLane;
   targets: FrameworkTargetRegistry;
   /**
    * Which CDK graph this is. The router carries it for the same reason the
@@ -67,7 +69,7 @@ export class WebSocketApiStack extends cdk.Stack {
     //
     // The token is the identity source, so API Gateway refuses a handshake
     // that carries none without invoking the authorizer at all.
-    const authorizerTarget = getWebSocketAuthorizer(props.config);
+    const authorizerTarget = getWebSocketAuthorizerIn(props.config, "cloud", props.inputs);
     const webSocketAuthorizer = authorizerTarget
       ? new authorizers.WebSocketLambdaAuthorizer(
           "WebSocketLambdaAuthorizer",
@@ -77,7 +79,7 @@ export class WebSocketApiStack extends cdk.Stack {
       : undefined;
 
     for (const [routeKey, target] of Object.entries(
-      getWebSocketRoutes(props.config),
+      getWebSocketRoutesIn(props.config, "cloud", props.inputs),
     )) {
       const idPrefix = constructName(routeKey);
       const route = this.api.addRoute(routeKey, {
@@ -121,7 +123,7 @@ export class WebSocketApiStack extends cdk.Stack {
    */
   private grantConnectionManagement(props: WebSocketApiStackProps): void {
     // This stack is the WebSocket API, so its handlers are built in either mode.
-    for (const target of getCloudTargets(props.config, ["webSocket"], props.mode, { webSocketApi: true })) {
+    for (const target of getCloudTargets(props.config, ["webSocket"], props.mode, { inputs: props.inputs })) {
       if (!target.cloud.manageConnections) continue;
 
       const handler = props.targets.requireLambda(

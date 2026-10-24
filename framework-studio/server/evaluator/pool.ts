@@ -2,7 +2,7 @@ import { fork, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Mode, ModeModel } from "../../shared/model";
-import { writeModeInputs, readModeWebSocketApi } from "../inputs";
+import { writeModeInputs, resolveDeployOutcomes } from "../inputs";
 import type { PreflightRequest, PreflightResult } from "../model/preflight";
 import { failedModel } from "../model/project";
 
@@ -52,7 +52,6 @@ class Evaluator {
   constructor(
     readonly mode: Mode,
     repositoryRoot: string,
-    webSocketApi: boolean,
     log: (line: string) => void,
     overrides: Readonly<Record<string, string>> = {},
     lifetime?: EvaluatorLifetime,
@@ -68,7 +67,6 @@ class Evaluator {
           FRAMEWORK_INPUTS_FILE: writeModeInputs(repositoryRoot, mode),
           FRAMEWORK_MODE: mode,
           STUDIO_MODE: mode,
-          STUDIO_WEBSOCKET_API: webSocketApi ? "true" : "false",
           STUDIO_REPOSITORY_ROOT: repositoryRoot,
         },
         stdio: ["ignore", "pipe", "pipe", "ipc"],
@@ -86,8 +84,11 @@ class Evaluator {
         resolve(failedModel(mode, new Error(`The ${mode} evaluation did not finish within ${LOAD_TIMEOUT_MS / 1000}s.`), Date.now() - started));
         child.kill();
       }, LOAD_TIMEOUT_MS);
-      child.on("message", (message: { type?: string; id?: number; model?: ModeModel; result?: PreflightResult }) => {
-        if (message.type === "model" && message.model) {
+      child.on("message", (message: { type?: string; id?: number; model?: ModeModel; result?: PreflightResult; conditions?: import("@repo/framework/config").DeployCondition[] }) => {
+        if (message.type === "conditions" && message.conditions) {
+          try { child.send({ type: "conditions", outcomes: resolveDeployOutcomes(repositoryRoot, message.conditions) }); }
+          catch (error) { child.send({ type: "conditions", error: error instanceof Error ? error.message : "Unable to resolve deployment conditions." }); }
+        } else if (message.type === "model" && message.model) {
           clearTimeout(timer);
           resolve(message.model);
         } else if (message.type === "preflight" && typeof message.id === "number" && message.result) {
@@ -163,11 +164,11 @@ export class EvaluatorPool {
     private readonly lifetime?: EvaluatorLifetime,
   ) {}
 
-  async evaluate(webSocketApi: boolean, overrides: Readonly<Record<string, string>> = {}): Promise<Evaluation> {
+  async evaluate(overrides: Readonly<Record<string, string>> = {}): Promise<Evaluation> {
     void this.dispose();
     const pair = {
-      dev: new Evaluator("dev", this.repositoryRoot, readModeWebSocketApi(this.repositoryRoot, "dev", webSocketApi), this.log, overrides, this.lifetime),
-      prod: new Evaluator("prod", this.repositoryRoot, readModeWebSocketApi(this.repositoryRoot, "prod", webSocketApi), this.log, overrides, this.lifetime),
+      dev: new Evaluator("dev", this.repositoryRoot, this.log, overrides, this.lifetime),
+      prod: new Evaluator("prod", this.repositoryRoot, this.log, overrides, this.lifetime),
     };
     this.current = pair;
     const [dev, prod] = await Promise.all([pair.dev.model, pair.prod.model]);

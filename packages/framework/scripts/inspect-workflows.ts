@@ -1,3 +1,4 @@
+import { localDeployInputs } from "../src/config/source";
 import {
   childrenOf,
   getLocalTargets,
@@ -81,8 +82,8 @@ function describeStep(
 
 function describeWorkflow(config: FrameworkConfig, workflow: NormalizedWorkflow): string {
   const lines: string[] = [];
-  const locally = isTargetEnabled(config, "workflow", workflow.id, "local");
-  const inCloud = isTargetEnabled(config, "workflow", workflow.id, "cloud");
+  const locally = isTargetEnabled(config, "workflow", workflow.id, "local", localDeployInputs());
+  const inCloud = isTargetEnabled(config, "workflow", workflow.id, "cloud", "unconditioned");
 
   lines.push(bold(`workflow:${workflow.id}`));
   lines.push(
@@ -102,7 +103,7 @@ function describeWorkflow(config: FrameworkConfig, workflow: NormalizedWorkflow)
   if (workflow.targets.length === 0) lines.push(`    ${dim("none")}`);
   for (const reference of workflow.targets) {
     const { kind, id } = parseTargetReference(reference);
-    const enabledLocally = isTargetEnabled(config, kind, id, "local");
+    const enabledLocally = isTargetEnabled(config, kind, id, "local", localDeployInputs());
     // The one thing a developer most often wants to know before running it.
     const placement =
       kind === "lambda"
@@ -172,7 +173,7 @@ function main(): void {
     console.log(describeWorkflow(framework as FrameworkConfig, workflow));
   }
 
-  const localWorkflows = getLocalTargets(framework as FrameworkConfig, ["workflow"]);
+  const localWorkflows = getLocalTargets(framework as FrameworkConfig, ["workflow"], localDeployInputs());
   if (localWorkflows.length > 0) {
     console.log("");
     console.log(

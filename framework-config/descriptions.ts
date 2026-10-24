@@ -5,6 +5,8 @@
  * Documentation only: this file does not configure or deploy infrastructure.
  */
 export const descriptions = {
+  "gateway:http": "Framework-managed HTTP API Gateway for declared HTTP handlers and container service mounts. Runs locally during development and in AWS in production.",
+  "gateway:websocket": "Framework-managed WebSocket API Gateway for enabled route handlers and the declared connection authorizer. Handler Deploy settings control availability in each environment.",
   // HTTP handlers
   "lambda:sign-in": "Signs users in with Cognito and establishes their browser session. Handles password authentication and sign-in challenges.",
   "lambda:sign-out": "Ends the browser session, clears session cookies and revokes the refresh token with Cognito.",
@@ -75,11 +77,12 @@ export const descriptions = {
   "framework-stack:FrontendWebsiteS3Stack": "Hosts the built frontend with S3 and CloudFront and publishes the website outputs used by local export and frontend publishing.",
   "framework-stack:DevLambdaReplayStack": "Development infrastructure that captures opted-in AWS event Lambda invocations for replay against local handlers.",
   "framework-stack:HttpApiGatewayStack": "Framework HTTP API infrastructure derived from declared HTTP routes and service mounts. Publishes the API endpoint for the frontend and local export.",
-  "framework-stack:WebSocketApiStack": "Framework WebSocket API infrastructure derived from declared route keys and their connection authorizer. Availability follows the WebSocket deployment flag.",
+  "framework-stack:WebSocketApiStack": "Framework WebSocket API infrastructure derived from declared route keys and their connection authorizer. Availability follows enabled route handlers and their deployment conditions.",
 
   // Authored inputs and secrets: descriptions contain no values
   "resource:openaiApiKey": "OpenAI provider credential supplied through the OPENAI_API_KEY secret declaration. Author its value only in the selected CDK inputs file.",
   "resource:googleClientSecret": "Google OAuth client credential supplied through the GOOGLE_CLIENT_SECRET secret declaration. Author its value only in the selected CDK inputs file.",
+  "resource:enableWebSocketApi": "ENABLE_WEBSOCKET_API controls the shared Deploy condition on every WebSocket handler and its authorizer. Set true or false independently in the development and production CDK input files; changes take effect on the next local restart or AWS deployment.",
   "resource:langgraph": "Groups the model provider and model identifier inputs shared by the example agent's model configuration.",
   "resource:langgraph.modelProvider": "Selects the agent model provider: Bedrock Mantle, Bedrock or OpenAI. Provider selection determines which model identifier and credentials are used.",
   "resource:langgraph.bedrockModelId": "Model identifier used when the shared model provider is Bedrock.",
@@ -104,7 +107,7 @@ export const descriptions = {
   "prop:vpc:application:endpoint:dynamodb": "DynamoDB gateway endpoint attached to the VPC route tables so DynamoDB traffic stays on the AWS network.",
 
   // Selectable terrain
-  "island:apis": "Public HTTP routes, container service mounts, WebSocket route keys and agent browser paths. Each entry has its own identity and declared target.",
+  "island:apis": "Framework-managed HTTP and WebSocket API Gateways. Inspect a gateway to see its individual routes and handlers; agent browser paths belong to their agent.",
   "island:lambda": "Lambda compute outside the VPC, grouped across HTTP, WebSocket, events and agent tools. Shared defaults apply by service type; individual workload overrides take precedence.",
   "island:vpc:application": "Application VPC with public, private and isolated subnet terraces. Production workloads follow their declared placement; gateway and endpoint settings control egress.",
   "island:agentcore": "Conversational agents running on AgentCore Runtime or the local agent lane. Declared tool bindings determine which Lambda tools each agent can call.",

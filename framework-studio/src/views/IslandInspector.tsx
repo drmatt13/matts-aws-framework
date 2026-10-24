@@ -14,6 +14,7 @@ import { Description } from "./Description";
 import { ClientEnvironmentMappings } from "./ClientEnvironment";
 import { CLIENT_ENVIRONMENT_ISLAND } from "../../shared/client-environment";
 import { Tags } from "./Tags";
+import { DeploymentSection, DeploymentOwnerControl } from "./Deployment";
 
 const LAMBDAS = ["lambda", "http", "webSocket", "events", "tools"];
 const GROUPS: Readonly<Record<string, readonly string[]>> = {
@@ -56,14 +57,14 @@ function EnvironmentFiles() {
 
 /** Island membership comes from the same layout as the canvas, never a second graph. */
 export function IslandInspector({ id }: { readonly id: string }) {
-  const { model, snapshot, select, index, mode } = useStudio();
+  const { model, snapshot, select, index, mode, draft, draftState, live } = useStudio();
   const scene = useMemo(() => buildScene(model, {
-    webSocketApi: snapshot.webSocketApi,
     resourceAvailability: catalogAvailability(snapshot.models),
     conditions: Object.fromEntries(Object.entries(snapshot.source.catalog).map(([key, value]) => [key, value.condition])),
-  }), [model, snapshot.webSocketApi, snapshot.models, snapshot.source.catalog]);
+  }), [model, snapshot.models, snapshot.source.catalog]);
   const island = scene.islands.find((island) => island.id === id);
   const members = scene.nodes.filter((node) => node.island === id);
+  const resources = catalogAvailability(snapshot.models);
   const groups = GROUPS[id] ?? [];
   if (!island) return <p className="empty">This island has no entries in this environment.</p>;
   const entries = <InspectorDisclosure title="Island entries" count={members.length}><ul className="island-members">{members.map((node) => {
@@ -74,12 +75,16 @@ export function IslandInspector({ id }: { readonly id: string }) {
     <header><span className="kind">Island settings</span><h2>{island.title}</h2><p className="small muted">{members.length} {members.length === 1 ? "entry" : "entries"}</p></header>
     <Tags entity={id} />
     <Description entity={id} />
+    <DeploymentSection availability={{ dev: members.some(node => node.lanes ? node.lanes.local || node.lanes.dev : resources[node.id]?.dev), prod: members.some(node => node.lanes ? node.lanes.prod : resources[node.id]?.prod) }}><DeploymentOwnerControl reason={id.startsWith("island:vpc:") ? "Production creates this VPC when its database, native resources or enabled workloads require it. Configure those owners; local Compose networking remains shared." : "This island groups resources. Configure deployment on its entries."} owners={members.filter(node => model.targets.some(target => target.ref === node.id) || model.resources.some(resource => resource.id === node.id)).map(node => ({ id: node.id, title: node.label }))} /></DeploymentSection>
     <NetworkControls id={id} />
     {id === "island:environment" ? <EnvironmentFiles /> : null}
     {id === CLIENT_ENVIRONMENT_ISLAND ? <ClientEnvironmentMappings /> : null}
+    {id === "island:inputs" ? <InspectorSection title="Add an input" description="Declare an input parameter or secret, then review the source changes. Environment values are configured separately.">
+      <button className="quiet" disabled={!!draftState.busy || live.evaluating || Object.values(snapshot.models).some(model => model.stale || model.status === "error")} onClick={() => draft.requestNavigation(() => draft.beginCreation("input"))}>Create input parameter or secret</button>
+    </InspectorSection> : null}
     {id === "island:stacks" ? entries : null}
     {id === "island:stacks" ? <InspectorSection title="CDK infrastructure"><InfrastructurePanel key={mode} onNavigate={select} /></InspectorSection> : null}
-    {groups.length ? <SharedDefaults families={groups} note={id === "island:agentcore" ? "These defaults configure Lambda tools used by agents. AgentCore runtimes have individual settings." : undefined} /> : id.startsWith("island:vpc:") || id === "island:environment" || id === "island:stacks" || id === CLIENT_ENVIRONMENT_ISLAND ? null : <section><h3>Settings</h3><p className="small">The framework has no shared defaults for this island. Select an entry below to configure it.</p></section>}
+    {groups.length ? <SharedDefaults families={groups} note={id === "island:agentcore" ? "These defaults configure Lambda tools used by agents. AgentCore runtimes have individual settings." : undefined} /> : id.startsWith("island:vpc:") || id === "island:environment" || id === "island:inputs" || id === "island:stacks" || id === CLIENT_ENVIRONMENT_ISLAND ? null : <section><h3>Settings</h3><p className="small">The framework has no shared defaults for this island. Select an entry below to configure it.</p></section>}
     {id !== "island:stacks" ? entries : null}
   </>;
 }

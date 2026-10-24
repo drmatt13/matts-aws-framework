@@ -1,3 +1,4 @@
+import type { DeployLane } from "@repo/framework/config";
 import { markInfrastructure } from "./framework-inventory";
 import { deferResourceAttachment } from "./framework-resources";
 import * as cdk from "aws-cdk-lib";
@@ -56,6 +57,7 @@ export interface FrameworkWorkflowsProps {
    * without it, because a dev deployment builds no state machines at all.
    */
   readonly mode: CloudMode;
+  readonly inputs?: DeployLane;
   /** The selection the composition factory validated, when there is one. */
   readonly targets?: readonly NormalizedTarget[];
 }
@@ -127,7 +129,7 @@ export class FrameworkWorkflows {
   ) {
 
     const workflows =
-      props.targets ?? getCloudTargets(props.config, ["workflow"], props.mode);
+      props.targets ?? getCloudTargets(props.config, ["workflow"], props.mode, { inputs: props.inputs });
     if (workflows.length === 0) return;
 
     // Built in dependency order: a graph that runs a child workflow resolves it

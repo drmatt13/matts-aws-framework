@@ -39,6 +39,12 @@ to `resources/inputs.ts`, and new stack descriptors append to `resources/stacks.
 Existing catalog groups retain their declaring module. The explicit facade imports/composes
 each public name; descriptor filenames are never public catalog identity.
 
+When the authorized WebSocket `$connect` handler has the same input condition in both
+graphs, a new WebSocket handler's default Deploy choice is **Use $connect condition**.
+Creation copies that selector and comparison into the new declaration, using its actual
+catalog path and existing imports. Off remains available; incompatible local/cloud-only
+choices are refused. Existing-target route aliases retain their target's settings.
+
 Current source implements **Add to Application**, not a disabled menu. [AddMenu](../../../framework-studio/src/views/AddMenu.tsx) opens [CreationWizard](../../../framework-studio/src/views/CreationWizard.tsx); `CREATORS`, `CreationRequest` and `readCreationRequest` in [shared/creation.ts](../../../framework-studio/shared/creation.ts) define forms and server-revalidated inputs. `InspectorDraft.beginCreation` stages one complete creation; it cannot be mixed with unrelated edits in a batch.
 
 The Cognito view's federation creator reuses this transaction for literal
@@ -61,6 +67,10 @@ separate operations; source/synth success is not runtime authorization proof.
 
 The chooser supports arrow keys, Home/End and Escape with focus returned to its trigger.
 Unavailable choices explain their configuration/validation blocker in the menu.
+The Input parameters and secrets island opens the same creator as Add to application.
+One form uses a Secret switch to choose an input parameter or a secret, preserving shared
+settings while retaining their distinct validated source declarations. Input defaults and
+allowed values apply only to parameters; no secret value is entered or written by creation.
 Wizard fields keep labels, controls, helper text and validation together; tags and
 list editors span the form width. Helpers remain associated when errors appear,
 and all configuration controls freeze during validation, stale-source evaluation

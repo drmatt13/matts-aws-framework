@@ -1,3 +1,4 @@
+import { gatewaysOf } from "../../shared/gateways";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
@@ -74,7 +75,7 @@ function absent(stack: ExportStackSource, model: ModeModel): boolean {
     case "DevLambdaReplayStack": return model.mode !== "dev";
     case "FrontendWebsiteS3Stack":
     case "HttpApiGatewayStack": return model.mode !== "prod";
-    case "WebSocketApiStack": return !model.targets.some((target) => (target.role === "webSocket" || target.role === "webSocketAuthorizer") && (model.mode === "dev" ? target.lanes.dev : target.lanes.prod));
+    case "WebSocketApiStack": return !gatewaysOf(model).some(gateway => gateway.protocol === "websocket" && gateway.lanes[model.mode]);
     default: return false;
   }
 }
@@ -99,5 +100,5 @@ export function withExportStacks(model: ModeModel, stacks: readonly ExportStackS
       detail: "localReplay: true captures AWS invocations through the development replay stack for local execution. Production invokes the handler directly.",
     });
   }
-  return { ...model, resources, edges };
+  return { ...model, resources, edges, gateways: gatewaysOf(model).map(gateway => ({ ...gateway, stackResource: resources.find(resource => resource.stackClass === (gateway.protocol === "http" ? "HttpApiGatewayStack" : "WebSocketApiStack"))?.id ?? gateway.stackResource })) };
 }

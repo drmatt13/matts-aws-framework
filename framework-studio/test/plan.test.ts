@@ -110,7 +110,7 @@ test("a workflow's fields are its options object", () => {
   writeFileSync(path.join(root, "framework.config.ts"), source);
   try {
     const config = defineFrameworkConfig({ networks: [fixtureVpc], defaults, http: [], webSocket: [], events: [], services: [], workflows: [{ process: workflow(() => wait({ seconds: 1 }), { deploy: "local-only", timeoutSeconds: 120 }) }] });
-    const model = projectModel(config as unknown as FrameworkConfig, { mode: "dev", webSocketApi: false });
+    const model = projectModel(config as unknown as FrameworkConfig, { mode: "dev", });
     const fact = model.fields["workflow:process"]!.find((fact) => fact.field === "deploy")!;
     const edit = planned(planEdit({ repositoryRoot: root, origin: 'workflows["process"]', field: fieldById("deploy")!, fact, intent: { target: "workflow:process", field: "deploy", value: "both" } }));
     assert.equal(edit.relativeFile, "framework.config.ts");

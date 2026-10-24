@@ -1,3 +1,4 @@
+import type { DeployLane } from "@repo/framework/config";
 import { networkConstructId } from "@repo/framework/config";
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
@@ -34,7 +35,7 @@ import {
 export interface EcsServicesStackProps extends cdk.StackProps {
   readonly config: FrameworkConfig;
   /** Which CDK graph this is. */
-  readonly cloud: { readonly mode: "dev" | "prod" };
+  readonly cloud: { readonly mode: "dev" | "prod"; readonly inputs?: DeployLane };
   /**
    * The targets to build, when the composition factory has already selected
    * and validated them. Omitted, the same selection is derived from the config
@@ -76,7 +77,7 @@ export class EcsServicesStack extends cdk.Stack {
     // app skips this whole stack when no service is cloud-enabled, and this
     // guard keeps the VPC lookup below out of an empty stack either way.
     const services =
-      props.targets ?? getCloudTargets(props.config, ["service"], props.cloud.mode);
+      props.targets ?? getCloudTargets(props.config, ["service"], props.cloud.mode, { inputs: props.cloud.inputs });
     if (services.length === 0) {
       return;
     }

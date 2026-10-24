@@ -1,3 +1,4 @@
+import type { DeployLane } from "@repo/framework/config";
 import * as cdk from "aws-cdk-lib";
 import type { Construct } from "constructs";
 import {
@@ -41,13 +42,14 @@ import type { CognitoResources } from "./http-api-gateway-stack";
 export const STACK_RESOURCE_LIMIT = 500;
 
 /** Whether this graph builds an orchestration stack at all. A dev graph never does. */
-export function hasOrchestrationCloudResources(config: FrameworkConfig, mode: CloudMode): boolean {
-  return getCloudTargets(config, ["workflow"], mode).length > 0 || hasAgentCoreCloudResources(config, mode);
+export function hasOrchestrationCloudResources(config: FrameworkConfig, mode: CloudMode, inputs?: DeployLane): boolean {
+  return getCloudTargets(config, ["workflow"], mode, { inputs }).length > 0 || hasAgentCoreCloudResources(config, mode, inputs);
 }
 
 export interface OrchestrationStackProps extends cdk.StackProps {
   readonly config: FrameworkConfig;
   readonly mode: CloudMode;
+  readonly inputs?: DeployLane;
   /** The user pool an agent declared `auth: true` accepts tokens from. */
   readonly cognito: CognitoResources;
   /** The workflow selection the composition factory validated, when there is one. */
@@ -63,12 +65,13 @@ export class OrchestrationStack extends cdk.Stack {
 
   public constructor(scope: Construct, id: string, props: OrchestrationStackProps) {
     super(scope, id, props);
-    const { config, mode } = props;
-    this.workflows = new FrameworkWorkflows(this, { config, mode, ...(props.workflows ? { targets: props.workflows } : {}) });
-    if (hasAgentCoreCloudResources(config, mode)) {
+    const { config, mode, inputs } = props;
+    this.workflows = new FrameworkWorkflows(this, { config, mode, inputs: props.inputs, ...(props.workflows ? { targets: props.workflows } : {}) });
+    if (hasAgentCoreCloudResources(config, mode, props.inputs)) {
       this.agentcore = new FrameworkAgentCore(this, AGENTCORE_CONSTRUCT_ID, {
         config,
         mode,
+        inputs: props.inputs,
         cognito: props.cognito,
         ...(props.tools ? { tools: props.tools } : {}),
       });

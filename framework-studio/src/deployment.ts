@@ -4,6 +4,8 @@ import type { ModelIndex } from "./lookup";
 /** The same deployment facts used by map nodes, without constructing a scene. */
 export function connectionDisabledEndpoints(index: ModelIndex, mode: Mode, edge: Pick<ModelEdge, "from" | "to">): readonly string[] {
   const enabled = (id: string): boolean => {
+    const gateway = index.gateways.get(id);
+    if (gateway) return environments(gateway.lanes)[mode];
     const local = index.localServices.get(id);
     if (local) return local.enabled;
     const route = index.routes.get(id);
@@ -12,7 +14,7 @@ export function connectionDisabledEndpoints(index: ModelIndex, mode: Mode, edge:
     const resource = index.resources.get(id);
     if (!resource) return false;
     // Stack members share their owning stack's representation in the map.
-    const representative = resource.kind === "member" && resource.parent ? index.resources.get(resource.parent) ?? resource : resource;
+    const representative = index.resources.get(index.representatives[id] ?? id) ?? resource;
     return !representative.absent;
   };
   return [...new Set([edge.from, edge.to])].filter((id) => !enabled(id));
@@ -29,11 +31,10 @@ export const DEPLOYMENT_BADGES = {
 } as const;
 
 /** Friendly labels; edit intents still carry the framework's original tokens. */
-export function deploymentSettingLabel(value: string, webSocketApi?: boolean | Availability): string {
-  if (webSocketApi !== undefined) {
-    const api = typeof webSocketApi === "boolean" ? { dev: webSocketApi, prod: webSocketApi } : webSocketApi;
-    if (value === "both") return api.prod ? "Dev + Prod" : api.dev ? "Dev only (local + AWS)" : "Dev only (AWS API disabled)";
-    if (value === "cloud-only") return api.dev && api.prod ? "Dev + Prod (AWS execution)" : api.dev ? "Dev only (AWS execution)" : api.prod ? "Prod only" : "Off (API disabled)";
+export function deploymentSettingLabel(value: string, lanes?: { readonly local?: boolean; readonly dev: boolean; readonly prod: boolean }): string {
+  if (lanes) {
+    const dev = lanes.local || lanes.dev;
+    return dev && lanes.prod ? lanes.local === false && lanes.dev ? "Dev + Prod (AWS)" : "Dev + Prod" : dev ? lanes.local === false && lanes.dev ? "Dev only (AWS)" : "Dev only" : lanes.prod ? "Prod only" : "Off";
   }
   return ({ both: "Dev + Prod", "local-only": "Dev only", "cloud-only": "Prod only", none: "Off" } as Readonly<Record<string, string>>)[value] ?? value;
 }
@@ -57,13 +58,12 @@ export function developmentLocation(lanes: Lanes): string {
   return lanes.local && lanes.dev ? "Your machine + AWS" : lanes.local ? "On your machine" : lanes.dev ? "In AWS" : "Not enabled";
 }
 
-/** Preview a supported deploy-field edit; each graph supplies its own API flag. */
-export function previewDeploymentLanes(target: Pick<ModelTarget, "lanes" | "role">, setting: string, webSocketApi: boolean): Lanes {
+/** Preview a deploy token using the framework's role-specific lane choices. */
+export function previewDeploymentLanes(target: Pick<ModelTarget, "lanes" | "role">, setting: string, choices?: Readonly<Record<string, { local: boolean; cloud: boolean; dev: boolean; prod: boolean }>>): Lanes {
   if (setting !== "both" && setting !== "local-only" && setting !== "cloud-only" && setting !== "none") return target.lanes;
-  const local = setting === "both" || setting === "local-only";
-  const cloud = setting === "both" || setting === "cloud-only";
-  const websocket = target.role === "webSocket" || target.role === "webSocketAuthorizer";
-  return { ...target.lanes, deploy: setting, local, cloud, dev: websocket && webSocketApi && cloud, prod: cloud && (!websocket || webSocketApi) };
+  const resolved = choices?.[setting];
+  if (!resolved) return target.lanes;
+  return { ...target.lanes, when: undefined, deploy: setting, ...resolved };
 }
 
 export function deploymentSummary(lanes: Lanes): string {

@@ -16,7 +16,10 @@ export interface EditIntent {
   readonly inherit?: true;
 }
 
+export type DeployValue = import("./model").DeploySetting | "inherit" | { readonly when: { readonly resource: string; readonly equals: string } };
+
 export type DraftEdit =
+  | { readonly kind: "deploy"; readonly target: string; readonly value: DeployValue }
   | import("./identity-policy").IdentityPolicyEdit
   | { readonly kind: "implementation"; readonly target: string }
   | { readonly kind: "connection"; readonly target: string; readonly connection: "database" | "userPool" | "runsTask" | "startsWorkflow" | "invokesAgent" | "tool" | "resource" | "grant"; readonly destination?: string; readonly enabled: boolean; readonly variable?: string; readonly grant?: "grantRead" | "grantWrite" | "grantReadWrite" | "grantSendMessages" | "grantConsumeMessages"; readonly scope?: string }

@@ -94,6 +94,11 @@ const eachMode = (answer: (mode: Mode) => Where): Readonly<Record<Mode, Where>> 
 
 export function nodeHoverFacts(node: SceneNode, indexes: ModelIndexes): HoverFacts {
   switch (node.entity) {
+    case "gateway":
+      return combine(eachMode(mode => {
+        const gateway = indexes[mode].gateways.get(node.id);
+        return gateway ? laneWhere(gateway.lanes, mode, `API Gateway ${gateway.title}`) : { reason: NOT_DEPLOYED };
+      }), true);
     case "target":
       return combine(eachMode((mode) => {
         const target = indexes[mode].targets.get(node.id);

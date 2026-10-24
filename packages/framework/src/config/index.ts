@@ -5,7 +5,7 @@ import {
   LAMBDA_SOURCE_ROOT,
   TASK_SOURCE_ROOT,
 } from "./conventions";
-import { isDeploySettingEnabled } from "./deploy";
+import { isDeploySettingEnabled, assertDeploySetting, deployKey, deployFits, DEV_GRAPH_ROLES } from "./deploy";
 import {
   getAgentBrowserRoutes,
   getDefaultAgentDirectory,
@@ -16,7 +16,7 @@ import {
   type FrameworkAgents,
   type FrameworkTools,
 } from "./agentcore";
-import type { DeployScope, DeploySetting } from "./deploy";
+import type { DeployScope, DeploySetting, DeployLane } from "./deploy";
 import { LAMBDA_SOURCE_DIRECTORY_BY_ID } from "../generated/target-ids";
 import type {
   EventLambdaId,
@@ -103,8 +103,8 @@ export * from "./triggers";
 import { normalizeFailureDestinations, normalizeTriggers, type EventFailureDestination, type EventTrigger, type NormalizedFailureDestination, type NormalizedTrigger } from "./triggers";
 // Named rather than `export *`: reading a deploy token is the framework's job,
 // so `isDeploySettingEnabled` stays internal to the package.
-export { DEPLOY_SETTINGS } from "./deploy";
-export type { DeployScope, DeploySetting } from "./deploy";
+export { DEPLOY_SETTINGS, deployInputsFrom, deployLanes, deployKey } from "./deploy";
+export type { DeployScope, DeploySetting, DeployToken, DeployCondition, DeployInputs, DeployLane } from "./deploy";
 
 export {
   EVENT_LAMBDA_IDS,
@@ -491,6 +491,8 @@ export type WebSocketLambdaTargetDefinition<Catalog = AnyResourceCatalog> =
 /** A Lambda invoked through native AWS wiring, keyed by its stable target id. */
 export interface EventLambdaTargetDefinition<Catalog = AnyResourceCatalog>
   extends LambdaTargetDefinition, TargetEnvironment<Catalog> {
+  /** Deployment policy; native trigger owners omit disabled functions. */
+  readonly deploy?: DeploySetting;
   /**
    * Implementation directory. Defaults to where the handler named by this
    * entry's key is filed under `/lambda_functions/event_functions`, so declare
@@ -3084,6 +3086,7 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
     }
     const deploy =
       extra.deploy ?? definition.deploy ?? serviceDefinition?.deploy ?? "both";
+    assertDeploySetting(deploy, origin);
     // Cloud settings are part of one deployed workload, so two routes reaching
     // it may not ask for different environments, grants or sizing. Resolved
     // (and canonically ordered) before comparison, like the build settings.
@@ -3159,7 +3162,7 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
           `Target "${reference}" is declared with different build or cloud settings in ${existing.origins[0]} and ${origin}. Routes may share a target only when their resolved settings agree.`,
         );
       }
-      if (existing.deploy !== deploy) {
+      if (deployKey(existing.deploy) !== deployKey(deploy)) {
         throw new Error(
           `Target "${reference}" is declared with deploy "${existing.deploy}" in ${existing.origins[0]} and "${deploy}" in ${origin}. Routes may share a target only when their deploy settings agree.`,
         );
@@ -3324,11 +3327,6 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
         `${origin} declares "id". The object key is already this target's id.`,
       );
     }
-    if ((definition as { readonly deploy?: DeploySetting }).deploy !== undefined) {
-      throw new Error(
-        `${origin} declares deploy settings, but its invocation wiring is owned by CDK. Remove "deploy" and control its lifecycle in the owning stack.`,
-      );
-    }
     claim(
       "lambda",
       { directory: definition.directory ?? getDefaultEventDirectory(id), id },
@@ -3344,12 +3342,6 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
   // Runtime hosts an agent, so neither has a route to be keyed by.
   for (const [id, definition] of Object.entries(config.tools ?? {})) {
     const origin = `tools["${id}"]`;
-    rejectObsoleteField(
-      definition,
-      "deploy",
-      origin,
-      "A tool's deployment is inferred from the agents that list it. Set deploy on those agents instead.",
-    );
     if ("id" in definition) {
       throw new Error(`${origin} declares "id". The object key is already this target's id.`);
     }
@@ -3551,6 +3543,15 @@ function normalize(config: FrameworkConfig): InternalNormalizedConfig {
   assertOrchestrationIdentities(targets);
   assertReferencesAreDeclared(config, targets);
   assertInvocationEdges(targets);
+  const connect = webSocket.find(route => route.routeKey === "$connect");
+  if (connect?.authorizer) {
+    const connectTarget = targets.get(connect.target)!;
+    const authorizer = targets.get(connect.authorizer)!;
+    if (!deployFits(connectTarget.deploy, authorizer.deploy)) throw new Error("$connect deployment must fit inside its authorizer's deployment, including its condition.");
+    for (const route of webSocket) {
+      if (!deployFits(targets.get(route.target)!.deploy, connectTarget.deploy)) throw new Error(`${route.origin} deployment must fit inside $connect's deployment, including its condition, so the authorizer cannot be bypassed.`);
+    }
+  }
   assertNetworkEdges(config, targets);
 
   return { networks, targets, http, webSocket, triggers: normalizeTriggers(config.events, config.resources ?? {}), failureDestinations: normalizeFailureDestinations(config.events, config.resources ?? {}) };
@@ -3673,6 +3674,7 @@ function assertReferencesAreDeclared(
 
   for (const target of targets.values()) {
     const origin = target.origins[0] ?? target.reference;
+    if (typeof target.deploy !== "string") check(target.deploy.when.resource as ResourceReference, "string", origin, "deploy.when");
     for (const binding of target.cloud.bindings) {
       if (binding.capability === "connectsTo") {
         if (!declaredNatively(binding.resource.path)) throw new Error(`${origin} declares database: true, and the config's database, resources.${binding.resource.path.join(".")}, is not declared in its "resources" catalog.`);
@@ -3777,9 +3779,9 @@ function assertNetworkEdges(
     if (outside) {
       throw new Error(`${describe(target)} ${flag}. ${outside}: ${database ? "reach the database from a TypeScript Lambda instead" : 'give it subnet: "none"'}.`);
     }
-    if (target.role === "event" && config.events?.[target.id]?.localReplay !== true) {
+    if (target.role === "event" && isDeploySettingEnabled(target.deploy, "cloud", "unconditioned") && (config.events?.[target.id]?.localReplay !== true || !isDeploySettingEnabled(target.deploy, "local", "unconditioned"))) {
       throw new Error(
-        `${describe(target)} ${flag}, and a dev deployment builds no ${database ? "database" : "network"}. AWS invokes this event in a dev deployment too, so its handler has to run locally: add localReplay: true.`,
+        `${describe(target)} ${flag}, and a dev deployment builds no ${database ? "database" : "network"}. AWS invokes this event in a dev deployment too, so its handler has to run locally: add localReplay: true and enable the local deployment lane.`,
       );
     }
   }
@@ -3803,7 +3805,7 @@ function assertNetworkEdges(
   };
 
   for (const target of targets.values()) {
-    if (!isDeploySettingEnabled(target.deploy, "cloud")) continue;
+    if (!isDeploySettingEnabled(target.deploy, "cloud", "unconditioned")) continue;
     const container = target.kind === "service" || target.kind === "task"
       ? target.cloud.service ?? target.cloud.task
       : undefined;
@@ -3938,14 +3940,15 @@ function assertInvocationEdges(
       );
     }
     for (const scope of ["cloud", "local"] as const) {
-      const callerEnabled = isDeploySettingEnabled(caller.deploy, scope);
-      const destinationEnabled = isDeploySettingEnabled(destination.deploy, scope);
+      const callerEnabled = isDeploySettingEnabled(caller.deploy, scope, "unconditioned");
+      const destinationEnabled = isDeploySettingEnabled(destination.deploy, scope, "unconditioned");
       if (callerEnabled && !destinationEnabled) {
         throw new Error(
-          `${describe(caller)} ${where} names "${reference}", which deploy "${destination.deploy}" removes from the ${scope} lane the caller still runs in. An active edge needs a destination in the same lane.`,
+          `${describe(caller)} ${where} names "${reference}", which deploy "${deployKey(destination.deploy)}" removes from the ${scope} lane the caller still runs in. An active edge needs a destination in the same lane.`,
         );
       }
     }
+    if (!deployFits(caller.deploy, destination.deploy)) throw new Error(`${describe(caller)} ${where} names "${reference}", whose conditional deployment requires the caller to declare the identical condition.`);
     addEdge(caller.reference, reference);
     return destination;
   };
@@ -4237,7 +4240,7 @@ export function getFrameworkTargets(
  * Two questions, answered together. `deploy` is where the author wants a
  * target; `mode` is what the deployment is willing to hold. They compose by
  * intersection, so the dev graph is always a subset of the prod graph built
- * from the same config — turning `PROD_DEPLOYMENT` off removes resources, and
+ * from the same config and inputs — turning `PROD_DEPLOYMENT` off removes resources, and
  * never adds or changes one.
  *
  * Selection is from the unique target collection rather than from route
@@ -4251,11 +4254,8 @@ export function getCloudTargets(
   mode: CloudMode,
   graph: CloudGraphOptions = {},
 ): readonly NormalizedTarget[] {
-  return getFrameworkTargets(config).filter(
-    (target) =>
-      roles.includes(target.role) &&
-      normalizedTargetDeployed(target, mode, graph),
-  );
+  const targets = normalize(config).targets;
+  return [...targets.values()].filter(target => roles.includes(target.role) && normalizedTargetDeployed(target, mode, graph, targets));
 }
 
 /**
@@ -4269,11 +4269,12 @@ export function getCloudTargets(
 export function getLocalTargets(
   config: FrameworkConfig,
   roles: readonly TargetRole[],
+  inputs?: DeployLane,
 ): readonly NormalizedTarget[] {
   return getFrameworkTargets(config).filter(
     (target) =>
       roles.includes(target.role) &&
-      isDeploySettingEnabled(target.deploy, "local"),
+      isDeploySettingEnabled(target.deploy, "local", inputs),
   );
 }
 
@@ -4351,10 +4352,8 @@ export function getLambdaSection(
  * has a developer for a caller — a browser, a test, a curl — and a developer
  * can call Compose instead.
  *
- * This is the same property that stops an `events` entry from declaring
- * `deploy` at all: its invocation wiring is owned by CDK. The dev graph's one
- * carve-out is therefore derived from something the config already encodes,
- * rather than being a list somebody has to remember.
+ * Enabled event functions also deploy in the development AWS graph because
+ * their native callers run there. Their own deploy policy still applies.
  */
 const AWS_INVOKED_ROLES: ReadonlySet<TargetRole> = new Set<TargetRole>(["event"]);
 
@@ -4366,16 +4365,10 @@ export function isAwsInvokedRole(role: TargetRole): boolean {
 /** The roles the AWS WebSocket API routes to. */
 const WEB_SOCKET_ROLES: ReadonlySet<TargetRole> = new Set<TargetRole>(["webSocket", "webSocketAuthorizer"]);
 
-/**
- * What a deployment builds beyond what its mode decides.
- *
- * The AWS WebSocket API is a deployment flag rather than a declaration, and the
- * one router a dev deployment can build. Built, it makes API Gateway the AWS
- * caller of the WebSocket handlers, so a dev deployment holds them too.
- */
+/** Concrete inputs for the selected AWS graph, or an explicit declaration superset. */
 export interface CloudGraphOptions {
-  /** This deployment builds the AWS WebSocket API. */
-  readonly webSocketApi?: boolean;
+  /** Resolve workload conditions for this graph. */
+  readonly inputs?: DeployLane;
 }
 
 /**
@@ -4390,45 +4383,37 @@ export function isTargetEnabled(
   kind: TargetKind,
   id: string,
   scope: DeployScope,
+  inputs?: DeployLane,
 ): boolean {
-  return normalizedTargetEnabled(normalize(config).targets.get(`${kind}:${id}` as TargetReference), scope);
+  return normalizedTargetEnabled(normalize(config).targets.get(`${kind}:${id}` as TargetReference), scope, inputs);
 }
 
-function normalizedTargetEnabled(target: NormalizedTarget | undefined, scope: DeployScope): boolean {
-  return isDeploySettingEnabled(target?.deploy ?? "both", scope);
+function normalizedTargetEnabled(target: NormalizedTarget | undefined, scope: DeployScope, inputs?: DeployLane): boolean {
+  return isDeploySettingEnabled(target?.deploy ?? "both", scope, inputs, target?.origins[0]);
 }
 
-function normalizedTargetDeployed(target: NormalizedTarget | undefined, mode: CloudMode, graph: CloudGraphOptions): boolean {
-  if (!normalizedTargetEnabled(target, "cloud")) return false;
+function normalizedTargetDeployed(target: NormalizedTarget | undefined, mode: CloudMode, graph: CloudGraphOptions, targets?: ReadonlyMap<TargetReference, NormalizedTarget>): boolean {
+  if (!normalizedTargetEnabled(target, "cloud", graph.inputs)) return false;
+  if (target?.role === "webSocketAuthorizer" && targets && ![...targets.values()].some(route => route.role === "webSocket" && normalizedTargetDeployed(route, mode, graph))) return false;
   if (mode === "prod") return true;
   const role = target?.role;
-  return role !== undefined && (isAwsInvokedRole(role) || graph.webSocketApi === true && WEB_SOCKET_ROLES.has(role));
+  return role !== undefined && DEV_GRAPH_ROLES.has(role);
 }
 
 /** A fresh, operation-local view of the canonical execution and deployment rules. */
 export function createTargetAvailability(config: FrameworkConfig): {
-  enabled(kind: TargetKind, id: string, scope: DeployScope): boolean;
+  enabled(kind: TargetKind, id: string, scope: DeployScope, inputs?: DeployLane): boolean;
   deployed(kind: TargetKind, id: string, mode: CloudMode, graph?: CloudGraphOptions): boolean;
 } {
   const targets = normalize(config).targets;
   return {
-    enabled: (kind, id, scope) => normalizedTargetEnabled(targets.get(`${kind}:${id}` as TargetReference), scope),
-    deployed: (kind, id, mode, graph = {}) => normalizedTargetDeployed(targets.get(`${kind}:${id}` as TargetReference), mode, graph),
+    enabled: (kind, id, scope, inputs) => normalizedTargetEnabled(targets.get(`${kind}:${id}` as TargetReference), scope, inputs),
+    deployed: (kind, id, mode, graph = {}) => normalizedTargetDeployed(targets.get(`${kind}:${id}` as TargetReference), mode, graph, targets),
   };
 }
 
-/**
- * Whether this deployment builds the target: the author's intent narrowed by
- * what the mode will hold.
- *
- * A dev deployment holds only what AWS invokes. Everything else runs under
- * Compose, so deploying it would create a resource whose only caller is
- * somewhere else. A dev deployment that builds the WebSocket API holds its
- * handlers too, because API Gateway is then their caller.
- *
- * A prod deployment answers for the WebSocket handlers whether or not it builds
- * the API: leaving them out when it does not is the composition's decision,
- * which it reports separately.
+/** Whether the selected graph builds a workload after its deploy setting and condition.
+ * Development holds events and WebSocket handlers; production holds all enabled roles.
  */
 export function isTargetDeployed(
   config: FrameworkConfig,
@@ -4437,7 +4422,8 @@ export function isTargetDeployed(
   mode: CloudMode,
   graph: CloudGraphOptions = {},
 ): boolean {
-  return normalizedTargetDeployed(normalize(config).targets.get(`${kind}:${id}` as TargetReference), mode, graph);
+  const targets = normalize(config).targets;
+  return normalizedTargetDeployed(targets.get(`${kind}:${id}` as TargetReference), mode, graph, targets);
 }
 
 /**
@@ -4466,15 +4452,15 @@ export function assertCloudEdgesResolvable(
   const normalized = normalize(config);
   const builds = (reference: TargetReference): boolean => {
     const { kind, id } = parseTargetReference(reference);
-    return normalizedTargetDeployed(normalized.targets.get(`${kind}:${id}` as TargetReference), mode, graph);
+    return normalizedTargetDeployed(normalized.targets.get(`${kind}:${id}` as TargetReference), mode, graph, normalized.targets);
   };
   const servedLocally = (caller: NormalizedTarget): string =>
     WEB_SOCKET_ROLES.has(caller.role)
-      ? "Turn DEPLOY_PROD_WEBSOCKET_API off to serve it under Compose, or deploy with PROD_DEPLOYMENT=true."
+      ? 'Use deploy: "local-only" to serve it under Compose, or use a prod deployment.'
       : "Call it from an http target, which runs under Compose alongside it, or deploy with PROD_DEPLOYMENT=true.";
 
   for (const caller of normalized.targets.values()) {
-    if (!normalizedTargetDeployed(caller, mode, graph)) continue;
+    if (!normalizedTargetDeployed(caller, mode, graph, normalized.targets)) continue;
 
     if (mode === "dev" && WEB_SOCKET_ROLES.has(caller.role)) {
       const origin = caller.origins[0] ?? caller.reference;
@@ -4482,7 +4468,7 @@ export function assertCloudEdgesResolvable(
       const subnet = caller.kind === "lambda" ? resolveLambdaTargetDefinition(config, caller.id, caller.directory, caller.definition, caller.section).subnet : "none";
       if (database || subnet !== "none") {
         throw new Error(
-          `${origin} ${database ? "declares database: true" : `has subnet: "${subnet}"`}, but a dev deployment builds no ${database ? "database" : "network"}, and DEPLOY_PROD_WEBSOCKET_API builds this WebSocket handler in AWS. ${servedLocally(caller)}`,
+          `${origin} ${database ? "declares database: true" : `has subnet: "${subnet}"`}, but a dev deployment builds no ${database ? "database" : "network"}, and API Gateway calls this WebSocket handler in AWS. ${servedLocally(caller)}`,
         );
       }
     }
@@ -4518,17 +4504,19 @@ export function isRouteEnabled(
   config: FrameworkConfig,
   route: HttpRouteDefinition,
   scope: DeployScope,
+  inputs?: DeployLane,
 ): boolean {
-  return isTargetEnabled(config, route.type, route.target, scope);
+  return isTargetEnabled(config, route.type, route.target, scope, inputs);
 }
 
 /** HTTP routes that exist in the given scope, keyed by their public path. */
 export function getHttpRoutes(
   config: FrameworkConfig,
   scope: DeployScope,
+  inputs?: DeployLane,
 ): readonly (readonly [string, HttpRouteDefinition])[] {
   return normalizeFrameworkConfig(config)
-    .http.filter((route) => isRouteEnabled(config, route, scope))
+    .http.filter((route) => isRouteEnabled(config, route, scope, inputs))
     .map((route) => [route.path, route] as const);
 }
 
@@ -4593,9 +4581,10 @@ export function getPublicHttpPaths<const Config extends FrameworkConfig>(
 export function getDeclaredHttpMethods(
   config: FrameworkConfig,
   scope: DeployScope,
+  inputs?: DeployLane,
 ): readonly HttpMethod[] {
   const declared = new Set<HttpMethod>(["OPTIONS"]);
-  for (const [, route] of getHttpRoutes(config, scope)) {
+  for (const [, route] of getHttpRoutes(config, scope, inputs)) {
     for (const method of routeMethods(route)) {
       declared.add(method);
     }
@@ -4620,11 +4609,12 @@ export function routeAllowsMethod(
 
 export function getEventReplayManifest<const Config extends FrameworkConfig>(
   config: Config,
+  inputs: DeployLane = "unconditioned",
 ): Readonly<Record<EventReplayId<Config>, LambdaTarget>> {
   const manifest: Record<string, LambdaTarget> = {};
   for (const target of getFrameworkTargets(config)) {
     if (target.role !== "event") continue;
-    if (config.events[target.id]?.localReplay) {
+    if (config.events[target.id]?.localReplay && isTargetEnabled(config, "lambda", target.id, "cloud", inputs) && isTargetEnabled(config, "lambda", target.id, "local", inputs)) {
       manifest[target.id] = target.reference as LambdaTarget;
     }
   }
@@ -4710,6 +4700,9 @@ export function validateFrameworkConfig(config: FrameworkConfig): void {
   }
 
   const normalized = normalizeFrameworkConfig(config);
+  for (const target of normalized.targets.values()) {
+    if (typeof target.deploy !== "string" && target.deploy.when.resource.optional && target.deploy.when.resource.default === undefined) console.warn(`${target.origins[0]} deploy.when selects an optional input with no default; unset means not deployed.`);
+  }
   for (const route of normalized.http) {
     // Dead config is worth surfacing, but toggling has to stay fast, so this
     // never blocks a synth or a local boot.
@@ -4721,4 +4714,17 @@ export function validateFrameworkConfig(config: FrameworkConfig): void {
       );
     }
   }
+}
+
+/** Value-aware WebSocket routes, shared by API Gateway and the local server. */
+export function getWebSocketRoutesIn(config: FrameworkConfig, scope: DeployScope, inputs?: DeployLane): Readonly<Record<string, LambdaTarget>> {
+  const availability = createTargetAvailability(config);
+  return Object.fromEntries(normalizeFrameworkConfig(config).webSocket.filter(route => availability.enabled("lambda", route.target.slice(7), scope, inputs)).map(route => [route.routeKey, route.target]));
+}
+export function getWebSocketAuthorizerIn(config: FrameworkConfig, scope: DeployScope, inputs?: DeployLane): LambdaTarget | undefined {
+  const connect = normalizeFrameworkConfig(config).webSocket.find(route => route.routeKey === "$connect");
+  return connect && isTargetEnabled(config, "lambda", connect.target.slice(7), scope, inputs) ? connect.authorizer : undefined;
+}
+export function listDeployConditions(config: FrameworkConfig): readonly import("./deploy").DeployCondition[] {
+  return [...new Map(getFrameworkTargets(config).flatMap(target => typeof target.deploy === "string" ? [] : [[deployKey(target.deploy), target.deploy.when] as const])).values()];
 }

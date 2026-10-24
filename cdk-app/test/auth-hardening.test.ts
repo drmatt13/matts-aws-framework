@@ -115,17 +115,15 @@ test("the retired WebSocket authorizer flag refuses false and warns on true", ()
   );
 });
 
-test("DEPLOY_PROD_WEBSOCKET_API builds the WebSocket API in either mode, and its old names are refused", () => {
-  const dev = inputs({ PROD_DEPLOYMENT: "false", DEPLOY_PROD_WEBSOCKET_API: "true" });
-  assert.equal(dev.deployProdWebSocketApi, true);
-  assert.equal(dev.warnings.some((warning) => warning.includes("WEBSOCKET")), false, "a dev deployment no longer ignores it");
-  assert.equal(inputs({ PROD_DEPLOYMENT: "false" }).deployProdWebSocketApi, false);
-  assert.equal(inputs({ PROD_DEPLOYMENT: "true" }, { deployProdWebSocketApi: "true" }).deployProdWebSocketApi, true);
-  assert.throws(
-    () => inputs({ PROD_DEPLOYMENT: "false", DEPLOY_WEBSOCKET_API: "true" }),
-    /^Error: DEPLOY_WEBSOCKET_API was renamed\. Use DEPLOY_PROD_WEBSOCKET_API in cdk-app\/\.env/,
-  );
-  assert.throws(() => inputs({ PROD_DEPLOYMENT: "true" }, { deployWebSocketApi: false }), /-c deployWebSocketApi was renamed/);
+test("retired WebSocket deployment switches warn on true and refuse false", () => {
+  for (const name of ["DEPLOY_PROD_WEBSOCKET_API", "DEPLOY_WEBSOCKET_API"]) {
+    assert.ok(inputs({ [name]: "true" }).warnings.some(warning => warning.includes(`${name} is no longer read`)));
+    assert.throws(() => inputs({ [name]: "false" }), /no longer supported.*deploy: "local-only"/);
+  }
+  for (const name of ["deployProdWebSocketApi", "deployWebSocketApi", "enableWebSockets"]) {
+    assert.ok(inputs({}, { [name]: "true" }).warnings.some(warning => warning.includes(`-c ${name} is no longer read`)));
+    assert.throws(() => inputs({}, { [name]: "false" }), /no longer supported/);
+  }
 });
 
 test("production warns without an SES sender, and backups default to a week", () => {

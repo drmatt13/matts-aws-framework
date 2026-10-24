@@ -46,7 +46,7 @@ export function localExportValues(
   // Resource attributes and authored workload inputs have dedicated readers.
   // Root .env contains Compose controls, never application secret values.
   for (const target of getFrameworkTargets(framework)) {
-    if (target.kind !== "service" || !isTargetEnabled(framework, target.kind, target.id, "local")) continue;
+    if (target.kind !== "service" || !isTargetEnabled(framework, target.kind, target.id, "local", "unconditioned")) continue;
     const override = `${target.id.replace(/-/g, "_").toUpperCase()}_SERVICE_URL`;
     if (authored[override]) values.set(override, authored[override]);
   }
@@ -119,9 +119,8 @@ export function localExportValues(
  * VITE_API_GATEWAY_URL is the target of client-app's HTTP and explicit agent
  * route proxies, read from the repository root by client-app/vite.config.ts.
  *
- * The local WebSocket URL does not follow DEPLOY_PROD_WEBSOCKET_API: Compose runs
- * local-ws-dev-server either way, and the flag only decides whether AWS holds a
- * WebSocket API. That one is read from the deployment, not from here.
+ * Compose publishes the local WebSocket server at its configured host port.
+ * The AWS WebSocket API URL is read from deployment outputs, not from here.
  */
 export function localClientEndpoints(
   authored: Readonly<Record<string, string>>,

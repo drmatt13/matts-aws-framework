@@ -133,6 +133,64 @@ async function mount(withInspector = false, selection?: string, initialResponse 
   return async (next: SnapshotResponse) => { await ui.act(async () => updateResponse(next)); await draw(); };
 }
 
+test("the inputs island opens the shared creator even after using the global chooser", async () => {
+  await mount(true, "island:inputs");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add to application" }));
+  const chooser = ui.within(ui.screen.getByRole("dialog", { name: "Add to application" }));
+  ui.fireEvent.click(chooser.getByRole("button", { name: "Close add menu" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Create input parameter or secret" }));
+  const wizard = await ui.screen.findByRole("dialog", { name: "Create input parameter or secret" });
+  const controls = ui.within(wizard);
+  assert.equal(controls.getByRole("switch", { name: "Secret" }).getAttribute("aria-checked"), "false");
+  ui.fireEvent.click(controls.getByRole("switch", { name: "Secret" }));
+  assert.equal(controls.getByRole("switch", { name: "Secret" }).getAttribute("aria-checked"), "true");
+  ui.fireEvent.click(controls.getByRole("button", { name: "Cancel creation" }));
+  assert.equal(ui.screen.queryByRole("dialog"), null);
+});
+
+test("parameter choices survive switching to a secret and reopening the resource chooser", async () => {
+  await mount(true, "island:inputs");
+  const start = () => ui.fireEvent.click(ui.screen.getByRole("button", { name: "Create input parameter or secret" }));
+  const wizard = () => ui.within(ui.screen.getByRole("dialog", { name: "Create input parameter or secret" }));
+  start();
+  ui.fireEvent.change(wizard().getByRole("textbox", { name: "Stable identifier" }), { target: { value: "preservedInput" } });
+  ui.fireEvent.change(wizard().getByRole("textbox", { name: "Declaration default (optional)" }), { target: { value: "enabled" } });
+  ui.fireEvent.click(wizard().getByText("Advanced settings"));
+  ui.fireEvent.change(wizard().getByRole("textbox", { name: "Allowed string values (comma-separated)" }), { target: { value: "enabled, disabled" } });
+  ui.fireEvent.click(wizard().getByRole("switch", { name: "Secret" }));
+  ui.fireEvent.click(wizard().getByRole("button", { name: "Back to resource types" }));
+  const chooser = ui.within(ui.screen.getByRole("dialog", { name: "Add to application" }));
+  ui.fireEvent.click(chooser.getByRole("button", { name: "Input parameter or secret" }));
+  assert.equal(wizard().getByRole("switch", { name: "Secret" }).getAttribute("aria-checked"), "true");
+  ui.fireEvent.click(wizard().getByRole("switch", { name: "Secret" }));
+  assert.equal((wizard().getByRole("textbox", { name: "Declaration default (optional)" }) as HTMLInputElement).value, "enabled");
+  ui.fireEvent.click(wizard().getByText("Advanced settings"));
+  assert.equal((wizard().getByRole("textbox", { name: "Allowed string values (comma-separated)" }) as HTMLInputElement).value, "enabled, disabled");
+  ui.fireEvent.click(wizard().getByRole("button", { name: "Cancel creation" }));
+  start();
+  assert.equal((wizard().getByRole("textbox", { name: "Declaration default (optional)" }) as HTMLInputElement).value, "");
+  ui.fireEvent.click(wizard().getByText("Advanced settings"));
+  assert.equal((wizard().getByRole("textbox", { name: "Allowed string values (comma-separated)" }) as HTMLInputElement).value, "", "a new creation starts without the cancelled form's parameter settings");
+});
+
+test("new WebSocket creation labels its guarded handshake condition and retains Off", async () => {
+  await mount();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add to application" }));
+  ui.fireEvent.click(ui.within(ui.screen.getByRole("dialog", { name: "Add to application" })).getByRole("button", { name: "Function" }));
+  const wizard = ui.within(ui.screen.getByRole("dialog", { name: "Create function" }));
+  ui.fireEvent.change(wizard.getByRole("textbox", { name: "Stable identifier" }), { target: { value: "conditional-action" } });
+  ui.fireEvent.change(wizard.getByRole("combobox", { name: "Function category" }), { target: { value: "webSocket" } });
+  const deploy = wizard.getByRole("combobox", { name: "Execution lanes" }) as HTMLSelectElement;
+  assert.equal(deploy.selectedOptions[0]!.textContent, "Use $connect condition");
+  assert.match(document.getElementById(deploy.getAttribute("aria-describedby")!)!.textContent!, /ENABLE_WEBSOCKET_API equals "true"/);
+  for (const value of ["local-only", "cloud-only"]) assert.equal(deploy.querySelector<HTMLOptionElement>(`option[value="${value}"]`)!.disabled, true);
+  assert.equal(deploy.querySelector<HTMLOptionElement>('option[value="none"]')!.disabled, false);
+  ui.fireEvent.change(deploy, { target: { value: "local-only" } });
+  assert.equal((wizard.getByRole("button", { name: "Review generated changes" }) as HTMLButtonElement).disabled, true, "an incompatible selected setting is rejected rather than broadened");
+  ui.fireEvent.change(deploy, { target: { value: "none" } });
+  assert.equal((wizard.getByRole("button", { name: "Review generated changes" }) as HTMLButtonElement).disabled, false);
+});
+
 test("event inspectors keep connection and trigger component identities distinct across refresh", async () => {
   const event = response.snapshot.models.dev.targets.find(target => target.role === "event")!;
   assert.ok(event, "the real framework fixture includes an event Lambda");
@@ -397,8 +455,7 @@ test("network fixtures can be selected from the map's accessible item list", asy
 
 test("gateways and endpoints use pointer cursors and open their inspectors from the canvas", async () => {
   await mount(true);
-  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
-    resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { kind: string; id: string } | undefined } }).__studioLandscape;
   const canvas = document.querySelector("canvas")!;
   for (const prop of scene.props) {
@@ -427,8 +484,7 @@ test("missing required connections paint red X markers and clicking the marker s
   try {
     await mount();
     assert.ok(strokes.includes("#ff5f6d"), "the actual renderer strokes the error marker in red");
-    const scene = buildScene(model, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
-      resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
+    const scene = buildScene(model, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
     const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { kind: string; id: string } } }).__studioLandscape;
     const at = worldToScreen(state.camera(), state.viewport(), connectionMidpoint(scene.routes[edge.id]!.points));
     assert.deepEqual(state.pickAt(at.x, at.y)?.id, edge.id, "the painted marker and hit area agree");
@@ -442,8 +498,7 @@ test("missing required connections paint red X markers and clicking the marker s
 
 test("connections over terrain receive hover and clicks while clear terrain still opens its island", async () => {
   await mount(true);
-  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
-    resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
   const slabs = islandDrawOrder(islandSlabs(scene));
   const state = (dom.window as unknown as { __studioLandscape: {
     camera(): Camera; viewport(): Viewport;
@@ -483,12 +538,11 @@ test("the real renderer strokes connections leaving the APIs island in purple an
   await draw();
   assert.ok(strokes.some((style) => style.startsWith("rgba(255, 154, 61,")), "orange connections out of compute");
   const purple = strokes.filter((style) => style.startsWith("rgba(163, 116, 255,"));
-  const leaving = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
-    resourceAvailability: catalogAvailability(response.snapshot.models) }).edges.filter((edge) => edge.from.startsWith("route:")).length;
+  const leaving = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) }).edges.filter((edge) => edge.from.startsWith("gateway:")).length;
   assert.ok(purple.length >= leaving, `${purple.length} purple strokes for ${leaving} route connections`);
   strokes.length = 0;
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^\/api\/graphql, HTTP route/ }));
-  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "route:http:/graphql")); await draw();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^HTTP API, Framework-managed API Gateway/ }));
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "gateway:http")); await draw();
   assert.ok(strokes.includes("rgba(163, 116, 255, 0.95)"), "a selected API connection lights in the same purple");
 });
 
@@ -504,9 +558,8 @@ test("the real renderer draws resting connections a little stronger, and those o
 
 test("connection hover and inspection distinguish identically named API routes and WebSocket handlers", async () => {
   await mount(true);
-  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
-    resourceAvailability: catalogAvailability(response.snapshot.models) });
-  const edge = scene.edges.find((edge) => edge.from === "route:ws:customAction" && edge.edge.relation === "routes")!;
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
+  const edge = scene.edges.find((edge) => edge.from === "gateway:websocket" && edge.to === "lambda:ws-custom-action-route")!;
   assert.ok(edge);
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
   const at = scene.routes[edge.id]!.points.map((point) => worldToScreen(state.camera(), state.viewport(), point)).find((point) => state.pickAt(point.x, point.y)?.id === edge.id);
@@ -514,16 +567,15 @@ test("connection hover and inspection distinguish identically named API routes a
   ui.fireEvent.pointerMove(document.querySelector("canvas")!, { clientX: at.x, clientY: at.y });
   await draw();
   const popup = await ui.screen.findByRole("tooltip");
-  assert.ok(popup.textContent?.includes("From API: customAction"));
+  assert.ok(popup.textContent?.includes("From WebSocket API"));
   assert.ok(popup.textContent?.includes("To WebSocket: customAction"));
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: API: customAction to WebSocket: customAction,/ }));
-  await ui.waitFor(() => assert.ok(document.querySelector(".connection-endpoints")?.textContent?.includes("FromAPI: customActionToWebSocket: customAction")));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: WebSocket API to WebSocket: customAction,/ }));
+  await ui.waitFor(() => assert.ok([...document.querySelectorAll(".connection-endpoints")].some(element => element.textContent?.includes("FromAPI: customActionToWebSocket: customAction"))));
 });
 
 test("clicking a disabled wire explains its endpoints in the inspector and the notice follows the mode", async () => {
   await mount(true);
-  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
-    resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
   const edge = scene.edges.find((edge) => edge.edge.from === "envfile:prod" && edge.edge.relation === "supplies")!;
   assert.ok(edge);
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
@@ -545,8 +597,7 @@ test("clicking a grouped connection opens every mapping and retains it across en
   await mount(true);
   const id = "connection:client-envfile:envfile%3Adev";
   assert.ok(!labels.includes("4 · Dev"), "connection labels stay off the canvas");
-  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), webSocketApi: response.snapshot.webSocketApi,
-    resourceAvailability: catalogAvailability(response.snapshot.models) });
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
   const at = scene.routes[id]!.points.map((point) => worldToScreen(state.camera(), state.viewport(), point)).find((point) => state.pickAt(point.x, point.y)?.id === id);
   assert.ok(at, "the grouped line is pickable");
@@ -736,7 +787,7 @@ test("hovering a node shows its authored description and a Dev and a Prod pill",
 
 test("an environment that does not deploy the item keeps its pill, dark", async () => {
   await mount();
-  const devOnly = await hoverOver("lambda:ws-authorizer");
+  const devOnly = await hoverOver("service:example-service");
   assert.deepEqual(visibleTags(devOnly), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
   assert.equal(tagsOf(devOnly)[1]![1], "Prod: not deployed");
   const prodOnly = await hoverOver("task:db-migrate");

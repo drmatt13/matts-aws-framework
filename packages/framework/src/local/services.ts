@@ -1,3 +1,4 @@
+import { localDeployInputs } from "@repo/framework/config/source";
 import type { FrameworkConfig } from "@repo/framework/config";
 import { getLocalTargets } from "@repo/framework/config";
 import { resolveServicePort } from "@repo/framework/config/source";
@@ -16,7 +17,7 @@ export class LocalServiceRegistry {
     environment?: NodeJS.ProcessEnv;
   }) {
     this.environment = options.environment ?? process.env;
-    for (const target of getLocalTargets(options.config, ["service"])) {
+    for (const target of getLocalTargets(options.config, ["service"], localDeployInputs(options.repositoryRoot))) {
       this.endpoints.set(target.id, `http://${target.id}:${resolveServicePort(options.config, target.id, options)}`);
     }
   }

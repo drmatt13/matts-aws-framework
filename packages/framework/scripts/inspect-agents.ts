@@ -3,7 +3,7 @@ import {
   getAgentLifecycle,
   getAgentTools,
   getFrameworkTargets,
-  isTargetDeployed,
+  isTargetDeployed, isTargetEnabled,
   userPoolDelivery,
   type FrameworkConfig,
 } from "@repo/framework/config";
@@ -30,8 +30,8 @@ function describe(config: FrameworkConfig, id: string): string[] {
   const declaration = config.agents?.[id];
   const lifecycle = getAgentLifecycle(config, id);
   const lanes = [
-    target.deploy === "both" || target.deploy === "local-only" ? "local session processes" : undefined,
-    isTargetDeployed(config, "agent", id, "prod") ? "AgentCore Runtime in a full deployment" : undefined,
+    isTargetEnabled(config, "agent", id, "local", "unconditioned") ? "local session processes" : undefined,
+    isTargetDeployed(config, "agent", id, "prod", { inputs: "unconditioned" }) ? "AgentCore Runtime in a full deployment" : undefined,
   ].filter((lane): lane is string => lane !== undefined);
 
   const lines = [

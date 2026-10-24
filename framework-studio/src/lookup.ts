@@ -1,8 +1,12 @@
+import { drawnAs } from "./drawn-as";
+import { gatewaysOf, type ModelGateway } from "../shared/gateways";
 import type { ModeModel, ModelDefaults, ModelEdge, ModelResource, ModelRoute, ModelTarget, Relation, SourceLocation, TargetRole } from "../shared/model";
 import type { LocalDatabase } from "../shared/database";
 
 /** Lookups over one mode's model, built once per snapshot. */
 export interface ModelIndex {
+  readonly representatives: Readonly<Record<string, string>>;
+  readonly gateways: ReadonlyMap<string, ModelGateway>;
   readonly defaults: ReadonlyMap<string, ModelDefaults>;
   readonly localServices: ReadonlyMap<string, LocalDatabase>;
   readonly targets: ReadonlyMap<string, ModelTarget>;
@@ -24,6 +28,8 @@ export function indexModel(model: ModeModel): ModelIndex {
     if (edge.to !== edge.from) add(edge.to, edge);
   }
   return {
+    representatives: drawnAs(model),
+    gateways: new Map(gatewaysOf(model).map(gateway => [gateway.id, gateway])),
     defaults: new Map((model.defaults ?? []).map((group) => [group.ref, group])),
     localServices: new Map((model.localServices ?? []).map((service) => [service.id, service])),
     targets: new Map(model.targets.map((target) => [target.ref, target])),
@@ -69,6 +75,7 @@ export const CATEGORY_LABEL: Readonly<Record<EdgeCategory, string>> = {
 };
 
 export const RELATION_CATEGORY: Readonly<Record<Relation, EdgeCategory>> = {
+  deployWhen: "inputs",
   contains: "cdk",
   routes: "routes",
   authorizes: "routes",
@@ -81,7 +88,7 @@ export const RELATION_CATEGORY: Readonly<Record<Relation, EdgeCategory>> = {
   localReplay: "invocations",
   trigger: "invocations",
   completesCallback: "permissions",
-  runsTask: "invocations",
+  runsTask: "permissions",
   startsWorkflow: "invocations",
   invokesAgent: "invocations",
   usesTool: "invocations",
@@ -91,6 +98,7 @@ export const RELATION_CATEGORY: Readonly<Record<Relation, EdgeCategory>> = {
 };
 
 export const RELATION_LABEL: Readonly<Record<Relation, string>> = {
+  deployWhen: "Deploys when input matches",
   contains: "Contains",
   routes: "Routes to",
   authorizes: "Authorizes",
@@ -102,7 +110,7 @@ export const RELATION_LABEL: Readonly<Record<Relation, string>> = {
   database: "Uses the database",
   localReplay: "Captures for local replay",
   trigger: "Triggers",
-  runsTask: "Runs task",
+  runsTask: "Grant permission",
   startsWorkflow: "Starts workflow",
   invokesAgent: "Invokes agent",
   usesTool: "Calls tool",
@@ -114,6 +122,8 @@ export const RELATION_LABEL: Readonly<Record<Relation, string>> = {
 
 /** The name a person reads for any entity id. */
 export function titleOf(index: ModelIndex, id: string): string {
+  const gateway = index.gateways.get(id);
+  if (gateway) return gateway.title;
   const defaults = index.defaults.get(id);
   if (defaults) return `${defaults.title} defaults`;
   const localService = index.localServices.get(id);

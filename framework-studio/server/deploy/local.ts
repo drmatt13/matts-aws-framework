@@ -87,6 +87,7 @@ export class LocalEnvironment {
     /** Where export writes the root .env and resources (the repository root, unless a test says otherwise). */
     readonly exportDirectory: string,
     stateDirectory: string,
+    private readonly disabledServices: () => ReadonlySet<string> = () => new Set(),
   ) {
     this.project = composeProjectName(root, env);
     this.recordFile = path.join(stateDirectory, "local", "run.json");
@@ -129,7 +130,9 @@ export class LocalEnvironment {
 
   async services(): Promise<(ServiceView & { readonly id: string })[]> {
     const listed = await this.run(this.tools.docker(["ps", "-a", "--filter", `label=com.docker.compose.project=${this.project}`, "--format", "{{json .}}"], this.env), { timeoutMs: 15_000 });
-    return listed.code === 0 ? parseServices(listed.stdout, oneShotServices(this.root)) : [];
+    const disabled = this.disabledServices();
+    return listed.code === 0 ? parseServices(listed.stdout, oneShotServices(this.root)).map(service =>
+      disabled.has(service.name) && service.state === "exited" && service.exitCode === 0 ? { ...service, disabledByDeploy: true as const } : service) : [];
   }
 
   /** Every container of this project: Compose's, and the task and Lambda containers the runner started. */
@@ -183,6 +186,10 @@ export class LocalEnvironment {
 
   /** Observation, not an inference from a successful process launch. */
   async readiness(services: readonly ServiceView[], managed: { readonly watch: ManagedProcessView; readonly client: ManagedProcessView }) {
+    const disabled = this.disabledServices();
+    // The launcher exits successfully when Deploy is off. Keep genuine startup
+    // failures visible, even for a currently disabled declaration.
+    services = services.filter(service => !(disabled.has(service.name) && service.state === "exited" && service.exitCode === 0));
     const observedAt = new Date().toISOString();
     const result = (state: "ready" | "starting" | "blocked" | "stopped", message: string) => ({ state, observedAt, message });
     if (!services.some(service => service.state === "running") && !managed.client.running) return result("stopped", "Local services are stopped.");

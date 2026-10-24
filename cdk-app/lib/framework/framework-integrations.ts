@@ -175,7 +175,7 @@ export function publishLocalWorkflowIntegrations(
   config: FrameworkConfig,
 ): void {
   deferResourceAttachment(scope, () => {
-    for (const target of getLocalTargets(config, ["workflow"])) {
+    for (const target of getLocalTargets(config, ["workflow"], "unconditioned")) {
       for (const use of resolveWorkflow(config, target.id).integrations) {
         if (!use.reference.resource || needsDevelopmentBridge(use.reference)) continue;
         requireIntegration(scope, use.reference);

@@ -30,7 +30,7 @@ There are exactly two `DeploymentMode`s: **dev** and **prod**. A named deploymen
 | Studio graph | [inputs.ts](../../../framework-studio/server/inputs.ts) / evaluators build fixed dev/prod projections, not one graph for every named target's custom input file |
 | Studio operations | `/deploy` owns its named target, profile, resolved account and region. Graph-mode/undo controls are hidden there. Status, plan, drift and teardown evidence is keyed to the selected destination; changing destination clears transient approvals. Database operations require their own explicit target and approval, independent of graph mode |
 
-Dev AWS builds Cognito, AWS-invoked event Lambdas and replay support; normal routed workloads/tasks/workflows/agents execute locally. Prod builds the cloud-enabled application, network/database/frontend as configured. The WebSocket API flag is a separate switch. `deploy` lanes remain distinct from these modes; see [configuration predicates](../framework/configuration.md).
+Dev AWS builds Cognito, AWS-invoked event Lambdas and replay support; normal routed workloads/tasks/workflows/agents execute locally. Prod builds the cloud-enabled application, network/database/frontend as configured. WebSocket API Gateway is framework managed in both modes. Handler deploy settings, including per-environment input conditions, determine which routes and Lambdas exist. `deploy` lanes remain distinct from these modes; see [configuration predicates](../framework/configuration.md).
 
 Deploy's account toolbar selects credentials by AWS profile name and labels the resolved
 account and region. A profile's default region is supporting information; the selected

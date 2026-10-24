@@ -2,7 +2,7 @@ import path from "node:path";
 import Module from "node:module";
 import ts from "typescript";
 import { performance } from "node:perf_hooks";
-import type { FrameworkConfig } from "@repo/framework/config";
+import { listDeployConditions, deployKey, type DeployInputs, type FrameworkConfig } from "@repo/framework/config";
 import type { Mode } from "../../shared/model";
 import { failedModel, projectModel } from "../model/project";
 import { preflight, type PreflightRequest } from "../model/preflight";
@@ -22,10 +22,11 @@ import { withImplementationHealth } from "../implementation";
  */
 
 const mode = process.env.STUDIO_MODE as Mode;
-const webSocketApi = process.env.STUDIO_WEBSOCKET_API === "true";
+let projection: import("../model/project").ProjectionOptions = { mode };
 const repositoryRoot = process.env.STUDIO_REPOSITORY_ROOT ?? process.cwd();
 
 type Outgoing =
+  | { readonly type: "conditions"; readonly conditions: ReturnType<typeof listDeployConditions> }
   | { readonly type: "model"; readonly model: unknown }
   | { readonly type: "preflight"; readonly id: number; readonly result: unknown };
 
@@ -84,17 +85,31 @@ process.once("message", (message: { type?: string; overrides?: Record<string, st
     // process share one instance of @repo/framework/config.
     const loaded = require(path.join(repositoryRoot, "framework.config.ts")) as Record<string, unknown>;
     config = frameworkFrom(loaded);
-    send({ type: "model", model: withImplementationHealth(config, projectModel(config, { mode, webSocketApi }, Math.round(performance.now() - started)), repositoryRoot, overrides) });
+    send({ type: "conditions", conditions: listDeployConditions(config) });
   } catch (error) {
     send({ type: "model", model: failedModel(mode, error, Math.round(performance.now() - started)) });
   }
 
 });
 
-process.on("message", (message: { readonly type?: string; readonly id?: number; readonly request?: PreflightRequest }) => {
+process.on("message", (message: { readonly type?: string; readonly id?: number; readonly request?: PreflightRequest; readonly outcomes?: import("../model/project").ProjectionOptions["outcomes"]; readonly error?: string }) => {
+  if (message.type === "conditions") {
+    try {
+      if (message.error) throw new Error(message.error);
+      const outcomes = message.outcomes ?? {};
+      const lane = (selected: Mode): DeployInputs => ({ holds: condition => {
+        const outcome = outcomes[deployKey({ when: condition })]?.[selected];
+        if (!outcome) throw new Error("Missing deployment condition outcome.");
+        return outcome === "holds";
+      } });
+      projection = { mode, inputs: { dev: lane("dev"), prod: lane("prod") }, outcomes };
+      send({ type: "model", model: withImplementationHealth(config!, projectModel(config!, projection, Math.round(performance.now() - started)), repositoryRoot, loadedOverrides) });
+    } catch (error) { send({ type: "model", model: failedModel(mode, error, Math.round(performance.now() - started)) }); }
+    return;
+  }
   if (message?.type !== "preflight" || typeof message.id !== "number" || !message.request) return;
   const result = config
-    ? preflight(config, message.request, { mode, webSocketApi }, { root: repositoryRoot, overrides: loadedOverrides })
+    ? preflight(config, message.request, projection, { root: repositoryRoot, overrides: loadedOverrides })
     : {
         mode,
         ok: false,

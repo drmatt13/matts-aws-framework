@@ -10,7 +10,7 @@ The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) a
 ## Rules it keeps
 
 - **A view, not a model.** Every building is an entity the model names, under the model's
-  own id (`lambda:graphql-api`, `route:http:/graphql`, `resource:cognito.userPool`).
+  own id (`lambda:graphql-api`, `gateway:http`, `resource:cognito.userPool`).
   Selecting one sets `?select=` like every other view, so the inspector and its edits are
   the existing ones.
 - **Everything selectable is described.** Each building, island, gateway and endpoint has
@@ -125,7 +125,7 @@ stability, shared routing, viewport adaptation and measured before/after results
 
 | Placement | Island | Holds | Height |
 | --- | --- | --- | --- |
-| Upper left | APIs | HTTP routes, service mounts, WebSocket keys and agent browser paths on one layer | 2 |
+| Upper left | APIs | One HTTP API and one WebSocket API Gateway; agent paths fold into their agent | 2 |
 | Lower left | Input parameters and secrets | Only catalog-declared inputs, secrets and groups on one shared lattice; other dotenv keys stay in the file inspectors | 1 |
 | Upper right | Serverless compute | HTTP, WebSocket, event and AgentCore tool Lambdas outside the VPC on one shared lattice | 3 |
 | Right-hand network cluster | VPC | Subnets `public`, `private` and `isolated`, side by side at one height. Every target with `placement.kind === "vpc"` stands on its subnet. Gateways and endpoints from `network` stand on the subnets as selectable furniture. The Compose PostgreSQL service stands in the isolated subnet right beside the managed RDS database, as its development counterpart: solid in Development and ghosted in Production, and not an AWS resource | 4 |
@@ -419,6 +419,11 @@ been removed; the renderer has one visual style.
      Environment and secrets colour); referencing a secret and a native grant are red, so
      a parameter being read never looks like a permission being given. What is referenced
      decides this, even when the map shows a stack field as its owning stack.
+   - **Conditional deployment.** Workload-to-input connections are dashed orange,
+     with hover text `Conditional deployment: PARAM_NAME`.
+   - **Task launch permission.** A `runsTask(...)` binding is solid red and reads
+     `Grant permission: Launch ECS task`. Its details describe the launch grants and
+     configuration; this capability does not establish that a task has run.
    - **Everything else.** Solid: an API route (purple, out of the APIs island), a Lambda
      or container leaving for another workload (orange), a WebSocket authorizer's link to
      the route it guards (red), an agent calling a tool (teal) and a workflow step (pink).
@@ -664,3 +669,9 @@ endpoints and selection highlight to the owning stack through `Scene.representat
 every original edge remains attached in the connection's members as evidence. Connections internal to one stack are
 omitted from the landscape. The input inspector loads selected `.env` values separately
 from the scene and offers validated catalog edits.
+
+The shared `src/drawn-as.ts` mapping folds routes and gateway stack outputs into the
+actual gateway building. Layout, connection aggregation, selection, search and tag
+filtering use the same representatives. Gateway inspectors list routes, handlers,
+authorizers and outputs and reuse the Deployment cards. Individual route inspectors
+remain addressable and identify their gateway. Gateway stacks do not repeat on Stacks.

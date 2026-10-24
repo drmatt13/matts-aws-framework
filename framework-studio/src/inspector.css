@@ -564,6 +564,20 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .inspector-deployment .section-content { display: grid; gap: var(--ui-space-4); }
 .inspector-deployment .field { border: 0; padding: 0; }
 .inspector-deployment .deployment-note { margin: 0; overflow-wrap: anywhere; }
+.deploy-control { display: grid; min-width: 0; gap: var(--ui-space-3); }
+.deploy-control .field { grid-template-columns: minmax(0, 1fr); gap: var(--ui-space-1); }
+.deploy-control .field .name { padding-top: 0; }
+.deploy-control .field .note { grid-column: 1 / -1; }
+.deploy-control > p { margin: 0; }
+.deployment-owners { display: flex; flex-wrap: wrap; gap: var(--ui-space-2); }
+.deployment-owners button { max-width: 100%; white-space: normal; text-align: left; overflow-wrap: anywhere; }
+.deploy-condition { display: grid; min-width: 0; gap: var(--ui-space-3); margin: 0; padding: var(--ui-space-3); border: 1px solid var(--rule); border-radius: var(--ui-control-radius); }
+.deploy-condition legend { padding: 0 var(--ui-space-1); color: var(--graphite); font-size: var(--ui-caption); }
+.deploy-condition .note code { overflow-wrap: anywhere; }
+.deploy-condition-status { display: grid; min-width: 0; gap: var(--ui-space-1); border-top: 1px solid var(--rule); padding-top: var(--ui-space-2); }
+.deploy-condition-status :is(p, strong) { margin: 0; }
+.deploy-condition-status > span { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--ui-space-1) var(--ui-space-3); }
+.deploy-condition-status strong { font-weight: 500; }
 .lane-lines {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

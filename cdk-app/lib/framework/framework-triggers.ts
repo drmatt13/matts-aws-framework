@@ -139,16 +139,17 @@ registerServiceTriggerAdapters();
 /** The composition root finalizes resources only after every native owner has finished. */
 export function attachFrameworkTriggers(scope: IConstruct, config: FrameworkConfig): void {
   const normalized = normalizeFrameworkConfig(config);
-  const prepared = normalized.triggers.map((binding) => {
+  const prepared = normalized.triggers.flatMap((binding) => {
+    const fn = eventFunction(scope, binding.event, { optional: true });
+    if (!fn) return [];
     const adapter = adapters.get(binding.adapter);
     if (!adapter) throw new Error(`${binding.origin}: no CDK adapter registered for ${binding.adapter}.`);
-    const fn = eventFunction(scope, binding.event);
     // A resourceless trigger creates its own source beside the function.
     const resource = binding.resource ? linkedConstruct(scope, binding.resource)?.construct as IConstruct | undefined : fn;
     if (!resource?.node) throw new Error(`${binding.origin}: resources.${binding.resource!.path.join(".")} is not linked in this graph.`);
     const context = { resource, fn, binding };
     adapter.validate(context);
-    return { adapter, context };
+    return [{ adapter, context }];
   });
   for (const { adapter, context } of prepared) adapter.attach(context);
   attachFailureDestinations(scope, normalized.failureDestinations);
@@ -157,7 +158,8 @@ export function attachFrameworkTriggers(scope: IConstruct, config: FrameworkConf
 /** Each event's onFailure: a standard queue or topic that receives runs Lambda stopped retrying. */
 function attachFailureDestinations(scope: IConstruct, failures: readonly NormalizedFailureDestination[]): void {
   for (const failure of failures) {
-    const fn = eventFunction(scope, failure.event);
+    const fn = eventFunction(scope, failure.event, { optional: true });
+    if (!fn) continue;
     const destination = linkedConstruct(scope, failure.destination)?.construct as IConstruct | undefined;
     if (!destination?.node) throw new Error(`${failure.origin}: resources.${failure.destination.path.join(".")} is not linked in this graph.`);
     const queue = destination as sqs.IQueue, topic = destination as sns.ITopic;

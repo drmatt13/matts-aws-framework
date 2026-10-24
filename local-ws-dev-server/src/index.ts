@@ -1,3 +1,4 @@
+import { localDeployInputs } from "@repo/framework/config/source";
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { randomUUID } from "crypto";
 import type { Duplex } from "stream";
@@ -7,8 +8,8 @@ import env from "dotenv";
 import { getLocalBrowserOrigins } from "@repo/framework/local/origins";
 import { LocalLambdaExecutor } from "@repo/framework/local";
 import {
-  getWebSocketAuthorizer,
-  getWebSocketRoutes,
+  getWebSocketAuthorizerIn,
+  getWebSocketRoutesIn,
   validateFrameworkConfig,
 } from "@repo/framework/config";
 import framework from "../../framework.config";
@@ -32,10 +33,10 @@ const PORT = Number(process.env.PORT) || 8081;
 // browser, never another machine on the developer's network.
 const CONNECTIONS_PORT = Number(process.env.CONNECTIONS_PORT) || 8082;
 const executor = new LocalLambdaExecutor({ config: framework });
-const webSocketRoutes = getWebSocketRoutes(framework);
+const webSocketRoutes = getWebSocketRoutesIn(framework, "local", localDeployInputs());
 // Declared on $connect in framework-config, so it guards the handshake here
 // exactly as it does in AWS. There is no switch: the declaration is the switch.
-const authorizerTarget = getWebSocketAuthorizer(framework);
+const authorizerTarget = getWebSocketAuthorizerIn(framework, "local", localDeployInputs());
 
 interface Connection {
   readonly socket: WebSocket;
@@ -52,7 +53,7 @@ function json(res: ServerResponse, status: number, body: unknown, headers: Recor
   res.end(JSON.stringify(body));
 }
 
-function rejectHandshake(socket: Duplex, status: 401 | 403 | 500, text: string): void {
+function rejectHandshake(socket: Duplex, status: 401 | 403 | 404 | 500, text: string): void {
   socket.write(`HTTP/1.1 ${status} ${text}\r\n\r\n`);
   socket.destroy();
 }
@@ -130,6 +131,7 @@ function allowedBy(result: {
 
 server.on("upgrade", async (request, socket, head) => {
   try {
+    if (!Object.keys(webSocketRoutes).length) { rejectHandshake(socket, 404, "Not Found"); return; }
     // `ws` performs no same-origin check of its own, so without this any page
     // in the browser could open a credentialed socket against this server.
     const requestOrigin = request.headers.origin;
@@ -183,7 +185,7 @@ server.on("upgrade", async (request, socket, head) => {
       authorizer = { principalId: result.principalId, ...result.context };
     }
 
-    const connectResponse = await executor.invoke<{ statusCode?: number } | null>(
+    const connectResponse = webSocketRoutes.$connect ? await executor.invoke<{ statusCode?: number } | null>(
       webSocketRoutes.$connect,
       createConnectEvent({
         connectionId,
@@ -194,7 +196,7 @@ server.on("upgrade", async (request, socket, head) => {
         multiValueQueryStringParameters: multiValueQueryParams,
         ...(authorizer ? { authorizer } : {}),
       }),
-    );
+    ) : null;
 
     // API Gateway refuses the handshake for any status outside 2xx.
     const status = connectResponse?.statusCode;
@@ -273,6 +275,7 @@ wss.on("connection", (ws: WebSocket) => {
 
   ws.on("close", async (statusCode, reason) => {
     connections.delete(connectionId);
+    if (!webSocketRoutes.$disconnect) return;
     try {
       await executor.invoke(
         webSocketRoutes.$disconnect,

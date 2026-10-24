@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createTargetAvailability, defineFrameworkConfig, getCloudTargets, getFrameworkTargets, invokeLambda, sequence, workflow, type TargetRole } from "@repo/framework/config";
+import { createTargetAvailability, defineFrameworkConfig, getCloudTargets, getFrameworkTargets, invokeLambda, sequence, workflow, type DeployToken, type TargetRole } from "@repo/framework/config";
 import { defaults } from "../../framework-config/defaults";
 import { applicationVpc } from "../../framework-config/networks/application";
 import { projectModel } from "../server/model/project";
@@ -27,20 +27,20 @@ function fixture() {
 test("operation availability preserves every role, deploy token and WebSocket graph mode", () => {
   const config = fixture(), targets = getFrameworkTargets(config), availability = createTargetAvailability(config);
   assert.deepEqual([...new Set(targets.map(target => target.role))].sort(), [...roles].sort());
-  const local = (deploy: string) => deploy === "both" || deploy === "local-only";
-  const cloud = (deploy: string) => deploy === "both" || deploy === "cloud-only";
+  const local = (deploy: unknown) => deploy === "both" || deploy === "local-only";
+  const cloud = (deploy: unknown) => deploy === "both" || deploy === "cloud-only";
   const ws = (role: string) => role === "webSocket" || role === "webSocketAuthorizer";
-  for (const mode of ["dev", "prod"] as const) for (const webSocketApi of [false, true]) {
-    const model = projectModel(config, { mode, webSocketApi });
+  for (const mode of ["dev", "prod"] as const) {
+    const model = projectModel(config, { mode });
     assert.equal(model.status, "ok", JSON.stringify(model.diagnostics));
-    const deployed = (target: typeof targets[number]) => cloud(target.deploy) && (mode === "prod" || target.role === "event" || webSocketApi && ws(target.role));
-    assert.deepEqual(getCloudTargets(config, roles, mode, { webSocketApi }).map(target => target.reference), targets.filter(deployed).map(target => target.reference));
+    const deployed = (target: typeof targets[number]) => cloud(target.deploy) && (mode === "prod" || target.role === "event" || ws(target.role));
+    assert.deepEqual(getCloudTargets(config, roles, mode, {}).map(target => target.reference), targets.filter(deployed).map(target => target.reference));
     for (const target of targets) {
       const lanes = model.targets.find(item => item.ref === target.reference)!.lanes;
       assert.equal(availability.enabled(target.kind, target.id, "local"), local(target.deploy), target.reference);
       assert.equal(availability.enabled(target.kind, target.id, "cloud"), cloud(target.deploy), target.reference);
-      assert.equal(availability.deployed(target.kind, target.id, mode, { webSocketApi }), deployed(target), target.reference);
-      assert.deepEqual([lanes.local, lanes.cloud, lanes.dev, lanes.prod], [local(target.deploy), cloud(target.deploy), cloud(target.deploy) && (target.role === "event" || webSocketApi && ws(target.role)), cloud(target.deploy) && (!ws(target.role) || webSocketApi)], target.reference);
+      assert.equal(availability.deployed(target.kind, target.id, mode, {}), deployed(target), target.reference);
+      assert.deepEqual([lanes.local, lanes.cloud, lanes.dev, lanes.prod], [local(target.deploy), cloud(target.deploy), cloud(target.deploy) && (target.role === "event" || ws(target.role)), cloud(target.deploy)], target.reference);
     }
   }
   for (const [id, deploy] of [["shared", "both"], ["local-tool", "local-only"], ["cloud-tool", "cloud-only"], ["none-tool", "none"], ["unused", "none"]])

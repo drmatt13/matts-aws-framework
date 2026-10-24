@@ -1,3 +1,5 @@
+import { gatewaysOf } from "../../shared/gateways";
+import { drawnAs } from "../drawn-as";
 import type { Lanes, Mode, ModeModel, ModelResource, ModelRoute, ModelTarget, NetworkModel, TargetKind } from "../../shared/model";
 import { RELATION_CATEGORY, ROLE_LABEL, type EdgeCategory } from "../lookup";
 import { endpointServiceIcon, resourceBadge, resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
@@ -93,7 +95,7 @@ export interface SceneNode {
   readonly icon: IconKey;
   readonly roleIcon?: IconKey;
   readonly id: string;
-  readonly entity: "route" | "target" | "resource" | "local";
+  readonly entity: "gateway" | "route" | "target" | "resource" | "local";
   readonly gx: number;
   readonly gy: number;
   readonly h: number;
@@ -157,8 +159,6 @@ export interface SceneOptions {
   readonly layoutSettings?: LayoutSettings;
   readonly layoutModels?: readonly ModeModel[];
   readonly resourceAvailability?: Readonly<Record<string, Availability>>;
-  /** Whether this deployment builds the AWS WebSocket API (DEPLOY_PROD_WEBSOCKET_API). */
-  readonly webSocketApi?: boolean;
   /** Catalog facts from the source index: the condition an entry is declared under. */
   readonly conditions?: Readonly<Record<string, string | undefined>>;
 }
@@ -270,22 +270,9 @@ function targetItem(target: ModelTarget, mode: Mode): Item {
   };
 }
 
-function routeItem(route: ModelRoute, target: ModelTarget | undefined, mode: Mode): Item {
-  const presence = target ? targetPresence(target.lanes, mode) : { presence: "nowhere" as const, text: "Its target is not in this graph." };
-  const kindLabel =
-    route.kind === "http" ? "HTTP route" : route.kind === "service" ? "Service mount" : route.kind === "webSocket" ? "WebSocket route key" : "Agent route";
-  return {
-    id: route.id,
-    badge: target ? deploymentBadge(target.lanes) : undefined,
-    icon: routeIcon(route),
-    roleIcon: route.kind === "webSocket" ? "webSocket" : route.kind === "agent" ? "agent" : undefined,
-    entity: "route",
-    label: route.kind === "webSocket" ? route.path : route.browserPath ?? route.path,
-    kindLabel,
-    presence: presence.presence,
-    presenceText: `Follows ${target?.id ?? route.target}: ${presence.text.charAt(0).toLowerCase()}${presence.text.slice(1)}`,
-    ...(route.auth ? { auth: true } : {}),
-  };
+function gatewayItem(gateway: import("../../shared/gateways").ModelGateway, mode: Mode): Item {
+  const presence = targetPresence(gateway.lanes, mode);
+  return { id: gateway.id, entity: "gateway", label: gateway.title, kindLabel: "Framework-managed API Gateway", icon: "gateway", roleIcon: "managed", badge: deploymentBadge(gateway.lanes), presence: presence.presence, presenceText: presence.text, lanes: gateway.lanes };
 }
 
 function resourceItem(resource: ModelResource, mode: Mode, availability?: Availability): Item {
@@ -345,17 +332,15 @@ function networkCaptions(network: NetworkModel | undefined) {
 
 function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSpec[]; compute: IslandSpec[]; catalog: IslandSpec[] } {
   const mode = model.mode;
+  const standIns = drawnAs(model);
   const catalogItem = (resource: ModelResource) => resourceItem(resource, mode, options.resourceAvailability?.[resource.id]);
   const targets = new Map(model.targets.map((target) => [target.ref, target]));
-  // Entry points, by the gateway that serves them.
-  const routes = (kinds: readonly ModelRoute["kind"][]) =>
-    model.routes.filter((route) => kinds.includes(route.kind)).map((route) => routeItem(route, targets.get(route.target), mode));
-  const apiGroups = [routes(["http", "service"]), routes(["webSocket"]), routes(["agent"])].filter((group) => group.length > 0);
-  const entry: IslandSpec[] = apiGroups.length ? [{
+  const apiGroups = [gatewaysOf(model).map(gateway => gatewayItem(gateway, mode))];
+  const entry: IslandSpec[] = [{
     id: "island:apis", title: "APIs", region: "entry",
-    caption: ["HTTP routes, WebSocket route keys and agent browser paths. Select a route to inspect its protocol and target."],
+    caption: ["Framework-managed HTTP and WebSocket API Gateways. Select a gateway to inspect its routes and deployment."],
     bands: [{ id: "band:apis", title: "APIs", caption: [], h: 2, groups: apiGroups }],
-  }] : [];
+  }];
 
   // Compute, by where it runs.
   // HTTP, WebSocket, event and AgentCore tool functions, a column group each.
@@ -487,7 +472,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   const environmentFiles: Item[] = [];
   const clientFiles: Item[] = [];
   for (const resource of model.resources) {
-    if (resource.parent) continue;
+    if (resource.parent || standIns[resource.id]?.startsWith("gateway:")) continue;
     if (resource.clientEnvironment) {
       clientFiles.push({ ...catalogItem(resource), presenceText: "Client-app variables mapped from CDK inputs and stack outputs. Select to inspect the mappings." });
     } else if (resource.deploymentFile) {
@@ -648,7 +633,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
     });
   });
   const visibleMembers = new Set(anchors.map((anchor) => anchor.id));
-  const members = Object.fromEntries(model.resources.filter((resource) => resource.kind === "member" && resource.parent && !visibleMembers.has(resource.id)).map((resource) => [resource.id, resource.parent!]));
+  const members = drawnAs(model);
   const graph = extractLayoutGraph(anchors, topologyEdges(options.layoutModels ?? [model]), members);
   const layout = optimizeLayout(footprints, graph, options.layoutSettings);
   const { positions } = layout;
@@ -746,7 +731,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
   nodes.sort((a, b) => a.gx + a.gy - (b.gx + b.gy) || a.h - b.h || a.gx - b.gx);
 
   const ids = new Set(nodes.map((node) => node.id));
-  const representatives = Object.fromEntries(model.resources.filter((resource) => resource.kind === "member" && resource.parent && !ids.has(resource.id) && ids.has(resource.parent)).map((resource) => [resource.id, resource.parent!]));
+  const representatives = drawnAs(model);
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const resourceById = new Map(model.resources.map((resource) => [resource.id, resource]));
   const edges = aggregateConnections(model, options.layoutModels)

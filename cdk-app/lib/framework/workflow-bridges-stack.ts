@@ -52,7 +52,7 @@ export function developmentBridgeReferences(
   config: FrameworkConfig,
 ): readonly IntegrationUse[] {
   const uses = new Map<string, IntegrationUse>();
-  for (const target of getLocalTargets(config, ["workflow"])) {
+  for (const target of getLocalTargets(config, ["workflow"], "unconditioned")) {
     for (const use of resolveWorkflow(config, target.id).integrations) {
       if (!needsDevelopmentBridge(use.reference)) continue;
       const key = integrationKey(use.reference);

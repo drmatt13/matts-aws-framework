@@ -14,15 +14,13 @@ const options = [
   { kind: "route", icon: Route },
   { kind: "agent", icon: Bot },
   { kind: "tool", icon: SquareFunction },
-  { kind: "input", icon: Plus },
-  { kind: "secret", icon: KeyRound },
+  { kind: "input", icon: Plus, label: "Input parameter or secret" },
   { kind: "auth-provider", icon: KeyRound },
-] satisfies { kind: CreationKind; icon: typeof Plus }[];
+] satisfies { kind: CreationKind; icon: typeof Plus; label?: string }[];
 
 /** Creation shares the Inspector's guarded draft and complete diff review. */
 export function AddMenu({ presentation = "floating" }: { readonly presentation?: "floating" | "toolbar" }) {
   const { draft, draftState, live } = useStudio();
-  const [choosing, setChoosing] = useState(false);
   const creation = draft.creation();
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -75,22 +73,22 @@ export function AddMenu({ presentation = "floating" }: { readonly presentation?:
             event.preventDefault();
             items[next]?.focus();
           }}>
-            {options.map(({ kind, icon: Icon }) => (
+            {options.map(({ kind, icon: Icon, ...option }) => (
               <button key={kind} disabled={disabled} title={CREATORS[kind].help} onClick={() => {
-                const start = () => { draft.beginCreation(kind); setChoosing(false); setOpen(false); };
-                if (creation?.resourceKind === kind) start(); else draft.requestNavigation(start);
-              }}><Icon size={18} aria-hidden /><span>{CREATORS[kind].label}</span></button>
+                const start = () => { draft.beginCreation(kind); setOpen(false); };
+                if (creation?.resourceKind === kind || kind === "input" && creation?.resourceKind === "secret") setOpen(false); else draft.requestNavigation(start);
+              }}><Icon size={18} aria-hidden /><span>{"label" in option ? option.label : CREATORS[kind].label}</span></button>
             ))}
           </div>
         </div>
       ) : null}
       <button ref={trigger} className={presentation === "toolbar" ? "quiet studio-add-button" : "landscape-add-trigger"} aria-label="Add to application" title="Add to application" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => {
-        const show = () => { setChoosing(true); setOpen((value) => !value); };
+        const show = () => setOpen((value) => !value);
         if (creation) show(); else draft.requestNavigation(show);
       }}>
         <Plus size={presentation === "toolbar" ? 16 : 20} strokeWidth={1.75} aria-hidden />
         {presentation === "toolbar" ? <span>Add to application</span> : null}
       </button>
-    </div>{creation && !choosing ? <CreationWizard entry={creation} back={() => { setChoosing(true); setOpen(true); }} /> : null}</>
+    </div>{creation && !open ? <CreationWizard entry={creation} back={() => setOpen(true)} /> : null}</>
   );
 }

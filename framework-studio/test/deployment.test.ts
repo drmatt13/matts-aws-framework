@@ -1,7 +1,7 @@
 import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { defineFrameworkConfig, getFrameworkTargets, type FrameworkConfig } from "@repo/framework/config";
+import { defineFrameworkConfig, getFrameworkTargets, deployLanes, DEPLOY_SETTINGS, type FrameworkConfig } from "@repo/framework/config";
 import { defaults } from "../../framework-config/defaults";
 import { targetLanes } from "../server/model/project";
 import type { Lanes } from "../shared/model";
@@ -32,25 +32,25 @@ test("exception badges use actual environment availability, including disabled A
   assert.deepEqual(Object.keys(DEPLOYMENT_BADGES), ["dev", "prod", "off"], "execution location is never a third deployment badge");
   assert.equal(deploymentSettingLabel("local-only"), "Dev only");
   assert.equal(deploymentSettingLabel("cloud-only"), "Prod only");
-  assert.equal(deploymentSettingLabel("cloud-only", true), "Dev + Prod (AWS execution)", "WebSocket AWS handlers serve both deployment graphs");
-  assert.equal(deploymentSettingLabel("both", false), "Dev only (AWS API disabled)", "a disabled AWS WebSocket API leaves development execution only and stays distinct from local-only");
-  assert.equal(deploymentSettingLabel("cloud-only", false), "Off (API disabled)");
+  assert.equal(deploymentSettingLabel("cloud-only", { dev: true, prod: true }), "Dev + Prod", "WebSocket AWS handlers serve both deployment graphs");
+  assert.equal(deploymentSettingLabel("both", { local: true, dev: false, prod: false }), "Dev only", "local execution is available without an AWS deployment");
+  assert.equal(deploymentSettingLabel("cloud-only", { dev: false, prod: false }), "Off");
   assert.equal(deploymentSettingLabel("cloud-only", { dev: false, prod: true }), "Prod only");
-  assert.equal(deploymentSettingLabel("cloud-only", { dev: true, prod: false }), "Dev only (AWS execution)");
-  assert.equal(deploymentSettingLabel("both", { dev: true, prod: false }), "Dev only (local + AWS)");
+  assert.equal(deploymentSettingLabel("cloud-only", { dev: true, prod: false }), "Dev only");
+  assert.equal(deploymentSettingLabel("both", { dev: true, prod: false }), "Dev only");
 });
 
-test("deployment draft previews match the framework projection for every scope and WebSocket API flag", () => {
+test("deployment draft previews match the framework projection for every setting and role", () => {
   for (const setting of ["both", "local-only", "cloud-only", "none"] as const) {
     const config = defineFrameworkConfig({ networks: [fixtureVpc], defaults,
       http: [{ "/preview": { directory: "/lambda_functions/http_functions/preview", methods: ["POST"], deploy: setting } }],
       webSocket: [{ "$connect": { directory: "/lambda_functions/websocket_functions/preview-connect", deploy: setting } }],
       events: [], services: [],
     }) as unknown as FrameworkConfig;
-    for (const webSocketApi of [false, true]) for (const target of getFrameworkTargets(config)) {
-      const actual = targetLanes(config, target, { mode: "dev", webSocketApi });
-      const preview = previewDeploymentLanes({ role: target.role, lanes: lanes(false, false, false) }, setting, webSocketApi);
-      for (const key of ["local", "cloud", "dev", "prod"] as const) assert.equal(preview[key], actual[key], `${target.role} ${setting} API=${webSocketApi}: ${key}`);
+    for (const target of getFrameworkTargets(config)) {
+      const actual = targetLanes(config, target, { mode: "dev" });
+      const preview = previewDeploymentLanes({ role: target.role, lanes: lanes(false, false, false) }, setting, Object.fromEntries(DEPLOY_SETTINGS.map(setting => [setting, deployLanes(target.role, setting)])));
+      for (const key of ["local", "cloud", "dev", "prod"] as const) assert.equal(preview[key], actual[key], `${target.role} ${setting}: ${key}`);
     }
   }
 });

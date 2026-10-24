@@ -1,3 +1,4 @@
+import { deployInputsFrom } from "./deploy";
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import * as path from "node:path";
 import { parseEnv } from "node:util";
@@ -415,4 +416,9 @@ export function readSecretBindings(
   const file = path.join(repositoryRoot, SECRET_BINDINGS_FILE);
   if (!existsSync(file)) return undefined;
   return parseSecretBindings(readFileSync(file, "utf8"));
+}
+
+/** Local execution reads development inputs; never generated root env or shell values. */
+export function localDeployInputs(repositoryRoot: string = findRepositoryRoot(), environment: NodeJS.ProcessEnv = process.env) {
+  return deployInputsFrom({ env: readAuthoredInputs(repositoryRoot, { ...environment, FRAMEWORK_MODE: "dev" }) });
 }

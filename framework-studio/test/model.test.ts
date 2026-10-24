@@ -100,7 +100,7 @@ test("database consumer facts preserve normalized reader, direct and per-process
     tasks: [{ migrate: { directory: "/test/fixtures/task-worker", deploy: "cloud-only", cloud: { vpc: fixtureVpc }, database: { connection: "direct" } } }],
   });
   for (const mode of ["dev", "prod"] as const) {
-    const model = projectModel(config, { mode, webSocketApi: false });
+    const model = projectModel(config, { mode, });
     const consumers = model.managedDatabase!.consumers!;
     assert.equal(consumers.length, 2);
     assert.deepEqual(consumers.find(item => item.target === "lambda:reader"), { target: "lambda:reader", title: "reader", connection: "application", readers: true, maxConnections: 3 });
@@ -150,13 +150,17 @@ test("task, workflow and integration relationships come from an isolated config"
     tasks: [{ worker: { cloud: { vpc: fixtureVpc }, directory: "/test/fixtures/task-worker", deploy: "both" } }],
     workflows: [{ process: workflow(() => sequence(invokeLambda("worker"), dynamodb.put(catalog.data.records, { item: { pk: "example" } })), { timeoutSeconds: 60 }) }],
   });
-  const model = projectModel(config as unknown as FrameworkConfig, { mode: "dev", webSocketApi: false });
+  const model = projectModel(config as unknown as FrameworkConfig, { mode: "dev", });
   for (const [relation, from, to] of [
     ["runsTask", "lambda:caller", "task:worker"],
     ["startsWorkflow", "lambda:caller", "workflow:process"],
     ["step", "workflow:process", "lambda:worker"],
     ["integration", "workflow:process", "resource:data.records"],
   ]) assert.ok(model.edges.some((edge) => edge.relation === relation && edge.from === from && edge.to === to), relation);
+  const launchPermission = model.edges.find((edge) => edge.relation === "runsTask")!;
+  assert.equal(launchPermission.label, "Launch ECS task");
+  assert.match(launchPermission.detail!, /ecs:RunTask/);
+  assert.match(launchPermission.detail!, /iam:PassRole/);
 });
 
 test("lanes carry the framework's special rules", () => {
@@ -165,7 +169,7 @@ test("lanes carry the framework's special rules", () => {
   assert.equal(tool.lanes.origin, "derived");
   assert.deepEqual(tool.lanes.derivedFrom, ["agent:example-agent"]);
   const event = target("lambda:cognito-pre-signup-trigger");
-  assert.equal(event.lanes.origin, "aws-invoked");
+  assert.equal(event.lanes.origin, "default");
   assert.equal(event.lanes.dev, true, "AWS invokes it, so the dev graph holds it");
   const service = target("service:example-service");
   assert.equal(service.lanes.deploy, "local-only");
@@ -257,7 +261,7 @@ test("typed trigger descriptors normalize to declared resource-to-event edges wi
   const catalog = defineResources({ identity: resource.stack<{ pool: UserPool }>() });
   const config = defineFrameworkConfig({ networks: [fixtureVpc], resources: catalog, defaults, http: [], webSocket: [], services: [], events: [{ event: { directory: "/test/fixtures/workload-handler", triggers: [trigger.cognito(catalog.identity.pool, { id: "signup", operation: "preSignUp", accepts: "cognito" })] } }] });
   for (const mode of ["dev", "prod"] as const) {
-    const model = projectModel(config as unknown as FrameworkConfig, { mode, webSocketApi: false });
+    const model = projectModel(config as unknown as FrameworkConfig, { mode, });
     const edge = model.edges.find((edge) => edge.relation === "trigger")!;
     assert.equal(edge.from, "resource:identity.pool");
     assert.equal(edge.to, "lambda:event");
@@ -352,7 +356,7 @@ test("Lambda settings inherit section defaults and Python has no Node bundling c
     },
     webSocket: {}, events: {}, services: {}, tasks: {},
   }) as unknown as FrameworkConfig;
-  const model = projectModel(config, { mode: "dev", webSocketApi: false });
+  const model = projectModel(config, { mode: "dev", });
   const facts = model.fields["lambda:node"]!;
   assert.equal(facts.find((fact) => fact.field === "lambda.architecture")?.provenance, "defaults.http.architecture");
   assert.equal(facts.find((fact) => fact.field === "lambda.runtime")?.effective, "nodejs22");
@@ -387,7 +391,7 @@ test("the projection follows the framework's rules on a config of its own", () =
     services: {},
     tasks: { rollup: { cloud: { vpc: network }, deploy: "both" } },
   }) as unknown as FrameworkConfig;
-  const model = projectModel(config, { mode: "dev", webSocketApi: false });
+  const model = projectModel(config, { mode: "dev", });
   assert.equal(model.status, "ok");
   const orders = model.targets.find((target) => target.ref === "lambda:orders")!;
   assert.deepEqual(orders.placement.kind === "vpc" && [orders.placement.subnet, orders.placement.egress], [
@@ -409,11 +413,11 @@ test("a VPC used only by WebSocket handlers follows the API deployment setting",
     http: [], events: [], services: [],
     webSocket: [{ $default: { directory: "/lambda_functions/websocket_functions/realtime", vpc: network, subnet: "private" } }],
   });
-  for (const webSocketApi of [false, true]) {
-    const model = projectModel(config, { mode: "prod", webSocketApi });
+  {
+    const model = projectModel(config, { mode: "prod" });
     assert.equal(model.status, "ok", JSON.stringify(model.diagnostics));
-    assert.equal(model.targets[0]!.lanes.prod, webSocketApi);
-    assert.equal(model.networks![0]!.builtInProd, webSocketApi, "network applicability agrees with its only consumer");
+    assert.equal(model.targets[0]!.lanes.prod, true);
+    assert.equal(model.networks![0]!.builtInProd, true, "network applicability agrees with its only consumer");
   }
 });
 

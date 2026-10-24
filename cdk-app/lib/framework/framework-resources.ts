@@ -359,7 +359,7 @@ export function finalizeFrameworkResources(scope: IConstruct): void {
   if (mode === "dev") {
     const published = new Set<string>();
     for (const target of getFrameworkTargets(config)) {
-      if (!isTargetEnabled(config, target.kind, target.id, "local")) continue;
+      if (!isTargetEnabled(config, target.kind, target.id, "local", "unconditioned")) continue;
       const references = [...Object.values(target.environment).filter(isResourceReference), ...Object.values(target.secrets).filter((ref) => !ref.fromEnv)];
       for (const reference of references) {
         if (isResourceAbsent(reference) || (reference.fromEnv && !reference.secretArn)) continue;

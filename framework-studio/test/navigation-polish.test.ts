@@ -360,8 +360,8 @@ test("unavailable creation explains the reason beside disabled resource choices"
 test("creation helpers and validation stay associated with controls and source conflicts freeze the complete form", async () => {
   const update = await mount(add.AddMenu);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add to application" }));
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Input parameter" }));
-  const wizard = await ui.screen.findByRole("dialog", { name: "Create input parameter" });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Input parameter or secret" }));
+  const wizard = await ui.screen.findByRole("dialog", { name: "Create input parameter or secret" });
   const controls = ui.within(wizard);
   const id = controls.getByRole("textbox", { name: "Stable identifier" });
   assert.equal(id.getAttribute("aria-invalid"), "false", "a fresh form offers guidance before showing a validation error");

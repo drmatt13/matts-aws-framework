@@ -42,8 +42,8 @@ npm run deploy:resources -- --all --profile=<profile> --yes
 then replace its values with the last section of the root `.env` that step 3 generated,
 headed `# Client app: copy this block into client-app/.env`. It already holds every
 `VITE_*` setting the client reads, including `VITE_LOCAL_WS_URL` for the local
-WebSocket server. Set `DEPLOY_PROD_WEBSOCKET_API=true` in `cdk-app/.env.dev` before step 3
-to also deploy the AWS WebSocket API, whose URL is `VITE_API_GATEWAY_WS_URL`.
+WebSocket server. AWS deployments also build the WebSocket API for enabled handlers;
+its URL is `VITE_API_GATEWAY_WS_URL`.
 
 **5. Start the backend** (Docker containers). Leave this terminal running.
 
@@ -238,3 +238,10 @@ export const lambdaHandler = tool(contract, async ({ a, b }) => ({ sum: a + b })
 - [docs/FRAMEWORK.md](docs/FRAMEWORK.md): workloads, resources and secrets in detail
 - [docs/DEV-DEPLOYMENT.md](docs/DEV-DEPLOYMENT.md): full development guide and troubleshooting
 - [docs/AGENTCORE.md](docs/AGENTCORE.md): agents and tools
+
+WebSocket API Gateway is framework managed in both AWS modes. The application's
+`ENABLE_WEBSOCKET_API=true` input enables its handlers and authorizer through their
+shared Deploy condition. It replaces the retired `DEPLOY_PROD_WEBSOCKET_API` setting.
+Configure individual workloads with `deploy`,
+including `deploy: { when: { resource: resources.input, equals: "value" } }`, or use
+Studio's Deploy control. Input conditions are evaluated separately per environment.

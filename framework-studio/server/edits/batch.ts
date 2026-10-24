@@ -1,3 +1,4 @@
+import { planDeploy } from "./deploy";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, rmdirSync } from "node:fs";
 import path from "node:path";
@@ -142,6 +143,12 @@ export class BatchEditor {
     const replayTargets: string[] = [];
     const handlerBefore = new Map<string, string>();
     for (const edit of edits) {
+      if (edit.kind === "deploy") {
+        if (edits.filter(item => item.kind === "deploy" && item.target === edit.target || item.kind === "field" && item.intent.target === edit.target && item.intent.field === "deploy").length !== 1) throw new EditError(422, "Review one Deploy change per workload.");
+        planDeploy(this.root, state, edit, overrides);
+        summaries.push(`${edit.target} — ${typeof edit.value === "string" ? `Deploy ${edit.value}` : `Deploy only when ${edit.value.when.resource} matches ${JSON.stringify(edit.value.when.equals)}`}`);
+        continue;
+      }
       if (edit.kind === "identityPolicy") {
         if (edits.filter(item => item.kind === "identityPolicy" && item.target === edit.target).length !== 1) throw new EditError(422, "Review one policy change per identity-pool stack.");
         const policy = planIdentityPolicy(this.root, state, edit, overrides);
@@ -344,7 +351,13 @@ export class BatchEditor {
       preflight: checked.preflight, ok: checked.preflight.dev.ok && checked.preflight.prod.ok,
       ...(creation ? { select: creation.expected.select } : {}),
       impact: creation ? creation.impact : edits.every((edit) => edit.kind === "clientEnvironment") ? ["Saves mapping definitions for the next environment export. Environment-file generation is separate."] : ["Applies this complete draft as one undoable change. Individual workload overrides remain in place when shared defaults change.",
+        ...(edits.some(edit => edit.kind === "deploy" && model.targets.some(target => target.ref === edit.target && target.role === "event")) ? ["Disabled event functions and their native AWS hooks, trigger descriptors and failure destinations are omitted on the next deployment. Cognito event changes can remove sign-up validation, custom messaging or post-confirmation behavior; this review only saves source."] : []),
         ...(replayTargets.length ? ["Updates localReplay and the handler's withLocalReplay wrapper together. The generated replay manifest is included in this review. Events that require local execution cannot turn replay off."] : []),
+        ...edits.flatMap(edit => edit.kind === "deploy" && typeof edit.value !== "string" ? (["dev", "prod"] as const).map(mode => {
+          const target = checked.models[mode].targets.find(target => target.ref === edit.target);
+          const result = target?.lanes.when?.[mode];
+          return `${edit.target}: ${mode === "dev" ? "Development" : "Production"} condition ${result === "holds" ? "matches" : result === "unset" ? "is unset" : "does not match"}; ${mode === "dev" ? target?.lanes.local || target?.lanes.dev ? "enabled" : "disabled" : target?.lanes.prod ? "enabled" : "disabled"}.`;
+        }) : []),
         ...(edits.some(edit => edit.kind === "network") ? ["CIDR or availability-zone changes may replace subnets and attached infrastructure on deployment. NAT and interface endpoints incur hourly and data charges when built."] : []),
         ...(edits.some(edit => edit.kind === "database") ? ["Changes PostgreSQL declaration defaults while preserving native construct identities. Multi-AZ, replicas, and Proxy add billed capacity. Review engine/storage changes and the production synth before a separate deployment; DATABASE_* inputs or CDK context may override these defaults."] : []),
         ...(edits.some(edit => edit.kind === "databasePlacement") ? ["Changes the database's declared home and coordinates framework workload VPC references. This saves source only: it does not copy data, relocate a running RDS instance, or change local PostgreSQL. Existing RDS requires a separately approved migration/cutover and review of both synths before deployment. Native CDK connections remain source-owned."] : []),
@@ -379,7 +392,7 @@ export class BatchEditor {
     const replaySources = [...handlerBefore].map(([file, before]) => ({ file, before, after: overrides.get(file)! }));
     if (edits.some(edit => edit.kind === "identityPolicy")) (response.impact as string[]).push("ReaderRole IAM and explicit guest opt-in changes take effect only after a separate synth/diff/deployment review. Enabled guests can obtain a separate permissionless unauthenticated identity role; ReaderRole grants never attach to guests. Source statements and policy simulation do not prove group claims, trust, boundaries/SCPs, resource policies or runtime API authorization. The default authenticated role remains permissionless.");
     const addedDirectories = changes.filter(change => change.before === null).flatMap(change => { const folders: string[] = []; for (let folder = path.dirname(change.file); folder !== this.root && !existsSync(folder); folder = path.dirname(folder)) folders.push(folder); return folders; });
-    this.plans.set(response.planId, { kind: "batch", label: creation ? `Create ${creation.expected.select}` : `${edits.length} inspector changes`, response, revision, hashes, changes, edits, routes, replayTargets, replaySources, triggerSources, generatedFiles: [...generatedFiles], generationInputs, ...(addedDirectories.length ? { createdDirectories: [...new Set(addedDirectories)] } : {}), implementationFiles: [...implementationFiles], ...(edits.some(edit => edit.kind === "connection" || edit.kind === "removeWorkload") ? { operationModels: { forward: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, inverse: { dev: creationSignature(state.snapshot.models.dev), prod: creationSignature(state.snapshot.models.prod) } } } : {}), ...(deletions.size ? { networkRemovals: [...deletions.keys()], createdDirectories: [...new Set([...addedDirectories, ...[...deletions.keys()].map(file => path.dirname(file))])] } : {}), ...((native || policyFiles.size) ? { cdkSources: [...new Set([...(native?.changes.keys() ?? []), ...policyFiles])] } : {}), ...(creation ? { creation: creation.expected, creationModels: { forward: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, inverse: { dev: creationSignature(state.snapshot.models.dev), prod: creationSignature(state.snapshot.models.prod) } }, createdDirectories: [...new Set(changes.filter((change) => change.before === null).flatMap((change) => {
+    this.plans.set(response.planId, { kind: "batch", label: creation ? `Create ${creation.expected.select}` : `${edits.length} inspector changes`, response, revision, hashes, changes, edits, routes, replayTargets, replaySources, triggerSources, generatedFiles: [...generatedFiles], generationInputs, ...(addedDirectories.length ? { createdDirectories: [...new Set(addedDirectories)] } : {}), implementationFiles: [...implementationFiles], ...(edits.some(edit => edit.kind === "deploy" || edit.kind === "connection" || edit.kind === "removeWorkload") ? { operationModels: { forward: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, inverse: { dev: creationSignature(state.snapshot.models.dev), prod: creationSignature(state.snapshot.models.prod) } } } : {}), ...(deletions.size ? { networkRemovals: [...deletions.keys()], createdDirectories: [...new Set([...addedDirectories, ...[...deletions.keys()].map(file => path.dirname(file))])] } : {}), ...((native || policyFiles.size) ? { cdkSources: [...new Set([...(native?.changes.keys() ?? []), ...policyFiles])] } : {}), ...(creation ? { creation: creation.expected, creationModels: { forward: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, inverse: { dev: creationSignature(state.snapshot.models.dev), prod: creationSignature(state.snapshot.models.prod) } }, createdDirectories: [...new Set(changes.filter((change) => change.before === null).flatMap((change) => {
       const directories: string[] = [];
       for (let directory = path.dirname(change.file); directory !== this.root && !existsSync(directory); directory = path.dirname(directory)) directories.push(directory);
       return directories;
@@ -396,7 +409,7 @@ export class BatchEditor {
     }
     const pool = new EvaluatorPool(this.root, undefined, this.builder.evaluators);
     try {
-      const evaluated = await pool.evaluate(state.snapshot.webSocketApi, overrides);
+      const evaluated = await pool.evaluate(overrides);
       // Review uses the same cross-mode metadata projection as the visible
       // snapshot, including a production-only database's inherited stack tags.
       const models = { dev: withAbsentTagging(evaluated.dev, evaluated.prod), prod: withAbsentTagging(evaluated.prod, evaluated.dev) };

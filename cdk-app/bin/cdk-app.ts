@@ -14,7 +14,7 @@ import { FrontendWebsiteS3Stack } from "../lib/app/frontend-website-s3-stack";
 import { FrontendRouting } from "../lib/app/frontend-routing";
 import { RdsStack } from "../lib/app/rds-stack";
 import { EventLambdaFunctionsStack } from "../lib/framework/event-lambda-functions-stack";
-import { assertCloudEdgesResolvable, isFrameworkDatabase, validateFrameworkConfig } from "@repo/framework/config";
+import { deployInputsFrom, assertCloudEdgesResolvable, isFrameworkDatabase, validateFrameworkConfig } from "@repo/framework/config";
 import { PROD_DEPLOYMENT, readAuthoredInputs } from "@repo/framework/config/source";
 import { initializeFrameworkResources, finalizeFrameworkResources } from "../lib/framework/framework-resources";
 import { describeFrameworkNetwork } from "../lib/framework/framework-network";
@@ -59,6 +59,7 @@ const deployment = resolveDeploymentInputs({
 });
 deployment.warnings.forEach((warning) => console.warn(warning));
 const { stackEnv, mode } = deployment;
+const inputs = deployInputsFrom(readers);
 
 // The catalog branched on the mode while it was being imported. bin/main.ts
 // decides it before that import; loading this file any other way would build a
@@ -79,9 +80,9 @@ initializeFrameworkResources(app, {
 // Checked here, against the config, because a dev deployment holds only what
 // AWS invokes: an event Lambda naming a task would otherwise fail much later as
 // a missing registry handle, in a message about stacks rather than about the
-// declaration that caused it. With DEPLOY_PROD_WEBSOCKET_API, that includes the
-// WebSocket handlers, which API Gateway invokes.
-assertCloudEdgesResolvable(framework, mode, { webSocketApi: deployment.deployProdWebSocketApi });
+// declaration that caused it. That includes enabled WebSocket handlers, which
+// API Gateway invokes in both deployment modes.
+assertCloudEdgesResolvable(framework, mode, { inputs });
 
 // Framework stack orchestration lives in the composition factories. Your own
 // stacks go at the marked place below. Flags: docs/FRAMEWORK.md#configuration-and-environment.
@@ -129,7 +130,7 @@ const tasks = createFrameworkTasks(app, {
   env: stackEnv,
   stackId,
   config: framework,
-  cloud: { mode },
+  cloud: { mode, inputs },
   readers,
 });
 if (tasks.stack && rdsStack) {
@@ -147,7 +148,7 @@ const eventHandlers = new EventLambdaFunctionsStack(
   {
     env: stackEnv,
     config: framework,
-    cloud: { mode },
+    cloud: { mode, inputs },
     readers,
     replay: foundation.replay,
   },
@@ -215,6 +216,7 @@ const orchestration = createFrameworkOrchestration(app, {
   stackId,
   config: framework,
   mode,
+  inputs,
   cognito: cognitoStack,
   dependencies: [eventHandlers, ...(tasks.stack ? [tasks.stack] : [])],
 });
@@ -229,12 +231,11 @@ const workloads = createFrameworkWorkloads(app, {
   env: stackEnv,
   stackId,
   config: framework,
-  cloud: { mode },
+  cloud: { mode, inputs },
   cognito: cognitoStack,
   ...(orchestration.agentcore ? { agentcore: orchestration.agentcore } : {}),
   readers,
   frontendUrls: frontend.trustedFrontendUrls,
-  deployWebSocketApi: deployment.deployProdWebSocketApi,
   handlerDependencies: [
     cognitoStack,
     // A routed starter's descriptor and grants reference these stacks, so the
@@ -253,10 +254,8 @@ if (workloads.skippedTargets.disabled.length > 0) {
     `Skipping cloud-disabled framework targets: ${workloads.skippedTargets.disabled.join(", ")}`,
   );
 }
-if (workloads.skippedTargets.withoutWebSocketApi.length > 0) {
-  console.warn(
-    `Not built because this deployment has no WebSocket API (DEPLOY_PROD_WEBSOCKET_API is off): ${workloads.skippedTargets.withoutWebSocketApi.join(", ")}. They still run locally under the WebSocket dev server.`,
-  );
+if (workloads.skippedTargets.conditionNotMet.length > 0) {
+  console.log(`Skipping framework targets whose deployment condition is false: ${workloads.skippedTargets.conditionNotMet.join(", ")}`);
 }
 if (workloads.skippedTargets.notInThisDeployment.length > 0) {
   console.warn(

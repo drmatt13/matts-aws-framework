@@ -14,7 +14,7 @@ test("implementation health reuses canonical tool, agent and Cognito verifier ch
   for (const file of [tool, http, agent]) { mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, ""); writeFileSync(path.join(path.dirname(file), "contract.ts"), "export const contract = {};\n"); }
   const cognito = { USER_POOL_ID: "fixture", USER_POOL_CLIENT_ID: "fixture" };
   const config = defineFrameworkConfig({ defaults, http: [{ "/check": { directory: "/lambda_functions/http_functions/check-http", methods: ["GET"] } }], tools: [{ "check-tool": { auth: true, environment: cognito } }], agents: [{ "check-agent": { auth: true, tools: ["check-tool"], environment: cognito } }], webSocket: [], events: [], services: [] });
-  const projected = projectModel(config, { mode: "dev", webSocketApi: false });
+  const projected = projectModel(config, { mode: "dev", });
   try {
     const bad = withImplementationHealth(config, projected, root, { [tool]: "export const lambdaHandler = tool(contract, async () => ({}));", [http]: 'import { authenticated as signedIn } from "@repo/framework/runtime/auth";\nexport const lambdaHandler = signedIn(async () => ({}));', [agent]: 'export const handler = agent("other-agent", contract).respond(async () => ({}));' });
     assert.match(bad.targets.find(target => target.ref === "lambda:check-tool")!.implementation!.problems.join("\n"), /authenticatedTool/);

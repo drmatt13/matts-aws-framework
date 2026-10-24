@@ -1,3 +1,4 @@
+import { localDeployInputs } from "@repo/framework/config/source";
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -146,7 +147,7 @@ export class LocalWorkflowEngine {
   /** Accepts a submission and returns as soon as the execution is created. */
   public start(id: string, input: unknown): WorkflowExecution {
     if (this.closing) throw new Error("Local runner is shutting down.");
-    if (!isTargetEnabled(this.options.config, "workflow", id, "local")) {
+    if (!isTargetEnabled(this.options.config, "workflow", id, "local", localDeployInputs(this.options.repositoryRoot))) {
       throw new Error(
         `workflow:${id} is not enabled for local execution. Declare it under workflows with a deploy setting that includes "local".`,
       );
@@ -245,7 +246,7 @@ export class LocalWorkflowEngine {
         if (this.options.agents === undefined) {
           throw new Error(`workflow:${workflow.id} invokes ${target}, and this runner has no agent lane.`);
         }
-        if (!isTargetEnabled(this.options.config, "agent", agent, "local")) {
+        if (!isTargetEnabled(this.options.config, "agent", agent, "local", localDeployInputs(this.options.repositoryRoot))) {
           throw new Error(
             `workflow:${workflow.id} invokes ${target}, which is not enabled for local execution. Declare it under agents with a deploy setting that includes "local".`,
           );
@@ -254,7 +255,7 @@ export class LocalWorkflowEngine {
       }
       if (target.startsWith("workflow:")) {
         const child = target.slice("workflow:".length);
-        if (!isTargetEnabled(this.options.config, "workflow", child, "local")) {
+        if (!isTargetEnabled(this.options.config, "workflow", child, "local", localDeployInputs(this.options.repositoryRoot))) {
           throw new Error(
             `workflow:${workflow.id} runs ${target}, which is not enabled for local execution. Declare it under workflows with a deploy setting that includes "local".`,
           );

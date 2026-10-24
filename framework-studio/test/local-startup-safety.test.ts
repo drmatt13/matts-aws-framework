@@ -29,7 +29,8 @@ test("readiness distinguishes process start, database failure and a reachable ap
   const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   writeFileSync(path.join(root, "cdk-app/.env.dev"), `LOCAL_DEV_URL=${url}\n`);
   const env = { ...process.env };
-  const local = new LocalEnvironment(root, new Tools(path.resolve(__dirname, "../.."), env), async () => ({ code: 0, stdout: "", stderr: "" }), env, root, path.join(root, "state"));
+  const disabledServices = new Set<string>();
+  const local = new LocalEnvironment(root, new Tools(path.resolve(__dirname, "../.."), env), async () => ({ code: 0, stdout: "", stderr: "" }), env, root, path.join(root, "state"), () => disabledServices);
   const managed = { watch: { running: true }, client: { running: true } };
   try {
     assert.equal((await local.readiness([], managed)).state, "starting");
@@ -37,6 +38,12 @@ test("readiness distinguishes process start, database failure and a reachable ap
     const service = { name: "api", container: "api", state: "running", oneShot: false, ports: "", health: "starting" as const };
     assert.equal((await local.readiness([service], managed)).state, "starting");
     assert.equal((await local.readiness([{ ...service, health: "healthy" }], managed)).state, "ready");
+    const optional = { name: "conditional-service", container: "optional", state: "exited", oneShot: false, ports: "", exitCode: 0 };
+    disabledServices.add(optional.name);
+    assert.equal((await local.readiness([{ ...service, health: "healthy" }, optional], managed)).state, "ready", "a disabled service's clean launcher exit is intentional");
+    assert.equal((await local.readiness([{ ...service, health: "healthy" }, { ...optional, exitCode: 1 }], managed)).state, "blocked", "a genuine failed startup still blocks readiness");
+    disabledServices.clear();
+    assert.equal((await local.readiness([{ ...service, health: "healthy" }, optional], managed)).state, "blocked", "an enabled service exiting still needs attention");
     assert.equal((await local.readiness([], { watch: { running: false }, client: { running: false } })).state, "stopped");
   } finally { server.close(); rmSync(root, { recursive: true, force: true }); }
 });

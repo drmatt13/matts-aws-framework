@@ -1,3 +1,4 @@
+import type { DeployLane } from "@repo/framework/config";
 import * as cdk from "aws-cdk-lib";
 import type { Construct } from "constructs";
 import { validateFrameworkConfig, type FrameworkConfig } from "@repo/framework/config";
@@ -11,10 +12,10 @@ import { FrameworkTargetRegistry } from "./framework-target-registry";
 export interface EventLambdaFunctionsStackProps<C extends FrameworkConfig>
   extends cdk.StackProps {
   readonly config: C;
-  readonly cloud: { readonly mode: "dev" | "prod" };
+  readonly cloud: { readonly mode: "dev" | "prod"; readonly inputs?: DeployLane };
   readonly readers?: EventLambdaContext<C>["readers"];
   readonly replay?: EventLambdaContext<C>["replay"];
-  /** Omitted, build every declared event. Native owners can split the inventory. */
+  /** Omitted, build every enabled event. Native owners can split the inventory. */
   readonly targets?: readonly EventTargetId<C>[];
 }
 

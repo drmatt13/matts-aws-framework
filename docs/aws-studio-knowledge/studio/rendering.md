@@ -111,6 +111,11 @@ Board's [layout.ts](../../../framework-studio/src/layout.ts) arranges entry, com
 
 Keep optimization bounded for large graphs. Preserve layout stability across selection/mode switches and avoid recomputing source models during a pointer move. Rendering and picking must share geometric assumptions, especially curve sampling and visible endpoints. Avoid claiming a node-count ceiling or browser FPS guarantee from a synthetic timing fixture.
 
+The optimizer keeps at most 36 proxy links. Within that cap it preserves genuine shared
+node attachments and spends unused slots on the geometric spread of input/handler fans;
+collapsing every attachment on an island to one mean can hide crossings that remain in
+the painted wires. Source relationships and final routing remain complete.
+
 Routing rejects disjoint sampled-path envelopes before exact obstacle/crossing
 checks. Path helpers reject segment pairs and segment/box pairs whose envelopes
 cannot intersect before applying the original strict orientation tests. Envelopes
@@ -132,3 +137,9 @@ lookups must resolve to the same visible representative without repeated node sc
 These are derived presentation indexes, never cached source authorities or staged edits.
 
 Validation: [graph layout](../../../framework-studio/test/graph-layout.test.ts), [landscape](../../../framework-studio/test/landscape.test.ts), [isometric UI](../../../framework-studio/test/isometric-ui.test.ts), [iso](../../../framework-studio/test/iso.test.ts), [hover](../../../framework-studio/test/hover.test.ts), [labels](../../../framework-studio/test/labels.test.ts). Check overlap/crossing scores, evaluation bounds and reuse on representative fixtures; browser-test zoom/pan/picking/resize for real rendering changes. [Snapshot](snapshots.md) tests do not establish visual performance.
+
+The APIs island has one building per actual API Gateway. Shared `src/drawn-as.ts`
+representatives fold HTTP/service and WebSocket routes and gateway export stacks into
+those buildings; agent routes fold into their agent. Layout, aggregated connections,
+selection, search and tag filtering use the same mapping. Connection availability
+retains the original endpoints even when several routes share a building.

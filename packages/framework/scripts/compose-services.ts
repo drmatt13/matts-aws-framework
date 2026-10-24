@@ -145,7 +145,7 @@ function planServices(
 ): { readonly generated: readonly DerivedService[]; readonly reasons: ReadonlyMap<string, string> } {
   const generated: DerivedService[] = [];
   const reasons = new Map<string, string>();
-  for (const target of getLocalTargets(config, ["service"])) {
+  for (const target of getLocalTargets(config, ["service"], "unconditioned")) {
     if (authored.services?.[target.id] !== undefined) continue;
     const derived = deriveService(config, target, repositoryRoot);
     if ("reason" in derived) reasons.set(target.id, derived.reason);
@@ -262,7 +262,7 @@ export function assertLocalServiceContainers(
   const included = includes(authored, GENERATED_COMPOSE_FILE);
   const services = { ...(included ? generated : {}), ...authored.services };
   const { reasons } = planServices(config, authored, options.repositoryRoot);
-  for (const target of getLocalTargets(config, ["service"])) {
+  for (const target of getLocalTargets(config, ["service"], "unconditioned")) {
     const service = services[target.id];
     if (!service) {
       if (generated[target.id]) {

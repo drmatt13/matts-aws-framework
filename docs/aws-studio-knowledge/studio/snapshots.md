@@ -51,8 +51,8 @@ a shell, and generation still requires explicit confirmation.
 
 `SnapshotBuilder.refresh` in [snapshot.ts](../../../framework-studio/server/snapshot.ts) serializes/coalesces refreshes:
 
-1. Hash editable files and read deployment settings.
-2. `EvaluatorPool` loads dev and prod in separate forked module graphs. Synthetic inputs select mode; graph evaluation does not need resolved secret values. A narrow mode flag is read from the authored mode files. Forks inherit host trust/environment; do not describe them as secret-proof isolation.
+1. Hash editable files.
+2. `EvaluatorPool` loads dev and prod in separate forked module graphs. Synthetic inputs select mode; graph evaluation does not need resolved secret values. Evaluators send condition metadata; the parent resolves each mode file privately and returns only holds/fails/unset outcomes. The snapshot revision digest includes those outcomes. Forks inherit host trust/environment; do not describe them as secret-proof isolation.
 3. `projectModel` normalizes/validates declarations into each `ModeModel`. A fresh availability resolver supplies canonical lane predicates for that projection. `withLambdaSpecs` in [lambda-spec.ts](../../../framework-studio/server/model/lambda-spec.ts) temporarily seeds build settings from one fresh batch; `finally` restores or removes that scope. Later projections re-read mutated settings. The ordinary evaluator treats loaded configuration as immutable (`applyPatch` copies).
 4. [Source indexing](source-indexing.md) supplies locations, capabilities and CDK evidence. Prisma contract parsing, Compose metadata, client mappings, descriptions and input **metadata** enrich the snapshot.
 5. Increment generation and combine it with a content hash for `revision`; atomically cache disposable CDK-link evidence under `.cache/framework-studio`.

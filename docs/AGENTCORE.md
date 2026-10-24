@@ -51,17 +51,16 @@ export const agents = {
 
 Compose them in `framework.config.ts` as `tools: [tools]` and `agents: [agents]`.
 
-Tools have no authored `deploy` setting. Each tool runs in the union of the lanes of
-the agents that list it: local consumers enable local execution, cloud consumers
-enable cloud deployment, and a shared tool can run in both. Agents default to `both`;
-an agent with `deploy: "none"` enables neither lane. A tool with no enabled consumers
-is disabled in both lanes. Tool bindings still require destinations in every inferred
-lane. When migrating existing declarations, remove `deploy` from tools and keep it
-on agents.
+Tools inherit the union of their consuming agents' lanes by default. An explicit
+`deploy` overrides that default, using the same tokens and input conditions as other
+workloads. Studio's Inherit restores consumer-based deployment; unused tools inherit
+no lanes. An active agent still requires every listed tool in its own lanes, so disable
+or disconnect callers before disabling a required tool. Outgoing tool bindings keep
+the same destination checks.
 
 | Declaration | What it says |
 | --- | --- |
-| `tools.<id>` | A Lambda an agent may call. Lives in `/lambda_functions/tool_functions/<id>` unless it declares `directory`. Takes Lambda settings, `defaults.tools`, environment and bindings. Deployment follows its consuming agents. |
+| `tools.<id>` | A Lambda an agent may call. Lives in `/lambda_functions/tool_functions/<id>` unless it declares `directory`. Takes Lambda settings, `defaults.tools`, environment and bindings. Deployment follows its consuming agents unless `deploy` overrides it. |
 | `tools.<id>.auth: true` | The tool acts as the signed-in user, and its handler is written with `authenticatedTool`. |
 | `agents.<id>` | An agent. Lives in `/agents/<id>` at the repository root unless it declares `directory`. |
 | `agents.<id>.tools` | The tools it may call. They are its Gateway, and nothing else is. |

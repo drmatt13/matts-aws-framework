@@ -4,7 +4,7 @@ import test from "node:test";
 import * as cdk from "aws-cdk-lib";
 import { Template } from "aws-cdk-lib/assertions";
 import * as cognito from "aws-cdk-lib/aws-cognito";
-import { defineFrameworkConfig, type FrameworkConfig } from "@repo/framework/config";
+import { defineFrameworkConfig, defineResources, resource, deployInputsFrom, type DeployInputs, type FrameworkConfig } from "@repo/framework/config";
 import { defaults } from "../../framework-config/defaults";
 import { createFrameworkWorkloads } from "../lib/framework/framework-composition";
 import { finalizeFrameworkResources, initializeFrameworkResources } from "../lib/framework/framework-resources";
@@ -26,27 +26,26 @@ const framework: FrameworkConfig = defineFrameworkConfig({ networks: [fixtureVpc
   services: [],
 } as never);
 
-function devWorkloads(deployWebSocketApi: boolean) {
+function devWorkloads(config: FrameworkConfig = framework, inputs?: DeployInputs) {
   const app = new cdk.App({ context: { "@aws-cdk/aws-lambda:useCdkManagedLogGroup": true } });
-  initializeFrameworkResources(app, { config: framework, mode: "dev", deployment: "example", readers: { env: {} } });
+  initializeFrameworkResources(app, { config, mode: "dev", deployment: "example", readers: { env: {} } });
   const identity = new cdk.Stack(app, "Identity", { env });
   const userPool = new cognito.UserPool(identity, "Pool");
   const workloads = createFrameworkWorkloads(app, {
     env,
     stackId: (name) => `example-${name}`,
-    config: framework,
-    cloud: { mode: "dev" },
+    config,
+    cloud: { mode: "dev", inputs },
     cognito: { userPool, userPoolClient: userPool.addClient("Client") },
     readers: { env: {} },
     frontendUrls: [],
-    deployWebSocketApi,
   });
   finalizeFrameworkResources(app);
   return workloads;
 }
 
-test("DEPLOY_PROD_WEBSOCKET_API builds the WebSocket API and its handlers in a dev deployment, and nothing else routed", () => {
-  const workloads = devWorkloads(true);
+test("The framework always builds the WebSocket API and its handlers in a dev deployment, and nothing else routed", () => {
+  const workloads = devWorkloads();
   assert.ok(workloads.webSocketApi && workloads.webSocketHandlers);
   assert.equal(workloads.httpHandlers, undefined);
   assert.equal(workloads.httpApi, undefined);
@@ -54,7 +53,7 @@ test("DEPLOY_PROD_WEBSOCKET_API builds the WebSocket API and its handlers in a d
   for (const reference of ["lambda:ws-connect-route", "lambda:ws-authorizer", "lambda:ws-default-route"] as const) {
     assert.ok(workloads.targets.get(reference), `${reference} is built`);
   }
-  assert.deepEqual(workloads.skippedTargets.withoutWebSocketApi, []);
+  assert.deepEqual(workloads.skippedTargets.conditionNotMet, []);
   assert.deepEqual(workloads.skippedTargets.notInThisDeployment, ["lambda:verify-session"]);
 
   const api = Template.fromStack(workloads.webSocketApi);
@@ -67,13 +66,38 @@ test("DEPLOY_PROD_WEBSOCKET_API builds the WebSocket API and its handlers in a d
   assert.ok(Object.keys(api.findOutputs("WebSocketAPIEndpoint")).length === 1);
 });
 
-test("without it, a dev deployment builds neither, and says why", () => {
-  const workloads = devWorkloads(false);
+test("explicitly disabled WebSocket handlers build no gateway or orphan authorizer", () => {
+  const config = defineFrameworkConfig({ ...framework, webSocket: [{
+    $connect: { ...framework.webSocket.$connect, deploy: "none", authorizer: { ...framework.webSocket.$connect.authorizer!, deploy: "none" } },
+    $default: { ...framework.webSocket.$default, deploy: "none" },
+  }] } as never);
+  const workloads = devWorkloads(config);
   assert.equal(workloads.webSocketApi, undefined);
   assert.equal(workloads.webSocketHandlers, undefined);
-  assert.deepEqual(
-    [...workloads.skippedTargets.withoutWebSocketApi].sort(),
-    ["lambda:ws-authorizer", "lambda:ws-connect-route", "lambda:ws-default-route"],
-  );
-  assert.deepEqual(workloads.skippedTargets.notInThisDeployment, ["lambda:verify-session"]);
+  assert.equal(workloads.skippedTargets.disabled.length, 3);
+});
+
+test("a condition removes the WebSocket route, handler and connection-management permission together", () => {
+  const resources = defineResources({ realtime: resource.fromEnv("REALTIME").enum("enabled", "disabled") });
+  const config = defineFrameworkConfig({ ...framework, resources, webSocket: [{
+    $connect: framework.webSocket.$connect,
+    $default: { ...framework.webSocket.$default, deploy: { when: { resource: resources.realtime, equals: "enabled" } } },
+  }] } as never);
+  const workloads = devWorkloads(config, deployInputsFrom({ env: { REALTIME: "disabled" } }));
+  assert.ok(workloads.webSocketApi && workloads.webSocketHandlers);
+  assert.equal(workloads.targets.get("lambda:ws-default-route"), undefined);
+  assert.deepEqual(workloads.skippedTargets.conditionNotMet, ["lambda:ws-default-route"]);
+  Template.fromStack(workloads.webSocketApi).resourceCountIs("AWS::ApiGatewayV2::Route", 1);
+  Template.fromStack(workloads.webSocketApi).resourceCountIs("AWS::IAM::Policy", 0);
+});
+
+test("an enabled authorizer without an enabled route creates no orphan Lambda or API", () => {
+  const config = defineFrameworkConfig({ ...framework, webSocket: [{
+    $connect: { ...framework.webSocket.$connect, deploy: "none" },
+    $default: { ...framework.webSocket.$default, deploy: "none" },
+  }] } as never);
+  const workloads = devWorkloads(config);
+  assert.equal(workloads.webSocketApi, undefined);
+  assert.equal(workloads.webSocketHandlers, undefined);
+  assert.ok(workloads.skippedTargets.notInThisDeployment.includes("lambda:ws-authorizer"));
 });

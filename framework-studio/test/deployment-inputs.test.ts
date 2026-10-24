@@ -5,7 +5,7 @@ import { parseEnv } from "node:util";
 import { test } from "node:test";
 import { createDeploymentInput, withDeploymentInputs } from "../server/deployment-inputs";
 import { InfrastructureService } from "../server/infrastructure";
-import { readDeploymentSettings, readModeWebSocketApi } from "../server/inputs";
+
 import type { ModeModel } from "../shared/model";
 import { buildScene } from "../src/scene/build";
 import { DeploymentInputService, inputMode, readInputEdits, updateInputText } from "../server/deployment-input-edits";
@@ -14,8 +14,8 @@ const cache = path.resolve(__dirname, "../../.cache/framework-studio/deployment-
 mkdirSync(cache, { recursive: true });
 function fixture() {
   const root = mkdtempSync(path.join(cache, "case-")); mkdirSync(path.join(root, "cdk-app"));
-  writeFileSync(path.join(root, "cdk-app/.env.dev.template"), "PROD_DEPLOYMENT=false\nSETTING=example\nTOKEN=\nDEPLOY_PROD_WEBSOCKET_API=true\n");
-  writeFileSync(path.join(root, "cdk-app/.env.prod.template"), "PROD_DEPLOYMENT=true\nSETTING=production\nTOKEN=\nDEPLOY_PROD_WEBSOCKET_API=false\n");
+  writeFileSync(path.join(root, "cdk-app/.env.dev.template"), "PROD_DEPLOYMENT=false\nSETTING=example\nTOKEN=\n");
+  writeFileSync(path.join(root, "cdk-app/.env.prod.template"), "PROD_DEPLOYMENT=true\nSETTING=production\nTOKEN=\n");
   return root;
 }
 function remove(root: string) { assert.ok(path.resolve(root).startsWith(cache + path.sep)); rmSync(root, { recursive: true }); }
@@ -184,7 +184,7 @@ test("synthesis selects separate dev/prod files, graph flags agree and no named 
   const root = fixture();
   try {
     createDeploymentInput(root, "dev"); createDeploymentInput(root, "prod");
-    writeFileSync(path.join(root, "cdk-app/.env.dev"), 'PROD_DEPLOYMENT=false\nSETTING=only-dev\nDEPLOY_PROD_WEBSOCKET_API=true\nTOKEN="private\nDEPLOY_PROD_WEBSOCKET_API=false\n"\n');
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), 'PROD_DEPLOYMENT=false\nSETTING=only-dev\nTOKEN="private\n"\n');
     let runs = 0;
     const service = new InfrastructureService(root, () => undefined, async (request) => {
       runs++; assert.equal(request.profile, undefined);
@@ -196,8 +196,6 @@ test("synthesis selects separate dev/prod files, graph flags agree and no named 
     assert.equal((await service.synthesize("dev")).inputs!.file, "cdk-app/.env.dev");
     assert.equal((await service.synthesize("prod")).inputs!.file, "cdk-app/.env.prod");
     assert.equal(runs, 2);
-    assert.equal(readDeploymentSettings(root).webSocketApi, true);
-    assert.equal(readModeWebSocketApi(root, "prod", true), false);
     writeFileSync(path.join(root, "cdk-app/.env.dev"), "PROD_DEPLOYMENT=false\nSETTING=changed-dev\n");
     assert.equal(service.get("dev").stale, true);
     assert.equal(service.get("prod").stale, false, "development input changes do not stale the production assembly");

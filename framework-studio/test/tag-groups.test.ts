@@ -26,7 +26,7 @@ function fixture() {
     webSocket: [], services: [],
     events: [{ processor: { directory: "/test/fixtures/processor", tags: { Team: "orders" }, localReplay: true, vpc: network, subnet: "isolated" }, untagged: { directory: "/test/fixtures/untagged" } }],
     workflows: [{ ordering: workflow(() => succeed(), { timeoutSeconds: 30, tags: { Team: "orders" } }) }],
-  }), { mode: "prod", webSocketApi: false });
+  }), { mode: "prod", });
 }
 
 test("tag model exposes authored values, member inheritance and producer capability without resolving inputs", () => {
@@ -103,7 +103,7 @@ test("empty values, missing tags and long values remain exact without changing m
   const values = tagGroups(model, key).map(group => group.value);
   assert.ok(values.includes("") && values.includes("Untagged") && values.includes(null));
   const empty = buildScene({ ...source, targets: [], routes: [], resources: [], networks: [], edges: [], tagging: {} });
-  assert.deepEqual(empty.nodes, []);
+  assert.deepEqual(empty.nodes.map(node => node.id), ["gateway:http"], "the framework still provisions its production HTTP API without routes");
   assert.ok(Object.values(empty.bounds).every(Number.isFinite));
 });
 
@@ -177,7 +177,7 @@ test("tag keys and totals include only entities available in the selected mode",
         "/off": { directory: "/count/off-handler", methods: ["GET"], deploy: "none", tags: { DisabledOnly: "yes", area: "disabled" } },
       }],
       webSocket: [], services: [], events: [],
-    }), { mode, webSocketApi: false });
+    }), { mode, });
     // Absence enrichment retains tags for inspection, but must not add dropdown keys or counts.
     const conditionalFacts = { authored: { ProdOnly: "yes", area: "production" }, effective: { ProdOnly: "yes", area: "production" }, provenance: {}, aws: { kind: "logical" as const, note: "Input" } };
     const enriched = { ...model, tagging: { ...model.tagging, "resource:conditional": conditionalFacts } };

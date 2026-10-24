@@ -1,3 +1,5 @@
+import { drawnAs } from "../src/drawn-as";
+import { gatewaysOf } from "../shared/gateways";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { after, before, test } from "node:test";
@@ -39,8 +41,8 @@ before(async () => {
   builder = new SnapshotBuilder(repositoryRoot);
   snapshot = (await builder.refresh()).snapshot;
   const resourceAvailability = catalogAvailability(snapshot.models);
-  dev = buildScene(snapshot.models.dev, { webSocketApi: snapshot.webSocketApi, resourceAvailability, layoutModels: Object.values(snapshot.models) });
-  prod = buildScene(snapshot.models.prod, { webSocketApi: snapshot.webSocketApi, resourceAvailability, layoutModels: Object.values(snapshot.models) });
+  dev = buildScene(snapshot.models.dev, { resourceAvailability, layoutModels: Object.values(snapshot.models) });
+  prod = buildScene(snapshot.models.prod, { resourceAvailability, layoutModels: Object.values(snapshot.models) });
 });
 after(() => builder.dispose());
 
@@ -93,7 +95,7 @@ test("map search matches names and multiple case-insensitive terms without chang
   const before = JSON.stringify(dev);
   const result = searchScene(dev, snapshot.models.dev, "  GRAPHQL  ")!;
   assert.ok(result.nodes.has("lambda:graphql-api"));
-  assert.ok(result.nodes.has("route:http:/graphql"));
+  assert.ok(result.nodes.has("gateway:http"));
   assert.ok(!result.nodes.has("lambda:sign-in"));
   assert.ok(searchScene(dev, snapshot.models.dev, "HTTP graphql")!.nodes.has("lambda:graphql-api"));
   assert.equal(searchScene(dev, snapshot.models.dev, "graphql nonexistentword")!.nodes.size, 0);
@@ -167,7 +169,7 @@ test("island highlights omit shared tile and wall edges", () => {
 
 test("every route, target, catalog entry and managed database stands exactly once", () => {
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
-    const expected = [...model.routes.map((route) => route.id), ...model.targets.map((target) => target.ref), ...model.resources.filter((resource) => resource.kind !== "member" || (resource.frameworkManaged && resource.networkPlacement)).map((resource) => resource.id), ...(model.localServices ?? []).map((service) => service.id)].sort();
+    const expected = [...new Set([...model.routes.map((route) => drawnAs(model)[route.id] ?? route.id), ...model.targets.map((target) => target.ref), ...model.resources.filter((resource) => resource.kind !== "member" || (resource.frameworkManaged && resource.networkPlacement)).map((resource) => resource.id), ...(model.localServices ?? []).map((service) => service.id)].map(id => drawnAs(model)[id] ?? id))].sort();
     assert.deepEqual(scene.nodes.map((node) => node.id).sort(), expected);
     const cells = new Set(scene.nodes.map((node) => `${node.gx},${node.gy}`));
     assert.equal(cells.size, scene.nodes.length, "two buildings share a cell");
@@ -335,7 +337,7 @@ test("switching the graph changes what is shown, never where it stands", () => {
   assert.deepEqual(place(prod), place(dev));
   assert.deepEqual(prod.bounds, dev.bounds);
   // Deterministic: the same model lays out the same way twice.
-  assert.deepEqual(buildScene(snapshot.models.dev, { webSocketApi: snapshot.webSocketApi, layoutModels: Object.values(snapshot.models) }).nodes.map((node) => [node.id, node.gx, node.gy]), dev.nodes.map((node) => [node.id, node.gx, node.gy]));
+  assert.deepEqual(buildScene(snapshot.models.dev, { layoutModels: Object.values(snapshot.models) }).nodes.map((node) => [node.id, node.gx, node.gy]), dev.nodes.map((node) => [node.id, node.gx, node.gy]));
 });
 
 test("the desktop overview fills a 1080p monitor, with Workflows before Stacks", () => {
@@ -454,7 +456,7 @@ test("workload and route badges use the two graphs' own availability and never c
     ];
     for (const model of models) {
       const scene = buildScene(model, { layoutModels: models });
-      for (const id of [target.ref, route.id]) assert.equal(scene.nodes.find((node) => node.id === id)?.badge, expected, `${id} stays ${expected ?? "unbadged"} in ${model.mode}`);
+      for (const id of [target.ref]) assert.equal(scene.nodes.find((node) => node.id === id)?.badge, expected, `${id} stays ${expected ?? "unbadged"} in ${model.mode}`);
     }
   }
 });
@@ -479,7 +481,7 @@ test("what a building shows of an entity follows the model's lanes and absence",
   assert.equal(node(dev, "resource:rds").presence, "absent");
   assert.equal(node(prod, "resource:rds").presence, "present");
   // The route follows its target.
-  assert.equal(node(dev, "route:http:/graphql").presence, node(dev, "lambda:graphql-api").presence);
+  assert.equal(node(dev, "gateway:http").presence, node(dev, "lambda:graphql-api").presence);
 });
 
 test("compute stands where it runs, with development blueprints and solid production terraces", () => {
@@ -537,7 +539,7 @@ test("ghosting applies to every island with only disabled nodes", () => {
   const scene = buildScene({ ...source, targets });
   for (const island of scene.islands) {
     const nodes = scene.nodes.filter((node) => node.island === island.id);
-    if (island.region === "catalog" || island.region === "network" || nodes.length === 0) continue;
+    if (island.region === "catalog" || island.region === "network" || island.id === "island:apis" || nodes.length === 0) continue;
     assert.equal(island.ghost, "disabled", island.id);
   }
   assert.equal(scene.islands.find((island) => island.id === "island:stacks")!.ghost, undefined, "present resources keep their terrain");
@@ -861,7 +863,9 @@ test("a connection is drawn by what it references and where it starts, solid onl
       const referenced = kindOf.get(edge.to);
       const reads = (edge.relation === "env" || edge.relation === "secret") && referenced !== undefined;
       const expect = (color: string, dashed: boolean) => assert.deepEqual(style, { color, dashed }, `${edge.id} (${edge.relation})`);
-      if (edge.relation === "trigger") expect(TRIGGER_EDGE_COLOR, false);
+      if (edge.relation === "deployWhen") expect(COMPUTE_EDGE_COLOR, true);
+      else if (edge.relation === "runsTask") expect(GUARD_EDGE_COLOR, false);
+      else if (edge.relation === "trigger") expect(TRIGGER_EDGE_COLOR, false);
       else if (edge.relation === "authorizes") { seen.authorizer += 1; expect(GUARD_EDGE_COLOR, false); }
       else if (edge.relation === "grant") expect(GUARD_EDGE_COLOR, true);
       else if (reads && (edge.relation === "secret" || referenced === "secret")) { seen.secret += 1; expect(GUARD_EDGE_COLOR, true); }
@@ -869,7 +873,7 @@ test("a connection is drawn by what it references and where it starts, solid onl
       else if (edge.relation === "supplies" && referenced === "secret") { seen.secretFile += 1; expect(GUARD_EDGE_COLOR, true); }
       else if (edge.relation === "usesTool") { seen.tool += 1; expect(TOOL_EDGE_COLOR, false); }
       else if (edge.relation === "step") { seen.step += 1; expect(STEP_EDGE_COLOR, false); }
-      else if (startsAt({ from }, "route:")) { seen.api += 1; expect(API_EDGE_COLOR, false); }
+      else if (startsAt({ from }, "route:", "gateway:")) { seen.api += 1; expect(API_EDGE_COLOR, false); }
       else if (startsAt({ from }, "lambda:", "service:", "task:")) { seen.compute += 1; expect(COMPUTE_EDGE_COLOR, false); }
       else { seen.other += 1; expect(EDGE_COLORS[category], true); }
       // A reference points the way the model records it: from the workload to what it references.
@@ -888,7 +892,7 @@ test("the WebSocket authorizer's link to the API is red and solid", () => {
     const link = scene.edges.find((edge) => edge.edge.relation === "authorizes" && edge.edge.from === "lambda:ws-authorizer" && edge.edge.to === "route:ws:$connect");
     assert.ok(link, "the authorizer guards $connect");
     assert.deepEqual(link.style, { color: GUARD_EDGE_COLOR, dashed: false });
-    assert.deepEqual([link.from, link.to], ["lambda:ws-authorizer", "route:ws:$connect"], "it runs authorizer to route");
+    assert.deepEqual([link.from, link.to], ["lambda:ws-authorizer", "gateway:websocket"], "it runs authorizer to gateway");
   }
 });
 
@@ -896,7 +900,7 @@ test("a permission grant keeps a mixed aggregate red and dashed", () => {
   const read = snapshot.models.prod.edges.find((edge) => edge.relation === "env" && edge.to.startsWith("resource:cognito"))!;
   assert.ok(read, "a workload reads a Cognito field");
   const grant = { ...read, id: "edge:test-grant", relation: "grant" as const, label: "grantRead()" };
-  const scene = buildScene({ ...snapshot.models.prod, edges: [...snapshot.models.prod.edges, grant] }, { webSocketApi: snapshot.webSocketApi });
+  const scene = buildScene({ ...snapshot.models.prod, edges: [...snapshot.models.prod.edges, grant] }, { });
   const drawn = (id: string) => scene.edges.find((edge) => edge.members.some((member) => member.edge.id === id))!.style;
   assert.deepEqual(drawn(grant.id), { color: GUARD_EDGE_COLOR, dashed: true });
   assert.deepEqual(drawn(read.id), drawn(grant.id), "the read and grant share one guarded connection");
@@ -944,10 +948,10 @@ test("switching Development and Production moves which connections recede", () =
   const migrate = touching(dev, "task:db-migrate");
   assert.ok(migrate.length > 0);
   for (const edge of migrate) { assert.ok(devOut.has(edge.edge.id), `dev: ${edge.edge.id}`); assert.ok(!prodOut.has(edge.edge.id), `prod: ${edge.edge.id}`); }
-  // Development-only workload, seen from Production: the other way round.
+  // Unconditional WebSocket authorizers are available in both AWS modes.
   const authorizer = touching(prod, "lambda:ws-authorizer");
   assert.ok(authorizer.length > 0);
-  for (const edge of authorizer) { assert.ok(prodOut.has(edge.edge.id), `prod: ${edge.edge.id}`); assert.ok(!devOut.has(edge.edge.id), `dev: ${edge.edge.id}`); }
+  for (const edge of authorizer) { assert.ok(!prodOut.has(edge.edge.id), `prod: ${edge.edge.id}`); assert.ok(!devOut.has(edge.edge.id), `dev: ${edge.edge.id}`); }
   // A resource the viewed graph declares undefined is outside the lens too: RDS in Development.
   const rds = touching(dev, "resource:rds.database");
   assert.ok(rds.length > 0);
@@ -980,7 +984,7 @@ test("an environment file's connections read clearly in its own view and recede 
   for (const viewed of ["dev", "prod"] as const) {
     const other = viewed === "dev" ? "prod" : "dev";
     const model = snapshot.models[viewed];
-    const scene = buildScene({ ...model, edges: [...model.edges, supplies("dev"), supplies("prod")] }, { webSocketApi: snapshot.webSocketApi });
+    const scene = buildScene({ ...model, edges: [...model.edges, supplies("dev"), supplies("prod")] }, { });
     const nodeOf = new Map(scene.nodes.map((node) => [node.id, node]));
     assert.equal(nodeOf.get(`envfile:${viewed}`)!.presence, "present", `${viewed} file in the ${viewed} view`);
     assert.equal(nodeOf.get(`envfile:${other}`)!.presence, "absent", `${other} file in the ${viewed} view`);
@@ -995,7 +999,7 @@ test("an environment file's connections read clearly in its own view and recede 
 
 test("an environment file that has not been generated wears a missing-file badge on its node", () => {
   const model = snapshot.models.dev;
-  const withExists = (exists: boolean) => buildScene({ ...model, resources: model.resources.map((resource) => resource.deploymentFile ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists } } : resource) }, { webSocketApi: snapshot.webSocketApi });
+  const withExists = (exists: boolean) => buildScene({ ...model, resources: model.resources.map((resource) => resource.deploymentFile ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists } } : resource) }, { });
   const badges = (scene: Scene) => scene.nodes.filter((node) => node.id.startsWith("envfile:")).map((node) => node.roleIcon);
   assert.deepEqual(badges(withExists(false)), ["missingFile", "missingFile"]);
   assert.deepEqual(badges(withExists(true)), [undefined, undefined]);
@@ -1024,7 +1028,7 @@ test("both views draw the same connections; the other environment's own are mark
     for (const edge of scene.edges) assert.equal(edge.otherLens !== undefined, !edge.members.some((member) => own.has(member.edge.id)), edge.id);
   }
   // Without the other environment's model there is nothing to add: the viewed model alone is drawn as it always was.
-  const alone = buildScene(snapshot.models.dev, { webSocketApi: snapshot.webSocketApi });
+  const alone = buildScene(snapshot.models.dev, { });
   assert.ok(alone.edges.every((edge) => edge.otherLens === undefined));
 });
 
@@ -1036,7 +1040,7 @@ test("without a local database the isolated subnet says nothing about one", () =
 
 test("catalog and selected output stacks share one island while keeping their availability and inspector identities", () => {
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
-    const stacks = model.resources.filter((resource) => resource.kind === "stack");
+    const stacks = model.resources.filter((resource) => resource.kind === "stack" && !drawnAs(model)[resource.id]?.startsWith("gateway:"));
     assert.ok(stacks.length > 1);
     const island = scene.islands.find((island) => island.id === "island:stacks")!;
     assert.equal(island.title, "Stacks");
@@ -1096,8 +1100,9 @@ test("HTTP, WebSocket, event and tool Lambdas share one layer, while HTTP, WebSo
     const node = dev.nodes.find((node) => node.id === target.ref)!;
     assert.equal(node.island, target.placement.kind === "vpc" ? "island:vpc:application" : "island:lambda", target.ref);
   }
-  const apis = dev.nodes.filter((node) => node.entity === "route");
-  assert.equal(apis.length, snapshot.models.dev.routes.length);
+  const apis = dev.nodes.filter((node) => node.entity === "gateway");
+  assert.deepEqual(apis.map(node => node.id).sort(), ["gateway:http", "gateway:websocket"]);
+  assert.equal(dev.representatives["route:agent:/chat/example"], "agent:example-agent");
   assert.ok(apis.every((node) => node.island === "island:apis"));
   assert.equal(dev.islands.find((island) => island.id === "island:lambda")?.title, "Serverless compute");
   for (const id of ["island:lambda", "island:apis"]) assert.equal(dev.islands.find((island) => island.id === id)?.bands.length, 1);

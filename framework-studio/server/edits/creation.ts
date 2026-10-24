@@ -2,7 +2,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { defineNetwork, type InterfaceEndpointService } from "@repo/framework/config";
-import { readCreationRequest, CreationValidationError, defaultImplementationDirectory, networkCreationProblem, type CreationRequest } from "../../shared/creation";
+import { readCreationRequest, CreationValidationError, defaultImplementationDirectory, networkCreationProblem, webSocketCreationCondition, type CreationRequest } from "../../shared/creation";
 import { DESCRIPTION_FILE } from "../../shared/descriptions";
 import { rewriteDescription } from "../descriptions";
 import { toRelative } from "../files";
@@ -420,6 +420,19 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
       impact.push("The new route reuses the existing function's authentication and all target settings; its construct identity and handler are preserved.");
     } else {
       uniqueTarget(request.id);
+      let deploy = q(request.deploy);
+      let conditionalDeploy = false;
+      if (request.category === "webSocket" && request.deploy !== "none") {
+        const condition = webSocketCreationCondition(models);
+        if (condition) {
+          if (request.deploy !== "both") return refuse("deploy", "This WebSocket handler must use the $connect condition. Choose Use $connect condition or Off.");
+          const selector = models[0]!.resources.find(resource => resource.id === condition.resource);
+          if (!selector || selector.kind !== "input" || !selector.fromEnv || models.some(model => !model.resources.some(resource => resource.id === selector.id && !resource.absent))) return refuse("deploy", "The $connect condition needs an input parameter declared in both environments. Configure the handler in source, or choose Off.");
+          deploy = `{ when: { resource: resources${selector.path.map(part => `[${q(part)}]`).join("")}, equals: ${q(condition.equals)} } }`;
+          conditionalDeploy = true;
+          impact.push(`Copies $connect deployment condition: ${selector.fromEnv} equals ${q(condition.equals)}. Each environment resolves its own input value.`);
+        }
+      }
       const directory = request.directory || defaultImplementationDirectory(request.kind, request.id, request.category)!;
       const auth = request.category === "http" && request.auth;
       const handler = auth
@@ -430,8 +443,8 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
         ? 'import type { APIGatewayProxyWebsocketEventV2 } from "aws-lambda";\n\nexport const lambdaHandler = async (_event: APIGatewayProxyWebsocketEventV2) => ({ statusCode: 200, body: "Ready" });\n'
         : 'export interface Input { readonly message?: string }\nexport const lambdaHandler = async (input: Input) => ({ message: input.message ?? "Ready" });\n';
       fresh(`cdk-app${directory}/index.ts`, handler);
-      declaration = `{ tags: ${q(request.tags ?? {})}, directory: ${q(directory)}, ${request.category !== "event" ? `id: ${q(request.id)}, deploy: ${q(request.deploy)},` : ""} runtime: ${q(request.runtime)}, packaging: "zip", architecture: ${q(request.architecture)}, memorySize: ${request.memory}, timeoutSeconds: ${request.timeout}, subnet: ${q(request.subnet)}, ${selectedVpc ? "vpc: studioVpc," : ""} ${request.category === "http" ? `methods: ${request.method === "*" ? q("*") : `[${q(request.method)}]`}, ${auth ? "auth: true, userPool: true," : ""}` : ""} ${binding(request, false)} }`;
-      register(section, request.id, `{ ${q(request.category === "event" ? request.id : request.path)}: ${declaration} }`, request.bindingResource ? bindingImport : "");
+      declaration = `{ tags: ${q(request.tags ?? {})}, directory: ${q(directory)}, ${request.category !== "event" ? `id: ${q(request.id)},` : ""} deploy: ${deploy}, runtime: ${q(request.runtime)}, packaging: "zip", architecture: ${q(request.architecture)}, memorySize: ${request.memory}, timeoutSeconds: ${request.timeout}, subnet: ${q(request.subnet)}, ${selectedVpc ? "vpc: studioVpc," : ""} ${request.category === "http" ? `methods: ${request.method === "*" ? q("*") : `[${q(request.method)}]`}, ${auth ? "auth: true, userPool: true," : ""}` : ""} ${binding(request, false)} }`;
+      register(section, request.id, `{ ${q(request.category === "event" ? request.id : request.path)}: ${declaration} }`, request.bindingResource || conditionalDeploy ? bindingImport : "");
       expected.targets.push(target);
       impact.push(`Handler: cdk-app${directory}/index.ts. TypeScript zip packaging; other runtimes and images remain source-authored.`);
     }
@@ -484,7 +497,7 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
     const directory = request.directory || defaultImplementationDirectory("tool", request.id)!;
     fresh(`cdk-app${directory}/contract.ts`, 'import { z } from "zod";\n\nexport const contract = {\n  description: "Return the supplied message.",\n  request: z.object({ message: z.string().min(1).max(8000) }),\n  response: z.object({ message: z.string() }),\n} as const;\n');
     fresh(`cdk-app${directory}/index.ts`, `import { ${request.auth ? "authenticatedTool" : "tool"} } from "@repo/framework/runtime/tools";\nimport { contract } from "./contract";\n\nexport const lambdaHandler = ${request.auth ? "authenticatedTool" : "tool"}(contract, async input => ({ message: input.message }));\n`);
-    register("tools", request.id, `{ ${q(request.id)}: { tags: ${q(request.tags ?? {})}, directory: ${q(directory)}, ${request.auth ? "auth: true," : ""} ${binding(request, false)} } }`, request.bindingResource ? bindingImport : "");
+    register("tools", request.id, `{ ${q(request.id)}: { tags: ${q(request.tags ?? {})}, directory: ${q(directory)}, ${request.deploy !== "inherit" ? `deploy: ${q(request.deploy)},` : ""} ${request.auth ? "auth: true," : ""} ${binding(request, false)} } }`, request.bindingResource ? bindingImport : "");
     expected.select = `lambda:${request.id}`; expected.targets.push(expected.select);
     impact.push("A tool follows the agents that declare it. Add this tool to an agent to enable execution; creation neither invokes a model nor deploys a Gateway.");
   } else if (request.kind === "auth-provider") {

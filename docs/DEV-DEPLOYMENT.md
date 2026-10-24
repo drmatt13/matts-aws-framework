@@ -102,12 +102,18 @@ There is no mode-less `cdk-app/.env`.
 
 The dev graph holds Cognito, AWS-invoked event handlers, and replay resources. Routed
 HTTP handlers, services, tasks, and workflows run locally; no ECS image is published by a
-dev deployment. The one exception is DEPLOY_PROD_WEBSOCKET_API=true: it builds the AWS
-WebSocket API and its handlers in a dev deployment too, because API Gateway is then their
-AWS caller, while local-ws-dev-server keeps serving the same routes under Compose. Those
-handlers run in AWS against nothing else the dev graph lacks, so synth refuses one that
-declares `database: true`, a `subnet` other than `"none"`, or a task, workflow or agent binding; turn the flag
-off to serve it locally. Use a separate full cloud deployment when testing HTTP routing.
+dev deployment. WebSocket API Gateway and enabled handlers are framework managed in both
+AWS modes, while local-ws-dev-server serves locally enabled routes under Compose. A dev
+AWS WebSocket handler cannot declare `database: true`, a subnet, or bindings to tasks,
+workflows or agents that the dev graph does not build. Set `deploy: "local-only"` to run
+such a handler locally. An input condition on `deploy` controls both local and AWS
+execution, resolved separately from each environment's authored input file.
+The application's `resources.enableWebSocketApi` input reads `ENABLE_WEBSOCKET_API`
+(`true` by default). All WebSocket routes and their authorizer require it to equal
+`"true"`. Set `ENABLE_WEBSOCKET_API=false` in `.env.dev` to disable them locally and
+in the development AWS graph; restart local containers after changing the input.
+The retired `DEPLOY_PROD_WEBSOCKET_API` setting must be removed (`true` warns; `false`
+is refused). Use a separate full cloud deployment when testing HTTP routing.
 
 Export writes root `.env` with fixed Compose controls and `.framework/local/resources.json`
 with discovered development resource identifiers. It does not rewrite authored
@@ -120,8 +126,8 @@ Export also writes `client-app/.env.development.local`, which `vite dev` reads o
 host port, and the WebSocket tester URL. Nothing is copied by hand; keep your own client
 settings in `client-app/.env` (from [its example](../client-app/.env.example)). Two WebSocket names are
 written independently: VITE_LOCAL_WS_URL is always local-ws-dev-server on its host port,
-because Compose runs it whatever DEPLOY_PROD_WEBSOCKET_API says; VITE_API_GATEWAY_WS_URL is
-the deployment's WebSocketApiStack endpoint when DEPLOY_PROD_WEBSOCKET_API=true built one,
+with routes filtered by their local Deploy setting; VITE_API_GATEWAY_WS_URL is
+the deployment's WebSocketApiStack endpoint when enabled AWS route handlers built one,
 and is empty otherwise. The home page's tester link passes both in its query, and the tester prefills its
 left panel with the local server and its right panel with the API Gateway stage.
 Application requests continue to use the same-origin `/api` prefix.
@@ -360,6 +366,7 @@ image-owned dependencies. Only the invocation runner gets the Docker socket.
 | A service added, removed, or given another port or healthCheckPath; `x-framework-service` | Restart `npm run dev:containers`: it regenerates docker-compose.services.yml first |
 | Manifests, lockfile, Dockerfile.dev, ignore rules, deleted files while Watch was off | Rebuild and restart with `npm run dev:containers` |
 | A captured event whose handler failed every replay | Fix the handler, then `npm run replay:redrive` (`npm run replay:list` shows what is waiting) |
+| A Deploy condition selector in `.env.dev` | Restart `npm run dev:containers`; Compose Watch excludes input files |
 | Ports, outputs, local secrets | Edit cdk-app/.env.dev, rerun export, recreate containers |
 | Local AWS profile | Restart with `npm run dev:containers -- --profile=<PROFILE>`; deploy that account's dev graph first if needed |
 | Database contract | Follow Database planning/application steps and rebuild; Watch does not regenerate it |

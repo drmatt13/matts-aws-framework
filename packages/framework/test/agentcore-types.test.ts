@@ -5,8 +5,11 @@ import { agent } from "../src/runtime/agentcore";
 import type { ToolTargetDefinition } from "../src/config/index";
 
 export const toolDeploy: ToolTargetDefinition = {
-  // @ts-expect-error Tool deployment is inferred from consuming agents.
   deploy: "both",
+};
+export const invalidToolDeploy: ToolTargetDefinition = {
+  // @ts-expect-error Deployment accepts framework tokens or a declared input condition.
+  deploy: "sometimes",
 };
 
 /**

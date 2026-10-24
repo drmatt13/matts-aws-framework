@@ -27,6 +27,14 @@ related:
 ---
 # Inspector drafts and source transactions
 
+Every workload role exposes Deploy, including event Lambdas and agent tools. The same
+bounded token/condition source writer validates both graphs, applies and restores exact
+bytes. Tool Inherit follows consuming agents; explicit overrides still satisfy invocation
+edges. Event changes also control native AWS trigger attachment on the next deployment.
+Catalog entries, stack members, gateway infrastructure, databases, network fixtures and
+islands show their deployment owner and navigation to owner controls instead of a second
+independent flag. Environment mappings explain that files supply inputs rather than deploy.
+
 Tags use a typed `tags` draft operation for the owning declaration, including all aliases
 of shared compute. `server/edits/tags.ts` plans narrow literal changes and
 `server/source/tags.ts` supplies conservative editability. Tag changes participate in
@@ -101,7 +109,7 @@ directly from `INTERFACE_ENDPOINT_SERVICES`, the framework's generated CDK catal
 their separate controls. An unavailable catalog offers a server restart instruction and
 preserves authored selections. The catalog does not verify regional service availability.
 
-The shared [Deployment section](../../../framework-studio/src/views/Deployment.tsx) places the same Dev/Prod cards and scope field on workloads and routes. Route edits target the owning workload. Draft scope previews use each `ModeModel.webSocketApi` flag; saved availability comes from each graph's own target. Catalog/local-service inspectors reuse the cards, with managed ownership explained instead of inventing a deploy field. Catalog availability is not evidence of deployed infrastructure. See the [inspector conventions](../../framework-studio/inspector-design.md).
+The shared [Deployment section](../../../framework-studio/src/views/Deployment.tsx) places the same Dev/Prod cards and scope field on workloads and routes. Route edits target the owning workload. Token previews use framework-projected `deployChoices`; conditional Deploy uses a typed batch operation and the existing resource import alias. The evaluator sends condition metadata to the parent; only holds/fails/unset outcomes return over IPC. Each environment resolves privately against its own inputs. Saved conditions show both outcomes; review resolves drafts, and selectors count as consumers for catalog rename/delete safety. Catalog/local-service inspectors reuse the cards, with managed ownership explained instead of inventing a deploy field. Catalog availability is not evidence of deployed infrastructure. See the [inspector conventions](../../framework-studio/inspector-design.md).
 
 ```mermaid
 flowchart LR
@@ -207,3 +215,7 @@ The
 validation as well as rejected planning promises. A shared browser/server protocol blocks
 incompatible edits with an explicit restart instruction; a Vite refresh does not reload
 the running server API.
+
+Local readiness uses the valid development snapshot to recognize service launchers
+that exit zero because Deploy is disabled. Their container row says Disabled by Deploy;
+nonzero exits and unhealthy active services still block startup.

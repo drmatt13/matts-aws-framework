@@ -11,6 +11,7 @@ import { RequirementNotice } from "./InputRequirement";
 import { Description } from "./Description";
 import { InspectorDisclosure } from "./InspectorUI";
 import { EnvironmentValueControl as ValueControl } from "./EnvironmentValueControl";
+import { DeploymentSection, DeploymentOwnerControl } from "./Deployment";
 
 export function InputSources({ resource }: { resource: ModelResource }) {
   const { select, snapshot } = useStudio();
@@ -56,6 +57,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   };
   return <>
     <header><span className="kind">CDK {file.mode === "dev" ? "development" : "production"} inputs</span><h2><EntityIcon icon="envFile" />{file.path}</h2></header>
+    <DeploymentSection availability={{ dev: file.mode === "dev" && file.exists, prod: file.mode === "prod" && file.exists }} catalog><DeploymentOwnerControl reason="This file supplies environment inputs. It is not deployed as an AWS resource. Configure Deploy on the workloads that consume its declared inputs." owners={[{ id: "island:inputs", title: "input parameters and secrets" }]} /></DeploymentSection>
     <Description entity={resource.id} />
     {descriptionPending ? <p className="small muted">Apply or discard the description before editing environment variables.</p> : null}
     <InspectorDisclosure title="File and template" defaultOpen={!file.exists}><p>{file.exists ? "Local inputs file exists." : "This inputs file has not been generated."} {file.mode === mode ? "Used for synthesis in the selected graph." : "Switch the graph to use this environment for synthesis."}</p>

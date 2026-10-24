@@ -1,3 +1,4 @@
+import type { DeployLane } from "@repo/framework/config";
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import {
@@ -16,7 +17,7 @@ export interface WebSocketLambdaFunctionsStackProps extends cdk.StackProps {
    * Deliberately narrow: a WebSocket handler is given the user pool and nothing
    * that would make it depend on the API its routes are integrated into.
    */
-  readonly cloud: { readonly mode: "dev" | "prod" };
+  readonly cloud: { readonly mode: "dev" | "prod"; readonly inputs?: DeployLane };
   /**
    * The targets to build, when the composition factory has already selected
    * and validated them. Omitted, the same selection is derived from the config
@@ -58,7 +59,7 @@ export class WebSocketLambdaFunctionsStack extends cdk.Stack {
           props.config,
           ["webSocket", "webSocketAuthorizer"],
           props.cloud.mode,
-          { webSocketApi: true },
+          { inputs: props.cloud.inputs },
         ),
       context,
     );

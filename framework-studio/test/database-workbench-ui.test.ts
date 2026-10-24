@@ -56,7 +56,7 @@ function workbench(text = source, revision = "source-revision"): DatabaseWorkben
 }
 function snapshot(): Snapshot {
   const mode = (mode: "dev" | "prod"): ModeModel => ({ mode, status: "ok", targets: [], routes: [], resources: [], edges: [], workflows: [], fields: {}, diagnostics: [], evaluatedInMs: 0 });
-  return { revision: "graph-revision", repositoryRoot: "/fixture", generatedAt: "2026-10-22T12:00:00Z", descriptions: { values: {} }, schema: parseDeclaredSchema(source), databaseProblems: [], webSocketApi: false, models: { dev: mode("dev"), prod: mode("prod") }, files: {}, source: { cdkLinks: { version: 2, files: {}, edges: [], notes: [], manualWiring: [] }, entities: {}, editability: {}, links: {}, catalog: {}, problems: [] } };
+  return { revision: "graph-revision", repositoryRoot: "/fixture", generatedAt: "2026-10-22T12:00:00Z", descriptions: { values: {} }, schema: parseDeclaredSchema(source), databaseProblems: [], models: { dev: mode("dev"), prod: mode("prod") }, files: {}, source: { cdkLinks: { version: 2, files: {}, edges: [], notes: [], manualWiring: [] }, entities: {}, editability: {}, links: {}, catalog: {}, problems: [] } };
 }
 
 before(async () => {

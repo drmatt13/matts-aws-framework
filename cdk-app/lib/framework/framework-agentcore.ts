@@ -1,3 +1,4 @@
+import type { DeployLane } from "@repo/framework/config";
 import * as cdk from "aws-cdk-lib";
 import * as agentcore from "aws-cdk-lib/aws-bedrockagentcore";
 import type * as lambda from "aws-cdk-lib/aws-lambda";
@@ -35,13 +36,14 @@ const ROOT = findRepositoryRoot(__dirname);
 const SERVE_MODULE = path.join(ROOT, "packages", "framework", "src", "runtime", "agentcore-serve.ts").replaceAll("\\", "/");
 
 /** Whether this graph builds anything for AgentCore. A dev graph never does: agents run locally. */
-export function hasAgentCoreCloudResources(config: FrameworkConfig, mode: CloudMode): boolean {
-  return getCloudTargets(config, ["agent", "tool"], mode).length > 0;
+export function hasAgentCoreCloudResources(config: FrameworkConfig, mode: CloudMode, inputs?: DeployLane): boolean {
+  return getCloudTargets(config, ["agent", "tool"], mode, { inputs }).length > 0;
 }
 
 export interface FrameworkAgentCoreProps {
   readonly config: FrameworkConfig;
   readonly mode: CloudMode;
+  readonly inputs?: DeployLane;
   /** The user pool an agent declared `auth: true` accepts tokens from, as the HTTP API does. */
   readonly cognito: CognitoResources;
   /** The committed contract projection. Overridable for fixtures. */
@@ -139,10 +141,10 @@ export class FrameworkAgentCore extends Construct {
     super(scope, id);
     const stack = cdk.Stack.of(this);
     this.region = stack.region;
-    const { config, mode } = props;
+    const { config, mode, inputs } = props;
     const manifest = props.tools ?? (AGENTCORE_TOOLS as GatewayToolManifest);
 
-    const toolTargets = getCloudTargets(config, ["tool"], mode);
+    const toolTargets = getCloudTargets(config, ["tool"], mode, { inputs });
     for (const target of toolTargets) {
       if (!manifest[target.id]) {
         throw new Error(`tools["${target.id}"] has no generated contract projection. Run npm run framework:generate.`);
@@ -152,7 +154,7 @@ export class FrameworkAgentCore extends Construct {
 
     const gatewaysScope = new Construct(this, "Gateways");
     const runtimesScope = new Construct(this, "Runtimes");
-    const agents = getCloudTargets(config, ["agent"], mode);
+    const agents = getCloudTargets(config, ["agent"], mode, { inputs });
     // One MMDSv2 provider for every Runtime; see RuntimeMetadataV2.
     const metadata = agents.length > 0 ? new RuntimeMetadataV2(this, "RuntimeMetadata") : undefined;
     for (const target of agents) {

@@ -49,6 +49,11 @@ lane-byte equivalence with the standalone predicate path.
 
 Relations cover routing, authorization, environment/secret reads, native grants, database access, invocation bindings, workflow steps/integrations, event triggers, callbacks and failure destinations. Their meanings differ: a grant is permission; an invocation binding is capability; neither proves an actual runtime call. Schedule triggers may have no catalog resource endpoint.
 
+The `runsTask` binding appears in the permissions category as `Grant permission: Launch ECS task`.
+Its solid red connection describes the derived ECS launch and role-passing grants plus
+launch configuration, rather than an observed execution. Conditional `deployWhen`
+connections use dashed orange lines and name the selecting input in their hover text.
+
 Declared/derived/source-inferred edges retain their evidence classification. [source-indexing](source-indexing.md) defines inference limits. Studio is a declaration/source graph, not an authoritative live AWS topology or full IAM analysis.
 
 Implementation health is separate from declaration validity: a missing handler can leave
@@ -90,9 +95,15 @@ When adding a relation, update projection, shared types, lookup/category labels,
 `ModeModel.networks` contains stable VPC identities and per-network settings.
 VPC workload placement includes `networkId`; recognized native member placement does too.
 Network production applicability derives from the projected targets' placement and
-production lanes, including the selected WebSocket API setting, then adds database and
+production lanes, including resolved workload deployment conditions, then adds database and
 source-discovered native-stack consumers. Do not recalculate workload availability in
 the network projection with different deployment options.
 Network islands, subnet bands and fixtures use VPC-qualified IDs. The database's local
 counterpart is drawn only in its declared VPC. Native helper calls and simple aliases are
 source evidence; synthesis inventory remains the authority for built infrastructure.
+
+`ModeModel.gateways` describes actual HTTP/WebSocket gateways and their route IDs,
+authorizer and export-stack resource. `deployChoices` comes from the framework's
+pure lane preview. Conditional `Lanes.when` contains references, comparison literals
+from source and per-environment outcomes; it never contains resolved input values.
+The `deployWhen` relation connects workloads to their selecting input.

@@ -88,6 +88,16 @@ export function readDraftEdits(entries: unknown): readonly DraftEdit[] {
       if (["implementation", "connection", "removeWorkload"].includes(String(item?.kind))) {
         try { return readWorkloadOperation(item); } catch (error) { throw new EditError(400, error instanceof Error ? error.message : "Choose a supported workload operation."); }
       }
+      if (item?.kind === "deploy") {
+        if (Object.keys(item).some(key => !["kind", "target", "value"].includes(key)) || typeof item.target !== "string") throw new EditError(400, "Choose a declared workload and Deploy setting.");
+        const value = item.value;
+        if (typeof value === "string" && ["both", "local-only", "cloud-only", "none", "inherit"].includes(value)) return { kind: "deploy", target: item.target, value: value as import("../shared/api").DeployValue };
+        if (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 1 && "when" in value && value.when && typeof value.when === "object" && !Array.isArray(value.when)) {
+          const when = value.when as Record<string, unknown>;
+          if (Object.keys(when).length === 2 && typeof when.resource === "string" && typeof when.equals === "string" && when.equals.trim()) return { kind: "deploy", target: item.target, value: { when: { resource: when.resource, equals: when.equals } } };
+        }
+        throw new EditError(400, "Choose a Deploy token or one input and matching value.");
+      }
       if (item?.kind === "create") {
         try { return { kind: "create", request: readCreationRequest(item.request) }; }
         catch (error) { if (error instanceof CreationValidationError) throw new EditError(422, `${error.field}: ${error.message}`); throw error; }
@@ -220,7 +230,10 @@ async function configureServer(
     for (const client of clients) client.write(message);
   };
   const infrastructure = new InfrastructureService(repositoryRoot, () => builder.current?.snapshot, undefined, () => broadcast("infrastructure", {}));
-  const deploy = new DeployService(repositoryRoot, broadcast);
+  const deploy = new DeployService(repositoryRoot, broadcast, { disabledLocalServices: () => {
+    const model = builder.current?.snapshot.models.dev;
+    return new Set(model?.status === "ok" && !model.stale ? model.targets.filter(target => target.kind === "service" && !target.lanes.local).map(target => target.id) : []);
+  } });
   defer(() => deploy.dispose());
   const stateful = new StatefulResourceService(repositoryRoot, builder, deploy);
   /** Every preview was offered against one snapshot; a new one expires them all, whoever wrote it. */

@@ -2,6 +2,7 @@ import {
   CONTAINER_SUBNETS,
   CLOUDWATCH_LOG_RETENTION_DAYS,
   DEPLOY_SETTINGS,
+  getInheritedToolDeploySetting,
   LAMBDA_ARCHITECTURES,
   LAMBDA_PACKAGING,
   LAMBDA_RUNTIMES,
@@ -152,11 +153,11 @@ export const FIELDS: readonly FieldDefinition[] = [
     after: ["timeoutSeconds", "memorySize", "auth", "methods", "tools", "route", "healthCheckPath", "port", "directory"],
     before: ["userPool", "environment", "secrets", "database", "cloud", "local", "timeoutSeconds"],
     applies: (target) =>
-      ["http", "webSocket", "webSocketAuthorizer", "service", "task", "agent", "workflow"].includes(target.role),
-    resolve: (_config, target, declaration) => ({
-      effective: target.deploy,
-      provenance: readPath(declaration, ["deploy"]) !== undefined ? DECLARED : 'the framework\'s default ("both")',
-      inherited: { value: "both", from: "the framework's default" },
+      ["http", "webSocket", "webSocketAuthorizer", "event", "tool", "service", "task", "agent", "workflow"].includes(target.role),
+    resolve: (config, target, declaration) => ({
+      effective: typeof target.deploy === "string" ? target.deploy : "conditional",
+      provenance: readPath(declaration, ["deploy"]) !== undefined ? DECLARED : target.role === "tool" ? "consuming agents" : 'the framework\'s default ("both")',
+      inherited: { value: target.role === "tool" ? typeof getInheritedToolDeploySetting(config, target.id) === "string" ? getInheritedToolDeploySetting(config, target.id) as string : "conditional" : "both", from: target.role === "tool" ? "consuming agents" : "the framework's default" },
     }),
   },
   {

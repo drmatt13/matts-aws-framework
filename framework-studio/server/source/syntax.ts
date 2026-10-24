@@ -169,6 +169,9 @@ export function propertyAt(object: ts.ObjectLiteralExpression, path: readonly st
       container = initializer;
       continue;
     }
+    if (segment === "deploy" && path.length === 1 && isDeployConditionExpression(initializer)) {
+      return { editability: { kind: "condition", text: initializer.getText() }, container, missing: [], property };
+    }
     if (literalValue(property.initializer)) {
       return { editability: { kind: "literal", text: property.initializer.getText() }, container, missing: [], property };
     }
@@ -181,4 +184,32 @@ export function propertyAt(object: ts.ObjectLiteralExpression, path: readonly st
 export function lineAndColumn(sourceFile: ts.SourceFile, offset: number): { readonly line: number; readonly column: number } {
   const { line, character } = sourceFile.getLineAndCharacterOfPosition(offset);
   return { line: line + 1, column: character + 1 };
+}
+
+/** Recognize only the editable literal condition, preserving arbitrary expressions. */
+export function isDeployConditionExpression(node: ts.Expression): boolean {
+  const object = unwrap(node);
+  const fields = (value: ts.Expression, names: readonly string[]): ts.PropertyAssignment[] | undefined => {
+    if (!ts.isObjectLiteralExpression(value) || value.properties.length !== names.length || hasComments(value.getText())) return undefined;
+    if (!value.properties.every(item => ts.isPropertyAssignment(item) && names.includes(literalKey(item) ?? ""))) return undefined;
+    const properties = value.properties as unknown as ts.PropertyAssignment[];
+    return new Set(properties.map(item => literalKey(item))).size === names.length ? properties : undefined;
+  };
+  const outer = fields(object, ["when"]);
+  const inner = outer && fields(unwrap(outer[0]!.initializer), ["resource", "equals"]);
+  if (!inner) return false;
+  const equals = unwrap(inner.find(item => literalKey(item) === "equals")!.initializer);
+  let reference = unwrap(inner.find(item => literalKey(item) === "resource")!.initializer);
+  let depth = 0;
+  while (ts.isPropertyAccessExpression(reference) || ts.isElementAccessExpression(reference)) {
+    if (ts.isElementAccessExpression(reference) && (!reference.argumentExpression || !ts.isStringLiteralLike(reference.argumentExpression))) return false;
+    reference = unwrap(reference.expression); depth++;
+  }
+  if (!depth || !ts.isIdentifier(reference) || !ts.isStringLiteralLike(equals)) return false;
+  const alias = reference.text;
+  return reference.getSourceFile().statements.some(statement => {
+    if (!ts.isImportDeclaration(statement) || statement.importClause?.isTypeOnly) return false;
+    const bindings = statement.importClause?.namedBindings;
+    return bindings && ts.isNamedImports(bindings) && bindings.elements.some(item => !item.isTypeOnly && (item.propertyName?.text ?? item.name.text) === "resources" && item.name.text === alias);
+  });
 }

@@ -1,3 +1,4 @@
+import { resourceAlias, addResourceImport } from "./resource-alias";
 import path from "node:path";
 import ts from "typescript";
 import { locateConfigSource } from "../../../packages/framework/scripts/config-source";
@@ -33,14 +34,8 @@ function planCatalogConnection(root: string, state: StudioState, edit: Connectio
     const declaration = declarationObject(value, parsed.section, parsed.chain);
     if ("unsupported" in declaration) throw new EditError(422, declaration.unsupported);
     const file = assertWritable(root, toRelative(root, entry.file)), source = files.get(file);
-    let text = files.text(file), alias = "resources", imported = false;
-    for (const statement of source.statements) {
-      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !statement.moduleSpecifier.text.startsWith(".") || statement.importClause?.isTypeOnly || path.resolve(path.dirname(file), statement.moduleSpecifier.text.replace(/\.(?:js|ts)$/, "")) !== path.join(root, "framework-config/resources")) continue;
-      const bindings = statement.importClause?.namedBindings;
-      const found = bindings && ts.isNamedImports(bindings) ? bindings.elements.find(item => !item.isTypeOnly && (item.propertyName?.text ?? item.name.text) === "resources") : undefined;
-      if (found) { alias = found.name.text; imported = true; break; }
-    }
-    if (!imported) for (let suffix = 2; new RegExp(`\\b${alias}\\b`).test(text); suffix++) alias = `resources${suffix}`;
+    let text = files.text(file);
+    const { alias, imported } = resourceAlias(root, file, source, text);
     const reference = `${alias}${resource.path.map(part => `[${JSON.stringify(part)}]`).join("")}`;
     const container = target.kind === "service" || target.kind === "task";
     const keys = grant ? ["cloud", "bindings"] : [container && resource.kind === "secret" ? "secrets" : "environment", edit.variable!];
@@ -81,11 +76,7 @@ function planCatalogConnection(root: string, state: StudioState, edit: Connectio
       if (position.property) throw new EditError(422, "This environment variable already exists. Choose another name or disconnect its current mapping first.");
       text = insertExpression(text, source, position.container, position.missing, reference + (resource.kind === "secret" ? container ? ".value" : ".arn" : ""));
     }
-    if (edit.enabled && !imported) {
-      let specifier = path.relative(path.dirname(file), path.join(root, "framework-config/resources")).replaceAll("\\", "/");
-      if (!specifier.startsWith(".")) specifier = `./${specifier}`;
-      text = `import { resources as ${alias} } from ${JSON.stringify(specifier)};\n${text}`;
-    }
+    if (edit.enabled && !imported) text = addResourceImport(root, file, text, alias);
     overrides.set(file, text);
   }
 }

@@ -1,9 +1,21 @@
 import { validateTags, type DeclarationTags } from "@repo/framework/config/tags";
+import type { ModeModel } from "./model";
 
 /** Source creation uses the inspector's batch transaction, never a file-writing API. */
 export const CREATION_KINDS = ["function", "stack", "vpc", "workflow", "service", "task", "route", "agent", "tool", "input", "secret", "auth-provider"] as const;
 export type CreationKind = typeof CREATION_KINDS[number];
 export type CreationDeploy = "both" | "local-only" | "cloud-only" | "none";
+/** A guarded handshake constrains newly created WebSocket handlers. */
+export function webSocketCreationCondition(models: readonly Pick<ModeModel, "routes" | "targets">[]): { readonly resource: string; readonly equals: string } | undefined {
+  const conditions = models.map(model => {
+    const connect = model.routes.find(route => route.kind === "webSocket" && route.path === "$connect");
+    return connect?.authorizer ? model.targets.find(target => target.ref === connect.target)?.lanes.when : undefined;
+  });
+  const condition = conditions.find(value => value !== undefined);
+  if (!condition) return undefined;
+  if (conditions.some(value => value?.resource !== condition.resource || value.equals !== condition.equals)) throw new CreationValidationError("deploy", "The $connect condition differs between development and production. Create this WebSocket handler in source, or choose Off.");
+  return { resource: condition.resource, equals: condition.equals };
+}
 interface Named { readonly id: string; readonly description: string; readonly tags?: DeclarationTags; readonly implementation?: "create" | "existing" }
 interface Binding { readonly bindingResource: string; readonly bindingVariable: string }
 interface Lambda extends Named, Binding {
@@ -30,7 +42,7 @@ export type CreationRequest =
   | (Named & Binding & { readonly kind: "service"; readonly directory: string; readonly path: string; readonly port: number; readonly auth: boolean; readonly deploy: CreationDeploy; readonly cpu: number; readonly memory: number; readonly architecture: "arm64" | "x86_64"; readonly vpc: string; readonly subnet: "public" | "private" })
   | (Named & Binding & { readonly kind: "task"; readonly directory: string; readonly deploy: CreationDeploy; readonly cpu: number; readonly memory: number; readonly architecture: "arm64" | "x86_64"; readonly vpc: string; readonly subnet: "public" | "private" })
   | (Named & Binding & { readonly kind: "agent"; readonly directory: string; readonly starter: "echo" | "model"; readonly deploy: CreationDeploy; readonly auth: boolean; readonly path: string; readonly tools: readonly string[] })
-  | (Named & Binding & { readonly kind: "tool"; readonly directory: string; readonly auth: boolean })
+  | (Named & Binding & { readonly kind: "tool"; readonly directory: string; readonly auth: boolean; readonly deploy: CreationDeploy | "inherit" })
   | (Named & { readonly kind: "input"; readonly envName: string; readonly group: string; readonly required: boolean; readonly defaultValue: string; readonly choices: readonly string[]; readonly consumer: string; readonly consumerVariable: string })
   | (Named & { readonly kind: "secret"; readonly envName: string; readonly group: string; readonly required: boolean; readonly consumer: string; readonly consumerVariable: string });
 
@@ -90,7 +102,7 @@ export const CREATORS: Record<CreationKind, { readonly label: string; readonly h
   service: { label: "Container service", help: "Creates a Node HTTP service, Dockerfile and declaration. Local Compose is derived from the declaration. Cloud services incur ECS, load balancer and IPv4 charges after a separate deployment.", fields: [...container.map((field) => field.key === "deploy" ? { ...field, initial: "local-only" } : field), { key: "path", label: "Public mount", initial: "", help: "For example /reports/*; requests reach the service without this prefix." }, { key: "port", label: "Container port", initial: 5000, type: "number" }, { key: "auth", label: "Require a signed-in user", initial: true, type: "boolean" }] },
   task: { label: "Container task", help: "Creates a run-to-completion Node container reading FRAMEWORK_TASK_INPUT. Invoke it through a declared runsTask binding or workflow step; timeouts belong to the invocation.", fields: container },
   agent: { label: "Agent", help: "Creates a validated JSON agent. Echo runs without a model call or provider prerequisites; Model and tools uses shared provider configuration and incurs provider charges when invoked.", fields: [id, description, tags, directory, implementation, deploy, { key: "starter", label: "Starter behavior", initial: "echo", options: ["echo", "model"] }, { key: "auth", label: "Require a signed-in user", initial: true, type: "boolean" }, { key: "path", label: "Browser route (optional, authenticated agents)", initial: "" }, { key: "tools", label: "Declared tool IDs (comma-separated)", initial: "", type: "list" }, ...binding] },
-  tool: { label: "Agent tool", help: "Creates a Lambda tool with a validated request/response contract. A tool runs where an agent that lists it runs; add it to an agent after source review.", fields: [id, description, tags, directory, implementation, { key: "auth", label: "Act as the signed-in user", initial: true, type: "boolean" }, ...binding] },
+  tool: { label: "Agent tool", help: "Creates a Lambda tool with a validated request/response contract. Inherit follows consuming agents; choose an explicit deployment to override it.", fields: [id, description, tags, directory, implementation, { ...deploy, initial: "inherit", options: ["inherit", ...deploy.options!] }, { key: "auth", label: "Act as the signed-in user", initial: true, type: "boolean" }, ...binding] },
   input: { label: "Input parameter", help: "Inputs are strings in this framework; choices constrain recognized values. Defaults belong to declarations. No environment-specific values are overwritten.", fields: [...input, { key: "defaultValue", label: "Declaration default (optional)", initial: "" }, { key: "choices", label: "Allowed string values (comma-separated)", initial: "", type: "list", advanced: true }] },
   secret: { label: "Secret", help: "Declares a secret without a value. Use the protected environment-file Inspector to author values separately. AWS provisioning requires a separately authorized deployment.", fields: input },
 };

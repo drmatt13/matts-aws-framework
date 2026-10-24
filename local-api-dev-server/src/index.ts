@@ -1,3 +1,4 @@
+import { localDeployInputs } from "@repo/framework/config/source";
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -42,7 +43,7 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization", "X-Amzn-Bedrock-AgentCore-Runtime-Session-Id"],
     // Same derivation as the deployed HTTP API's corsPreflight, so a route
     // added to the manifest cannot be reachable locally but blocked in AWS.
-    methods: [...getDeclaredHttpMethods(framework, "local")],
+    methods: [...getDeclaredHttpMethods(framework, "local", localDeployInputs())],
   }),
 );
 // No body parser here: each Lambda route reads its body as raw bytes, the way
@@ -90,7 +91,7 @@ app.get("/", (_req, res) => {
 
 // Targets disabled for the local scope are skipped rather than resolved, so a
 // missing Compose service cannot take the whole dev server down at boot.
-const enabledRoutes = getHttpRoutes(framework, "local").map(([, route]) => route);
+const enabledRoutes = getHttpRoutes(framework, "local", localDeployInputs(repositoryRoot)).map(([, route]) => route);
 const enabledPaths = new Set(enabledRoutes.map((route) => route.path));
 const skippedRoutes = getAllHttpRoutes(framework)
   .map((route) => route.path)
@@ -116,7 +117,7 @@ for (const route of enabledRoutes) {
 // Explicit agent browser routes stream from
 // its session process in the invocation runner.
 const runnerUrl = process.env.LOCAL_INVOCATION_RUNNER_URL ?? "http://local-invocation-runner:8090";
-const localAgentIds = new Set(getLocalTargets(framework, ["agent"]).map((target) => target.id));
+const localAgentIds = new Set(getLocalTargets(framework, ["agent"], localDeployInputs(repositoryRoot)).map((target) => target.id));
 for (const { id, path } of getAgentBrowserRoutes(framework)) {
   if (localAgentIds.has(id)) registerAgentRoute(app, id, path, runnerUrl);
 }

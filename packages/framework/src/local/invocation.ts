@@ -1,3 +1,4 @@
+import { localDeployInputs } from "@repo/framework/config/source";
 import path from "node:path";
 import {
   getFrameworkTargets,
@@ -122,11 +123,11 @@ export function planLocalInvocation(
   options: LocalInvocationPlanOptions = {},
 ): LocalInvocationGraph {
   const repositoryRoot = options.repositoryRoot ?? findRepositoryRoot(process.cwd());
-  const tasks = getLocalTargets(config, ["task"])
+  const tasks = getLocalTargets(config, ["task"], localDeployInputs(repositoryRoot))
     .map((target) => target.id)
     .sort()
     .map((id) => planTask(config, id, repositoryRoot));
-  const workflows = getLocalTargets(config, ["workflow"])
+  const workflows = getLocalTargets(config, ["workflow"], localDeployInputs(repositoryRoot))
     .map((target) => target.id)
     .sort()
     .map((id) => resolveWorkflow(config, id));

@@ -8,6 +8,21 @@ live in `src/views/InspectorUI.tsx`. Board, Isometric and Database use the same 
 
 ## Conventions
 
+Deployment controls are present across inspector resource families:
+
+| Family | Deployment control |
+| --- | --- |
+| HTTP, WebSocket, authorizer, event and tool Lambdas; services, tasks, workflows, agents | Editable Deploy tokens and input conditions; review validates both environments |
+| Tool with no authored override | Inherit follows consuming agents; explicit Deploy overrides it |
+| API gateway, stack member, network component | Owner-controlled Deploy with navigation to handlers, stack or VPC |
+| Catalog input, secret or group | Owner-controlled availability; links to consuming workloads; values/provisioning remain separate |
+| Native/framework stack, managed database, VPC island | Explicit ownership explanation and navigation; no ineffective independent workload flag |
+| CDK/client environment file or grouping island | Explains input/group ownership and links to owning entries |
+
+Native CDK construction remains source-owned. A catalog presence change must never be
+presented as an AWS deployment switch. Event deployment changes omit optional native
+hooks on the next deployment, and the source review calls out that effect.
+
 | Element | Convention |
 | --- | --- |
 | Panel | 380–480 px on desktop; bounded split view on narrow screens |
@@ -73,8 +88,12 @@ Development always
 precedes Production; both cards remain visible when disabled. Configurable workloads
 and their routes expose the same **Deploy** selector beneath the cards. A route edits
 its target's declaration. The cards immediately preview a staged scope, and restoring
-inheritance restores the default preview. WebSocket choices account for each graph's
-own AWS API flag, including AWS execution in development.
+inheritance restores the default preview. Role-specific choices come from the framework's lane previews, including AWS execution
+for WebSocket handlers during development. Conditional Deploy selects a non-secret input
+and compares one literal value in a grouped, full-width form. The input's catalog name
+and environment variable appear separately so neither crowds the selector; helpers and
+validation remain associated with their controls. Saved settings and review show each
+environment's outcome. API gateway headers reuse the catalog's framed Framework managed badge.
 For event Lambdas, Development shows AWS execution unless local replay is enabled;
 then it shows AWS capture first, followed by replay on the developer's machine.
 This summary follows the staged replay setting and always describes the development graph.

@@ -9,7 +9,7 @@ export function lockedReason(editability: Editability | undefined, fact: FieldFa
   if (fact.blocked) return fact.blocked;
   if (!editability) return "The source index has no answer for this field.";
   switch (editability.kind) {
-    case "literal": case "absent": return undefined;
+    case "condition": case "literal": case "absent": return undefined;
     case "computed": return `Computed by ${editability.text}. Change it in your editor.`;
     case "spread": return `It may come from ${editability.text}. Change it in your editor.`;
     case "unsupported": return editability.reason;
@@ -30,12 +30,8 @@ function ValueField({ target, fact, editability, allowInherit }: Props) {
   const value = draft.value(target.ref, fact);
   const entry = draft.field(target.ref, fact);
   const unit = fact.domain.kind === "number" ? ` ${fact.domain.unit}` : "";
-  const webSocketApi = target.role === "webSocket" || target.role === "webSocketAuthorizer" ? {
-    dev: snapshot.models.dev.webSocketApi ?? snapshot.webSocketApi,
-    prod: snapshot.models.prod.webSocketApi ?? snapshot.webSocketApi,
-  } : undefined;
   const display = (value: unknown) => {
-    if (fact.field === "deploy") return deploymentSettingLabel(String(value), webSocketApi);
+    if (fact.field === "deploy") return deploymentSettingLabel(String(value), target.role ? snapshot.models[draftState.mode].deployChoices?.[target.role]?.[String(value)] : undefined);
     if (fact.field.endsWith(".packaging")) return value === "container" ? "Container image (Dockerfile)" : "Source bundle (ZIP)";
     if (fact.field.endsWith(".logRetentionDays")) return `${value} ${value === 1 ? "day" : "days"}`;
     if (typeof value === "boolean") return value ? "On" : "Off";

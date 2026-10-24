@@ -37,7 +37,9 @@ share settings or secret values. Set:
 - COGNITO_SES_FROM_EMAIL, an address or domain already verified in Amazon SES. Cognito's
   built-in sender stops after about 50 messages a day, which ends sign-up verification and
   password reset for everyone; synth warns while it is unset.
-- WebSocket deployment settings and any cloud-enabled workload inputs. The example
+- ENABLE_WEBSOCKET_API=true to enable the WebSocket handlers and their authorizer,
+  or false to exclude them at the next deployment. This is a catalog input used by
+  their conditional Deploy settings. Also configure any cloud-enabled workload inputs. The example
   service and example agent are local-only until their declarations enable cloud deployment. SKIP_EMAIL_VERIFICATION is
   refused in production.
 
@@ -348,7 +350,7 @@ retry and rollback limits. Infrastructure deployment never implicitly publishes 
 Export, then build: `vite build` reads `client-app/.env.production.local`, which export
 wrote. It holds the production Cognito region, pool, client and domain; the CloudFront
 URL as VITE_API_GATEWAY_URL, which only the Vite dev server's proxy reads; the deployed
-WebSocket endpoint as VITE_API_GATEWAY_WS_URL when DEPLOY_PROD_WEBSOCKET_API is on; and empty
+WebSocket endpoint as VITE_API_GATEWAY_WS_URL when at least one WebSocket route handler is enabled; and empty
 VITE_LOCAL_WS_URL and tester URLs, since neither Compose service runs. Empty values
 clear local defaults that do not apply. A browser always calls same-origin /api; no
 deployed cross-origin API URL is needed.

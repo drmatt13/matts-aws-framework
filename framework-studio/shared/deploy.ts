@@ -133,6 +133,8 @@ export interface DockerView {
 }
 
 export interface ServiceView {
+  /** A successful launcher exit for a service disabled by its declaration. */
+  readonly disabledByDeploy?: true;
   readonly name: string;
   readonly container: string;
   readonly state: string;

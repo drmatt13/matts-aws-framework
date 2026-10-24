@@ -44,7 +44,7 @@ export function searchScene(scene: Scene, model: ModeModel, query: string): Sear
     )) nodes.add(node.id);
   }
   // Stack fields are represented by their owning stack on the map.
-  for (const [id, representative] of Object.entries(scene.representatives)) if (matches(resourceText(id))) nodes.add(representative);
+  for (const [id, representative] of Object.entries(scene.representatives)) if (matches(resourceText(id), routes.get(id)?.path, routes.get(id)?.browserPath, routes.get(id)?.target)) nodes.add(representative);
   for (const prop of scene.props) {
     const island = scene.islands.find((island) => island.bands.some((band) => prop.serves.includes(band.id)));
     if (island && (wholeIslands.has(island.id) || prop.serves.some((band) => bands.has(band)) || matches(prop.id, prop.label, prop.caption, prop.icon, prop.roleIcon))) {

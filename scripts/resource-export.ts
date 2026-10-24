@@ -69,7 +69,7 @@ export function collectDevelopmentResources(stacks: readonly DeploymentStack[], 
     }
   }
   const manifest = parseResourceManifest(JSON.stringify({ ...identity, attributes, integrations }));
-  for (const target of getLocalTargets(config, ["http", "webSocket", "webSocketAuthorizer", "event", "service", "task", "workflow"])) {
+  for (const target of getLocalTargets(config, ["http", "webSocket", "webSocketAuthorizer", "event", "service", "task", "workflow"], "unconditioned")) {
     for (const reference of [...Object.values(target.environment).filter(isResourceReference), ...Object.values(target.secrets)]) {
       if (isResourceAbsent(reference) || (reference.fromEnv && !reference.secretArn)) continue;
       if (attributes[resourceAttributeKey(reference)] === undefined && !reference.optional) throw new Error(`${target.reference} needs an attribute absent from the deployment. Deploy the updated resource declarations before exporting.`);

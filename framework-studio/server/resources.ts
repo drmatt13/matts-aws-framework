@@ -80,7 +80,7 @@ export class ResourceService {
         assertResourceFile(this.root, file);
         return { file, before: readFileSync(file, "utf8"), after };
       });
-      const diagnostics = await this.validate(candidate.overrides, state.snapshot.webSocketApi);
+      const diagnostics = await this.validate(candidate.overrides);
       const response: ResourcePlan = {
         planId: randomUUID(), resource: resource.id, nextResource: candidate.nextResource,
         ok: !diagnostics.some((diagnostic) => diagnostic.severity === "error"), diagnostics,
@@ -92,10 +92,10 @@ export class ResourceService {
       return response;
     });
   }
-  private async validate(overrides: Record<string, string>, webSocketApi: boolean): Promise<ResourcePlan["diagnostics"]> {
+  private async validate(overrides: Record<string, string>): Promise<ResourcePlan["diagnostics"]> {
     const pool = new EvaluatorPool(this.root, undefined, this.builder.evaluators);
     try {
-      const evaluation = await pool.evaluate(webSocketApi, overrides);
+      const evaluation = await pool.evaluate(overrides);
       const diagnostics = [evaluation.dev, evaluation.prod].flatMap((model) => model.diagnostics.map((diagnostic) => ({ ...diagnostic, message: `${model.mode}: ${diagnostic.message}` })));
       if (!diagnostics.some((diagnostic) => diagnostic.severity === "error")) diagnostics.push(...resourceTypeErrors(this.root, overrides).map((message) => ({ severity: "error" as const, stage: "validate" as const, message })));
       return diagnostics;
@@ -118,7 +118,7 @@ export class ResourceService {
       if (!entry) throw new EditError(404, `No resource configuration to ${direction}.`);
       const inverse = direction === "undo";
       const overrides = Object.fromEntries(entry.changes.map((change) => [change.file, inverse ? change.before : change.after]));
-      const diagnostics = await this.validate(overrides, this.state().snapshot.webSocketApi);
+      const diagnostics = await this.validate(overrides);
       if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) throw new EditError(422, `This resource edit cannot be ${direction === "undo" ? "undone" : "redone"} against the current configuration.`);
       return this.write(entry, inverse, () => { stack.pop(); (inverse ? this.redoStack : this.undoStack).push(entry); });
     });

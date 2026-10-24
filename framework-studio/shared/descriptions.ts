@@ -18,7 +18,7 @@ export function connectionDescriptionId(edge: ModelEdge): string {
 
 /** Uses canonical model identities, including public stack fields and individual relationships. */
 export function descriptionEntityIds(models: readonly ModeModel[]): ReadonlySet<string> {
-  return new Set([...ISLAND_IDS, ...models.flatMap((model) => [
+  return new Set([...ISLAND_IDS, "gateway:http", "gateway:websocket", ...models.flatMap((model) => [
     ...model.targets.map((target) => target.ref), ...model.routes.map((route) => route.id),
     ...model.resources.map((resource) => resource.id), ...(model.localServices ?? []).map((service) => service.id),
     ...model.edges.map(connectionDescriptionId),

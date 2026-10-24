@@ -4,7 +4,6 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { EvaluatorLifetime, EvaluatorPool, type Evaluation } from "./evaluator/pool";
 import { hashEditableFiles, sha256 } from "./files";
-import { readDeploymentSettings } from "./inputs";
 import { buildSourceIndex, SourceFiles, type BuiltSourceIndex } from "./source";
 import type { CatalogEntrySource } from "./source/catalog";
 import { readDeclaredSchema, readLocalDatabases, withLocalDatabases } from "./database";
@@ -170,9 +169,8 @@ export class SnapshotBuilder {
   }
 
   private async build(): Promise<StudioState> {
-    const settings = readDeploymentSettings(this.repositoryRoot);
     const files = hashEditableFiles(this.repositoryRoot);
-    const evaluation = await this.pool.evaluate(settings.webSocketApi);
+    const evaluation = await this.pool.evaluate();
     const freshDev = this.lastGood(evaluation.dev), freshProd = this.lastGood(evaluation.prod);
     const dev = withAbsentTagging(freshDev, freshProd);
     const prod = withAbsentTagging(freshProd, freshDev);
@@ -194,7 +192,7 @@ export class SnapshotBuilder {
       rmSync(temporary, { force: true });
     }
     this.generation += 1;
-    const content = sha256(JSON.stringify({ files, settings, schema: schema.hash, localDatabase }));
+    const content = sha256(JSON.stringify({ files, conditions: [dev.targets.map(target => target.lanes.when), prod.targets.map(target => target.lanes.when)], schema: schema.hash, localDatabase }));
     const project = (model: ModeModel): ModeModel => {
       const declared = model.stale ? model : withExportStacks(withClassMembers(model, built.catalog, built.index.cdkLinks.edges), built.exportStacks);
       const enriched = withClientEnvironment(withDeploymentInputs(this.repositoryRoot, withLocalDatabases(declared, localDatabase.services), { dev, prod }), clientMappings);
@@ -206,7 +204,6 @@ export class SnapshotBuilder {
       databaseProblems: localDatabase.problems,
       revision: `${this.generation}-${content.slice(0, 12)}`,
       generatedAt: new Date().toISOString(),
-      webSocketApi: settings.webSocketApi,
       repositoryRoot: this.repositoryRoot,
       models: {
         dev: project(dev),

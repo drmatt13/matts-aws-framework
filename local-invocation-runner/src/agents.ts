@@ -1,3 +1,4 @@
+import { localDeployInputs } from "@repo/framework/config/source";
 import { fork, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
@@ -82,7 +83,7 @@ export class LocalAgentSupervisor {
     request: AgentForward,
     consume: (response: Response) => Promise<void>,
   ): Promise<void> {
-    if (!getLocalTargets(this.config, ["agent"]).some((target) => target.id === id)) {
+    if (!getLocalTargets(this.config, ["agent"], localDeployInputs(this.repositoryRoot)).some((target) => target.id === id)) {
       throw new Error(`agent:${id} is not enabled for local execution.`);
     }
     const sessionId = request.headers["x-amzn-bedrock-agentcore-runtime-session-id"];

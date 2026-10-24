@@ -1,3 +1,5 @@
+import { GatewayView } from "./GatewayView";
+import { drawnAs } from "../drawn-as";
 import { PlacementControl } from "./NetworkControls";
 import { X } from "lucide-react";
 import type { ModelEdge, ModelResource, ModelRoute, ModelTarget, ModelWorkflow, Placement } from "../../shared/model";
@@ -28,7 +30,7 @@ import { aggregateConnections, edgeAvailability } from "../connections";
 import { ConnectionMap } from "./ConnectionMap";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
-import { DeploymentSection, ResourceDeployment, TargetDeployment } from "./Deployment";
+import { DeploymentSection, DeploymentOwnerControl, ResourceDeployment, TargetDeployment } from "./Deployment";
 import { Tags } from "./Tags";
 import { ImplementationStatus, WorkloadConnections } from "./WorkloadActions";
 
@@ -260,7 +262,7 @@ function EnvRow(props: { readonly name: string; readonly value: string; readonly
 }
 
 function RouteView(props: { readonly route: ModelRoute }) {
-  const { snapshot, index } = useStudio();
+  const { snapshot, index, model, select } = useStudio();
   const { route } = props;
   const target = index.targets.get(route.target);
   return (
@@ -276,6 +278,7 @@ function RouteView(props: { readonly route: ModelRoute }) {
       {target ? <TargetDeployment target={target} route /> : null}
       <Description entity={route.id} />
       <section>
+<p className="small muted">Served by <button className="linkish" onClick={() => select(drawnAs(model)[route.id])}>{route.kind === "agent" ? index.targets.get(route.target)?.id ?? route.target : route.kind === "webSocket" ? "WebSocket API" : "HTTP API"}</button>.</p>
         {route.methods ? <p>Answers {route.methods === "*" ? "every method" : route.methods.join(", ")}.</p> : null}
         <p className="muted small">
           {route.auth
@@ -357,7 +360,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
 function LocalDatabaseView({ database }: { readonly database: LocalDatabase }) {
   return <>
     <header><span className="kind">Local development service</span><h2><EntityIcon icon="postgres" />{database.title}</h2><code className="ref">{database.service} · {database.image}</code><Written location={database.source} /></header>
-    <DeploymentSection availability={{ dev: database.enabled, prod: false }} locations={{ dev: "On your machine" }}><p className="deployment-note small muted">Configured in Docker Compose. Container health and running state are not monitored.</p></DeploymentSection>
+    <DeploymentSection availability={{ dev: database.enabled, prod: false }} locations={{ dev: "On your machine" }}><DeploymentOwnerControl reason="Configured in Docker Compose; start and stop this service through Deploy & Run. Container health and running state are separate from source availability." /></DeploymentSection>
     <Description entity={database.id} />
     <section><SchemaLink /><p className="small muted">Shares the application contract with production RDS.</p></section>
     {database.volumes.length ? <section><h3>Persistent storage</h3>{database.volumes.map((volume) => <p key={volume}><code>{volume}</code></p>)}</section> : null}
@@ -373,7 +376,7 @@ function NetworkFixtureView({ id }: { readonly id: string }) {
   const inProduction = !!production.networks?.find(network => id.startsWith(`prop:vpc:${network.id}:`))?.builtInProd && buildScene(production).props.some((prop) => prop.id === id);
   return <>
     <header><span className="kind">Network fixture</span><h2><EntityIcon icon={fixture.icon} />{fixture.label}</h2><code className="ref">{id}</code><Written location={snapshot.source.entities[`island:vpc:${model.networks?.find(network => id.startsWith(`prop:vpc:${network.id}:`))?.id}`]?.value} /></header>
-    <DeploymentSection availability={{ dev: false, prod: inProduction }} locations={{ prod: "In AWS" }}><p className="deployment-note small muted">Managed by the production VPC.</p></DeploymentSection>
+    <DeploymentSection availability={{ dev: false, prod: inProduction }} locations={{ prod: "In AWS" }}><DeploymentOwnerControl reason="This component is created by its production VPC. Configure the owning network instead of deploying the component independently." owners={(model.networks ?? []).filter(network => id.startsWith(`prop:vpc:${network.id}:`)).map(network => ({ id: `island:vpc:${network.id}`, title: network.name ?? network.id }))} /></DeploymentSection>
     <Description entity={id} />
     <section>{fixture.caption.map((line) => <p key={line}>{line}</p>)}</section>
   </>;
@@ -398,6 +401,7 @@ export function Inspector() {
 /** Every section, setting, action and source link for one selection, with its pending-change footer. */
 export function InspectorContent({ selected }: { readonly selected: string }) {
   const { index, snapshot, model } = useStudio();
+  const gateway = index.gateways.get(selected);
   const target = index.targets.get(selected);
   const route = index.routes.get(selected);
   const resource = index.resources.get(selected);
@@ -412,6 +416,7 @@ export function InspectorContent({ selected }: { readonly selected: string }) {
   return (
     <>
       <div className="inspector-content" key={selected}>
+      {gateway ? <GatewayView gateway={gateway} /> : null}
       {target ? <TargetView target={target} /> : null}
       {route ? <RouteView route={route} /> : null}
       {resource ? resource.id === model.managedDatabase?.resource ? <ManagedDatabaseInspector resource={resource} /> : <ResourceView resource={resource} /> : null}
@@ -421,7 +426,7 @@ export function InspectorContent({ selected }: { readonly selected: string }) {
       {island ? <IslandInspector id={selected} key={selected} /> : null}
       {fixture ? <NetworkFixtureView id={selected} /> : null}
       {resource?.kind === "stack" && !resource.frameworkStack ? <StackInfrastructure id={resource.id} /> : null}
-      {!target && !route && !resource && !connection && !groupedConnection && !otherLens && !localDatabase && !schemaEntity && !island && !fixture ? <p className="empty">{selected} is not in this graph.</p> : null}
+      {!gateway && !target && !route && !resource && !connection && !groupedConnection && !otherLens && !localDatabase && !schemaEntity && !island && !fixture ? <p className="empty">{selected} is not in this graph.</p> : null}
       </div><DraftFooter />
     </>
   );

@@ -1,6 +1,6 @@
 import { ChevronLeft, Crosshair, Maximize2, Minus, PanelRight, Pause, Play, Plus, Search, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { RELATION_LABEL, endpointLabel, indexModel } from "../lookup";
+import { RELATION_LABEL, endpointLabel, indexModel, titleOf } from "../lookup";
 import { buildScene, type Scene, type SceneNode } from "../scene/build";
 import { islandDrawOrder, islandSlabs } from "../scene/slabs";
 import {
@@ -122,8 +122,8 @@ export function Isometric() {
   const untaggedCount = useMemo(() => tagGroups(model, UNTAGGED_FILTER, index)[0]!.members.length, [model, index]);
   const groups = useMemo(() => activeTagKey ? tagGroups(model, activeTagKey, index) : [], [model, activeTagKey, index]);
   const tagMatchCount = groups.find(group => group.value === filterValue)?.members.length ?? 0;
-  const topology = useMemo(() => buildScene(model, { webSocketApi: snapshot.webSocketApi, conditions, resourceAvailability,
-    layoutModels: [snapshot.models.dev, snapshot.models.prod], layoutSettings: { aspect, previous: previousLayout.current?.positions, previousKey: previousLayout.current?.topologyKey } }), [model, snapshot.models, snapshot.webSocketApi, conditions, resourceAvailability, aspect]);
+  const topology = useMemo(() => buildScene(model, { conditions, resourceAvailability,
+    layoutModels: [snapshot.models.dev, snapshot.models.prod], layoutSettings: { aspect, previous: previousLayout.current?.positions, previousKey: previousLayout.current?.topologyKey } }), [model, snapshot.models, conditions, resourceAvailability, aspect]);
   const scene = useMemo(() => activeTagKey && filterValue !== undefined ? filterSceneByTag(topology, model, activeTagKey, filterValue) : topology, [topology, model, activeTagKey, filterValue]);
   useLayoutEffect(() => { previousLayout.current = scene.layout; }, [scene]);
   const visibleSelected = selected ? scene.representatives[selected] ?? scene.edges.find((edge) => edge.members.some((member) => member.edge.id === selected))?.id ?? selected : undefined;
@@ -789,14 +789,17 @@ function HoverCard(props: {
     const sceneEdge = props.scene.edges.find((candidate) => candidate.id === current.id);
     const edge = sceneEdge?.edge;
     if (!edge) return null;
-    title = sceneEdge.members.length > 1 ? `${sceneEdge.members.length} relationships` : `${RELATION_LABEL[edge.relation]}: ${edge.label}`;
+    const relationshipTitle = (relationship: typeof edge) => relationship.relation === "deployWhen"
+      ? `Conditional deployment: ${index.resources.get(relationship.to)?.fromEnv ?? titleOf(index, relationship.to)}`
+      : `${RELATION_LABEL[relationship.relation]}: ${relationship.label}`;
+    title = sceneEdge.members.length > 1 ? `${sceneEdge.members.length} relationships` : relationshipTitle(edge);
     facts = {
       places: ENVIRONMENTS.flatMap(([env]) => sceneEdge.availability[env] ? [{ env, where: "Connection enabled" }] : []),
       frameworkManaged: false,
     };
     const onlyIn = sceneEdge.otherLens ? `Only in ${sceneEdge.otherLens === "dev" ? "Development" : "Production"}. Switch the view to see it with the rest of that environment.` : undefined;
     lines = [onlyIn, `From ${endpointLabel(index, sceneEdge.from)}`, `To ${endpointLabel(index, sceneEdge.to)}`,
-      ...(sceneEdge.members.length > 1 ? ["Click to inspect the connection map.", ...sceneEdge.members.slice(0, 4).map((member) => `${RELATION_LABEL[member.edge.relation]}: ${member.edge.label}`)] : [edge.detail]),
+      ...(sceneEdge.members.length > 1 ? ["Click to inspect the connection map.", ...sceneEdge.members.slice(0, 4).map((member) => relationshipTitle(member.edge))] : [edge.detail]),
       missingConnectionInput(sceneEdge) ? "Required value missing. Click to resolve." : undefined,
       edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
   } else if (current.kind === "prop") {

@@ -1,5 +1,6 @@
+import { gatewayModels } from "../../shared/gateways";
 import {
-  isFrameworkDatabase, databaseSettings,
+  isFrameworkDatabase, databaseSettings, deployKey, deployLanes, DEPLOY_SETTINGS, type DeployInputs,
   WORKFLOW_REFERENCE,
   assertCloudEdgesResolvable,
   createTargetAvailability,
@@ -9,15 +10,12 @@ import {
   formatResourceReference,
   getAgentBrowserRoutes,
   getFrameworkTargets,
-  getToolDeploySetting,
   integrationKey,
   interfaceEndpointsMonthlyCost,
   isCdkResource,
   isCdkResourceGroup,
   isResourceReference,
   isNodeLambdaRuntime,
-  isTargetDeployed,
-  isTargetEnabled,
   normalizeFrameworkConfig,
   triggerAdapters,
   resolveNetwork,
@@ -67,8 +65,9 @@ import { projectTagging } from "./tags";
 
 export interface ProjectionOptions {
   readonly mode: Mode;
-  /** DEPLOY_PROD_WEBSOCKET_API: whether this deployment builds the AWS WebSocket API. */
-  readonly webSocketApi: boolean;
+  /** Conditions are resolved privately by the parent; evaluators receive outcomes only. */
+  readonly inputs?: { readonly dev: DeployInputs; readonly prod: DeployInputs };
+  readonly outcomes?: Readonly<Record<string, { readonly dev: "holds" | "fails" | "unset"; readonly prod: "holds" | "fails" | "unset" }>>;
 }
 
 const WEB_SOCKET_ROLES = new Set(["webSocket", "webSocketAuthorizer"]);
@@ -86,39 +85,26 @@ function title(target: NormalizedTarget): string {
 }
 
 export function targetLanes(config: FrameworkConfig, target: NormalizedTarget, options: ProjectionOptions, availability?: ReturnType<typeof createTargetAvailability>): Lanes {
-  const graph = { webSocketApi: options.webSocketApi };
+  const devInputs = options.inputs?.dev;
+  const prodInputs = options.inputs?.prod;
   const declaration = target.origins[0] ? declarationOf(config, parseOrigin(target.origins[0])!) : undefined;
+  const view = availability ?? createTargetAvailability(config);
+  const condition = typeof target.deploy === "string" ? undefined : target.deploy.when;
   const base = {
-    deploy: target.deploy,
-    local: availability ? availability.enabled(target.kind, target.id, "local") : isTargetEnabled(config, target.kind, target.id, "local"),
-    cloud: availability ? availability.enabled(target.kind, target.id, "cloud") : isTargetEnabled(config, target.kind, target.id, "cloud"),
-    dev: availability ? availability.deployed(target.kind, target.id, "dev", graph) : isTargetDeployed(config, target.kind, target.id, "dev", graph),
-    // A prod deployment answers for WebSocket handlers whether or not it builds
-    // their API; the composition skips them when it does not.
-    prod:
-      (availability ? availability.deployed(target.kind, target.id, "prod", graph) : isTargetDeployed(config, target.kind, target.id, "prod", graph)) &&
-      (!WEB_SOCKET_ROLES.has(target.role) || options.webSocketApi),
+    deploy: typeof target.deploy === "string" ? target.deploy : "both" as const,
+    ...(condition ? { when: { resource: resourceId(condition.resource.path), equals: condition.equals, ...(options.outcomes?.[deployKey(target.deploy)] ?? { dev: "unset" as const, prod: "unset" as const }) } } : {}),
+    local: view.enabled(target.kind, target.id, "local", devInputs),
+    cloud: view.enabled(target.kind, target.id, "cloud", options.mode === "dev" ? devInputs : prodInputs),
+    dev: view.deployed(target.kind, target.id, "dev", { inputs: devInputs }),
+    prod: view.deployed(target.kind, target.id, "prod", { inputs: prodInputs }),
   };
-  const webSocketNote =
-    WEB_SOCKET_ROLES.has(target.role)
-      ? options.webSocketApi
-        ? "DEPLOY_PROD_WEBSOCKET_API is on: API Gateway calls it in AWS, so both graphs hold it."
-        : "DEPLOY_PROD_WEBSOCKET_API is off: no AWS WebSocket API is built; the local WebSocket dev server serves it."
-      : undefined;
-  if (target.role === "event") {
-    return {
-      ...base,
-      origin: "aws-invoked",
-      note: "AWS invokes it, so it has no deploy toggle and every graph holds it.",
-    };
-  }
-  if (target.role === "tool") {
+  const webSocketNote = WEB_SOCKET_ROLES.has(target.role) ? "API Gateway is framework managed; this handler follows its own deployment setting." : undefined;
+  if (target.role === "tool" && declaration?.deploy === undefined) {
     const agents = Object.entries(config.agents ?? {})
       .filter(([, agent]) => agent.tools?.includes(target.id))
       .map(([id]) => `agent:${id}`);
     return {
       ...base,
-      deploy: getToolDeploySetting(config, target.id),
       origin: "derived",
       derivedFrom: agents,
       note: agents.length > 0 ? `Runs wherever ${agents.join(" or ")} runs.` : "No agent lists it, so it runs nowhere.",
@@ -437,7 +423,10 @@ function edgesOf(
           });
           break;
         case "runsTask":
-          add("runsTask", target.reference, `task:${binding.task}`, { provenance: "declared", label: "runsTask", detail: binding.environment });
+          add("runsTask", target.reference, `task:${binding.task}`, {
+            provenance: "declared", label: "Launch ECS task",
+            detail: "Grants ecs:RunTask for this task family in its cluster, ecs:TagResource during launch, and iam:PassRole for its task and execution roles. Also supplies the launch configuration; does not indicate a task has run.",
+          });
           break;
         case "startsWorkflow":
           add("startsWorkflow", target.reference, `workflow:${binding.workflow}`, { provenance: "declared", label: "startsWorkflow", detail: binding.environment });
@@ -609,7 +598,7 @@ export function validateForMode(
     return diagnostics;
   }
   try {
-    assertCloudEdgesResolvable(config, options.mode, { webSocketApi: options.webSocketApi });
+    assertCloudEdgesResolvable(config, options.mode, { inputs: options.inputs?.[options.mode] });
   } catch (error) {
     record("cloud-edges", "error", error instanceof Error ? error.message : String(error));
   }
@@ -630,13 +619,19 @@ function projectModelSnapshot(config: FrameworkConfig, options: ProjectionOption
   const targets = getFrameworkTargets(config);
   const routes = routesOf(config);
   const { edges, readPaths } = edgesOf(config, targets, routes);
+  for (const target of targets) if (typeof target.deploy !== "string") {
+    const to = resourceId(target.deploy.when.resource.path);
+    edges.push({ id: `deployWhen:${target.reference}:${to}`, from: target.reference, to, relation: "deployWhen", label: "deploys when input matches", provenance: "declared" });
+    readPaths.push(target.deploy.when.resource.path);
+  }
   const diagnostics = validateForMode(config, options, targets);
   const defaults = projectDefaults(config, targets, DEFAULT_FIELDS);
   const projectedTargets = targets.map(target => targetModel(config, target, options, availability));
   return {
     mode: options.mode,
     tagging: projectTagging(config, targets, routes),
-    webSocketApi: options.webSocketApi,
+    deployChoices: Object.fromEntries([...new Set(targets.map(target => target.role))].map(role => [role, Object.fromEntries(DEPLOY_SETTINGS.map(setting => [setting, deployLanes(role, setting)]))])) as ModeModel["deployChoices"],
+    gateways: gatewayModels(routes, projectedTargets),
     triggerAdapters: triggerAdapters(),
     interfaceEndpointServices: [...INTERFACE_ENDPOINT_SERVICES],
     triggers: normalizeFrameworkConfig(config).triggers.map((binding) => ({ ...binding, resource: binding.resource ? resourceId(binding.resource.path) : "" })),

@@ -10,6 +10,7 @@ import {
   getFrameworkTargets,
   getCloudTargets,
   getLocalTargets,
+  isTargetEnabled,
   invokesAgent,
   startsWorkflow,
   succeed,
@@ -121,11 +122,10 @@ test("tools follow the union of their consuming agents' deployment lanes", () =>
   }
 });
 
-test("tools reject authored deploy settings with a migration diagnostic", () => {
-  assert.throws(
-    () => config({ tools: [{ echo: { deploy: "local-only" } } as never] }),
-    /tools\["echo"\].*deploy.*deployment is inferred from the agents that list it/,
-  );
+test("tools accept explicit deployment without a consuming agent", () => {
+  const built = config({ tools: [{ echo: { deploy: "local-only" } }], agents: [] });
+  assert.equal(isTargetEnabled(built, "lambda", "echo", "local"), true);
+  assert.equal(isTargetEnabled(built, "lambda", "echo", "cloud"), false);
 });
 
 test("inferred tool lanes still validate outgoing invocation destinations", () => {

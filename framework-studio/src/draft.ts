@@ -25,13 +25,13 @@ interface TriggerEntry { readonly kind: "triggers"; readonly key: string; readon
 interface NativeEntry { readonly kind: "native"; readonly key: string; readonly edge: string; readonly error?: string }
 interface FailureEntry { readonly kind: "failure"; readonly key: string; readonly event: string; readonly value: FailureDestinationSettings | null; readonly error?: string }
 interface ClientMappingEntry { readonly kind: "clientEnvironment"; readonly key: string; readonly mappings: ClientEnvironmentMappings; readonly count: number; readonly error?: string }
-export interface CreationEntry { readonly kind: "create"; readonly key: "create"; readonly resourceKind: CreationKind; readonly form: Readonly<Record<string, string | number | boolean>>; readonly request?: CreationRequest; readonly error?: string }
+export interface CreationEntry { readonly kind: "create"; readonly key: "create"; readonly resourceKind: CreationKind; readonly form: Readonly<Record<string, string | number | boolean>>; readonly request?: CreationRequest; readonly error?: string; readonly inputSettings?: { readonly defaultValue: string; readonly choices: string } }
 export interface PlacementEntry { readonly kind: "placement"; readonly key: string; readonly edit: PlacementEdit; readonly error?: string }
 export interface NetworkEntry { readonly kind: "network"; readonly key: string; readonly network: string; readonly settings: NetworkSettings; readonly error?: string }
 export interface NetworkRemovalEntry { readonly kind: "removeNetwork"; readonly key: string; readonly network: string; readonly error?: string }
 export interface DatabaseEntry { readonly kind: "database"; readonly key: string; readonly database: string; readonly settings: DatabaseSettingsInput; readonly error?: string }
 export interface DatabasePlacementEntry { readonly kind: "databasePlacement"; readonly key: string; readonly edit: DatabasePlacementEdit; readonly error?: string }
-export interface OperationEntry { readonly kind: "operation"; readonly key: string; readonly operation: Extract<DraftEdit, { kind: "implementation" | "connection" | "removeWorkload" | "identityPolicy" }>; readonly error?: string }
+export interface OperationEntry { readonly kind: "operation"; readonly key: string; readonly operation: Extract<DraftEdit, { kind: "deploy" | "implementation" | "connection" | "removeWorkload" | "identityPolicy" }>; readonly error?: string }
 export type DraftEntry = OperationEntry | TagsEntry | DatabasePlacementEntry | DatabaseEntry | NetworkRemovalEntry | PlacementEntry | NetworkEntry | CreationEntry | FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry | ClientMappingEntry;
 export interface DraftState {
   readonly baseline: Snapshot;
@@ -97,7 +97,12 @@ export class InspectorDraft {
   }
   stageOperation(operation: OperationEntry["operation"]): void {
     const key = `operation:${operation.kind}:${operation.target}:${operation.kind === "connection" ? JSON.stringify([operation.connection, operation.destination, operation.variable, operation.grant, operation.scope]) : ""}`;
-    this.put(key, { kind: "operation", key, operation });
+    if (operation.kind === "deploy") {
+      const saved = this.state.baseline.models[this.state.mode].targets.find(target => target.ref === operation.target)?.lanes;
+      const original = saved?.when ? { when: { resource: saved.when.resource, equals: saved.when.equals } } : saved?.origin === "default" ? "inherit" : saved?.deploy;
+      if (JSON.stringify(original) === JSON.stringify(operation.value)) { this.put(key, undefined); return; }
+    }
+    this.put(key, { kind: "operation", key, operation, ...(operation.kind === "deploy" && typeof operation.value !== "string" && !operation.value.when.equals.trim() ? { error: "Enter a matching value." } : {}) });
   }
   placement(target: string): PlacementEdit | undefined {
     return this.state.entries.find((entry): entry is PlacementEntry => entry.kind === "placement" && entry.edit.target === target)?.edit;
@@ -169,7 +174,11 @@ export class InspectorDraft {
     try { request = readCreationRequest({ kind: resourceKind, ...form }); }
     catch (problem) { error = problem instanceof Error ? problem.message : String(problem); }
     error = errorOverride ?? error;
-    this.put("create", { kind: "create", key: "create", resourceKind, form, request, error });
+    // Keep parameter-only editor values outside the strict secret form/request.
+    // The draft outlives the wizard when returning to the resource chooser.
+    const inputSettings = resourceKind === "input" ? { defaultValue: String(form.defaultValue ?? ""), choices: String(form.choices ?? "") }
+      : resourceKind === "secret" ? this.creation()?.inputSettings : undefined;
+    this.put("create", { kind: "create", key: "create", resourceKind, form, request, error, ...(inputSettings ? { inputSettings } : {}) });
   }
   field(target: string, fact: FieldFact): FieldEntry | undefined { return this.state.entries.find((entry): entry is FieldEntry => entry.kind === "field" && entry.key === fieldKey(target, fact.field)); }
   value(target: string, fact: FieldFact): LiteralValue | undefined {
