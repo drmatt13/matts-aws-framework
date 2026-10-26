@@ -1,7 +1,8 @@
+import { sourceFixtureCheckpoint } from "./support/source-fixture";
 import assert from "./support/assert";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { after, before, test } from "node:test";
+import { after, afterEach, before, beforeEach, test } from "node:test";
 import { SnapshotBuilder } from "../server/snapshot";
 import { EditService } from "../server/edits/transaction";
 import { generateCreationArtifacts } from "../server/edits/creation-generation";
@@ -107,6 +108,10 @@ export class Storage extends cdk.Stack {
   builder = new SnapshotBuilder(root); edits = new EditService(root, builder); await builder.refresh();
   for (const target of builder.current!.snapshot.models.dev.targets) assert.ok(target.implementation?.ready, target.implementation?.problems.join("\n") ?? `${target.ref} implementation was not checked`);
 });
+let restoreSource: () => Promise<void>;
+beforeEach(() => { restoreSource = sourceFixtureCheckpoint(root, builder); });
+afterEach(async () => { await restoreSource(); });
+
 after(async () => { await builder?.dispose(); assert.ok(root.startsWith(path.join(repository, ".cache/framework-studio") + path.sep)); rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
 test("each service field is discovered semantically with its concrete availability reason", () => {
@@ -149,7 +154,7 @@ test("SQS visibility must cover the event timeout in both graphs; the six-times 
   assert.deepEqual(triggerTiming(snapshot, { event: "first", resource: "resource:storage.table", adapter: "dynamodb", options: {} }), {});
 });
 
-test("a multi-service, multi-file draft previews both graphs, writes literal descriptors and undoes exact bytes", async () => {
+test("a multi-service, multi-file draft previews both graphs, writes literal descriptors with exact source bytes", async () => {
   const originalFirst = readFileSync(firstFile, "utf8"), originalSecond = readFileSync(secondFile, "utf8");
   const first = [
     bind("first", "sqs", "modestQueue", "orders", { batchSize: 5, reportBatchItemFailures: true }),
@@ -178,14 +183,10 @@ test("a multi-service, multi-file draft previews both graphs, writes literal des
   assert.equal(reassign.ok, true, JSON.stringify(reassign.preflight));
   assert.equal((await edits.applyBatch(reassign.planId)).status, "applied");
   assert.equal(builder.current!.snapshot.models.prod.triggers!.find((binding) => binding.key === "storage.modestQueue/orders")?.event, "second");
-  assert.equal((await edits.undo()).status, "applied");
-  assert.equal(readFileSync(firstFile, "utf8"), written);
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(firstFile, "utf8"), originalFirst); assert.equal(readFileSync(secondFile, "utf8"), originalSecond);
   assert.equal(builder.current!.snapshot.models.dev.triggers!.length, 0);
-  assert.equal((await edits.redo()).status, "applied");
-  assert.equal(readFileSync(firstFile, "utf8"), written);
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(firstFile, "utf8"), originalFirst);
 });
 
@@ -244,6 +245,6 @@ test("an event's failure destination writes onFailure with the catalog reference
   assert.equal(removal.ok, true, JSON.stringify(removal.preflight));
   assert.equal((await edits.applyBatch(removal.planId)).status, "applied");
   assert.equal(readFileSync(firstFile, "utf8"), original, "no property or dead import remains");
-  assert.equal((await edits.undo()).status, "applied"); assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(firstFile, "utf8"), original);
 });

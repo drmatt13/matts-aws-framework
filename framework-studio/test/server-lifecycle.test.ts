@@ -156,3 +156,29 @@ test("shutdown owns blocked source-review evaluators independently of the snapsh
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+
+test("source history endpoints are removed and snapshots omit their history state", async () => {
+  const directory = fixture();
+  writeFileSync(path.join(directory, "framework.config.ts"), "export default {};\n");
+  const reservation = createServer(), port = await listen(reservation); await stop(reservation);
+  const running = start(directory, port);
+  try {
+    const deadline = Date.now() + 10_000;
+    while (!running.output().includes("Framework Studio is running")) {
+      assert.ok(Date.now() < deadline, running.output());
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    const base = `http://127.0.0.1:${port}`, page = await (await fetch(base)).text();
+    const headers = { "x-studio-token": page.match(/name="studio-token" content="([^"]+)"/)![1]!, "x-studio-protocol": page.match(/name="studio-protocol" content="([^"]+)"/)![1]!, origin: base, "content-type": "application/json" };
+    const state = await (await fetch(`${base}/api/snapshot`, { headers })).json();
+    assert.equal(Object.hasOwn(state, "history"), false);
+    for (const route of ["edits/undo", "edits/redo", "resources/undo", "resources/redo"]) {
+      const response = await fetch(`${base}/api/${route}`, { method: "POST", headers, body: "{}" });
+      assert.equal(response.status, 404, `${route} must not remain a source-writing API`);
+    }
+  } finally {
+    running.child.kill("SIGKILL"); await running.exited;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

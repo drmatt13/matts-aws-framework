@@ -77,7 +77,7 @@ and all configuration controls freeze during validation, stale-source evaluation
 or a source conflict. Cancel remains available for resolving a conflict. These UI
 states do not change the reviewed-source transaction or deploy authorization.
 
-`planCreation` in [edits/creation.ts](../../../framework-studio/server/edits/creation.ts) returns source overrides, expected entities/selection and impact. It does not write authored files. `assertCreationFile` allows fixed creator-owned destinations and refuses traversal/symlink components. Disposable evaluators load new proposed modules; the [transaction](editing.md) reviews, validates both modes/typechecks, applies, verifies and makes creation undoable.
+`planCreation` in [edits/creation.ts](../../../framework-studio/server/edits/creation.ts) returns source overrides, expected entities/selection and impact. It does not write authored files. `assertCreationFile` allows fixed creator-owned destinations and refuses traversal/symlink components. Disposable evaluators load new proposed modules; the [transaction](editing.md) reviews, validates both modes/typechecks, applies and verifies creation.
 
 `generateCreationArtifacts` in [creation-generation.ts](../../../framework-studio/server/edits/creation-generation.ts) copies selected source/manifests into a private preview directory, excludes authored environment values/dependencies/deployment outputs, overlays the proposal and runs the real framework generator with `--repository-root`. Its allowlisted generated outputs join the same diff/journal. New service and agent manifests also trigger an offline npm 11 lockfile-only update in the copy. Input hashes protect the review from generator-input changes. Generated files are never authored by scaffold templates or accepted as arbitrary HTTP write destinations.
 
@@ -124,7 +124,7 @@ It reviews literal declaration removal, generated reference changes and an exact
 archive in `archived-workloads/<kind>/<id>/`; exclusive original source files are removed
 only on Apply. Symlinks, env values, binary/large sets, dependencies and conflicting
 archives are refused before writes. Archive source is excluded from active TypeScript
-roots. Undo restores source. This never deletes already deployed infrastructure or data.
+roots. Use Git to restore saved source. This never deletes already deployed infrastructure or data.
 
 The VPC creator separates immutable `id` / `cloud.constructId` from its optional
 display `name`. Changing a display name preserves deployed construct identity.
@@ -135,7 +135,7 @@ one accidentally. An existing intentional overlap can keep its CIDR while other
 settings change. A VPC can be removed only after workloads, the database and all
 other source imports/re-exports have stopped using it. Removal reviews the registry,
 import, exclusive declaration module and map descriptions together, and uses the
-same conflict checks, rollback and undo/redo as creation. Custom modules or computed
+same conflict checks, guarded rollback as creation. Custom modules or computed
 references stay source-owned and produce an actionable refusal.
 
 Descriptions for every family use [framework-config/descriptions.ts](../../../framework-config/descriptions.ts), which the existing Inspector reads and edits. Optional input/secret consumer bindings reuse compatible catalog imports and the framework's ARN or startup-value delivery. Inputs/secrets share declarations across graphs; their authored values remain independent in each mode's protected input file. Creation refuses collisions, incompatible route reuse, nonliteral compositions and unknown references. Apply selects the created entity and saves the reviewed authored/generated artifacts; it does not deploy or start containers. Preview generation can fail when offline npm cache/workspace inputs are insufficient. Browser usability and live provisioned behavior require separate checks. The [capability matrix](../reference/capabilities.md) distinguishes implemented source paths from external validation.
@@ -144,4 +144,4 @@ Triggers are a separate change surface. [config/triggers.ts](../../../packages/f
 
 `validateTriggerBindings` / `planTriggers` in [edits/triggers.ts](../../../framework-studio/server/edits/triggers.ts) write declared event triggers. Failure destination and local replay changes share batch preflight; enabling replay also updates a supported handler wrapper through [local-replay.ts](../../../framework-studio/server/edits/local-replay.ts). Source-inferred native edges use `planNativeRemovals` in [native-triggers.ts](../../../framework-studio/server/edits/native-triggers.ts) only when a safe removal site is recognized. Unsupported native code is not a general CDK editor.
 
-Validate using [creation](../../../framework-studio/test/creation.test.ts), [triggers](../../../framework-studio/test/triggers.test.ts), [removal](../../../framework-studio/test/trigger-removal.test.ts), [trigger services](../../../framework-studio/test/trigger-services.test.ts), [CDK triggers](../../../cdk-app/test/triggers.test.ts), and draft/undo tests. Adding a resource family requires the [extension recipe](../guides/extensions.md) across framework, CDK, discovery and transformations.
+Validate using [creation](../../../framework-studio/test/creation.test.ts), [triggers](../../../framework-studio/test/triggers.test.ts), [removal](../../../framework-studio/test/trigger-removal.test.ts), [trigger services](../../../framework-studio/test/trigger-services.test.ts), [CDK triggers](../../../cdk-app/test/triggers.test.ts), and draft/recovery tests. Adding a resource family requires the [extension recipe](../guides/extensions.md) across framework, CDK, discovery and transformations.

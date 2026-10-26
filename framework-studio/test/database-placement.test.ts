@@ -1,8 +1,9 @@
+import { sourceFixtureCheckpoint } from "./support/source-fixture";
 import assert from "./support/assert";
 import { randomUUID } from "node:crypto";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { after, before, test } from "node:test";
+import { after, afterEach, before, beforeEach, test } from "node:test";
 import { SnapshotBuilder } from "../server/snapshot";
 import { EditService } from "../server/edits/transaction";
 import { planDatabasePlacement } from "../server/edits/database";
@@ -25,11 +26,15 @@ before(async () => {
   edits = new EditService(fixture, builder);
   await builder.refresh();
 });
+let restoreSource: () => Promise<void>;
+beforeEach(() => { restoreSource = sourceFixtureCheckpoint(fixture, builder); });
+afterEach(async () => { await restoreSource(); });
+
 after(async () => { await builder?.dispose(); rmSync(fixture, { recursive: true, force: true }); });
 const state = () => builder.current!;
 const relocation = (): DatabasePlacementEdit => ({ kind: "databasePlacement", database: state().snapshot.models.dev.managedDatabase!.id, vpc: "database-relocation", subnet: "isolated" });
 
-test("database placement coordinates all consumers, preserves database contracts, and undoes exact source bytes", async () => {
+test("database placement coordinates all consumers, preserves database contracts, with exact source bytes", async () => {
   const baseline = state().snapshot;
   const database = baseline.models.dev.managedDatabase!;
   const consumers = databaseConsumers(Object.values(baseline.models), database.id);
@@ -62,11 +67,9 @@ test("database placement coordinates all consumers, preserves database contracts
   assert.deepEqual(state().snapshot.models.dev.localServices, baseline.models.dev.localServices);
   assert.equal(readFileSync(path.join(fixture, "docker-compose.yml"), "utf8"), compose);
   assert.equal(readFileSync(path.join(fixture, "cdk-app/lib/app/rds-stack.ts"), "utf8"), native);
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   for (const [file, text] of originals) assert.equal(readFileSync(path.join(fixture, file), "utf8"), text);
-  assert.equal((await edits.redo()).status, "applied");
-  assert.equal(state().snapshot.models.prod.managedDatabase!.networkId, "database-relocation");
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
 });
 
 test("unsafe or competing placement edits are refused before any file is written", async () => {
@@ -104,7 +107,7 @@ test("subnet and policy drafts compose in one database file without moving consu
   assert.equal(state().snapshot.models.prod.managedDatabase!.subnet, "private");
   assert.equal(state().snapshot.models.prod.managedDatabase!.settings.multiAz, true);
   assert.deepEqual(state().snapshot.models.dev.targets.map(target => target.placement), targets.map(target => target.placement));
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(path.join(fixture, plan.changes[0]!.file), "utf8"), before);
 });
 

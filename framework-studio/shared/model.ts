@@ -176,6 +176,9 @@ export type EnvironmentValue =
   | { readonly kind: "reference"; readonly resource: string; readonly display: string };
 
 export interface ModelTarget {
+  /** Permission sources without a drawable catalog endpoint (schedules, custom integrations). */
+  readonly permissionSources?: readonly { readonly relation: "trigger" | "completesCallback" | "integration"; readonly peer: string; readonly label: string; readonly incoming?: boolean; readonly context?: import("./permissions").PermissionContext }[];
+  readonly authorizations?: readonly { readonly connection?: string; readonly authorization: import("./permissions").ConnectionAuthorization }[];
   /** Source artifacts only; never evidence that a process or AWS resource runs. */
   readonly implementation?: { readonly ready: boolean; readonly problems: readonly string[] };
   /** `lambda:sign-in`: the framework's canonical reference, and this model's id. */
@@ -327,10 +330,14 @@ export type Relation =
   | "integration"
   /** A worker completes a workflow callback. */
   | "completesCallback"
+  /** Permission to send replies through the selected WebSocket API. */
+  | "manageConnections"
   /** A relationship found in linked application CDK source, without executing it. */
   | "cdk";
 
 export interface ModelEdge {
+  readonly permissionContext?: import("./permissions").PermissionContext;
+  readonly authorization?: import("./permissions").ConnectionAuthorization;
   readonly inputRequirement?: import("./deployment-inputs").InputRequirement;
   /** `relation:from->to#n`, so two relations between one pair stay two edges. */
   readonly id: string;

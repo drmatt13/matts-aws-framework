@@ -77,11 +77,10 @@ canvas container. The toolbar participates in normal flow, so wrapping and searc
 feedback reduce the canvas viewport without obscuring resources. Resize, picking,
 hover and fit keep using the inner scene container. Renderer timing remains in
 `window.__studioLandscape.stats()`; normal chrome shows resource/connection counts.
-Isometric, Studio's home view at `/` (`/isometric` redirects there), composes
-`SourceEnvironment` and `SourceHistory` into its toolbar, as the unrouted Board does. These select the declaration projection and edit source; named AWS targets
-remain in operational workspaces. The shared primary bar contains only navigation,
-repository identity and source validation. Empty graph states retain source controls
-so a failed mode does not prevent switching to another mode or undoing a source edit.
+Isometric, Studio's home view at `/` (`/isometric` redirects there), uses the shared
+navbar's `SourceEnvironment` selector. `Shell` keeps that selector and source validation
+available on every route, including empty/error maps. The map toolbar contains search,
+tag filters and camera controls. Named AWS targets remain in operational workspaces.
 See the [UI design system](../../framework-studio/ui-design-system.md) for route gutters,
 surface and responsive ownership. Board uses a labeled creation action and a themed
 chooser; its trailing legend and action wrap together.
@@ -111,8 +110,9 @@ Board's [layout.ts](../../../framework-studio/src/layout.ts) arranges entry, com
 
 Keep optimization bounded for large graphs. Preserve layout stability across selection/mode switches and avoid recomputing source models during a pointer move. Rendering and picking must share geometric assumptions, especially curve sampling and visible endpoints. Avoid claiming a node-count ceiling or browser FPS guarantee from a synthetic timing fixture.
 
-The six category pills at the map's top filter background connections, all enabled by
-default. Drawing and pointer picking share `connectionVisible`; selecting or previewing
+The six category pills at the map's top filter background connections. Routes (purple)
+and Environment and secrets start off on each page load; the other four start on.
+Drawing and pointer picking share `connectionVisible`; selecting or previewing
 a resource reveals its links regardless of those filters. Clearing selection resumes
 the unchanged filters. The accessible connection list still exposes every relationship.
 

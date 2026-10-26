@@ -2,7 +2,7 @@ import assert from "./support/assert";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { BatchEditor, type BatchJournal } from "../server/edits/batch";
+import { BatchEditor } from "../server/edits/batch";
 import { EditError } from "../server/edits/io";
 import { failedModel } from "../server/model/project";
 import type { SnapshotBuilder } from "../server/snapshot";
@@ -27,7 +27,7 @@ for (const guard of ["creationModels", "operationModels"] as const) {
     const source = path.join(root, "framework.config.ts");
     writeFileSync(source, "// Source must remain untouched.\nexport default {};\n");
     const original = readFileSync(source, "utf8");
-    let writes = 0, records = 0;
+    let writes = 0;
     const baseline = { dev: model("dev", "reviewed"), prod: model("prod", "reviewed") };
     const builder = { current: { snapshot: { revision: "fixture", models: baseline, source: { capabilityFiles: {} } } },
       refresh: async () => { throw new Error("Rejected validation must not refresh written source."); },
@@ -42,15 +42,14 @@ for (const guard of ["creationModels", "operationModels"] as const) {
     };
     // Inject only the completed validator result; exercise the real write guards.
     (editor as unknown as { validate: () => Promise<unknown> }).validate = async () => ({ models, preflight });
-    const entry: BatchJournal = {
-      kind: "batch", label: "Reviewed input", changes: [], edits: [], routes: [], replayTargets: [], replaySources: [],
-      [guard]: { forward: { dev: reviewedSignature, prod: reviewedSignature }, inverse: { dev: reviewedSignature, prod: reviewedSignature } },
+    const entry = {
+      label: "Reviewed input", changes: [], edits: [], routes: [], replayTargets: [], replaySources: [],
+      [guard]: { dev: reviewedSignature, prod: reviewedSignature },
     };
     try {
-      await assert.rejects(editor.replay(entry, false, () => { records++; }), (error: unknown) =>
+      await assert.rejects((editor as unknown as { write: (entry: unknown) => Promise<unknown> }).write(entry), (error: unknown) =>
         error instanceof EditError && error.status === (rejected ? 422 : 409));
       assert.equal(writes, 0);
-      assert.equal(records, 0);
       assert.equal(readFileSync(source, "utf8"), original);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });

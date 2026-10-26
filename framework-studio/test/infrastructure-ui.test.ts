@@ -16,7 +16,6 @@ let router: typeof import("@tanstack/react-router");
 let studio: typeof import("../src/studio");
 let component: typeof import("../src/views/Infrastructure");
 let shell: typeof import("../src/views/Shell");
-let sourceContext: typeof import("../src/views/SourceContext");
 let inputs: typeof import("../src/views/DeploymentInputs");
 let clientInputs: typeof import("../src/views/ClientEnvironment");
 let controls: typeof import("../src/views/DraftControls");
@@ -46,12 +45,11 @@ before(async () => {
   ui = require("@testing-library/react"); query = require("@tanstack/react-query"); router = require("@tanstack/react-router");
   studio = await import("../src/studio"); component = await import("../src/views/Infrastructure"); api = await import("../src/api");
   shell = await import("../src/views/Shell");
-  sourceContext = await import("../src/views/SourceContext");
   inputs = await import("../src/views/DeploymentInputs");
   clientInputs = await import("../src/views/ClientEnvironment");
   controls = await import("../src/views/DraftControls"); review = await import("../src/views/EditDialog");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
-  response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, history: {}, commands: {}, busy: null };
+  response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, busy: null };
 });
 after(async () => { await builder.dispose(); dom.window.close(); });
 afterEach(() => { ui.cleanup(); clients.splice(0).forEach((client) => client.clear()); mock.restoreAll(); });
@@ -60,7 +58,6 @@ async function mount(navigate: (id: string) => void = () => {}, initialOwner?: s
   function Workbench() {
     const context = studio.useStudio();
     if (withShell) return h(shell.Shell, null,
-      h("div", { className: "workspace-toolbar" }, h(sourceContext.SourceEnvironment), h(sourceContext.SourceHistory)),
       h("button", { onClick: () => context.select("island:stacks") }, "Stacks island settings"),
       h("button", { onClick: () => {
         const fact = context.model.fields["lambda:graphql-api"]!.find((fact) => fact.field === "lambda.memorySize")!;
@@ -83,7 +80,7 @@ async function mount(navigate: (id: string) => void = () => {}, initialOwner?: s
   else await ui.screen.findByRole("button", { name: /Synthesize CDK|Refresh from CDK/ });
 }
 
-test("the header keeps automatic health, source history belongs to the workspace, and saved-source audits stay explicit", async () => {
+test("the header keeps source mode and automatic health while saved-source audits stay explicit", async () => {
   const commands: unknown[][] = [];
   mock.method(api.api, "command", async (...args: unknown[]) => { commands.push(args); return { command: "framework:check", exitCode: 0, output: "All checks passed", durationMs: 20 }; });
   await mount(() => {}, undefined, undefined, true);
@@ -91,7 +88,8 @@ test("the header keeps automatic health, source history belongs to the workspace
   assert.equal(ui.within(header).queryByRole("button", { name: "Check" }), null);
   assert.equal(ui.within(header).queryByRole("button", { name: "Infrastructure" }), null);
   assert.equal(ui.within(header).queryByRole("button", { name: "Undo" }), null);
-  assert.equal(ui.within(ui.screen.getByRole("group", { name: "Source edit history" })).getByRole("button", { name: "Undo" }).textContent, "");
+  assert.equal(ui.screen.queryByRole("group", { name: "Source edit history" }), null);
+  assert.ok(ui.within(header).getByRole("group", { name: "Source environment" }));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /Configuration health/ }));
   assert.ok(ui.screen.getByText(/Source validation checks the saved declarations/));
   assert.equal(commands.length, 0);

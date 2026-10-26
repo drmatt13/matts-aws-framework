@@ -17,7 +17,6 @@ let add: typeof import("../src/views/AddMenu");
 let board: typeof import("../src/views/Board");
 let database: typeof import("../src/views/DatabaseDiagram");
 let shell: typeof import("../src/views/Shell");
-let sourceContext: typeof import("../src/views/SourceContext");
 let navigation: typeof import("../src/views/NavigationStrip");
 
 before(async () => {
@@ -32,10 +31,9 @@ before(async () => {
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
   studio = await import("../src/studio"); add = await import("../src/views/AddMenu"); board = await import("../src/views/Board"); database = await import("../src/views/DatabaseDiagram");
   shell = await import("../src/views/Shell");
-  sourceContext = await import("../src/views/SourceContext");
   navigation = await import("../src/views/NavigationStrip");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
-  response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, history: {}, busy: null };
+  response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, busy: null };
 });
 after(async () => { await builder?.dispose(); dom.window.close(); });
 afterEach(() => ui.cleanup());
@@ -64,7 +62,7 @@ test("shell health exposes both verdicts and follows validated snapshot changes"
     prod: { ...response.snapshot.models.prod, diagnostics: [{ severity: "error" as const, stage: "validate" as const, message: "Invalid production configuration" }, { severity: "warning" as const, stage: "validate" as const, message: "Check production inputs" }] },
   } } };
   const update = await mount(() => h(shell.Shell, { children: null }), initial);
-  assert.equal(ui.screen.queryByRole("group", { name: "Source environment" }), null, "source selection belongs to each relevant workspace");
+  assert.ok(ui.within(document.querySelector(".bar")! as HTMLElement).getByRole("group", { name: "Source environment" }));
   const health = ui.screen.getByRole("button", { name: /Configuration health/ });
   const description = () => document.getElementById(health.getAttribute("aria-describedby")!)!.textContent;
   assert.match(health.textContent!, /Source: 1 error/);
@@ -76,19 +74,26 @@ test("shell health exposes both verdicts and follows validated snapshot changes"
   assert.equal(ui.screen.getByRole("button", { name: `${health.textContent}. Configuration health` }), health, "the accessible name must follow the visible status after validation changes");
 });
 
-test("primary navigation retains all six destinations and source validation without source editing controls", async () => {
+test("primary navigation retains one source toggle and validation across all six destinations", async () => {
   await mount(() => h(shell.Shell, { children: h("p", null, "Workspace content") }));
   const navigation = ui.screen.getByRole("navigation", { name: "Views" });
   const destinations = ["Map", "Database", "Deploy", "Cognito", "Domains", "WebSockets"];
   assert.deepEqual(ui.within(navigation).getAllByRole("link").map(link => link.textContent), destinations);
   const health = ui.screen.getByRole("button", { name: /Configuration health/ });
+  const environment = ui.screen.getByRole("group", { name: "Source environment" });
   for (const name of destinations) {
     const link = ui.within(navigation).getByRole("link", { name });
     ui.fireEvent.click(link);
     await ui.waitFor(() => assert.equal(link.getAttribute("aria-current"), "page"));
     assert.equal(navigation.querySelectorAll('[aria-current="page"]').length, 1);
     assert.equal(ui.screen.getByRole("button", { name: /Configuration health/ }), health, "route changes retain the same primary status control");
-    assert.equal(ui.screen.queryByRole("group", { name: "Source environment" }), null);
+    assert.equal(ui.screen.getByRole("group", { name: "Source environment" }), environment);
+    const modes = ui.within(environment);
+    ui.fireEvent.click(modes.getByRole("button", { name: "Production" }));
+    assert.equal(modes.getByRole("button", { name: "Production" }).getAttribute("aria-pressed"), "true");
+    ui.fireEvent.click(modes.getByRole("button", { name: "Development" }));
+    assert.equal(modes.getByRole("button", { name: "Development" }).getAttribute("aria-pressed"), "true");
+    assert.equal(ui.screen.getAllByRole("group", { name: "Source environment" }).length, 1);
     assert.equal(ui.screen.queryByRole("group", { name: "Source edit history" }), null);
   }
 });
@@ -180,16 +185,13 @@ test("source environment offers the two source modes and protects unsaved edits 
   let context: ReturnType<typeof studio.useStudio>;
   function Workspace() {
     context = studio.useStudio();
-    return h(shell.Shell, { children: h("div", null, h(sourceContext.SourceEnvironment), h(sourceContext.SourceHistory)) });
+    return h(shell.Shell, { children: null });
   }
-  await mount(Workspace, { ...response, history: { undo: "Change source", redo: "Restore source" } });
+  await mount(Workspace);
   const environment = ui.within(ui.screen.getByRole("group", { name: "Source environment" }));
   assert.deepEqual(environment.getAllByRole("button").map(button => button.textContent), ["Development", "Production"], "named deployments such as staging must not masquerade as additional source modes");
   const development = environment.getByRole("button", { name: "Development" });
   const production = environment.getByRole("button", { name: "Production" });
-  const history = ui.within(ui.screen.getByRole("group", { name: "Source edit history" }));
-  assert.equal((history.getByRole("button", { name: "Undo" }) as HTMLButtonElement).disabled, false);
-  assert.equal((history.getByRole("button", { name: "Redo" }) as HTMLButtonElement).disabled, false);
   assert.equal(development.getAttribute("aria-pressed"), "true");
   ui.fireEvent.click(production);
   assert.equal(production.getAttribute("aria-pressed"), "true");
@@ -197,8 +199,6 @@ test("source environment offers the two source modes and protects unsaved edits 
   ui.act(() => context!.draft.beginCreation("stack"));
   const draft = context!.draft.creation();
   assert.ok(draft);
-  assert.equal((history.getByRole("button", { name: "Undo" }) as HTMLButtonElement).disabled, true);
-  assert.equal((history.getByRole("button", { name: "Redo" }) as HTMLButtonElement).disabled, true);
   ui.fireEvent.click(development);
   const dialog = await ui.screen.findByRole("dialog", { name: "Unsaved changes" });
   assert.equal(context!.mode, "prod");
@@ -210,73 +210,6 @@ test("source environment offers the two source modes and protects unsaved edits 
   await ui.waitFor(() => assert.equal(development.getAttribute("aria-pressed"), "true"));
   assert.equal(context!.mode, "dev");
   assert.equal(context!.draft.dirty, false);
-});
-
-test("source history blocks repeated and opposite requests until success or failure settles", async () => {
-  const { api, ApiError } = await import("../src/api");
-  const originalUndo = api.undo, originalRedo = api.redo;
-  let resolveUndo!: (value: Awaited<ReturnType<typeof api.undo>>) => void;
-  let rejectRedo!: (error: Error) => void;
-  const undo = new Promise<Awaited<ReturnType<typeof api.undo>>>(resolve => { resolveUndo = resolve; });
-  const redo = new Promise<Awaited<ReturnType<typeof api.redo>>>((_resolve, reject) => { rejectRedo = reject; });
-  let undoRequests = 0, redoRequests = 0;
-  let context: ReturnType<typeof studio.useStudio>;
-  api.undo = () => { undoRequests++; return undo; };
-  api.redo = () => { redoRequests++; return redo; };
-  function Workspace() { context = studio.useStudio(); return h(sourceContext.SourceHistory); }
-  try {
-    await mount(Workspace, { ...response, history: { undo: "Change source", redo: "Restore source" } });
-    const history = ui.within(ui.screen.getByRole("group", { name: "Source edit history" }));
-    const undoButton = history.getByRole("button", { name: "Undo" }) as HTMLButtonElement;
-    const redoButton = history.getByRole("button", { name: "Redo" }) as HTMLButtonElement;
-    ui.act(() => { undoButton.click(); redoButton.click(); undoButton.click(); });
-    assert.equal(undoRequests, 1, "a repeated activation must not queue another source undo");
-    assert.equal(redoRequests, 0, "redo must not queue while undo is pending");
-    assert.equal(undoButton.disabled, true);
-    assert.equal(redoButton.disabled, true);
-    assert.equal(history.getByRole("status").textContent, "Undoing source edit…");
-    await ui.act(async () => { resolveUndo({ status: "applied", message: "Undid source edit.", revision: response.snapshot.revision }); await undo; });
-    assert.equal(undoButton.disabled, false);
-    assert.equal(redoButton.disabled, false);
-    assert.equal(history.getByRole("status").textContent, "");
-    assert.equal(context!.toasts.at(-1)?.text, "Undid source edit.");
-    ui.act(() => { redoButton.click(); undoButton.click(); redoButton.click(); });
-    assert.equal(undoRequests, 1);
-    assert.equal(redoRequests, 1);
-    assert.equal(undoButton.disabled, true);
-    assert.equal(redoButton.disabled, true);
-    assert.equal(history.getByRole("status").textContent, "Redoing source edit…");
-    await ui.act(async () => { rejectRedo(new ApiError(409, "Source changed during redo.")); await redo.catch(() => {}); });
-    assert.equal(undoButton.disabled, false, "a rejected request must release the pending gate");
-    assert.equal(redoButton.disabled, false);
-    assert.equal(history.getByRole("status").textContent, "");
-    assert.equal(context!.toasts.at(-1)?.text, "Source changed during redo.");
-    assert.equal(context!.toasts.at(-1)?.tone, "refuse");
-  } finally { api.undo = originalUndo; api.redo = originalRedo; }
-});
-
-test("source history waits for live source evaluation and commands, then becomes available again", async () => {
-  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "EventSource");
-  const listeners = new Map<string, EventListener>();
-  Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class {
-    addEventListener(name: string, listener: EventListener) { listeners.set(name, listener); }
-    removeEventListener(name: string) { listeners.delete(name); }
-    close() {}
-  } });
-  const emit = (name: string, data: unknown) => ui.act(() => listeners.get(name)?.(new dom.window.MessageEvent(name, { data: JSON.stringify(data) })));
-  try {
-    await mount(sourceContext.SourceHistory, { ...response, history: { undo: "Change source", redo: "Restore source" } });
-    const buttons = ui.within(ui.screen.getByRole("group", { name: "Source edit history" })).getAllByRole("button") as HTMLButtonElement[];
-    assert.ok(buttons.every(button => !button.disabled));
-    emit("status", { evaluating: true });
-    assert.ok(buttons.every(button => button.disabled), "source evaluation must pause both history actions");
-    emit("status", { evaluating: false });
-    assert.ok(buttons.every(button => !button.disabled));
-    emit("command", { name: "framework:generate", running: true });
-    assert.ok(buttons.every(button => button.disabled), "a running Studio command must pause history writes");
-    emit("command", { name: "framework:generate", running: false });
-    assert.ok(buttons.every(button => !button.disabled), "command completion must release the gate without a snapshot refresh");
-  } finally { if (descriptor) Object.defineProperty(globalThis, "EventSource", descriptor); else Reflect.deleteProperty(globalThis, "EventSource"); }
 });
 
 test("source indexing problems appear as source warnings and open actionable configuration details", async () => {
@@ -387,7 +320,7 @@ test("creation helpers and validation stay associated with controls and source c
 test("the architecture board keeps valid resource-only applications visible and offers creation", async () => {
   const snapshot = response.snapshot;
   const models = { dev: { ...snapshot.models.dev, targets: [], routes: [], edges: [] }, prod: { ...snapshot.models.prod, targets: [], routes: [], edges: [] } };
-  await mount(board.Board, { ...response, snapshot: { ...snapshot, models } });
+  await mount(() => h(shell.Shell, { children: h(board.Board) }), { ...response, snapshot: { ...snapshot, models } });
   assert.ok(ui.screen.getByRole("group", { name: "Application architecture" }));
   assert.ok(document.querySelector(".board [data-entity-id^='resource:']"));
   assert.ok(ui.screen.getByRole("button", { name: "Add to application" }));
@@ -396,7 +329,7 @@ test("the architecture board keeps valid resource-only applications visible and 
 
 test("an unavailable Board graph keeps its source switch available to reach a working environment", async () => {
   const snapshot = response.snapshot;
-  await mount(board.Board, { ...response, snapshot: { ...snapshot, models: { ...snapshot.models,
+  await mount(() => h(shell.Shell, { children: h(board.Board) }), { ...response, snapshot: { ...snapshot, models: { ...snapshot.models,
     dev: { ...snapshot.models.dev, status: "error", targets: [], routes: [], resources: [], edges: [], localServices: [] },
   } } });
   assert.ok(ui.screen.getByText(/development graph did not load/));

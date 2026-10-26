@@ -8,6 +8,8 @@ import { EnvironmentPills } from "./DeploymentBadge";
 import { edgeAvailability } from "../connections";
 import { connectionDescriptionId } from "../../shared/descriptions";
 import { Description } from "./Description";
+import { connectionTitle } from "../../shared/permissions";
+import { AuthorizationBadge, AuthorizationDetails } from "./Authorization";
 
 export function RequirementNotice({ requirement }: { requirement?: InputRequirement }) {
   if (!requirement?.required) return null;
@@ -31,7 +33,7 @@ export function ConnectionEndpoints({ from, to }: { readonly from: string; reado
 export function ConnectionView({ edge, onlyIn, availability }: { edge: ModelEdge; onlyIn?: Mode; availability?: Availability }) {
   const { snapshot } = useStudio();
   return <>
-    <header className="connection-header"><span className="kind">{edge.inputRequirement ? "Input connection" : "Connection"}</span><h2>{edge.label}</h2>
+    <header className="connection-header"><span className="kind">{edge.inputRequirement ? "Input connection" : "Connection"}</span><h2>{connectionTitle(edge)}</h2><AuthorizationBadge authorization={edge.authorization} />
       <EnvironmentPills availability={availability ?? edgeAvailability(edge, snapshot.models)} />
       <ConnectionEndpoints from={edge.from} to={edge.to} />
     </header>
@@ -54,6 +56,7 @@ export function ConnectionDetails({ edge, onlyIn }: { edge: ModelEdge; onlyIn?: 
         {disabledEndpoints.length ? <><p>Both endpoints must be enabled in this environment.</p><ul>{disabledEndpoints.map((id) => <li key={id}><button className="linkish" onClick={() => select(id)}>{titleOf(index, id)}</button> is not enabled in {environment}.</li>)}</ul></> : null}
       </div> : null}
       <RequirementNotice requirement={requirement} />
+      {edge.authorization ? <AuthorizationDetails authorization={edge.authorization} /> : null}
       {requirement && !requirement.required ? <p className="small muted">Optional in this environment.{requirement.status === "default" ? " A parameter default supplies it." : requirement.status === "configured" ? " An environment value is configured." : ""}</p> : null}
       {requirement ? <>
         <h3>{requirement.status === "missing" ? "Resolve this requirement" : "Manage this input"}</h3>

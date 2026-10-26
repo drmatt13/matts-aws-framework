@@ -298,9 +298,7 @@ a {
 .workspace-heading { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2) var(--space-4); min-width: 0; }
 .context-label { color: var(--graphite); font-size: var(--text-caption); font-weight: 400; }
 .workspace-scope { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-label); }
-.source-controls, .source-environment { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
-.source-controls { flex: none; flex-wrap: wrap; max-width: 100%; }
-.source-environment { flex: none; }
+.source-environment { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: none; }
 .workspace-alert, :where(.identity-card [role=alert]) {
   min-width: 0;
   margin: 0;
@@ -432,9 +430,7 @@ a {
 }
 
 .health.warning, .infrastructure-run .warning { color: var(--local); }
-.bar-actions { display: flex; align-items: center; }
-.history-actions { display: inline-flex; gap: var(--space-1); flex: none; }
-.history-actions .icon-button { background: transparent; }
+.bar-actions { display: flex; align-items: center; gap: var(--space-3); }
 
 .icon-button, .primary, .quiet, .button {
   display: inline-flex;
@@ -1146,8 +1142,7 @@ a {
    Narrow screens: one column, the inspector below.
    -------------------------------------------------------------------------- */
 
-/* Primary navigation has identical geometry on every route. Context stays in
-   each workspace toolbar, so opening another view never adds a shell row. */
+/* Source mode and validation stay in the shared navbar on every route. */
 @media (max-width: 1200px) {
   .wordmark small { display: none; }
   .bar { gap: var(--space-3); }
@@ -1158,6 +1153,13 @@ a {
   .bar .tabs { grid-column: 1 / -1; grid-row: 2; }
   .bar-actions { grid-column: 2; grid-row: 1; }
   .wordmark { grid-column: 1; grid-row: 1; }
+}
+@media (max-width: 560px) {
+  .shell { --bar: 129px; }
+  .bar-actions { display: contents; }
+  .bar .source-environment { grid-column: 1 / -1; grid-row: 2; justify-self: end; }
+  .bar .health { grid-column: 2; grid-row: 1; }
+  .bar .tabs { grid-row: 3; }
 }
 @media (max-width: 900px) {
   .workspace { grid-template-columns: 1fr; grid-template-rows: minmax(220px, 1fr) auto; }
@@ -1194,11 +1196,8 @@ a {
 /* Give search and filters the full width before action controls squeeze the
    editable field. Count/reset feedback must never consume the input itself. */
 @media (min-width: 701px) and (max-width: 1100px) {
-  .landscape-top { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; }
-  .landscape-top > .source-controls { grid-column: 1; grid-row: 1; }
-  .landscape-top > .landscape-tools { grid-column: 2; grid-row: 1; }
-  .landscape-top > .panel-toggle { grid-column: 3; grid-row: 1; }
-  .landscape-search-panel { grid-column: 1 / -1; grid-row: 2; }
+  .landscape-search-panel { flex-basis: 100%; }
+  .landscape-top > .landscape-tools { margin-left: auto; }
   .landscape-search { flex: 1 1 240px; }
 }
 @media (max-width: 700px) {

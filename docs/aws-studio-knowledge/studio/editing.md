@@ -1,9 +1,9 @@
 ---
 id: studio.editing
-summary: Canonical draft, review, AST transformation, guarded apply, rollback and undo contract.
+summary: Canonical draft, review, AST transformation, guarded apply, rollback contract.
 read_when:
   - Changing Inspector fields or source-writing behavior
-  - Debugging stale review, conflict, apply, rollback, or undo
+  - Debugging stale review, conflict, apply, or rollback
 source:
   - framework-studio/src/draft.ts
   - framework-studio/src/views/Deployment.tsx
@@ -39,7 +39,7 @@ Tags use a typed `tags` draft operation for the owning declaration, including al
 of shared compute. `server/edits/tags.ts` plans narrow literal changes and
 `server/source/tags.ts` supplies conservative editability. Tag changes participate in
 normal both-mode review, per-file diffs, stale hashes, refreshed-model validation, guarded
-rollback and undo/redo. Stack member overrides are distinct from effective inherited tags;
+guarded rollback. Stack member overrides are distinct from effective inherited tags;
 removal restores inheritance. See [tag authoring](../../framework-studio/declarations-and-tags.md).
 The tag Inspector uses labeled key/value inputs, an Add tag action that focuses the new
 key, and visible Delete buttons. Validation is associated with its fields; deleting a
@@ -85,7 +85,7 @@ request token and CloudWatch evidence survive restart without automatic write re
 [Database workbench guide](../../framework-studio/database-workbench.md) for precise actions,
 evidence and capability limits.
 
-`InspectorDraft` in [draft.ts](../../../framework-studio/src/draft.ts) owns baseline/latest snapshots, staged entries, validation, review and navigation protection. While dirty, the visible graph stays on the baseline. A different snapshot revision marks conflict; it does not auto-merge. Invalid/conflicting drafts cannot apply. An explicit Review against latest source preserves ordinary typed entries and requests a fresh proposal; protected resource/input forms require their own reload. `StudioProvider` in [studio.tsx](../../../framework-studio/src/studio.tsx) connects this lifecycle across routes and browser exit. Draft/history remain in memory; interrupted source writes have a separate durable journal.
+`InspectorDraft` in [draft.ts](../../../framework-studio/src/draft.ts) owns baseline/latest snapshots, staged entries, validation, review and navigation protection. While dirty, the visible graph stays on the baseline. A different snapshot revision marks conflict; it does not auto-merge. Invalid/conflicting drafts cannot apply. An explicit Review against latest source preserves ordinary typed entries and requests a fresh proposal; protected resource/input forms require their own reload. `StudioProvider` in [studio.tsx](../../../framework-studio/src/studio.tsx) connects this lifecycle across routes and browser exit. Drafts remain in memory; interrupted source writes have a separate durable journal.
 
 During apply, draft setters and discard are inert until the server responds, preserving
 the accepted review payload. Network creation/settings and workload placement controls
@@ -118,10 +118,10 @@ flowchart LR
   C --> D[Review per-file diffs / impact]
   D --> E[Recheck revision / hashes / authority]
   E --> F[Write files / rebuild snapshot / compare]
-  F --> G[Record undo or guarded restoration]
+  F --> G[Confirm source or guarded restoration]
 ```
 
-`EditService` in [transaction.ts](../../../framework-studio/server/edits/transaction.ts) serializes its operations and keeps plans/history. `BatchEditor` in [batch.ts](../../../framework-studio/server/edits/batch.ts) composes field, route, trigger, failure destination, replay wrapper, description, mapping and creation changes into source overrides. Resource and environment details have specialized services with their own validation/private data; see [secrets](../deployment/secrets.md).
+`EditService` in [transaction.ts](../../../framework-studio/server/edits/transaction.ts) serializes its operations and keeps expiring plans. `BatchEditor` in [batch.ts](../../../framework-studio/server/edits/batch.ts) composes field, route, trigger, failure destination, replay wrapper, description, mapping and creation changes into source overrides. Resource and environment details have specialized services with their own validation/private data; see [secrets](../deployment/secrets.md).
 
 Batch review rejects unchanged source before expensive work. Applicable framework
 artifacts are generated in the existing disposable copy, then the complete candidate
@@ -144,11 +144,11 @@ VPC settings use the registered declaration's source span, including official im
 aliases and modules containing multiple declarations; a helper's spelling or file layout
 does not identify the declaration to edit.
 
-Plans capture revision and file hashes; both fresh mode evaluations must pass. Canonical source resolution and artifact validation check configured directories, handlers and Dockerfiles against proposed files. Missing implementation is projected independently from declaration validity so repair remains available. Type-aware connection/creation/repair changes use TypeScript checks. Normal Inspector edits preserve target/construct identity. Creation permits expected additions and explicit removal permits only the selected removed identity. Projection-affecting edits, including the legacy route/deployment APIs, run real generation in a private copy and include changed/generated/deleted outputs in review/history. Generator input hashes include existing implementations, contracts and Dockerfiles even when no output changes. Review approval saves authored/generated source; it does not synthesize or deploy infrastructure.
+Plans capture revision and file hashes; both fresh mode evaluations must pass. Canonical source resolution and artifact validation check configured directories, handlers and Dockerfiles against proposed files. Missing implementation is projected independently from declaration validity so repair remains available. Type-aware connection/creation/repair changes use TypeScript checks. Normal Inspector edits preserve target/construct identity. Creation permits expected additions and explicit removal permits only the selected removed identity. Projection-affecting edits, including the legacy route/deployment APIs, run real generation in a private copy and include changed/generated/deleted outputs in review. Generator input hashes include existing implementations, contracts and Dockerfiles even when no output changes. Review approval saves authored/generated source; it does not synthesize or deploy infrastructure.
 
 Apply checks source before and after preflight, then checks each write's expected contents. `writeSourceChange` in [io.ts](../../../framework-studio/server/edits/io.ts) distinguishes absent files (`null`) from empty files, creates through an exclusive link, and replaces existing files by temporary-file rename. After refresh, the batch compares relevant actual identities/settings/routes/triggers/creation relationships with the reviewed model.
 
-**Multi-file apply is not a crash-atomic filesystem transaction.** On caught failure it restores written files in reverse only while they still equal its own written contents. Concurrent edits are preserved and can produce `unconfirmed`; inspect those files. Undo/redo uses expected contents and inverse validation, including creator-owned file deletion. Server restart loses in-memory review/history. [journal.ts](../../../framework-studio/server/edits/journal.ts) writes a private fsynced write-ahead source record before batch/resource multi-file writes. An exclusive checkout lock spans writes and post-write verification; competing Studio processes cannot begin another journaled transaction. Begin never reclaims a stale lock. Restart exposes dead-owner records (including a lock acquired before journaling) through Source recovery. Typed Restore source restores matching bytes and preserves later edits; typed Keep current source completes recovery only after current-source revalidation and a fingerprint check. A separate exclusive recovery lock serializes explicit recovery. A shared active registry excludes in-flight transactions across service instances and rejects recovery against them. Record/root/path/symlink validation applies on reads as well as writes. Corrupt metadata or an interrupted recovery lock requires explicit inspection while snapshots remain inspectable and source writes remain blocked. Environment values and database operations have separate service boundaries. Revision/hash checks do not eliminate every external-editor race between a check and rename; editors outside Studio do not honor its lock.
+**Multi-file apply is not a crash-atomic filesystem transaction.** On caught failure it restores written files in reverse only while they still equal its own written contents. Concurrent edits are preserved and can produce `unconfirmed`; inspect those files. Saved-source history belongs to Git. Source-edit undo/redo APIs and in-memory history are removed. Server restart loses in-memory reviews. [journal.ts](../../../framework-studio/server/edits/journal.ts) writes a private fsynced write-ahead source record before batch/resource multi-file writes. An exclusive checkout lock spans writes and post-write verification; competing Studio processes cannot begin another journaled transaction. Begin never reclaims a stale lock. Restart exposes dead-owner records (including a lock acquired before journaling) through Source recovery. Typed Restore source restores matching bytes and preserves later edits; typed Keep current source completes recovery only after current-source revalidation and a fingerprint check. A separate exclusive recovery lock serializes explicit recovery. A shared active registry excludes in-flight transactions across service instances and rejects recovery against them. Record/root/path/symlink validation applies on reads as well as writes. Corrupt metadata or an interrupted recovery lock requires explicit inspection while snapshots remain inspectable and source writes remain blocked. Environment values and database operations have separate service boundaries. Revision/hash checks do not eliminate every external-editor race between a check and rename; editors outside Studio do not honor its lock.
 
 The single-edit API and resource editor follow the same expected-contents write guard during recovery.
 
@@ -180,7 +180,7 @@ after the asynchronous request and does not prove credential claims, boundaries,
 SCPs, resource policies or runtime access. See the
 [identity guide](../../framework-studio/identity-and-domains.md#identity-pools).
 Post-write snapshot exceptions and stale/error models trigger restoration, never a
-successful history entry. An external edit or deletion remains untouched and yields
+successful edit response. An external edit or deletion remains untouched and yields
 `unconfirmed`. If refresh still fails after recovery, the response distinguishes restored
 source from an unavailable snapshot and asks the user to refresh after resolving it.
 `SourceJournal.begin` acquires its exclusive checkout lock before inspecting pending
@@ -190,12 +190,12 @@ still block new writes, and a refused attempt releases only its own token. Incom
 or abandoned locks remain explicit inspection/recovery work. See the deterministic
 [lock race tests](../../../framework-studio/test/source-lock-race.test.ts).
 Resource rollback attempts every written file even when one was externally deleted or
-cannot be restored, reports `unconfirmed`, and leaves successful undo history untouched.
+cannot be restored, reports `unconfirmed` and preserves later edits.
 
-Use [extensions](../guides/extensions.md) for new fields. Tests: [plan](../../../framework-studio/test/plan.test.ts), [splice](../../../framework-studio/test/splice.test.ts), [transaction](../../../framework-studio/test/transaction.test.ts), [draft](../../../framework-studio/test/draft.test.ts), [draft UI](../../../framework-studio/test/draft-ui.test.ts), and feature-specific creation/trigger/resource suites. Assert refusal causes zero writes and undo preserves unrelated changes.
+Use [extensions](../guides/extensions.md) for new fields. Tests: [plan](../../../framework-studio/test/plan.test.ts), [splice](../../../framework-studio/test/splice.test.ts), [transaction](../../../framework-studio/test/transaction.test.ts), [draft](../../../framework-studio/test/draft.test.ts), [draft UI](../../../framework-studio/test/draft-ui.test.ts), and feature-specific creation/trigger/resource suites. Assert refusal causes zero writes and rollback preserves unrelated changes.
 
 Typed VPC removal and managed database settings reuse this batch journal, including
-post-apply semantic checks, guarded rollback and undo/redo. VPC removal rescans source
+post-apply semantic checks, guarded guarded rollback. VPC removal rescans source
 consumers immediately before writing. `ManagedDatabaseInspector.tsx` joins local PostgreSQL
 and production RDS, showing independent data, connection paths, the VPC home and consumers.
 Policy edits target literal settings. A separate typed `databasePlacement` operation
@@ -203,13 +203,13 @@ coordinates the database declaration and the union of normalized database consum
 both modes, preserving each workload's subnet tier and bindings. `DatabasePlacement.tsx`
 offers only registered VPCs and private/isolated subnets; the owning VPC is required.
 Computed declarations and competing consumer placement edits are refused. Actual placement
-is checked after apply; mismatch uses guarded rollback, and undo/redo restores source.
+is checked after apply; mismatch uses guarded rollback.
 This edits source only: deployed RDS moves need migration/cutover planning and separately
 authorized deployment. Identity and native CDK source remain source-owned. See
 [placement and parity](../../framework-studio/network-database-declarations.md).
 The [database placement suite](../../../framework-studio/test/database-placement.test.ts)
 covers coordinated consumers, policy composition, unsafe-source refusal, post-write rollback
-and exact undo/redo without touching a live database.
+and guarded rollback without touching a live database.
 The
 [HTTP response helper](../../../framework-studio/server/http.ts) catches synchronous
 validation as well as rejected planning promises. A shared browser/server protocol blocks

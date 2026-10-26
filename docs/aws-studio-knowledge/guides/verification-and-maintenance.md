@@ -19,7 +19,7 @@ related:
 
 | Change | Focused checks / additional evidence |
 | --- | --- |
-| Studio fields/transactions/creation | `node --conditions=development --import tsx --test framework-studio/test/plan.test.ts framework-studio/test/transaction.test.ts framework-studio/test/draft.test.ts framework-studio/test/creation.test.ts`; add relevant refusal/undo fixtures |
+| Studio fields/transactions/creation | `node --conditions=development --import tsx --test framework-studio/test/plan.test.ts framework-studio/test/transaction.test.ts framework-studio/test/draft.test.ts framework-studio/test/creation.test.ts`; add relevant refusal/rollback fixtures |
 | Graph/rendering | Studio model/layout/landscape/labels/hover tests; actual browser resize/zoom/picking and representative timing measurements |
 | Workflow/agent | Framework workflow/agent contract, compiler/interpreter tests; runner engine/agent E2E; live service behavior requires separate authorized evidence |
 | Infrastructure/resource/identity | Relevant cdk-app/test and framework deploy tests; synth **both explicit dev/prod modes** using [Framework's procedure](../../FRAMEWORK.md#generated-contracts-and-verification), compare logical IDs for identity-sensitive moves |

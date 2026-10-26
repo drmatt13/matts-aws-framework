@@ -21,8 +21,8 @@ export interface ConnectionStyle {
 }
 
 /** Category filters hide background wires; inspecting a resource always reveals its links. */
-export function connectionVisible(edge: Pick<SceneEdge, "id" | "category" | "from" | "to">, categories?: ReadonlySet<EdgeCategory>, selected?: string): boolean {
-  return !categories || categories.has(edge.category) || edge.id === selected || edge.from === selected || edge.to === selected;
+export function connectionVisible(edge: Pick<SceneEdge, "id" | "category" | "from" | "to"> & { readonly iam?: boolean }, categories?: ReadonlySet<EdgeCategory>, selected?: string, iamOnly = false): boolean {
+  return edge.id === selected || edge.from === selected || edge.to === selected || ((!categories || categories.has(edge.category)) && (!iamOnly || edge.iam === true));
 }
 
 const REFERENCES: ReadonlySet<Relation> = new Set(["env", "secret", "grant"]);
@@ -34,7 +34,7 @@ const COMPUTE_TARGETS: ReadonlySet<TargetKind> = new Set(["lambda", "service", "
  * its owning stack: what is referenced decides the style, not what is drawn.
  */
 export function connectionStyle(
-  edge: Pick<ModelEdge, "relation">,
+  edge: Pick<ModelEdge, "relation" | "authorization">,
   category: EdgeCategory,
   source: Pick<SceneNode, "island" | "targetKind"> | undefined,
   destination: Pick<ModelResource, "kind"> | undefined,
@@ -42,6 +42,7 @@ export function connectionStyle(
   const { relation } = edge;
   if (relation === "deployWhen") return { color: COMPUTE_EDGE_COLOR, dashed: true };
   if (relation === "runsTask") return { color: GUARD_EDGE_COLOR, dashed: false };
+  if (relation === "database" && edge.authorization?.kind === "iam" || relation === "manageConnections") return { color: GUARD_EDGE_COLOR, dashed: true };
   if (relation === "trigger") return { color: TRIGGER_EDGE_COLOR, dashed: false };
   if (relation === "maps") return { color: READ_EDGE_COLOR, dashed: true };
   // An authorizer guards its route.

@@ -50,6 +50,7 @@ import { projectDefaults } from "../edits/defaults";
 import { lambdaSpec, withLambdaSpecs } from "./lambda-spec";
 import { declarationOf, originInMessage, parseOrigin } from "./origin";
 import { projectTagging } from "./tags";
+import { withConnectionAuthorizations } from "../../shared/permissions";
 
 /**
  * One mode's application model, projected from the framework's own answers.
@@ -360,12 +361,13 @@ function edgesOf(
     readPaths.push(binding.resource.path);
     add("trigger", resourceId(binding.resource.path), `lambda:${binding.event}`, {
       provenance: "declared", label: String(binding.options.operation ?? binding.adapter), detail: `${binding.adapter} · ${binding.id}`, attachment: binding.key,
+      permissionContext: { kind: "trigger", adapter: binding.adapter, ...(typeof binding.options.delivery === "string" ? { delivery: binding.options.delivery } : {}) },
     });
   }
   // The destination's send permission is granted to the function, so it reads as a grant.
   for (const failure of normalizeFrameworkConfig(config).failureDestinations) {
     readPaths.push(failure.destination.path);
-    add("grant", `lambda:${failure.event}`, resourceId(failure.destination.path), { provenance: "declared", label: "onFailure", detail: "Receives runs Lambda stopped retrying." });
+    add("grant", `lambda:${failure.event}`, resourceId(failure.destination.path), { provenance: "declared", label: "onFailure", detail: "Receives runs Lambda stopped retrying.", permissionContext: { kind: "failure" } });
   }
 
   for (const route of routes) {
@@ -393,6 +395,7 @@ function edgesOf(
       add("env", target.reference, resourceId(memberPath(value)), {
         provenance: viaUserPool ? "derived" : "declared",
         label: name,
+        ...(value.secretArn ? { permissionContext: { kind: "secret" as const, delivery: "arn" as const } } : {}),
         detail: `${formatResourceReference(value)}${value.secretArn ? " — delivering the ARN also grants the read" : ""}${viaUserPool ? " — handed by userPool" : ""}`,
       });
     }
@@ -402,6 +405,7 @@ function edgesOf(
         provenance: "declared",
         label: name,
         detail: `${formatResourceReference(value)}, injected at container startup`,
+        permissionContext: { kind: "secret", delivery: "startup" },
       });
     }
     for (const binding of target.cloud.bindings) {
@@ -411,6 +415,7 @@ function edgesOf(
           add("grant", target.reference, resourceId(binding.resource.path), {
             provenance: "declared",
             label: `${binding.method}(${binding.arguments.map((argument) => JSON.stringify(argument)).join(", ")})`.slice(0, 48),
+            permissionContext: { kind: "native", method: binding.method, arguments: binding.arguments },
             detail: `resources.${binding.resource.path.join(".")}.${binding.method}(${binding.arguments.map((argument) => JSON.stringify(argument)).join(", ")})`,
           });
           break;
@@ -419,6 +424,7 @@ function edgesOf(
           add("database", target.reference, resourceId(binding.resource.path), {
             provenance: "declared",
             label: binding.connection === "direct" ? "database (direct)" : binding.readers ? "database + readers" : "database",
+            permissionContext: { kind: "database", connection: binding.connection ?? "application", readers: !!binding.readers },
             detail: "IAM login, private placement and PRIMARY_DATABASE_URL, from database: true",
           });
           break;
@@ -449,17 +455,23 @@ function edgesOf(
         add("usesTool", target.reference, `lambda:${tool}`, { provenance: "declared", label: "tool" });
       }
     }
+    if (target.cloud.manageConnections) add("manageConnections", target.reference, "gateway:websocket", {
+      provenance: "derived", label: "Manage WebSocket connections",
+      detail: "cloud.manageConnections grants access to the declared API and stage.",
+    });
     if (target.kind === "workflow") {
       const verbs = new Map<string, Set<string>>();
+      const steps = new Map<string, Extract<ModelEdge["permissionContext"], { kind: "step" }>>();
       walkWorkflow(target.workflow.root, (node) => {
         if (node.kind !== "invocation") return;
         const reference = `${node.invokes}:${node.target}`;
         const verb = node.invokes === "lambda" ? "invokeLambda" : node.invokes === "task" ? "runTask" : node.invokes === "agent" ? "invokeAgent" : "runWorkflow";
         if (!verbs.has(reference)) verbs.set(reference, new Set());
         verbs.get(reference)!.add(node.completion === "callback" ? `${verb} (callback)` : verb);
+        steps.set(reference, { kind: "step", target: node.invokes, callback: node.completion === "callback" || !!steps.get(reference)?.callback });
       });
       for (const [reference, kinds] of verbs) {
-        add("step", target.reference, reference, { provenance: "declared", label: [...kinds].join(", ") });
+        add("step", target.reference, reference, { provenance: "declared", label: [...kinds].join(", "), permissionContext: steps.get(reference) });
       }
       for (const use of target.workflow.integrations) {
         if (!use.reference.resource) continue;
@@ -467,10 +479,21 @@ function edgesOf(
         add("integration", target.reference, resourceId(use.reference.resource.path), {
           provenance: "declared",
           label: use.operations.join(", "),
+          permissionContext: { kind: "integration", service: use.reference.kind, operations: use.operations },
           detail: `${integrationKey(use.reference)}${use.awaitsCallback ? " — suspends for a callback" : ""}`,
         });
       }
     }
+  }
+  // Append new derived links after existing declarations to preserve their stable ids.
+  for (const binding of normalizeFrameworkConfig(config).triggers) for (const key of ["deadLetterQueue", "onFailureQueue"]) {
+    const queue = binding.options[key] as unknown as { path?: readonly string[] } | undefined;
+    if (!Array.isArray(queue?.path)) continue;
+    readPaths.push(queue.path);
+    add("grant", `lambda:${binding.event}`, resourceId(queue.path), {
+      provenance: "derived", label: "Trigger dead-letter delivery", attachment: binding.key,
+      permissionContext: { kind: "trigger-dlq", adapter: binding.adapter },
+    });
   }
   return { edges, readPaths };
 }
@@ -516,7 +539,7 @@ function routesOf(config: FrameworkConfig): ModelRoute[] {
   return routes;
 }
 
-function targetModel(config: FrameworkConfig, target: NormalizedTarget, options: ProjectionOptions, availability: ReturnType<typeof createTargetAvailability>): ModelTarget {
+function targetModel(config: FrameworkConfig, target: NormalizedTarget, options: ProjectionOptions, availability: ReturnType<typeof createTargetAvailability>, triggers: ReturnType<typeof normalizeFrameworkConfig>["triggers"], linkedCallbacks: ReadonlySet<string>): ModelTarget {
   const origin = target.origins[0] ? parseOrigin(target.origins[0]) : undefined;
   const declaration = origin ? declarationOf(config, origin) : undefined;
   const cloud = declaration?.cloud as Record<string, unknown> | undefined;
@@ -552,6 +575,13 @@ function targetModel(config: FrameworkConfig, target: NormalizedTarget, options:
       display: formatResourceReference(value as ResourceReference),
     })),
     access: target.cloud.access.map((statement) => ({ actions: [...statement.actions], resources: [...statement.resources] })),
+    permissionSources: [
+      ...triggers.filter(binding => !binding.resource && `lambda:${binding.event}` === target.reference)
+        .map(binding => ({ relation: "trigger" as const, peer: `schedule:${binding.id}`, label: `Schedule · ${binding.id}`, incoming: true, context: { kind: "trigger" as const, adapter: binding.adapter } })),
+      ...target.cloud.bindings.filter(binding => binding.capability === "completesCallback" && !linkedCallbacks.has(binding.integration))
+        .map(binding => ({ relation: "completesCallback" as const, peer: binding.capability === "completesCallback" ? binding.integration : "", label: "Complete workflow callback" })),
+      ...(target.kind === "workflow" ? target.workflow.integrations.filter(use => !use.reference.resource).map(use => ({ relation: "integration" as const, peer: integrationKey(use.reference), label: use.operations.join(", "), context: { kind: "integration" as const, service: use.reference.kind, operations: use.operations } })) : []),
+    ],
     requirements: target.cloud.requirements.length,
     requirementRules: target.cloud.requirements.map((rule) => ({
       require: rule.require.map((reference) => resourceId(reference.path)),
@@ -611,7 +641,7 @@ export function projectModel(
   options: ProjectionOptions,
   evaluatedInMs = 0,
 ): ModeModel {
-  return withLambdaSpecs(config, () => projectModelSnapshot(config, options, evaluatedInMs));
+  return withLambdaSpecs(config, () => withConnectionAuthorizations(projectModelSnapshot(config, options, evaluatedInMs)));
 }
 
 function projectModelSnapshot(config: FrameworkConfig, options: ProjectionOptions, evaluatedInMs: number): ModeModel {
@@ -626,7 +656,9 @@ function projectModelSnapshot(config: FrameworkConfig, options: ProjectionOption
   }
   const diagnostics = validateForMode(config, options, targets);
   const defaults = projectDefaults(config, targets, DEFAULT_FIELDS);
-  const projectedTargets = targets.map(target => targetModel(config, target, options, availability));
+  const normalized = normalizeFrameworkConfig(config);
+  const linkedCallbacks = new Set(targets.flatMap(target => target.kind === "workflow" ? target.workflow.integrations.filter(use => use.reference.resource).map(use => integrationKey(use.reference)) : []));
+  const projectedTargets = targets.map(target => targetModel(config, target, options, availability, normalized.triggers, linkedCallbacks));
   return {
     mode: options.mode,
     tagging: projectTagging(config, targets, routes),

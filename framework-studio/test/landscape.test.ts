@@ -852,8 +852,9 @@ test("the local database stands in the isolated subnet right beside RDS, solid i
 });
 
 test("a connection is drawn by what it references and where it starts, solid only where named", () => {
-  const colours = [API_EDGE_COLOR, COMPUTE_EDGE_COLOR, GUARD_EDGE_COLOR, TOOL_EDGE_COLOR, STEP_EDGE_COLOR, TRIGGER_EDGE_COLOR, ...Object.values(EDGE_COLORS)];
+  const colours = [API_EDGE_COLOR, COMPUTE_EDGE_COLOR, GUARD_EDGE_COLOR, TOOL_EDGE_COLOR, STEP_EDGE_COLOR, TRIGGER_EDGE_COLOR, ...Object.entries(EDGE_COLORS).filter(([category]) => category !== "routes").map(([, color]) => color)];
   assert.equal(new Set(colours).size, colours.length, "each rule has a colour of its own");
+  assert.equal(EDGE_COLORS.routes, API_EDGE_COLOR, "the Routes pill matches its purple API connections");
   assert.equal(READ_EDGE_COLOR, EDGE_COLORS.inputs, "a value being read looks like an environment file supplying an input");
   const startsAt = (edge: { from: string }, ...prefixes: string[]) => prefixes.some((prefix) => edge.from.startsWith(prefix));
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {

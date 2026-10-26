@@ -2,6 +2,7 @@ import { drawnAs } from "./drawn-as";
 import type { Mode, ModeModel, ModelEdge, Snapshot } from "../shared/model";
 import { availabilityBadge, connectionDisabledEndpoints, type Availability, type DeploymentBadgeKind } from "./deployment";
 import { indexModel } from "./lookup";
+import { hasIam } from "../shared/permissions";
 
 export function edgeAvailability(edge: ModelEdge, models: Snapshot["models"]): Availability {
   const enabled = (mode: Mode) => {
@@ -29,6 +30,8 @@ export interface ConnectionGroup {
   readonly badge?: DeploymentBadgeKind;
   readonly otherLens?: Mode;
   readonly enabledInLens?: boolean;
+  /** All current-mode members contribute, not only the styling representative. */
+  readonly iam: boolean;
 }
 
 /** Group directed relationships by the nodes the landscape actually draws, across both graphs. */
@@ -61,12 +64,12 @@ export function aggregateConnections(model: ModeModel, layoutModels: readonly Mo
     members.sort((a, b) => a.edge.id.localeCompare(b.edge.id));
     // Missing inputs remain visible; permission/secret links retain their guarded style in mixed groups.
     const priority = (member: ConnectionMember) => (member.models[model.mode] ? 0 : 10) +
-      (member.edge.inputRequirement?.status === "missing" ? 0 : member.edge.relation === "grant" || member.edge.relation === "secret" ? 1 : 2);
+      (member.edge.inputRequirement?.status === "missing" ? 0 : hasIam(member.edge) || member.edge.relation === "grant" || member.edge.relation === "secret" ? 1 : 2);
     const edge = [...members].sort((a, b) => priority(a) - priority(b))[0]!.edge;
     const availability = { dev: members.some((item) => item.availability.dev), prod: members.some((item) => item.availability.prod) };
     const otherLens = members.some((item) => item.models[model.mode]) ? undefined : models.find((item) => item.mode !== model.mode)?.mode;
     return { id: members.length === 1 ? edge.id : `connection:${encodeURIComponent(from)}:${encodeURIComponent(to)}`,
-      from, to, edge, members, availability, enabledInLens: availability[model.mode], badge: availabilityBadge(availability), ...(otherLens ? { otherLens } : {}) };
+      from, to, edge, members, availability, iam: members.some(member => !!member.models[model.mode] && hasIam(member.models[model.mode]!)), enabledInLens: availability[model.mode], badge: availabilityBadge(availability), ...(otherLens ? { otherLens } : {}) };
   }).sort((a, b) => a.id.localeCompare(b.id));
 }
 

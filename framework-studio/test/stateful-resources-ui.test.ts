@@ -13,7 +13,7 @@ const clients: import("@tanstack/react-query").QueryClient[] = [];
 let posted: { url: string; body: any }[];
 const model = (mode: "dev" | "prod"): ModeModel => ({ mode, status: "ok", targets: [], routes: [], resources: [], edges: [], workflows: [], fields: {}, diagnostics: [], evaluatedInMs: 0 });
 const snapshot = { revision: "r1", repositoryRoot: "/fixture", generatedAt: "2026-10-23T12:00:00Z", descriptions: { values: {} }, databaseProblems: [], models: { dev: model("dev"), prod: model("prod") }, files: {}, source: { cdkLinks: { version: 2, files: {}, edges: [], notes: [], manualWiring: [] }, entities: {}, editability: {}, links: {}, catalog: {}, problems: [] } } as unknown as Snapshot;
-const response: SnapshotResponse = { snapshot, evaluating: false, commands: {}, history: {}, busy: null };
+const response: SnapshotResponse = { snapshot, evaluating: false, commands: {}, busy: null };
 before(async () => {
   require.extensions[".css"] = () => {};
   dom = new (require("jsdom").JSDOM)(`<!doctype html><html><head><meta name="studio-token" content="t"><meta name="studio-protocol" content="${STUDIO_PROTOCOL_VERSION}"></head><body></body></html>`, { url: "http://localhost/", pretendToBeVisual: true });

@@ -31,7 +31,6 @@ export interface PlannedEdit {
   readonly beforeHash: string;
   readonly afterHash: string;
   readonly forward: SemanticPatch;
-  readonly inverse: SemanticPatch;
   readonly summary: string;
   readonly diff: { readonly unified: string; readonly lines: readonly DiffLine[] };
 }
@@ -155,11 +154,6 @@ export function planEdit(input: {
   const forward: SemanticPatch = intent.inherit
     ? { origin, path: field.path, remove: true }
     : { origin, path: field.path, value: intent.value! };
-  const created = position.missing.length;
-  const inverse: SemanticPatch =
-    editability.kind === "literal"
-      ? { origin, path: field.path, value: literalValue(position.property!.initializer)!.value }
-      : { origin, path: field.path.slice(0, field.path.length - created + 1), remove: true };
   const relativeFile = toRelative(repositoryRoot, entry.file);
   return {
     planned: {
@@ -170,7 +164,6 @@ export function planEdit(input: {
       beforeHash: sha256(before),
       afterHash: sha256(after),
       forward,
-      inverse,
       summary: `${field.label}: ${display(fact.authored)} → ${display(intent.inherit ? undefined : intent.value)}`,
       diff: diffOf(relativeFile, before, after),
     },

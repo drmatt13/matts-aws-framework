@@ -35,7 +35,7 @@ test("Deploy HTTP parser accepts bounded conditions and rejects expressions or e
   for (const value of [null, "invalid", { when: { resource: "resource:flag", equals: "" } }, { when: { resource: "resource:flag", equals: "enabled", expression: "unsafe" } }]) assert.throws(() => readDraftEdits([{ ...edit, value }]), /Deploy/);
 });
 
-test("conditional Deploy source edits resolve both environments, preserve aliases, apply and undo", async () => {
+test("conditional Deploy source edits resolve both environments, preserve aliases, apply", async () => {
   const root = fixture(), builder = new SnapshotBuilder(root), edits = new EditService(root, builder);
   try {
     const state = await builder.refresh();
@@ -56,9 +56,6 @@ test("conditional Deploy source edits resolve both environments, preserve aliase
     assert.equal(snapshot.source.editability[target.ref]?.deploy?.kind, "condition");
     assert.ok(snapshot.models.dev.edges.some(edge => edge.relation === "deployWhen" && edge.to === "resource:flag"));
     assert.ok(!JSON.stringify({ plan, snapshot }).includes("never-in-browser"));
-    const undone = await edits.undo(); assert.equal(undone.status, "applied", undone.message);
-    assert.equal(readFileSync(path.join(root, "framework.config.ts"), "utf8"), before);
-    const redone = await edits.redo(); assert.equal(redone.status, "applied", redone.message);
     const current = (await builder.refresh()).snapshot;
     await assert.rejects(edits.planBatch([{ kind: "deploy", target: "lambda:conditional", value: { when: { resource: "resource:privateValue", equals: "anything" } } }], current.revision), /non-secret input/);
   } finally { await builder.dispose(); rmSync(root, { recursive: true, force: true }); }
@@ -78,7 +75,7 @@ test("gateway representatives agree across layout, connections, search and selec
   } finally { await builder.dispose(); rmSync(root, { recursive: true, force: true }); }
 });
 
-test("event Deploy conditions review both modes, apply and undo without changing native identity", async () => {
+test("event Deploy conditions review both modes, apply without changing native identity", async () => {
   const root = fixture();
   const file = path.join(root, "framework.config.ts");
   const handler = path.join(root, "cdk-app/lambda_functions/event_functions/event");
@@ -99,8 +96,6 @@ test("event Deploy conditions review both modes, apply and undo without changing
     const event = snapshot.models.dev.targets.find(target => target.ref === "lambda:event")!;
     assert.deepEqual([event.lanes.local, event.lanes.dev, event.lanes.prod], [true, true, false]);
     assert.equal(event.constructId, "StableEvent");
-    const undone = await edits.undo(); assert.equal(undone.status, "applied", undone.message);
-    assert.equal(readFileSync(file, "utf8"), before);
   } finally { await builder.dispose(); rmSync(root, { recursive: true, force: true }); }
 });
 

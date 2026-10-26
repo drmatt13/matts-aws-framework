@@ -5,6 +5,8 @@ read_when:
   - Adding graph nodes, relations, evidence, or Inspector facts
 source:
   - framework-studio/shared/model.ts
+  - framework-studio/shared/permissions.ts
+  - framework-studio/shared/grants.ts
   - framework-studio/server/model/project.ts
   - framework-studio/server/model/catalog-context.ts
   - framework-studio/src/connections.ts
@@ -50,7 +52,28 @@ lane-byte equivalence with the standalone predicate path.
 
 Relations cover routing, authorization, environment/secret reads, native grants, database access, invocation bindings, workflow steps/integrations, event triggers, callbacks and failure destinations. Their meanings differ: a grant is permission; an invocation binding is capability; neither proves an actual runtime call. Schedule triggers may have no catalog resource endpoint.
 
-The `runsTask` binding appears in the permissions category as `Grant permission: Launch ECS task`.
+The [permissions investigation](../../framework-studio/permissions-analysis.md)
+maps the grant-generation paths and source-evidence limits. `ModelEdge.permissionContext`
+records typed normalization/adapter facts; `withConnectionAuthorizations` derives
+principal, actions when known, symbolic scope, conditions and policy kind. It runs in
+projection and again after source/local enrichment. `authorization` is derived presentation
+and excluded from binding review signatures; typed context remains part of the source semantics.
+Original relation IDs, labels and description keys stay stable. Database IAM is `rds-db:connect`
+for `app_user`; its local PostgreSQL derivative carries no AWS grant. Reader access retains
+writer access. Typed secret ARN delivery grants the workload role; container startup injection
+uses the ECS execution role. Pull event arrows and IAM principal direction are independent.
+
+Shared authorization presentation serves hover, connection/member inspectors, resource previews
+and workload Permissions. `Only IAM grants` filters background wires within enabled purpose
+categories, checking all current-mode group members. Selected/previewed resources still reveal
+all context. User-token agent invocations and unknown/custom native references do not qualify.
+Schedules, unlinked callbacks, custom integrations and explicit `cloud.access` also appear in
+workload permissions without inventing graph endpoints. Supported grant creation is a bounded
+type-discovered allowlist shared by UI and server (S3, SQS, DynamoDB, SNS, EventBridge).
+Source-derived facts do not establish synthesized, deployed or effective IAM access; arbitrary
+native statements, trust/key policies and policy evaluation require their own evidence.
+
+The `runsTask` binding appears in the permissions category as `Launch ECS task`, with an IAM badge.
 Its solid red connection describes the derived ECS launch and role-passing grants plus
 launch configuration, rather than an observed execution. Conditional `deployWhen`
 connections use dashed orange lines and name the selecting input in their hover text.

@@ -33,6 +33,8 @@ import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
 import { DeploymentSection, DeploymentOwnerControl, ResourceDeployment, TargetDeployment } from "./Deployment";
 import { Tags } from "./Tags";
 import { ImplementationStatus, WorkloadConnections } from "./WorkloadActions";
+import { connectionTitle } from "../../shared/permissions";
+import { AuthorizationBadge, AuthorizationDetails } from "./Authorization";
 
 function PlacementText(props: { readonly placement: Placement }) {
   const { placement } = props;
@@ -83,7 +85,8 @@ function Relations(props: { readonly id: string }) {
         {edge.provenance === "derived" ? <span className="muted small"> (derived)</span> : null}
         {edge.provenance === "source" ? <span className="muted small"> ({edge.relation === "supplies" ? "input file" : "CDK source"})</span> : null}
       </span>
-      <button className="linkish small code" onClick={() => select(edge.id)}>{edge.label}</button>
+      <button className="linkish small" onClick={() => select(edge.id)}>{connectionTitle(edge)}</button>
+      <AuthorizationBadge authorization={edge.authorization} />
       <EnvironmentPills availability={edgeAvailability(edge, snapshot.models)} />
     </li>
   );
@@ -171,7 +174,7 @@ function Steps(props: { readonly workflow: ModelWorkflow }) {
 }
 
 function TargetView(props: { readonly target: ModelTarget }) {
-  const { snapshot, model } = useStudio();
+  const { snapshot, model, select } = useStudio();
   const { target } = props;
   const facts = model.fields[target.ref] ?? [];
   const editability = snapshot.source.editability[target.ref] ?? {};
@@ -234,15 +237,14 @@ function TargetView(props: { readonly target: ModelTarget }) {
           </div>
         </InspectorDisclosure>
       ) : null}
-      {target.access.length > 0 ? (
-        <InspectorDisclosure title="Explicit IAM" count={target.access.length}>
-          {target.access.map((statement, position) => (
-            <p key={position} className="small">
-              <code>{statement.actions.join(", ")}</code>
-              <br />
-              <span className="muted code">{statement.resources.join(", ")}</span>
-            </p>
-          ))}
+      {target.authorizations?.length ? (
+        <InspectorDisclosure title="Permissions" count={target.authorizations.length}>
+          <p className="small muted">Source-derived permissions and authentication paths, including generated grants. Expand a capability to see which role receives access.</p>
+          {target.authorizations.map((entry, position) => <details className="authorization-summary" key={entry.connection ?? position}>
+            <summary>{entry.authorization.operation}<AuthorizationBadge authorization={entry.authorization} /></summary>
+            <AuthorizationDetails authorization={entry.authorization} />
+            {entry.connection ? <button className="linkish small" onClick={() => select(entry.connection!)}>Inspect connection</button> : null}
+          </details>)}
         </InspectorDisclosure>
       ) : null}
     </>

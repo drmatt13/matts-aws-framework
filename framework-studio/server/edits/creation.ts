@@ -202,7 +202,7 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
   const models = Object.values(state.snapshot.models);
   const targetExists = (id: string) => models.some((model) => model.targets.some((target) => target.id === id));
   const expected: { select: string; targets: string[]; resources: string[]; routes: string[]; kind: CreationRequest["kind"]; network?: CreationExpectation["network"] } = { select: "", targets: [], resources: [], routes: [], kind: request.kind };
-  const impact = ["Creates the reviewed source as one undoable operation. AWS deployment and secret provisioning remain separate actions."];
+  const impact = ["Creates the reviewed source as one reviewed operation. AWS deployment and secret provisioning remain separate actions."];
   const selectedVpc = "vpc" in request && request.vpc ? state.built.located?.networks.find(network => network.id === request.vpc) : undefined;
   if ("vpc" in request && request.vpc && !selectedVpc) return refuse("vpc", "Select a registered VPC with a source declaration.");
   function register(section: string, _id: string, expression: string, imports = "") {

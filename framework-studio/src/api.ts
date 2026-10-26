@@ -78,10 +78,7 @@ export const api = {
   resourceDetails: (id: string, mode: Mode, signal?: AbortSignal) => call<ResourceDetails>(`/resources/details?id=${encodeURIComponent(id)}&mode=${mode}`, undefined, signal),
   resourcePlan: (intent: ResourceIntent, revision: string, mode: Mode) => call<ResourcePlan>("/resources/plan", { intent, revision, mode }),
   resourceApply: (planId: string) => call<ResourceApply>("/resources/apply", { planId }),
-  resourceHistory: (direction: "undo" | "redo") => call<ResourceApply>(`/resources/${direction}`, {}),
   refreshCdkLinks: () => call<{ edges: number; files: number }>("/cdk-links/refresh", {}),
-  undo: () => call<ApplyResponse>("/edits/undo", {}),
-  redo: () => call<ApplyResponse>("/edits/redo", {}),
   command: (name: string, confirmed = false) => call<CommandResult>(`/commands/${encodeURIComponent(name)}`, { confirmed }),
   webSocketDefaults: () => call<WebSocketDefaults>("/websockets/defaults"),
 };

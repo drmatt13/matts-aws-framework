@@ -48,7 +48,7 @@ before(async () => {
   ui.configure({ getElementError: message => new Error(message ?? "Element not found") });
   studio = await import("../src/studio"); view = await import("../src/views/IdentityWorkspace"); deploy = await import("../src/deploy/api");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
-  response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, history: {}, busy: null };
+  response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, busy: null };
 });
 afterEach(() => { ui.cleanup(); queryClient?.clear(); mock.restoreAll(); });
 after(async () => { await builder?.dispose(); dom.window.close(); });

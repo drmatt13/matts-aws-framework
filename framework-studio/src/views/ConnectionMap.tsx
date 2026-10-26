@@ -3,6 +3,8 @@ import { RELATION_LABEL } from "../lookup";
 import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { ConnectionDetails, ConnectionEndpoints } from "./InputRequirement";
+import { connectionTitle } from "../../shared/permissions";
+import { AuthorizationBadge } from "./Authorization";
 
 export function ConnectionMap({ connection }: { readonly connection: ConnectionGroup }) {
   const { model } = useStudio();
@@ -15,11 +17,11 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
       {!connection.availability[model.mode] ? <div className="connection-availability" role="note" aria-label="Connection deployment status"><strong>Disabled in {model.mode === "dev" ? "Development" : "Production"}</strong><p>Both endpoints must be enabled and a relationship must exist in this environment.</p></div> : null}
       <div className="connection-map-members">
         {connection.members.map((member) => {
-          const edge = member.edge;
+          const edge = member.models[model.mode] ?? member.edge;
           const onlyIn = member.models[model.mode] ? undefined : member.models.dev ? "dev" : "prod";
           return <details key={edge.id} className="connection-map-member">
             <summary>
-              <span className="connection-map-label"><code>{edge.label}</code><span className="small muted">{RELATION_LABEL[edge.relation]}</span></span>
+              <span className="connection-map-label"><span>{connectionTitle(edge)}</span><AuthorizationBadge authorization={edge.authorization} /><span className="small muted">{RELATION_LABEL[edge.relation]}</span></span>
               <EnvironmentPills availability={member.availability} />
             </summary>
             <div className="connection-map-detail">

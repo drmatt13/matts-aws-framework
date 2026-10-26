@@ -14,12 +14,11 @@ nonmatches without changing placement, identity or source.
 
 The shared navigation stays stable across all six views. **Source valid** reports
 declaration validation, with details on demand; AWS credentials, deployments and runtime
-health are inspected separately. **Map** (the isometric home view, `/`) and Cognito expose the **Source**
-Development/Production selector in their workspace controls. Domains edits Production
-domain intent. Named deployments (including staging targets declared with production
-semantics) keep their own target/profile/account context. See the
-[UI design system](../docs/framework-studio/ui-design-system.md) for shared layout and
-interaction conventions.
+health are inspected separately. The shared top-right navbar exposes the **Source**
+Development/Production selector beside source validation on every route. Switching
+source mode retains the unsaved-draft guard. Domains edits Production domain intent;
+named deployments keep their own target/profile/account context. See the
+[UI design system](../docs/framework-studio/ui-design-system.md).
 
 The **Database** tab (`/database`) is a source-first Prisma 8 workbench with three
 workspaces: **Schema**, **History & migrations**, and **Database status**. Edit the
@@ -93,7 +92,7 @@ shows the complete patch grouped by file, including new files and generator outp
 **Back to Editing** and **Back to resource types** retain the current form.
 **Apply All** is the approval to write that exact patch. A successful write rebuilds
 the source index and graph, selects the canonical resource and opens its Inspector.
-Global undo/redo includes its scaffolding and generated artifacts.
+Use Git to manage saved source changes, including scaffolding and generated artifacts.
 Descriptions use `framework-config/descriptions.ts`, the same metadata source
 the existing Inspector edits, for every resource family.
 
@@ -137,19 +136,18 @@ Use the protected environment-file Inspector for values as a separate operation.
 Network and container forms expose cost-relevant settings before approval.
 
 Creation uses the existing `DraftEdit` union, `InspectorDraft`, `BatchEditor`,
-`EditService` history, source splices and evaluator processes. New modules are
+`EditService`, source splices and evaluator processes. New modules are
 resolved from an in-memory overlay during preflight. The API accepts typed resource
 requests, not source text, shell commands or destination paths. Every destination
 has a fixed allowlist and rejects traversal and symlink components. Reviews retain
 source hashes, generator-input hashes and absence checks. New files are installed
-exclusively through temporary files; undo removes them only while their bytes still
-match. Both modes must match the reviewed resource identities and semantics after
+exclusively through temporary files. Both modes must match the reviewed resource identities and semantics after
 writing. Failed writes or verification restore unchanged files and remove generated
 files; concurrent edits are preserved and reported as unconfirmed. A durable source
 journal records batch/resource multi-file writes before applying. After interruption,
 Source recovery offers reviewed restoration of matching bytes or explicit completion
 with the revalidated current source. Later user edits are preserved. In-flight applies
-are excluded from recovery. Drafts and ordinary undo history still live in memory;
+are excluded from recovery. Drafts still live in memory;
 the journal does not record environment values or execute cloud/database operations.
 
 The initial creators deliberately support the repository's conventional literal
@@ -171,7 +169,7 @@ source. Providing pool identifiers does not install handler authentication. Work
 removal first checks consumers, then reviews the declaration, generated artifacts and
 an exact text source archive under `archived-workloads/`; shared folders, environment files,
 linked or binary source folders require manual ownership review. This source action
-does not remove deployed infrastructure or data. Undo restores the reviewed files.
+does not remove deployed infrastructure or data. Use Git to restore saved source.
 
 The design, history and roadmap are in [docs/framework-studio](../docs/framework-studio/README.md).
 
@@ -264,7 +262,7 @@ their stack is off. Choosing a new stack requires explicitly choosing its output
 fallback output lists are retained until that selection changes.
 
 Edits stage in the existing **Review Changes → Apply All** flow, with discard, navigation
-guards, source conflict detection, and global undo/redo. References are saved as literal
+guards, source conflict detection, and guarded source writes. References are saved as literal
 mapping declarations in `framework-config/client-environment.ts`, reread on every refresh.
 Descriptions and file/export guidance are collapsed. This editor does not generate
 environment files or load their values. The next `export:cdk-outputs` reads the saved literal
@@ -386,7 +384,7 @@ existing source link points to its declaration.
 
 Event Lambda inspectors offer **Local replay** through the shared switch and review
 flow. Review includes both `localReplay: true` (or its removal) and the selected
-TypeScript handler's `withLocalReplay` wrapper. Apply, undo and redo keep the files
+TypeScript handler's `withLocalReplay` wrapper. Apply keeps the files
 together and preserve concurrent handler edits. Unsupported handler patterns require
 source edits; framework validation refuses disabling replay while the event requires
 local execution. Run `npm run framework:generate` after applying to refresh the replay
@@ -408,7 +406,7 @@ The view follows the model:
   defaults have service-type menus (HTTP, WebSocket, events and tools), boolean switches,
   and counts of inheriting workloads versus overrides. Defaults apply across islands and
   to future declarations; explicit node overrides win. Changes share the inspector's
-  draft, review and undo flow. Islands without shared framework defaults link to their entries.
+  draft and review flow. Islands without shared framework defaults link to their entries.
 
 The regions mean something:
 
@@ -511,7 +509,7 @@ plus warnings (a stack not yet in the CDK app) and AWS advice; acknowledge the h
 contract and **Add trigger** stages it. A **Schedule** needs no resource. A Lambda with an
 asynchronous trigger also shows **When a run fails**, which stages its `onFailure` queue or
 topic. Then use **Review Changes** and **Apply All**. Changes, reassignments and removals
-share exact undo/redo and source-conflict checks. Preview checks both graphs and
+share source-conflict checks. Preview checks both graphs and
 TypeScript; it never executes CDK or deploys.
 
 Every trigger row has a delete button. A removed row stays struck through with **Restore**
@@ -525,7 +523,7 @@ in its inspector. Descriptions are shared by Development and Production and save
 literal strings in `framework-config/descriptions.ts`, keyed by canonical entity ID.
 Descriptions show a compact preview; choose **Edit** to open the editor, then
 **Review Changes** and **Apply All**. Description
-edits use the existing unsaved-change guards, conflict detection and undo/redo history.
+edits use the existing unsaved-change guards, conflict detection and guarded source writes.
 HTTP route renames move their descriptions to the new route ID in the same change.
 New declarations can add their description from the inspector; existing entries are
 authored documentation, never generated or overwritten on refresh. Input-setting and
@@ -533,7 +531,7 @@ environment-variable changes are reviewed separately from their description edit
 Saving descriptions does not change deployment behavior or deploy infrastructure.
 
 Connections offer **Add description**, including each relationship inside a grouped
-connection. These optional notes use the same review, apply and undo flow and are shared
+connection. These optional notes use the same review and apply flow and are shared
 across environments. They follow the relationship's endpoints, type and mapping label,
 so reordering declarations does not move notes to another mapping. **Configuration**
 separately expands the generated binding details and source evidence. Those facts come
@@ -549,7 +547,7 @@ and resolved handler. All values use the framework's own resolution and default 
 
 Edits require a source literal, or an absent field whose parent is an object literal.
 Anything an expression computes is shown read-only. Architecture and runtime changes
-share the draft, validation, write, undo and redo flow; changing packaging does
+share the draft, validation and write flow; changing packaging does
 not create a Dockerfile or rewrite handler source.
 
 Selecting an HTTP route, service mount or its Lambda shows an **API user-pool authorizer**
@@ -560,10 +558,10 @@ and its separate `userPool: true` declaration keep their existing behavior.
 Selecting an HTTP Lambda also shows its editable route paths. Previewing a path change
 updates the authored HTTP key and validates both graphs while checking that target ids
 and deployed construct ids stay unchanged. Applying refreshes the Lambda label and its
-API Gateway node together; the normal Undo/Redo controls restore the exact source bytes.
+API Gateway node together; use Git to manage the saved source.
 Duplicate paths, invalid paths and overlapping routes are refused. Run
 the application checks and update callers of the old path. Generated browser API
-contracts join the rename's review, apply and undo. Studio does not deploy the gateway.
+contracts join the rename's review and apply. Studio does not deploy the gateway.
 
 Selecting an authored input or secret loads its current value from the selected mode's inputs file.
 **Local value** edits that variable in place, showing the environment and file destination.
@@ -584,8 +582,7 @@ Secrets never have source defaults. Unsupported expressions or changes that inva
 consumers are refused with diagnostics.
 
 Resource edits show every changed file before applying, validate candidate source in fresh
-dev/prod evaluators and TypeScript, and have their own **Undo resource edit** / **Redo
-resource edit** controls in the inspector. Group moves keep the environment variable name
+dev/prod evaluators and TypeScript. Group moves keep the environment variable name
 and rewrite imported catalog references, including application CDK references when needed.
 They never edit generated files. No deployment or secret upload is performed.
 
@@ -602,9 +599,9 @@ Every editable inspector is one draft session:
 3. **Back to Editing, Discard All or Apply All.** Returning keeps every draft value.
    Invalid values are reported inline. Apply writes the whole accepted draft, confirms
    its evaluated result and resets the baseline. A failure preserves the draft.
-4. **Undo and redo.** A workload/default/route batch is one entry in the existing global
-   history. Resource edits retain their existing resource history. Undo restores exact
-   source bytes and refuses concurrent source changes.
+4. **Saved source history.** Use Git to inspect or restore saved changes. Studio has no
+   source-edit undo/redo controls, APIs or history stacks. Failed writes still use
+   guarded rollback, and interrupted writes retain reviewed Source recovery.
 
 Changing node, island, view or graph mode, closing the inspector, and browser back/forward
 offer **Keep Editing**, **Discard and Continue** or **Review Changes** when dirty. Browser

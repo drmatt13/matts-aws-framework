@@ -35,7 +35,7 @@ before(async () => {
   ui.configure({ getElementError: message => new Error(message ?? "Element not found") });
   studio = await import("../src/studio"); dialogs = await import("../src/views/DraftControls");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
-  response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, history: {}, busy: null };
+  response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, busy: null };
 });
 afterEach(() => { ui.cleanup(); mock.restoreAll(); });
 after(async () => { await builder?.dispose(); dom.window.close(); });

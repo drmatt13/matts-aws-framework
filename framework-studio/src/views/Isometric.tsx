@@ -32,10 +32,10 @@ import { catalogAvailability } from "../deployment";
 import { connectionLabel, missingConnectionInput } from "../connections";
 import { AddMenu } from "./AddMenu";
 import { useStudio } from "../studio";
-import { SourceEnvironment, SourceHistory } from "./SourceContext";
 import { HoverContent, ResourceHoverContent } from "./ResourceHoverContent";
 import { InspectorContent } from "./Inspector";
 import { ResourceBrowser, type BrowserMemory } from "./ResourceBrowser";
+import { authorizationLabel, authorizationSummary, connectionTitle } from "../../shared/permissions";
 import { WorkspacePanel } from "./WorkspacePanel";
 import { tagGroups, tagKeys, tagValueLabel, UNTAGGED_FILTER } from "../tag-groups";
 
@@ -93,7 +93,8 @@ export function Isometric() {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SceneRenderer | undefined>(undefined);
   const [motion, setMotion] = useState(() => !reducedMotion());
-  const [categories, setCategories] = useState<ReadonlySet<EdgeCategory>>(() => new Set(CATEGORIES));
+  const [categories, setCategories] = useState<ReadonlySet<EdgeCategory>>(() => new Set(CATEGORIES.filter(category => category !== "routes" && category !== "inputs")));
+  const [iamOnly, setIamOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [resourceKind, setResourceKind] = useState("");
   // Whether Resources is open beneath any inspector; a selection always shows its inspector.
@@ -171,6 +172,7 @@ export function Isometric() {
     hoveredIsland: undefined as string | undefined,
     motion,
     categories,
+    iamOnly,
     focus: focusState,
     tween: undefined as Tween | undefined,
     cards: [] as readonly CardHit[],
@@ -185,6 +187,7 @@ export function Isometric() {
   live.current.preview = preview;
   live.current.motion = motion;
   live.current.categories = categories;
+  live.current.iamOnly = iamOnly;
   live.current.focus = focusState;
 
   const draw = useCallback(() => {
@@ -213,6 +216,7 @@ export function Isometric() {
       time: now / 1000,
       motion: state.motion,
       categories: state.categories,
+      iamOnly: state.iamOnly,
       focus: state.focus,
     });
     state.cards = result.cards;
@@ -342,7 +346,7 @@ export function Isometric() {
     };
   }, [schedule, resize, hasEntities]);
 
-  useEffect(schedule, [schedule, scene, selected, motion, focusState, categories]);
+  useEffect(schedule, [schedule, scene, selected, motion, focusState, categories, iamOnly]);
   useEffect(() => { if (pendingLayoutFit.current) { pendingLayoutFit.current = false; fit(); } }, [scene, fit]);
 
   // Opening/closing the panel changes CSS layout during this commit. Resize and paint
@@ -387,7 +391,7 @@ export function Isometric() {
       const entity = pickEntity(screen, world, [...state.badges, ...state.cards], silhouettes);
       if (entity) return { kind: "node", id: entity, ...screen };
       for (const arc of arcs) {
-        if (!arc.missing || !connectionVisible(arc.edge, state.categories, state.preview ?? state.selected)) continue;
+        if (!arc.missing || !connectionVisible(arc.edge, state.categories, state.preview ?? state.selected, state.iamOnly)) continue;
         const marker = worldToScreen(state.camera, state.viewport, arc.midpoint);
         if (Math.hypot(marker.x - screen.x, marker.y - screen.y) <= 12) return { kind: "edge", id: arc.edge.id, ...screen };
       }
@@ -397,7 +401,7 @@ export function Isometric() {
       const tolerance = 6 / state.camera.zoom;
       let best: { id: string; distance: number } | undefined;
       for (const arc of arcs) {
-        if (!connectionVisible(arc.edge, state.categories, state.preview ?? state.selected)) continue;
+        if (!connectionVisible(arc.edge, state.categories, state.preview ?? state.selected, state.iamOnly)) continue;
         if (world.x < arc.minX - tolerance || world.x > arc.maxX + tolerance || world.y < arc.minY - tolerance || world.y > arc.maxY + tolerance) continue;
         const distance = distanceToPolyline(world, arc.points);
         if (distance < tolerance && (!best || distance < best.distance)) best = { id: arc.edge.id, distance };
@@ -667,13 +671,12 @@ export function Isometric() {
   ), [scene, visibleSelected, index, inspect]);
 
   if (!hasEntities) {
-    return <div className="landscape-workspace"><div className="workspace-toolbar landscape-top"><div className="source-controls"><SourceEnvironment /><SourceHistory /></div></div><p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p></div>;
+    return <div className="landscape-workspace"><p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p></div>;
   }
 
   return (
     <div className="landscape-workspace">
       <div className="workspace-toolbar landscape-top">
-        <div className="source-controls"><SourceEnvironment /><SourceHistory /></div>
         <div className="landscape-search-panel">
           <div className="landscape-search" role="search" aria-label="Map search">
             <Search size={16} aria-hidden />
@@ -754,6 +757,8 @@ export function Isometric() {
                 setHovered(undefined);
               }}>{CATEGORY_LABEL[category]}</button>)}
           </div>
+          <button className="landscape-chip" aria-pressed={iamOnly} title="Within enabled categories, show IAM relationships, including cloud intent for workloads not built here. Selected resources keep every connection."
+            onClick={() => { setIamOnly(current => !current); setHovered(undefined); }}>Only IAM grants</button>
         </div>
         <div className="landscape-bar landscape-bottom">
           <span className="landscape-stats">
@@ -806,7 +811,7 @@ function HoverCard(props: {
     if (!edge) return null;
     const relationshipTitle = (relationship: typeof edge) => relationship.relation === "deployWhen"
       ? `Conditional deployment: ${index.resources.get(relationship.to)?.fromEnv ?? titleOf(index, relationship.to)}`
-      : `${RELATION_LABEL[relationship.relation]}: ${relationship.label}`;
+      : relationship.authorization ? `${authorizationLabel(relationship.authorization)}: ${connectionTitle(relationship)}` : `${RELATION_LABEL[relationship.relation]}: ${relationship.label}`;
     title = sceneEdge.members.length > 1 ? `${sceneEdge.members.length} relationships` : relationshipTitle(edge);
     facts = {
       places: ENVIRONMENTS.flatMap(([env]) => sceneEdge.availability[env] ? [{ env, where: "Connection enabled" }] : []),
@@ -814,7 +819,7 @@ function HoverCard(props: {
     };
     const onlyIn = sceneEdge.otherLens ? `Only in ${sceneEdge.otherLens === "dev" ? "Development" : "Production"}. Switch the view to see it with the rest of that environment.` : undefined;
     lines = [onlyIn, `From ${endpointLabel(index, sceneEdge.from)}`, `To ${endpointLabel(index, sceneEdge.to)}`,
-      ...(sceneEdge.members.length > 1 ? ["Click to inspect the connection map.", ...sceneEdge.members.slice(0, 4).map((member) => relationshipTitle(member.edge))] : [edge.detail]),
+      ...(sceneEdge.members.length > 1 ? ["Click to inspect the connection map.", ...sceneEdge.members.slice(0, 4).map((member) => relationshipTitle(member.models[props.scene.mode] ?? member.edge))] : edge.authorization ? authorizationSummary(edge.authorization) : [edge.detail]),
       missingConnectionInput(sceneEdge) ? "Required value missing. Click to resolve." : undefined,
       edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
   } else {

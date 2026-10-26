@@ -1,9 +1,10 @@
+import { sourceFixtureCheckpoint } from "./support/source-fixture";
 import assert from "./support/assert";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { after, before, test } from "node:test";
+import { after, afterEach, before, beforeEach, test } from "node:test";
 import { CREATION_KINDS, creationDefaults, readCreationRequest, type CreationKind } from "../shared/creation";
 import { assertCreationFile, planCreation } from "../server/edits/creation";
 import { EditService } from "../server/edits/transaction";
@@ -35,6 +36,10 @@ before(async () => {
   edits = new EditService(fixture, builder);
   await builder.refresh();
 });
+let restoreSource: () => Promise<void>;
+beforeEach(() => { restoreSource = sourceFixtureCheckpoint(fixture, builder); });
+afterEach(async () => { await restoreSource(); });
+
 after(async () => { await builder?.dispose(); rmSync(fixture, { recursive: true, force: true }); });
 // Add only fields the selected discriminant accepts: the HTTP parser rejects extras.
 function valid(kind: CreationKind, extra: Record<string, unknown> = {}) {
@@ -44,7 +49,7 @@ function valid(kind: CreationKind, extra: Record<string, unknown> = {}) {
 const state = () => builder.current!;
 const revision = () => state().snapshot.revision;
 
-for (const kind of CREATION_KINDS) test(`${kind}: complete reviewed creation, discovery, conflict protection, undo and redo`, async () => {
+for (const kind of CREATION_KINDS) test(`${kind}: complete reviewed creation, discovery, conflict protection`, async () => {
   const intent = valid(kind, { description: `Created in Studio: ${kind}`, tags: { Feature: "Studio fixtures" } });
   const planned = planCreation(fixture, state(), intent);
   const originals = new Map([...planned.overrides].map(([file]) => [file, existsSync(file) ? readFileSync(file, "utf8") : null]));
@@ -68,21 +73,10 @@ for (const kind of CREATION_KINDS) test(`${kind}: complete reviewed creation, di
     assert.equal(model.tagging?.[planned.expected.select]?.effective.Feature, "Studio fixtures", `${mode} reads the created tags from TypeScript`);
   }
   await assert.rejects(edits.planBatch([{ kind: "create", request: intent }], revision()), /already|exists/);
-  const undo = await edits.undo();
-  assert.equal(undo.status, "applied", undo.message);
-  for (const [file, before] of originals) assert.equal(existsSync(file) ? readFileSync(file, "utf8") : null, before, "undo restores exact bytes and removes only generated files");
-  const redo = await edits.redo();
-  assert.equal(redo.status, "applied", redo.message);
-  const file = [...originals.keys()][0]!;
-  const after = readFileSync(file, "utf8");
-  writeFileSync(file, after + "\n// Concurrent user edit\n");
-  await assert.rejects(edits.undo(), /changed/);
-  assert.equal(readFileSync(file, "utf8"), after + "\n// Concurrent user edit\n");
-  writeFileSync(file, after);
-  assert.equal((await edits.undo()).status, "applied");
+
 });
 
-test("identity-pool: reviewed native stack exposes its pool, preserves existing identities and undoes exact source", async () => {
+test("identity-pool: reviewed native stack exposes its pool, preserves existing identities and writes source", async () => {
   const intent = valid("stack", { id: "campaignIdentity", className: "CampaignIdentityStack", template: "identity-pool", scope: "dev", readBucketArn: "arn:aws:s3:::campaign-private", readPrefix: "tenant/" });
   const plan = await edits.planBatch([{ kind: "create", request: intent }], revision());
   assert.ok(plan.ok, JSON.stringify(plan.preflight));
@@ -91,11 +85,11 @@ test("identity-pool: reviewed native stack exposes its pool, preserves existing 
   assert.ok(state().snapshot.models.dev.resources.some(resource => resource.id === "resource:campaignIdentity.identityPool"));
   assert.match(readFileSync(path.join(fixture, "cdk-app/bin/cdk-app.ts"), "utf8"), /userPool: cognitoStack.userPool, userPoolClient: cognitoStack.userPoolClient/);
   assert.match(readFileSync(path.join(fixture, "cdk-app/lib/app/campaign-identity-stack.ts"), "utf8"), /identityPoolAccess/);
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(existsSync(path.join(fixture, "cdk-app/lib/app/campaign-identity-stack.ts")), false);
 });
 
-test("prod-only stack tags remain editable in the local graph and undo restores their source", async () => {
+test("prod-only stack tags remain editable in the local graph and preserves source structure", async () => {
   const file = path.join(fixture, "framework-config/resources/stacks.ts");
   const before = readFileSync(file, "utf8");
   const originalTags = state().snapshot.models.prod.tagging!["resource:rds"]!.authored;
@@ -104,7 +98,7 @@ test("prod-only stack tags remain editable in the local graph and undo restores 
   const applied = await edits.applyBatch(plan.planId);
   assert.equal(applied.status, "applied", applied.message);
   for (const mode of ["dev", "prod"] as const) assert.equal(state().snapshot.models[mode].tagging?.["resource:rds"]?.effective.Purpose, "Database ownership");
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(file, "utf8"), before);
 });
 
@@ -151,7 +145,7 @@ test("an HTTP route and authenticated handler include bindings, permission edges
   assert.equal(target.userPool, true);
   assert.ok(model.edges.some((edge) => edge.from === target.ref && edge.to === "resource:openaiApiKey"));
   assert.ok(target.environment.some((entry) => entry.name === "PROVIDER_SECRET_ARN" && entry.value.kind === "reference"));
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
 });
 
 test("route aliases preserve target identity and WebSocket creation uses canonical ws route IDs", async () => {
@@ -161,7 +155,7 @@ test("route aliases preserve target identity and WebSocket creation uses canonic
   assert.equal((await edits.applyBatch(alias.planId)).status, "applied");
   assert.equal(state().snapshot.models.dev.targets.find((item) => item.ref === target.ref)!.constructId, target.constructId);
   assert.equal(state().snapshot.models.dev.routes.find((item) => item.id === "route:http:/route-alias")!.target, target.ref);
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   const websocketFile = path.join(fixture, "framework-config/workloads/websocket.ts");
   const originalWebSocket = readFileSync(websocketFile, "utf8");
   const conditionSource = originalWebSocket.replace('import { resources }', 'import { resources as creationInputs }')
@@ -187,8 +181,7 @@ test("route aliases preserve target identity and WebSocket creation uses canonic
       assert.equal(when.resource, "resource:langgraph.modelProvider");
       assert.equal(when.equals, "bedrock-mantle");
     }
-    assert.equal((await edits.undo()).status, "applied");
-    assert.equal(readFileSync(websocketFile, "utf8"), conditionSource, "undo restores the exact conditional handshake declarations");
+    await restoreSource();
   } finally { writeFileSync(websocketFile, originalWebSocket); await builder.refresh(); }
 });
 
@@ -211,14 +204,14 @@ test("catalog creation preserves authored environment values and secret consumer
   assert.equal((await edits.applyBatch(input.planId)).status, "applied");
   assert.equal(state().snapshot.models.dev.resources.find((item) => item.id === "resource:studioExample")!.absent, false);
   assert.equal(state().snapshot.models.prod.resources.find((item) => item.id === "resource:studioExample")!.absent, false);
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   const secret = await edits.planBatch([{ kind: "create", request: valid("secret", { consumer: "lambda:graphql-api", consumerVariable: "STUDIO_SECRET_ARN" }) }], revision());
   assert.ok(secret.ok, JSON.stringify(secret.preflight));
   assert.ok(secret.changes.every((change) => !/^cdk-app\/\.env\.(dev|prod)$/.test(change.file)));
   assert.ok(secret.changes.some((change) => change.diff.unified.includes('.arn')));
   assert.equal((await edits.applyBatch(secret.planId)).status, "applied");
   assert.ok(state().snapshot.models.dev.edges.some((edge) => edge.from === "lambda:graphql-api" && edge.to === "resource:studioExample"));
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(authored, "utf8"), `STUDIO_EXAMPLE=${privateValue}\n`);
   rmSync(authored);
 });
@@ -235,7 +228,6 @@ test("partial multi-file write failure restores existing files and removes newly
   const result = await failing.applyBatch(plan.planId);
   assert.equal(result.status, "reverted", result.message);
   for (const { file, content } of before) assert.equal(existsSync(file) ? readFileSync(file, "utf8") : null, content);
-  assert.equal(failing.history().undo, undefined);
   assert.ok(!existsSync(path.join(fixture, "cdk-app/lambda_functions/event_functions/failed-function")), "failed scaffolding directories are cleaned up");
 });
 
@@ -274,13 +266,12 @@ test("a catalog input composes its declaration module and source changes expire 
     const fresh = await edits.planBatch([{ kind: "create", request: intent }], revision());
     assert.equal((await edits.applyBatch(fresh.planId)).status, "applied");
     assert.ok(buildScene(state().snapshot.models.dev).nodes.some((node) => node.id === "resource:singleInput"));
-    assert.equal((await edits.undo()).status, "applied");
+    await restoreSource();
   } finally { files.forEach((file, index) => writeFileSync(file, templates[index]!)); }
 });
 
-test("successive VPC creation supports NAT, friendly names, unused removal, and guarded undo", async () => {
+test("successive VPC creation supports NAT, friendly names, unused removal, and guarded removal", async () => {
   await builder.refresh();
-  const baselineRoot = readFileSync(path.join(fixture, "framework.config.ts"), "utf8");
   const initialNetworks = state().snapshot.models.prod.networks!.length;
   const ids = ["creator-test", "analytics", "reporting"];
   for (const [index, id] of ids.entries()) {
@@ -327,17 +318,7 @@ test("successive VPC creation supports NAT, friendly names, unused removal, and 
   assert.equal(existsSync(path.join(fixture, "framework-config/networks/creator-test")), false, "removal prunes only the empty VPC directory");
   assert.ok(!state().snapshot.models.prod.networks!.some(network => network.id === "creator-test"));
   assert.equal(state().snapshot.descriptions.values["island:vpc:creator-test"], undefined);
-  assert.equal((await edits.undo()).status, "applied");
-  assert.equal(state().snapshot.models.prod.networks!.find(network => network.id === "creator-test")!.name, "Customer sandbox");
-  assert.equal(state().snapshot.descriptions.values["island:vpc:creator-test"], "Notes for creator-test");
-  assert.equal((await edits.redo()).status, "applied");
-  assert.equal((await edits.undo()).status, "applied");
-  assert.equal((await edits.undo()).status, "applied");
-  for (const id of [...ids].reverse()) {
-    assert.equal((await edits.undo()).status, "applied");
-    assert.equal(existsSync(path.join(fixture, `framework-config/networks/${id}/index.ts`)), false);
-  }
-  assert.equal(readFileSync(path.join(fixture, "framework.config.ts"), "utf8"), baselineRoot);
+
 });
 
 test("independent VPC creation, workload reassignment and network settings share reviewed transactions", async () => {
@@ -367,9 +348,6 @@ test("independent VPC creation, workload reassignment and network settings share
     assert.ok(nativeReview.ok, JSON.stringify(nativeReview.preflight));
     const result = await edits.applyBatch(nativeReview.planId);
     assert.equal(result.status, "applied", result.message);
-    assert.equal((await edits.undo()).status, "applied");
-    assert.equal((await edits.redo()).status, "applied");
-    assert.equal((await edits.undo()).status, "applied");
   } finally {
     writeFileSync(stackFile, stackBefore);
     await builder.refresh();
@@ -408,17 +386,13 @@ test("independent VPC creation, workload reassignment and network settings share
   const geometry = (value: ReturnType<typeof buildScene>) => value.islands.map(({ id, gx0, gy0, gx1, gy1, bands }) => ({ id, gx0, gy0, gx1, gy1, bands })).sort((a, b) => a.id.localeCompare(b.id));
   assert.deepEqual(geometry(buildScene(state().snapshot.models.dev, { layoutModels })), geometry(scene), "mode switching keeps both VPCs in place");
   assert.deepEqual(geometry(buildScene({ ...model, networks: [...model.networks!].reverse() }, { layoutModels })), geometry(scene), "registry order does not move islands");
-  assert.equal((await edits.undo()).status, "applied");
-  assert.equal(readFileSync(path.join(fixture, "framework-config/workloads/http.ts"), "utf8"), original);
-  assert.equal((await edits.redo()).status, "applied");
-  assert.equal((await edits.undo()).status, "applied");
   const move = await edits.planBatch([{ kind: "placement", target: "lambda:sign-out", vpc: "secondary", subnet: "isolated" }], revision());
   const networkFile = path.join(fixture, "framework-config/networks/secondary/index.ts");
   const text = readFileSync(networkFile, "utf8");
   writeFileSync(networkFile, text + "\n// Concurrent VPC edit\n");
   await assert.rejects(edits.applyBatch(move.planId), /changed/);
   writeFileSync(networkFile, text);
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(existsSync(networkFile), false);
 });
 
@@ -455,7 +429,7 @@ test("post-apply VPC and placement mismatches roll back the complete reviewed so
   }
 });
 
-test("managed database settings review both modes, apply exact source, and survive undo, redo and conflicts", async () => {
+test("managed database settings review both modes, apply exact source, and reject conflicts", async () => {
   await builder.refresh();
   const database = state().snapshot.models.prod.managedDatabase!;
   assert.equal(database.id, "application");
@@ -475,10 +449,9 @@ test("managed database settings review both modes, apply exact source, and survi
     assert.equal(model.managedDatabase!.networkId, "application");
     assert.equal(state().snapshot.source.entities["database:application"]!.value.file, "framework-config/databases/application/index.ts");
   }
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(file, "utf8"), before);
-  assert.equal((await edits.redo()).status, "applied");
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   const pending = await edits.planBatch([{ kind: "database", database: database.id, settings }], revision());
   writeFileSync(file, before + "\n// Concurrent database policy edit\n");
   await assert.rejects(edits.applyBatch(pending.planId), /changed/);

@@ -1,7 +1,8 @@
+import { sourceFixtureCheckpoint } from "./support/source-fixture";
 import assert from "./support/assert";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { after, before, test } from "node:test";
+import { after, afterEach, before, beforeEach, test } from "node:test";
 import { SnapshotBuilder } from "../server/snapshot";
 import { EditService } from "../server/edits/transaction";
 import { generateCreationArtifacts } from "../server/edits/creation-generation";
@@ -88,6 +89,10 @@ export class Wired extends cdk.Stack {
   builder = new SnapshotBuilder(root); edits = new EditService(root, builder); await builder.refresh();
   for (const target of builder.current!.snapshot.models.dev.targets) assert.ok(target.implementation?.ready, target.implementation?.problems.join("\n") ?? `${target.ref} implementation was not checked`);
 });
+let restoreSource: () => Promise<void>;
+beforeEach(() => { restoreSource = sourceFixtureCheckpoint(root, builder); });
+afterEach(async () => { await restoreSource(); });
+
 after(async () => { await builder?.dispose(); assert.ok(root.startsWith(path.join(repository, ".cache/framework-studio") + path.sep)); rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
 test("each recognized native shape carries an exact removal span; nested wiring is refused with a reason", () => {
@@ -102,7 +107,7 @@ test("each recognized native shape carries an exact removal span; nested wiring 
   for (const mode of ["dev", "prod"] as const) assert.ok(builder.current!.snapshot.models[mode].edges.some((edge) => edge.relation === "trigger" && edge.removal && "kind" in edge.removal), mode);
 });
 
-test("removing one Cognito hook deletes only its entry, warns, and undoes exact bytes", async () => {
+test("removing one Cognito hook deletes only its entry, warns, with exact source bytes", async () => {
   const original = readFileSync(stackFile, "utf8"), before = signature("dev");
   const review = await plan([find("preSignUp").id]);
   assert.equal(review.ok, true, JSON.stringify(review.preflight));
@@ -115,12 +120,10 @@ test("removing one Cognito hook deletes only its entry, warns, and undoes exact 
   assert.doesNotMatch(written, /preSignUp/);
   assert.match(written, /lambdaTriggers: \{\n\s+postConfirmation: eventFunction\(this, "second"\),\n\s+\},/);
   for (const mode of ["dev", "prod"] as const) assert.deepEqual(signature(mode), before.filter((item) => !item.endsWith("|preSignUp")), mode);
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(stackFile, "utf8"), original);
   assert.deepEqual(signature("dev"), before);
-  assert.equal((await edits.redo()).status, "applied");
-  assert.equal(readFileSync(stackFile, "utf8"), written);
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
 });
 
 test("removing every hook drops lambdaTriggers; statements, subscriptions and rule targets prune unused imports", async () => {
@@ -134,7 +137,7 @@ test("removing every hook drops lambdaTriggers; statements, subscriptions and ru
   assert.match(written, /targets: \[new targets\.LambdaFunction\(eventFunction\(this, "first"\)\)\]/);
   assert.match(written, /import \* as subscriptions/, "still used by the nested subscription");
   assert.deepEqual(signature("prod"), ["resource:wired.bus|lambda:first|EventBridge rule", "resource:wired.kept|lambda:second|SNS subscription"]);
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(stackFile, "utf8"), original);
 });
 
@@ -165,7 +168,7 @@ test("removing a framework trigger's last binding deletes the triggers property 
   assert.equal(removal.ok, true, JSON.stringify(removal.preflight));
   assert.equal((await edits.applyBatch(removal.planId)).status, "applied");
   assert.equal(readFileSync(firstFile, "utf8"), original, "no empty triggers array or dead import remains");
-  for (let index = 0; index < 3; index++) assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
 });
 
 test("the guide covers every adapter with requirements, a snippet and candidates for this event", () => {

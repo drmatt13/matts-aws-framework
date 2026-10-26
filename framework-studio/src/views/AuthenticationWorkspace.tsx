@@ -14,7 +14,6 @@ import { DataRetention } from "./DataRetention";
 import { DraftFooter } from "./DraftControls";
 import { IdentityPolicyEditor } from "./IdentityPolicyEditor";
 import { NavigationStrip } from "./NavigationStrip";
-import { SourceEnvironment, SourceHistory } from "./SourceContext";
 import "./identity-workspace.css";
 import "./authentication.css";
 
@@ -123,7 +122,7 @@ export function AuthenticationWorkspace() {
   const declaredUserPool = model.resources.find(resource => resource.kind === "member" && /(?:I)?UserPool$/.test(resource.typeText ?? ""));
   return <div className="authentication-workspace">
     <div className="workspace-toolbar auth-navigation"><NavigationStrip className="workspace-page-width" label="Cognito sections" activeKey={section}>{sections.map(entry => <Link key={entry.id} to={entry.to} search={(previous: { select?: string }) => previous} aria-current={section === entry.id ? "page" : undefined}>{entry.label}</Link>)}</NavigationStrip></div>
-    <header className="workspace-toolbar auth-context"><div className="workspace-page-width auth-context-content"><div className="auth-workspace-title"><h1 className="workspace-page-title">Cognito</h1><SourceEnvironment /><span className="spacer" /><SourceHistory /></div>
+    <header className="workspace-toolbar auth-context"><div className="workspace-page-width auth-context-content"><div className="auth-workspace-title"><h1 className="workspace-page-title">Cognito</h1></div>
       <div className="auth-context-controls inspection-controls"><label>Profile<input aria-label="Identity AWS profile" disabled={overview.isPending || !!overview.error} value={selection.profile} onChange={event => updateSelection({ profile: event.target.value })} list="authentication-profiles" /><datalist id="authentication-profiles">{overview.data?.profiles.map(profile => <option key={profile.name} value={profile.name} />)}</datalist></label>
         <label>Deployment<select aria-label="Identity deployment" disabled={overview.isPending || !!overview.error} value={selection.deployment} onChange={event => { const target = overview.data?.targets.find(target => target.name === event.target.value); updateSelection({ deployment: event.target.value, region: target?.region ?? selection.region, profile: overview.data?.preferences?.profiles[event.target.value] ?? selection.profile }); }}><option value="">Select a deployment</option>{overview.data?.targets.filter(target => target.mode === mode).map(target => <option key={target.name} value={target.name}>{target.name}</option>)}</select></label>
         <label>Region<input aria-label="Identity AWS region" disabled={overview.isPending || !!overview.error} value={selection.region} readOnly={!!selectedTarget?.region} title={selectedTarget?.region ? "Pinned by the deployment target" : undefined} onChange={event => updateSelection({ region: event.target.value })} /></label>

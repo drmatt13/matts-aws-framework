@@ -22,7 +22,7 @@ export type DraftEdit =
   | { readonly kind: "deploy"; readonly target: string; readonly value: DeployValue }
   | import("./identity-policy").IdentityPolicyEdit
   | { readonly kind: "implementation"; readonly target: string }
-  | { readonly kind: "connection"; readonly target: string; readonly connection: "database" | "userPool" | "runsTask" | "startsWorkflow" | "invokesAgent" | "tool" | "resource" | "grant"; readonly destination?: string; readonly enabled: boolean; readonly variable?: string; readonly grant?: "grantRead" | "grantWrite" | "grantReadWrite" | "grantSendMessages" | "grantConsumeMessages"; readonly scope?: string }
+  | { readonly kind: "connection"; readonly target: string; readonly connection: "database" | "userPool" | "runsTask" | "startsWorkflow" | "invokesAgent" | "tool" | "resource" | "grant"; readonly destination?: string; readonly enabled: boolean; readonly variable?: string; readonly grant?: import("./grants").NativeGrantMethod; readonly scope?: string }
   | { readonly kind: "removeWorkload"; readonly target: string }
   | { readonly kind: "tags"; readonly entity: string; readonly tags: Readonly<Record<string, string>> }
   | import("./managed-database").DatabasePlacementEdit
@@ -99,11 +99,6 @@ export interface ApplyResponse {
   readonly select?: string;
 }
 
-export interface HistoryState {
-  readonly undo?: string;
-  readonly redo?: string;
-}
-
 export interface CommandInfo {
   readonly label: string;
   readonly description: string;
@@ -122,7 +117,6 @@ export interface SnapshotResponse {
   readonly sourceRecoveryProblem?: string;
   readonly sourceWatch?: import("./watch").SourceWatchState;
   readonly snapshot: Snapshot;
-  readonly history: HistoryState;
   readonly evaluating: boolean;
   readonly commands: Readonly<Record<string, CommandInfo>>;
   readonly busy: string | null;
@@ -133,5 +127,4 @@ export interface SnapshotEvent {
   readonly revision: string;
   /** Files changed by something other than the studio. */
   readonly external: readonly string[];
-  readonly history: HistoryState;
 }

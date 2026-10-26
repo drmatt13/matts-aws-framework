@@ -72,10 +72,10 @@ beforeEach(() => {
     return { status: "applied", message: "Applied all changes.", revision: persisted.revision };
   });
   mock.method(apiModule.api, "snapshot", async () => response());
-  mock.method(apiModule.api, "resourceDetails", async () => ({ configured: false, consumers: [], history: {} }));
+  mock.method(apiModule.api, "resourceDetails", async () => ({ configured: false, consumers: [] }));
   mock.method(apiModule.api, "resourcePlan", async (intent: unknown) => { resourceCalls.push(intent); await reviewGate; return { planId: "resource", resource: "resource:input", nextResource: "resource:input", ok: true, diagnostics: [], changes: [{ file: "framework-config/resources.ts", diff: { unified: "resource changes", lines: [] } }] }; });
 });
-function response(): SnapshotResponse { return { snapshot: persisted, evaluating: false, history: {}, commands: {}, busy: null }; }
+function response(): SnapshotResponse { return { snapshot: persisted, evaluating: false, commands: {}, busy: null }; }
 
 async function mount(selected = target, mode: "dev" | "prod" = "dev") {
   let setMode: ((mode: "dev" | "prod") => void) | undefined;
@@ -788,7 +788,7 @@ test("local values edit inline, revert, review privately and reload after apply 
   const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv && !item.values)!;
   let stored = "";
   const inputPlans: { mode: string; edits: unknown; hash: string }[] = [];
-  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "selected-hash" }, configured: true, value: stored, consumers: [], history: {} }));
+  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "selected-hash" }, configured: true, value: stored, consumers: [] }));
   mock.method(apiModule.api, "inputDetails", async () => { throw new Error("Inline editing must read only the selected variable."); });
   mock.method(apiModule.api, "inputPlan", async (mode: "dev" | "prod", edits: readonly DeploymentInputEdit[], hash: string) => {
     inputPlans.push({ mode, edits, hash });
@@ -824,7 +824,7 @@ test("local values edit inline, revert, review privately and reload after apply 
 test("blank local values show the effective default and constrained values offer a direct choice", async () => {
   const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv)!;
   persisted = { ...baseline, models: { ...baseline.models, dev: { ...baseline.models.dev, resources: baseline.models.dev.resources.map((item) => item.id === resource.id ? { ...item, default: "bedrock", values: ["bedrock", "openai"], inputRequirement: undefined } : item) } } };
-  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "enum-hash" }, configured: false, consumers: [], history: {} }));
+  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "enum-hash" }, configured: false, consumers: [] }));
   await mount(resource.id);
   const field = await ui.screen.findByRole("combobox", { name: `Value for ${resource.fromEnv}` });
   assert.ok(ui.within(ui.screen.getByRole("region", { name: "Local value" })).getByText("Using default"));
@@ -842,7 +842,7 @@ test("inline secrets stay masked and local value read errors can be retried", as
   let reads = 0;
   mock.method(apiModule.api, "resourceDetails", async () => {
     if (++reads === 1) throw new Error("Could not read the local file.");
-    return { file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "secret-hash" }, configured: true, value: "private-selected-sentinel", consumers: [], history: {} };
+    return { file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "secret-hash" }, configured: true, value: "private-selected-sentinel", consumers: [] };
   });
   await mount(resource.id);
   await ui.screen.findByText("Could not read the local file.");
@@ -859,7 +859,7 @@ test("inline secrets stay masked and local value read errors can be retried", as
 
 test("a missing environment file offers setup rather than an unusable value editor", async () => {
   const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv)!;
-  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: false, hash: "missing" }, configured: false, consumers: [], history: {} }));
+  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: false, hash: "missing" }, configured: false, consumers: [] }));
   await mount(resource.id);
   await ui.screen.findByRole("button", { name: "Set up .env.dev" });
   assert.ok(!ui.screen.queryByLabelText(`Value for ${resource.fromEnv}`));

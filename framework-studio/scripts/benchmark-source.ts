@@ -1,3 +1,4 @@
+import { sourceFixtureCheckpoint } from "../test/support/source-fixture";
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import { createHash } from "node:crypto";
@@ -95,13 +96,13 @@ async function main() {
       ["multi-resource edit", [field, { kind: "field", intent: { target: "lambda:python-example", field: "lambda.memorySize", value: 768 } }]],
       ["description only", [{ kind: "description", entity: "lambda:graphql-api", value: "Job 4 benchmark" }]],
     ];
+    const restoreSource = sourceFixtureCheckpoint(fixture, builder);
     for (const [name, changes] of cases) for (let sample = 0; sample < samples; sample++) await measure(name, () => review(changes));
     for (let sample = 0; sample < samples; sample++) {
       const plan = await review([field]);
       const applied = await measure("source Apply", () => edits.applyBatch(plan.planId));
       assert.equal(applied.status, "applied", applied.message);
-      const undone = await measure("source Undo", () => edits.undo());
-      assert.equal(undone.status, "applied", undone.message);
+      await restoreSource();
     }
     for (let sample = 0; sample < samples; sample++) {
       await measure("no-op refusal", async () => { await assert.rejects(review([{ kind: "description", entity: "lambda:graphql-api", value: builder.current!.snapshot.descriptions.values["lambda:graphql-api"] ?? "" }])); });

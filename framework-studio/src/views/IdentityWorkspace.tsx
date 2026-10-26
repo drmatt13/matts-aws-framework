@@ -8,7 +8,6 @@ import { useStudio } from "../studio";
 import { DraftFooter } from "./DraftControls";
 import { InspectorSwitch } from "./InspectorUI";
 import { DomainOperations } from "./DomainOperations";
-import { SourceHistory } from "./SourceContext";
 import "./identity-workspace.css";
 
 export { identityApi } from "../identity-api";
@@ -60,7 +59,7 @@ export function Domains() {
     catch (error) { if (!controller.signal.aborted) setError(inspectionErrorMessage(error)); }
     finally { if (!controller.signal.aborted) setBusy(false); }
   };
-  return <div className="identity-workspace"><header className="workspace-toolbar identity-workspace-header"><div className="workspace-page-width"><div className="workspace-heading"><h1 className="workspace-page-title">DNS / Domains</h1><span className="workspace-scope"><span className="context-label">Source</span> Production</span><span className="spacer" /><SourceHistory /></div><p>Source intent, deployed metadata and actual application health have independent evidence.</p></div></header>
+  return <div className="identity-workspace"><header className="workspace-toolbar identity-workspace-header"><div className="workspace-page-width"><div className="workspace-heading"><h1 className="workspace-page-title">DNS / Domains</h1><span className="workspace-scope">Production domain settings</span></div><p>Source intent, deployed metadata and actual application health have independent evidence.</p></div></header>
     <div className="workspace-page-width identity-content">
     {source.error ? <div className="workspace-alert" role="alert"><span>{source.error.message}</span><button className="quiet" disabled={source.isFetching} onClick={() => void source.refetch()}>Retry source</button></div> : null}
     {source.isFetching && !source.data && !source.error ? <p className="muted" role="status">Loading source declaration…</p> : null}

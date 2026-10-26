@@ -1,8 +1,9 @@
+import { sourceFixtureCheckpoint } from "./support/source-fixture";
 import assert from "./support/assert";
 import { randomUUID } from "node:crypto";
 import { cpSync, globSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { after, before, test } from "node:test";
+import { after, afterEach, before, beforeEach, test } from "node:test";
 import { EditError, EditService, writeAtomically } from "../server/edits/transaction";
 import { SnapshotBuilder } from "../server/snapshot";
 import { connectionDescriptionId } from "../shared/descriptions";
@@ -65,6 +66,10 @@ export const workerRoute = { "/worker": { directory: "/lambda_functions/worker",
   await builder.refresh();
 });
 
+let restoreSource: () => Promise<void>;
+beforeEach(() => { restoreSource = sourceFixtureCheckpoint(fixture, builder); });
+afterEach(async () => { await restoreSource(); });
+
 after(async () => {
   await builder.dispose();
   rmSync(fixture, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
@@ -125,7 +130,7 @@ async function withExternalSource(file: string, text: string, check: () => Promi
   finally { writeFileSync(file, before); await builder.refresh(); }
 }
 
-test("client mapping batches persist references, disable graph links, undo/redo and refuse concurrent writes", async () => {
+test("client mapping batches persist references, disable graph links, refuse concurrent writes", async () => {
   const file = path.join(fixture, "framework-config/client-environment.ts");
   const before = readFileSync(file, "utf8");
   const current = builder.current!.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!.clientEnvironment!.mappings;
@@ -138,10 +143,9 @@ test("client mapping batches persist references, disable graph links, undo/redo 
   assert.equal(client.entries.find((entry) => entry.name === "VITE_LOCAL_WS_URL")!.status, "disabled");
   assert.ok(client.entries.some((entry) => entry.name === "VITE_NEW_REGION"));
   assert.ok(!builder.current!.snapshot.models.dev.edges.some((edge) => edge.relation === "maps" && edge.label === "VITE_LOCAL_WS_URL"));
-  await assertApplied(edits.undo());
+  await restoreSource();
   assert.equal(readFileSync(file, "utf8"), before);
-  await assertApplied(edits.redo());
-  await edits.undo();
+  await restoreSource();
   const stale = await edits.planBatch([{ kind: "clientEnvironment", mappings }], revision());
   await withExternalSource(file, before + "\n// authored elsewhere\n", async () => {
     await assert.rejects(edits.applyBatch(stale.planId), /changed/);
@@ -149,7 +153,7 @@ test("client mapping batches persist references, disable graph links, undo/redo 
   });
 });
 
-test("descriptions review without writing, persist with settings and undo/redo together", async () => {
+test("descriptions review without writing, persist with settings", async () => {
   const file = path.join(fixture, "framework-config/descriptions.ts");
   const before = readFileSync(file, "utf8");
   const entity = "lambda:graphql-api";
@@ -160,15 +164,13 @@ test("descriptions review without writing, persist with settings and undo/redo t
   assert.equal(readFileSync(file, "utf8"), before);
   await assertApplied(edits.applyBatch(plan.planId));
   assert.equal(builder.current!.snapshot.descriptions.values[entity], value);
-  await assertApplied(edits.undo());
+  await restoreSource();
   assert.equal(readFileSync(file, "utf8"), before);
-  await assertApplied(edits.redo());
-  assert.equal(builder.current!.snapshot.descriptions.values[entity], value);
-  await edits.undo();
+  await restoreSource();
   const newNode = await edits.planBatch([{ kind: "description", entity: "task:transaction-worker", value: "New node notes" }], revision());
   await assertApplied(edits.applyBatch(newNode.planId));
   assert.equal(builder.current!.snapshot.descriptions.values["task:transaction-worker"], "New node notes");
-  await edits.undo();
+  await restoreSource();
   const pending = await edits.planBatch([{ kind: "description", entity, value }], revision());
   await withExternalSource(file, `${before}\n// Concurrent description edit\n`, async () => {
     await assert.rejects(edits.applyBatch(pending.planId), /changed/);
@@ -177,7 +179,7 @@ test("descriptions review without writing, persist with settings and undo/redo t
   await assert.rejects(edits.planBatch([{ kind: "description", entity: "../../outside", value }], revision()), /managed map item/);
 });
 
-test("connection descriptions review, persist, clear and undo without changing graph facts", async () => {
+test("connection descriptions review, persist, clear without changing graph facts", async () => {
   const file = path.join(fixture, "framework-config/descriptions.ts");
   const before = readFileSync(file, "utf8");
   const edge = builder.current!.snapshot.models.dev.edges.find((edge) => edge.relation === "env")!;
@@ -189,19 +191,14 @@ test("connection descriptions review, persist, clear and undo without changing g
   await assertApplied(edits.applyBatch(plan.planId));
   assert.equal(builder.current!.snapshot.descriptions.values[entity], value);
   assert.deepEqual(builder.current!.snapshot.models.dev.edges.find((item) => item.id === edge.id), edge);
-  await assertApplied(edits.undo());
-  assert.equal(readFileSync(file, "utf8"), before);
-  await assertApplied(edits.redo());
-  assert.equal(builder.current!.snapshot.descriptions.values[entity], value);
   const clear = await edits.planBatch([{ kind: "description", entity, value: "" }], revision());
   await assertApplied(edits.applyBatch(clear.planId));
   assert.equal(builder.current!.snapshot.descriptions.values[entity], "");
-  await edits.undo();
-  await edits.undo();
+  await restoreSource();
   await assert.rejects(edits.planBatch([{ kind: "description", entity: connectionDescriptionId({ ...edge, to: "nonexistent" }), value }], revision()), /managed map item/);
 });
 
-test("batch HTTP renames move description keys and undo restores both files", async () => {
+test("batch HTTP renames move description keys across both files", async () => {
   const file = path.join(fixture, "framework-config/descriptions.ts");
   const before = readFileSync(file, "utf8");
   const route = "route:http:/examples/python";
@@ -211,7 +208,7 @@ test("batch HTTP renames move description keys and undo restores both files", as
   await assertApplied(edits.applyBatch(plan.planId));
   assert.equal(builder.current!.snapshot.descriptions.values["route:http:/examples/documented"], value);
   assert.equal(builder.current!.snapshot.descriptions.values[route], undefined);
-  await edits.undo();
+  await restoreSource();
   assert.equal(readFileSync(file, "utf8"), before);
 });
 
@@ -228,7 +225,6 @@ test("local replay reviews config and handler together, restores both exactly, a
   assert.equal(readFileSync(handler, "utf8"), beforeHandler, "review writes nothing");
   await assertApplied(edits.applyBatch(plan.planId));
   const enabledHandler = readFileSync(handler, "utf8");
-  const enabledConfig = readFileSync(config, "utf8");
   assert.match(enabledHandler, /lambdaHandler = withLocalReplay\(async/);
   assert.equal(builder.current!.snapshot.models.dev.fields[target].find((fact) => fact.field === "events.localReplay")?.effective, true);
   const off = await edits.planBatch([{ kind: "field", intent: { target, field: "events.localReplay", inherit: true } }], revision());
@@ -236,15 +232,10 @@ test("local replay reviews config and handler together, restores both exactly, a
   await assertApplied(edits.applyBatch(off.planId));
   assert.ok(!readFileSync(handler, "utf8").includes("withLocalReplay(async"));
   assert.equal(builder.current!.snapshot.models.dev.fields[target].find((fact) => fact.field === "events.localReplay")?.effective, false);
-  await assertApplied(edits.undo());
-  assert.equal(readFileSync(handler, "utf8"), enabledHandler);
-  assert.equal(readFileSync(config, "utf8"), enabledConfig);
-  await assertApplied(edits.undo());
+  await restoreSource();
   assert.equal(readFileSync(handler, "utf8"), beforeHandler);
   assert.equal(readFileSync(config, "utf8"), beforeConfig);
-  await assertApplied(edits.redo());
-  assert.equal(readFileSync(handler, "utf8"), enabledHandler);
-  await edits.undo();
+  await restoreSource();
   const conflicting = await edits.planBatch([{ kind: "field", intent }], revision());
   await withExternalSource(handler, `${beforeHandler}\n// Concurrent author edit\n`, async () => {
     await assert.rejects(edits.applyBatch(conflicting.planId), /changed/);
@@ -258,7 +249,7 @@ test("local replay reviews config and handler together, restores both exactly, a
   await assert.rejects(edits.plan(intent, revision()), /configuration and handler wrapper/);
 });
 
-test("five settings are reviewed together, persisted together and undone as one exact source change", async () => {
+test("five settings are reviewed together, persisted together as one exact source change", async () => {
   const target = "lambda:graphql-api";
   const file = path.join(fixture, builder.current!.snapshot.source.entities[target].value.file);
   const original = readFileSync(file, "utf8");
@@ -271,12 +262,9 @@ test("five settings are reviewed together, persisted together and undone as one 
   await assertApplied(edits.applyBatch(plan.planId));
   for (const [field, value] of values) assert.equal(builder.current!.snapshot.models.dev.fields[target].find((fact) => fact.field === field)!.authored, value);
   const changed = readFileSync(file, "utf8");
-  assert.match(edits.history().undo!, /5 inspector changes/);
-  await assertApplied(edits.undo());
+  await restoreSource();
   assert.equal(readFileSync(file, "utf8"), original);
-  await assertApplied(edits.redo());
-  assert.equal(readFileSync(file, "utf8"), changed);
-  await assertApplied(edits.undo());
+  await restoreSource();
   assert.equal(readFileSync(file, "utf8"), original, "comments, imports and formatting return byte for byte");
 });
 
@@ -299,7 +287,7 @@ test("a route and nested settings compose across files without losing prior spli
   assert.ok(model.routes.some((route) => route.path === "/batch-worker" && route.target === target));
   assert.equal(model.fields[target].find((fact) => fact.field === "lambda.memorySize")!.effective, 256);
   assert.equal(model.fields[target].find((fact) => fact.field === "lambda.bundling.minify")!.effective, false);
-  await assertApplied(edits.undo());
+  await restoreSource();
   for (const [file, original] of originals) assert.equal(readFileSync(file, "utf8"), original);
 });
 
@@ -312,7 +300,7 @@ test("interdependent edits validate as a complete configuration and rejected dra
   const combined = await edits.planBatch([worker, { kind: "field", intent: { target: route.target, field: "deploy", value: "local-only" } }], revision());
   assert.equal(combined.ok, true, JSON.stringify(combined.preflight));
   await assertApplied(edits.applyBatch(combined.planId));
-  await assertApplied(edits.undo());
+  await restoreSource();
 });
 
 test("a concurrent change to one batch file prevents every batch write", async () => {
@@ -331,7 +319,7 @@ test("a concurrent change to one batch file prevents every batch write", async (
   });
 });
 
-test("island defaults insert a service group, preserve workload overrides, and undo/redo exact source", async () => {
+test("island defaults insert a service group, preserve workload overrides, and exact source", async () => {
   const file = path.join(fixture, "framework-config", "defaults.ts");
   const original = readFileSync(file, "utf8");
   const model = () => builder.current!.snapshot.models.dev;
@@ -353,17 +341,11 @@ test("island defaults insert a service group, preserve workload overrides, and u
     assert.equal(next.authored, old.authored, "individual source overrides stay intact");
     assert.equal(next.effective, old.authored === undefined ? 384 : old.effective);
   }
-  const authored = readFileSync(file, "utf8");
-  await assertApplied(edits.undo());
-  assert.equal(readFileSync(file, "utf8"), original);
-  await assertApplied(edits.redo());
-  assert.equal(readFileSync(file, "utf8"), authored);
   const inherit = await edits.plan({ target: "defaults:http", field: field.field, inherit: true }, revision());
   await assertApplied(edits.apply(inherit.planId));
   assert.equal(facts().find((fact) => fact.field === field.field)!.effective, 128);
   // Return the disposable file to its original bytes for neighboring tests.
-  await assertApplied(edits.undo());
-  await assertApplied(edits.undo());
+  await restoreSource();
   assert.equal(readFileSync(file, "utf8"), original);
 });
 
@@ -376,7 +358,7 @@ test("shared default switches, required baselines and numeric domains use the ex
   assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
   await assertApplied(edits.apply(plan.planId));
   assert.equal(builder.current!.snapshot.models.dev.fields["defaults:lambda"].find((fact) => fact.field === plan.field)!.effective, false);
-  await assertApplied(edits.undo());
+  await restoreSource();
   assert.equal(readFileSync(file, "utf8"), original);
 });
 
@@ -391,7 +373,7 @@ test("container and database pool defaults retain their own nested source paths"
     assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
     await assertApplied(edits.apply(plan.planId));
     assert.equal(builder.current!.snapshot.models.dev.fields[target].find((fact) => fact.field === field)!.effective, value);
-    await assertApplied(edits.undo());
+    await restoreSource();
     assert.equal(readFileSync(file, "utf8"), original);
   }
 });
@@ -405,7 +387,7 @@ async function rejects(promise: Promise<unknown>, status: number, message: RegEx
   });
 }
 
-test("a valid edit is written, reflected in the next snapshot, and undone to the byte", async () => {
+test("a valid edit is written, reflected in the next snapshot, with source verification", async () => {
   const original = readFileSync(serviceFile, "utf8");
   const plan = await edits.plan({ target: "service:example-service", field: "deploy", value: "both" }, revision());
   assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
@@ -417,13 +399,10 @@ test("a valid edit is written, reflected in the next snapshot, and undone to the
   assert.equal(readFileSync(serviceFile, "utf8"), original.replace('deploy: "local-only"', 'deploy: "both"'));
   const service = builder.current!.snapshot.models.dev.targets.find((target) => target.ref === "service:example-service")!;
   assert.equal(service.lanes.deploy, "both");
-  assert.ok(edits.history().undo, "generator-complete legacy deployment edits enter normal batch history");
 
-  await assertApplied(edits.undo());
+  await restoreSource();
   assert.equal(readFileSync(serviceFile, "utf8"), original);
-  await assertApplied(edits.redo());
-  assert.equal(readFileSync(serviceFile, "utf8"), original.replace('deploy: "local-only"', 'deploy: "both"'));
-  await edits.undo();
+  await restoreSource();
   assert.equal(readFileSync(serviceFile, "utf8"), original);
 });
 
@@ -445,7 +424,7 @@ test("Lambda build controls round-trip architecture, numeric retention and boole
     assert.equal(plan.preflight.dev.predicted?.effective, value);
     await assertApplied(edits.apply(plan.planId));
     assert.equal(builder.current!.snapshot.models.dev.fields["lambda:graphql-api"]!.find((fact) => fact.field === field)?.effective, value);
-    await assertApplied(edits.undo());
+    await restoreSource();
     assert.equal(readFileSync(file, "utf8"), original);
   }
   const refused = await edits.plan({ target: "lambda:graphql-api", field: "lambda.packaging", value: "container" }, revision());
@@ -454,7 +433,7 @@ test("Lambda build controls round-trip architecture, numeric retention and boole
   assert.equal(readFileSync(file, "utf8"), original);
 });
 
-test("Cognito event Lambda settings can be previewed, written and undone in their section module", async () => {
+test("Cognito event Lambda settings can be previewed, written in their section module", async () => {
   const file = path.join(fixture, "framework-config/workloads/events.ts");
   const original = readFileSync(file, "utf8");
   const target = "lambda:cognito-pre-signup-trigger";
@@ -464,7 +443,7 @@ test("Cognito event Lambda settings can be previewed, written and undone in thei
     assert.equal(plan.file, "framework-config/workloads/events.ts");
     await assertApplied(edits.apply(plan.planId));
     assert.equal(builder.current!.snapshot.models.dev.fields[target]!.find((fact) => fact.field === field)?.effective, value);
-    await assertApplied(edits.undo());
+    await restoreSource();
     assert.equal(readFileSync(file, "utf8"), original);
   }
   const packaging = await edits.plan({ target, field: "lambda.packaging", value: "container" }, revision());
@@ -523,7 +502,6 @@ test("an atomic write leaves no temporary file behind", () => {
 
 test("single-edit verification failures restore source without recording an applied edit", async () => {
   const original = readFileSync(serviceFile, "utf8");
-  const history = edits.history();
   const plan = await edits.plan({ target: "service:example-service", field: "deploy", value: "both" }, revision());
   const refresh = builder.refresh.bind(builder);
   let fail = true;
@@ -536,7 +514,6 @@ test("single-edit verification failures restore source without recording an appl
     assert.equal(response.status, "reverted", response.message);
     assert.match(response.message, /snapshot read failure/);
     assert.equal(readFileSync(serviceFile, "utf8"), original);
-    assert.deepEqual(edits.history(), history);
   } finally {
     builder.refresh = refresh;
     writeFileSync(serviceFile, original);
@@ -548,7 +525,6 @@ test("single-edit verification failures restore source without recording an appl
 
 test("single-edit verification failures preserve a concurrent editor's deletion", async () => {
   const original = readFileSync(serviceFile, "utf8");
-  const history = edits.history();
   const plan = await edits.plan({ target: "service:example-service", field: "deploy", value: "both" }, revision());
   const refresh = builder.refresh.bind(builder);
   builder.refresh = async () => {
@@ -559,7 +535,6 @@ test("single-edit verification failures preserve a concurrent editor's deletion"
     const response = await edits.apply(plan.planId);
     assert.equal(response.status, "unconfirmed", response.message);
     assert.throws(() => readFileSync(serviceFile, "utf8"), { code: "ENOENT" });
-    assert.deepEqual(edits.history(), history);
   } finally {
     builder.refresh = refresh;
     writeFileSync(serviceFile, original);
@@ -569,7 +544,7 @@ test("single-edit verification failures preserve a concurrent editor's deletion"
   }
 });
 
-test("an HTTP route rename updates its gateway and preserves the Lambda identity through undo and redo", async () => {
+test("an HTTP route rename updates its gateway and preserves the Lambda identity through source review", async () => {
   const file = path.join(fixture, "framework-config/workloads/http.ts");
   const original = readFileSync(file, "utf8");
   const identity = (mode: "dev" | "prod") => builder.current!.snapshot.models[mode].targets.map((target) => [target.ref, target.constructId]);
@@ -585,10 +560,9 @@ test("an HTTP route rename updates its gateway and preserves the Lambda identity
     assert.equal(model.routes.find((route) => route.id === "route:http:/examples/renamed")?.browserPath, "/api/examples/renamed");
     assert.ok(!model.routes.some((route) => route.id === "route:http:/examples/python"));
   }
-  await assertApplied(edits.undo());
+  await restoreSource();
   assert.equal(readFileSync(file, "utf8"), original);
-  await assertApplied(edits.redo());
-  await edits.undo();
+  await restoreSource();
   assert.equal(readFileSync(file, "utf8"), original);
 });
 
@@ -631,8 +605,7 @@ test("HTTP authorizer auth can be switched off and on without changing handler u
   assert.equal(enabledResult.status, "applied", applyDiagnostics(enabledResult));
   assert.equal(builder.current!.snapshot.models.prod.routes.find((route) => route.id === "route:http:/graphql")?.auth, true);
   assert.ok(!readFileSync(file, "utf8").includes("auth: false"));
-  await edits.undo();
-  await edits.undo();
+  await restoreSource();
   assert.equal(readFileSync(file, "utf8"), original);
   await rejects(edits.plan({ target: before.ref, field: "http.auth", value: false }, revision()), 422, /takes one of true/);
 });
@@ -646,6 +619,6 @@ test("HTTP service mounts expose the same API authorizer control and event Lambd
   assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
   await assertApplied(edits.apply(plan.planId));
   assert.equal(builder.current!.snapshot.models.dev.routes.find((route) => route.id === "route:service:/example-service/*")?.auth, false);
-  await edits.undo();
+  await restoreSource();
   assert.equal(readFileSync(serviceFile, "utf8"), original);
 });

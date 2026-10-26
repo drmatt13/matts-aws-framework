@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { parseEnv } from "node:util";
 import type { ResourceApply, ResourceDetails, ResourceIntent, ResourcePlan } from "../shared/resources";
-import type { HistoryState } from "../shared/api";
 import type { Mode, ModelResource } from "../shared/model";
 import { EvaluatorPool } from "./evaluator/pool";
 import { EditError, writeAtomically, writeSourceChange } from "./edits/io";
@@ -15,7 +14,7 @@ import { SourceJournal } from "./edits/journal";
 
 interface Change { file: string; before: string; after: string }
 interface Plan { response: ResourcePlan; revision: string; hashes: Record<string, string>; changes: readonly Change[] }
-interface Journal { resource: string; nextResource: string; changes: readonly Change[] }
+interface ResourceChanges { resource: string; nextResource: string; changes: readonly Change[] }
 
 export function readResourceIntent(body: unknown): ResourceIntent {
   const intent = (body as { intent?: unknown } | undefined)?.intent as Record<string, unknown> | undefined;
@@ -28,8 +27,6 @@ export function readResourceIntent(body: unknown): ResourceIntent {
  * snapshot, cache, diff, disk journal or server log. Only declarations authorize a key. */
 export class ResourceService {
   private readonly plans = new Map<string, Plan>();
-  private readonly undoStack: Journal[] = [];
-  private readonly redoStack: Journal[] = [];
   readonly ownWrites = new Map<string, string>();
   private lock: Promise<unknown> = Promise.resolve();
   constructor(private readonly root: string, private readonly builder: SnapshotBuilder) {}
@@ -51,9 +48,6 @@ export class ResourceService {
     if (!state.built.catalog.has(entry.path.join("."))) throw new EditError(422, "The resource declaration could not be located in source.");
     return entry;
   }
-  history(): HistoryState {
-    return { ...(this.undoStack.length ? { undo: "Undo resource configuration" } : {}), ...(this.redoStack.length ? { redo: "Redo resource configuration" } : {}) };
-  }
   expirePlans(): void { this.plans.clear(); }
   details(id: string, mode: Mode): ResourceDetails {
     const resource = this.resource(id, mode);
@@ -63,7 +57,7 @@ export class ResourceService {
     const value = values[resource.fromEnv!];
     // Configuration presence (even NAME=) is distinct from the framework's non-blank requirement.
     const consumers = this.state().snapshot.models[mode].targets.filter((target) => consumesResource(target, id)).map((target) => ({ target: target.ref, title: target.title, rules: target.requirementRules ?? [] }));
-    return { file, inputFile: { exists: text !== undefined, hash: sha256(text ?? "") }, configured: value !== undefined, ...(value !== undefined ? { value } : {}), consumers, history: this.history() };
+    return { file, inputFile: { exists: text !== undefined, hash: sha256(text ?? "") }, configured: value !== undefined, ...(value !== undefined ? { value } : {}), consumers };
   }
   plan(intent: ResourceIntent, revision: string, mode: Mode): Promise<ResourcePlan> {
     return this.exclusive(async () => {
@@ -108,23 +102,11 @@ export class ResourceService {
       if (!plan.response.ok) throw new EditError(422, "The framework refuses this resource change.");
       if (this.state().snapshot.revision !== plan.revision || JSON.stringify(hashEditableFiles(this.root)) !== JSON.stringify(plan.hashes)) throw new EditError(409, "The configuration changed since preview. Nothing was written.");
       const entry = { resource: plan.response.resource, nextResource: plan.response.nextResource, changes: plan.changes };
-      return this.write(entry, false, () => { this.undoStack.push(entry); this.redoStack.length = 0; });
+      return this.write(entry);
     });
   }
-  replay(direction: "undo" | "redo"): Promise<ResourceApply> {
-    return this.exclusive(async () => {
-      const stack = direction === "undo" ? this.undoStack : this.redoStack;
-      const entry = stack.at(-1);
-      if (!entry) throw new EditError(404, `No resource configuration to ${direction}.`);
-      const inverse = direction === "undo";
-      const overrides = Object.fromEntries(entry.changes.map((change) => [change.file, inverse ? change.before : change.after]));
-      const diagnostics = await this.validate(overrides);
-      if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) throw new EditError(422, `This resource edit cannot be ${direction === "undo" ? "undone" : "redone"} against the current configuration.`);
-      return this.write(entry, inverse, () => { stack.pop(); (inverse ? this.redoStack : this.undoStack).push(entry); });
-    });
-  }
-  private async write(entry: Journal, inverse: boolean, record: () => void): Promise<ResourceApply> {
-    const changes = entry.changes.map((change) => inverse ? { ...change, before: change.after, after: change.before } : change);
+  private async write(entry: ResourceChanges): Promise<ResourceApply> {
+    const changes = entry.changes;
     for (const change of changes) {
       assertResourceFile(this.root, change.file);
       if (sha256(readFileSync(change.file, "utf8")) !== sha256(change.before)) throw new EditError(409, `${toRelative(this.root, change.file)} changed. Nothing was written.`);
@@ -143,9 +125,8 @@ export class ResourceService {
       const state = await this.builder.refresh();
       if ([state.snapshot.models.dev, state.snapshot.models.prod].some((model) => model.stale || model.status === "error")) throw new Error("The written configuration did not validate.");
       journal.finish(journalId, "complete");
-      record();
       this.expirePlans();
-      return { status: "applied", message: "Wrote resource configuration.", resource: inverse ? entry.resource : entry.nextResource, revision: state.snapshot.revision, history: this.history() };
+      return { status: "applied", message: "Wrote resource configuration.", resource: entry.nextResource, revision: state.snapshot.revision };
     } catch {
       let conflicted = false;
       for (const change of written.reverse()) {
@@ -159,7 +140,7 @@ export class ResourceService {
       const state = await this.builder.refresh().catch(() => undefined);
       this.expirePlans();
       const message = conflicted ? "The resource edit could not be confirmed. Concurrent edits were preserved; review the changed files." : "The resource edit was reverted because it could not be confirmed.";
-      return { status: conflicted ? "unconfirmed" : "reverted", message: `${message}${state ? "" : " The snapshot could not be refreshed; refresh Studio after resolving the failure."}`, resource: inverse ? entry.nextResource : entry.resource, revision: state?.snapshot.revision ?? this.state().snapshot.revision, history: this.history() };
+      return { status: conflicted ? "unconfirmed" : "reverted", message: `${message}${state ? "" : " The snapshot could not be refreshed; refresh Studio after resolving the failure."}`, resource: entry.resource, revision: state?.snapshot.revision ?? this.state().snapshot.revision };
     }
   }
 }

@@ -10,6 +10,7 @@ import { Inspector } from "./Inspector";
 import { UnsavedChangesDialog } from "./DraftControls";
 import { SourceRecoveryPanel } from "./SourceRecovery";
 import { NavigationStrip } from "./NavigationStrip";
+import { SourceEnvironment } from "./SourceContext";
 
 function Drawer(props: { readonly title: string; readonly onClose: () => void; readonly children: ReactNode }) {
   const id = useId();
@@ -169,6 +170,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
           <Link to="/websockets" search={{}} className="tab" activeOptions={{ includeSearch: false }}>WebSockets</Link>
         </NavigationStrip>
         <div className="bar-actions">
+          <SourceEnvironment />
           <button className={`health ${live.evaluating ? "evaluating" : errorCount ? "bad" : warningCount ? "warning" : "good"}`} onClick={() => setDrawer(drawer === "health" ? undefined : "health")} title="Source validation · deployment and runtime health are inspected separately" aria-label={`${healthLabel}. Configuration health`} aria-describedby={healthDescriptionId} aria-expanded={drawer === "health"}>
             {live.evaluating ? <LoaderCircle size={14} aria-hidden /> : errorCount || warningCount ? <AlertTriangle size={14} aria-hidden /> : <Check size={14} aria-hidden />}<span>{healthLabel}</span>
           </button>

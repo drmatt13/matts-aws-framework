@@ -109,7 +109,7 @@ afterEach(() => { ui.cleanup(); for (const client of clients.splice(0)) client.c
 after(() => dom.window.close());
 
 async function mount() {
-  const response: SnapshotResponse = { snapshot: snapshot(), evaluating: false, history: {}, commands: {}, busy: null };
+  const response: SnapshotResponse = { snapshot: snapshot(), evaluating: false, commands: {}, busy: null };
   function Root() { return h(studio.StudioProvider, { response, selected: undefined, select: () => {}, children: h("div", null, h(router.Link, { to: "/other" }, "Open other view"), h(router.Outlet)) }); }
   const root = router.createRootRoute({ component: Root });
   const application = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/database"] }), routeTree: root.addChildren([

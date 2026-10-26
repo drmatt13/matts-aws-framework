@@ -63,17 +63,15 @@ test("replacing a literal is a one-line diff in the module that declares it", ()
     'add deploy: "both",',
   ]);
   assert.deepEqual(edit.forward, { origin: 'services["/example-service/*"]', path: ["deploy"], value: "both" });
-  assert.deepEqual(edit.inverse, { origin: 'services["/example-service/*"]', path: ["deploy"], value: "local-only" });
 });
 
-test("an absent field is inserted beside its neighbours, and its inverse removes it", () => {
+test("an absent field is inserted beside its neighbours", () => {
   const edit = planned(plan({ target: "lambda:graphql-api", field: "deploy", value: "local-only" }));
   const at = edit.before.indexOf("    timeoutSeconds: 30,\n", edit.before.indexOf('"/graphql":')) + "    timeoutSeconds: 30,\n".length;
   assert.equal(
     edit.after,
     edit.before.slice(0, at) + '    deploy: "local-only",\n' + edit.before.slice(at),
   );
-  assert.deepEqual(edit.inverse, { origin: 'http["/graphql"]', path: ["deploy"], remove: true });
 });
 
 test("a nested field goes into the object that already holds its siblings", () => {
@@ -81,7 +79,6 @@ test("a nested field goes into the object that already holds its siblings", () =
   assert.equal(edit.after, edit.before.replace("      desiredCount: 1,\n", '      desiredCount: 1,\n      subnet: "private",\n'));
   const created = planned(plan({ target: "task:db-migrate", field: "container.subnet", value: "private" }));
   assert.match(created.after, /cloud: \{ vpc: applicationVpc, subnet: "private" \},/);
-  assert.deepEqual(created.inverse, { origin: 'tasks["db-migrate"]', path: ["cloud", "subnet"], remove: true });
 });
 
 test("Lambda architecture, packaging and typed build options produce ordinary source edits", () => {
@@ -96,7 +93,6 @@ test("Lambda architecture, packaging and typed build options produce ordinary so
   const minify = planned(plan({ target: "lambda:graphql-api", field: "lambda.bundling.minify", value: false }));
   assert.match(minify.after, /minify: false/);
   assert.match(minify.after, /sourceMap: false/);
-  assert.deepEqual(minify.inverse, { origin: 'http["/graphql"]', path: ["bundling", "minify"], remove: true });
   assert.equal(minify.forward.value, false);
   for (const [field, value] of [["lambda.architecture", "amd64"], ["lambda.logRetentionDays", "14"], ["lambda.logRetentionDays", 2], ["lambda.bundling.minify", "false"]] as const) {
     assert.ok("refused" in plan({ target: "lambda:graphql-api", field, value }), `${field} rejects ${JSON.stringify(value)}`);

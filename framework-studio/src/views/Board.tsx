@@ -4,12 +4,12 @@ import type { ModelResource, ModelTarget } from "../../shared/model";
 import { layoutBoard, type BoardNode } from "../layout";
 import { CATEGORY_LABEL, ROLE_LABEL, type EdgeCategory } from "../lookup";
 import { AddMenu } from "./AddMenu";
-import { SourceEnvironment, SourceHistory } from "./SourceContext";
 import { useStudio } from "../studio";
 import { DeploymentBadge, DeploymentLegend } from "./DeploymentBadge";
 import { availabilityBadge, catalogAvailability, deploymentBadge, type DeploymentBadgeKind } from "../deployment";
 import { EntityIcon } from "./EntityIcon";
 import { resourceBadge, resourceIcon, routeIcon, targetIcon } from "../icons";
+import { connectionTitle } from "../../shared/permissions";
 
 const CATEGORIES = Object.keys(CATEGORY_LABEL) as EdgeCategory[];
 
@@ -70,7 +70,7 @@ export function Board() {
   }, [index, model.edges, selected]);
 
   if (layout.nodes.length === 0) {
-    return <><div className="workspace-toolbar board-head"><div className="source-controls"><SourceEnvironment /><SourceHistory /></div></div><p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p></>;
+    return <p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p>;
   }
 
   const visible = layout.edges.filter((edge) => shown.has(edge.category));
@@ -79,7 +79,6 @@ export function Board() {
   return (
     <>
       <div className="workspace-toolbar board-head">
-        <div className="source-controls"><SourceEnvironment /><SourceHistory /></div>
         <div className="chips" role="group" aria-label="Relations shown">
           {CATEGORIES.map((category) => (
             <button
@@ -124,7 +123,7 @@ export function Board() {
             <g key={edge.edge.id} style={{ color: "var(--ink)" }}>
               <path d={edge.path} className={`edge lit ${edge.edge.inputRequirement?.status === "missing" ? "missing" : ""} ${edge.edge.provenance !== "declared" ? "derived" : ""}`} markerEnd="url(#arrow)" />
               <text className="edge-label" x={edge.label.x} y={edge.label.y - 4} textAnchor="middle">
-                {edge.edge.label}
+                {connectionTitle(edge.edge)}
               </text>
             </g>
           ))}

@@ -1,5 +1,4 @@
 import { useEffect, useId, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import type { ModelResource } from "../../shared/model";
 import type { ResourceDetails, ResourceIntent } from "../../shared/resources";
 import { api } from "../api";
@@ -8,20 +7,15 @@ import { FormGroup, InspectorSwitch } from "./InspectorUI";
 import { LocalValue } from "./LocalValue";
 
 export function ResourceEditor({ resource }: { readonly resource: ModelResource }) {
-  const { snapshot, mode, model, live, select, toast, draft, draftState } = useStudio();
-  const query = useQueryClient();
+  const { snapshot, mode, model, live, draft, draftState } = useStudio();
   const help = useId();
   const [details, setDetails] = useState<ResourceDetails>();
   const [detailsError, setDetailsError] = useState<string>();
   const [reload, setReload] = useState(0);
-  const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     setDetails(undefined);
     setDetailsError(undefined);
-    setError(undefined);
-    setBusy(false);
     if (!resource.absent && !model.stale) {
       void api.resourceDetails(resource.id, mode, controller.signal).then((details) => { if (!controller.signal.aborted) setDetails(details); }).catch((reason: unknown) => {
         if (!controller.signal.aborted) setDetailsError(reason instanceof Error ? reason.message : "Could not load this input.");
@@ -41,19 +35,9 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
   const entry = draftState.entries.find((entry) => entry.kind === "resource" && entry.intent.resource === resource.id);
   const descriptionPending = draftState.entries.some((entry) => entry.kind === "description");
   const environmentPending = draftState.entries.some((entry) => entry.kind === "environment");
-  const disabled = busy || !!draftState.busy || draft.conflict || live.evaluating || live.running !== null || model.stale || resource.absent || descriptionPending || environmentPending;
-  const write = async (direction: "undo" | "redo") => {
-    setBusy(true); setError(undefined);
-    try {
-      const result = await api.resourceHistory(direction);
-      toast(result.message, result.status === "applied" ? "plain" : "refuse");
-      if (result.resource !== resource.id) select(result.resource);
-      await query.invalidateQueries({ queryKey: ["snapshot"] });
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not restore this edit."); }
-    finally { setBusy(false); }
-  };
+  const disabled = !!draftState.busy || draft.conflict || live.evaluating || live.running !== null || model.stale || resource.absent || descriptionPending || environmentPending;
   return <>
-    <LocalValue resource={resource} details={details} error={detailsError} busy={busy} onRetry={() => setReload((value) => value + 1)} />
+    <LocalValue resource={resource} details={details} error={detailsError} busy={!!draftState.busy} onRetry={() => setReload((value) => value + 1)} />
     <section className="resource-editor">
       <h3>Configuration</h3>
       {descriptionPending ? <p className="small muted">Apply or discard the description before editing input settings.</p> : null}
@@ -81,11 +65,8 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
         }) : <p className="small muted">No workload consumes this input. Application stacks may have their own requirements.</p>}
         <p className="small muted">Required input applies to every enabled consumer. Turn it off to edit individual workload rules. Conditional rules stay as declared unless changed here.</p>
       </FormGroup></fieldset>
-      {error || entry?.error ? <p className="reason" role="alert">{error ?? entry?.error}</p> : null}
-      <div className="resource-actions">
-        {details?.history.undo ? <button className="quiet" disabled={disabled || draft.dirty} onClick={() => void write("undo")}>Undo resource edit</button> : null}
-        {details?.history.redo ? <button className="quiet" disabled={disabled || draft.dirty} onClick={() => void write("redo")}>Redo resource edit</button> : null}
-      </div>
+      {entry?.error ? <p className="reason" role="alert">{entry.error}</p> : null}
+
     </section>
   </>;
 }

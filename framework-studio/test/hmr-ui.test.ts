@@ -44,7 +44,7 @@ test("entry replacement retains one React root, query cache and pending inspecto
   let root: import("react-dom/client").Root | undefined;
   let prune: (() => void) | undefined;
   try {
-    const response: SnapshotResponse = { snapshot: (await builder.refresh()).snapshot, history: {}, commands: {}, busy: null, evaluating: false };
+    const response: SnapshotResponse = { snapshot: (await builder.refresh()).snapshot, commands: {}, busy: null, evaluating: false };
     const writes: string[] = [];
     Object.defineProperty(globalThis, "fetch", { configurable: true, value: async (input: string, init?: { method?: string }) => {
       const pathname = new URL(input, "http://localhost").pathname;

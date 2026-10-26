@@ -1,7 +1,8 @@
+import { sourceFixtureCheckpoint } from "./support/source-fixture";
 import assert from "./support/assert";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { after, before, test } from "node:test";
+import { after, afterEach, before, beforeEach, test } from "node:test";
 import { SnapshotBuilder } from "../server/snapshot";
 import { EditService } from "../server/edits/transaction";
 import { generateCreationArtifacts } from "../server/edits/creation-generation";
@@ -67,6 +68,10 @@ export class Derived extends Base { constructor(scope: Construct, id: string) { 
   builder = new SnapshotBuilder(root); edits = new EditService(root, builder); await builder.refresh();
   for (const target of builder.current!.snapshot.models.dev.targets) assert.ok(target.implementation?.ready, target.implementation?.problems.join("\n") ?? `${target.ref} implementation was not checked`);
 });
+let restoreSource: () => Promise<void>;
+beforeEach(() => { restoreSource = sourceFixtureCheckpoint(root, builder); });
+afterEach(async () => { await restoreSource(); });
+
 after(async () => { await builder?.dispose(); assert.ok(root.startsWith(path.join(repository, ".cache/framework-studio") + path.sep)); rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); });
 
 test("semantic discovery resolves namespace reexports, aliases, inherited and third-party fields without execution", () => {
@@ -81,7 +86,7 @@ test("semantic discovery resolves namespace reexports, aliases, inherited and th
   assert.equal(triggerUnavailable(snapshot, "resource:identity.pool", "cognito"), undefined);
 });
 
-test("trigger additions, multi-file reassignment and removals preview both graphs and undo exact bytes", async () => {
+test("trigger additions, multi-file reassignment and removals preview both graphs with exact source bytes", async () => {
   const originalFirst = readFileSync(eventFile, "utf8"), secondFile = path.join(root, "framework-config/second.ts"), originalSecond = readFileSync(secondFile, "utf8");
   const plan = await edits.planBatch([{ kind: "triggers", event: "first", bindings: [binding()] }], builder.current!.snapshot.revision);
   assert.equal(plan.ok, true, JSON.stringify(plan.preflight));
@@ -89,21 +94,15 @@ test("trigger additions, multi-file reassignment and removals preview both graph
   assert.ok(plan.impact.some((line) => line.includes("Handler contract acknowledged")));
   assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
   for (const model of Object.values(builder.current!.snapshot.models)) assert.ok(model.edges.some((edge) => edge.relation === "trigger" && edge.to === "lambda:first" && edge.provenance === "declared"));
-  const firstApplied = readFileSync(eventFile, "utf8");
   const move = await edits.planBatch([{ kind: "triggers", event: "first", bindings: [] }, { kind: "triggers", event: "second", bindings: [binding("second")] }], builder.current!.snapshot.revision);
   assert.equal(move.ok, true, JSON.stringify(move.preflight));
   assert.equal(move.changes.length, 2);
   assert.equal((await edits.applyBatch(move.planId)).status, "applied");
   assert.equal(builder.current!.snapshot.models.dev.triggers?.[0]?.event, "second");
-  assert.equal((await edits.undo()).status, "applied");
-  assert.equal(readFileSync(eventFile, "utf8"), firstApplied); assert.equal(readFileSync(secondFile, "utf8"), originalSecond);
-  assert.equal((await edits.undo()).status, "applied");
-  assert.equal(readFileSync(eventFile, "utf8"), originalFirst);
-  assert.equal((await edits.redo()).status, "applied");
-  const remove = await edits.planBatch([{ kind: "triggers", event: "first", bindings: [] }], builder.current!.snapshot.revision);
+  const remove = await edits.planBatch([{ kind: "triggers", event: "second", bindings: [] }], builder.current!.snapshot.revision);
   assert.equal((await edits.applyBatch(remove.planId)).status, "applied");
   assert.equal(builder.current!.snapshot.models.dev.triggers?.length, 0);
-  await edits.undo(); await edits.undo();
+  await restoreSource();
 });
 
 test("a schedule writes trigger.schedule without a catalog import and reads back resourceless in both graphs", async () => {
@@ -118,7 +117,7 @@ test("a schedule writes trigger.schedule without a catalog import and reads back
   for (const model of Object.values(builder.current!.snapshot.models)) assert.deepEqual(model.triggers?.map((item) => [item.key, item.resource]), [["schedule/nightly", ""]]);
   await assert.rejects(edits.planBatch([{ kind: "triggers", event: "first", bindings: [{ ...schedule, resource: "resource:identity.pool" }] }], builder.current!.snapshot.revision), /takes no resource/);
   await assert.rejects(edits.planBatch([{ kind: "triggers", event: "first", bindings: [{ ...schedule, options: { expression: "rate(1 minutes)" } }] }], builder.current!.snapshot.revision), /rate\(1 minute\)/);
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(eventFile, "utf8"), original);
 });
 

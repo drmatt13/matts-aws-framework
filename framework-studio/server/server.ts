@@ -242,7 +242,7 @@ async function configureServer(
     resources.expirePlans();
     inputs.expirePlans();
     stateful.expirePlans();
-    broadcast("snapshot", { revision, external, history: edits.history() });
+    broadcast("snapshot", { revision, external });
   };
   let evaluating = false;
   const refresh = (external: readonly string[]): Promise<StudioState | undefined> => {
@@ -347,7 +347,6 @@ async function configureServer(
       ...recoveryState(),
       sourceWatch,
       snapshot: state.snapshot,
-      history: edits.history(),
       evaluating,
       commands: Object.fromEntries(
         Object.entries(COMMANDS).map(([name, { label, description, writes }]) => [name, { label, description, writes }]),
@@ -408,14 +407,6 @@ async function configureServer(
     published(result.revision);
     return result;
   }));
-  for (const direction of ["undo", "redo"] as const) {
-    api.post(`/resources/${direction}`, (_request, response) => send(response, async () => {
-      const result = await resources.replay(direction);
-      published(result.revision);
-      return result;
-    }));
-  }
-
   api.post("/routes/plan", (request, response) => send(response, async () => {
     if (typeof request.body?.route !== "string" || typeof request.body?.value !== "string") throw new EditError(400, "A route edit names a route and its new path.");
     return edits.planRoute(request.body.route, request.body.value, String(request.body.revision ?? ""));
@@ -444,15 +435,6 @@ async function configureServer(
       return result;
     }),
   );
-  for (const direction of ["undo", "redo"] as const) {
-    api.post(`/edits/${direction}`, (_request, response) =>
-      send(response, async () => {
-        const result = await edits[direction]();
-        published(result.revision);
-        return result;
-      }),
-    );
-  }
   api.post("/commands/:name", (request, response) =>
     send(response, async () => {
       const name = String(request.params.name);

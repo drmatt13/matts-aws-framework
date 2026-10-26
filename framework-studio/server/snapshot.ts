@@ -11,6 +11,7 @@ import { withDeploymentInputs } from "./deployment-inputs";
 import { withExportStacks } from "./source/export-stacks";
 import { readDescriptions } from "./descriptions";
 import { withConnectionEvidence } from "./source/evidence";
+import { withConnectionAuthorizations } from "../shared/permissions";
 import { withClientEnvironment } from "./client-environment";
 import { readClientMappings } from "./client-environment-source";
 import { STACK_MEMBER_TAGGING, tagFacts, withAbsentTagging } from "./model/tags";
@@ -197,7 +198,7 @@ export class SnapshotBuilder {
       const declared = model.stale ? model : withExportStacks(withClassMembers(model, built.catalog, built.index.cdkLinks.edges), built.exportStacks);
       const comparisons = Object.values(clientMappings.mappings).flatMap(modes => Object.values(modes).flatMap(binding => binding.when ? [binding.when] : []));
       const enriched = withClientEnvironment(withDeploymentInputs(this.repositoryRoot, withLocalDatabases(declared, localDatabase.services), { dev, prod }, comparisons), clientMappings);
-      return withConnectionEvidence(this.repositoryRoot, enriched, built.index, built.catalog, sources);
+      return withConnectionAuthorizations(withConnectionEvidence(this.repositoryRoot, enriched, built.index, built.catalog, sources));
     };
     const snapshot: Snapshot = {
       descriptions: readDescriptions(this.repositoryRoot),

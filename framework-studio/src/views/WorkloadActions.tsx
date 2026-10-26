@@ -4,6 +4,7 @@ import type { DraftEdit } from "../../shared/api";
 import { useStudio } from "../studio";
 import { editorLink } from "../lookup";
 import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
+import { grantOptions, type NativeGrantMethod } from "../../shared/grants";
 
 export function ImplementationStatus({ target }: { readonly target: ModelTarget }) {
   const { draft, draftState, model, live, snapshot } = useStudio();
@@ -26,19 +27,20 @@ export function WorkloadConnections({ target }: { readonly target: ModelTarget }
   const [destination, setDestination] = useState("");
   const [enabled, setEnabled] = useState(true);
   const [variable, setVariable] = useState("");
-  const [grant, setGrant] = useState<"grantRead" | "grantWrite" | "grantReadWrite" | "grantSendMessages" | "grantConsumeMessages">("grantRead");
+  const [grant, setGrant] = useState<NativeGrantMethod>("grantRead");
   const [scope, setScope] = useState("uploads/*");
   useEffect(() => { setConnection(target.kind === "agent" ? "tool" : "database"); setDestination(""); setVariable(""); setEnabled(true); }, [target.ref, target.kind]);
   const disabled = !!draftState.busy || draft.conflict || model.stale || live.evaluating;
   const destinations = model.targets.filter(item => connection === "runsTask" ? item.kind === "task" : connection === "startsWorkflow" ? item.kind === "workflow" : connection === "invokesAgent" ? item.kind === "agent" : connection === "tool" ? item.role === "tool" : false);
   const simple = connection === "database" || connection === "userPool";
   const catalog = connection === "resource" || connection === "grant";
-  const resources = model.resources.filter(item => connection === "resource" ? ["input", "secret"].includes(item.kind) : snapshot.source.triggerCapabilities?.some(capability => capability.resource === item.id && capability.canonicalTypes.some(type => /^aws-(?:s3:I?Bucket|sqs:I?Queue)$/.test(type))));
-  const queue = snapshot.source.triggerCapabilities?.find(capability => capability.resource === destination)?.canonicalTypes.some(type => /^aws-sqs:I?Queue$/.test(type)) ?? false;
+  const optionsFor = (id: string) => grantOptions(snapshot.source.triggerCapabilities?.find(capability => capability.resource === id)?.canonicalTypes ?? []);
+  const resources = model.resources.filter(item => connection === "resource" ? ["input", "secret"].includes(item.kind) : optionsFor(item.id).length > 0);
+  const options = optionsFor(destination), selectedGrant = options.find(option => option.method === grant);
   const selectDestination = (value: string) => {
     setDestination(value);
-    const isQueue = snapshot.source.triggerCapabilities?.find(capability => capability.resource === value)?.canonicalTypes.some(type => /^aws-sqs:I?Queue$/.test(type)) ?? false;
-    setGrant(isQueue ? "grantSendMessages" : "grantRead"); setScope(isQueue ? "" : "uploads/*");
+    const first = optionsFor(value)[0];
+    setGrant(first?.method ?? "grantRead"); setScope(first?.scope ? "uploads/*" : "");
   };
   const source = snapshot.source.entities[target.ref]?.value;
   return <InspectorDisclosure title="Connect workload">
@@ -47,13 +49,14 @@ export function WorkloadConnections({ target }: { readonly target: ModelTarget }
         {target.kind !== "agent" ? <option value="database">Use application database (IAM)</option> : null}
         {!["agent", "tool"].includes(target.role) ? <option value="userPool">Provide user-pool identifiers</option> : null}
         <option value="runsTask">Run a container task</option><option value="startsWorkflow">Start a workflow</option><option value="invokesAgent">Invoke a JSON agent</option>{target.kind === "agent" ? <option value="tool">Add an agent tool</option> : null}
-        <option value="resource">Deliver input or secret</option><option value="grant">Grant bucket or queue access</option>
+        <option value="resource">Deliver input or secret</option><option value="grant">Grant AWS resource access</option>
       </select></label>
       {!simple ? <label className="resource-control"><span>Destination</span><select value={destination} disabled={disabled} onChange={event => selectDestination(event.target.value)}><option value="">Select a declared {catalog ? "resource" : "target"}…</option>{catalog ? resources.map(item => <option key={item.id} value={item.id}>{item.path.join(".")} · {item.kind}</option>) : destinations.map(item => <option key={item.ref} value={item.ref}>{item.title} · {item.ref}</option>)}</select></label> : null}
       {connection === "resource" ? <label className="resource-control"><span>Consumer environment variable</span><input value={variable} disabled={disabled} onChange={event => setVariable(event.target.value)} spellCheck={false} /></label> : null}
-      {connection === "grant" ? <><label className="resource-control"><span>Permission</span><select value={grant} disabled={disabled || !destination} onChange={event => setGrant(event.target.value as typeof grant)}>{queue ? <><option value="grantSendMessages">Send queue messages</option><option value="grantConsumeMessages">Consume queue messages</option></> : <><option value="grantRead">Read bucket objects</option><option value="grantWrite">Write bucket objects</option><option value="grantReadWrite">Read and write bucket objects</option></>}</select></label>{!queue ? <label className="resource-control"><span>Bucket object scope</span><input value={scope} disabled={disabled} onChange={event => setScope(event.target.value)} spellCheck={false} /></label> : null}</> : null}
+      {connection === "grant" ? <><label className="resource-control"><span>Permission</span><select value={selectedGrant ? grant : ""} disabled={disabled || !destination} onChange={event => setGrant(event.target.value as NativeGrantMethod)}>{!selectedGrant ? <option value="">Select a resource first…</option> : null}{options.map(option => <option key={option.method} value={option.method}>{option.label}</option>)}</select></label>{selectedGrant?.scope ? <label className="resource-control"><span>Bucket object scope</span><input value={scope} disabled={disabled} onChange={event => setScope(event.target.value)} placeholder="* (all objects)" spellCheck={false} /></label> : null}
+        <p className="small muted">{selectedGrant ? `${selectedGrant.label}: ${selectedGrant.method} grants this workload's role access to the selected resource${selectedGrant.scope ? ` (${scope || "all objects"})` : ""}. CDK expands its actions and encryption permissions during synthesis.` : "Choose a resource with a discovered S3, SQS, DynamoDB, SNS or EventBridge type. Custom native grants stay in source."}</p></> : null}
       <label className="resource-control"><span>Action</span><select value={enabled ? "connect" : "disconnect"} disabled={disabled} onChange={event => setEnabled(event.target.value === "connect")}><option value="connect">Connect</option><option value="disconnect">Disconnect</option></select></label>
-      <button className="quiet" disabled={disabled || !simple && !destination || connection === "resource" && !/^[A-Z][A-Z0-9_]*$/.test(variable)} onClick={() => draft.stageOperation({ kind: "connection", target: target.ref, connection, enabled, ...(!simple ? { destination } : {}), ...(connection === "resource" ? { variable } : {}), ...(connection === "grant" ? { grant, scope } : {}) })}>Stage connection change</button>
+      <button className="quiet" disabled={disabled || !simple && !destination || connection === "grant" && !selectedGrant || connection === "resource" && !/^[A-Z][A-Z0-9_]*$/.test(variable)} onClick={() => draft.stageOperation({ kind: "connection", target: target.ref, connection, enabled, ...(!simple ? { destination } : {}), ...(connection === "resource" ? { variable } : {}), ...(connection === "grant" ? { grant, scope: selectedGrant?.scope ? scope : "" } : {}) })}>Stage connection change</button>
       <p className="small muted">Review updates declarations, framework bindings and generated artifacts. Database access uses its declared VPC and IAM. User-pool identifiers alone do not authenticate a handler; use the authenticated wrapper in source.</p>
     </> : null}
     <p><button className="quiet" disabled={disabled || draft.dirty} onClick={() => draft.stageOperation({ kind: "removeWorkload", target: target.ref })}>Review declaration removal and source archive</button></p>

@@ -38,10 +38,10 @@ import { planWorkloadRemoval } from "./removal";
 import { SourceJournal } from "./journal";
 import { readWorkloadOperation } from "../../shared/workload-operations";
 import { planIdentityPolicy } from "../identity-policy-source";
+import { connectionTitle } from "../../shared/permissions";
 
 interface Change { readonly file: string; readonly before: string | null; readonly after: string | null }
-export interface BatchJournal {
-  readonly kind: "batch";
+interface BatchChanges {
   readonly label: string;
   readonly changes: readonly Change[];
   readonly edits: readonly DraftEdit[];
@@ -55,12 +55,12 @@ export interface BatchJournal {
   readonly generatedFiles?: readonly string[];
   readonly generationInputs?: Readonly<Record<string, string>>;
   readonly implementationFiles?: readonly string[];
-  readonly operationModels?: { readonly forward: Readonly<Record<"dev" | "prod", string>>; readonly inverse: Readonly<Record<"dev" | "prod", string>> };
+  readonly operationModels?: Readonly<Record<"dev" | "prod", string>>;
   readonly networkRemovals?: readonly string[];
   readonly createdDirectories?: readonly string[];
-  readonly creationModels?: { readonly forward: Readonly<Record<"dev" | "prod", string>>; readonly inverse: Readonly<Record<"dev" | "prod", string>> };
+  readonly creationModels?: Readonly<Record<"dev" | "prod", string>>;
 }
-interface StoredBatch extends BatchJournal { readonly response: BatchPlanResponse; readonly revision: string; readonly hashes: Record<string, string> }
+interface StoredBatch extends BatchChanges { readonly response: BatchPlanResponse; readonly revision: string; readonly hashes: Record<string, string> }
 /** Compare framework semantics, excluding source locations and Inspector enrichments. */
 function creationSignature(model: ModeModel): string {
   return JSON.stringify({ targets: model.targets.map(({ ref, constructId, role, lanes, environment, secrets, placement, compute, access, requirementRules }) => ({ ref, constructId, role, lanes, environment, secrets, placement, compute, access, requirementRules })), routes: model.routes,
@@ -73,7 +73,7 @@ function creationSignature(model: ModeModel): string {
     edges: model.edges.filter((edge) => edge.provenance === "declared" && edge.relation !== "database").map(({ relation, from, to, label, attachment }) => ({ relation, from, to, label, attachment })),
   });
 }
-function cleanupCreatedDirectories(entry: BatchJournal): void {
+function cleanupCreatedDirectories(entry: BatchChanges): void {
   for (const directory of [...(entry.createdDirectories ?? [])].sort((a, b) => b.length - a.length)) {
     try { rmdirSync(directory); } catch (error) { if (!["ENOENT", "ENOTEMPTY", "EEXIST"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error; }
   }
@@ -83,7 +83,7 @@ const identity = (model: ModeModel) => JSON.stringify(model.targets.map((target)
 /** Snapshot evidence describes source locations; it does not change a binding's semantics. */
 export function connectionSignature(model: Pick<ModeModel, "edges">): string {
   return JSON.stringify(model.edges.filter(edge => edge.provenance !== "source" && ["grant", "runsTask", "startsWorkflow", "invokesAgent", "usesTool"].includes(edge.relation))
-    .map(({ evidence: _evidence, ...edge }) => edge));
+    .map(({ evidence: _evidence, authorization: _authorization, ...edge }) => edge));
 }
 
 /** Composes the existing literal splices in memory, then validates the final source once.
@@ -165,7 +165,18 @@ export class BatchEditor {
         summaries.push(`${edit.target} — create missing starter files at ${target.directory}; existing files are preserved`);
         continue;
       }
-      if (edit.kind === "connection") { planConnection(this.root, state, edit, overrides); summaries.push(`${edit.target} — ${edit.enabled ? "connect" : "disconnect"} ${edit.connection}${edit.destination ? ` ${edit.destination}` : ""}`); continue; }
+      if (edit.kind === "connection") {
+        planConnection(this.root, state, edit, overrides);
+        const purpose = edit.connection === "grant" ? `native IAM ${edit.grant}(${edit.scope ? JSON.stringify(edit.scope) : ""})`
+          : edit.connection === "database" ? "database IAM login, endpoints and network placement"
+          : edit.connection === "runsTask" ? "ECS launch and role-passing grants"
+          : edit.connection === "startsWorkflow" ? "workflow start grant"
+          : edit.connection === "invokesAgent" ? "agent invocation binding (IAM or user token, from agent auth)"
+          : edit.connection === "tool" ? "agent Gateway tool access"
+          : edit.connection === "resource" ? "input/secret delivery (typed secrets include read grants)" : "user-pool identifier delivery";
+        summaries.push(`${edit.target} — ${edit.enabled ? "add" : "remove"} ${purpose}${edit.destination ? ` → ${edit.destination}` : ""}`);
+        continue;
+      }
       if (edit.kind === "removeWorkload") {
         for (const change of planWorkloadRemoval(this.root, state, edit.target, overrides)) { deletions.set(change.file, change); implementationFiles.add(change.file); }
         for (const file of overrides.keys()) if (toRelative(this.root, file).startsWith("archived-workloads/")) implementationFiles.add(file);
@@ -234,7 +245,7 @@ export class BatchEditor {
         try { overrides.set(file, rewriteDescription(new SourceFiles(overrides).text(file), edit.entity, edit.value)); }
         catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
         const edge = Object.values(state.snapshot.models).flatMap((model) => model.edges).find((edge) => connectionDescriptionId(edge) === edit.entity);
-        summaries.push(`${edge ? `${edge.label} connection (${edge.from} → ${edge.to})` : edit.entity} — update description`);
+        summaries.push(`${edge ? `${connectionTitle(edge)} connection (${edge.from} → ${edge.to})` : edit.entity} — update description`);
       }
       if (edit.kind !== "field") continue;
       const { intent } = edit;
@@ -333,7 +344,7 @@ export class BatchEditor {
       for (const edge of native.removed) remaining.splice(remaining.indexOf(`trigger|${edge.from}|${edge.to}|${edge.label}|${edge.source?.file}`), 1);
       return remaining;
     })();
-    const checked = await this.validate(Object.fromEntries(overrides), state, routes, expectedNative, creation?.expected, false, edits.filter(edit => edit.kind === "removeWorkload").map(edit => edit.target), [...deletions.keys()]);
+    const checked = await this.validate(Object.fromEntries(overrides), state, routes, expectedNative, creation?.expected, edits.filter(edit => edit.kind === "removeWorkload").map(edit => edit.target), [...deletions.keys()]);
     // Preserve useful both-mode diagnostics when the generator rejected invalid
     // authored intent. A generator failure on otherwise valid intent still blocks
     // review; it can never silently omit required generated artifacts.
@@ -350,7 +361,7 @@ export class BatchEditor {
       changes: changes.map(({ file, before, after }) => ({ file: toRelative(this.root, file), operation: before === null ? "create" : after === null ? "delete" : "modify", diff: diffOf(toRelative(this.root, file), before ?? "", after ?? "") })),
       preflight: checked.preflight, ok: checked.preflight.dev.ok && checked.preflight.prod.ok,
       ...(creation ? { select: creation.expected.select } : {}),
-      impact: creation ? creation.impact : edits.every((edit) => edit.kind === "clientEnvironment") ? ["Saves mapping definitions for the next environment export. Environment-file generation is separate."] : ["Applies this complete draft as one undoable change. Individual workload overrides remain in place when shared defaults change.",
+      impact: creation ? creation.impact : edits.every((edit) => edit.kind === "clientEnvironment") ? ["Saves mapping definitions for the next environment export. Environment-file generation is separate."] : ["Applies this complete draft as one source change. Individual workload overrides remain in place when shared defaults change.",
         ...(edits.some(edit => edit.kind === "deploy" && model.targets.some(target => target.ref === edit.target && target.role === "event")) ? ["Disabled event functions and their native AWS hooks, trigger descriptors and failure destinations are omitted on the next deployment. Cognito event changes can remove sign-up validation, custom messaging or post-confirmation behavior; this review only saves source."] : []),
         ...(replayTargets.length ? ["Updates localReplay and the handler's withLocalReplay wrapper together. The generated replay manifest is included in this review. Events that require local execution cannot turn replay off."] : []),
         ...edits.flatMap(edit => edit.kind === "deploy" && typeof edit.value !== "string" ? (["dev", "prod"] as const).map(mode => {
@@ -392,14 +403,14 @@ export class BatchEditor {
     const replaySources = [...handlerBefore].map(([file, before]) => ({ file, before, after: overrides.get(file)! }));
     if (edits.some(edit => edit.kind === "identityPolicy")) (response.impact as string[]).push("ReaderRole IAM and explicit guest opt-in changes take effect only after a separate synth/diff/deployment review. Enabled guests can obtain a separate permissionless unauthenticated identity role; ReaderRole grants never attach to guests. Source statements and policy simulation do not prove group claims, trust, boundaries/SCPs, resource policies or runtime API authorization. The default authenticated role remains permissionless.");
     const addedDirectories = changes.filter(change => change.before === null).flatMap(change => { const folders: string[] = []; for (let folder = path.dirname(change.file); folder !== this.root && !existsSync(folder); folder = path.dirname(folder)) folders.push(folder); return folders; });
-    this.plans.set(response.planId, { kind: "batch", label: creation ? `Create ${creation.expected.select}` : `${edits.length} inspector changes`, response, revision, hashes, changes, edits, routes, replayTargets, replaySources, triggerSources, generatedFiles: [...generatedFiles], generationInputs, ...(addedDirectories.length ? { createdDirectories: [...new Set(addedDirectories)] } : {}), implementationFiles: [...implementationFiles], ...(edits.some(edit => edit.kind === "deploy" || edit.kind === "connection" || edit.kind === "removeWorkload") ? { operationModels: { forward: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, inverse: { dev: creationSignature(state.snapshot.models.dev), prod: creationSignature(state.snapshot.models.prod) } } } : {}), ...(deletions.size ? { networkRemovals: [...deletions.keys()], createdDirectories: [...new Set([...addedDirectories, ...[...deletions.keys()].map(file => path.dirname(file))])] } : {}), ...((native || policyFiles.size) ? { cdkSources: [...new Set([...(native?.changes.keys() ?? []), ...policyFiles])] } : {}), ...(creation ? { creation: creation.expected, creationModels: { forward: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, inverse: { dev: creationSignature(state.snapshot.models.dev), prod: creationSignature(state.snapshot.models.prod) } }, createdDirectories: [...new Set(changes.filter((change) => change.before === null).flatMap((change) => {
+    this.plans.set(response.planId, { label: creation ? `Create ${creation.expected.select}` : `${edits.length} inspector changes`, response, revision, hashes, changes, edits, routes, replayTargets, replaySources, triggerSources, generatedFiles: [...generatedFiles], generationInputs, ...(addedDirectories.length ? { createdDirectories: [...new Set(addedDirectories)] } : {}), implementationFiles: [...implementationFiles], ...(edits.some(edit => edit.kind === "deploy" || edit.kind === "connection" || edit.kind === "removeWorkload") ? { operationModels: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) } } : {}), ...(deletions.size ? { networkRemovals: [...deletions.keys()], createdDirectories: [...new Set([...addedDirectories, ...[...deletions.keys()].map(file => path.dirname(file))])] } : {}), ...((native || policyFiles.size) ? { cdkSources: [...new Set([...(native?.changes.keys() ?? []), ...policyFiles])] } : {}), ...(creation ? { creation: creation.expected, creationModels: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, createdDirectories: [...new Set(changes.filter((change) => change.before === null).flatMap((change) => {
       const directories: string[] = [];
       for (let directory = path.dirname(change.file); directory !== this.root && !existsSync(directory); directory = path.dirname(directory)) directories.push(directory);
       return directories;
     }))] } : {}) });
     return response;
   }
-  private async validate(overrides: Record<string, string>, state: StudioState, routes: readonly RouteChange[], expectedNative?: readonly string[], creation?: CreationExpectation, inverse = false, removedTargets: readonly string[] = [], deletedFiles: readonly string[] = []) {
+  private async validate(overrides: Record<string, string>, state: StudioState, routes: readonly RouteChange[], expectedNative?: readonly string[], creation?: CreationExpectation, removedTargets: readonly string[] = [], deletedFiles: readonly string[] = []) {
     const descriptions = overrides[path.join(this.root, DESCRIPTION_FILE)];
     if (descriptions !== undefined) parseDescriptions(descriptions);
     const clientMappings = overrides[path.join(this.root, CLIENT_ENVIRONMENT_FILE)];
@@ -418,7 +429,7 @@ export class BatchEditor {
       const databasePlacementChanged = [models.dev, models.prod].some(model => model.managedDatabase?.networkId !== state.snapshot.models[model.mode].managedDatabase?.networkId || model.managedDatabase?.subnet !== state.snapshot.models[model.mode].managedDatabase?.subnet);
       const implementationChanged = Object.keys(overrides).some(file => /\/(?:lambda_functions|agents)\//.test(file));
       const connectionsChanged = [models.dev, models.prod].some(model => connectionSignature(model) !== connectionSignature(state.snapshot.models[model.mode]));
-      const typeErrors = triggerChange || stackChange || databasePlacementChanged || implementationChanged || connectionsChanged || (creation && !inverse) ? resourceTypeErrors(this.root, overrides, new Set(deletedFiles)) : [];
+      const typeErrors = triggerChange || stackChange || databasePlacementChanged || implementationChanged || connectionsChanged || creation ? resourceTypeErrors(this.root, overrides, new Set(deletedFiles)) : [];
       const native = stackChange ? nativeSignature(scanWith(this.root, state, overrides)) : undefined;
       const unexpected = expectedNative && native ? [...native.filter((item) => !expectedNative.includes(item)).map((item) => `adds ${item}`), ...expectedNative.filter((item) => !native.includes(item)).map((item) => `removes ${item}`)] : [];
       const nativeMismatch = expectedNative && (JSON.stringify(native) !== JSON.stringify(expectedNative));
@@ -427,7 +438,7 @@ export class BatchEditor {
         for (const target of model.targets) {
           const prior = state.snapshot.models[model.mode].targets.find(item => item.ref === target.ref);
           const changed = JSON.stringify(target.compute) !== JSON.stringify(prior?.compute) || !prior;
-          for (const message of target.implementation?.problems ?? []) if (!inverse && (changed || !prior?.implementation?.problems.includes(message))) diagnostics.push({ severity: "error", stage: "validate", entity: target.ref, message });
+          for (const message of target.implementation?.problems ?? []) if (changed || !prior?.implementation?.problems.includes(message)) diagnostics.push({ severity: "error", stage: "validate", entity: target.ref, message });
         }
         for (const message of typeErrors) diagnostics.push({ severity: "error", stage: "validate", message });
         if (nativeMismatch) diagnostics.push({ severity: "error", stage: "validate", message: `Removing this wiring would also change other native wiring (${unexpected.slice(0, 3).join("; ").replaceAll("|", " ") || "order"}). Edit it in source.` });
@@ -439,8 +450,8 @@ export class BatchEditor {
         if (!creation && stableIdentity(model) !== stableIdentity(state.snapshot.models[model.mode])) diagnostics.push({ severity: "error", stage: "validate", message: "An inspector edit must preserve workload target and construct identities." });
         if (creation) {
           const present = new Set([...model.targets.map((target) => target.ref), ...model.resources.map((resource) => resource.id), ...model.routes.map((route) => route.id)]);
-          for (const id of [...creation.targets, ...creation.resources, ...creation.routes]) if (present.has(id) === inverse) diagnostics.push({ severity: "error", stage: "validate", message: `Creation must ${inverse ? "remove" : "register"} ${id} in the ${model.mode} model.` });
-          if (creation.network && !inverse && Object.entries(creation.network).some(([key, value]) => JSON.stringify(model.networks?.find(network => network.id === creation.network!.id)?.[key as keyof NonNullable<ModeModel["networks"]>[number]]) !== JSON.stringify(value))) diagnostics.push({ severity: "error", stage: "validate", message: "The proposed network declaration does not contain the expected VPC." });
+          for (const id of [...creation.targets, ...creation.resources, ...creation.routes]) if (!present.has(id)) diagnostics.push({ severity: "error", stage: "validate", message: `Creation must register ${id} in the ${model.mode} model.` });
+          if (creation.network && Object.entries(creation.network).some(([key, value]) => JSON.stringify(model.networks?.find(network => network.id === creation.network!.id)?.[key as keyof NonNullable<ModeModel["networks"]>[number]]) !== JSON.stringify(value))) diagnostics.push({ severity: "error", stage: "validate", message: "The proposed network declaration does not contain the expected VPC." });
           const previous = state.snapshot.models[model.mode];
           const allowed = new Set(creation.targets);
           for (const target of previous.targets) if (!allowed.has(target.ref) && !model.targets.some((item) => item.ref === target.ref && item.constructId === target.constructId)) diagnostics.push({ severity: "error", stage: "validate", message: "Creation must preserve existing workload identities." });
@@ -451,24 +462,23 @@ export class BatchEditor {
       return { models, native, preflight: { dev: verdict(models.dev), prod: verdict(models.prod) } };
     } finally { await pool.dispose(); }
   }
-  async apply(planId: string, record: (entry: BatchJournal) => void): Promise<ApplyResponse> {
+  async apply(planId: string): Promise<ApplyResponse> {
     const plan = this.plans.get(planId);
     if (!plan) throw new EditError(410, "This review expired. Your draft is preserved; review it again.");
     if (!plan.response.ok) throw new EditError(422, "Fix the rejected settings before applying this draft.");
     this.unchanged(plan.revision, plan.hashes, plan.triggerSources, plan.generationInputs);
-    return this.write(plan, false, () => record(plan));
+    return this.write(plan);
   }
-  replay(entry: BatchJournal, inverse: boolean, record: () => void): Promise<ApplyResponse> { return this.write(entry, inverse, record); }
-  private async write(entry: BatchJournal, inverse: boolean, record: () => void): Promise<ApplyResponse> {
+  private async write(entry: BatchChanges): Promise<ApplyResponse> {
     const state = this.state();
     const hashes = hashEditableFiles(this.root);
     const unchangedInputs = Object.fromEntries(Object.entries(entry.generationInputs ?? {}).filter(([file]) => !entry.changes.some(change => toRelative(this.root, change.file) === file)));
     const triggerSources = { ...(entry.triggerSources && !entry.creation ? state.snapshot.source.capabilityFiles : {}), ...unchangedInputs };
     this.unchanged(state.snapshot.revision, hashes, triggerSources);
-    const changes = entry.changes.map((change) => inverse ? { ...change, before: change.after, after: change.before } : change);
+    const changes = entry.changes;
     const handlers = entry.replayTargets.map((ref) => state.snapshot.models.dev.targets.find((target) => target.ref === ref)).map((target) => target && replayHandlerFile(this.root, target).file);
     for (const source of entry.replaySources) {
-      if (!handlers.includes(source.file) || readFileSync(source.file, "utf8") !== (inverse ? source.after : source.before)) throw new EditError(409, "The event handler changed since review. No files were written.");
+      if (!handlers.includes(source.file) || readFileSync(source.file, "utf8") !== source.before) throw new EditError(409, "The event handler changed since review. No files were written.");
     }
     for (const change of changes) {
       if ((entry.cdkSources ?? []).includes(change.file)) assertStackFile(this.root, state, toRelative(this.root, change.file));
@@ -477,20 +487,20 @@ export class BatchEditor {
       if (sourceContents(change.file) !== change.before) throw new EditError(409, `${toRelative(this.root, change.file)} changed. Your draft is preserved; no files were written.`);
     }
     const checkNetworkConsumers = () => {
-      if (!inverse) for (const edit of entry.edits) if (edit.kind === "removeNetwork") planNetworkRemoval(this.root, state, edit.network, new SourceFiles());
-      if (!inverse) for (const edit of entry.edits) if (edit.kind === "removeWorkload") planWorkloadRemoval(this.root, state, edit.target, new Map());
+      for (const edit of entry.edits) if (edit.kind === "removeNetwork") planNetworkRemoval(this.root, state, edit.network, new SourceFiles());
+      for (const edit of entry.edits) if (edit.kind === "removeWorkload") planWorkloadRemoval(this.root, state, edit.target, new Map());
     };
     checkNetworkConsumers();
-    const routes = entry.routes.map((route) => inverse ? { ...route, before: route.after, after: route.before } : route);
-    const checked = await this.validate(Object.fromEntries(changes.filter((change) => change.after !== null).map((change) => [change.file, change.after!])), state, routes, undefined, entry.creation, inverse, entry.edits.filter(edit => edit.kind === "removeWorkload").map(edit => edit.target), changes.filter(change => change.after === null).map(change => change.file));
+    const routes = entry.routes;
+    const checked = await this.validate(Object.fromEntries(changes.filter((change) => change.after !== null).map((change) => [change.file, change.after!])), state, routes, undefined, entry.creation, entry.edits.filter(edit => edit.kind === "removeWorkload").map(edit => edit.target), changes.filter(change => change.after === null).map(change => change.file));
     if (!checked.preflight.dev.ok || !checked.preflight.prod.ok) throw new EditError(422, "The complete draft no longer validates. Review the current configuration before trying again.");
     if (entry.creationModels) for (const mode of ["dev", "prod"] as const) {
-      if (creationSignature(checked.models[mode]) !== entry.creationModels[inverse ? "inverse" : "forward"][mode]) throw new EditError(409, "The creation's framework semantics changed since review. Review the current source before applying.");
+      if (creationSignature(checked.models[mode]) !== entry.creationModels[mode]) throw new EditError(409, "The creation's framework semantics changed since review. Review the current source before applying.");
     }
-    if (entry.operationModels) for (const mode of ["dev", "prod"] as const) if (creationSignature(checked.models[mode]) !== entry.operationModels[inverse ? "inverse" : "forward"][mode]) throw new EditError(409, "The reviewed connection/removal semantics changed. Review current source before applying.");
+    if (entry.operationModels) for (const mode of ["dev", "prod"] as const) if (creationSignature(checked.models[mode]) !== entry.operationModels[mode]) throw new EditError(409, "The reviewed connection/removal semantics changed. Review current source before applying.");
     this.unchanged(state.snapshot.revision, hashes, triggerSources);
     checkNetworkConsumers();
-    for (const source of entry.replaySources) if (readFileSync(source.file, "utf8") !== (inverse ? source.after : source.before)) throw new EditError(409, "The event handler changed while validating. No files were written.");
+    for (const source of entry.replaySources) if (readFileSync(source.file, "utf8") !== source.before) throw new EditError(409, "The event handler changed while validating. No files were written.");
     const written: Change[] = [];
     const journalId = this.journal.begin(entry.label, changes.map(change => (entry.cdkSources ?? []).includes(change.file) ? { ...change, authority: "native" as const } : change));
     try {
@@ -545,16 +555,16 @@ export class BatchEditor {
         for (const mode of ["dev", "prod"] as const) {
           if (creationSignature(actual.snapshot.models[mode]) !== creationSignature(checked.models[mode])) throw new Error(`The ${mode} resource relationships did not match the creation review.`);
         }
-        if (!inverse && entry.creation.kind === "stack") {
+        if (entry.creation.kind === "stack") {
           const resource = actual.snapshot.models.dev.resources.find((resource) => resource.id === entry.creation!.select);
           if (resource?.stackUsage?.status !== "referenced") throw new Error("The new stack was not registered in the CDK application.");
           if (!actual.snapshot.models.dev.resources.some((item) => ["queue", "bucket", "identityPool"].some(member => item.id === `${entry.creation!.select}.${member}`) && item.parent === entry.creation!.select && item.kind === "member")) throw new Error("The stack's typed public resource was not exposed in the resource catalog.");
         }
       }
       this.journal.finish(journalId, "complete");
-      record(); this.expirePlans();
+      this.expirePlans();
       const removed = entry.edits.find(edit => edit.kind === "removeNetwork");
-      const selection = entry.creation && !inverse ? entry.creation.select : removed?.kind === "removeNetwork" ? inverse ? `island:vpc:${removed.network}` : actual.snapshot.models.prod.networks?.[0] ? `island:vpc:${actual.snapshot.models.prod.networks[0].id}` : "island:lambda" : undefined;
+      const selection = entry.creation ? entry.creation.select : removed?.kind === "removeNetwork" ? actual.snapshot.models.prod.networks?.[0] ? `island:vpc:${actual.snapshot.models.prod.networks[0].id}` : "island:lambda" : undefined;
       return { status: "applied", message: `Applied all ${entry.edits.length} changes.`, revision: actual.snapshot.revision, ...(selection ? { select: selection } : {}) };
     } catch (error) {
       let conflicted = false;

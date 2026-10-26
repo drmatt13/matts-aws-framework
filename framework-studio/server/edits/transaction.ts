@@ -1,20 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import type { ApplyResponse, DraftEdit, HistoryState, PlanResponse, PreflightResult } from "../../shared/api";
+import type { ApplyResponse, DraftEdit, PlanResponse, PreflightResult } from "../../shared/api";
 import type { FieldFact, Lanes, ModelTarget, Placement } from "../../shared/model";
 import { assertWritable, sha256 } from "../files";
 import { EditError, writeAtomically, writeSourceChange } from "./io";
 export { EditError, writeAtomically } from "./io";
-import type { SemanticPatch } from "../model/origin";
 import type { SnapshotBuilder, StudioState } from "../snapshot";
 import { fieldById } from "./fields";
 import { planEdit, type EditIntent } from "./plan";
 import { planHttpRoute, validateHttpRoute, type RouteChange } from "./route";
-import { BatchEditor, type BatchJournal } from "./batch";
+import { BatchEditor } from "./batch";
 import { SourceJournal } from "./journal";
 
 /**
- * Plans, writes, and takes back field edits — one at a time, and never over a
+ * Plans and writes field edits — one at a time, and never over a
  * change somebody else made.
  *
  * A plan remembers the hash of the file it was computed against and the
@@ -26,9 +25,9 @@ import { SourceJournal } from "./journal";
  * written.
  */
 
-export type { ApplyResponse, HistoryState, PlanResponse };
+export type { ApplyResponse, PlanResponse };
 
-type EditMeaning = { readonly kind: "field"; readonly forward: SemanticPatch; readonly inverse: SemanticPatch } | { readonly kind: "route"; readonly change: RouteChange };
+type EditMeaning = { readonly kind: "field" } | { readonly kind: "route"; readonly change: RouteChange };
 
 interface StoredPlan {
   readonly batchPlanId?: string;
@@ -42,8 +41,7 @@ interface StoredPlan {
   readonly edit: EditMeaning;
 }
 
-interface JournalEntry {
-  readonly label: string;
+interface WrittenEdit {
   readonly target: string;
   readonly field: string;
   readonly file: string;
@@ -78,8 +76,6 @@ function impactOf(target: ModelTarget, fieldId: string, after: PreflightResult):
 
 export class EditService {
   private plans = new Map<string, StoredPlan>();
-  private readonly undoStack: (JournalEntry | BatchJournal)[] = [];
-  private readonly redoStack: (JournalEntry | BatchJournal)[] = [];
   /** Files this service wrote, by relative path, with what it wrote: so the watcher can tell them apart. */
   readonly ownWrites = new Map<string, string>();
   private lock: Promise<unknown> = Promise.resolve();
@@ -97,12 +93,6 @@ export class EditService {
     this.batches.expirePlans();
   }
 
-  history(): HistoryState {
-    const undo = this.undoStack.at(-1);
-    const redo = this.redoStack.at(-1);
-    return { ...(undo ? { undo: undo.label } : {}), ...(redo ? { redo: redo.label } : {}) };
-  }
-
   private exclusive<T>(run: () => Promise<T>): Promise<T> {
     const next = this.lock.then(run, run);
     this.lock = next.catch(() => undefined);
@@ -117,7 +107,7 @@ export class EditService {
 
   planBatch(edits: readonly DraftEdit[], revision: string) { return this.exclusive(() => this.batches.plan(edits, revision)); }
   applyBatch(planId: string): Promise<ApplyResponse> {
-    return this.exclusive(() => this.batches.apply(planId, (entry) => { this.undoStack.push(entry); this.redoStack.length = 0; this.plans.clear(); }));
+    return this.exclusive(() => this.batches.apply(planId).finally(() => this.plans.clear()));
   }
 
   plan(intent: EditIntent, baseRevision: string): Promise<PlanResponse> {
@@ -172,7 +162,7 @@ export class EditService {
         beforeHash: planned.beforeHash,
         after: planned.after,
         afterHash: planned.afterHash,
-        edit: { kind: "field", forward: planned.forward, inverse: planned.inverse },
+        edit: { kind: "field" },
       });
       return response;
     });
@@ -215,7 +205,7 @@ export class EditService {
       if (this.state().snapshot.revision !== plan.revision) {
         throw new EditError(409, "The repository changed since this preview. Preview it again.");
       }
-      if (plan.batchPlanId) return this.batches.apply(plan.batchPlanId, entry => { this.undoStack.push(entry); this.redoStack.length = 0; this.plans.clear(); });
+      if (plan.batchPlanId) return this.batches.apply(plan.batchPlanId).finally(() => this.plans.clear());
       const file = assertWritable(this.repositoryRoot, plan.relativeFile);
       const before = readFileSync(file, "utf8");
       if (sha256(before) !== plan.beforeHash) {
@@ -224,8 +214,7 @@ export class EditService {
       writeAtomically(this.repositoryRoot, file, plan.after);
       this.ownWrites.set(plan.relativeFile, plan.afterHash);
       this.plans.clear();
-      const entry: JournalEntry = {
-        label: `${plan.response.target} ${plan.response.summary}`,
+      const entry: WrittenEdit = {
         target: plan.response.target,
         field: plan.response.field,
         file,
@@ -234,54 +223,7 @@ export class EditService {
         after: plan.after,
         edit: plan.edit,
       };
-      return this.confirm(entry, plan.response.preflight, () => {
-        this.undoStack.push(entry);
-        this.redoStack.length = 0;
-      });
-    });
-  }
-
-  undo(): Promise<ApplyResponse> {
-    return this.exclusive(() => this.replay("undo"));
-  }
-
-  redo(): Promise<ApplyResponse> {
-    return this.exclusive(() => this.replay("redo"));
-  }
-
-  /** Writes a journal entry's other side, after checking the file is still the side it left. */
-  private async replay(direction: "undo" | "redo"): Promise<ApplyResponse> {
-    if (new SourceJournal(this.repositoryRoot).pending().length) throw new EditError(409, "An interrupted source transaction needs recovery before undo or redo. Open Source recovery.");
-    const stack = direction === "undo" ? this.undoStack : this.redoStack;
-    const entry = stack.at(-1);
-    if (!entry) throw new EditError(404, `Nothing to ${direction}.`);
-    if ("kind" in entry) return this.batches.replay(entry, direction === "undo", () => {
-      stack.pop(); (direction === "undo" ? this.redoStack : this.undoStack).push(entry); this.expirePlans();
-    });
-    const [expected, replacement] = direction === "undo" ? [entry.after, entry.before] : [entry.before, entry.after];
-    const edit: EditMeaning = entry.edit.kind === "route" && direction === "undo"
-      ? { kind: "route", change: { ...entry.edit.change, before: entry.edit.change.after, after: entry.edit.change.before } } : entry.edit;
-    const current = readFileSync(entry.file, "utf8");
-    if (sha256(current) !== sha256(expected)) {
-      throw new EditError(409, `${entry.relativeFile} changed since that edit, so it cannot be ${direction === "undo" ? "undone" : "redone"} without overwriting the change. Use your editor or git.`);
-    }
-    const state = this.state();
-    const preflight = edit.kind === "route"
-      ? await validateHttpRoute(this.repositoryRoot, state, entry.file, replacement, edit.change, this.builder.evaluators)
-      : await state.evaluation.preflight({ target: entry.target, field: entry.field, patch: direction === "undo" ? edit.inverse : edit.forward });
-    if (!preflight.dev.ok || !preflight.prod.ok) {
-      const message = [...preflight.dev.diagnostics, ...preflight.prod.diagnostics].find((diagnostic) => diagnostic.severity === "error")?.message;
-      throw new EditError(422, `The framework refuses to ${direction} this now: ${message}`);
-    }
-    if (this.state().snapshot.revision !== state.snapshot.revision || readFileSync(entry.file, "utf8") !== expected) throw new EditError(409, "The source changed during validation. Nothing was written.");
-    assertWritable(this.repositoryRoot, entry.relativeFile);
-    writeAtomically(this.repositoryRoot, entry.file, replacement);
-    this.ownWrites.set(entry.relativeFile, sha256(replacement));
-    this.plans.clear();
-    const written: JournalEntry = { ...entry, before: expected, after: replacement, edit };
-    return this.confirm(written, preflight, () => {
-      stack.pop();
-      (direction === "undo" ? this.redoStack : this.undoStack).push(entry);
+      return this.confirm(entry, plan.response.preflight);
     });
   }
 
@@ -291,9 +233,8 @@ export class EditService {
    * was written, so a concurrent edit is never the thing that gets undone.
    */
   private async confirm(
-    written: JournalEntry,
+    written: WrittenEdit,
     predicted: { readonly dev: PreflightResult; readonly prod: PreflightResult },
-    record: () => void,
   ): Promise<ApplyResponse> {
     let mismatch: string[];
     try {
@@ -311,7 +252,6 @@ export class EditService {
         return expected === actual ? [] : [`${mode} resolves ${JSON.stringify(actual)} where ${JSON.stringify(expected)} was predicted`];
       });
       if (mismatch.length === 0) {
-        record();
         return { status: "applied", message: `Wrote ${written.relativeFile}.`, revision: state.snapshot.revision };
       }
     } catch (error) { mismatch = [error instanceof Error ? error.message : String(error)]; }

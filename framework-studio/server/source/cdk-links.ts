@@ -88,13 +88,13 @@ export function scanCdkLinks(
       const location = locate(node);
       if (!manualWiring.some((item) => item.resource === (resource ?? `resource:${catalogPath}`) && item.source.start === location.start)) manualWiring.push({ resource: resource ?? `resource:${catalogPath}`, source: location, reason });
     };
-    const add = (from: string, to: string, label: string, node: ts.Node, relation: "cdk" | "trigger" = "cdk", removal?: NativeRemoval): void => {
+    const add = (from: string, to: string, label: string, node: ts.Node, relation: "cdk" | "trigger" = "cdk", removal?: NativeRemoval, permissionContext?: ModelEdge["permissionContext"]): void => {
       if (from === to) return;
       const start = node.getStart(source);
       const location = { file, ...lineAndColumn(source, start), start, end: node.end };
       const id = `${relation}:${from}->${to}#${file}:${start}:${label}`;
       if (edges.some((edge) => edge.id === id)) return;
-      edges.push({ id, relation, from, to, label, provenance: "source", source: location, detail: `${relation === "trigger" ? "Native trigger" : "Inferred from CDK source"} · ${file}:${location.line}`, ...(removal ? { removal } : {}) });
+      edges.push({ id, relation, from, to, label, provenance: "source", source: location, detail: `${relation === "trigger" ? "Native trigger" : "Inferred from CDK source"} · ${file}:${location.line}`, ...(removal ? { removal } : {}), ...(permissionContext ? { permissionContext } : {}) });
     };
     const properties = (expression: ts.Expression | undefined): readonly ts.ObjectLiteralElementLike[] => {
       const value = expression && unwrap(expression);
@@ -122,9 +122,9 @@ export function scanCdkLinks(
     // Only a span whose deletion removes exactly this wiring is offered; anything else is edited in source.
     const span = (kind: "property" | "statement" | "element", node: ts.Node): NativeRemoval => ({ kind, start: node.getStart(source), end: node.end });
     const statementOf = (node: ts.Node): NativeRemoval => ts.isExpressionStatement(node.parent) && direct.has(node.parent) ? span("statement", node.parent) : { refused: "This wiring is part of a larger expression or assignment; edit it in source." };
-    const trigger = (from: string | undefined, expression: ts.Expression | undefined, label: string, node: ts.Node, removal: NativeRemoval = statementOf(node)) => {
+    const trigger = (adapter: string, from: string | undefined, expression: ts.Expression | undefined, label: string, node: ts.Node, removal: NativeRemoval = statementOf(node)) => {
       const to = expression && eventRef(expression);
-      if (from && to) add(from, to, label, node, "trigger", removal);
+      if (from && to) add(from, to, label, node, "trigger", removal, { kind: "trigger", adapter });
       else manual(from, node);
     };
     const inspect = (expression: ts.Expression, owner?: string): void => {
@@ -140,7 +140,7 @@ export function scanCdkLinks(
           const entries = properties(resolve(hooks));
           if (!owner || !entries.length) manual(owner, hooks);
           for (const hook of entries) {
-            if (ts.isPropertyAssignment(hook) && literalKey(hook)) trigger(owner, hook.initializer, literalKey(hook)!, hook, ts.isObjectLiteralExpression(unwrap(hooks)) ? span("property", hook) : { refused: "These hooks come from a variable; edit them in source." });
+            if (ts.isPropertyAssignment(hook) && literalKey(hook)) trigger("cognito", owner, hook.initializer, literalKey(hook)!, hook, ts.isObjectLiteralExpression(unwrap(hooks)) ? span("property", hook) : { refused: "These hooks come from a variable; edit them in source." });
             else manual(owner, hook);
           }
         }
@@ -162,7 +162,7 @@ export function scanCdkLinks(
             const literal = targetList === unwrap(targets);
             // Another target keeps the rule; a sole target removes only a standalone rule.
             const removal = !literal ? { refused: "These targets come from a variable; edit them in source." } : targetList.elements.length > 1 ? span("element", item) : ts.isExpressionStatement(value.parent) && direct.has(value.parent) ? span("statement", value.parent) : { refused: "The rule is assigned or referenced; edit it in source." };
-            if (ts.isNewExpression(target) && isConstructor(target, "aws-events-targets", "LambdaFunction")) trigger(bus && ref(bus), target.arguments?.[0], "EventBridge rule", value, removal);
+            if (ts.isNewExpression(target) && isConstructor(target, "aws-events-targets", "LambdaFunction")) trigger("eventbridge", bus && ref(bus), target.arguments?.[0], "EventBridge rule", value, removal);
           }
         }
       }
@@ -171,31 +171,31 @@ export function scanCdkLinks(
         const subscription = value.arguments[0] && unwrap(resolve(value.arguments[0]));
         if (from && value.expression.name.text === "addSubscription" && subscription && ts.isNewExpression(subscription) && isConstructor(subscription, "aws-sns-subscriptions", "SqsSubscription")) {
           const to = subscription.arguments?.[0] && ref(subscription.arguments[0]);
-          if (to) add(from, to, "SNS subscription", value);
+          if (to) add(from, to, "SNS subscription", value, "cdk", undefined, { kind: "subscription", protocol: "sqs" });
         }
         const method = value.expression.name.text;
         const override = value.arguments[0];
         if (["addOverride", "addPropertyOverride"].includes(method) && override && ts.isStringLiteralLike(override) && ["LambdaConfig", "NotificationConfiguration", "Targets", "EventSourceArn"].some((name) => override.text.includes(name))) manual(from, value);
-        if (method === "addSubscription" && subscription && ts.isNewExpression(subscription) && isConstructor(subscription, "aws-sns-subscriptions", "LambdaSubscription")) trigger(from, subscription.arguments?.[0], "SNS subscription", value);
+        if (method === "addSubscription" && subscription && ts.isNewExpression(subscription) && isConstructor(subscription, "aws-sns-subscriptions", "LambdaSubscription")) trigger("sns", from, subscription.arguments?.[0], "SNS subscription", value);
         if (method === "addEventSource") {
           const fn = eventRef(value.expression.expression);
           const eventSource = subscription && unwrap(resolve(subscription));
-          const types = [["SqsEventSource", "SQS"], ["DynamoEventSource", "DynamoDB stream"], ["S3EventSource", "S3 notification"]] as const;
+          const types = [["SqsEventSource", "SQS", "sqs"], ["DynamoEventSource", "DynamoDB stream", "dynamodb"], ["S3EventSource", "S3 notification", "s3"]] as const;
           const type = eventSource && ts.isNewExpression(eventSource) ? types.find(([name]) => isConstructor(eventSource, "aws-lambda-event-sources", name)) : undefined;
           const resource = type && ts.isNewExpression(eventSource!) ? eventSource.arguments?.[0] : undefined;
           const sourceId = resource && ref(resource);
-          if (sourceId && fn) add(sourceId, fn, type![1], value, "trigger", statementOf(value)); else manual(sourceId, value);
+          if (sourceId && fn) add(sourceId, fn, type![1], value, "trigger", statementOf(value), { kind: "trigger", adapter: type![2] }); else manual(sourceId, value);
         }
         if (method === "addEventNotification" || method === "addObjectCreatedNotification" || method === "addObjectRemovedNotification") {
           const notification = value.arguments[method === "addEventNotification" ? 1 : 0];
           const destination = notification && unwrap(resolve(notification));
-          if (destination && ts.isNewExpression(destination) && isConstructor(destination, "aws-s3-notifications", "LambdaDestination")) trigger(from, destination.arguments?.[0], method === "addEventNotification" ? value.arguments[0]?.getText(source) ?? "S3 notification" : method, value);
+          if (destination && ts.isNewExpression(destination) && isConstructor(destination, "aws-s3-notifications", "LambdaDestination")) trigger("s3", from, destination.arguments?.[0], method === "addEventNotification" ? value.arguments[0]?.getText(source) ?? "S3 notification" : method, value);
           else manual(from, value);
         }
         if (method === "addTrigger") {
           const operation = value.arguments[0];
           const hook = operation && ts.isPropertyAccessExpression(operation) ? Object.entries(COGNITO_TRIGGER_OPERATIONS).find(([, name]) => name === operation.name.text)?.[0] : undefined;
-          trigger(from, value.arguments[1], hook ?? operation?.getText(source) ?? "Cognito hook", value);
+          trigger("cognito", from, value.arguments[1], hook ?? operation?.getText(source) ?? "Cognito hook", value);
         }
         if (method === "addSubscription" && (!subscription || !ts.isNewExpression(subscription) || !["SqsSubscription", "LambdaSubscription"].some((name) => isConstructor(subscription, "aws-sns-subscriptions", name)))) manual(from, value);
       }

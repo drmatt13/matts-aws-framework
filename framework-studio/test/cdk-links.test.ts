@@ -34,6 +34,7 @@ test("CDK scan resolves named import aliases and const member aliases", () => {
   assert.deepEqual(result.edges.map(({ from, to, label }) => ({ from, to, label })), [
     { from: "resource:example.topic", to: "resource:example.queue", label: "SNS subscription" },
   ]);
+  assert.deepEqual(result.edges[0]!.permissionContext, { kind: "subscription", protocol: "sqs" });
 });
 
 test("native Cognito hooks resolve event aliases and a local constructor published later", () => {
@@ -61,6 +62,7 @@ test("native SNS, queues, streams, S3 notifications and EventBridge rules have d
     const result = scan(body!);
     assert.deepEqual(result.edges.filter((edge) => edge.relation === "trigger").map((edge) => [edge.from, edge.to, edge.label]), [[`resource:example.${member}`, "lambda:event", label]]);
     assert.ok(result.edges[0]?.source?.line);
+    assert.equal(result.edges.find(edge => edge.relation === "trigger")?.permissionContext?.kind, "trigger", "native adapter evidence survives source scanning");
     assert.equal(result.manualWiring.length, 0);
   }
 });

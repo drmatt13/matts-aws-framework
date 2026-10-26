@@ -1,8 +1,9 @@
+import { sourceFixtureCheckpoint } from "./support/source-fixture";
 import assert from "./support/assert";
 import { randomUUID } from "node:crypto";
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { after, before, test } from "node:test";
+import { after, afterEach, before, beforeEach, test } from "node:test";
 import { SnapshotBuilder } from "../server/snapshot";
 import { EditService } from "../server/edits/transaction";
 import { planCreation } from "../server/edits/creation";
@@ -42,6 +43,10 @@ before(async () => {
   await builder.refresh();
   assert.equal(builder.current!.snapshot.models.dev.status, "ok", JSON.stringify(builder.current!.snapshot.models.dev.diagnostics));
 });
+let restoreSource: () => Promise<void>;
+beforeEach(() => { restoreSource = sourceFixtureCheckpoint(fixture, builder); });
+afterEach(async () => { await restoreSource(); });
+
 after(async () => { await builder?.dispose(); rmSync(fixture, { recursive: true, force: true }); });
 const state = () => builder.current!;
 const revision = () => state().snapshot.revision;
@@ -61,7 +66,7 @@ test("source discovery follows explicitly composed grouped modules and imported 
   assert.equal(state().snapshot.source.editability["resource:setting"]!.tags.kind, "literal");
 });
 
-test("reviewed tags update shared aliases together, preserve source, and undo/redo exact bytes", async () => {
+test("reviewed tags update shared aliases together, preserve source, and exact bytes", async () => {
   const plan = await edits.planBatch([{ kind: "tags", entity: "lambda:fixture", tags: { Feature: "Accounts", Owner: "platform" } }], revision());
   assert.ok(plan.ok, JSON.stringify(plan.preflight));
   assert.deepEqual(plan.changes.map(change => change.file), ["framework-config/features/identity.ts"]);
@@ -70,10 +75,9 @@ test("reviewed tags update shared aliases together, preserve source, and undo/re
   assert.match(readFileSync(workload, "utf8"), /Cohesive aliases/);
   assert.equal((readFileSync(workload, "utf8").match(/Feature: "Accounts"/g) ?? []).length, 2);
   assert.equal(state().snapshot.models.dev.tagging!["lambda:fixture"]!.effective.Owner, "platform");
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(workload, "utf8"), original);
-  assert.equal((await edits.redo()).status, "applied");
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
 });
 
 test("catalog tag add/change/removal edits its descriptor without flattening its module", async () => {
@@ -85,8 +89,7 @@ test("catalog tag add/change/removal edits its descriptor without flattening its
   const removal = await edits.planBatch([{ kind: "tags", entity: "resource:setting", tags: {} }], revision());
   assert.equal((await edits.applyBatch(removal.planId)).status, "applied");
   assert.deepEqual(state().snapshot.models.dev.tagging!["resource:setting"]!.authored, {});
-  assert.equal((await edits.undo()).status, "applied");
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(inputs, "utf8"), originalInputs);
 });
 
@@ -97,7 +100,7 @@ test("tagging a derived input materializes its stable environment name", async (
   assert.ok(plan.ok, JSON.stringify(plan.preflight));
   assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
   assert.ok(readFileSync(inputs, "utf8").includes(`resource.fromEnv(${JSON.stringify(envName)},`));
-  assert.equal((await edits.undo()).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(inputs, "utf8"), originalInputs);
 });
 
@@ -107,7 +110,7 @@ test("resource defaults remain editable in split catalogs and preserve declarati
   assert.ok(plan.ok, JSON.stringify(plan.diagnostics));
   assert.equal((await service.apply(plan.planId)).status, "applied");
   assert.equal(state().snapshot.models.dev.tagging!["resource:setting"]!.effective.Feature, "Models");
-  assert.equal((await service.replay("undo")).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(inputs, "utf8"), originalInputs);
 });
 
@@ -119,7 +122,7 @@ test("moving an imported resource changes catalog membership while preserving it
     assert.equal((await service.apply(plan.planId)).status, "applied");
     assert.equal(state().snapshot.models.dev.tagging![`resource:${group}.setting`]!.effective.Feature, "Models");
     assert.match(readFileSync(inputs, "utf8"), /export const setting = resource.fromEnv/);
-    assert.equal((await service.replay("undo")).status, "applied");
+    await restoreSource();
     assert.equal(readFileSync(inputs, "utf8"), originalInputs);
   }
 });
@@ -197,8 +200,6 @@ test("adding member tags preserves sibling metadata and one owning members objec
       assert.equal(state().snapshot.models.prod.tagging![`resource:stackFixture.${member}`]!.effective.Feature, "Shared");
       assert.equal(state().snapshot.models.prod.tagging![`resource:stackFixture.${member}`]!.effective.Owner, member[0]!.toUpperCase() + member.slice(1));
     }
-    assert.equal((await edits.undo()).status, "applied");
-    assert.equal(readFileSync(inputs, "utf8"), descriptor);
   } finally { writeFileSync(inputs, originalInputs); writeFileSync(facade, beforeFacade); rmSync(stackFile); await builder.refresh(); }
 });
 
@@ -227,8 +228,6 @@ test("adding resource tag options preserves an authored trailing argument comma"
     const applied = await edits.applyBatch(plan.planId);
     assert.equal(applied.status, "applied", applied.message);
     assert.equal(state().snapshot.models.prod.tagging!["resource:setting"]!.effective.Feature, "Requested");
-    assert.equal((await edits.undo()).status, "applied");
-    assert.equal(readFileSync(inputs, "utf8"), authored);
   } finally { writeFileSync(inputs, originalInputs); await builder.refresh(); }
 });
 

@@ -80,7 +80,7 @@ export const ISLAND_TRIM: Readonly<Record<string, string>> = {
 
 /** A connection's colour, by the kind of relationship it draws. */
 export const EDGE_COLORS: Readonly<Record<EdgeCategory, string>> = {
-  routes: "#ddd3bd",
+  routes: "#a374ff",
   inputs: "#8fb7d9",
   permissions: "#e59a86",
   invocations: "#c3b2ff",
@@ -89,7 +89,7 @@ export const EDGE_COLORS: Readonly<Record<EdgeCategory, string>> = {
 };
 
 /** Lighter than the island's own trim so a hairline stays legible on the dark ground, and more saturated than the pale invocation violet. */
-export const API_EDGE_COLOR = "#a374ff";
+export const API_EDGE_COLOR = EDGE_COLORS.routes;
 
 /** The compute orange, lightened the same way; clear of the salmon of permission links. */
 export const COMPUTE_EDGE_COLOR = "#ff9a3d";

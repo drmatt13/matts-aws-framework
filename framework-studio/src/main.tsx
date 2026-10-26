@@ -24,6 +24,7 @@ import "./inspector.css";
 import "./views/database-workbench.css";
 import "./views/prisma-editor.css";
 import "./views/stateful-resources.css";
+import "./views/authorization.css";
 
 interface Search {
   readonly select?: string;

@@ -20,23 +20,19 @@ information order and source-review workflow.
 
 ## Navigation and workspace rhythm
 
-The application bar owns the repository identity, six view links and **Source valid**
-(or source validation problems). It has the same geometry on every route: a 52px row
-on desktop and an 89px, two-row layout at 760px and below. Validation stays at the right
-edge, exposes each source mode's verdict to assistive technology and opens configuration
-details. It is not a deployment, credential or runtime health indicator.
+The application bar owns the repository identity, six view links, the **Source**
+Development/Production selector and **Source valid** (or source validation problems).
+Source selection and validation sit together at the right on every route. The navbar
+uses a 52px row on desktop, 89px with two rows at 760px and below, and 129px with
+three rows at 560px and below. Route changes never add or remove source controls.
+Validation exposes both modes' verdicts and opens configuration details.
 
-`SourceEnvironment` and `SourceHistory` compose into the Isometric and Cognito
-toolbars (and the unrouted Board's). The **Source** selector reflects the framework's Development/Production
-projections and retains the existing unsaved-change guard. Domains labels its fixed
-Production source scope beside source history. Database edits one shared contract and
-keeps its own draft history. Deploy, Database and inspection forms own their named-target,
-profile and account controls; a named staging deployment uses its declared mode and must
-not become an invented third source projection.
-
-Source history pauses both actions during an undo/redo request, source evaluation or
-a Studio command, announces its pending operation and rejects repeated activation.
-Source control groups stay within their toolbar's gutters; history wraps when necessary.
+`SourceEnvironment` mounts once in `Shell`. It reflects the framework's two declaration
+projections and retains the unsaved-draft guard. Deploy, Database and inspection forms
+keep their own named-target, profile and account controls. Domains edits Production
+domain settings; Database edits one shared contract and keeps its editor's draft undo.
+Source-edit undo/redo controls and APIs are removed; use Git for saved source history.
+Failed-write rollback and interrupted-write recovery retain their existing guards.
 
 `NavigationStrip` provides the shared link/button geometry for primary navigation,
 Cognito sections and Database workspaces. Native links and buttons retain their keyboard
@@ -91,7 +87,7 @@ Isometric search, tag filters and camera controls occupy a normal-flow toolbar o
 the measured canvas. Wrapping controls must reduce the canvas viewport rather than cover
 resources. The scene remains dark in both themes; its toolbar follows the application
 theme. Use the existing scene container for pointer coordinates, resize and camera fit.
-At 701–1100px, search and tag filters share a full-width row below source and camera
+At 701–1100px, search and tag filters share a full-width row above camera
 actions. Search counts and reset actions must leave the input editable at every width.
 The map footer gives resource/connection counts; tile counts and frame timing belong
 to the existing diagnostics API, not normal application chrome.

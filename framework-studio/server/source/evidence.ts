@@ -108,7 +108,7 @@ export function sourceEvidence(root: string, files: SourceFiles, role: Connectio
 export function withConnectionEvidence(root: string, model: ModeModel, index: SourceIndex, catalog: ReadonlyMap<string, CatalogEntrySource>, files = new SourceFiles()): ModeModel {
   const authored = new AuthoredSource(files);
   return { ...model, edges: model.edges.map((edge) => {
-    if (!["env", "secret", "grant", "database", "trigger"].includes(edge.relation)) return edge;
+    if (!["env", "secret", "grant", "database", "trigger", "manageConnections"].includes(edge.relation)) return edge;
     const evidence: ConnectionEvidence[] = [];
     const add = (role: ConnectionEvidence["role"], location?: SourceLocation) => {
       if (!location || evidence.some((item) => item.role === role && item.location.file === location.file && item.location.start === location.start)) return;
@@ -122,7 +122,7 @@ export function withConnectionEvidence(root: string, model: ModeModel, index: So
     const entity = index.entities[edge.relation === "trigger" ? edge.to : edge.from];
     const declaration = entity && expressionAt(files.get(path.join(root, entity.value.file)), entity.value.start, entity.value.end);
     if (declaration) {
-      if (edge.relation === "trigger") {
+      if (edge.relation === "trigger" || edge.permissionContext?.kind === "trigger-dlq") {
         const triggers = authored.at(declaration, ["triggers"]);
         if (triggers) {
           const visit = (node: ts.Node): void => {
@@ -138,7 +138,7 @@ export function withConnectionEvidence(root: string, model: ModeModel, index: So
       }
       const target = model.targets.find((target) => target.ref === edge.from);
       const derived = edge.provenance === "derived";
-      const names = edge.relation === "database" ? ["database"] : derived ? [target?.role === "agent" || target?.role === "tool" ? "auth" : "userPool"] : [edge.relation === "secret" ? "secrets" : "environment", edge.label];
+      const names = edge.relation === "manageConnections" ? ["cloud", "manageConnections"] : edge.permissionContext?.kind === "trigger-dlq" ? ["triggers"] : edge.relation === "database" ? ["database"] : derived ? [target?.role === "agent" || target?.role === "tool" ? "auth" : "userPool"] : [edge.relation === "secret" ? "secrets" : "environment", edge.label];
       const parent = names.length === 1 ? declaration : authored.at(declaration, names.slice(0, -1));
       const property = parent && authored.property(parent, names.at(-1)!);
       if (property) add(derived ? "derived" : "declared", locate(root, property));

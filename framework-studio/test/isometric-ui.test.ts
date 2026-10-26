@@ -30,7 +30,7 @@ let router: typeof import("@tanstack/react-router");
 let query: typeof import("@tanstack/react-query");
 let studio: typeof import("../src/studio");
 let map: typeof import("../src/views/Isometric");
-let dialogs: typeof import("../src/views/DraftControls");
+let shell: typeof import("../src/views/Shell");
 const frames = new Map<number, FrameRequestCallback>();
 let nextFrame = 0;
 const images: { src: string; alpha: number }[] = [];
@@ -96,9 +96,9 @@ before(async () => {
   Object.defineProperty(dom.window, "PointerEvent", { configurable: true, value: Pointer });
   Object.defineProperty(globalThis, "PointerEvent", { configurable: true, value: Pointer });
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
-  studio = await import("../src/studio"); map = await import("../src/views/Isometric"); dialogs = await import("../src/views/DraftControls");
+  studio = await import("../src/studio"); map = await import("../src/views/Isometric"); shell = await import("../src/views/Shell");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
-  response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, history: {}, busy: null };
+  response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, busy: null };
 });
 after(async () => { await builder.dispose(); dom.window.close(); });
 afterEach(() => { ui.cleanup(); frames.clear(); images.length = 0; strokes.length = 0; labels.length = 0; labelPaints.length = 0; iconStrokes.length = 0; pathStrokes.length = 0; paintOrder.length = 0; glyphWidth = 6; });
@@ -115,9 +115,9 @@ async function mount(withInspector = false, selection?: string, initialResponse 
   let updateResponse: (next: SnapshotResponse) => void;
   function Workbench() {
     const context = studio.useStudio();
-    return h("div", null, h("output", { "aria-label": "Selection" }, context.selected ?? "none"), h(map.Isometric),
+    return h(shell.Shell, null, h("output", { "aria-label": "Selection" }, context.selected ?? "none"), h(map.Isometric),
       withInspector ? h("button", { onClick: () => context.setMode(context.mode === "dev" ? "prod" : "dev") }, "Switch environment") : null,
-      h(dialogs.UnsavedChangesDialog));
+      null);
   }
   function Root() {
     const [current, setCurrent] = useState(initialResponse);
@@ -133,6 +133,33 @@ async function mount(withInspector = false, selection?: string, initialResponse 
   await ui.waitFor(() => assert.ok(document.querySelector(".landscape, .empty"))); await draw();
   return async (next: SnapshotResponse) => { await ui.act(async () => updateResponse(next)); await draw(); };
 }
+
+test("permission connections show generated principal and scope while local database links show no cloud IAM", async () => {
+  const launch = response.snapshot.models.dev.edges.find(edge => edge.relation === "runsTask")!;
+  await mount(true, launch.id);
+  assert.ok(ui.screen.getByRole("heading", { name: "Launch ECS task" }));
+  assert.ok(ui.screen.getByText("iam:PassRole"));
+  assert.ok(ui.screen.getAllByText(/Lambda execution role/).length);
+  assert.ok(ui.screen.getByText(/iam:PassedToService = ecs-tasks.amazonaws.com/));
+  assert.ok(ui.screen.getByText(/not generated in the AWS graph/));
+  ui.cleanup();
+  const local = response.snapshot.models.dev.edges.find(edge => edge.relation === "database" && edge.to === "local:postgres")!;
+  await mount(true, local.id);
+  assert.ok(ui.screen.getByRole("heading", { name: "Connect PostgreSQL" }));
+  assert.ok(ui.screen.getAllByText("Local connection").length);
+  assert.equal(ui.screen.queryByText("rds-db:connect"), null);
+});
+
+test("IAM filter is independent from purpose categories and does not arm source edits", async () => {
+  await mount();
+  const toggle = ui.screen.getByRole("button", { name: "Only IAM grants" });
+  const categories = ui.within(ui.screen.getByRole("group", { name: "Background connections" })).getAllByRole("button");
+  assert.equal(categories.length, 6);
+  ui.fireEvent.click(toggle); await draw();
+  assert.equal(toggle.getAttribute("aria-pressed"), "true");
+  assert.deepEqual(categories.map(button => button.getAttribute("aria-pressed")), ["false", "false", "true", "true", "true", "true"]);
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "none");
+});
 
 test("the inputs island opens the shared creator even after using the global chooser", async () => {
   await mount(true, "island:inputs");
@@ -233,7 +260,7 @@ test("an empty development graph retains source controls to open the working pro
   const emptyDevelopment = { ...development, targets: [], routes: [], resources: [], edges: [], networks: [], localServices: [], managedDatabase: undefined };
   await mount(false, undefined, { ...response, snapshot: { ...response.snapshot, models: { ...response.snapshot.models, dev: emptyDevelopment } } });
   assert.ok(ui.screen.getByText(/development graph did not load/));
-  assert.ok(ui.screen.getByRole("group", { name: "Source edit history" }));
+  assert.equal(ui.screen.queryByRole("group", { name: "Source edit history" }), null);
   const environment = () => ui.within(ui.screen.getByRole("group", { name: "Source environment" }));
   ui.fireEvent.click(environment().getByRole("button", { name: "Production" }));
   await ui.waitFor(() => assert.ok(ui.screen.queryByRole("searchbox", { name: "Search isometric map" })));
@@ -243,7 +270,7 @@ test("an empty development graph retains source controls to open the working pro
   assert.ok(ui.screen.queryByText(/graph did not load/) === null);
   ui.fireEvent.click(environment().getByRole("button", { name: "Development" }));
   await ui.screen.findByText(/development graph did not load/);
-  assert.ok(ui.screen.getByRole("group", { name: "Source edit history" }));
+  assert.equal(ui.screen.queryByRole("group", { name: "Source edit history" }), null);
   assert.equal(environment().getByRole("button", { name: "Development" }).getAttribute("aria-pressed"), "true");
   assert.ok(document.querySelector("canvas") === null);
 });
@@ -620,6 +647,7 @@ test("missing required connections paint red X markers and clicking the marker s
   response = { ...response, snapshot: { ...response.snapshot, models: { ...response.snapshot.models, dev: model } } };
   try {
     await mount();
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
     assert.ok(strokes.includes("#ff5f6d"), "the actual renderer strokes the error marker in red");
     const scene = buildScene(model, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
     const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { kind: string; id: string } } }).__studioLandscape;
@@ -635,6 +663,8 @@ test("missing required connections paint red X markers and clicking the marker s
 
 test("connections over terrain receive hover and clicks while clear terrain still opens its island", async () => {
   await mount(true);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
   const slabs = islandDrawOrder(islandSlabs(scene));
   const state = (dom.window as unknown as { __studioLandscape: {
@@ -675,13 +705,16 @@ test("connection filter pills hide background wires and preserve selected resour
   const group = ui.screen.getByRole("group", { name: "Background connections" });
   const pills = ui.within(group).getAllByRole("button");
   assert.deepEqual(pills.map(pill => pill.textContent), ["Routes", "Environment and secrets", "Grants and database", "Invocations", "Workflow integrations", "CDK resource links"]);
-  assert.ok(pills.every(pill => pill.getAttribute("aria-pressed") === "true"));
+  assert.deepEqual(pills.map(pill => pill.getAttribute("aria-pressed")), ["false", "false", "true", "true", "true", "true"]);
+  assert.equal(pills[0]!.style.getPropertyValue("--swatch"), "#a374ff");
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
   const edge = scene.edges.find(edge => edge.from === "gateway:http" && edge.category === "routes")!;
   const pickablePoint = () => scene.routes[edge.id]!.points.map(point => worldToScreen(state.camera(), state.viewport(), point)).find(point => state.pickAt(point.x, point.y)?.id === edge.id);
+  assert.equal(pickablePoint(), undefined, "route wires are hidden on page load");
+  ui.fireEvent.click(pills[0]!); await draw();
   const at = pickablePoint(); assert.ok(at, "the enabled wire can be picked");
-  for (const pill of pills) ui.fireEvent.click(pill);
+  for (const pill of pills) if (pill.getAttribute("aria-pressed") === "true") ui.fireEvent.click(pill);
   await draw();
   assert.ok(pills.every(pill => pill.getAttribute("aria-pressed") === "false"));
   assert.notEqual(state.pickAt(at.x, at.y)?.id, edge.id, "a hidden background wire cannot intercept the canvas");
@@ -694,7 +727,7 @@ test("connection filter pills hide background wires and preserve selected resour
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Close panel" }));
   await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "none")); await draw();
   assert.equal(pickablePoint(), undefined, "clearing selection restores the unchanged filters");
-  ui.fireEvent.click(ui.within(group).getByRole("button", { name: "Routes", exact: true })); await draw();
+  ui.fireEvent.click(ui.within(group).getByRole("button", { name: "Routes" })); await draw();
   assert.ok(pickablePoint(), "toggling a category back on restores its wires");
 });
 
@@ -721,6 +754,7 @@ test("the real renderer filters background categories without hiding inspected c
 
 test("the real renderer strokes connections leaving the APIs island in purple and those leaving a Lambda or container in orange", async () => {
   await mount();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes" }));
   await draw();
   assert.ok(strokes.some((style) => style.startsWith("rgba(255, 154, 61,")), "orange connections out of compute");
   const purple = strokes.filter((style) => style.startsWith("rgba(163, 116, 255,"));
@@ -744,6 +778,7 @@ test("the real renderer draws resting connections a little stronger, and those o
 
 test("connection hover and inspection distinguish identically named API routes and WebSocket handlers", async () => {
   await mount(true);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes" })); await draw();
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
   const edge = scene.edges.find((edge) => edge.from === "gateway:websocket" && edge.to === "lambda:ws-custom-action-route")!;
   assert.ok(edge);
@@ -761,6 +796,7 @@ test("connection hover and inspection distinguish identically named API routes a
 
 test("clicking a disabled wire explains its endpoints in the inspector and the notice follows the mode", async () => {
   await mount(true);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
   const edge = scene.edges.find((edge) => edge.edge.from === "envfile:prod" && edge.edge.relation === "supplies")!;
   assert.ok(edge);
@@ -781,6 +817,7 @@ test("clicking a disabled wire explains its endpoints in the inspector and the n
 
 test("clicking a grouped connection opens every mapping and retains it across environments", async () => {
   await mount(true);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
   const id = "connection:resource%3Acognito:client-envfile";
   assert.ok(!labels.includes("4"), "connection labels stay off the canvas");
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });

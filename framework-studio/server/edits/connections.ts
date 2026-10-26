@@ -12,6 +12,7 @@ import { insertExpression } from "../resources-source";
 import { removeProperty } from "./splice";
 import { planPlacement } from "./networks";
 import { EditError } from "./io";
+import { grantOptions } from "../../shared/grants";
 
 type Connection = Extract<DraftEdit, { kind: "connection" }>;
 function planCatalogConnection(root: string, state: StudioState, edit: Connection, overrides: Map<string, string>): void {
@@ -23,9 +24,9 @@ function planCatalogConnection(root: string, state: StudioState, edit: Connectio
   if (!grant && !/^[A-Z][A-Z0-9_]*$/.test(edit.variable ?? "")) throw new EditError(422, "Enter an uppercase consumer environment variable.");
   if (grant) {
     const types = state.snapshot.source.triggerCapabilities?.find(item => item.resource === resource.id)?.canonicalTypes ?? [];
-    const bucket = types.some(type => /^aws-s3:(?:I?Bucket)$/.test(type)), queue = types.some(type => /^aws-sqs:(?:I?Queue)$/.test(type));
-    if (!(bucket && ["grantRead", "grantWrite", "grantReadWrite"].includes(edit.grant ?? "") || queue && ["grantSendMessages", "grantConsumeMessages"].includes(edit.grant ?? ""))) throw new EditError(422, "Choose a supported native bucket or queue grant. Custom grants remain source-owned.");
-    if (edit.scope !== undefined && (typeof edit.scope !== "string" || edit.scope.length > 256 || /[\r\n\0]/.test(edit.scope) || queue && !!edit.scope)) throw new EditError(422, "Use a literal object-key scope for a bucket grant; queue grants take no scope.");
+    const option = grantOptions(types).find(option => option.method === edit.grant);
+    if (!option) throw new EditError(422, "Choose a supported native grant for this resource's discovered CDK type. Custom grants remain source-owned.");
+    if (edit.scope !== undefined && (typeof edit.scope !== "string" || edit.scope.length > 256 || /[\r\n\0]/.test(edit.scope) || !option.scope && !!edit.scope)) throw new EditError(422, "Only bucket grants accept a literal object-key scope (at most 256 characters).");
   }
   for (const origin of target.origins) {
     const files = new SourceFiles(overrides), parsed = parseOrigin(origin), located = locateConfigSource(path.join(root, "framework.config.ts"), { repositoryRoot: root, host: files.host() });

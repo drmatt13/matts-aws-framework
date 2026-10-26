@@ -85,7 +85,7 @@ IDs. It allowlists public provider metadata and never requests secret values.
 Google setup links to the exact mode input file in the editor; it never requests
 `/deployment-inputs/details`. Successful provider creation clears automatic
 resource selection, so adding an OIDC secret does not open its value inspector.
-Failure preserves the draft and context. Undo/Redo do not consume result selection.
+Failure preserves the draft and context. Saved-source history belongs to Git.
 The existing generic environment and resource value editors are separate
 boundaries that can load stored values into component state for masked display.
 `identityPoolAccess` keeps default authenticated and optional guest roles

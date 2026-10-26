@@ -1,8 +1,9 @@
+import { sourceFixtureCheckpoint } from "./support/source-fixture";
 import assert from "./support/assert";
 import { randomUUID } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { after, before, test } from "node:test";
+import { after, afterEach, before, beforeEach, test } from "node:test";
 import type { ResourceIntent } from "../shared/resources";
 import { SnapshotBuilder } from "../server/snapshot";
 import { readResourceIntent, ResourceService } from "../server/resources";
@@ -50,6 +51,10 @@ export default defineFrameworkConfig({ resources, defaults, http: [routes], webS
   service = new ResourceService(fixture, builder);
   await builder.refresh();
 });
+let restoreSource: () => Promise<void>;
+beforeEach(() => { restoreSource = sourceFixtureCheckpoint(fixture, builder); });
+afterEach(async () => { await restoreSource(); });
+
 after(async () => { await builder?.dispose(); rmSync(fixture, { recursive: true, force: true }); });
 
 test("only defined authored resources can reveal a targeted .env value, snapshots remain value-free", () => {
@@ -88,7 +93,7 @@ test("a selected input supplies the file revision for private review without rea
   assert.ok(readFileSync(path.join(fixture, "cdk-app/.env.dev"), "utf8").includes('FIXTURE_SETTING="from local env"'), "review does not write");
 });
 
-test("default changes are evaluated from candidate source, applied, undone and redone exactly", async () => {
+test("default changes are evaluated from candidate source, applied exactly", async () => {
   assert.equal(builder.current!.snapshot.models.dev.status, "ok", JSON.stringify(builder.current!.snapshot.models.dev.diagnostics));
   const plan = await service.plan(intent({ default: "changed" }), revision(), "dev");
   assert.equal(plan.ok, true, JSON.stringify(plan.diagnostics));
@@ -96,10 +101,9 @@ test("default changes are evaluated from candidate source, applied, undone and r
   assert.match(plan.changes[0]!.diff.unified, /default\("changed"\)/);
   assert.equal((await service.apply(plan.planId)).status, "applied");
   assert.equal(builder.current!.snapshot.models.dev.resources.find((resource) => resource.id === "resource:setting")?.default, "changed");
-  assert.equal((await service.replay("undo")).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(catalog, "utf8"), original);
-  assert.equal((await service.replay("redo")).status, "applied");
-  await service.replay("undo");
+  await restoreSource();
 });
 
 test("moving an input rewrites catalog references and keeps a derived env key stable", async () => {
@@ -108,14 +112,14 @@ test("moving an input rewrites catalog references and keeps a derived env key st
   assert.equal(plan.nextResource, "resource:newGroup.derived");
   await service.apply(plan.planId);
   assert.equal(service.details(plan.nextResource, "dev").value, "derived value");
-  await service.replay("undo");
+  await restoreSource();
   assert.equal(readFileSync(catalog, "utf8"), original);
   const used = await service.plan(intent({ group: "providers" }), revision(), "dev");
   assert.equal(used.ok, true, JSON.stringify(used.diagnostics));
   assert.equal(used.changes.length, 2);
   await service.apply(used.planId);
   assert.match(readFileSync(route, "utf8"), /providers.*setting/);
-  assert.equal((await service.replay("undo")).status, "applied");
+  await restoreSource();
   assert.equal(readFileSync(route, "utf8"), http);
 });
 
@@ -127,14 +131,14 @@ test("secret conversion cannot keep a fallback or bypass a string-only requireme
   assert.equal(readFileSync(catalog, "utf8"), original);
 });
 
-test("workload requirement edits preserve the other rule fields and are reversible", async () => {
+test("workload requirement edits preserve the other rule fields ", async () => {
   const consumer = service.details("resource:key", "dev").consumers[0]!.target;
   const plan = await service.plan(intent({ resource: "resource:key", kind: "secret", default: null, requirements: { [consumer]: "required" } }), revision(), "dev");
   assert.equal(plan.ok, true, JSON.stringify(plan.diagnostics));
   await service.apply(plan.planId);
   const rules = service.details("resource:key", "dev").consumers[0]!.rules;
   assert.ok(rules.some((rule) => !rule.when && rule.require.includes("resource:key")));
-  await service.replay("undo");
+  await restoreSource();
   assert.equal(readFileSync(route, "utf8"), http);
 });
 
@@ -149,7 +153,6 @@ test("a concurrent edit expires a preview without overwriting it", async () => {
 });
 
 test("failed multi-file resource edits preserve an external deletion and restore remaining files", async () => {
-  const history = service.history();
   const plan = await service.plan(intent({ group: "providers" }), revision(), "dev");
   assert.equal(plan.ok, true, JSON.stringify(plan.diagnostics));
   assert.equal(plan.changes.length, 2);
@@ -168,7 +171,6 @@ test("failed multi-file resource edits preserve an external deletion and restore
     assert.match(result.message, /snapshot could not be refreshed/);
     assert.equal(readFileSync(catalog, "utf8"), original, "one failed restoration cannot skip another file");
     assert.equal(existsSync(route), false, "the external deletion remains intact");
-    assert.deepEqual(service.history(), history, "a failed edit is never recorded as applied");
   } finally {
     builder.refresh = refresh;
     writeFileSync(catalog, original);
@@ -211,12 +213,12 @@ test("a secret flag can be changed when consumers support the new kind", async (
   await service.apply(plan.planId);
   assert.equal(builder.current!.snapshot.models.dev.resources.find((resource) => resource.id === "resource:key")?.kind, "input");
   assert.ok(!readFileSync(route, "utf8").includes(".key.arn"));
-  await service.replay("undo");
+  await restoreSource();
   assert.equal(readFileSync(catalog, "utf8"), original);
   assert.equal(readFileSync(route, "utf8"), http);
   const secret = await service.plan(intent({ resource: "resource:group.derived", kind: "secret", group: "group", default: null }), revision(), "dev");
   assert.equal(secret.ok, true, JSON.stringify(secret.diagnostics));
   await service.apply(secret.planId);
   assert.equal(builder.current!.snapshot.models.dev.resources.find((resource) => resource.id === "resource:group.derived")?.kind, "secret");
-  await service.replay("undo");
+  await restoreSource();
 });

@@ -1,4 +1,4 @@
-import type { ApplyResponse, DiffLine, HistoryState } from "./api";
+import type { ApplyResponse, DiffLine } from "./api";
 import type { Diagnostic } from "./model";
 
 export interface RequirementRule {
@@ -19,7 +19,6 @@ export interface ResourceDetails {
     readonly title: string;
     readonly rules: readonly RequirementRule[];
   }[];
-  readonly history: HistoryState;
 }
 
 export interface ResourceIntent {
@@ -45,5 +44,4 @@ export interface ResourcePlan {
 
 export interface ResourceApply extends ApplyResponse {
   readonly resource: string;
-  readonly history: HistoryState;
 }

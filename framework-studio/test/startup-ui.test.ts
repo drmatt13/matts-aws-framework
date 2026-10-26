@@ -36,7 +36,7 @@ test("background snapshot errors and retry preserve the mounted editor and its p
   let unmount: (() => void) | undefined;
   let queryClient: import("@tanstack/react-query").QueryClient | undefined;
   try {
-    const response: SnapshotResponse = { snapshot: (await builder.refresh()).snapshot, history: {}, commands: {}, busy: null, evaluating: false };
+    const response: SnapshotResponse = { snapshot: (await builder.refresh()).snapshot, commands: {}, busy: null, evaluating: false };
     let failed = false;
     let snapshotReads = 0;
     const writes: string[] = [];
