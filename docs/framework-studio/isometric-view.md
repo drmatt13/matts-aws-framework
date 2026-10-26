@@ -420,9 +420,11 @@ been removed; the renderer has one visual style.
    connections legible. Lane offsets and obstacle avoidance can increase the lift;
    nearby connections retain compact detours. Drawing, picking and packets share the
    same cached path, and Fit includes its crest.
-   Five purpose categories filter background connections: Routes, Environment and secrets,
-   Resource access, Calls and events, and Resource structure. Categories with no connections
-   have no pill. Routes and Environment and secrets start off; the other three start on.
+   Four purpose categories filter background connections: Routes, Environment and secrets,
+   Resource access, and Calls and events. Categories with no connections have no pill.
+   Routes and Environment and secrets start off; the other two start on. Structural links
+   remain in the graph and appear only when selecting or previewing their resources or
+   inspecting the connection; they have no background filter.
    A bundle matches any member's category across both environments, independently of the
    representative chosen for styling. Hidden wires cannot intercept pointer input;
    selecting or previewing a resource reveals all its connections, and clearing that

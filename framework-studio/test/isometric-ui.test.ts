@@ -171,8 +171,8 @@ test("purpose filters replace IAM filtering and do not arm source edits", async 
   await mount();
   assert.equal(ui.screen.queryByRole("button", { name: "Only IAM grants" }), null);
   const categories = ui.within(ui.screen.getByRole("group", { name: "Background connections" })).getAllByRole("button");
-  assert.equal(categories.length, 5);
-  assert.deepEqual(categories.map(button => button.getAttribute("aria-pressed")), ["false", "false", "true", "true", "true"]);
+  assert.equal(categories.length, 4);
+  assert.deepEqual(categories.map(button => button.getAttribute("aria-pressed")), ["false", "false", "true", "true"]);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Resource access" })); await draw();
   assert.equal(ui.screen.getByRole("button", { name: "Resource access" }).getAttribute("aria-pressed"), "false");
   assert.equal(ui.screen.getByLabelText("Selection").textContent, "none");
@@ -185,7 +185,7 @@ test("connection filters omit unused purposes and return when source adds those 
   const filterNames = () => ui.within(ui.screen.getByRole("group", { name: "Background connections" })).getAllByRole("button").map(button => button.textContent);
   assert.deepEqual(filterNames(), ["Routes"]);
   await update(response);
-  assert.deepEqual(filterNames(), ["Routes", "Environment and secrets", "Resource access", "Calls and events", "Resource structure"]);
+  assert.deepEqual(filterNames(), ["Routes", "Environment and secrets", "Resource access", "Calls and events"]);
 });
 
 test("the inputs island opens the shared creator even after using the global chooser", async () => {
@@ -731,8 +731,8 @@ test("connection filter pills hide background wires and preserve selected resour
   await mount(true); await draw();
   const group = ui.screen.getByRole("group", { name: "Background connections" });
   const pills = ui.within(group).getAllByRole("button");
-  assert.deepEqual(pills.map(pill => pill.textContent), ["Routes", "Environment and secrets", "Resource access", "Calls and events", "Resource structure"]);
-  assert.deepEqual(pills.map(pill => pill.getAttribute("aria-pressed")), ["false", "false", "true", "true", "true"]);
+  assert.deepEqual(pills.map(pill => pill.textContent), ["Routes", "Environment and secrets", "Resource access", "Calls and events"]);
+  assert.deepEqual(pills.map(pill => pill.getAttribute("aria-pressed")), ["false", "false", "true", "true"]);
   assert.equal(pills[0]!.style.getPropertyValue("--swatch"), "#a374ff");
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
@@ -756,6 +756,20 @@ test("connection filter pills hide background wires and preserve selected resour
   assert.equal(pickablePoint(), undefined, "clearing selection restores the unchanged filters");
   ui.fireEvent.click(ui.within(group).getByRole("button", { name: "Routes" })); await draw();
   assert.ok(pickablePoint(), "toggling a category back on restores its wires");
+});
+
+test("resource structure is available during inspection and hidden again when selection clears", async () => {
+  await mount(true, "resource:rds"); await draw();
+  assert.equal(ui.screen.queryByRole("button", { name: "Resource structure" }), null);
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
+  const edge = scene.edges.find(edge => edge.edge.relation === "contains" && edge.from === "resource:rds")!;
+  assert.ok(edge);
+  const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
+  const pickable = () => scene.routes[edge.id]!.points.map(point => worldToScreen(state.camera(), state.viewport(), point)).some(point => state.pickAt(point.x, point.y)?.id === edge.id);
+  assert.ok(pickable(), "selecting the stack reveals its database relationship");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Close panel" })); await draw();
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "none"));
+  assert.equal(pickable(), false, "structural links do not clutter or intercept the overview");
 });
 
 test("the real renderer filters background categories without hiding inspected connections", () => {

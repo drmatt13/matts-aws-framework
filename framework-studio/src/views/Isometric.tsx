@@ -84,7 +84,8 @@ interface Tween {
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const ENVIRONMENTS = [["dev", "Dev"], ["prod", "Prod"]] as const;
-const CATEGORIES = Object.keys(CATEGORY_LABEL) as EdgeCategory[];
+// Ownership and native references are context for inspection, not background activity.
+const CATEGORIES = (Object.keys(CATEGORY_LABEL) as EdgeCategory[]).filter(category => category !== "structure");
 
 export function Isometric() {
   const { model, index, snapshot, selected, select, created, draft } = useStudio();

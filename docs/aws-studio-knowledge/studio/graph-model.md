@@ -75,8 +75,10 @@ collapsed Permissions disclosure retains mode-specific principal, scope, conditi
 evidence. Raw binding details, source links and inference caveats remain under Configuration.
 Resource previews omit IAM counts. Workload Permissions retains the full capability list.
 
-Five purpose filters cover Routes, Environment and secrets, Resource access, Calls and events,
-and Resource structure. `edgeCategory` uses typed delivery context to put subscriptions and
+Four background filters cover Routes, Environment and secrets, Resource access, and Calls and events.
+Structural links retain their internal category for layout and inspection; they appear when a
+resource is selected or previewed, or the connection is inspected, without a background filter.
+`edgeCategory` uses typed delivery context to put subscriptions and
 failure destinations under Calls and events even when their underlying relation is `cdk`
 or `grant`. Empty categories are hidden. Groups retain every member's category across both
 modes; matching any category keeps the wire visible. IAM metadata neither chooses the

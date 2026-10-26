@@ -193,7 +193,7 @@ Framework behavior comes from the framework's own answers. CDK links are separat
   `packages/framework/scripts/config-source.ts`, the same reader `framework:check` uses.
 - **Stack members.** These are read from each `resource.stack<T>()` class.
 - **Link sites.** These are `linkResources` calls found in `cdk-app/lib`.
-- **CDK resource links.** The studio parses linked stack constructors for direct public-member references, SNS SQS subscriptions and EventBridge rules. References appear under Resource structure; recognized delivery belongs to Calls and events. Source locations and inference details remain in Configuration. No CDK code is executed by this scan.
+- **CDK resource links.** The studio parses linked stack constructors for direct public-member references, SNS SQS subscriptions and EventBridge rules. References appear when inspecting their resources; recognized delivery belongs to Calls and events. Source locations and inference details remain in Configuration. No CDK code is executed by this scan.
 
 Each logical graph is evaluated in its own child process, with a synthetic inputs file holding
 only `PROD_DEPLOYMENT`. Graph evaluation receives only deployment-mode and WebSocket flags;
@@ -460,8 +460,9 @@ claim a production deployment where no API exists, or hide its AWS-backed Develo
 | Double-click | Fly to a building |
 | Arrow keys, `+` / `-`, `0`, `F`, Escape | Pan, zoom, fit, focus the selection, clear it |
 
-Five purpose filters control background connections: **Routes**, **Environment and secrets**,
-**Resource access**, **Calls and events**, and **Resource structure**. Empty categories are hidden.
+Four purpose filters control background connections: **Routes**, **Environment and secrets**,
+**Resource access**, and **Calls and events**. Empty categories are hidden. Ownership and native
+reference links appear only when selecting or previewing their resources or inspecting the connection.
 Routes and Environment and secrets start off; the others start on. A grouped connection
 matches any member's category across both environments. Selecting or previewing a resource
 reveals all its connections, and clearing selection restores the filters. Hovering an edge,

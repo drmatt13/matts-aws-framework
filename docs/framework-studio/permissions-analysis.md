@@ -18,8 +18,9 @@ This work describes IAM intent; it does not establish effective access in an AWS
   facts as supporting information. Purpose titles and authored member labels remain primary;
   single-connection hovers append a compact IAM note without an AWS-only suffix. Inspectors
   disclose full Permissions and source Configuration on demand; resource previews omit
-  IAM counts. Five map filters cover Routes, Environment and secrets, Resource access,
-  Calls and events, and Resource structure. Empty categories are hidden; bundles match any
+  IAM counts. Four map filters cover Routes, Environment and secrets, Resource access,
+  and Calls and events. Structural links appear in selected/previewed context without a
+  background filter. Empty categories are hidden; bundles match any
   member's category across both environments. Selected resources retain full context.
 - [Connection presentation](../../framework-studio/src/connection-presentation.ts) explains
   database bindings as connection settings, networking and IAM login, with separate local

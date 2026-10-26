@@ -110,8 +110,10 @@ Board's [layout.ts](../../../framework-studio/src/layout.ts) arranges entry, com
 
 Keep optimization bounded for large graphs. Preserve layout stability across selection/mode switches and avoid recomputing source models during a pointer move. Rendering and picking must share geometric assumptions, especially curve sampling and visible endpoints. Avoid claiming a node-count ceiling or browser FPS guarantee from a synthetic timing fixture.
 
-The five purpose categories are Routes, Environment and secrets, Resource access,
-Calls and events, and Resource structure. Empty categories have no filter pill.
+The four background filters are Routes, Environment and secrets, Resource access,
+and Calls and events. Empty categories have no filter pill. Structural links remain in the
+graph for layout and inspection, but have no background filter and appear only in selected
+or previewed context.
 Routes (purple) and Environment and secrets start off on each page load; the others start on.
 An aggregated connection matches any member's category across the dev/prod union, independently
 of its styling representative. Drawing and pointer picking share `connectionVisible`;
