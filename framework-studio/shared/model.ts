@@ -347,6 +347,8 @@ export interface ModelEdge {
   /** Framework declarations/derivations, or separately identified CDK/input-file source evidence. */
   readonly provenance: "declared" | "derived" | "source";
   readonly source?: SourceLocation;
+  /** Native constructor at the wiring site, resolved from CDK imports rather than a local alias or interface type. */
+  readonly sourceConstruct?: string;
   readonly evidence?: readonly ConnectionEvidence[];
   readonly attachment?: string;
   /** Native trigger wiring Studio can delete exactly, or why it must be edited in source. */

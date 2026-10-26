@@ -399,8 +399,11 @@ been removed; the renderer has one visual style.
 4. **Arcs.** Quadratic curves lifted along world Z, which projects straight up the page.
    Relationships with the same visible source and destination share one arc, including
    references to different fields of the same stack. Opposite directions stay separate.
-   The hover popup shows the relationship count when grouped and the same Dev and Prod
-   pills as node popups. Both pills keep their names; unavailable environments are dimmed.
+   The hover popup names the grouped purpose, such as `Reads 3 environment values`, and
+   shows the same Dev and Prod pills as node popups. Mixed groups name up to two families
+   plus a remaining count. The preview lists at most four members and a remaining count;
+   any missing required values outside that preview receive a separate notice.
+   Both pills keep their names; unavailable environments are dimmed.
    Connection inspectors and their individual relationship rows use the same two pills,
    including when both environments are enabled. Shared endpoints appear once above a
    compact list of relationship names and types; expanding a row reveals its original
@@ -417,9 +420,11 @@ been removed; the renderer has one visual style.
    connections legible. Lane offsets and obstacle avoidance can increase the lift;
    nearby connections retain compact detours. Drawing, picking and packets share the
    same cached path, and Fit includes its crest.
-   They are coloured by the Board's six
-   categories. The six pills at the top of the map filter background connections, with
-   every category visible by default. Hidden wires cannot intercept pointer input;
+   Five purpose categories filter background connections: Routes, Environment and secrets,
+   Resource access, Calls and events, and Resource structure. Categories with no connections
+   have no pill. Routes and Environment and secrets start off; the other three start on.
+   A bundle matches any member's category across both environments, independently of the
+   representative chosen for styling. Hidden wires cannot intercept pointer input;
    selecting or previewing a resource reveals all its connections, and clearing that
    selection restores the unchanged filters. The accessible connection list retains
    every relationship. Dashed is
@@ -433,18 +438,27 @@ been removed; the renderer has one visual style.
      a parameter being read never looks like a permission being given. What is referenced
      decides this, even when the map shows a stack field as its owning stack.
    - **Conditional deployment.** Workload-to-input connections are dashed orange,
-     with hover text `Conditional deployment: PARAM_NAME`.
-   - **Task launch permission.** A `runsTask(...)` binding is solid red and reads
-     `Grant permission: Launch ECS task`. Its details describe the launch grants and
-     configuration; this capability does not establish that a task has run.
+     with hover text `Deploys when: PARAM_NAME` and the matching condition.
+   - **Task launch capability.** A `runsTask(...)` binding is solid red and reads
+     `Can launch task`. Its inspector retains the launch grants and configuration;
+     this capability does not establish that a task has run.
+   - **Database binding.** `Connects to PostgreSQL` describes local connection settings
+     or cloud connection settings, private networking and IAM login. The wire keeps its
+     normal workload style. The stack link reads `Provides the application database`,
+     including retained or imported databases. Reader bindings describe writer and reader
+     connections without asserting replicas exist.
    - **Everything else.** Solid: an API route (purple, out of the APIs island), a Lambda
      or container leaving for another workload (orange), a WebSocket authorizer's link to
      the route it guards (red), an agent calling a tool (teal) and a workflow step (pink).
      Dashed: an environment file supplying a secret (red), and every remaining connection
      in its category colour.
 
-   A missing required input is still red, with its X marker. Derived edges are fainter,
-   and a derived or source-inferred connection says so in its hover card.
+   A missing required input is still red, with its X marker. Derived edges are fainter.
+   Hovers retain concise purpose details and an optional IAM action/helper note, without
+   an AWS-only suffix. Configured inputs need no status sentence; empty, missing, unknown
+   or defaulted inputs retain concise guidance. Source paths, inference caveats and raw
+   binding explanations expand under Configuration; complete authorization facts expand
+   under Permissions. Replay reads `Local replay: AWS invocations`.
 
    Hover eases a connection's brightness, width, glow, arrow and packets over 50 ms
    in either direction, using `cubic-bezier(0.16, 1, 0.3, 1)` for a fast response and
@@ -453,9 +467,10 @@ been removed; the renderer has one visual style.
    any hover fade from the previous graph. Paused or reduced motion skips the fade.
 
    Native event triggers point from the public resource to the event Lambda, in solid
-   warm yellow (`#ead46c`). They share the invocation category but have their own colour,
+   warm yellow (`#ead46c`). They belong to Calls and events but have their own colour,
    distinct from reads, grants, routes, compute, tools, steps and CDK references. The
-   hook/adapter label and wiring location appear in hover and connection details. Both
+   hover retains the hook/adapter label and names the resolved native constructor, such
+   as `Defined by cdk.aws_cognito.UserPool`; Configuration keeps the wiring location. Both
    lenses retain the same triggers, including cycles back through a Lambda's reads.
 
    **The lens.** An idle connection rests at 0.30 opacity (0.18 when derived), so what is
@@ -488,9 +503,9 @@ been removed; the renderer has one visual style.
    environment holds (a Lambda's database binding to Local PostgreSQL in Development, to
    RDS in Production) is drawn dimmed rather than left out, says so in its hover card and
    Inspector, and lights up only when hovered or selected itself, never because a node it
-   touches is selected. Selection, hover and search keep their own strengths. The sixth
-   category, CDK resource links, is cyan; its hover card
-   and Inspector expose source evidence and distinguish inference from evaluated facts.
+   touches is selected. Selection, hover and search keep their own strengths. Resource
+   structure is cyan; recognized subscriptions and failure delivery instead belong to
+   Calls and events. Configuration exposes source evidence and its inference limits.
    - **Lit arcs.** The selection's and the hovered arc's are bright, with an arrowhead.
    - **Packets.** With motion on, the selection's arcs carry one to three packets at
      60 world units a second.
@@ -675,7 +690,7 @@ drawn, then click there.
 | A building kind | Its model-to-icon mapping in `icons.ts` and scene placement in `build.ts`; all kinds share `buildIconShape` and its picking silhouette |
 | A region | A spec in `islandSpecs` (`build.ts`): its column, title, caption, bands and height. Keep captions to what the framework states. Give its island a trim in `ISLAND_TRIM` (`look.ts`); a test holds that every island has one |
 | An icon | `ICONS` (`icons.ts`) and its spill colour in `ICON_TINT` (`look.ts`), which the type requires |
-| An edge category | `RELATION_CATEGORY` and `CATEGORY_LABEL` (`src/lookup.ts`), `CATEGORY_COLORS` (`render.ts`) |
+| An edge category | `edgeCategory`, `RELATION_CATEGORY`, `CATEGORY_LABEL` and `CATEGORY_DESCRIPTION` (`src/lookup.ts`), `EDGE_COLORS` (`scene/look.ts`); aggregation retains every member's categories |
 
 Stack fields remain in the underlying model and Inspector. The scene maps their edge
 endpoints and selection highlight to the owning stack through `Scene.representatives`;

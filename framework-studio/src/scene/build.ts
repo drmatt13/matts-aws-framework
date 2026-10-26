@@ -1,7 +1,7 @@
 import { gatewaysOf } from "../../shared/gateways";
 import { drawnAs } from "../drawn-as";
 import type { Lanes, Mode, ModeModel, ModelResource, ModelRoute, ModelTarget, NetworkModel, TargetKind } from "../../shared/model";
-import { RELATION_CATEGORY, ROLE_LABEL, type EdgeCategory } from "../lookup";
+import { edgeCategory, ROLE_LABEL, type EdgeCategory } from "../lookup";
 import { endpointServiceIcon, resourceBadge, resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
 import { endpointServiceDetails } from "../endpoint-services";
 import { availabilityBadge, deploymentBadge, developmentLocation, environments, type Availability, type DeploymentBadgeKind } from "../deployment";
@@ -134,6 +134,7 @@ export interface Prop {
 }
 
 export interface SceneEdge extends ConnectionGroup {
+  /** Representative category for styling and routing; filters use all inherited categories. */
   readonly category: EdgeCategory;
   /** Colour and dash; presentation only, decided in `connections.ts`. */
   readonly style: ConnectionStyle;
@@ -736,7 +737,7 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
   const resourceById = new Map(model.resources.map((resource) => [resource.id, resource]));
   const edges = aggregateConnections(model, options.layoutModels)
     .filter((edge) => ids.has(edge.from) && ids.has(edge.to))
-    .map((edge) => ({ ...edge, category: RELATION_CATEGORY[edge.edge.relation] }))
+    .map((edge) => ({ ...edge, category: edgeCategory(edge.edge) }))
     // What an edge references decides its style, even when the map draws a stack field as its owning stack.
     .map((edge): SceneEdge => ({ ...edge, style: connectionStyle(edge.edge, edge.category, nodeById.get(edge.from), resourceById.get(edge.edge.to)) }));
 

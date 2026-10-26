@@ -4,15 +4,16 @@ import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { ConnectionDetails, ConnectionEndpoints } from "./InputRequirement";
 import { connectionTitle } from "../../shared/permissions";
+import { presentConnection } from "../connection-presentation";
 
 export function ConnectionMap({ connection }: { readonly connection: ConnectionGroup }) {
-  const { model } = useStudio();
+  const { model, index } = useStudio();
+  const presentation = presentConnection(connection, model.mode, index);
   return <>
-    <header className="connection-header"><span className="kind">Aggregated connection</span><h2>{connection.members.length} relationships</h2><EnvironmentPills availability={connection.availability} />
+    <header className="connection-header"><span className="kind">Connection</span><h2>{presentation.title}</h2><EnvironmentPills availability={connection.availability} />
       <ConnectionEndpoints from={connection.from} to={connection.to} />
     </header>
-    <section aria-label="Aggregated connection map">
-      <h3>Connection map</h3>
+    <section aria-label="Connection details">
       {!connection.availability[model.mode] ? <div className="connection-availability" role="note" aria-label="Connection deployment status"><strong>Disabled in {model.mode === "dev" ? "Development" : "Production"}</strong><p>Both endpoints must be enabled and a relationship must exist in this environment.</p></div> : null}
       <div className="connection-map-members">
         {connection.members.map((member) => {
@@ -20,7 +21,7 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
           const onlyIn = member.models[model.mode] ? undefined : member.models.dev ? "dev" : "prod";
           return <details key={edge.id} className="connection-map-member">
             <summary>
-              <span className="connection-map-label"><code>{connectionTitle(edge)}</code><span className="small muted">{RELATION_LABEL[edge.relation]}</span></span>
+              <span className="connection-map-label"><code>{connectionTitle(edge)}</code>{!presentation.homogeneous ? <span className="small muted">{RELATION_LABEL[edge.relation]}</span> : null}</span>
               <EnvironmentPills availability={member.availability} />
             </summary>
             <div className="connection-map-detail">

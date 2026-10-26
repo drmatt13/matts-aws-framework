@@ -1,6 +1,6 @@
 import { ChevronLeft, Crosshair, Maximize2, Minus, PanelRight, Pause, Play, Plus, Search, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { CATEGORY_LABEL, RELATION_LABEL, endpointLabel, titleOf, type EdgeCategory } from "../lookup";
+import { CATEGORY_DESCRIPTION, CATEGORY_LABEL, endpointLabel, type EdgeCategory } from "../lookup";
 import { buildScene, type Scene, type SceneNode } from "../scene/build";
 import { islandDrawOrder, islandSlabs } from "../scene/slabs";
 import {
@@ -35,7 +35,7 @@ import { useStudio } from "../studio";
 import { HoverContent, ResourceHoverContent } from "./ResourceHoverContent";
 import { InspectorContent } from "./Inspector";
 import { ResourceBrowser, type BrowserMemory } from "./ResourceBrowser";
-import { authorizationSummary } from "../../shared/permissions";
+import { presentConnection } from "../connection-presentation";
 import { WorkspacePanel } from "./WorkspacePanel";
 import { tagGroups, tagKeys, tagValueLabel, UNTAGGED_FILTER } from "../tag-groups";
 
@@ -94,7 +94,6 @@ export function Isometric() {
   const rendererRef = useRef<SceneRenderer | undefined>(undefined);
   const [motion, setMotion] = useState(() => !reducedMotion());
   const [categories, setCategories] = useState<ReadonlySet<EdgeCategory>>(() => new Set(CATEGORIES.filter(category => category !== "routes" && category !== "inputs")));
-  const [iamOnly, setIamOnly] = useState(false);
   const [query, setQuery] = useState("");
   const [resourceKind, setResourceKind] = useState("");
   // Whether Resources is open beneath any inspector; a selection always shows its inspector.
@@ -130,6 +129,7 @@ export function Isometric() {
   const topology = useMemo(() => buildScene(model, { conditions, resourceAvailability,
     layoutModels: [snapshot.models.dev, snapshot.models.prod], layoutSettings: { aspect, previous: previousLayout.current?.positions, previousKey: previousLayout.current?.topologyKey } }), [model, snapshot.models, conditions, resourceAvailability, aspect]);
   const scene = useMemo(() => activeTagKey && filterValue !== undefined ? filterSceneByTag(topology, model, activeTagKey, filterValue) : topology, [topology, model, activeTagKey, filterValue]);
+  const visibleCategories = useMemo(() => CATEGORIES.filter(category => scene.edges.some(edge => edge.categories.includes(category))), [scene]);
   useLayoutEffect(() => { previousLayout.current = scene.layout; }, [scene]);
   const visibleSelected = selected ? scene.representatives[selected] ?? scene.edges.find((edge) => edge.members.some((member) => member.edge.id === selected))?.id ?? selected : undefined;
   const matches = useMemo(() => searchScene(scene, model, query), [scene, model, query]);
@@ -172,7 +172,6 @@ export function Isometric() {
     hoveredIsland: undefined as string | undefined,
     motion,
     categories,
-    iamOnly,
     focus: focusState,
     tween: undefined as Tween | undefined,
     cards: [] as readonly CardHit[],
@@ -187,7 +186,6 @@ export function Isometric() {
   live.current.preview = preview;
   live.current.motion = motion;
   live.current.categories = categories;
-  live.current.iamOnly = iamOnly;
   live.current.focus = focusState;
 
   const draw = useCallback(() => {
@@ -216,7 +214,6 @@ export function Isometric() {
       time: now / 1000,
       motion: state.motion,
       categories: state.categories,
-      iamOnly: state.iamOnly,
       focus: state.focus,
     });
     state.cards = result.cards;
@@ -346,7 +343,7 @@ export function Isometric() {
     };
   }, [schedule, resize, hasEntities]);
 
-  useEffect(schedule, [schedule, scene, selected, motion, focusState, categories, iamOnly]);
+  useEffect(schedule, [schedule, scene, selected, motion, focusState, categories]);
   useEffect(() => { if (pendingLayoutFit.current) { pendingLayoutFit.current = false; fit(); } }, [scene, fit]);
 
   // Opening/closing the panel changes CSS layout during this commit. Resize and paint
@@ -391,7 +388,7 @@ export function Isometric() {
       const entity = pickEntity(screen, world, [...state.badges, ...state.cards], silhouettes);
       if (entity) return { kind: "node", id: entity, ...screen };
       for (const arc of arcs) {
-        if (!arc.missing || !connectionVisible(arc.edge, state.categories, state.preview ?? state.selected, state.iamOnly)) continue;
+        if (!arc.missing || !connectionVisible(arc.edge, state.categories, state.preview ?? state.selected)) continue;
         const marker = worldToScreen(state.camera, state.viewport, arc.midpoint);
         if (Math.hypot(marker.x - screen.x, marker.y - screen.y) <= 12) return { kind: "edge", id: arc.edge.id, ...screen };
       }
@@ -401,7 +398,7 @@ export function Isometric() {
       const tolerance = 6 / state.camera.zoom;
       let best: { id: string; distance: number } | undefined;
       for (const arc of arcs) {
-        if (!connectionVisible(arc.edge, state.categories, state.preview ?? state.selected, state.iamOnly)) continue;
+        if (!connectionVisible(arc.edge, state.categories, state.preview ?? state.selected)) continue;
         if (world.x < arc.minX - tolerance || world.x > arc.maxX + tolerance || world.y < arc.minY - tolerance || world.y > arc.maxY + tolerance) continue;
         const distance = distanceToPolyline(world, arc.points);
         if (distance < tolerance && (!best || distance < best.distance)) best = { id: arc.edge.id, distance };
@@ -660,7 +657,7 @@ export function Isometric() {
     }}>
       <li className="landscape-entity-help"><strong>Map resources and connections</strong><span>Use arrow keys or Tab to browse, Enter to inspect, Escape to return to the map.</span></li>
       {scene.edges.map((connection) => <li key={connection.id}><button onClick={() => inspect(connection.id)} aria-current={visibleSelected === connection.id}>
-        {missingConnectionInput(connection) ? "Missing required value: " : "Connection: "}{endpointLabel(index, connection.from)} to {endpointLabel(index, connection.to)}, {connection.members.length} {connection.members.length === 1 ? "relationship" : "relationships"}{connectionLabel(connection) ? ` (${connectionLabel(connection)})` : ""}
+        {missingConnectionInput(connection) ? "Missing required value: " : "Connection: "}{endpointLabel(index, connection.from)} to {endpointLabel(index, connection.to)}, {presentConnection(connection, scene.mode, index).title}
       </button></li>)}
       {scene.islands.map((island) => <li key={island.id}><button onClick={() => inspect(island.id)} aria-current={visibleSelected === island.id}>{island.title} island settings</button></li>)}
       {scene.props.map((prop) => <li key={prop.id}><button data-entity-id={prop.id} aria-description={prop.id} onClick={() => inspect(prop.id)} aria-current={visibleSelected === prop.id}>{prop.label}</button></li>)}
@@ -749,16 +746,14 @@ export function Isometric() {
         <div className="landscape-bar landscape-connection-bar">
           <div className="landscape-chips" role="group" aria-label="Background connections" aria-describedby="connection-filter-help">
             <span id="connection-filter-help" className="sr-only">Filter background connections. Selecting or previewing a resource always shows its connections.</span>
-            {CATEGORIES.map(category => <button key={category} className="landscape-chip" aria-pressed={categories.has(category)}
+            {visibleCategories.map(category => <button key={category} className="landscape-chip" aria-pressed={categories.has(category)}
               style={{ "--swatch": EDGE_COLORS[category] } as CSSProperties}
-              title={`${categories.has(category) ? "Hide" : "Show"} ${CATEGORY_LABEL[category].toLowerCase()} in the background. Selected resources keep all their connections.`}
+              title={`${categories.has(category) ? "Hide" : "Show"} ${CATEGORY_DESCRIPTION[category]}. Selected resources keep all their connections.`}
               onClick={() => {
                 setCategories(current => { const next = new Set(current); if (next.has(category)) next.delete(category); else next.add(category); return next; });
                 setHovered(undefined);
               }}>{CATEGORY_LABEL[category]}</button>)}
           </div>
-          <button className="landscape-chip" aria-pressed={iamOnly} title="Within enabled categories, show IAM relationships, including cloud intent for workloads not built here. Selected resources keep every connection."
-            onClick={() => { setIamOnly(current => !current); setHovered(undefined); }}>Only IAM grants</button>
         </div>
         <div className="landscape-bar landscape-bottom">
           <span className="landscape-stats">
@@ -810,20 +805,14 @@ function HoverCard(props: {
     const sceneEdge = props.scene.edges.find((candidate) => candidate.id === current.id);
     const edge = sceneEdge?.edge;
     if (!edge) return null;
-    const relationshipTitle = (relationship: typeof edge) => relationship.relation === "deployWhen"
-      ? `Conditional deployment: ${index.resources.get(relationship.to)?.fromEnv ?? titleOf(index, relationship.to)}`
-      : `${RELATION_LABEL[relationship.relation]}: ${relationship.label}`;
-    title = sceneEdge.members.length > 1 ? `${sceneEdge.members.length} relationships` : relationshipTitle(edge);
+    const presentation = presentConnection(sceneEdge, props.scene.mode, index);
+    title = presentation.title;
     facts = {
       places: ENVIRONMENTS.flatMap(([env]) => sceneEdge.availability[env] ? [{ env, where: "Connection enabled" }] : []),
       frameworkManaged: false,
     };
-    const onlyIn = sceneEdge.otherLens ? `Only in ${sceneEdge.otherLens === "dev" ? "Development" : "Production"}. Switch the view to see it with the rest of that environment.` : undefined;
-    lines = [onlyIn, `From ${endpointLabel(index, sceneEdge.from)}`, `To ${endpointLabel(index, sceneEdge.to)}`,
-      ...(sceneEdge.members.length > 1 ? ["Click to inspect the connection map.", ...sceneEdge.members.slice(0, 4).map((member) => relationshipTitle(member.models[props.scene.mode] ?? member.edge))] : [edge.detail]),
-      missingConnectionInput(sceneEdge) ? "Required value missing. Click to resolve." : undefined,
-      edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
-    if (sceneEdge.members.length === 1 && edge.authorization) notes = authorizationSummary(edge.authorization);
+    lines = [`From ${endpointLabel(index, sceneEdge.from)}`, `To ${endpointLabel(index, sceneEdge.to)}`, ...presentation.lines];
+    notes = presentation.notes;
   } else {
     const island = props.scene.islands.find((candidate) => candidate.id === current.id);
     if (!island) return null;

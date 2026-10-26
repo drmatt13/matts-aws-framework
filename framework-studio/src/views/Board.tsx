@@ -2,7 +2,7 @@ import { AlertTriangle, Lock } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ModelResource, ModelTarget } from "../../shared/model";
 import { layoutBoard, type BoardNode } from "../layout";
-import { CATEGORY_LABEL, ROLE_LABEL, type EdgeCategory } from "../lookup";
+import { CATEGORY_DESCRIPTION, CATEGORY_LABEL, ROLE_LABEL, type EdgeCategory } from "../lookup";
 import { AddMenu } from "./AddMenu";
 import { useStudio } from "../studio";
 import { DeploymentBadge, DeploymentLegend } from "./DeploymentBadge";
@@ -74,17 +74,19 @@ export function Board() {
   }
 
   const visible = layout.edges.filter((edge) => shown.has(edge.category));
+  const availableCategories = new Set(layout.edges.map((edge) => edge.category));
   const lit = (edge: (typeof visible)[number]) => selected !== undefined && (edge.edge.id === selected || edge.edge.from === selected || edge.edge.to === selected);
 
   return (
     <>
       <div className="workspace-toolbar board-head">
         <div className="chips" role="group" aria-label="Relations shown">
-          {CATEGORIES.map((category) => (
+          {CATEGORIES.filter((category) => availableCategories.has(category)).map((category) => (
             <button
               key={category}
               className="chip"
               aria-pressed={shown.has(category)}
+              title={CATEGORY_DESCRIPTION[category]}
               onClick={() =>
                 setShown((current) => {
                   const next = new Set(current);

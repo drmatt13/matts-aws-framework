@@ -193,7 +193,7 @@ Framework behavior comes from the framework's own answers. CDK links are separat
   `packages/framework/scripts/config-source.ts`, the same reader `framework:check` uses.
 - **Stack members.** These are read from each `resource.stack<T>()` class.
 - **Link sites.** These are `linkResources` calls found in `cdk-app/lib`.
-- **CDK resource links.** The studio parses linked stack constructors for direct public-member references, SNS SQS subscriptions and EventBridge rules. These edges have their own category, source locations and inference label. No CDK code is executed by this scan.
+- **CDK resource links.** The studio parses linked stack constructors for direct public-member references, SNS SQS subscriptions and EventBridge rules. References appear under Resource structure; recognized delivery belongs to Calls and events. Source locations and inference details remain in Configuration. No CDK code is executed by this scan.
 
 Each logical graph is evaluated in its own child process, with a synthetic inputs file holding
 only `PROD_DEPLOYMENT`. Graph evaluation receives only deployment-mode and WebSocket flags;
@@ -347,6 +347,13 @@ unavailable environments dimmed based on the relationships and both endpoints.
 Grouped inspectors show shared endpoints once and list each relationship in a compact expandable row.
 Click a grouped line to inspect a connection map with every field mapping,
 relationship, environment and expandable source evidence or required-input guidance.
+Grouped titles name their purpose, such as **Reads 3 environment values**; hover previews
+show at most four members and a remaining count. Missing required values remain visible.
+Single connections use concise purpose titles and relevant details: database bindings explain
+the framework's connection settings, networking and IAM login; native triggers name their
+CDK constructor; replay reads **Local replay: AWS invocations**. A compact IAM note supplements
+the hover. Full source diagnostics and authorization facts expand under **Configuration**
+and **Permissions** in the inspector.
 
 The backdrop is a thin isometric grid anchored to the terrain's world coordinates.
 Entities use locally bundled official AWS SVG service icons on small plinths, with Lucide
@@ -453,9 +460,12 @@ claim a production deployment where no API exists, or hide its AWS-backed Develo
 | Double-click | Fly to a building |
 | Arrow keys, `+` / `-`, `0`, `F`, Escape | Pan, zoom, fit, focus the selection, clear it |
 
-Edges are the model's typed relationships, in the Board's six categories. All categories
-remain visible in the isometric map. Hovering an edge, a building, a gateway or the ground
-explains it. A building's hover card shows its authored description (including an unsaved
+Five purpose filters control background connections: **Routes**, **Environment and secrets**,
+**Resource access**, **Calls and events**, and **Resource structure**. Empty categories are hidden.
+Routes and Environment and secrets start off; the others start on. A grouped connection
+matches any member's category across both environments. Selecting or previewing a resource
+reveals all its connections, and clearing selection restores the filters. Hovering an edge,
+a building, a gateway or the ground explains it. A building's hover card shows its authored description (including an unsaved
 draft), always a **Dev** and a **Prod** pill (lit when that environment deploys it, dark
 when it does not, so a missing environment is as visible as a present one), and a
 **Framework-managed** pill for stacks and resources the framework owns. Both environments

@@ -351,7 +351,7 @@ test("read connection labels open compact evidence with line-numbered VS Code li
   await mount("lambda:sign-out");
   openSection("Connections");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "TRUSTED_FRONTEND_ORIGINS" }));
-  await ui.screen.findByRole("heading", { name: "TRUSTED_FRONTEND_ORIGINS" });
+  await ui.screen.findByRole("heading", { name: "Reads: TRUSTED_FRONTEND_ORIGINS" });
   const configuration = ui.screen.getByText("Configuration", { selector: "summary" });
   assert.equal(configuration.closest("details")!.open, false);
   ui.fireEvent.click(configuration);

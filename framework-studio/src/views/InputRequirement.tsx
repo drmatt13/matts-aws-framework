@@ -8,7 +8,7 @@ import { EnvironmentPills } from "./DeploymentBadge";
 import { edgeAvailability } from "../connections";
 import { connectionDescriptionId } from "../../shared/descriptions";
 import { Description } from "./Description";
-import { connectionTitle } from "../../shared/permissions";
+import { presentRelationship } from "../connection-presentation";
 import { AuthorizationDetails } from "./Authorization";
 
 export function RequirementNotice({ requirement }: { requirement?: InputRequirement }) {
@@ -31,9 +31,9 @@ export function ConnectionEndpoints({ from, to }: { readonly from: string; reado
 }
 
 export function ConnectionView({ edge, onlyIn, availability }: { edge: ModelEdge; onlyIn?: Mode; availability?: Availability }) {
-  const { snapshot } = useStudio();
+  const { snapshot, index } = useStudio();
   return <>
-    <header className="connection-header"><span className="kind">{edge.inputRequirement ? "Input connection" : "Connection"}</span><h2>{connectionTitle(edge)}</h2>
+    <header className="connection-header"><span className="kind">{edge.inputRequirement ? "Input connection" : "Connection"}</span><h2>{presentRelationship(edge, index).title}</h2>
       <EnvironmentPills availability={availability ?? edgeAvailability(edge, snapshot.models)} />
       <ConnectionEndpoints from={edge.from} to={edge.to} />
     </header>
@@ -49,6 +49,7 @@ export function ConnectionDetails({ edge, onlyIn }: { edge: ModelEdge; onlyIn?: 
   const disabledEndpoints = connectionDisabledEndpoints(index, mode, edge);
   const disabled = onlyIn !== undefined || disabledEndpoints.length > 0;
   const environment = mode === "dev" ? "Development" : "Production";
+  const presentation = presentRelationship(edge, index);
   return <div className="connection-details">
       {disabled ? <div className="connection-availability" role="note" aria-label="Connection deployment status">
         <strong>Disabled in {environment}</strong>
@@ -56,6 +57,7 @@ export function ConnectionDetails({ edge, onlyIn }: { edge: ModelEdge; onlyIn?: 
         {disabledEndpoints.length ? <><p>Both endpoints must be enabled in this environment.</p><ul>{disabledEndpoints.map((id) => <li key={id}><button className="linkish" onClick={() => select(id)}>{titleOf(index, id)}</button> is not enabled in {environment}.</li>)}</ul></> : null}
       </div> : null}
       <RequirementNotice requirement={requirement} />
+      {presentation.lines.filter(line => !requirement || line !== "Required value missing.").map(line => <p className="small" key={line}>{line}</p>)}
       {edge.authorization ? <details className="connection-authorization"><summary>Permissions</summary><AuthorizationDetails authorization={edge.authorization} /></details> : null}
       {requirement && !requirement.required ? <p className="small muted">Optional in this environment.{requirement.status === "default" ? " A parameter default supplies it." : requirement.status === "configured" ? " An environment value is configured." : ""}</p> : null}
       {requirement ? <>
@@ -73,6 +75,7 @@ export function ConnectionDetails({ edge, onlyIn }: { edge: ModelEdge; onlyIn?: 
         <summary>Configuration</summary>
         {edge.detail?.trim() ? <p>{edge.detail}</p> : null}
         {edge.provenance === "derived" ? <p className="small muted">Derived from the linked declaration.</p> : null}
+        {edge.provenance === "source" ? <p className="small muted">Inferred from source; deployment and runtime behavior are not verified.</p> : null}
         {edge.evidence?.length ? <div className="connection-evidence">{edge.evidence.map((item) => <div key={`${item.role}:${item.location.file}:${item.location.start}`}>
           <Written location={item.location} label={item.role === "derived" ? "Derived from" : item.role} />
           {item.excerpt ? <a className="evidence-line" href={editorLink(snapshot.repositoryRoot, item.location)}><code><span className="muted">{item.location.line}</span> {item.excerpt}</code></a> : null}

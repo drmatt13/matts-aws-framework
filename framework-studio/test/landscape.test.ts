@@ -867,6 +867,7 @@ test("a connection is drawn by what it references and where it starts, solid onl
       if (edge.relation === "deployWhen") expect(COMPUTE_EDGE_COLOR, true);
       else if (edge.relation === "maps") expect(READ_EDGE_COLOR, true);
       else if (edge.relation === "runsTask") expect(GUARD_EDGE_COLOR, false);
+      else if (edge.relation === "manageConnections") expect(GUARD_EDGE_COLOR, true);
       else if (edge.relation === "trigger") expect(TRIGGER_EDGE_COLOR, false);
       else if (edge.relation === "authorizes") { seen.authorizer += 1; expect(GUARD_EDGE_COLOR, false); }
       else if (edge.relation === "grant") expect(GUARD_EDGE_COLOR, true);

@@ -1,4 +1,5 @@
 import type { ModeModel, ModelEdge, Relation } from "../../shared/model";
+import { edgeCategory } from "../lookup";
 import type { Point } from "./camera";
 
 export interface LayoutAnchor extends Point {
@@ -26,7 +27,7 @@ export function extractLayoutGraph(anchors: readonly LayoutAnchor[], edges: read
     if (!from || !to || from.island === to.island) continue;
     const key = `${from.id}>${to.id}:${edge.relation}`;
     const weight = weights[edge.relation];
-    links.set(key, { id: key, from, to, category: edge.relation, weight: (links.get(key)?.weight ?? 0) + weight });
+    links.set(key, { id: key, from, to, category: edgeCategory(edge), weight: (links.get(key)?.weight ?? 0) + weight });
     const source = reverse.has(edge.relation) ? to.island : from.island;
     const target = reverse.has(edge.relation) ? from.island : to.island;
     const pair = `${source}>${target}`;

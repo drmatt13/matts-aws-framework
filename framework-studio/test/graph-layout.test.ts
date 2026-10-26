@@ -153,7 +153,7 @@ test("nearby connections retain compact arcs even when crossings or obstacles fa
     const from = { id: "a", island: "left", x: 0, y: 0 }, to = { id: "b", island: "right", x: x!, y: y! };
     const groundSpan = Math.hypot(to.x, to.y * 2);
     const obstacle = { id: "middle", bounds: { minX: -400, maxX: 400, minY: -300, maxY: 300 } };
-    const links = Array.from({ length: 7 }, (_, at) => ({ id: `wire-${at}`, from, to, weight: 2, category: "permissions" }));
+    const links = Array.from({ length: 7 }, (_, at) => ({ id: `wire-${at}`, from, to, weight: 2, category: "access" }));
     const routes = Object.values(routeConnections(links, [obstacle]));
     assert.equal(new Set(routes.map((route) => JSON.stringify(route.points))).size, links.length, "lanes stay distinct even for depth-aligned wires");
     for (const route of routes) {

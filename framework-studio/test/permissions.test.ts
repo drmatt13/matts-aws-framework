@@ -6,11 +6,12 @@ import { defineFrameworkConfig, defineResources, resource, trigger, type Framewo
 import type { IBucket } from "aws-cdk-lib/aws-s3";
 import type { IQueue } from "aws-cdk-lib/aws-sqs";
 import { projectModel } from "../server/model/project";
-import type { ModeModel, ModelEdge, ModelTarget } from "../shared/model";
+import type { ModeModel, ModelEdge, ModelTarget, Relation } from "../shared/model";
 import { authorizationSummary, connectionTitle, hasIam, withConnectionAuthorizations } from "../shared/permissions";
 import { grantOptions } from "../shared/grants";
 import { aggregateConnections } from "../src/connections";
 import { connectionVisible } from "../src/scene/connections";
+import { CATEGORY_LABEL, edgeCategory, type EdgeCategory } from "../src/lookup";
 import { connectionSignature } from "../server/edits/batch";
 import { planConnection } from "../server/edits/connections";
 import type { StudioState } from "../server/snapshot";
@@ -55,10 +56,10 @@ test("permission facts preserve route, input, scope and callback labels as conne
   }
 });
 
-test("hover permission summaries are secondary, bounded and distinguish AWS-only grants", () => {
+test("hover permission summaries are secondary and bounded while build state stays in details", () => {
   const route = describe(edge("routes", undefined, { to: "lambda:caller" }));
   assert.deepEqual(authorizationSummary(route.authorization!), ["IAM: lambda:InvokeFunction"]);
-  assert.deepEqual(authorizationSummary({ ...route.authorization!, state: "not-built" }), ["IAM: lambda:InvokeFunction (AWS only)"]);
+  assert.deepEqual(authorizationSummary({ ...route.authorization!, state: "not-built" }), ["IAM: lambda:InvokeFunction"]);
   const grant = route.authorization!.grants[0]!;
   const summary = authorizationSummary({ ...route.authorization!, grants: [
     { ...grant, actions: ["ecs:RunTask", "ecs:TagResource", "iam:PassRole"] },
@@ -134,20 +135,53 @@ test("native helpers retain scope without inventing action lists; custom integra
   assert.ok(http.authorization!.grants[0]!.conditions?.some(condition => condition.includes("states:HTTPEndpoint")));
 });
 
-test("group IAM filtering checks every active-mode member and keeps inspected context visible", () => {
+test("connection filters describe purpose across every relation and delivery context", () => {
+  const purposes: Readonly<Record<EdgeCategory, readonly Relation[]>> = {
+    routes: ["routes", "authorizes"],
+    inputs: ["deployWhen", "env", "supplies", "maps", "secret"],
+    access: ["grant", "database", "manageConnections"],
+    activity: ["localReplay", "trigger", "completesCallback", "runsTask", "startsWorkflow", "invokesAgent", "usesTool", "step", "integration"],
+    structure: ["contains", "cdk"],
+  };
+  assert.deepEqual(Object.values(CATEGORY_LABEL), ["Routes", "Environment and secrets", "Resource access", "Calls and events", "Resource structure"]);
+  for (const [category, relations] of Object.entries(purposes)) {
+    for (const relation of relations) assert.equal(edgeCategory(edge(relation)), category, relation);
+  }
+  assert.equal(edgeCategory(edge("cdk", { kind: "subscription", protocol: "sqs" })), "activity");
+  assert.equal(edgeCategory(edge("grant", { kind: "trigger-dlq", adapter: "sns" })), "activity");
+  assert.equal(edgeCategory(edge("grant", { kind: "failure" })), "activity");
+});
+
+test("group filters check all relationship categories across modes and preserve inspected context", () => {
   const plain = edge("env", undefined, { id: "a" });
-  const grant = edge("env", { kind: "secret", delivery: "arn" }, { id: "z" });
-  const prod = withConnectionAuthorizations({ ...base(), edges: [plain, grant] });
+  const grant = edge("grant", { kind: "native", method: "grantRead", arguments: [] }, { id: "z" });
+  const call = edge("integration", { kind: "integration", service: "table", operations: ["get"] }, { id: "prod-only" });
+  const prod = withConnectionAuthorizations({ ...base(), edges: [plain, grant, call] });
   const dev: ModeModel = { ...prod, mode: "dev", edges: [plain] };
   const group = aggregateConnections(prod, [dev])[0]!;
-  assert.equal(group.members.length, 2);
-  assert.equal(group.iam, true);
-  assert.equal(aggregateConnections(dev, [prod])[0]!.iam, false);
-  const scene = { ...group, category: "inputs" as const };
-  assert.equal(connectionVisible(scene, new Set(["inputs"]), undefined, true), true);
-  assert.equal(connectionVisible({ ...scene, iam: false }, undefined, undefined, true), false);
-  assert.equal(connectionVisible({ ...scene, iam: false }, new Set(), scene.from, true), true);
+  assert.equal(group.members.length, 3);
+  assert.equal(group.edge.relation, "grant", "styling has one representative");
+  assert.deepEqual(group.categories, ["inputs", "access", "activity"]);
+  for (const selected of [group, aggregateConnections(dev, [prod])[0]!]) {
+    assert.deepEqual(selected.categories, group.categories, "other-environment relationships remain filterable");
+    for (const category of group.categories) assert.equal(connectionVisible(selected, new Set([category])), true, category);
+    assert.equal(connectionVisible(selected, new Set(["routes", "structure"])), false);
+    assert.equal(connectionVisible(selected, new Set()), false);
+    assert.equal(connectionVisible(selected), true);
+    for (const selection of [selected.id, selected.from, selected.to]) assert.equal(connectionVisible(selected, new Set(), selection), true);
+  }
+  const ghost = aggregateConnections({ ...dev, edges: [] }, [prod])[0]!;
+  assert.equal(ghost.otherLens, "prod");
+  assert.equal(connectionVisible(ghost, new Set(["activity"])), true, "union-topology ghost links remain filterable");
   assert.equal(connectionSignature({ edges: [grant] }), connectionSignature({ edges: [describe(grant)] }));
+});
+
+test("adding IAM details does not change a grouped connection's representative", () => {
+  const plain = edge("env", undefined, { id: "a" });
+  const secretArn = edge("env", { kind: "secret", delivery: "arn" }, { id: "z" });
+  const source = { ...base(), edges: [plain, secretArn] };
+  assert.equal(aggregateConnections(source)[0]!.edge.id, plain.id);
+  assert.equal(aggregateConnections(withConnectionAuthorizations(source))[0]!.edge.id, plain.id);
 });
 
 test("projection creates typed secret/native/schedule/WebSocket facts directly from declarations", () => {

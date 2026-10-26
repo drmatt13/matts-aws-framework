@@ -44,7 +44,7 @@ export function authorizationSummary(authorization: ConnectionAuthorization): st
   const permissions = [...new Set(authorization.grants.flatMap(grant => grant.actions ?? [grant.via ?? "Native grant"]))];
   if (!permissions.length) return [];
   const summary = permissions.slice(0, 3).join(", ");
-  return [`IAM: ${summary}${permissions.length > 3 ? `, +${permissions.length - 3} more` : ""}${authorization.state === "not-built" ? " (AWS only)" : ""}`];
+  return [`IAM: ${summary}${permissions.length > 3 ? `, +${permissions.length - 3} more` : ""}`];
 }
 
 // Read/write helpers also exist on non-bucket constructs, including Secrets Manager.

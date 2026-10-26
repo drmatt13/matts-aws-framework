@@ -63,40 +63,53 @@ export const ROLE_GROUPS: readonly { readonly title: string; readonly roles: rea
   { title: "Workflows", roles: ["workflow"] },
 ];
 
-export type EdgeCategory = "routes" | "inputs" | "permissions" | "invocations" | "integrations" | "cdk";
+export type EdgeCategory = "routes" | "inputs" | "access" | "activity" | "structure";
 
 export const CATEGORY_LABEL: Readonly<Record<EdgeCategory, string>> = {
   routes: "Routes",
   inputs: "Environment and secrets",
-  permissions: "Grants and database",
-  invocations: "Invocations",
-  integrations: "Workflow integrations",
-  cdk: "CDK resource links",
+  access: "Resource access",
+  activity: "Calls and events",
+  structure: "Resource structure",
+};
+
+export const CATEGORY_DESCRIPTION: Readonly<Record<EdgeCategory, string>> = {
+  routes: "API routes and authorizers",
+  inputs: "Input values, environment variables and secrets",
+  access: "Access to databases, resources and WebSocket clients",
+  activity: "Workload calls, workflow steps, triggers and local replay",
+  structure: "Resource ownership and references between constructs",
 };
 
 export const RELATION_CATEGORY: Readonly<Record<Relation, EdgeCategory>> = {
   deployWhen: "inputs",
-  contains: "cdk",
+  contains: "structure",
   routes: "routes",
   authorizes: "routes",
   env: "inputs",
   supplies: "inputs",
   maps: "inputs",
   secret: "inputs",
-  grant: "permissions",
-  database: "permissions",
-  localReplay: "invocations",
-  trigger: "invocations",
-  completesCallback: "permissions",
-  manageConnections: "permissions",
-  runsTask: "permissions",
-  startsWorkflow: "invocations",
-  invokesAgent: "invocations",
-  usesTool: "invocations",
-  step: "invocations",
-  integration: "integrations",
-  cdk: "cdk",
+  grant: "access",
+  database: "access",
+  localReplay: "activity",
+  trigger: "activity",
+  completesCallback: "activity",
+  manageConnections: "access",
+  runsTask: "activity",
+  startsWorkflow: "activity",
+  invokesAgent: "activity",
+  usesTool: "activity",
+  step: "activity",
+  integration: "activity",
+  cdk: "structure",
 };
+
+/** Delivery relationships can carry generic CDK/grant provenance without becoming access or structure. */
+export function edgeCategory(edge: Pick<ModelEdge, "relation" | "permissionContext">): EdgeCategory {
+  const kind = edge.permissionContext?.kind;
+  return kind === "subscription" || kind === "trigger-dlq" || kind === "failure" ? "activity" : RELATION_CATEGORY[edge.relation];
+}
 
 export const RELATION_LABEL: Readonly<Record<Relation, string>> = {
   deployWhen: "Deploys when input matches",
@@ -149,6 +162,7 @@ export function endpointLabel(index: ModelIndex, id: string): string {
   if (index.defaults.has(id)) return `Defaults: ${title}`;
   const resource = index.resources.get(id);
   if (resource) {
+    if (resource.kind === "member" && resource.frameworkManaged === "database") return `Database: ${title}`;
     const labels = { envFile: "Environment file", stack: "Stack", member: "Stack member", construct: "Construct", input: "Input", secret: "Secret", group: "Inputs" };
     return `${labels[resource.kind]}: ${title}`;
   }

@@ -110,19 +110,23 @@ Board's [layout.ts](../../../framework-studio/src/layout.ts) arranges entry, com
 
 Keep optimization bounded for large graphs. Preserve layout stability across selection/mode switches and avoid recomputing source models during a pointer move. Rendering and picking must share geometric assumptions, especially curve sampling and visible endpoints. Avoid claiming a node-count ceiling or browser FPS guarantee from a synthetic timing fixture.
 
-The six category pills at the map's top filter background connections. Routes (purple)
-and Environment and secrets start off on each page load; the other four start on.
-Drawing and pointer picking share `connectionVisible`; selecting or previewing
-a resource reveals its links regardless of those filters. Clearing selection resumes
-the unchanged filters. The accessible connection list still exposes every relationship.
+The five purpose categories are Routes, Environment and secrets, Resource access,
+Calls and events, and Resource structure. Empty categories have no filter pill.
+Routes (purple) and Environment and secrets start off on each page load; the others start on.
+An aggregated connection matches any member's category across the dev/prod union, independently
+of its styling representative. Drawing and pointer picking share `connectionVisible`;
+selecting or previewing a resource reveals its links regardless of those filters. Clearing
+selection resumes the unchanged filters. The accessible list still exposes every relationship.
 
-Connection hover headings use the relationship verb and authored label, such as
-`Routes to: /api/test/start-workflow`. From/To, environment pills and relationship details
-remain primary; a muted IAM summary follows when applicable. Permissions never rename
-connections or add badges to their headers and list rows. Full permission evidence is
-available in the connection's collapsed Permissions disclosure. Grouped hover cards
-retain each member's label; resource hover cards retain descriptions and source warnings
-without permission counts.
+`connection-presentation.ts` supplies purpose-based hover and inspector titles, including
+`Routes to: /api/test/start-workflow` and `Reads 3 environment values`. Mixed bundles name
+up to two relationship families plus a remaining count. Hover previews show at most four
+member labels, a remaining count and any missing required values outside that preview.
+From/To and environment pills remain primary. Concise operational details and a muted IAM
+summary follow when applicable; source paths, inference caveats and full permission facts
+expand under Configuration and Permissions in the inspector. Normal configured inputs need
+no status sentence. Native trigger hovers name the resolved constructor. Resource hovers
+retain descriptions and source warnings without permission counts.
 
 When a seed has title collisions, the optimizer reserves a small part of its existing
 evaluation budget for local title-clearance moves after the wire search. Added input

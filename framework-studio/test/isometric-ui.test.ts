@@ -137,7 +137,7 @@ async function mount(withInspector = false, selection?: string, initialResponse 
 test("permission connections show generated principal and scope while local database links show no cloud IAM", async () => {
   const launch = response.snapshot.models.dev.edges.find(edge => edge.relation === "runsTask")!;
   await mount(true, launch.id);
-  assert.ok(ui.screen.getByRole("heading", { name: "Launch ECS task" }));
+  assert.ok(ui.screen.getByRole("heading", { name: "Can launch task" }));
   const permissions = document.querySelector<HTMLDetailsElement>(".connection-authorization")!;
   assert.ok(permissions);
   assert.equal(permissions.open, false, "permissions start behind a disclosure");
@@ -151,7 +151,7 @@ test("permission connections show generated principal and scope while local data
   ui.cleanup();
   const local = response.snapshot.models.dev.edges.find(edge => edge.relation === "database" && edge.to === "local:postgres")!;
   await mount(true, local.id);
-  assert.ok(ui.screen.getByRole("heading", { name: local.label }));
+  assert.ok(ui.screen.getByRole("heading", { name: "Connects to PostgreSQL" }));
   ui.fireEvent.click(ui.screen.getByText("Permissions", { selector: ".connection-authorization > summary" }));
   assert.ok(ui.screen.getAllByText("Local connection").length);
   assert.equal(ui.screen.queryByText("rds-db:connect"), null);
@@ -162,20 +162,30 @@ test("connection inspection keeps secret environment names ahead of optional per
     ?? response.snapshot.models.dev.edges.find(edge => edge.relation === "secret" && edge.authorization?.kind === "iam");
   assert.ok(source, "a real secret delivery relationship is available");
   await mount(true, source.id);
-  assert.ok(ui.screen.getByRole("heading", { name: source.label }));
+  assert.ok(ui.screen.getByRole("heading", { name: `${source.relation === "env" ? "Reads" : "Started with secret"}: ${source.label}` }));
   assert.equal(document.querySelector(".connection-header .authorization-badge"), null);
   assert.equal(document.querySelector<HTMLDetailsElement>(".connection-authorization")?.open, false);
 });
 
-test("IAM filter is independent from purpose categories and does not arm source edits", async () => {
+test("purpose filters replace IAM filtering and do not arm source edits", async () => {
   await mount();
-  const toggle = ui.screen.getByRole("button", { name: "Only IAM grants" });
+  assert.equal(ui.screen.queryByRole("button", { name: "Only IAM grants" }), null);
   const categories = ui.within(ui.screen.getByRole("group", { name: "Background connections" })).getAllByRole("button");
-  assert.equal(categories.length, 6);
-  ui.fireEvent.click(toggle); await draw();
-  assert.equal(toggle.getAttribute("aria-pressed"), "true");
-  assert.deepEqual(categories.map(button => button.getAttribute("aria-pressed")), ["false", "false", "true", "true", "true", "true"]);
+  assert.equal(categories.length, 5);
+  assert.deepEqual(categories.map(button => button.getAttribute("aria-pressed")), ["false", "false", "true", "true", "true"]);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Resource access" })); await draw();
+  assert.equal(ui.screen.getByRole("button", { name: "Resource access" }).getAttribute("aria-pressed"), "false");
   assert.equal(ui.screen.getByLabelText("Selection").textContent, "none");
+});
+
+test("connection filters omit unused purposes and return when source adds those relationships", async () => {
+  const onlyRoutes = (mode: "dev" | "prod") => ({ ...response.snapshot.models[mode], edges: response.snapshot.models[mode].edges.filter(edge => edge.relation === "routes") });
+  const sparse = { ...response, snapshot: { ...response.snapshot, models: { dev: onlyRoutes("dev"), prod: onlyRoutes("prod") } } };
+  const update = await mount(false, undefined, sparse);
+  const filterNames = () => ui.within(ui.screen.getByRole("group", { name: "Background connections" })).getAllByRole("button").map(button => button.textContent);
+  assert.deepEqual(filterNames(), ["Routes"]);
+  await update(response);
+  assert.deepEqual(filterNames(), ["Routes", "Environment and secrets", "Resource access", "Calls and events", "Resource structure"]);
 });
 
 test("the inputs island opens the shared creator even after using the global chooser", async () => {
@@ -721,8 +731,8 @@ test("connection filter pills hide background wires and preserve selected resour
   await mount(true); await draw();
   const group = ui.screen.getByRole("group", { name: "Background connections" });
   const pills = ui.within(group).getAllByRole("button");
-  assert.deepEqual(pills.map(pill => pill.textContent), ["Routes", "Environment and secrets", "Grants and database", "Invocations", "Workflow integrations", "CDK resource links"]);
-  assert.deepEqual(pills.map(pill => pill.getAttribute("aria-pressed")), ["false", "false", "true", "true", "true", "true"]);
+  assert.deepEqual(pills.map(pill => pill.textContent), ["Routes", "Environment and secrets", "Resource access", "Calls and events", "Resource structure"]);
+  assert.deepEqual(pills.map(pill => pill.getAttribute("aria-pressed")), ["false", "false", "true", "true", "true"]);
   assert.equal(pills[0]!.style.getPropertyValue("--swatch"), "#a374ff");
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
@@ -824,13 +834,11 @@ test("HTTP and WebSocket route hovers retain routing purpose in both environment
       assert.ok(popup.textContent?.includes(source === http ? "From HTTP API" : "From WebSocket API"));
       assert.ok(popup.textContent?.includes(source === http ? "To HTTP: /test/start-workflow" : "To WebSocket: customAction"));
       const permission = ui.within(popup).getByText(/^IAM: lambda:InvokeFunction/);
-      const authorization = initial.snapshot.models[mode].edges.find(edge => edge.id === source.id)!.authorization!;
-      assert.equal(permission.textContent, `IAM: lambda:InvokeFunction${authorization.state === "not-built" ? " (AWS only)" : ""}`);
+      assert.equal(permission.textContent, "IAM: lambda:InvokeFunction");
       assert.ok(!popup.textContent?.includes("Cloud IAM intent"));
       assert.ok(!popup.textContent?.includes("Not generated in this AWS graph"));
       if (source === http) {
-        assert.ok(ui.within(popup).getByText(detail), "permission information does not replace the connection detail");
-        assert.ok(popup.textContent!.indexOf(detail) < popup.textContent!.indexOf("IAM:"));
+        assert.equal(ui.within(popup).queryByText(detail), null, "raw implementation details belong in the inspector");
       }
     }
   }
@@ -848,9 +856,9 @@ test("grouped route previews and member summaries retain each route name without
   await mount(true, undefined, { ...response, snapshot: { ...response.snapshot, models: { dev: append(response.snapshot.models.dev), prod: append(response.snapshot.models.prod) } } });
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes" })); await draw();
   const popup = await hoverConnection(source.id);
-  assert.equal(popup.querySelector("strong")?.textContent, "2 relationships");
-  assert.ok(ui.within(popup).getByText(`Routes to: ${source.label}`));
-  assert.ok(ui.within(popup).getByText("Routes to: anotherAction"));
+  assert.equal(popup.querySelector("strong")?.textContent, "2 API routes");
+  assert.ok(ui.within(popup).getByText(source.label));
+  assert.ok(ui.within(popup).getByText("anotherAction"));
   assert.ok(!popup.textContent?.includes("IAM"));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: WebSocket API to WebSocket: customAction,/ }));
   await ui.waitFor(() => assert.equal(document.querySelectorAll(".connection-map-member").length, 2));
@@ -894,15 +902,15 @@ test("clicking a grouped connection opens every mapping and retains it across en
   ui.fireEvent.pointerMove(canvas, { clientX: at.x, clientY: at.y });
   await draw();
   const popup = await ui.screen.findByRole("tooltip");
-  assert.ok(popup.textContent?.includes("4 relationships"));
+  assert.ok(popup.textContent?.includes("Maps 4 client variables"));
   assert.ok(popup.textContent?.includes("From Stack: cognito"));
   assert.ok(popup.textContent?.includes("To Environment file: client-app/.env"));
-  assert.ok(popup.textContent?.includes("Maps into:"));
+  assert.ok(!popup.textContent?.includes("Maps into:"), "homogeneous member rows do not repeat the shared purpose");
   assert.deepEqual(visibleTags(popup), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
   assert.deepEqual(tagsOf(popup), [["hover-tag dev", "Dev: Connection enabled"], ["hover-tag prod", "Prod: Connection enabled"]]);
   ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
-  const map = await ui.screen.findByRole("region", { name: "Aggregated connection map" });
+  const map = await ui.screen.findByRole("region", { name: "Connection details" });
   assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
   assert.equal(map.querySelectorAll(".connection-map-member").length, 4);
   assert.deepEqual(visibleTags(map.querySelector("summary")!), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
@@ -914,13 +922,13 @@ test("clicking a grouped connection opens every mapping and retains it across en
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
   await ui.waitFor(() => assert.equal(ui.screen.queryByRole("note", { name: "Connection deployment status" }), null));
   assert.equal(ui.screen.getByLabelText("Selection").textContent, id);
-  assert.equal(ui.screen.getByRole("region", { name: "Aggregated connection map" }).querySelectorAll(".connection-map-member").length, 4);
+  assert.equal(ui.screen.getByRole("region", { name: "Connection details" }).querySelectorAll(".connection-map-member").length, 4);
 });
 
 test("connections available in both environments retain two pills in every inspector row", async () => {
   await mount(true);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: Stack: cognito to Environment file: client-app\/.env, / }));
-  const map = await ui.screen.findByRole("region", { name: "Aggregated connection map" });
+  const map = await ui.screen.findByRole("region", { name: "Connection details" });
   const expected = [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]];
   assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), expected);
   const rows = [...map.querySelectorAll<HTMLElement>(".connection-map-member > summary")];

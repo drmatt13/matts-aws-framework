@@ -15,10 +15,17 @@ This work describes IAM intent; it does not establish effective access in an AWS
   declared failure queues/destinations, schedules, replay, API integrations/authorizers,
   WebSocket management and explicit workload policies have shared explanations.
 - Connection hover, inspector, aggregate members and workload Permissions reuse those
-  facts as supporting information. Relationship verbs and authored labels remain primary;
-  single-connection hovers append a compact IAM note and inspectors disclose full Permissions
-  on demand. Resource previews omit IAM counts. The six purpose filters remain,
-  with an additional cross-category IAM filter; selected resources retain full context.
+  facts as supporting information. Purpose titles and authored member labels remain primary;
+  single-connection hovers append a compact IAM note without an AWS-only suffix. Inspectors
+  disclose full Permissions and source Configuration on demand; resource previews omit
+  IAM counts. Five map filters cover Routes, Environment and secrets, Resource access,
+  Calls and events, and Resource structure. Empty categories are hidden; bundles match any
+  member's category across both environments. Selected resources retain full context.
+- [Connection presentation](../../framework-studio/src/connection-presentation.ts) explains
+  database bindings as connection settings, networking and IAM login, with separate local
+  wording. Database provider links, replay and native triggers have concise purpose titles
+  or constructor origins. Group titles name their carried relationships; hover previews show
+  at most four members plus a remaining count and preserve missing-input alerts.
 - [Grant choices](../../framework-studio/shared/grants.ts) are driven by source-discovered
   S3, SQS, DynamoDB, SNS and EventBridge types. UI and writer enforce the same bounded
   helpers and bucket-only scope argument. Reviewed source changes regenerate facts.
@@ -31,19 +38,13 @@ Focused verification covers projection/local enrichment, principals, bindings, t
 safe source authoring, grouping/filtering and relevant UI behavior. Browser inspection
 uses port 4591; no live AWS operations are part of this change.
 
-## Conclusion
+## Design conclusion
 
-The database connection really does derive IAM permission in AWS. Its current
-`Uses the database: database` presentation hides that fact. However, the connection
-also owns endpoint delivery and network placement, and the development counterpart
-uses local PostgreSQL without an RDS IAM grant. A universal rename of the underlying
-relationship to `grant` would lose useful semantics and make the local view wrong.
-
-The broader problem is that Studio models the **purpose of a connection** but has
-no uniform model for the **authorization that makes it work**. Both must be visible.
-An applicable connection should carry an explicit IAM grant explanation, with the
-correct principal, target, scope, generation status and evidence. Some relationships
-have multiple grants; some have none. Those differences are essential to an accurate UI.
+A database connection owns endpoint delivery, network placement and IAM login in AWS;
+its development counterpart uses local PostgreSQL. Its title should explain that binding,
+with authorization as supporting information. The same rule applies to routes, triggers,
+secret delivery and workload calls. Shared permission facts retain the correct principal,
+target, scope, generation status and evidence without replacing connection purpose.
 
 ## What was inspected
 
@@ -64,7 +65,7 @@ have multiple grants; some have none. Those differences are essential to an accu
 - A fresh read-only evaluation of the actual Development and Production source graphs.
   No full test suite or live AWS operation was run for this investigation.
 
-### Current repository inventory
+### Baseline repository inventory
 
 Both source projections evaluated successfully, each with 26 normalized workload
 targets. These are declarations, not counts of deployed AWS workloads.
@@ -84,7 +85,7 @@ The Development database count includes three derived local PostgreSQL connectio
 and retained declarations to the absent AWS database. The presence of a graph edge
 is therefore insufficient evidence of a generated IAM grant in that mode.
 
-The current Production projection illustrates the inconsistency directly:
+The baseline Production projection illustrated the inconsistency directly:
 
 - `lambda:graphql-api`, `lambda:oauth-callback`,
   `lambda:cognito-post-confirmation-trigger` and `task:db-migrate` have database edges.
@@ -104,7 +105,9 @@ The current Production projection illustrates the inconsistency directly:
 Runtime role or Step Functions state-machine role as applicable. ECS **execution**
 roles and service principals are separate actors.
 
-| Declaration or wiring | What AWS receives | Principal and scope | Correct Studio interpretation |
+The final column describes authorization facts for Permissions, not map connection titles.
+
+| Declaration or wiring | What AWS receives | Principal and scope | Authorization interpretation in Permissions |
 | --- | --- | --- | --- |
 | `database: true` | Native `grantConnect`; `rds-db:connect`, plus placement and password-free endpoint configuration | Workload role; selected application writer or Proxy and `app_user` login | **IAM grant: Connect PostgreSQL**; separate network and endpoint details |
 | `database: { connection: "direct" }` | Direct-writer connection grant | Workload role; direct writer/login | **IAM grant: Connect directly**; preserve the explicit direct-path choice |
@@ -166,7 +169,10 @@ roles and service principals are separate actors.
   [agentcore-metadata.ts](../../cdk-app/lib/framework/agentcore-metadata.ts):
   identity roles, resource policies and support roles.
 
-## Verified Studio gaps
+## Gaps verified before implementation
+
+These findings record the investigation baseline. The implemented experience above and
+the [graph-model contract](../aws-studio-knowledge/studio/graph-model.md) describe current behavior.
 
 1. **IAM and purpose are conflated.**
    [project.ts](../../framework-studio/server/model/project.ts) emits a `database`
@@ -281,8 +287,9 @@ operation explanations belong within Permissions, rather than connection heading
 | Queue to event Lambda | Consume queue messages | Event source · IAM grant to function role on queue |
 | SNS to event Lambda | Deliver topic messages | Lambda resource permission · SNS service principal |
 
-Connection hovers show the relationship, environments, endpoints and existing detail,
-followed by a compact IAM action/helper note when applicable. Resource previews stay
+Connection hovers show purpose, environments, endpoints and concise operational details,
+followed by a compact IAM action/helper note when applicable. Source paths, repeated
+inference caveats and raw binding prose remain under Configuration. Resource previews stay
 focused on descriptions and source health. Connection headers and rows omit authorization
 badges; a collapsed Permissions disclosure retains principal, scope and evidence. See the
 current [graph presentation contract](../aws-studio-knowledge/studio/graph-model.md).
@@ -299,12 +306,9 @@ For complex edges, expand authorization hops rather than draw every support role
 on the map. Native Allow and Deny policies must be distinguished; trust policies
 must not be presented as data-access grants.
 
-An **IAM grants** view should include applicable facts across routing, triggers,
-invocations, integrations and input delivery. The current exclusive category pills
-cannot achieve that through a label change alone. Keep the existing category
-filters for purpose; a permission view can filter by IAM facts, then by principal
-or resource. Selection still reveals the selected resource's full connection context.
-Do not introduce overlapping toggle meanings without showing the filtering rule.
+Map filters describe connection purpose. Any future cross-resource IAM analysis should
+use a dedicated permission view with principal and resource navigation, rather than an
+overlapping map toggle. Selection still reveals the selected resource's full connection context.
 
 ### Evidence language
 

@@ -82,10 +82,9 @@ export const ISLAND_TRIM: Readonly<Record<string, string>> = {
 export const EDGE_COLORS: Readonly<Record<EdgeCategory, string>> = {
   routes: "#a374ff",
   inputs: "#8fb7d9",
-  permissions: "#e59a86",
-  invocations: "#c3b2ff",
-  integrations: "#94d6b0",
-  cdk: "#67d7df",
+  access: "#e59a86",
+  activity: "#c3b2ff",
+  structure: "#67d7df",
 };
 
 /** Lighter than the island's own trim so a hairline stays legible on the dark ground, and more saturated than the pale invocation violet. */

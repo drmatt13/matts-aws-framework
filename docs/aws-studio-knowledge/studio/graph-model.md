@@ -10,6 +10,7 @@ source:
   - framework-studio/server/model/project.ts
   - framework-studio/server/model/catalog-context.ts
   - framework-studio/src/connections.ts
+  - framework-studio/src/connection-presentation.ts
   - framework-studio/server/database.ts
   - framework-studio/shared/database-workbench.ts
   - framework-studio/shared/database-history.ts
@@ -63,25 +64,33 @@ for `app_user`; its local PostgreSQL derivative carries no AWS grant. Reader acc
 writer access. Typed secret ARN delivery grants the workload role; container startup injection
 uses the ECS execution role. Pull event arrows and IAM principal direction are independent.
 
-Connection titles and relationship rows retain their authored labels and purpose verbs,
-including `Routes to` for managed API routes. Authorization never replaces a route,
-environment variable, grant binding or workflow-step label. Single-connection hovers append
-a compact IAM action/helper summary after the relationship details, qualified `AWS only`
-when the selected graph does not build those permissions. Connection/member inspectors
-keep principal, scope, conditions and evidence behind a collapsed Permissions disclosure;
-resource previews omit IAM counts. Workload Permissions retains the full capability list.
-`Only IAM grants` filters background wires within enabled purpose
-categories, checking all current-mode group members. Selected/previewed resources still reveal
-all context. User-token agent invocations and unknown/custom native references do not qualify.
+`connection-presentation.ts` names connection purpose while retaining authored member labels:
+managed API routes keep `Routes to`, database bindings say `Connects to PostgreSQL`, the
+database's stack says `Provides the application database`, and replay says
+`Local replay: AWS invocations`. Database details distinguish local settings from cloud
+settings, private networking and IAM login. Reader bindings say `Includes writer and reader
+connections`; they do not imply that replicas exist. Single-connection hovers append a compact IAM
+action/helper summary without a mode suffix. Environment pills show availability; the
+collapsed Permissions disclosure retains mode-specific principal, scope, conditions and
+evidence. Raw binding details, source links and inference caveats remain under Configuration.
+Resource previews omit IAM counts. Workload Permissions retains the full capability list.
+
+Five purpose filters cover Routes, Environment and secrets, Resource access, Calls and events,
+and Resource structure. `edgeCategory` uses typed delivery context to put subscriptions and
+failure destinations under Calls and events even when their underlying relation is `cdk`
+or `grant`. Empty categories are hidden. Groups retain every member's category across both
+modes; matching any category keeps the wire visible. IAM metadata neither chooses the
+category nor overrides the styling representative. Selected/previewed resources reveal
+all context.
 Schedules, unlinked callbacks, custom integrations and explicit `cloud.access` also appear in
 workload permissions without inventing graph endpoints. Supported grant creation is a bounded
 type-discovered allowlist shared by UI and server (S3, SQS, DynamoDB, SNS, EventBridge).
 Source-derived facts do not establish synthesized, deployed or effective IAM access; arbitrary
 native statements, trust/key policies and policy evaluation require their own evidence.
 
-The `runsTask` binding appears in the permissions category as `Launch ECS task`.
-Its solid red connection describes the derived ECS launch and role-passing grants plus
-launch configuration, rather than an observed execution. Conditional `deployWhen`
+The `runsTask` binding appears under Calls and events as `Can launch task`.
+Its solid red connection retains the derived ECS launch and role-passing grants plus
+launch configuration in the inspector; it does not establish an observed execution. Conditional `deployWhen`
 connections use dashed orange lines and name the selecting input in their hover text.
 
 Client environment `maps` edges point from public catalog input parameters and native
@@ -104,7 +113,7 @@ show this warning without inventing a replacement target, changing topology or a
 runtime health. Reviewed source application checks canonical artifacts against the proposed
 file overlay; current files are never silently scaffolded during evaluation.
 
-`aggregateConnections` in [connections.ts](../../../framework-studio/src/connections.ts) groups directed visible endpoint pairs while retaining original members and mode availability. A rendered line may summarize several relations; selection/Inspector must preserve member-level evidence. Dev/prod union topology can stabilize layout while the active mode controls availability and styling. `lookup.ts` in [src/lookup.ts](../../../framework-studio/src/lookup.ts) centralizes entity/relationship lookup labels.
+`aggregateConnections` in [connections.ts](../../../framework-studio/src/connections.ts) groups directed visible endpoint pairs while retaining original members, purpose categories and mode availability. Titles name the carried relationships, such as `Reads 3 environment values`; mixed groups summarize up to two families and a remaining count. Hover previews are bounded to four members without concealing missing required inputs. The Inspector preserves every member and its evidence. Dev/prod union topology stabilizes layout while the active mode controls availability and styling. `lookup.ts` in [src/lookup.ts](../../../framework-studio/src/lookup.ts) centralizes entity/relationship lookup labels and categories.
 
 The Database workbench uses `parseDeclaredSchema` in
 [server/database.ts](../../../framework-studio/server/database.ts) for source-linked diagram

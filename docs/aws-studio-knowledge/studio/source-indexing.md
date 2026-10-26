@@ -56,6 +56,12 @@ wrappers and unrelated same-named functions stay source-owned.
 
 CDK inference deliberately skips unsupported loops, conditions, helper indirection and dynamic expressions. A missing edge is not proof of absence. A source-supported edge is not proof that its stack is constructed or deployed. Edges retain provenance and supported-removal metadata; arbitrary native statements must remain source-owned. [Graph model](graph-model.md) owns how those distinctions reach the UI.
 
+Recognized native triggers retain `ModelEdge.sourceConstruct`, the canonical imported CDK
+constructor at the wiring site (for example `cdk.aws_cognito.UserPool`). Import aliases
+resolve to that name; custom or unresolved constructors leave it absent. Hover shows this
+short origin, while Configuration retains the file location and inference evidence. This
+metadata describes source wiring and does not change relationship identity or editability.
+
 Extend discovery when a real source shape/resource family is needed; add positive and refusal fixtures together. Do not broaden the writable-file allowlist to compensate for an unresolved source location. New native trigger semantics also need framework adapter/CDK support, not just an inferred visual wire; see [creation/connections](creation-and-connections.md).
 
 Tests: [CDK links](../../../framework-studio/test/cdk-links.test.ts), [stack usage](../../../framework-studio/test/stack-usage.test.ts), [evidence](../../../framework-studio/test/evidence.test.ts), framework [config source](../../../packages/framework/test/config-source.test.ts). [Editing](editing.md) consumes locations; [snapshots](snapshots.md) consumes the index and exposes diagnostics.

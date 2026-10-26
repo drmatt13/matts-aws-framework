@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { scanCdkLinks } from "../server/source/cdk-links";
 import type { SourceLocation } from "../shared/model";
 
-function scan(body: string, linked = true) {
+function scan(body: string, linked = true, extraImports = "", constructorParameters = "") {
   const cache = path.resolve(__dirname, "../../.cache/framework-studio");
   mkdirSync(cache, { recursive: true });
   const root = mkdtempSync(path.join(cache, "scan-"));
@@ -16,7 +16,8 @@ function scan(body: string, linked = true) {
     import { LambdaDestination } from "aws-cdk-lib/aws-s3-notifications";
     import { Rule } from "aws-cdk-lib/aws-events";
     import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
-    class Stack { constructor() { ${body}\nlinkResources(this, resources.example); } }`;
+    ${extraImports}
+    class Stack { constructor(${constructorParameters}) { ${body}\nlinkResources(this, resources.example); } }`;
   const file = "stack.ts";
   const location: SourceLocation = { file, line: 1, column: 1, start: 0, end: 0 };
   const start = text.indexOf("linkResources(");
@@ -48,21 +49,64 @@ test("native Cognito hooks resolve event aliases and a local constructor publish
   assert.deepEqual(result.edges.filter((edge) => edge.relation === "trigger").map((edge) => [edge.from, edge.to, edge.label]).sort(), [
     ["resource:example.pool", "lambda:message", "customMessage"], ["resource:example.pool", "lambda:signup", "preSignUp"],
   ]);
+  assert.ok(result.edges.every((edge) => edge.sourceConstruct === "cdk.aws_cognito.UserPool"));
   assert.equal(result.manualWiring.length, 0);
 });
 
+test("trigger constructor provenance resolves CDK import aliases to canonical names", () => {
+  for (const [imports, constructor] of [
+    ['import { UserPool as AuthDirectory } from "aws-cdk-lib/aws-cognito";', "AuthDirectory"],
+    ['import { aws_cognito as identity } from "aws-cdk-lib";', "identity.UserPool"],
+    ['import * as infrastructure from "aws-cdk-lib";', "infrastructure.aws_cognito.UserPool"],
+  ]) {
+    const result = scan(`this.pool = new ${constructor}(this, "pool", {
+      lambdaTriggers: { preSignUp: eventFn(this, "signup") },
+    });`, true, imports);
+    assert.equal(result.edges.find((edge) => edge.relation === "trigger")?.sourceConstruct, "cdk.aws_cognito.UserPool");
+  }
+});
+
+test("method trigger provenance uses an actual constructor and omits unknown constructors", () => {
+  const result = scan(`this.pool = new cognito.UserPool(this, "pool", {});
+    this.pool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, eventFn(this, "signup"));`);
+  assert.equal(result.edges.find((edge) => edge.relation === "trigger")?.sourceConstruct, "cdk.aws_cognito.UserPool");
+  const unknown = scan('this.pool.addTrigger(cognito.UserPoolOperation.PRE_SIGN_UP, eventFn(this, "signup"));');
+  assert.equal(unknown.edges.find((edge) => edge.relation === "trigger")?.sourceConstruct, undefined);
+  const custom = scan('this.pool = new CustomPool(this, "pool", { lambdaTriggers: { preSignUp: eventFn(this, "signup") } });',
+    true, 'import { CustomPool } from "./application-pool";');
+  assert.equal(custom.edges.find((edge) => edge.relation === "trigger")?.sourceConstruct, undefined);
+});
+
+test("constructor provenance omits imports shadowed by parameters or local declarations", () => {
+  const hooks = '{ lambdaTriggers: { preSignUp: eventFn(this, "signup") } }';
+  const cases = [
+    scan(`this.pool = new cognito.UserPool(this, "pool", ${hooks});`, true, "", "cognito: CustomConstructs"),
+    scan(`this.pool = new cognito.UserPool(this, "pool", ${hooks});`, true, "", "{ cognito }: CustomConstructs"),
+    scan(`const cognito = customConstructs; this.pool = new cognito.UserPool(this, "pool", ${hooks});`),
+    scan(`const Pool = CustomPool; this.pool = new Pool(this, "pool", ${hooks});`, true,
+      'import { UserPool as Pool } from "aws-cdk-lib/aws-cognito";'),
+  ];
+  for (const result of cases) {
+    const triggers = result.edges.filter((edge) => edge.relation === "trigger");
+    assert.equal(triggers.length, 1, "constructor display metadata does not change existing trigger discovery");
+    assert.equal(triggers[0]!.sourceConstruct, undefined);
+    assert.ok(triggers[0]!.removal, "existing removal evidence is preserved");
+  }
+});
+
 test("native SNS, queues, streams, S3 notifications and EventBridge rules have directed event edges", () => {
-  for (const [body, member, label] of [
-    ['this.topic.addSubscription(new LambdaSub(eventFn(this, "event")));', "topic", "SNS subscription"],
-    ['const fn = eventFn(this, "event"); fn.addEventSource(new SqsEventSource(this.queue));', "queue", "SQS"],
-    ['eventFn(this, "event").addEventSource(new DynamoEventSource(this.table, {}));', "table", "DynamoDB stream"],
-    ['this.bucket.addEventNotification(s3.EventType.OBJECT_CREATED, new LambdaDestination(eventFn(this, "event")));', "bucket", "s3.EventType.OBJECT_CREATED"],
-    ['new Rule(this, "rule", { eventBus: this.bus, eventPattern: { source: ["fixture"] }, targets: [new LambdaFunction(eventFn(this, "event"))] });', "bus", "EventBridge rule"],
+  for (const [body, member, label, sourceConstruct] of [
+    ['this.topic.addSubscription(new LambdaSub(eventFn(this, "event")));', "topic", "SNS subscription", "cdk.aws_sns_subscriptions.LambdaSubscription"],
+    ['const fn = eventFn(this, "event"); fn.addEventSource(new SqsEventSource(this.queue));', "queue", "SQS", "cdk.aws_lambda_event_sources.SqsEventSource"],
+    ['eventFn(this, "event").addEventSource(new DynamoEventSource(this.table, {}));', "table", "DynamoDB stream", "cdk.aws_lambda_event_sources.DynamoEventSource"],
+    ['this.bucket.addEventNotification(s3.EventType.OBJECT_CREATED, new LambdaDestination(eventFn(this, "event")));', "bucket", "s3.EventType.OBJECT_CREATED", "cdk.aws_s3_notifications.LambdaDestination"],
+    ['new Rule(this, "rule", { eventBus: this.bus, eventPattern: { source: ["fixture"] }, targets: [new LambdaFunction(eventFn(this, "event"))] });', "bus", "EventBridge rule", "cdk.aws_events.Rule"],
   ]) {
     const result = scan(body!);
     assert.deepEqual(result.edges.filter((edge) => edge.relation === "trigger").map((edge) => [edge.from, edge.to, edge.label]), [[`resource:example.${member}`, "lambda:event", label]]);
     assert.ok(result.edges[0]?.source?.line);
     assert.equal(result.edges.find(edge => edge.relation === "trigger")?.permissionContext?.kind, "trigger", "native adapter evidence survives source scanning");
+    assert.equal(result.edges.find(edge => edge.relation === "trigger")?.sourceConstruct, sourceConstruct);
     assert.equal(result.manualWiring.length, 0);
   }
 });

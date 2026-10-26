@@ -1,5 +1,5 @@
 import type { ModeModel, ModelEdge, ModelResource } from "../shared/model";
-import { RELATION_CATEGORY, ROLE_GROUPS, type EdgeCategory } from "./lookup";
+import { edgeCategory, ROLE_GROUPS, type EdgeCategory } from "./lookup";
 
 /**
  * The architecture board's geometry, computed rather than measured.
@@ -176,7 +176,7 @@ export function layoutBoard(model: ModeModel): BoardLayout {
     }
     edges.push({
       edge,
-      category: RELATION_CATEGORY[edge.relation],
+      category: edgeCategory(edge),
       path: `M ${x1} ${y1} C ${c1x} ${y1}, ${c2x} ${y2}, ${x2} ${y2}`,
       label: { x: (x1 + 3 * c1x + 3 * c2x + x2) / 8, y: (y1 + y2) / 2 },
     });
