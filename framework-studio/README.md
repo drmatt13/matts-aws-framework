@@ -12,11 +12,11 @@ Declarations use the same [code-first layout and tags](../docs/framework-studio/
 when authored by hand or created in Studio. Tag edits use source review. Isometric always keeps topology; its tag filter fades
 nonmatches without changing placement, identity or source.
 
-The shared navigation stays stable across all six views. **Source valid** reports
-declaration validation, with details on demand; AWS credentials, deployments and runtime
-health are inspected separately. The shared top-right navbar exposes the **Source**
-Development/Production selector beside source validation on every route. Switching
-source mode retains the unsaved-draft guard. Domains edits Production domain intent;
+The shared navigation stays stable across all six views. The shared top-right navbar
+exposes the **Source** Development/Production selector on every route. Switching source
+mode retains the unsaved-draft guard. When the configuration does not load, the canvas
+banner's **Show why** opens Configuration health; AWS credentials, deployments and
+runtime health are inspected separately. Domains edits Production domain intent;
 named deployments keep their own target/profile/account context. See the
 [UI design system](../docs/framework-studio/ui-design-system.md).
 

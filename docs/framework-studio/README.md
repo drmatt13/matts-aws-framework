@@ -31,8 +31,8 @@ aside: its source and tests remain, but no route or navigation link opens it.
 
 A Development/Production switch picks which deployment graph Isometric describes.
 Deploy owns its named deployment/profile/account/region selection; Database requires an
-explicit database target and separate approval for database changes. Automatic
-health indicators for both graphs and compact undo/redo controls sit in the top bar.
+explicit database target and separate approval for database changes. When the
+configuration does not load, the canvas banner's **Show why** opens Configuration health.
 Configuration health contains an optional saved-source audit for generated files and local
 wiring under **Additional checks**. This runs `framework:check`; it is separate from the
 automatic configuration validation and inspector preflight. The **Stacks** island inspector

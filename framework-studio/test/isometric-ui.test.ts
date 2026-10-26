@@ -138,6 +138,12 @@ test("permission connections show generated principal and scope while local data
   const launch = response.snapshot.models.dev.edges.find(edge => edge.relation === "runsTask")!;
   await mount(true, launch.id);
   assert.ok(ui.screen.getByRole("heading", { name: "Launch ECS task" }));
+  const permissions = document.querySelector<HTMLDetailsElement>(".connection-authorization")!;
+  assert.ok(permissions);
+  assert.equal(permissions.open, false, "permissions start behind a disclosure");
+  assert.equal(document.querySelector(".connection-header .authorization-badge"), null);
+  ui.fireEvent.click(ui.within(permissions).getByText("Permissions", { selector: "summary" }));
+  assert.equal(permissions.open, true);
   assert.ok(ui.screen.getByText("iam:PassRole"));
   assert.ok(ui.screen.getAllByText(/Lambda execution role/).length);
   assert.ok(ui.screen.getByText(/iam:PassedToService = ecs-tasks.amazonaws.com/));
@@ -145,9 +151,20 @@ test("permission connections show generated principal and scope while local data
   ui.cleanup();
   const local = response.snapshot.models.dev.edges.find(edge => edge.relation === "database" && edge.to === "local:postgres")!;
   await mount(true, local.id);
-  assert.ok(ui.screen.getByRole("heading", { name: "Connect PostgreSQL" }));
+  assert.ok(ui.screen.getByRole("heading", { name: local.label }));
+  ui.fireEvent.click(ui.screen.getByText("Permissions", { selector: ".connection-authorization > summary" }));
   assert.ok(ui.screen.getAllByText("Local connection").length);
   assert.equal(ui.screen.queryByText("rds-db:connect"), null);
+});
+
+test("connection inspection keeps secret environment names ahead of optional permissions", async () => {
+  const source = response.snapshot.models.dev.edges.find(edge => edge.relation === "env" && edge.authorization?.kind === "iam")
+    ?? response.snapshot.models.dev.edges.find(edge => edge.relation === "secret" && edge.authorization?.kind === "iam");
+  assert.ok(source, "a real secret delivery relationship is available");
+  await mount(true, source.id);
+  assert.ok(ui.screen.getByRole("heading", { name: source.label }));
+  assert.equal(document.querySelector(".connection-header .authorization-badge"), null);
+  assert.equal(document.querySelector<HTMLDetailsElement>(".connection-authorization")?.open, false);
 });
 
 test("IAM filter is independent from purpose categories and does not arm source edits", async () => {
@@ -776,22 +793,71 @@ test("the real renderer draws resting connections a little stronger, and those o
   assert.ok(!alphas.has(0.24), "the old resting strength is gone");
 });
 
-test("connection hover and inspection distinguish identically named API routes and WebSocket handlers", async () => {
-  await mount(true);
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes" })); await draw();
-  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
-  const edge = scene.edges.find((edge) => edge.from === "gateway:websocket" && edge.to === "lambda:ws-custom-action-route")!;
-  assert.ok(edge);
-  const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
-  const at = scene.routes[edge.id]!.points.map((point) => worldToScreen(state.camera(), state.viewport(), point)).find((point) => state.pickAt(point.x, point.y)?.id === edge.id);
-  assert.ok(at, "the route-to-handler connection is pickable");
+async function hoverConnection(member: string) {
+  const state = (dom.window as unknown as { __studioLandscape: {
+    connections(): { id: string; members: string[]; points: { x: number; y: number }[] }[];
+    pickAt(x: number, y: number): { id: string } | undefined;
+  } }).__studioLandscape;
+  const edge = state.connections().find(connection => connection.members.includes(member));
+  assert.ok(edge, "the relationship is drawn");
+  const at = edge.points.find(point => state.pickAt(point.x, point.y)?.id === edge.id);
+  assert.ok(at, "the connection is pickable");
   ui.fireEvent.pointerMove(document.querySelector("canvas")!, { clientX: at.x, clientY: at.y });
   await draw();
-  const popup = await ui.screen.findByRole("tooltip");
-  assert.ok(popup.textContent?.includes("From WebSocket API"));
-  assert.ok(popup.textContent?.includes("To WebSocket: customAction"));
+  return ui.screen.findByRole("tooltip");
+}
+
+test("HTTP and WebSocket route hovers retain routing purpose in both environments with secondary IAM details", async () => {
+  const http = response.snapshot.models.dev.edges.find(edge => edge.relation === "routes" && edge.label === "/api/test/start-workflow")!;
+  const websocket = response.snapshot.models.dev.edges.find(edge => edge.relation === "routes" && edge.to === "lambda:ws-custom-action-route")!;
+  assert.ok(http); assert.ok(websocket);
+  const detail = "The framework manages this API route from its declaration.";
+  const annotate = (model: typeof response.snapshot.models.dev) => ({ ...model, edges: model.edges.map(edge => edge.id === http.id ? { ...edge, detail } : edge) });
+  const initial = { ...response, snapshot: { ...response.snapshot, models: { dev: annotate(response.snapshot.models.dev), prod: annotate(response.snapshot.models.prod) } } };
+  await mount(true, undefined, initial);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes" })); await draw();
+  for (const mode of ["dev", "prod"] as const) {
+    if (mode === "prod") { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw(); }
+    for (const source of [http, websocket]) {
+      const popup = await hoverConnection(source.id);
+      assert.equal(popup.querySelector("strong")?.textContent, `Routes to: ${source.label}`);
+      assert.ok(popup.textContent?.includes(source === http ? "From HTTP API" : "From WebSocket API"));
+      assert.ok(popup.textContent?.includes(source === http ? "To HTTP: /test/start-workflow" : "To WebSocket: customAction"));
+      const permission = ui.within(popup).getByText(/^IAM: lambda:InvokeFunction/);
+      const authorization = initial.snapshot.models[mode].edges.find(edge => edge.id === source.id)!.authorization!;
+      assert.equal(permission.textContent, `IAM: lambda:InvokeFunction${authorization.state === "not-built" ? " (AWS only)" : ""}`);
+      assert.ok(!popup.textContent?.includes("Cloud IAM intent"));
+      assert.ok(!popup.textContent?.includes("Not generated in this AWS graph"));
+      if (source === http) {
+        assert.ok(ui.within(popup).getByText(detail), "permission information does not replace the connection detail");
+        assert.ok(popup.textContent!.indexOf(detail) < popup.textContent!.indexOf("IAM:"));
+      }
+    }
+  }
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: WebSocket API to WebSocket: customAction,/ }));
   await ui.waitFor(() => assert.ok([...document.querySelectorAll(".connection-endpoints")].some(element => element.textContent?.includes("FromAPI: customActionToWebSocket: customAction"))));
+  assert.equal(document.querySelector(".connection-header .authorization-badge"), null);
+});
+
+test("grouped route previews and member summaries retain each route name without IAM badges", async () => {
+  const source = response.snapshot.models.dev.edges.find(edge => edge.relation === "routes" && edge.to === "lambda:ws-custom-action-route")!;
+  const append = (model: typeof response.snapshot.models.dev) => {
+    const original = model.edges.find(edge => edge.id === source.id)!;
+    return { ...model, edges: [...model.edges, { ...original, id: `${original.id}:second-route`, label: "anotherAction" }] };
+  };
+  await mount(true, undefined, { ...response, snapshot: { ...response.snapshot, models: { dev: append(response.snapshot.models.dev), prod: append(response.snapshot.models.prod) } } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes" })); await draw();
+  const popup = await hoverConnection(source.id);
+  assert.equal(popup.querySelector("strong")?.textContent, "2 relationships");
+  assert.ok(ui.within(popup).getByText(`Routes to: ${source.label}`));
+  assert.ok(ui.within(popup).getByText("Routes to: anotherAction"));
+  assert.ok(!popup.textContent?.includes("IAM"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: WebSocket API to WebSocket: customAction,/ }));
+  await ui.waitFor(() => assert.equal(document.querySelectorAll(".connection-map-member").length, 2));
+  const summaries = [...document.querySelectorAll(".connection-map-member > summary")];
+  assert.ok(summaries.some(summary => summary.textContent?.includes(source.label)));
+  assert.ok(summaries.some(summary => summary.textContent?.includes("anotherAction")));
+  assert.equal(document.querySelector(".connection-map-label .authorization-badge"), null);
 });
 
 test("clicking a disabled wire explains its endpoints in the inspector and the notice follows the mode", async () => {
@@ -1004,6 +1070,7 @@ test("hovering a node shows its authored description and a Dev and a Prod pill",
   const card = await hoverOver("lambda:sign-out");
   const text = card.textContent ?? "";
   assert.ok(text.includes(response.snapshot.descriptions.values["lambda:sign-out"]!), "the authored description");
+  assert.ok(!/IAM relationships?/.test(text), "resource previews leave permission counts to inspection");
   assert.deepEqual(visibleTags(card), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
   assert.deepEqual(tagsOf(card), [["hover-tag dev", "Dev: Your machine"], ["hover-tag prod", "Prod: AWS Lambda · outside the VPC"]]);
   assert.ok(!text.includes("Runs in development and production."), "the generic lane line is gone");

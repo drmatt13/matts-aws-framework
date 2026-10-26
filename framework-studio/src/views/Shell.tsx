@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { AlertTriangle, Check, ClipboardCheck, LoaderCircle, X } from "lucide-react";
+import { ClipboardCheck, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { CommandResult } from "../../shared/api";
 import type { Mode } from "../../shared/model";
@@ -124,18 +124,6 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
   const showInspector = !!selected && !isometricPage && !(databasePage && selected.startsWith("schema:"));
   const [drawer, setDrawer] = useState<"health" | "command" | undefined>();
   const [result, setResult] = useState<CommandResult | undefined>();
-  const healthDescriptionId = useId();
-  const modes = Object.keys(snapshot.models) as Mode[];
-  const diagnostics = modes.flatMap(candidate => snapshot.models[candidate].diagnostics);
-  const errorCount = diagnostics.filter(item => item.severity === "error").length;
-  const warningCount = diagnostics.filter(item => item.severity === "warning").length + snapshot.source.problems.length;
-  const healthLabel = live.evaluating ? "Checking source…" : errorCount ? `Source: ${errorCount} ${errorCount === 1 ? "error" : "errors"}` : warningCount ? `Source: ${warningCount} ${warningCount === 1 ? "warning" : "warnings"}` : "Source valid";
-  const healthDescription = live.evaluating ? "Validating configuration" : modes.map(candidate => {
-    const diagnostics = snapshot.models[candidate].diagnostics;
-    const errors = diagnostics.filter(item => item.severity === "error").length;
-    const warnings = diagnostics.filter(item => item.severity === "warning").length;
-    return `${candidate === "dev" ? "Development" : "Production"}: ${errors ? `${errors} ${errors === 1 ? "error" : "errors"}` : "valid"}${warnings ? `, ${warnings} ${warnings === 1 ? "warning" : "warnings"}` : ""}`;
-  }).join(". ") + (snapshot.source.problems.length ? `. ${snapshot.source.problems.length} source problems` : "");
   const repository = snapshot.repositoryRoot.replaceAll("\\", "/").split("/").pop();
 
   const run = async (name: string, confirmed: boolean) => {
@@ -171,11 +159,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
         </NavigationStrip>
         <div className="bar-actions">
           <SourceEnvironment />
-          <button className={`health ${live.evaluating ? "evaluating" : errorCount ? "bad" : warningCount ? "warning" : "good"}`} onClick={() => setDrawer(drawer === "health" ? undefined : "health")} title="Source validation · deployment and runtime health are inspected separately" aria-label={`${healthLabel}. Configuration health`} aria-describedby={healthDescriptionId} aria-expanded={drawer === "health"}>
-            {live.evaluating ? <LoaderCircle size={14} aria-hidden /> : errorCount || warningCount ? <AlertTriangle size={14} aria-hidden /> : <Check size={14} aria-hidden />}<span>{healthLabel}</span>
-          </button>
         </div>
-        <span id={healthDescriptionId} className="sr-only">{healthDescription}</span>
       </header>
       {props.notice || watchProblem ? <div className="shell-notice">{props.notice}{watchProblem ? <>
         <span role="status">{sourceWatch.status === "polling" ? `Source watching is interrupted. Checking for changes every ${sourceWatch.pollIntervalMs / 1000}s.` : "Source freshness is unknown. Some files could not be read."} <details><summary>Source observation details</summary><ul>{sourceWatch.problems.map((problem, at) => <li key={at}>{problem.path}: {problem.code}</li>)}</ul></details></span>

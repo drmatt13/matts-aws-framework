@@ -138,8 +138,8 @@
 .inspector .ref { display: block; color: var(--graphite); font-size: 11px; overflow-wrap: anywhere; }
 
 .connection-evidence { display: grid; gap: var(--ui-space-3); margin-top: var(--ui-space-4); }
-.connection-description, .connection-configuration { margin: 10px 0; }
-.connection-description > summary, .connection-configuration > summary { cursor: pointer; font-size: 12px; color: var(--graphite); }
+.connection-description, .connection-configuration, .connection-authorization { margin: 10px 0; }
+.connection-description > summary, .connection-configuration > summary, .connection-authorization > summary { cursor: pointer; font-size: 12px; color: var(--graphite); }
 .connection-header > .environment-pills { margin: var(--ui-space-1) 0 var(--ui-space-2); }
 .connection-endpoints { display: grid; gap: 3px; margin: var(--ui-space-1) 0 0; font-size: 12px; }
 .connection-endpoints > div { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 6px; }

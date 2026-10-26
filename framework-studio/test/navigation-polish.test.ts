@@ -1,7 +1,7 @@
 import assert from "./support/assert";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { after, afterEach, before, test } from "node:test";
+import { after, afterEach, before, mock, test } from "node:test";
 import { createElement as h, useState, type ComponentType } from "react";
 import type { SnapshotResponse } from "../shared/api";
 import { SnapshotBuilder } from "../server/snapshot";
@@ -18,6 +18,7 @@ let board: typeof import("../src/views/Board");
 let database: typeof import("../src/views/DatabaseDiagram");
 let shell: typeof import("../src/views/Shell");
 let navigation: typeof import("../src/views/NavigationStrip");
+let api: typeof import("../src/api");
 
 before(async () => {
   const require = createRequire(import.meta.url);
@@ -32,11 +33,12 @@ before(async () => {
   studio = await import("../src/studio"); add = await import("../src/views/AddMenu"); board = await import("../src/views/Board"); database = await import("../src/views/DatabaseDiagram");
   shell = await import("../src/views/Shell");
   navigation = await import("../src/views/NavigationStrip");
+  api = await import("../src/api");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, busy: null };
 });
 after(async () => { await builder?.dispose(); dom.window.close(); });
-afterEach(() => ui.cleanup());
+afterEach(() => { ui.cleanup(); mock.restoreAll(); });
 
 async function mount(Component: ComponentType, initial = response) {
   let updateResponse: (next: SnapshotResponse) => void;
@@ -56,37 +58,18 @@ async function mount(Component: ComponentType, initial = response) {
   };
 }
 
-test("shell health exposes both verdicts and follows validated snapshot changes", async () => {
-  const initial = { ...response, snapshot: { ...response.snapshot, models: { ...response.snapshot.models,
-    dev: { ...response.snapshot.models.dev, diagnostics: [] },
-    prod: { ...response.snapshot.models.prod, diagnostics: [{ severity: "error" as const, stage: "validate" as const, message: "Invalid production configuration" }, { severity: "warning" as const, stage: "validate" as const, message: "Check production inputs" }] },
-  } } };
-  const update = await mount(() => h(shell.Shell, { children: null }), initial);
-  assert.ok(ui.within(document.querySelector(".bar")! as HTMLElement).getByRole("group", { name: "Source environment" }));
-  const health = ui.screen.getByRole("button", { name: /Configuration health/ });
-  const description = () => document.getElementById(health.getAttribute("aria-describedby")!)!.textContent;
-  assert.match(health.textContent!, /Source: 1 error/);
-  assert.equal(ui.screen.getByRole("button", { name: `${health.textContent}. Configuration health` }), health, "the accessible name must include the visible status for voice control");
-  assert.match(description()!, /Development: valid\. Production: 1 error, 1 warning/);
-  await update({ ...initial, snapshot: { ...initial.snapshot, revision: `${initial.snapshot.revision}-valid`, models: { ...initial.snapshot.models, prod: { ...initial.snapshot.models.prod, diagnostics: [] } } } });
-  await ui.waitFor(() => assert.equal(description(), "Development: valid. Production: valid"));
-  assert.match(health.textContent!, /Source valid/);
-  assert.equal(ui.screen.getByRole("button", { name: `${health.textContent}. Configuration health` }), health, "the accessible name must follow the visible status after validation changes");
-});
-
-test("primary navigation retains one source toggle and validation across all six destinations", async () => {
+test("primary navigation retains one source toggle and no validation control across all six destinations", async () => {
   await mount(() => h(shell.Shell, { children: h("p", null, "Workspace content") }));
   const navigation = ui.screen.getByRole("navigation", { name: "Views" });
   const destinations = ["Map", "Database", "Deploy", "Cognito", "Domains", "WebSockets"];
   assert.deepEqual(ui.within(navigation).getAllByRole("link").map(link => link.textContent), destinations);
-  const health = ui.screen.getByRole("button", { name: /Configuration health/ });
   const environment = ui.screen.getByRole("group", { name: "Source environment" });
   for (const name of destinations) {
     const link = ui.within(navigation).getByRole("link", { name });
     ui.fireEvent.click(link);
     await ui.waitFor(() => assert.equal(link.getAttribute("aria-current"), "page"));
     assert.equal(navigation.querySelectorAll('[aria-current="page"]').length, 1);
-    assert.equal(ui.screen.getByRole("button", { name: /Configuration health/ }), health, "route changes retain the same primary status control");
+    assert.equal(ui.screen.queryByRole("button", { name: /Configuration health/ }), null, "the navbar carries no source validation control");
     assert.equal(ui.screen.getByRole("group", { name: "Source environment" }), environment);
     const modes = ui.within(environment);
     ui.fireEvent.click(modes.getByRole("button", { name: "Production" }));
@@ -212,18 +195,17 @@ test("source environment offers the two source modes and protects unsaved edits 
   assert.equal(context!.draft.dirty, false);
 });
 
-test("source indexing problems appear as source warnings and open actionable configuration details", async () => {
+test("a stale source opens configuration details, including source problems and the saved-source audit", async () => {
+  const commands: unknown[][] = [];
+  mock.method(api.api, "command", async (...args: unknown[]) => { commands.push(args); return { command: "framework:check", exitCode: 0, output: "All checks passed", durationMs: 20 }; });
   const initial = { ...response, snapshot: { ...response.snapshot,
     source: { ...response.snapshot.source, problems: ["A declaration file could not be indexed."] },
-    models: { dev: { ...response.snapshot.models.dev, diagnostics: [] }, prod: { ...response.snapshot.models.prod, diagnostics: [] } },
+    models: { dev: { ...response.snapshot.models.dev, stale: true as const, diagnostics: [] }, prod:{ ...response.snapshot.models.prod, diagnostics: [] } },
   } };
   await mount(() => h(shell.Shell, { children: null }), initial);
-  const health = ui.screen.getByRole("button", { name: /Configuration health/ });
-  assert.match(health.textContent!, /Source: 1 warning/);
-  const description = document.getElementById(health.getAttribute("aria-describedby")!)!.textContent;
-  assert.match(description!, /1 source problem/);
-  health.focus();
-  ui.fireEvent.click(health);
+  const why = ui.screen.getByRole("button", { name: "Show why" });
+  why.focus();
+  ui.fireEvent.click(why);
   const details = ui.screen.getByRole("complementary", { name: "Configuration health" });
   assert.match(details.textContent!, /A declaration file could not be indexed/);
   assert.match(details.textContent!, /does not establish AWS credentials, deployment status or application health/, "configuration validation must keep its evidence boundary clear");
@@ -231,7 +213,15 @@ test("source indexing problems appear as source warnings and open actionable con
   assert.equal(document.activeElement, close);
   ui.fireEvent.keyDown(close, { key: "Escape" });
   assert.equal(ui.screen.queryByRole("complementary", { name: "Configuration health" }), null);
-  assert.equal(document.activeElement, health);
+  assert.equal(document.activeElement, why);
+  ui.fireEvent.click(why);
+  assert.equal(commands.length, 0);
+  ui.fireEvent.click(ui.screen.getByText("Additional checks", { selector: "summary" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Check generated files and wiring" }));
+  await ui.screen.findByRole("heading", { name: "framework:check passed" });
+  assert.deepEqual(commands, [["framework:check", false]]);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to configuration health" }));
+  assert.ok(ui.screen.getByRole("heading", { name: "Configuration health" }));
 });
 
 test("watch failures expose polling and recover without replacing the editor", async () => {

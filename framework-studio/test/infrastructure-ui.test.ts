@@ -75,30 +75,20 @@ async function mount(navigate: (id: string) => void = () => {}, initialOwner?: s
   const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/workbench"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/workbench", component: () => null })]) });
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); clients.push(client);
   ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
-  if (withShell) await ui.screen.findByRole("button", { name: /Configuration health/ });
+  if (withShell) await ui.screen.findByRole("group", { name: "Source environment" });
   else if (environmentFile) await ui.screen.findByRole("heading", { name: environmentFile.clientEnvironment ? ".env" : environmentFile.path[0] });
   else await ui.screen.findByRole("button", { name: /Synthesize CDK|Refresh from CDK/ });
 }
 
-test("the header keeps source mode and automatic health while saved-source audits stay explicit", async () => {
-  const commands: unknown[][] = [];
-  mock.method(api.api, "command", async (...args: unknown[]) => { commands.push(args); return { command: "framework:check", exitCode: 0, output: "All checks passed", durationMs: 20 }; });
+test("the header keeps only the source mode", async () => {
   await mount(() => {}, undefined, undefined, true);
   const header = document.querySelector(".bar")! as HTMLElement;
   assert.equal(ui.within(header).queryByRole("button", { name: "Check" }), null);
   assert.equal(ui.within(header).queryByRole("button", { name: "Infrastructure" }), null);
   assert.equal(ui.within(header).queryByRole("button", { name: "Undo" }), null);
+  assert.equal(ui.within(header).queryByRole("button", { name: /Configuration health/ }), null);
   assert.equal(ui.screen.queryByRole("group", { name: "Source edit history" }), null);
   assert.ok(ui.within(header).getByRole("group", { name: "Source environment" }));
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: /Configuration health/ }));
-  assert.ok(ui.screen.getByText(/Source validation checks the saved declarations/));
-  assert.equal(commands.length, 0);
-  ui.fireEvent.click(ui.screen.getByText("Additional checks", { selector: "summary" }));
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Check generated files and wiring" }));
-  await ui.screen.findByRole("heading", { name: "framework:check passed" });
-  assert.deepEqual(commands, [["framework:check", false]]);
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to configuration health" }));
-  assert.ok(ui.screen.getByRole("heading", { name: "Configuration health" }));
 });
 
 test("Stacks settings synthesize explicitly, switch inventories, and block synthesis during drafts", async () => {

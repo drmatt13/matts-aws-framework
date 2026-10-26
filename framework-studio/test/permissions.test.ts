@@ -7,7 +7,7 @@ import type { IBucket } from "aws-cdk-lib/aws-s3";
 import type { IQueue } from "aws-cdk-lib/aws-sqs";
 import { projectModel } from "../server/model/project";
 import type { ModeModel, ModelEdge, ModelTarget } from "../shared/model";
-import { connectionTitle, hasIam, withConnectionAuthorizations } from "../shared/permissions";
+import { authorizationSummary, connectionTitle, hasIam, withConnectionAuthorizations } from "../shared/permissions";
 import { grantOptions } from "../shared/grants";
 import { aggregateConnections } from "../src/connections";
 import { connectionVisible } from "../src/scene/connections";
@@ -25,7 +25,8 @@ function describe(item: ModelEdge, targets: readonly ModelTarget[] = [target("la
 test("database IAM describes writer, readers and direct access; local enrichment removes AWS grants", () => {
   const source = edge("database", { kind: "database", connection: "direct", readers: true });
   const cloud = describe(source);
-  assert.equal(connectionTitle(cloud), "Connect PostgreSQL directly");
+  assert.equal(connectionTitle(cloud), source.label);
+  assert.equal(cloud.authorization!.operation, "Connect PostgreSQL directly");
   assert.equal(cloud.authorization!.grants.length, 2);
   assert.deepEqual(cloud.authorization!.grants[0]!.actions, ["rds-db:connect"]);
   assert.match(cloud.authorization!.grants[0]!.scope, /direct writer.*app_user/);
@@ -34,6 +35,42 @@ test("database IAM describes writer, readers and direct access; local enrichment
   assert.equal(local.authorization!.kind, "local");
   assert.deepEqual(local.authorization!.grants, []);
   assert.equal(local.label, source.label, "presentation preserves authored labels and descriptions");
+});
+
+test("permission facts preserve route, input, scope and callback labels as connection identity", () => {
+  const cases = [
+    edge("routes", undefined, { from: "route:http:/caller", to: "lambda:caller", label: "/api/caller" }),
+    edge("routes", undefined, { from: "route:webSocket:customAction", to: "lambda:caller", label: "customAction" }),
+    edge("env", { kind: "secret", delivery: "arn" }, { label: "API_KEY_ARN" }),
+    edge("secret", { kind: "secret", delivery: "startup" }, { label: "SERVICE_TOKEN" }),
+    edge("grant", { kind: "native", method: "grantRead", arguments: ["tenant/*"] }, { label: 'grantRead("tenant/*")' }),
+    edge("database", { kind: "database", connection: "application", readers: true }, { label: "database + readers" }),
+    edge("step", { kind: "step", target: "task", callback: true }, { label: "runTask (callback)" }),
+    edge("integration", { kind: "integration", service: "table", operations: ["get", "put"] }, { label: "get, put" }),
+  ];
+  for (const source of cases) {
+    const result = describe(source);
+    assert.equal(result.authorization!.kind, "iam", source.label);
+    assert.equal(connectionTitle(result), source.label);
+  }
+});
+
+test("hover permission summaries are secondary, bounded and distinguish AWS-only grants", () => {
+  const route = describe(edge("routes", undefined, { to: "lambda:caller" }));
+  assert.deepEqual(authorizationSummary(route.authorization!), ["IAM: lambda:InvokeFunction"]);
+  assert.deepEqual(authorizationSummary({ ...route.authorization!, state: "not-built" }), ["IAM: lambda:InvokeFunction (AWS only)"]);
+  const grant = route.authorization!.grants[0]!;
+  const summary = authorizationSummary({ ...route.authorization!, grants: [
+    { ...grant, actions: ["ecs:RunTask", "ecs:TagResource", "iam:PassRole"] },
+    { ...grant, actions: ["ecs:RunTask", "ecs:DescribeTasks", "ecs:StopTask"] },
+  ] });
+  assert.equal(summary.length, 1);
+  assert.equal(summary[0], "IAM: ecs:RunTask, ecs:TagResource, iam:PassRole, +2 more");
+  for (const kind of ["local", "user-token", "unknown"] as const) {
+    assert.deepEqual(authorizationSummary({ ...route.authorization!, kind, grants: [] }), []);
+  }
+  const native = describe(edge("grant", { kind: "native", method: "grantRead", arguments: ["tenant/*"] }));
+  assert.deepEqual(authorizationSummary(native.authorization!), ['IAM: grantRead("tenant/*")']);
 });
 
 test("secret ARN and startup injection distinguish task role from execution role; ordinary reads grant nothing", () => {

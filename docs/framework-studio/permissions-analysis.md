@@ -15,7 +15,9 @@ This work describes IAM intent; it does not establish effective access in an AWS
   declared failure queues/destinations, schedules, replay, API integrations/authorizers,
   WebSocket management and explicit workload policies have shared explanations.
 - Connection hover, inspector, aggregate members and workload Permissions reuse those
-  facts. Resource previews show IAM relationship counts. The six purpose filters remain,
+  facts as supporting information. Relationship verbs and authored labels remain primary;
+  single-connection hovers append a compact IAM note and inspectors disclose full Permissions
+  on demand. Resource previews omit IAM counts. The six purpose filters remain,
   with an additional cross-category IAM filter; selected resources retain full context.
 - [Grant choices](../../framework-studio/shared/grants.ts) are driven by source-discovered
   S3, SQS, DynamoDB, SNS and EventBridge types. UI and writer enforce the same bounded
@@ -264,9 +266,11 @@ roles and service principals are separate actors.
 
 ### At a glance
 
-Keep the operation as the main label and make its authorization visible immediately:
+Keep the relationship verb and authored label at a glance, such as `Routes to: /api/caller`
+or `Reads: API_KEY_ARN`. Permission metadata must not replace those labels. The following
+operation explanations belong within Permissions, rather than connection headings:
 
-| Connection | Primary label | Authorization badge/details |
+| Connection | Permission purpose | Disclosed authorization details |
 | --- | --- | --- |
 | Lambda to production PostgreSQL | Connect PostgreSQL | IAM grant · workload role · `rds-db:connect` · `app_user` |
 | Lambda to local PostgreSQL | Connect PostgreSQL | Local connection · no RDS IAM grant |
@@ -277,8 +281,12 @@ Keep the operation as the main label and make its authorization visible immediat
 | Queue to event Lambda | Consume queue messages | Event source · IAM grant to function role on queue |
 | SNS to event Lambda | Deliver topic messages | Lambda resource permission · SNS service principal |
 
-Hover and keyboard previews should show the operation, authorization badge,
-principal and a short scope summary. The inspector should progressively disclose:
+Connection hovers show the relationship, environments, endpoints and existing detail,
+followed by a compact IAM action/helper note when applicable. Resource previews stay
+focused on descriptions and source health. Connection headers and rows omit authorization
+badges; a collapsed Permissions disclosure retains principal, scope and evidence. See the
+current [graph presentation contract](../aws-studio-knowledge/studio/graph-model.md).
+Further inspector information should progressively disclose:
 
 1. Purpose and source declaration.
 2. **Permissions generated:** principal, actions, resource/condition scope,

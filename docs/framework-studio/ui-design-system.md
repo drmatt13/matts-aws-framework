@@ -20,12 +20,12 @@ information order and source-review workflow.
 
 ## Navigation and workspace rhythm
 
-The application bar owns the repository identity, six view links, the **Source**
-Development/Production selector and **Source valid** (or source validation problems).
-Source selection and validation sit together at the right on every route. The navbar
+The application bar owns the repository identity, six view links and the **Source**
+Development/Production selector, which sits at the right on every route. The navbar
 uses a 52px row on desktop, 89px with two rows at 760px and below, and 129px with
 three rows at 560px and below. Route changes never add or remove source controls.
-Validation exposes both modes' verdicts and opens configuration details.
+When the configuration does not load, the canvas banner's **Show why** opens
+configuration details.
 
 `SourceEnvironment` mounts once in `Shell`. It reflects the framework's two declaration
 projections and retains the unsaved-draft guard. Deploy, Database and inspection forms

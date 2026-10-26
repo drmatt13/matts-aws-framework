@@ -4,7 +4,6 @@ import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { ConnectionDetails, ConnectionEndpoints } from "./InputRequirement";
 import { connectionTitle } from "../../shared/permissions";
-import { AuthorizationBadge } from "./Authorization";
 
 export function ConnectionMap({ connection }: { readonly connection: ConnectionGroup }) {
   const { model } = useStudio();
@@ -21,7 +20,7 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
           const onlyIn = member.models[model.mode] ? undefined : member.models.dev ? "dev" : "prod";
           return <details key={edge.id} className="connection-map-member">
             <summary>
-              <span className="connection-map-label"><span>{connectionTitle(edge)}</span><AuthorizationBadge authorization={edge.authorization} /><span className="small muted">{RELATION_LABEL[edge.relation]}</span></span>
+              <span className="connection-map-label"><code>{connectionTitle(edge)}</code><span className="small muted">{RELATION_LABEL[edge.relation]}</span></span>
               <EnvironmentPills availability={member.availability} />
             </summary>
             <div className="connection-map-detail">

@@ -86,7 +86,6 @@ function Relations(props: { readonly id: string }) {
         {edge.provenance === "source" ? <span className="muted small"> ({edge.relation === "supplies" ? "input file" : "CDK source"})</span> : null}
       </span>
       <button className="linkish small" onClick={() => select(edge.id)}>{connectionTitle(edge)}</button>
-      <AuthorizationBadge authorization={edge.authorization} />
       <EnvironmentPills availability={edgeAvailability(edge, snapshot.models)} />
     </li>
   );

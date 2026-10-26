@@ -33,16 +33,18 @@ export interface ConnectionAuthorization {
 }
 
 export const hasIam = (edge: Pick<ModelEdge, "authorization">): boolean => edge.authorization?.kind === "iam";
-export const connectionTitle = (edge: ModelEdge): string => edge.authorization?.operation ?? edge.label;
+/** A connection keeps its authored purpose; authorization only adds supporting facts. */
+export const connectionTitle = (edge: ModelEdge): string => edge.label;
 export function authorizationLabel(authorization: ConnectionAuthorization): string {
   return authorization.kind === "iam" ? authorization.state === "planned" ? "IAM grant" : "Cloud IAM intent"
     : authorization.kind === "local" ? "Local connection" : authorization.kind === "user-token" ? "User token" : "Source evidence";
 }
 export function authorizationSummary(authorization: ConnectionAuthorization): string[] {
-  return [authorizationLabel(authorization), ...authorization.grants.slice(0, 2).map(grant =>
-    `${grant.principal}: ${grant.actions?.join(", ") ?? grant.via ?? "Native grant"}`),
-    ...(authorization.state === "not-built" ? ["Not generated in this AWS graph."] : []),
-    ...(authorization.kind === "local" || authorization.kind === "user-token" ? authorization.notes.slice(0, 1) : [])];
+  if (authorization.kind !== "iam") return [];
+  const permissions = [...new Set(authorization.grants.flatMap(grant => grant.actions ?? [grant.via ?? "Native grant"]))];
+  if (!permissions.length) return [];
+  const summary = permissions.slice(0, 3).join(", ");
+  return [`IAM: ${summary}${permissions.length > 3 ? `, +${permissions.length - 3} more` : ""}${authorization.state === "not-built" ? " (AWS only)" : ""}`];
 }
 
 // Read/write helpers also exist on non-bucket constructs, including Secrets Manager.

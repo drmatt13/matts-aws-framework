@@ -4,20 +4,18 @@ import type { Prop, SceneNode } from "../scene/build";
 import { nodeHoverFacts, propHoverFacts, type HoverFacts } from "../scene/hover";
 import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
-import { hasIam } from "../../shared/permissions";
 
 /** The map and Resources panel describe the same entity, including staged edits. */
 export function ResourceHoverContent({ resource }: { readonly resource: SceneNode | Prop }) {
-  const { draft, snapshot, model } = useStudio();
+  const { draft, snapshot } = useStudio();
   const indexes = useMemo(() => ({ dev: indexModel(snapshot.models.dev), prod: indexModel(snapshot.models.prod) }), [snapshot.models]);
   const node = "entity" in resource ? resource : undefined;
   const facts = node ? nodeHoverFacts(node, indexes) : propHoverFacts(snapshot.models, resource.id);
   const description = draft.description(resource.id).trim();
-  const iam = model.edges.filter(edge => hasIam(edge) && (edge.from === resource.id || edge.to === resource.id || edge.from.startsWith(`${resource.id}.`) || edge.to.startsWith(`${resource.id}.`)));
   const lines = node
     ? [...(node.sourceProblems?.length ? [...node.sourceProblems.slice(0, 3), "Select this resource to review implementation repairs."] : []), ...(description ? [] : ["No description yet. Select it to write one."])]
     : description ? [] : (resource as Prop).caption;
-  return <HoverContent title={resource.label} subtitle={node?.kindLabel} facts={facts} description={description} lines={[...lines, ...(iam.length ? [`${iam.length} IAM ${iam.length === 1 ? "relationship" : "relationships"} · select to inspect principals and scope.`] : [])]} />;
+  return <HoverContent title={resource.label} subtitle={node?.kindLabel} facts={facts} description={description} lines={lines} />;
 }
 
 export function HoverContent(props: {
@@ -26,6 +24,7 @@ export function HoverContent(props: {
   readonly facts?: HoverFacts;
   readonly description?: string;
   readonly lines: readonly (string | undefined)[];
+  readonly notes?: readonly string[];
 }) {
   const { title, subtitle, facts, description, lines } = props;
   return <>
@@ -40,5 +39,6 @@ export function HoverContent(props: {
     </> : null}
     {description ? <span className="landscape-hover-description">{description}</span> : null}
     {lines.filter(Boolean).map(line => <span key={line}>{line}</span>)}
+    {props.notes?.map(note => <span className="landscape-hover-note" key={note}>{note}</span>)}
   </>;
 }

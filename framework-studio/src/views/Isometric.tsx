@@ -35,7 +35,7 @@ import { useStudio } from "../studio";
 import { HoverContent, ResourceHoverContent } from "./ResourceHoverContent";
 import { InspectorContent } from "./Inspector";
 import { ResourceBrowser, type BrowserMemory } from "./ResourceBrowser";
-import { authorizationLabel, authorizationSummary, connectionTitle } from "../../shared/permissions";
+import { authorizationSummary } from "../../shared/permissions";
 import { WorkspacePanel } from "./WorkspacePanel";
 import { tagGroups, tagKeys, tagValueLabel, UNTAGGED_FILTER } from "../tag-groups";
 
@@ -800,6 +800,7 @@ function HoverCard(props: {
   const { hover: current, index } = props;
   let title: string;
   let lines: (string | undefined)[] = [];
+  let notes: readonly string[] = [];
   let facts: HoverFacts | undefined;
   const resource = current.kind === "node" ? props.nodes.get(current.id) : current.kind === "prop" ? props.scene.props.find(prop => prop.id === current.id) : undefined;
   if (current.kind === "node" || current.kind === "prop") {
@@ -811,7 +812,7 @@ function HoverCard(props: {
     if (!edge) return null;
     const relationshipTitle = (relationship: typeof edge) => relationship.relation === "deployWhen"
       ? `Conditional deployment: ${index.resources.get(relationship.to)?.fromEnv ?? titleOf(index, relationship.to)}`
-      : relationship.authorization ? `${authorizationLabel(relationship.authorization)}: ${connectionTitle(relationship)}` : `${RELATION_LABEL[relationship.relation]}: ${relationship.label}`;
+      : `${RELATION_LABEL[relationship.relation]}: ${relationship.label}`;
     title = sceneEdge.members.length > 1 ? `${sceneEdge.members.length} relationships` : relationshipTitle(edge);
     facts = {
       places: ENVIRONMENTS.flatMap(([env]) => sceneEdge.availability[env] ? [{ env, where: "Connection enabled" }] : []),
@@ -819,9 +820,10 @@ function HoverCard(props: {
     };
     const onlyIn = sceneEdge.otherLens ? `Only in ${sceneEdge.otherLens === "dev" ? "Development" : "Production"}. Switch the view to see it with the rest of that environment.` : undefined;
     lines = [onlyIn, `From ${endpointLabel(index, sceneEdge.from)}`, `To ${endpointLabel(index, sceneEdge.to)}`,
-      ...(sceneEdge.members.length > 1 ? ["Click to inspect the connection map.", ...sceneEdge.members.slice(0, 4).map((member) => relationshipTitle(member.models[props.scene.mode] ?? member.edge))] : edge.authorization ? authorizationSummary(edge.authorization) : [edge.detail]),
+      ...(sceneEdge.members.length > 1 ? ["Click to inspect the connection map.", ...sceneEdge.members.slice(0, 4).map((member) => relationshipTitle(member.models[props.scene.mode] ?? member.edge))] : [edge.detail]),
       missingConnectionInput(sceneEdge) ? "Required value missing. Click to resolve." : undefined,
       edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
+    if (sceneEdge.members.length === 1 && edge.authorization) notes = authorizationSummary(edge.authorization);
   } else {
     const island = props.scene.islands.find((candidate) => candidate.id === current.id);
     if (!island) return null;
@@ -837,7 +839,7 @@ function HoverCard(props: {
   };
   return (
     <div className="landscape-hover" style={placement} role="tooltip">
-      {resource ? <ResourceHoverContent resource={resource} /> : <HoverContent title={title} facts={facts} lines={lines} />}
+      {resource ? <ResourceHoverContent resource={resource} /> : <HoverContent title={title} facts={facts} lines={lines} notes={notes} />}
     </div>
   );
 }

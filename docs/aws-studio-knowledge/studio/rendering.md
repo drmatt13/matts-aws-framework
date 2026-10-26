@@ -116,6 +116,14 @@ Drawing and pointer picking share `connectionVisible`; selecting or previewing
 a resource reveals its links regardless of those filters. Clearing selection resumes
 the unchanged filters. The accessible connection list still exposes every relationship.
 
+Connection hover headings use the relationship verb and authored label, such as
+`Routes to: /api/test/start-workflow`. From/To, environment pills and relationship details
+remain primary; a muted IAM summary follows when applicable. Permissions never rename
+connections or add badges to their headers and list rows. Full permission evidence is
+available in the connection's collapsed Permissions disclosure. Grouped hover cards
+retain each member's label; resource hover cards retain descriptions and source warnings
+without permission counts.
+
 When a seed has title collisions, the optimizer reserves a small part of its existing
 evaluation budget for local title-clearance moves after the wire search. Added input
 groups can keep their titles clear without increasing the optimizer's work limit.

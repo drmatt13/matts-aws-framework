@@ -63,8 +63,14 @@ for `app_user`; its local PostgreSQL derivative carries no AWS grant. Reader acc
 writer access. Typed secret ARN delivery grants the workload role; container startup injection
 uses the ECS execution role. Pull event arrows and IAM principal direction are independent.
 
-Shared authorization presentation serves hover, connection/member inspectors, resource previews
-and workload Permissions. `Only IAM grants` filters background wires within enabled purpose
+Connection titles and relationship rows retain their authored labels and purpose verbs,
+including `Routes to` for managed API routes. Authorization never replaces a route,
+environment variable, grant binding or workflow-step label. Single-connection hovers append
+a compact IAM action/helper summary after the relationship details, qualified `AWS only`
+when the selected graph does not build those permissions. Connection/member inspectors
+keep principal, scope, conditions and evidence behind a collapsed Permissions disclosure;
+resource previews omit IAM counts. Workload Permissions retains the full capability list.
+`Only IAM grants` filters background wires within enabled purpose
 categories, checking all current-mode group members. Selected/previewed resources still reveal
 all context. User-token agent invocations and unknown/custom native references do not qualify.
 Schedules, unlinked callbacks, custom integrations and explicit `cloud.access` also appear in
@@ -73,7 +79,7 @@ type-discovered allowlist shared by UI and server (S3, SQS, DynamoDB, SNS, Event
 Source-derived facts do not establish synthesized, deployed or effective IAM access; arbitrary
 native statements, trust/key policies and policy evaluation require their own evidence.
 
-The `runsTask` binding appears in the permissions category as `Launch ECS task`, with an IAM badge.
+The `runsTask` binding appears in the permissions category as `Launch ECS task`.
 Its solid red connection describes the derived ECS launch and role-passing grants plus
 launch configuration, rather than an observed execution. Conditional `deployWhen`
 connections use dashed orange lines and name the selecting input in their hover text.

@@ -404,32 +404,7 @@ a {
   color: var(--sheet);
 }
 
-.health {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  width: 160px;
-  border: 1px solid var(--rule-strong);
-  background: transparent;
-  border-radius: var(--radius);
-  min-height: var(--control-height);
-  padding: var(--space-1) var(--space-3);
-  cursor: pointer;
-  white-space: nowrap;
-  font: 500 var(--text-caption)/1.5 var(--sans);
-}
-.health:hover { background: var(--wash); }
-
-.health.bad {
-  color: var(--refuse);
-}
-
-.health.good {
-  color: var(--accept);
-}
-
-.health.warning, .infrastructure-run .warning { color: var(--local); }
+.infrastructure-run .warning { color: var(--local); }
 .bar-actions { display: flex; align-items: center; gap: var(--space-3); }
 
 .icon-button, .primary, .quiet, .button {
@@ -1142,7 +1117,7 @@ a {
    Narrow screens: one column, the inspector below.
    -------------------------------------------------------------------------- */
 
-/* Source mode and validation stay in the shared navbar on every route. */
+/* Source mode stays in the shared navbar on every route. */
 @media (max-width: 1200px) {
   .wordmark small { display: none; }
   .bar { gap: var(--space-3); }
@@ -1158,7 +1133,6 @@ a {
   .shell { --bar: 129px; }
   .bar-actions { display: contents; }
   .bar .source-environment { grid-column: 1 / -1; grid-row: 2; justify-self: end; }
-  .bar .health { grid-column: 2; grid-row: 1; }
   .bar .tabs { grid-row: 3; }
 }
 @media (max-width: 900px) {
