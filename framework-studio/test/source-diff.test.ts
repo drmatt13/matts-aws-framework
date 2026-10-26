@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { test } from "node:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

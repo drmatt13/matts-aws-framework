@@ -799,7 +799,7 @@ a {
 .resource-group-count { margin-left: auto; font-weight: 500; font-variant-numeric: tabular-nums; }
 .resource-group ul { list-style: none; margin: 0; padding: 0; }
 .resource-row { position: relative; display: flex; align-items: center; gap: var(--space-3); width: 100%; min-height: 44px; padding: var(--space-1) var(--space-3); border: 0; border-radius: var(--radius); background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
-.resource-row:hover { background: var(--wash); }
+.resource-row:hover, .resource-row.previewing { background: var(--wash); }
 .resource-row:focus-visible { outline: 2px solid var(--prod); outline-offset: -2px; }
 .resource-row.outside-filter .resource-row-icon, .resource-row.outside-filter strong { opacity: .55; }
 .resource-row-icon { display: inline-flex; flex: none; }

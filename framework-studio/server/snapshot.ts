@@ -195,7 +195,8 @@ export class SnapshotBuilder {
     const content = sha256(JSON.stringify({ files, conditions: [dev.targets.map(target => target.lanes.when), prod.targets.map(target => target.lanes.when)], schema: schema.hash, localDatabase }));
     const project = (model: ModeModel): ModeModel => {
       const declared = model.stale ? model : withExportStacks(withClassMembers(model, built.catalog, built.index.cdkLinks.edges), built.exportStacks);
-      const enriched = withClientEnvironment(withDeploymentInputs(this.repositoryRoot, withLocalDatabases(declared, localDatabase.services), { dev, prod }), clientMappings);
+      const comparisons = Object.values(clientMappings.mappings).flatMap(modes => Object.values(modes).flatMap(binding => binding.when ? [binding.when] : []));
+      const enriched = withClientEnvironment(withDeploymentInputs(this.repositoryRoot, withLocalDatabases(declared, localDatabase.services), { dev, prod }, comparisons), clientMappings);
       return withConnectionEvidence(this.repositoryRoot, enriched, built.index, built.catalog, sources);
     };
     const snapshot: Snapshot = {

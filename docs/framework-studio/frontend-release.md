@@ -4,6 +4,12 @@ In **Deploy**, select the intended deployment/profile/region. Open **Client envi
 
 **Generate / refresh client env** uses the existing output exporter and the selected target's authored inputs, including a named target's custom `inputs` path. It writes only the selected project's `.env.development.local` or `.env.production.local`; it does not modify root `.env`, the local resource manifest or authored CDK inputs. Public mapping recipes remain in `framework-config/client-environment.ts`; secret declarations, secret-like input names and nonpublic stack outputs are refused. The separate ordinary development export continues to own Compose settings and resource identifiers.
 
+Client input mappings use declared public catalog parameters, including their selected-mode
+presence, defaults and enum choices. CDK files supply those parameters; they are not direct
+client mapping sources. An optional `when: { input, equals }` condition writes an empty
+value when its selecting parameter does not match. `VITE_LOCAL_WS_URL` uses
+`enableWebSocketApi` as its switch and `client.webSocketPort` to construct the URL.
+
 The same public-only CLI action is available without Studio:
 
 ```powershell

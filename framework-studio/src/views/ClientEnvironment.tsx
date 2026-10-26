@@ -10,19 +10,19 @@ import { DeploymentSection, DeploymentOwnerControl } from "./Deployment";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { InspectorSwitch } from "./InspectorUI";
 
-const sourceKinds = { input: "CDK input", output: "Stack output", region: "Stack region", endpoint: "URL from CDK port", empty: "Empty value" } as const;
+const sourceKinds = { input: "Input parameter", output: "Stack output", region: "Stack region", endpoint: "URL from input parameter", empty: "Empty value" } as const;
 
 function InputSelect({ label, value, options, disabled, onChange }: { label: string; value: string; options: readonly ClientReferenceOption[]; disabled?: boolean; onChange: (name: string) => void }) {
   const inputs = options.filter((option) => option.binding.kind === "input");
   return <select aria-label={label} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
-    <option value="" disabled>Select CDK input…</option>
-    {value && !inputs.some((option) => option.label === value) ? <option value={value}>{value} (not set in file)</option> : null}
-    {inputs.map((option) => <option key={option.id} value={option.label}>{option.label}</option>)}
+    <option value="" disabled>Select input parameter…</option>
+    {value && !inputs.some((option) => option.binding.kind === "input" && option.binding.name === value) ? <option value={value}>{value} (undeclared)</option> : null}
+    {inputs.map((option) => <option key={option.id} value={option.binding.kind === "input" ? option.binding.name : ""}>{option.label}</option>)}
   </select>;
 }
 
-function SourceControls({ name, binding, options, inputs, disabled, onChange }: {
-  name: string; binding: ClientEnvironmentBinding; options: readonly ClientReferenceOption[]; inputs: string; disabled: boolean; onChange: (binding: ClientEnvironmentBinding) => void;
+function SourceControls({ name, binding, options, disabled, onChange }: {
+  name: string; binding: ClientEnvironmentBinding; options: readonly ClientReferenceOption[]; disabled: boolean; onChange: (binding: ClientEnvironmentBinding) => void;
 }) {
   const prefix = useId();
   const stacks = [...new Set(options.flatMap((option) => option.binding.kind === (binding.kind === "output" ? "output" : "region") && "stack" in option.binding ? [option.binding.stack] : []))];
@@ -34,9 +34,9 @@ function SourceControls({ name, binding, options, inputs, disabled, onChange }: 
       const next: ClientEnvironmentBinding = kind === "input" ? { kind, name: options.some((option) => option.id === `input:${name}`) ? name : "" }
         : kind === "output" ? { kind, stack: "", outputs: [] } : kind === "region" ? { kind, stack: "" }
         : kind === "endpoint" ? { kind, protocol: "http", port: "" } : { kind: "empty" };
-      onChange(next);
+      onChange({ ...next, ...(binding.when ? { when: binding.when } : {}) });
     }}>{Object.entries(sourceKinds).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}</select></label>
-    {binding.kind === "input" ? <label><span>Input in <code>{inputs}</code></span><InputSelect label={`Mapping for ${name}`} value={binding.name} options={options} onChange={(input) => onChange({ ...binding, name: input })} /></label> : null}
+    {binding.kind === "input" ? <label>Input parameter<InputSelect label={`Mapping for ${name}`} value={binding.name} options={options} onChange={(input) => onChange({ ...binding, name: input })} /></label> : null}
     {binding.kind === "region" || binding.kind === "output" ? <label>Stack<select aria-label={`Stack for ${name}`} value={binding.stack} onChange={(event) => onChange(binding.kind === "region" ? { ...binding, stack: event.target.value } : { ...binding, stack: event.target.value, outputs: [] })}>
       <option value="" disabled>Select stack…</option>
       {binding.stack && !stacks.includes(binding.stack) ? <option value={binding.stack}>{binding.stack} (unavailable)</option> : null}
@@ -53,10 +53,19 @@ function SourceControls({ name, binding, options, inputs, disabled, onChange }: 
     </> : null}
     {binding.kind === "endpoint" ? <>
       <div className="client-mapping-url"><label>Protocol<select aria-label={`Protocol for ${name}`} value={binding.protocol} onChange={(event) => onChange({ ...binding, protocol: event.target.value as typeof binding.protocol })}>{["http", "https", "ws", "wss"].map((protocol) => <option key={protocol}>{protocol}</option>)}</select></label><label>Hostname<input aria-label={`Hostname for ${name}`} value={binding.host ?? "localhost"} onChange={(event) => onChange({ ...binding, host: event.target.value })} /></label></div>
-      <label><span>Port in <code>{inputs}</code></span><InputSelect label={`Port input for ${name}`} value={binding.port} options={options} onChange={(port) => onChange({ ...binding, port })} /></label>
+      <label>Port input parameter<InputSelect label={`Port input for ${name}`} value={binding.port} options={options} onChange={(port) => onChange({ ...binding, port })} /></label>
       <div className="setting-switch"><label htmlFor={`${prefix}-override`}>Use a URL override when set</label><InspectorSwitch id={`${prefix}-override`} label={`Use URL override for ${name}`} checked={binding.override !== undefined} onChange={checked => { const { override: _old, ...reference } = binding; onChange(checked ? { ...reference, override: name } : reference); }} /></div>
       <InputSelect label={`Override input for ${name}`} value={binding.override ?? name} options={options} disabled={binding.override === undefined} onChange={(override) => onChange({ ...binding, override })} />
       <p className="small muted">The override takes priority. When empty, the URL uses the hostname and port above.</p>
+    </> : null}
+    <div className="setting-switch"><label htmlFor={`${prefix}-when`}>Use an input condition</label><InspectorSwitch id={`${prefix}-when`} label={`Use input condition for ${name}`} checked={!!binding.when} onChange={checked => {
+      const { when: _old, ...reference } = binding;
+      onChange(checked ? { ...reference, when: { input: "", equals: "true" } } : reference);
+    }} /></div>
+    {binding.when ? <>
+      <label>Condition input parameter<InputSelect label={`Condition input for ${name}`} value={binding.when.input} options={options} onChange={input => onChange({ ...binding, when: { ...binding.when!, input } })} /></label>
+      <label>Equals<input aria-label={`Condition value for ${name}`} value={binding.when.equals} onChange={event => onChange({ ...binding, when: { ...binding.when!, equals: event.target.value } })} /></label>
+      <p className="small muted">Write an empty value when the input does not match in the selected environment.</p>
     </> : null}
   </fieldset>;
 }
@@ -106,7 +115,7 @@ export function ClientEnvironmentMappings() {
       <span className="segmented" role="group" aria-label="Client mapping environment">{(["dev", "prod"] as const).map((candidate) => <button key={candidate} aria-pressed={mode === candidate} onClick={() => setMode(candidate)}>{candidate === "dev" ? "Development" : "Production"}</button>)}</span>
       <p className="small muted">Edit sources for {mode === "dev" ? "Development" : "Production"}. Each field's Dev / Prod pills choose which environments generate it. Empty values stay in the file; dimmed pills omit the field.</p>
       <details className="client-mapping-help"><summary>How mappings and files work</summary>
-        <p>CDK inputs come from <button className="linkish" disabled={draft.dirty} onClick={() => select(`envfile:${mode}`)}>{file.inputs}</button>. Stack outputs and regions refer to this environment's deployment.</p>
+        <p>Input parameters resolve this environment's values and defaults from <button className="linkish" disabled={draft.dirty} onClick={() => select(`envfile:${mode}`)}>{file.inputs}</button>. Client mappings read those parameters. Stack outputs and regions refer to this environment's deployment.</p>
         <p>Review and apply saves references in <code>framework-config/client-environment.ts</code>. This editor does not generate client files or load deployed values.</p>
         <p>The next environment export uses these saved mappings and writes <code>client-app/.env.{mode === "dev" ? "development" : "production"}.local</code>, which Vite reads over <code>client-app/.env</code>. Renaming a field changes its exported name in both environments; update any application code that reads its old name.</p>
         <p>Client settings are public in the browser. Secret inputs are excluded.</p>
@@ -147,7 +156,7 @@ export function ClientEnvironmentMappings() {
           <code>{reference.expression}</code>
         </button>
         {open ? <div id={`mapping-${name}`} className="client-mapping-detail">
-          <SourceControls name={name} binding={binding} options={file.options} inputs={file.inputs} disabled={disabled || !enabled} onChange={(next) => update(name, { ...next, ...(binding.enabled === false ? { enabled: false } : {}) })} />
+          <SourceControls name={name} binding={binding} options={file.options} disabled={disabled || !enabled} onChange={(next) => update(name, { ...next, ...(binding.enabled === false ? { enabled: false } : {}) })} />
           <p className={`client-mapping-note small ${preview.status === "unavailable" ? "reason" : "muted"}`} role="status">{preview.note}</p>
           <div className="client-mapping-actions">
             {preview.sources[0]?.entity ? <button className="quiet small" aria-label={`Open source for ${name}`} title={draft.dirty ? "Apply or discard changes before opening the source" : preview.sources[0].label} disabled={draft.dirty || !enabled} onClick={() => select(preview.sources[0]!.entity)}><ArrowUpRight size={14} aria-hidden />Open source</button> : null}

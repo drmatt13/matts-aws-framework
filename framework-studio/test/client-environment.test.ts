@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { parseEnv } from "node:util";
@@ -24,10 +24,7 @@ test("every documented client variable maps to the selected graph's inputs or pu
     const file = clientFile(model);
     assert.deepEqual(file.entries.map((entry) => entry.name).sort(), expected);
     assert.equal(file.inputs, `cdk-app/.env.${model.mode}`);
-    const inputEdge = model.edges.find((edge) => edge.id === `client-environment:inputs:envfile:${model.mode}`);
-    assert.equal(inputEdge?.from, CLIENT_ENVIRONMENT_ID);
-    assert.equal(inputEdge?.to, `envfile:${model.mode}`);
-    assert.match(inputEdge!.detail!, /Environment-file generation is separate/);
+    assert.ok(!model.edges.some(edge => edge.relation === "maps" && edge.from.startsWith("envfile:")));
     const entries = new Map(file.entries.map((entry) => [entry.name, entry]));
     const cognito = model.resources.find((resource) => resource.stackClass === "CognitoStack")!;
     for (const name of ["VITE_USER_POOL_ID", "VITE_USER_POOL_CLIENT_ID", "VITE_COGNITO_DOMAIN", "VITE_AWS_REGION"]) {
@@ -36,9 +33,12 @@ test("every documented client variable maps to the selected graph's inputs or pu
     }
     assert.equal(entries.get("VITE_AWS_REGION")!.expression, "CognitoStack.region");
     for (const entry of file.entries) for (const source of entry.sources) if (source.entity) assert.ok(model.resources.some((resource) => resource.id === source.entity));
-    for (const edge of model.edges.filter((edge) => edge.from === CLIENT_ENVIRONMENT_ID)) {
+    assert.ok(!model.edges.some((edge) => edge.relation === "maps" && edge.from === CLIENT_ENVIRONMENT_ID));
+    for (const edge of model.edges.filter((edge) => edge.relation === "maps")) {
       assert.equal(edge.relation, "maps");
-      assert.ok(!model.resources.find((resource) => resource.id === edge.to)?.deploymentFile || edge.to === `envfile:${model.mode}`);
+      assert.equal(edge.to, CLIENT_ENVIRONMENT_ID);
+      const source = model.resources.find((resource) => resource.id === edge.from)!;
+      assert.ok(source.kind === "input" || source.kind === "stack");
     }
   }
 });
@@ -72,7 +72,7 @@ test("mappings reuse renamed catalog identities and never expose authored input 
   const base = snapshot.models.dev;
   const renamed = withClientEnvironment({ ...base, resources: base.resources.map((resource) => {
     if (resource.stackClass === "CognitoStack") return { ...resource, id: "resource:identity" };
-    if (resource.deploymentFile?.mode === "dev") return { ...resource, deploymentFile: { ...resource.deploymentFile, entries: [...resource.deploymentFile.entries.filter((entry) => entry.name !== "VITE_API_GATEWAY_URL"), { name: "VITE_API_GATEWAY_URL", status: "configured" as const, sensitive: false, defaulted: false, targets: [], value: sentinel }] } };
+    if (resource.fromEnv === "VITE_API_GATEWAY_URL") return { ...resource, inputSources: [{ file: "cdk-app/.env.dev", entry: { name: "VITE_API_GATEWAY_URL", status: "configured" as const, sensitive: false, defaulted: false, targets: [resource.id], value: sentinel } }] };
     return resource;
   }) });
   const file = clientFile(renamed);
@@ -93,7 +93,7 @@ test("draft previews resolve the new source immediately and distinguish missing,
   assert.match(output.note, /has not been checked/, "a declaration is not deployed-value verification");
   const missing = previewClientBinding("VITE_CUSTOM", { kind: "input", name: "UNSET_PUBLIC_INPUT" }, model);
   assert.equal(missing.status, "unavailable");
-  assert.match(missing.note, /Set UNSET_PUBLIC_INPUT in cdk-app\/\.env.dev/);
+  assert.match(missing.note, /Declare UNSET_PUBLIC_INPUT as a public input parameter/);
   assert.equal(previewClientBinding("VITE_CUSTOM", { kind: "empty" }, model).status, "empty");
   assert.equal(previewClientBinding("VITE_CUSTOM", { kind: "input", name: "UNSET_PUBLIC_INPUT", enabled: false }, model).status, "disabled");
   const incomplete = previewClientBinding("VITE_CUSTOM", { kind: "output", stack: "CognitoStack", outputs: [] }, model);
@@ -108,13 +108,28 @@ test("the client island, its source connections and variable search exist in bot
     const scene = scenes[at]!;
     assert.equal(scene.islands.find((island) => island.id === CLIENT_ENVIRONMENT_ISLAND)?.title, "Client-app environment file");
     assert.equal(scene.nodes.find((node) => node.id === CLIENT_ENVIRONMENT_ID)?.island, CLIENT_ENVIRONMENT_ISLAND);
-    assert.ok(scene.edges.some((edge) => edge.from === CLIENT_ENVIRONMENT_ID && edge.to === "resource:cognito"));
-    for (const mode of ["dev", "prod"] as const) {
-      const connection = scene.edges.find((edge) => edge.from === CLIENT_ENVIRONMENT_ID && edge.to === `envfile:${mode}`);
-      assert.ok(connection, `${mode} inputs stay connected in either view`);
-      assert.deepEqual(connection.availability, { dev: mode === "dev", prod: mode === "prod" });
-    }
+    assert.ok(scene.edges.some((edge) => edge.from === "resource:cognito" && edge.to === CLIENT_ENVIRONMENT_ID));
+    const connection = scene.edges.find((edge) => edge.from === "resource:client.apiPort" && edge.to === CLIENT_ENVIRONMENT_ID);
+    assert.ok(connection, "the development input stays connected in either view");
+    assert.deepEqual(connection.availability, { dev: true, prod: false });
     assert.ok(searchScene(scene, model, "VITE_USER_POOL_CLIENT_ID")!.nodes.has(CLIENT_ENVIRONMENT_ID));
   }
   assert.deepEqual(scenes[0]!.nodes.map((node) => [node.id, node.gx, node.gy]), scenes[1]!.nodes.map((node) => [node.id, node.gx, node.gy]));
+});
+
+test("WebSocket URL consumes the selecting input's mode-specific condition and the declared port", () => {
+  const productionPort = snapshot.models.prod.resources.find(resource => resource.id === "resource:client.webSocketPort")!;
+  assert.equal(productionPort.kind, "input", "the disabled parameter retains its input identity in Production");
+  assert.equal(productionPort.absent, true);
+  const model = snapshot.models.dev;
+  const binding = clientFile(model).mappings.VITE_LOCAL_WS_URL!.dev;
+  for (const outcome of ["holds", "fails", "unset"] as const) {
+    const scoped = { ...model, resources: model.resources.map(resource => resource.id === "resource:enableWebSocketApi" ? { ...resource, inputComparisons: { true: outcome } } : resource) };
+    const entry = previewClientBinding("VITE_LOCAL_WS_URL", binding, scoped);
+    assert.equal(entry.sources[0]?.entity, "resource:enableWebSocketApi");
+    assert.equal(entry.status, outcome === "holds" ? "mapped" : outcome === "fails" ? "empty" : "unavailable");
+    if (outcome === "holds") assert.ok(entry.sources.some(source => source.entity === "resource:client.webSocketPort"));
+  }
+  const withoutFiles = { ...model, resources: [...model.resources.filter(resource => !resource.deploymentFile), { id: "resource:publicDefault", path: ["publicDefault"], kind: "input" as const, fromEnv: "PUBLIC_DEFAULT", default: "fallback", absent: false }] };
+  assert.equal(previewClientBinding("VITE_CUSTOM", { kind: "input", name: "PUBLIC_DEFAULT" }, withoutFiles).status, "mapped", "parameter defaults and context suffice without a direct file dependency");
 });

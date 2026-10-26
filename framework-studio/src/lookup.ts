@@ -104,7 +104,7 @@ export const RELATION_LABEL: Readonly<Record<Relation, string>> = {
   authorizes: "Authorizes",
   env: "Reads",
   supplies: "Supplies input",
-  maps: "Maps from",
+  maps: "Maps into",
   secret: "Started with secret",
   grant: "Granted",
   database: "Uses the database",

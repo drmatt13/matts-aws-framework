@@ -6,7 +6,7 @@ export const clientEnvironment = {
     prod: { kind: "output", stack: "FrontendWebsiteS3Stack", outputs: ["CloudFrontUrl", "FrontendWebsiteUrl"] },
   },
   VITE_LOCAL_WS_URL: {
-    dev: { kind: "endpoint", protocol: "ws", port: "LOCAL_WS_DEV_SERVER_HOST_PORT" },
+    dev: { kind: "endpoint", protocol: "ws", port: "LOCAL_WS_DEV_SERVER_HOST_PORT", when: { input: "ENABLE_WEBSOCKET_API", equals: "true" } },
     prod: { kind: "empty" },
   },
   VITE_API_GATEWAY_WS_URL: {

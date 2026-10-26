@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { after, before, test } from "node:test";
 import path from "node:path";
 import { performance } from "node:perf_hooks";

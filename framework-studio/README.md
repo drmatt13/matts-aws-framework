@@ -279,7 +279,7 @@ The initial mappings are:
 | Variable | Development source | Production source |
 | --- | --- | --- |
 | `VITE_API_GATEWAY_URL` | CDK `VITE_API_GATEWAY_URL` override, otherwise `http://localhost:${LOCAL_API_DEV_SERVER_HOST_PORT}` | Frontend stack `CloudFrontUrl` output |
-| `VITE_LOCAL_WS_URL` | `ws://localhost:${LOCAL_WS_DEV_SERVER_HOST_PORT}` | Empty |
+| `VITE_LOCAL_WS_URL` | `ws://localhost:${LOCAL_WS_DEV_SERVER_HOST_PORT}` when `enableWebSocketApi` matches `"true"`, otherwise empty | Empty |
 | `VITE_API_GATEWAY_WS_URL` | WebSocket stack `WebSocketAPIEndpoint` when enabled, otherwise empty | Same rule |
 | `VITE_WS_TESTER_URL` | `http://localhost:${WS_TESTER_HOST_PORT}` | Empty |
 | `VITE_AWS_REGION` | Cognito stack's deployment region | Cognito stack's deployment region |
@@ -287,10 +287,12 @@ The initial mappings are:
 | `VITE_USER_POOL_CLIENT_ID` | Cognito `UserPoolClientId` output | Same output in the selected deployment |
 | `VITE_COGNITO_DOMAIN` | Cognito `UserPoolDomainUrl` output | Same output in the selected deployment |
 
-CDK inputs always refer to the selected mode's `.env.dev` or `.env.prod`; there is no
-legacy `cdk-app/.env`. Both CDK files connect to `client-app/.env` in the map, each in
-its own environment, even when that environment's fields all use stack outputs.
-This file relationship describes the input context; it does not generate client files.
+Client mappings read declared input parameters on the Input parameters and secrets island.
+CDK `.env.dev` and `.env.prod` files supply those parameters; they have no direct mapping
+connection to `client-app/.env`. Parameters carry their selected-mode presence and defaults,
+and exports evaluate the catalog for the selected deployment. Local URL inputs under
+`resources.client` are Development-only. A mapping's optional `when: { input, equals }`
+uses a public input parameter to control whether its value is populated or empty.
 Region comes from Cognito's deployment rather than
 `LOCAL_AWS_REGION`, which can name a different region for local SDK calls. An absent
 WebSocket stack permits an empty URL; an enabled stack missing its output is reported as
@@ -653,6 +655,10 @@ separately, as Framework describes.
 
 Tests (`npm --workspace framework-studio test`) run against the real configuration in
 memory, and against a disposable copy under `.cache/framework-studio/` when they write.
+They import `assert` from `test/support/assert.ts`, never `node:assert` directly:
+node:assert diffs a failing comparison's operands without bound, and one failing
+`assert.equal(element, null)` committed ~100 GB and took the whole machine down. Small
+operands keep node:assert's messages; large ones report their first difference.
 
 VPC placement is explicit: Lambdas import `vpc`, services/tasks import `cloud.vpc`,
 and native application resources call `frameworkVpc(this, importedVpc)`. Each VPC has

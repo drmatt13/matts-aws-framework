@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { test } from "node:test";
 import { createTargetAvailability, defineFrameworkConfig, getCloudTargets, getFrameworkTargets, invokeLambda, sequence, workflow, type DeployToken, type TargetRole } from "@repo/framework/config";
 import { defaults } from "../../framework-config/defaults";

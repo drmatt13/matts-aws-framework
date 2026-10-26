@@ -59,7 +59,8 @@ function assignmentLines(text: string): Map<string, number> {
 
 export const sensitiveName = (name: string) => /SECRET|PASSWORD|TOKEN|CREDENTIAL|PRIVATE_KEY|ACCESS_KEY|API_KEY/i.test(name);
 
-export function withDeploymentInputs(root: string, model: ModeModel, models?: Readonly<Record<Mode, ModeModel>>): ModeModel {
+export function withDeploymentInputs(root: string, model: ModeModel, models?: Readonly<Record<Mode, ModeModel>>, comparisons: readonly { readonly input: string; readonly equals: string }[] = []): ModeModel {
+  const selectedComparisons = new Map<string, Readonly<Record<string, "holds" | "fails" | "unset">>>();
   const catalog = model.resources.filter((resource) => !resource.deploymentFile);
   const expected = new Map<string, ModelResource[]>();
   for (const resource of catalog) if (resource.fromEnv) expected.set(resource.fromEnv, [...(expected.get(resource.fromEnv) ?? []), resource]);
@@ -68,6 +69,14 @@ export function withDeploymentInputs(root: string, model: ModeModel, models?: Re
     try {
       const text = inputText(root, file);
       const parsed = parseEnv(text ?? "");
+      if (mode === model.mode) for (const resource of catalog) if (resource.kind === "input" && resource.fromEnv) {
+        const authored = parsed[resource.fromEnv];
+        const raw = (authored?.trim() ? authored : resource.default)?.trim();
+        const value = resource.values ? resource.values.find(allowed => allowed.toLowerCase() === raw?.toLowerCase()) : raw;
+        selectedComparisons.set(resource.id, Object.fromEntries(comparisons.filter((condition) => condition.input === resource.fromEnv).map((condition) => [condition.equals,
+          resource.absent || value === undefined ? "unset" : value === condition.equals ? "holds" : "fails",
+        ])));
+      }
       const template = parseEnv(inputText(root, deploymentInputTemplate(mode)) ?? "");
       const locations = assignmentLines(text ?? "");
       const requirements = inputRequirements(models?.[mode] ?? model, parsed, mode, file);
@@ -89,6 +98,7 @@ export function withDeploymentInputs(root: string, model: ModeModel, models?: Re
     }
   });
   const resources: ModelResource[] = catalog.map((resource) => resource.fromEnv ? { ...resource,
+    inputComparisons: selectedComparisons.get(resource.id),
     inputRequirement: files.find((file) => file.mode === model.mode)?.entries.find((entry) => entry.name === resource.fromEnv)?.requirements?.find((requirement) => requirement.resource === resource.id),
     inputSources: files.flatMap((file) => file.entries.filter((entry) => entry.name === resource.fromEnv).map((entry) => ({ file: file.path, entry }))) } : resource);
   // A file belongs to its own environment's graph and is absent from the other's, as any resource a graph does

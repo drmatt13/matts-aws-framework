@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { mock, test } from "node:test";
 
 test("an old server's HTML fallback cannot masquerade as empty successful API data", async () => {

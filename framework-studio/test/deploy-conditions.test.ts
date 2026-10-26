@@ -1,5 +1,5 @@
 import { readDraftEdits } from "../server/server";
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import test from "node:test";
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";

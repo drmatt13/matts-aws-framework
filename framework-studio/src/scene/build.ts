@@ -474,7 +474,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   for (const resource of model.resources) {
     if (resource.parent || standIns[resource.id]?.startsWith("gateway:")) continue;
     if (resource.clientEnvironment) {
-      clientFiles.push({ ...catalogItem(resource), presenceText: "Client-app variables mapped from CDK inputs and stack outputs. Select to inspect the mappings." });
+      clientFiles.push({ ...catalogItem(resource), presenceText: "Client-app variables mapped from input parameters and stack outputs. Select to inspect the mappings." });
     } else if (resource.deploymentFile) {
       environmentFiles.push({ ...catalogItem(resource), badge: resource.deploymentFile.mode,
         presenceText: `${resource.deploymentFile.path}: ${resource.deploymentFile.exists ? "local file" : "not generated; select the island to generate it"}. Values stay outside the graph.` });
@@ -511,7 +511,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
     caption: ["Separate development and production inputs. Select a file to edit or add environment variables in a draft; select the island to generate a missing file from its template. Values stay outside the graph."],
     bands: [{ id: "band:environment", title: "CDK environment files", caption: [], h: 1, groups: [environmentFiles] }] });
   if (clientFiles.length) catalog.push({ id: CLIENT_ENVIRONMENT_ISLAND, title: "Client-app environment file", region: "catalog",
-    caption: ["Client variables mapped from each environment's CDK inputs and public stack outputs. Select to inspect their sources."],
+    caption: ["Client variables mapped from each environment's input parameters and public stack outputs. Select to inspect their sources."],
     bands: [{ id: "band:client-environment", title: "Client-app environment file", caption: [], h: 1, groups: [clientFiles] }] });
   return { entry, compute, catalog };
 }

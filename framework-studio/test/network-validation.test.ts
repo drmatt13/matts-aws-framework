@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import test from "node:test";
 import { creationDefaults, networkCreationProblem, readCreationRequest } from "../shared/creation";
 import { unusedNetworkCidr } from "../shared/networks";

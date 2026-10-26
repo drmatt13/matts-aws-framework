@@ -1,5 +1,5 @@
 import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { test } from "node:test";
 import { defineFrameworkConfig, getFrameworkTargets, deployLanes, DEPLOY_SETTINGS, type FrameworkConfig } from "@repo/framework/config";
 import { defaults } from "../../framework-config/defaults";

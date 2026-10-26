@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { after, afterEach, before, mock, test } from "node:test";
@@ -155,11 +155,11 @@ test("client mappings give a searchable source overview and use the selected env
   let selected = "";
   await mount((id) => { selected = id; }, undefined, file);
   for (const entry of file.clientEnvironment!.entries) assert.ok(ui.screen.getByText(entry.name, { selector: "strong code" }));
-  assert.equal(ui.screen.queryByRole("combobox"), null, "source controls stay collapsed until needed");
+  assert.equal(document.querySelector(".client-mapping-controls"), null, "source controls stay collapsed until needed");
   assert.equal(ui.screen.queryByRole("button", { name: /^Generate \.env/ }), null);
   openMapping("VITE_LOCAL_WS_URL");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Open source for VITE_LOCAL_WS_URL" }));
-  assert.equal(selected, "envfile:dev");
+  assert.equal(selected, "resource:enableWebSocketApi");
   openMapping("VITE_USER_POOL_ID");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Open source for VITE_USER_POOL_ID" }));
   assert.equal(selected, "resource:cognito");

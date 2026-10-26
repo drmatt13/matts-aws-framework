@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { mock, test } from "node:test";

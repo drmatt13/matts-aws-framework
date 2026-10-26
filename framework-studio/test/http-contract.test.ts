@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { createServer } from "node:http";
 import test from "node:test";
 import express from "express";

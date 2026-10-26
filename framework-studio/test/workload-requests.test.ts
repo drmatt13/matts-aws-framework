@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import test from "node:test";
 import { readDraftEdits } from "../server/server";
 import { creationDefaults } from "../shared/creation";

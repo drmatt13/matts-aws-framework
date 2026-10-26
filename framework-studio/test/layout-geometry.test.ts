@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import test from "node:test";
 import type { Bounds, Point } from "../src/scene/camera";
 import { intersects, pathBounds, pathHits, pathsCross, segmentsCross } from "../src/scene/layout-geometry";

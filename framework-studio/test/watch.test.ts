@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, mkdirSync, renameSync, rmSync, symlinkSync, writeFileSync, type FSWatcher } from "node:fs";
 import { tmpdir } from "node:os";

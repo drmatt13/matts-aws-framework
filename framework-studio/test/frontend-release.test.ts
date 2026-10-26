@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -23,6 +23,7 @@ function fixture(mode: "dev" | "prod" = "prod") {
   writeFileSync(path.join(root, "cdk-app/.env.dev.template"), "PUBLIC_SETTING=template-dev\n");
   writeFileSync(path.join(root, "cdk-app/.env.prod.template"), "PUBLIC_SETTING=template-prod\n");
   const binding = { kind: "input", name: "PUBLIC_SETTING" };
+  writeFileSync(path.join(root, "framework.config.ts"), 'import { defineResources, resource } from "@repo/framework/config"; export default { resources: defineResources({ publicSetting: resource.fromEnv("PUBLIC_SETTING"), privateSecret: resource.secret("PRIVATE_SECRET") }) };');
   writeFileSync(path.join(root, "framework-config/client-environment.ts"), `export const clientEnvironment = ${JSON.stringify({ VITE_PUBLIC: { dev: binding, prod: binding } })} as const;`);
   const settings = { ...DEFAULT_FRONTEND_RELEASE, projectDirectory: "web", prefix: "app/" };
   writeFileSync(path.join(root, "framework-config/frontend-release.json"), JSON.stringify(settings));

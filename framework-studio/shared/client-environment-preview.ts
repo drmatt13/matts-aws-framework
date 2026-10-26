@@ -3,21 +3,30 @@ import type { ModeModel } from "./model";
 
 /** Symbolic previews for both saved and draft mappings. Never reads values or contacts AWS. */
 export function previewClientBinding(name: string, binding: ClientEnvironmentBinding, model: ModeModel): ClientEnvironmentEntry {
-  const file = model.resources.find((resource) => resource.deploymentFile?.mode === model.mode);
-  const inputs = file?.deploymentFile?.path ?? `cdk-app/.env.${model.mode}`;
+  const inputs = `cdk-app/.env.${model.mode}`;
   const inputSource = (name: string): ClientEnvironmentSource => {
-    const entry = file?.deploymentFile?.entries.find((entry) => entry.name === name);
-    const catalog = model.resources.find((resource) => resource.fromEnv === name && resource.kind === "input" && !resource.absent);
-    return { entity: catalog?.id ?? file?.id, label: `${inputs} · ${name}`,
-      available: !!entry && (entry.status === "configured" || entry.defaulted), source: entry?.source };
+    const catalog = model.resources.find((resource) => resource.fromEnv === name && resource.kind === "input");
+    const entry = catalog?.inputSources?.find((source) => source.file === inputs)?.entry;
+    return { entity: catalog?.id, label: catalog ? `${catalog.path.join(".")} · ${name}` : `${name} (undeclared input parameter)`,
+      available: !!catalog && !catalog.absent && (entry?.status === "configured" || !!catalog.default?.trim()), source: entry?.source };
   };
   if (binding.enabled === false) return { name, expression: "Disabled", required: false, status: "disabled", sources: [], note: "This field is omitted in this environment; its source is retained." };
+  if (binding.when) {
+    const { when, ...value } = binding;
+    const condition = inputSource(when.input);
+    const resource = model.resources.find((resource) => resource.id === condition.entity);
+    const outcome = resource?.inputComparisons?.[when.equals];
+    const preview = previewClientBinding(name, value, model);
+    if (outcome !== "holds") return { name, expression: preview.expression, required: outcome !== "fails", status: outcome === "fails" ? "empty" : "unavailable", sources: [condition],
+      note: outcome === "fails" ? `Empty because ${when.input} does not match ${JSON.stringify(when.equals)} in this environment.` : `The ${when.input} input condition needs evaluation. Review the input parameter and mapping.` };
+    return { ...preview, sources: [condition, ...preview.sources], note: `${preview.note} Enabled when ${when.input} matches ${JSON.stringify(when.equals)}.` };
+  }
   if (binding.kind === "empty") return { name, expression: '""', required: false, status: "empty", sources: [], note: "Write an empty value in this environment. Disable the field to omit it instead." };
   if (binding.kind === "input") {
     if (!binding.name) return { name, expression: "Choose an input", required: true, status: "unavailable", sources: [], note: `Choose a public CDK input from ${inputs}.` };
     const source = inputSource(binding.name);
     return { name, expression: `\${${binding.name}}`, required: true, status: source.available ? "mapped" : "unavailable", sources: [source],
-      note: source.available ? `Read ${binding.name} from ${inputs}, or its declared default.` : `Set ${binding.name} in ${inputs}, or supply a declaration default.` };
+      note: source.available ? `Read ${binding.name} through its input parameter in this environment.` : source.entity ? `Set ${binding.name} in ${inputs}, or supply a declaration default.` : `Declare ${binding.name} as a public input parameter.` };
   }
   if (binding.kind === "endpoint") {
     if (!binding.port) return { name, expression: "Choose a port input", required: true, status: "unavailable", sources: [], note: "Choose the CDK input that supplies this URL's port." };

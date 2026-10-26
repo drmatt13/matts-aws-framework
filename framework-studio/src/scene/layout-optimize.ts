@@ -1,6 +1,6 @@
 import { layoutIslands, titleRoom, type IslandFootprint, type IslandPosition } from "./layout";
 import type { LayoutGraph, LayoutLink } from "./layout-graph";
-import { layoutObstacles, measureLayout, type LayoutQuality } from "./layout-quality";
+import { layoutLabels, layoutObstacles, measureLayout, type LayoutQuality } from "./layout-quality";
 import { intersects, type Obstacle } from "./layout-geometry";
 
 export interface LayoutSettings { readonly aspect?: number; readonly previous?: readonly IslandPosition[]; readonly previousKey?: string; readonly pins?: Readonly<Record<string, IslandPosition>>; readonly budget?: number }
@@ -121,16 +121,22 @@ export function optimizeLayout(islands: readonly IslandFootprint[], graph: Layou
     return { positions: settings.previous, before, after, evaluations: 0, key, topologyKey };
   }
   const budget = settings.budget ?? (islands.length > 24 ? 90 : 360);
+  // Keep a few evaluations for title clearance after the wire search has settled.
+  const titleReserve = quality.labelOverlaps ? Math.min(24, Math.floor(budget / 10)) : 0;
+  let limit = budget - titleReserve;
+  let clearingTitles = false;
   const needsFallback = quality.islandOverlaps > 0;
   const consider = (candidate: readonly IslandPosition[]) => {
     // Reserve a final evaluation to repair an infeasible incremental packing.
-    if (evaluations >= budget - (needsFallback ? 1 : 0)) return;
+    if (evaluations >= limit - (needsFallback ? 1 : 0)) return;
     if (!preferences(islands, candidate)) return;
     if (localEdit && candidate.some((p) => { const before = old.get(p.id); return !settings.pins?.[p.id] && before && Math.hypot((p.left - before.left) * 32, (p.top - before.top) * 16) > 128; })) return;
     for (const p of candidate) if (settings.pins?.[p.id] && (p.left !== settings.pins[p.id]!.left || p.top !== settings.pins[p.id]!.top)) return;
     evaluations++;
     const q = evaluate(candidate);
-    if (q.cost < quality.cost - 0.01) { best = [...candidate]; quality = q; }
+    if (clearingTitles && q.labelOverlaps > quality.labelOverlaps) return;
+    const clearsTitle = clearingTitles && q.labelOverlaps < quality.labelOverlaps && q.islandOverlaps <= quality.islandOverlaps;
+    if (clearsTitle || q.cost < quality.cost - 0.01) { best = [...candidate]; quality = q; }
   };
   if (old.size) consider(best.map((p) => settings.pins?.[p.id] ?? old.get(p.id) ?? p));
   const centreScale = Math.max(0.6, Math.min(3, before.aspect / aspect));
@@ -166,6 +172,25 @@ export function optimizeLayout(islands: readonly IslandFootprint[], graph: Layou
     for (let a = 0; a < best.length && evaluations < budget; a++) for (let b = a + 1; b < best.length && evaluations < budget; b++) {
       const one = best[a]!, two = best[b]!;
       consider(best.map((p) => p.id === one.id ? { ...p, left: two.left, top: two.top } : p.id === two.id ? { ...p, left: one.left, top: one.top } : p));
+    }
+  }
+  limit = budget;
+  clearingTitles = true;
+  if (quality.labelOverlaps) {
+    const labels = layoutLabels(islands, best, aspect), obstacles = layoutObstacles(islands, best);
+    const colliding = new Set<string>();
+    for (let a = 0; a < islands.length; a++) for (let b = a + 1; b < islands.length; b++) {
+      if (intersects(labels[a]!.bounds, labels[b]!.bounds) || intersects(labels[a]!.bounds, obstacles[b]!.bounds) || intersects(labels[b]!.bounds, obstacles[a]!.bounds)) {
+        colliding.add(islands[a]!.id); colliding.add(islands[b]!.id);
+      }
+    }
+    for (const id of colliding) for (const step of [1, 3, 6, 12]) {
+      if (!quality.labelOverlaps || evaluations >= budget) break;
+      const anchor = best.find(p => p.id === id)!;
+      for (const [dx, dy] of [[0, -step], [0, step], [-step, 0], [step, 0]]) {
+        consider(best.map(p => p.id === id ? { ...p, left: anchor.left + dx, top: anchor.top + dy }
+          : dy && ["island:environment", "island:inputs"].includes(id) && ["island:environment", "island:inputs"].includes(p.id) ? { ...p, top: p.top + dy } : p));
+      }
     }
   }
   // A large footprint edit can make the old arrangement infeasible. Prefer a

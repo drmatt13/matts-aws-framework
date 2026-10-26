@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { test } from "node:test";
 import type { DatabaseObservation, DatabaseSaveResult, DatabaseSourceReview, DatabaseValidation, DatabaseWorkbench } from "../shared/database-workbench";
 import { DatabaseSession, type DatabaseSessionApi } from "../src/database-session";

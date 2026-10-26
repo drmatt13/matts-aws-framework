@@ -83,6 +83,11 @@ export const descriptions = {
   "resource:openaiApiKey": "OpenAI provider credential supplied through the OPENAI_API_KEY secret declaration. Author its value only in the selected CDK inputs file.",
   "resource:googleClientSecret": "Google OAuth client credential supplied through the GOOGLE_CLIENT_SECRET secret declaration. Author its value only in the selected CDK inputs file.",
   "resource:enableWebSocketApi": "ENABLE_WEBSOCKET_API controls the shared Deploy condition on every WebSocket handler and its authorizer. Set true or false independently in the development and production CDK input files; changes take effect on the next local restart or AWS deployment.",
+  "resource:client": "Development-only input parameters used to construct public client URLs. CDK environment files supply these parameters before client mappings read them.",
+  "resource:client.apiPort": "Authored local HTTP API host port. Supplies the development client API URL when no public URL override is configured.",
+  "resource:client.webSocketPort": "Authored local WebSocket host port. Supplies the client WebSocket URL when enableWebSocketApi is true in Development.",
+  "resource:client.webSocketTesterPort": "Authored host port for the local WebSocket tester's public development URL.",
+  "resource:client.apiUrl": "Optional public development API URL override. The local API port parameter supplies the fallback when this input is empty.",
   "resource:langgraph": "Groups the model provider and model identifier inputs shared by the example agent's model configuration.",
   "resource:langgraph.modelProvider": "Selects the agent model provider: Bedrock Mantle, Bedrock or OpenAI. Provider selection determines which model identifier and credentials are used.",
   "resource:langgraph.bedrockModelId": "Model identifier used when the shared model provider is Bedrock.",
@@ -90,7 +95,7 @@ export const descriptions = {
   "resource:langgraph.openaiModelId": "Model identifier used when the shared model provider is OpenAI.",
   "envfile:dev": "Development CDK input file editor. Stages variable changes for review and writes only the selected development file; values stay outside map data.",
   "envfile:prod": "Production CDK input file editor. Stages variable changes for review and writes only the selected production file. Saving does not deploy infrastructure.",
-  "client-envfile": "Client-app environment variable mappings. Local endpoints reference the selected CDK inputs, while identity and deployed endpoint settings reference public stack outputs. Inspect each variable's source without loading values.",
+  "client-envfile": "Client-app environment variable mappings. Local endpoints consume declared input parameters with their Development or Production context, while identity and deployed endpoint settings reference public stack outputs. Inspect each variable's source without loading values.",
   "local:postgres": "Local PostgreSQL service declared in docker-compose.yml. Development workloads share the application schema with production RDS; named Compose storage preserves local data.",
 
   // Network fixtures

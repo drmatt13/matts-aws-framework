@@ -1,5 +1,5 @@
 import { applicationVpc as fixtureVpc } from "../../framework-config/networks/application";
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";

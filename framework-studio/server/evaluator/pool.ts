@@ -5,6 +5,7 @@ import type { Mode, ModeModel } from "../../shared/model";
 import { writeModeInputs, resolveDeployOutcomes } from "../inputs";
 import type { PreflightRequest, PreflightResult } from "../model/preflight";
 import { failedModel } from "../model/project";
+import { withCatalogContext } from "../model/catalog-context";
 
 /**
  * The dev and prod evaluators, kept alive between questions and replaced
@@ -173,8 +174,8 @@ export class EvaluatorPool {
     this.current = pair;
     const [dev, prod] = await Promise.all([pair.dev.model, pair.prod.model]);
     return {
-      dev,
-      prod,
+      dev: withCatalogContext(dev, prod),
+      prod: withCatalogContext(prod, dev),
       preflight: async (request) => {
         const [devResult, prodResult] = await Promise.all([pair.dev.preflight(request), pair.prod.preflight(request)]);
         return { dev: devResult, prod: prodResult };

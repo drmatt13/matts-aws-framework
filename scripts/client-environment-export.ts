@@ -9,6 +9,8 @@ export function resolveClientEnvironmentMappings(mappings: ClientEnvironmentMapp
   readonly inputs: Readonly<Record<string, string | undefined>>;
   readonly defaults?: Readonly<Record<string, string | undefined>>;
   readonly sensitiveInputs?: ReadonlySet<string>;
+  readonly declaredInputs?: ReadonlySet<string>;
+  readonly inputEnums?: Readonly<Record<string, readonly string[]>>;
 }): Record<string, string> {
   const error = clientMappingsError(mappings);
   if (error) throw new Error(error);
@@ -19,14 +21,24 @@ export function resolveClientEnvironmentMappings(mappings: ClientEnvironmentMapp
   const fail = (name: string, reason: string): never => { throw new Error(`${name}: ${reason} Existing local files were preserved.`); };
   const input = (name: string, field: string) => {
     if (!publicInputName(name) || context.sensitiveInputs?.has(name)) fail(field, "Secret inputs cannot be exported to the browser.");
+    if (context.declaredInputs && !context.declaredInputs.has(name)) fail(field, `Declare ${name} as a public input parameter.`);
     const authored = Object.hasOwn(context.inputs, name) ? context.inputs[name] : undefined;
-    return authored?.trim() ? authored : Object.hasOwn(context.defaults ?? {}, name) ? context.defaults![name] ?? "" : "";
+    const raw = (authored?.trim() ? authored : Object.hasOwn(context.defaults ?? {}, name) ? context.defaults![name] ?? "" : "").trim();
+    const choices = Object.hasOwn(context.inputEnums ?? {}, name) ? context.inputEnums![name] : undefined;
+    const value = choices ? choices.find(allowed => allowed.toLowerCase() === raw.toLowerCase()) : raw;
+    if (raw && value === undefined) fail(field, `The ${name} input parameter does not match its declared choices.`);
+    return value ?? "";
   };
   const result: Record<string, string> = {};
   const publicOutputs: Readonly<Record<string, Readonly<Record<string, string>>>> = ROOT_ENV_STACK_OUTPUTS;
   for (const [name, modes] of Object.entries(mappings)) {
     const binding = modes[identity.mode];
     if (binding.enabled === false) continue;
+    if (binding.when) {
+      const selected = input(binding.when.input, name);
+      if (!selected.trim()) fail(name, `Set the ${binding.when.input} input parameter or supply a declaration default.`);
+      if (selected !== binding.when.equals) { result[name] = ""; continue; }
+    }
     let value: string;
     if (binding.kind === "empty") value = "";
     else if (binding.kind === "input") {

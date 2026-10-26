@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { test } from "node:test";
 import type { JobLogLine } from "../shared/deploy";
 import { LogStore } from "../src/deploy/log-store";

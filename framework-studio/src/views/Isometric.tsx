@@ -95,6 +95,7 @@ export function Isometric() {
   const [resourceKind, setResourceKind] = useState("");
   // Whether Resources is open beneath any inspector; a selection always shows its inspector.
   const [browsing, setBrowsing] = useState(false);
+  const [resourcePreview, setResourcePreview] = useState<string>();
   const view: PanelView = selected !== undefined ? "inspector" : browsing ? "resources" : "closed";
   const browserMemory = useRef<BrowserMemory>({ scrollTop: 0 });
   const backButton = useRef<HTMLButtonElement>(null);
@@ -128,12 +129,13 @@ export function Isometric() {
   useLayoutEffect(() => { previousLayout.current = scene.layout; }, [scene]);
   const visibleSelected = selected ? scene.representatives[selected] ?? scene.edges.find((edge) => edge.members.some((member) => member.edge.id === selected))?.id ?? selected : undefined;
   const matches = useMemo(() => searchScene(scene, model, query), [scene, model, query]);
-  const focusState = useMemo(() => landscapeFocus(scene, visibleSelected, matches), [scene, visibleSelected, matches]);
   const nodes = useMemo(() => new Map(scene.nodes.map((node) => [node.id, node])), [scene]);
   const resourceKinds = useMemo(() => [...new Set(scene.nodes.map(node => node.kindLabel.split(",")[0]!))].sort(), [scene]);
   const navigatorNodes = useMemo(() => scene.nodes.filter(node => (!matches || matches.nodes.has(node.id)) && (!resourceKind || node.kindLabel.split(",")[0] === resourceKind))
     .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)), [scene, matches, resourceKind]);
   const navigatorFixtures = useMemo(() => matches ? scene.props.filter(prop => matches.props.has(prop.id)) : [], [scene, matches]);
+  const preview = view === "resources" && (navigatorNodes.some(node => node.id === resourcePreview) || navigatorFixtures.some(prop => prop.id === resourcePreview)) ? resourcePreview : undefined;
+  const focusState = useMemo(() => landscapeFocus(scene, preview ?? visibleSelected, matches), [scene, preview, visibleSelected, matches]);
   const needsAttention = useCallback((id: string) => !!nodes.get(id)?.sourceProblems?.length
     || model.diagnostics.some(diagnostic => diagnostic.entity === id && diagnostic.severity === "error"), [nodes, model.diagnostics]);
   const slabs = useMemo(() => islandDrawOrder(islandSlabs(scene)), [scene]);
@@ -159,6 +161,7 @@ export function Isometric() {
     /** The map's span with any side panel, so the atmosphere stays still with it. */
     stage: { left: 0, width: 1 } as Stage,
     selected: visibleSelected,
+    preview,
     inspectedSelection: visibleSelected,
     hovered: undefined as string | undefined,
     hoveredEdge: undefined as string | undefined,
@@ -175,6 +178,7 @@ export function Isometric() {
   });
   live.current.scene = scene;
   live.current.selected = visibleSelected;
+  live.current.preview = preview;
   live.current.motion = motion;
   live.current.focus = focusState;
 
@@ -191,12 +195,13 @@ export function Isometric() {
     }
     rememberedCamera = state.camera;
     renderer.setScene(state.scene);
+    const renderSelected = state.preview ?? state.selected;
     const result = renderer.render({
       camera: state.camera,
       viewport: state.viewport,
       stage: state.stage,
       dpr: window.devicePixelRatio || 1,
-      ...(state.selected ? { selected: state.selected } : {}),
+      ...(renderSelected ? { selected: renderSelected } : {}),
       ...(state.hovered ? { hovered: state.hovered } : {}),
       ...(state.hoveredEdge ? { hoveredEdge: state.hoveredEdge } : {}),
       ...(state.hoveredIsland ? { hoveredIsland: state.hoveredIsland } : {}),
@@ -752,6 +757,7 @@ export function Isometric() {
           kinds={resourceKinds} kind={resourceKind} onKind={setResourceKind}
           filtered={!!matches || !!resourceKind} onClearFilters={() => { setQuery(""); setResourceKind(""); }}
           attention={needsAttention} memory={browserMemory}
+          onPreview={setResourcePreview}
           onInspect={id => inspect(id, true)} />}
       </WorkspacePanel> : null}
       </div>

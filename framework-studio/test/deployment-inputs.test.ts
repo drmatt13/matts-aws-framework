@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseEnv } from "node:util";
@@ -23,6 +23,19 @@ const model: ModeModel = { mode: "dev", status: "ok", targets: [], routes: [], w
   { id: "resource:setting", path: ["setting"], kind: "input", fromEnv: "SETTING", default: "default", absent: false },
   { id: "resource:token", path: ["token"], kind: "secret", fromEnv: "TOKEN", absent: false },
 ] };
+
+test("input parameters carry comparison outcomes for each selected environment and inherit defaults", () => {
+  const root = fixture();
+  try {
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), "SETTING=\n");
+    writeFileSync(path.join(root, "cdk-app/.env.prod"), "SETTING=DISABLED\n");
+    for (const mode of ["dev", "prod"] as const) {
+      const scoped = { ...model, mode, resources: model.resources.map(resource => resource.id === "resource:setting" ? { ...resource, default: "enabled", values: ["enabled", "disabled"] } : resource) };
+      const projected = withDeploymentInputs(root, scoped, undefined, [{ input: "SETTING", equals: "enabled" }]);
+      assert.deepEqual(projected.resources.find(resource => resource.id === "resource:setting")?.inputComparisons, { enabled: mode === "dev" ? "holds" : "fails" });
+    }
+  } finally { remove(root); }
+});
 
 test("explicit file creation copies each template exclusively, never overwrites, and ignores a leftover cdk-app/.env", () => {
   const root = fixture();

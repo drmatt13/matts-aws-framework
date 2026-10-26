@@ -9,7 +9,7 @@ export { CLIENT_ENVIRONMENT_FILE } from "../../scripts/client-environment-mappin
 export interface ClientReferenceOption {
   readonly id: string;
   readonly label: string;
-  readonly group: "CDK inputs" | "Stack outputs" | "Stack regions";
+  readonly group: "Input parameters" | "Stack outputs" | "Stack regions";
   readonly binding: ClientEnvironmentBinding;
 }
 

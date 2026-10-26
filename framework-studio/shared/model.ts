@@ -260,6 +260,8 @@ export interface ModelResource {
   readonly default?: string;
   readonly required?: boolean;
   readonly inputRequirement?: import("./deployment-inputs").InputRequirement;
+  /** Outcomes of declared client comparisons in this mode; never resolved input values. */
+  readonly inputComparisons?: Readonly<Record<string, "holds" | "fails" | "unset">>;
   readonly values?: readonly string[];
   readonly note?: string;
   /** For a stack member: the field's declared type, read from the stack class. */

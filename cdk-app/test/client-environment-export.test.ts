@@ -20,7 +20,7 @@ function deployed(mode: "dev" | "prod"): DeploymentStack[] {
     stack("FrontendWebsiteS3Stack", mode, { CloudFrontUrl: "https://example.cloudfront.net", FrontendWebsiteBucketName: "website", CloudFrontId: "distribution" }),
     ...(mode === "dev" ? [stack("DevLambdaReplayStack", mode, { ReplayBucketName: "replay", ReplayQueueUrl: "https://sqs.eu-west-2.amazonaws.com/111122223333/replay", ReplayQueueArn: "arn:aws:sqs:eu-west-2:111122223333:replay" })] : [])];
 }
-const ports = { LOCAL_API_DEV_SERVER_HOST_PORT: "8080", LOCAL_WS_DEV_SERVER_HOST_PORT: "8081", WS_TESTER_HOST_PORT: "3001", LOCAL_INVOCATION_RUNNER_HOST_PORT: "8090", POSTGRES_HOST_PORT: "5432", PGADMIN_HOST_PORT: "5050" };
+const ports = { ENABLE_WEBSOCKET_API: "true", LOCAL_API_DEV_SERVER_HOST_PORT: "8080", LOCAL_WS_DEV_SERVER_HOST_PORT: "8081", WS_TESTER_HOST_PORT: "3001", LOCAL_INVOCATION_RUNNER_HOST_PORT: "8090", POSTGRES_HOST_PORT: "5432", PGADMIN_HOST_PORT: "5050" };
 const mappings = (binding: ClientEnvironmentBinding): ClientEnvironmentMappings => ({ VITE_CUSTOM: { dev: binding, prod: binding } });
 
 test("default client mappings preserve endpoint, identity and per-mode behavior", () => {
@@ -72,10 +72,11 @@ test("export CLI reads saved custom mappings and the deployed mode's file, and p
   const fixture = mkdtempSync(path.join(cache, "case-"));
   try {
     for (const directory of ["framework-config", "cdk-app", "client-app"]) mkdirSync(path.join(fixture, directory));
-    const custom = mappings({ kind: "input", name: "PUBLIC_SETTING" });
+    const custom = mappings({ kind: "input", name: "ENABLE_WEBSOCKET_API" });
+    writeFileSync(path.join(fixture, "framework.config.ts"), 'import { defineResources, resource } from "@repo/framework/config"; import { PROD_DEPLOYMENT } from "@repo/framework/config/source"; export default { resources: defineResources({ enableWebSocketApi: resource.fromEnv("ENABLE_WEBSOCKET_API").enum("true", "false").default("true"), localPort: PROD_DEPLOYMENT ? undefined : resource.fromEnv("LOCAL_WS_DEV_SERVER_HOST_PORT") }) };');
     writeFileSync(path.join(fixture, "framework-config/client-environment.ts"), `export const clientEnvironment = ${JSON.stringify(custom)} as const;`);
-    writeFileSync(path.join(fixture, "cdk-app/.env.dev"), "PROD_DEPLOYMENT=false\nPUBLIC_SETTING=development\n");
-    writeFileSync(path.join(fixture, "cdk-app/.env.prod"), "PROD_DEPLOYMENT=true\nPUBLIC_SETTING=production\n");
+    writeFileSync(path.join(fixture, "cdk-app/.env.dev"), "PROD_DEPLOYMENT=false\nENABLE_WEBSOCKET_API=true\n");
+    writeFileSync(path.join(fixture, "cdk-app/.env.prod"), "PROD_DEPLOYMENT=true\nENABLE_WEBSOCKET_API=false\n");
     const fake = path.join(fixture, "fake-aws.cjs");
     writeFileSync(fake, `process.stdout.write(${JSON.stringify(JSON.stringify({ Stacks: deployed("prod") }))});`);
     const env: NodeJS.ProcessEnv = { ...process.env, FRAMEWORK_AWS_CLI: fake };
@@ -83,13 +84,29 @@ test("export CLI reads saved custom mappings and the deployed mode's file, and p
     const run = () => spawnSync(process.execPath, ["--import", "tsx", path.join(root, "scripts/export-cdk-outputs.mjs"), "--deployment", "example", "--region", "eu-west-2"], { cwd: fixture, env, encoding: "utf8", timeout: 30_000 });
     const result = run(); assert.ifError(result.error); assert.equal(result.status, 0, result.stderr);
     const destination = path.join(fixture, "client-app/.env.production.local");
-    assert.equal(parseEnv(readFileSync(destination, "utf8")).VITE_CUSTOM, "production");
+    assert.equal(parseEnv(readFileSync(destination, "utf8")).VITE_CUSTOM, "false");
     const original = readFileSync(destination, "utf8");
     const outputFile = path.join(fixture, ".framework/prod/outputs.json");
     const originalOutputs = readFileSync(outputFile, "utf8");
-    writeFileSync(path.join(fixture, "cdk-app/.env.prod"), "PROD_DEPLOYMENT=true\n");
-    const failed = run(); assert.ifError(failed.error); assert.equal(failed.status, 1); assert.match(failed.stderr, /Set PUBLIC_SETTING/);
+    writeFileSync(path.join(fixture, "framework-config/client-environment.ts"), `export const clientEnvironment = ${JSON.stringify(mappings({ kind: "input", name: "LOCAL_WS_DEV_SERVER_HOST_PORT" }))} as const;`);
+    const unavailable = run(); assert.ifError(unavailable.error); assert.equal(unavailable.status, 1); assert.match(unavailable.stderr, /Declare LOCAL_WS_DEV_SERVER_HOST_PORT/);
+    assert.equal(readFileSync(destination, "utf8"), original);
+    writeFileSync(path.join(fixture, "framework-config/client-environment.ts"), `export const clientEnvironment = ${JSON.stringify(custom)} as const;`);
+    writeFileSync(path.join(fixture, "cdk-app/.env.prod"), "PROD_DEPLOYMENT=true\nENABLE_WEBSOCKET_API=invalid\n");
+    const failed = run(); assert.ifError(failed.error); assert.equal(failed.status, 1); assert.match(failed.stderr, /declared choices/);
     assert.equal(readFileSync(destination, "utf8"), original);
     assert.equal(readFileSync(outputFile, "utf8"), originalOutputs);
   } finally { assert.ok(path.resolve(fixture).startsWith(cache + path.sep)); rmSync(fixture, { recursive: true }); }
+});
+
+test("client conditions resolve per environment, inherit defaults, and reject undeclared or secret parameters", () => {
+  const context = { deployment: "example", stacks: deployed("dev"), inputs: { ...ports, ENABLE_WEBSOCKET_API: "false" } };
+  assert.equal(resolveClientEnvironmentMappings(defaults, context).VITE_LOCAL_WS_URL, "");
+  assert.equal(resolveClientEnvironmentMappings(defaults, { ...context, inputs: ports }).VITE_LOCAL_WS_URL, "ws://localhost:8081");
+  assert.equal(resolveClientEnvironmentMappings(defaults, { ...context, inputs: { ...ports, ENABLE_WEBSOCKET_API: " TRUE " }, inputEnums: { ENABLE_WEBSOCKET_API: ["true", "false"] } }).VITE_LOCAL_WS_URL, "ws://localhost:8081", "input enums normalize like framework resource resolution");
+  const { ENABLE_WEBSOCKET_API: _flag, ...missing } = ports;
+  assert.equal(resolveClientEnvironmentMappings(defaults, { ...context, inputs: missing, defaults: { ENABLE_WEBSOCKET_API: "true" } }).VITE_LOCAL_WS_URL, "ws://localhost:8081");
+  assert.throws(() => resolveClientEnvironmentMappings(defaults, { ...context, inputs: missing }), /input parameter/);
+  assert.throws(() => resolveClientEnvironmentMappings(mappings({ kind: "input", name: "UNDECLARED" }), { ...context, inputs: { UNDECLARED: "hidden" }, declaredInputs: new Set() }), /Declare UNDECLARED/);
+  assert.throws(() => resolveClientEnvironmentMappings(mappings({ kind: "empty", when: { input: "INTERNAL_VALUE", equals: "true" } }), { ...context, sensitiveInputs: new Set(["INTERNAL_VALUE"]) }), /Secret inputs/);
 });

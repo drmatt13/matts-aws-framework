@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import test from "node:test";
 import ts from "typescript";
 import { insertProperty, removeProperty, replaceValue } from "../server/edits/splice";

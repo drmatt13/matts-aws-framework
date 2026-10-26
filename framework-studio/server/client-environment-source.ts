@@ -27,8 +27,9 @@ export function validateClientMappings(value: unknown, models: readonly ModeMode
     publicOutputs.set(resource.stackClass, names);
   }
   for (const [name, modes] of Object.entries(value as ClientEnvironmentMappings)) for (const binding of Object.values(modes)) {
-    const inputs = binding.kind === "input" ? [binding.name] : binding.kind === "endpoint" ? [binding.port, ...(binding.override ? [binding.override] : [])] : [];
+    const inputs = [...(binding.kind === "input" ? [binding.name] : binding.kind === "endpoint" ? [binding.port, ...(binding.override ? [binding.override] : [])] : []), ...(binding.when ? [binding.when.input] : [])];
     if (inputs.some((input) => sensitive.has(input))) throw new Error(`${name}: secret inputs cannot be mapped into the client.`);
+    if (inputs.some(input => !models.some(model => model.resources.some(resource => resource.kind === "input" && resource.fromEnv === input)))) throw new Error(`${name}: select a declared public input parameter.`);
     if (binding.kind === "output" && binding.outputs.some((output) => !publicOutputs.get(binding.stack)?.has(output))) throw new Error(`${name}: select a public stack output shown in Studio.`);
     if (binding.kind === "region" && !publicOutputs.has(binding.stack) && !models.some((model) => model.resources.some((resource) => resource.kind === "stack" && resource.stackClass === binding.stack))) throw new Error(`${name}: select a stack shown in Studio.`);
   }

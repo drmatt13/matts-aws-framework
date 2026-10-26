@@ -1,6 +1,6 @@
 import { defineResources } from "@repo/framework/config";
 import { cognito, rds, referenceExamples } from "./resources/stacks";
-import { enableWebSocketApi, googleClientSecret, langgraph, openaiApiKey } from "./resources/inputs";
+import { client, enableWebSocketApi, googleClientSecret, langgraph, openaiApiKey } from "./resources/inputs";
 
 /**
  * The application's resource catalog: what this application's workloads need
@@ -38,5 +38,6 @@ export const resources = defineResources({
   openaiApiKey,
   googleClientSecret,
   enableWebSocketApi,
+  client,
   langgraph,
 });

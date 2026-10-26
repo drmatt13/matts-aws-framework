@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { test } from "node:test";
 import { NODE_CAPTION, SUBNET_LABEL, nodeCaptionPresentation, rectanglesOverlap, subnetLabelPresentation, subnetLabelRect, visibleNodeCaptions } from "../src/scene/labels";
 

@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { after, afterEach, before, mock, test } from "node:test";
@@ -342,6 +342,60 @@ test("Resources opens from the toolbar, inspects in place and Back returns to th
   assert.equal(ui.screen.queryByRole("complementary"), null);
 });
 
+test("resource browsing previews successive rows with animated connections and leaves selection and camera alone", async () => {
+  const render = mock.method(SceneRenderer.prototype, "render");
+  try {
+    await mount();
+    // Enable ordinary selection animation, even under this suite's reduced-motion default.
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Resume motion" }));
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Resources" }));
+    await draw();
+    const last = () => render.mock.calls.at(-1)!.arguments[0] as RenderState;
+    const camera = { ...last().camera };
+    const panel = ui.screen.getByRole("complementary", { name: "Resources" });
+    const rows = [...panel.querySelectorAll<HTMLButtonElement>(".resource-row")];
+    for (const row of rows.slice(0, 8)) {
+      pathStrokes.length = 0;
+      ui.fireEvent.pointerEnter(row, { pointerType: "mouse" }); await draw();
+      assert.equal(last().selected, row.dataset.resourceId);
+      assert.equal(last().focus.kind, "selection");
+      assert.equal(last().motion, true, "preview animates highlighted connections using the user's motion setting");
+      assert.deepEqual(last().camera, camera);
+      assert.equal(ui.screen.getByLabelText("Selection").textContent, "none");
+      assert.ok(ui.screen.getByRole("complementary", { name: "Resources" }));
+      assert.equal(render.mock.calls.at(-1)!.result!.animating, true);
+      assert.ok(pathStrokes.some(stroke => Math.abs(stroke.width - 2.2 / camera.zoom) < 1e-8 && Number(/, ([\d.]+)\)$/.exec(stroke.color)?.[1]) > 0.94), `connections receive the selection highlight for ${row.dataset.resourceId}`);
+      ui.fireEvent.pointerLeave(row, { pointerType: "mouse" });
+    }
+    await draw();
+    assert.equal(last().selected, undefined);
+    assert.equal(last().focus.kind, "all");
+    assert.equal(last().motion, true, "the user's motion setting is preserved");
+    await ui.act(async () => rows[0]!.focus()); await draw();
+    assert.equal(last().selected, rows[0]!.dataset.resourceId, "keyboard focus previews too");
+    ui.fireEvent.keyDown(rows[0]!, { key: "ArrowDown" }); await draw();
+    assert.equal(last().selected, rows[1]!.dataset.resourceId);
+    ui.fireEvent.pointerEnter(rows[2]!, { pointerType: "mouse" }); await draw();
+    assert.equal(last().selected, rows[2]!.dataset.resourceId);
+    ui.fireEvent.pointerLeave(rows[2]!); await draw();
+    assert.equal(last().selected, rows[1]!.dataset.resourceId, "leaving the pointer preview restores keyboard emphasis");
+    ui.fireEvent.change(search(), { target: { value: "graphql" } }); await draw();
+    assert.equal(last().selected, undefined, "filtering away a row clears its preview");
+    assert.equal(last().focus.kind, "search");
+    const graphql = panel.querySelector<HTMLButtonElement>('[data-resource-id="lambda:graphql-api"]')!;
+    ui.fireEvent.pointerEnter(graphql, { pointerType: "mouse" }); await draw();
+    assert.equal(last().focus.kind, "selection", "preview takes precedence over search");
+    ui.fireEvent.click(graphql);
+    await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "lambda:graphql-api")); await draw();
+    assert.equal(last().selected, "lambda:graphql-api");
+    assert.equal(last().motion, true, "committing selection restores normal animation");
+    assert.ok(ui.screen.getByRole("complementary", { name: "Inspector" }));
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Close panel" }));
+    await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "none")); await draw();
+    assert.equal(last().selected, undefined, "closing cannot retain an unmounted preview");
+  } finally { render.mock.restore(); }
+});
+
 test("a map selection opens the inspector directly, and Back from it opens Resources", async () => {
   await mount(false, "lambda:sign-in");
   assert.ok(ui.screen.getByRole("complementary", { name: "Inspector" }));
@@ -538,7 +592,7 @@ test("the real renderer strokes connections leaving the APIs island in purple an
   await draw();
   assert.ok(strokes.some((style) => style.startsWith("rgba(255, 154, 61,")), "orange connections out of compute");
   const purple = strokes.filter((style) => style.startsWith("rgba(163, 116, 255,"));
-  const leaving = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) }).edges.filter((edge) => edge.from.startsWith("gateway:")).length;
+  const leaving = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) }).edges.filter((edge) => edge.edge.relation === "routes" && edge.from.startsWith("gateway:")).length;
   assert.ok(purple.length >= leaving, `${purple.length} purple strokes for ${leaving} route connections`);
   strokes.length = 0;
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /^HTTP API, Framework-managed API Gateway/ }));
@@ -595,8 +649,8 @@ test("clicking a disabled wire explains its endpoints in the inspector and the n
 
 test("clicking a grouped connection opens every mapping and retains it across environments", async () => {
   await mount(true);
-  const id = "connection:client-envfile:envfile%3Adev";
-  assert.ok(!labels.includes("4 · Dev"), "connection labels stay off the canvas");
+  const id = "connection:resource%3Acognito:client-envfile";
+  assert.ok(!labels.includes("4"), "connection labels stay off the canvas");
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
   const at = scene.routes[id]!.points.map((point) => worldToScreen(state.camera(), state.viewport(), point)).find((point) => state.pickAt(point.x, point.y)?.id === id);
@@ -606,28 +660,31 @@ test("clicking a grouped connection opens every mapping and retains it across en
   await draw();
   const popup = await ui.screen.findByRole("tooltip");
   assert.ok(popup.textContent?.includes("4 relationships"));
-  assert.deepEqual(visibleTags(popup), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
-  assert.deepEqual(tagsOf(popup), [["hover-tag dev", "Dev: Connection enabled"], ["hover-tag off", "Prod: not deployed"]]);
+  assert.ok(popup.textContent?.includes("From Stack: cognito"));
+  assert.ok(popup.textContent?.includes("To Environment file: client-app/.env"));
+  assert.ok(popup.textContent?.includes("Maps into:"));
+  assert.deepEqual(visibleTags(popup), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
+  assert.deepEqual(tagsOf(popup), [["hover-tag dev", "Dev: Connection enabled"], ["hover-tag prod", "Prod: Connection enabled"]]);
   ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   const map = await ui.screen.findByRole("region", { name: "Aggregated connection map" });
-  assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
+  assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
   assert.equal(map.querySelectorAll(".connection-map-member").length, 4);
-  assert.deepEqual(visibleTags(map.querySelector("summary")!), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
+  assert.deepEqual(visibleTags(map.querySelector("summary")!), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
   assert.ok(!map.textContent?.includes("→"), "connection rows omit repeated arrows");
   assert.equal(ui.screen.getByLabelText("Selection").textContent, id);
   ui.fireEvent.click(map.querySelector("summary")!);
   assert.ok(map.querySelector(".connection-map-detail .connection-details"), "original details are retained without a repeated header");
   ui.fireEvent.click(map.querySelector("summary")!);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
-  await ui.waitFor(() => assert.ok(map.querySelector(".connection-availability > strong")?.textContent?.includes("Disabled in Production")));
+  await ui.waitFor(() => assert.equal(ui.screen.queryByRole("note", { name: "Connection deployment status" }), null));
   assert.equal(ui.screen.getByLabelText("Selection").textContent, id);
   assert.equal(ui.screen.getByRole("region", { name: "Aggregated connection map" }).querySelectorAll(".connection-map-member").length, 4);
 });
 
 test("connections available in both environments retain two pills in every inspector row", async () => {
   await mount(true);
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: Environment file: client-app\/.env to Stack: cognito, / }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: Stack: cognito to Environment file: client-app\/.env, / }));
   const map = await ui.screen.findByRole("region", { name: "Aggregated connection map" });
   const expected = [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]];
   assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), expected);

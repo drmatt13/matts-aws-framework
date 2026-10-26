@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { createRequire } from "node:module";
 import { after, afterEach, before, beforeEach, mock, test } from "node:test";
 import { createElement as h } from "react";

@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import test from "node:test";
 import { createTargetAvailability, getFrameworkTargets, isTargetDeployed, isTargetEnabled, type FrameworkConfig } from "@repo/framework/config";
 import { projectModel, targetLanes } from "../server/model/project";

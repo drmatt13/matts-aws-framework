@@ -443,7 +443,12 @@ for both saved projections and in-memory drafts, without reading values. The cli
 inspector uses this same resolver so source/status previews cannot remain stuck on a saved binding.
 `server/client-environment.ts` binds declarations to current resource IDs after input-file
 and output-stack projection. `client-envfile` stands on `island:client-environment`;
-its `maps` edges use the selected mode's CDK input file or existing stack identity. A
+its `maps` edges point from declared input parameters or existing stack identities into
+`client-envfile`, following variable flow into `client-app/.env`. CDK environment files
+connect only to the input parameters they supply. Client mappings inherit parameter
+presence and defaults for the selected mode; undeclared file variables are not sources.
+Optional `when: { input, equals }` conditions use sanitized parameter comparison outcomes
+in Studio and the same declared input/default during export, writing empty on a mismatch. A
 disabled field retains its reference but has no connection in that mode. The compact
 file/island editor joins the inspector draft and batch review/apply flow, including
 conflict checks, atomic writes, confirmation and global undo/redo. New fields start empty

@@ -92,7 +92,7 @@ function Relations(props: { readonly id: string }) {
       {edges.some((edge) => edge.relation === "cdk" && edge.provenance === "source") ? <p className="small muted">CDK links are inferred from direct source references. Helpers and conditional wiring may add connections this view cannot resolve.</p> : null}
       <ul className="relations">
         {outgoing.map((edge) => row(edge, edge.to, RELATION_LABEL[edge.relation]))}
-          {incoming.map((edge) => row(edge, edge.from, edge.relation === "contains" ? "Contained by" : edge.relation === "cdk" ? "CDK link from" : edge.relation === "supplies" ? "Supplied by" : `${RELATION_LABEL[edge.relation]} from`))}
+          {incoming.map((edge) => row(edge, edge.from, edge.relation === "contains" ? "Contained by" : edge.relation === "cdk" ? "CDK link from" : edge.relation === "supplies" ? "Supplied by" : edge.relation === "maps" ? "Mapped from" : `${RELATION_LABEL[edge.relation]} from`))}
       </ul>
     </InspectorDisclosure>
   );

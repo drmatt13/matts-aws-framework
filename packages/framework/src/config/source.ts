@@ -126,8 +126,8 @@ export function readAuthoredInputs(
  * it while it is being declared. The mode is chosen per command as CDK context
  * (`-c prodDeployment=true`): the CDK app's entry point (cdk-app/bin/main.ts)
  * resolves it before the catalog is imported and hands it over as
- * FRAMEWORK_MODE. Every other process that loads the catalog — the Compose
- * servers, the generator, export — runs development, so it reads dev.
+ * FRAMEWORK_MODE. Export resolves its deployed mode before loading the catalog.
+ * The Compose servers and generator load the development catalog.
  */
 export const PROD_DEPLOYMENT: boolean = frameworkMode() === "prod";
 

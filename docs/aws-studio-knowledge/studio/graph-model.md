@@ -6,6 +6,7 @@ read_when:
 source:
   - framework-studio/shared/model.ts
   - framework-studio/server/model/project.ts
+  - framework-studio/server/model/catalog-context.ts
   - framework-studio/src/connections.ts
   - framework-studio/server/database.ts
   - framework-studio/shared/database-workbench.ts
@@ -53,6 +54,18 @@ The `runsTask` binding appears in the permissions category as `Grant permission:
 Its solid red connection describes the derived ECS launch and role-passing grants plus
 launch configuration, rather than an observed execution. Conditional `deployWhen`
 connections use dashed orange lines and name the selecting input in their hover text.
+
+Client environment `maps` edges point from public catalog input parameters and native
+stack outputs into `client-envfile` (`client-app/.env`), never directly from CDK input files.
+CDK files supply parameters; each parameter carries selected-mode presence/default metadata
+and sanitized outcomes for declared client comparisons. Hover and connection
+details say `Maps into`; the client's incoming connection list says `Mapped from`.
+Layout uses this source-to-client direction without reversing these edges.
+Local URL inputs are declared under `resources.client` only in Development.
+`VITE_LOCAL_WS_URL` also consumes `resources.enableWebSocketApi`; its condition writes
+an empty URL when the selected input does not match `"true"`. Raw input values stay private.
+The evaluator pair retains an absent input's type from the other mode while preserving
+its absence, so snapshot display, creation review and apply checks share the same metadata.
 
 Declared/derived/source-inferred edges retain their evidence classification. [source-indexing](source-indexing.md) defines inference limits. Studio is a declaration/source graph, not an authoritative live AWS topology or full IAM analysis.
 

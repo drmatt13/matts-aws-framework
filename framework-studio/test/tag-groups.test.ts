@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { test } from "node:test";
 import { defineDatabase, defineFrameworkConfig, defineNetwork, defineResources, resource, succeed, workflow } from "@repo/framework/config";
 import type { IQueue } from "aws-cdk-lib/aws-sqs";

@@ -1,6 +1,6 @@
 import { drawnAs } from "../src/drawn-as";
 import { gatewaysOf } from "../shared/gateways";
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import type { Snapshot } from "../shared/model";
@@ -55,8 +55,8 @@ test("connection labels reflect relationships and both endpoints in each graph",
     }
     assert.equal(group.badge, group.availability.dev && group.availability.prod ? undefined : group.availability.dev ? "dev" : group.availability.prod ? "prod" : "off");
   }
-  assert.equal(dev.edges.find((group) => group.from === "client-envfile" && group.to === "envfile:dev")?.members.length, 4);
-  assert.equal(connectionLabel(dev.edges.find((group) => group.from === "client-envfile" && group.to === "envfile:dev")!), "4 · Dev");
+  assert.equal(dev.edges.find((group) => group.from === "resource:cognito" && group.to === "client-envfile")?.members.length, 4);
+  assert.equal(connectionLabel(dev.edges.find((group) => group.from === "resource:cognito" && group.to === "client-envfile")!), "4");
 });
 
 test("aggregation keeps per-mode evidence, direction and stable identities", () => {
@@ -864,6 +864,7 @@ test("a connection is drawn by what it references and where it starts, solid onl
       const reads = (edge.relation === "env" || edge.relation === "secret") && referenced !== undefined;
       const expect = (color: string, dashed: boolean) => assert.deepEqual(style, { color, dashed }, `${edge.id} (${edge.relation})`);
       if (edge.relation === "deployWhen") expect(COMPUTE_EDGE_COLOR, true);
+      else if (edge.relation === "maps") expect(READ_EDGE_COLOR, true);
       else if (edge.relation === "runsTask") expect(GUARD_EDGE_COLOR, false);
       else if (edge.relation === "trigger") expect(TRIGGER_EDGE_COLOR, false);
       else if (edge.relation === "authorizes") { seen.authorizer += 1; expect(GUARD_EDGE_COLOR, false); }
@@ -1020,8 +1021,8 @@ test("both views draw the same connections; the other environment's own are mark
   const ids = (scene: Scene) => scene.edges.map((edge) => edge.id).sort();
   assert.deepEqual(ids(dev), ids(prod), "switching the view never makes a connection appear or vanish");
   const marked = (scene: Scene) => scene.edges.filter((edge) => edge.otherLens).map((edge) => `${edge.otherLens}: ${edge.edge.from} -> ${edge.edge.to}`).sort();
-  assert.deepEqual(marked(dev), ["prod: client-envfile -> envfile:prod", "prod: client-envfile -> framework-stack:FrontendWebsiteS3Stack", "prod: lambda:graphql-api -> resource:rds.database", "prod: lambda:oauth-callback -> resource:rds.database"]);
-  assert.deepEqual(marked(prod), ["dev: client-envfile -> envfile:dev", "dev: lambda:cognito-post-confirmation-trigger -> local:postgres", "dev: lambda:graphql-api -> local:postgres", "dev: lambda:oauth-callback -> local:postgres"]);
+  assert.deepEqual(marked(dev), ["prod: framework-stack:FrontendWebsiteS3Stack -> client-envfile", "prod: lambda:graphql-api -> resource:rds.database", "prod: lambda:oauth-callback -> resource:rds.database"]);
+  assert.deepEqual(marked(prod), ["dev: lambda:cognito-post-confirmation-trigger -> local:postgres", "dev: lambda:graphql-api -> local:postgres", "dev: lambda:oauth-callback -> local:postgres", "dev: resource:client.apiPort -> client-envfile", "dev: resource:client.webSocketPort -> client-envfile", "dev: resource:client.webSocketTesterPort -> client-envfile", "dev: resource:enableWebSocketApi -> client-envfile"]);
   // A connection a lens does not hold itself is one the lens dims, and the model's own edges are never marked.
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
     const own = new Set(model.edges.map((edge) => edge.id));

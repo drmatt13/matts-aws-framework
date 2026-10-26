@@ -107,9 +107,13 @@ Board's [layout.ts](../../../framework-studio/src/layout.ts) arranges entry, com
 | Draw | `SceneRenderer` in [render.ts](../../../framework-studio/src/scene/render.ts): Canvas2D, cached Path2D/geometry, viewport culling, DPR handling, caption collisions and zoom-dependent labels |
 | Interact | [Isometric.tsx](../../../framework-studio/src/views/Isometric.tsx), [picking.ts](../../../framework-studio/src/scene/picking.ts), [focus.ts](../../../framework-studio/src/scene/focus.ts): coalesced pointer/frame work, geometry-based picking, selection/search fades |
 
-`landscapeFocus` highlights one-hop neighbors or selected connection endpoints. Search changes emphasis, not topology. Zoom label detail is not hierarchical automatic graph collapse. `aggregateConnections` retains hidden relation members; changing visual grouping must preserve selection/evidence access.
+`landscapeFocus` highlights one-hop neighbors or selected connection endpoints. Hovering or keyboard-focusing a Resources row temporarily uses that same selection emphasis, with highlighted connections animated according to the map's motion setting. Preview leaves the inspector selection, URL, camera and motion preference unchanged; pointer hover takes precedence over keyboard focus, and leaving restores focus/search emphasis. Filtering away a row or closing the list clears its preview; clicking still opens the Inspector with normal selection motion. Search changes emphasis, not topology. Zoom label detail is not hierarchical automatic graph collapse. `aggregateConnections` retains hidden relation members; changing visual grouping must preserve selection/evidence access.
 
 Keep optimization bounded for large graphs. Preserve layout stability across selection/mode switches and avoid recomputing source models during a pointer move. Rendering and picking must share geometric assumptions, especially curve sampling and visible endpoints. Avoid claiming a node-count ceiling or browser FPS guarantee from a synthetic timing fixture.
+
+When a seed has title collisions, the optimizer reserves a small part of its existing
+evaluation budget for local title-clearance moves after the wire search. Added input
+groups can keep their titles clear without increasing the optimizer's work limit.
 
 The optimizer keeps at most 36 proxy links. Within that cap it preserves genuine shared
 node attachments and spends unused slots on the geometric spread of input/handler fans;

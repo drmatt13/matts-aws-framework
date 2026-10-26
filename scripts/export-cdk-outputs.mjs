@@ -7,7 +7,6 @@ import { parseEnv } from "node:util";
 // tsx loads these TypeScript modules as CommonJS in this workspace. Load their
 // actual exports rather than relying on Node's inferred ESM named exports.
 const require = createRequire(import.meta.url);
-const { localExportValues, replaceGeneratedEnvironment } = require("./local-export.ts");
 const { CLIENT_ENVIRONMENT_FILES, CLIENT_SECTION_HEADING, renderClientEnvironmentFile, renderGeneratedBlock } = require("./environment-export.ts");
 const { resolveClientEnvironmentMappings } = require("./client-environment-export.ts");
 const { parseClientMappings } = require("./client-environment-source.ts");
@@ -18,7 +17,6 @@ const { RESOURCE_MANIFEST_FILE, listResourceDeclarations } = require("@repo/fram
 const { contextFromArgs, deploymentInputsFile, resolveRepositoryTarget, readCdkContext } = require("@repo/framework/deploy/node");
 const { parseTargets, TARGETS_CONTEXT_KEY } = require("@repo/framework/deploy");
 const { runAwsSync } = require("./aws-cli.ts");
-const { default: framework } = require("../framework.config.ts");
 
 const { ROOT_ENV_STACK_OUTPUTS: BASE_STACK_OUTPUT_MAPPINGS } = require("./root-env-outputs.ts");
 
@@ -194,15 +192,22 @@ if ((clientSelection.target.account && clientSelection.target.account !== identi
 }
 const clientInputsPath = clientSelection.inputsFile;
 const clientInputs = existsSync(clientInputsPath) ? parseEnv(readFileSync(clientInputsPath, "utf8")) : {};
-const declarations = listResourceDeclarations(framework.resources);
+// Catalog presence and defaults belong to the selected deployment, just like its values.
+// Resolve the mode before importing declarations that branch on PROD_DEPLOYMENT.
+process.env.FRAMEWORK_MODE = identity.mode;
+process.env.FRAMEWORK_INPUTS_FILE = clientInputsPath;
 // Deploy can export into a separate directory. Its mappings still belong to
 // the prepared source checkout beside this script, never to the output directory.
 const mappingRoot = process.env.FRAMEWORK_EXPORT_DIRECTORY ? resolve(import.meta.dirname, "..") : process.cwd();
+const { default: framework } = require(resolve(mappingRoot, "framework.config.ts"));
+const declarations = listResourceDeclarations(framework.resources);
 const clientMappings = parseClientMappings(readFileSync(resolve(mappingRoot, CLIENT_ENVIRONMENT_FILE), "utf8")).mappings;
 const client = resolveClientEnvironmentMappings(clientMappings, {
   deployment: deploymentName, stacks: listed, inputs: clientInputs,
   defaults: Object.fromEntries(declarations.filter((reference) => reference.kind === "string" && !reference.secretArn && reference.fromEnv && reference.default !== undefined).map((reference) => [reference.fromEnv, reference.default])),
   sensitiveInputs: new Set(declarations.filter((reference) => reference.kind === "secret" || reference.secretArn).flatMap((reference) => reference.fromEnv ? [reference.fromEnv] : [])),
+  declaredInputs: new Set(declarations.filter((reference) => reference.kind === "string" && !reference.secretArn && !reference.absent && reference.fromEnv).map((reference) => reference.fromEnv)),
+  inputEnums: Object.fromEntries(declarations.filter((reference) => reference.kind === "string" && !reference.secretArn && reference.fromEnv && reference.values).map((reference) => [reference.fromEnv, reference.values])),
 });
 // A frontend can refresh its public settings without Docker, replay/control outputs,
 // or writes to root .env and the local resource manifest. Release builds use this
@@ -227,6 +232,7 @@ if (identity.mode === "prod") {
   console.log(`Wrote public production outputs to .framework/prod/outputs.json and the client build settings to ${CLIENT_ENVIRONMENT_FILES.prod} for ${deploymentName}.`);
   process.exit(0);
 }
+const { localExportValues, replaceGeneratedEnvironment } = require("./local-export.ts");
 const { manifest, stacks: deploymentStacks } = collectDevelopmentResources(listed, deploymentName, framework);
 if (region && manifest.region !== region) throw new Error("The requested region differs from the deployed resources.");
 const describeStackOutputs = (name) => deploymentStacks.find((stack) => stack.StackName === name)?.Outputs ?? null;

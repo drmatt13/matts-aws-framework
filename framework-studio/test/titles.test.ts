@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { test } from "node:test";
 import type { Island } from "../src/scene/build";
 import { pan, worldToScreen, type Camera } from "../src/scene/camera";

@@ -1,5 +1,5 @@
 import { gatewayModels } from "../shared/gateways";
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import type { Mode, ModeModel, Snapshot } from "../shared/model";

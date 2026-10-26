@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+import assert from "./support/assert";
 import { test } from "node:test";
 import { parseClientMappings, rewriteClientMappings, validateClientMappings } from "../server/client-environment-source";
 import { clientMappingsError, type ClientEnvironmentMappings } from "../shared/client-environment";
@@ -28,6 +28,8 @@ test("client references reject expressions, duplicate names, unknown values, sec
   assert.match(clientMappingsError({ VITE_X: { dev: { kind: "input", name: "OPENAI_API_KEY" }, prod: { kind: "empty" } } })!, /public CDK input/);
   const model: ModeModel = { mode: "dev", status: "ok", targets: [], routes: [], workflows: [], diagnostics: [], fields: {}, evaluatedInMs: 0, edges: [], resources: [{ id: "resource:private", kind: "secret", path: ["private"], fromEnv: "INTERNAL_VALUE", absent: false }] };
   assert.throws(() => validateClientMappings({ VITE_X: { dev: { kind: "input", name: "INTERNAL_VALUE" }, prod: { kind: "empty" } } }, [model]), /secret inputs/);
+  assert.throws(() => validateClientMappings({ VITE_X: { dev: { kind: "input", name: "UNDECLARED" }, prod: { kind: "empty" } } }, [model]), /declared public input parameter/);
+  assert.match(clientMappingsError({ VITE_X: { dev: { kind: "empty", when: { input: "OPENAI_API_KEY", equals: "true" } }, prod: { kind: "empty" } } })!, /public input parameter/);
   assert.throws(() => validateClientMappings({ VITE_X: { dev: { kind: "output", stack: "CognitoStack", outputs: ["PrivateSigningKey"] }, prod: { kind: "empty" } } }, [model]), /public stack output/);
 });
 

@@ -1,5 +1,5 @@
 import { AlertTriangle } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, type KeyboardEvent, type RefObject } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import type { Prop, Scene, SceneNode } from "../scene/build";
 import type { IconKey } from "../icons";
 import { EntityIcon } from "./EntityIcon";
@@ -35,10 +35,24 @@ export function ResourceBrowser(props: {
   readonly onClearFilters: () => void;
   readonly attention: (id: string) => boolean;
   readonly onInspect: (id: string) => void;
+  /** Transient map emphasis; never opens an inspector or changes the camera. */
+  readonly onPreview: (id: string | undefined) => void;
   readonly memory: RefObject<BrowserMemory>;
 }) {
   const { scene, nodes, fixtures, attention, memory } = props;
   const list = useRef<HTMLDivElement>(null);
+  const [pointed, setPointed] = useState<string>();
+  const [focused, setFocused] = useState<string>();
+  const preview = pointed ?? focused;
+  const { onPreview } = props;
+  useLayoutEffect(() => { onPreview(preview); }, [onPreview, preview]);
+  useLayoutEffect(() => () => onPreview(undefined), [onPreview]);
+  // Filtering or a new source snapshot must not retain a row that disappeared.
+  useLayoutEffect(() => {
+    const present = (id: string | undefined) => nodes.some(node => node.id === id) || fixtures.some(prop => prop.id === id);
+    setPointed(id => present(id) ? id : undefined);
+    setFocused(id => present(id) ? id : undefined);
+  }, [nodes, fixtures]);
   const groups = useMemo(() => {
     const rowOf = (node: SceneNode): Row => ({ id: node.id, icon: node.icon, ...(node.roleIcon ? { badge: node.roleIcon } : {}), label: node.label, detail: detailOf(node), muted: !!node.tagFiltered, attention: attention(node.id) });
     const byIsland = new Map<string, Row[]>();
@@ -100,7 +114,10 @@ export function ResourceBrowser(props: {
             <ul>
               {group.rows.map(row => (
                 <li key={row.id}>
-                  <button className={`resource-row${row.muted ? " outside-filter" : ""}`} data-resource-id={row.id} onClick={() => props.onInspect(row.id)} title={row.label === row.id ? row.label : `${row.label}\n${row.id}`}>
+                  <button className={`resource-row${row.muted ? " outside-filter" : ""}${preview === row.id ? " previewing" : ""}`} data-resource-id={row.id}
+                    onPointerEnter={event => { if (event.pointerType !== "touch") setPointed(row.id); }} onPointerLeave={() => setPointed(undefined)} onPointerCancel={() => setPointed(undefined)}
+                    onFocus={() => setFocused(row.id)} onBlur={() => setFocused(undefined)}
+                    onClick={() => props.onInspect(row.id)} title={row.label === row.id ? row.label : `${row.label}\n${row.id}`}>
                     <span className="resource-row-icon" aria-hidden><EntityIcon icon={row.icon} {...(row.badge ? { badge: row.badge } : {})} /></span>
                     <span className="resource-row-text"><strong>{row.label}</strong><span>{row.detail}</span></span>
                     {row.attention ? <span className="resource-row-attention" title="Needs attention"><AlertTriangle size={14} aria-hidden /><span className="sr-only">Needs attention</span></span> : null}
