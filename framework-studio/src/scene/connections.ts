@@ -1,6 +1,6 @@
 import type { Mode, ModelEdge, ModelResource, Relation, TargetKind } from "../../shared/model";
 import { API_EDGE_COLOR, COMPUTE_EDGE_COLOR, EDGE_COLORS, GUARD_EDGE_COLOR, READ_EDGE_COLOR, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, TRIGGER_EDGE_COLOR } from "./look";
-import type { SceneNode } from "./build";
+import type { SceneEdge, SceneNode } from "./build";
 import type { EdgeCategory } from "../lookup";
 
 /**
@@ -18,6 +18,11 @@ import type { EdgeCategory } from "../lookup";
 export interface ConnectionStyle {
   readonly color: string;
   readonly dashed: boolean;
+}
+
+/** Category filters hide background wires; inspecting a resource always reveals its links. */
+export function connectionVisible(edge: Pick<SceneEdge, "id" | "category" | "from" | "to">, categories?: ReadonlySet<EdgeCategory>, selected?: string): boolean {
+  return !categories || categories.has(edge.category) || edge.id === selected || edge.from === selected || edge.to === selected;
 }
 
 const REFERENCES: ReadonlySet<Relation> = new Set(["env", "secret", "grant"]);

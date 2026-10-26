@@ -2,10 +2,10 @@ import { sourceDiff } from "../../shared/source-diff";
 import { X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
-export function WorkbenchDialog({ title, children, footer, onClose, busy = false }: { readonly title: string; readonly children: ReactNode; readonly footer: ReactNode; readonly onClose: () => void; readonly busy?: boolean }) {
+export function WorkbenchDialog({ title, children, footer, onClose, busy = false, className = "", id }: { readonly title: string; readonly children: ReactNode; readonly footer: ReactNode; readonly onClose: () => void; readonly busy?: boolean; readonly className?: string; readonly id?: string }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { const previous = document.activeElement; const element = dialog.current!; element.showModal(); return () => { element.close(); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); }; }, []);
-  return <dialog ref={dialog} className="preview workbench-dialog" aria-label={title} onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}><header><h2>{title}</h2><button className="icon-button" aria-label={`Close ${title}`} disabled={busy} onClick={onClose}><X size={16} /></button></header><div className="body">{children}</div><footer>{footer}</footer></dialog>;
+  return <dialog ref={dialog} id={id} className={`preview workbench-dialog ${className}`} aria-label={title} onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}><header><h2>{title}</h2><button className="icon-button" aria-label={`Close ${title}`} disabled={busy} onClick={onClose}><X size={16} /></button></header><div className="body">{children}</div><footer>{footer}</footer></dialog>;
 }
 
 export function SourceComparison({ before, after, beforeLabel = "Saved source", afterLabel = "Proposed source" }: { readonly before: string; readonly after: string; readonly beforeLabel?: string; readonly afterLabel?: string }) {

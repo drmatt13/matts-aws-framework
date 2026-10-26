@@ -1,8 +1,10 @@
 import { AlertTriangle } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import type { Prop, Scene, SceneNode } from "../scene/build";
 import type { IconKey } from "../icons";
 import { EntityIcon } from "./EntityIcon";
+import { ResourceHoverContent } from "./ResourceHoverContent";
+import { ResourceTooltip } from "./ResourceTooltip";
 
 /** Where the list was when the inspector replaced it, so Back returns to the same place and row. */
 export interface BrowserMemory { scrollTop: number; returnTo?: string | undefined }
@@ -43,7 +45,39 @@ export function ResourceBrowser(props: {
   const list = useRef<HTMLDivElement>(null);
   const [pointed, setPointed] = useState<string>();
   const [focused, setFocused] = useState<string>();
-  const preview = pointed ?? focused;
+  const [cardPointed, setCardPointed] = useState<string>();
+  const [dismissed, setDismissed] = useState(false);
+  const [tooltip, setTooltip] = useState<{ id: string; anchor: HTMLElement }>();
+  const anchors = useRef(new Map<string, HTMLButtonElement>());
+  const touch = useRef(false);
+  const tooltipId = useId();
+  const preview = pointed ?? cardPointed ?? focused;
+  const tooltipResource = tooltip ? nodes.find(node => node.id === tooltip.id) ?? fixtures.find(prop => prop.id === tooltip.id) : undefined;
+  const dismissTooltip = () => { setDismissed(true); setTooltip(undefined); setCardPointed(undefined); };
+  // A brief pause avoids flashing cards while scanning the list. Focus opens immediately.
+  // Keep the card for the short crossing from a row into its preview.
+  useLayoutEffect(() => {
+    if (dismissed) { setTooltip(undefined); return; }
+    const anchor = preview ? anchors.current.get(preview) : undefined;
+    if (anchor && preview) {
+      setTooltip(current => current?.id === preview ? current : undefined);
+      if (focused === preview) { setTooltip({ id: preview, anchor }); return; }
+      const timer = window.setTimeout(() => setTooltip({ id: preview, anchor }), 220);
+      return () => window.clearTimeout(timer);
+    }
+    const timer = window.setTimeout(() => setTooltip(undefined), 120);
+    return () => window.clearTimeout(timer);
+  }, [preview, focused, dismissed]);
+  useLayoutEffect(() => {
+    if (!preview && !tooltip) return;
+    const escape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape" || (dismissed && !tooltip)) return;
+      event.preventDefault(); event.stopPropagation();
+      dismissTooltip();
+    };
+    document.addEventListener("keydown", escape, true);
+    return () => document.removeEventListener("keydown", escape, true);
+  });
   const { onPreview } = props;
   useLayoutEffect(() => { onPreview(preview); }, [onPreview, preview]);
   useLayoutEffect(() => () => onPreview(undefined), [onPreview]);
@@ -52,6 +86,8 @@ export function ResourceBrowser(props: {
     const present = (id: string | undefined) => nodes.some(node => node.id === id) || fixtures.some(prop => prop.id === id);
     setPointed(id => present(id) ? id : undefined);
     setFocused(id => present(id) ? id : undefined);
+    setCardPointed(id => present(id) ? id : undefined);
+    setTooltip(current => current && present(current.id) ? current : undefined);
   }, [nodes, fixtures]);
   const groups = useMemo(() => {
     const rowOf = (node: SceneNode): Row => ({ id: node.id, icon: node.icon, ...(node.roleIcon ? { badge: node.roleIcon } : {}), label: node.label, detail: detailOf(node), muted: !!node.tagFiltered, attention: attention(node.id) });
@@ -84,6 +120,7 @@ export function ResourceBrowser(props: {
   }, [memory]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    touch.current = false;
     const rows = [...event.currentTarget.querySelectorAll<HTMLButtonElement>(".resource-row")];
     const current = rows.indexOf(event.target as HTMLButtonElement);
     if (current < 0) return;
@@ -92,6 +129,20 @@ export function ResourceBrowser(props: {
     if (next === undefined) return;
     event.preventDefault();
     rows[next]!.focus();
+  };
+
+  const onScroll = () => {
+    const element = list.current;
+    if (!element) return;
+    memory.current.scrollTop = element.scrollTop;
+    // Tab/arrow navigation scrolls the focused row into view. Keep its accessible
+    // preview; the floating card measures the new position on this same scroll.
+    const anchor = focused ? anchors.current.get(focused) : undefined;
+    if (!pointed && anchor === document.activeElement) {
+      const row = anchor.getBoundingClientRect(), bounds = element.getBoundingClientRect();
+      if (row.bottom > bounds.top && row.top < bounds.bottom) return;
+    }
+    dismissTooltip();
   };
 
   const shown = nodes.length;
@@ -107,7 +158,7 @@ export function ResourceBrowser(props: {
           <button className="linkish" onClick={props.onClearFilters}>Clear filters</button>
         </p> : null}
       </div>
-      <div className="resource-browser-list" ref={list} onScroll={event => { memory.current.scrollTop = event.currentTarget.scrollTop; }} onKeyDown={onKeyDown}>
+      <div className="resource-browser-list" ref={list} onScroll={onScroll} onWheel={dismissTooltip} onKeyDown={onKeyDown}>
         {groups.map(group => (
           <section key={group.id} className="resource-group" aria-labelledby={`resource-group-${group.id}`}>
             <h3 id={`resource-group-${group.id}`}><span title={group.title}>{group.title}</span><span className="resource-group-count">{group.rows.length}</span></h3>
@@ -115,9 +166,13 @@ export function ResourceBrowser(props: {
               {group.rows.map(row => (
                 <li key={row.id}>
                   <button className={`resource-row${row.muted ? " outside-filter" : ""}${preview === row.id ? " previewing" : ""}`} data-resource-id={row.id}
-                    onPointerEnter={event => { if (event.pointerType !== "touch") setPointed(row.id); }} onPointerLeave={() => setPointed(undefined)} onPointerCancel={() => setPointed(undefined)}
-                    onFocus={() => setFocused(row.id)} onBlur={() => setFocused(undefined)}
-                    onClick={() => props.onInspect(row.id)} title={row.label === row.id ? row.label : `${row.label}\n${row.id}`}>
+                    ref={element => { if (element) anchors.current.set(row.id, element); else anchors.current.delete(row.id); }}
+                    aria-describedby={tooltip?.id === row.id && tooltipResource ? tooltipId : undefined}
+                    onPointerDown={event => { touch.current = event.pointerType === "touch"; if (touch.current) dismissTooltip(); }}
+                    onPointerEnter={event => { if (event.pointerType !== "touch") { touch.current = false; setDismissed(false); setPointed(row.id); setCardPointed(undefined); } }}
+                    onPointerLeave={() => setPointed(undefined)} onPointerCancel={() => { setPointed(undefined); dismissTooltip(); }}
+                    onFocus={() => { if (!touch.current) { setDismissed(false); setFocused(row.id); } }} onBlur={() => setFocused(undefined)}
+                    onClick={() => props.onInspect(row.id)}>
                     <span className="resource-row-icon" aria-hidden><EntityIcon icon={row.icon} {...(row.badge ? { badge: row.badge } : {})} /></span>
                     <span className="resource-row-text"><strong>{row.label}</strong><span>{row.detail}</span></span>
                     {row.attention ? <span className="resource-row-attention" title="Needs attention"><AlertTriangle size={14} aria-hidden /><span className="sr-only">Needs attention</span></span> : null}
@@ -133,6 +188,10 @@ export function ResourceBrowser(props: {
         </div> : null}
         <p className="resource-browser-note">The map shows declarations; Deploy shows running state.</p>
       </div>
+      {tooltip && tooltipResource ? <ResourceTooltip key={tooltip.id} id={tooltipId} anchor={tooltip.anchor}
+        onPointerEnter={() => setCardPointed(tooltip.id)} onPointerLeave={() => setCardPointed(undefined)}>
+        <ResourceHoverContent resource={tooltipResource} />
+      </ResourceTooltip> : null}
     </>
   );
 }

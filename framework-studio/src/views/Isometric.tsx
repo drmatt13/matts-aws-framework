@@ -1,6 +1,6 @@
 import { ChevronLeft, Crosshair, Maximize2, Minus, PanelRight, Pause, Play, Plus, Search, X } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { RELATION_LABEL, endpointLabel, indexModel, titleOf } from "../lookup";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { CATEGORY_LABEL, RELATION_LABEL, endpointLabel, titleOf, type EdgeCategory } from "../lookup";
 import { buildScene, type Scene, type SceneNode } from "../scene/build";
 import { islandDrawOrder, islandSlabs } from "../scene/slabs";
 import {
@@ -25,13 +25,15 @@ import { connectionMidpoint } from "../scene/routing";
 import { landscapeFocus, searchOpacity, searchScene } from "../scene/focus";
 import { filterSceneByTag } from "../scene/tag-filter";
 import { SceneRenderer, type Stage } from "../scene/render";
-import { nodeHoverFacts, propHoverFacts, type HoverFacts } from "../scene/hover";
+import type { HoverFacts } from "../scene/hover";
+import { connectionVisible } from "../scene/connections";
+import { EDGE_COLORS } from "../scene/look";
 import { catalogAvailability } from "../deployment";
 import { connectionLabel, missingConnectionInput } from "../connections";
 import { AddMenu } from "./AddMenu";
 import { useStudio } from "../studio";
 import { SourceEnvironment, SourceHistory } from "./SourceContext";
-import { EnvironmentPills } from "./DeploymentBadge";
+import { HoverContent, ResourceHoverContent } from "./ResourceHoverContent";
 import { InspectorContent } from "./Inspector";
 import { ResourceBrowser, type BrowserMemory } from "./ResourceBrowser";
 import { WorkspacePanel } from "./WorkspacePanel";
@@ -82,7 +84,7 @@ interface Tween {
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const ENVIRONMENTS = [["dev", "Dev"], ["prod", "Prod"]] as const;
-const NO_DESCRIPTION = "No description yet. Select it to write one.";
+const CATEGORIES = Object.keys(CATEGORY_LABEL) as EdgeCategory[];
 
 export function Isometric() {
   const { model, index, snapshot, selected, select, created, draft } = useStudio();
@@ -91,6 +93,7 @@ export function Isometric() {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SceneRenderer | undefined>(undefined);
   const [motion, setMotion] = useState(() => !reducedMotion());
+  const [categories, setCategories] = useState<ReadonlySet<EdgeCategory>>(() => new Set(CATEGORIES));
   const [query, setQuery] = useState("");
   const [resourceKind, setResourceKind] = useState("");
   // Whether Resources is open beneath any inspector; a selection always shows its inspector.
@@ -167,6 +170,7 @@ export function Isometric() {
     hoveredEdge: undefined as string | undefined,
     hoveredIsland: undefined as string | undefined,
     motion,
+    categories,
     focus: focusState,
     tween: undefined as Tween | undefined,
     cards: [] as readonly CardHit[],
@@ -180,6 +184,7 @@ export function Isometric() {
   live.current.selected = visibleSelected;
   live.current.preview = preview;
   live.current.motion = motion;
+  live.current.categories = categories;
   live.current.focus = focusState;
 
   const draw = useCallback(() => {
@@ -207,6 +212,7 @@ export function Isometric() {
       ...(state.hoveredIsland ? { hoveredIsland: state.hoveredIsland } : {}),
       time: now / 1000,
       motion: state.motion,
+      categories: state.categories,
       focus: state.focus,
     });
     state.cards = result.cards;
@@ -336,7 +342,7 @@ export function Isometric() {
     };
   }, [schedule, resize, hasEntities]);
 
-  useEffect(schedule, [schedule, scene, selected, motion, focusState]);
+  useEffect(schedule, [schedule, scene, selected, motion, focusState, categories]);
   useEffect(() => { if (pendingLayoutFit.current) { pendingLayoutFit.current = false; fit(); } }, [scene, fit]);
 
   // Opening/closing the panel changes CSS layout during this commit. Resize and paint
@@ -381,7 +387,7 @@ export function Isometric() {
       const entity = pickEntity(screen, world, [...state.badges, ...state.cards], silhouettes);
       if (entity) return { kind: "node", id: entity, ...screen };
       for (const arc of arcs) {
-        if (!arc.missing) continue;
+        if (!arc.missing || !connectionVisible(arc.edge, state.categories, state.preview ?? state.selected)) continue;
         const marker = worldToScreen(state.camera, state.viewport, arc.midpoint);
         if (Math.hypot(marker.x - screen.x, marker.y - screen.y) <= 12) return { kind: "edge", id: arc.edge.id, ...screen };
       }
@@ -391,6 +397,7 @@ export function Isometric() {
       const tolerance = 6 / state.camera.zoom;
       let best: { id: string; distance: number } | undefined;
       for (const arc of arcs) {
+        if (!connectionVisible(arc.edge, state.categories, state.preview ?? state.selected)) continue;
         if (world.x < arc.minX - tolerance || world.x > arc.maxX + tolerance || world.y < arc.minY - tolerance || world.y > arc.maxY + tolerance) continue;
         const distance = distanceToPolyline(world, arc.points);
         if (distance < tolerance && (!best || distance < best.distance)) best = { id: arc.edge.id, distance };
@@ -736,6 +743,18 @@ export function Isometric() {
           onKeyDown={onKeyDown}
           style={{ cursor: dragging ? "grabbing" : hover ? "pointer" : "grab" }}
         />
+        <div className="landscape-bar landscape-connection-bar">
+          <div className="landscape-chips" role="group" aria-label="Background connections" aria-describedby="connection-filter-help">
+            <span id="connection-filter-help" className="sr-only">Filter background connections. Selecting or previewing a resource always shows its connections.</span>
+            {CATEGORIES.map(category => <button key={category} className="landscape-chip" aria-pressed={categories.has(category)}
+              style={{ "--swatch": EDGE_COLORS[category] } as CSSProperties}
+              title={`${categories.has(category) ? "Hide" : "Show"} ${CATEGORY_LABEL[category].toLowerCase()} in the background. Selected resources keep all their connections.`}
+              onClick={() => {
+                setCategories(current => { const next = new Set(current); if (next.has(category)) next.delete(category); else next.add(category); return next; });
+                setHovered(undefined);
+              }}>{CATEGORY_LABEL[category]}</button>)}
+          </div>
+        </div>
         <div className="landscape-bar landscape-bottom">
           <span className="landscape-stats">
             {scene.nodes.length} resources · {scene.edges.length} connections
@@ -744,7 +763,7 @@ export function Isometric() {
           <span className="spacer" />
           <AddMenu />
         </div>
-        {hover ? <HoverCard hover={hover} scene={scene} nodes={nodes} index={index} viewport={live.current.viewport} /> : null}
+        {hover && !resourcePreview ? <HoverCard hover={hover} scene={scene} nodes={nodes} index={index} viewport={live.current.viewport} /> : null}
         {accessibleEntities}
       </div>
       {view !== "closed" ? <WorkspacePanel id={PANEL_ID} label={view === "inspector" ? "Inspector" : "Resources"} onClose={() => close()}
@@ -774,23 +793,13 @@ function HoverCard(props: {
   readonly viewport: Viewport;
 }) {
   const { hover: current, index } = props;
-  const { draft, snapshot } = useStudio();
-  // Both environments, so the label reads the same whichever the map is showing.
-  const indexes = useMemo(() => ({ dev: indexModel(snapshot.models.dev), prod: indexModel(snapshot.models.prod) }), [snapshot.models]);
   let title: string;
-  let subtitle: string | undefined;
   let lines: (string | undefined)[] = [];
   let facts: HoverFacts | undefined;
-  let description = "";
-  if (current.kind === "node") {
-    const node = props.nodes.get(current.id);
-    if (!node) return null;
-    title = node.label;
-    facts = nodeHoverFacts(node, indexes);
-    // The draft's value, so an unsaved edit previews here as it does in the inspector.
-    description = draft.description(node.id).trim();
-    subtitle = node.kindLabel;
-    lines = [...(node.sourceProblems?.length ? [...node.sourceProblems.slice(0, 3), "Select this resource to review implementation repairs."] : []), ...(description ? [] : [NO_DESCRIPTION])];
+  const resource = current.kind === "node" ? props.nodes.get(current.id) : current.kind === "prop" ? props.scene.props.find(prop => prop.id === current.id) : undefined;
+  if (current.kind === "node" || current.kind === "prop") {
+    if (!resource) return null;
+    title = resource.label;
   } else if (current.kind === "edge") {
     const sceneEdge = props.scene.edges.find((candidate) => candidate.id === current.id);
     const edge = sceneEdge?.edge;
@@ -808,13 +817,6 @@ function HoverCard(props: {
       ...(sceneEdge.members.length > 1 ? ["Click to inspect the connection map.", ...sceneEdge.members.slice(0, 4).map((member) => relationshipTitle(member.edge))] : [edge.detail]),
       missingConnectionInput(sceneEdge) ? "Required value missing. Click to resolve." : undefined,
       edge.provenance === "source" ? "Inferred from source; deployment and runtime behavior are not verified." : undefined];
-  } else if (current.kind === "prop") {
-    const prop = props.scene.props.find((candidate) => candidate.id === current.id);
-    if (!prop) return null;
-    title = prop.label;
-    facts = propHoverFacts(snapshot.models, prop.id);
-    description = draft.description(prop.id).trim();
-    lines = description ? [] : [...prop.caption];
   } else {
     const island = props.scene.islands.find((candidate) => candidate.id === current.id);
     if (!island) return null;
@@ -830,21 +832,7 @@ function HoverCard(props: {
   };
   return (
     <div className="landscape-hover" style={placement} role="tooltip">
-      <strong>{title}</strong>
-      {subtitle ? <span>{subtitle}</span> : null}
-      {facts ? (
-        <>
-          <span className="landscape-hover-tags">
-            <EnvironmentPills availability={{ dev: facts.places.some((place) => place.env === "dev"), prod: facts.places.some((place) => place.env === "prod") }} descriptions={Object.fromEntries(facts.places.map((place) => [place.env, place.where]))} />
-            {facts.frameworkManaged ? <span className="hover-tag managed">Framework-managed</span> : null}
-          </span>
-          {facts.notDeployed ? <span className="landscape-hover-note">{facts.notDeployed}</span> : null}
-        </>
-      ) : null}
-      {description ? <span className="landscape-hover-description">{description}</span> : null}
-      {lines.filter(Boolean).map((line) => (
-        <span key={line}>{line}</span>
-      ))}
+      {resource ? <ResourceHoverContent resource={resource} /> : <HoverContent title={title} facts={facts} lines={lines} />}
     </div>
   );
 }

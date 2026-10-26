@@ -80,6 +80,15 @@ centred; an axis it cannot fit on stays put. Missing implementation artifacts ap
 on the relevant resource, plaque, hover card and Inspector; these warnings describe source
 readiness, not deployed health.
 
+Hovering a Resources row opens the same description, Dev/Prod pills and source warnings
+as its map resource, using `views/ResourceHoverContent.tsx`. Mouse previews wait briefly
+while scanning; keyboard focus opens them immediately. The portal card sits beside the
+row toward the map, or above/below it on narrow screens, and stays within the visible
+window. It remains open while the pointer crosses into it and Escape dismisses it without
+moving focus. Keyboard scrolling keeps the preview with its focused row; wheel scrolling,
+filtering away the row or closing the panel clears it. Touch continues straight to the
+Inspector. A preview never changes selection or the camera.
+
 Stack plaques carry an unplug badge when the configured CDK app has no constructor
 reference for their class in its local runtime import graph. These unattached stacks
 have transparent plaques without solid plinths; their unplug badges and names stay
@@ -409,7 +418,11 @@ been removed; the renderer has one visual style.
    nearby connections retain compact detours. Drawing, picking and packets share the
    same cached path, and Fit includes its crest.
    They are coloured by the Board's six
-   categories, with every category visible by default and no visibility toggles. Dashed is
+   categories. The six pills at the top of the map filter background connections, with
+   every category visible by default. Hidden wires cannot intercept pointer input;
+   selecting or previewing a resource reveals all its connections, and clearing that
+   selection restores the unchanged filters. The accessible connection list retains
+   every relationship. Dashed is
    the default; solid lines are the named exceptions (below), so a connection's line tells
    you what kind it is as well as its colour. Every connection points the way the model
    records it (a workload to what it references), and `connections.ts` decides colour and

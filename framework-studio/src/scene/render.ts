@@ -6,7 +6,8 @@ import { worldToScreen, type Bounds, type Camera, type Point, type Viewport } fr
 import { project } from "./iso";
 import { searchOpacity, type LandscapeFocus } from "./focus";
 import { bandTrim, DECK, GRAPHITE, hexRgb, ICON_TINT, ROLE_BADGE, ROLE_BADGE_PLATE, trimColor } from "./look";
-import { connectionHoverEase, EDGE_HOVER_DURATION, offLens, restingAlpha } from "./connections";
+import { connectionHoverEase, connectionVisible, EDGE_HOVER_DURATION, offLens, restingAlpha } from "./connections";
+import type { EdgeCategory } from "../lookup";
 import { placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
 import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, SUBNET_LABEL, nodeCaptionPresentation, subnetLabelPresentation, subnetLabelRect, rectanglesOverlap, visibleNodeCaptions, type LabelRect } from "./labels";
 import { ICON_BADGE, type Face } from "./shapes";
@@ -43,6 +44,8 @@ export interface RenderState {
   readonly time: number;
   readonly motion: boolean;
   readonly focus: LandscapeFocus;
+  /** Background connections only; the selected resource's connections remain visible. */
+  readonly categories?: ReadonlySet<EdgeCategory>;
 }
 
 export interface Stage {
@@ -944,6 +947,7 @@ export class SceneRenderer {
     const lit: { edge: SceneEdge; strength: number; resting: number }[] = [];
     const visible = new Set<string>();
     for (const edge of prepared.scene.edges) {
+      if (!connectionVisible(edge, state.categories, state.selected)) continue;
       const arc = prepared.arcs.get(edge)!;
       if (OUTSIDE(arc.bounds, view)) continue;
       visible.add(edge.id);
@@ -1013,7 +1017,7 @@ export class SceneRenderer {
     }
     // Fixed screen-size markers remain readable and clickable at overview zoom.
     context.setLineDash([]);
-    for (const [edge, arc] of prepared.arcs) if (arc.missing && !OUTSIDE(arc.bounds, view)) {
+    for (const [edge, arc] of prepared.arcs) if (arc.missing && connectionVisible(edge, state.categories, state.selected) && !OUTSIDE(arc.bounds, view)) {
       const at = arc.midpoint;
       const radius = 8 * pixel, inset = 3 * pixel;
       const matches = state.focus.kind !== "search" || state.focus.nodes.has(edge.from) && state.focus.nodes.has(edge.to);

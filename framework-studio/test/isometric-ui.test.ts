@@ -90,7 +90,8 @@ before(async () => {
   dom.window.HTMLCanvasElement.prototype.setPointerCapture = () => {};
   class Pointer extends dom.window.MouseEvent {
     readonly pointerId: number;
-    constructor(type: string, options: MouseEventInit & { pointerId?: number } = {}) { super(type, options); this.pointerId = options.pointerId ?? 1; }
+    readonly pointerType: string;
+    constructor(type: string, options: MouseEventInit & { pointerId?: number; pointerType?: string } = {}) { super(type, options); this.pointerId = options.pointerId ?? 1; this.pointerType = options.pointerType ?? "mouse"; }
   }
   Object.defineProperty(dom.window, "PointerEvent", { configurable: true, value: Pointer });
   Object.defineProperty(globalThis, "PointerEvent", { configurable: true, value: Pointer });
@@ -396,6 +397,88 @@ test("resource browsing previews successive rows with animated connections and l
   } finally { render.mock.restore(); }
 });
 
+test("resource rows show the map's hover content, stay readable under the pointer and dismiss with Escape", async () => {
+  await mount();
+  const mapCard = await hoverOver("lambda:sign-out");
+  const expected = mapCard.textContent;
+  ui.fireEvent.pointerLeave(document.querySelector("canvas")!); await draw();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Resources" }));
+  const panel = ui.screen.getByRole("complementary", { name: "Resources" });
+  const row = panel.querySelector<HTMLButtonElement>('[data-resource-id="lambda:sign-out"]')!;
+  ui.fireEvent.pointerEnter(row);
+  assert.equal(ui.screen.queryByRole("tooltip"), null, "passing over a row does not flash a card");
+  const card = await ui.screen.findByRole("tooltip");
+  assert.equal(card.textContent, expected, "the list and map use the same description and deployment facts");
+  assert.equal(row.getAttribute("aria-describedby"), card.id);
+  assert.equal(row.getAttribute("title"), null, "no competing native tooltip");
+  assert.equal(card.parentElement, document.body, "the scrollable panel cannot clip the preview");
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "none");
+  ui.fireEvent.pointerLeave(row); ui.fireEvent.pointerEnter(card);
+  await ui.act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
+  assert.equal(ui.screen.getByRole("tooltip"), card, "the pointer can cross into the card to read it");
+  ui.fireEvent.keyDown(document.body, { key: "Escape" });
+  assert.equal(ui.screen.queryByRole("tooltip"), null);
+  assert.equal(row.hasAttribute("aria-describedby"), false);
+  await ui.act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
+  assert.equal(ui.screen.queryByRole("tooltip"), null, "Escape remains dismissed until another interaction");
+  ui.fireEvent.pointerEnter(row);
+  await ui.screen.findByRole("tooltip");
+  ui.fireEvent.click(row);
+  await ui.waitFor(() => assert.ok(ui.screen.getByRole("complementary", { name: "Inspector" })));
+  assert.equal(ui.screen.queryByRole("tooltip"), null, "inspection removes the preview");
+});
+
+test("resource previews follow keyboard focus, include source warnings, and ignore touch focus", async context => {
+  const broken = (model: typeof response.snapshot.models.dev) => ({ ...model, targets: model.targets.map(target => target.ref === "lambda:graphql-api" ? { ...target, implementation: { ready: false, problems: ["Configured handler index.ts is missing."] } } : target) });
+  await mount(false, undefined, { ...response, snapshot: { ...response.snapshot, models: { dev: broken(response.snapshot.models.dev), prod: broken(response.snapshot.models.prod) } } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Resources" }));
+  const panel = ui.screen.getByRole("complementary", { name: "Resources" });
+  const row = panel.querySelector<HTMLButtonElement>('[data-resource-id="lambda:graphql-api"]')!;
+  await ui.act(async () => row.focus());
+  assert.match(ui.screen.getByRole("tooltip").textContent!, /Configured handler index.ts is missing/);
+  ui.fireEvent.keyDown(row, { key: "ArrowDown" });
+  const next = document.activeElement as HTMLElement;
+  assert.equal(ui.screen.getByRole("tooltip").querySelector("strong")?.textContent, next.querySelector("strong")?.textContent);
+  const list = panel.querySelector<HTMLElement>(".resource-browser-list")!;
+  context.mock.method(list, "getBoundingClientRect", () => new dom.window.DOMRect(600, 50, 320, 400));
+  context.mock.method(next, "getBoundingClientRect", () => new dom.window.DOMRect(600, 380, 320, 44));
+  ui.fireEvent.scroll(list);
+  assert.equal(ui.screen.getByRole("tooltip").querySelector("strong")?.textContent, next.querySelector("strong")?.textContent, "scrolling a keyboard-focused row into view retains its preview");
+  ui.fireEvent.keyDown(next, { key: "Escape" });
+  assert.equal(ui.screen.queryByRole("tooltip"), null);
+  assert.equal(document.activeElement, next, "Escape keeps the reader's place in the list");
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "none");
+  await ui.act(async () => { next.blur(); next.focus(); });
+  ui.fireEvent.wheel(list);
+  assert.equal(ui.screen.queryByRole("tooltip"), null, "an explicit wheel scroll dismisses even a focused preview");
+  ui.fireEvent.pointerEnter(row, { pointerType: "touch" });
+  ui.fireEvent.pointerDown(row, { pointerType: "touch" });
+  await ui.act(async () => row.focus());
+  await ui.act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
+  assert.equal(ui.screen.queryByRole("tooltip"), null, "touch goes straight to inspection even when another row previously had keyboard focus");
+  ui.fireEvent.keyDown(row, { key: "ArrowDown" });
+  assert.ok(ui.screen.getByRole("tooltip"), "keyboard navigation resumes previews after a touch interaction");
+});
+
+test("scrolling, filtering and closing Resources clear the preview and pending opens", async () => {
+  await mount();
+  const toggle = ui.screen.getByRole("button", { name: "Resources" });
+  ui.fireEvent.click(toggle);
+  const panel = ui.screen.getByRole("complementary", { name: "Resources" });
+  const row = panel.querySelector<HTMLButtonElement>('[data-resource-id="lambda:sign-out"]')!;
+  ui.fireEvent.pointerEnter(row); await ui.screen.findByRole("tooltip");
+  ui.fireEvent.scroll(panel.querySelector(".resource-browser-list")!);
+  assert.equal(ui.screen.queryByRole("tooltip"), null, "a scrolling list does not leave a floating stale card");
+  ui.fireEvent.pointerEnter(row); await ui.screen.findByRole("tooltip");
+  ui.fireEvent.change(search(), { target: { value: "graphql" } });
+  assert.equal(ui.screen.queryByRole("tooltip"), null, "a removed row loses its tooltip");
+  const remaining = panel.querySelector<HTMLButtonElement>(".resource-row")!;
+  ui.fireEvent.pointerEnter(remaining);
+  ui.fireEvent.click(toggle);
+  await ui.act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
+  assert.equal(ui.screen.queryByRole("tooltip"), null, "a queued open cannot outlive its panel");
+});
+
 test("a map selection opens the inspector directly, and Back from it opens Resources", async () => {
   await mount(false, "lambda:sign-in");
   assert.ok(ui.screen.getByRole("complementary", { name: "Inspector" }));
@@ -585,6 +668,55 @@ test("connections over terrain receive hover and clicks while clear terrain stil
   ui.fireEvent.pointerDown(canvas, { clientX: clear.x, clientY: clear.y, button: 0 });
   ui.fireEvent.pointerUp(canvas, { clientX: clear.x, clientY: clear.y, button: 0 });
   await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, island.id));
+});
+
+test("connection filter pills hide background wires and preserve selected resource connections", async () => {
+  await mount(true); await draw();
+  const group = ui.screen.getByRole("group", { name: "Background connections" });
+  const pills = ui.within(group).getAllByRole("button");
+  assert.deepEqual(pills.map(pill => pill.textContent), ["Routes", "Environment and secrets", "Grants and database", "Invocations", "Workflow integrations", "CDK resource links"]);
+  assert.ok(pills.every(pill => pill.getAttribute("aria-pressed") === "true"));
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
+  const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
+  const edge = scene.edges.find(edge => edge.from === "gateway:http" && edge.category === "routes")!;
+  const pickablePoint = () => scene.routes[edge.id]!.points.map(point => worldToScreen(state.camera(), state.viewport(), point)).find(point => state.pickAt(point.x, point.y)?.id === edge.id);
+  const at = pickablePoint(); assert.ok(at, "the enabled wire can be picked");
+  for (const pill of pills) ui.fireEvent.click(pill);
+  await draw();
+  assert.ok(pills.every(pill => pill.getAttribute("aria-pressed") === "false"));
+  assert.notEqual(state.pickAt(at.x, at.y)?.id, edge.id, "a hidden background wire cannot intercept the canvas");
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "none");
+  strokes.length = 0;
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^HTTP API, Framework-managed API Gateway/ }));
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "gateway:http")); await draw();
+  assert.ok(strokes.includes("rgba(163, 116, 255, 0.95)"), "selected resource connections still receive their normal highlight");
+  assert.ok(pickablePoint(), "the selected resource's hidden-category links become pickable");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Close panel" }));
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "none")); await draw();
+  assert.equal(pickablePoint(), undefined, "clearing selection restores the unchanged filters");
+  ui.fireEvent.click(ui.within(group).getByRole("button", { name: "Routes", exact: true })); await draw();
+  assert.ok(pickablePoint(), "toggling a category back on restores its wires");
+});
+
+test("the real renderer filters background categories without hiding inspected connections", () => {
+  const source = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models) });
+  const edge = source.edges.find(edge => edge.from === "gateway:http" && edge.category === "routes")!;
+  const scene = { ...source, edges: [edge] };
+  const renderer = new SceneRenderer(document.createElement("canvas")); renderer.setScene(scene);
+  const viewport = { width: 1920, height: 1000 };
+  const state: RenderState = { camera: fitScene(scene, viewport), viewport, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene), categories: new Set() };
+  const prefix = `rgba(${hexRgb(edge.style.color).join(", ")}, `;
+  const paint = (overrides: Partial<RenderState> = {}) => {
+    pathStrokes.length = 0; renderer.render({ ...state, ...overrides });
+    return pathStrokes.filter(stroke => stroke.color.startsWith(prefix));
+  };
+  assert.equal(paint().length, 0);
+  assert.equal(paint({ hoveredEdge: edge.id }).length, 0, "stale hover cannot reveal a hidden background wire");
+  assert.ok(paint({ selected: edge.from }).length);
+  assert.ok(paint({ selected: edge.to }).length);
+  assert.ok(paint({ selected: edge.id }).length, "a connection opened from the accessible list remains visible");
+  assert.ok(paint({ categories: new Set([edge.category]) }).length);
+  renderer.dispose();
 });
 
 test("the real renderer strokes connections leaving the APIs island in purple and those leaving a Lambda or container in orange", async () => {

@@ -890,6 +890,15 @@ a {
   gap: var(--space-2) var(--space-3);
 }
 
+.landscape-connection-bar { top: var(--space-3); z-index: 3; align-items: flex-start; }
+.landscape-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); max-width: 100%; pointer-events: none; }
+.landscape-chip { display: inline-flex; align-items: center; gap: 7px; min-height: var(--control-height-sm); padding: 3px 10px; border: 1px dashed #ffffff24; border-radius: 999px; background: #0e131be6; color: #8d97a6; font: 500 var(--text-caption)/1.3 var(--sans); white-space: nowrap; cursor: pointer; pointer-events: auto; }
+.landscape-chip::before { content: ""; flex: none; width: 14px; height: 2px; border-radius: 1px; background: var(--swatch); opacity: .3; }
+.landscape-chip[aria-pressed="true"] { border-style: solid; border-color: #ffffff45; color: #e4e8ee; }
+.landscape-chip[aria-pressed="true"]::before { opacity: 1; }
+.landscape-chip:hover { background: #263140; border-color: #ffffff70; color: #f0f2f5; }
+.landscape-chip:focus-visible { outline: 2px solid #a7d7ff; outline-offset: 2px; }
+
 .landscape-bottom {
   bottom: 12px;
   align-items: flex-end;
@@ -1038,6 +1047,19 @@ a {
   -webkit-line-clamp: 7;
   line-clamp: 7;
   overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* Panel previews share the map's card, outside the scrolling panel's clip. */
+.landscape-hover.resource-tooltip {
+  position: fixed;
+  z-index: 40;
+  width: 320px;
+  max-width: calc(100vw - 16px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  pointer-events: auto;
+  box-shadow: var(--shadow-popover);
   overflow-wrap: anywhere;
 }
 

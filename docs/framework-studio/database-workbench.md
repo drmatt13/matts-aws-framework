@@ -35,7 +35,8 @@ pinned and the runtime remains Rust-free.
 
 ## Authoring and navigation
 
-The page starts with shared workspace tabs; the help icon opens guidance on demand.
+The page starts with shared workspace tabs; the help icon opens a centered modal with
+a blurred backdrop. Escape or the close controls dismiss it and restore keyboard focus.
 Tabs scroll horizontally in narrow windows and retain their normal control size,
 keeping every workspace reachable without expanding the toolbar into several rows.
 **Open in editor** sits in the Prisma source pane header. The default split workspace
@@ -44,9 +45,13 @@ All tabs use the workbench's shared horizontal gutters. Saved SQL and retention 
 use Studio's standard control height, label spacing and surface colors; field actions
 align with their controls and wrap at narrow widths. SQL source and execution remain
 separate bordered groups, with review actions kept beside their relevant guidance.
-Source, split and diagram controls stay in the shared toolbar in every layout. Each pane
-has a fullscreen button; Escape or **Exit fullscreen** restores the previous layout and
-keyboard focus. Fullscreen keeps source review, validation and layout controls available
+The Prisma header owns saved/draft and validation status, with formatting, validation
+and source review in its action row. Discard appears when the draft has changes.
+Source, split and diagram controls share one fullscreen button in the diagram header;
+they move to the source header in source-only mode. Fullscreen expands the current layout;
+Escape or **Exit fullscreen** restores the previous layout and keyboard focus.
+Diagram-only mode keeps source status, validation and review in the diagram panel.
+Fullscreen keeps source review, validation and layout controls available
 without resetting text, undo, diagram zoom or selection. It requires browser fullscreen
 support. The Schema tab shows change-impact guidance only for a validated modified draft;
 history and database inspection live in their own tabs.
