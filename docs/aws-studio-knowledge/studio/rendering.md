@@ -151,7 +151,9 @@ Height alone cannot distinguish nearly vertical arcs. The default 48-world-unit
 control-point spacing separates both vertical and diagonal spans; a compact spread cap
 keeps shorter paths proportional with many types. Opposite directions share the fan's
 canonical ordering but retain their actual source and destination. Obstacles choose the
-shared base curve; drawing, packets and picking reuse the resulting per-type path.
+shared base curve by checking every sibling's offset at the final 24-segment resolution,
+including opposite-direction wires; a clear first member cannot hide an obstructed outer
+member. Drawing, packets and picking reuse the resulting per-type path.
 
 Independent connections can still compete for one corridor: lift moves an arc straight up
 the page, so steep wires into one node arrive at nearly the same angle and lie on top of
@@ -168,8 +170,11 @@ span (at most 14% of a span, 300 units), with lift reduced by at most 20%. Near-
 neighbours within twice the clearance join the solve so making room does not crowd them.
 Moves that would cut more obstacles, add more than one crossing to a wire, or leave a wire
 competing for more length than before are halved and finally dropped; moves under 3 units
-are dropped. The pass is deterministic, independent of input order and lens, and leaves
-unrelated wires bit-identical; above `CORRIDOR_LIMIT` (300) connections it is skipped.
+are dropped. Final collision validation runs after overlap rollback and tiny-move removal;
+an unsafe endpoint-pair group returns together to its original arcs. This validation repeats
+only while groups are removed, bounded by the moving group count. The pass is deterministic,
+independent of input order and lens, and leaves unrelated wires bit-identical; above
+`CORRIDOR_LIMIT` (300) connections it is skipped.
 
 Conditional deployment is an input-control relationship: `Conditional deployment: $inputPath`.
 It uses the same dashed colour as Supplies input. Its model endpoints, arrow, packets,
@@ -190,8 +195,9 @@ Routing rejects disjoint sampled-path envelopes before exact obstacle/crossing
 checks. Path helpers reject segment pairs and segment/box pairs whose envelopes
 cannot intersect before applying the original strict orientation tests. Envelopes
 must cover every sampled point, including interior extrema and zero-width paths.
-Touching boundaries retain the existing strict intersection semantics. Candidate
-samples, scores, ordering, final route resolution and picking remain unchanged.
+Touching boundaries retain the existing strict intersection semantics. Standalone candidate
+curves and crossing costs use eight segments; shared parallel fans check obstacles at the
+final 24-segment resolution. Candidate ordering and picking reuse the chosen routes.
 These envelopes belong to one routing call; they do not cache source or scenes.
 Use `framework-studio/scripts/benchmark-graph.ts` with 25/100/250/500 or a sanitized
 snapshot JSON path to measure cold scene creation and retained-position rebuilds

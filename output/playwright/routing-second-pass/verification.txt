@@ -1,0 +1,68 @@
+Framework Studio routing second pass — October 27, 2026
+
+Source changes
+- Score every parallel fan sibling against obstacles at the final 24-segment resolution.
+- Revalidate final corridor curves after overlap rollback and tiny-move removal.
+- Restore unsafe endpoint-pair groups together; preserve spacing, ordering and directions.
+- Add three regression tests and update the two relevant rendering guides.
+
+Passed checks
+- npm --workspace framework-studio run build
+- node --conditions=development --import tsx --test framework-studio/test/corridors.test.ts framework-studio/test/routing.test.ts
+  11 tests passed; 0 failed.
+- node --conditions=development --import tsx --test --test-name-pattern='arcs route|parallel|nearby' framework-studio/test/graph-layout.test.ts
+  5 tests passed; 0 failed.
+- node docs/aws-studio-knowledge/check.mjs
+  30 pages, 595 local links, 173 source references checked.
+- git diff --check
+
+Browser checks
+- Playwright MCP: desktop 1600x1000; mobile 390x844; mouse wheel zoom and drag pan;
+  keyboard pan/zoom/fit; entity-list arrows and Enter; node and edge hover/selection;
+  independently selected Reads and IAM grant wires between the same endpoints;
+  development/production geometry equality; close selection at 1.125x.
+- Chrome DevTools MCP: isolated reproduction of zoom/pan/edge hover and pointer cursor;
+  no application warnings/errors; observed API requests succeeded.
+- Saved comparison: both regions and reference versions load; range Home/End updates
+  the clipping and accessible percentage; all image links load.
+- Browser tabs and temporary comparison servers were closed after use.
+
+Full repository gate
+Command: npm run verify
+Status: FAILED (exit 1), with four independently confirmed baseline failures.
+Studio: 984 tests, 978 passed, 4 failed, 2 skipped; duration about 500 seconds.
+All newly added tests pass. No new failure was introduced by the routing patch.
+Earlier gates passed: native lockfile bindings, framework projection checks, database
+generation, GraphQL generation check, all workspace typechecks, and 22 GraphQL schema tests.
+Other suites passed: client 65 tests; local API 16; local runner 27; CDK 280 passed /
+1 skipped; database 28; framework 500; ws-tester 4.
+The initial sandbox attempt could not create tsx's IPC socket. The full command was
+rerun with permission outside the sandbox.
+
+Baseline failures independently reproduced from untouched HEAD:
+- bounded-assert.test.ts: Node 26 rejects an explicit undefined third argument to
+  assert.deepEqual; the existing assertion wrapper always forwards that argument.
+- graph-layout.test.ts:246: topologyEdges selects duplicate edge metadata according
+  to model order; reversing dev/prod inputs changes 21 authorization states.
+- model.test.ts:281: stale Cognito call-shape expectation omits the existing
+  { optional: true } third argument.
+- model.test.ts:320: stale tool deployment editability expectation conflicts with
+  the existing field registry, which explicitly permits tool deployment editing.
+
+Scope of evidence
+- Offline unit/schema/workspace suites and source generators only.
+- No live database application, database migration, cloud deployment or teardown.
+- No independent infrastructure synth was required by this frontend geometry change;
+  synth fixtures run within repository suites are reported by those suites.
+- Corridor separation retains its existing 300-connection cap.
+
+Current graph measurements (all 79 connections, including default-hidden edges)
+                           Before 2a7ae7c    Latest 3c53e58 / refined
+Competing length           93912             54420
+Competing pairs            221               161
+Unshared crossing pairs    358               355
+Total length, rounded      126757            127214
+
+Measured using corridorConflicts and the existing sampled geometry, in world units.
+Competing length improves 42.1%; total wire length grows 0.36%.
+This is evidence for the current graph, not a guarantee for arbitrary architectures.

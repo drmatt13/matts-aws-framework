@@ -306,9 +306,22 @@ export function separateCorridors(input: readonly CorridorWire[], obstacles: rea
     changed = new Set(wires.flatMap((_, at) => worse.has(group[at]!) ? [at] : []));
     for (const at of changed) current[at] = route(at);
   }
-  // An imperceptible move is not worth changing a route.
+  // Validate the geometry actually returned. Overlap rollback can put an intermediate bow through
+  // an obstacle that the full move cleared; dropping tiny moves can also change other wires' crossings.
+  // Drop unsafe groups together, preserving their fan. Each pass removes at least one group, so even
+  // when restoring one wire changes another's crossing count this finishes within the group count.
+  for (const g of membersOf.keys()) if (Math.abs(shift[g]!) < 3) shift[g] = 0;
+  for (const at of moving) { current[at] = route(at); currentBounds[at] = pathBounds(current[at]!); currentCoarse[at] = coarse(current[at]!); }
+  for (let pass = 0; pass < membersOf.size; pass++) {
+    const unsafe = [...membersOf].filter(([g, members]) => shift[g] && members.some(at => hits(at, current[at]!) > baseHits.get(at)! || crossings(at, currentCoarse[at]!, currentCoarse, currentBounds) > baseCrossings.get(at)! + 1));
+    if (!unsafe.length) break;
+    for (const [g, members] of unsafe) {
+      shift[g] = 0;
+      for (const at of members) { current[at] = route(at); currentBounds[at] = pathBounds(current[at]!); currentCoarse[at] = coarse(current[at]!); }
+    }
+  }
   const result = new Map<string, readonly Point[]>();
-  wires.forEach((wire, at) => { if (Math.abs(shift[group[at]!]!) >= 3) result.set(wire.id, current[at]!); });
+  wires.forEach((wire, at) => { if (shift[group[at]!]!) result.set(wire.id, current[at]!); });
   return result;
 }
 

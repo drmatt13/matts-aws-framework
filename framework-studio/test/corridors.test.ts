@@ -97,6 +97,34 @@ test("a separation never makes a wire cut more obstacles than it already did", (
   }
 });
 
+test("overlap rollback rechecks the final bow for obstacle collisions", () => {
+  // The full sideways move clears these boxes, but halving it to reduce corridor overlap makes w9
+  // enter the second box. Collision checks made before that rollback miss the final obstruction.
+  const curves = [
+    [8, 98, 358, 76, 348, 54, 658],
+    [9, 10, 161, 51, 395, 92, 949],
+    [13, 114, 94, 64, 382, 13, 973],
+    [14, 61, 357, 106, 512, 151, 1051],
+    [17, 24, 80, 64, 189, 103, 600],
+    [18, 154, 95, 105, 449, 55, 936],
+  ] as const;
+  const wires: CorridorWire[] = curves.map(([id, ax, ay, cx, cy, bx, by]) => {
+    const a = { x: ax, y: ay }, b = { x: bx, y: by }, control = { x: cx, y: cy };
+    return { id: `w${id}`, ends: [`a${id}`, `b${id}`], points: arcPoints(a, control, b, 24), control, group: `g${id}`, exempt: [] };
+  });
+  const obstacles: Obstacle[] = [
+    { id: "first", bounds: { minX: 30, maxX: 65, minY: 506, maxY: 605 } },
+    { id: "second", bounds: { minX: 62, maxX: 87, minY: 465, maxY: 543 } },
+  ];
+  const hits = (points: readonly Point[]) => obstacles.filter(obstacle => pathHits(points, obstacle.bounds)).length;
+  assert.equal(hits(wires[1]!.points), 1, "w9 starts with only its existing obstruction");
+  const after = routed(wires, separateCorridors(wires, obstacles));
+  for (const item of wires) {
+    assertWellFormed(item, after.get(item.id)!);
+    assert.ok(hits(after.get(item.id)!) <= hits(item.points), `${item.id}'s final bow adds an obstruction`);
+  }
+});
+
 test("routing is independent of declaration order and leaves distant routes untouched", () => {
   const anchor = (id: string, island: string, x: number, y: number) => ({ id, island, x, y });
   const hub = anchor("hub", "south", 0, 1200);

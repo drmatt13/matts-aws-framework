@@ -88,12 +88,24 @@ export function routeArcs(links: readonly LayoutLink[], obstacles: readonly Obst
       : [{ x: sharedControl.x + fan.x, y: sharedControl.y + fan.y }];
     let bestControl = controls[0]!, score = Infinity;
     const recent = accepted.slice(-96);
+    const obstacleHits = (points: readonly Point[]) => {
+      const bounds = pathBounds(points);
+      return obstacles.reduce((sum, obstacle) => sum + Number(obstacle.id !== a.island && obstacle.id !== b.island && obstacle.id !== a.id && obstacle.id !== b.id && intersects(bounds, obstacle.bounds) && pathHits(points, obstacle.bounds)), 0);
+    };
     for (const control of controls) {
       const points = arcPoints(a, control, b, 8);
-      // Envelopes only reject impossible intersections. Keep the same sampled
-      // curves, exact geometry, scores and candidate order for all possible hits.
+      // Envelopes reject impossible crossings before exact sampled-curve checks.
       const bounds = pathBounds(points);
-      const hits = obstacles.reduce((sum, obstacle) => sum + Number(obstacle.id !== a.island && obstacle.id !== b.island && obstacle.id !== a.id && obstacle.id !== b.id && intersects(bounds, obstacle.bounds) && pathHits(points, obstacle.bounds)), 0);
+      // The whole fan inherits this base curve. A clear first member cannot justify pushing another
+      // member through an obstacle. Score every offset at the final paint/picking resolution; reversed
+      // endpoints trace the same geometry and retain their canonical fan position.
+      let hits = 0;
+      if (parallel && sharedControl === undefined) {
+        for (let sibling = 0; sibling < siblings.length; sibling++) {
+          const offset = (sibling - (siblings.length - 1) / 2 - rank) * parallelStep;
+          hits += obstacleHits(arcPoints(a, { x: control.x + normal.x * offset, y: control.y + normal.y * offset }, b, 24));
+        }
+      } else hits = obstacleHits(points);
       const crossings = recent.reduce((sum, other) => sum + (other.link.from.id !== a.id && other.link.to.id !== a.id && other.link.from.id !== b.id && other.link.to.id !== b.id && intersects(bounds, other.bounds) && pathsCross(points, other.points) ? Math.sqrt(other.link.weight * link.weight) : 0), 0);
       const cost = hits * 20000 + crossings * 1200 + pathLength(points);
       if (cost < score) { bestControl = control; score = cost; }

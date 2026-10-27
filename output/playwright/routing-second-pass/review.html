@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Studio routing second pass · October 27, 2026</title>
+<style>
+  *{box-sizing:border-box}body{margin:0;background:#0b1119;color:#dce6ef;font:16px/1.6 system-ui,sans-serif}main{max-width:1280px;margin:auto;padding:32px 24px 64px}h1{font-size:30px;line-height:1.2;margin:8px 0 20px}h2{font-size:21px;margin-top:32px}p{max-width:900px}a{color:#90d6ef}code{font-size:.9em}label{display:inline-flex;gap:10px;align-items:center;margin:0 24px 12px 0}select{font:inherit;padding:7px;background:#17222f;color:inherit;border:1px solid #465568;border-radius:5px}.compare{position:relative;aspect-ratio:8/5;overflow:hidden;background:#101720;border:1px solid #465568;border-radius:8px}.compare img{width:100%;height:100%;position:absolute;inset:0}.compare .reference{clip-path:inset(0 50% 0 0)}.divider{position:absolute;left:50%;height:100%;border-left:2px solid white;pointer-events:none}.stamp{position:absolute;bottom:16px;background:#0b1119e8;padding:4px 12px;border:1px solid #465568;border-radius:4px;font-size:13px}.stamp.left{left:16px}.stamp.right{right:16px}.slider{width:100%;margin:12px 0;accent-color:#90d6ef}.muted{color:#a5b4c4;font-size:14px}table{border-collapse:collapse;font-size:15px}th,td{padding:9px 16px;text-align:right;border-bottom:1px solid #304052}th:first-child,td:first-child{text-align:left}.evidence{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}.evidence img{width:100%;border-radius:6px;border:1px solid #304052}.evidence figure{margin:0}.evidence figcaption{font-size:14px}li{margin:8px 0}:focus-visible{outline:3px solid #90d6ef;outline-offset:3px}
+</style>
+<main>
+  <p class="muted">Framework Studio · October 27, 2026 · second-pass review</p>
+  <h1>Keep the new separation, with two collision fixes.</h1>
+  <p>I prefer the latest commit. The agent and Cognito fans are easier to trace as individual connections. The previous version looks slightly tidier because more wires overlap, but that hides relationships. Increasing the global spacing further would spread the input wires into a more tangled weave. The refinement keeps the existing spacing and silhouette.</p>
+  <label>Region <select id="scene"><option value="agent">Agent and input fan</option><option value="cognito">Cognito fan</option></select></label>
+  <label>Reference <select id="version"><option value="before">Before latest commit · 2a7ae7c</option><option value="latest">Latest commit · 3c53e58</option></select></label>
+  <div class="compare">
+    <img id="refined" src="refined-agent-matched.png" alt="Refined routing at the matched camera">
+    <img id="reference" class="reference" src="before-agent-matched.png" alt="Reference routing at the same camera">
+    <div class="divider" id="divider"></div>
+    <span class="stamp left" id="reference-label">Before latest commit</span><span class="stamp right">Refined</span>
+  </div>
+  <label for="split">Reveal reference / refined</label>
+  <input class="slider" id="split" type="range" min="0" max="100" value="50" aria-valuetext="50 percent reference, 50 percent refined">
+  <p class="muted">Drag the slider or use its arrow keys. Screenshots use the same 1600 × 1000 viewport, world camera, zoom and enabled connection filters, with motion paused. The two reference servers use Git-frozen routing code and the same live snapshot. Refined and latest intentionally look the same on this application's current geometry; the fixes affect collision cases covered by the regression tests.</p>
+  <h2>Measured on the current graph</h2>
+  <table><thead><tr><th>All 79 connections</th><th>Before</th><th>Latest / refined</th></tr></thead><tbody>
+    <tr><td>Competing near-parallel length</td><td>93,912</td><td>54,420 (−42.1%)</td></tr>
+    <tr><td>Competing pairs</td><td>221</td><td>161</td></tr>
+    <tr><td>Crossing pairs without shared endpoints</td><td>358</td><td>355</td></tr>
+    <tr><td>Total wire length</td><td>126,757</td><td>127,214 (+0.36%)</td></tr>
+  </tbody></table>
+  <p class="muted">World-unit geometry measured using the existing corridor detector and sampled polylines. Includes relationships hidden by the default filters. These figures describe this graph, not a guarantee for every architecture.</p>
+  <h2>What changed in this pass</h2>
+  <ul>
+    <li><strong>Validate the final fallback curves.</strong> Overlap rollback could halve a safe bow into an obstacle after collision validation. The final check now runs after rollback and tiny-move removal, restoring unsafe endpoint-pair groups together.</li>
+    <li><strong>Check every parallel sibling.</strong> The first wire previously chose a shared curve for all siblings. Candidate curves now check every offset, including reverse-direction wires, at the final 24-segment resolution.</li>
+  </ul>
+  <p>Three regression tests cover the new behavior. The existing 300-connection limit remains: larger graphs keep their base arcs. Dense areas still require zoom or selection; this heuristic does not eliminate all crossings.</p>
+  <h2>Interaction evidence</h2>
+  <div class="evidence">
+    <figure><a href="refined-edge-hover.png"><img src="refined-edge-hover.png" alt="Hovering an individual Reads connection"></a><figcaption>Reads wire hover; its neighboring IAM grant was independently hovered and clicked.</figcaption></figure>
+    <figure><a href="refined-edge-selected.png"><img src="refined-edge-selected.png" alt="Connection inspector after clicking a wire"></a><figcaption>Connection selection opens the correct inspector.</figcaption></figure>
+    <figure><a href="refined-production-fit.png"><img src="refined-production-fit.png" alt="Production map overview"></a><figcaption>Production overview; switching back to Development preserved every connection's geometry.</figcaption></figure>
+    <figure><a href="refined-mobile-inspector.png"><img src="refined-mobile-inspector.png" alt="Mobile connection inspector opened with the keyboard"></a><figcaption>390 × 844 layout; arrow navigation and Enter open a connection inspector below the canvas.</figcaption></figure>
+  </div>
+  <p class="muted">Also checked actual wheel zoom, mouse drag panning, keyboard pan/zoom/fit, connection navigation, mobile fit, and an isolated Chrome DevTools reproduction. No application console errors or failed API requests were observed.</p>
+  <h2>Verification</h2>
+  <p>Studio production build, 11 focused routing/corridor tests, five focused graph-layout tests, and documentation link checks pass. The full repository verification was run; its unrelated baseline failures and final counts are recorded in <a href="verification.txt">verification.txt</a>. No database application or cloud deployment was performed.</p>
+</main>
+<script>
+  const scene=document.getElementById('scene'),version=document.getElementById('version'),split=document.getElementById('split');
+  function update(){document.getElementById('refined').src=`refined-${scene.value}-matched.png`;document.getElementById('reference').src=`${version.value}-${scene.value}-matched.png`;document.getElementById('reference-label').textContent=version.value==='before'?'Before latest commit':'Latest commit';}
+  scene.addEventListener('change',update);version.addEventListener('change',update);
+  split.addEventListener('input',()=>{document.getElementById('reference').style.clipPath=`inset(0 ${100-split.value}% 0 0)`;document.getElementById('divider').style.left=`${split.value}%`;split.setAttribute('aria-valuetext',`${split.value} percent reference, ${100-split.value} percent refined`);});
+</script>
+</html>

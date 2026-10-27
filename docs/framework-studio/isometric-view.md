@@ -424,11 +424,15 @@ been removed; the renderer has one visual style.
    at least `28 + 0.08 · ground span` world units above the higher attachment. An additional
    24-unit minimum clearance above the higher projected endpoint keeps depth-aligned
    connections legible. Lane offsets and obstacle avoidance can increase the lift;
-   nearby connections retain compact detours. Unrelated connections that would otherwise
+   nearby connections retain compact detours. Parallel fans choose their shared detour by
+   checking every sibling, including reverse directions, against obstacles at the final
+   route resolution. Unrelated connections that would otherwise
    lie on top of one another for a long stretch, such as a sheaf of steep wires into one
    stack, are spread apart by bowing each slightly sideways, so they arrive as a fan; each
    keeps its side, its exact anchors and one smooth curve, and connections with room to
-   spare do not move (see [Rendering](../aws-studio-knowledge/studio/rendering.md)).
+   spare do not move. Collision validation checks the final curves after fallback and
+   tiny-move removal, restoring an unsafe parallel group together (see
+   [Rendering](../aws-studio-knowledge/studio/rendering.md)).
    Drawing, picking and packets share the same cached path, and Fit includes its crest.
    Three purpose categories filter background connections: Routes and events, Environment and secrets,
    and Resource interactions. Categories with no connections have no pill.
