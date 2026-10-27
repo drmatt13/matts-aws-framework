@@ -134,7 +134,7 @@ export interface Prop {
 }
 
 export interface SceneEdge extends ConnectionGroup {
-  /** Styling category; operational categories take precedence over bundled inputs. */
+  /** Relationship category; each bundle contains one type of relationship. */
   readonly category: EdgeCategory;
   /** Colour and dash; presentation only, decided in `connections.ts`. */
   readonly style: ConnectionStyle;
@@ -737,9 +737,8 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
   const resourceById = new Map(model.resources.map((resource) => [resource.id, resource]));
   const edges = aggregateConnections(model, options.layoutModels)
     .filter((edge) => ids.has(edge.from) && ids.has(edge.to))
-    .map((edge) => ({ ...edge, category: edge.categories.includes("interactions") ? "interactions" as const : edge.categories.includes("routes") ? "routes" as const : edgeCategory(edge.edge) }))
-    // Operational bundles use the visible source icon, regardless of the evidence representative.
-    .map((edge): SceneEdge => ({ ...edge, style: connectionStyle(edge.edge, edge.category, nodeById.get(edge.from), resourceById.get(edge.edge.to), edge.members.flatMap(member => Object.values(member.models))) }));
+    .map((edge) => ({ ...edge, category: edgeCategory(edge.edge) }))
+    .map((edge): SceneEdge => ({ ...edge, style: connectionStyle(edge.edge, edge.category, nodeById.get(edge.from), resourceById.get(edge.edge.to)) }));
 
   const frames: SceneFrame[] = islands.filter((island) => island.region === "network").map((island) => ({ id: `frame:${island.id}`, kind: "network", members: [island.id], ghost: !!island.ghost, geometry: islandFrame(island) }));
 

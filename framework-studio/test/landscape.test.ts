@@ -22,7 +22,7 @@ import { indexModel, isEventConnection } from "../src/lookup";
 import { existsSync, readFileSync } from "node:fs";
 import { landscapeFocus, searchOpacity, searchScene, SEARCH_FADE } from "../src/scene/focus";
 import { layoutIslands, type IslandFootprint } from "../src/scene/layout";
-import { aggregateConnections, connectionLabel } from "../src/connections";
+import { aggregateConnections, connectionLabel, connectionType } from "../src/connections";
 
 /**
  * The landscape is a view, and these hold it to that: every entity of the real
@@ -185,8 +185,8 @@ test("aggregated connections retain every original edge and its environment evid
     const own = new Map(snapshot.models[scene.mode].edges.map((edge) => [edge.id, edge]));
     const pairs = new Set<string>();
     for (const edge of scene.edges) {
-      const pair = JSON.stringify([edge.from, edge.to]);
-      assert.ok(!pairs.has(pair), `one arc per directed pair: ${pair}`);
+      const pair = JSON.stringify([edge.from, edge.to, connectionType(edge.edge)]);
+      assert.ok(!pairs.has(pair), `one arc per relationship type and directed pair: ${pair}`);
       pairs.add(pair);
       for (const member of edge.members) assert.deepEqual(member.edge, own.get(member.edge.id) ?? held.get(member.edge.id));
     }
@@ -927,7 +927,7 @@ test("the WebSocket authorizer's route retains its own route styling", () => {
   }
 });
 
-test("an interaction keeps a mixed aggregate solid even when a missing input is its representative", () => {
+test("reads, grants and event delivery remain separate between the same visible resources", () => {
   const read = snapshot.models.prod.edges.find((edge) => edge.relation === "env" && edge.to.startsWith("resource:cognito"))!;
   assert.ok(read, "a workload reads a Cognito field");
   const grant = { ...read, id: "edge:test-grant", relation: "grant" as const, label: "grantRead()" };
@@ -936,19 +936,36 @@ test("an interaction keeps a mixed aggregate solid even when a missing input is 
   const scene = buildScene(model, {});
   const drawn = (id: string) => scene.edges.find((edge) => edge.members.some((member) => member.edge.id === id))!.style;
   const group = scene.edges.find(edge => edge.members.some(member => member.edge.id === grant.id))!;
-  assert.equal(group.edge.id, read.id, "the missing input remains the evidence representative");
+  assert.equal(scene.edges.length, 2);
+  assert.equal(group.edge.id, grant.id, "the permission has its own representative");
   assert.equal(group.category, "interactions");
   assert.deepEqual(drawn(grant.id), { color: ICON_TINT.lambda, dashed: false });
-  assert.deepEqual(drawn(read.id), drawn(grant.id), "the bundle shares its visible source's style");
+  assert.deepEqual(drawn(read.id), { color: READ_EDGE_COLOR, dashed: true }, "input reads keep their own style");
+  assert.notDeepEqual(scene.routes[read.id]!.points, scene.routes[grant.id]!.points, "parallel types have distinct arcs");
   const development = { ...snapshot.models.dev, edges: [missingRead] };
   const union = buildScene(development, { layoutModels: [development, model] });
   const otherModeGrant = union.edges.find(edge => edge.members.some(member => member.edge.id === grant.id))!;
   assert.deepEqual(otherModeGrant.style, { color: ICON_TINT.lambda, dashed: false }, "other-mode interaction members retain the same source style");
   const failure = { ...grant, permissionContext: { kind: "failure" as const } };
-  const delivery = buildScene({ ...model, edges: [missingRead, failure] }).edges[0]!;
-  assert.equal(delivery.edge.id, read.id, "missing input evidence stays primary for an event-delivery bundle too");
-  assert.equal(delivery.category, "routes", "event delivery belongs to Routes and events even beside an input read");
+  const delivery = buildScene({ ...model, edges: [missingRead, failure] }).edges.find(edge => edge.edge.id === failure.id)!;
+  assert.equal(delivery.edge.id, failure.id, "event delivery has its own representative");
+  assert.equal(delivery.category, "routes", "event delivery belongs to Routes and events");
   assert.deepEqual(delivery.style, { color: ICON_TINT.lambda, dashed: false });
+});
+
+test("MFA bundles three environment reads and keeps its IAM grant on a separate arc in both modes", () => {
+  for (const scene of [dev, prod]) {
+    const pair = scene.edges.filter(edge => edge.from === "lambda:mfa" && edge.to === "resource:cognito");
+    assert.equal(pair.length, 2);
+    const reads = pair.find(edge => edge.edge.relation === "env")!;
+    const grant = pair.find(edge => edge.edge.relation === "grant")!;
+    assert.equal(reads.members.length, 3);
+    assert.equal(grant.members.length, 1);
+    assert.deepEqual(reads.categories, ["inputs"]);
+    assert.deepEqual(grant.categories, ["interactions"]);
+    assert.deepEqual(reads.style, { color: READ_EDGE_COLOR, dashed: true });
+    assert.deepEqual(grant.style, { color: ICON_TINT.lambda, dashed: false });
+  }
 });
 
 test("a connection outside the viewed environment rests at a quarter of the strength it has inside it", () => {

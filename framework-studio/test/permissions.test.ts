@@ -159,11 +159,15 @@ test("group filters check all relationship categories across modes and preserve 
   const call = edge("integration", { kind: "integration", service: "table", operations: ["get"] }, { id: "prod-only" });
   const prod = withConnectionAuthorizations({ ...base(), edges: [plain, grant, call] });
   const dev: ModeModel = { ...prod, mode: "dev", edges: [plain] };
-  const group = aggregateConnections(prod, [dev])[0]!;
-  assert.equal(group.members.length, 3);
-  assert.equal(group.edge.relation, "grant", "styling has one representative");
-  assert.deepEqual(group.categories, ["inputs", "interactions"]);
-  for (const selected of [group, aggregateConnections(dev, [prod])[0]!]) {
+  const groups = aggregateConnections(prod, [dev]);
+  assert.equal(groups.length, 3);
+  assert.ok(groups.every(group => group.members.length === 1));
+  const group = groups.find(group => group.edge.id === grant.id)!;
+  assert.deepEqual(group.categories, ["interactions"]);
+  const read = groups.find(group => group.edge.id === plain.id)!;
+  assert.equal(connectionVisible(read, new Set(["interactions"])), false, "grants do not reveal environment reads");
+  assert.equal(connectionVisible(group, new Set(["inputs"])), false, "reads do not reveal grants");
+  for (const selected of [group, aggregateConnections(dev, [prod]).find(group => group.edge.id === grant.id)!]) {
     assert.deepEqual(selected.categories, group.categories, "other-environment relationships remain filterable");
     for (const category of group.categories) assert.equal(connectionVisible(selected, new Set([category])), true, category);
     assert.equal(connectionVisible(selected, new Set(["routes", "structure"])), false);
@@ -171,7 +175,7 @@ test("group filters check all relationship categories across modes and preserve 
     assert.equal(connectionVisible(selected), true);
     for (const selection of [selected.id, selected.from, selected.to]) assert.equal(connectionVisible(selected, new Set(), selection), true);
   }
-  const ghost = aggregateConnections({ ...dev, edges: [] }, [prod])[0]!;
+  const ghost = aggregateConnections({ ...dev, edges: [] }, [prod]).find(group => group.edge.id === grant.id)!;
   assert.equal(ghost.otherLens, "prod");
   assert.equal(connectionVisible(ghost, new Set(["interactions"])), true, "union-topology ghost links remain filterable");
   assert.equal(connectionSignature({ edges: [grant] }), connectionSignature({ edges: [describe(grant)] }));

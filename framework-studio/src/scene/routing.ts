@@ -42,18 +42,40 @@ export function routeConnections(links: readonly LayoutLink[], obstacles: readon
   const result: Record<string, ConnectionRoute> = {};
   const accepted: { link: LayoutLink; points: readonly Point[]; bounds: Bounds }[] = [];
   const lanes = new Map<string, number>();
+  // Opposite directions and different categories share the same endpoint pair. Give every type
+  // a stable fan position within that pair so filters and mode switches cannot make wires swap.
+  const pairKey = (link: LayoutLink) => JSON.stringify([link.from.id, link.to.id].sort());
+  const pairs = new Map<string, string[]>();
+  for (const link of links) {
+    const key = pairKey(link), siblings = pairs.get(key) ?? [];
+    siblings.push(link.id); pairs.set(key, siblings);
+  }
+  for (const siblings of pairs.values()) siblings.sort();
+  const pairControls = new Map<string, Point>();
+  const parallelGap = 48;
   for (const link of [...links].sort((a, b) => b.weight - a.weight || (a.id < b.id ? -1 : 1))) {
     const { from: a, to: b } = link;
     const group = `${a.island}>${b.island}:${link.category}`;
     const index = lanes.get(group) ?? 0; lanes.set(group, index + 1);
-    const lane = (index % 7) * 5;
     const dx = b.x - a.x, dy = b.y - a.y, length = Math.max(1, Math.hypot(dx, dy));
+    const pair = pairKey(link), siblings = pairs.get(pair)!;
+    // Nearby resources need a compact fan even with many types; longer wires have room for clearer gaps.
+    const parallel = siblings.length > 1;
+    const parallelStep = parallel ? Math.min(parallelGap, Math.max(24, (length - 320) * 0.4) / (siblings.length - 1)) : 0;
+    const rank = parallel ? siblings.indexOf(link.id) - (siblings.length - 1) / 2 : 0;
+    const direction = a.id < b.id ? 1 : -1;
+    const normal = { x: -dy / length * direction, y: dx / length * direction };
+    const fan = { x: normal.x * rank * parallelStep, y: normal.y * rank * parallelStep };
+    const clearance = Math.abs(normal.y) * (siblings.length - 1) * parallelStep / 2;
     const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    const lift = connectionLift(a, b, lane);
+    const lift = connectionLift(a, b, parallel ? 0 : (index % 7) * 5) + clearance;
     // Nearby endpoints need a nearby detour. Retain the established candidates
     // for long connections while smoothly reducing their extra bow on short ones.
     const avoidanceScale = Math.min(1, (length / 800) ** 2);
-    const controls = [0, 80, 180, 320].map((extra) => ({ x: middle.x, y: middle.y - lift - extra * avoidanceScale }));
+    const sharedControl = pairControls.get(pair);
+    const controls = sharedControl === undefined
+      ? [0, 80, 180, 320].map((extra) => ({ x: middle.x + fan.x, y: middle.y - lift - extra * avoidanceScale + fan.y }))
+      : [{ x: sharedControl.x + fan.x, y: sharedControl.y + fan.y }];
     let bestControl = controls[0]!, score = Infinity;
     const recent = accepted.slice(-96);
     for (const control of controls) {
@@ -67,6 +89,7 @@ export function routeConnections(links: readonly LayoutLink[], obstacles: readon
       if (cost < score) { bestControl = control; score = cost; }
     }
     const best = arcPoints(a, bestControl, b, 24);
+    if (parallel && sharedControl === undefined) pairControls.set(pair, { x: bestControl.x - fan.x, y: bestControl.y - fan.y });
     result[link.id] = { points: best, length: pathLength(best) };
     const points = best.filter((_, at) => at % 3 === 0);
     accepted.push({ link, points, bounds: pathBounds(points) });

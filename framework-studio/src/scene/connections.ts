@@ -11,7 +11,7 @@ import { isEventConnection, type EdgeCategory } from "../lookup";
  * Conditional deployment connections use the same dashed style as supplied inputs.
  *
  * For input delivery, a value being read takes the look of an environment file supplying an input,
- * while a secret is red. Bundles containing an interaction follow the source-icon rule.
+ * while a secret is red. Different relationship types retain separate wires and styles.
  */
 export interface ConnectionStyle {
   readonly color: string;
@@ -35,10 +35,9 @@ export function connectionStyle(
   category: EdgeCategory,
   source: Pick<SceneNode, "icon" | "island" | "targetKind"> | undefined,
   destination: Pick<ModelResource, "kind"> | undefined,
-  relationships: readonly Pick<ModelEdge, "relation" | "permissionContext">[] = [edge],
 ): ConnectionStyle {
   const { relation } = edge;
-  if (category === "interactions" || relationships.some(isEventConnection)) return { color: ICON_TINT[source?.icon ?? "construct"], dashed: false };
+  if (category === "interactions" || isEventConnection(edge)) return { color: ICON_TINT[source?.icon ?? "construct"], dashed: false };
   if (relation === "deployWhen") return { color: READ_EDGE_COLOR, dashed: true };
   if (relation === "maps") return { color: READ_EDGE_COLOR, dashed: true };
   // An authorizer guards its route.

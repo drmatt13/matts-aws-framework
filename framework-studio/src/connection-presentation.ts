@@ -113,7 +113,7 @@ export function presentRelationship(edge: ModelEdge, index: ModelIndex): Relatio
   return { action, value, title: `${action}: ${value}`, lines, notes: edge.authorization ? authorizationSummary(edge.authorization) : [] };
 }
 
-// A homogeneous bundle names what it carries. Mixed bundles summarize each purpose once.
+// Same-type bundles name what they carry; different types have their own connections.
 const FAMILIES: Readonly<Record<Relation, { readonly singular: string; readonly plural: string; readonly verb: string }>> = {
   env: { singular: "environment value", plural: "environment values", verb: "Reads" },
   secret: { singular: "startup secret", plural: "startup secrets", verb: "Loads" },
@@ -147,25 +147,14 @@ function familyOf(edge: ModelEdge) {
 export function presentConnection(connection: ConnectionGroup, mode: Mode, index: ModelIndex) {
   const members = connection.members.map(member => ({ member, edge: member.models[mode] ?? member.edge }));
   if (members.length === 1) return { ...presentRelationship(members[0]!.edge, index), homogeneous: true };
-  const counts = new Map<string, { family: ReturnType<typeof familyOf>; count: number }>();
-  for (const { edge } of members) {
-    const family = familyOf(edge), key = `${family.verb}:${family.singular}`, current = counts.get(key);
-    counts.set(key, { family, count: (current?.count ?? 0) + 1 });
-  }
-  const groups = [...counts.values()];
-  const homogeneous = groups.length === 1;
-  const first = groups[0]!;
-  const action = homogeneous ? first.family.verb : groups.length === 2
-    ? `${first.family.verb} and ${groups[1]!.family.verb.toLowerCase()}` : "Connects";
-  const value = homogeneous
-    ? `${first.count} ${first.family.plural}`
-    : [...groups.slice(0, 2).map(({ family, count }) => `${count} ${count === 1 ? family.singular : family.plural}`),
-      ...(groups.length > 2 ? [`${groups.slice(2).reduce((total, group) => total + group.count, 0)} other connections`] : [])].join(" · ");
+  const family = familyOf(members[0]!.edge);
+  const action = family.verb;
+  const value = `${members.length} ${family.plural}`;
   const title = `${action}: ${value}`;
   const lines = members.slice(0, 4).map(({ edge, member }) => {
     const native = nativeGrantPresentation(edge, index);
     const presentation = presentRelationship(edge, index);
-    const compact = homogeneous && ["env", "secret", "supplies", "maps", "routes"].includes(edge.relation);
+    const compact = ["env", "secret", "supplies", "maps", "routes"].includes(edge.relation);
     const label = `${compact ? presentation.value : presentation.title}${native?.objectScope !== undefined ? ` · ${native.objectScope}` : ""}`;
     const otherMode = member.models[mode] ? "" : member.models.dev ? " (Dev)" : " (Prod)";
     return `${label}${otherMode}${edge.inputRequirement?.status === "missing" ? " — required value missing" : ""}`;
@@ -173,5 +162,5 @@ export function presentConnection(connection: ConnectionGroup, mode: Mode, index
   if (members.length > 4) lines.push(`+${members.length - 4} more`);
   const hiddenMissing = members.slice(4).filter(({ edge }) => edge.inputRequirement?.status === "missing").length;
   if (hiddenMissing) lines.push(`${hiddenMissing} more required ${hiddenMissing === 1 ? "value" : "values"} missing.`);
-  return { action, value, title, lines, notes: [], homogeneous };
+  return { action, value, title, lines, notes: [], homogeneous: true };
 }

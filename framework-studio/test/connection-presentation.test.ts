@@ -170,9 +170,12 @@ test("grouped native grants describe operations and scopes without raw helper na
   assert.equal(result.title, "Grants access: 2 permissions");
   assert.deepEqual(result.lines, ["Write bucket objects: uploads.bucket · reports/*", "Write bucket objects: uploads.bucket · exports/*"]);
   const mixed = { ...current, edges: [...grants, edge("env", { id: "2", to: bucket.id, label: "BUCKET_NAME" })] };
-  assert.deepEqual(presentConnection(aggregateConnections(mixed)[0]!, "dev", indexModel(mixed)).lines, [
-    "Write bucket objects: uploads.bucket · reports/*", "Write bucket objects: uploads.bucket · exports/*", "Reads: BUCKET_NAME",
+  const groups = aggregateConnections(mixed);
+  assert.equal(groups.length, 2);
+  assert.deepEqual(presentConnection(groups.find(group => group.edge.relation === "grant")!, "dev", indexModel(mixed)).lines, [
+    "Write bucket objects: uploads.bucket · reports/*", "Write bucket objects: uploads.bucket · exports/*",
   ]);
+  assert.equal(presentConnection(groups.find(group => group.edge.relation === "env")!, "dev", indexModel(mixed)).title, "Reads: BUCKET_NAME");
 });
 
 test("grouped service calls retain each operation and resource field", () => {
@@ -221,15 +224,13 @@ test("a homogeneous connection names its information and lists each variable wit
   assert.equal(result.homogeneous, true);
 });
 
-test("mixed connections name each purpose and classify delivery independently of grant relations", () => {
+test("different purposes have separate titles and delivery is classified independently of grant relations", () => {
   const current = model({ edges: [
     edge("env", { id: "0", label: "QUEUE_URL" }),
     edge("grant", { id: "1", label: "grantSendMessages()", permissionContext: { kind: "native", method: "grantSendMessages", arguments: [] } }),
   ] });
-  const result = presentConnection(aggregateConnections(current)[0]!, "dev", indexModel(current));
-  assert.equal(result.title, "Reads and grants access: 1 environment value · 1 permission");
-  assert.equal(result.homogeneous, false);
-  assert.ok(result.lines[0]?.startsWith("Reads:"));
+  const groups = aggregateConnections(current);
+  assert.deepEqual(groups.map(group => presentConnection(group, "dev", indexModel(current)).title).sort(), ["Reads: QUEUE_URL", "Send queue messages: data"].sort());
   const delivery = model({ edges: [edge("grant", { id: "0", permissionContext: { kind: "failure" } }),
     edge("grant", { id: "1", permissionContext: { kind: "trigger-dlq", adapter: "sns" } })] });
   assert.equal(presentConnection(aggregateConnections(delivery)[0]!, "dev", indexModel(delivery)).title, "Sends failed events to: 2 failure destinations");
@@ -247,14 +248,13 @@ test("forty relationships have a bounded preview with missing requirements beyon
   assert.deepEqual(result.lines.slice(4), ["+36 more", "2 more required values missing."]);
 });
 
-test("many distinct purposes have a bounded title and retain their full member count", () => {
+test("many distinct purposes retain separate connections and every original member", () => {
   const relations = ["env", "grant", "database", "localReplay", "trigger", "startsWorkflow", "integration", "contains"] as const;
   const current = model({ edges: relations.map((relation, i) => edge(relation, { id: String(i) })) });
-  const result = presentConnection(aggregateConnections(current)[0]!, "dev", indexModel(current));
-  assert.equal(result.title.split(" · ").length, 3, "at most two purpose names plus the remaining connection count");
-  assert.match(result.title, /6 other connections$/);
-  assert.equal(result.lines.length, 5);
-  assert.equal(result.lines[4], "+4 more");
+  const groups = aggregateConnections(current);
+  assert.equal(groups.length, relations.length);
+  assert.ok(groups.every(group => group.members.length === 1));
+  assert.deepEqual(groups.flatMap(group => group.members.map(member => member.edge.id)).sort(), current.edges.map(edge => edge.id).sort());
 });
 
 test("bundle previews use selected-mode evidence and label relationships belonging only to the other mode", () => {

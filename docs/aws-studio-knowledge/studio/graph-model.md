@@ -121,7 +121,17 @@ show this warning without inventing a replacement target, changing topology or a
 runtime health. Reviewed source application checks canonical artifacts against the proposed
 file overlay; current files are never silently scaffolded during evaluation.
 
-`aggregateConnections` in [connections.ts](../../../framework-studio/src/connections.ts) groups directed visible endpoint pairs while retaining original members, purpose categories and mode availability. Titles follow the same action/value format, such as `Reads: 3 environment values` or `Reads and grants access: 1 environment value · 1 permission`; mixed groups summarize up to two families and a remaining count. Hover previews are bounded to four members without concealing missing required inputs. The Inspector preserves every member and its evidence. Dev/prod union topology stabilizes layout while the active mode controls availability and styling. `lookup.ts` in [src/lookup.ts](../../../framework-studio/src/lookup.ts) centralizes entity/relationship lookup labels and categories.
+`aggregateConnections` in [connections.ts](../../../framework-studio/src/connections.ts)
+groups by directed visible endpoint pair **and relationship type**, retaining original
+members, categories and mode availability. Three environment reads form `Reads: 3 environment
+values`; an IAM grant between the same resources has its own arc. Typed subscriptions and
+failure delivery stay distinct from native grants even when their underlying relation is
+`cdk` or `grant`. Bundle IDs include the type; original relationship IDs, evidence and
+description keys remain intact. Hover previews are bounded to four members without
+concealing missing required inputs. The Inspector preserves every member and its evidence.
+Dev/prod union topology stabilizes layout while the active mode controls availability and
+styling. `lookup.ts` in [src/lookup.ts](../../../framework-studio/src/lookup.ts) centralizes
+entity/relationship lookup labels and categories.
 
 The Database workbench uses `parseDeclaredSchema` in
 [server/database.ts](../../../framework-studio/server/database.ts) for source-linked diagram

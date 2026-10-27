@@ -107,6 +107,40 @@ test("routing avoids an unrelated island and retains separate paths for parallel
   assert.notDeepEqual(routes.one!.points, routes.two!.points);
 });
 
+test("parallel types and opposite directions have stable, separated arc heights", () => {
+  const a = { id: "a", island: "left", x: 0, y: 0 }, b = { id: "b", island: "right", x: 800, y: 0 };
+  const links = [
+    { id: "reads", from: a, to: b, weight: 2, category: "inputs" },
+    { id: "grant", from: a, to: b, weight: 2, category: "interactions" },
+    { id: "trigger", from: b, to: a, weight: 1, category: "routes" },
+  ];
+  const routes = routeConnections(links, []);
+  const heights = Object.values(routes).map(route => route.points[12]!.y).sort((a, b) => a - b);
+  assert.ok(heights[1]! - heights[0]! >= 16);
+  assert.ok(heights[2]! - heights[1]! >= 16);
+  assert.deepEqual(routeConnections([...links].reverse(), []), routes, "declaration ordering cannot swap the arcs");
+  for (const link of links) {
+    assert.deepEqual(routes[link.id]!.points[0], { x: link.from.x, y: link.from.y });
+    assert.deepEqual(routes[link.id]!.points.at(-1), { x: link.to.x, y: link.to.y });
+  }
+});
+
+test("three, six and ten parallel relationships fan apart on vertical and diagonal spans", () => {
+  for (const count of [3, 6, 10]) for (const [x, y] of [[0, 900], [60, 900], [800, 600]]) {
+    const from = { id: "a", island: "left", x: 0, y: 0 }, to = { id: "b", island: "right", x: x!, y: y! };
+    const links = Array.from({ length: count }, (_, index) => ({ id: `type-${index}`, from, to, weight: 2, category: index === 0 ? "inputs" : "interactions" }));
+    const routes = routeConnections(links, []);
+    const normal = { x: -to.y / Math.hypot(to.x, to.y), y: to.x / Math.hypot(to.x, to.y) };
+    const positions = Object.values(routes).map(route => {
+      const midpoint = route.points[12]!;
+      return midpoint.x * normal.x + midpoint.y * normal.y;
+    }).sort((a, b) => a - b);
+    assert.equal(new Set(positions).size, count);
+    for (let index = 1; index < count; index++) assert.ok(positions[index]! - positions[index - 1]! >= 10, `${count} types remain separated across the span`);
+    assert.deepEqual(routeConnections([...links].reverse(), []), routes);
+  }
+});
+
 test("connections lift along world Z with a minimum crest even when viewed along their depth, in either direction", () => {
   const from = { id: "a", island: "left", x: 0, y: 0 };
   for (const [x, y] of [[30, 0], [800, 0], [400, 400], [-400, 400], [1, 800], [-1, 800], [0, 800], [0, -800]]) {

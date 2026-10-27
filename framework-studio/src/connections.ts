@@ -11,6 +11,12 @@ export function edgeAvailability(edge: ModelEdge, models: Snapshot["models"]): A
   return { dev: enabled("dev"), prod: enabled("prod") };
 }
 
+/** Group by meaning, never by a display title or the incidental underlying CDK relation. */
+export function connectionType(edge: Pick<ModelEdge, "relation" | "permissionContext">): string {
+  const kind = edge.permissionContext?.kind;
+  return kind === "subscription" ? kind : kind === "trigger-dlq" || kind === "failure" ? "failure-delivery" : edge.relation;
+}
+
 export interface ConnectionMember {
   readonly edge: ModelEdge;
   /** Retain each graph's evidence and requirement status, including differences under the same id. */
@@ -33,7 +39,7 @@ export interface ConnectionGroup {
   readonly enabledInLens?: boolean;
 }
 
-/** Group directed relationships by the nodes the landscape actually draws, across both graphs. */
+/** Bundle only the same relationship type between visible nodes, across both graphs. */
 export function aggregateConnections(model: ModeModel, layoutModels: readonly ModeModel[] = [model]): readonly ConnectionGroup[] {
   const models = [model, ...layoutModels.filter((other) => other.mode !== model.mode)];
   const indexes = new Map(models.map((item) => [item.mode, indexModel(item)]));
@@ -44,14 +50,15 @@ export function aggregateConnections(model: ModeModel, layoutModels: readonly Mo
     versions[item.mode] = edge;
     members.set(edge.id, versions);
   }
-  const groups = new Map<string, { from: string; to: string; members: ConnectionMember[] }>();
+  const groups = new Map<string, { from: string; to: string; type: string; members: ConnectionMember[] }>();
   for (const versions of members.values()) {
     const edge = versions[model.mode] ?? versions.dev ?? versions.prod!;
     const from = representatives[edge.from] ?? edge.from;
     const to = representatives[edge.to] ?? edge.to;
     if (from === to) continue;
-    const key = JSON.stringify([from, to]);
-    const group = groups.get(key) ?? { from, to, members: [] };
+    const type = connectionType(edge);
+    const key = JSON.stringify([from, to, type]);
+    const group = groups.get(key) ?? { from, to, type, members: [] };
     const enabled = (mode: Mode) => {
       const version = versions[mode], index = indexes.get(mode);
       return !!version && !!index && connectionDisabledEndpoints(index, mode, version).length === 0;
@@ -59,7 +66,7 @@ export function aggregateConnections(model: ModeModel, layoutModels: readonly Mo
     group.members.push({ edge, models: versions, availability: { dev: enabled("dev"), prod: enabled("prod") } });
     groups.set(key, group);
   }
-  return [...groups.values()].map(({ from, to, members }): ConnectionGroup => {
+  return [...groups.values()].map(({ from, to, type, members }): ConnectionGroup => {
     members.sort((a, b) => a.edge.id.localeCompare(b.edge.id));
     // Keep missing-input and permission evidence first; scene styling considers every member separately.
     const priority = (member: ConnectionMember) => (member.models[model.mode] ? 0 : 10) +
@@ -69,7 +76,7 @@ export function aggregateConnections(model: ModeModel, layoutModels: readonly Mo
     const otherLens = members.some((item) => item.models[model.mode]) ? undefined : models.find((item) => item.mode !== model.mode)?.mode;
     const presentCategories = new Set(members.flatMap((member) => Object.values(member.models).map(edgeCategory)));
     const categories = (Object.keys(CATEGORY_LABEL) as EdgeCategory[]).filter((category) => presentCategories.has(category));
-    return { id: members.length === 1 ? edge.id : `connection:${encodeURIComponent(from)}:${encodeURIComponent(to)}`,
+    return { id: members.length === 1 ? edge.id : `connection:${encodeURIComponent(from)}:${encodeURIComponent(to)}:${type}`,
       from, to, edge, members, categories, availability, enabledInLens: availability[model.mode], badge: availabilityBadge(availability), ...(otherLens ? { otherLens } : {}) };
   }).sort((a, b) => a.id.localeCompare(b.id));
 }

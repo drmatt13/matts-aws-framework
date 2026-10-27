@@ -846,15 +846,15 @@ test("Routes and events controls native triggers independently of Resource inter
   renderer.dispose();
 });
 
-test("a mixed interaction stays source-coloured and solid at rest, hover and selection while retaining its missing-input marker", () => {
+test("a separate grant stays source-coloured and solid while a missing read keeps its own marker", () => {
   const model = response.snapshot.models.dev;
   const read = model.edges.find(edge => edge.relation === "env" && edge.to.startsWith("resource:cognito"))!;
   assert.ok(read);
   const missingRead = { ...read, inputRequirement: { resource: read.to, name: read.label, mode: "dev" as const, file: "cdk-app/.env.dev", required: true, status: "missing" as const, reasons: [] } };
-  const grant = { ...read, id: "edge:test-grant", relation: "grant" as const, label: "grantRead()" };
+  const grant = { ...read, id: "edge:test-grant", relation: "grant" as const, label: "grantRead()", provenance: "declared" as const };
   const scene = buildScene({ ...model, edges: [missingRead, grant] });
-  assert.equal(scene.edges.length, 1);
-  const edge = scene.edges[0]!;
+  assert.equal(scene.edges.length, 2);
+  const edge = scene.edges.find(edge => edge.edge.id === grant.id)!;
   const renderer = new SceneRenderer(document.createElement("canvas")); renderer.setScene(scene);
   const viewport = { width: 1920, height: 1000 };
   const state: RenderState = { camera: fitScene(scene, viewport), viewport, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene) };
@@ -862,7 +862,7 @@ test("a mixed interaction stays source-coloured and solid at rest, hover and sel
   for (const overrides of [{}, { hoveredEdge: edge.id }, { selected: edge.id, focus: landscapeFocus(scene, edge.id) }]) {
     pathStrokes.length = 0; strokes.length = 0;
     renderer.render({ ...state, ...overrides });
-    const alpha = "selected" in overrides || "hoveredEdge" in overrides ? 0.95 : 0.9;
+    const alpha = "selected" in overrides || "hoveredEdge" in overrides ? 0.95 : 0.3;
     const arc = pathStrokes.find(stroke => stroke.color === `${prefix}${alpha})`);
     assert.ok(arc, "the actual curve keeps the Lambda icon's orange, including its highlighted pass");
     assert.deepEqual(arc.dash, [], "the actual curve is solid in each interaction state");
@@ -894,6 +894,30 @@ async function hoverConnection(member: string) {
   await draw();
   return ui.screen.findByRole("tooltip");
 }
+
+test("MFA read and permission arcs have independent hovers and inspection", async () => {
+  await mount(true);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
+  const edges = response.snapshot.models.dev.edges.filter(edge => edge.from === "lambda:mfa");
+  const read = edges.find(edge => edge.relation === "env" && edge.to.startsWith("resource:cognito."))!;
+  const grant = edges.find(edge => edge.relation === "grant")!;
+  assert.ok(read); assert.ok(grant);
+  const reads = await hoverConnection(read.id);
+  assert.equal(reads.querySelector("strong")?.textContent, "Reads: 3 environment values");
+  assert.equal(ui.within(reads).queryByText(/^IAM:/), null);
+  const permission = await hoverConnection(grant.id);
+  assert.equal(permission.querySelector("strong")?.textContent, "Allow AWS actions: cognito.userPool");
+  assert.ok(permission.textContent?.includes("IAM: cognito-idp:AdminGetUser"));
+  const state = (dom.window as unknown as { __studioLandscape: { connections(): { id: string; members: string[]; points: { x: number; y: number }[] }[]; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
+  const connection = state.connections().find(connection => connection.members.includes(grant.id))!;
+  assert.equal(connection.members.length, 1);
+  const at = connection.points.find(point => state.pickAt(point.x, point.y)?.id === connection.id)!;
+  const canvas = document.querySelector("canvas")!;
+  ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
+  ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 }); await draw();
+  assert.ok(ui.screen.getByRole("heading", { name: "Allow AWS actions: cognito.userPool" }));
+  assert.equal(document.querySelectorAll(".connection-map-member").length, 0, "the grant inspector contains no environment-read members");
+});
 
 test("HTTP and WebSocket route hovers retain routing purpose in both environments with secondary IAM details", async () => {
   const http = response.snapshot.models.dev.edges.find(edge => edge.relation === "routes" && edge.label === "/api/test/start-workflow")!;
@@ -971,7 +995,7 @@ test("clicking a disabled wire explains its endpoints in the inspector and the n
 test("clicking a grouped connection opens every mapping and retains it across environments", async () => {
   await mount(true);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
-  const id = "connection:resource%3Acognito:client-envfile";
+  const id = "connection:resource%3Acognito:client-envfile:maps";
   assert.ok(!labels.includes("4"), "connection labels stay off the canvas");
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;

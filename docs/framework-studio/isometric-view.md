@@ -397,11 +397,11 @@ been removed; the renderer has one visual style.
    ring on its tile. When a selection exists, everything outside its neighbourhood is
    dimmed. Search applies the shared focus opacity to all paint layers (see Search).
 4. **Arcs.** Quadratic curves lifted along world Z, which projects straight up the page.
-   Relationships with the same visible source and destination share one arc, including
-   references to different fields of the same stack. Opposite directions stay separate.
+   Only relationships of the same type with the same visible source and destination share
+   an arc, including reads of different fields of the same stack. Reads and IAM grants
+   have separate arcs, styles and filters. Opposite directions stay separate.
    The hover popup names the grouped purpose as an action and value, such as `Reads: 3 environment values`, and
-   shows the same Dev and Prod pills as node popups. Mixed groups name up to two families
-   plus a remaining count. The preview lists at most four members and a remaining count;
+   shows the same Dev and Prod pills as node popups. The preview lists at most four members and a remaining count;
    any missing required values outside that preview receive a separate notice.
    Both pills keep their names; unavailable environments are dimmed.
    Connection inspectors and their individual relationship rows use the same two pills,
@@ -410,10 +410,14 @@ been removed; the renderer has one visual style.
    field endpoints and evidence. Availability requires a
    relationship and both enabled endpoints in that graph. Selecting a grouped arc opens
    a connection map with every original source, destination, label, environment and
-   expandable evidence or input-resolution action. Mixed permission/read groups retain
-   the source icon style, and any missing required input retains the red X marker.
-   Ground-plane travel stays linear, so connections toward or away from the viewer
-   rise and fall without swinging sideways. Attachment elevations include each plaque's
+   expandable evidence or input-resolution action. Any missing required input retains
+   its red X marker on the read connection.
+   Single connections travel linearly along the ground plane and lift in world Z.
+   Parallel types fan slightly perpendicular to their projected span, so near-vertical
+   paths remain distinct too. Their fan positions are stable by connection ID across
+   modes, filters and declaration order. The usual control-point gap is 48 world units;
+   shorter spans use a bounded, compact fan even with many types. Both endpoints remain
+   attached to their resources. Attachment elevations include each plaque's
    height. Lift accounts for the ground plane's 2:1 foreshortening, with a physical crest
    at least `28 + 0.08 · ground span` world units above the higher attachment. An additional
    24-unit minimum clearance above the higher projected endpoint keeps depth-aligned
@@ -438,8 +442,8 @@ been removed; the renderer has one visual style.
      pink, agents teal, and other resources their own icon colour. Grants, database links,
      calls, workflow steps, native triggers and replay all follow this rule. Native triggers,
      subscriptions and event failure delivery belong to Routes and events; access and
-     workload calls belong to Resource interactions. A bundle
-     containing any interaction or event delivery follows it too, including members from the other environment.
+     workload calls belong to Resource interactions. Same-type bundles follow this rule
+     even when some members belong only to the other environment.
      Folded stack members use the visible owning stack's icon colour.
    - **Environment and secrets.** Reading a stack field or an input parameter takes the
      same dashed style as an environment file supplying an input. Secret references and
@@ -461,8 +465,8 @@ been removed; the renderer has one visual style.
      links to the routes they guard remain solid red, and structural links retain their
      category style.
 
-   A missing required input is red, with an X marker. When bundled with a resource
-   interaction, its X marker stays red while the solid wire keeps the source icon's colour.
+   A missing required input is red, with an X marker. Its separate permission connection
+   keeps the source icon's colour and solid style.
    Derived edges are fainter.
    Hovers retain concise purpose details and an optional IAM action/helper note, without
    an AWS-only suffix. Configured inputs need no status sentence; empty, missing, unknown

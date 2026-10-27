@@ -127,10 +127,9 @@ selection resumes the unchanged filters. The accessible list still exposes every
 Every Resource interaction and event delivery connection uses the visible source node's
 `ICON_TINT` colour and a solid line, including grants, database links, native triggers and
 replay. Lambda/ECS interactions therefore match their orange resource icons. An aggregated
-wire containing any interaction or event delivery uses this rule even when a missing input
-is its evidence representative or an interaction
-exists only in the other mode. Missing inputs keep their red X marker without recolouring
-that interaction wire. Hover, selection and environment availability change emphasis,
+wire contains only the same relationship type. Reads and grants between the same resources
+remain separate, with independent styles and filters, even across the mode union.
+Missing inputs keep their red X marker on the read wire. Hover, selection and environment availability change emphasis,
 never its colour or dash style. Folded members use the visible owning stack's icon.
 
 `connection-presentation.ts` supplies every connection title as **action: relevant value**,
@@ -138,14 +137,20 @@ including `Routes to: /api/test/start-workflow`, `Starts workflow: invocation-te
 and `Reads: 3 environment values`. Calls name the configured destination, workflow steps
 name their typed operation and target, and grants retain the resource name. Tooltips,
 inspectors, member rows, Board labels and description reviews use this same formatter.
-Mixed bundles combine their actions and name up to two relationship families plus a
-remaining count. Hover previews show at most four
+Same-type bundles name their shared purpose and count. Hover previews show at most four
 member labels, a remaining count and any missing required values outside that preview.
 From/To and environment pills remain primary. Concise operational details and a muted IAM
 summary follow when applicable; source paths, inference caveats and full permission facts
 expand under Configuration and Permissions in the inspector. Normal configured inputs need
 no status sentence. Native trigger hovers name the resolved constructor. Resource hovers
 retain descriptions and source warnings without permission counts.
+
+Parallel relationships use a stable fan perpendicular to the projected endpoint span.
+Height alone cannot distinguish nearly vertical arcs. The default 48-world-unit
+control-point spacing separates both vertical and diagonal spans; a compact spread cap
+keeps shorter paths proportional with many types. Opposite directions share the fan's
+canonical ordering but retain their actual source and destination. Obstacles choose the
+shared base curve; drawing, packets and picking reuse the resulting per-type path.
 
 Conditional deployment is an input-control relationship: `Conditional deployment: $inputPath`.
 It uses the same dashed colour as Supplies input. Its model endpoints, arrow, packets,
