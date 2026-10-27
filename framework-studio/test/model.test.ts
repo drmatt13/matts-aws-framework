@@ -15,6 +15,9 @@ import { fieldEditability, SourceFiles } from "../server/source";
 import { locateConfigSource } from "../../packages/framework/scripts/config-source";
 import { ROOT_ENV_STACK_OUTPUTS } from "../../scripts/root-env-outputs";
 import { withExportStacks } from "../server/source/export-stacks";
+import { indexModel } from "../src/lookup";
+import { aggregateConnections } from "../src/connections";
+import { presentConnection, presentRelationship } from "../src/connection-presentation";
 
 /**
  * The model is the framework's answers, reshaped. These tests hold it to the
@@ -33,6 +36,25 @@ before(async () => {
   snapshot = state.snapshot;
 });
 after(() => builder.dispose());
+
+test("all current connection titles use action/value presentation in both environments", () => {
+  for (const model of Object.values(snapshot.models)) {
+    const index = indexModel(model);
+    for (const edge of model.edges) {
+      const result = presentRelationship(edge, index);
+      assert.match(result.title, /^[^:\r\n]+: \S/, `${model.mode} ${edge.relation}: ${result.title}`);
+      assert.equal(result.title, `${result.action}: ${result.value}`);
+    }
+    for (const group of aggregateConnections(model, Object.values(snapshot.models))) {
+      assert.match(presentConnection(group, model.mode, index).title, /^[^:\r\n]+: \S/);
+    }
+    for (const [relation, action] of [["startsWorkflow", "Starts workflow"], ["runsTask", "Runs task"], ["usesTool", "Calls tool"]] as const) {
+      const connection = model.edges.find(edge => edge.relation === relation)!;
+      assert.ok(connection);
+      assert.equal(presentRelationship(connection, index).title, `${action}: ${index.targets.get(connection.to)!.title}`);
+    }
+  }
+});
 
 test("managed output stacks match the root exporter, reuse catalog ids, and carry only public symbolic outputs", () => {
   for (const model of Object.values(snapshot.models)) {

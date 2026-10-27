@@ -296,8 +296,9 @@ export interface ModelResource {
 // ---------------------------------------------------------------------------
 
 export type Relation =
-  /** A stack owns a resource shown independently on the map. */
+  /** An input controls whether a workload is deployed: input -> workload. */
   | "deployWhen"
+  /** A stack owns a resource shown independently on the map. */
   | "contains"
   /** A route reaches its target. */
   | "routes"

@@ -35,6 +35,14 @@ test("connection notes follow named relationships across graph ordering and envi
   assert.notEqual(connectionDescriptionId(edge), connectionDescriptionId({ ...edge, from: edge.to, to: edge.from }));
 });
 
+test("conditional deployment keeps its existing description key when its direction changes", () => {
+  const condition = snapshot.models.dev.edges.find(edge => edge.relation === "deployWhen")!;
+  assert.ok(condition);
+  assert.ok(condition.from.startsWith("resource:"));
+  const historical = `connection-description:${JSON.stringify([condition.relation, condition.to, condition.from, condition.label, condition.attachment ?? null])}`;
+  assert.equal(connectionDescriptionId(condition), historical);
+});
+
 test("literal edits preserve comments and safely round trip text that resembles code", () => {
   const original = '// preserve header\nexport const descriptions = {\n  // keep comment\n  "lambda:one": "before", // keep inline\n} satisfies Record<string, string>;\n';
   const value = 'Quotes " and \' with \\ paths\r\nNew line\t${process.exit()} `ticks` 😺';

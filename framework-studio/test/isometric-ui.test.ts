@@ -15,7 +15,7 @@ import { UNTAGGED_FILTER } from "../src/tag-groups";
 import { connectionMidpoint } from "../src/scene/routing";
 import { screenToWorld, worldToScreen, type Camera, type Viewport } from "../src/scene/camera";
 import { catalogAvailability } from "../src/deployment";
-import { DECK, hexRgb, ISLAND_TRIM } from "../src/scene/look";
+import { DECK, hexRgb, ICON_TINT, ISLAND_TRIM } from "../src/scene/look";
 import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, SUBNET_LABEL, subnetLabelPresentation, subnetLabelRect, rectanglesOverlap } from "../src/scene/labels";
 import { project } from "../src/scene/iso";
 import { insidePolygon, pickEntity, pickIsland } from "../src/scene/picking";
@@ -38,7 +38,7 @@ const strokes: string[] = [];
 const labels: string[] = [];
 const labelPaints: { text: string; alpha: number; x: number; y: number; font: string }[] = [];
 const iconStrokes: { icon: string; color: string; width: number }[] = [];
-const pathStrokes: { color: string; width: number }[] = [];
+const pathStrokes: { color: string; width: number; dash: number[] }[] = [];
 const paintOrder: ({ kind: "highlight"; clipped: boolean } | { kind: "image" })[] = [];
 let measurements = 0;
 let glyphWidth = 6;
@@ -60,7 +60,8 @@ before(async () => {
   Object.defineProperty(globalThis, "Image", { configurable: true, value: class { src = ""; complete = true; naturalWidth = 48; onload = null; } });
   const gradient = () => ({ addColorStop() {} });
   let activeClip: Path2D | undefined;
-  const paintStack: { alpha: number; stroke: string; width: number; clip: Path2D | undefined }[] = [];
+  let lineDash: number[] = [];
+  const paintStack: { alpha: number; stroke: string; width: number; dash: number[]; clip: Path2D | undefined }[] = [];
   let paintedIcon = "";
   const context = new Proxy({
     globalAlpha: 1,
@@ -69,17 +70,18 @@ before(async () => {
     stroke(path?: Path2D) {
       strokes.push(this.strokeStyle);
       if (this.strokeStyle === "rgba(167, 215, 255, 0.85)" || this.strokeStyle === "rgba(207, 229, 248, 0.6)") paintOrder.push({ kind: "highlight", clipped: !!activeClip });
-      if (path) pathStrokes.push({ color: this.strokeStyle, width: this.lineWidth });
+      if (path) pathStrokes.push({ color: this.strokeStyle, width: this.lineWidth, dash: [...lineDash] });
       if (paintedIcon) iconStrokes.push({ icon: paintedIcon, color: this.strokeStyle, width: this.lineWidth });
       paintedIcon = "";
     },
     fillText(text: string, x: number, y: number) { labels.push(text); labelPaints.push({ text, alpha: this.globalAlpha, x, y, font: String((this as unknown as { font: string }).font) }); },
     clip(path?: Path2D) { activeClip = path ?? new Path2D(); },
-    save() { paintStack.push({ alpha: this.globalAlpha, stroke: this.strokeStyle, width: this.lineWidth, clip: activeClip }); },
+    setLineDash(dash: number[]) { lineDash = [...dash]; },
+    save() { paintStack.push({ alpha: this.globalAlpha, stroke: this.strokeStyle, width: this.lineWidth, dash: [...lineDash], clip: activeClip }); },
     restore() {
       const saved = paintStack.pop();
       if (!saved) return;
-      this.globalAlpha = saved.alpha; this.strokeStyle = saved.stroke; this.lineWidth = saved.width; activeClip = saved.clip;
+      this.globalAlpha = saved.alpha; this.strokeStyle = saved.stroke; this.lineWidth = saved.width; lineDash = saved.dash; activeClip = saved.clip;
     },
     createLinearGradient: gradient, createRadialGradient: gradient,
     measureText: (text: string) => { measurements++; return { width: text.length * glyphWidth, actualBoundingBoxLeft: 0, actualBoundingBoxRight: text.length * glyphWidth, actualBoundingBoxAscent: 10, actualBoundingBoxDescent: 3 }; },
@@ -137,7 +139,7 @@ async function mount(withInspector = false, selection?: string, initialResponse 
 test("permission connections show generated principal and scope while local database links show no cloud IAM", async () => {
   const launch = response.snapshot.models.dev.edges.find(edge => edge.relation === "runsTask")!;
   await mount(true, launch.id);
-  assert.ok(ui.screen.getByRole("heading", { name: "Can launch task" }));
+  assert.ok(ui.screen.getByRole("heading", { name: "Runs task: invocation-test-task" }));
   const permissions = document.querySelector<HTMLDetailsElement>(".connection-authorization")!;
   assert.ok(permissions);
   assert.equal(permissions.open, false, "permissions start behind a disclosure");
@@ -153,7 +155,7 @@ test("permission connections show generated principal and scope while local data
   ui.cleanup();
   const local = response.snapshot.models.dev.edges.find(edge => edge.relation === "database" && edge.to === "local:postgres")!;
   await mount(true, local.id);
-  assert.ok(ui.screen.getByRole("heading", { name: "Connects to PostgreSQL" }));
+  assert.ok(ui.screen.getByRole("heading", { name: "Connects to: Local PostgreSQL" }));
   ui.fireEvent.click(ui.screen.getByText("Permissions", { selector: ".connection-authorization > summary" }));
   assert.ok(ui.screen.getAllByText("Local connection").length);
   assert.equal(ui.screen.queryByText("rds-db:connect"), null);
@@ -164,19 +166,31 @@ test("connection inspection keeps secret environment names ahead of optional per
     ?? response.snapshot.models.dev.edges.find(edge => edge.relation === "secret" && edge.authorization?.kind === "iam");
   assert.ok(source, "a real secret delivery relationship is available");
   await mount(true, source.id);
-  assert.ok(ui.screen.getByRole("heading", { name: `${source.relation === "env" ? "Reads" : "Started with secret"}: ${source.label}` }));
+  assert.ok(ui.screen.getByRole("heading", { name: `${source.relation === "env" ? "Reads" : "Loads secret"}: ${source.label}` }));
   assert.equal(document.querySelector(".connection-header .authorization-badge"), null);
   assert.equal(document.querySelector<HTMLDetailsElement>(".connection-authorization")?.open, false);
+});
+
+test("conditional deployment inspection names its framework input and points from that input to the workload", async () => {
+  const condition = response.snapshot.models.dev.edges.find(edge => edge.relation === "deployWhen" && edge.to === "lambda:ws-connect-route")!;
+  assert.ok(condition);
+  await mount(true, condition.id);
+  assert.ok(ui.screen.getByRole("heading", { name: "Conditional deployment: $enableWebSocketApi" }));
+  const endpoints = document.querySelector(".connection-header .connection-endpoints")!;
+  assert.ok(endpoints);
+  const rows = [...endpoints.querySelectorAll("div")].map(row => ({ direction: row.querySelector("dt")?.textContent, label: row.querySelector("button")?.textContent }));
+  assert.deepEqual(rows, [{ direction: "From", label: "Input: enableWebSocketApi" }, { direction: "To", label: "WebSocket: $connect" }]);
+  assert.ok(ui.screen.getByText('Matches "true".'));
 });
 
 test("purpose filters replace IAM filtering and do not arm source edits", async () => {
   await mount();
   assert.equal(ui.screen.queryByRole("button", { name: "Only IAM grants" }), null);
   const categories = ui.within(ui.screen.getByRole("group", { name: "Background connections" })).getAllByRole("button");
-  assert.equal(categories.length, 4);
-  assert.deepEqual(categories.map(button => button.getAttribute("aria-pressed")), ["false", "false", "true", "true"]);
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Resource access" })); await draw();
-  assert.equal(ui.screen.getByRole("button", { name: "Resource access" }).getAttribute("aria-pressed"), "false");
+  assert.equal(categories.length, 3);
+  assert.deepEqual(categories.map(button => button.getAttribute("aria-pressed")), ["false", "false", "true"]);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Resource interactions" })); await draw();
+  assert.equal(ui.screen.getByRole("button", { name: "Resource interactions" }).getAttribute("aria-pressed"), "false");
   assert.equal(ui.screen.getByLabelText("Selection").textContent, "none");
 });
 
@@ -185,9 +199,9 @@ test("connection filters omit unused purposes and return when source adds those 
   const sparse = { ...response, snapshot: { ...response.snapshot, models: { dev: onlyRoutes("dev"), prod: onlyRoutes("prod") } } };
   const update = await mount(false, undefined, sparse);
   const filterNames = () => ui.within(ui.screen.getByRole("group", { name: "Background connections" })).getAllByRole("button").map(button => button.textContent);
-  assert.deepEqual(filterNames(), ["Routes"]);
+  assert.deepEqual(filterNames(), ["Routes and events"]);
   await update(response);
-  assert.deepEqual(filterNames(), ["Routes", "Environment and secrets", "Resource access", "Calls and events"]);
+  assert.deepEqual(filterNames(), ["Routes and events", "Environment and secrets", "Resource interactions"]);
 });
 
 test("the inputs island opens the shared creator even after using the global chooser", async () => {
@@ -692,7 +706,7 @@ test("missing required connections paint red X markers and clicking the marker s
 
 test("connections over terrain receive hover and clicks while clear terrain still opens its island", async () => {
   await mount(true);
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes and events" }));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
   const slabs = islandDrawOrder(islandSlabs(scene));
@@ -733,8 +747,8 @@ test("connection filter pills hide background wires and preserve selected resour
   await mount(true); await draw();
   const group = ui.screen.getByRole("group", { name: "Background connections" });
   const pills = ui.within(group).getAllByRole("button");
-  assert.deepEqual(pills.map(pill => pill.textContent), ["Routes", "Environment and secrets", "Resource access", "Calls and events"]);
-  assert.deepEqual(pills.map(pill => pill.getAttribute("aria-pressed")), ["false", "false", "true", "true"]);
+  assert.deepEqual(pills.map(pill => pill.textContent), ["Routes and events", "Environment and secrets", "Resource interactions"]);
+  assert.deepEqual(pills.map(pill => pill.getAttribute("aria-pressed")), ["false", "false", "true"]);
   assert.equal(pills[0]!.style.getPropertyValue("--swatch"), "#a374ff");
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
@@ -756,7 +770,7 @@ test("connection filter pills hide background wires and preserve selected resour
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Close panel" }));
   await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "none")); await draw();
   assert.equal(pickablePoint(), undefined, "clearing selection restores the unchanged filters");
-  ui.fireEvent.click(ui.within(group).getByRole("button", { name: "Routes" })); await draw();
+  ui.fireEvent.click(ui.within(group).getByRole("button", { name: "Routes and events" })); await draw();
   assert.ok(pickablePoint(), "toggling a category back on restores its wires");
 });
 
@@ -797,9 +811,9 @@ test("the real renderer filters background categories without hiding inspected c
 
 test("the real renderer strokes connections leaving the APIs island in purple and those leaving a Lambda or container in orange", async () => {
   await mount();
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes and events" }));
   await draw();
-  assert.ok(strokes.some((style) => style.startsWith("rgba(255, 154, 61,")), "orange connections out of compute");
+  assert.ok(strokes.some((style) => style.startsWith(`rgba(${hexRgb(ICON_TINT.lambda).join(", ")},`)), "connections match the orange compute icons");
   const purple = strokes.filter((style) => style.startsWith("rgba(163, 116, 255,"));
   const leaving = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) }).edges.filter((edge) => edge.edge.relation === "routes" && edge.from.startsWith("gateway:")).length;
   assert.ok(purple.length >= leaving, `${purple.length} purple strokes for ${leaving} route connections`);
@@ -807,6 +821,54 @@ test("the real renderer strokes connections leaving the APIs island in purple an
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /^HTTP API, Framework-managed API Gateway/ }));
   await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "gateway:http")); await draw();
   assert.ok(strokes.includes("rgba(163, 116, 255, 0.95)"), "a selected API connection lights in the same purple");
+});
+
+test("Routes and events controls native triggers independently of Resource interactions and preserves source styling", () => {
+  const source = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models) });
+  const trigger = source.edges.find(edge => edge.edge.relation === "trigger" && !edge.otherLens)!;
+  assert.ok(trigger);
+  const scene = { ...source, edges: [trigger] };
+  const renderer = new SceneRenderer(document.createElement("canvas")); renderer.setScene(scene);
+  const viewport = { width: 1920, height: 1000 };
+  const state: RenderState = { camera: fitScene(scene, viewport), viewport, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene) };
+  const prefix = `rgba(${hexRgb(trigger.style.color).join(", ")}, `;
+  const paint = (categories: RenderState["categories"], selected?: string) => {
+    pathStrokes.length = 0;
+    renderer.render({ ...state, categories, selected, focus: landscapeFocus(scene, selected) });
+    return pathStrokes.find(stroke => stroke.color.startsWith(prefix) && Math.abs(stroke.width - (selected ? 2.2 : 1.2) / state.camera.zoom) < 1e-8);
+  };
+  assert.equal(paint(new Set(["interactions"])), undefined, "Resource interactions does not reveal event triggers");
+  const shown = paint(new Set(["routes"]));
+  assert.ok(shown, "Routes and events reveals the source-coloured trigger");
+  assert.deepEqual(shown.dash, []);
+  assert.equal(paint(new Set()), undefined, "turning Routes and events off hides the trigger");
+  assert.ok(paint(new Set(), trigger.from), "inspecting its resource still reveals the trigger");
+  renderer.dispose();
+});
+
+test("a mixed interaction stays source-coloured and solid at rest, hover and selection while retaining its missing-input marker", () => {
+  const model = response.snapshot.models.dev;
+  const read = model.edges.find(edge => edge.relation === "env" && edge.to.startsWith("resource:cognito"))!;
+  assert.ok(read);
+  const missingRead = { ...read, inputRequirement: { resource: read.to, name: read.label, mode: "dev" as const, file: "cdk-app/.env.dev", required: true, status: "missing" as const, reasons: [] } };
+  const grant = { ...read, id: "edge:test-grant", relation: "grant" as const, label: "grantRead()" };
+  const scene = buildScene({ ...model, edges: [missingRead, grant] });
+  assert.equal(scene.edges.length, 1);
+  const edge = scene.edges[0]!;
+  const renderer = new SceneRenderer(document.createElement("canvas")); renderer.setScene(scene);
+  const viewport = { width: 1920, height: 1000 };
+  const state: RenderState = { camera: fitScene(scene, viewport), viewport, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene) };
+  const prefix = `rgba(${hexRgb(ICON_TINT.lambda).join(", ")}, `;
+  for (const overrides of [{}, { hoveredEdge: edge.id }, { selected: edge.id, focus: landscapeFocus(scene, edge.id) }]) {
+    pathStrokes.length = 0; strokes.length = 0;
+    renderer.render({ ...state, ...overrides });
+    const alpha = "selected" in overrides || "hoveredEdge" in overrides ? 0.95 : 0.9;
+    const arc = pathStrokes.find(stroke => stroke.color === `${prefix}${alpha})`);
+    assert.ok(arc, "the actual curve keeps the Lambda icon's orange, including its highlighted pass");
+    assert.deepEqual(arc.dash, [], "the actual curve is solid in each interaction state");
+    assert.ok(strokes.includes("#ff5f6d"), "missing input guidance remains visible as a red X marker");
+  }
+  renderer.dispose();
 });
 
 test("the real renderer draws resting connections a little stronger, and those outside the viewed environment at a quarter of that", async () => {
@@ -841,7 +903,7 @@ test("HTTP and WebSocket route hovers retain routing purpose in both environment
   const annotate = (model: typeof response.snapshot.models.dev) => ({ ...model, edges: model.edges.map(edge => edge.id === http.id ? { ...edge, detail } : edge) });
   const initial = { ...response, snapshot: { ...response.snapshot, models: { dev: annotate(response.snapshot.models.dev), prod: annotate(response.snapshot.models.prod) } } };
   await mount(true, undefined, initial);
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes" })); await draw();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes and events" })); await draw();
   for (const mode of ["dev", "prod"] as const) {
     if (mode === "prod") { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw(); }
     for (const source of [http, websocket]) {
@@ -870,9 +932,9 @@ test("grouped route previews and member summaries retain each route name without
     return { ...model, edges: [...model.edges, { ...original, id: `${original.id}:second-route`, label: "anotherAction" }] };
   };
   await mount(true, undefined, { ...response, snapshot: { ...response.snapshot, models: { dev: append(response.snapshot.models.dev), prod: append(response.snapshot.models.prod) } } });
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes" })); await draw();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes and events" })); await draw();
   const popup = await hoverConnection(source.id);
-  assert.equal(popup.querySelector("strong")?.textContent, "2 API routes");
+  assert.equal(popup.querySelector("strong")?.textContent, "Routes to: 2 API routes");
   assert.ok(ui.within(popup).getByText(source.label));
   assert.ok(ui.within(popup).getByText("anotherAction"));
   assert.ok(!popup.textContent?.includes("IAM"));
@@ -881,6 +943,7 @@ test("grouped route previews and member summaries retain each route name without
   const summaries = [...document.querySelectorAll(".connection-map-member > summary")];
   assert.ok(summaries.some(summary => summary.textContent?.includes(source.label)));
   assert.ok(summaries.some(summary => summary.textContent?.includes("anotherAction")));
+  assert.ok(summaries.every(summary => summary.textContent?.includes("Routes to: ")), "member titles use the same action/value format as hovers");
   assert.equal(document.querySelector(".connection-map-label .authorization-badge"), null);
 });
 
@@ -918,7 +981,7 @@ test("clicking a grouped connection opens every mapping and retains it across en
   ui.fireEvent.pointerMove(canvas, { clientX: at.x, clientY: at.y });
   await draw();
   const popup = await ui.screen.findByRole("tooltip");
-  assert.ok(popup.textContent?.includes("Maps 4 client variables"));
+  assert.ok(popup.textContent?.includes("Maps: 4 client variables"));
   assert.ok(popup.textContent?.includes("From Stack: cognito"));
   assert.ok(popup.textContent?.includes("To Environment file: client-app/.env"));
   assert.ok(!popup.textContent?.includes("Maps into:"), "homogeneous member rows do not repeat the shared purpose");
@@ -1322,7 +1385,7 @@ test("distant captions and deployment tags fade together, reverse continuously a
 test("connection hover fades quickly while environment changes update immediately", () => {
   const source = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models) });
   const nodes = new Map(source.nodes.map((node) => [node.id, node]));
-  const edge = source.edges.find((edge) => edge.style.color === "#ff9a3d" && !edge.otherLens &&
+  const edge = source.edges.find((edge) => edge.category === "interactions" && edge.style.color === ICON_TINT.lambda && !edge.otherLens &&
     [edge.from, edge.to].every((id) => ["built", "present"].includes(nodes.get(id)?.presence ?? "")))!;
   assert.ok(edge);
   const scene = { ...source, edges: [edge] };
@@ -1334,7 +1397,8 @@ test("connection hover fades quickly while environment changes update immediatel
   const paint = (time: number, hoveredEdge?: string, motion = true) => {
     pathStrokes.length = 0;
     const frame = renderer.render({ ...state, time, hoveredEdge, motion });
-    const stroke = pathStrokes.find(({ color }) => color.startsWith(prefix))!;
+    // Nodes now share this colour; connections are painted after their icon outlines.
+    const stroke = pathStrokes.filter(({ color }) => color.startsWith(prefix)).at(-1)!;
     assert.ok(stroke);
     return { frame, ...stroke, alpha: Number(stroke.color.slice(prefix.length, -1)) };
   };

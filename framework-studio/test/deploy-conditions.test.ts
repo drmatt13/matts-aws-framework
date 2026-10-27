@@ -10,6 +10,8 @@ import { drawnAs } from "../src/drawn-as";
 import { buildScene } from "../src/scene/build";
 import { searchScene } from "../src/scene/focus";
 import { aggregateConnections } from "../src/connections";
+import { presentRelationship } from "../src/connection-presentation";
+import { indexModel } from "../src/lookup";
 
 const repository = path.resolve(__dirname, "../..");
 function fixture() {
@@ -54,7 +56,13 @@ test("conditional Deploy source edits resolve both environments, preserve aliase
     assert.equal(target.lanes.when?.dev, "holds"); assert.equal(target.lanes.when?.prod, "fails");
     assert.equal(consumesResource(target, "resource:flag"), true);
     assert.equal(snapshot.source.editability[target.ref]?.deploy?.kind, "condition");
-    assert.ok(snapshot.models.dev.edges.some(edge => edge.relation === "deployWhen" && edge.to === "resource:flag"));
+    const condition = snapshot.models.dev.edges.find(edge => edge.relation === "deployWhen")!;
+    assert.equal(condition.from, "resource:flag", "the controlling input starts the connection");
+    assert.equal(condition.to, target.ref, "the controlled workload receives it");
+    assert.equal(condition.id, `deployWhen:${target.ref}:resource:flag`, "selection identity stays stable");
+    const presentation = presentRelationship(condition, indexModel(snapshot.models.dev));
+    assert.equal(presentation.title, "Conditional deployment: $flag");
+    assert.deepEqual(presentation.lines, ['Matches "enabled".']);
     assert.ok(!JSON.stringify({ plan, snapshot }).includes("never-in-browser"));
     const current = (await builder.refresh()).snapshot;
     await assert.rejects(edits.planBatch([{ kind: "deploy", target: "lambda:conditional", value: { when: { resource: "resource:privateValue", equals: "anything" } } }], current.revision), /non-secret input/);

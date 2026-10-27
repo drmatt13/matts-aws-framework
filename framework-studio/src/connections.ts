@@ -61,7 +61,7 @@ export function aggregateConnections(model: ModeModel, layoutModels: readonly Mo
   }
   return [...groups.values()].map(({ from, to, members }): ConnectionGroup => {
     members.sort((a, b) => a.edge.id.localeCompare(b.edge.id));
-    // Missing inputs remain visible; permission/secret links retain their guarded style in mixed groups.
+    // Keep missing-input and permission evidence first; scene styling considers every member separately.
     const priority = (member: ConnectionMember) => (member.models[model.mode] ? 0 : 10) +
       (member.edge.inputRequirement?.status === "missing" ? 0 : member.edge.relation === "grant" || member.edge.relation === "secret" ? 1 : 2);
     const edge = [...members].sort((a, b) => priority(a) - priority(b))[0]!.edge;

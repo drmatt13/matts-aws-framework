@@ -63,21 +63,19 @@ export const ROLE_GROUPS: readonly { readonly title: string; readonly roles: rea
   { title: "Workflows", roles: ["workflow"] },
 ];
 
-export type EdgeCategory = "routes" | "inputs" | "access" | "activity" | "structure";
+export type EdgeCategory = "routes" | "inputs" | "interactions" | "structure";
 
 export const CATEGORY_LABEL: Readonly<Record<EdgeCategory, string>> = {
-  routes: "Routes",
+  routes: "Routes and events",
   inputs: "Environment and secrets",
-  access: "Resource access",
-  activity: "Calls and events",
+  interactions: "Resource interactions",
   structure: "Resource structure",
 };
 
 export const CATEGORY_DESCRIPTION: Readonly<Record<EdgeCategory, string>> = {
-  routes: "API routes and authorizers",
+  routes: "API routes, authorizers, event triggers, subscriptions and event delivery",
   inputs: "Input values, environment variables and secrets",
-  access: "Access to databases, resources and WebSocket clients",
-  activity: "Workload calls, workflow steps, triggers and local replay",
+  interactions: "Resource grants, database access, workload calls, workflow steps and local replay",
   structure: "Resource ownership and references between constructs",
 };
 
@@ -90,50 +88,30 @@ export const RELATION_CATEGORY: Readonly<Record<Relation, EdgeCategory>> = {
   supplies: "inputs",
   maps: "inputs",
   secret: "inputs",
-  grant: "access",
-  database: "access",
-  localReplay: "activity",
-  trigger: "activity",
-  completesCallback: "activity",
-  manageConnections: "access",
-  runsTask: "activity",
-  startsWorkflow: "activity",
-  invokesAgent: "activity",
-  usesTool: "activity",
-  step: "activity",
-  integration: "activity",
+  grant: "interactions",
+  database: "interactions",
+  localReplay: "interactions",
+  trigger: "routes",
+  completesCallback: "interactions",
+  manageConnections: "interactions",
+  runsTask: "interactions",
+  startsWorkflow: "interactions",
+  invokesAgent: "interactions",
+  usesTool: "interactions",
+  step: "interactions",
+  integration: "interactions",
   cdk: "structure",
 };
 
-/** Delivery relationships can carry generic CDK/grant provenance without becoming access or structure. */
-export function edgeCategory(edge: Pick<ModelEdge, "relation" | "permissionContext">): EdgeCategory {
+/** Events describe delivery, even when represented by an underlying CDK reference or grant. */
+export function isEventConnection(edge: Pick<ModelEdge, "relation" | "permissionContext">): boolean {
   const kind = edge.permissionContext?.kind;
-  return kind === "subscription" || kind === "trigger-dlq" || kind === "failure" ? "activity" : RELATION_CATEGORY[edge.relation];
+  return edge.relation === "trigger" || kind === "trigger" || kind === "subscription" || kind === "trigger-dlq" || kind === "failure";
 }
 
-export const RELATION_LABEL: Readonly<Record<Relation, string>> = {
-  deployWhen: "Deploys when input matches",
-  contains: "Contains",
-  routes: "Routes to",
-  authorizes: "Authorizes",
-  env: "Reads",
-  supplies: "Supplies input",
-  maps: "Maps into",
-  secret: "Started with secret",
-  grant: "Granted",
-  database: "Database connection",
-  manageConnections: "WebSocket client access",
-  localReplay: "Captures for local replay",
-  trigger: "Triggers",
-  runsTask: "Grant permission",
-  startsWorkflow: "Starts workflow",
-  invokesAgent: "Invokes agent",
-  usesTool: "Calls tool",
-  step: "Workflow step",
-  integration: "Calls service",
-  completesCallback: "Completes callbacks on",
-  cdk: "CDK link to",
-};
+export function edgeCategory(edge: Pick<ModelEdge, "relation" | "permissionContext">): EdgeCategory {
+  return isEventConnection(edge) ? "routes" : RELATION_CATEGORY[edge.relation];
+}
 
 /** The name a person reads for any entity id. */
 export function titleOf(index: ModelIndex, id: string): string {

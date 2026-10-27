@@ -399,7 +399,7 @@ been removed; the renderer has one visual style.
 4. **Arcs.** Quadratic curves lifted along world Z, which projects straight up the page.
    Relationships with the same visible source and destination share one arc, including
    references to different fields of the same stack. Opposite directions stay separate.
-   The hover popup names the grouped purpose, such as `Reads 3 environment values`, and
+   The hover popup names the grouped purpose as an action and value, such as `Reads: 3 environment values`, and
    shows the same Dev and Prod pills as node popups. Mixed groups name up to two families
    plus a remaining count. The preview lists at most four members and a remaining count;
    any missing required values outside that preview receive a separate notice.
@@ -411,7 +411,7 @@ been removed; the renderer has one visual style.
    relationship and both enabled endpoints in that graph. Selecting a grouped arc opens
    a connection map with every original source, destination, label, environment and
    expandable evidence or input-resolution action. Mixed permission/read groups retain
-   the guarded style, and any missing required input retains the red X marker.
+   the source icon style, and any missing required input retains the red X marker.
    Ground-plane travel stays linear, so connections toward or away from the viewer
    rise and fall without swinging sideways. Attachment elevations include each plaque's
    height. Lift accounts for the ground plane's 2:1 foreshortening, with a physical crest
@@ -420,47 +420,55 @@ been removed; the renderer has one visual style.
    connections legible. Lane offsets and obstacle avoidance can increase the lift;
    nearby connections retain compact detours. Drawing, picking and packets share the
    same cached path, and Fit includes its crest.
-   Four purpose categories filter background connections: Routes, Environment and secrets,
-   Resource access, and Calls and events. Categories with no connections have no pill.
-   Routes and Environment and secrets start off; the other two start on. Structural links
+   Three purpose categories filter background connections: Routes and events, Environment and secrets,
+   and Resource interactions. Categories with no connections have no pill.
+   The filters **Routes and events** and **Environment and secrets** start off; Resource
+   interactions starts on. Structural links
    remain in the graph and appear only when selecting or previewing their resources or
    inspecting the connection; they have no background filter.
    A bundle matches any member's category across both environments, independently of the
    representative chosen for styling. Hidden wires cannot intercept pointer input;
    selecting or previewing a resource reveals all its connections, and clearing that
    selection restores the unchanged filters. The accessible connection list retains
-   every relationship. Dashed is
-   the default; solid lines are the named exceptions (below), so a connection's line tells
-   you what kind it is as well as its colour. Every connection points the way the model
-   records it (a workload to what it references), and `connections.ts` decides colour and
+   every relationship. Every connection points the way the model
+   records it (including a controlling input toward its conditional workload), and `connections.ts` decides colour and
    dash for each edge:
-   - **What a workload references decides its colour.** Reading a stack field or an input
-     parameter takes exactly the look of an environment file supplying an input (the
-     Environment and secrets colour); referencing a secret and a native grant are red, so
-     a parameter being read never looks like a permission being given. What is referenced
-     decides this, even when the map shows a stack field as its owning stack.
-   - **Conditional deployment.** Workload-to-input connections are dashed orange,
-     with hover text `Deploys when: PARAM_NAME` and the matching condition.
-   - **Task launch capability.** A `runsTask(...)` binding is solid red and reads
-     `Can launch task`. Its inspector retains the launch grants and configuration;
+   - **Resource interactions and events follow their source icon.** Every interaction or
+     event delivery is solid and uses the visible source resource's icon colour: Lambda and ECS orange, workflows
+     pink, agents teal, and other resources their own icon colour. Grants, database links,
+     calls, workflow steps, native triggers and replay all follow this rule. Native triggers,
+     subscriptions and event failure delivery belong to Routes and events; access and
+     workload calls belong to Resource interactions. A bundle
+     containing any interaction or event delivery follows it too, including members from the other environment.
+     Folded stack members use the visible owning stack's icon colour.
+   - **Environment and secrets.** Reading a stack field or an input parameter takes the
+     same dashed style as an environment file supplying an input. Secret references and
+     environment files supplying secrets are dashed red. The referenced resource decides
+     these input styles, even when a stack field appears as its owning stack.
+   - **Conditional deployment.** Input-to-workload connections use the same dashed colour
+     as Supplies input, with hover text `Conditional deployment: $inputPath` and the matching
+     condition. Arrows and animated packets travel from the controlling input toward the
+     workload whose deployment it selects. Selection IDs and existing descriptions stay stable.
+   - **Task launch capability.** A `runsTask(...)` binding follows the source-icon rule and reads
+     `Runs task: task-id`. Its inspector retains the launch grants and configuration;
      this capability does not establish that a task has run.
-   - **Database binding.** `Connects to PostgreSQL` describes local connection settings
+   - **Database binding.** `Connects to: rds.database` names the configured destination and describes local connection settings
      or cloud connection settings, private networking and IAM login. The wire keeps its
-     normal workload style. The stack link reads `Provides the application database`,
+     solid source-icon style. The stack link reads `Provides database: rds.database`,
      including retained or imported databases. Reader bindings describe writer and reader
      connections without asserting replicas exist.
-   - **Everything else.** Solid: an API route (purple, out of the APIs island), a Lambda
-     or container leaving for another workload (orange), a WebSocket authorizer's link to
-     the route it guards (red), an agent calling a tool (teal) and a workflow step (pink).
-     Dashed: an environment file supplying a secret (red), and every remaining connection
-     in its category colour.
+   - **Routes and structure.** API routes remain solid purple, WebSocket authorizers'
+     links to the routes they guard remain solid red, and structural links retain their
+     category style.
 
-   A missing required input is still red, with its X marker. Derived edges are fainter.
+   A missing required input is red, with an X marker. When bundled with a resource
+   interaction, its X marker stays red while the solid wire keeps the source icon's colour.
+   Derived edges are fainter.
    Hovers retain concise purpose details and an optional IAM action/helper note, without
    an AWS-only suffix. Configured inputs need no status sentence; empty, missing, unknown
    or defaulted inputs retain concise guidance. Source paths, inference caveats and raw
    binding explanations expand under Configuration; complete authorization facts expand
-   under Permissions. Replay reads `Local replay: AWS invocations`.
+   under Permissions. Replay reads `Local replay: handler-id`.
 
    Hover eases a connection's brightness, width, glow, arrow and packets over 50 ms
    in either direction, using `cubic-bezier(0.16, 1, 0.3, 1)` for a fast response and
@@ -468,9 +476,8 @@ been removed; the renderer has one visual style.
    Development/Production applies the new connection strengths instantly and clears
    any hover fade from the previous graph. Paused or reduced motion skips the fade.
 
-   Native event triggers point from the public resource to the event Lambda, in solid
-   warm yellow (`#ead46c`). They belong to Calls and events but have their own colour,
-   distinct from reads, grants, routes, compute, tools, steps and CDK references. The
+   Native event triggers point from the public resource to the event Lambda, with the
+   same solid source-icon style as every Resource interaction. The
    hover retains the hook/adapter label and names the resolved native constructor, such
    as `Defined by cdk.aws_cognito.UserPool`; Configuration keeps the wiring location. Both
    lenses retain the same triggers, including cycles back through a Lambda's reads.
@@ -506,8 +513,8 @@ been removed; the renderer has one visual style.
    RDS in Production) is drawn dimmed rather than left out, says so in its hover card and
    Inspector, and lights up only when hovered or selected itself, never because a node it
    touches is selected. Selection, hover and search keep their own strengths. Resource
-   structure is cyan; recognized subscriptions and failure delivery instead belong to
-   Calls and events. Configuration exposes source evidence and its inference limits.
+   structure is cyan; recognized subscriptions and event failure delivery instead belong to
+   Routes and events. Configuration exposes source evidence and its inference limits.
    - **Lit arcs.** The selection's and the hovered arc's are bright, with an arrowhead.
    - **Packets.** With motion on, the selection's arcs carry one to three packets at
      60 world units a second.

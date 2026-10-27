@@ -9,7 +9,7 @@ import { DeploymentBadge, DeploymentLegend } from "./DeploymentBadge";
 import { availabilityBadge, catalogAvailability, deploymentBadge, type DeploymentBadgeKind } from "../deployment";
 import { EntityIcon } from "./EntityIcon";
 import { resourceBadge, resourceIcon, routeIcon, targetIcon } from "../icons";
-import { connectionTitle } from "../../shared/permissions";
+import { presentRelationship } from "../connection-presentation";
 
 const CATEGORIES = Object.keys(CATEGORY_LABEL) as EdgeCategory[];
 
@@ -125,7 +125,7 @@ export function Board() {
             <g key={edge.edge.id} style={{ color: "var(--ink)" }}>
               <path d={edge.path} className={`edge lit ${edge.edge.inputRequirement?.status === "missing" ? "missing" : ""} ${edge.edge.provenance !== "declared" ? "derived" : ""}`} markerEnd="url(#arrow)" />
               <text className="edge-label" x={edge.label.x} y={edge.label.y - 4} textAnchor="middle">
-                {connectionTitle(edge.edge)}
+                {presentRelationship(edge.edge, index).title}
               </text>
             </g>
           ))}

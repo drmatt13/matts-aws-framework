@@ -13,7 +13,9 @@ export function networkFixtureIds(network: NetworkModel | undefined): string[] {
 /** Keep notes on the same relationship when graph ordering or environment details change.
  * Identical relationships share notes; differently named mappings between a pair do not. */
 export function connectionDescriptionId(edge: ModelEdge): string {
-  return `connection-description:${JSON.stringify([edge.relation, edge.from, edge.to, edge.label, edge.attachment ?? null])}`;
+  // Conditional arrows now follow input -> workload; keep existing notes under their historical key.
+  const [from, to] = edge.relation === "deployWhen" ? [edge.to, edge.from] : [edge.from, edge.to];
+  return `connection-description:${JSON.stringify([edge.relation, from, to, edge.label, edge.attachment ?? null])}`;
 }
 
 /** Uses canonical model identities, including public stack fields and individual relationships. */

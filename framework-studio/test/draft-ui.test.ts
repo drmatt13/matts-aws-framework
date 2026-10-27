@@ -353,7 +353,7 @@ test("all selectable item kinds expose their authored description", async () => 
 test("read connection labels open compact evidence with line-numbered VS Code links", async () => {
   await mount("lambda:sign-out");
   openSection("Connections");
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "TRUSTED_FRONTEND_ORIGINS" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Reads: TRUSTED_FRONTEND_ORIGINS" }));
   await ui.screen.findByRole("heading", { name: "Reads: TRUSTED_FRONTEND_ORIGINS" });
   const configuration = ui.screen.getByText("Configuration", { selector: "summary" });
   assert.equal(configuration.closest("details")!.open, false);

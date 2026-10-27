@@ -1,10 +1,8 @@
 import type { ConnectionGroup } from "../connections";
-import { RELATION_LABEL } from "../lookup";
 import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { ConnectionDetails, ConnectionEndpoints } from "./InputRequirement";
-import { connectionTitle } from "../../shared/permissions";
-import { presentConnection } from "../connection-presentation";
+import { presentConnection, presentRelationship } from "../connection-presentation";
 
 export function ConnectionMap({ connection }: { readonly connection: ConnectionGroup }) {
   const { model, index } = useStudio();
@@ -21,7 +19,7 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
           const onlyIn = member.models[model.mode] ? undefined : member.models.dev ? "dev" : "prod";
           return <details key={edge.id} className="connection-map-member">
             <summary>
-              <span className="connection-map-label"><code>{connectionTitle(edge)}</code>{!presentation.homogeneous ? <span className="small muted">{RELATION_LABEL[edge.relation]}</span> : null}</span>
+              <span className="connection-map-label">{presentRelationship(edge, index).title}</span>
               <EnvironmentPills availability={member.availability} />
             </summary>
             <div className="connection-map-detail">

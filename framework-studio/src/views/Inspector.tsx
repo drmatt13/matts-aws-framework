@@ -4,7 +4,7 @@ import { PlacementControl } from "./NetworkControls";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ModelEdge, ModelResource, ModelRoute, ModelTarget, ModelWorkflow, Placement } from "../../shared/model";
-import { RELATION_LABEL, ROLE_LABEL, endpointLabel, editorLink } from "../lookup";
+import { ROLE_LABEL, endpointLabel, editorLink } from "../lookup";
 import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
 import { resourceIcon, routeIcon, targetIcon } from "../icons";
@@ -35,7 +35,7 @@ import { DeploymentSection, DeploymentOwnerControl, ResourceDeployment, TargetDe
 import { Tags } from "./Tags";
 import { ImplementationStatus, WorkloadRemoval } from "./WorkloadActions";
 import { WorkloadPermissions, ResourceAccess } from "./WorkloadPermissions";
-import { connectionTitle } from "../../shared/permissions";
+import { presentRelationship } from "../connection-presentation";
 import { removalForConnection } from "../access";
 
 function PlacementText(props: { readonly placement: Placement }) {
@@ -87,7 +87,7 @@ function Relations(props: { readonly id: string }) {
         {edge.provenance === "derived" ? <span className="muted small"> (derived)</span> : null}
         {edge.provenance === "source" ? <span className="muted small"> ({edge.relation === "supplies" ? "input file" : "CDK source"})</span> : null}
       </span>
-      <button className="linkish small" onClick={() => select(edge.id)}>{connectionTitle(edge)}</button>
+      <button className="linkish small" onClick={() => select(edge.id)}>{presentRelationship(edge, index).title}</button>
       <EnvironmentPills availability={edgeAvailability(edge, snapshot.models)} />
     </li>
   );
@@ -95,8 +95,8 @@ function Relations(props: { readonly id: string }) {
     <InspectorDisclosure title="Connections" count={edges.length}>
       {edges.some((edge) => edge.relation === "cdk" && edge.provenance === "source") ? <p className="small muted">CDK links are inferred from direct source references. Helpers and conditional wiring may add connections this view cannot resolve.</p> : null}
       <ul className="relations">
-        {outgoing.map((edge) => row(edge, edge.to, RELATION_LABEL[edge.relation]))}
-          {incoming.map((edge) => row(edge, edge.from, edge.relation === "contains" ? "Contained by" : edge.relation === "cdk" ? "CDK link from" : edge.relation === "supplies" ? "Supplied by" : edge.relation === "maps" ? "Mapped from" : `${RELATION_LABEL[edge.relation]} from`))}
+        {outgoing.map((edge) => row(edge, edge.to, "To"))}
+        {incoming.map((edge) => row(edge, edge.from, "From"))}
       </ul>
     </InspectorDisclosure>
   );

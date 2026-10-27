@@ -606,7 +606,7 @@ export function Isometric() {
       badges: () => live.current.badges,
       connections: () => scene.edges.map((connection) => ({
         id: connection.id, from: connection.from, to: connection.to, members: connection.members.map((member) => member.edge.id),
-        availability: connection.availability, label: connectionLabel(connection),
+        availability: connection.availability, label: connectionLabel(connection), style: connection.style,
         points: scene.routes[connection.id]!.points.map((point) => worldToScreen(live.current.camera, live.current.viewport, point)),
         midpoint: worldToScreen(live.current.camera, live.current.viewport, connectionMidpoint(scene.routes[connection.id]!.points)),
       })),

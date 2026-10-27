@@ -7,7 +7,7 @@ import type { IBucket } from "aws-cdk-lib/aws-s3";
 import type { IQueue } from "aws-cdk-lib/aws-sqs";
 import { projectModel } from "../server/model/project";
 import type { ModeModel, ModelEdge, ModelTarget, Relation } from "../shared/model";
-import { authorizationLabel, authorizationSummary, connectionTitle, hasIam, withConnectionAuthorizations } from "../shared/permissions";
+import { authorizationLabel, authorizationSummary, hasIam, withConnectionAuthorizations } from "../shared/permissions";
 import { grantOptions } from "../shared/grants";
 import { aggregateConnections } from "../src/connections";
 import { connectionVisible } from "../src/scene/connections";
@@ -26,7 +26,7 @@ function describe(item: ModelEdge, targets: readonly ModelTarget[] = [target("la
 test("database IAM describes writer, readers and direct access; local enrichment removes AWS grants", () => {
   const source = edge("database", { kind: "database", connection: "direct", readers: true });
   const cloud = describe(source);
-  assert.equal(connectionTitle(cloud), source.label);
+  assert.equal(cloud.label, source.label);
   assert.equal(cloud.authorization!.operation, "Connect PostgreSQL directly");
   assert.equal(cloud.authorization!.grants.length, 2);
   assert.deepEqual(cloud.authorization!.grants[0]!.actions, ["rds-db:connect"]);
@@ -52,7 +52,7 @@ test("permission facts preserve route, input, scope and callback labels as conne
   for (const source of cases) {
     const result = describe(source);
     assert.equal(result.authorization!.kind, "iam", source.label);
-    assert.equal(connectionTitle(result), source.label);
+    assert.equal(result.label, source.label);
   }
 });
 
@@ -139,19 +139,18 @@ test("native helpers retain scope without inventing action lists; custom integra
 
 test("connection filters describe purpose across every relation and delivery context", () => {
   const purposes: Readonly<Record<EdgeCategory, readonly Relation[]>> = {
-    routes: ["routes", "authorizes"],
+    routes: ["routes", "authorizes", "trigger"],
     inputs: ["deployWhen", "env", "supplies", "maps", "secret"],
-    access: ["grant", "database", "manageConnections"],
-    activity: ["localReplay", "trigger", "completesCallback", "runsTask", "startsWorkflow", "invokesAgent", "usesTool", "step", "integration"],
+    interactions: ["grant", "database", "manageConnections", "localReplay", "completesCallback", "runsTask", "startsWorkflow", "invokesAgent", "usesTool", "step", "integration"],
     structure: ["contains", "cdk"],
   };
-  assert.deepEqual(Object.values(CATEGORY_LABEL), ["Routes", "Environment and secrets", "Resource access", "Calls and events", "Resource structure"]);
+  assert.deepEqual(Object.values(CATEGORY_LABEL), ["Routes and events", "Environment and secrets", "Resource interactions", "Resource structure"]);
   for (const [category, relations] of Object.entries(purposes)) {
     for (const relation of relations) assert.equal(edgeCategory(edge(relation)), category, relation);
   }
-  assert.equal(edgeCategory(edge("cdk", { kind: "subscription", protocol: "sqs" })), "activity");
-  assert.equal(edgeCategory(edge("grant", { kind: "trigger-dlq", adapter: "sns" })), "activity");
-  assert.equal(edgeCategory(edge("grant", { kind: "failure" })), "activity");
+  assert.equal(edgeCategory(edge("cdk", { kind: "subscription", protocol: "sqs" })), "routes");
+  assert.equal(edgeCategory(edge("grant", { kind: "trigger-dlq", adapter: "sns" })), "routes");
+  assert.equal(edgeCategory(edge("grant", { kind: "failure" })), "routes");
 });
 
 test("group filters check all relationship categories across modes and preserve inspected context", () => {
@@ -163,7 +162,7 @@ test("group filters check all relationship categories across modes and preserve 
   const group = aggregateConnections(prod, [dev])[0]!;
   assert.equal(group.members.length, 3);
   assert.equal(group.edge.relation, "grant", "styling has one representative");
-  assert.deepEqual(group.categories, ["inputs", "access", "activity"]);
+  assert.deepEqual(group.categories, ["inputs", "interactions"]);
   for (const selected of [group, aggregateConnections(dev, [prod])[0]!]) {
     assert.deepEqual(selected.categories, group.categories, "other-environment relationships remain filterable");
     for (const category of group.categories) assert.equal(connectionVisible(selected, new Set([category])), true, category);
@@ -174,7 +173,7 @@ test("group filters check all relationship categories across modes and preserve 
   }
   const ghost = aggregateConnections({ ...dev, edges: [] }, [prod])[0]!;
   assert.equal(ghost.otherLens, "prod");
-  assert.equal(connectionVisible(ghost, new Set(["activity"])), true, "union-topology ghost links remain filterable");
+  assert.equal(connectionVisible(ghost, new Set(["interactions"])), true, "union-topology ghost links remain filterable");
   assert.equal(connectionSignature({ edges: [grant] }), connectionSignature({ edges: [describe(grant)] }));
 });
 

@@ -966,7 +966,7 @@ export class SceneRenderer {
         continue;
       }
       const missing = arc.missing;
-      const color = missing ? MISSING_EDGE : arc.color;
+      const color = missing && edge.category === "inputs" ? MISSING_EDGE : arc.color;
       context.strokeStyle = rgba(color, resting);
       context.lineWidth = 1.2 * pixel;
       context.setLineDash(edge.style.dashed ? [4 * pixel, 4 * pixel] : []);
@@ -978,7 +978,7 @@ export class SceneRenderer {
     for (const { edge, strength, resting } of lit) {
       const arc = prepared.arcs.get(edge)!;
       const missing = arc.missing;
-      const color = missing ? MISSING_EDGE : arc.color;
+      const color = missing && edge.category === "inputs" ? MISSING_EDGE : arc.color;
       context.shadowColor = rgba(color, 0.8 * strength);
       context.shadowBlur = 10 * strength;
       context.strokeStyle = rgba(color, resting + (0.95 - resting) * strength);

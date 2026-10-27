@@ -110,25 +110,48 @@ Board's [layout.ts](../../../framework-studio/src/layout.ts) arranges entry, com
 
 Keep optimization bounded for large graphs. Preserve layout stability across selection/mode switches and avoid recomputing source models during a pointer move. Rendering and picking must share geometric assumptions, especially curve sampling and visible endpoints. Avoid claiming a node-count ceiling or browser FPS guarantee from a synthetic timing fixture.
 
-The four background filters are Routes, Environment and secrets, Resource access,
-and Calls and events. Empty categories have no filter pill. Structural links remain in the
+The three background filters are Routes and events, Environment and secrets, and Resource interactions.
+Resource interactions covers grants, database and WebSocket access, workload calls,
+workflow steps and local replay. Routes and events covers API routes, authorizers, native
+triggers, subscriptions and event failure delivery. Each filter toggles its relationships
+together. Empty categories have no filter pill. Structural links remain in the
 graph for layout and inspection, but have no background filter and appear only in selected
 or previewed context.
-Routes (purple) and Environment and secrets start off on each page load; the others start on.
+The filters **Routes and events** and **Environment and secrets** start off on each page
+load; Resource interactions starts on.
 An aggregated connection matches any member's category across the dev/prod union, independently
 of its styling representative. Drawing and pointer picking share `connectionVisible`;
 selecting or previewing a resource reveals its links regardless of those filters. Clearing
 selection resumes the unchanged filters. The accessible list still exposes every relationship.
 
-`connection-presentation.ts` supplies purpose-based hover and inspector titles, including
-`Routes to: /api/test/start-workflow` and `Reads 3 environment values`. Mixed bundles name
-up to two relationship families plus a remaining count. Hover previews show at most four
+Every Resource interaction and event delivery connection uses the visible source node's
+`ICON_TINT` colour and a solid line, including grants, database links, native triggers and
+replay. Lambda/ECS interactions therefore match their orange resource icons. An aggregated
+wire containing any interaction or event delivery uses this rule even when a missing input
+is its evidence representative or an interaction
+exists only in the other mode. Missing inputs keep their red X marker without recolouring
+that interaction wire. Hover, selection and environment availability change emphasis,
+never its colour or dash style. Folded members use the visible owning stack's icon.
+
+`connection-presentation.ts` supplies every connection title as **action: relevant value**,
+including `Routes to: /api/test/start-workflow`, `Starts workflow: invocation-test-workflow`
+and `Reads: 3 environment values`. Calls name the configured destination, workflow steps
+name their typed operation and target, and grants retain the resource name. Tooltips,
+inspectors, member rows, Board labels and description reviews use this same formatter.
+Mixed bundles combine their actions and name up to two relationship families plus a
+remaining count. Hover previews show at most four
 member labels, a remaining count and any missing required values outside that preview.
 From/To and environment pills remain primary. Concise operational details and a muted IAM
 summary follow when applicable; source paths, inference caveats and full permission facts
 expand under Configuration and Permissions in the inspector. Normal configured inputs need
 no status sentence. Native trigger hovers name the resolved constructor. Resource hovers
 retain descriptions and source warnings without permission counts.
+
+Conditional deployment is an input-control relationship: `Conditional deployment: $inputPath`.
+It uses the same dashed colour as Supplies input. Its model endpoints, arrow, packets,
+hover and inspector all run from the selecting input to the workload it controls.
+Deployment availability and comparison literals still come from the workload's `Lanes.when`;
+the connection ID and description key remain stable when changing this visual direction.
 
 When a seed has title collisions, the optimizer reserves a small part of its existing
 evaluation budget for local title-clearance moves after the wire search. Added input

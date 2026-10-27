@@ -5,7 +5,7 @@ import path from "node:path";
 import { after, before, test } from "node:test";
 import type { Snapshot } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
-import { offLens, restingAlpha } from "../src/scene/connections";
+import { connectionStyle, offLens, restingAlpha } from "../src/scene/connections";
 import { buildScene, chamfered, chamferSize, titleRoom, type Island, type Scene } from "../src/scene/build";
 import { fitBounds, pan, resizeCamera, revealSelection, screenToWorld, wheelFactor, worldToScreen, zoomAt, MAX_ZOOM, MIN_ZOOM, type Camera } from "../src/scene/camera";
 import { project, unprojectAt } from "../src/scene/iso";
@@ -13,12 +13,12 @@ import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickIsland,
 import { buildIconShape, ICON_BADGE, NODE_SPACING } from "../src/scene/shapes";
 import { backgroundGrid } from "../src/scene/grid";
 import { islandFrame } from "../src/scene/frame";
-import { API_EDGE_COLOR, BAND_TRIM, COMPUTE_EDGE_COLOR, DECK, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, ROLE_BADGE, ROLE_BADGE_PLATE, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, TRIGGER_EDGE_COLOR, trimColor } from "../src/scene/look";
+import { API_EDGE_COLOR, BAND_TRIM, DECK, EDGE_COLORS, GRAPHITE, GUARD_EDGE_COLOR, ICON_TINT, ISLAND_TRIM, READ_EDGE_COLOR, ROLE_BADGE, ROLE_BADGE_PLATE, trimColor } from "../src/scene/look";
 import { behind, islandDrawOrder, islandSlabs, polygonArea, type IslandSlab } from "../src/scene/slabs";
 import { carriesOwnTile, ICONS } from "../src/icons";
 import { endpointServiceDetails } from "../src/endpoint-services";
 import { catalogAvailability, connectionDisabledEndpoints } from "../src/deployment";
-import { indexModel } from "../src/lookup";
+import { indexModel, isEventConnection } from "../src/lookup";
 import { existsSync, readFileSync } from "node:fs";
 import { landscapeFocus, searchOpacity, searchScene, SEARCH_FADE } from "../src/scene/focus";
 import { layoutIslands, type IslandFootprint } from "../src/scene/layout";
@@ -851,38 +851,38 @@ test("the local database stands in the isolated subnet right beside RDS, solid i
   }
 });
 
-test("a connection is drawn by what it references and where it starts, solid only where named", () => {
-  const colours = [API_EDGE_COLOR, COMPUTE_EDGE_COLOR, GUARD_EDGE_COLOR, TOOL_EDGE_COLOR, STEP_EDGE_COLOR, TRIGGER_EDGE_COLOR, ...Object.entries(EDGE_COLORS).filter(([category]) => category !== "routes").map(([, color]) => color)];
-  assert.equal(new Set(colours).size, colours.length, "each rule has a colour of its own");
-  assert.equal(EDGE_COLORS.routes, API_EDGE_COLOR, "the Routes pill matches its purple API connections");
+test("resource interactions and events follow their visible source icon while API routes and inputs retain their styles", () => {
+  assert.equal(EDGE_COLORS.routes, API_EDGE_COLOR, "the Routes and events pill matches its purple API connections");
   assert.equal(READ_EDGE_COLOR, EDGE_COLORS.inputs, "a value being read looks like an environment file supplying an input");
   const startsAt = (edge: { from: string }, ...prefixes: string[]) => prefixes.some((prefix) => edge.from.startsWith(prefix));
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
     const kindOf = new Map(model.resources.map((resource) => [resource.id, resource.kind]));
-    const seen = { stack: 0, input: 0, secret: 0, authorizer: 0, secretFile: 0, tool: 0, step: 0, api: 0, compute: 0, other: 0 };
+    const seen = { stack: 0, input: 0, secret: 0, authorizer: 0, secretFile: 0, api: 0, interactions: 0, other: 0 };
+    const interactionSources = new Set<string>();
     for (const { edge, from, category, style } of scene.edges) {
       const referenced = kindOf.get(edge.to);
       const reads = (edge.relation === "env" || edge.relation === "secret") && referenced !== undefined;
       const expect = (color: string, dashed: boolean) => assert.deepEqual(style, { color, dashed }, `${edge.id} (${edge.relation})`);
-      if (edge.relation === "deployWhen") expect(COMPUTE_EDGE_COLOR, true);
+      if (category === "interactions" || isEventConnection(edge)) {
+        const source = scene.nodes.find(node => node.id === from)!;
+        assert.ok(source);
+        expect(ICON_TINT[source.icon], false);
+        seen.interactions += 1;
+        interactionSources.add(source.icon);
+      }
+      else if (edge.relation === "deployWhen") expect(READ_EDGE_COLOR, true);
       else if (edge.relation === "maps") expect(READ_EDGE_COLOR, true);
-      else if (edge.relation === "runsTask") expect(GUARD_EDGE_COLOR, false);
-      else if (edge.relation === "manageConnections") expect(GUARD_EDGE_COLOR, true);
-      else if (edge.relation === "trigger") expect(TRIGGER_EDGE_COLOR, false);
       else if (edge.relation === "authorizes") { seen.authorizer += 1; expect(GUARD_EDGE_COLOR, false); }
-      else if (edge.relation === "grant") expect(GUARD_EDGE_COLOR, true);
       else if (reads && (edge.relation === "secret" || referenced === "secret")) { seen.secret += 1; expect(GUARD_EDGE_COLOR, true); }
       else if (reads) { seen[referenced === "input" || referenced === "group" ? "input" : "stack"] += 1; expect(READ_EDGE_COLOR, true); }
       else if (edge.relation === "supplies" && referenced === "secret") { seen.secretFile += 1; expect(GUARD_EDGE_COLOR, true); }
-      else if (edge.relation === "usesTool") { seen.tool += 1; expect(TOOL_EDGE_COLOR, false); }
-      else if (edge.relation === "step") { seen.step += 1; expect(STEP_EDGE_COLOR, false); }
       else if (startsAt({ from }, "route:", "gateway:")) { seen.api += 1; expect(API_EDGE_COLOR, false); }
-      else if (startsAt({ from }, "lambda:", "service:", "task:")) { seen.compute += 1; expect(COMPUTE_EDGE_COLOR, false); }
       else { seen.other += 1; expect(EDGE_COLORS[category], true); }
       // A reference points the way the model records it: from the workload to what it references.
       if (reads || edge.relation === "grant") assert.ok(startsAt({ from }, "lambda:", "service:", "task:", "agent:"), `${edge.id} starts at the workload`);
     }
     for (const [name, count] of Object.entries(seen)) assert.ok(count > 0, `${model.mode}: no ${name} connection to judge (${JSON.stringify(seen)})`);
+    for (const icon of ["lambda", "agent", "workflow", "stack"]) assert.ok(interactionSources.has(icon), `${model.mode}: ${icon} interactions are exercised`);
     // Reads of an input parameter and an environment file feeding a plain input share one look.
     const plainSupplies = scene.edges.filter((edge) => edge.edge.relation === "supplies" && kindOf.get(edge.edge.to) !== "secret");
     assert.ok(plainSupplies.length > 0);
@@ -890,7 +890,35 @@ test("a connection is drawn by what it references and where it starts, solid onl
   }
 });
 
-test("the WebSocket authorizer's link to the API is red and solid", () => {
+test("interaction colours match each source service icon, including resources outside compute", () => {
+  for (const [icon, color] of [["lambda", "#ED7100"], ["service", "#ED7100"], ["task", "#ED7100"], ["workflow", "#E7157B"], ["agent", "#01A88D"], ["bucket", "#7AA116"], ["table", "#3B82F6"], ["userpool", "#DD344C"]] as const) {
+    for (const [relation, category] of [["grant", "interactions"], ["trigger", "routes"]] as const) {
+      const style = connectionStyle({ relation }, category, { icon, island: "island:stacks" }, { kind: "secret" });
+      assert.deepEqual(style, { color, dashed: false }, `${icon}: ${relation}`);
+    }
+  }
+});
+
+test("conditional deployment follows the controlling input toward its workload with the supplied-input style", () => {
+  for (const scene of [dev, prod]) {
+    const conditions = scene.edges.filter(edge => edge.edge.relation === "deployWhen");
+    assert.ok(conditions.length > 0);
+    const suppliedInput = scene.edges.find(edge => edge.edge.relation === "supplies" && edge.style.color === READ_EDGE_COLOR)!;
+    assert.ok(suppliedInput);
+    for (const condition of conditions) {
+      const input = scene.nodes.find(node => node.id === condition.from)!;
+      const workload = scene.nodes.find(node => node.id === condition.to)!;
+      assert.equal(input.icon, "input");
+      assert.ok(workload.targetKind);
+      assert.deepEqual(condition.style, suppliedInput.style);
+      const path = scene.routes[condition.id]!.points;
+      assert.deepEqual(path[0], input.geometry.top, "the shared paint/arrow/animation path starts at the controlling input");
+      assert.deepEqual(path.at(-1), workload.geometry.top, "the path ends at the controlled workload");
+    }
+  }
+});
+
+test("the WebSocket authorizer's route retains its own route styling", () => {
   for (const scene of [dev, prod]) {
     const link = scene.edges.find((edge) => edge.edge.relation === "authorizes" && edge.edge.from === "lambda:ws-authorizer" && edge.edge.to === "route:ws:$connect");
     assert.ok(link, "the authorizer guards $connect");
@@ -899,14 +927,28 @@ test("the WebSocket authorizer's link to the API is red and solid", () => {
   }
 });
 
-test("a permission grant keeps a mixed aggregate red and dashed", () => {
+test("an interaction keeps a mixed aggregate solid even when a missing input is its representative", () => {
   const read = snapshot.models.prod.edges.find((edge) => edge.relation === "env" && edge.to.startsWith("resource:cognito"))!;
   assert.ok(read, "a workload reads a Cognito field");
   const grant = { ...read, id: "edge:test-grant", relation: "grant" as const, label: "grantRead()" };
-  const scene = buildScene({ ...snapshot.models.prod, edges: [...snapshot.models.prod.edges, grant] }, { });
+  const missingRead = { ...read, inputRequirement: { resource: read.to, name: read.label, mode: "prod" as const, file: "cdk-app/.env.prod", required: true, status: "missing" as const, reasons: [] } };
+  const model = { ...snapshot.models.prod, edges: [missingRead, grant] };
+  const scene = buildScene(model, {});
   const drawn = (id: string) => scene.edges.find((edge) => edge.members.some((member) => member.edge.id === id))!.style;
-  assert.deepEqual(drawn(grant.id), { color: GUARD_EDGE_COLOR, dashed: true });
-  assert.deepEqual(drawn(read.id), drawn(grant.id), "the read and grant share one guarded connection");
+  const group = scene.edges.find(edge => edge.members.some(member => member.edge.id === grant.id))!;
+  assert.equal(group.edge.id, read.id, "the missing input remains the evidence representative");
+  assert.equal(group.category, "interactions");
+  assert.deepEqual(drawn(grant.id), { color: ICON_TINT.lambda, dashed: false });
+  assert.deepEqual(drawn(read.id), drawn(grant.id), "the bundle shares its visible source's style");
+  const development = { ...snapshot.models.dev, edges: [missingRead] };
+  const union = buildScene(development, { layoutModels: [development, model] });
+  const otherModeGrant = union.edges.find(edge => edge.members.some(member => member.edge.id === grant.id))!;
+  assert.deepEqual(otherModeGrant.style, { color: ICON_TINT.lambda, dashed: false }, "other-mode interaction members retain the same source style");
+  const failure = { ...grant, permissionContext: { kind: "failure" as const } };
+  const delivery = buildScene({ ...model, edges: [missingRead, failure] }).edges[0]!;
+  assert.equal(delivery.edge.id, read.id, "missing input evidence stays primary for an event-delivery bundle too");
+  assert.equal(delivery.category, "routes", "event delivery belongs to Routes and events even beside an input read");
+  assert.deepEqual(delivery.style, { color: ICON_TINT.lambda, dashed: false });
 });
 
 test("a connection outside the viewed environment rests at a quarter of the strength it has inside it", () => {

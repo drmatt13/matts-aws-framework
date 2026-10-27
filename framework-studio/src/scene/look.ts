@@ -78,35 +78,25 @@ export const ISLAND_TRIM: Readonly<Record<string, string>> = {
   "island:client-environment": "#5b9ee6",
 };
 
-/** A connection's colour, by the kind of relationship it draws. */
+/** Filter swatches and fallback colours; interactions and event delivery inherit their source icon's colour. */
 export const EDGE_COLORS: Readonly<Record<EdgeCategory, string>> = {
   routes: "#a374ff",
   inputs: "#8fb7d9",
-  access: "#e59a86",
-  activity: "#c3b2ff",
+  interactions: "#e59a86",
   structure: "#67d7df",
 };
 
-/** Lighter than the island's own trim so a hairline stays legible on the dark ground, and more saturated than the pale invocation violet. */
+/** Lighter than the island's own trim so a hairline stays legible on the dark ground. */
 export const API_EDGE_COLOR = EDGE_COLORS.routes;
 
-/** The compute orange, lightened the same way; clear of the salmon of permission links. */
+/** Light orange for non-interaction compute references. */
 export const COMPUTE_EDGE_COLOR = "#ff9a3d";
 
 /** A value being read, whether a stack field or an input parameter: the look of an environment file supplying an input. */
 export const READ_EDGE_COLOR = EDGE_COLORS.inputs;
 
-/** Red for what guards access: a grant, a secret, an authorizer. Apart from the error red of a missing required input by its X marker. */
+/** Red for secret inputs and route authorizers, distinct from the error red of missing-input X markers. */
 export const GUARD_EDGE_COLOR = "#ff4d5e";
-
-/** The agent teal (AgentCore), lightened like the rest, for an agent calling its tools. */
-export const TOOL_EDGE_COLOR = "#2fd6b0";
-
-/** The workflow pink (Step Functions), lightened like the rest, for a workflow's steps. */
-export const STEP_EDGE_COLOR = "#ff5aa5";
-
-/** Event delivery: warm yellow, distinct from compute orange and every category colour. */
-export const TRIGGER_EDGE_COLOR = "#ead46c";
 
 const REGION_TRIM: Readonly<Record<Region, string>> = {
   entry: AWS.networking,

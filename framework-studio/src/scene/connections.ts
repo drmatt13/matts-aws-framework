@@ -1,19 +1,17 @@
-import type { Mode, ModelEdge, ModelResource, Relation, TargetKind } from "../../shared/model";
-import { API_EDGE_COLOR, COMPUTE_EDGE_COLOR, EDGE_COLORS, GUARD_EDGE_COLOR, READ_EDGE_COLOR, STEP_EDGE_COLOR, TOOL_EDGE_COLOR, TRIGGER_EDGE_COLOR } from "./look";
+import type { Mode, ModelEdge, ModelResource, TargetKind } from "../../shared/model";
+import { API_EDGE_COLOR, COMPUTE_EDGE_COLOR, EDGE_COLORS, GUARD_EDGE_COLOR, ICON_TINT, READ_EDGE_COLOR } from "./look";
 import type { SceneEdge, SceneNode } from "./build";
-import type { EdgeCategory } from "../lookup";
+import { isEventConnection, type EdgeCategory } from "../lookup";
 
 /**
- * How a connection is coloured and dashed, decided from the model alone. Every connection points the way
- * the model records it, from the workload to what it references.
+ * How a connection is coloured and dashed. Direction follows the model: reads point toward their
+ * referenced input; conditional deployment points from the controlling input toward its workload.
  *
- * Solid lines are the exceptions, each named: an API route, a Lambda or container leaving for another
- * workload, permission to launch an ECS task, an authorizer, an agent calling a tool and a workflow step.
- * Conditional deployment connections are always dashed orange. Everything else is dashed.
+ * Resource interactions and event delivery are always solid and use the visible source icon's colour.
+ * Conditional deployment connections use the same dashed style as supplied inputs.
  *
- * What a workload references decides the colour: a value being read takes the look of an environment file
- * supplying an input, while a secret and a grant are red, so a parameter being read never looks like a
- * permission being given.
+ * For input delivery, a value being read takes the look of an environment file supplying an input,
+ * while a secret is red. Bundles containing an interaction follow the source-icon rule.
  */
 export interface ConnectionStyle {
   readonly color: string;
@@ -25,36 +23,32 @@ export function connectionVisible(edge: Pick<SceneEdge, "id" | "categories" | "f
   return edge.id === selected || edge.from === selected || edge.to === selected || !categories || edge.categories.some((category) => categories.has(category));
 }
 
-const REFERENCES: ReadonlySet<Relation> = new Set(["env", "secret", "grant"]);
 /** Lambda functions and container services and tasks: the workloads AWS colours as compute. */
 const COMPUTE_TARGETS: ReadonlySet<TargetKind> = new Set(["lambda", "service", "task"]);
 
 /**
- * `destination` is the model resource the edge points at, which can be a stack field the map shows as
- * its owning stack: what is referenced decides the style, not what is drawn.
+ * `source` is the visible resource the wire leaves, including folded stack members.
+ * `destination` retains the actual referenced resource for non-interaction input styling.
  */
 export function connectionStyle(
-  edge: Pick<ModelEdge, "relation">,
+  edge: Pick<ModelEdge, "relation" | "permissionContext">,
   category: EdgeCategory,
-  source: Pick<SceneNode, "island" | "targetKind"> | undefined,
+  source: Pick<SceneNode, "icon" | "island" | "targetKind"> | undefined,
   destination: Pick<ModelResource, "kind"> | undefined,
+  relationships: readonly Pick<ModelEdge, "relation" | "permissionContext">[] = [edge],
 ): ConnectionStyle {
   const { relation } = edge;
-  if (relation === "deployWhen") return { color: COMPUTE_EDGE_COLOR, dashed: true };
-  if (relation === "runsTask") return { color: GUARD_EDGE_COLOR, dashed: false };
-  if (relation === "manageConnections") return { color: GUARD_EDGE_COLOR, dashed: true };
-  if (relation === "trigger") return { color: TRIGGER_EDGE_COLOR, dashed: false };
+  if (category === "interactions" || relationships.some(isEventConnection)) return { color: ICON_TINT[source?.icon ?? "construct"], dashed: false };
+  if (relation === "deployWhen") return { color: READ_EDGE_COLOR, dashed: true };
   if (relation === "maps") return { color: READ_EDGE_COLOR, dashed: true };
   // An authorizer guards its route.
   if (relation === "authorizes") return { color: GUARD_EDGE_COLOR, dashed: false };
-  if (destination && REFERENCES.has(relation)) {
-    const guarded = relation === "grant" || relation === "secret" || destination.kind === "secret";
+  if (destination && (relation === "env" || relation === "secret")) {
+    const guarded = relation === "secret" || destination.kind === "secret";
     return { color: guarded ? GUARD_EDGE_COLOR : READ_EDGE_COLOR, dashed: true };
   }
   // An environment file supplying a secret is as guarded as the secret.
   if (relation === "supplies" && destination?.kind === "secret") return { color: GUARD_EDGE_COLOR, dashed: true };
-  if (relation === "usesTool") return { color: TOOL_EDGE_COLOR, dashed: false };
-  if (relation === "step") return { color: STEP_EDGE_COLOR, dashed: false };
   // Anything else takes the colour of where it starts, solid out of the APIs island and out of compute.
   if (relation === "routes" || source?.island === "island:apis") return { color: API_EDGE_COLOR, dashed: false };
   if (source?.targetKind && COMPUTE_TARGETS.has(source.targetKind)) return { color: COMPUTE_EDGE_COLOR, dashed: false };

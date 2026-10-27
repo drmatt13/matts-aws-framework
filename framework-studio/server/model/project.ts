@@ -650,8 +650,9 @@ function projectModelSnapshot(config: FrameworkConfig, options: ProjectionOption
   const routes = routesOf(config);
   const { edges, readPaths } = edgesOf(config, targets, routes);
   for (const target of targets) if (typeof target.deploy !== "string") {
-    const to = resourceId(target.deploy.when.resource.path);
-    edges.push({ id: `deployWhen:${target.reference}:${to}`, from: target.reference, to, relation: "deployWhen", label: "deploys when input matches", provenance: "declared" });
+    const input = resourceId(target.deploy.when.resource.path);
+    // The input controls deployment. Retain the historical relationship ID for selection stability.
+    edges.push({ id: `deployWhen:${target.reference}:${input}`, from: input, to: target.reference, relation: "deployWhen", label: "deploys when input matches", provenance: "declared" });
     readPaths.push(target.deploy.when.resource.path);
   }
   const diagnostics = validateForMode(config, options, targets);

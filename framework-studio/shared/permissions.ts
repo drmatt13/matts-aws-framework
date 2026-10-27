@@ -33,8 +33,6 @@ export interface ConnectionAuthorization {
 }
 
 export const hasIam = (edge: Pick<ModelEdge, "authorization">): boolean => edge.authorization?.kind === "iam";
-/** A connection keeps its authored purpose; authorization only adds supporting facts. */
-export const connectionTitle = (edge: ModelEdge): string => edge.label;
 export function authorizationLabel(authorization: ConnectionAuthorization): string {
   return authorization.kind === "iam" ? "IAM grant"
     : authorization.kind === "local" ? "Local connection" : authorization.kind === "user-token" ? "User token" : "Source evidence";

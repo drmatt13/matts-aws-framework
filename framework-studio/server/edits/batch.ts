@@ -38,7 +38,8 @@ import { planWorkloadRemoval } from "./removal";
 import { SourceJournal } from "./journal";
 import { readWorkloadOperation } from "../../shared/workload-operations";
 import { planIdentityPolicy } from "../identity-policy-source";
-import { connectionTitle } from "../../shared/permissions";
+import { presentRelationship } from "../../src/connection-presentation";
+import { indexModel } from "../../src/lookup";
 
 interface Change { readonly file: string; readonly before: string | null; readonly after: string | null }
 interface BatchChanges {
@@ -244,8 +245,8 @@ export class BatchEditor {
         const file = assertWritable(this.root, DESCRIPTION_FILE);
         try { overrides.set(file, rewriteDescription(new SourceFiles(overrides).text(file), edit.entity, edit.value)); }
         catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
-        const edge = Object.values(state.snapshot.models).flatMap((model) => model.edges).find((edge) => connectionDescriptionId(edge) === edit.entity);
-        summaries.push(`${edge ? `${connectionTitle(edge)} connection (${edge.from} → ${edge.to})` : edit.entity} — update description`);
+        const connection = Object.values(state.snapshot.models).map(model => ({ model, edge: model.edges.find(edge => connectionDescriptionId(edge) === edit.entity) })).find(item => item.edge);
+        summaries.push(`${connection?.edge ? `${presentRelationship(connection.edge, indexModel(connection.model)).title} connection (${connection.edge.from} → ${connection.edge.to})` : edit.entity} — update description`);
       }
       if (edit.kind !== "field") continue;
       const { intent } = edit;

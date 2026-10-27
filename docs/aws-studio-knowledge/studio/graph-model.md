@@ -64,10 +64,13 @@ for `app_user`; its local PostgreSQL derivative carries no AWS grant. Reader acc
 writer access. Typed secret ARN delivery grants the workload role; container startup injection
 uses the ECS execution role. Pull event arrows and IAM principal direction are independent.
 
-`connection-presentation.ts` names connection purpose while retaining authored member labels:
-managed API routes keep `Routes to`, database bindings say `Connects to PostgreSQL`, the
-database's stack says `Provides the application database`, and replay says
-`Local replay: AWS invocations`. Database details distinguish local settings from cloud
+`connection-presentation.ts` names every connection as **action: relevant value** while
+retaining authored labels in the model. Routes keep `Routes to: /api/path`; database bindings
+say `Connects to: rds.database` or `Connects to: Local PostgreSQL`; the database's stack says
+`Provides database: rds.database`; replay names its handler as `Local replay: handler-id`.
+Tools and workload calls name their destination instead of an internal helper or a generic
+capability. Workflow steps derive their action from typed invocation metadata; service calls
+use typed integration operations. Database details distinguish local settings from cloud
 settings, private networking and IAM login. Reader bindings say `Includes writer and reader
 connections`; they do not imply that replicas exist. Single-connection hovers append a compact IAM
 action/helper summary without a mode suffix. Environment pills show availability; the
@@ -75,11 +78,11 @@ collapsed Permissions disclosure retains mode-specific principal, scope, conditi
 evidence. Raw binding details, source links and inference caveats remain under Configuration.
 Resource previews omit IAM counts. Workload Permissions retains the full capability list.
 
-Four background filters cover Routes, Environment and secrets, Resource access, and Calls and events.
+Three background filters cover Routes and events, Environment and secrets, and Resource interactions.
 Structural links retain their internal category for layout and inspection; they appear when a
 resource is selected or previewed, or the connection is inspected, without a background filter.
-`edgeCategory` uses typed delivery context to put subscriptions and
-failure destinations under Calls and events even when their underlying relation is `cdk`
+`edgeCategory` puts native triggers, subscriptions and event
+failure destinations under Routes and events even when their underlying relation is `cdk`
 or `grant`. Empty categories are hidden. Groups retain every member's category across both
 modes; matching any category keeps the wire visible. IAM metadata neither chooses the
 category nor overrides the styling representative. Selected/previewed resources reveal
@@ -90,10 +93,13 @@ type-discovered allowlist shared by UI and server (S3, SQS, DynamoDB, SNS, Event
 Source-derived facts do not establish synthesized, deployed or effective IAM access; arbitrary
 native statements, trust/key policies and policy evaluation require their own evidence.
 
-The `runsTask` binding appears under Calls and events as `Can launch task`.
-Its solid red connection retains the derived ECS launch and role-passing grants plus
+The `runsTask` binding appears under Resource interactions as `Runs task: task-id`.
+Its solid connection matches the source resource's icon colour and retains the derived ECS launch and role-passing grants plus
 launch configuration in the inspector; it does not establish an observed execution. Conditional `deployWhen`
-connections use dashed orange lines and name the selecting input in their hover text.
+connections use the same dashed style as Supplies input, with the title
+`Conditional deployment: $inputPath`. The arrow and animated packets run from the
+selecting input to the controlled workload. Their historical relationship IDs and
+description keys remain stable.
 
 Client environment `maps` edges point from public catalog input parameters and native
 stack outputs into `client-envfile` (`client-app/.env`), never directly from CDK input files.
@@ -115,7 +121,7 @@ show this warning without inventing a replacement target, changing topology or a
 runtime health. Reviewed source application checks canonical artifacts against the proposed
 file overlay; current files are never silently scaffolded during evaluation.
 
-`aggregateConnections` in [connections.ts](../../../framework-studio/src/connections.ts) groups directed visible endpoint pairs while retaining original members, purpose categories and mode availability. Titles name the carried relationships, such as `Reads 3 environment values`; mixed groups summarize up to two families and a remaining count. Hover previews are bounded to four members without concealing missing required inputs. The Inspector preserves every member and its evidence. Dev/prod union topology stabilizes layout while the active mode controls availability and styling. `lookup.ts` in [src/lookup.ts](../../../framework-studio/src/lookup.ts) centralizes entity/relationship lookup labels and categories.
+`aggregateConnections` in [connections.ts](../../../framework-studio/src/connections.ts) groups directed visible endpoint pairs while retaining original members, purpose categories and mode availability. Titles follow the same action/value format, such as `Reads: 3 environment values` or `Reads and grants access: 1 environment value · 1 permission`; mixed groups summarize up to two families and a remaining count. Hover previews are bounded to four members without concealing missing required inputs. The Inspector preserves every member and its evidence. Dev/prod union topology stabilizes layout while the active mode controls availability and styling. `lookup.ts` in [src/lookup.ts](../../../framework-studio/src/lookup.ts) centralizes entity/relationship lookup labels and categories.
 
 The Database workbench uses `parseDeclaredSchema` in
 [server/database.ts](../../../framework-studio/server/database.ts) for source-linked diagram
@@ -159,4 +165,6 @@ source evidence; synthesis inventory remains the authority for built infrastruct
 authorizer and export-stack resource. `deployChoices` comes from the framework's
 pure lane preview. Conditional `Lanes.when` contains references, comparison literals
 from source and per-environment outcomes; it never contains resolved input values.
-The `deployWhen` relation connects workloads to their selecting input.
+The `deployWhen` relation points from the selecting input to its controlled workload.
+`Lanes.when` remains the authority for the comparison and per-mode outcome. Existing
+connection IDs and description keys retain their historical workload/input ordering.
