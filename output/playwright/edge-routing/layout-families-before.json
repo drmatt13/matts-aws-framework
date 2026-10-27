@@ -1,0 +1,2390 @@
+[
+  {
+    "family": "chain",
+    "count": 8,
+    "aspect": 0.9,
+    "ms": 30.37,
+    "evaluations": 340,
+    "proxyCost": 18540.7,
+    "seedCost": 66387.8,
+    "crossings": 1,
+    "length": 11144,
+    "obstacleHits": 0,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 1,
+    "positions": [
+      {
+        "id": "island:synthetic-001",
+        "left": -2,
+        "top": -1
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": -2,
+        "top": 22
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 19,
+        "top": 47
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 18,
+        "top": 69
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 1,
+        "top": 82
+      },
+      {
+        "id": "island:synthetic-000",
+        "left": -20,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 4,
+        "top": 47
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 10,
+        "top": 106
+      }
+    ]
+  },
+  {
+    "family": "chain",
+    "count": 8,
+    "aspect": 1.7777777777777777,
+    "ms": 10.71,
+    "evaluations": 340,
+    "proxyCost": 37562.9,
+    "seedCost": 87522.3,
+    "crossings": 2,
+    "length": 20391,
+    "obstacleHits": 0,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.999,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": -1,
+        "top": -10
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 17,
+        "top": -11
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 58,
+        "top": 3
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 1,
+        "top": 29
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 16,
+        "top": 29
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 44,
+        "top": 41
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 13,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 28,
+        "top": 55
+      }
+    ]
+  },
+  {
+    "family": "chain",
+    "count": 8,
+    "aspect": 2.5,
+    "ms": 7.12,
+    "evaluations": 340,
+    "proxyCost": 38762.5,
+    "seedCost": 104648.5,
+    "crossings": 2,
+    "length": 20222,
+    "obstacleHits": 0,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.977,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": 72,
+        "top": 25
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 62,
+        "top": -11
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 26,
+        "top": -11
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 10,
+        "top": 27
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 27,
+        "top": 27
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": -18,
+        "top": 4
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 3,
+        "top": 55
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 21,
+        "top": 52
+      }
+    ]
+  },
+  {
+    "family": "chain",
+    "count": 32,
+    "aspect": 0.9,
+    "ms": 22.66,
+    "evaluations": 81,
+    "proxyCost": 288008.3,
+    "seedCost": 3401175.8,
+    "crossings": 2,
+    "length": 129876,
+    "obstacleHits": 33,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.939,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": 0,
+        "top": -12
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 28,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 59,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 93,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 0,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 31,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 65,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 93,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 0,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 34,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 62,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 93,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-012",
+        "left": 0,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-013",
+        "left": 28,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-014",
+        "left": 59,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-015",
+        "left": 93,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-016",
+        "left": 0,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-017",
+        "left": 31,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-018",
+        "left": 65,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-019",
+        "left": 93,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-020",
+        "left": 0,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-021",
+        "left": 34,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-022",
+        "left": 62,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-023",
+        "left": 93,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-024",
+        "left": 0,
+        "top": 168
+      },
+      {
+        "id": "island:synthetic-025",
+        "left": 28,
+        "top": 168
+      },
+      {
+        "id": "island:synthetic-026",
+        "left": 59,
+        "top": 168
+      },
+      {
+        "id": "island:synthetic-027",
+        "left": 93,
+        "top": 168
+      },
+      {
+        "id": "island:synthetic-028",
+        "left": 0,
+        "top": 196
+      },
+      {
+        "id": "island:synthetic-029",
+        "left": 31,
+        "top": 196
+      },
+      {
+        "id": "island:synthetic-030",
+        "left": 65,
+        "top": 196
+      },
+      {
+        "id": "island:synthetic-031",
+        "left": 93,
+        "top": 196
+      }
+    ]
+  },
+  {
+    "family": "chain",
+    "count": 32,
+    "aspect": 1.7777777777777777,
+    "ms": 23.21,
+    "evaluations": 81,
+    "proxyCost": 334301.2,
+    "seedCost": 4464098.7,
+    "crossings": 4,
+    "length": 145940,
+    "obstacleHits": 24,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.915,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": -12,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 16,
+        "top": -12
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 47,
+        "top": -6
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 81,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 133,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 0,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 34,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 62,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 93,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 139,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 0,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 31,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-012",
+        "left": 65,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-013",
+        "left": 93,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-014",
+        "left": 124,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-015",
+        "left": 0,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-016",
+        "left": 28,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-017",
+        "left": 59,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-018",
+        "left": 93,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-019",
+        "left": 121,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-020",
+        "left": 0,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-021",
+        "left": 34,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-022",
+        "left": 62,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-023",
+        "left": 93,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-024",
+        "left": 127,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-025",
+        "left": 0,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-026",
+        "left": 31,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-027",
+        "left": 65,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-028",
+        "left": 93,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-029",
+        "left": 124,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-030",
+        "left": 0,
+        "top": 168
+      },
+      {
+        "id": "island:synthetic-031",
+        "left": 28,
+        "top": 168
+      }
+    ]
+  },
+  {
+    "family": "chain",
+    "count": 32,
+    "aspect": 2.5,
+    "ms": 22.24,
+    "evaluations": 81,
+    "proxyCost": 366432.1,
+    "seedCost": 5609278.6,
+    "crossings": 4,
+    "length": 147930,
+    "obstacleHits": 27,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.967,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": -12,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 28,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 59,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 93,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 121,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 164,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 0,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 28,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 59,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 93,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 121,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 152,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-012",
+        "left": 0,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-013",
+        "left": 28,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-014",
+        "left": 59,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-015",
+        "left": 93,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-016",
+        "left": 121,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-017",
+        "left": 152,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-018",
+        "left": 0,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-019",
+        "left": 28,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-020",
+        "left": 59,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-021",
+        "left": 93,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-022",
+        "left": 121,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-023",
+        "left": 152,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-024",
+        "left": 0,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-025",
+        "left": 28,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-026",
+        "left": 59,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-027",
+        "left": 93,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-028",
+        "left": 121,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-029",
+        "left": 152,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-030",
+        "left": 0,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-031",
+        "left": 28,
+        "top": 140
+      }
+    ]
+  },
+  {
+    "family": "hub",
+    "count": 12,
+    "aspect": 0.9,
+    "ms": 18.87,
+    "evaluations": 360,
+    "proxyCost": 75210.6,
+    "seedCost": 376777.8,
+    "crossings": 0,
+    "length": 30649,
+    "obstacleHits": 9,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.989,
+    "positions": [
+      {
+        "id": "island:synthetic-002",
+        "left": -3,
+        "top": 3
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 46,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 6,
+        "top": 37
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": -12,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 22,
+        "top": 19
+      },
+      {
+        "id": "island:synthetic-000",
+        "left": 19,
+        "top": 59
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 28,
+        "top": 131
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 37,
+        "top": 78
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 12,
+        "top": 81
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 34,
+        "top": 106
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 12,
+        "top": 146
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 12,
+        "top": 106
+      }
+    ]
+  },
+  {
+    "family": "hub",
+    "count": 12,
+    "aspect": 1.7777777777777777,
+    "ms": 15.94,
+    "evaluations": 336,
+    "proxyCost": 76818,
+    "seedCost": 858672.2,
+    "crossings": 6,
+    "length": 35829,
+    "obstacleHits": 6,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.999,
+    "positions": [
+      {
+        "id": "island:synthetic-002",
+        "left": -12,
+        "top": 3
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 22,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 9,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 12,
+        "top": 90
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 34,
+        "top": 78
+      },
+      {
+        "id": "island:synthetic-000",
+        "left": 53,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 46,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": -6,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 71,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 43,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 65,
+        "top": 6
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 59,
+        "top": 66
+      }
+    ]
+  },
+  {
+    "family": "hub",
+    "count": 12,
+    "aspect": 2.5,
+    "ms": 10.43,
+    "evaluations": 336,
+    "proxyCost": 77011,
+    "seedCost": 1325790.8,
+    "crossings": 1,
+    "length": 33963,
+    "obstacleHits": 6,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.989,
+    "positions": [
+      {
+        "id": "island:synthetic-002",
+        "left": 0,
+        "top": 16
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 28,
+        "top": -9
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 65,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 9,
+        "top": 41
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 6,
+        "top": -6
+      },
+      {
+        "id": "island:synthetic-000",
+        "left": 31,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 87,
+        "top": -12
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 87,
+        "top": 47
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 34,
+        "top": 47
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 78,
+        "top": 16
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 59,
+        "top": 53
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 53,
+        "top": 28
+      }
+    ]
+  },
+  {
+    "family": "hub",
+    "count": 32,
+    "aspect": 0.9,
+    "ms": 15.97,
+    "evaluations": 81,
+    "proxyCost": 894726.9,
+    "seedCost": 6070596.6,
+    "crossings": 0,
+    "length": 176473,
+    "obstacleHits": 132,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.747,
+    "positions": [
+      {
+        "id": "island:synthetic-002",
+        "left": -12,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 22,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 77,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": -12,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 22,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-012",
+        "left": 53,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-014",
+        "left": -12,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-016",
+        "left": 34,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-018",
+        "left": 65,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-020",
+        "left": -12,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-022",
+        "left": 34,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-024",
+        "left": 65,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-026",
+        "left": 0,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-028",
+        "left": 34,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-030",
+        "left": 65,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-000",
+        "left": 0,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 28,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 59,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 0,
+        "top": 165
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 34,
+        "top": 165
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 65,
+        "top": 165
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 0,
+        "top": 193
+      },
+      {
+        "id": "island:synthetic-013",
+        "left": 34,
+        "top": 193
+      },
+      {
+        "id": "island:synthetic-015",
+        "left": 65,
+        "top": 193
+      },
+      {
+        "id": "island:synthetic-017",
+        "left": 0,
+        "top": 221
+      },
+      {
+        "id": "island:synthetic-019",
+        "left": 34,
+        "top": 221
+      },
+      {
+        "id": "island:synthetic-021",
+        "left": 65,
+        "top": 221
+      },
+      {
+        "id": "island:synthetic-023",
+        "left": 0,
+        "top": 249
+      },
+      {
+        "id": "island:synthetic-025",
+        "left": 34,
+        "top": 249
+      },
+      {
+        "id": "island:synthetic-027",
+        "left": 65,
+        "top": 249
+      },
+      {
+        "id": "island:synthetic-029",
+        "left": 0,
+        "top": 277
+      },
+      {
+        "id": "island:synthetic-031",
+        "left": 34,
+        "top": 277
+      }
+    ]
+  },
+  {
+    "family": "hub",
+    "count": 32,
+    "aspect": 1.7777777777777777,
+    "ms": 27.33,
+    "evaluations": 81,
+    "proxyCost": 746651.6,
+    "seedCost": 7769343.5,
+    "crossings": 2,
+    "length": 221150,
+    "obstacleHits": 102,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.918,
+    "positions": [
+      {
+        "id": "island:synthetic-002",
+        "left": -12,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 22,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 53,
+        "top": -12
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 93,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 139,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-012",
+        "left": -12,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-014",
+        "left": 28,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-016",
+        "left": 62,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-018",
+        "left": 93,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-020",
+        "left": 121,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-022",
+        "left": -12,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-024",
+        "left": 31,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-026",
+        "left": 59,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-028",
+        "left": 93,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-030",
+        "left": 124,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-000",
+        "left": 0,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 28,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 59,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 87,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 121,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 0,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 28,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-013",
+        "left": 62,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-015",
+        "left": 93,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-017",
+        "left": 121,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-019",
+        "left": 0,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-021",
+        "left": 31,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-023",
+        "left": 59,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-025",
+        "left": 93,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-027",
+        "left": 124,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-029",
+        "left": 0,
+        "top": 168
+      },
+      {
+        "id": "island:synthetic-031",
+        "left": 34,
+        "top": 168
+      }
+    ]
+  },
+  {
+    "family": "hub",
+    "count": 32,
+    "aspect": 2.5,
+    "ms": 12.85,
+    "evaluations": 81,
+    "proxyCost": 1562318.3,
+    "seedCost": 9437669.8,
+    "crossings": 118,
+    "length": 176276,
+    "obstacleHits": 90,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.949,
+    "positions": [
+      {
+        "id": "island:synthetic-002",
+        "left": -12,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 34,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 65,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 93,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 127,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-012",
+        "left": 170,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-014",
+        "left": 0,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-016",
+        "left": 34,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-018",
+        "left": 65,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-020",
+        "left": 93,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-022",
+        "left": 127,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-024",
+        "left": 158,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-026",
+        "left": 0,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-028",
+        "left": 34,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-030",
+        "left": 65,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-000",
+        "left": 93,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 121,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 152,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 0,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 34,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 65,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 93,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-013",
+        "left": 127,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-015",
+        "left": 158,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-017",
+        "left": 0,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-019",
+        "left": 34,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-021",
+        "left": 65,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-023",
+        "left": 93,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-025",
+        "left": 127,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-027",
+        "left": 158,
+        "top": 112
+      },
+      {
+        "id": "island:synthetic-029",
+        "left": 0,
+        "top": 140
+      },
+      {
+        "id": "island:synthetic-031",
+        "left": 34,
+        "top": 140
+      }
+    ]
+  },
+  {
+    "family": "cycle",
+    "count": 12,
+    "aspect": 0.9,
+    "ms": 9.97,
+    "evaluations": 360,
+    "proxyCost": 111794.2,
+    "seedCost": 275509.5,
+    "crossings": 5,
+    "length": 37575,
+    "obstacleHits": 6,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.856,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": 19,
+        "top": -12
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 0,
+        "top": -21
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 50,
+        "top": -3
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 59,
+        "top": 25
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 28,
+        "top": 27
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 6,
+        "top": 31
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 9,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 28,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 47,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 0,
+        "top": 96
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 34,
+        "top": 102
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 59,
+        "top": 102
+      }
+    ]
+  },
+  {
+    "family": "cycle",
+    "count": 12,
+    "aspect": 1.7777777777777777,
+    "ms": 8.93,
+    "evaluations": 336,
+    "proxyCost": 78159.4,
+    "seedCost": 746414,
+    "crossings": 4,
+    "length": 37163,
+    "obstacleHits": 3,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.999,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": 68,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 80,
+        "top": 3
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 22,
+        "top": 25
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 19,
+        "top": -3
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": -6,
+        "top": -6
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 0,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 6,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 28,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 71,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 0,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 22,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 53,
+        "top": 84
+      }
+    ]
+  },
+  {
+    "family": "cycle",
+    "count": 12,
+    "aspect": 2.5,
+    "ms": 8.58,
+    "evaluations": 336,
+    "proxyCost": 85369,
+    "seedCost": 1204490.1,
+    "crossings": 4,
+    "length": 42535,
+    "obstacleHits": 6,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.99,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": 84,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 34,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 59,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 6,
+        "top": -9
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 3,
+        "top": 34
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 6,
+        "top": 62
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 65,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 105,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 31,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 34,
+        "top": 68
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 50,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 81,
+        "top": 38
+      }
+    ]
+  },
+  {
+    "family": "clusters",
+    "count": 12,
+    "aspect": 0.9,
+    "ms": 9.11,
+    "evaluations": 360,
+    "proxyCost": 45658.9,
+    "seedCost": 183846.4,
+    "crossings": 0,
+    "length": 35685,
+    "obstacleHits": 0,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.778,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": 0,
+        "top": -21
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 0,
+        "top": 19
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 19,
+        "top": -9
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 50,
+        "top": -15
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 40,
+        "top": 37
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 59,
+        "top": 31
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": -6,
+        "top": 53
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 13,
+        "top": 46
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 59,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 12,
+        "top": 102
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 28,
+        "top": 102
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 47,
+        "top": 84
+      }
+    ]
+  },
+  {
+    "family": "clusters",
+    "count": 12,
+    "aspect": 1.7777777777777777,
+    "ms": 8.52,
+    "evaluations": 336,
+    "proxyCost": 49307.2,
+    "seedCost": 645813.9,
+    "crossings": 2,
+    "length": 36955,
+    "obstacleHits": 0,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.955,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": 3,
+        "top": 5
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 50,
+        "top": 19
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 80,
+        "top": 9
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 25,
+        "top": -12
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 25,
+        "top": 34
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": -6,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 0,
+        "top": 62
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 0,
+        "top": 90
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 71,
+        "top": 65
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 34,
+        "top": 62
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 28,
+        "top": 90
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 47,
+        "top": 73
+      }
+    ]
+  },
+  {
+    "family": "clusters",
+    "count": 12,
+    "aspect": 2.5,
+    "ms": 8.63,
+    "evaluations": 336,
+    "proxyCost": 52846.9,
+    "seedCost": 1096536.9,
+    "crossings": 0,
+    "length": 47668,
+    "obstacleHits": 0,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.991,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": 9,
+        "top": -6
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 28,
+        "top": -4
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 56,
+        "top": -3
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 84,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 9,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 31,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 59,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 87,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 0,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 28,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 56,
+        "top": 62
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 105,
+        "top": 68
+      }
+    ]
+  },
+  {
+    "family": "bipartite",
+    "count": 12,
+    "aspect": 0.9,
+    "ms": 17.51,
+    "evaluations": 360,
+    "proxyCost": 312274.1,
+    "seedCost": 1820962.1,
+    "crossings": 17,
+    "length": 79694,
+    "obstacleHits": 15,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.726,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": 46,
+        "top": 31
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 68,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 3,
+        "top": 102
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 22,
+        "top": 3
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 38,
+        "top": -21
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": -6,
+        "top": 41
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 43,
+        "top": 84
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 37,
+        "top": 55
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 56,
+        "top": 53
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 65,
+        "top": 25
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 6,
+        "top": -6
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 18,
+        "top": 25
+      }
+    ]
+  },
+  {
+    "family": "bipartite",
+    "count": 12,
+    "aspect": 1.7777777777777777,
+    "ms": 17.51,
+    "evaluations": 336,
+    "proxyCost": 252929.8,
+    "seedCost": 2460548.7,
+    "crossings": 13,
+    "length": 90859,
+    "obstacleHits": 12,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.995,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": 22,
+        "top": 56
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 40,
+        "top": 93
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 16,
+        "top": 3
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": -9,
+        "top": -15
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 37,
+        "top": 28
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 83,
+        "top": 25
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 18,
+        "top": 99
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": -18,
+        "top": 35
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 68,
+        "top": 53
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 62,
+        "top": 81
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 12,
+        "top": 25
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 44,
+        "top": -6
+      }
+    ]
+  },
+  {
+    "family": "bipartite",
+    "count": 12,
+    "aspect": 2.5,
+    "ms": 24.18,
+    "evaluations": 336,
+    "proxyCost": 227553.8,
+    "seedCost": 3057413.9,
+    "crossings": 7,
+    "length": 94514,
+    "obstacleHits": 15,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.997,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": 84,
+        "top": 47
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 80,
+        "top": 71
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 56,
+        "top": -3
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 96,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 9,
+        "top": 14
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": -12,
+        "top": 53
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 74,
+        "top": 25
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 99,
+        "top": 31
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 28,
+        "top": 53
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 34,
+        "top": 25
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": -6,
+        "top": -12
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 34,
+        "top": -6
+      }
+    ]
+  },
+  {
+    "family": "uneven",
+    "count": 12,
+    "aspect": 0.9,
+    "ms": 10.62,
+    "evaluations": 360,
+    "proxyCost": 73396.2,
+    "seedCost": 172246.7,
+    "crossings": 5,
+    "length": 35882,
+    "obstacleHits": 0,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.995,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": 12,
+        "top": 9
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 25,
+        "top": 9
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": -12,
+        "top": 33
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 40,
+        "top": 24
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 3,
+        "top": 88
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 25,
+        "top": 73
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 9,
+        "top": 104
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 27,
+        "top": 104
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 12,
+        "top": 150
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 30,
+        "top": 150
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 6,
+        "top": 174
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 40,
+        "top": 162
+      }
+    ]
+  },
+  {
+    "family": "uneven",
+    "count": 12,
+    "aspect": 1.7777777777777777,
+    "ms": 10.46,
+    "evaluations": 336,
+    "proxyCost": 133388,
+    "seedCost": 623677.5,
+    "crossings": 7,
+    "length": 56239,
+    "obstacleHits": 3,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.912,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": -18,
+        "top": 0
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": -6,
+        "top": 25
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 43,
+        "top": 3
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 13,
+        "top": 6
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 49,
+        "top": 46
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 77,
+        "top": 60
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 94,
+        "top": 92
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 30,
+        "top": 68
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": -6,
+        "top": 74
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 0,
+        "top": 108
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 25,
+        "top": 114
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 59,
+        "top": 114
+      }
+    ]
+  },
+  {
+    "family": "uneven",
+    "count": 12,
+    "aspect": 2.5,
+    "ms": 10.35,
+    "evaluations": 336,
+    "proxyCost": 136083.7,
+    "seedCost": 865731,
+    "crossings": 8,
+    "length": 55081,
+    "obstacleHits": 3,
+    "islandOverlaps": 0,
+    "labelOverlaps": 0,
+    "utilization": 0.969,
+    "positions": [
+      {
+        "id": "island:synthetic-000",
+        "left": -21,
+        "top": 12
+      },
+      {
+        "id": "island:synthetic-001",
+        "left": 4,
+        "top": 23
+      },
+      {
+        "id": "island:synthetic-003",
+        "left": 37,
+        "top": 3
+      },
+      {
+        "id": "island:synthetic-002",
+        "left": 6,
+        "top": 46
+      },
+      {
+        "id": "island:synthetic-004",
+        "left": 110,
+        "top": 23
+      },
+      {
+        "id": "island:synthetic-006",
+        "left": 37,
+        "top": 58
+      },
+      {
+        "id": "island:synthetic-005",
+        "left": 65,
+        "top": 46
+      },
+      {
+        "id": "island:synthetic-007",
+        "left": 89,
+        "top": 92
+      },
+      {
+        "id": "island:synthetic-009",
+        "left": 30,
+        "top": 92
+      },
+      {
+        "id": "island:synthetic-008",
+        "left": 18,
+        "top": 104
+      },
+      {
+        "id": "island:synthetic-010",
+        "left": 55,
+        "top": 98
+      },
+      {
+        "id": "island:synthetic-011",
+        "left": 101,
+        "top": 46
+      }
+    ]
+  }
+]

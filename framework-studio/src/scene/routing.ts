@@ -3,6 +3,7 @@ import { arcPoints } from "./picking";
 import { intersects, pathBounds, pathHits, pathLength, pathsCross, type Obstacle } from "./layout-geometry";
 import type { LayoutLink } from "./layout-graph";
 import { ELEVATION_STEP } from "./iso";
+import { separateCorridors, type CorridorWire } from "./corridors";
 
 /** Control-point lift for a quadratic whose crest clears its higher end by `rise`.
  * Unlike a midpoint-only offset, this also arches above steep/receding endpoints. */
@@ -37,10 +38,19 @@ export function connectionMidpoint(points: readonly Point[]): Point {
   return points[0] ?? { x: 0, y: 0 };
 }
 /** One cached route per real relationship, shared by paint, packets and hit testing.
- * Related edges share a direction corridor but retain distinct endpoints and lanes. */
+ * Independent wires that compete for one corridor are spread apart after their arcs are chosen. */
 export function routeConnections(links: readonly LayoutLink[], obstacles: readonly Obstacle[]): ConnectionRoutes {
-  const result: Record<string, ConnectionRoute> = {};
+  const wires = routeArcs(links, obstacles), moved = separateCorridors(wires, obstacles);
+  return Object.fromEntries(wires.map((wire) => {
+    const points = moved.get(wire.id) ?? wire.points;
+    return [wire.id, { points, length: pathLength(points) }];
+  }));
+}
+/** Each relationship's own arc: the lifted quadratic that best avoids obstacles and crossings.
+ * Related edges share a direction corridor but retain distinct endpoints and lanes. */
+export function routeArcs(links: readonly LayoutLink[], obstacles: readonly Obstacle[]): readonly CorridorWire[] {
   const accepted: { link: LayoutLink; points: readonly Point[]; bounds: Bounds }[] = [];
+  const wires: CorridorWire[] = [];
   const lanes = new Map<string, number>();
   // Opposite directions and different categories share the same endpoint pair. Give every type
   // a stable fan position within that pair so filters and mode switches cannot make wires swap.
@@ -90,9 +100,9 @@ export function routeConnections(links: readonly LayoutLink[], obstacles: readon
     }
     const best = arcPoints(a, bestControl, b, 24);
     if (parallel && sharedControl === undefined) pairControls.set(pair, { x: bestControl.x - fan.x, y: bestControl.y - fan.y });
-    result[link.id] = { points: best, length: pathLength(best) };
+    wires.push({ id: link.id, ends: [a.id, b.id], points: best, control: bestControl, group: pair, exempt: [a.island, b.island, a.id, b.id] });
     const points = best.filter((_, at) => at % 3 === 0);
     accepted.push({ link, points, bounds: pathBounds(points) });
   }
-  return result;
+  return wires;
 }

@@ -42,6 +42,8 @@ The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) a
 | `frame.ts` | yes | VPC foundation and frame colour |
 | `camera.ts` | yes | World↔screen transforms, pan, pointer-anchored zoom, wheel normalization, fit, tween |
 | `picking.ts` | yes | Point-in-polygon, entity picking, painted-slab picking, arc geometry, card placement |
+| `routing.ts` | yes | Each connection's lifted arc, then corridor separation; one cached polyline per connection |
+| `corridors.ts` | yes | Finds independent wires competing for one corridor and spreads them by moving their control points (tested in [test/corridors.test.ts](../../framework-studio/test/corridors.test.ts)) |
 | `render.ts` | no (canvas) | `SceneRenderer`: caches per scene, draws per frame |
 | `grid.ts` | yes | Viewport-bounded, world-anchored ground grid with zoom-dependent spacing |
 | `../icons.ts` | yes | Shared mapping from model entities to local AWS/Lucide SVG assets |
@@ -422,8 +424,12 @@ been removed; the renderer has one visual style.
    at least `28 + 0.08 · ground span` world units above the higher attachment. An additional
    24-unit minimum clearance above the higher projected endpoint keeps depth-aligned
    connections legible. Lane offsets and obstacle avoidance can increase the lift;
-   nearby connections retain compact detours. Drawing, picking and packets share the
-   same cached path, and Fit includes its crest.
+   nearby connections retain compact detours. Unrelated connections that would otherwise
+   lie on top of one another for a long stretch, such as a sheaf of steep wires into one
+   stack, are spread apart by bowing each slightly sideways, so they arrive as a fan; each
+   keeps its side, its exact anchors and one smooth curve, and connections with room to
+   spare do not move (see [Rendering](../aws-studio-knowledge/studio/rendering.md)).
+   Drawing, picking and packets share the same cached path, and Fit includes its crest.
    Three purpose categories filter background connections: Routes and events, Environment and secrets,
    and Resource interactions. Categories with no connections have no pill.
    The filters **Routes and events** and **Environment and secrets** start off; Resource

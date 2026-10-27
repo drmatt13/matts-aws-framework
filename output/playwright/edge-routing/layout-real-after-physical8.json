@@ -1,0 +1,122 @@
+[
+  {
+    "mode": "dev",
+    "aspect": 1.7777777777777777,
+    "ms": 152,
+    "evaluations": 336,
+    "before": {
+      "crossings": 407,
+      "weightedCrossings": 764.7106781186552,
+      "length": 289544.1997538223,
+      "islandOverlaps": 0,
+      "labelOverlaps": 5,
+      "edgeObstacles": 84,
+      "aspect": 1.348138471587198,
+      "utilization": 0.7583278902677989,
+      "movement": 0,
+      "cost": 3714100.2192871612
+    },
+    "after": {
+      "crossings": 211,
+      "weightedCrossings": 389.25483399593924,
+      "length": 147534.8055186896,
+      "islandOverlaps": 0,
+      "labelOverlaps": 0,
+      "edgeObstacles": 24,
+      "aspect": 1.779189833200953,
+      "utilization": 0.9992063492063492,
+      "movement": 0,
+      "cost": 1240946.9274204196
+    }
+  },
+  {
+    "mode": "dev",
+    "aspect": 0.9,
+    "ms": 144,
+    "evaluations": 360,
+    "before": {
+      "crossings": 406,
+      "weightedCrossings": 762.7106781186552,
+      "length": 289482.0747193041,
+      "islandOverlaps": 0,
+      "labelOverlaps": 0,
+      "edgeObstacles": 84,
+      "aspect": 1.348138471587198,
+      "utilization": 0.6675872093023255,
+      "movement": 0,
+      "cost": 2761058.244081701
+    },
+    "after": {
+      "crossings": 194,
+      "weightedCrossings": 349.982756057297,
+      "length": 152685.0297306834,
+      "islandOverlaps": 0,
+      "labelOverlaps": 0,
+      "edgeObstacles": 22,
+      "aspect": 0.8950531668978271,
+      "utilization": 0.9945035187753635,
+      "movement": 0,
+      "cost": 1138696.0304339682
+    }
+  },
+  {
+    "mode": "prod",
+    "aspect": 1.7777777777777777,
+    "ms": 46,
+    "evaluations": 336,
+    "before": {
+      "crossings": 407,
+      "weightedCrossings": 764.7106781186552,
+      "length": 289544.1997538223,
+      "islandOverlaps": 0,
+      "labelOverlaps": 5,
+      "edgeObstacles": 84,
+      "aspect": 1.348138471587198,
+      "utilization": 0.7583278902677989,
+      "movement": 0,
+      "cost": 3714100.2192871612
+    },
+    "after": {
+      "crossings": 211,
+      "weightedCrossings": 389.25483399593924,
+      "length": 147534.8055186896,
+      "islandOverlaps": 0,
+      "labelOverlaps": 0,
+      "edgeObstacles": 24,
+      "aspect": 1.779189833200953,
+      "utilization": 0.9992063492063492,
+      "movement": 0,
+      "cost": 1240946.9274204196
+    }
+  },
+  {
+    "mode": "prod",
+    "aspect": 0.9,
+    "ms": 36,
+    "evaluations": 360,
+    "before": {
+      "crossings": 406,
+      "weightedCrossings": 762.7106781186552,
+      "length": 289482.0747193041,
+      "islandOverlaps": 0,
+      "labelOverlaps": 0,
+      "edgeObstacles": 84,
+      "aspect": 1.348138471587198,
+      "utilization": 0.6675872093023255,
+      "movement": 0,
+      "cost": 2761058.244081701
+    },
+    "after": {
+      "crossings": 194,
+      "weightedCrossings": 349.982756057297,
+      "length": 152685.0297306834,
+      "islandOverlaps": 0,
+      "labelOverlaps": 0,
+      "edgeObstacles": 22,
+      "aspect": 0.8950531668978271,
+      "utilization": 0.9945035187753635,
+      "movement": 0,
+      "cost": 1138696.0304339682
+    }
+  }
+]

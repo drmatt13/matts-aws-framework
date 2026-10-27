@@ -214,6 +214,12 @@ test("the real migration-to-RDS connection stays proportional to its nearby endp
     assert.ok(bow <= chord * 0.25, `migration-to-RDS arc is too tall: ${bow} across ${chord}`);
   }
 });
+test("switching between development and production never moves a connection", () => {
+  const layoutModels = Object.values(snapshot.models);
+  const dev = buildScene(snapshot.models.dev, { layoutModels }), prod = buildScene(snapshot.models.prod, { layoutModels });
+  assert.deepEqual(Object.keys(dev.routes).sort(), Object.keys(prod.routes).sort());
+  for (const id of Object.keys(dev.routes)) assert.deepEqual(prod.routes[id], dev.routes[id], `${id} moved between environments`);
+});
 test("real development and production graphs improve actual full-resolution wires against the unrefined seed", () => {
   for (const model of Object.values(snapshot.models)) {
     const options = { layoutModels: Object.values(snapshot.models) };

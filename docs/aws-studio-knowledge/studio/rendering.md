@@ -8,6 +8,7 @@ source:
   - framework-studio/src/scene/build.ts
   - framework-studio/src/scene/layout-optimize.ts
   - framework-studio/src/scene/routing.ts
+  - framework-studio/src/scene/corridors.ts
   - framework-studio/src/scene/render.ts
   - framework-studio/src/endpoint-services.ts
 related:
@@ -102,7 +103,7 @@ Board's [layout.ts](../../../framework-studio/src/layout.ts) arranges entry, com
 | Initial placement | [layout.ts](../../../framework-studio/src/scene/layout.ts): semantic rows, network placement and aspect-aware packing |
 | Optimize | `optimizeLayout` in [layout-optimize.ts](../../../framework-studio/src/scene/layout-optimize.ts): bounded proxy links, mutually reachable grouping, dependency ranking/barycentric ordering, candidate moves/swaps, prior-position reuse and bounded caches |
 | Score | `measureLayout` / `measureSceneLayout` in [layout-quality.ts](../../../framework-studio/src/scene/layout-quality.ts): heavy overlap penalties, labels, crossings, obstacles, connection length, aspect and movement |
-| Route | `routeConnections` in [routing.ts](../../../framework-studio/src/scene/routing.ts): bounded quadratic-bow candidates, sampled obstacle/crossing costs and cached polylines; heuristic, not a global routing solver |
+| Route | `routeConnections` in [routing.ts](../../../framework-studio/src/scene/routing.ts): `routeArcs` picks each connection's quadratic from bounded bow candidates by sampled obstacle/crossing costs; `separateCorridors` in [corridors.ts](../../../framework-studio/src/scene/corridors.ts) then spreads only the wires competing for one corridor. Cached polylines; heuristic, not a global routing solver |
 | Draw | `SceneRenderer` in [render.ts](../../../framework-studio/src/scene/render.ts): Canvas2D, cached Path2D/geometry, viewport culling, DPR handling, caption collisions and zoom-dependent labels |
 | Interact | [Isometric.tsx](../../../framework-studio/src/views/Isometric.tsx), [picking.ts](../../../framework-studio/src/scene/picking.ts), [focus.ts](../../../framework-studio/src/scene/focus.ts): coalesced pointer/frame work, geometry-based picking, selection/search fades |
 
@@ -152,6 +153,24 @@ keeps shorter paths proportional with many types. Opposite directions share the 
 canonical ordering but retain their actual source and destination. Obstacles choose the
 shared base curve; drawing, packets and picking reuse the resulting per-type path.
 
+Independent connections can still compete for one corridor: lift moves an arc straight up
+the page, so steep wires into one node arrive at nearly the same angle and lie on top of
+each other. `separateCorridors` finds pairs closer than `CORRIDOR_CLEARANCE` (24 world
+units) and within 20° of parallel for at least three clearances, ignoring the first ~195
+units around a node both wires share, where a fan is expected to meet. Wires between the
+same two nodes are the fan above and never compete. Only competing wires move, and only
+their quadratic's control point, along the chord normal: each stays one curve between its
+exact anchors, bows most mid-span, and a sheaf into one node opens into a fan of distinct
+arrival angles. Each pair keeps the side it is on (a shallow crossing moves toward its
+cheaper end; wires lying exactly on one another take one endpoint order per corridor), so
+spacing never crosses the pair. A projected Kaczmarz solve shares each corridor's room by
+span (at most 14% of a span, 300 units), with lift reduced by at most 20%. Near-parallel
+neighbours within twice the clearance join the solve so making room does not crowd them.
+Moves that would cut more obstacles, add more than one crossing to a wire, or leave a wire
+competing for more length than before are halved and finally dropped; moves under 3 units
+are dropped. The pass is deterministic, independent of input order and lens, and leaves
+unrelated wires bit-identical; above `CORRIDOR_LIMIT` (300) connections it is skipped.
+
 Conditional deployment is an input-control relationship: `Conditional deployment: $inputPath`.
 It uses the same dashed colour as Supplies input. Its model endpoints, arrow, packets,
 hover and inspector all run from the selecting input to the workload it controls.
@@ -176,7 +195,8 @@ samples, scores, ordering, final route resolution and picking remain unchanged.
 These envelopes belong to one routing call; they do not cache source or scenes.
 Use `framework-studio/scripts/benchmark-graph.ts` with 25/100/250/500 or a sanitized
 snapshot JSON path to measure cold scene creation and retained-position rebuilds
-separately from rendering. `prepare-browser-graph.ts` prepares a Playwright CLI
+separately from rendering; `benchmark-routing.ts` times base arcs and corridor separation on
+seeded fan-heavy architectures and reports how many routes a single edit leaves unchanged. `prepare-browser-graph.ts` prepares a Playwright CLI
 fixture runner against an existing production preview; API requests stay intercepted
 in that browser tab. See the [Job 4 evidence](../../framework-studio/job4-frontend-evidence-2026-10-23.md)
 for procedure, comparisons and remaining software-rendering limits.
