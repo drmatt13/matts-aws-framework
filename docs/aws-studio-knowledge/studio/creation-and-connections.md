@@ -110,14 +110,28 @@ repair creates `lambda_function.py`; authenticated Python/custom entry points/im
 Lambda repair deliberately requires source review. Incompatible existing contract exports
 produce a no-write compiler conflict, never a template overwrite.
 
-`connections.ts` supports purpose-based database IAM/VPC placement, pool identifiers,
+`connections.ts` supports database IAM/VPC placement, pool identifiers,
 declared task/workflow/agent invocation and tools, catalog inputs/secrets, and native
-bucket/queue grants. Imports reuse existing catalog aliases. Secret delivery follows
+S3/SQS/DynamoDB/SNS/EventBridge grants. The HTTP parser, destination picker and source
+writer share the native grant definitions; a picker action must be accepted by the parser.
+Imports reuse existing catalog aliases. Secret delivery follows
 ARN/read for Lambda/agent and startup-value delivery for containers. Literal grants have
 optional bucket key scope; disconnect matches the exact resource/method/scope and
 preserves other bindings. Spreads, computed owners, commented arrays, custom grants and
 ambiguous shared bindings stay source-owned. Handler authentication is separate from
 providing pool identifiers.
+
+Workload **Permissions → Add access** and resource **Workload access → Grant access**
+share the destination-first editor in `WorkloadPermissions.tsx`. Tasks, workflows and
+agents also offer **Incoming access → Add caller**. `access-options.ts` builds options
+from both source modes, discovers compatible native methods from canonical CDK types,
+and supplies service names/icons without inventing new writer authority. An unconstructed
+stack is unavailable in the permission picker with an explicit reason. `access.ts` assigns
+grants by their receiving principal, not by graph direction; callback edges can give
+different grants to each endpoint. Only supported, unambiguous source bindings offer
+removal, with exact native method/scope matching. Additions and removals enter the existing
+source review and can be undone before apply. Runtime handler code and custom workflow
+steps remain source-owned; authoring access does not implement application behavior.
 
 `removal.ts` checks consumers across both modes and refuses shared implementation roots.
 It reviews literal declaration removal, generated reference changes and an exact text

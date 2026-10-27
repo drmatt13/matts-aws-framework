@@ -90,6 +90,39 @@ test("managed database ownership is described from destination metadata", () => 
   assert.equal(presentRelationship(connection, indexModel(model({ resources: [{ ...database, frameworkManaged: undefined }] }))).title, "Contains: storage.database");
 });
 
+test("native grants name the permission and resource while preserving exact scope and source details", () => {
+  const bucket: ModelResource = { id: "resource:uploads.bucket", path: ["uploads", "bucket"], kind: "member", typeText: "s3.Bucket", absent: false };
+  const index = indexModel(model({ resources: [bucket] }));
+  const grant = edge("grant", { to: bucket.id, label: 'grantWrite("reports/*")', detail: 'resources.uploads.bucket.grantWrite("reports/*")',
+    permissionContext: { kind: "native", method: "grantWrite", arguments: ["reports/*"] } });
+  const before = JSON.stringify(grant);
+  const result = presentRelationship(grant, index);
+  assert.equal(result.title, "Write bucket objects: uploads.bucket");
+  assert.deepEqual(result.lines, ["Object scope: reports/*"]);
+  assert.equal(JSON.stringify(grant), before, "configuration retains the authored helper expression");
+  for (const args of [[], ["*"]]) assert.deepEqual(presentRelationship({ ...grant, permissionContext: { kind: "native", method: "grantRead", arguments: args } }, index).lines, ["Object scope: All objects"]);
+  const secret = { ...bucket, typeText: "secretsmanager.Secret" };
+  const secretGrant = presentRelationship({ ...grant, permissionContext: { kind: "native", method: "grantRead", arguments: [] } }, indexModel(model({ resources: [secret] })));
+  assert.equal(secretGrant.title, "Read resource: uploads.bucket");
+  assert.deepEqual(secretGrant.lines, [], "a read helper does not imply bucket object scope");
+  assert.equal(presentRelationship({ ...grant, permissionContext: { kind: "native", method: "customGrant", arguments: [] } }, index).title, "Resource access: uploads.bucket");
+  assert.equal(presentRelationship({ ...grant, permissionContext: undefined }, index).title, 'Granted: grantWrite("reports/*")', "labels alone never establish native permission semantics");
+});
+
+test("grouped native grants describe operations and scopes without raw helper names", () => {
+  const bucket: ModelResource = { id: "resource:uploads.bucket", path: ["uploads", "bucket"], kind: "member", typeText: "s3.IBucket", absent: false };
+  const grants = ["reports/*", "exports/*"].map((scope, i) => edge("grant", { id: String(i), to: bucket.id, label: `grantWrite(${JSON.stringify(scope)})`,
+    permissionContext: { kind: "native" as const, method: "grantWrite", arguments: [scope] } }));
+  const current = model({ resources: [bucket], edges: grants });
+  const result = presentConnection(aggregateConnections(current)[0]!, "dev", indexModel(current));
+  assert.equal(result.title, "2 resource grants");
+  assert.deepEqual(result.lines, ["Write bucket objects · reports/*", "Write bucket objects · exports/*"]);
+  const mixed = { ...current, edges: [...grants, edge("env", { id: "2", to: bucket.id, label: "BUCKET_NAME" })] };
+  assert.deepEqual(presentConnection(aggregateConnections(mixed)[0]!, "dev", indexModel(mixed)).lines, [
+    "Write bucket objects: uploads.bucket · reports/*", "Write bucket objects: uploads.bucket · exports/*", "Reads: BUCKET_NAME",
+  ]);
+});
+
 test("local replay names its purpose once and native triggers identify the actual CDK construct", () => {
   const index = indexModel(model());
   const replay = presentRelationship(edge("localReplay", { label: "Local replay", detail: "localReplay: true captures AWS invocations. Production invokes the handler directly." }), index);

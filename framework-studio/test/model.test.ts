@@ -3,7 +3,7 @@ import assert from "./support/assert";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { after, before, test } from "node:test";
-import { defineDatabase, defineFrameworkConfig, INTERFACE_ENDPOINT_SERVICES, defineNetwork, defineResources, dynamodb, invokeLambda, resource, runsTask, sequence, startsWorkflow, trigger, workflow, type FrameworkConfig } from "@repo/framework/config";
+import { defineDatabase, defineFrameworkConfig, INTERFACE_ENDPOINT_SERVICES, defineNetwork, defineResources, dynamodb, invokeLambda, invokesAgent, resource, runsTask, sequence, startsWorkflow, trigger, workflow, type FrameworkConfig } from "@repo/framework/config";
 import type { IDatabaseInstance } from "aws-cdk-lib/aws-rds";
 import type { UserPool } from "aws-cdk-lib/aws-cognito";
 import type { ITable } from "aws-cdk-lib/aws-dynamodb";
@@ -145,22 +145,27 @@ test("task, workflow and integration relationships come from an isolated config"
   const catalog = defineResources({ data: resource.stack<{ readonly records: ITable }>() });
   const config = defineFrameworkConfig({ networks: [fixtureVpc],
     resources: catalog, defaults, webSocket: [], services: [],
-    http: [{ "/process": { directory: "/test/fixtures/caller", methods: ["POST"], cloud: { bindings: [runsTask("worker"), startsWorkflow("process")] } } }],
+    http: [{ "/process": { directory: "/test/fixtures/caller", methods: ["POST"], cloud: { bindings: [runsTask("worker"), startsWorkflow("process"), invokesAgent("assistant")] } } }],
     events: [{ worker: { directory: "/test/fixtures/workload-handler" } }],
     tasks: [{ worker: { cloud: { vpc: fixtureVpc }, directory: "/test/fixtures/task-worker", deploy: "both" } }],
+    agents: [{ assistant: {} }],
     workflows: [{ process: workflow(() => sequence(invokeLambda("worker"), dynamodb.put(catalog.data.records, { item: { pk: "example" } })), { timeoutSeconds: 60 }) }],
   });
   const model = projectModel(config as unknown as FrameworkConfig, { mode: "dev", });
   for (const [relation, from, to] of [
     ["runsTask", "lambda:caller", "task:worker"],
     ["startsWorkflow", "lambda:caller", "workflow:process"],
+    ["invokesAgent", "lambda:caller", "agent:assistant"],
     ["step", "workflow:process", "lambda:worker"],
     ["integration", "workflow:process", "resource:data.records"],
   ]) assert.ok(model.edges.some((edge) => edge.relation === relation && edge.from === from && edge.to === to), relation);
   const launchPermission = model.edges.find((edge) => edge.relation === "runsTask")!;
   assert.equal(launchPermission.label, "Launch ECS task");
-  assert.match(launchPermission.detail!, /ecs:RunTask/);
-  assert.match(launchPermission.detail!, /iam:PassRole/);
+  assert.equal(launchPermission.detail, 'runsTask("worker")');
+  assert.ok(launchPermission.authorization?.grants.some(grant => grant.actions?.includes("ecs:RunTask")));
+  assert.ok(launchPermission.authorization?.grants.some(grant => grant.actions?.includes("iam:PassRole")));
+  assert.equal(model.edges.find(edge => edge.relation === "startsWorkflow")?.detail, 'startsWorkflow("process")');
+  assert.equal(model.edges.find(edge => edge.relation === "invokesAgent")?.detail, 'invokesAgent("assistant")');
 });
 
 test("lanes carry the framework's special rules", () => {

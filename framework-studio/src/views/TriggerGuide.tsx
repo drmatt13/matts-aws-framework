@@ -40,7 +40,7 @@ export function TriggerSourcePicker(props: {
   if (!guide) return <div ref={root} className="trigger-guide" role="region" aria-labelledby={`${id}-title`}>
     <h4 id={`${id}-title`}>What should invoke {props.event}?</h4>
     <div className="trigger-guide-grid">
-      {summary.map((item) => <button key={item.kind} className={`trigger-guide-service${item.reason ? " unavailable" : ""}`} aria-label={`${item.label}: ${item.reason ? "unavailable" : item.resourceless ? "no resource needed" : `${item.usable} usable`}`} title={item.reason}
+      {summary.map((item) => <button key={item.kind} className={`trigger-guide-service${item.reason ? " unavailable" : ""}`} aria-label={`${item.label}: ${item.reason ? "unavailable" : item.resourceless ? "no resource needed" : `${item.usable} compatible`}`} title={item.reason}
         onClick={() => item.resourceless && !item.reason ? props.onChoose("", item.kind) : props.onKind(item.kind)}>
         <img src={iconUrl(iconOf(item.kind))} alt="" aria-hidden />
         <span>{item.label}</span>

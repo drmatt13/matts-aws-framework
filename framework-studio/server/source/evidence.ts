@@ -1,6 +1,6 @@
 import path from "node:path";
 import ts from "typescript";
-import type { ConnectionEvidence, ModeModel, SourceIndex, SourceLocation } from "../../shared/model";
+import type { ConnectionEvidence, ModelEdge, ModeModel, SourceIndex, SourceLocation } from "../../shared/model";
 import type { CatalogEntrySource } from "./catalog";
 import { SourceFiles } from "./index";
 import { expressionAt, lineAndColumn, literalKey, literalValue, unwrap } from "./syntax";
@@ -110,6 +110,7 @@ export function withConnectionEvidence(root: string, model: ModeModel, index: So
   return { ...model, edges: model.edges.map((edge) => {
     if (!["env", "secret", "grant", "database", "trigger", "manageConnections"].includes(edge.relation)) return edge;
     const evidence: ConnectionEvidence[] = [];
+    let bindingSetting: ModelEdge["bindingSetting"];
     const add = (role: ConnectionEvidence["role"], location?: SourceLocation) => {
       if (!location || evidence.some((item) => item.role === role && item.location.file === location.file && item.location.start === location.start)) return;
       const item = sourceEvidence(root, files, role, location);
@@ -142,6 +143,9 @@ export function withConnectionEvidence(root: string, model: ModeModel, index: So
       const parent = names.length === 1 ? declaration : authored.at(declaration, names.slice(0, -1));
       const property = parent && authored.property(parent, names.at(-1)!);
       if (property) add(derived ? "derived" : "declared", locate(root, property));
+      if (names.length === 1 && (names[0] === "database" || names[0] === "userPool") && property && property.parent === unwrap(declaration) && ts.isPropertyAssignment(property) && property.initializer.kind === ts.SyntaxKind.TrueKeyword) {
+        bindingSetting = { field: names[0], value: true, source: locate(root, property) };
+      }
       if (edge.relation === "grant") {
         const bindings = authored.at(declaration, ["cloud", "bindings"]);
         if (bindings) {
@@ -173,6 +177,6 @@ export function withConnectionEvidence(root: string, model: ModeModel, index: So
       for (const link of index.links[owner] ?? []) add("linked", link);
     }
     if (edge.relation === "trigger") add("wired", edge.source);
-    return { ...edge, evidence };
+    return { ...edge, evidence, bindingSetting };
   }) };
 }

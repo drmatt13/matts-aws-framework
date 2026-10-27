@@ -7,7 +7,7 @@ import type { IBucket } from "aws-cdk-lib/aws-s3";
 import type { IQueue } from "aws-cdk-lib/aws-sqs";
 import { projectModel } from "../server/model/project";
 import type { ModeModel, ModelEdge, ModelTarget, Relation } from "../shared/model";
-import { authorizationSummary, connectionTitle, hasIam, withConnectionAuthorizations } from "../shared/permissions";
+import { authorizationLabel, authorizationSummary, connectionTitle, hasIam, withConnectionAuthorizations } from "../shared/permissions";
 import { grantOptions } from "../shared/grants";
 import { aggregateConnections } from "../src/connections";
 import { connectionVisible } from "../src/scene/connections";
@@ -58,6 +58,8 @@ test("permission facts preserve route, input, scope and callback labels as conne
 
 test("hover permission summaries are secondary and bounded while build state stays in details", () => {
   const route = describe(edge("routes", undefined, { to: "lambda:caller" }));
+  assert.equal(authorizationLabel(route.authorization!), "IAM grant");
+  assert.equal(authorizationLabel({ ...route.authorization!, state: "not-built" }), "IAM grant");
   assert.deepEqual(authorizationSummary(route.authorization!), ["IAM: lambda:InvokeFunction"]);
   assert.deepEqual(authorizationSummary({ ...route.authorization!, state: "not-built" }), ["IAM: lambda:InvokeFunction"]);
   const grant = route.authorization!.grants[0]!;

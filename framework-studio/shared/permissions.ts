@@ -36,7 +36,7 @@ export const hasIam = (edge: Pick<ModelEdge, "authorization">): boolean => edge.
 /** A connection keeps its authored purpose; authorization only adds supporting facts. */
 export const connectionTitle = (edge: ModelEdge): string => edge.label;
 export function authorizationLabel(authorization: ConnectionAuthorization): string {
-  return authorization.kind === "iam" ? authorization.state === "planned" ? "IAM grant" : "Cloud IAM intent"
+  return authorization.kind === "iam" ? "IAM grant"
     : authorization.kind === "local" ? "Local connection" : authorization.kind === "user-token" ? "User token" : "Source evidence";
 }
 export function authorizationSummary(authorization: ConnectionAuthorization): string[] {

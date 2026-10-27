@@ -1,8 +1,8 @@
 import type { DraftEdit } from "./api";
+import { nativeGrantLabels } from "./grants";
 
 export type WorkloadOperation = Extract<DraftEdit, { kind: "implementation" | "connection" | "removeWorkload" }>;
 const connections = ["database", "userPool", "runsTask", "startsWorkflow", "invokesAgent", "tool", "resource", "grant"];
-const grants = ["grantRead", "grantWrite", "grantReadWrite", "grantSendMessages", "grantConsumeMessages"];
 /** Shared typed request boundary; source text, commands and arbitrary destinations are never accepted. */
 export function readWorkloadOperation(raw: unknown): WorkloadOperation {
   const fail = (): never => { throw new Error("Choose a supported workload implementation, connection or removal operation with a canonical declared target."); };
@@ -15,7 +15,7 @@ export function readWorkloadOperation(raw: unknown): WorkloadOperation {
     if (!connections.includes(String(item.connection)) || typeof item.enabled !== "boolean") return fail();
     if (item.destination !== undefined && (typeof item.destination !== "string" || item.destination.length > 300 || !/^(?:resource:[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*|(?:lambda|service|task|workflow|agent):[A-Za-z][A-Za-z0-9_-]*)$/.test(item.destination))) return fail();
     if (item.variable !== undefined && (typeof item.variable !== "string" || !/^[A-Z][A-Z0-9_]{0,127}$/.test(item.variable))) return fail();
-    if (item.grant !== undefined && !grants.includes(String(item.grant))) return fail();
+    if (item.grant !== undefined && (typeof item.grant !== "string" || !Object.hasOwn(nativeGrantLabels, item.grant))) return fail();
     if (item.scope !== undefined && (typeof item.scope !== "string" || item.scope.length > 256 || /[\r\n\0]/.test(item.scope))) return fail();
   }
   return item as unknown as WorkloadOperation;

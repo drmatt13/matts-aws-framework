@@ -431,14 +431,14 @@ function edgesOf(
         case "runsTask":
           add("runsTask", target.reference, `task:${binding.task}`, {
             provenance: "declared", label: "Launch ECS task",
-            detail: "Grants ecs:RunTask for this task family in its cluster, ecs:TagResource during launch, and iam:PassRole for its task and execution roles. Also supplies the launch configuration; does not indicate a task has run.",
+            detail: `runsTask(${JSON.stringify(binding.task)})`,
           });
           break;
         case "startsWorkflow":
-          add("startsWorkflow", target.reference, `workflow:${binding.workflow}`, { provenance: "declared", label: "startsWorkflow", detail: binding.environment });
+          add("startsWorkflow", target.reference, `workflow:${binding.workflow}`, { provenance: "declared", label: "startsWorkflow", detail: `startsWorkflow(${JSON.stringify(binding.workflow)})` });
           break;
         case "invokesAgent":
-          add("invokesAgent", target.reference, `agent:${binding.agent}`, { provenance: "declared", label: "invokesAgent", detail: binding.environment });
+          add("invokesAgent", target.reference, `agent:${binding.agent}`, { provenance: "declared", label: "invokesAgent", detail: `invokesAgent(${JSON.stringify(binding.agent)})` });
           break;
         case "completesCallback": {
           const path = integrationPaths.get(binding.integration);

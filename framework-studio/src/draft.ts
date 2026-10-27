@@ -104,6 +104,10 @@ export class InspectorDraft {
     }
     this.put(key, { kind: "operation", key, operation, ...(operation.kind === "deploy" && typeof operation.value !== "string" && !operation.value.when.equals.trim() ? { error: "Enter a matching value." } : {}) });
   }
+  discardOperation(key: string): void {
+    if (this.state.busy || !this.state.entries.some(entry => entry.key === key && entry.kind === "operation")) return;
+    this.put(key, undefined);
+  }
   placement(target: string): PlacementEdit | undefined {
     return this.state.entries.find((entry): entry is PlacementEntry => entry.kind === "placement" && entry.edit.target === target)?.edit;
   }

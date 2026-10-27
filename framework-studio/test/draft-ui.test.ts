@@ -4,12 +4,13 @@ import path from "node:path";
 import { after, afterEach, before, beforeEach, mock, test } from "node:test";
 import { createElement as h } from "react";
 import type { DraftEdit, SnapshotResponse } from "../shared/api";
-import type { Snapshot } from "../shared/model";
+import type { ModelEdge, Snapshot } from "../shared/model";
 import type { DeploymentInputEdit } from "../shared/deployment-inputs";
 import { SnapshotBuilder } from "../server/snapshot";
 import { connectionDescriptionId } from "../shared/descriptions";
 import { aggregateConnections } from "../src/connections";
 import { networkSettings, unusedNetworkCidr } from "../shared/networks";
+import { withConnectionAuthorizations } from "../shared/permissions";
 
 let builder: SnapshotBuilder;
 let baseline: Snapshot;
@@ -38,6 +39,8 @@ before(async () => {
   for (const name of ["window", "self", "document", "navigator", "HTMLElement", "HTMLDialogElement", "Node", "MutationObserver", "getComputedStyle"] as const) Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] });
   Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class { addEventListener() {} removeEventListener() {} close() {} } });
   Object.defineProperty(globalThis, "scrollTo", { configurable: true, value: () => {} });
+  Object.defineProperty(globalThis, "requestAnimationFrame", { configurable: true, value: dom.window.requestAnimationFrame.bind(dom.window) });
+  Object.defineProperty(globalThis, "cancelAnimationFrame", { configurable: true, value: dom.window.cancelAnimationFrame.bind(dom.window) });
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   // Match tsx's CommonJS loading of Studio's TSX, so the providers and hooks use
@@ -420,7 +423,7 @@ test("event and public-field trigger flows stage through the shared review and k
     ui.fireEvent.click(summary);
     ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add trigger" }));
     if (selected.startsWith("lambda:")) {
-      ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Cognito: \d+ usable$/ }));
+      ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Cognito: \d+ compatible$/ }));
       ui.fireEvent.click(ui.screen.getByRole("button", { name: "Use userPool" }));
     } else {
       const selector = ui.screen.getByRole("combobox", { name: "Trigger event Lambda" });
@@ -492,9 +495,9 @@ const openAddTrigger = async (selected: string) => {
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add trigger" }));
 };
 
-test("step one lists every service, explains requirements and starts settings from a usable field", async () => {
+test("step one lists every service, explains requirements and starts settings from a compatible field", async () => {
   await openAddTrigger("lambda:invocation-test-step");
-  for (const label of ["Cognito", "EventBridge", "SQS", "SNS", "DynamoDB stream", "S3"]) assert.ok(ui.screen.getByRole("button", { name: new RegExp(`^${label}: \\d+ usable$`) }), label);
+  for (const label of ["Cognito", "EventBridge", "SQS", "SNS", "DynamoDB stream", "S3"]) assert.ok(ui.screen.getByRole("button", { name: new RegExp(`^${label}: \\d+ compatible$`) }), label);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /^SQS:/ }));
   assert.ok(ui.screen.getByRole("heading", { name: "Triggered by SQS" }));
   assert.ok(ui.screen.getByText(/invocation-test-step times out after \d+s/));
@@ -692,10 +695,11 @@ test("declared catalog and workload tags precede deployment cards while derived 
       assert.equal(section.previousElementSibling?.previousElementSibling?.tagName, "HEADER", id);
     } else assert.equal(section.previousElementSibling?.tagName, "HEADER", id);
     assert.deepEqual([...section.querySelectorAll(".environment-name")].map((item) => item.textContent), ["Development", "Production"], id);
-    assert.equal(ui.screen.queryByRole("combobox", { name: "Deploy" }), null, "managed availability has no independent deployment override");
+    const deployment = ui.screen.getByRole("combobox", { name: "Deploy" }) as HTMLSelectElement;
+    assert.equal(deployment.disabled, !baseline.models.dev.targets.some(item => item.ref === id), "managed availability explains ownership while workloads remain editable");
     assert.equal(applyCalls + planCalls.length, 0);
     if (id === "resource:cognito.userPool") {
-      ui.fireEvent.click(ui.within(section as HTMLElement).getByRole("button", { name: "CognitoStack" }));
+      ui.fireEvent.click(ui.within(section as HTMLElement).getByRole("button", { name: "Configure CognitoStack" }));
       await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Current selection").textContent, "resource:cognito"));
     }
     ui.cleanup();
@@ -1327,7 +1331,7 @@ test("local PostgreSQL and RDS open the same application database workflow witho
     assert.deepEqual([...document.querySelectorAll(".database-environment strong")].map(node => node.textContent), ["Development", "Production"]);
     assert.ok(ui.screen.getByText(/data is not synchronized/));
     assert.ok(ui.screen.getByRole("heading", { name: "Database home" }));
-    assert.equal(ui.screen.queryByRole("combobox", { name: "Deploy" }), null);
+    assert.equal((ui.screen.getByRole("combobox", { name: "Deploy" }) as HTMLSelectElement).disabled, true);
     openSection("Connected workloads");
     assert.ok(document.querySelector(".database-consumers")?.textContent?.includes("Direct writer"));
     assert.ok(document.querySelector(".database-consumers")?.textContent?.includes("task:db-migrate"));
@@ -1457,23 +1461,46 @@ test("VPC removal is unavailable while used and stages an unused declaration thr
   assert.equal(applyCalls, 0);
 });
 
-test("purpose-based native grants default to matching queue or bucket permissions before review", async () => {
+function nativeAccessFixture() {
   const capabilities = baseline.source.triggerCapabilities ?? [];
-  const queue = capabilities.find(item => item.canonicalTypes.some(type => /^aws-sqs:I?Queue$/.test(type)) && baseline.models.dev.resources.some(resource => resource.id === item.resource));
-  const bucket = capabilities.find(item => item.canonicalTypes.some(type => /^aws-s3:I?Bucket$/.test(type)) && baseline.models.dev.resources.some(resource => resource.id === item.resource));
+  const queue = capabilities.find(item => item.canonicalTypes.some(type => /^aws-sqs:I?Queue$/.test(type)) && baseline.models.dev.resources.some(resource => resource.id === item.resource))!;
+  const bucket = capabilities.find(item => item.canonicalTypes.some(type => /^aws-s3:I?Bucket$/.test(type)) && baseline.models.dev.resources.some(resource => resource.id === item.resource))!;
   assert.ok(queue); assert.ok(bucket);
-  await mount(); openSection("Connect workload");
-  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Purpose" }), { target: { value: "grant" } });
-  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Destination" }), { target: { value: queue.resource } });
+  const active = (mode: "dev" | "prod") => ({ ...baseline.models[mode], resources: baseline.models[mode].resources.map(resource => resource.id === queue.stack || resource.id === bucket.stack ? { ...resource, stackUsage: { status: "referenced" as const, sites: [] } } : resource) });
+  persisted = { ...baseline, models: { dev: active("dev"), prod: active("prod") } };
+  return { queue, bucket };
+}
+function chooseAccess(resource: string, search: string) {
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add access" }));
+  const picker = ui.screen.getByRole("group", { name: "Configured resources" });
+  ui.fireEvent.change(ui.within(picker).getByRole("searchbox", { name: "Search configured resources" }), { target: { value: search } });
+  const option = ui.within(picker).getAllByRole("button").find(button => button.getAttribute("aria-label")?.startsWith(resource.replace(/^resource:/, "") + " ·"))!;
+  assert.ok(option, resource);
+  assert.ok(option.querySelector("img"), "service choices include their resource icon");
+  ui.fireEvent.click(option);
+}
+function withNativeAccess(destination: string, scopes: readonly string[]) {
+  const edges: ModelEdge[] = scopes.map((scope, index) => ({ id: `test:native-access:${index}`, from: target, to: destination, relation: "grant", provenance: "declared", label: `Read ${scope}`, permissionContext: { kind: "native", method: "grantRead", arguments: [scope] } }));
+  persisted = { ...persisted, models: {
+    dev: withConnectionAuthorizations({ ...persisted.models.dev, edges: [...persisted.models.dev.edges, ...edges] }),
+    prod: withConnectionAuthorizations({ ...persisted.models.prod, edges: [...persisted.models.prod.edges, ...edges] }),
+  } };
+}
+
+test("Permissions chooses configured resources with icons, matching grants and scoped review", async () => {
+  const { queue, bucket } = nativeAccessFixture();
+  await mount();
+  chooseAccess(queue.resource, "SQS");
   assert.equal((ui.screen.getByRole("combobox", { name: "Permission" }) as HTMLSelectElement).value, "grantSendMessages");
   assert.equal(ui.screen.queryByRole("option", { name: "Read bucket objects" }), null);
   assert.equal(ui.screen.queryByRole("textbox", { name: "Bucket object scope" }), null);
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Stage connection change" }));
-  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Destination" }), { target: { value: bucket.resource } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Stage access" }));
+  assert.ok(ui.screen.getByText("Staged for review"));
+  chooseAccess(bucket.resource, "S3");
   assert.equal((ui.screen.getByRole("combobox", { name: "Permission" }) as HTMLSelectElement).value, "grantRead");
   assert.equal((ui.screen.getByRole("textbox", { name: "Bucket object scope" }) as HTMLInputElement).value, "uploads/*");
   assert.equal(ui.screen.queryByRole("option", { name: "Send queue messages" }), null);
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Stage connection change" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Stage access" }));
   assert.equal(planCalls.length + applyCalls, 0);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); await waitDialog("Review 2 changes");
   assert.deepEqual(planCalls[0], [
@@ -1481,6 +1508,182 @@ test("purpose-based native grants default to matching queue or bucket permission
     { kind: "connection", target, connection: "grant", destination: bucket.resource, grant: "grantRead", scope: "uploads/*", enabled: true },
   ]);
   assert.equal(applyCalls, 0);
+});
+
+test("empty Permissions offers Add access and separates incoming API Gateway invocation", async () => {
+  await mount("lambda:python-example");
+  const permissions = ui.screen.getByRole("region", { name: "Permissions" });
+  assert.ok(ui.within(permissions).getByRole("button", { name: "Add access" }));
+  assert.ok(ui.within(permissions).getByText("No outgoing access configured."));
+  const incoming = permissions.querySelector<HTMLDetailsElement>(".incoming-access")!;
+  assert.ok(incoming); assert.equal(incoming.open, false);
+  assert.match(incoming.querySelector("summary")!.textContent!, /Incoming access/);
+  assert.equal(permissions.querySelectorAll(".section-content > .access-summary").length, 0);
+  ui.fireEvent.click(incoming.querySelector("summary")!);
+  assert.ok(ui.within(incoming).getByText("HTTP API"));
+  assert.ok(ui.within(incoming).getByText("Invoke function"));
+  assert.equal(ui.within(incoming).queryByRole("button", { name: "Remove access" }), null, "framework-managed incoming grants have no consumer-side removal");
+  assert.equal(planCalls.length + applyCalls, 0);
+});
+
+test("Permissions picker supports keyboard navigation, empty search and Escape back to Add access", async () => {
+  nativeAccessFixture();
+  await mount();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add access" }));
+  const search = ui.screen.getByRole("searchbox", { name: "Search configured resources" });
+  assert.equal(document.activeElement, search);
+  ui.fireEvent.change(search, { target: { value: "no-such-configured-resource" } });
+  assert.ok(ui.screen.getByText("No resources match “no-such-configured-resource”."));
+  ui.fireEvent.change(search, { target: { value: "SQS" } });
+  ui.fireEvent.keyDown(search, { key: "ArrowDown" });
+  const picker = ui.screen.getByRole("group", { name: "Configured resources" });
+  assert.equal(document.activeElement, picker.querySelector(".endpoint-option"));
+  ui.fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  assert.equal(ui.screen.queryByRole("searchbox", { name: "Search configured resources" }), null);
+  await ui.waitFor(() => assert.equal(document.activeElement, ui.screen.getByRole("button", { name: "Add access" })));
+  assert.equal(planCalls.length + applyCalls, 0);
+});
+
+test("Permissions prevents duplicate and pending scoped grants while allowing another prefix", async () => {
+  const { bucket } = nativeAccessFixture();
+  withNativeAccess(bucket.resource, ["uploads/*"]);
+  await mount();
+  chooseAccess(bucket.resource, "S3");
+  assert.equal((ui.screen.getByRole("button", { name: "Stage access" }) as HTMLButtonElement).disabled, true);
+  assert.ok(ui.screen.getByText("This access is already configured."));
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Bucket object scope" }), { target: { value: "reports/*" } });
+  assert.equal((ui.screen.getByRole("button", { name: "Stage access" }) as HTMLButtonElement).disabled, false);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Stage access" }));
+  chooseAccess(bucket.resource, "S3");
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Bucket object scope" }), { target: { value: "reports/*" } });
+  assert.ok(ui.screen.getByText("This change is already staged."));
+  assert.equal((ui.screen.getByRole("button", { name: "Stage access" }) as HTMLButtonElement).disabled, true);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Cancel" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "connection", target, connection: "grant", destination: bucket.resource, grant: "grantRead", scope: "reports/*", enabled: true }]);
+});
+
+test("Permissions removes the exact scoped grant and can undo before review", async () => {
+  const { bucket } = nativeAccessFixture();
+  withNativeAccess(bucket.resource, ["uploads/*", "reports/*"]);
+  await mount();
+  const permissions = ui.screen.getByRole("region", { name: "Permissions" });
+  const row = [...permissions.querySelectorAll<HTMLDetailsElement>(".access-summary")].find(item => item.textContent?.includes('grantRead("reports/*")'))!;
+  assert.ok(row);
+  ui.fireEvent.click(row.querySelector("summary")!);
+  ui.fireEvent.click(ui.within(row).getByRole("button", { name: "Remove access" }));
+  assert.ok(ui.within(row).getByText("Removal staged"));
+  ui.fireEvent.click(ui.within(row).getByRole("button", { name: "Undo removal" }));
+  assert.equal(ui.screen.queryByLabelText("Pending inspector changes"), null);
+  ui.fireEvent.click(ui.within(row).getByRole("button", { name: "Remove access" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "connection", target, connection: "grant", destination: bucket.resource, grant: "grantRead", scope: "reports/*", enabled: false }]);
+  assert.equal(applyCalls, 0);
+});
+
+test("Permissions retains different Dev and Prod object scopes for the same connection", async () => {
+  const { bucket } = nativeAccessFixture();
+  withNativeAccess(bucket.resource, ["uploads/*"]);
+  persisted = { ...persisted, models: { ...persisted.models, prod: withConnectionAuthorizations({ ...persisted.models.prod,
+    edges: persisted.models.prod.edges.map(edge => edge.id === "test:native-access:0" ? { ...edge, permissionContext: { kind: "native" as const, method: "grantRead", arguments: ["reports/*"] } } : edge),
+  }) } };
+  await mount();
+  const permissions = ui.screen.getByRole("region", { name: "Permissions" });
+  const rows = [...permissions.querySelectorAll<HTMLDetailsElement>(".access-summary")];
+  const dev = rows.find(row => row.querySelector("summary")?.textContent?.includes("uploads/*"));
+  const prod = rows.find(row => row.querySelector("summary")?.textContent?.includes("reports/*"));
+  assert.ok(dev); assert.ok(prod); assert.notEqual(dev, prod);
+  assert.match(dev.querySelector("summary")!.textContent!, /uploads\/\* · Dev/);
+  assert.match(prod.querySelector("summary")!.textContent!, /reports\/\* · Prod/);
+  ui.fireEvent.click(prod.querySelector("summary")!);
+  ui.fireEvent.click(ui.within(prod).getByRole("button", { name: "Remove access" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "connection", target, connection: "grant", destination: bucket.resource, grant: "grantRead", scope: "reports/*", enabled: false }]);
+  assert.equal(applyCalls, 0);
+});
+
+test("resource Grant access searches consumers and stages permission for the chosen workload", async () => {
+  const { queue } = nativeAccessFixture();
+  await mount(queue.resource);
+  const section = ui.screen.getByRole("region", { name: "Workload access" });
+  ui.fireEvent.click(ui.within(section).getByRole("button", { name: "Grant access" }));
+  ui.fireEvent.change(ui.within(section).getByRole("searchbox", { name: "Search workloads" }), { target: { value: "graphql" } });
+  const candidate = ui.within(section).getByRole("button", { name: /\/graphql · AWS Lambda/ });
+  assert.ok(candidate.querySelector("img"));
+  ui.fireEvent.click(candidate);
+  assert.equal(ui.screen.queryByRole("searchbox", { name: "Search configured resources" }), null, "resource-side editing keeps its destination");
+  assert.equal((ui.within(section).getByRole("combobox", { name: "Permission" }) as HTMLSelectElement).value, "grantSendMessages");
+  ui.fireEvent.click(ui.within(section).getByRole("button", { name: "Stage access" }));
+  assert.ok(ui.within(section).getByText("Staged for review"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "connection", target, connection: "grant", destination: queue.resource, grant: "grantSendMessages", scope: "", enabled: true }]);
+  assert.equal(applyCalls, 0);
+});
+
+test("workflow Add caller configures its invocation from a compatible function", async () => {
+  const workflow = baseline.models.dev.targets.find(item => item.kind === "workflow")!;
+  assert.ok(workflow);
+  await mount(workflow.ref);
+  const permissions = ui.screen.getByRole("region", { name: "Permissions" });
+  assert.equal(ui.within(permissions).queryByRole("button", { name: "Add access" }), null, "workflow role access stays defined by its steps");
+  ui.fireEvent.click(ui.within(permissions).getByRole("button", { name: "Add caller" }));
+  ui.fireEvent.change(ui.within(permissions).getByRole("searchbox", { name: "Search workloads" }), { target: { value: "graphql" } });
+  ui.fireEvent.click(ui.within(permissions).getByRole("button", { name: /\/graphql · AWS Lambda/ }));
+  const editor = ui.within(permissions).getByRole("group", { name: `Access to ${workflow.title}` });
+  assert.ok(ui.within(editor).getByText("Start workflow"));
+  assert.ok(ui.within(editor).getByText(`startWorkflow(${JSON.stringify(workflow.id)}, input)`));
+  ui.fireEvent.click(ui.within(permissions).getByRole("button", { name: "Stage access" }));
+  assert.ok(ui.within(permissions).getByText("Staged for review"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "connection", target, connection: "startsWorkflow", destination: workflow.ref, enabled: true }]);
+  assert.equal(applyCalls, 0);
+});
+
+test("Environment keeps input mapping removal and undo separate from IAM permissions", async () => {
+  const input = baseline.models.dev.resources.find(resource => resource.kind === "input")!;
+  assert.ok(input);
+  const name = "TEST_INPUT_MAPPING";
+  const change = (mode: "dev" | "prod") => ({ ...baseline.models[mode],
+    targets: baseline.models[mode].targets.map(item => item.ref === target ? { ...item, environment: [...item.environment, { name, value: { kind: "reference" as const, resource: input.id, display: `resources.${input.path.join(".")}` } }] } : item),
+    edges: [...baseline.models[mode].edges, { id: "test:input-mapping", from: target, to: input.id, relation: "env" as const, provenance: "declared" as const, label: name }],
+  });
+  persisted = { ...baseline, models: { dev: change("dev"), prod: change("prod") } };
+  await mount(); openSection("Environment");
+  const permissions = ui.screen.getByRole("region", { name: "Permissions" });
+  assert.equal(ui.within(permissions).queryByText(name), null);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: `Remove ${name} mapping` }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: `Undo removal of ${name}` }));
+  assert.equal(ui.screen.queryByLabelText("Pending inspector changes"), null);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: `Remove ${name} mapping` }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "connection", target, connection: "resource", destination: input.id, variable: name, enabled: false }]);
+  assert.equal(applyCalls, 0);
+});
+
+test("indexed literal userPool binding has one grouped removal for both identifiers", async () => {
+  const ref = "lambda:test-start-workflow";
+  const edges = baseline.models.dev.edges.filter(edge => edge.from === ref && edge.bindingSetting?.field === "userPool");
+  assert.ok(edges.length >= 2, "real source indexing captures the comma-terminated userPool: true property");
+  await mount(ref); openSection("Environment");
+  assert.equal(ui.screen.getAllByText("User-pool identifiers").length, 1);
+  const identifiers = ui.screen.getByText("User-pool identifiers").closest(".env-row")!;
+  assert.ok(ui.within(identifiers as HTMLElement).getByText("USER_POOL_ID")); assert.ok(ui.within(identifiers as HTMLElement).getByText("USER_POOL_CLIENT_ID"));
+  assert.equal(ui.screen.getAllByRole("button", { name: "Remove user-pool identifiers" }).length, 1);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Remove user-pool identifiers" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); await waitDialog("Review 1 change");
+  assert.deepEqual(planCalls[0], [{ kind: "connection", target: ref, connection: "userPool", enabled: false }]);
+  assert.equal(applyCalls, 0);
+});
+
+test("userPool identifiers without direct literal ownership link to their declaration", async () => {
+  const ref = "lambda:test-start-workflow";
+  const change = (mode: "dev" | "prod") => ({ ...baseline.models[mode], edges: baseline.models[mode].edges.map(edge => edge.from === ref && edge.bindingSetting?.field === "userPool" ? { ...edge, bindingSetting: undefined } : edge) });
+  persisted = { ...baseline, models: { dev: change("dev"), prod: change("prod") } };
+  await mount(ref); openSection("Environment");
+  assert.equal(ui.screen.queryByRole("button", { name: "Remove user-pool identifiers" }), null);
+  const group = ui.screen.getByText("User-pool identifiers").closest(".env-row")!;
+  assert.ok(ui.within(group as HTMLElement).getByRole("link", { name: "Open declaration" }));
+  assert.equal(planCalls.length + applyCalls, 0);
 });
 
 test("gateway headers use the same framed framework-managed status as catalog stacks", async () => {

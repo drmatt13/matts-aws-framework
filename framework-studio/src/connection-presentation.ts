@@ -1,12 +1,31 @@
 import type { Mode, ModelEdge, Relation } from "../shared/model";
-import { authorizationSummary } from "../shared/permissions";
+import { nativeGrantLabels } from "../shared/grants";
+import { authorizationSummary, NATIVE_GRANT_LABELS } from "../shared/permissions";
 import type { ConnectionGroup } from "./connections";
+import { resourceIcon } from "./icons";
 import { RELATION_LABEL, titleOf, type ModelIndex } from "./lookup";
 
 export interface RelationshipPresentation {
   readonly title: string;
   readonly lines: readonly string[];
   readonly notes: readonly string[];
+}
+
+function nativeGrantPresentation(edge: ModelEdge, index: ModelIndex) {
+  const context = edge.permissionContext;
+  if (context?.kind !== "native") return;
+  const resource = index.resources.get(edge.to);
+  const bucket = resource && resourceIcon(resource) === "bucket";
+  const readWrite = ["grantRead", "grantWrite", "grantReadWrite"].includes(context.method);
+  // These helpers also exist on secrets and custom constructs. Only bucket
+  // evidence makes their argument an object-key scope.
+  const action = readWrite && !bucket ? NATIVE_GRANT_LABELS[context.method]!
+    : nativeGrantLabels[context.method as keyof typeof nativeGrantLabels] ?? (context.method === "grant" ? "Allow AWS actions" : "Resource access");
+  const args = context.arguments;
+  const objectScope = bucket && readWrite && (args.length === 0 || args.length === 1 && typeof args[0] === "string")
+    ? !args.length || args[0] === "*" ? "All objects" : args[0] === "" ? '""' : String(args[0])
+    : undefined;
+  return { action, objectScope };
 }
 
 /** Purpose first. Raw source explanations and permission evidence stay in the inspector. */
@@ -40,6 +59,10 @@ export function presentRelationship(edge: ModelEdge, index: ModelIndex): Relatio
     title = "Delivers messages";
   } else if (context?.kind === "trigger-dlq" || context?.kind === "failure") {
     title = "Sends failed events";
+  } else if (context?.kind === "native") {
+    const grant = nativeGrantPresentation(edge, index)!;
+    title = `${grant.action}: ${titleOf(index, edge.to)}`;
+    if (grant.objectScope !== undefined) lines.push(`Object scope: ${grant.objectScope}`);
   } else if (edge.relation === "runsTask") {
     title = "Can launch task";
   } else if (edge.relation === "startsWorkflow") {
@@ -102,7 +125,9 @@ export function presentConnection(connection: ConnectionGroup, mode: Mode, index
     : [...groups.slice(0, 2).map(({ family, count }) => `${count} ${count === 1 ? family.singular : family.plural}`),
       ...(groups.length > 2 ? [`${groups.slice(2).reduce((total, group) => total + group.count, 0)} other connections`] : [])].join(" · ");
   const lines = members.slice(0, 4).map(({ edge, member }) => {
-    const label = homogeneous ? edge.label : presentRelationship(edge, index).title;
+    const native = nativeGrantPresentation(edge, index);
+    const label = native ? `${homogeneous ? native.action : presentRelationship(edge, index).title}${native.objectScope !== undefined ? ` · ${native.objectScope}` : ""}`
+      : homogeneous ? edge.label : presentRelationship(edge, index).title;
     const otherMode = member.models[mode] ? "" : member.models.dev ? " (Dev)" : " (Prod)";
     return `${label}${otherMode}${edge.inputRequirement?.status === "missing" ? " — required value missing" : ""}`;
   });

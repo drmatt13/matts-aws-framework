@@ -350,6 +350,8 @@ export interface ModelEdge {
   /** Native constructor at the wiring site, resolved from CDK imports rather than a local alias or interface type. */
   readonly sourceConstruct?: string;
   readonly evidence?: readonly ConnectionEvidence[];
+  /** An explicit true setting found in the authored syntax; excerpts never establish editability. */
+  readonly bindingSetting?: { readonly field: "database" | "userPool"; readonly value: true; readonly source: SourceLocation };
   readonly attachment?: string;
   /** Native trigger wiring Studio can delete exactly, or why it must be edited in source. */
   readonly removal?: NativeRemoval;

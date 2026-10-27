@@ -10,7 +10,7 @@ export function AuthorizationDetails({ authorization }: { readonly authorization
   const { select } = useStudio();
   return <div className="authorization-details">
     <div className="authorization-heading"><h3>Authorization</h3><AuthorizationBadge authorization={authorization} /></div>
-    {authorization.state === "not-built" ? <p className="authorization-status">Cloud intent only. These permissions are not generated in the AWS graph being viewed.</p> : null}
+    {authorization.kind === "iam" && authorization.state === "not-built" ? <p className="authorization-status">Applies when this workload runs in AWS.</p> : null}
     {authorization.grants.map((grant, index) => <dl className="authorization-grant" key={index}>
       <div><dt>Principal</dt><dd>{grant.principalEntity ? <button className="linkish" onClick={() => select(grant.principalEntity!)}>{grant.principal}</button> : grant.principal}</dd></div>
       <div><dt>Policy</dt><dd>{grant.policy}</dd></div>

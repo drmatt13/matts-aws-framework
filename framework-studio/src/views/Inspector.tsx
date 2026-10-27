@@ -2,8 +2,9 @@ import { GatewayView } from "./GatewayView";
 import { drawnAs } from "../drawn-as";
 import { PlacementControl } from "./NetworkControls";
 import { X } from "lucide-react";
+import type { ReactNode } from "react";
 import type { ModelEdge, ModelResource, ModelRoute, ModelTarget, ModelWorkflow, Placement } from "../../shared/model";
-import { RELATION_LABEL, ROLE_LABEL, endpointLabel } from "../lookup";
+import { RELATION_LABEL, ROLE_LABEL, endpointLabel, editorLink } from "../lookup";
 import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
 import { resourceIcon, routeIcon, targetIcon } from "../icons";
@@ -32,9 +33,10 @@ import { EnvironmentPills } from "./DeploymentBadge";
 import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
 import { DeploymentSection, DeploymentOwnerControl, ResourceDeployment, TargetDeployment } from "./Deployment";
 import { Tags } from "./Tags";
-import { ImplementationStatus, WorkloadConnections } from "./WorkloadActions";
+import { ImplementationStatus, WorkloadRemoval } from "./WorkloadActions";
+import { WorkloadPermissions, ResourceAccess } from "./WorkloadPermissions";
 import { connectionTitle } from "../../shared/permissions";
-import { AuthorizationBadge, AuthorizationDetails } from "./Authorization";
+import { removalForConnection } from "../access";
 
 function PlacementText(props: { readonly placement: Placement }) {
   const { placement } = props;
@@ -195,7 +197,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
       <TargetDeployment target={target} />
       <Description entity={target.ref} />
       <ImplementationStatus target={target} />
-      <WorkloadConnections key={`connections:${target.ref}`} target={target} />
+      <WorkloadPermissions key={`permissions:${target.ref}`} target={target} />
       {settings.length > 0 ? <InspectorSection title="Settings">
         {settings.map((fact) => <FieldRow key={fact.field} target={target} fact={fact} editability={editability[fact.field]} />)}
       </InspectorSection> : null}
@@ -224,39 +226,49 @@ function TargetView(props: { readonly target: ModelTarget }) {
       </InspectorDisclosure>
       {workflow ? <Steps workflow={workflow} /> : null}
       <Relations id={target.ref} />
-      {target.environment.length + target.secrets.length > 0 ? (
-        <InspectorDisclosure title="Environment" count={target.environment.length + target.secrets.length}>
-          <div className="env">
-            {target.environment.map((entry) => (
-              <EnvRow key={entry.name} name={entry.name} value={entry.value.kind === "literal" ? JSON.stringify(entry.value.value) : entry.value.display} via={entry.via} />
-            ))}
-            {target.secrets.map((secret) => (
-              <EnvRow key={secret.name} name={secret.name} value={`${secret.display}, at startup`} />
-            ))}
-          </div>
-        </InspectorDisclosure>
-      ) : null}
-      {target.authorizations?.length ? (
-        <InspectorDisclosure title="Permissions" count={target.authorizations.length}>
-          <p className="small muted">Source-derived permissions and authentication paths, including generated grants. Expand a capability to see which role receives access.</p>
-          {target.authorizations.map((entry, position) => <details className="authorization-summary" key={entry.connection ?? position}>
-            <summary>{entry.authorization.operation}<AuthorizationBadge authorization={entry.authorization} /></summary>
-            <AuthorizationDetails authorization={entry.authorization} />
-            {entry.connection ? <button className="linkish small" onClick={() => select(entry.connection!)}>Inspect connection</button> : null}
-          </details>)}
-        </InspectorDisclosure>
-      ) : null}
+      {target.environment.length + target.secrets.length > 0 ? <TargetEnvironment target={target} /> : null}
+      <WorkloadRemoval target={target} />
     </>
   );
 }
 
-function EnvRow(props: { readonly name: string; readonly value: string; readonly via?: string }) {
+function EnvironmentBindingAction({ target, edge, name, grouped = false }: { readonly target: ModelTarget; readonly edge?: ModelEdge; readonly name: string; readonly grouped?: boolean }) {
+  const { snapshot, model, draft, draftState, live } = useStudio();
+  const remove = edge && removalForConnection(target, edge, model, snapshot.source);
+  const pending = remove && draftState.entries.find(entry => entry.kind === "operation" && entry.operation.kind === "connection" && !entry.operation.enabled && entry.operation.target === target.ref && entry.operation.connection === remove.connection && entry.operation.destination === remove.destination && entry.operation.variable === remove.variable);
+  const source = edge?.bindingSetting?.source ?? edge?.source ?? snapshot.source.entities[target.ref]?.value;
+  const disabled = !!draftState.busy || draft.conflict || model.stale || live.evaluating;
+  if (!remove) return source ? <a className="linkish small" href={editorLink(snapshot.repositoryRoot, source)}>Open declaration</a> : null;
+  return <span className="access-actions">{pending ? <><span className="small muted">Removal staged</span><button className="linkish small" disabled={disabled} onClick={() => draft.discardOperation(pending.key)} aria-label={`Undo removal of ${name}`}>Undo removal</button></> : <button className="linkish small" disabled={disabled} onClick={() => draft.stageOperation(remove)} aria-label={grouped ? "Remove user-pool identifiers" : `Remove ${name} mapping`}>Remove{grouped ? " identifiers" : " mapping"}</button>}</span>;
+}
+
+function TargetEnvironment({ target }: { readonly target: ModelTarget }) {
+  const { model, snapshot } = useStudio();
+  const edges = model.edges.filter(edge => edge.from === target.ref);
+  const pool = target.environment.filter(entry => entry.via === "userPool");
+  const poolEdges = edges.filter(edge => edge.relation === "env" && pool.some(entry => entry.name === edge.label && entry.value.kind === "reference" && entry.value.resource === edge.to));
+  const poolEdge = poolEdges.find(edge => removalForConnection(target, edge, model, snapshot.source)?.connection === "userPool") ?? poolEdges[0];
+  return <InspectorDisclosure title="Environment" count={target.environment.length + target.secrets.length}>
+    <div className="env">
+      {pool.length ? <div className="env-row"><strong>User-pool identifiers</strong><div>{pool.map(entry => <div key={entry.name}><code>{entry.name}</code>{" · "}<code>{entry.value.kind === "reference" ? entry.value.display : JSON.stringify(entry.value.value)}</code></div>)}<EnvironmentBindingAction target={target} edge={poolEdge} name="User-pool identifiers" grouped /></div></div> : null}
+      {target.environment.filter(entry => entry.via !== "userPool").map(entry => {
+        const edge = edges.find(edge => edge.relation === "env" && edge.label === entry.name && entry.value.kind === "reference" && edge.to === entry.value.resource);
+        return <EnvRow key={entry.name} name={entry.name} value={entry.value.kind === "literal" ? JSON.stringify(entry.value.value) : entry.value.display}
+          action={entry.value.kind === "reference" ? <EnvironmentBindingAction target={target} edge={edge} name={entry.name} /> : undefined} />;
+      })}
+      {target.secrets.map(secret => <EnvRow key={secret.name} name={secret.name} value={`${secret.display}, at startup`}
+        action={<EnvironmentBindingAction target={target} edge={edges.find(edge => edge.relation === "secret" && edge.label === secret.name && edge.to === secret.resource)} name={secret.name} />} />)}
+    </div>
+  </InspectorDisclosure>;
+}
+
+function EnvRow(props: { readonly name: string; readonly value: string; readonly action?: ReactNode }) {
   return (
     <div className="env-row">
       <code>{props.name}</code>
       <span>
         <code>{props.value}</code>
-        {props.via ? <span className="muted"> from userPool: true</span> : null}
+        {props.action}
       </span>
     </div>
   );
@@ -349,6 +361,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         ))}
       </InspectorDisclosure> : null}
       {resource.kind === "stack" && members.length ? <InspectorDisclosure title="Public fields" count={members.length} defaultOpen className="stack-members"><ul className="relations">{members.map((member) => <li key={member.id}><button className="linkish" onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className="small muted" title={member.typeText ?? member.kind}>{member.typeText ?? member.kind}</code></li>)}</ul><p className="small muted section-footnote">Declared by the stack class.</p></InspectorDisclosure> : null}
+      <ResourceAccess key={`access:${resource.id}`} resource={resource} />
       {resource.kind === "member" ? <Triggers key={resource.id} resource={resource} /> : null}
       {manual.length ? <section>{manual.map((item) => <div key={`${item.source.file}:${item.source.start}`}><p className="small muted">{item.reason}</p><Written location={item.source} label="Wiring in" /></div>)}</section> : null}
       {resource.kind === "input" || resource.kind === "secret" ? <ResourceEditor key={`${resource.id}:${model.mode}`} resource={resource} /> : null}

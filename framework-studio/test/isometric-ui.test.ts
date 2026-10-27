@@ -147,7 +147,9 @@ test("permission connections show generated principal and scope while local data
   assert.ok(ui.screen.getByText("iam:PassRole"));
   assert.ok(ui.screen.getAllByText(/Lambda execution role/).length);
   assert.ok(ui.screen.getByText(/iam:PassedToService = ecs-tasks.amazonaws.com/));
-  assert.ok(ui.screen.getByText(/not generated in the AWS graph/));
+  assert.ok(ui.screen.getByText("Applies when this workload runs in AWS."));
+  assert.ok(ui.screen.getByText("IAM grant"));
+  assert.equal(ui.screen.queryByText("Cloud IAM intent"), null);
   ui.cleanup();
   const local = response.snapshot.models.dev.edges.find(edge => edge.relation === "database" && edge.to === "local:postgres")!;
   await mount(true, local.id);

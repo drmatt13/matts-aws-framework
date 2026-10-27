@@ -71,9 +71,24 @@ help visible; the catalog does not verify regional service availability.
 
 Workload **Implementation** shows the configured directory, artifact readiness and an
 editor link. **Create missing starter files** stages a review; it does not immediately
-write, start or deploy anything. Existing code stays intact. **Connect workload** uses
-purpose-based choices and compatible declared destinations. Queue permissions omit
-bucket scopes; bucket permissions start with a bounded object-key scope. Source removal
+write, start or deploy anything. Existing code stays intact. **Permissions** is always
+visible, including on new workloads. **Add access** opens a searchable configured-resource
+picker with existing service artwork; selecting a destination reveals only its supported
+actions. Services and calls precede configuration inputs. Queue permissions omit bucket
+scopes; bucket permissions start with a bounded object-key scope. Saved entries name the
+destination and operation; exact supported removals and staged additions have Undo.
+**Incoming access** separates other principals from the workload's own grants, including
+callbacks and pull triggers whose IAM ownership differs from the graph arrow. Tasks,
+workflows and agents offer **Add caller**; resource inspectors offer **Grant access**.
+These entry points share the same source draft and reviewed writer. Workflow-owned
+access remains defined by its steps. Call bindings show the runtime helper to use in
+the handler; generated descriptor keys are not configuration instructions.
+
+The picker supports search, arrow keys, Home/End and Escape. Escape returns focus to
+the opening control. Unavailable resources retain their reason; duplicate grants compare
+the exact method and object scope. Internal AWS graph state does not rename an IAM grant.
+Native method expressions belong under Configuration, while connection titles name the
+operation and resource. **Remove workload** is a separate supporting disclosure. Source removal
 reviews dependencies and an implementation archive, with an explicit explanation that
 deployed resources and their costs require a separate operation.
 
