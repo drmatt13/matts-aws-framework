@@ -304,8 +304,13 @@ function catalogModel(config: FrameworkConfig, readPaths: readonly (readonly str
           ...(entry.note ? { note: entry.note } : {}),
         });
       } else if (entry && typeof entry === "object") {
-        resources.push({ id: resourceId(path), path, kind: "group", absent: false, ...parent });
+        const at = resources.length, id = resourceId(path);
+        resources.push({ id, path, kind: "group", absent: false, ...parent });
         visit(entry as Record<string, unknown>, path);
+        // A group holds nothing in a graph that declares every entry undefined, such as
+        // development-only client URLs in production. Nested groups are settled first.
+        const entries = resources.slice(at + 1).filter((resource) => resource.parent === id);
+        if (entries.length > 0 && entries.every((resource) => resource.absent)) resources[at] = { ...resources[at]!, absent: true };
       }
     }
   };

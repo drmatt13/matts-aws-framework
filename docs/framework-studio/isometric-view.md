@@ -90,6 +90,9 @@ window. It remains open while the pointer crosses into it and Escape dismisses i
 moving focus. Keyboard scrolling keeps the preview with its focused row; wheel scrolling,
 filtering away the row or closing the panel clears it. Touch continues straight to the
 Inspector. A preview never changes selection or the camera.
+Input groups list their parameter names with Dev/Prod pills beside each entry instead
+of a group-level pair. Supply connections likewise show pills per parameter; those pills
+describe supply by the named file, while group pills describe declaration availability.
 
 Stack plaques carry an unplug badge when the configured CDK app has no constructor
 reference for their class in its local runtime import graph. These unattached stacks
@@ -137,7 +140,7 @@ stability, shared routing, viewport adaptation and measured before/after results
 | Placement | Island | Holds | Height |
 | --- | --- | --- | --- |
 | Upper left | APIs | One HTTP API and one WebSocket API Gateway; agent paths fold into their agent | 2 |
-| Lower left | Input parameters and secrets | Only catalog-declared inputs, secrets and groups on one shared lattice; other dotenv keys stay in the file inspectors | 1 |
+| Lower left | Input parameters and secrets | Only catalog-declared inputs, secrets and groups on one shared lattice; each input group is one building holding its entries; other dotenv keys stay in the file inspectors | 1 |
 | Upper right | Serverless compute | HTTP, WebSocket, event and AgentCore tool Lambdas outside the VPC on one shared lattice | 3 |
 | Right-hand network cluster | VPC | Subnets `public`, `private` and `isolated`, side by side at one height. Every target with `placement.kind === "vpc"` stands on its subnet. Gateways and endpoints from `network` stand on the subnets as selectable furniture. The Compose PostgreSQL service stands in the isolated subnet right beside the managed RDS database, as its development counterpart: solid in Development and ghosted in Production, and not an AWS resource | 4 |
 | Shared lower row, first | Agents | AgentCore agents not placed in the VPC | 3 |
@@ -720,6 +723,16 @@ endpoints and selection highlight to the owning stack through `Scene.representat
 every original edge remains attached in the connection's members as evidence. Connections internal to one stack are
 omitted from the landscape. The input inspector loads selected `.env` values separately
 from the scene and offers validated catalog edits.
+
+Input groups follow the same rule: a group's entries stand in its building, its arcs bundle
+the entries' relationships by type (for example `Reads: 4 environment values` from the
+agent), and selecting an entry highlights the group. The group's hover counts its entries
+per graph against that graph's CDK input file, names its readers and client mappings, and
+notes missing required variable names. Its inspector lists **Entries** (variable name,
+Dev/Prod declaration and the selected graph's value status, never a value), **Used by**,
+environment-file coverage, entry tags and every member connection; **Add input** opens the
+shared creator with the catalog group preset. An entry's inspector links back to its group.
+A group is absent in a graph only when every entry is, such as development-only client URLs.
 
 The shared `src/drawn-as.ts` mapping folds routes and gateway stack outputs into the
 actual gateway building. Layout, connection aggregation, selection, search and tag

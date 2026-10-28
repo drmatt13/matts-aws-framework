@@ -14,7 +14,7 @@ import { Description } from "./Description";
 import { ClientEnvironmentMappings } from "./ClientEnvironment";
 import { CLIENT_ENVIRONMENT_ISLAND } from "../../shared/client-environment";
 import { Tags } from "./Tags";
-import { DeploymentSection, DeploymentOwnerControl } from "./Deployment";
+import { DeploymentSection, DeploymentOwnership } from "./Deployment";
 
 const LAMBDAS = ["lambda", "http", "webSocket", "events", "tools"];
 const GROUPS: Readonly<Record<string, readonly string[]>> = {
@@ -66,6 +66,10 @@ export function IslandInspector({ id }: { readonly id: string }) {
   const members = scene.nodes.filter((node) => node.island === id);
   const resources = catalogAvailability(snapshot.models);
   const groups = GROUPS[id] ?? [];
+  const network = id.startsWith("island:vpc:");
+  const availability = network
+    ? { dev: false, prod: !!snapshot.models.prod.networks?.find(item => id === `island:vpc:${item.id}`)?.builtInProd }
+    : { dev: members.some(node => node.lanes ? node.lanes.local || node.lanes.dev : resources[node.id]?.dev), prod: members.some(node => node.lanes ? node.lanes.prod : resources[node.id]?.prod) };
   if (!island) return <p className="empty">This island has no entries in this environment.</p>;
   const entries = <InspectorDisclosure title="Island entries" count={members.length}><ul className="island-members">{members.map((node) => {
     const route = index.routes.get(node.id);
@@ -75,7 +79,7 @@ export function IslandInspector({ id }: { readonly id: string }) {
     <header><span className="kind">Island settings</span><h2>{island.title}</h2><p className="small muted">{members.length} {members.length === 1 ? "entry" : "entries"}</p></header>
     <Tags entity={id} />
     <Description entity={id} />
-    <DeploymentSection availability={{ dev: members.some(node => node.lanes ? node.lanes.local || node.lanes.dev : resources[node.id]?.dev), prod: members.some(node => node.lanes ? node.lanes.prod : resources[node.id]?.prod) }}><DeploymentOwnerControl reason={id.startsWith("island:vpc:") ? "Production creates this VPC when its database, native resources or enabled workloads require it. Configure those owners; local Compose networking remains shared." : "This island groups resources. Configure deployment on its entries."} owners={members.filter(node => model.targets.some(target => target.ref === node.id) || model.resources.some(resource => resource.id === node.id)).map(node => ({ id: node.id, title: node.label }))} /></DeploymentSection>
+    {id !== "island:inputs" && id !== "island:environment" && id !== CLIENT_ENVIRONMENT_ISLAND ? <DeploymentSection availability={availability} locations={network ? { prod: "In AWS" } : undefined}><DeploymentOwnership reason={network ? "Production creates this VPC when its database, native resources or enabled workloads require it. Configure those owners; local Compose networking remains shared." : "This island groups resources. Configure deployment on its entries."} owners={members.filter(node => model.targets.some(target => target.ref === node.id) || model.resources.some(resource => resource.id === node.id)).map(node => ({ id: node.id, title: node.label }))} /></DeploymentSection> : null}
     <NetworkControls id={id} />
     {id === "island:environment" ? <EnvironmentFiles /> : null}
     {id === CLIENT_ENVIRONMENT_ISLAND ? <ClientEnvironmentMappings /> : null}

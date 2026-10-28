@@ -18,6 +18,7 @@ import { connectionStyle, type ConnectionStyle } from "./connections";
 import { routeConnections, type ConnectionRoutes } from "./routing";
 import { CLIENT_ENVIRONMENT_ISLAND } from "../../shared/client-environment";
 import { aggregateConnections, type ConnectionGroup } from "../connections";
+import { entryCount, groupEntries } from "../input-groups";
 export { titleRoom } from "./layout";
 
 /**
@@ -288,7 +289,7 @@ function resourceItem(resource: ModelResource, mode: Mode, availability?: Availa
           : resource.kind === "input"
             ? `Input, ${resource.fromEnv ?? ""}`
             : resource.kind === "group"
-              ? "Group of inputs"
+              ? "Input group"
               : "Construct";
   const graph = mode === "dev" ? "development" : "production";
   const presenceText = resource.stackUsage?.status === "unreferenced" ? "Not added to CDK app: no constructor reference found in the app's runtime imports."
@@ -463,12 +464,17 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   const compute = computeIslands.filter((island) => island.region === "network" || island.bands.some((band) => band.groups.some((group) => group.length > 0)));
 
   // Catalog stacks share an island; their public fields stay in the inspector.
-  const children = new Map<string, ModelResource[]>();
-  for (const resource of model.resources) {
-    if (resource.parent) children.set(resource.parent, [...(children.get(resource.parent) ?? []), resource]);
-  }
+  // An input group is one building too: its entries fold into it, and its connections leave from it.
+  const groupItem = (group: ModelResource): Item => {
+    const entries = groupEntries(group, model.resources);
+    const graph = mode === "dev" ? "development" : "production";
+    const absent = entries.filter((entry) => entry.absent).length;
+    return { ...catalogItem(group), kindLabel: `Input group, ${entryCount(entries)}`,
+      presenceText: group.absent ? `Absent in the ${graph} graph: every entry is declared undefined here.`
+        : absent ? `Holds ${entryCount(entries)}; ${absent} absent in the ${graph} graph.` : `Holds ${entryCount(entries)}, all held by the ${graph} graph.` };
+  };
   const catalog: IslandSpec[] = [];
-  const loose: Item[][] = [];
+  const loose: Item[] = [];
   const stacks: Item[] = [];
   const environmentFiles: Item[] = [];
   const clientFiles: Item[] = [];
@@ -481,10 +487,8 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
         presenceText: `${resource.deploymentFile.path}: ${resource.deploymentFile.exists ? "local file" : "not generated; select the island to generate it"}. Values stay outside the graph.` });
     } else if (resource.kind === "stack") {
       stacks.push({ ...catalogItem(resource), label: resource.stackClass ?? resource.path.join(".") });
-    } else if (resource.kind === "group") {
-      loose.push([catalogItem(resource), ...(children.get(resource.id) ?? []).map(catalogItem)]);
     } else {
-      loose.push([catalogItem(resource)]);
+      loose.push(resource.kind === "group" ? groupItem(resource) : catalogItem(resource));
     }
   }
   if (stacks.length > 0) {
@@ -497,15 +501,12 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
     });
   }
   if (loose.length > 0) {
-    // Single entries share a column; a group keeps its own.
-    const singles = loose.filter((group) => group.length === 1).flat();
-    const groups = loose.filter((group) => group.length > 1);
     catalog.push({
       id: "island:inputs",
       title: "Input parameters and secrets",
       region: "catalog",
-      caption: ["Input parameters and secrets declared in framework-config/resources.ts. Environment file links carry names and presence, never secret values."],
-      bands: [{ id: "band:inputs", title: "Input parameters and secrets", caption: [], h: 1, groups: [singles, ...groups].filter((group) => group.length > 0) }],
+      caption: ["Input parameters and secrets declared in framework-config/resources.ts. An input group stands as one building for its entries. Environment file links carry names and presence, never secret values."],
+      bands: [{ id: "band:inputs", title: "Input parameters and secrets", caption: [], h: 1, groups: [loose] }],
     });
   }
   if (environmentFiles.length) catalog.push({ id: "island:environment", title: "CDK environment files", region: "catalog",

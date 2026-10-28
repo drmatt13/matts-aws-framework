@@ -112,6 +112,9 @@ Local URL inputs are declared under `resources.client` only in Development.
 an empty URL when the selected input does not match `"true"`. Raw input values stay private.
 The evaluator pair retains an absent input's type from the other mode while preserving
 its absence, so snapshot display, creation review and apply checks share the same metadata.
+A catalog `group` owns no resource: `catalogModel` marks it absent only when every entry
+it holds is absent in that graph, so `resources.client` is development-only while each
+entry keeps its own absence.
 
 Declared/derived/source-inferred edges retain their evidence classification. [source-indexing](source-indexing.md) defines inference limits. Studio is a declaration/source graph, not an authoritative live AWS topology or full IAM analysis.
 

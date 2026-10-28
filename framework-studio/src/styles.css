@@ -1008,6 +1008,10 @@ a {
 .hover-tag.managed { color: #9ec1ff; background: #1b2b45; }
 
 .landscape-hover-note { color: #8d97a6; }
+.landscape-hover-entries { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+.landscape-hover-entries > li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.landscape-hover-entry-name { flex: 1; min-width: 70px; overflow-wrap: anywhere; }
+.landscape-hover-entry-note { flex-basis: 100%; }
 
 /* An authored description can run to thousands of characters; the inspector holds the rest. */
 .landscape-hover-description {

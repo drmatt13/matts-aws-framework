@@ -152,7 +152,7 @@ test("event Deploy stages Off and an input condition through shared review", asy
   assert.equal((planCalls[0]![0] as Extract<DraftEdit, { kind: "deploy" }>).target, "lambda:cognito-pre-signup-trigger");
 });
 
-test("managed resource families expose Deploy ownership and owner navigation", async () => {
+test("managed resource families explain inferred deployment without a Deploy selector", async () => {
   const model = baseline.models.dev;
   const kinds = new Set<string>();
   const ids = model.resources.filter(resource => {
@@ -163,9 +163,16 @@ test("managed resource families expose Deploy ownership and owner navigation", a
   ids.push("gateway:http", "gateway:websocket", "island:vpc:application", "island:inputs");
   for (const id of ids) {
     await mount(id);
-    const control = ui.screen.getByRole("combobox", { name: "Deploy" }) as HTMLSelectElement;
-    assert.equal(control.disabled, true, id);
-    assert.ok(control.getAttribute("aria-describedby"), id);
+    assert.equal(ui.screen.queryByRole("combobox", { name: "Deploy" }), null, id);
+    const resource = model.resources.find(resource => resource.id === id);
+    const input = id === "island:inputs" || resource?.deploymentFile || resource?.clientEnvironment || ["input", "secret", "group"].includes(resource?.kind ?? "");
+    if (input) assert.equal(ui.screen.queryByRole("region", { name: "Deployment" }), null, id);
+    else assert.ok(document.querySelector(".deployment-ownership .deployment-note")?.textContent, id);
+    if (id === "island:vpc:application") {
+      assert.equal(document.querySelector(".lane-line.dev strong")?.textContent, "Not enabled", "local workloads do not create a development VPC");
+      const built = baseline.models.prod.networks?.find(network => network.id === "application")?.builtInProd;
+      assert.equal(document.querySelector(".lane-line.prod strong")?.textContent, built ? "Enabled" : "Not enabled");
+    }
     ui.cleanup();
   }
 });
@@ -682,21 +689,27 @@ test("managed API routes show their target's environment cards and owning config
   for (const title of ["HTTP API", "WebSocket API"]) assert.ok(ui.screen.getByRole("button", { name: title }));
 });
 
-test("declared catalog and workload tags precede deployment cards while derived fixtures and local services keep header-first cards", async () => {
+test("infrastructure and workload tags precede deployment cards while inputs omit them", async () => {
   const tool = baseline.models.dev.targets.find((target) => target.role === "tool")!;
   const local = baseline.models.dev.localServices?.[0]?.id;
   for (const id of ["resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "prop:vpc:application:endpoint:s3", "lambda:cognito-post-confirmation-trigger", tool.ref, ...(local ? [local] : [])]) {
     persisted = id === local ? { ...baseline, models: { dev: { ...baseline.models.dev, managedDatabase: undefined }, prod: { ...baseline.models.prod, managedDatabase: undefined } } } : baseline;
     await mount(id);
     const section = document.querySelector(".inspector-content > .inspector-deployment");
+    if (id === "resource:openaiApiKey") {
+      assert.equal(section, null);
+      assert.ok(document.querySelector(".declaration-tags"));
+      ui.cleanup(); continue;
+    }
     assert.ok(section, id);
     if (baseline.models.dev.tagging?.[id]) {
       assert.ok(section.previousElementSibling?.matches(".declaration-tags"), id);
       assert.equal(section.previousElementSibling?.previousElementSibling?.tagName, "HEADER", id);
     } else assert.equal(section.previousElementSibling?.tagName, "HEADER", id);
     assert.deepEqual([...section.querySelectorAll(".environment-name")].map((item) => item.textContent), ["Development", "Production"], id);
-    const deployment = ui.screen.getByRole("combobox", { name: "Deploy" }) as HTMLSelectElement;
-    assert.equal(deployment.disabled, !baseline.models.dev.targets.some(item => item.ref === id), "managed availability explains ownership while workloads remain editable");
+    const deployment = ui.screen.queryByRole("combobox", { name: "Deploy" }) as HTMLSelectElement | null;
+    if (baseline.models.dev.targets.some(item => item.ref === id)) assert.equal(deployment?.disabled, false);
+    else assert.equal(deployment, null, "inferred ownership has no selector");
     assert.equal(applyCalls + planCalls.length, 0);
     if (id === "resource:cognito.userPool") {
       ui.fireEvent.click(ui.within(section as HTMLElement).getByRole("button", { name: "Configure CognitoStack" }));
@@ -1331,7 +1344,8 @@ test("local PostgreSQL and RDS open the same application database workflow witho
     assert.deepEqual([...document.querySelectorAll(".database-environment strong")].map(node => node.textContent), ["Development", "Production"]);
     assert.ok(ui.screen.getByText(/data is not synchronized/));
     assert.ok(ui.screen.getByRole("heading", { name: "Database home" }));
-    assert.equal((ui.screen.getByRole("combobox", { name: "Deploy" }) as HTMLSelectElement).disabled, true);
+    assert.equal(ui.screen.queryByRole("combobox", { name: "Deploy" }), null);
+    assert.ok(ui.screen.getByText(/production RDS follows its owning stack/));
     openSection("Connected workloads");
     assert.ok(document.querySelector(".database-consumers")?.textContent?.includes("Direct writer"));
     assert.ok(document.querySelector(".database-consumers")?.textContent?.includes("task:db-migrate"));

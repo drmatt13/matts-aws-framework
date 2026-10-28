@@ -25,7 +25,7 @@ import { connectionMidpoint } from "../scene/routing";
 import { landscapeFocus, searchOpacity, searchScene } from "../scene/focus";
 import { filterSceneByTag } from "../scene/tag-filter";
 import { SceneRenderer, type Stage } from "../scene/render";
-import type { HoverFacts } from "../scene/hover";
+import type { HoverEntry, HoverFacts } from "../scene/hover";
 import { connectionVisible } from "../scene/connections";
 import { EDGE_COLORS } from "../scene/look";
 import { catalogAvailability } from "../deployment";
@@ -35,7 +35,7 @@ import { useStudio } from "../studio";
 import { HoverContent, ResourceHoverContent } from "./ResourceHoverContent";
 import { InspectorContent } from "./Inspector";
 import { ResourceBrowser, type BrowserMemory } from "./ResourceBrowser";
-import { presentConnection } from "../connection-presentation";
+import { presentConnection, presentRelationship } from "../connection-presentation";
 import { WorkspacePanel } from "./WorkspacePanel";
 import { tagGroups, tagKeys, tagValueLabel, UNTAGGED_FILTER } from "../tag-groups";
 
@@ -798,6 +798,7 @@ function HoverCard(props: {
   let lines: (string | undefined)[] = [];
   let notes: readonly string[] = [];
   let facts: HoverFacts | undefined;
+  let entries: readonly HoverEntry[] | undefined;
   const resource = current.kind === "node" ? props.nodes.get(current.id) : current.kind === "prop" ? props.scene.props.find(prop => prop.id === current.id) : undefined;
   if (current.kind === "node" || current.kind === "prop") {
     if (!resource) return null;
@@ -814,6 +815,18 @@ function HoverCard(props: {
     };
     lines = [`From ${endpointLabel(index, sceneEdge.from)}`, `To ${endpointLabel(index, sceneEdge.to)}`, ...presentation.lines];
     notes = presentation.notes;
+    if (edge.relation === "supplies") {
+      facts = undefined;
+      lines = lines.slice(0, 2);
+      entries = sceneEdge.members.map(member => {
+        const supplied = member.models[props.scene.mode] ?? member.edge;
+        const detail = presentRelationship(supplied, index);
+        const parameter = index.resources.get(supplied.to);
+        const group = index.resources.get(sceneEdge.to);
+        const label = parameter?.path.slice(group?.kind === "group" ? group.path.length : -1).join(".") || detail.value;
+        return { id: supplied.id, label, availability: member.availability, note: detail.lines.join(" ") || undefined };
+      });
+    }
   } else {
     const island = props.scene.islands.find((candidate) => candidate.id === current.id);
     if (!island) return null;
@@ -829,7 +842,7 @@ function HoverCard(props: {
   };
   return (
     <div className="landscape-hover" style={placement} role="tooltip">
-      {resource ? <ResourceHoverContent resource={resource} /> : <HoverContent title={title} facts={facts} lines={lines} notes={notes} />}
+      {resource ? <ResourceHoverContent resource={resource} /> : <HoverContent title={title} facts={facts} lines={lines} notes={notes} entries={entries} entryContext="supply" />}
     </div>
   );
 }

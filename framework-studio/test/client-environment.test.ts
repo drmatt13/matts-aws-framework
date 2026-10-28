@@ -109,7 +109,8 @@ test("the client island, its source connections and variable search exist in bot
     assert.equal(scene.islands.find((island) => island.id === CLIENT_ENVIRONMENT_ISLAND)?.title, "Client-app environment file");
     assert.equal(scene.nodes.find((node) => node.id === CLIENT_ENVIRONMENT_ID)?.island, CLIENT_ENVIRONMENT_ISLAND);
     assert.ok(scene.edges.some((edge) => edge.from === "resource:cognito" && edge.to === CLIENT_ENVIRONMENT_ID));
-    const connection = scene.edges.find((edge) => edge.from === "resource:client.apiPort" && edge.to === CLIENT_ENVIRONMENT_ID);
+    // The client URL inputs stand in their group, so the group carries their mappings.
+    const connection = scene.edges.find((edge) => edge.from === "resource:client" && edge.to === CLIENT_ENVIRONMENT_ID && edge.members.some((member) => member.edge.from === "resource:client.apiPort"));
     assert.ok(connection, "the development input stays connected in either view");
     assert.deepEqual(connection.availability, { dev: true, prod: false });
     assert.ok(searchScene(scene, model, "VITE_USER_POOL_CLIENT_ID")!.nodes.has(CLIENT_ENVIRONMENT_ID));

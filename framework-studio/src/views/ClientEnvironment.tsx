@@ -6,7 +6,6 @@ import type { ModelResource } from "../../shared/model";
 import { useStudio } from "../studio";
 import { Description } from "./Description";
 import { EntityIcon } from "./EntityIcon";
-import { DeploymentSection, DeploymentOwnerControl } from "./Deployment";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { InspectorSwitch } from "./InspectorUI";
 
@@ -173,7 +172,6 @@ export function ClientEnvironmentMappings() {
 export function ClientEnvironmentFileView({ resource }: { readonly resource: ModelResource }) {
   return <>
     <header><span className="kind">Client environment</span><h2><EntityIcon icon="envFile" />.env</h2><code className="ref">client-app/.env</code></header>
-    <DeploymentSection availability={{ dev: true, prod: true }} catalog><DeploymentOwnerControl reason="These mappings supply the client build; the file has no independent deployment flag. Configure the resources supplying each mapping and publish the client separately." owners={[{ id: "island:stacks", title: "owning stacks" }]} /></DeploymentSection>
     <ClientEnvironmentMappings />
     <Description entity={resource.id} />
   </>;

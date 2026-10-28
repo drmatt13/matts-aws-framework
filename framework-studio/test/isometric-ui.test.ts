@@ -219,6 +219,55 @@ test("the inputs island opens the shared creator even after using the global cho
   assert.equal(ui.screen.queryByRole("dialog"), null);
 });
 
+test("an input group inspects through its entries and adds a new input into itself", async () => {
+  await mount(true, "resource:langgraph");
+  assert.ok(ui.screen.getByText("Input group"));
+  assert.equal(ui.screen.queryByRole("region", { name: "Deployment" }), null);
+  const entries = ui.within(ui.screen.getByRole("region", { name: "Entries" }));
+  for (const name of ["modelProvider", "bedrockModelId", "bedrockMantleModelId", "openaiModelId"]) assert.ok(entries.getByRole("button", { name }));
+  assert.ok(entries.getByText("LANGGRAPH_MODEL_PROVIDER"));
+  assert.ok(entries.getByText("Default · bedrock-mantle"));
+  const workloads = ui.within(ui.screen.getByRole("region", { name: "Used by" }));
+  assert.ok(workloads.getByRole("button", { name: "example-agent" }));
+  assert.ok(workloads.getByText("Reads all 4 entries"));
+  assert.ok(ui.screen.getByText("Environment file sources"));
+  // A group's tags are its entries' tags; it has none of its own.
+  assert.ok(ui.screen.getByText(/owns no AWS resource, so it has no tags of its own/));
+  ui.fireEvent.click(entries.getByRole("button", { name: "Add input" }));
+  const wizard = ui.within(await ui.screen.findByRole("dialog", { name: "Create input parameter or secret" }));
+  assert.ok(wizard.getByText("resources.langgraph"));
+  ui.fireEvent.click(wizard.getByRole("button", { name: "Cancel creation" }));
+  // An entry opens its own inspector, names its group, and keeps the group's building selected on the map.
+  ui.fireEvent.click(entries.getByRole("button", { name: "modelProvider" })); await draw();
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "resource:langgraph.modelProvider");
+  assert.ok(ui.screen.getByText("In input group"));
+  assert.equal(ui.screen.queryByRole("region", { name: "Deployment" }), null);
+  assert.equal(ui.screen.queryByRole("combobox", { name: "Deploy" }), null);
+  assert.ok(debug().search().nodes.includes("resource:langgraph"));
+  assert.ok(debug().search().nodes.includes("agent:example-agent"));
+});
+
+test("inferred infrastructure keeps its summary and owner navigation without a disabled Deploy selector", async () => {
+  await mount(true, "gateway:http");
+  const deployment = ui.within(ui.screen.getByRole("region", { name: "Deployment" }));
+  assert.ok(deployment.getByText(/framework manages this gateway/));
+  assert.equal(deployment.queryByRole("combobox", { name: "Deploy" }), null);
+  ui.fireEvent.click(deployment.getByText(/Configure owners/, { selector: "summary" }));
+  ui.fireEvent.click(deployment.getByRole("button", { name: "Configure /sign-out" }));
+  await draw();
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "lambda:sign-out");
+  assert.ok(ui.screen.getByRole("combobox", { name: "Deploy" }), "the owner retains its editable setting");
+});
+
+test("input and environment grouping inspectors omit deployment controls", async () => {
+  for (const id of ["resource:openaiApiKey", "envfile:dev", "client-envfile", "island:inputs", "island:environment", "island:client-environment"]) {
+    await mount(true, id);
+    assert.equal(ui.screen.queryByRole("region", { name: "Deployment" }), null, id);
+    assert.equal(ui.screen.queryByRole("combobox", { name: "Deploy" }), null, id);
+    ui.cleanup();
+  }
+});
+
 test("parameter choices survive switching to a secret and reopening the resource chooser", async () => {
   await mount(true, "island:inputs");
   const start = () => ui.fireEvent.click(ui.screen.getByRole("button", { name: "Create input parameter or secret" }));
@@ -693,13 +742,15 @@ test("missing required connections paint red X markers and clicking the marker s
     ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
     assert.ok(strokes.includes("#ff5f6d"), "the actual renderer strokes the error marker in red");
     const scene = buildScene(model, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
+    // The supplied input may stand in its group, so the marker sits on the drawn connection that carries it.
+    const drawn = scene.edges.find((connection) => connection.members.some((member) => member.edge.id === edge.id))!;
     const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { kind: string; id: string } } }).__studioLandscape;
-    const at = worldToScreen(state.camera(), state.viewport(), connectionMidpoint(scene.routes[edge.id]!.points));
-    assert.deepEqual(state.pickAt(at.x, at.y)?.id, edge.id, "the painted marker and hit area agree");
+    const at = worldToScreen(state.camera(), state.viewport(), connectionMidpoint(scene.routes[drawn.id]!.points));
+    assert.deepEqual(state.pickAt(at.x, at.y)?.id, drawn.id, "the painted marker and hit area agree");
     const canvas = document.querySelector("canvas")!;
     ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
     ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
-    await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, edge.id));
+    await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, drawn.id));
     assert.equal(debug().stats().focus, "selection");
   } finally { response = original; }
 });
@@ -975,7 +1026,8 @@ test("clicking a disabled wire explains its endpoints in the inspector and the n
   await mount(true);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
-  const edge = scene.edges.find((edge) => edge.edge.from === "envfile:prod" && edge.edge.relation === "supplies")!;
+  // A single wire, rather than a group's bundled supply, opens the one-connection notice.
+  const edge = scene.edges.find((edge) => edge.edge.from === "envfile:prod" && edge.edge.relation === "supplies" && edge.members.length === 1)!;
   assert.ok(edge);
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
   const at = scene.routes[edge.id]!.points.map((point) => worldToScreen(state.camera(), state.viewport(), point))
@@ -1187,6 +1239,38 @@ test("hovering a node shows its authored description and a Dev and a Prod pill",
   assert.ok(!text.includes("Runs in development and production."), "the generic lane line is gone");
   assert.ok(!text.includes("Enabled in development"), "the generic presence line is gone");
   assert.ok(!text.includes("Click to inspect"), "no how-to caption under the description");
+});
+
+test("input group hovers label every entry with its own environments and omit aggregate pills", async () => {
+  await mount();
+  const card = await hoverOver("resource:client");
+  assert.equal(card.querySelector(".landscape-hover-tags"), null);
+  const rows = [...card.querySelectorAll<HTMLElement>(".landscape-hover-entries > li")];
+  assert.deepEqual(rows.map(row => row.querySelector(".landscape-hover-entry-name")?.textContent), ["apiPort", "webSocketPort", "webSocketTesterPort", "apiUrl"]);
+  for (const row of rows) assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
+  assert.ok(!card.textContent?.includes("Holds apiPort"), "the list replaces the prose name summary");
+});
+
+test("supply hovers put environment pills beside each parameter", async () => {
+  await mount();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
+  const edge = scene.edges.find(edge => edge.from === "envfile:dev" && edge.to === "resource:client" && edge.edge.relation === "supplies")!;
+  assert.ok(edge);
+  const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport } }).__studioLandscape;
+  const point = scene.routes[edge.id]!.points.map(point => worldToScreen(state.camera(), state.viewport(), point)).find(point => pointing().pickAt(point.x, point.y)?.id === edge.id);
+  assert.ok(point, "the supply wire is pickable");
+  ui.fireEvent.pointerMove(document.querySelector("canvas")!, { clientX: point.x, clientY: point.y }); await draw();
+  const card = await ui.screen.findByRole("tooltip");
+  assert.equal(card.querySelector(".landscape-hover-tags"), null);
+  const rows = [...card.querySelectorAll<HTMLElement>(".landscape-hover-entries > li")];
+  assert.equal(rows.length, edge.members.length);
+  for (const [at, row] of rows.entries()) {
+    const parameter = response.snapshot.models.dev.resources.find(resource => resource.id === edge.members[at]!.edge.to)!;
+    assert.equal(row.querySelector(".landscape-hover-entry-name")?.textContent, parameter.path.at(-1));
+    assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
+  }
+  assert.ok(card.textContent?.includes("From Environment file: cdk-app/.env.dev"));
 });
 
 test("an environment that does not deploy the item keeps its pill, dark", async () => {

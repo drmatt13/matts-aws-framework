@@ -11,6 +11,7 @@ source:
   - framework-studio/src/scene/corridors.ts
   - framework-studio/src/scene/render.ts
   - framework-studio/src/endpoint-services.ts
+  - framework-studio/src/input-groups.ts
 related:
   - studio.graph-model
   - studio.snapshots
@@ -138,9 +139,11 @@ including `Routes to: /api/test/start-workflow`, `Starts workflow: invocation-te
 and `Reads: 3 environment values`. Calls name the configured destination, workflow steps
 name their typed operation and target, and grants retain the resource name. Tooltips,
 inspectors, member rows, Board labels and description reviews use this same formatter.
-Same-type bundles name their shared purpose and count. Hover previews show at most four
-member labels, a remaining count and any missing required values outside that preview.
-From/To and environment pills remain primary. Concise operational details and a muted IAM
+Same-type bundles name their shared purpose and count. Most bundled hovers preview at most
+four member labels, a remaining count and any missing required values outside that preview.
+From/To and environment pills remain primary. Supply hovers put the pills beside each
+parameter name, list every supplied entry and omit the aggregate pair; each row retains its own connection availability
+and missing/default status. Concise operational details and a muted IAM
 summary follow when applicable; source paths, inference caveats and full permission facts
 expand under Configuration and Permissions in the inspector. Normal configured inputs need
 no status sentence. Native trigger hovers name the resolved constructor. Resource hovers
@@ -217,6 +220,15 @@ Validation: [graph layout](../../../framework-studio/test/graph-layout.test.ts),
 
 The APIs island has one building per actual API Gateway. Shared `src/drawn-as.ts`
 representatives fold HTTP/service and WebSocket routes and gateway export stacks into
-those buildings; agent routes fold into their agent. Layout, aggregated connections,
-selection, search and tag filtering use the same mapping. Connection availability
-retains the original endpoints even when several routes share a building.
+those buildings; agent routes fold into their agent. Catalog input groups (plain objects
+such as `resources.langgraph`) are one building on Input parameters and secrets: every
+entry and nested group folds into the outermost group, so its reads, file supplies, client
+mappings and `deployWhen` controls leave from the group as same-type bundles. Layout,
+aggregated connections, selection, search and tag filtering use the same mapping.
+Connection availability retains the original endpoints even when several routes share a
+building; a grouped entry keeps its own absence, unlike a stack field, which follows its
+stack. `src/input-groups.ts` reads a group through its entries for the hover facts
+(per-graph entry counts, readers, mappings, missing required names) and the group inspector.
+Group hovers replace the aggregate environment pair and prose name list with entry rows.
+Each row's pills describe its declaration availability across both graphs, including nested
+and other-environment-only entries; they do not claim that a value is set or deployed.

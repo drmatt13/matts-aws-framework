@@ -104,7 +104,7 @@ test("map search matches names and multiple case-insensitive terms without chang
 
 test("map search includes input environment names, stack fields and workload source identities", () => {
   const model = snapshot.models.dev;
-  assert.ok(searchScene(dev, model, "LANGGRAPH_OPENAI_MODEL_ID")!.nodes.has("resource:langgraph.openaiModelId"));
+  assert.ok(searchScene(dev, model, "LANGGRAPH_OPENAI_MODEL_ID")!.nodes.has("resource:langgraph"), "an entry's variable finds its group's building");
   const member = model.resources.find((resource) => resource.kind === "member" && /UserPool$/.test(resource.typeText ?? ""))!;
   assert.ok(member.parent);
   assert.ok(searchScene(dev, model, member.typeText!)!.nodes.has(member.parent));
@@ -352,8 +352,10 @@ test("the desktop overview fills a 1080p monitor, with Workflows before Stacks",
     assert.ok(centre(lower[1]!).x < centre(lower[2]!).x, "Workflows stay before Stacks");
     const core = scene.islands.filter((island) => !lower.includes(island) && island.id !== "island:environment");
     const fitted = fitBounds(scene.bounds, viewport, 48);
-    // The islands retain a useful overview on a 16:9 monitor as the topology changes.
-    assert.ok((scene.bounds.maxX - scene.bounds.minX) * fitted.zoom > viewport.width * 0.75, "uses the monitor's width");
+    // The islands retain a useful overview on a 16:9 monitor as the topology changes. Since input
+    // groups became single buildings the overview is height-bound (about 91% of the height, 73% of
+    // the width); a wider inputs lattice reaches 79% of the width at the cost of 20 more crossings.
+    assert.ok((scene.bounds.maxX - scene.bounds.minX) * fitted.zoom > viewport.width * 0.7, "uses the monitor's width");
     assert.ok((scene.bounds.maxY - scene.bounds.minY) * fitted.zoom > viewport.height * 0.8, "uses the monitor's height");
   }
 });
@@ -809,6 +811,54 @@ test("stack fields stay in the model and use their stack as the visible edge end
   }
 });
 
+test("an input group is one building: its entries fold into it and their connections leave from it", () => {
+  const group = "resource:langgraph";
+  const entries = snapshot.models.dev.resources.filter((resource) => resource.parent === group).map((resource) => resource.id);
+  assert.equal(entries.length, 4);
+  for (const scene of [dev, prod]) {
+    const node = scene.nodes.find((candidate) => candidate.id === group)!;
+    assert.equal(node.island, "island:inputs");
+    assert.equal(node.kindLabel, "Input group, 4 inputs");
+    for (const entry of entries) {
+      assert.ok(!scene.nodes.some((candidate) => candidate.id === entry), `${entry} stands in its group`);
+      assert.equal(scene.representatives[entry], group);
+    }
+    // Four reads by the agent share one arc, and each environment file supplies the group once.
+    const reads = scene.edges.find((edge) => edge.from === "agent:example-agent" && edge.to === group && edge.edge.relation === "env")!;
+    assert.deepEqual(reads.members.map((member) => member.edge.to).sort(), [...entries].sort());
+    for (const file of ["envfile:dev", "envfile:prod"]) assert.equal(scene.edges.find((edge) => edge.from === file && edge.to === group)?.members.length, 4, file);
+    assert.ok(!scene.edges.some((edge) => entries.includes(edge.from) || entries.includes(edge.to)));
+  }
+  // Selecting the group, or an entry drawn as it, lights the workloads and files on the other end.
+  const focus = landscapeFocus(dev, dev.representatives["resource:langgraph.modelProvider"]);
+  for (const id of [group, "agent:example-agent", "envfile:dev", "envfile:prod"]) assert.ok(focus.nodes.has(id), id);
+});
+
+test("a group is absent only in a graph that holds none of its entries", () => {
+  const client = (mode: "dev" | "prod") => snapshot.models[mode].resources.find((resource) => resource.id === "resource:client")!;
+  assert.equal(client("dev").absent, false);
+  assert.equal(client("prod").absent, true, "every client URL input is development-only");
+  assert.equal(prod.nodes.find((node) => node.id === "resource:client")?.presence, "absent");
+  assert.equal(dev.nodes.find((node) => node.id === "resource:client")?.badge, "dev");
+  assert.equal(snapshot.models.prod.resources.find((resource) => resource.id === "resource:langgraph")?.absent, false);
+  const mappings = dev.edges.find((edge) => edge.from === "resource:client" && edge.to === "client-envfile")!;
+  assert.equal(mappings.members.length, 3);
+  assert.deepEqual(mappings.availability, { dev: true, prod: false });
+});
+
+test("an entry keeps its own absence inside a group whose other entries are held", () => {
+  const model = snapshot.models.prod;
+  const mixed = { ...model, resources: model.resources.map((resource) => resource.id === "resource:langgraph.openaiModelId" ? { ...resource, absent: true } : resource) };
+  const index = indexModel(mixed);
+  const read = (entry: string) => mixed.edges.find((edge) => edge.relation === "env" && edge.to === entry)!;
+  assert.deepEqual(connectionDisabledEndpoints(index, "prod", read("resource:langgraph.openaiModelId")), ["resource:langgraph.openaiModelId"]);
+  assert.deepEqual(connectionDisabledEndpoints(index, "prod", read("resource:langgraph.modelProvider")), []);
+  // Stack fields still follow their stack.
+  const field = model.edges.find((edge) => edge.to === "resource:cognito.userPool")!;
+  const absentStack = indexModel({ ...model, resources: model.resources.map((resource) => resource.id === "resource:cognito" ? { ...resource, absent: true } : resource) });
+  assert.ok(connectionDisabledEndpoints(absentStack, "prod", field).includes("resource:cognito.userPool"));
+});
+
 test("stack constructor evidence produces an unattached badge, while the managed database sits in isolated subnets", () => {
   const node = (scene: Scene, id: string) => scene.nodes.find((item) => item.id === id)!;
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
@@ -1083,7 +1133,8 @@ test("both views draw the same connections; the other environment's own are mark
   assert.deepEqual(ids(dev), ids(prod), "switching the view never makes a connection appear or vanish");
   const marked = (scene: Scene) => scene.edges.filter((edge) => edge.otherLens).map((edge) => `${edge.otherLens}: ${edge.edge.from} -> ${edge.edge.to}`).sort();
   assert.deepEqual(marked(dev), ["prod: framework-stack:FrontendWebsiteS3Stack -> client-envfile", "prod: lambda:graphql-api -> resource:rds.database", "prod: lambda:oauth-callback -> resource:rds.database"]);
-  assert.deepEqual(marked(prod), ["dev: lambda:cognito-post-confirmation-trigger -> local:postgres", "dev: lambda:graphql-api -> local:postgres", "dev: lambda:oauth-callback -> local:postgres", "dev: resource:client.apiPort -> client-envfile", "dev: resource:client.webSocketPort -> client-envfile", "dev: resource:client.webSocketTesterPort -> client-envfile", "dev: resource:enableWebSocketApi -> client-envfile"]);
+  // The client group's three development-only mappings share one arc from the group.
+  assert.deepEqual(marked(prod), ["dev: lambda:cognito-post-confirmation-trigger -> local:postgres", "dev: lambda:graphql-api -> local:postgres", "dev: lambda:oauth-callback -> local:postgres", "dev: resource:client.apiPort -> client-envfile", "dev: resource:enableWebSocketApi -> client-envfile"]);
   // A connection a lens does not hold itself is one the lens dims, and the model's own edges are never marked.
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
     const own = new Set(model.edges.map((edge) => edge.id));

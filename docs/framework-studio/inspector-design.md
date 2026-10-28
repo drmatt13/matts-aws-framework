@@ -8,17 +8,19 @@ live in `src/views/InspectorUI.tsx`. Board, Isometric and Database use the same 
 
 ## Conventions
 
-Deployment controls are present across inspector resource families:
+Deployment information follows the resource's actual configuration authority:
 
 | Family | Deployment control |
 | --- | --- |
 | HTTP, WebSocket, authorizer, event and tool Lambdas; services, tasks, workflows, agents | Editable Deploy tokens and input conditions; review validates both environments |
 | Tool with no authored override | Inherit follows consuming agents; explicit Deploy overrides it |
-| API gateway, stack member, network component | Owner-controlled Deploy with navigation to handlers, stack or VPC |
-| Catalog input, secret or group | Owner-controlled availability; links to consuming workloads; values/provisioning remain separate |
+| API gateway, stack member, network component | Read-only deployment summary and ownership explanation with navigation to handlers, stack or VPC |
+| Catalog input, secret or group | No Deployment section. Inputs/secrets show declaration pills in their header; groups show pills beside each entry. Sources, requirements and consumers explain delivery |
 | Native/framework stack, managed database, VPC island | Explicit ownership explanation and navigation; no ineffective independent workload flag |
-| CDK/client environment file or grouping island | Explains input/group ownership and links to owning entries |
+| CDK/client environment file and input/environment islands | No Deployment section; file status, mappings and entry navigation describe their purpose |
+| Other grouping islands | Read-only deployment summary with navigation to entries |
 
+Inferred ownership is text with owner links, never a disabled Deploy selector.
 Native CDK construction remains source-owned. A catalog presence change must never be
 presented as an AWS deployment switch. Event deployment changes omit optional native
 hooks on the next deployment, and the source review calls out that effect.
@@ -92,8 +94,9 @@ operation and resource. **Remove workload** is a separate supporting disclosure.
 reviews dependencies and an implementation archive, with an explicit explanation that
 deployed resources and their costs require a separate operation.
 
-Workload, route and catalog inspectors begin with identity, source access and a compact **Tags** disclosure,
-followed by the shared **Deployment** section (`src/views/Deployment.tsx`).
+Workload, route and catalog inspectors begin with identity, source access and a compact **Tags** disclosure.
+Workloads, routes and infrastructure then show the shared **Deployment** section (`src/views/Deployment.tsx`);
+catalog inputs, secrets and groups proceed directly to their description and input settings.
 Tags show their effective count without opening the editor, and retain **Modified** or
 **Needs attention** on the collapsed heading while a draft exists. Supporting disclosure
 headings use a 32px target with 8px vertical padding on each side and the shared panel gutter;
@@ -112,12 +115,14 @@ environment's outcome. API gateway headers reuse the catalog's framed Framework 
 For event Lambdas, Development shows AWS execution unless local replay is enabled;
 then it shows AWS capture first, followed by replay on the developer's machine.
 This summary follows the staged replay setting and always describes the development graph.
-Catalog cards say Available/Unavailable to describe declaration availability rather
+Infrastructure catalog cards say Available/Unavailable to describe declaration availability rather
 than deployed health. Stack members link to their parent; tools link to their consuming
-agents; event functions and framework-managed resources explain their fixed availability.
-These do not get unsupported deployment overrides. Local services and network fixtures
+agents and retain an editable override; framework-managed resources explain their inferred availability.
+Infrastructure does not get unsupported deployment overrides. Local services and network fixtures
 use the same cards and identify Compose or the production VPC as their configuration source.
-VPC island inspectors configure only the selected network and list its entries. Global
+VPC island inspectors configure only the selected network and list its entries. Their
+deployment summary uses whether production builds the VPC; local workloads never enable
+a development VPC. Global
 Lambda defaults belong to Serverless compute (and the related API/tool defaults to their
 family inspectors), container defaults remain under APIs, and connection pool defaults
 appear in Application PostgreSQL's Connection pool defaults. These defaults apply across VPCs; they are

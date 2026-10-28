@@ -7,7 +7,7 @@ import { SnapshotBuilder } from "../server/snapshot";
 import { catalogAvailability } from "../src/deployment";
 import { indexModel } from "../src/lookup";
 import { buildScene, type Scene } from "../src/scene/build";
-import { nodeHoverFacts, propHoverFacts, type HoverFacts } from "../src/scene/hover";
+import { groupHoverEntries, groupHoverLines, nodeHoverFacts, propHoverFacts, type HoverFacts } from "../src/scene/hover";
 
 /**
  * The hover label says where each environment deploys an item and whether the
@@ -122,6 +122,32 @@ test("an input or input group lights every environment whose graph declares it",
   }
   const modelProvider = factsOf("resource:langgraph.modelProvider");
   assert.ok(modelProvider.places.length > 0, "a declared input is no longer shown as deployed nowhere");
+});
+
+test("an input group's hover counts its entries per graph and names what reads them and what they feed", () => {
+  assert.deepEqual(factsOf("resource:langgraph"), { places: [{ env: "dev", where: "4 inputs · cdk-app/.env.dev" }, { env: "prod", where: "4 inputs · cdk-app/.env.prod" }], frameworkManaged: false });
+  assert.deepEqual(factsOf("resource:client").places, [{ env: "dev", where: "4 inputs · cdk-app/.env.dev" }], "development-only URLs light only Dev");
+  const model = snapshot.models.dev;
+  const group = (id: string, from = model) => from.resources.find((resource) => resource.id === id)!;
+  assert.deepEqual(groupHoverLines(group("resource:langgraph"), model, indexModel(model)), {
+    lines: ["Read by example-agent."], notes: [] });
+  assert.deepEqual(groupHoverLines(group("resource:client"), model, indexModel(model)).lines,
+    ["Maps apiPort, webSocketPort and webSocketTesterPort into client-app/.env."]);
+  // A missing required value is named by its variable, never by a value.
+  const missing = { ...model, resources: model.resources.map((resource) => resource.id === "resource:langgraph.openaiModelId" ? { ...resource, inputRequirement: { ...resource.inputRequirement!, required: true, status: "missing" as const } } : resource) };
+  assert.deepEqual(groupHoverLines(group("resource:langgraph", missing), missing, indexModel(missing)).notes, ["Missing required value in cdk-app/.env.dev: LANGGRAPH_OPENAI_MODEL_ID."]);
+});
+
+test("group hover entries keep individual availability across mixed and nested declarations", () => {
+  const group = snapshot.models.dev.resources.find(resource => resource.id === "resource:langgraph")!;
+  const dev = snapshot.models.dev;
+  const prod = { ...snapshot.models.prod, resources: snapshot.models.prod.resources.map(resource => resource.id === `${group.id}.modelProvider` ? { ...resource, absent: true } : resource) };
+  const prodOnly = { id: `${group.id}.nested.key`, parent: `${group.id}.nested`, path: [...group.path, "nested", "key"], kind: "secret" as const, absent: false };
+  const entries = groupHoverEntries(group, indexes({ dev, prod: { ...prod, resources: [...prod.resources, prodOnly] } }));
+  assert.deepEqual(entries.find(entry => entry.label === "modelProvider")?.availability, { dev: true, prod: false });
+  assert.deepEqual(entries.find(entry => entry.label === "openaiModelId")?.availability, { dev: true, prod: true });
+  assert.deepEqual(entries.at(-1), { id: prodOnly.id, label: "nested.key", availability: { dev: false, prod: true } });
+  assert.deepEqual(groupHoverEntries(group, indexes({ dev: { ...dev, resources: [] }, prod: { ...prod, resources: [] } })), []);
 });
 
 test("every resource's pills follow the graphs that hold it, whatever its kind", () => {

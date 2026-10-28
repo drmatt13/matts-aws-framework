@@ -480,6 +480,13 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .resource-preview summary, .stack-members summary { cursor: pointer; padding: var(--ui-space-2) 0; }
 .stack-members .relations li { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--ui-space-2) var(--ui-space-3); }
 .stack-members .relations li > code { text-align: right; }
+.input-group-entries .relations li { grid-template-columns: minmax(0, 1fr) auto; gap: var(--ui-space-1) var(--ui-space-3); align-items: center; }
+.input-group-entries .relations .environment-pills { grid-column: auto; }
+.input-group-entries .relations li > code, .input-group-entries .relations li > .local-input-status, .input-group-entries .relations li > span.small { grid-column: 1 / -1; margin: 0; }
+.input-group-entry-name { display: flex; align-items: center; gap: var(--ui-space-2); min-width: 0; }
+.input-group-entry-name .entity-icon { width: 20px; height: 20px; flex: none; }
+.input-group-entry-name > button { max-width: none; overflow-wrap: anywhere; text-align: left; }
+.input-group-use .relations li > span { text-align: right; }
 
 .auth-control { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-space-4); font-weight: 600; }
 /* A sliding switch: the thumb travels right and the track fills when on; the word beside it says the state. */
@@ -565,6 +572,7 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .inspector-deployment .field { border: 0; padding: 0; }
 .inspector-deployment .deployment-note { margin: 0; overflow-wrap: anywhere; }
 .deploy-control { display: grid; min-width: 0; gap: var(--ui-space-3); }
+.deployment-ownership { display: grid; min-width: 0; gap: var(--ui-space-3); }
 .deploy-control .field { grid-template-columns: minmax(0, 1fr); gap: var(--ui-space-1); }
 .deploy-control .field .name { padding-top: 0; }
 .deploy-control .field .note { grid-column: 1 / -1; }
@@ -880,4 +888,6 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
   .tag-delete > span { display: none; }
   .stack-members .relations li { grid-template-columns: minmax(0, 1fr); gap: var(--ui-space-1); }
   .stack-members .relations li > code { text-align: left; }
+  .input-group-use .relations li { grid-template-columns: minmax(0, 1fr); }
+  .input-group-use .relations li > span { text-align: left; }
 }

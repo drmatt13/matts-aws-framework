@@ -1,6 +1,8 @@
 import type { Lanes, Mode, ModeModel, ModelResource, ModelRoute, ModelTarget } from "../../shared/model";
-import type { ModelIndex } from "../lookup";
+import { titleOf, type ModelIndex } from "../lookup";
+import { entryCount, groupEntries, groupUse, nameList } from "../input-groups";
 import type { SceneNode } from "./build";
+import type { Availability } from "../deployment";
 
 /**
  * What a hover label says about an item beyond its authored description: where
@@ -22,6 +24,26 @@ export interface HoverFacts {
 }
 
 export type ModelIndexes = Readonly<Record<Mode, ModelIndex>>;
+
+export interface HoverEntry {
+  readonly id: string;
+  readonly label: string;
+  readonly availability: Availability;
+  readonly note?: string;
+}
+
+/** Entries retain their own declaration availability, even in a mixed-environment group. */
+export function groupHoverEntries(group: ModelResource, indexes: ModelIndexes): readonly HoverEntry[] {
+  const entries = new Map(MODES.flatMap(mode => groupEntries(group, indexes[mode].resources.values()).map(entry => [entry.id, entry] as const)));
+  return [...entries.values()].map(entry => ({
+    id: entry.id,
+    label: entry.path.slice(group.path.length).join("."),
+    availability: {
+      dev: !!indexes.dev.resources.get(entry.id) && !indexes.dev.resources.get(entry.id)!.absent,
+      prod: !!indexes.prod.resources.get(entry.id) && !indexes.prod.resources.get(entry.id)!.absent,
+    },
+  }));
+}
 
 const MODES: readonly Mode[] = ["dev", "prod"];
 const NOT_DEPLOYED = "Not deployed";
@@ -77,7 +99,13 @@ function resourceWhere(resource: ModelResource | undefined, index: ModelIndex, m
     case "construct": return { where: "CDK construct" };
     // An input is supplied wherever its graph declares it, from the file that environment's synthesis reads.
     case "input": return { where: `CDK input · ${index.resources.get(`envfile:${mode}`)?.deploymentFile?.path ?? "environment file"}` };
-    case "group": return { where: "CDK input group" };
+    // A group owns nothing itself: it is wherever its graph holds any of its entries.
+    case "group": {
+      const entries = groupEntries(resource, index.resources.values());
+      const held = entries.filter((entry) => !entry.absent);
+      const count = held.length === entries.length ? entryCount(held) : `${held.length} of ${entryCount(entries)}`;
+      return { where: `${count} · ${index.resources.get(`envfile:${mode}`)?.deploymentFile?.path ?? "environment file"}` };
+    }
     default: return { reason: "Not deployed" };
   }
 }
@@ -120,6 +148,26 @@ export function nodeHoverFacts(node: SceneNode, indexes: ModelIndexes): HoverFac
         return service?.enabled ? { where: "Your machine · Docker Compose" } : { reason: "Docker Compose service, not enabled" };
       }), false);
   }
+}
+
+/**
+ * What an input group's building stands for, in the viewed graph: its entries, the workloads
+ * that read them and what they feed. Missing required values are notes, never values.
+ */
+export function groupHoverLines(group: ModelResource, model: ModeModel, index: ModelIndex): { readonly lines: readonly string[]; readonly notes: readonly string[] } {
+  const entries = groupEntries(group, model.resources);
+  const use = groupUse(group, model.edges);
+  const name = (id: string) => index.resources.get(id)?.path.at(-1) ?? id;
+  const lines = [
+    entries.length ? undefined : "Holds no inputs or secrets.",
+    use.readers.length ? `Read by ${nameList(use.readers.map((reader) => titleOf(index, reader.id)))}.` : undefined,
+    ...use.feeds.filter((feed) => feed.relation === "maps").map((feed) => `Maps ${nameList(feed.entries.map(name))} into ${titleOf(index, feed.id)}.`),
+    use.feeds.some((feed) => feed.relation === "deployWhen") ? `Controls deployment of ${nameList(use.feeds.filter((feed) => feed.relation === "deployWhen").map((feed) => titleOf(index, feed.id)))}.` : undefined,
+    !use.readers.length && !use.feeds.length && entries.some((entry) => !entry.absent) ? "No workload reads these entries yet." : undefined,
+  ].filter((line): line is string => !!line);
+  const missing = entries.filter((entry) => entry.inputRequirement?.status === "missing");
+  const file = index.resources.get(`envfile:${model.mode}`)?.deploymentFile?.path ?? "the environment file";
+  return { lines, notes: missing.length ? [`Missing required ${missing.length === 1 ? "value" : "values"} in ${file}: ${nameList(missing.map((entry) => entry.fromEnv ?? name(entry.id)))}.`] : [] };
 }
 
 /** Gateways and endpoints exist only because the framework builds the declared network, and only a production deployment builds it. */

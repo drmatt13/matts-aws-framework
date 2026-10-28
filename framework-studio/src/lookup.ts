@@ -141,7 +141,7 @@ export function endpointLabel(index: ModelIndex, id: string): string {
   const resource = index.resources.get(id);
   if (resource) {
     if (resource.kind === "member" && resource.frameworkManaged === "database") return `Database: ${title}`;
-    const labels = { envFile: "Environment file", stack: "Stack", member: "Stack member", construct: "Construct", input: "Input", secret: "Secret", group: "Inputs" };
+    const labels = { envFile: "Environment file", stack: "Stack", member: "Stack member", construct: "Construct", input: "Input", secret: "Secret", group: "Input group" };
     return `${labels[resource.kind]}: ${title}`;
   }
   return title;

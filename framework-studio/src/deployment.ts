@@ -13,8 +13,9 @@ export function connectionDisabledEndpoints(index: ModelIndex, mode: Mode, edge:
     if (target) return environments(target.lanes)[mode];
     const resource = index.resources.get(id);
     if (!resource) return false;
-    // Stack members share their owning stack's representation in the map.
-    const representative = index.resources.get(index.representatives[id] ?? id) ?? resource;
+    // Stack members share their owning stack's representation in the map. An input in a
+    // group keeps its own absence: one group can hold inputs declared for different graphs.
+    const representative = resource.kind === "member" ? index.resources.get(index.representatives[id] ?? id) ?? resource : resource;
     return !representative.absent;
   };
   return [...new Set([edge.from, edge.to])].filter((id) => !enabled(id));

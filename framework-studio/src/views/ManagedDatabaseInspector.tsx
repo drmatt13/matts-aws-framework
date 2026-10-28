@@ -10,7 +10,7 @@ import { SchemaLink } from "./SchemaDetails";
 import { ManagedDatabaseControls } from "./ManagedDatabaseControls";
 import { DatabasePlacement } from "./DatabasePlacement";
 import { Tags } from "./Tags";
-import { DeploymentSection, DeploymentOwnerControl } from "./Deployment";
+import { DeploymentSection, DeploymentOwnership } from "./Deployment";
 
 /** One application database, presented through its local and AWS implementations. */
 export function ManagedDatabaseInspector({ resource, local }: { readonly resource?: ModelResource; readonly local?: LocalDatabase }) {
@@ -24,7 +24,7 @@ export function ManagedDatabaseInspector({ resource, local }: { readonly resourc
   return <>
     <header><span className="kind">Framework-managed database</span><h2><EntityIcon icon={local ? "postgres" : "database"} />Application PostgreSQL</h2><code className="ref">{database.databaseName} · {database.id}</code><Written location={source} label="Declared in" /></header>
     <Tags entity={`database:${database.id}`} />
-    <DeploymentSection availability={{ dev: !!postgres?.enabled, prod: !!rds && !rds.absent }} locations={{ dev: "On your machine", prod: "In AWS" }}><DeploymentOwnerControl reason="The local database follows Compose; production RDS follows its owning stack. Consumer Deploy controls do not delete database storage." owners={owner ? [{ id: owner, title: "database stack" }] : []} /></DeploymentSection>
+    <DeploymentSection availability={{ dev: !!postgres?.enabled, prod: !!rds && !rds.absent }} locations={{ dev: "On your machine", prod: "In AWS" }}><DeploymentOwnership reason="The local database follows Compose; production RDS follows its owning stack. Consumer Deploy controls do not delete database storage." owners={owner ? [{ id: owner, title: "database stack" }] : []} /></DeploymentSection>
     <InspectorSection title="Environments" description="One application schema. Independent data in development and production.">
       <div className="database-environments">
         <div className={`database-environment dev${mode === "dev" ? " selected" : ""}`}><EntityIcon icon="postgres" /><span><strong>Development</strong><span>Local PostgreSQL</span><code>{postgres?.image ?? "Not configured"}</code></span><span className="small muted">Compose</span></div>

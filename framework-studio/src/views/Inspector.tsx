@@ -31,12 +31,15 @@ import { aggregateConnections, edgeAvailability } from "../connections";
 import { ConnectionMap } from "./ConnectionMap";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
-import { DeploymentSection, DeploymentOwnerControl, ResourceDeployment, TargetDeployment } from "./Deployment";
+import { DeploymentSection, DeploymentOwnership, ResourceDeployment, TargetDeployment } from "./Deployment";
 import { Tags } from "./Tags";
 import { ImplementationStatus, WorkloadRemoval } from "./WorkloadActions";
 import { WorkloadPermissions, ResourceAccess } from "./WorkloadPermissions";
 import { presentRelationship } from "../connection-presentation";
 import { removalForConnection } from "../access";
+import { inputGroupOf } from "../input-groups";
+import { InputGroupEntries, InputGroupSources, InputGroupTags, InputGroupUse } from "./InputGroup";
+import { catalogAvailability } from "../deployment";
 
 function PlacementText(props: { readonly placement: Placement }) {
   const { placement } = props;
@@ -71,8 +74,9 @@ function LocalReplayControl({ target }: { readonly target: ModelTarget }) {
 
 function Relations(props: { readonly id: string }) {
   const { index, select, snapshot } = useStudio();
-  const stack = index.resources.get(props.id)?.kind === "stack";
-  const owns = (id: string) => id === props.id || (stack && id.startsWith(`${props.id}.`));
+  // A stack's fields and a group's entries share their owner's building and connections.
+  const owner = ["stack", "group"].includes(index.resources.get(props.id)?.kind ?? "");
+  const owns = (id: string) => id === props.id || (owner && id.startsWith(`${props.id}.`));
   const edges = [...new Map([...index.edges.entries()].filter(([id]) => owns(id)).flatMap(([, edges]) => edges).map((edge) => [edge.id, edge])).values()];
   if (edges.length === 0) return null;
   const outgoing = edges.filter((edge) => owns(edge.from));
@@ -309,7 +313,7 @@ function RouteView(props: { readonly route: ModelRoute }) {
 }
 
 function ResourceView(props: { readonly resource: ModelResource }) {
-  const { snapshot, model, select } = useStudio();
+  const { snapshot, model, select, index } = useStudio();
   const { resource } = props;
   if (resource.clientEnvironment) return <ClientEnvironmentFileView key={resource.id} resource={resource} />;
   if (resource.deploymentFile) return <EnvironmentFileView key={resource.id} resource={resource} />;
@@ -318,7 +322,11 @@ function ResourceView(props: { readonly resource: ModelResource }) {
   const root = resource.path[0]!;
   const links = snapshot.source.links[resource.path.join(".")] ?? snapshot.source.links[root] ?? [];
   const kind =
-    resource.frameworkStack ? "Framework stack" : resource.kind === "stack" ? "Stack in the catalog" : resource.kind === "member" ? "Stack member" : resource.kind === "secret" ? "Authored secret" : resource.kind === "input" ? "Authored input" : resource.kind === "group" ? "Group of inputs" : "Construct";
+    resource.frameworkStack ? "Framework stack" : resource.kind === "stack" ? "Stack in the catalog" : resource.kind === "member" ? "Stack member" : resource.kind === "secret" ? "Authored secret" : resource.kind === "input" ? "Authored input" : resource.kind === "group" ? "Input group" : "Construct";
+  const group = resource.kind === "group";
+  const entity = snapshot.source.entities[resource.id];
+  // An entry inside a group names it, as a stack field names its stack.
+  const owningGroup = resource.kind === "input" || resource.kind === "secret" ? inputGroupOf(resource, index.resources) : undefined;
   const database = [snapshot.models.dev, snapshot.models.prod].some((model) => model.edges.some((edge) => edge.relation === "database" && (edge.to === resource.id || edge.to.startsWith(`${resource.id}.`))));
   const manual = snapshot.source.cdkLinks.manualWiring.filter((item) => item.resource === resource.id || item.resource.startsWith(`${resource.id}.`) || item.resource === resource.parent);
   return (
@@ -327,6 +335,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         <span className="kind">{kind}</span>
         <h2><EntityIcon icon={resourceIcon(resource)} />{resource.kind === "stack" ? resource.stackClass ?? resource.path.join(".") : resource.path.at(-1)}</h2>
         <ResourceStatus resource={resource} />
+        {resource.kind === "input" || resource.kind === "secret" ? <EnvironmentPills availability={catalogAvailability(snapshot.models)[resource.id] ?? { dev: false, prod: false }} label="Declaration environments" descriptions={{ dev: "declared in development", prod: "declared in production" }} unavailableDescription="not declared" /> : null}
         {resource.frameworkStack || resource.stackUsage?.status === "unreferenced" || resource.frameworkManaged ? <details className="header-details"><summary>About this resource</summary>
         {resource.frameworkStack ? <p className="small muted">No <code>resource.stack&lt;{resource.stackClass}&gt;()</code> entry in <code>framework-config/resources.ts</code>. Declare and link one if workloads should reference this stack's public fields.</p> : null}
         {resource.stackUsage?.status === "unreferenced" ? <p className="small muted">Declared in the catalog, with no constructor reference in the CDK app's runtime imports. Add it to the app to include it in synthesis.</p> : null}
@@ -334,9 +343,12 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         </details> : null}
         {resource.kind !== "stack" ? <code className="ref">resources.{resource.path.join(".")}</code> : null}
         {resource.typeText ? <code className="ref">{resource.typeText}</code> : null}
-        <Written location={snapshot.source.entities[resource.id]?.key} label={resource.frameworkStack ? "Class in" : resource.kind === "member" ? "Declared on the stack in" : "Written in"} />
+        {owningGroup ? <p className="small muted">In input group <button className="linkish" onClick={() => select(owningGroup.id)}>{owningGroup.path.join(".")}</button></p> : null}
+        {/* A group is declared as an object in its module and composed into the catalog by name. */}
+        {group && entity?.value && entity.value.file !== entity.key.file ? <><Written location={entity.value} label="Declared in" /><Written location={entity.key} label="Added to the catalog in" /></>
+          : <Written location={entity?.key} label={resource.frameworkStack ? "Class in" : resource.kind === "member" ? "Declared on the stack in" : "Written in"} />}
       </header>
-      <Tags entity={resource.id} />
+      {group ? <InputGroupTags group={resource} /> : <Tags entity={resource.id} />}
       <ResourceDeployment resource={resource} />
       {members.some(member => member.id === model.managedDatabase?.resource) ? <InspectorSection title="Application database"><button className="button" onClick={() => select(model.managedDatabase!.resource)}>Configure application PostgreSQL</button><p className="small muted">One database declaration coordinates production RDS and local PostgreSQL.</p></InspectorSection> : null}
       <Description entity={resource.id} />
@@ -347,7 +359,9 @@ function ResourceView(props: { readonly resource: ModelResource }) {
       </li>)}</ul></InspectorDisclosure> : null}
       {database ? <section><SchemaLink /><p className="small muted">The application contract is shared with local PostgreSQL.</p></section> : null}
       {resource.absent || (resource.kind === "member" && resource.memberSource === "class") || (facts?.stackClass && !resource.frameworkStack) || (facts?.stackLocation && !resource.frameworkStack) || links.length ? <InspectorDisclosure title="Declaration details">
-        {resource.absent && resource.frameworkStack ? <p>Not enabled in the {model.mode === "dev" ? "development" : "production"} environment.</p> : resource.absent ? (
+        {resource.absent && resource.frameworkStack ? <p>Not enabled in the {model.mode === "dev" ? "development" : "production"} environment.</p> : resource.absent && group ? (
+          <p>Every entry in this group is declared undefined in the {model.mode === "dev" ? "development" : "production"} graph, so nothing that reads them sees a value.</p>
+        ) : resource.absent ? (
           <p>
             Absent in the {model.mode === "dev" ? "development" : "production"} graph
             {facts?.condition ? <>, because the catalog writes it under <code>{facts.condition}</code></> : ""}. Anything that reads it never sees the value.
@@ -360,6 +374,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
           <Written key={`${link.file}:${link.line}`} location={link} label="Linked in" />
         ))}
       </InspectorDisclosure> : null}
+      {group ? <><InputGroupEntries group={resource} /><InputGroupUse group={resource} /><InputGroupSources group={resource} /></> : null}
       {resource.kind === "stack" && members.length ? <InspectorDisclosure title="Public fields" count={members.length} defaultOpen className="stack-members"><ul className="relations">{members.map((member) => <li key={member.id}><button className="linkish" onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className="small muted" title={member.typeText ?? member.kind}>{member.typeText ?? member.kind}</code></li>)}</ul><p className="small muted section-footnote">Declared by the stack class.</p></InspectorDisclosure> : null}
       <ResourceAccess key={`access:${resource.id}`} resource={resource} />
       {resource.kind === "member" ? <Triggers key={resource.id} resource={resource} /> : null}
@@ -374,7 +389,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
 function LocalDatabaseView({ database }: { readonly database: LocalDatabase }) {
   return <>
     <header><span className="kind">Local development service</span><h2><EntityIcon icon="postgres" />{database.title}</h2><code className="ref">{database.service} · {database.image}</code><Written location={database.source} /></header>
-    <DeploymentSection availability={{ dev: database.enabled, prod: false }} locations={{ dev: "On your machine" }}><DeploymentOwnerControl reason="Configured in Docker Compose; start and stop this service through Deploy & Run. Container health and running state are separate from source availability." /></DeploymentSection>
+    <DeploymentSection availability={{ dev: database.enabled, prod: false }} locations={{ dev: "On your machine" }}><DeploymentOwnership reason="Configured in Docker Compose; start and stop this service through Deploy & Run. Container health and running state are separate from source availability." /></DeploymentSection>
     <Description entity={database.id} />
     <section><SchemaLink /><p className="small muted">Shares the application contract with production RDS.</p></section>
     {database.volumes.length ? <section><h3>Persistent storage</h3>{database.volumes.map((volume) => <p key={volume}><code>{volume}</code></p>)}</section> : null}
@@ -390,7 +405,7 @@ function NetworkFixtureView({ id }: { readonly id: string }) {
   const inProduction = !!production.networks?.find(network => id.startsWith(`prop:vpc:${network.id}:`))?.builtInProd && buildScene(production).props.some((prop) => prop.id === id);
   return <>
     <header><span className="kind">Network fixture</span><h2><EntityIcon icon={fixture.icon} />{fixture.label}</h2><code className="ref">{id}</code><Written location={snapshot.source.entities[`island:vpc:${model.networks?.find(network => id.startsWith(`prop:vpc:${network.id}:`))?.id}`]?.value} /></header>
-    <DeploymentSection availability={{ dev: false, prod: inProduction }} locations={{ prod: "In AWS" }}><DeploymentOwnerControl reason="This component is created by its production VPC. Configure the owning network instead of deploying the component independently." owners={(model.networks ?? []).filter(network => id.startsWith(`prop:vpc:${network.id}:`)).map(network => ({ id: `island:vpc:${network.id}`, title: network.name ?? network.id }))} /></DeploymentSection>
+    <DeploymentSection availability={{ dev: false, prod: inProduction }} locations={{ prod: "In AWS" }}><DeploymentOwnership reason="This component is created by its production VPC. Configure the owning network instead of deploying the component independently." owners={(model.networks ?? []).filter(network => id.startsWith(`prop:vpc:${network.id}:`)).map(network => ({ id: `island:vpc:${network.id}`, title: network.name ?? network.id }))} /></DeploymentSection>
     <Description entity={id} />
     <section>{fixture.caption.map((line) => <p key={line}>{line}</p>)}</section>
   </>;
