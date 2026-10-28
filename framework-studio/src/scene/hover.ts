@@ -42,12 +42,6 @@ export interface HoverEntry {
 
 const detailKey = (detail: HoverEntryDetail): string => JSON.stringify([detail.text, detail.kind, detail.tone]);
 
-/** One pair says the same as an identical pair on every row; rows keep their own only when they differ. */
-export function sharedAvailability(entries: readonly { readonly availability: Availability }[]): Availability | undefined {
-  const first = entries[0]?.availability;
-  return first && entries.every(entry => entry.availability.dev === first.dev && entry.availability.prod === first.prod) ? first : undefined;
-}
-
 /** "Dev" only distinguishes a fact from another environment that holds the same entry. */
 function qualified(detail: HoverEntryDetail, modes: readonly Mode[], held: readonly Mode[]): HoverEntryDetail {
   const { modes: _modes, ...rest } = detail;

@@ -1026,7 +1026,7 @@ a {
 .landscape-hover .landscape-hover-note { color: #a6b0bf; font-size: var(--text-caption); }
 .landscape-hover .hover-tag { min-height: 22px; padding: 2px 9px; }
 .landscape-hover .hover-tag.off { color: #a1acbb; border-color: #ffffff24; }
-/* Stacked metadata (From/To, Dev/Prod, member names) shares one compact ~20px row pitch. */
+/* Stacked metadata (From/To, Dev/Prod locations) shares one compact ~20px row pitch. */
 .landscape-hover-endpoints, .landscape-hover-locations { display: grid; gap: 2px; line-height: 1.4; }
 .landscape-hover-endpoints > div, .landscape-hover-locations > div { display: grid; grid-template-columns: 34px minmax(0, 1fr); align-items: baseline; gap: var(--space-2); }
 .landscape-hover dt { color: #9ba8b8; font-size: var(--text-caption); font-weight: 500; }
@@ -1043,12 +1043,6 @@ a {
 .landscape-hover-entries > li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: var(--space-3); row-gap: var(--space-1); padding-block: var(--space-2); }
 .landscape-hover-entries:last-child > li:last-child { padding-bottom: 0; }
 .landscape-hover-entries > li + li { border-top: 1px solid #ffffff0d; }
-/* Without per-row pills the members read as one list beneath the title's pair. */
-.landscape-hover-entries.names-only { padding-block: var(--space-2); }
-.landscape-hover-entries.names-only:last-child { padding-bottom: 0; }
-.landscape-hover-entries.names-only > li { grid-template-columns: minmax(0, 1fr); padding-block: 1px; line-height: 1.4; }
-.landscape-hover-entries.names-only .landscape-hover-entry-name { padding-top: 0; }
-.landscape-hover-entries.names-only > li + li { border-top: 0; }
 .landscape-hover-entry-name { min-width: 0; padding-top: 1px; overflow-wrap: anywhere; color: #dfe5ed; }
 .landscape-hover-entry-note, .landscape-hover-entries .landscape-hover-details { grid-column: 1 / -1; }
 .landscape-hover-details, .landscape-hover-copy, .landscape-hover-warnings { display: grid; min-width: 0; gap: var(--space-2); }

@@ -119,7 +119,7 @@ test("endpoint identity differences show both environment-qualified names and ca
   assert.equal(memberRows(document).length, 0);
 });
 
-test("repeated defaults have one shared sentence while the title's pair describes the file's supply of every member", () => {
+test("repeated defaults have one shared sentence while supply pills beside each member describe the file", () => {
   const inputs = ["devOnly", "shared", "prodOnly", "disabled"].map(id => edge("supplies", id, { inputRequirement: requirement("default") }));
   const pair = fixture(inputs, inputs);
   const { document } = tooltip(pair, pair.connection, true);
@@ -127,11 +127,11 @@ test("repeated defaults have one shared sentence while the title's pair describe
   assert.equal(copy.split("Every input uses its declaration default.").length - 1, 1);
   assert.ok(!copy.includes("Applies to every entry"), "the sentence names its scope without a separate label");
   assert.ok(memberRows(document).every(row => !row.textContent?.includes("declaration default")), "the common note is outside individual rows");
-  assert.ok(memberRows(document).every(row => !row.querySelector(".environment-pills")), "identical member pairs collapse into the title's pair");
-  assert.deepEqual(pillCopy(document.querySelector(".landscape-hover-tags")!), ["Dev: supplied by this file in development", "Prod: supplied by this file in production"]);
+  for (const row of memberRows(document)) assert.deepEqual(pillCopy(row), ["Dev: supplied by this file in development", "Prod: supplied by this file in production"]);
+  assert.equal(document.querySelector(".landscape-hover-tags"), null, "an aggregation's title carries no pair");
 });
 
-test("members that share one availability take a single pair beside the title; differing members keep their own", () => {
+test("every member keeps its own pair beside its name, even when all members share one availability", () => {
   for (const availability of [{ dev: true, prod: true }, { dev: true, prod: false }, { dev: false, prod: false }]) {
     const members = ["first", "second", "third"].map(id => edge("env", id, { to: "resource:settings.shared", label: `VALUE_${id}` }));
     const pair = fixture(availability.dev ? members : [], availability.prod ? members : [], {});
@@ -139,12 +139,11 @@ test("members that share one availability take a single pair beside the title; d
     const connection = availability.dev ? pair.connection : { ...both.connection, members: both.connection.members.map(member => ({ ...member, availability })) };
     const { document } = tooltip(availability.dev ? pair : both, connection);
     assert.equal(memberRows(document).length, 3);
-    assert.ok(document.querySelector('ul.names-only[aria-label="Connection members"]'), JSON.stringify(availability));
-    assert.equal(document.querySelectorAll(".environment-pills").length, 1, JSON.stringify(availability));
-    assert.deepEqual(pillCopy(document.querySelector(".landscape-hover-heading")!), [
+    assert.equal(document.querySelector(".landscape-hover-heading .environment-pills"), null, JSON.stringify(availability));
+    for (const row of memberRows(document)) assert.deepEqual(pillCopy(row), [
       availability.dev ? "Dev: connection enabled in development" : "Dev: connection not enabled",
       availability.prod ? "Prod: connection enabled in production" : "Prod: connection not enabled",
-    ]);
+    ], JSON.stringify(availability));
   }
 });
 
@@ -213,8 +212,7 @@ test("long identifiers and all forty members remain present with warnings beyond
   assert.ok(rows[0]?.textContent?.includes(identifier), "no identifier characters are removed from accessible content");
   assert.ok(rows.at(-1)?.textContent?.includes("SETTING_39"));
   assert.ok(rows.at(-1)?.textContent?.includes("Required value missing."));
-  assert.equal(rows.reduce((count, row) => count + row.querySelectorAll(".environment-pills").length, 0), 0, "forty identical pairs collapse into the title's pair");
-  assert.equal(document.querySelectorAll(".landscape-hover-heading .environment-pills").length, 1);
+  assert.equal(rows.reduce((count, row) => count + row.querySelectorAll(".environment-pills").length, 0), 40);
 });
 
 test("resource content retains descriptions, execution locations, source warnings and honest declaration language", () => {

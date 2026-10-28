@@ -146,9 +146,8 @@ events) always stay in the title. Deploy conditions read `Deploys when <input> e
 Same-type bundles name their shared purpose and count. `presentConnectionHover` reads both
 graphs independently and retains every member, including other-environment-only evidence;
 its structured hover rows do not use the compact label API's four-member preview limit.
-When every member of an aggregation shares one availability, `sharedAvailability` puts that
-single pair beside the title and the rows list names only; otherwise each member keeps its
-own Dev and Prod pills and the title has none. Individual resources and single connections
+Every aggregation puts Dev and Prod pills beside each member, even when all members share
+one availability, and omits the aggregate pair. Individual resources and single connections
 keep their pair at the title's top right.
 Framework ownership reuses the Inspector's outlined Framework managed badge and lock
 icon on a separate left-aligned line beneath the resource type; the type omits a
@@ -253,9 +252,8 @@ stack. `src/input-groups.ts` reads a group through its entries for the hover fac
 (per-graph entry counts, readers, mappings, missing required names) and the group inspector.
 Group hovers replace the prose name list with entry rows. Pills describe declaration
 availability across both graphs, including nested and other-environment-only entries; they
-do not claim that a value is set or deployed. When every entry shares its availability the
-pair sits beside the group's title, as on other resources; otherwise each row has its own.
-An undeclared entry is shown by its unlit pill and no sentence.
+do not claim that a value is set or deployed. Every row has its own pair and the group's
+title has none. An undeclared entry is shown by its unlit pill and no sentence.
 `groupHoverEntries` retains both modes' exceptional status details; `groupHoverDetails`
 hoists common default, optional or unknown states once, counting only the entries each
 graph declares. Missing required notices
