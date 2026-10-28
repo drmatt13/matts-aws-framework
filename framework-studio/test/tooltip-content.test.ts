@@ -101,6 +101,24 @@ test("single connections keep one environment pair and separate endpoint names f
   }
 });
 
+test("endpoint identity differences show both environment-qualified names and catalog types", () => {
+  const resource: ModelResource = { id: "resource:setting", path: ["setting"], kind: "input", absent: false };
+  const binding = edge("env", "setting", { to: resource.id, label: "SETTING" });
+  const pair = fixture([binding], [binding], {
+    dev: { targets: [{ ...caller, title: "/preview/graphql" }], resources: [resource] },
+    prod: { targets: [{ ...caller, title: "/graphql" }], resources: [{ ...resource, kind: "secret" }] },
+  });
+  const { document } = tooltip(pair);
+  const endpoints = [...document.querySelectorAll("dl > div")];
+  const identities = (endpoint: Element) => [...endpoint.querySelector("dd")!.children].map(variant => [
+    variant.children[0]?.textContent, variant.children[1]?.textContent,
+  ]);
+  assert.deepEqual(identities(endpoints[0]!), [["Dev", "/preview/graphql HTTP Lambda"], ["Prod", "/graphql HTTP Lambda"]]);
+  assert.deepEqual(identities(endpoints[1]!), [["Dev", "setting Input"], ["Prod", "setting Secret"]]);
+  assert.equal(pillCopy(document.body).length, 2, "endpoint qualifiers do not duplicate the single relationship's environment pair");
+  assert.equal(memberRows(document).length, 0);
+});
+
 test("repeated defaults have one shared explanation while supply pills describe the file", () => {
   const inputs = ["devOnly", "shared", "prodOnly", "disabled"].map(id => edge("supplies", id, { inputRequirement: requirement("default") }));
   const pair = fixture(inputs, inputs);

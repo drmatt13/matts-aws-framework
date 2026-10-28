@@ -963,6 +963,8 @@ a {
 }
 .landscape-hover-content { display: grid; min-width: 0; gap: var(--space-3); }
 .landscape-hover-heading { display: grid; min-width: 0; gap: var(--space-2); }
+.single-connection-heading { grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: var(--space-3); }
+.single-connection-heading .landscape-hover-tags { padding-top: 1px; }
 .landscape-hover p, .landscape-hover dl { margin: 0; }
 .landscape-hover-subtitle, .landscape-hover-endpoint-kind { color: #9ba8b8; font-size: var(--text-caption); }
 
@@ -1023,6 +1025,7 @@ a {
 .landscape-hover dt { color: #9ba8b8; font-size: var(--text-caption); font-weight: 500; }
 .landscape-hover dd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px var(--space-2); min-width: 0; margin: 0; }
 .landscape-hover-endpoint-name { min-width: 0; overflow-wrap: anywhere; color: #dfe5ed; }
+.landscape-hover-endpoint-variant { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: var(--space-1); width: 100%; }
 .landscape-hover-locations { font-size: var(--text-caption); }
 .landscape-hover .dev { --hover-mode-color: #78d1ce; }
 .landscape-hover .prod { --hover-mode-color: #b7a8ff; }

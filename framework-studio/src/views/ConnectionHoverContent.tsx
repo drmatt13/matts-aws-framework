@@ -17,11 +17,14 @@ export function ConnectionHoverContent({ connection }: { readonly connection: Co
 /** Pure content also supports exhaustive presentation fixtures without source evaluation. */
 export function ConnectionTooltipContent({ content, supply = false }: { readonly content: ConnectionHoverPresentation; readonly supply?: boolean }) {
   return <div className="landscape-hover-content connection-hover-content">
-    <div className="landscape-hover-heading"><strong>{content.title}</strong>
+    <div className={`landscape-hover-heading${content.aggregated ? "" : " single-connection-heading"}`}><strong>{content.title}</strong>
       {!content.aggregated ? <span className="landscape-hover-tags"><EnvironmentPills availability={content.availability} unavailableDescription="connection not enabled" /></span> : null}
     </div>
     <dl className="landscape-hover-endpoints">{([['From', content.from], ['To', content.to]] as const).map(([direction, endpoint]) => <div key={direction}>
-      <dt>{direction}</dt><dd><span className="landscape-hover-endpoint-name">{endpoint.label}</span><span className="landscape-hover-endpoint-kind">{endpoint.kind}</span></dd>
+      <dt>{direction}</dt><dd>{endpoint.variants ? endpoint.variants.map(variant => <div className="landscape-hover-endpoint-variant" key={variant.mode}>
+        <span className={`landscape-hover-detail-mode ${variant.mode}`}>{variant.mode === "dev" ? "Dev" : "Prod"}</span>
+        <span><span className="landscape-hover-endpoint-name">{variant.label}</span>{" "}<span className="landscape-hover-endpoint-kind">{variant.kind}</span></span>
+      </div>) : <><span className="landscape-hover-endpoint-name">{endpoint.label}</span><span className="landscape-hover-endpoint-kind">{endpoint.kind}</span></>}</dd>
     </div>)}</dl>
     {content.aggregated ? <HoverEntries entries={content.rows} context={supply ? "supply" : "connection"} label="Connection members" /> : null}
     <HoverDetails details={content.details} shared={content.aggregated && content.details.length > 0} />

@@ -37,7 +37,9 @@ callbacks, WebSocket management, containment, CDK references and deployment cond
 
 1. Lead with the resource name or the connection's action and relevant value.
    Resource type is supporting text. Keep a single connection's environment pair
-   near its title; aggregated connections and input groups use row-level pairs.
+   at the top right beside its title; aggregated connections and input groups use
+   row-level pairs. Physical gateways and stacks retain their own resource pair;
+   their full route/field inventories belong in the Inspector.
 2. Render **From** and **To** as aligned metadata labels with separate endpoint
    names and kinds. Long names wrap without pushing a pill outside the card.
 3. Retain all original members, including ones present only in the other graph.
@@ -48,7 +50,8 @@ callbacks, WebSocket management, containment, CDK references and deployment cond
    relationship with enabled endpoints. A lit pill does not mean a value is set
    or that AWS has been deployed.
 5. Keep each mode's label, requirement, condition and permission attached to that
-   mode. Shared facts appear once; mode-specific exceptions remain qualified.
+   mode, including endpoint names and resource types that differ between graphs.
+   Shared facts appear once; mode-specific exceptions remain qualified.
    Missing required values name the affected variable/file and receive warning
    emphasis. Normal configured values need no status sentence.
 6. Present permissions after operational information, in a labeled secondary
@@ -80,7 +83,8 @@ The intended interaction is dismissal with Escape without changing selection or
 moving focus, pointer movement into the preview without losing it, and enough
 time to read while its trigger or card remains active. Resources keyboard focus
 opens immediately; pointer entry has a brief delay to avoid flashing cards while
-scanning. Touch opens inspection. Filtering away a trigger, closing its panel or
+scanning. Page Up and Page Down scroll an overflowing map preview while retaining
+the keyboard trigger's focus. Touch opens inspection. Filtering away a trigger, closing its panel or
 invalidating its source removes stale previews. These decisions follow the
 dismissible, hoverable and persistent rationale in
 [W3C's explanation of WCAG 1.4.13](https://www.w3.org/WAI/WCAG22/Understanding/content-on-hover-or-focus.html).
@@ -102,10 +106,24 @@ This audit is not a WCAG conformance assessment.
 
 ## Validation record
 
-- Group hover unit checks: **18 passed** during this audit.
-- Combined presentation, placement and interaction checks: **pending** final coordinated run.
-- Studio build/typecheck and repository verification: **pending** final coordinated run.
-- Live desktop/mobile, keyboard, scrolling, visual-viewport and console/network checks:
-  **pending**. Record actual viewports and scenarios after execution.
+- Presentation/group/placement checks: **61 passed** across the focused suites;
+  map and resource-browser interaction checks: **75 passed**.
+- Studio build and typecheck passed. Repository `npm run verify` completed its
+  artifact/typecheck gates but the broader Studio suite reported **9 failures**
+  outside tooltip presentation: assertion formatting, graph/model expectations,
+  and source-edit/generator failures. The Studio suite had 1,009 passes and two skips.
+- Playwright inspected all **66 connections** at **1280×720**, **390×844**, and
+  **320×640**, including all 18 aggregations; member counts, individual environment
+  pills, viewport bounds and horizontal overflow checks passed. The Production
+  source was checked at 390×844, along with all **69 resource/island/fixture previews**.
+- Browser fixtures covered 40 members, a long identifier, mixed environments and a
+  warning on the final row; contained scrolling reached the warning. Light/dark
+  themes and forced colors were inspected, including dashed omitted-pill borders.
+  Pointer crossing/persistence and Escape were exercised on the map at 1440×1000.
+  After the header refinement, all **48 single connections** kept their pills at
+  the top right at both desktop and 320px widths without horizontal overflow.
+- Chrome DevTools independently checked all 66 connection previews: 400px preferred
+  width, 16px padding and 12px content gaps matched the intended layout. Its app
+  session had no console errors/warnings or failed observed API requests.
 - Live AWS, deployed IAM and database operations are outside this UI audit.
 
