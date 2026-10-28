@@ -322,7 +322,7 @@ test("shared declaration defaults are explained once while different environment
   const { connection, indexes } = hoverPair(defaults, defaults);
   const common = presentConnectionHover(connection, indexes);
   assert.deepEqual(common.rows.map(row => row.label), ["first", "second", "third"]);
-  assert.deepEqual(common.details, [{ text: "Uses the declaration default.", kind: "detail" }]);
+  assert.deepEqual(common.details, [{ text: "Every input uses its declaration default.", kind: "detail" }], "a fact every member shares reads as one sentence about all of them");
   assert.ok(common.rows.every(row => row.details.length === 0));
   const production = defaults.map((edge, at) => at === 1 ? { ...edge, inputRequirement: requirement("missing", { mode: "prod" }) } : edge);
   const mixed = hoverPair(defaults, production);
@@ -366,10 +366,51 @@ test("conditional facts resolve against each environment's own target rather tha
   const connection = aggregateConnections(dev, [prod])[0]!;
   const result = presentConnectionHover(connection, { dev: indexModel(dev), prod: indexModel(prod) });
   assert.deepEqual(result.details, [
-    { text: 'Matches "preview".', kind: "detail", modes: ["dev"] },
-    { text: 'Matches "released".', kind: "detail", modes: ["prod"] },
+    { text: 'Deploys when features.enabled equals "preview".', kind: "detail", modes: ["dev"] },
+    { text: 'Deploys when features.enabled equals "released".', kind: "detail", modes: ["prod"] },
   ]);
   assert.deepEqual(result.to, { id: target("released").ref, kind: "Workflow", label: "reports" });
+  assert.equal(result.title, "Controls deployment", "From already names the input that $features.enabled would repeat");
+});
+
+test("a single connection's title keeps its verb rather than repeating an endpoint the From and To rows name", () => {
+  const expected: readonly (readonly [Relation, string])[] = [
+    ["usesTool", "Calls tool"], ["runsTask", "Runs task"], ["startsWorkflow", "Starts workflow"], ["database", "Connects to database"],
+    ["manageConnections", "Sends replies"], ["contains", "Contains"], ["grant", "Grants access"], ["localReplay", "Local replay"],
+    // Authored labels are information even when they match a name.
+    ["routes", "Routes to: data"], ["env", "Reads: data"],
+  ];
+  for (const [relation, title] of expected) {
+    const current = edge(relation, { from: "resource:caller", to: "resource:data", label: "data" });
+    const { connection, indexes } = hoverPair([current], [current]);
+    assert.equal(presentConnectionHover(connection, indexes).title, title, relation);
+  }
+  const integration = edge("integration", { from: "resource:caller", to: "resource:data", permissionContext: { kind: "integration", service: "queue", operations: ["send"] } });
+  const queue = hoverPair([integration], [integration]);
+  assert.equal(presentConnectionHover(queue.connection, queue.indexes).title, "Sends messages", "a trailing preposition goes with its object");
+  const field = edge("usesTool", { from: "resource:caller", to: "resource:data", label: "data" });
+  const named = hoverPair([{ ...field, to: "resource:data.first" }], [{ ...field, to: "resource:data.first" }]);
+  assert.equal(presentConnectionHover(named.connection, named.indexes).title, "Calls tool: data.first", "a field folded into its stack keeps the name To does not show");
+});
+
+test("a fact about the only environment that holds a connection is not qualified by it", () => {
+  const resources: readonly ModelResource[] = [
+    { id: "resource:caller", path: ["caller"], kind: "construct", absent: false },
+    { id: "resource:rds", path: ["rds"], kind: "stack", frameworkManaged: "database", absent: false },
+    // A network-placed member stands on its subnet rather than folding into its stack.
+    { id: "resource:rds.database", path: ["rds", "database"], kind: "member", parent: "resource:rds", frameworkManaged: "database", networkId: "application", networkPlacement: "isolated", absent: false },
+  ];
+  const connects = edge("database", { from: "resource:caller", to: "resource:rds.database", authorization: { kind: "iam", operation: "Connect", state: "planned", notes: [], grants: [{ principal: "Lambda role", policy: "Identity policy", actions: ["rds-db:connect"], scope: "database" }] } });
+  const production = hoverPair([], [connects], resources);
+  const result = presentConnectionHover(production.connection, production.indexes);
+  assert.deepEqual(result.details, [
+    { text: "Framework supplies connection settings, private networking and IAM login.", kind: "detail" },
+    { text: "IAM: rds-db:connect", kind: "permission" },
+  ]);
+  const provides = edge("contains", { from: "resource:rds", to: "resource:rds.database" });
+  const stack = hoverPair([provides], [provides], resources);
+  const contained = presentConnectionHover(stack.connection, stack.indexes);
+  assert.deepEqual([contained.title, contained.from.kind, contained.to.kind], ["Provides database", "Stack", "Database"], "the database's stack is a stack");
 });
 
 test("stable endpoint ids preserve differing target titles and catalog kinds across environments", () => {

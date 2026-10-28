@@ -6,7 +6,7 @@ import type { Mode, ModeModel, ModelResource, Snapshot } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
 import { catalogAvailability } from "../src/deployment";
 import { indexModel } from "../src/lookup";
-import { buildScene, type Scene } from "../src/scene/build";
+import { buildScene, kindText, type Scene } from "../src/scene/build";
 import { groupHoverDetails, groupHoverEntries, groupHoverLines, nodeHoverFacts, propHoverFacts, type HoverFacts } from "../src/scene/hover";
 
 /**
@@ -124,6 +124,27 @@ test("an input or input group lights every environment whose graph declares it",
   assert.ok(modelProvider.places.length > 0, "a declared input is no longer shown as deployed nowhere");
 });
 
+test("a type line never repeats the name above it, and names the catalog entry a stack's class name hides", () => {
+  for (const mode of ["dev", "prod"] as const) {
+    const scene = sceneOf(mode);
+    for (const node of scene.nodes) assert.notEqual(node.kindLabel.split(", ").slice(1).join(", "), node.label, `${mode} ${node.id}`);
+    const type = (id: string) => { const node = scene.nodes.find(candidate => candidate.id === id)!; return kindText(node.kindLabel, node.label); };
+    assert.equal(type("resource:rds"), "Stack · resources.rds");
+    assert.equal(type("resource:cognito"), "Stack · resources.cognito");
+    assert.equal(type("framework-stack:DevLambdaReplayStack"), "Stack", "a framework stack has no catalog entry to name");
+    assert.equal(type("resource:rds.database"), "Framework-managed Amazon RDS · resources.rds.database");
+    assert.equal(type("resource:openaiApiKey"), "Secret · OPENAI_API_KEY");
+    // The same fixtures stand in every VPC under the same names; the type line tells them apart.
+    for (const prop of scene.props) {
+      const network = snapshot.models[mode].networks!.find(candidate => prop.id.startsWith(`prop:vpc:${candidate.id}:`))!;
+      const vpc = `${network.name ?? network.id} VPC`;
+      const endpoint = prop.id.split(":endpoint:")[1];
+      assert.equal(kindText(prop.kindLabel ?? ""), endpoint ? `${network.gatewayEndpoints.includes(endpoint) ? "Gateway" : "Interface"} endpoint · ${vpc}` : vpc, prop.id);
+    }
+    assert.ok(scene.props.some(prop => prop.id.includes(":endpoint:")), "the sweep reaches an endpoint");
+  }
+});
+
 test("an input group's hover counts its entries per graph and names what reads them and what they feed", () => {
   assert.deepEqual(factsOf("resource:langgraph"), { places: [{ env: "dev", where: "4 inputs · cdk-app/.env.dev" }, { env: "prod", where: "4 inputs · cdk-app/.env.prod" }], frameworkManaged: false });
   assert.deepEqual(factsOf("resource:client").places, [{ env: "dev", where: "4 inputs · cdk-app/.env.dev" }], "development-only URLs light only Dev");
@@ -146,9 +167,9 @@ test("group hover entries keep individual availability across mixed and nested d
   const entries = groupHoverEntries(group, indexes({ dev, prod: { ...prod, resources: [...prod.resources, prodOnly] } }));
   assert.deepEqual(entries.find(entry => entry.label === "modelProvider")?.availability, { dev: true, prod: false });
   assert.deepEqual(entries.find(entry => entry.label === "openaiModelId")?.availability, { dev: true, prod: true });
+  // Its unlit Dev pill says it is undeclared there, so its only status needs no environment qualifier.
   assert.deepEqual(entries.at(-1), { id: prodOnly.id, label: "nested.key", availability: { dev: false, prod: true }, details: [
-    { text: "Not declared.", kind: "detail", modes: ["dev"] },
-    { text: "Value status unavailable.", kind: "detail", modes: ["prod"] },
+    { text: "Value status unavailable.", kind: "detail" },
   ] });
   assert.deepEqual(groupHoverEntries(group, indexes({ dev: { ...dev, resources: [] }, prod: { ...prod, resources: [] } })), []);
 });
@@ -181,7 +202,7 @@ test("group statuses retain differences across both environments without project
     { text: "Value status unavailable.", kind: "detail", modes: ["prod"] },
   ]);
   assert.deepEqual(entries.find(entry => entry.label === "optional")?.details, [{ text: "Not set · optional.", kind: "detail", modes: ["dev"] }]);
-  assert.deepEqual(entries.find(entry => entry.label === "nested.secret"), { id: "resource:settings.nested.secret", label: "nested.secret", availability: { dev: false, prod: true }, details: [{ text: "Not declared.", kind: "detail", modes: ["dev"] }] });
+  assert.deepEqual(entries.find(entry => entry.label === "nested.secret"), { id: "resource:settings.nested.secret", label: "nested.secret", availability: { dev: false, prod: true } }, "absence is the unlit pill, not a repeated sentence");
   assert.deepEqual(groupHoverDetails(groupFixture, index), []);
   assert.doesNotMatch(JSON.stringify(entries), /DEFAULT_VALUE_MUST_NEVER|PRIVATE_REQUIREMENT_REASON/);
 });
@@ -191,7 +212,7 @@ test("shared group statuses appear once while environment-specific exceptions st
     [inputFixture("first", "dev", "default"), inputFixture("second", "dev", "default")],
     [inputFixture("first", "prod", "default"), inputFixture("second", "prod", "missing")],
   );
-  assert.deepEqual(groupHoverDetails(groupFixture, index), [{ text: "All entries use declaration defaults.", kind: "detail", modes: ["dev"] }]);
+  assert.deepEqual(groupHoverDetails(groupFixture, index), [{ text: "Every entry uses its declaration default.", kind: "detail", modes: ["dev"] }]);
   const entries = groupHoverEntries(groupFixture, index);
   assert.deepEqual(entries[0]!.details, [{ text: "Uses the declaration default.", kind: "detail", modes: ["prod"] }]);
   assert.deepEqual(entries[1]!.details, [{ text: "Required value missing: SECOND · cdk-app/.env.prod", kind: "detail", tone: "warning", modes: ["prod"] }]);
@@ -200,19 +221,25 @@ test("shared group statuses appear once while environment-specific exceptions st
     [inputFixture("first", "prod", "default"), inputFixture("second", "prod", "default")],
   );
   assert.ok(groupHoverEntries(groupFixture, both).every(entry => !entry.details));
-  assert.deepEqual(groupHoverDetails(groupFixture, both), [{ text: "All entries use declaration defaults.", kind: "detail", modes: ["dev", "prod"] }]);
+  assert.deepEqual(groupHoverDetails(groupFixture, both), [{ text: "Every entry uses its declaration default.", kind: "detail" }], "a status every environment shares needs no qualifier");
+  const developmentOnly = groupIndexes([inputFixture("first", "dev", "default"), inputFixture("second", "dev", "optional")], []);
+  assert.deepEqual(groupHoverEntries(groupFixture, developmentOnly).map(entry => entry.details), [
+    [{ text: "Uses the declaration default.", kind: "detail" }],
+    [{ text: "Not set · optional.", kind: "detail" }],
+  ], "a single-environment group's statuses are not qualified by the only environment that declares it");
 });
 
 test("empty groups and shared unset, absent or unverified states stay explicit without repeated prose", () => {
   assert.deepEqual(groupHoverDetails(groupFixture, groupIndexes([], [])), []);
   const states = [
-    { status: "optional" as const, text: "All entries are unset and optional.", extra: {} },
-    { status: "unknown" as const, text: "Value status is unavailable for all entries.", extra: {} },
-    { status: "configured" as const, text: "No entries are declared.", extra: { absent: true } },
+    { status: "optional" as const, text: "Every entry is unset and optional.", extra: {} },
+    { status: "unknown" as const, text: "Value status is unavailable for every entry.", extra: {} },
+    // Unlit pills already say that no entry is declared.
+    { status: "configured" as const, text: undefined, extra: { absent: true } },
   ];
   for (const { status, text, extra } of states) {
     const index = groupIndexes([inputFixture("a", "dev", status, extra), inputFixture("b", "dev", status, extra)], [inputFixture("a", "prod", status, extra), inputFixture("b", "prod", status, extra)]);
-    assert.deepEqual(groupHoverDetails(groupFixture, index), [{ text, kind: "detail", modes: ["dev", "prod"] }]);
+    assert.deepEqual(groupHoverDetails(groupFixture, index), text ? [{ text, kind: "detail" }] : []);
     assert.ok(groupHoverEntries(groupFixture, index).every(entry => !entry.details));
   }
 });

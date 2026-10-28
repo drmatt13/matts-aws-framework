@@ -114,6 +114,13 @@ export interface SceneNode {
   readonly geometry: Shape;
 }
 
+/** "Stack member, ITable" reads as "Stack member · ITable"; an empty qualifier, or one that repeats the name, is dropped. */
+export function kindText(kindLabel: string, name?: string): string {
+  const [kind, ...qualifier] = kindLabel.split(", ");
+  const detail = qualifier.join(", ");
+  return detail && detail !== name ? `${kind} · ${detail}` : kind!;
+}
+
 /** Network fixtures use stable prop IDs for selection and authored descriptions. */
 export interface Prop {
   readonly tagFiltered?: true;
@@ -126,6 +133,8 @@ export interface Prop {
   readonly gy: number;
   readonly h: number;
   readonly label: string;
+  /** What it is and which VPC holds it, in the same "Kind, qualifier" form as a node's `kindLabel`. */
+  readonly kindLabel?: string;
   readonly caption: readonly string[];
   readonly geometry: Shape;
   /** Gateways and endpoints follow whether this graph builds their VPC. */
@@ -281,7 +290,8 @@ function resourceItem(resource: ModelResource, mode: Mode, availability?: Availa
   const name = resource.path[resource.path.length - 1]!;
   const kindLabel =
     resource.clientEnvironment ? "Client-app environment mappings" : resource.deploymentFile ? `CDK ${resource.deploymentFile.mode === "dev" ? "development" : "production"} environment file` : resource.kind === "stack"
-      ? `Stack, ${resource.stackClass ?? "stack"}`
+      // A stack stands under its class name, so the qualifier names its catalog entry instead.
+      ? resource.stackClass && !resource.frameworkStack ? `Stack, resources.${resource.path.join(".")}` : "Stack"
       : resource.kind === "member"
         ? `Stack member, ${resource.typeText ?? "unknown type"}`
         : resource.kind === "secret"
@@ -352,7 +362,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   const workflows: Item[] = [];
   for (const resource of model.resources) {
     if (resource.kind === "member" && resource.networkId && resource.networkPlacement) {
-      byVpc.get(resource.networkId!)?.[resource.networkPlacement].push({ ...catalogItem(resource), ...(resource.frameworkManaged === "database" ? { label: "RDS database", kindLabel: "Framework-managed Amazon RDS" } : {}) });
+      byVpc.get(resource.networkId!)?.[resource.networkPlacement].push({ ...catalogItem(resource), ...(resource.frameworkManaged === "database" ? { label: "RDS database", kindLabel: `Framework-managed Amazon RDS, resources.${resource.path.join(".")}` } : {}) });
     }
   }
   // The local database stands beside RDS, as its development counterpart: workloads bind to one or the other.
@@ -381,6 +391,8 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
     ...(model.networks ?? []).map((network): IslandSpec => {
       const vpc = byVpc.get(network.id)!;
       const captions = networkCaptions(network);
+      // Every VPC has the same fixtures under the same names; the qualifier tells them apart.
+      const inVpc = `${network.name ?? network.id} VPC`;
       const vpcBuilt = mode === "prod" && network.builtInProd;
       return {
       id: `island:vpc:${network.id}`,
@@ -404,7 +416,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
           h: VPC_HEIGHT,
           groups: [vpc.public],
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
-          props: [{ id: `prop:vpc:${network.id}:internet-gateway`, icon: "internetGateway", label: "Internet gateway", caption: ["IPv4 and IPv6 between the public subnets and the internet."], serves: [`band:vpc:${network.id}:public`] }],
+          props: [{ id: `prop:vpc:${network.id}:internet-gateway`, icon: "internetGateway", label: "Internet gateway", kindLabel: inVpc, caption: ["IPv4 and IPv6 between the public subnets and the internet."], serves: [`band:vpc:${network.id}:public`] }],
         },
         {
           id: `band:vpc:${network.id}:private`,
@@ -415,10 +427,10 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
           perColumn: Math.min(6, Math.max(2, vpc.public.length, vpc.private.length, vpc.isolated.length)),
           props: [
             ...(network?.egressOnlyInternetGateway
-              ? [{ id: `prop:vpc:${network.id}:egress-only-gateway`, icon: "internetGateway" as const, label: "Egress-only gateway", caption: ["IPv6 out of the private subnets, never in. Free."], serves: [`band:vpc:${network.id}:private`] }]
+              ? [{ id: `prop:vpc:${network.id}:egress-only-gateway`, icon: "internetGateway" as const, label: "Egress-only gateway", kindLabel: inVpc, caption: ["IPv6 out of the private subnets, never in. Free."], serves: [`band:vpc:${network.id}:private`] }]
               : []),
             ...(network?.natGateway
-              ? [{ id: `prop:vpc:${network.id}:nat-gateway`, icon: "natGateway" as const, label: "NAT gateway", caption: [`IPv4 out of the private subnets, about $${network.monthlyCost.natGateway.toFixed(2)} a month.`], serves: [`band:vpc:${network.id}:private`] }]
+              ? [{ id: `prop:vpc:${network.id}:nat-gateway`, icon: "natGateway" as const, label: "NAT gateway", kindLabel: inVpc, caption: [`IPv4 out of the private subnets, about $${network.monthlyCost.natGateway.toFixed(2)} a month.`], serves: [`band:vpc:${network.id}:private`] }]
               : []),
           ],
         },
@@ -435,6 +447,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
             roleIcon: endpointServiceIcon(endpoint),
             serviceIcon: endpointServiceDetails(endpoint).icon,
             label: `${endpoint} endpoint`,
+            kindLabel: `${network?.gatewayEndpoints.includes(endpoint) ? "Gateway" : "Interface"} endpoint, ${inVpc}`,
             caption: [
               network?.gatewayEndpoints.includes(endpoint)
                 ? `Gateway endpoint for ${endpoint}, on every route table. Free.`

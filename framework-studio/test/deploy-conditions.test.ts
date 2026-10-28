@@ -62,7 +62,7 @@ test("conditional Deploy source edits resolve both environments, preserve aliase
     assert.equal(condition.id, `deployWhen:${target.ref}:resource:flag`, "selection identity stays stable");
     const presentation = presentRelationship(condition, indexModel(snapshot.models.dev));
     assert.equal(presentation.title, "Conditional deployment: $flag");
-    assert.deepEqual(presentation.lines, ['Matches "enabled".']);
+    assert.deepEqual(presentation.lines, ['Deploys when flag equals "enabled".']);
     assert.ok(!JSON.stringify({ plan, snapshot }).includes("never-in-browser"));
     const current = (await builder.refresh()).snapshot;
     await assert.rejects(edits.planBatch([{ kind: "deploy", target: "lambda:conditional", value: { when: { resource: "resource:privateValue", equals: "anything" } } }], current.revision), /non-secret input/);

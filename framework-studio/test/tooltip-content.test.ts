@@ -119,16 +119,33 @@ test("endpoint identity differences show both environment-qualified names and ca
   assert.equal(memberRows(document).length, 0);
 });
 
-test("repeated defaults have one shared explanation while supply pills describe the file", () => {
+test("repeated defaults have one shared sentence while the title's pair describes the file's supply of every member", () => {
   const inputs = ["devOnly", "shared", "prodOnly", "disabled"].map(id => edge("supplies", id, { inputRequirement: requirement("default") }));
   const pair = fixture(inputs, inputs);
   const { document } = tooltip(pair, pair.connection, true);
   const copy = document.body.textContent ?? "";
-  assert.equal(copy.split("Uses the declaration default.").length - 1, 1);
-  assert.ok(copy.includes("Applies to every entry"));
-  assert.ok(memberRows(document).every(row => !row.textContent?.includes("Uses the declaration default.")), "the common note is outside individual rows");
-  assert.ok(pillCopy(memberRows(document)[0]!)[0]?.includes("supplied by this file in development"));
-  assert.ok(pillCopy(memberRows(document)[0]!)[1]?.includes("supplied by this file in production"));
+  assert.equal(copy.split("Every input uses its declaration default.").length - 1, 1);
+  assert.ok(!copy.includes("Applies to every entry"), "the sentence names its scope without a separate label");
+  assert.ok(memberRows(document).every(row => !row.textContent?.includes("declaration default")), "the common note is outside individual rows");
+  assert.ok(memberRows(document).every(row => !row.querySelector(".environment-pills")), "identical member pairs collapse into the title's pair");
+  assert.deepEqual(pillCopy(document.querySelector(".landscape-hover-tags")!), ["Dev: supplied by this file in development", "Prod: supplied by this file in production"]);
+});
+
+test("members that share one availability take a single pair beside the title; differing members keep their own", () => {
+  for (const availability of [{ dev: true, prod: true }, { dev: true, prod: false }, { dev: false, prod: false }]) {
+    const members = ["first", "second", "third"].map(id => edge("env", id, { to: "resource:settings.shared", label: `VALUE_${id}` }));
+    const pair = fixture(availability.dev ? members : [], availability.prod ? members : [], {});
+    const both = fixture(members, members);
+    const connection = availability.dev ? pair.connection : { ...both.connection, members: both.connection.members.map(member => ({ ...member, availability })) };
+    const { document } = tooltip(availability.dev ? pair : both, connection);
+    assert.equal(memberRows(document).length, 3);
+    assert.ok(document.querySelector('ul.names-only[aria-label="Connection members"]'), JSON.stringify(availability));
+    assert.equal(document.querySelectorAll(".environment-pills").length, 1, JSON.stringify(availability));
+    assert.deepEqual(pillCopy(document.querySelector(".landscape-hover-heading")!), [
+      availability.dev ? "Dev: connection enabled in development" : "Dev: connection not enabled",
+      availability.prod ? "Prod: connection enabled in production" : "Prod: connection not enabled",
+    ]);
+  }
 });
 
 test("mixed environment labels and missing requirements stay explicit beside permission metadata", () => {
@@ -152,8 +169,9 @@ test("conditional comparison literals remain qualified by their actual environme
   const pair = fixture([condition], [condition], { dev: { targets: [target("preview")] }, prod: { targets: [target("released")] } });
   const { document } = tooltip(pair);
   const facts = [...document.querySelectorAll("p")].map(fact => fact.textContent);
-  assert.ok(facts.includes('DevMatches "preview".'));
-  assert.ok(facts.includes('ProdMatches "released".'));
+  assert.ok(facts.includes('DevDeploys when settings.shared equals "preview".'));
+  assert.ok(facts.includes('ProdDeploys when settings.shared equals "released".'));
+  assert.equal(document.querySelector("strong")?.textContent, "Conditional deployment: $settings.shared", "a member folded into its stack keeps the field the From endpoint does not name");
 });
 
 test("native permission subtypes render their operational facts without exposing raw source", () => {
@@ -195,7 +213,8 @@ test("long identifiers and all forty members remain present with warnings beyond
   assert.ok(rows[0]?.textContent?.includes(identifier), "no identifier characters are removed from accessible content");
   assert.ok(rows.at(-1)?.textContent?.includes("SETTING_39"));
   assert.ok(rows.at(-1)?.textContent?.includes("Required value missing."));
-  assert.equal(rows.reduce((count, row) => count + row.querySelectorAll(".environment-pills").length, 0), 40);
+  assert.equal(rows.reduce((count, row) => count + row.querySelectorAll(".environment-pills").length, 0), 0, "forty identical pairs collapse into the title's pair");
+  assert.equal(document.querySelectorAll(".landscape-hover-heading .environment-pills").length, 1);
 });
 
 test("resource content retains descriptions, execution locations, source warnings and honest declaration language", () => {
@@ -225,11 +244,10 @@ test("resource content retains descriptions, execution locations, source warning
 });
 
 test("environment-qualified shared facts remain qualified and permission text has a separate label", () => {
-  const document = documentOf(createElement(HoverDetails, { shared: true, details: [
+  const document = documentOf(createElement(HoverDetails, { details: [
     { text: "Uses the declaration default.", kind: "detail", modes: ["dev"] },
     { text: "IAM: s3:GetObject", kind: "permission", modes: ["prod"] },
   ] }));
-  assert.ok(document.body.textContent?.includes("Applies to every entry"));
   const facts = [...document.querySelectorAll("p")].map(fact => fact.textContent);
   assert.deepEqual(facts, ["DevUses the declaration default.", "ProdPermissionss3:GetObject"]);
 });

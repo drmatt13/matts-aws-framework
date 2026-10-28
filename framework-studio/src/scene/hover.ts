@@ -42,10 +42,22 @@ export interface HoverEntry {
 
 const detailKey = (detail: HoverEntryDetail): string => JSON.stringify([detail.text, detail.kind, detail.tone]);
 
-/** A value's presence in one graph, without ever projecting the value or its default. */
+/** One pair says the same as an identical pair on every row; rows keep their own only when they differ. */
+export function sharedAvailability(entries: readonly { readonly availability: Availability }[]): Availability | undefined {
+  const first = entries[0]?.availability;
+  return first && entries.every(entry => entry.availability.dev === first.dev && entry.availability.prod === first.prod) ? first : undefined;
+}
+
+/** "Dev" only distinguishes a fact from another environment that holds the same entry. */
+function qualified(detail: HoverEntryDetail, modes: readonly Mode[], held: readonly Mode[]): HoverEntryDetail {
+  const { modes: _modes, ...rest } = detail;
+  return held.every(mode => modes.includes(mode)) ? rest : { ...rest, modes };
+}
+
+/** A value's presence in one graph, without ever projecting the value or its default. An absent entry's unlit pill already says so. */
 function groupEntryDetail(entry: ModelResource | undefined, mode: Mode, index: ModelIndex): HoverEntryDetail | undefined {
   const detail = (text: string, warning = false): HoverEntryDetail => ({ text, kind: "detail", ...(warning ? { tone: "warning" as const } : {}), modes: [mode] });
-  if (!entry || entry.absent) return detail("Not declared.");
+  if (!entry || entry.absent) return undefined;
   const requirement = entry.inputRequirement;
   switch (requirement?.status) {
     case "configured": return undefined;
@@ -82,11 +94,12 @@ function rawGroupHoverEntries(group: ModelResource, indexes: ModelIndexes): read
   });
 }
 
-/** Shared status belongs once below the list, rather than under every parameter name. */
+/** Shared status belongs once below the list, rather than under every parameter name. An entry a graph does not declare has no status there. */
 function commonGroupDetails(entries: readonly HoverEntry[]): readonly HoverEntryDetail[] {
-  if (!entries.length) return [];
-  return (entries[0]!.details ?? []).flatMap(detail => {
-    const modes = MODES.filter(mode => detail.modes?.includes(mode) && entries.every(entry => entry.details?.some(candidate => detailKey(candidate) === detailKey(detail) && candidate.modes?.includes(mode))));
+  const candidates = new Map(entries.flatMap(entry => entry.details ?? []).map(detail => [detailKey(detail), detail]));
+  return [...candidates.values()].flatMap(detail => {
+    const modes = MODES.filter(mode => entries.some(entry => entry.availability[mode])
+      && entries.every(entry => !entry.availability[mode] || entry.details?.some(candidate => detailKey(candidate) === detailKey(detail) && candidate.modes?.includes(mode))));
     return modes.length ? [{ ...detail, modes }] : [];
   });
 }
@@ -96,23 +109,27 @@ export function groupHoverEntries(group: ModelResource, indexes: ModelIndexes): 
   const entries = rawGroupHoverEntries(group, indexes);
   const common = commonGroupDetails(entries);
   return entries.map(entry => {
+    const held = MODES.filter(mode => entry.availability[mode]);
     const details = (entry.details ?? []).flatMap(detail => {
       const shared = common.find(candidate => detailKey(candidate) === detailKey(detail));
       const modes = detail.modes?.filter(mode => !shared?.modes?.includes(mode));
-      return modes?.length ? [{ ...detail, modes }] : [];
+      return modes?.length ? [qualified(detail, modes, held)] : [];
     });
     const { details: _details, ...identity } = entry;
     return { ...identity, ...(details.length ? { details } : {}) };
   });
 }
 
+const GROUP_STATUS: Readonly<Record<string, string>> = {
+  "Uses the declaration default.": "Every entry uses its declaration default.",
+  "Not set · optional.": "Every entry is unset and optional.",
+  "Value status unavailable.": "Value status is unavailable for every entry.",
+};
+
 export function groupHoverDetails(group: ModelResource, indexes: ModelIndexes): readonly HoverEntryDetail[] {
-  return commonGroupDetails(rawGroupHoverEntries(group, indexes)).map(detail => ({ ...detail,
-    text: detail.text === "Uses the declaration default." ? "All entries use declaration defaults."
-      : detail.text === "Not set · optional." ? "All entries are unset and optional."
-      : detail.text === "Not declared." ? "No entries are declared."
-      : detail.text === "Value status unavailable." ? "Value status is unavailable for all entries." : detail.text,
-  }));
+  const entries = rawGroupHoverEntries(group, indexes);
+  const held = MODES.filter(mode => entries.some(entry => entry.availability[mode]));
+  return commonGroupDetails(entries).map(detail => qualified({ ...detail, text: GROUP_STATUS[detail.text] ?? detail.text }, detail.modes ?? [], held));
 }
 
 const MODES: readonly Mode[] = ["dev", "prod"];

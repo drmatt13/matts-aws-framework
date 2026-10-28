@@ -139,23 +139,37 @@ including `Routes to: /api/test/start-workflow`, `Starts workflow: invocation-te
 and `Reads: 3 environment values`. Calls name the configured destination, workflow steps
 name their typed operation and target, and grants retain the resource name. Tooltips,
 inspectors, member rows, Board labels and description reviews use this same formatter.
+The one exception is a single connection's hover title: when the value only repeats a
+From/To endpoint name, it keeps a complete verb phrase (`Calls tool`, `Connects to database`,
+`Provides database`, `Controls deployment`). Authored labels (route keys, variables, trigger
+events) always stay in the title. Deploy conditions read `Deploys when <input> equals "<value>".`
 Same-type bundles name their shared purpose and count. `presentConnectionHover` reads both
 graphs independently and retains every member, including other-environment-only evidence;
 its structured hover rows do not use the compact label API's four-member preview limit.
-Every aggregation puts Dev and Prod pills beside each member and omits the aggregate pair.
-Individual resources and single connections keep their pair at the title's top right.
+When every member of an aggregation shares one availability, `sharedAvailability` puts that
+single pair beside the title and the rows list names only; otherwise each member keeps its
+own Dev and Prod pills and the title has none. Individual resources and single connections
+keep their pair at the title's top right.
 Framework ownership reuses the Inspector's outlined Framework managed badge and lock
 icon on a separate left-aligned line beneath the resource type; the type omits a
 redundant management prefix.
 From/To labels, endpoint names and kinds
-form aligned metadata instead of undifferentiated prose. Supply rows use catalog parameter
-names. Each row retains its own availability, requirement state, operation and permission
-facts; differences between environments stay explicitly qualified. Common defaults or IAM
-summaries appear once, while exceptions remain with their member. Warnings have their own
+form aligned metadata instead of undifferentiated prose. A framework-managed database's
+stack is a Stack endpoint; only the database itself is a Database. Supply rows use catalog
+parameter names. Each row retains its own availability, requirement state, operation and
+permission facts. A fact is qualified with Dev or Prod only when it differs between the
+environments that hold that member, never merely because only one holds it. Common defaults
+or IAM summaries appear once, as one sentence below the list ("Every input uses its
+declaration default."), while exceptions remain with their member. Warnings have their own
 emphasis; permissions form a labeled secondary block. Source paths, inference caveats and
 full permission facts expand under Configuration and Permissions in the inspector. Normal
 configured inputs need no status sentence. Native trigger hovers name the resolved
 constructor. Resource hovers retain descriptions and source warnings without permission counts.
+A resource's type line (`kindText` in `src/scene/build.ts`, shared with the Resources
+list) never repeats its name. A stack stands under its class name, so its line names the
+catalog entry (`Stack · resources.rds`); framework stacks outside the catalog read `Stack`.
+Network fixtures name their kind and VPC (`Gateway endpoint · test VPC`), because every VPC
+has the same fixtures under the same names. Hover cards are opaque.
 
 Parallel relationships use a stable fan perpendicular to the projected endpoint span.
 Height alone cannot distinguish nearly vertical arcs. The default 48-world-unit
@@ -237,9 +251,12 @@ Connection availability retains the original endpoints even when several routes 
 building; a grouped entry keeps its own absence, unlike a stack field, which follows its
 stack. `src/input-groups.ts` reads a group through its entries for the hover facts
 (per-graph entry counts, readers, mappings, missing required names) and the group inspector.
-Group hovers replace the aggregate environment pair and prose name list with entry rows.
-Each row's pills describe its declaration availability across both graphs, including nested
-and other-environment-only entries; they do not claim that a value is set or deployed.
+Group hovers replace the prose name list with entry rows. Pills describe declaration
+availability across both graphs, including nested and other-environment-only entries; they
+do not claim that a value is set or deployed. When every entry shares its availability the
+pair sits beside the group's title, as on other resources; otherwise each row has its own.
+An undeclared entry is shown by its unlit pill and no sentence.
 `groupHoverEntries` retains both modes' exceptional status details; `groupHoverDetails`
-hoists common default, optional, absent or unknown states once. Missing required notices
+hoists common default, optional or unknown states once, counting only the entries each
+graph declares. Missing required notices
 name variables and files without projecting authored values or resolved defaults.

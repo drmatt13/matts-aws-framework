@@ -1,6 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
-import type { Prop, Scene, SceneNode } from "../scene/build";
+import { kindText, type Prop, type Scene, type SceneNode } from "../scene/build";
 import type { IconKey } from "../icons";
 import { EntityIcon } from "./EntityIcon";
 import { ResourceHoverContent } from "./ResourceHoverContent";
@@ -12,10 +12,8 @@ export interface BrowserMemory { scrollTop: number; returnTo?: string | undefine
 interface Row { readonly id: string; readonly icon: IconKey; readonly badge?: IconKey; readonly label: string; readonly detail: string; readonly muted: boolean; readonly attention: boolean }
 interface Group { readonly id: string; readonly title: string; readonly rows: readonly Row[] }
 
-/** "Stack member, ITable" reads as "Stack member · ITable"; an empty qualifier is dropped. */
 function detailOf(node: SceneNode): string {
-  const [kind, ...qualifier] = node.kindLabel.split(", ");
-  return [kind, qualifier.join(", "), node.tagFiltered ? "Outside tag filter" : ""].filter(Boolean).join(" · ");
+  return [kindText(node.kindLabel, node.label), node.tagFiltered ? "Outside tag filter" : ""].filter(Boolean).join(" · ");
 }
 
 /**
@@ -102,7 +100,7 @@ export function ResourceBrowser(props: {
     }
     const unplaced = [...byIsland.values()].flat();
     if (unplaced.length) groups.push({ id: "other", title: "Other", rows: unplaced });
-    if (fixtures.length) groups.push({ id: "fixtures", title: "Network fixtures", rows: fixtures.map(prop => ({ id: prop.id, icon: prop.icon, label: prop.label, detail: "Network fixture", muted: !!prop.tagFiltered, attention: false })) });
+    if (fixtures.length) groups.push({ id: "fixtures", title: "Network fixtures", rows: fixtures.map(prop => ({ id: prop.id, icon: prop.icon, label: prop.label, detail: kindText(prop.kindLabel ?? "Network fixture"), muted: !!prop.tagFiltered, attention: false })) });
     return groups;
   }, [scene, nodes, fixtures, attention]);
 

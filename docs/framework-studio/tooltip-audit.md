@@ -17,7 +17,7 @@ represented in that snapshot.
 
 | Finding | Resulting rule |
 | --- | --- |
-| Only supplies and groups had per-item pills; other bundles hid individual availability | Every aggregation lists every member with its own Dev and Prod pills; omit a redundant aggregate pair |
+| Only supplies and groups had per-item pills; other bundles hid individual availability | Every aggregation lists every member and its availability (refined on 2026-10-28: identical pairs collapse into one beside the title) |
 | Active-mode fallback could describe another environment's value, label or grant | Read both graphs independently and qualify differing details by environment |
 | Group missing-value notes considered only the selected graph | Preserve both environments' required, default, optional, absent and unknown states |
 | Default and IAM prose repeated beneath otherwise identical rows, or vanished from bundles | Show facts shared by every member once; keep exceptions with their member |
@@ -37,12 +37,14 @@ callbacks, WebSocket management, containment, CDK references and deployment cond
 
 1. Lead with the resource name or the connection's action and relevant value.
    Resource type is supporting text. Keep an individual resource or single connection's
-   environment pair at the top right beside its title; aggregated connections and input groups use
-   row-level pairs. Physical gateways and stacks retain their own resource pair;
+   environment pair at the top right beside its title. Aggregated connections and input
+   groups whose members share one availability show that pair once beside the title and
+   list member names; members that differ keep row-level pairs and the title has none.
+   Physical gateways and stacks retain their own resource pair;
    their full route/field inventories belong in the Inspector.
    Framework ownership reuses the Inspector's outlined **Framework managed** badge
    and lock icon on its own left-aligned line beneath the resource type. The type
-   omits a redundant management prefix.
+   omits a redundant management prefix and never repeats the name above it.
 2. Render **From** and **To** as aligned metadata labels with separate endpoint
    names and kinds. Long names wrap without pushing a pill outside the card.
 3. Retain all original members, including ones present only in the other graph.
@@ -54,7 +56,10 @@ callbacks, WebSocket management, containment, CDK references and deployment cond
    or that AWS has been deployed.
 5. Keep each mode's label, requirement, condition and permission attached to that
    mode, including endpoint names and resource types that differ between graphs.
-   Shared facts appear once; mode-specific exceptions remain qualified.
+   Shared facts appear once, as one sentence about every member; mode-specific
+   exceptions remain qualified. A Dev or Prod qualifier distinguishes environments
+   that both hold the item; a fact about the only environment that holds it is not
+   qualified, and an undeclared entry is its unlit pill rather than a sentence.
    Missing required values name the affected variable/file and receive warning
    emphasis. Normal configured values need no status sentence.
 6. Present permissions after operational information, in a labeled secondary
@@ -69,8 +74,34 @@ Cards use the existing dark scene surface, typography and environment colors in
 both application themes. The shared geometry is a 400px preferred width, bounded
 by available space; 16px outer padding; 12px between content blocks; 8px between
 related details and within rows; and 4px between a member and its supporting copy.
+The type line tucks 3px under its title (1.35 line-height), and pills never make the
+title row taller. Stacked metadata (From/To, Dev/Prod locations and plain member lists)
+shares one compact rhythm: 1.4 line-height with 2px between rows, a 20px pitch at 13px
+and 19px for 12px locations. Cards are opaque.
 Quiet dividers separate member rows without turning every fact into a badge.
 Forced-colors styling retains labels and distinguishes omitted pills with borders.
+
+## Redundancy and spacing pass, 2026-10-28
+
+A second pass reviewed all **135** map previews in the repository snapshot (66
+connections, 10 islands, 16 network fixtures and 43 resources) for repeated or
+self-evident copy and for spacing. Each change follows from a rendered card:
+
+| Observed | Resulting rule |
+| --- | --- |
+| A stack titled `RdsStack` had the type line `Stack, RdsStack` | The type line never repeats the name. A catalog stack names its entry (`Stack · resources.rds`), which is also what its connections call it; a framework stack reads `Stack` |
+| `Calls tool: multiply-numbers` above `To multiply-numbers`; `Provides database: rds.database` above `To rds.database` | A single connection whose value only repeats an endpoint keeps a verb phrase (`Calls tool`, `Provides database`, `Connects to database`, `Controls deployment`). Authored labels such as route keys and variables stay |
+| The `rds` stack appeared as a **Database** endpoint | Only the database itself is a Database; its stack is a Stack |
+| Prod-only database connections prefixed every fact, and the Permissions label, with **Prod** | Qualify only facts that differ between environments holding the member |
+| Every row of a bundle repeated the same lit Dev/Prod pair | Identical member pairs collapse to one pair beside the title; differing members keep their own |
+| `Applies to every entry` labelled a single sentence; groups added `Prod: No entries are declared.` beside an unlit Prod pill | Shared facts are one sentence (`Every input uses its declaration default.`); absence is the unlit pill |
+| `Conditional deployment: $enableWebSocketApi` with `Matches "true".` | `Controls deployment`, with `Deploys when enableWebSocketApi equals "true".` |
+| Two VPCs showed identical `s3 endpoint` cards | Fixtures name their kind and VPC: `Gateway endpoint · test VPC` |
+| Map labels showed through the 98%-opaque card | Cards are opaque |
+| The type line sat 8.5px of air below its title; From/To rows had a 23.5px pitch, Dev/Prod locations 22px and plain lists 24.5px; a closing rule ended lists that were last in the card | 5.5px under the title on every card, islands included; one 20px metadata pitch (19px for 12px locations); a list's closing rule appears only when content follows |
+
+Group and connection member order is unchanged: connection rows keep
+`aggregateConnections`' stable edge-id order, group rows keep declaration order.
 
 ## Interaction and placement
 

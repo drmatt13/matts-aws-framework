@@ -79,7 +79,7 @@ export function presentRelationship(edge: ModelEdge, index: ModelIndex): Relatio
   } else if (edge.relation === "deployWhen") {
     value = `$${endpointName(index, edge.from)}`;
     const when = index.targets.get(edge.to)?.lanes.when;
-    if (when) lines.push(`Matches ${JSON.stringify(when.equals)}.`);
+    if (when) lines.push(`Deploys when ${endpointName(index, edge.from)} equals ${JSON.stringify(when.equals)}.`);
   } else if (edge.relation === "supplies") {
     const requirement = edge.inputRequirement;
     const entry = index.resources.get(edge.from)?.deploymentFile?.entries.find(entry => entry.name === edge.label);
@@ -212,7 +212,7 @@ function hoverEndpoint(id: string, indexes: HoverIndexes): ConnectionHoverEndpoi
     const resourceKinds = { envFile: "Environment file", stack: "Stack", member: "Stack member", construct: "Construct", input: "Input", secret: "Secret", group: "Input group" };
     const kind = index.gateways.has(id) ? "API Gateway" : target ? ROLE_LABEL[target.role]
       : index.routes.has(id) ? "API route" : index.localServices.has(id) ? "Database"
-        : index.defaults.has(id) ? "Defaults" : resource?.frameworkManaged === "database" ? "Database"
+        : index.defaults.has(id) ? "Defaults" : resource?.frameworkManaged === "database" && resource.kind !== "stack" ? "Database"
           : resource ? resourceKinds[resource.kind] : "Resource";
     return { kind, label: endpointName(index, id) };
   };
@@ -269,7 +269,8 @@ export function presentConnectionHover(connection: ConnectionGroup, indexes: Hov
     }
     const details: ConnectionHoverDetail[] = [];
     if (labels.size > 1) for (const [text, modes] of labels) details.push({ text, kind: "detail", modes });
-    for (const { detail, modes } of facts.values()) details.push({ ...detail, ...(modes.length === HOVER_MODES.length ? {} : { modes }) });
+    // A qualifier only distinguishes this member's graphs from each other.
+    for (const { detail, modes } of facts.values()) details.push({ ...detail, ...(modes.length === variants.length ? {} : { modes }) });
     const fallback = variants[0]?.presentation ?? presentRelationship(member.edge, indexes[primaryMode]);
     const noun = familyOf(variants[0]?.edge ?? member.edge).singular;
     return {
@@ -290,14 +291,37 @@ export function presentConnectionHover(connection: ConnectionGroup, indexes: Hov
   const distinctLabels = single && HOVER_MODES.every(mode => connection.members[0]?.models[mode])
     && hoverMemberLabel(connection.members[0]!.models.dev!, connection, indexes.dev) !== hoverMemberLabel(connection.members[0]!.models.prod!, connection, indexes.prod);
   const family = familyOf(primaryEdge);
+  const from = hoverEndpoint(connection.from, indexes), to = hoverEndpoint(connection.to, indexes);
+  const value = primaryEdge.relation === "supplies" ? rows[0]!.label : presentation.value;
+  // An authored label (route key, variable, event) is information even when a handler shares its name.
+  const repeats = !["routes", "env", "secret", "maps", "trigger"].includes(primaryEdge.relation)
+    && [from, to].some(endpoint => value === endpoint.label || value === `$${endpoint.label}`);
   return {
-    title: single ? distinctLabels ? `${family.verb}: ${family.singular}` : primaryEdge.relation === "supplies" ? `${presentation.action}: ${rows[0]!.label}` : presentation.title
-      : `${family.verb}: ${rows.length} ${family.plural}`,
-    from: hoverEndpoint(connection.from, indexes),
-    to: hoverEndpoint(connection.to, indexes),
+    title: !single ? `${family.verb}: ${rows.length} ${family.plural}`
+      : distinctLabels ? `${family.verb}: ${family.singular}`
+      : repeats ? standaloneAction(presentation.action, primaryEdge.relation)
+      : `${presentation.action}: ${value}`,
+    from,
+    to,
     availability: connection.availability,
     aggregated: !single,
     rows: rows.map(row => ({ ...row, details: row.details.filter(detail => !sharedKeys.has(detailKey(detail))) })),
-    details,
+    details: single ? details : details.map(detail => SHARED_DETAILS[detail.text] ? { ...detail, text: SHARED_DETAILS[detail.text]!(family.singular) } : detail),
   };
 }
+
+/** From and To name both ends, so a title whose value only repeats one keeps a complete verb phrase. */
+function standaloneAction(action: string, relation: Relation): string {
+  if (relation === "database") return `${action} database`;
+  if (relation === "deployWhen") return "Controls deployment";
+  return action.replace(/ (?:to|into|via|from|in)$/, "");
+}
+
+/** A fact every member shares reads as one sentence about all of them, below the list. */
+const SHARED_DETAILS: Readonly<Record<string, (member: string) => string>> = {
+  "Uses the declaration default.": member => `Every ${member} uses its declaration default.`,
+  "Empty in this file.": member => `Every ${member} is empty in this file.`,
+  "Not set in this file.": member => `No ${member} is set in this file.`,
+  "Input status unavailable.": member => `Input status is unavailable for every ${member}.`,
+  "Required value missing.": member => `Every ${member} is missing its required value.`,
+};

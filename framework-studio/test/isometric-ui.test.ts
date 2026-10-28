@@ -189,7 +189,7 @@ test("conditional deployment inspection names its framework input and points fro
   assert.ok(endpoints);
   const rows = [...endpoints.querySelectorAll("div")].map(row => ({ direction: row.querySelector("dt")?.textContent, label: row.querySelector("button")?.textContent }));
   assert.deepEqual(rows, [{ direction: "From", label: "Input: enableWebSocketApi" }, { direction: "To", label: "WebSocket: $connect" }]);
-  assert.ok(ui.screen.getByText('Matches "true".'));
+  assert.ok(ui.screen.getByText('Deploys when enableWebSocketApi equals "true".'));
 });
 
 test("purpose filters replace IAM filtering and do not arm source edits", async () => {
@@ -1028,7 +1028,8 @@ test("grouped route previews and member summaries retain each route name without
   assert.ok(rows.getByText("anotherAction"));
   assert.equal(popup.querySelectorAll(".landscape-hover-permission-copy").length, 1, "shared permissions appear once below the member rows");
   assert.equal(popup.querySelector(".landscape-hover-permission-copy")?.textContent, "lambda:InvokeFunction");
-  for (const row of rows.getAllByRole("listitem")) assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
+  for (const row of rows.getAllByRole("listitem")) assert.deepEqual(visibleTags(row), [], "identical member pairs collapse into the title's pair");
+  assert.deepEqual(visibleTags(popup.querySelector<HTMLElement>(".landscape-hover-heading")!), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: WebSocket API to WebSocket: customAction,/ }));
   await ui.waitFor(() => assert.equal(document.querySelectorAll(".connection-map-member").length, 2));
   const summaries = [...document.querySelectorAll(".connection-map-member > summary")];
@@ -1078,11 +1079,9 @@ test("clicking a grouped connection opens every mapping and retains it across en
   assert.ok(!popup.textContent?.includes("Maps into:"), "homogeneous member rows do not repeat the shared purpose");
   const hoverRows = ui.within(popup).getAllByRole("listitem");
   assert.equal(hoverRows.length, 4);
-  assert.equal(popup.querySelector(".landscape-hover-heading .environment-pills"), null, "aggregate headers cannot imply that every member has the same availability");
-  for (const row of hoverRows) {
-    assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
-    assert.deepEqual(tagsOf(row), [["hover-tag dev", "Dev: connection enabled in development"], ["hover-tag prod", "Prod: connection enabled in production"]]);
-  }
+  // Every member is enabled in both environments, so one pair beside the title says so for all of them.
+  assert.deepEqual(tagsOf(popup.querySelector<HTMLElement>(".landscape-hover-heading")!), [["hover-tag dev", "Dev: connection enabled in development"], ["hover-tag prod", "Prod: connection enabled in production"]]);
+  for (const row of hoverRows) assert.deepEqual(visibleTags(row), []);
   ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   const map = await ui.screen.findByRole("region", { name: "Connection details" });
@@ -1363,17 +1362,19 @@ test("keyboard connection previews expose each member's environments and scroll 
   assert.equal(document.activeElement, trigger);
 });
 
-test("input group hovers label every entry with its own environments and omit aggregate pills", async () => {
+test("input group hovers list every entry beneath one pair when the entries share their environments", async () => {
   await mount();
   const card = await hoverOver("resource:client");
-  assert.equal(card.querySelector(".landscape-hover-tags"), null);
+  assert.deepEqual(visibleTags(card.querySelector<HTMLElement>(".landscape-hover-tags")!), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
   const rows = [...card.querySelectorAll<HTMLElement>(".landscape-hover-entries > li")];
   assert.deepEqual(rows.map(row => row.querySelector(".landscape-hover-entry-name")?.textContent), ["apiPort", "webSocketPort", "webSocketTesterPort", "apiUrl"]);
-  for (const row of rows) assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
+  for (const row of rows) assert.deepEqual(visibleTags(row), []);
+  assert.equal(card.querySelector(".landscape-hover-subtitle")?.textContent, "Input group · 4 inputs");
+  assert.ok(!card.textContent?.includes("Not declared"), "the unlit Prod pill already says it");
   assert.ok(!card.textContent?.includes("Holds apiPort"), "the list replaces the prose name summary");
 });
 
-test("supply hovers put environment pills beside each parameter", async () => {
+test("supply hovers describe the file's supply of every parameter with one pair", async () => {
   await mount();
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
@@ -1384,13 +1385,13 @@ test("supply hovers put environment pills beside each parameter", async () => {
   assert.ok(point, "the supply wire is pickable");
   ui.fireEvent.pointerMove(document.querySelector("canvas")!, { clientX: point.x, clientY: point.y }); await draw();
   const card = await ui.screen.findByRole("tooltip");
-  assert.equal(card.querySelector(".landscape-hover-tags"), null);
+  assert.deepEqual(tagsOf(card.querySelector<HTMLElement>(".landscape-hover-tags")!), [["hover-tag dev", "Dev: supplied by this file in development"], ["hover-tag off", "Prod: not supplied by this file"]]);
   const rows = [...card.querySelectorAll<HTMLElement>(".landscape-hover-entries > li")];
   assert.equal(rows.length, edge.members.length);
   for (const [at, row] of rows.entries()) {
     const parameter = response.snapshot.models.dev.resources.find(resource => resource.id === edge.members[at]!.edge.to)!;
     assert.equal(row.querySelector(".landscape-hover-entry-name")?.textContent, parameter.path.at(-1));
-    assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
+    assert.deepEqual(visibleTags(row), []);
   }
   assert.deepEqual(hoverEndpoints(card), { From: ["cdk-app/.env.dev", "Environment file"], To: ["client", "Input group"] });
 });
