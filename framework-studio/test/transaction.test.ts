@@ -30,7 +30,7 @@ const evaluatorLog: string[] = [];
 before(async () => {
   mkdirSync(fixture, { recursive: true });
   const filter = (source: string) => !/(?:^|\/)(?:node_modules|cdk\.out|dist|\.git)(?:\/|$)/.test(source) && (!/\/\.env(?:\.|$)/.test(source) || path.basename(source) === ".env.example");
-  for (const relative of ["package.json", "package-lock.json", "docker-compose.yml", "docker-compose.services.yml", "packages/framework/src", "packages/api-contract/src/generated", "cdk-app/lib", "cdk-app/bin", "cdk-app/deployment.ts", "cdk-app/database-settings.ts", "cdk-app/stateful-resources.ts", "cdk-app/cdk.json", "cdk-app/tsconfig.json", "cdk-app/lambda_functions", "cdk-app/ecs_containers", "agents", "scripts"]) cpSync(path.join(repositoryRoot, relative), path.join(fixture, relative), { recursive: true, filter });
+  for (const relative of ["package.json", "package-lock.json", "docker-compose.yml", "docker-compose.services.yml", "packages/framework/src", "packages/api-contract/src/generated", "cdk-app/lib", "cdk-app/bin", "cdk-app/deployment.ts", "cdk-app/deployment-inputs.ts", "cdk-app/database-settings.ts", "cdk-app/stateful-resources.ts", "cdk-app/cdk.json", "cdk-app/tsconfig.json", "cdk-app/lambda_functions", "cdk-app/ecs_containers", "agents", "scripts"]) cpSync(path.join(repositoryRoot, relative), path.join(fixture, relative), { recursive: true, filter });
   for (const relative of globSync(JSON.parse(readFileSync(path.join(repositoryRoot, "package.json"), "utf8")).workspaces.map((pattern: string) => `${pattern}/package.json`), { cwd: repositoryRoot })) { mkdirSync(path.dirname(path.join(fixture, relative)), { recursive: true }); cpSync(path.join(repositoryRoot, relative), path.join(fixture, relative)); }
   mkdirSync(path.join(fixture, "cdk-app", "lambda_functions"), { recursive: true });
   for (const id of ["cognito-custom-message", "cognito-post-confirmation-trigger"]) {
@@ -130,17 +130,18 @@ async function withExternalSource(file: string, text: string, check: () => Promi
   finally { writeFileSync(file, before); await builder.refresh(); }
 }
 
-test("client mapping batches persist references, disable graph links, refuse concurrent writes", async () => {
+test("client mapping batches persist references, drop graph links of blank fields, refuse concurrent writes", async () => {
   const file = path.join(fixture, "framework-config/client-environment.ts");
   const before = readFileSync(file, "utf8");
   const current = builder.current!.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!.clientEnvironment!.mappings;
-  const mappings = { ...current, VITE_LOCAL_WS_URL: { ...current.VITE_LOCAL_WS_URL!, dev: { ...current.VITE_LOCAL_WS_URL!.dev, enabled: false } }, VITE_NEW_REGION: { dev: { kind: "region" as const, stack: "CognitoStack" }, prod: { kind: "empty" as const } } };
+  const mappings = { ...current, VITE_LOCAL_WS_URL: { kind: "empty" as const }, VITE_NEW_REGION: { kind: "region" as const, stack: "CognitoStack" } };
   const plan = await edits.planBatch([{ kind: "clientEnvironment", mappings }], revision());
   assert.ok(plan.ok, JSON.stringify(plan.preflight));
   assert.equal(readFileSync(file, "utf8"), before, "review does not write");
   await assertApplied(edits.applyBatch(plan.planId));
   const client = builder.current!.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!.clientEnvironment!;
-  assert.equal(client.entries.find((entry) => entry.name === "VITE_LOCAL_WS_URL")!.status, "disabled");
+  assert.equal(client.entries.find((entry) => entry.name === "VITE_LOCAL_WS_URL")!.status, "empty");
+  assert.match(readFileSync(file, "utf8"), /^  VITE_NEW_REGION: \{ kind: "region", stack: "CognitoStack" \},$/m);
   assert.ok(client.entries.some((entry) => entry.name === "VITE_NEW_REGION"));
   assert.ok(!builder.current!.snapshot.models.dev.edges.some((edge) => edge.relation === "maps" && edge.label === "VITE_LOCAL_WS_URL"));
   await restoreSource();

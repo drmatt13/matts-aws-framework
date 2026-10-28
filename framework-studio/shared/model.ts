@@ -246,6 +246,13 @@ export type ResourceKind =
   /** A plain object grouping inputs, e.g. `langgraph`. */
   | "group";
 
+/** What an authored input is in one graph. Names and declared defaults only, never a value. */
+export interface InputModePolicy {
+  readonly present: boolean;
+  readonly required: boolean;
+  readonly default?: string;
+}
+
 export interface ModelResource {
   /** Catalog paths or `framework-stack:<Class>` for selected export-only stacks. */
   readonly id: string;
@@ -260,9 +267,21 @@ export interface ModelResource {
    */
   readonly absent: boolean;
   readonly fromEnv?: string;
+  /** This graph's fallback; `modes` holds both graphs'. */
   readonly default?: string;
+  /** Marked required for this graph; `modes` holds both graphs'. */
   readonly required?: boolean;
+  /**
+   * An authored input's presence, requirement and fallback in each graph, as declared with
+   * `.only()`, `.required()` and `.default()`. The server fills it for every input and secret.
+   */
+  readonly modes?: Readonly<Record<Mode, InputModePolicy>>;
   readonly inputRequirement?: import("./deployment-inputs").InputRequirement;
+  /**
+   * How this graph resolves the input, from the framework's resolver over this graph's file: supplied,
+   * fallback, invalid, unresolved, missing or not-applicable. The state only, never the value.
+   */
+  readonly inputState?: import("../../packages/framework/src/config/resources").InputResolution["state"];
   /** Outcomes of declared client comparisons in this mode; never resolved input values. */
   readonly inputComparisons?: Readonly<Record<string, "holds" | "fails" | "unset">>;
   readonly values?: readonly string[];

@@ -385,6 +385,10 @@ async function configureServer(
     response.setHeader("Cache-Control", "no-store");
     send(response, async () => inputs.details(inputMode(request.query.mode)));
   });
+  api.get("/deployment-inputs/value", (request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    send(response, async () => inputs.reveal(inputMode(request.query.mode), String(request.query.name ?? "")));
+  });
   api.post("/deployment-inputs/plan", (request, response) => {
     response.setHeader("Cache-Control", "no-store");
     send(response, async () => inputs.plan(inputMode(request.body?.mode), readInputEdits(request.body?.edits), String(request.body?.hash ?? ""), String(request.body?.revision ?? "")));

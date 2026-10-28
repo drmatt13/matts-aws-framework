@@ -4,8 +4,8 @@ import ts from "typescript";
 import { randomUUID } from "node:crypto";
 import { locateConfigSource } from "../../packages/framework/scripts/config-source";
 import { SourceFiles } from "./source";
-import type { ResourceIntent, RequirementRule } from "../shared/resources";
-import type { ModelResource, ModelTarget } from "../shared/model";
+import { inputModeIntents, sameInputModes, type ResourceIntent, type RequirementRule } from "../shared/resources";
+import type { Mode, ModelResource, ModelTarget } from "../shared/model";
 import { editableFiles, toRelative } from "./files";
 import { insertProperty, removeProperty } from "./edits/splice";
 import { declarationHost } from "./source/declarations";
@@ -15,6 +15,7 @@ import type { StudioState } from "./snapshot";
 import { readCatalogSource } from "./source/catalog";
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+const MODES: readonly Mode[] = ["dev", "prod"];
 const fail = (message: string): never => { throw new Error(message); };
 const replace = (text: string, node: ts.Node, value: string, file: ts.SourceFile) => text.slice(0, node.getStart(file)) + value + text.slice(node.end);
 
@@ -51,39 +52,63 @@ export function insertExpression(text: string, source: ts.SourceFile, object: ts
   const marker = `studio_${randomUUID().replaceAll("-", "")}`;
   return insertProperty(text, source, object, keys, marker, { after: [], before: [] }).replace(JSON.stringify(marker), expression);
 }
+/** `.only()`, `.required()` and `.default()` in their shortest form, around the choice list. */
+function policyCalls(modes: ResourceIntent["modes"], choices: string): string {
+  const present = MODES.filter((mode) => modes[mode].present);
+  const required = present.filter((mode) => modes[mode].required);
+  const defaults = present.filter((mode) => modes[mode].default !== null);
+  const shared = defaults.length === present.length && new Set(defaults.map((mode) => modes[mode].default)).size === 1;
+  return (present.length === 1 ? `.only(${JSON.stringify(present[0])})` : "")
+    + (!required.length ? "" : required.length === present.length ? ".required()" : `.required(${JSON.stringify(required[0])})`)
+    + choices
+    + (!defaults.length ? "" : shared ? `.default(${JSON.stringify(modes[defaults[0]!].default)})`
+      : `.default({ ${defaults.map((mode) => `${mode}: ${JSON.stringify(modes[mode].default)}`).join(", ")} })`);
+}
+/** A literal argument: a string, or the `{ dev, prod }` object `.default()` takes. */
+function literalArgument(call: string, argument: ts.Expression): boolean {
+  const value = unwrap(argument);
+  if (call === "default" && ts.isObjectLiteralExpression(value)) return value.properties.every((property) => ts.isPropertyAssignment(property) && MODES.includes(literalKey(property) as Mode) && typeof literalValue(property.initializer)?.value === "string");
+  return typeof literalValue(argument)?.value === "string";
+}
 function builderExpression(value: ts.Expression, resource: ModelResource, intent: ResourceIntent): string {
   const outer = unwrap(value);
+  const current = inputModeIntents(resource);
   if (ts.isConditionalExpression(outer)) {
-    // Preserve the authored deployment condition and its undefined branch.
+    // Preserve the authored deployment condition and its undefined branch. The condition decides
+    // presence, so the branch states the one graph it is reached in without `.only()`.
     const left = outer.whenTrue.kind === ts.SyntaxKind.Identifier && outer.whenTrue.getText() === "undefined";
     const right = outer.whenFalse.kind === ts.SyntaxKind.Identifier && outer.whenFalse.getText() === "undefined";
     if (!left && !right) return fail("This conditional has two resource declarations. Edit it in source.");
+    if (MODES.some((mode) => intent.modes[mode].present !== current[mode].present)) return fail("A conditional in source decides where this input is present. Replace it with .only() to change its environments here.");
+    const reached = MODES.find((mode) => intent.modes[mode].present);
+    const branchIntent = reached ? { ...intent, modes: { dev: intent.modes[reached], prod: intent.modes[reached] } } : intent;
+    const branchResource = reached ? { ...resource, modes: { dev: { present: true, required: current[reached].required, ...(current[reached].default === null ? {} : { default: current[reached].default! }) }, prod: { present: true, required: current[reached].required, ...(current[reached].default === null ? {} : { default: current[reached].default! }) } } } : resource;
     const branch = left ? outer.whenFalse : outer.whenTrue;
-    const rewritten = builderExpression(branch, resource, intent);
+    const rewritten = builderExpression(branch, branchResource, branchIntent);
     return left ? `${outer.condition.getText()} ? undefined : ${rewritten}` : `${outer.condition.getText()} ? ${rewritten} : undefined`;
   }
-  let current = outer;
+  let node = outer;
   const calls: { name: string; args: readonly ts.Expression[]; node: ts.CallExpression }[] = [];
-  while (ts.isCallExpression(current) && ts.isPropertyAccessExpression(current.expression)) {
-    const call = current;
-    const access = current.expression;
+  while (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+    const call = node;
+    const access = node.expression;
     calls.unshift({ name: access.name.text, args: [...call.arguments], node: call });
     const receiver = unwrap(access.expression);
     if (ts.isIdentifier(receiver) && receiver.text === "resource") {
       if (!["fromEnv", "secret"].includes(access.name.text)) return fail("This entry is not an authored input.");
       break;
     }
-    current = receiver;
+    node = receiver;
   }
-  if (!calls.length || !["fromEnv", "secret"].includes(calls[0]!.name) || calls.some((call) => !["fromEnv", "secret", "enum", "default", "note", "required"].includes(call.name)) || calls.some((call) => call.name === "required" && call.args.length)) return fail("This resource is computed. Edit its declaration in source.");
+  if (!calls.length || !["fromEnv", "secret"].includes(calls[0]!.name) || calls.some((call) => !["fromEnv", "secret", "enum", "default", "note", "required", "only"].includes(call.name))) return fail("This resource is computed. Edit its declaration in source.");
   for (const [index, call] of calls.entries()) for (const [argumentIndex, argument] of call.args.entries()) {
     if (index === 0 && argumentIndex === 1) {
       // Descriptor metadata is independent of the input value. Keep its exact
       // source while editing defaults/required, including authored tag maps.
       if (!ts.isObjectLiteralExpression(unwrap(argument))) return fail("This resource uses computed options. Edit it in source.");
-    } else if (typeof literalValue(argument)?.value !== "string") return fail("This resource uses computed arguments. Edit it in source.");
+    } else if (!literalArgument(call.name, argument)) return fail("This resource uses computed arguments. Edit it in source.");
   }
-  if (intent.kind === resource.kind && intent.default === (resource.default ?? null) && (intent.required ?? !!resource.required) === !!resource.required) {
+  if (intent.kind === resource.kind && sameInputModes(intent.modes, current)) {
     const original = outer.getText();
     if (calls[0]!.args.length) return original;
     const base = calls[0]!.node;
@@ -92,13 +117,9 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
   }
   if (hasComments(outer.getText())) return fail("This resource declaration contains comments. Edit it in source to preserve them.");
   // Always keep the resolved env name explicit when moving between groups.
+  const choices = calls.find((call) => call.name === "enum");
   let result = `resource.${intent.kind === "secret" ? "secret" : "fromEnv"}(${JSON.stringify(resource.fromEnv)}${calls[0]!.args[1] ? `, ${calls[0]!.args[1]!.getText()}` : ""})`;
-  if (intent.required ?? resource.required) result += ".required()";
-  if (intent.kind === "input") {
-    const choices = calls.find((call) => call.name === "enum");
-    if (choices) result += `.enum(${choices.args.map((argument) => argument.getText()).join(", ")})`;
-    if (intent.default !== null) result += `.default(${JSON.stringify(intent.default)})`;
-  }
+  result += policyCalls(intent.modes, intent.kind === "input" && choices ? `.enum(${choices.args.map((argument) => argument.getText()).join(", ")})` : "");
   for (const call of calls.filter((call) => call.name === "note")) result += `.note(${call.args.map((argument) => argument.getText()).join(", ")})`;
   return result;
 }
@@ -195,16 +216,22 @@ function moveImportedMembership(root: string, facts: { readonly key: import("../
 
 export function planResourceSource(root: string, state: StudioState, resource: ModelResource, intent: ResourceIntent): { overrides: Record<string, string>; nextResource: string } {
   if (!IDENTIFIER.test(intent.group || "ungrouped") || ["__proto__", "constructor", "prototype"].includes(intent.group)) return fail("A group must be a safe TypeScript property name, or empty for no group.");
-  if (intent.kind === "secret" && intent.default !== null) return fail("Secrets cannot have a default in source. Author the value only in cdk-app/.env.");
-  if (intent.default !== null && !intent.default.trim()) return fail("Use no default instead of a blank default.");
-  if (intent.kind === "input" && intent.default !== null && resource.values && !resource.values.includes(intent.default)) return fail("The default must be one of the declared choices.");
+  if (!MODES.some((mode) => intent.modes[mode].present)) return fail("Keep this input in at least one environment, or delete it.");
+  for (const mode of MODES) {
+    const { present, required, default: fallback } = intent.modes[mode];
+    if (!present && (required || fallback !== null)) return fail(`${mode === "dev" ? "Development" : "Production"} does not hold this input, so it cannot be required or have a default there.`);
+    if (fallback === null) continue;
+    if (intent.kind === "secret") return fail("Secrets cannot have a default in source. Author the value only in cdk-app/.env.");
+    if (!fallback.trim()) return fail("Use no default instead of a blank default.");
+    if (resource.values && !resource.values.includes(fallback)) return fail("The default must be one of the declared choices.");
+  }
   const facts = state.built.catalog.get(resource.path.join("."));
   if (!facts) return fail("This resource could not be located in source.");
   const file = path.join(root, facts.value.file);
   const original = readFileSync(file, "utf8");
   const nextPath = [...(intent.group ? [intent.group] : []), resource.path.at(-1)!];
   const moved = nextPath.join(".") !== resource.path.join(".");
-  const metadataChanged = intent.kind !== resource.kind || intent.default !== (resource.default ?? null) || (intent.required ?? !!resource.required) !== !!resource.required;
+  const metadataChanged = intent.kind !== resource.kind || !sameInputModes(intent.modes, inputModeIntents(resource));
   let text = original;
   const overrides: Record<string, string> = {};
   const parsed = parse(file, original);

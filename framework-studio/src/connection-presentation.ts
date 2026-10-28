@@ -21,7 +21,7 @@ const ACTIONS: Readonly<Record<Relation, string>> = {
   runsTask: "Runs task", startsWorkflow: "Starts workflow", invokesAgent: "Invokes agent",
   usesTool: "Calls tool", step: "Executes step", integration: "Calls service",
   completesCallback: "Completes callback", manageConnections: "Sends replies via",
-  contains: "Contains", cdk: "References", deployWhen: "Conditional deployment",
+  contains: "Contains", cdk: "References", deployWhen: "Conditional Deployment",
 };
 
 /** Keep canonical prefixes out of the fallback when an endpoint belongs to another mode. */
@@ -136,7 +136,7 @@ const FAMILIES: Readonly<Record<Relation, { readonly singular: string; readonly 
   manageConnections: { singular: "WebSocket API", plural: "WebSocket APIs", verb: "Sends replies via" },
   contains: { singular: "resource", plural: "resources", verb: "Contains" },
   cdk: { singular: "resource reference", plural: "resource references", verb: "Uses" },
-  deployWhen: { singular: "deployment condition", plural: "deployment conditions", verb: "Conditional deployment" },
+  deployWhen: { singular: "deployment condition", plural: "deployment conditions", verb: ACTIONS.deployWhen },
 };
 
 function familyOf(edge: ModelEdge) {
@@ -324,7 +324,6 @@ export function connectionTitle(edge: ModelEdge, index: ModelIndex): string {
 /** From and To name both ends, so a title whose value only repeats one keeps a complete verb phrase. */
 function standaloneAction(action: string, relation: Relation): string {
   if (relation === "database") return `${action} database`;
-  if (relation === "deployWhen") return "Controls deployment";
   return action.replace(/ (?:to|into|via|from|in)$/, "");
 }
 

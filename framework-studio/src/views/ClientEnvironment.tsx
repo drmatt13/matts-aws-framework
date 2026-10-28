@@ -1,6 +1,6 @@
 import { useId, useState } from "react";
 import { Plus, Trash2, ArrowUpRight, ChevronRight, Pencil } from "lucide-react";
-import { CLIENT_ENVIRONMENT_ID, type ClientEnvironmentBinding, type ClientReferenceOption } from "../../shared/client-environment";
+import { CLIENT_ENVIRONMENT_FILES, CLIENT_ENVIRONMENT_ID, clientBindingFor, isSplitMapping, type ClientEnvironmentBinding, type ClientEnvironmentMapping, type ClientReferenceOption } from "../../shared/client-environment";
 import { previewClientBinding } from "../../shared/client-environment-preview";
 import type { ModelResource } from "../../shared/model";
 import { useStudio } from "../studio";
@@ -64,14 +64,22 @@ function SourceControls({ name, binding, options, disabled, onChange }: {
     {binding.when ? <>
       <label>Condition input parameter<InputSelect label={`Condition input for ${name}`} value={binding.when.input} options={options} onChange={input => onChange({ ...binding, when: { ...binding.when!, input } })} /></label>
       <label>Equals<input aria-label={`Condition value for ${name}`} value={binding.when.equals} onChange={event => onChange({ ...binding, when: { ...binding.when!, equals: event.target.value } })} /></label>
-      <p className="small muted">Write an empty value when the input does not match in the selected environment.</p>
+      <p className="small muted">Written blank in an environment where the input does not match.</p>
     </> : null}
   </fieldset>;
 }
 
-/** Compact source overview; each editor participates in the shared review/apply transaction. */
+const MODE_LABELS = { dev: "Development", prod: "Production" } as const;
+
+/**
+ * Compact source overview; each editor participates in the shared review/apply transaction.
+ *
+ * Where a field is generated is not a setting. Each environment previews the field's own recipe,
+ * and the Dev / Prod pills report the result: an input outside that environment, or an optional
+ * one with no value and no default, leaves the field blank there.
+ */
 export function ClientEnvironmentMappings() {
-  const { model, mode, setMode, select, draft, draftState, live } = useStudio();
+  const { model, snapshot, select, draft, draftState, live } = useStudio();
   const file = model.resources.find((resource) => resource.id === CLIENT_ENVIRONMENT_ID)?.clientEnvironment;
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("VITE_");
@@ -82,7 +90,7 @@ export function ClientEnvironmentMappings() {
   if (!file) return null;
   const mappings = draft.clientMappings();
   const disabled = !!draftState.busy || draft.conflict || live.evaluating || !!file.problem;
-  const update = (name: string, binding: ClientEnvironmentBinding) => draft.setClientMappings({ ...mappings, [name]: { ...mappings[name]!, [mode]: binding } });
+  const update = (name: string, mapping: ClientEnvironmentMapping) => draft.setClientMappings({ ...mappings, [name]: mapping });
   const remove = (name: string) => draft.setClientMappings(Object.fromEntries(Object.entries(mappings).filter(([key]) => key !== name)));
   const renameField = () => {
     if (!rename) return;
@@ -98,25 +106,23 @@ export function ClientEnvironmentMappings() {
     const name = newName.trim();
     if (!/^VITE_[A-Z0-9_]+$/.test(name)) { setError("Use VITE_ followed by uppercase letters, digits or underscores."); return; }
     if (Object.hasOwn(mappings, name)) { setError("This field already exists. Search for it below."); return; }
-    draft.setClientMappings({ ...mappings, [name]: { dev: { kind: "empty" }, prod: { kind: "empty" } } });
+    draft.setClientMappings({ ...mappings, [name]: { kind: "empty" } });
     setExpanded(name); setFilter(""); setAdding(false); setNewName("VITE_"); setError("");
   };
-  const rows = Object.entries(mappings).map(([name, modes]) => {
-    const binding = modes[mode];
-    const preview = previewClientBinding(name, binding, model);
-    const reference = binding.enabled === false ? previewClientBinding(name, { ...binding, enabled: true }, model) : preview;
-    return { name, binding, preview, reference };
+  const rows = Object.entries(mappings).map(([name, mapping]) => {
+    const previews = { dev: previewClientBinding(name, clientBindingFor(mapping, "dev"), snapshot.models.dev), prod: previewClientBinding(name, clientBindingFor(mapping, "prod"), snapshot.models.prod) };
+    return { name, mapping, previews, split: isSplitMapping(mapping) };
   });
-  const matches = rows.filter(({ name, binding, reference }) => `${name} ${sourceKinds[binding.kind]} ${reference.expression} ${reference.sources.map((source) => source.label).join(" ")}`.toLowerCase().includes(filter.trim().toLowerCase()));
+  const searchText = ({ name, mapping, previews }: (typeof rows)[number]) => [name, ...(["dev", "prod"] as const).flatMap((mode) => [sourceKinds[clientBindingFor(mapping, mode).kind], previews[mode].expression, ...previews[mode].sources.map((source) => source.label)])].join(" ");
+  const matches = rows.filter((row) => searchText(row).toLowerCase().includes(filter.trim().toLowerCase()));
   const editError = draftState.entries.find((entry) => entry.kind === "clientEnvironment")?.error;
   return <section className="client-mapping-editor">
     <div className="client-mapping-context">
-      <span className="segmented" role="group" aria-label="Client mapping environment">{(["dev", "prod"] as const).map((candidate) => <button key={candidate} aria-pressed={mode === candidate} onClick={() => setMode(candidate)}>{candidate === "dev" ? "Development" : "Production"}</button>)}</span>
-      <p className="small muted">Edit sources for {mode === "dev" ? "Development" : "Production"}. Each field's Dev / Prod pills choose which environments generate it. Empty values stay in the file; dimmed pills omit the field.</p>
+      <p className="small muted">Dev / Prod shows where each field gets a value. It follows the field's sources: an input that is not declared in an environment, or has no value and no default there, leaves the field blank.</p>
       <details className="client-mapping-help"><summary>How mappings and files work</summary>
-        <p>Input parameters resolve this environment's values and defaults from <button className="linkish" disabled={draft.dirty} onClick={() => select(`envfile:${mode}`)}>{file.inputs}</button>. Client mappings read those parameters. Stack outputs and regions refer to this environment's deployment.</p>
-        <p>Review and apply saves references in <code>framework-config/client-environment.ts</code>. This editor does not generate client files or load deployed values.</p>
-        <p>The next environment export uses these saved mappings and writes <code>client-app/.env.{mode === "dev" ? "development" : "production"}.local</code>, which Vite reads over <code>client-app/.env</code>. Renaming a field changes its exported name in both environments; update any application code that reads its old name.</p>
+        <p>Input parameters read each environment's values and defaults from <button className="linkish" disabled={draft.dirty} onClick={() => select("envfile:dev")}>cdk-app/.env.dev</button> and <button className="linkish" disabled={draft.dirty} onClick={() => select("envfile:prod")}>cdk-app/.env.prod</button>. Stack outputs and regions refer to that environment's deployment.</p>
+        <p>One source serves both environments unless a field's sources differ. Review and apply saves references in <code>framework-config/client-environment.ts</code>. This editor does not generate client files or load deployed values.</p>
+        <p>An environment export writes <code>client-app/.env.development.local</code> or <code>client-app/.env.production.local</code>, which Vite reads over <code>client-app/.env</code>. A blank field is written blank, so nothing from <code>client-app/.env</code> shows through. Renaming a field changes its exported name in both; update any application code that reads its old name.</p>
         <p>Client settings are public in the browser. Secret inputs are excluded.</p>
       </details>
     </div>
@@ -124,24 +130,22 @@ export function ClientEnvironmentMappings() {
     {adding ? <form className="client-mapping-add" onSubmit={(event) => { event.preventDefault(); add(); }}>
       <input autoFocus aria-label="New client field name" autoComplete="off" spellCheck={false} value={newName} onChange={(event) => { setNewName(event.target.value); setError(""); }} />
       <button className="primary small" type="submit" disabled={disabled}>Add</button><button className="quiet small" type="button" onClick={() => setAdding(false)}>Cancel</button>
-      <p className="small muted">Added to both environments with an empty value. Configure each environment independently.</p>
+      <p className="small muted">Starts blank in both environments. Choose its source next.</p>
       {error ? <p role="alert" className="reason small">{error}</p> : null}
     </form> : null}
     <input type="search" className="client-mapping-search" aria-label="Search client mappings" placeholder="Find a field or source…" value={filter} onChange={(event) => setFilter(event.target.value)} />
     {file.problem ? <p role="alert" className="reason">{file.problem}</p> : null}
-    <ul className="client-environment-mappings">{matches.map(({ name, binding, preview, reference }) => {
-      const enabled = binding.enabled !== false;
+    <ul className="client-environment-mappings">{matches.map(({ name, mapping, previews, split }) => {
       const saved = file.mappings[name];
       const changed = JSON.stringify(mappings[name]) !== JSON.stringify(saved);
       const open = expanded === name;
-      const status = preview.status === "mapped" ? (binding.kind === "output" || binding.kind === "region" ? "Reference" : "Available") : preview.status === "unavailable" ? "Needs attention" : preview.status === "disabled" ? "Omitted" : "Empty";
-      return <li key={name} className={enabled ? "" : "mapping-disabled"}>
+      const attention = (["dev", "prod"] as const).filter((mode) => previews[mode].status === "unavailable");
+      const notes = previews.dev.note === previews.prod.note ? [previews.dev.note] : (["dev", "prod"] as const).map((mode) => `${MODE_LABELS[mode]}: ${previews[mode].note}`);
+      const source = previews[model.mode].sources[0] ?? previews[model.mode === "dev" ? "prod" : "dev"].sources[0];
+      return <li key={name}>
         <div className="client-mapping-name"><strong><code>{name}</code></strong>
-          <EnvironmentPills label={`Generate ${name}`} availability={{ dev: mappings[name]!.dev.enabled !== false, prod: mappings[name]!.prod.enabled !== false }} disabled={disabled} onToggle={(candidate) => {
-            const current = mappings[name]![candidate];
-            const { enabled: _old, ...reference } = current;
-            draft.setClientMappings({ ...mappings, [name]: { ...mappings[name]!, [candidate]: current.enabled === false ? reference : { ...reference, enabled: false } } });
-          }} />
+          <EnvironmentPills label={`${name} environments`} availability={{ dev: previews.dev.status === "mapped", prod: previews.prod.status === "mapped" }}
+            descriptions={{ dev: "generated in development", prod: "generated in production" }} unavailableDescription="blank" />
           <button className="icon-button" title="Rename field in both environments" aria-label={`Rename ${name}`} disabled={disabled} onClick={() => setRename({ name, value: name, error: "" })}><Pencil size={14} aria-hidden /></button>
           <button className="icon-button" title="Remove field from both environments" aria-label={`Remove ${name}`} disabled={disabled} onClick={() => remove(name)}><Trash2 size={14} aria-hidden /></button>
         </div>
@@ -151,14 +155,17 @@ export function ClientEnvironmentMappings() {
           {rename.error ? <p role="alert" className="small reason">{rename.error}</p> : null}
         </form> : null}
         <button className="client-mapping-summary" aria-label={`Edit mapping for ${name}`} aria-expanded={open} aria-controls={`mapping-${name}`} onClick={() => setExpanded(open ? null : name)}>
-          <span className="client-mapping-summary-heading"><span>{sourceKinds[binding.kind]}</span><span className={preview.status === "unavailable" ? "reason" : "muted"}>{changed ? "Edited · " : ""}{status}</span><ChevronRight size={14} aria-hidden /></span>
-          <code>{reference.expression}</code>
+          <span className="client-mapping-summary-heading"><span>{split ? "Different sources" : sourceKinds[clientBindingFor(mapping, "dev").kind]}</span><span className={attention.length ? "reason" : "muted"}>{changed ? "Edited" : ""}{changed && attention.length ? " · " : ""}{attention.length ? `Needs attention in ${attention.map((mode) => MODE_LABELS[mode]).join(" and ")}` : ""}</span><ChevronRight size={14} aria-hidden /></span>
+          {split ? (["dev", "prod"] as const).map((mode) => <code key={mode}>{mode === "dev" ? "Dev" : "Prod"} · {previews[mode].expression}</code>) : <code>{previews.dev.expression}</code>}
         </button>
         {open ? <div id={`mapping-${name}`} className="client-mapping-detail">
-          <SourceControls name={name} binding={binding} options={file.options} disabled={disabled || !enabled} onChange={(next) => update(name, { ...next, ...(binding.enabled === false ? { enabled: false } : {}) })} />
-          <p className={`client-mapping-note small ${preview.status === "unavailable" ? "reason" : "muted"}`} role="status">{preview.note}</p>
+          {split ? (["dev", "prod"] as const).map((mode) => <div key={mode} className="client-mapping-mode"><h4>{MODE_LABELS[mode]}</h4>
+            <SourceControls name={`${name} in ${MODE_LABELS[mode]}`} binding={clientBindingFor(mapping, mode)} options={file.options} disabled={disabled} onChange={(next) => update(name, { ...clientBindingSplit(mapping), [mode]: next })} />
+          </div>) : <SourceControls name={name} binding={clientBindingFor(mapping, "dev")} options={file.options} disabled={disabled} onChange={(next) => update(name, next)} />}
+          <div className="setting-switch"><label htmlFor={`split-${name}`}>Different source in each environment</label><InspectorSwitch id={`split-${name}`} label={`Different source in each environment for ${name}`} checked={split} disabled={disabled} onChange={(checked) => update(name, checked ? clientBindingSplit(mapping) : clientBindingFor(mapping, model.mode))} /></div>
+          {notes.map((note) => <p key={note} className={`client-mapping-note small ${attention.length ? "reason" : "muted"}`} role="status">{note}</p>)}
           <div className="client-mapping-actions">
-            {preview.sources[0]?.entity ? <button className="quiet small" aria-label={`Open source for ${name}`} title={draft.dirty ? "Apply or discard changes before opening the source" : preview.sources[0].label} disabled={draft.dirty || !enabled} onClick={() => select(preview.sources[0]!.entity)}><ArrowUpRight size={14} aria-hidden />Open source</button> : null}
+            {source?.entity ? <button className="quiet small" aria-label={`Open source for ${name}`} title={draft.dirty ? "Apply or discard changes before opening the source" : source.label} disabled={draft.dirty} onClick={() => select(source.entity!)}><ArrowUpRight size={14} aria-hidden />Open source</button> : null}
             <button className="quiet small" aria-label={`Reset mapping for ${name}`} disabled={disabled || !changed || !saved} onClick={() => { if (saved) draft.setClientMappings({ ...mappings, [name]: saved }); }}>Reset mapping</button>
           </div>
         </div> : null}
@@ -169,9 +176,12 @@ export function ClientEnvironmentMappings() {
   </section>;
 }
 
+/** The same recipe written once per environment, ready to diverge. */
+const clientBindingSplit = (mapping: ClientEnvironmentMapping) => ({ dev: clientBindingFor(mapping, "dev"), prod: clientBindingFor(mapping, "prod") });
+
 export function ClientEnvironmentFileView({ resource }: { readonly resource: ModelResource }) {
   return <>
-    <header><span className="kind">Client environment</span><h2><EntityIcon icon="envFile" />.env</h2><code className="ref">client-app/.env</code></header>
+    <header><span className="kind">Generated client settings</span><h2><EntityIcon icon="envFile" />Client environment</h2><code className="ref">{CLIENT_ENVIRONMENT_FILES.dev}</code><code className="ref">{CLIENT_ENVIRONMENT_FILES.prod}</code></header>
     <ClientEnvironmentMappings />
     <Description entity={resource.id} />
   </>;

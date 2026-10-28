@@ -1,16 +1,25 @@
-import { clientMappingsError, publicInputName, type ClientEnvironmentMappings } from "./client-environment-mapping";
+import { clientBindingFor, clientMappingsError, publicInputName, type ClientEnvironmentMappings } from "./client-environment-mapping";
 import { ROOT_ENV_STACK_OUTPUTS } from "./root-env-outputs";
+import { resolveInput, type InputResolution, type ResourceReference } from "@repo/framework/config";
 import { collectDeploymentStacks, type DeploymentStack } from "./resource-export";
 
-/** Resolve reviewed client references from one deployment and its authored inputs, before any file write. */
+/**
+ * Resolve reviewed client references from one deployment, before any file write.
+ *
+ * An input is read through the framework's own resolver, from the catalog declarations the
+ * deployed graph was built from, the deployed graph's inputs file, and the project's CDK
+ * context — the sources synthesis read. An input outside this graph, or an optional one with
+ * no value and no default, leaves its field blank; a required one with neither stops the export.
+ */
 export function resolveClientEnvironmentMappings(mappings: ClientEnvironmentMappings, context: {
   readonly deployment: string;
   readonly stacks: readonly DeploymentStack[];
+  /** The deployed graph's inputs file, parsed. */
   readonly inputs: Readonly<Record<string, string | undefined>>;
-  readonly defaults?: Readonly<Record<string, string | undefined>>;
-  readonly sensitiveInputs?: ReadonlySet<string>;
-  readonly declaredInputs?: ReadonlySet<string>;
-  readonly inputEnums?: Readonly<Record<string, readonly string[]>>;
+  /** The catalog, resolved for the deployed graph. */
+  readonly declarations: readonly ResourceReference[];
+  /** Persistent CDK context, which overrides an input as it did during synthesis. */
+  readonly getContext?: (key: string) => unknown;
 }): Record<string, string> {
   const error = clientMappingsError(mappings);
   if (error) throw new Error(error);
@@ -19,40 +28,46 @@ export function resolveClientEnvironmentMappings(mappings: ClientEnvironmentMapp
     throw new Error(`Client inputs must match the ${identity.mode === "prod" ? "production" : "development"} deployment. Existing local files were preserved.`);
   }
   const fail = (name: string, reason: string): never => { throw new Error(`${name}: ${reason} Existing local files were preserved.`); };
-  const input = (name: string, field: string) => {
-    if (!publicInputName(name) || context.sensitiveInputs?.has(name)) fail(field, "Secret inputs cannot be exported to the browser.");
-    if (context.declaredInputs && !context.declaredInputs.has(name)) fail(field, `Declare ${name} as a public input parameter.`);
-    const authored = Object.hasOwn(context.inputs, name) ? context.inputs[name] : undefined;
-    const raw = (authored?.trim() ? authored : Object.hasOwn(context.defaults ?? {}, name) ? context.defaults![name] ?? "" : "").trim();
-    const choices = Object.hasOwn(context.inputEnums ?? {}, name) ? context.inputEnums![name] : undefined;
-    const value = choices ? choices.find(allowed => allowed.toLowerCase() === raw.toLowerCase()) : raw;
-    if (raw && value === undefined) fail(field, `The ${name} input parameter does not match its declared choices.`);
-    return value ?? "";
+  const declared = new Map(context.declarations.filter((reference) => reference.fromEnv && !reference.secretArn).map((reference) => [reference.fromEnv!, reference]));
+  const input = (name: string, field: string): InputResolution => {
+    const reference = declared.get(name);
+    if (!publicInputName(name) || reference?.kind === "secret") return fail(field, "Secret inputs cannot be exported to the browser.");
+    if (!reference) return fail(field, `Declare ${name} as a public input parameter.`);
+    const resolved = resolveInput(reference, { env: context.inputs, getContext: context.getContext });
+    if (resolved.state === "invalid") fail(field, `The ${name} input parameter does not match its declared choices.`);
+    return resolved;
   };
+  const valueOf = (resolved: InputResolution) => resolved.state === "supplied" || resolved.state === "fallback" ? resolved.value : undefined;
+  /** A field whose input supplies nothing: blank unless the input is required here. */
+  const unsupplied = (resolved: InputResolution, name: string, field: string) =>
+    resolved.state === "missing" ? fail(field, `Set ${name} in cdk-app/.env.${identity.mode} or supply a declaration default.`) : "";
   const result: Record<string, string> = {};
   const publicOutputs: Readonly<Record<string, Readonly<Record<string, string>>>> = ROOT_ENV_STACK_OUTPUTS;
-  for (const [name, modes] of Object.entries(mappings)) {
-    const binding = modes[identity.mode];
-    if (binding.enabled === false) continue;
+  for (const [name, mapping] of Object.entries(mappings)) {
+    const binding = clientBindingFor(mapping, identity.mode);
     if (binding.when) {
-      const selected = input(binding.when.input, name);
-      if (!selected.trim()) fail(name, `Set the ${binding.when.input} input parameter or supply a declaration default.`);
+      const selector = input(binding.when.input, name);
+      if (selector.state === "not-applicable") { result[name] = ""; continue; }
+      const selected = valueOf(selector);
+      if (selected === undefined) fail(name, `Set the ${binding.when.input} input parameter or supply a declaration default.`);
       if (selected !== binding.when.equals) { result[name] = ""; continue; }
     }
     let value: string;
     if (binding.kind === "empty") value = "";
     else if (binding.kind === "input") {
-      value = input(binding.name, name);
-      if (!value.trim()) fail(name, `Set ${binding.name} in cdk-app/.env.${identity.mode} or supply a declaration default.`);
+      const resolved = input(binding.name, name);
+      value = valueOf(resolved) ?? unsupplied(resolved, binding.name, name);
     } else if (binding.kind === "endpoint") {
-      const override = binding.override ? input(binding.override, name) : "";
-      if (override.trim()) {
+      const override = binding.override ? valueOf(input(binding.override, name)) : undefined;
+      const port = input(binding.port, name);
+      if (override !== undefined) {
         value = override;
         validateUrl(name, value, binding.protocol.startsWith("ws") ? ["ws:", "wss:"] : ["http:", "https:"], fail);
-      } else {
-        const port = input(binding.port, name);
-        if (!/^[1-9][0-9]*$/.test(port) || Number(port) > 65535) fail(name, `${binding.port} must supply a port between 1 and 65535.`);
-        value = `${binding.protocol}://${binding.host ?? "localhost"}:${port}`;
+      } else if (valueOf(port) === undefined) value = unsupplied(port, binding.port, name);
+      else {
+        const supplied = valueOf(port)!;
+        if (!/^[1-9][0-9]*$/.test(supplied) || Number(supplied) > 65535) fail(name, `${binding.port} must supply a port between 1 and 65535.`);
+        value = `${binding.protocol}://${binding.host ?? "localhost"}:${supplied}`;
         validateUrl(name, value, [binding.protocol + ":"], fail);
       }
     } else {

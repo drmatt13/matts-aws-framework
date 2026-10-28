@@ -202,12 +202,11 @@ const mappingRoot = process.env.FRAMEWORK_EXPORT_DIRECTORY ? resolve(import.meta
 const { default: framework } = require(resolve(mappingRoot, "framework.config.ts"));
 const declarations = listResourceDeclarations(framework.resources);
 const clientMappings = parseClientMappings(readFileSync(resolve(mappingRoot, CLIENT_ENVIRONMENT_FILE), "utf8")).mappings;
+// The deployed graph's catalog, file and persistent CDK context: the sources synthesis read.
+const projectContext = readCdkContext(mappingRoot);
 const client = resolveClientEnvironmentMappings(clientMappings, {
-  deployment: deploymentName, stacks: listed, inputs: clientInputs,
-  defaults: Object.fromEntries(declarations.filter((reference) => reference.kind === "string" && !reference.secretArn && reference.fromEnv && reference.default !== undefined).map((reference) => [reference.fromEnv, reference.default])),
-  sensitiveInputs: new Set(declarations.filter((reference) => reference.kind === "secret" || reference.secretArn).flatMap((reference) => reference.fromEnv ? [reference.fromEnv] : [])),
-  declaredInputs: new Set(declarations.filter((reference) => reference.kind === "string" && !reference.secretArn && !reference.absent && reference.fromEnv).map((reference) => reference.fromEnv)),
-  inputEnums: Object.fromEntries(declarations.filter((reference) => reference.kind === "string" && !reference.secretArn && reference.fromEnv && reference.values).map((reference) => [reference.fromEnv, reference.values])),
+  deployment: deploymentName, stacks: listed, inputs: clientInputs, declarations,
+  getContext: (key) => projectContext[key],
 });
 // A frontend can refresh its public settings without Docker, replay/control outputs,
 // or writes to root .env and the local resource manifest. Release builds use this

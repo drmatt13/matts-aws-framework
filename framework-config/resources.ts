@@ -1,4 +1,5 @@
 import { defineResources } from "@repo/framework/config";
+import { FRAMEWORK_MODE } from "@repo/framework/config/source";
 import { cognito, rds, referenceExamples } from "./resources/stacks";
 import { client, enableWebSocketApi, googleClientSecret, langgraph, openaiApiKey } from "./resources/inputs";
 
@@ -22,11 +23,13 @@ import { client, enableWebSocketApi, googleClientSecret, langgraph, openaiApiKey
  * AWS and under `docker compose up`. The repository-root .env is generated
  * output and is never read back as an input.
  *
- * An entry declared `undefined` keeps its place in the catalog and resolves to
- * nothing: every config that reads it still compiles, and the workload that
- * names it simply never sees the variable. That is how a database this
- * deployment does not build disappears, without any resource having to know
- * what a deployment mode is.
+ * An input says how development and production differ where it is declared:
+ * `.only("dev")`, `.required("prod")`, `.default({ dev, prod })`. The catalog
+ * is resolved for the graph being built (`mode` below), so an input outside its
+ * graph keeps its place and resolves to nothing: every config that reads it
+ * still compiles, and the workload that names it simply never sees the
+ * variable. A stack this deployment does not build is declared `undefined` and
+ * disappears the same way.
  *
  * See docs/FRAMEWORK.md#resources-inputs-and-permissions.
  */
@@ -40,4 +43,4 @@ export const resources = defineResources({
   enableWebSocketApi,
   client,
   langgraph,
-});
+}, { mode: FRAMEWORK_MODE });

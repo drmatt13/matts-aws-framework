@@ -25,16 +25,17 @@ import { validateTags, type DeclarationTags, type DeclarationMetadata } from "./
  * `.value` and `.field()` are three different answers with three different
  * consequences — see `SecretProjections` in ./cdk-resources.
  *
- * Nothing here annotates a resource with the deployments it belongs to. The
- * catalog is ordinary TypeScript, so an entry this deployment does not build is
- * written `undefined` — a ternary on `PROD_DEPLOYMENT`, read from that same
- * cdk-app/.env.<mode> — and {@link defineResources} keeps its place as an *absent*
- * reference. It still types as present, so every config that reads it compiles
- * in both graphs while the workload simply never sees the variable, and the
- * handler falls back the way it would for any unset variable. {@link CloudMode}
- * survives only as the name of the graph being synthesized; it is not something
- * a resource carries, which is why resolving one takes no mode to compare
- * against.
+ * An authored input says how it differs between the two graphs, and nothing
+ * else does: `.only("dev")` leaves it out of production, `.required("prod")`
+ * requires it there alone, and `.default({ dev, prod })` gives each graph its
+ * own fallback. {@link defineResources} is told which graph it is building and
+ * resolves each declaration to that graph's answer — `absent`, `required` and
+ * `default` — so everything downstream reads one graph and never compares
+ * modes. An absent entry still types as present, so every config that reads it
+ * compiles in both graphs while the workload simply never sees the variable.
+ *
+ * A stack the deployment does not build is written `undefined`, a ternary on
+ * `PROD_DEPLOYMENT`, and keeps its place as an absent group the same way.
  */
 
 import { secretBindingKey } from "./secret-bindings";
@@ -93,14 +94,15 @@ export interface ResourceReference<
   /** What the supplied value is: a plain string, or a non-secret secret handle. */
   readonly kind: Kind;
   /**
-   * Set when the catalog left this entry out of the graph being built, by
-   * declaring it `undefined` — see {@link defineResources}.
+   * Set when the catalog left this entry out of the graph being built: an
+   * input declared `.only()` the other graph, or an entry declared `undefined`
+   * — see {@link defineResources}.
    *
-   * There is no mode to compare against, because the config already answered
-   * the question: the same catalog is loaded by synthesis, by the local lane
-   * and by the generator, and all three read the same `cdk-app/.env.<mode>`. An absent
-   * resource resolves to nothing everywhere, so the workload that reads it
-   * simply never sees the variable.
+   * There is no mode to compare against, because the catalog already answered
+   * the question for the graph it was defined for: synthesis, the local lane
+   * and the generator all read the same answer. An absent resource resolves to
+   * nothing everywhere, so the workload that reads it simply never sees the
+   * variable.
    */
   readonly absent?: true;
   /**
@@ -109,8 +111,14 @@ export interface ResourceReference<
    * a setting the workload never sees, not a setting that is blank.
    */
   readonly optional: Optional;
-  /** Every enabled consumer must supply this authored input. */
+  /** Every enabled consumer must supply this authored input in this graph. */
   readonly required?: true;
+  /**
+   * The input's declared policy in each graph, kept when the two differ so a
+   * reader of one graph — Studio, the client export — can still describe the
+   * other. `absent`, `required` and `default` are this graph's entry.
+   */
+  readonly modes?: Readonly<Record<CloudMode, InputModePolicy>>;
   /**
    * The environment variable this value is read from, when the application does
    * not supply it. Absent means the composition root owns the value.
@@ -157,6 +165,16 @@ export interface ResourceReference<
   readonly path: Path;
   /** Native CDK attribute; the path identifies the linked construct. */
   readonly attribute?: string;
+}
+
+/** What an authored input is in one graph. */
+export interface InputModePolicy {
+  /** The graph holds the input. False only for `.only()` the other graph. */
+  readonly present: boolean;
+  /** Every enabled consumer must supply it. */
+  readonly required: boolean;
+  /** What stands in when cdk-app/.env.<mode> leaves it blank. */
+  readonly default?: string;
 }
 
 /**
@@ -335,6 +353,12 @@ export interface ResourceDeclarationInput {
  * definition — a choice list that rejected "OpenAI" would be a spelling test,
  * not a setting — and the declared spelling is what resolves, so the union
  * survives to the resolved value instead of widening to `string`.
+ *
+ * The rest says how the two graphs differ, and reads the same way for each:
+ * `.only("dev")` declares the input in development alone, `.required("prod")`
+ * requires it in production alone, and `.default({ dev: "a", prod: "b" })`
+ * falls back differently per graph. Without a mode, each applies to every
+ * graph the input is in.
  */
 export interface EnvStringBuilder<
   FromEnv extends string,
@@ -347,9 +371,17 @@ export interface EnvStringBuilder<
     ...values: Values
   ): EnvStringBuilder<FromEnv, Optional, Values[number]>;
   default(value: Value): EnvStringBuilder<FromEnv, false, Value>;
+  default(values: { readonly dev: Value; readonly prod: Value }): EnvStringBuilder<FromEnv, false, Value>;
+  default(values: ModeDefaults<Value>): EnvStringBuilder<FromEnv, Optional, Value>;
   note(text: string): EnvStringBuilder<FromEnv, Optional, Value>;
-  required(): EnvStringBuilder<FromEnv, Optional, Value>;
+  required(mode?: CloudMode): EnvStringBuilder<FromEnv, Optional, Value>;
+  only(mode: CloudMode): EnvStringBuilder<FromEnv, Optional, Value>;
 }
+
+/** Per-graph fallbacks. A graph left out has none. */
+export type ModeDefaults<Value extends string = string> =
+  | { readonly dev: Value; readonly prod?: Value }
+  | { readonly dev?: Value; readonly prod: Value };
 
 /**
  * A secret whose value you author in cdk-app/.env.<mode>, and nowhere else.
@@ -358,17 +390,19 @@ export interface EnvStringBuilder<
  * copies it into Secrets Manager and supplies the ARN — never the value, which
  * reaches no template and no generated file.
  *
- * Optional by default: `.required()` adds a requirement to every consumer;
- * conditional needs belong in `cloud.requirements` on each workload.
- * A key one service needs for one model provider must not
- * block a deployment that chose another, or that does not build the service.
+ * Optional by default: `.required()` adds a requirement to every consumer, and
+ * `.required("prod")` only to production's; conditional needs belong in
+ * `cloud.requirements` on each workload. A key one service needs for one model
+ * provider must not block a deployment that chose another, or that does not
+ * build the service.
  */
 export interface EnvSecretBuilder<FromEnv extends string>
   extends ResourceDeclaration<
     ResourceReference<"secret", readonly [], true, FromEnv>
   > {
   note(text: string): EnvSecretBuilder<FromEnv>;
-  required(): EnvSecretBuilder<FromEnv>;
+  required(mode?: CloudMode): EnvSecretBuilder<FromEnv>;
+  only(mode: CloudMode): EnvSecretBuilder<FromEnv>;
 }
 
 /** Runtime brand. A declaration is recognized by this, never by shape alone. */
@@ -388,6 +422,29 @@ type DeclarationPayload = Omit<ResourceReference, "$resource" | "path">;
 interface BuilderData {
   readonly $declaration: typeof RESOURCE_DECLARATION_BRAND;
   readonly $payload: DeclarationPayload;
+  /** What the chain said about each graph, resolved to one by {@link withPaths}. */
+  readonly $modes?: AuthoredModes;
+}
+
+/** `.only()`, `.required()` and `.default()` as written, before a graph is chosen. */
+interface AuthoredModes {
+  readonly only?: CloudMode;
+  /** `"both"` for `.required()` without a mode. */
+  readonly required?: CloudMode | "both";
+  /** A string falls back in every graph; an object only in the graphs it names. */
+  readonly default?: string | ModeDefaults;
+}
+
+function cloudMode(value: unknown, method: string): CloudMode {
+  if (!CLOUD_MODES.includes(value as CloudMode)) {
+    throw new Error(`${method} takes "dev" or "prod". Received ${JSON.stringify(value)}.`);
+  }
+  return value as CloudMode;
+}
+
+/** The values a `.default()` declares, whichever form it took. */
+function declaredDefaults(value: AuthoredModes["default"]): readonly string[] {
+  return value === undefined ? [] : typeof value === "string" ? [value] : Object.values(value);
 }
 
 export function isResourceDeclaration(value: unknown): value is ResourceDeclaration {
@@ -404,8 +461,11 @@ function declarationPayload(value: ResourceDeclaration): DeclarationPayload {
 }
 
 const BUILDER_PROTOTYPE = {
-  required(this: BuilderData): BuilderData {
-    return rebuild(this, { required: true });
+  required(this: BuilderData, mode?: CloudMode): BuilderData {
+    return rebuild(this, {}, { required: mode === undefined ? "both" : cloudMode(mode, ".required()") });
+  },
+  only(this: BuilderData, mode: CloudMode): BuilderData {
+    return rebuild(this, {}, { only: cloudMode(mode, ".only()") });
   },
   enum(this: BuilderData, ...values: string[]): BuilderData {
     if (
@@ -417,29 +477,35 @@ const BUILDER_PROTOTYPE = {
     if (new Set(values.map((value) => value.toLowerCase())).size !== values.length) {
       throw new Error(".enum() choices must be distinct without regard to case.");
     }
-    const declared = this.$payload.default;
-    if (declared !== undefined && !values.includes(declared)) {
+    const declared = declaredDefaults(this.$modes?.default).find((value) => !values.includes(value));
+    if (declared !== undefined) {
       throw new Error(
         `A choice list declares .default(${JSON.stringify(declared)}), which is not one of ${values.join(", ")}.`,
       );
     }
     return rebuild(this, { values });
   },
-  default(this: BuilderData, value: string): BuilderData {
+  default(this: BuilderData, value: string | ModeDefaults): BuilderData {
     const { kind, values } = this.$payload;
-    if (typeof value !== "string" || !value.trim()) {
+    const perMode = typeof value === "object" && value !== null && !Array.isArray(value);
+    if (perMode && (!Object.keys(value).length || Object.keys(value).some((mode) => !CLOUD_MODES.includes(mode as CloudMode)))) {
+      throw new Error(`A ${kind} resource declares .default(${JSON.stringify(value)}). Name a value, or one per graph: .default({ dev: "…", prod: "…" }).`);
+    }
+    const declared: readonly unknown[] = perMode ? Object.values(value) : [value];
+    if (declared.some((item) => typeof item !== "string" || !item.trim())) {
       throw new Error(
         `A ${kind} resource declares a blank .default(). Omit it, or name the value the deployment falls back to.`,
       );
     }
-    if (values && !values.includes(value)) {
+    const outside = values && (declared as readonly string[]).find((item) => !values.includes(item));
+    if (outside !== undefined) {
       throw new Error(
-        `A choice list declares .default(${JSON.stringify(value)}), which is not one of ${values.join(", ")}.`,
+        `A choice list declares .default(${JSON.stringify(outside)}), which is not one of ${values!.join(", ")}.`,
       );
     }
-    // A default answers for the variable, so the declaration stops being
-    // optional: something always supplies a value now.
-    return rebuild(this, { default: value, optional: false });
+    // A default answers for the variable in its graphs, so the resolved
+    // reference stops being optional there: something always supplies a value.
+    return rebuild(this, {}, { default: perMode ? { ...value } : value as string });
   },
   note(this: BuilderData, text: string): BuilderData {
     if (typeof text !== "string" || !text.trim() || /[\r\n]/.test(text)) {
@@ -459,16 +525,44 @@ const BUILDER_PROTOTYPE = {
  * Absent rather than `undefined`, for the reason this module opens with — a
  * declaration should serialize and compare as the data it is.
  */
-function rebuild(current: BuilderData, change: Record<string, unknown>): BuilderData {
+function rebuild(current: BuilderData, change: Record<string, unknown>, modes: AuthoredModes = {}): BuilderData {
   const payload: Record<string, unknown> = { ...current.$payload };
   for (const [key, value] of Object.entries(change)) {
     if (value === undefined) delete payload[key];
     else payload[key] = value;
   }
+  const authored = { ...current.$modes, ...modes };
   return Object.assign(Object.create(BUILDER_PROTOTYPE), {
     $declaration: RESOURCE_DECLARATION_BRAND,
     $payload: payload as unknown as DeclarationPayload,
+    ...(Object.keys(authored).length ? { $modes: authored } : {}),
   }) as BuilderData;
+}
+
+/**
+ * What an authored declaration is in each graph.
+ *
+ * A setting for a graph the input is not in has nowhere to apply, so it is
+ * refused rather than dropped: `.only("dev").required("prod")` says two things
+ * that cannot both hold.
+ */
+function inputModes(declaration: ResourceDeclaration, path: readonly string[]): Readonly<Record<CloudMode, InputModePolicy>> {
+  const authored = (declaration as unknown as BuilderData).$modes ?? {};
+  const resolved = (mode: CloudMode): InputModePolicy => {
+    const present = authored.only === undefined || authored.only === mode;
+    const fallback = typeof authored.default === "string" ? authored.default : authored.default?.[mode];
+    if (!present && (authored.required === mode || (typeof authored.default === "object" && fallback !== undefined))) {
+      throw new Error(
+        `resources.${path.join(".")} is declared .only("${authored.only}"), so it has no ${mode} graph to be ${authored.required === mode ? "required" : "given a default"} in. Remove the ${mode} setting, or .only().`,
+      );
+    }
+    return {
+      present,
+      required: present && (authored.required === "both" || authored.required === mode),
+      ...(present && fallback !== undefined ? { default: fallback } : {}),
+    };
+  };
+  return { dev: resolved("dev"), prod: resolved("prod") };
 }
 
 /** One authored input, of either kind, as the builder a chain continues from. */
@@ -486,9 +580,9 @@ function declareInput(kind: ResourceKind, variable?: string, options?: Declarati
     $payload: {
       kind,
       ...(options?.tags === undefined ? {} : { tags: validateTags(options.tags, `resource.${kind === "secret" ? "secret" : "fromEnv"}()`), effectiveTags: validateTags(options.tags) }),
-      // Optional until a `.default()` answers for it. A secret has no default
-      // and stays optional: whether a deployment needs it belongs to the
-      // workloads that read it, not to the catalog.
+      // Optional until a `.default()` answers for it in the graph being built.
+      // A secret has no default and stays optional: whether a deployment needs
+      // it belongs to the workloads that read it, not to the catalog.
       optional: true,
       // "" asks `withPaths` to derive the name, which it can do and this
       // cannot: the path is not known until the catalog is declared.
@@ -631,6 +725,7 @@ const RESOURCE_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/;
 function withPaths(
   group: Readonly<Record<string, unknown>>,
   prefix: readonly string[],
+  mode: CloudMode | undefined,
 ): ResourceDeclarationGroup {
   const resolved: Record<string, ResourceReference | CdkResourceSpec | CdkResourceGroupSpec | ResourceDeclarationGroup> = {};
   for (const [name, entry] of Object.entries(group)) {
@@ -673,9 +768,24 @@ function withPaths(
       // the prototype its methods live on — stops here. What comes out is a
       // plain object with a path and nothing left to call.
       const declaration = declarationPayload(entry);
+      const modes = inputModes(entry, path);
+      const varies = JSON.stringify(modes.dev) !== JSON.stringify(modes.prod);
+      if (varies && mode === undefined) {
+        throw new Error(
+          `resources.${path.join(".")} differs between dev and prod, so the catalog has to know which graph it is building: defineResources({ ... }, { mode: FRAMEWORK_MODE }), with FRAMEWORK_MODE from "@repo/framework/config/source".`,
+        );
+      }
+      // One graph's answer. Every lane reads these three fields and nothing
+      // else, which is why no reader downstream ever compares modes.
+      const own = modes[mode ?? "dev"];
       const reference: ResourceReference = {
         $resource: RESOURCE_REFERENCE_BRAND,
         ...declaration,
+        optional: !own.present || own.default === undefined,
+        ...(own.present ? {} : { absent: true as const }),
+        ...(own.required ? { required: true as const } : {}),
+        ...(own.default === undefined ? {} : { default: own.default }),
+        ...(varies ? { modes } : {}),
         path,
         ...(declaration.fromEnv === ""
           ? { fromEnv: resourceOutputEnvironmentName({ path }) }
@@ -709,7 +819,7 @@ function withPaths(
         `resources.${path.join(".")} nests a group inside a group. Resources are one level of grouping deep.`,
       );
     }
-    resolved[name] = withPaths(entry as Readonly<Record<string, unknown>>, path);
+    resolved[name] = withPaths(entry as Readonly<Record<string, unknown>>, path, mode);
   }
   return resolved;
 }
@@ -721,11 +831,27 @@ function withPaths(
  * The returned object is what a config references — `resources.cognito.userPoolId`
  * *is* the reference — and `typeof resources` is what narrow catalog views are
  * taken from with `Pick`.
+ *
+ * With `{ mode }`, each authored input becomes that graph's answer: absent
+ * outside its `.only()`, required where `.required()` names the graph, and
+ * defaulted to that graph's `.default()`. A catalog whose inputs are the same
+ * in both graphs needs no mode.
  */
 export function defineResources<const Catalog extends ResourceDeclarationInput>(
   catalog: Catalog,
+  options: DefineResourcesOptions = {},
 ): WithResourcePaths<Catalog, readonly []> {
-  return withPaths(catalog, []) as unknown as WithResourcePaths<Catalog, readonly []>;
+  const mode = options.mode === undefined ? undefined : cloudMode(options.mode, "defineResources({ mode })");
+  return withPaths(catalog, [], mode) as unknown as WithResourcePaths<Catalog, readonly []>;
+}
+
+export interface DefineResourcesOptions {
+  /**
+   * The graph this catalog is resolved for: `FRAMEWORK_MODE` from
+   * `@repo/framework/config/source`. Needed once any input differs between
+   * graphs through `.only()`, `.required(mode)` or `.default({ dev, prod })`.
+   */
+  readonly mode?: CloudMode;
 }
 
 export function isResourceReference(value: unknown): value is ResourceReference {
@@ -1165,6 +1291,63 @@ export function readSyncedSecret(
 }
 
 /**
+ * How one authored string input resolves in the graph its reference was defined
+ * for. Every reader — synthesis, the local lane, the client export and Studio —
+ * states the rules through this one function:
+ *
+ * 1. An input outside its graph (`.only()` the other one) is `not-applicable`.
+ * 2. A `-c` context value, then a non-blank line in the inputs file, is `supplied`.
+ * 3. Otherwise the graph's declared default is the `fallback`.
+ * 4. Otherwise the input is `missing` when its declaration requires it, and
+ *    `unresolved` when it is optional. Another graph's value never stands in.
+ *
+ * A blank line counts as unset. A choice list matches without regard to case and
+ * resolves to its declared spelling; anything else is `invalid`. Secrets are not
+ * resolved here: what a deployment reads for one is its synced handle.
+ */
+export type InputResolution =
+  | { readonly state: "supplied" | "fallback" | "invalid"; readonly value: string }
+  | { readonly state: "unresolved" | "missing" | "not-applicable" };
+
+export function resolveInput(
+  reference: Pick<ResourceReference, "fromEnv" | "absent" | "default" | "values" | "required">,
+  readers: Pick<ResourceEnvironmentReaders, "env" | "getContext">,
+): InputResolution {
+  if (reference.absent) return { state: "not-applicable" };
+  const variable = reference.fromEnv;
+  const supplied = variable === undefined ? undefined
+    : (readers.getContext === undefined ? undefined : readEnvString(readers.getContext(resourceEnvContextKey(variable))))
+      ?? (readers.env === undefined ? undefined : readEnvString(readers.env[variable]));
+  const raw = supplied ?? reference.default;
+  if (raw === undefined) return { state: reference.required ? "missing" : "unresolved" };
+  // Trimmed before anything looks at it: a value that arrived with a trailing
+  // newline from a shell pipeline is the value, not the value plus whitespace.
+  const trimmed = raw.trim();
+  const value = reference.values
+    ? reference.values.find((allowed) => allowed.toLowerCase() === trimmed.toLowerCase())
+    : trimmed;
+  if (value === undefined) return { state: "invalid", value: trimmed };
+  return { state: supplied === undefined ? "fallback" : "supplied", value };
+}
+
+/**
+ * The same declaration as another graph resolves it, from the policy it keeps in
+ * `modes`. A reference whose graphs agree is already every graph's answer.
+ */
+export function referenceForGraph<Reference extends ResourceReference>(reference: Reference, mode: CloudMode): Reference {
+  const policy = reference.modes?.[mode];
+  if (!policy) return reference;
+  const { absent: _absent, required: _required, default: _default, ...rest } = reference;
+  return {
+    ...rest,
+    optional: !policy.present || policy.default === undefined,
+    ...(policy.present ? {} : { absent: true as const }),
+    ...(policy.required ? { required: true as const } : {}),
+    ...(policy.default === undefined ? {} : { default: policy.default }),
+  } as Reference;
+}
+
+/**
  * The value a declared `fromEnv` supplies for one reference.
  *
  * Precedence is the derived context key, then the environment map, then the
@@ -1210,34 +1393,17 @@ export function resolveResourceFromEnv(
 
   // Context first, then the variable, then the declared default — the order
   // every other deployment flag is read in, so a `-c` override still wins over
-  // a value parked in `.env`.
-  const fromContext =
-    readers.getContext === undefined
-      ? undefined
-      : readEnvString(readers.getContext(resourceEnvContextKey(variable)));
-  const fromVariable =
-    readers.env === undefined ? undefined : readEnvString(readers.env[variable]);
-  const raw = fromContext ?? fromVariable ?? reference.default;
-
-  if (raw === undefined) {
-    if (reference.optional) return undefined;
-    throw new Error(
-      `${where} is required and was not supplied. Set ${formatResourceEnv(variable)}.`,
-    );
-  }
-
-  // Trimmed before anything looks at it: a value that arrived with a trailing
-  // newline from a shell pipeline is the value, not the value plus whitespace.
-  const trimmed = raw.trim();
-
-  const value = reference.values
-    ? reference.values.find((allowed) => allowed.toLowerCase() === trimmed.toLowerCase())
-    : trimmed;
-  if (value === undefined) {
+  // a value parked in `.env`. Requirements belong to consumers, checked by
+  // assertRequirementsMet, so only an undefaulted non-optional input fails here.
+  const resolved = resolveInput({ ...reference, required: undefined }, readers);
+  if (resolved.state === "invalid") {
     throw new Error(
       `${where} must be one of ${reference.values!.join(", ")}. Set ${formatResourceEnv(variable)}.`,
     );
   }
-
-  return value;
+  if (resolved.state === "supplied" || resolved.state === "fallback") return resolved.value;
+  if (reference.optional || resolved.state === "not-applicable") return undefined;
+  throw new Error(
+    `${where} is required and was not supplied. Set ${formatResourceEnv(variable)}.`,
+  );
 }

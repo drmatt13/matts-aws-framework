@@ -3,20 +3,25 @@ import path from "node:path";
 import { parseEnv } from "node:util";
 import type { Mode } from "../shared/model";
 import { selectedDeploymentInput } from "./deployment-inputs";
-import { deployInputsFrom, deployKey, type DeployCondition } from "@repo/framework/config";
+import { deployKey, referenceForGraph, resolveInput, type DeployCondition, type ResourceReference } from "@repo/framework/config";
 
-/** Only outcomes cross IPC; authored values stay in the Studio server. */
+/**
+ * Only outcomes cross IPC; authored values stay in the Studio server.
+ *
+ * One evaluator asks about both graphs, but its references were resolved for its own. Each
+ * graph's outcome reads that graph's policy and that graph's file, so a per-graph default
+ * never answers for the other graph.
+ */
 export function resolveDeployOutcomes(root: string, conditions: readonly DeployCondition[]) {
   const result: Record<string, { dev: "holds" | "fails" | "unset"; prod: "holds" | "fails" | "unset" }> = {};
   for (const mode of ["dev", "prod"] as const) {
     const file = path.join(root, selectedDeploymentInput(root, mode));
     const env = existsSync(file) ? parseEnv(readFileSync(file, "utf8")) : {};
-    const inputs = deployInputsFrom({ env });
     for (const condition of conditions) {
       const key = deployKey({ when: condition });
-      const unset = !env[condition.resource.fromEnv!]?.trim() && condition.resource.default === undefined;
-      const holds = inputs.holds(condition, "Deployment condition");
-      (result[key] ??= { dev: "unset", prod: "unset" })[mode] = holds ? "holds" : unset ? "unset" : "fails";
+      const resolved = resolveInput(referenceForGraph(condition.resource as ResourceReference, mode), { env });
+      if (resolved.state === "invalid") throw new Error(`Deployment condition ${condition.resource.fromEnv} must be one of ${condition.resource.values?.join(", ")}.`);
+      (result[key] ??= { dev: "unset", prod: "unset" })[mode] = resolved.state === "supplied" || resolved.state === "fallback" ? resolved.value === condition.equals ? "holds" : "fails" : "unset";
     }
   }
   return result;

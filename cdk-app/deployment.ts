@@ -1,16 +1,17 @@
 import * as cdk from "aws-cdk-lib";
 import { createHash } from "crypto";
-import * as fs from "fs";
-import type { CloudMode } from "@repo/framework/config";
+import { resolveInput, resourceEnvContextKey, type CloudMode, type ResourceReference } from "@repo/framework/config";
 import { modeFromContext, type DeploymentTarget } from "@repo/framework/deploy";
 import { resolveDatabaseSettings, type DatabaseSettingsInput } from "./database-settings";
 import { resolveStatefulResources, type StatefulResourcesConfiguration } from "./stateful-resources";
+import { deploymentInputs } from "./deployment-inputs";
 
 /** Application-owned deployment policy. See docs/FRAMEWORK.md#configuration-and-environment.
  * Importing this module never reads .env, creates an App, or generates code.
  */
 export interface DeploymentSources {
   getContext: (key: string) => unknown;
+  /** The selected inputs file, plus the CDK CLI's CDK_DEFAULT_ACCOUNT and CDK_DEFAULT_REGION. */
   env: Readonly<Record<string, string | undefined>>;
   /** The deployment target bin/app.ts resolved from context. */
   target?: Pick<DeploymentTarget, "name" | "mode" | "account" | "region">;
@@ -21,15 +22,6 @@ export interface DeploymentSources {
 
 export function resolveDeploymentInputs({ getContext, env, target, databaseSettings, statefulResources }: DeploymentSources) {
   const warnings: string[] = [];
-  // New ordinary flags use these readers: context, environment, then fallback.
-  const stringFlag = (context: string, envKey: string) =>
-    optionalString(getContext(context)) ?? optionalString(env[envKey]);
-  const booleanFlag = ({
-    context, env: envKey, fallback = false, envLabel,
-  }: { context: string; env?: string; fallback?: boolean; envLabel?: string }): boolean =>
-    optionalBoolean(getContext(context), `-c ${context}`) ??
-    (envKey === undefined ? undefined : optionalBoolean(env[envKey], envLabel ?? `${envKey} in cdk-app/.env.dev or cdk-app/.env.prod`)) ??
-    fallback;
   const account = env.CDK_DEFAULT_ACCOUNT;
   const region = env.CDK_DEFAULT_REGION;
 
@@ -53,6 +45,20 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
   if (!target) warnings.push(...stated.warnings);
   const mode: CloudMode = target?.mode ?? stated.mode ?? "dev";
 
+  // Every setting below is a declaration in ./deployment-inputs, resolved like a
+  // workload input: -c context, then the inputs file, then its default.
+  const settings = deploymentInputs(mode);
+  const readers = { env, getContext: (key: string) => (CONTEXT_ALIASES[key] ?? [key]).map((name) => getContext(name)).find((value) => value !== undefined) };
+  const resolved = (reference: ResourceReference) => {
+    const result = resolveInput(reference, readers);
+    if (result.state === "invalid") {
+      throw new Error(`${reference.fromEnv} (or -c ${CONTEXT_ALIASES[contextKey(reference)]?.[0] ?? contextKey(reference)}) must be ${reference.values!.map((value) => `"${value}"`).join(" or ")}. Received: ${result.value}`);
+    }
+    return result;
+  };
+  const text = (reference: ResourceReference) => { const result = resolved(reference); return result.state === "supplied" || result.state === "fallback" ? result.value : undefined; };
+  const flag = (reference: ResourceReference) => text(reference) === "true";
+
   // PROD_DEPLOYMENT used to live in cdk-app/.env. A leftover line that agrees is
   // only noise; one that disagrees is someone expecting the file to decide, and
   // building the other graph silently would be the worst answer.
@@ -68,8 +74,9 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
 
   // A production target is named by cdk.json; a CDK_APP_NAME beside it in the
   // inputs file is someone expecting it to name the deployment.
-  if (target?.mode === "prod" && env.CDK_APP_NAME?.trim() && env.CDK_APP_NAME.trim() !== target.name) {
-    warnings.push(`[cdk-app] CDK_APP_NAME=${env.CDK_APP_NAME.trim()} in the inputs file is ignored: this production deployment is the target ${target.name}. Remove the line.`);
+  const authoredName = resolved(settings.cdkAppName);
+  if (target?.mode === "prod" && authoredName.state === "supplied" && authoredName.value !== target.name) {
+    warnings.push(`[cdk-app] CDK_APP_NAME=${authoredName.value} in the inputs file is ignored: this production deployment is the target ${target.name}. Remove the line.`);
   }
 
   // A target pinned to an account or region is never synthesized for another:
@@ -86,10 +93,7 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
   // instead of mailing them a code. Never derived from anything else, and
   // refused outright in production: an address nobody proved they own must not
   // be marked verified in a pool real users sign in to.
-  const requestedSkipEmailVerification = booleanFlag({
-    context: "skipEmailVerification",
-    env: "SKIP_EMAIL_VERIFICATION",
-  });
+  const requestedSkipEmailVerification = flag(settings.skipEmailVerification);
   if (requestedSkipEmailVerification && mode === "prod") {
     throw new Error(
       "SKIP_EMAIL_VERIFICATION is a development setting and cannot be used by a production deployment. Remove it from cdk-app/.env.dev or cdk-app/.env.prod (or drop -c skipEmailVerification).",
@@ -98,9 +102,9 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
 
   // Where Cognito sends verification and password-reset mail from. Absent,
   // Cognito's built-in sender is used, which is capped at a small daily quota.
-  const cognitoSesFromEmail = stringFlag("cognitoSesFromEmail", "COGNITO_SES_FROM_EMAIL");
-  const cognitoSesFromName = stringFlag("cognitoSesFromName", "COGNITO_SES_FROM_NAME");
-  const cognitoSesRegion = stringFlag("cognitoSesRegion", "COGNITO_SES_REGION");
+  const cognitoSesFromEmail = text(settings.cognitoSesFromEmail);
+  const cognitoSesFromName = text(settings.cognitoSesFromName);
+  const cognitoSesRegion = text(settings.cognitoSesRegion);
   if (!cognitoSesFromEmail && (cognitoSesFromName || cognitoSesRegion)) {
     throw new Error(
       "COGNITO_SES_FROM_NAME and COGNITO_SES_REGION only apply with COGNITO_SES_FROM_EMAIL. Set the sender address, or remove them.",
@@ -135,17 +139,7 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     );
   }
 
-  const retainStatefulResources =
-    optionalBoolean(
-      getContext("retainStatefulResources"),
-      "-c retainStatefulResources",
-    ) ??
-    retainStatefulResoucesLegacy ??
-    optionalBoolean(
-      env.RETAIN_STATEFUL_RESOURCES,
-      "RETAIN_STATEFUL_RESOURCES in cdk-app/.env.dev or cdk-app/.env.prod",
-    ) ??
-    false;
+  const retainStatefulResources = flag(settings.retainStatefulResources);
   const stateful = resolveStatefulResources(statefulResources, mode, retainStatefulResources);
 
   // API Gateways are framework managed. Stale flags must never silently change a graph.
@@ -179,10 +173,7 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     );
   }
 
-  const deploymentName =
-    target?.name ??
-    stringFlag("cdkAppName", "CDK_APP_NAME") ??
-    "matts-aws-framework";
+  const deploymentName = target?.name ?? text(settings.cdkAppName)!;
 
   if (!/^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(deploymentName)) {
     throw new Error(
@@ -190,38 +181,20 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     );
   }
 
-  const readRenamedString = (
-    contextKey: string,
-    envKey: string,
-    legacyContextKey: string,
-    legacyEnvKey: string,
-  ) => {
-    const legacyValue =
-      stringFlag(legacyContextKey, legacyEnvKey);
-
+  const readRenamedString = (current: ResourceReference, legacy: ResourceReference) => {
+    const legacyValue = text(legacy);
     if (legacyValue !== undefined) {
       warnings.push(
-        `[cdk-app] ${legacyEnvKey} / -c ${legacyContextKey} is deprecated and will be removed. Use ${envKey} / -c ${contextKey}.`,
+        `[cdk-app] ${legacy.fromEnv} / -c ${contextKey(legacy)} is deprecated and will be removed. Use ${current.fromEnv} / -c ${contextKey(current)}.`,
       );
     }
-
-    return (
-      stringFlag(contextKey, envKey) ??
-      legacyValue
-    );
+    return text(current) ?? legacyValue;
   };
 
-  const resolvedFrontendUrl = readRenamedString(
-    "frontendUrl",
-    "FRONTEND_URL",
-    "prodUrl",
-    "PROD_URL",
-  );
+  const resolvedFrontendUrl = readRenamedString(settings.frontendUrl, settings.prodUrl);
   const resolvedFrontendCloudFrontCertificateArn = readRenamedString(
-    "frontendCloudFrontCertificateArn",
-    "FRONTEND_CLOUDFRONT_CERTIFICATE_ARN",
-    "prodCloudFrontCertificateArn",
-    "PROD_CLOUDFRONT_CERTIFICATE_ARN",
+    settings.frontendCloudFrontCertificateArn,
+    settings.prodCloudFrontCertificateArn,
   );
 
   // Like USE_COGNITO_CUSTOM_DOMAIN this is meaningful only in production:
@@ -229,12 +202,7 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
   // alternate domain name is not created at all in local dev stack mode. Set it
   // false to keep the domain and certificate parked in the inputs file while deploying on
   // the generated CloudFront URL.
-  const useFrontendCustomDomain = booleanFlag({
-    context: "useFrontendCustomDomain",
-    env: "USE_FRONTEND_CUSTOM_DOMAIN",
-    envLabel: "USE_FRONTEND_CUSTOM_DOMAIN",
-    fallback: true,
-  });
+  const useFrontendCustomDomain = flag(settings.useFrontendCustomDomain);
 
   // Dropping the values here rather than at each use site keeps them out of
   // frontendUrl, trustedFrontendUrls, and the Cognito callback URLs in one place.
@@ -246,8 +214,8 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     ? resolvedFrontendCloudFrontCertificateArn
     : undefined;
 
-  const localhostDevUrl = "http://localhost:3000";
-  const localDevUrl = stringFlag("localDevUrl", "LOCAL_DEV_URL") ?? localhostDevUrl;
+  const localhostDevUrl = settings.localDevUrl.default!;
+  const localDevUrl = text(settings.localDevUrl)!;
 
   const frontendDomainName = configuredFrontendUrl
     ? getDomainNameFromUrl(configuredFrontendUrl, "frontendUrl/FRONTEND_URL")
@@ -274,37 +242,22 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
 
   // Both custom-domain controls belong to production. Park authored dev values
   // without requesting a Cognito-managed CloudFront distribution in development.
-  const useCognitoCustomDomain = booleanFlag({
-    context: "useCognitoCustomDomain",
-    env: "USE_COGNITO_CUSTOM_DOMAIN",
-    envLabel: "USE_COGNITO_CUSTOM_DOMAIN",
-    fallback: true,
-  });
+  const useCognitoCustomDomain = flag(settings.useCognitoCustomDomain);
 
-  const cognitoDomainNameContext = getContext("cognitoDomainName");
   const applyCognitoCustomDomain = mode === "prod" && useCognitoCustomDomain;
-  if (mode === "dev" && useCognitoCustomDomain && (optionalString(getContext("cognitoDomainName")) || optionalString(env.COGNITO_DOMAIN_NAME))) {
+  if (mode === "dev" && useCognitoCustomDomain && text(settings.cognitoDomainName)) {
     warnings.push("[cdk-app] Cognito custom domains apply only to production. Development custom-domain inputs are ignored; an existing custom domain may be removed or replaced. deploy:resources refuses a direct migration and requires a reviewed saved plan with the typed deployment name before changing it.");
   }
-  const configuredCognitoDomainName = applyCognitoCustomDomain
-    ? (optionalString(cognitoDomainNameContext) ??
-      optionalString(env.COGNITO_DOMAIN_NAME))
-    : undefined;
+  const configuredCognitoDomainName = applyCognitoCustomDomain ? text(settings.cognitoDomainName) : undefined;
   const cognitoDomainName = configuredCognitoDomainName
     ? normalizeDomainName(
         configuredCognitoDomainName,
         "cognitoDomainName/COGNITO_DOMAIN_NAME",
       )
     : undefined;
-  const cognitoDomainCertificateArnContext = getContext(
-    "cognitoDomainCertificateArn",
-  );
   // Dropped together with the domain name: CognitoStack rejects one without the
   // other, so gating only half of the pair would turn the toggle into an error.
-  const cognitoDomainCertificateArn = applyCognitoCustomDomain
-    ? (optionalString(cognitoDomainCertificateArnContext) ??
-      optionalString(env.COGNITO_DOMAIN_CERTIFICATE_ARN))
-    : undefined;
+  const cognitoDomainCertificateArn = applyCognitoCustomDomain ? text(settings.cognitoDomainCertificateArn) : undefined;
 
   if (cognitoDomainName && cognitoDomainCertificateArn) {
     validateUsEast1AcmCertificateArn(
@@ -314,10 +267,7 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     );
   }
 
-  const googleClientIdContext = getContext("googleClientId");
-  const googleClientId = googleClientIdContext
-    ? String(googleClientIdContext)
-    : env.GOOGLE_CLIENT_ID;
+  const googleClientId = text(settings.googleClientId);
   // The matching secret is deliberately absent here. It used to be read from
   // GOOGLE_CLIENT_SECRET and wrapped in SecretValue.unsafePlainText, which put
   // it in the template in cleartext for anyone who can read the stack. It is a
@@ -427,53 +377,6 @@ export function resolveFrontendSettings(
   return { frontendUrl, skipEmailVerification, useSameOriginApiProxy, trustedFrontendUrls, cognitoFrontendUrls, authCallbackUrls };
 }
 
-export function loadDeploymentEnvironment(
-  envPath: string,
-  env: Record<string, string | undefined> = process.env,
-) {
-  if (!fs.existsSync(envPath)) {
-    return;
-  }
-
-  const envFile = fs.readFileSync(envPath, "utf8");
-
-  for (const line of envFile.split(/\r?\n/)) {
-    const trimmedLine = line.trim();
-
-    if (!trimmedLine || trimmedLine.startsWith("#")) {
-      continue;
-    }
-
-    const separatorIndex = trimmedLine.indexOf("=");
-    if (separatorIndex === -1) {
-      continue;
-    }
-
-    const key = trimmedLine.slice(0, separatorIndex).trim();
-    const rawValue = trimmedLine.slice(separatorIndex + 1);
-    let value = rawValue.trim();
-
-    if (!key || env[key] !== undefined) {
-      continue;
-    }
-
-    if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      // A quoted value keeps everything inside the quotes verbatim.
-      value = value.slice(1, -1);
-    } else {
-      // An unquoted value ends at the first "#" that starts the line or follows
-      // whitespace, so the annotations in .env.dev.template / .env.prod.template
-      // never become values.
-      value = rawValue.replace(/(^|\s)#.*$/, "").trim();
-    }
-
-    env[key] = value;
-  }
-}
-
 /**
  * A comma-separated list input, as its non-empty entries.
  *
@@ -488,6 +391,17 @@ const splitCsv = (value: string | undefined): readonly string[] => {
     .filter((entry) => entry.length > 0);
   return [...new Set(entries)];
 };
+
+/**
+ * CDK context keys that differ from the key a declaration derives from its
+ * variable name, or older spellings still honored, in the order they are read.
+ */
+const CONTEXT_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  frontendCloudfrontCertificateArn: ["frontendCloudFrontCertificateArn", "frontendCloudfrontCertificateArn"],
+  prodCloudfrontCertificateArn: ["prodCloudFrontCertificateArn", "prodCloudfrontCertificateArn"],
+  retainStatefulResources: ["retainStatefulResources", "retainStatefulResouces"],
+};
+const contextKey = (reference: ResourceReference) => resourceEnvContextKey(reference.fromEnv!);
 
 const optionalString = (value: unknown) => {
   if (value === undefined || value === null) {

@@ -23,7 +23,7 @@ async function main() {
   const fixture = mkdtempSync(path.join(path.dirname(output), "source fixture "));
   const skip = new Set(["node_modules", ".git", ".cache", ".framework", "cdk.out", "dist", "build", "coverage"]);
   const filter = (file: string) => !skip.has(path.basename(file)) && (!path.basename(file).startsWith(".env") || /\.env\.(?:example|(?:dev|prod)\.template)$/.test(file));
-  for (const relative of ["framework.config.ts", "framework-config", "package.json", "package-lock.json", "docker-compose.yml", "docker-compose.services.yml", "packages/framework/src", "packages/api-contract/src/generated", "cdk-app/lib", "cdk-app/bin", "cdk-app/deployment.ts", "cdk-app/database-settings.ts", "cdk-app/stateful-resources.ts", "cdk-app/cdk.json", "cdk-app/tsconfig.json", "cdk-app/lambda_functions", "cdk-app/ecs_containers", "agents", "scripts"]) {
+  for (const relative of ["framework.config.ts", "framework-config", "package.json", "package-lock.json", "docker-compose.yml", "docker-compose.services.yml", "packages/framework/src", "packages/api-contract/src/generated", "cdk-app/lib", "cdk-app/bin", "cdk-app/deployment.ts", "cdk-app/deployment-inputs.ts", "cdk-app/database-settings.ts", "cdk-app/stateful-resources.ts", "cdk-app/cdk.json", "cdk-app/tsconfig.json", "cdk-app/lambda_functions", "cdk-app/ecs_containers", "agents", "scripts"]) {
     if (existsSync(path.join(root, relative))) cpSync(path.join(root, relative), path.join(fixture, relative), { recursive: true, filter });
   }
   const manifest = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));

@@ -14,6 +14,7 @@ import { withConnectionEvidence } from "./source/evidence";
 import { withConnectionAuthorizations } from "../shared/permissions";
 import { withClientEnvironment } from "./client-environment";
 import { readClientMappings } from "./client-environment-source";
+import { clientBindingFor } from "../shared/client-environment";
 import { STACK_MEMBER_TAGGING, tagFacts, withAbsentTagging } from "./model/tags";
 import { failedModel } from "./model/project";
 import { replaceFileAtomic } from "../../scripts/atomic-replace.cjs";
@@ -196,7 +197,7 @@ export class SnapshotBuilder {
     const content = sha256(JSON.stringify({ files, conditions: [dev.targets.map(target => target.lanes.when), prod.targets.map(target => target.lanes.when)], schema: schema.hash, localDatabase }));
     const project = (model: ModeModel): ModeModel => {
       const declared = model.stale ? model : withExportStacks(withClassMembers(model, built.catalog, built.index.cdkLinks.edges), built.exportStacks);
-      const comparisons = Object.values(clientMappings.mappings).flatMap(modes => Object.values(modes).flatMap(binding => binding.when ? [binding.when] : []));
+      const comparisons = Object.values(clientMappings.mappings).flatMap(mapping => [clientBindingFor(mapping, "dev"), clientBindingFor(mapping, "prod")].flatMap(binding => binding.when ? [binding.when] : []));
       const enriched = withClientEnvironment(withDeploymentInputs(this.repositoryRoot, withLocalDatabases(declared, localDatabase.services), { dev, prod }, comparisons), clientMappings);
       return withConnectionAuthorizations(withConnectionEvidence(this.repositoryRoot, enriched, built.index, built.catalog, sources));
     };

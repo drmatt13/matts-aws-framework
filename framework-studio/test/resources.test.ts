@@ -32,7 +32,9 @@ export const routes = { "/fixture": {
 } } as const;
 `;
 const revision = () => builder.current!.snapshot.revision;
-const intent = (changes: Partial<ResourceIntent> = {}): ResourceIntent => ({ resource: "resource:setting", kind: "input", default: "initial", group: "", requirements: {}, ...changes });
+/** One policy for both graphs unless `modes` states each graph's. */
+const intent = ({ default: fallback = "initial", required = false, modes, ...changes }: Partial<Omit<ResourceIntent, "modes">> & { default?: string | null; required?: boolean; modes?: ResourceIntent["modes"] } = {}): ResourceIntent =>
+  ({ resource: "resource:setting", kind: "input", group: "", requirements: {}, ...changes, modes: modes ?? { dev: { present: true, required, default: fallback }, prod: { present: true, required, default: fallback } } });
 before(async () => {
   mkdirSync(path.join(fixture, "framework-config"), { recursive: true });
   mkdirSync(path.join(fixture, "cdk-app/lambda_functions/fixture"), { recursive: true });
@@ -183,7 +185,8 @@ test("failed multi-file resource edits preserve an external deletion and restore
 });
 
 test("resource API rejects malformed policies and secret values never enter any preview", () => {
-  assert.throws(() => readResourceIntent({ intent: { ...intent(), required: "yes" } }));
+  assert.throws(() => readResourceIntent({ intent: { ...intent(), modes: { dev: { present: true, required: "yes", default: null }, prod: intent().modes.prod } } }));
+  assert.throws(() => readResourceIntent({ intent: { ...intent(), modes: { dev: intent().modes.dev } } }), /Development and Production/);
   assert.throws(() => readResourceIntent({ intent: { ...intent(), requirements: { bad: "unknown" } } }));
   assert.deepEqual(readResourceIntent({ intent: intent() }), intent());
   assert.ok(existsSync(path.join(fixture, "cdk-app/.env.dev")));
@@ -192,19 +195,57 @@ test("resource API rejects malformed policies and secret values never enter any 
 test("catalog required flags persist through review and can be removed without rewriting consumers", async () => {
   for (const resource of ["resource:setting", "resource:key"]) {
     const secret = resource === "resource:key";
-    const change = intent({ resource, kind: secret ? "secret" : "input", default: secret ? null : "initial", required: true });
+    const settings = { resource, kind: secret ? "secret" as const : "input" as const, default: secret ? null : "initial" };
+    const change = intent({ ...settings, required: true });
     const plan = await service.plan(change, revision(), "dev");
     assert.equal(plan.ok, true, JSON.stringify(plan.diagnostics));
     assert.equal(readFileSync(catalog, "utf8"), original, "review does not write");
     await service.apply(plan.planId);
     assert.equal(builder.current!.snapshot.models.dev.resources.find((item) => item.id === resource)?.required, true);
     assert.ok(builder.current!.snapshot.models.dev.targets.some((target) => target.requirementRules?.some((rule) => !rule.when && rule.require.includes(resource))));
-    const remove = await service.plan({ ...change, required: false }, revision(), "dev");
+    const remove = await service.plan(intent(settings), revision(), "dev");
     assert.equal(remove.ok, true);
     await service.apply(remove.planId);
     assert.equal(readFileSync(catalog, "utf8"), original);
     assert.equal(readFileSync(route, "utf8"), http);
   }
+});
+
+test("per-environment settings write .only(), .required(mode) and .default({ dev, prod }), editable from either graph", async () => {
+  const split = intent({ modes: { dev: { present: true, required: false, default: "local" }, prod: { present: true, required: true, default: null } } });
+  const unresolved = await service.plan(split, revision(), "dev");
+  assert.equal(unresolved.ok, false, "a catalog without a mode cannot resolve a policy that differs by graph");
+  assert.match(JSON.stringify(unresolved.diagnostics), /FRAMEWORK_MODE/);
+
+  writeFileSync(catalog, original.replace(`from "@repo/framework/config";\n`, `from "@repo/framework/config";\nimport { FRAMEWORK_MODE } from "@repo/framework/config/source";\n`).replace("});\n", "}, { mode: FRAMEWORK_MODE });\n"));
+  await builder.refresh();
+  const plan = await service.plan(split, revision(), "dev");
+  assert.equal(plan.ok, true, JSON.stringify(plan.diagnostics));
+  assert.match(plan.changes[0]!.diff.unified, /resource\.fromEnv\("FIXTURE_SETTING"\)\.required\("prod"\)\.default\(\{ dev: "local" \}\)/);
+  await service.apply(plan.planId);
+  const settings = (mode: "dev" | "prod", id: string) => builder.current!.snapshot.models[mode].resources.find((item) => item.id === id);
+  assert.deepEqual(settings("dev", "resource:setting")?.modes, { dev: { present: true, required: false, default: "local" }, prod: { present: true, required: true } });
+  assert.equal(settings("dev", "resource:setting")?.default, "local");
+  assert.equal(settings("prod", "resource:setting")?.required, true);
+  assert.equal(settings("prod", "resource:setting")?.default, undefined);
+
+  const devOnly = intent({ resource: "resource:group.derived", group: "group", modes: { dev: { present: true, required: true, default: null }, prod: { present: false, required: false, default: null } } });
+  const only = await service.plan(devOnly, revision(), "dev");
+  assert.equal(only.ok, true, JSON.stringify(only.diagnostics));
+  assert.match(only.changes[0]!.diff.unified, /derived: resource\.fromEnv\("GROUP_DERIVED"\)\.only\("dev"\)\.required\(\)/);
+  await service.apply(only.planId);
+  assert.equal(settings("prod", "resource:group.derived")?.absent, true, "production does not hold a development-only input");
+  assert.equal(settings("prod", "resource:group.derived")?.kind, "input", "an input outside its graph keeps its identity");
+  const envProd = builder.current!.snapshot.models.prod.resources.find((item) => item.id === "envfile:prod")?.deploymentFile;
+  assert.ok(!envProd?.entries.some((entry) => entry.name === "GROUP_DERIVED"), "production's file does not offer a development-only input");
+
+  // The graph that lacks the input can still bring it back.
+  const both = await service.plan(intent({ resource: "resource:group.derived", group: "group", default: null }), revision(), "prod");
+  assert.equal(both.ok, true, JSON.stringify(both.diagnostics));
+  assert.match(both.changes[0]!.diff.unified, /^\+  group: \{ derived: resource\.fromEnv\("GROUP_DERIVED"\) \},$/m);
+  await assert.rejects(service.plan(intent({ modes: { dev: { present: false, required: false, default: null }, prod: { present: false, required: false, default: null } } }), revision(), "dev"), /at least one environment/);
+  await assert.rejects(service.plan(intent({ modes: { dev: { present: false, required: true, default: null }, prod: { present: true, required: false, default: null } } }), revision(), "dev"), /cannot be required/);
+  await restoreSource();
 });
 
 test("a secret flag can be changed when consumers support the new kind", async () => {

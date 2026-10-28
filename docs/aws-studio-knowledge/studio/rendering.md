@@ -142,7 +142,7 @@ name their typed operation and target, and grants retain the resource name. Tool
 inspectors, member rows, Board labels and description reviews use this same formatter.
 The exception is a heading with From/To beneath it, the hover title and the inspector's
 `connectionTitle`: when the value only repeats a From/To endpoint name, it keeps a complete
-verb phrase (`Calls tool`, `Connects to database`, `Provides database`, `Controls deployment`).
+action label (`Calls tool`, `Connects to database`, `Provides database`, `Conditional Deployment`).
 An inspector bundle whose members share one action lists their values only, and an expanded
 member shows only the endpoint that differs from the bundle's. Authored labels (route keys, variables, trigger
 events) always stay in the title. Deploy conditions read `Deploys when <input> equals "<value>".`
@@ -171,7 +171,8 @@ A resource's type line (`kindText` in `src/scene/build.ts`, shared with the Reso
 list) never repeats its name. A stack stands under its class name, so its line names the
 catalog entry (`Stack · resources.rds`); framework stacks outside the catalog read `Stack`.
 Network fixtures name their kind and VPC (`Gateway endpoint · test VPC`), because every VPC
-has the same fixtures under the same names. Hover cards are opaque.
+has the same fixtures under the same names. Island hover cards show their title and
+caption without an `Island` type line. Hover cards are opaque.
 
 Parallel relationships use a stable fan perpendicular to the projected endpoint span.
 Height alone cannot distinguish nearly vertical arcs. The default 48-world-unit

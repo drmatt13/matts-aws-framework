@@ -102,12 +102,16 @@ selecting input to the controlled workload. Their historical relationship IDs an
 description keys remain stable.
 
 Client environment `maps` edges point from public catalog input parameters and native
-stack outputs into `client-envfile` (`client-app/.env`), never directly from CDK input files.
-CDK files supply parameters; each parameter carries selected-mode presence/default metadata
-and sanitized outcomes for declared client comparisons. Hover and connection
+stack outputs into `client-envfile` (the **Client environment**, exported to
+`client-app/.env.development.local` and `.env.production.local`), never directly from CDK input
+files. CDK files supply parameters; each parameter carries both graphs' presence, requirement and
+default (`modes`, filled by `withDeploymentInputs` from the declaration or, for a legacy ternary,
+from each graph's own answer) and sanitized outcomes for declared client comparisons. A field's
+preview infers whether it is generated from those facts and the file's line presence. Hover and connection
 details say `Maps into`; the client's incoming connection list says `Mapped from`.
 Layout uses this source-to-client direction without reversing these edges.
-Local URL inputs are declared under `resources.client` only in Development.
+Local URL inputs are declared under `resources.client` with `.only("dev")`, so Production holds
+them as absent inputs that keep their kind and name.
 `VITE_LOCAL_WS_URL` also consumes `resources.enableWebSocketApi`; its condition writes
 an empty URL when the selected input does not match `"true"`. Raw input values stay private.
 The evaluator pair retains an absent input's type from the other mode while preserving

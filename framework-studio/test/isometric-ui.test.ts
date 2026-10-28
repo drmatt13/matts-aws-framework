@@ -184,7 +184,7 @@ test("conditional deployment inspection names its framework input and points fro
   const condition = response.snapshot.models.dev.edges.find(edge => edge.relation === "deployWhen" && edge.to === "lambda:ws-connect-route")!;
   assert.ok(condition);
   await mount(true, condition.id);
-  assert.ok(ui.screen.getByRole("heading", { name: "Controls deployment" }), "the From row names the input the heading would repeat as $enableWebSocketApi");
+  assert.ok(ui.screen.getByRole("heading", { name: "Conditional Deployment" }), "the From row names the input the heading would repeat as $enableWebSocketApi");
   const endpoints = document.querySelector(".connection-header .connection-endpoints")!;
   assert.ok(endpoints);
   const rows = [...endpoints.querySelectorAll("div")].map(row => ({ direction: row.querySelector("dt")?.textContent, label: row.querySelector("button")?.textContent }));
@@ -1075,7 +1075,7 @@ test("a bundle member names only the end and the value its heading does not", as
   await ui.waitFor(() => assert.ok(map.querySelector(".connection-map-detail .connection-endpoints")));
   for (const member of members) {
     const rows = [...member.querySelectorAll(".connection-map-detail .connection-endpoints > div")].map(row => [row.querySelector("dt")?.textContent, row.querySelector("dd")?.textContent]);
-    // Every member maps a different input field into the same client-app/.env.
+    // Every member maps a different input field into the same Client environment.
     assert.equal(rows.length, 1, "the shared To is the heading's");
     assert.equal(rows[0]![0], "From");
     assert.match(rows[0]![1]!, /^Input: client\./);
@@ -1113,7 +1113,7 @@ test("clicking a grouped connection opens every mapping and retains it across en
   await draw();
   const popup = await ui.screen.findByRole("tooltip");
   assert.ok(popup.textContent?.includes("Maps: 4 client variables"));
-  assert.deepEqual(hoverEndpoints(popup), { From: ["cognito", "Stack"], To: ["client-app/.env", "Environment file"] });
+  assert.deepEqual(hoverEndpoints(popup), { From: ["cognito", "Stack"], To: ["Client environment", "Environment file"] });
   assert.ok(!popup.textContent?.includes("Maps into:"), "homogeneous member rows do not repeat the shared purpose");
   const hoverRows = ui.within(popup).getAllByRole("listitem");
   assert.equal(hoverRows.length, 4);
@@ -1141,7 +1141,7 @@ test("clicking a grouped connection opens every mapping and retains it across en
 
 test("connections available in both environments retain two pills in every inspector row", async () => {
   await mount(true);
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: Stack: cognito to Environment file: client-app\/.env, / }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: Stack: cognito to Environment file: Client environment, / }));
   const map = await ui.screen.findByRole("region", { name: "Connection details" });
   const expected = [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]];
   assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), expected);
@@ -1149,7 +1149,7 @@ test("connections available in both environments retain two pills in every inspe
   assert.equal(rows.length, 4);
   for (const row of rows) {
     assert.deepEqual(visibleTags(row), expected);
-    assert.ok(!row.textContent?.includes("client-app/.env"), "summaries show each relationship without repeating shared endpoints");
+    assert.ok(!row.textContent?.includes("Client environment"), "summaries show each relationship without repeating shared endpoints");
   }
 });
 

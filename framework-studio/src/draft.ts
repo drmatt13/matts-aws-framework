@@ -1,7 +1,7 @@
 import { networkCreationProblem, unusedNetworkCidr, networkSettings, type NetworkSettings, type PlacementEdit } from "../shared/networks";
 import type { ApplyResponse, BatchPlanResponse, DraftEdit, EditIntent, LiteralValue } from "../shared/api";
 import type { FieldFact, Mode, ModelResource, Snapshot } from "../shared/model";
-import type { ResourceApply, ResourceIntent, ResourcePlan } from "../shared/resources";
+import { inputModeIntents, type ResourceApply, type ResourceIntent, type ResourcePlan } from "../shared/resources";
 import type { DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
 import { descriptionError } from "../shared/descriptions";
 import { triggerBindingsEqual, type FailureDestinationSettings, type TriggerBinding } from "../shared/triggers";
@@ -15,7 +15,9 @@ import { CREATORS, creationDefaults, readCreationRequest, type CreationKind, typ
 export type Review = { readonly kind: "batch"; readonly plan: BatchPlanResponse } | { readonly kind: "resource"; readonly plan: ResourcePlan } | { readonly kind: "environment"; readonly plan: DeploymentInputPlan };
 export interface EnvironmentEdit extends DeploymentInputEdit { readonly key: string; readonly original?: string }
 interface EnvironmentEntry { readonly kind: "environment"; readonly key: string; readonly mode: Mode; readonly hash: string; readonly edits: readonly EnvironmentEdit[]; readonly error?: string }
-export interface ResourceForm { readonly required?: boolean; readonly secret: boolean; readonly hasDefault: boolean; readonly fallback: string; readonly group: string; readonly requirements: ResourceIntent["requirements"] }
+/** One graph's column of the input settings. An empty default means none. */
+export interface ResourceModeForm { readonly present: boolean; readonly required: boolean; readonly default: string }
+export interface ResourceForm { readonly secret: boolean; readonly modes: Readonly<Record<Mode, ResourceModeForm>>; readonly group: string; readonly requirements: ResourceIntent["requirements"] }
 interface FieldEntry { readonly kind: "field"; readonly key: string; readonly raw: LiteralValue | undefined; readonly intent: EditIntent; readonly error?: string }
 interface RouteEntry { readonly kind: "route"; readonly key: string; readonly route: string; readonly value: string; readonly error?: string }
 interface DescriptionEntry { readonly kind: "description"; readonly key: string; readonly entity: string; readonly value: string; readonly error?: string }
@@ -55,7 +57,11 @@ export interface DraftTransport {
   snapshot(): Promise<Snapshot>;
 }
 export const fieldKey = (target: string, field: string) => `field:${target}:${field}`;
-export const initialResourceForm = (resource: ModelResource): ResourceForm => ({ secret: resource.kind === "secret", hasDefault: resource.default !== undefined, fallback: resource.default ?? "", group: resource.path.length > 1 ? resource.path[0]! : "", requirements: {} });
+export function initialResourceForm(resource: ModelResource): ResourceForm {
+  const modes = inputModeIntents(resource);
+  const column = (mode: Mode): ResourceModeForm => ({ present: modes[mode].present, required: modes[mode].required, default: modes[mode].default ?? "" });
+  return { secret: resource.kind === "secret", modes: { dev: column("dev"), prod: column("prod") }, group: resource.path.length > 1 ? resource.path[0]! : "", requirements: {} };
+}
 
 /** One in-memory inspector transaction. Only edited dotenv values enter this store;
  * they are never persisted to storage or included in graph snapshots.
@@ -287,9 +293,13 @@ export class InspectorDraft {
       const rules = this.state.baseline.models[this.state.mode].targets.find((item) => item.ref === target)?.requirementRules?.filter((rule) => rule.require.includes(resource.id)) ?? [];
       if (policy === "optional" ? rules.length > 0 : !rules.some((rule) => !rule.when)) requirements[target] = policy;
     }
-    const intent: ResourceIntent = { resource: resource.id, required: form.required ?? !!resource.required, kind: form.secret ? "secret" : "input", default: form.secret || !form.hasDefault ? null : form.fallback, group: form.group.trim(), requirements };
-    const count = Number(intent.required !== !!resource.required) + Number(intent.kind !== resource.kind) + Number(intent.default !== (resource.default ?? null)) + Number(intent.group !== (resource.path.length > 1 ? resource.path[0] : "")) + Object.keys(requirements).length;
-    const error = !form.secret && form.hasDefault && !form.fallback.trim() ? "Enter a default value or turn Default value off." : intent.group && !/^[A-Za-z_$][\w$]*$/.test(intent.group) ? "Use a single valid group name." : undefined;
+    // A graph that does not hold the input keeps nothing for it, and a secret keeps no default.
+    const column = ({ present, required, default: fallback }: ResourceModeForm) => ({ present, required: present && required, default: present && !form.secret && fallback.trim() ? fallback : null });
+    const intent: ResourceIntent = { resource: resource.id, kind: form.secret ? "secret" : "input", modes: { dev: column(form.modes.dev), prod: column(form.modes.prod) }, group: form.group.trim(), requirements };
+    const saved = inputModeIntents(resource);
+    const settings = (["dev", "prod"] as const).reduce((sum, mode) => sum + Number(intent.modes[mode].present !== saved[mode].present) + Number(intent.modes[mode].required !== saved[mode].required) + Number(intent.modes[mode].default !== saved[mode].default), 0);
+    const count = settings + Number(intent.kind !== resource.kind) + Number(intent.group !== (resource.path.length > 1 ? resource.path[0] : "")) + Object.keys(requirements).length;
+    const error = !intent.modes.dev.present && !intent.modes.prod.present ? "Keep this input in at least one environment." : intent.group && !/^[A-Za-z_$][\w$]*$/.test(intent.group) ? "Use a single valid group name." : undefined;
     this.put(`resource:${resource.id}`, count ? { kind: "resource", key: `resource:${resource.id}`, form: { ...form, requirements }, intent, count, ...(error ? { error } : {}) } : undefined);
   }
   environment(mode: Mode): EnvironmentEntry | undefined { return this.state.entries.find((entry): entry is EnvironmentEntry => entry.kind === "environment" && entry.mode === mode); }

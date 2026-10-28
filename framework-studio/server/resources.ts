@@ -18,8 +18,11 @@ interface ResourceChanges { resource: string; nextResource: string; changes: rea
 
 export function readResourceIntent(body: unknown): ResourceIntent {
   const intent = (body as { intent?: unknown } | undefined)?.intent as Record<string, unknown> | undefined;
-  if (intent?.required !== undefined && typeof intent.required !== "boolean") throw new EditError(400, "Required must be a boolean.");
-  if (!intent || typeof intent.resource !== "string" || !["input", "secret"].includes(String(intent.kind)) || typeof intent.group !== "string" || !(intent.default === null || typeof intent.default === "string") || !intent.requirements || typeof intent.requirements !== "object" || Array.isArray(intent.requirements) || Object.values(intent.requirements).some((value) => value !== "required" && value !== "optional")) throw new EditError(400, "A resource edit names its kind, group, default and workload requirements.");
+  const modes = intent?.modes as Record<string, Record<string, unknown> | undefined> | undefined;
+  const modeIntent = (value: Record<string, unknown> | undefined) => !!value && Object.keys(value).every((key) => ["present", "required", "default"].includes(key))
+    && typeof value.present === "boolean" && typeof value.required === "boolean" && (value.default === null || typeof value.default === "string");
+  if (!modes || typeof modes !== "object" || Object.keys(modes).some((mode) => mode !== "dev" && mode !== "prod") || !modeIntent(modes.dev) || !modeIntent(modes.prod)) throw new EditError(400, "A resource edit states its presence, requirement and default for Development and Production.");
+  if (!intent || typeof intent.resource !== "string" || !["input", "secret"].includes(String(intent.kind)) || typeof intent.group !== "string" || !intent.requirements || typeof intent.requirements !== "object" || Array.isArray(intent.requirements) || Object.values(intent.requirements).some((value) => value !== "required" && value !== "optional")) throw new EditError(400, "A resource edit names its kind, group, default and workload requirements.");
   return intent as unknown as ResourceIntent;
 }
 
@@ -42,9 +45,11 @@ export class ResourceService {
   private resource(id: string, mode: Mode): ModelResource {
     const state = this.state();
     const model = state.snapshot.models[mode];
-    const entry = model.resources.find((resource) => resource.id === id);
+    // An input declared `.only()` the other graph is still one declaration, edited from either graph.
+    const declared = (graph: typeof model) => graph.resources.find((resource) => resource.id === id && !resource.absent);
+    const entry = declared(model) ?? declared(state.snapshot.models[mode === "dev" ? "prod" : "dev"]);
     if (model.stale) throw new EditError(422, "The resource declaration is unavailable. Refresh after fixing the configuration.");
-    if (!entry || entry.absent || !entry.fromEnv || (entry.kind !== "input" && entry.kind !== "secret")) throw new EditError(404, "Select a defined authored input or secret.");
+    if (!entry || !entry.fromEnv || (entry.kind !== "input" && entry.kind !== "secret")) throw new EditError(404, "Select a defined authored input or secret.");
     if (!state.built.catalog.has(entry.path.join("."))) throw new EditError(422, "The resource declaration could not be located in source.");
     return entry;
   }

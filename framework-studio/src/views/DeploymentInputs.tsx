@@ -5,25 +5,37 @@ import { api } from "../api";
 import { editorLink, titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
-import type { DeploymentInputDetails } from "../../shared/deployment-inputs";
+import type { DeploymentInputDetails, DeploymentInputEntry } from "../../shared/deployment-inputs";
 import type { EnvironmentEdit } from "../draft";
-import { RequirementNotice } from "./InputRequirement";
 import { Description } from "./Description";
 import { InspectorDisclosure } from "./InspectorUI";
 import { EnvironmentValueControl as ValueControl } from "./EnvironmentValueControl";
+
+/** How a file's line reads, without the value: set, blank with a default standing in, or absent. */
+export function lineSummary(entry: DeploymentInputEntry): string {
+  if (entry.status === "configured") return "Set";
+  if (entry.default !== undefined) return `Default · ${entry.default}`;
+  return entry.status === "empty" ? "Blank" : "Not set";
+}
 
 export function InputSources({ resource }: { resource: ModelResource }) {
   const { select, snapshot } = useStudio();
   if (!resource.inputSources?.length) return null;
   return <InspectorDisclosure title="Environment file sources"><p className="small muted">Names and presence only. Open a file inspector to edit its local values.</p>
     {resource.inputSources.map(({ file, entry }) => <p className="small" key={file}>
-      <button className="linkish" onClick={() => select(file.endsWith(".dev") ? "envfile:dev" : "envfile:prod")}>{file}</button> · {entry.status}{entry.defaulted ? " · declaration default applies" : ""}
-      {entry.sensitive ? " · sensitive value hidden" : ""}
+      <button className="linkish" onClick={() => select(file.endsWith(".dev") ? "envfile:dev" : "envfile:prod")}>{file}</button> · {entry.notRead ? "Written but not read" : lineSummary(entry)}
       {entry.source ? <> · <a href={editorLink(snapshot.repositoryRoot, entry.source)}>Open assignment</a></> : null}
     </p>)}
   </InspectorDisclosure>;
 }
 
+const MODE_NAMES = { dev: "development", prod: "production" } as const;
+
+/**
+ * Both files list the same variables: each file's own lines, the other file's lines, and every
+ * input this graph's catalog declares. A row without a line here is still editable, and writes a
+ * line only once it is given a value.
+ */
 export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   const { snapshot, mode, select, index, draft, draftState, live } = useStudio();
   const file = resource.deploymentFile!;
@@ -32,21 +44,42 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   const [error, setError] = useState("");
   const [details, setDetails] = useState<DeploymentInputDetails>();
   const [filter, setFilter] = useState("");
+  // Secret values the server withheld, fetched one at a time when someone reveals them.
+  const [revealed, setRevealed] = useState<Readonly<Record<string, string>>>({});
   const pending = draft.environment(file.mode);
   const edits = pending?.edits ?? [];
   const descriptionPending = draftState.entries.some((entry) => entry.kind === "description");
   const disabled = !!draftState.busy || draft.conflict || live.evaluating || !details || descriptionPending;
-  const requirements = file.entries.flatMap((entry) => entry.requirements ?? []).filter((item) => item.required);
+  const other = file.mode === "dev" ? "prod" : "dev";
   useEffect(() => {
     if (draft.dirty) return;
     const controller = new AbortController();
-    setDetails(undefined); setError("");
+    setDetails(undefined); setError(""); setRevealed({});
     if (file.exists) void api.inputDetails(file.mode, controller.signal).then((value) => { if (!controller.signal.aborted) setDetails(value); }).catch((reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "Could not read the inputs file."); });
     return () => controller.abort();
   }, [file.mode, file.exists, snapshot.revision, draft, draft.dirty]);
+  const saved = new Map(details?.entries.map((entry) => [entry.name, entry]));
   const update = (next: readonly EnvironmentEdit[]) => { if (details) draft.setEnvironment(file.mode, pending?.hash ?? details.hash, next, details.entries.map((entry) => entry.name)); };
   const change = (key: string, fields: Partial<EnvironmentEdit>) => update(edits.map((edit) => edit.key === key ? { ...edit, ...fields } : edit));
-  const add = (name = "") => { setFilter(""); update([...edits, { key: `new:${crypto.randomUUID()}`, name, value: "", create: true }]); };
+  const add = () => { setFilter(""); update([...edits, { key: `new:${crypto.randomUUID()}`, name: "", value: "", create: true }]); };
+  const valueOf = (name: string) => edits.find((edit) => edit.key === name)?.value ?? revealed[name] ?? saved.get(name)?.value ?? "";
+  /** A withheld secret is set even though its value never reached the browser. */
+  const hidden = (name: string) => !!saved.get(name)?.hidden && revealed[name] === undefined && !edits.some((edit) => edit.key === name);
+  const reveal = (name: string) => async () => {
+    if (!saved.get(name)?.hidden || revealed[name] !== undefined) return;
+    const { value } = await api.revealInput(file.mode, name);
+    setRevealed((current) => ({ ...current, [name]: value }));
+  };
+  // A row without a line writes one only once it holds a value; clearing it again drops the edit.
+  // Clearing a withheld secret that was never revealed keeps it, rather than blanking it unseen.
+  const setValue = (name: string, value: string) => {
+    const line = saved.get(name);
+    const others = edits.filter((edit) => edit.key !== name);
+    const original = line?.hidden ? revealed[name] : line?.value;
+    update(!line ? (value === "" ? others : [...others, { key: name, name, value, create: true }])
+      : line.hidden && original === undefined && value === "" ? others
+      : [...others, { key: name, name, value, ...(original === undefined ? {} : { original }) }]);
+  };
   const location = (name: string): SourceLocation => ({ file: name, line: 1, column: 1, start: 0, end: 0 });
   const create = async () => {
     setBusy(true); setError("");
@@ -54,50 +87,70 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
     catch (error) { setError(error instanceof Error ? error.message : "Could not generate the inputs file."); }
     finally { setBusy(false); }
   };
+  // A line the snapshot has not caught up with yet is still listed.
+  const entries: DeploymentInputEntry[] = [...file.entries, ...(details?.entries ?? []).filter((line) => !file.entries.some((entry) => entry.name === line.name))
+    .map((line) => ({ name: line.name, status: line.value.trim() ? "configured" as const : "empty" as const, counterpart: "missing" as const, sensitive: line.sensitive, defaulted: false, targets: [] }))];
+  const required = (entry: DeploymentInputEntry) => entry.requirements?.filter((item) => item.required) ?? [];
+  const missing = (entry: DeploymentInputEntry) => required(entry).length > 0 && entry.default === undefined && !valueOf(entry.name).trim() && !hidden(entry.name);
+  const unmet = entries.filter(missing);
+  const matches = entries.filter((entry) => entry.name.toLowerCase().includes(filter.toLowerCase()));
+  const groups = [
+    { title: "Inputs and secrets", rows: matches.filter((entry) => entry.targets.length) },
+    { title: "Deployment settings", rows: matches.filter((entry) => !entry.targets.length && entry.owner === "deployment") },
+    { title: "Database", rows: matches.filter((entry) => !entry.targets.length && entry.owner === "database"),
+      note: file.mode === "prod" ? "Production RDS overrides. Blank uses the database declaration." : "Production RDS overrides. Development builds no RDS, so this file's lines are not read." },
+    { title: "Other variables", rows: matches.filter((entry) => !entry.targets.length && !entry.owner) },
+  ].filter((group) => group.rows.length);
+  const created = edits.filter((edit) => edit.key.startsWith("new:"));
+  const row = (entry: DeploymentInputEntry) => {
+    const value = valueOf(entry.name);
+    const reasons = [...new Set(required(entry).flatMap((item) => item.reasons))];
+    const onlyHere = entry.targets.length > 0 && entry.targets.every((id) => snapshot.models[file.mode].resources.find((item) => item.id === id)?.modes?.[other].present === false);
+    const placeholder = hidden(entry.name) ? "Set · hidden" : entry.default !== undefined ? `Default · ${entry.default}` : !entry.targets.length && entry.status === "missing" ? `Only in .env.${other}` : entry.status === "empty" ? "Blank" : "Not set";
+    const locked = entry.name === "PROD_DEPLOYMENT";
+    return <li key={entry.name} className={missing(entry) ? "missing" : undefined}>
+      <div className="input-entry-heading"><code>{entry.name}</code>
+        {onlyHere && !entry.notRead ? <span className="input-flag">{file.mode === "dev" ? "Development" : "Production"} only</span> : null}
+        {entry.notRead ? <span className="input-flag warning">Not read in {MODE_NAMES[file.mode]}</span> : null}
+        {reasons.length ? <span className={`input-flag${missing(entry) ? " missing" : ""}`} title={reasons.join(" ")}>Required</span> : null}
+      </div>
+      {entry.choices && !entry.sensitive ? <select aria-label={`Value for ${entry.name}`} value={value} disabled={disabled} onChange={(event) => setValue(entry.name, event.target.value)}>
+        <option value="">{placeholder}</option>
+        {value && !entry.choices.includes(value) ? <option value={value}>{value} (current)</option> : null}
+        {entry.choices.map((choice) => <option key={choice}>{choice}</option>)}
+      </select> : <ValueControl name={entry.name} value={value} placeholder={placeholder} sensitive={entry.sensitive} disabled={disabled || locked} onChange={(value) => setValue(entry.name, value)} onReveal={reveal(entry.name)} />}
+      {entry.targets.length || entry.note || locked || missing(entry) ? <p className="input-entry-meta small muted">
+        {entry.targets.map((id) => <button key={id} className="linkish small" onClick={() => select(id)}>{titleOf(index, id)}</button>)}
+        {!entry.targets.length && entry.note ? <span>{entry.note}</span> : null}
+        {locked ? <span>Determined by this file's environment.</span> : null}
+        {missing(entry) ? <span className="reason">{reasons.join(" ")}</span> : null}
+      </p> : null}
+    </li>;
+  };
   return <>
-    <header><span className="kind">CDK {file.mode === "dev" ? "development" : "production"} inputs</span><h2><EntityIcon icon="envFile" />{file.path}</h2></header>
+    <header><span className="kind">CDK {MODE_NAMES[file.mode]} inputs</span><h2><EntityIcon icon="envFile" />{file.path}</h2></header>
     <Description entity={resource.id} />
     {descriptionPending ? <p className="small muted">Apply or discard the description before editing environment variables.</p> : null}
     <InspectorDisclosure title="File and template" defaultOpen={!file.exists}><p>{file.exists ? "Local inputs file exists." : "This inputs file has not been generated."} {file.mode === mode ? "Used for synthesis in the selected graph." : "Switch the graph to use this environment for synthesis."}</p>
       {file.exists ? <p><a href={editorLink(snapshot.repositoryRoot, location(file.path))}>Open file in editor</a></p> : <button className="button" disabled={busy || draft.dirty} onClick={() => void create()}>{busy ? "Generating…" : `Generate .env.${file.mode} from template`}</button>}
       <p className="small"><a href={editorLink(snapshot.repositoryRoot, location(file.template))}>Template: {file.template}</a></p>
-      <p className="small muted">Edit local values below, then review and apply the complete draft. Values stay outside the graph; sensitive fields are masked. Production is never populated from development inputs.</p>
+      <p className="small muted">Both files list the same variables. A variable without a line here writes one only when you give it a value; blank catalog inputs use their declared default. Review and apply to save. Values stay outside the graph, and production is never filled from development.</p>
       {file.problem || error ? <p role="alert">{file.problem || error}</p> : null}
     </InspectorDisclosure>
-    {requirements.length ? <section><h3>Required inputs ({requirements.length})</h3><p className="small muted">Required values must be non-blank or supplied by a parameter default. Secret values belong only in the environment file.</p>
-      {requirements.map((requirement) => <div key={requirement.resource}>
-        <RequirementNotice requirement={requirement} />
-        {requirement.status === "missing" && file.exists ? <button className="linkish small" disabled={disabled || edits.some((edit) => edit.create && edit.name === requirement.name)} onClick={() => { if (details?.entries.some((entry) => entry.name === requirement.name)) setFilter(requirement.name); else add(requirement.name); }}>Set {requirement.name}</button> : null}
-        <button className="linkish small" onClick={() => select(requirement.resource)}>Open {requirement.name} settings</button>
-      </div>)}
-    </section> : null}
-    {file.exists ? <section className="environment-editor"><h3>Environment variables{details ? ` (${details.entries.length + edits.filter((edit) => edit.create).length})` : ""}</h3>
+    {file.exists ? <section className="environment-editor"><h3>Environment variables ({entries.length + created.length})</h3>
+      {unmet.length ? <p className="small reason" role="status">{unmet.length === 1 ? "A required value is" : `${unmet.length} required values are`} missing: {unmet.map((entry, at) => <span key={entry.name}>{at ? ", " : ""}<button className="linkish small" onClick={() => setFilter(entry.name)}>{entry.name}</button></span>)}</p> : null}
       <div className="environment-toolbar">
       <label className="environment-search"><span className="sr-only">Filter environment variables</span><input type="search" aria-label="Filter environment variables" placeholder="Find a variable…" value={filter} onChange={(event) => setFilter(event.target.value)} /></label>
-      <button className="quiet" aria-label="Add environment variable" disabled={disabled} onClick={() => add()}>Add variable</button></div>
+      <button className="quiet" aria-label="Add environment variable" disabled={disabled} onClick={add}>Add variable</button></div>
       {!details && !error ? <p role="status" className="small muted">Reading this local environment file…</p> : null}
       {pending?.error ? <p role="alert" className="reason">{pending.error}</p> : null}
-      <ul className="input-file-entries">
-        {edits.filter((edit) => edit.create).map((edit, at) => <li key={edit.key}>
-          <label className="resource-control"><span>New variable name</span><input autoFocus={at === edits.filter((item) => item.create).length - 1} aria-label={`New variable name ${at + 1}`} disabled={disabled} autoComplete="off" spellCheck={false} value={edit.name} placeholder="VARIABLE_NAME" onChange={(event) => change(edit.key, { name: event.target.value })} /></label>
-          <ValueControl name={edit.name || `new variable ${at + 1}`} value={edit.value} sensitive={true} disabled={disabled} onChange={(value) => change(edit.key, { value })} />
-          {requirements.some((item) => item.name === edit.name) ? <p className="small reason">Required{!edit.value.trim() ? " · A blank value will not satisfy this requirement." : " · This value is staged until you review and apply."}</p> : null}
-          <button className="linkish small" disabled={!!draftState.busy} onClick={() => update(edits.filter((item) => item.key !== edit.key))}>Remove new variable</button>
-        </li>)}
-        {details?.entries.filter((entry) => entry.name.toLowerCase().includes(filter.toLowerCase())).map((entry) => {
-          const edit = edits.find((item) => !item.create && item.name === entry.name);
-          const metadata = file.entries.find((item) => item.name === entry.name);
-          return <li key={entry.name}>
-            <code>{entry.name}</code><span className="small muted">{edit ? "Modified · " : ""}{metadata?.status ?? "configured"}{metadata?.defaulted ? " · declaration default applies" : ""}{entry.sensitive ? " · sensitive" : ""}</span>
-            {metadata?.requirements?.some((item) => item.required) ? <p className="small reason">Required{!(edit?.value ?? entry.value).trim() && !metadata.defaulted ? " · A blank value will not satisfy this requirement." : ""}</p> : null}
-            <ValueControl name={entry.name} value={edit?.value ?? entry.value} sensitive={entry.sensitive} disabled={disabled || entry.name === "PROD_DEPLOYMENT"} onChange={(value) => update([...edits.filter((item) => item.key !== entry.name), { key: entry.name, name: entry.name, value, original: entry.value }])} />
-            {entry.name === "PROD_DEPLOYMENT" ? <span className="small muted">Determined by this file's environment.</span> : null}
-            <span>{metadata?.targets.map((id) => <button key={id} className="linkish small" onClick={() => select(id)}>{titleOf(index, id)}</button>)}</span>
-          </li>;
-        })}
-      </ul>
-      {details && !details.entries.some((entry) => entry.name.toLowerCase().includes(filter.toLowerCase())) && filter ? <p className="small muted">No variables match this search.</p> : null}
-      {details && file.entries.some((entry) => entry.status === "missing") ? <details><summary>Not set in this file</summary><ul className="input-file-entries">{file.entries.filter((entry) => entry.status === "missing").map((entry) => <li key={entry.name}><code>{entry.name}</code><span className="small muted">Referenced by the example or resource catalog.</span><button className="linkish small" disabled={disabled || edits.some((edit) => edit.name === entry.name)} onClick={() => add(entry.name)}>Add {entry.name}</button></li>)}</ul></details> : null}
+      {created.length ? <ul className="input-file-entries">{created.map((edit, at) => <li key={edit.key}>
+        <label className="resource-control"><span>New variable name</span><input autoFocus={at === created.length - 1} aria-label={`New variable name ${at + 1}`} disabled={disabled} autoComplete="off" spellCheck={false} value={edit.name} placeholder="VARIABLE_NAME" onChange={(event) => change(edit.key, { name: event.target.value })} /></label>
+        <ValueControl name={edit.name || `new variable ${at + 1}`} value={edit.value} sensitive={true} disabled={disabled} onChange={(value) => change(edit.key, { value })} />
+        <button className="linkish small" disabled={!!draftState.busy} onClick={() => update(edits.filter((item) => item.key !== edit.key))}>Remove new variable</button>
+      </li>)}</ul> : null}
+      {groups.map((group) => <div key={group.title}>{groups.length > 1 ? <h4 className="input-group-heading">{group.title}</h4> : null}{"note" in group && group.note ? <p className="small muted">{group.note}</p> : null}<ul className="input-file-entries">{group.rows.map(row)}</ul></div>)}
+      {filter && !matches.length ? <p className="small muted">No variables match this search.</p> : null}
     </section> : null}
   </>;
 }

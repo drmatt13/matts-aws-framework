@@ -37,6 +37,66 @@ test("input parameters carry comparison outcomes for each selected environment a
   } finally { remove(root); }
 });
 
+test("both files list the same names, and the catalog decides each graph's defaults, requirements and presence", () => {
+  const root = fixture();
+  try {
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), "SETTING=\nLOCAL_ONLY=1\nPORT=8080\nSKIP_EMAIL_VERIFICATION=true\n");
+    writeFileSync(path.join(root, "cdk-app/.env.prod"), "DATABASE_ONLY=db.t3.micro\nPORT=9\nDATABASE_MULTI_AZ=true\n");
+    // SETTING falls back differently per graph and is required only in production;
+    // PORT is declared for development alone.
+    const declared = (mode: "dev" | "prod"): ModeModel => ({ ...model, mode, resources: [
+      { id: "resource:setting", path: ["setting"], kind: "input", fromEnv: "SETTING", absent: false, ...(mode === "dev" ? { default: "local" } : { required: true }), values: ["local", "cloud"],
+        modes: { dev: { present: true, required: false, default: "local" }, prod: { present: true, required: true } } },
+      { id: "resource:token", path: ["token"], kind: "secret", fromEnv: "TOKEN", absent: false },
+      { id: "resource:port", path: ["port"], kind: "input", fromEnv: "PORT", absent: mode === "prod", modes: { dev: { present: true, required: false }, prod: { present: false, required: false } } },
+    ] });
+    const models = { dev: declared("dev"), prod: declared("prod") };
+    const file = (mode: "dev" | "prod") => withDeploymentInputs(root, models[mode], models).resources.find((resource) => resource.id === `envfile:${mode}`)!.deploymentFile!;
+    const dev = file("dev"), prod = file("prod");
+    const entry = (from: typeof dev, name: string) => from.entries.find((item) => item.name === name);
+    const names = ["DATABASE_MULTI_AZ", "DATABASE_ONLY", "LOCAL_ONLY", "PORT", "SETTING", "SKIP_EMAIL_VERIFICATION", "TOKEN"];
+    assert.deepEqual(dev.entries.map((item) => item.name), names);
+    assert.deepEqual(prod.entries.map((item) => item.name), names, "a line written where the catalog does not read it stays visible");
+    // Variables the application reads outside the catalog name their owner, default and choices.
+    assert.deepEqual([entry(prod, "SKIP_EMAIL_VERIFICATION")!.owner, entry(prod, "SKIP_EMAIL_VERIFICATION")!.default, entry(prod, "SKIP_EMAIL_VERIFICATION")!.choices], ["deployment", "false", ["true", "false"]]);
+    assert.match(entry(prod, "SKIP_EMAIL_VERIFICATION")!.note!, /production deployment refuses/);
+    assert.equal(entry(prod, "DATABASE_MULTI_AZ")!.owner, "database");
+    assert.equal(entry(dev, "DATABASE_MULTI_AZ")!.notRead, undefined, "a mirrored row writes nothing, so nothing is flagged");
+    assert.equal(entry(prod, "DATABASE_MULTI_AZ")!.notRead, undefined);
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), "SETTING=\nLOCAL_ONLY=1\nPORT=8080\nSKIP_EMAIL_VERIFICATION=true\nDATABASE_MULTI_AZ=true\n");
+    assert.equal(entry(file("dev"), "DATABASE_MULTI_AZ")!.notRead, true, "development builds no RDS, so a database override written there is never read");
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), "SETTING=\nLOCAL_ONLY=1\nPORT=8080\nSKIP_EMAIL_VERIFICATION=true\n");
+    assert.equal(entry(dev, "LOCAL_ONLY")!.owner, undefined, "nothing claims a variable it does not read");
+    assert.equal(entry(dev, "DATABASE_ONLY")!.status, "missing");
+    assert.equal(entry(dev, "DATABASE_ONLY")!.counterpart, "configured", "a mirrored row says the other file has it");
+    assert.equal(entry(dev, "SETTING")!.default, "local");
+    assert.equal(entry(dev, "SETTING")!.defaulted, true);
+    assert.deepEqual(entry(dev, "SETTING")!.choices, ["local", "cloud"]);
+    assert.equal(entry(prod, "SETTING")!.default, undefined);
+    assert.ok(!entry(dev, "SETTING")!.requirements!.some((item) => item.required));
+    assert.ok(entry(prod, "SETTING")!.requirements!.some((item) => item.required && item.status === "missing"), "required only in production, where nothing supplies it");
+    assert.equal(entry(prod, "PORT")!.notRead, true, "production holds no PORT, yet its file writes one");
+    assert.ok(!withDeploymentInputs(root, models.prod, models).edges.some((edge) => edge.from === "envfile:prod" && edge.to === "resource:port"));
+    rmSync(path.join(root, "cdk-app/.env.prod"));
+    writeFileSync(path.join(root, "cdk-app/.env.prod"), "DATABASE_ONLY=db.t3.micro\n");
+    assert.ok(!file("prod").entries.some((item) => item.name === "PORT"), "a development-only input is not offered to production");
+    assert.equal(withDeploymentInputs(root, models.prod, models).resources.find((resource) => resource.id === "resource:port")!.modes!.prod.present, false);
+  } finally { remove(root); }
+});
+
+test("a legacy conditional declaration takes its presence from the graph that leaves it out", () => {
+  const root = fixture();
+  try {
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), "SETTING=\n");
+    const dev: ModeModel = { ...model, mode: "dev" };
+    const prod: ModeModel = { ...model, mode: "prod", resources: [model.resources[1]!, { id: "resource:setting", path: ["setting"], kind: "stack", absent: true }] };
+    const projected = withDeploymentInputs(root, dev, { dev, prod });
+    assert.deepEqual(projected.resources.find((resource) => resource.id === "resource:setting")!.modes, { dev: { present: true, required: false, default: "default" }, prod: { present: false, required: false } });
+    const prodFile = withDeploymentInputs(root, prod, { dev, prod }).resources.find((resource) => resource.id === "envfile:prod")!.deploymentFile!;
+    assert.ok(!prodFile.entries.some((item) => item.name === "SETTING"));
+  } finally { remove(root); }
+});
+
 test("explicit file creation copies each template exclusively, never overwrites, and ignores a leftover cdk-app/.env", () => {
   const root = fixture();
   try {
@@ -108,6 +168,10 @@ test("a selected file exposes all actual variables and saves a reviewed batch wi
     assert.ok(details.entries.some((entry) => entry.name === "PGADMIN_HOST_PORT" && entry.value === "5051"));
     assert.ok(!details.entries.some((entry) => entry.name === "FAKE_NAME"));
     assert.equal(details.entries.find((entry) => entry.name === "TOKEN")!.sensitive, true);
+    assert.deepEqual(details.entries.find((entry) => entry.name === "TOKEN"), { name: "TOKEN", value: "", sensitive: true, hidden: true }, "the file's secret value never reaches the browser with the file");
+    assert.ok(!JSON.stringify(details).includes("old-private"));
+    assert.deepEqual(service.reveal("dev", "TOKEN"), { name: "TOKEN", value: "old-private\nFAKE_NAME=not-a-variable\nend" }, "one value, when someone asks to reveal it");
+    assert.throws(() => service.reveal("dev", "PROD_ONLY"), /not in the selected file/);
     const edits = readInputEdits([{ name: "PGADMIN_HOST_PORT", value: "6060" }, { name: "TOKEN", value: "new-private\nsecond line" }, { name: "ADDED", value: "new-value # with whitespace", create: true }]);
     const plan = service.plan("dev", edits, details.hash, "initial");
     for (const value of ["old-private", "new-private", "6060", "5051", "new-value", "keep"]) assert.ok(!JSON.stringify(plan).includes(value));
@@ -212,5 +276,23 @@ test("synthesis selects separate dev/prod files, graph flags agree and no named 
     writeFileSync(path.join(root, "cdk-app/.env.dev"), "PROD_DEPLOYMENT=false\nSETTING=changed-dev\n");
     assert.equal(service.get("dev").stale, true);
     assert.equal(service.get("prod").stale, false, "development input changes do not stale the production assembly");
+  } finally { remove(root); }
+});
+
+test("deploy outcomes read each graph's own default and file, whichever graph asks", async () => {
+  const root = fixture();
+  try {
+    const { defineResources, resource } = await import("@repo/framework/config");
+    const { resolveDeployOutcomes } = await import("../server/inputs");
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), "");
+    writeFileSync(path.join(root, "cdk-app/.env.prod"), "");
+    // A deploy selector that falls back to "true" in development and "false" in production.
+    const flag = (mode: "dev" | "prod") => defineResources({ flag: resource.fromEnv("FEATURE").enum("true", "false").default({ dev: "true", prod: "false" }) }, { mode }).flag;
+    for (const asking of ["dev", "prod"] as const) {
+      const outcomes = Object.values(resolveDeployOutcomes(root, [{ resource: flag(asking), equals: "true" }]))[0];
+      assert.deepEqual(outcomes, { dev: "holds", prod: "fails" }, `asked by the ${asking} evaluator`);
+    }
+    writeFileSync(path.join(root, "cdk-app/.env.prod"), "FEATURE=TRUE\n");
+    assert.deepEqual(Object.values(resolveDeployOutcomes(root, [{ resource: flag("dev"), equals: "true" }]))[0], { dev: "holds", prod: "holds" });
   } finally { remove(root); }
 });

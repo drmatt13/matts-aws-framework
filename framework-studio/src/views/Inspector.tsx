@@ -363,6 +363,8 @@ function ResourceView(props: { readonly resource: ModelResource }) {
       {resource.absent || (resource.kind === "member" && resource.memberSource === "class") || (facts?.stackClass && !resource.frameworkStack) || (facts?.stackLocation && !resource.frameworkStack) || links.length ? <InspectorDisclosure title="Declaration details">
         {resource.absent && resource.frameworkStack ? <p>Not enabled in the {model.mode === "dev" ? "development" : "production"} environment.</p> : resource.absent && group ? (
           <p>Every entry in this group is declared undefined in the {model.mode === "dev" ? "development" : "production"} graph, so nothing that reads them sees a value.</p>
+        ) : resource.absent && resource.modes ? (
+          <p>Declared <code>.only("{model.mode === "dev" ? "prod" : "dev"}")</code>, so the {model.mode === "dev" ? "development" : "production"} graph does not hold it. Anything that reads it there never sees a value.</p>
         ) : resource.absent ? (
           <p>
             Absent in the {model.mode === "dev" ? "development" : "production"} graph

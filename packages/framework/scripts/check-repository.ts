@@ -59,6 +59,18 @@ export function undocumentedRequiredInputs(
         required.set(name, entry);
       }
     }
+    // The config is evaluated for one graph, so an input required only in the other
+    // (`.required("prod")`) is found through the per-graph policy its reference keeps.
+    for (const reference of [...Object.values(target.environment), ...Object.values(target.secrets)] as unknown[]) {
+      const declared = reference as Partial<ResourceReference>;
+      if (!declared.fromEnv || !declared.modes) continue;
+      for (const graph of graphs) {
+        if (!declared.modes[graph].required) continue;
+        const entry = required.get(declared.fromEnv) ?? { graphs: new Set<"dev" | "prod">(), origin: target.origins[0] ?? target.reference, why: "" };
+        entry.graphs.add(graph);
+        required.set(declared.fromEnv, entry);
+      }
+    }
   }
   const problems: string[] = [];
   for (const [name, { graphs, origin, why }] of required) {

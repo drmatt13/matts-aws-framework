@@ -38,7 +38,7 @@ export function infrastructureFingerprint(root: string, mode?: Mode): string {
     }
   };
   for (const directory of ["framework-config", "cdk-app/bin", "cdk-app/lib", "cdk-app/lambda_functions", "cdk-app/ecs_containers", "agents", "packages", "client-app/src", "client-app/public"]) visit(directory);
-  for (const name of ["framework.config.ts", "package-lock.json", "package.json", "cdk-app/package.json", "cdk-app/deployment.ts", "cdk-app/database-settings.ts", "cdk-app/cdk.json", "cdk-app/cdk.context.json", ...(mode ? [selectedDeploymentInput(root, mode)] : ["cdk-app/.env.dev", "cdk-app/.env.prod"]), "client-app/package.json", "client-app/index.html", "client-app/vite.config.ts", ".dockerignore", "tsconfig.json"]) {
+  for (const name of ["framework.config.ts", "package-lock.json", "package.json", "cdk-app/package.json", "cdk-app/deployment.ts", "cdk-app/deployment-inputs.ts", "cdk-app/database-settings.ts", "cdk-app/cdk.json", "cdk-app/cdk.context.json", ...(mode ? [selectedDeploymentInput(root, mode)] : ["cdk-app/.env.dev", "cdk-app/.env.prod"]), "client-app/package.json", "client-app/index.html", "client-app/vite.config.ts", ".dockerignore", "tsconfig.json"]) {
     hash.update(name); if (existsSync(path.join(root, name))) hash.update(readFileSync(path.join(root, name)));
   }
   return hash.digest("hex");

@@ -1,5 +1,6 @@
 import type { InputRequirement } from "../shared/deployment-inputs";
 import type { Mode, ModeModel, ModelResource } from "../shared/model";
+import { resolveInput } from "../../packages/framework/src/config/resources";
 
 /** Resolve presence and conditional requirements privately, then discard values.
  * The public result contains names and reasons only, including for selectors. */
@@ -11,10 +12,11 @@ export function inputRequirements(model: ModeModel, values: Record<string, strin
     const list = reasons.get(id) ?? new Set<string>(); list.add(reason); reasons.set(id, list);
     if (target) { const ids = consumers.get(id) ?? new Set<string>(); ids.add(target); consumers.set(id, ids); }
   };
+  // A selector's value, by the framework's resolver; an unlisted value selects nothing.
   const valueOf = (resource: ModelResource | undefined) => {
-    if (!resource || resource.absent || !resource.fromEnv) return undefined;
-    const value = values[resource.fromEnv]?.trim() || (resource.kind === "input" ? resource.default?.trim() : undefined);
-    return resource.values?.find((allowed) => allowed.toLowerCase() === value?.toLowerCase()) ?? value;
+    if (!resource || resource.kind !== "input" || !resource.fromEnv) return undefined;
+    const resolved = resolveInput({ fromEnv: resource.fromEnv, ...(resource.absent ? { absent: true as const } : {}), default: resource.default, values: resource.values }, { env: values });
+    return resolved.state === "supplied" || resolved.state === "fallback" ? resolved.value : undefined;
   };
   for (const resource of resources.values()) if (resource.required) need(resource.id, "Marked required in the resource declaration.");
   for (const target of model.targets) {

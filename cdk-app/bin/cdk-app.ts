@@ -24,7 +24,6 @@ import { authenticationProviders } from "../../framework-config/auth-providers";
 import { statefulResources } from "../../framework-config/stateful-resources";
 
 import {
-  loadDeploymentEnvironment,
   resolveDeploymentInputs,
   resolveFrontendSettings,
 } from "../deployment";
@@ -33,18 +32,16 @@ const repositoryRoot = path.join(__dirname, "..", "..");
 
 // Which deployment and graph this is was decided from CDK context before this
 // file loaded (bin/app.ts): `-c prodDeployment`, `-c deployment`, and the
-// targets in cdk.json. Deployment flags — which domain, which optional stacks —
-// are read from the process environment with that target's inputs file loaded
-// behind it.
+// targets in cdk.json.
 const { app, selection } = frameworkApp();
 selection.warnings.forEach((warning) => console.warn(warning));
-loadDeploymentEnvironment(selection.inputsFile);
 
-// Declared resource inputs are *not* read from the process environment. Every
-// `.fromEnv()` in framework-config/resources.ts resolves against the target's
-// inputs file itself (cdk-app/.env.dev for development, the file `docker compose up` reads),
-// so a deployment and a local run cannot disagree about a model id. `-c` still
-// overrides one, because an override you typed is not an override you inherited.
+// Inputs are *not* read from the process environment: neither the catalog's
+// `.fromEnv()` declarations nor the deployment settings in ./deployment-inputs.
+// Both resolve against the target's inputs file itself (cdk-app/.env.dev for
+// development, the file `docker compose up` reads), so a deployment and a local
+// run cannot disagree, and a variable left exported in a shell changes nothing.
+// `-c` still overrides one, because an override you typed is not one you inherited.
 const readers = {
   env: readAuthoredInputs(repositoryRoot),
   getContext: (key: string) => app.node.tryGetContext(key),
@@ -52,7 +49,8 @@ const readers = {
 validateFrameworkConfig(framework);
 const deployment = resolveDeploymentInputs({
   getContext: (key) => app.node.tryGetContext(key),
-  env: process.env,
+  // The CDK CLI's account and region are the only values taken from the process.
+  env: { ...readers.env, CDK_DEFAULT_ACCOUNT: process.env.CDK_DEFAULT_ACCOUNT, CDK_DEFAULT_REGION: process.env.CDK_DEFAULT_REGION },
   target: selection.target,
   databaseSettings: isFrameworkDatabase(framework.database) ? framework.database.settings : undefined,
   statefulResources,

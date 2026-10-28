@@ -60,3 +60,12 @@ test("a name is matched as a whole assignment, not as part of another", () => {
   const near = "PARTNER_API_KEY_OLD=\nOLD_PARTNER_API_KEY=";
   assert.deepEqual(files(undocumentedRequiredInputs(config("both"), templates(near, near))), ["dev.example", "prod.example"]);
 });
+
+test("an input required only in production is demanded only from the production template, whichever graph is loaded", () => {
+  const scoped = defineResources({ region: resource.fromEnv("PARTNER_REGION").required("prod") }, { mode: "dev" });
+  const problems = undocumentedRequiredInputs(defineFrameworkConfig({ networks: [fixtureVpc], resources: scoped, defaults, webSocket: [], events: [], services: [],
+    http: [{ "/partner": { directory: "/lambda_functions/http_functions/partner", methods: ["POST"], environment: { REGION: scoped.region } } }] } as never), templates("", ""));
+  assert.deepEqual(files(problems), ["prod.example"]);
+  assert.deepEqual(undocumentedRequiredInputs(defineFrameworkConfig({ networks: [fixtureVpc], resources: scoped, defaults, webSocket: [], events: [], services: [],
+    http: [{ "/partner": { directory: "/lambda_functions/http_functions/partner", methods: ["POST"], environment: { REGION: scoped.region } } }] } as never), templates("", "# PARTNER_REGION=\n")), []);
+});

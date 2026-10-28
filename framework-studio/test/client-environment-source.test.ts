@@ -6,9 +6,9 @@ import type { ModeModel } from "../shared/model";
 
 const text = '// header retained\nexport const clientEnvironment = {\n  // field retained\n  VITE_FIRST: { dev: { kind: "input", name: "PUBLIC_REGION" }, prod: { kind: "empty" } },\n  VITE_SECOND: { dev: { kind: "region", stack: "CognitoStack" }, prod: { kind: "empty" } }\n} as const;\n';
 
-test("mapping source changes round trip additions, removal, URL controls and per-mode toggles without touching unrelated source", () => {
+test("mapping source changes round trip additions, removal, URL controls and shared recipes without touching unrelated source", () => {
   const original = parseClientMappings(text).mappings;
-  const next: ClientEnvironmentMappings = { VITE_FIRST: { ...original.VITE_FIRST!, dev: { kind: "endpoint", protocol: "https", host: "app.localhost", port: "LOCAL_API_DEV_SERVER_HOST_PORT", enabled: false } }, VITE_THIRD: { dev: { kind: "output", stack: "CognitoStack", outputs: ["UserPoolId"], optional: true }, prod: { kind: "empty" } } };
+  const next: ClientEnvironmentMappings = { VITE_FIRST: { dev: { kind: "endpoint", protocol: "https", host: "app.localhost", port: "LOCAL_API_DEV_SERVER_HOST_PORT" }, prod: { kind: "empty" } }, VITE_THIRD: { kind: "output", stack: "CognitoStack", outputs: ["UserPoolId"], optional: true } };
   const after = rewriteClientMappings(text, next);
   assert.equal(JSON.stringify(parseClientMappings(after).mappings), JSON.stringify(next));
   assert.ok(after.startsWith("// header retained"));
@@ -19,6 +19,17 @@ test("mapping source changes round trip additions, removal, URL controls and per
   assert.equal(JSON.stringify(parseClientMappings(added).mappings), JSON.stringify({ ...original, VITE_THIRD: next.VITE_THIRD! }), "adding after a property without a trailing comma is valid");
   const empty = rewriteClientMappings(text, {});
   assert.deepEqual(Object.keys(parseClientMappings(empty).mappings), []);
+  // Written the way an author would: unquoted keys, one line per recipe when it fits.
+  assert.match(after, /^  VITE_THIRD: \{ kind: "output", stack: "CognitoStack", outputs: \["UserPoolId"\], optional: true \},?$/m);
+  assert.match(after, /^  VITE_FIRST: \{\n    dev: \{ kind: "endpoint", protocol: "https", host: "app\.localhost", port: "LOCAL_API_DEV_SERVER_HOST_PORT" \},\n    prod: \{ kind: "empty" \},\n  \}/m);
+  assert.ok(!after.includes('"kind"'));
+});
+
+test("a field is one recipe or one per environment, and where it is generated is never a switch", () => {
+  assert.equal(clientMappingsError({ VITE_X: { kind: "input", name: "PUBLIC_REGION" } }), undefined);
+  assert.equal(clientMappingsError({ VITE_X: { dev: { kind: "input", name: "PUBLIC_REGION" }, prod: { kind: "empty" } } }), undefined);
+  assert.match(clientMappingsError({ VITE_X: { dev: { kind: "empty" } } })!, /\{ dev, prod \}/);
+  assert.match(clientMappingsError({ VITE_X: { kind: "input", name: "PUBLIC_REGION", enabled: false } })!, /Remove enabled/);
 });
 
 test("client references reject expressions, duplicate names, unknown values, secrets and private outputs", () => {
@@ -36,7 +47,7 @@ test("client references reject expressions, duplicate names, unknown values, sec
 test("renaming a field preserves source order and comments, including simultaneous per-mode changes", () => {
   const original = parseClientMappings(text).mappings;
   const renamed: ClientEnvironmentMappings = {
-    VITE_RENAMED: { ...original.VITE_FIRST!, prod: { ...original.VITE_FIRST!.prod, enabled: false } },
+    VITE_RENAMED: { dev: { kind: "input", name: "PUBLIC_REGION" }, prod: { kind: "region", stack: "CognitoStack" } },
     VITE_SECOND: original.VITE_SECOND!,
   };
   const rewritten = rewriteClientMappings(text, renamed);

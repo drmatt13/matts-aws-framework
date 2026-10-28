@@ -1,6 +1,7 @@
 import type { Mode, SourceLocation } from "./model";
 import type { ClientEnvironmentBinding, ClientEnvironmentMappings } from "../../scripts/client-environment-mapping";
-export type { ClientEnvironmentBinding, ClientEnvironmentMappings } from "../../scripts/client-environment-mapping";
+export type { ClientEnvironmentBinding, ClientEnvironmentMapping, ClientEnvironmentMappings } from "../../scripts/client-environment-mapping";
+export { clientBindingFor, isSplitMapping } from "../../scripts/client-environment-mapping";
 
 export const CLIENT_ENVIRONMENT_ID = "client-envfile";
 export const CLIENT_ENVIRONMENT_ISLAND = "island:client-environment";
@@ -30,14 +31,18 @@ export interface ClientEnvironmentEntry {
   readonly name: string;
   readonly expression: string;
   readonly required: boolean;
-  /** Declaration availability only; never a claim about deployed output values. */
-  readonly status: "mapped" | "unavailable" | "empty" | "disabled";
+  /** Declaration availability only; never a claim about deployed output values. "empty" writes a blank value. */
+  readonly status: "mapped" | "unavailable" | "empty";
   readonly note: string;
   readonly sources: readonly ClientEnvironmentSource[];
 }
 
+export { CLIENT_ENVIRONMENT_FILES } from "../../scripts/environment-export";
+import type { CLIENT_ENVIRONMENT_FILES } from "../../scripts/environment-export";
+
 export interface ClientEnvironmentFile {
-  readonly path: "client-app/.env";
+  /** This graph's generated file. */
+  readonly path: (typeof CLIENT_ENVIRONMENT_FILES)[Mode];
   readonly mode: Mode;
   readonly inputs: string;
   readonly entries: readonly ClientEnvironmentEntry[];

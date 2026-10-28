@@ -58,6 +58,9 @@ function assertReadableObjects(node: ts.Node, source: ts.SourceFile): void {
   ts.forEachChild(node, child => assertReadableObjects(child, source));
 }
 
+/** One default for both graphs. */
+const both = (fallback: string) => ({ dev: { present: true, required: false, default: fallback }, prod: { present: true, required: false, default: fallback } });
+
 test("source discovery follows explicitly composed grouped modules and imported catalog descriptors", () => {
   assert.equal(state().snapshot.models.dev.targets[0]!.origins.length, 2);
   assert.equal(state().snapshot.source.entities["lambda:fixture"]!.value.file, "framework-config/features/identity.ts");
@@ -106,7 +109,7 @@ test("tagging a derived input materializes its stable environment name", async (
 
 test("resource defaults remain editable in split catalogs and preserve declaration tags", async () => {
   const service = new ResourceService(fixture, builder);
-  const plan = await service.plan({ resource: "resource:setting", kind: "input", default: "updated", group: "", requirements: {} }, revision(), "dev");
+  const plan = await service.plan({ resource: "resource:setting", kind: "input", modes: both("updated"), group: "", requirements: {} }, revision(), "dev");
   assert.ok(plan.ok, JSON.stringify(plan.diagnostics));
   assert.equal((await service.apply(plan.planId)).status, "applied");
   assert.equal(state().snapshot.models.dev.tagging!["resource:setting"]!.effective.Feature, "Models");
@@ -117,7 +120,7 @@ test("resource defaults remain editable in split catalogs and preserve declarati
 test("moving an imported resource changes catalog membership while preserving its definition and tags", async () => {
   const service = new ResourceService(fixture, builder);
   for (const group of ["billing", "modelInputs"]) {
-    const plan = await service.plan({ resource: "resource:setting", kind: "input", default: "initial", group, requirements: {} }, revision(), "dev");
+    const plan = await service.plan({ resource: "resource:setting", kind: "input", modes: both("initial"), group, requirements: {} }, revision(), "dev");
     assert.ok(plan.ok, JSON.stringify(plan.diagnostics));
     assert.equal((await service.apply(plan.planId)).status, "applied");
     assert.equal(state().snapshot.models.dev.tagging![`resource:${group}.setting`]!.effective.Feature, "Models");

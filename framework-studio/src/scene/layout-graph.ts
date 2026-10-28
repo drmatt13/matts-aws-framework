@@ -16,7 +16,10 @@ const reverse = new Set<Relation>(["env", "secret", "grant", "database", "localR
 
 /** Union both deployment topologies. Mode visibility and presentation are not topology. */
 export function topologyEdges(models: readonly ModeModel[]): readonly ModelEdge[] {
-  return [...new Map(models.flatMap((model) => model.edges).map((edge) => [edge.id, edge])).values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  // One edge per id whichever order the graphs arrive in: an edge both graphs hold can
+  // differ in graph-specific detail, so the development graph's copy always stands.
+  const ordered = [...models].sort((a, b) => a.mode < b.mode ? -1 : a.mode > b.mode ? 1 : 0).reverse();
+  return [...new Map(ordered.flatMap((model) => model.edges).map((edge) => [edge.id, edge])).values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 export function extractLayoutGraph(anchors: readonly LayoutAnchor[], edges: readonly ModelEdge[], representatives: Readonly<Record<string, string>> = {}): LayoutGraph {
   const byId = new Map(anchors.map((anchor) => [anchor.id, anchor]));

@@ -35,7 +35,7 @@ export class StatefulResourceService {
   constructor(private readonly root: string, private readonly builder: Builder, private readonly deploy: Pick<DeployService, "targets">, private readonly run: Runner = runCommand, private readonly env = process.env) { this.tools = new Tools(root, env); }
   expirePlans(): void { this.plans.clear(); }
   private fingerprints(): string {
-    const dependencies = ["cdk-app/cdk.json", "cdk-app/stateful-resources.ts", "cdk-app/deployment.ts", "cdk-app/bin/cdk-app.ts", "cdk-app/lib/app/database-lifecycle.ts", "cdk-app/lib/app/cognito-lifecycle.ts", "scripts/stateful-references.ts", "scripts/retained-resources.ts", "scripts/aws-cli.ts", "scripts/aws-profiles.ts", "framework-studio/server/stateful-source.ts", "framework-studio/server/stateful-resources.ts"];
+    const dependencies = ["cdk-app/cdk.json", "cdk-app/stateful-resources.ts", "cdk-app/deployment.ts", "cdk-app/deployment-inputs.ts", "cdk-app/bin/cdk-app.ts", "cdk-app/lib/app/database-lifecycle.ts", "cdk-app/lib/app/cognito-lifecycle.ts", "scripts/stateful-references.ts", "scripts/retained-resources.ts", "scripts/aws-cli.ts", "scripts/aws-profiles.ts", "framework-studio/server/stateful-source.ts", "framework-studio/server/stateful-resources.ts"];
     return equivalent({ ...hashEditableFiles(this.root), ...Object.fromEntries(dependencies.map(file => [file, existsSync(path.join(this.root, file)) ? sha256(readFileSync(path.join(this.root, file), "utf8")) : null])) });
   }
   private text(): string { return readFileSync(assertWritable(this.root, STATEFUL_SOURCE_FILE), "utf8"); }

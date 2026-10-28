@@ -330,13 +330,61 @@ Use workload `cloud.requirements` instead for conditional or per-consumer requir
 A parameter's non-blank `.default(...)` satisfies presence; secrets never have defaults in
 source. AWS Studio also guides missing catalog-wide requirements before any consumer exists.
 
+### Development and production
+
+An input says how the two graphs differ where it is declared, and nowhere else:
+
+```ts
+resource.fromEnv("LOCAL_API_DEV_SERVER_HOST_PORT").only("dev").required()
+resource.secret("OPENAI_API_KEY").required("prod")
+resource.fromEnv("LANGGRAPH_MODEL_PROVIDER").enum("bedrock", "openai").default({ dev: "bedrock", prod: "openai" })
+```
+
+`.only(mode)` declares the input in one graph; the other holds it as absent (below).
+`.required(mode)` and a `.default({ dev, prod })` that names one graph apply to that graph
+alone; without a mode, each applies to every graph the input is in. A setting for a graph the
+input is not in is refused rather than dropped. A catalog that uses any of these is resolved
+for the graph being built, so it names the graph:
+
+```ts
+import { FRAMEWORK_MODE } from "@repo/framework/config/source";
+export const resources = defineResources({ ... }, { mode: FRAMEWORK_MODE });
+```
+
+`absent`, `required` and `default` on each reference are then that graph's answer, so every
+lane — synthesis, the local runner, the generator, the client export — reads one graph and
+never compares modes. A reference keeps both graphs' policy in `modes` when they differ, for
+readers such as Studio that describe the other graph; `referenceForGraph(reference, mode)` reads
+it as that graph would. A catalog whose inputs are the same in both graphs needs no mode.
+
+Every reader states an input's outcome through one function, `resolveInput(reference, { env,
+getContext })`: `not-applicable` outside its graph; `supplied` from `-c` context or a non-blank
+line; `fallback` from the graph's default; `invalid` for a value outside its choices; otherwise
+`missing` when required and `unresolved` when optional. Synthesis, the local runner, the
+deployment settings, the client export and Studio all use it, so none reinterprets a blank
+line, a choice list or another graph's default on its own.
+
+Studio's two CDK environment file inspectors list the same variables: each file's own lines,
+the other file's lines, and every input the graph declares, with its default shown in the
+blank field and a **Required** flag where that graph requires it. An input declared `.only()`
+the other graph is left out, and flagged if its line is written anyway. Showing a row never
+writes one; a line is added only when it is given a value.
+
+Client-app fields infer where they are generated from the same declarations. An input outside
+a graph, or an optional input with no value and no default, writes the field blank in that
+environment; a required input with neither stops the export. The export resolves each input
+from the deployed graph's catalog, inputs file and the CDK context in cdk-app/cdk.json — the
+sources synthesis read — rather than reinterpreting the file. A field is one recipe for both
+environments unless its sources differ, which `{ dev, prod }` states.
+
 cdk-app/.env.<mode> is the file itself, not process.env: a variable exported in the shell, or
 one the generated repository-root .env carries, cannot stand in for a setting this file
 owns, so a deployment and `docker compose up` read the same line.
 
 ### Absence
 
-An entry declared `undefined` keeps its place in the catalog and resolves to nothing:
+An input declared `.only()` the other graph, or an entry declared `undefined`, keeps its
+place in the catalog and resolves to nothing:
 
 ```ts
 rds: PROD_DEPLOYMENT ? resource.stack<RdsStack>() : undefined,
@@ -344,8 +392,9 @@ rds: PROD_DEPLOYMENT ? resource.stack<RdsStack>() : undefined,
 
 `resources.rds.database` still compiles everywhere it is named, and anything that reads
 the entry simply never sees it — which is what lets the Compose Postgres stand in for the
-database rather than a handler branching on a deployment mode it cannot see. No
-resource carries a mode; there is no `.prodOnly()` or `.devOnly()`. `PROD_DEPLOYMENT` is
+database rather than a handler branching on a deployment mode it cannot see. Inputs use
+`.only()` instead of the ternary, so the graph that lacks one still knows its name and kind.
+`PROD_DEPLOYMENT` (and `FRAMEWORK_MODE`, the same choice as a graph name) is
 imported from `@repo/framework/config/source`. It is the graph the command stated as CDK
 context (`-c prodDeployment=true`): `bin/main.ts` resolves it before the catalog is imported
 and hands it over as FRAMEWORK_MODE, and every process not started by a synth (the local
@@ -1051,7 +1100,7 @@ from offline/local tests. Use a disposable fixture for deliberate failures.
 | File/source | Owner and purpose |
 | --- | --- |
 | cdk-app/cdk.json `framework:targets` | Committed deployment targets: name, mode, pinned account and region, inputs file. Production targets must pin their account |
-| cdk-app/.env.dev | Your development inputs, and the file Compose reads; CDK_APP_NAME names your own development deployment. Deployment flags may be overridden by the shell or `-c`; resource inputs are read from the file itself |
+| cdk-app/.env.dev | Your development inputs, and the file Compose reads; CDK_APP_NAME names your own development deployment. Resource inputs and deployment settings are read from the file itself, never the shell; `-c` overrides either |
 | cdk-app/.env.prod | Production inputs, read by `-c prodDeployment=true` commands unless the target names another inputs file |
 | cdk-app/.env.dev.template, cdk-app/.env.prod.template | Tracked references the two ignored files are generated from. There is no mode-less `cdk-app/.env`: the mode picks the file. Studio's CDK environment files island generates a missing file from its template, and its file inspectors edit/add variables through draft review |
 | Root .env | Exported development Compose/auth/replay/port controls. A production export never writes it |
@@ -1062,7 +1111,8 @@ from offline/local tests. Use a disposable fixture for deliberate failures.
 | Service .env.example | Generated input documentation; no authored per-service env files |
 | docker-compose.yml | Local containers, launchers, read-only mounts, ports, readiness, and Watch; `x-framework-service`, the container every generated service starts from |
 | docker-compose.services.yml | Generated: one container per service that runs locally, included by docker-compose.yml |
-| cdk-app/deployment.ts | Application deployment input validation, precedence, and compatibility aliases |
+| cdk-app/deployment-inputs.ts | The deployment settings (CDK_APP_NAME, domains, SES sender, retention, …), declared with the catalog's builders: default, choices and a note for each |
+| cdk-app/deployment.ts | What each deployment setting means for the graph: validation, production refusals and compatibility aliases |
 
 Each command states the graph it builds as CDK context: development unless it says
 `-c prodDeployment=true` (the deprecated `-c useLocalDevStack` is its inverse). The deployment
@@ -1070,8 +1120,10 @@ is a target: `-c deployment=<name>`, the only production target when production 
 or your own development deployment (CDK_APP_NAME). A declared target's mode must agree with
 the stated one, a production target is never implied, and a pinned account or region is never
 synthesized for another. A leftover PROD_DEPLOYMENT line that agrees is a warning; one that
-disagrees stops the synth. Ordinary settings use context, environment, then fallback. New deployment-wide flags belong in deployment.ts plus tests;
-workload inputs belong in the resource catalog instead.
+disagrees stops the synth. A deployment setting is a declaration in deployment-inputs.ts, resolved
+by the same `resolveInput` as a workload input: `-c` context, then the inputs file, then its
+default; a blank line counts as unset and the shell is never read. New deployment-wide settings
+belong there and in deployment.ts plus tests; workload inputs belong in the resource catalog instead.
 
 What a stack belongs to is recorded in AWS, not inferred from its name. Every stack carries
 the `framework:deployment:v1` output (deployment, mode, account, region), and

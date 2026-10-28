@@ -90,11 +90,11 @@ self-evident copy and for spacing. Each change follows from a rendered card:
 | Observed | Resulting rule |
 | --- | --- |
 | A stack titled `RdsStack` had the type line `Stack, RdsStack` | The type line never repeats the name. A catalog stack names its entry (`Stack · resources.rds`), which is also what its connections call it; a framework stack reads `Stack` |
-| `Calls tool: multiply-numbers` above `To multiply-numbers`; `Provides database: rds.database` above `To rds.database` | A single connection whose value only repeats an endpoint keeps a verb phrase (`Calls tool`, `Provides database`, `Connects to database`, `Controls deployment`). Authored labels such as route keys and variables stay |
+| `Calls tool: multiply-numbers` above `To multiply-numbers`; `Provides database: rds.database` above `To rds.database` | A single connection whose value only repeats an endpoint keeps an action label (`Calls tool`, `Provides database`, `Connects to database`, `Conditional Deployment`). Authored labels such as route keys and variables stay |
 | The `rds` stack appeared as a **Database** endpoint | Only the database itself is a Database; its stack is a Stack |
 | Prod-only database connections prefixed every fact, and the Permissions label, with **Prod** | Qualify only facts that differ between environments holding the member |
 | `Applies to every entry` labelled a single sentence; groups added `Prod: No entries are declared.` beside an unlit Prod pill | Shared facts are one sentence (`Every input uses its declaration default.`); absence is the unlit pill |
-| `Conditional deployment: $enableWebSocketApi` with `Matches "true".` | `Controls deployment`, with `Deploys when enableWebSocketApi equals "true".` |
+| `Conditional deployment: $enableWebSocketApi` with `Matches "true".` | `Conditional Deployment`, with `Deploys when enableWebSocketApi equals "true".` |
 | Two VPCs showed identical `s3 endpoint` cards | Fixtures name their kind and VPC: `Gateway endpoint · test VPC` |
 | Map labels showed through the 98%-opaque card | Cards are opaque |
 | The type line sat 8.5px of air below its title; From/To rows had a 23.5px pitch, Dev/Prod locations 22px; a closing rule ended lists that were last in the card | 5.5px under the title on every card, islands included; one 20px metadata pitch (19px for 12px locations); a list's closing rule appears only when content follows |

@@ -784,7 +784,7 @@ test("required flags stage quietly and the connection inspector guides missing v
   const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv)!;
   const requirement = { resource: resource.id, name: resource.fromEnv!, mode: "dev" as const, file: "cdk-app/.env.dev", required: true, status: "missing" as const, reasons: ["Marked required in the resource declaration."] };
   const fileResource = baseline.models.dev.resources.find((item) => item.id === "envfile:dev")!;
-  const entry = { name: resource.fromEnv!, status: "missing" as const, sensitive: false, defaulted: false, targets: [resource.id], requirements: [requirement] };
+  const entry = { name: resource.fromEnv!, status: "missing" as const, counterpart: "missing" as const, sensitive: false, defaulted: false, targets: [resource.id], requirements: [requirement] };
   const edge = { id: "required-fixture", from: "envfile:dev", to: resource.id, relation: "supplies" as const, provenance: "source" as const, label: resource.fromEnv!, inputRequirement: requirement };
   persisted = { ...baseline, models: { ...baseline.models, dev: { ...baseline.models.dev,
     resources: baseline.models.dev.resources.map((item) => item.id === resource.id ? { ...item, required: true, default: undefined, inputRequirement: requirement } : item.id === fileResource.id ? { ...item, deploymentFile: { ...fileResource.deploymentFile!, exists: true, entries: [entry] } } : item), edges: [...baseline.models.dev.edges, edge] } } };
@@ -793,12 +793,37 @@ test("required flags stage quietly and the connection inspector guides missing v
   assert.ok(ui.screen.getByText("Required value missing"));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Edit .env.dev" }));
   await ui.screen.findByRole("heading", { name: "cdk-app/.env.dev" });
-  assert.ok(ui.screen.getByRole("heading", { name: "Required inputs (1)" }));
-  const set = await ui.screen.findByRole("button", { name: `Set ${resource.fromEnv}` });
-  await ui.waitFor(() => assert.equal((set as HTMLButtonElement).disabled, false));
-  ui.fireEvent.click(set);
-  assert.ok(ui.screen.getByText(/A blank value will not satisfy this requirement/));
+  assert.ok(ui.screen.getByText(/A required value is missing/));
+  assert.ok(ui.screen.getByText("Required", { selector: ".input-flag" }), "the row is flagged where its value is entered");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: resource.fromEnv! }));
+  assert.equal((ui.screen.getByRole("searchbox", { name: "Filter environment variables" }) as HTMLInputElement).value, resource.fromEnv);
+  const field = await ui.screen.findByRole("textbox", { name: `Value for ${resource.fromEnv}` });
+  await ui.waitFor(() => assert.equal((field as HTMLTextAreaElement).disabled, false));
+  ui.fireEvent.change(field, { target: { value: "8080" } });
+  assert.equal(ui.screen.queryByText(/A required value is missing/), null, "a staged value satisfies the requirement");
+  ui.fireEvent.change(field, { target: { value: "" } });
+  assert.ok(ui.screen.getByText(/A required value is missing/), "clearing a row without a line drops its edit");
   assert.equal(planCalls.length + resourceCalls.length, 0, "guided editing does not force review");
+});
+
+test("a file's secrets arrive withheld: they count as set, reveal one at a time, and are never blanked unseen", async () => {
+  const secret = baseline.models.dev.resources.find((item) => item.kind === "secret" && item.fromEnv)!;
+  const reveals: string[] = [];
+  mock.method(apiModule.api, "inputDetails", async () => ({ file: "cdk-app/.env.dev", hash: "withheld", entries: [{ name: secret.fromEnv!, value: "", sensitive: true, hidden: true }] }));
+  mock.method(apiModule.api, "revealInput", async (_mode: "dev" | "prod", name: string) => { reveals.push(name); return { name, value: "revealed-sentinel" }; });
+  await mount("envfile:dev");
+  const field = await ui.screen.findByLabelText(`Value for ${secret.fromEnv}`) as HTMLInputElement;
+  await ui.waitFor(() => assert.equal(field.disabled, false));
+  assert.equal(field.value, "");
+  assert.equal(field.placeholder, "Set · hidden");
+  ui.fireEvent.change(field, { target: { value: "x" } });
+  ui.fireEvent.change(field, { target: { value: "" } });
+  assert.ok(!ui.screen.queryByLabelText("Pending inspector changes"), "clearing an unrevealed secret keeps it instead of blanking it");
+  await ui.waitFor(() => assert.equal((ui.screen.getByLabelText(`Value for ${secret.fromEnv}`) as HTMLInputElement).disabled, false));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: `Reveal ${secret.fromEnv}` }));
+  await ui.waitFor(() => assert.equal((ui.screen.getByLabelText(`Value for ${secret.fromEnv}`) as HTMLTextAreaElement).value, "revealed-sentinel"));
+  assert.deepEqual(reveals, [secret.fromEnv], "only the revealed variable is fetched");
+  assert.equal(planCalls.length + resourceCalls.length, 0);
 });
 
 test("local values edit inline, revert, review privately and reload after apply without reading the whole file", async () => {
@@ -854,7 +879,7 @@ test("blank local values show the effective default and constrained values offer
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Use default" }));
   assert.equal((field as HTMLSelectElement).value, "");
   assert.ok(!ui.screen.queryByLabelText("Pending inspector changes"));
-  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Required input" }));
+  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Required in development" }));
   assert.equal((field as HTMLSelectElement).disabled, true, "configuration and local file values review separately");
 });
 
@@ -887,15 +912,20 @@ test("a missing environment file offers setup rather than an unusable value edit
   assert.equal(planCalls.length + resourceCalls.length, 0);
 });
 
-test("the catalog-wide required switch participates in the unified resource draft", async () => {
-  const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv)!;
+test("per-environment input settings participate in the unified resource draft", async () => {
+  const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv && !item.absent)!;
   await mount(resource.id);
-  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Required input" }));
+  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Required in production" }));
   assert.equal(resourceCalls.length, 0);
   assert.match(count(), /1 unsaved change/);
+  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Present in development" }));
+  assert.ok(ui.screen.getByRole("checkbox", { name: "Required in development" }).matches(":disabled"), "an environment without the input has nothing to require");
+  assert.match(count(), /3 unsaved changes/, "leaving development also drops its default");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
   await ui.waitFor(() => assert.equal(resourceCalls.length, 1));
-  assert.equal((resourceCalls[0] as { required: boolean }).required, true);
+  const { modes } = resourceCalls[0] as { modes: Record<"dev" | "prod", { present: boolean; required: boolean; default: string | null }> };
+  assert.deepEqual([modes.dev.present, modes.dev.required, modes.dev.default], [false, false, null], "a graph without the input keeps nothing for it");
+  assert.deepEqual([modes.prod.present, modes.prod.required], [true, true]);
 });
 
 test("actual switches stage immediately, five controls share one review, and Apply All commits once", async () => {

@@ -103,7 +103,8 @@ for (const [comparison, { names, holds }] of Object.entries(comparisons) as [Com
   const original = assert[names[0]] as Compare;
   const compare: Compare = (actual, expected, message) => {
     if (bounded(actual) && bounded(expected)) {
-      try { original(actual, expected, message); }
+      // Node distinguishes an omitted message from an explicit undefined one.
+      try { if (message === undefined) original(actual, expected); else original(actual, expected, message); }
       catch (error) { if (error instanceof assert.AssertionError) Error.captureStackTrace(error, compare); throw error; }
       return;
     }

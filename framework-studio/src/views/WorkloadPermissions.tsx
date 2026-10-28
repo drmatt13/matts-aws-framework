@@ -173,16 +173,20 @@ export function ResourceAccess({ resource }: { readonly resource: ModelResource 
   const { snapshot, model, draft, draftState, live, select } = useStudio();
   const [choosing, setChoosing] = useState(false);
   const add = useRef<HTMLButtonElement>(null);
-  const { supported, consumers } = useMemo(() => {
+  const { supported, consumers, conditions } = useMemo(() => {
     const targets = [...new Map(Object.values(snapshot.models).flatMap(item => item.targets).map(target => [target.ref, target])).values()];
     const supported = targets.some(target => configuredAccessOptions(target, snapshot, resource.id).some(option => option.id === resource.id));
     const consumers = targets.filter(target => Object.values(snapshot.models).some(item => {
       const candidate = item.targets.find(value => value.ref === target.ref);
       return candidate && (targetAccess(candidate, item, snapshot.source).owned.some(entry => entry.destination.id === resource.id)
         || candidate.environment.some(entry => entry.value.kind === "reference" && entry.value.resource === resource.id)
-        || candidate.secrets.some(entry => entry.resource === resource.id));
+        || candidate.secrets.some(entry => entry.resource === resource.id)
+        || candidate.lanes.when?.resource === resource.id);
     }));
-    return { supported, consumers };
+    // A deploy condition is a use too, but not one this section grants or removes.
+    const conditions = new Set(targets.filter(target => target.lanes.when?.resource === resource.id
+      && !target.environment.some(entry => entry.value.kind === "reference" && entry.value.resource === resource.id)).map(target => target.ref));
+    return { supported, consumers, conditions };
   }, [snapshot, resource.id]);
   if (!supported) return null;
   const disabled = !!draftState.busy || draft.conflict || model.stale || live.evaluating;
@@ -190,7 +194,7 @@ export function ResourceAccess({ resource }: { readonly resource: ModelResource 
   const input = resource.kind === "input";
   return <InspectorSection title={input ? "Connected workloads" : "Workload access"} actions={!choosing ? <button ref={add} className="quiet" disabled={disabled} onClick={() => setChoosing(true)}>{input ? "Connect workload" : "Grant access"}</button> : undefined}>
     {choosing ? <ConsumerAccessEditor destination={resource.id} onDone={done} /> : null}
-    {consumers.length ? <ul className="relations resource-consumers">{consumers.map(target => <li key={target.ref}><button className="linkish" onClick={() => select(target.ref)}>{target.title}</button><span className="small muted">{ROLE_LABEL[target.role]}</span></li>)}</ul> : !choosing ? <p className="small muted">{input ? "No workloads use this input yet." : "No workloads have access yet."}</p> : null}
+    {consumers.length ? <ul className="relations resource-consumers">{consumers.map(target => <li key={target.ref}><button className="linkish" onClick={() => select(target.ref)}>{target.title}</button><span className="small muted">{conditions.has(target.ref) ? "Deployment condition" : ROLE_LABEL[target.role]}</span></li>)}</ul> : !choosing ? <p className="small muted">{input ? "No workloads use this input yet." : "No workloads have access yet."}</p> : null}
     <PendingAccess destination={resource.id} />
   </InspectorSection>;
 }

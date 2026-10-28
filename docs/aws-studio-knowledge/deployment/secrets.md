@@ -23,7 +23,7 @@ Every secret has one catalog entry: `resource.secret("NAME")` for a raw authored
 | --- | --- |
 | Public snapshot/review | Names, presence, required/default metadata and secret actions; excludes resolved secret values |
 | Protected Studio detail | Selected input/resource detail APIs can return values under local session guards/no-store; the whole Studio is not value-free |
-| Environment editing | [deployment-inputs.ts](../../../framework-studio/server/deployment-inputs.ts) fixes dev/prod paths and rejects symlinks; explicit missing-file bootstrap uses exclusive private creation, never dev-to-prod copying |
+| Environment editing | [deployment-inputs.ts](../../../framework-studio/server/deployment-inputs.ts) fixes dev/prod paths and rejects symlinks; explicit missing-file bootstrap uses exclusive private creation, never dev-to-prod copying. [deployment-input-edits.ts](../../../framework-studio/server/deployment-input-edits.ts) withholds sensitive values from the file inspector (`hidden`) and reveals one value per explicit request |
 | Input transaction | [deployment-input-edits.ts](../../../framework-studio/server/deployment-input-edits.ts) keeps values in private in-memory plans, redacts review, checks revision/file hash, round-trips dotenv and replaces privately while preserving unrelated assignments/comments |
 | Catalog editing | `ResourceService` in [resources.ts](../../../framework-studio/server/resources.ts) and [resources-source.ts](../../../framework-studio/server/resources-source.ts) edit declaration kind/group/default/requirements and recognized consumer references; not a general code editor |
 

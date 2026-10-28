@@ -83,10 +83,23 @@ export class DeploymentInputService {
     catch { throw new EditError(422, "The inputs file must be a readable regular file inside cdk-app."); }
     throw new EditError(404, "Create this environment file from its reference before editing.");
   }
+  private sensitive(mode: Mode, name: string): boolean {
+    const catalog = this.builder.current?.snapshot.models[mode].resources ?? [];
+    return sensitiveName(name) || catalog.some((resource) => resource.kind === "secret" && resource.fromEnv === name);
+  }
+  /** Every line, with a sensitive value withheld: the browser learns only that it is set. */
   details(mode: Mode): DeploymentInputDetails {
     const text = this.text(mode);
-    const catalog = this.builder.current?.snapshot.models[mode].resources ?? [];
-    return { file: deploymentInputPath(mode), hash: sha256(text), entries: Object.entries(parseEnv(text)).sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => ({ name, value: value!, sensitive: sensitiveName(name) || catalog.some((resource) => resource.kind === "secret" && resource.fromEnv === name) })) };
+    return { file: deploymentInputPath(mode), hash: sha256(text), entries: Object.entries(parseEnv(text)).sort(([a], [b]) => a.localeCompare(b)).map(([name, value]) => {
+      const sensitive = this.sensitive(mode, name);
+      return sensitive && value!.trim() ? { name, value: "", sensitive, hidden: true as const } : { name, value: value!, sensitive };
+    }) };
+  }
+  /** One withheld value, only when someone asks to reveal it. */
+  reveal(mode: Mode, name: string): { readonly name: string; readonly value: string } {
+    const value = parseEnv(this.text(mode))[name];
+    if (typeof name !== "string" || value === undefined) throw new EditError(404, "This variable is not in the selected file.");
+    return { name, value };
   }
   plan(mode: Mode, edits: readonly DeploymentInputEdit[], hash: string, revision: string): DeploymentInputPlan {
     const before = this.text(mode);

@@ -703,8 +703,7 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .client-mapping-name strong { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
 .client-mapping-name .icon-button { flex-shrink: 0; }
 .client-mapping-name .environment-pills { flex: none; }
-.client-mapping-name .hover-tag { cursor: pointer; min-height: var(--ui-icon-target); padding: 3px 8px; font-size: 11px; }
-.client-mapping-name .hover-tag:hover:not(:disabled) { border-color: currentColor; }
+.client-mapping-name .hover-tag { min-height: var(--ui-icon-target); padding: 3px 8px; font-size: 11px; }
 .client-mapping-rename { display: grid; gap: var(--ui-space-2); }
 .client-mapping-rename p { margin: 0; }
 .client-mapping-context { display: grid; gap: var(--ui-space-2); margin-bottom: var(--ui-space-5); }
@@ -722,6 +721,8 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .client-mapping-summary > code { font-size: var(--ui-caption); line-height: 1.6; overflow-wrap: anywhere; }
 .client-mapping-summary:hover > code { color: var(--dev); }
 .client-mapping-detail { display: grid; gap: var(--ui-space-3); padding: var(--ui-space-3); border: 1px solid var(--rule); border-radius: var(--ui-control-radius); background: var(--paper); }
+.client-mapping-mode { display: grid; gap: var(--ui-space-2); }
+.client-mapping-mode > h4 { margin: 0; font-size: var(--ui-caption); font-weight: 500; color: var(--graphite); }
 .client-mapping-controls { display: grid; gap: var(--ui-space-3); border: 0; padding: 0; margin: 0; min-width: 0; }
 .client-mapping-controls label { display: grid; gap: var(--ui-space-1); font-size: var(--ui-caption); min-width: 0; }
 .client-mapping-controls label > code { overflow-wrap: anywhere; }
@@ -729,6 +730,19 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .input-file-entries { margin: var(--ui-space-3) 0 0; }
 .input-file-entries li { padding: 14px 0; gap: var(--ui-space-2); }
 .input-file-entries li > code { font-size: 11px; font-weight: 500; }
+.input-modes { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: var(--ui-caption); }
+.input-modes :is(th, td) { padding: var(--ui-space-1) 0; text-align: left; vertical-align: middle; }
+.input-modes thead th { font-weight: 500; color: var(--graphite); }
+.input-modes thead td, .input-modes tbody th { width: 34%; font-weight: 400; }
+.input-modes td + td, .input-modes th + td, .input-modes th + th { padding-left: var(--ui-space-2); }
+.input-modes :is(input:not([type=checkbox]), select) { width: 100%; min-width: 0; }
+.input-group-heading { margin: var(--ui-space-4) 0 0; font-size: var(--ui-caption); font-weight: 500; color: var(--graphite); }
+.input-entry-heading { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ui-space-2); min-width: 0; }
+.input-entry-heading > code { flex: 1 1 auto; min-width: 0; font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
+.input-flag { flex: none; padding: 1px 7px; border: 1px solid var(--rule-strong); border-radius: 999px; font-size: 11px; line-height: 1.5; color: var(--graphite); }
+.input-flag.missing, .input-flag.warning { border-color: var(--refuse); color: var(--refuse); background: var(--refuse-wash); }
+.input-file-entries li.missing :is(input, textarea, select) { border-color: var(--refuse); }
+.input-entry-meta { display: flex; flex-wrap: wrap; gap: var(--ui-space-1) var(--ui-space-3); margin: 0; }
 .env-value-control { align-items: center; }
 .env-value-control :is(input,textarea) { min-height: var(--ui-control-height); font-size: 12px; }
 .env-value-control :is(input, textarea) { flex: 1 1 0; }

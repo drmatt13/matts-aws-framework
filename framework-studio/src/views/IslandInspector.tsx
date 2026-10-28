@@ -36,6 +36,7 @@ function EnvironmentFiles() {
   const files = model.resources.flatMap((resource) => resource.deploymentFile ? [resource.deploymentFile] : []);
   const missing = files.filter((file) => !file.exists);
   const name = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+  const unmet = (file: (typeof files)[number]) => file.entries.filter((entry) => entry.default === undefined && entry.status !== "configured" && entry.requirements?.some((item) => item.required)).length;
   const generate = async () => {
     setBusy(true); setError("");
     try { for (const file of missing) await api.createDeploymentInput(file.mode); }
@@ -45,12 +46,12 @@ function EnvironmentFiles() {
   return <section><h3>Files</h3>
     <ul className="island-members">{files.map((file) => <li key={file.mode}>
       <button className="linkish" onClick={() => select(`envfile:${file.mode}`)}>{file.path}</button>
-      <span className="small muted">{file.exists ? "exists" : "not generated"}</span>
+      <span className={`small ${unmet(file) ? "reason" : "muted"}`}>{!file.exists ? "Not generated" : unmet(file) ? `${unmet(file)} required ${unmet(file) === 1 ? "value" : "values"} missing` : `${file.entries.length} variables`}</span>
     </li>)}</ul>
     {missing.length ? <>
       <p className="small">{missing.map((file) => name(file.path)).join(" and ")} {missing.length === 1 ? "does" : "do"} not exist, so commands for {missing.length === 1 ? "that environment" : "those environments"} run on the declared defaults. Generate copies {missing.length === 1 ? "it" : "each"} from {missing.map((file) => name(file.template)).join(" and ")}; an existing file is never overwritten.</p>
       <button className="button" disabled={busy || draft.dirty} onClick={() => void generate()}>{busy ? "Generating…" : `Generate ${missing.map((file) => name(file.path)).join(" and ")}`}</button>
-    </> : <p className="small muted">Both files exist. Select one to edit its variables.</p>}
+    </> : null}
     {error ? <p role="alert">{error}</p> : null}
   </section>;
 }

@@ -208,14 +208,16 @@ never enter evaluator processes.
 missing entries stay visible in the inspector without pretending to supply a value.
 Catalog identities are reused, preserving their workload and secret-consumer links.
 
-**Required input** in a parameter or secret inspector stages a catalog `.required()`
-flag through the normal review/apply flow. Existing conditional and per-workload
+**Input behavior** in a parameter or secret inspector is a Dev | Prod grid: **Present**,
+**Required** and **Default** for each environment, staged through the normal review/apply flow
+as `.only()`, `.required()`/`.required(mode)` and `.default()`/`.default({ dev, prod })`. An input
+can be edited from the graph that does not hold it. Existing conditional and per-workload
 requirements are also evaluated. Missing or whitespace-only effective values create a
 red connection with an X, including when the variable has no assignment yet. Select the
 connection to see the environment, why it is required, and actions to edit the environment
 file or parameter default. Parameters can use non-blank declaration defaults; secrets
 must be supplied in the local environment file and never get source-code defaults.
-File inspectors summarize required inputs and offer **Set NAME** actions. Requirements
+File inspectors flag each required row and summarize missing ones above the list. Requirements
 are checked against each mode's own file (`cdk-app/.env.dev` or `cdk-app/.env.prod`);
 template values are references only. Unknown reads are reported separately from missing
 values. The graph carries presence and requirement metadata, never authored values.
@@ -224,17 +226,27 @@ Selecting a file opens an editor for all of that file's variables, including set
 such as `PGADMIN_HOST_PORT` that have no catalog declaration. Edit multiple values or
 add variables, then **Review Changes** and **Apply All**, or discard the draft. Navigation
 and browser exit use the same unsaved-change guards as other inspectors. Existing secrets
-are masked with an explicit reveal control; new values are masked initially. The review
+are withheld until revealed one at a time; new values are masked initially. The review
 lists changed keys with values redacted. File revisions are checked before review and
 again before applying, so another editor's save is preserved. Only the selected mode's
 file is written; saving does not synthesize or deploy. Dotenv syntax and value round trips
 are checked; infrastructure validation remains a separate synthesis action.
 
-File-to-resource links use catalog declarations only. Other variables stay inside the
-file inspector. Names, configured/empty/missing status and declaration-default use remain
-available without values in the map. Values load only into the selected inspector and its
-in-memory draft, outside graph/search data and query caches. Missing example/catalog keys
-can be added from **Not set in this file**. `PROD_DEPLOYMENT` follows the file's mode.
+Both file inspectors list the same variables: the file's own lines, the other file's lines,
+and every catalog input its graph holds, catalog inputs first. A blank catalog row shows its
+declared default; a row the other file alone writes says so. An input declared `.only()` the
+other graph is left out, and flagged **Not read** if a line for it is written anyway. Showing a
+row never writes one: typing a value adds the line, and clearing it again drops the edit.
+Variables the catalog does not declare but the application reads are grouped with their owner:
+**Deployment settings** (cdk-app/deployment-inputs.ts) and **Database** overrides, each with its
+default, choices and note; a database override in the development file is flagged **Not read**.
+Anything else is listed under **Other variables**.
+File-to-resource links use catalog declarations only. Names, line presence and declared
+defaults remain available without values in the map. Values load only into the selected
+inspector and its in-memory draft, outside graph/search data and query caches. A sensitive
+line's value is withheld from the file inspector: it shows as set, typing replaces it, and
+**Reveal** fetches that one value. Clearing a secret that was never revealed keeps it.
+`PROD_DEPLOYMENT` follows the file's mode.
 
 There is no `cdk-app/.env`: the mode (`-c prodDeployment`) picks `.env.dev` or `.env.prod`.
 A file that has not been generated wears a red cross on its node in the isometric view.
@@ -248,14 +260,18 @@ changes refresh the map and stale the matching inventory; generating a file does
 
 ## Client-app environment mappings
 
-The **Client-app environment file** island contains `client-app/.env`. Its inspector is
-a searchable source overview. Expand a field to choose its source type, then its CDK input,
-stack/output or region; URL sources expose protocol, hostname, port and an optional override.
-The environment buttons follow the graph and its unsaved-change guard. Each field shows a
-symbolic preview and source status that update with its draft, plus an individual reset.
-Each variable's Dev/Prod pills independently include or omit it from that environment's
-generated file; **Empty value** keeps an empty value. Rename a field inline while retaining
-both source recipes, add new `VITE_` fields, or remove a field from both environments.
+The **Client-app environment file** island holds the **Client environment**, which the export
+writes to `client-app/.env.development.local` and `client-app/.env.production.local`. Its
+inspector is a searchable source overview. Expand a field to choose its source type, then its
+CDK input, stack/output or region; URL sources expose protocol, hostname, port and an optional
+override. A field is one recipe for both environments; **Different source in each environment**
+splits it into `{ dev, prod }` when the sources differ. Each field shows a symbolic preview
+that updates with its draft, plus an individual reset.
+Each field's Dev/Prod pills report where it gets a value, inferred rather than toggled: an
+input not declared in an environment, or one with no value and no default there, leaves the
+field blank; a required input with neither needs attention. **Empty value** writes a blank
+value on purpose. Rename a field inline while retaining its recipe, add new `VITE_` fields,
+or remove a field from both environments.
 Renames reject duplicate names and require updating application reads of the old name.
 Stack outputs can permit an empty value when
 their stack is off. Choosing a new stack requires explicitly choosing its output; existing
@@ -277,9 +293,9 @@ The initial mappings are:
 | Variable | Development source | Production source |
 | --- | --- | --- |
 | `VITE_API_GATEWAY_URL` | CDK `VITE_API_GATEWAY_URL` override, otherwise `http://localhost:${LOCAL_API_DEV_SERVER_HOST_PORT}` | Frontend stack `CloudFrontUrl` output |
-| `VITE_LOCAL_WS_URL` | `ws://localhost:${LOCAL_WS_DEV_SERVER_HOST_PORT}` when `enableWebSocketApi` matches `"true"`, otherwise empty | Empty |
+| `VITE_LOCAL_WS_URL` | `ws://localhost:${LOCAL_WS_DEV_SERVER_HOST_PORT}` when `enableWebSocketApi` matches `"true"`, otherwise empty | Same recipe; blank, because its port is development-only |
 | `VITE_API_GATEWAY_WS_URL` | WebSocket stack `WebSocketAPIEndpoint` when enabled, otherwise empty | Same rule |
-| `VITE_WS_TESTER_URL` | `http://localhost:${WS_TESTER_HOST_PORT}` | Empty |
+| `VITE_WS_TESTER_URL` | `http://localhost:${WS_TESTER_HOST_PORT}` | Same recipe; blank, because its port is development-only |
 | `VITE_AWS_REGION` | Cognito stack's deployment region | Cognito stack's deployment region |
 | `VITE_USER_POOL_ID` | Cognito `UserPoolId` output | Same output in the selected deployment |
 | `VITE_USER_POOL_CLIENT_ID` | Cognito `UserPoolClientId` output | Same output in the selected deployment |
@@ -289,7 +305,7 @@ Client mappings read declared input parameters on the Input parameters and secre
 CDK `.env.dev` and `.env.prod` files supply those parameters; they have no direct mapping
 connection to `client-app/.env`. Parameters carry their selected-mode presence and defaults,
 and exports evaluate the catalog for the selected deployment. Local URL inputs under
-`resources.client` are Development-only. A mapping's optional `when: { input, equals }`
+`resources.client` are declared `.only("dev")`. A mapping's optional `when: { input, equals }`
 uses a public input parameter to control whether its value is populated or empty.
 Region comes from Cognito's deployment rather than
 `LOCAL_AWS_REGION`, which can name a different region for local SDK calls. An absent

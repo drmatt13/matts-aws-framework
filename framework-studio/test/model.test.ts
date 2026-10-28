@@ -278,7 +278,7 @@ test("the three native Cognito hooks connect the public pool to their events in 
       assert.ok(edge.source);
       assert.ok(edge.source.file.endsWith("cognito-stack.ts"));
       const line = readFileSync(path.resolve(repositoryRoot, edge.source.file), "utf8").split(/\r?\n/)[edge.source.line - 1];
-      assert.ok(line?.includes(`${edge.label}: eventFunction(this, "${edge.to.replace("lambda:", "")}")`), `Hook evidence must locate its current native declaration: ${edge.label}`);
+      assert.ok(line?.includes(`${edge.label}: eventFunction(this, "${edge.to.replace("lambda:", "")}"`), `Hook evidence must locate its current native declaration: ${edge.label}`);
     }
     assert.ok(hooks.every((edge) => edge.evidence?.some((item) => item.role === "wired")));
   }
@@ -317,7 +317,7 @@ test("an editable literal is one the evaluated config agrees with", () => {
   assert.deepEqual(editability["service:example-service"]?.deploy, { kind: "literal", text: '"local-only"' });
   assert.deepEqual(editability["lambda:graphql-api"]?.["lambda.memorySize"], { kind: "literal", text: "512" });
   assert.deepEqual(editability["lambda:graphql-api"]?.deploy, { kind: "absent" });
-  assert.equal(editability["lambda:add-numbers"]?.deploy, undefined, "a tool's lane is derived, never edited");
+  assert.deepEqual(editability["lambda:add-numbers"]?.deploy, { kind: "absent" }, "a tool follows its agents until a Deploy override is authored");
 });
 
 test("shared defaults locate imported source and keep computed defaults read-only", () => {

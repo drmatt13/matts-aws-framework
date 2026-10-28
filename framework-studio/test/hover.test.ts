@@ -153,7 +153,7 @@ test("an input group's hover counts its entries per graph and names what reads t
   assert.deepEqual(groupHoverLines(group("resource:langgraph"), model, indexModel(model)), {
     lines: ["Read by example-agent."], notes: [] });
   assert.deepEqual(groupHoverLines(group("resource:client"), model, indexModel(model)).lines,
-    ["Maps apiPort, webSocketPort and webSocketTesterPort into client-app/.env."]);
+    ["Maps apiPort, webSocketPort and webSocketTesterPort into Client environment."]);
   // Missing states now belong to entry details across both graphs, not selected-mode prose.
   const missing = { ...model, resources: model.resources.map((resource) => resource.id === "resource:langgraph.openaiModelId" ? { ...resource, inputRequirement: { ...resource.inputRequirement!, required: true, status: "missing" as const } } : resource) };
   assert.deepEqual(groupHoverLines(group("resource:langgraph", missing), missing, indexModel(missing)).notes, []);

@@ -131,6 +131,13 @@ export function readAuthoredInputs(
  */
 export const PROD_DEPLOYMENT: boolean = frameworkMode() === "prod";
 
+/**
+ * The same choice as a graph name, for `defineResources({ ... }, { mode: FRAMEWORK_MODE })`:
+ * the catalog resolves each input's `.only()`, `.required()` and `.default()`
+ * for the graph being built.
+ */
+export const FRAMEWORK_MODE: "dev" | "prod" = PROD_DEPLOYMENT ? "prod" : "dev";
+
 /** The directory a framework path's leading slash refers to. */
 export function getFrameworkSourceRoot(options: FrameworkRootOptions = {}): string {
   return path.join(options.repositoryRoot ?? findRepositoryRoot(), "cdk-app");

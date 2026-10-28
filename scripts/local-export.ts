@@ -19,7 +19,7 @@ export const LOCAL_HOST_PORT_NAMES = [
   "PGADMIN_HOST_PORT",
 ] as const;
 
-/** client-app's origin when LOCAL_DEV_URL says nothing, as in cdk-app/deployment.ts. */
+/** client-app's origin when LOCAL_DEV_URL says nothing; keep in step with its default in cdk-app/deployment-inputs.ts. */
 const LOCALHOST_DEV_URL = "http://localhost:3000";
 
 /**

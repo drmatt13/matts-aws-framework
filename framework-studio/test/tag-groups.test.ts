@@ -123,7 +123,7 @@ test("Untagged exempts parameters, environment metadata and managed stacks while
     ...source.resources,
     { id: "resource:plainParameter", path: ["plainParameter"], kind: "input", absent: false },
     { id: "envfile:fixture", path: ["cdk-app/.env.dev"], kind: "envFile", absent: false },
-    { id: "client-envfile", path: ["client-app/.env"], kind: "envFile", absent: false },
+    { id: "client-envfile", path: ["Client environment"], kind: "envFile", absent: false },
     { id: "framework-stack:Generated", path: ["Generated"], kind: "stack", frameworkStack: true, absent: false },
     { id: "resource:managed", path: ["managed"], kind: "stack", frameworkManaged: "outputs", absent: false },
     { id: "resource:managed.output", path: ["managed", "output"], kind: "member", parent: "resource:managed", absent: false },

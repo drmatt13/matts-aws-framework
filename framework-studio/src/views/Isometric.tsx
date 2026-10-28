@@ -907,7 +907,7 @@ function HoverCard(props: {
     const island = props.scene.islands.find((candidate) => candidate.id === current.id);
     if (!island) return null;
     const band = props.scene.mode === "prod" && island?.bands.length && island.bands.length > 1 ? island.bands.find((band) => band.id === current.band) : undefined;
-    content = <HoverContent title={`${island.title}${band ? `: ${band.title}` : ""}`} subtitle="Island" lines={[...(island.caption ?? []), ...(band?.caption ?? [])]} />;
+    content = <HoverContent title={`${island.title}${band ? `: ${band.title}` : ""}`} lines={[...(island.caption ?? []), ...(band?.caption ?? [])]} />;
   }
   const events = { onPointerEnter: props.onPointerEnter, onPointerLeave: props.onPointerLeave };
   const key = `${current.kind}:${current.id}:${current.band ?? ""}`;

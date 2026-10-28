@@ -5,6 +5,7 @@ import type { BatchPlanResponse, DraftEdit } from "../shared/api";
 import type { Snapshot } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
 import { InspectorDraft, initialResourceForm, protectBeforeUnload, type DraftTransport } from "../src/draft";
+import { clientBindingFor } from "../shared/client-environment";
 
 let builder: SnapshotBuilder;
 let baseline: Snapshot;
@@ -41,10 +42,10 @@ test("staging a toggle never opens a review or calls the preview API", () => {
   assert.equal(requests.length, 0);
 });
 
-test("client mapping drafts preserve the other environment, clear reverted toggles and guard navigation", async () => {
+test("client mapping drafts preserve untouched fields, clear reverted edits and guard navigation", async () => {
   const { draft, requests } = fixture();
   const baseline = draft.clientMappings();
-  const next = { ...baseline, VITE_LOCAL_WS_URL: { ...baseline.VITE_LOCAL_WS_URL!, dev: { ...baseline.VITE_LOCAL_WS_URL!.dev, enabled: false } } };
+  const next = { ...baseline, VITE_LOCAL_WS_URL: { dev: clientBindingFor(baseline.VITE_LOCAL_WS_URL!, "dev"), prod: { kind: "empty" as const } } };
   draft.setClientMappings(next);
   assert.equal(draft.count, 1);
   let navigated = false;
@@ -53,7 +54,7 @@ test("client mapping drafts preserve the other environment, clear reverted toggl
   draft.keepEditing();
   await draft.review();
   assert.equal(requests[0]![0]!.kind, "clientEnvironment");
-  assert.deepEqual(draft.clientMappings().VITE_LOCAL_WS_URL!.prod, baseline.VITE_LOCAL_WS_URL!.prod);
+  assert.deepEqual(draft.clientMappings().VITE_USER_POOL_ID, baseline.VITE_USER_POOL_ID);
   draft.backToEditing();
   draft.setClientMappings(baseline);
   assert.equal(draft.dirty, false);

@@ -19,7 +19,7 @@ const requirement = (status: InputRequirement["status"], extra: Partial<InputReq
 const inputIndex = (status: DeploymentInputEntry["status"], defaulted = false) => indexModel(model({ resources: [{
   id: "envfile:dev", path: ["cdk-app/.env.dev"], kind: "envFile", absent: false,
   deploymentFile: { mode: "dev", path: "cdk-app/.env.dev", template: "cdk-app/.env.dev.template", exists: true,
-    entries: [{ name: "API_KEY", status, defaulted, sensitive: true, targets: ["resource:input"] }] },
+    entries: [{ name: "API_KEY", status, counterpart: "missing", defaulted, sensitive: true, targets: ["resource:input"] }] },
 }] }));
 const inputEdge = (inputRequirement?: InputRequirement) => edge("supplies", {
   from: "envfile:dev", to: "resource:input", label: "API_KEY", provenance: "source", inputRequirement,
@@ -33,7 +33,7 @@ test("every relationship has an action and a relevant value, never a capability-
     database: "Connects to: data", localReplay: "Local replay: caller", trigger: "Triggers: declared label",
     runsTask: "Runs task: data", startsWorkflow: "Starts workflow: data", invokesAgent: "Invokes agent: data", usesTool: "Calls tool: data",
     step: "Executes step: data", integration: "Calls service: data", completesCallback: "Completes callback: data",
-    manageConnections: "Sends replies via: data", contains: "Contains: data", cdk: "References: data", deployWhen: "Conditional deployment: $data",
+    manageConnections: "Sends replies via: data", contains: "Contains: data", cdk: "References: data", deployWhen: "Conditional Deployment: $data",
   };
   const index = indexModel(model());
   for (const relation of Object.keys(expected) as Relation[]) {
@@ -50,7 +50,7 @@ test("every relationship has an action and a relevant value, never a capability-
 test("conditional deployment titles use the configured input reference, including nested paths", () => {
   const index = indexModel(model({ resources: [{ id: "resource:features.enableWebSocketApi", path: ["features", "enableWebSocketApi"], kind: "input", fromEnv: "ENABLE_WEBSOCKET_API", absent: false }] }));
   const result = presentRelationship(edge("deployWhen", { from: "resource:features.enableWebSocketApi", to: "lambda:caller" }), index);
-  assert.equal(result.title, "Conditional deployment: $features.enableWebSocketApi");
+  assert.equal(result.title, "Conditional Deployment: $features.enableWebSocketApi");
   assert.equal(result.title.includes("ENABLE_WEBSOCKET_API"), false, "the title names the framework input rather than its environment variable");
 });
 
@@ -370,7 +370,7 @@ test("conditional facts resolve against each environment's own target rather tha
     { text: 'Deploys when features.enabled equals "released".', kind: "detail", modes: ["prod"] },
   ]);
   assert.deepEqual(result.to, { id: target("released").ref, kind: "Workflow", label: "reports" });
-  assert.equal(result.title, "Controls deployment", "From already names the input that $features.enabled would repeat");
+  assert.equal(result.title, "Conditional Deployment", "From already names the input that $features.enabled would repeat");
 });
 
 test("a single connection's title keeps its verb rather than repeating an endpoint the From and To rows name", () => {

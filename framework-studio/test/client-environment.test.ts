@@ -6,7 +6,7 @@ import { after, before, test } from "node:test";
 import { withClientEnvironment } from "../server/client-environment";
 import { previewClientBinding } from "../shared/client-environment-preview";
 import { SnapshotBuilder } from "../server/snapshot";
-import { CLIENT_ENVIRONMENT_ID, CLIENT_ENVIRONMENT_ISLAND } from "../shared/client-environment";
+import { CLIENT_ENVIRONMENT_ID, CLIENT_ENVIRONMENT_ISLAND, clientBindingFor } from "../shared/client-environment";
 import type { ModeModel, Snapshot } from "../shared/model";
 import { buildScene } from "../src/scene/build";
 import { searchScene } from "../src/scene/focus";
@@ -43,7 +43,7 @@ test("every documented client variable maps to the selected graph's inputs or pu
   }
 });
 
-test("local endpoint recipes, production front door and intentionally empty local tools follow each mode", () => {
+test("one local recipe is blank in production because its inputs are declared only for development", () => {
   const entries = (model: ModeModel) => new Map(clientFile(model).entries.map((entry) => [entry.name, entry]));
   const dev = entries(snapshot.models.dev), prod = entries(snapshot.models.prod);
   assert.match(dev.get("VITE_API_GATEWAY_URL")!.expression, /LOCAL_API_DEV_SERVER_HOST_PORT/);
@@ -51,10 +51,25 @@ test("local endpoint recipes, production front door and intentionally empty loca
   assert.match(dev.get("VITE_WS_TESTER_URL")!.expression, /WS_TESTER_HOST_PORT/);
   assert.match(prod.get("VITE_API_GATEWAY_URL")!.expression, /FrontendWebsiteS3Stack.CloudFrontUrl/);
   for (const name of ["VITE_LOCAL_WS_URL", "VITE_WS_TESTER_URL"]) {
+    assert.ok(!("dev" in clientFile(snapshot.models.prod).mappings[name]!), `${name} is one recipe for both environments`);
+    assert.equal(dev.get(name)!.expression, prod.get(name)!.expression);
     assert.equal(prod.get(name)!.status, "empty");
     assert.equal(prod.get(name)!.required, false);
-    assert.deepEqual(prod.get(name)!.sources, []);
+    assert.match(prod.get(name)!.note, /not declared in production/);
   }
+});
+
+test("an input's declared presence, requirement, default and file value decide whether a field is generated", () => {
+  const model = snapshot.models.dev;
+  const input = (fields: Partial<ModeModel["resources"][number]>) => ({ ...model, resources: [...model.resources.filter((resource) => !resource.deploymentFile), { id: "resource:publicSetting", path: ["publicSetting"], kind: "input" as const, fromEnv: "PUBLIC_SETTING", absent: false, ...fields }] });
+  const status = (fields: Partial<ModeModel["resources"][number]>) => previewClientBinding("VITE_CUSTOM", { kind: "input", name: "PUBLIC_SETTING" }, input(fields));
+  assert.equal(status({ default: "fallback" }).status, "mapped", "a default supplies the field");
+  assert.equal(status({}).status, "empty", "an optional input with nothing to read leaves the field blank");
+  assert.equal(status({ required: true }).status, "unavailable", "a required input without a value needs attention");
+  assert.match(status({ required: true }).note, /required in development/);
+  assert.equal(status({ absent: true }).status, "empty", "an input outside this graph leaves the field blank");
+  assert.equal(status({ inputState: "supplied" }).status, "mapped", "a value in this graph's file supplies the field");
+  assert.equal(status({ default: "fallback", inputState: "invalid" }).status, "unavailable", "the server's resolution wins over what the declaration alone suggests");
 });
 
 test("a WebSocket mapping is empty only when its stack is absent; a missing enabled output is reported", () => {
@@ -72,7 +87,7 @@ test("mappings reuse renamed catalog identities and never expose authored input 
   const base = snapshot.models.dev;
   const renamed = withClientEnvironment({ ...base, resources: base.resources.map((resource) => {
     if (resource.stackClass === "CognitoStack") return { ...resource, id: "resource:identity" };
-    if (resource.fromEnv === "VITE_API_GATEWAY_URL") return { ...resource, inputSources: [{ file: "cdk-app/.env.dev", entry: { name: "VITE_API_GATEWAY_URL", status: "configured" as const, sensitive: false, defaulted: false, targets: [resource.id], value: sentinel } }] };
+    if (resource.fromEnv === "VITE_API_GATEWAY_URL") return { ...resource, inputState: "supplied" as const, inputSources: [{ file: "cdk-app/.env.dev", entry: { name: "VITE_API_GATEWAY_URL", status: "configured" as const, counterpart: "missing" as const, sensitive: false, defaulted: false, targets: [resource.id], value: sentinel } }] };
     return resource;
   }) });
   const file = clientFile(renamed);
@@ -95,7 +110,6 @@ test("draft previews resolve the new source immediately and distinguish missing,
   assert.equal(missing.status, "unavailable");
   assert.match(missing.note, /Declare UNSET_PUBLIC_INPUT as a public input parameter/);
   assert.equal(previewClientBinding("VITE_CUSTOM", { kind: "empty" }, model).status, "empty");
-  assert.equal(previewClientBinding("VITE_CUSTOM", { kind: "input", name: "UNSET_PUBLIC_INPUT", enabled: false }, model).status, "disabled");
   const incomplete = previewClientBinding("VITE_CUSTOM", { kind: "output", stack: "CognitoStack", outputs: [] }, model);
   assert.equal(incomplete.status, "unavailable");
   assert.match(incomplete.note, /Choose a public output/);
@@ -123,7 +137,7 @@ test("WebSocket URL consumes the selecting input's mode-specific condition and t
   assert.equal(productionPort.kind, "input", "the disabled parameter retains its input identity in Production");
   assert.equal(productionPort.absent, true);
   const model = snapshot.models.dev;
-  const binding = clientFile(model).mappings.VITE_LOCAL_WS_URL!.dev;
+  const binding = clientBindingFor(clientFile(model).mappings.VITE_LOCAL_WS_URL!, "dev");
   for (const outcome of ["holds", "fails", "unset"] as const) {
     const scoped = { ...model, resources: model.resources.map(resource => resource.id === "resource:enableWebSocketApi" ? { ...resource, inputComparisons: { true: outcome } } : resource) };
     const entry = previewClientBinding("VITE_LOCAL_WS_URL", binding, scoped);

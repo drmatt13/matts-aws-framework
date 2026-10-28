@@ -69,6 +69,7 @@ export const api = {
   snapshot: () => call<SnapshotResponse>("/snapshot"),
   createDeploymentInput: (mode: Mode) => call<{ file: string; created: boolean }>("/deployment-inputs/create", { mode }),
   inputDetails: (mode: Mode, signal?: AbortSignal) => call<DeploymentInputDetails>(`/deployment-inputs/details?mode=${mode}`, undefined, signal),
+  revealInput: (mode: Mode, name: string) => call<{ readonly name: string; readonly value: string }>(`/deployment-inputs/value?mode=${mode}&name=${encodeURIComponent(name)}`),
   inputPlan: (mode: Mode, edits: readonly DeploymentInputEdit[], hash: string, revision: string) => call<DeploymentInputPlan>("/deployment-inputs/plan", { mode, edits, hash, revision }),
   inputApply: (planId: string) => call<ApplyResponse>("/deployment-inputs/apply", { planId }),
   infrastructure: (mode: Mode) => callInfrastructure(`/infrastructure?mode=${mode}`),
