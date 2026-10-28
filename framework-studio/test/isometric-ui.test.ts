@@ -1407,7 +1407,8 @@ test("an environment that does not deploy the item keeps its pill, dark", async 
 test("hovering a framework-managed resource labels it, and an undescribed node asks for a description", async () => {
   await mount();
   const card = await hoverOver("resource:rds");
-  assert.deepEqual(visibleTags(card), [["hover-tag off", "Dev"], ["hover-tag prod", "Prod"], ["hover-tag managed", "Framework-managed"]]);
+  assert.deepEqual(visibleTags(card), [["hover-tag off", "Dev"], ["hover-tag prod", "Prod"]]);
+  assert.equal(card.querySelector(".resource-status.managed")?.textContent, "Framework managed");
   const unused = await hoverOver("resource:referenceExamples");
   assert.deepEqual(visibleTags(unused), [["hover-tag off", "Dev"], ["hover-tag off", "Prod"]], "both go dark");
   assert.equal(unused.querySelector(".landscape-hover-note")?.textContent, "Not added to the CDK app");

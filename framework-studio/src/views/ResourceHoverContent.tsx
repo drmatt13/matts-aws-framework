@@ -4,6 +4,7 @@ import type { Prop, SceneNode } from "../scene/build";
 import { groupHoverDetails, groupHoverEntries, groupHoverLines, nodeHoverFacts, propHoverFacts, type HoverEntry, type HoverEntryDetail, type HoverFacts } from "../scene/hover";
 import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
+import { FrameworkManagedStatus } from "./ResourceStatus";
 
 /** The map and Resources panel describe the same entity, including staged edits. */
 export function ResourceHoverContent({ resource }: { readonly resource: SceneNode | Prop }) {
@@ -69,15 +70,18 @@ export function HoverContent(props: {
   readonly unavailableDescription?: string;
 }) {
   const { title, subtitle, facts, description, lines } = props;
+  const resourceType = facts?.frameworkManaged ? subtitle?.replace(/^framework[-\s]managed\s*/i, "") : subtitle;
   return <div className="landscape-hover-content">
-    <div className="landscape-hover-heading"><strong>{title}</strong>
-    {subtitle ? <span className="landscape-hover-subtitle">{subtitle}</span> : null}
-    {facts ? <>
+    <div className={`landscape-hover-heading${facts ? " resource-heading-with-environments" : ""}`}><strong>{title}</strong>
+    {facts ?
       <span className="landscape-hover-tags">
         <EnvironmentPills availability={{ dev: facts.places.some(place => place.env === "dev"), prod: facts.places.some(place => place.env === "prod") }} descriptions={Object.fromEntries(facts.places.map(place => [place.env, place.where]))} unavailableDescription={props.unavailableDescription} />
-        {facts.frameworkManaged ? <span className="hover-tag managed">Framework-managed</span> : null}
       </span>
-    </> : null}
+    : null}
+    {resourceType || facts?.frameworkManaged ? <div className="landscape-hover-resource-meta">
+      {resourceType ? <span className="landscape-hover-subtitle">{resourceType}</span> : null}
+      {facts?.frameworkManaged ? <FrameworkManagedStatus /> : null}
+    </div> : null}
     </div>
     {facts?.notDeployed ? <p className="landscape-hover-note warning">{facts.notDeployed}</p> : null}
     {props.warnings?.length ? <div className="landscape-hover-warnings">{props.warnings.map(warning => <p key={warning} className="landscape-hover-detail warning">{warning}</p>)}</div> : null}

@@ -143,7 +143,11 @@ Same-type bundles name their shared purpose and count. `presentConnectionHover` 
 graphs independently and retains every member, including other-environment-only evidence;
 its structured hover rows do not use the compact label API's four-member preview limit.
 Every aggregation puts Dev and Prod pills beside each member and omits the aggregate pair.
-Single connections keep their pair near the title. From/To labels, endpoint names and kinds
+Individual resources and single connections keep their pair at the title's top right.
+Framework ownership reuses the Inspector's outlined Framework managed badge and lock
+icon on a separate left-aligned line beneath the resource type; the type omits a
+redundant management prefix.
+From/To labels, endpoint names and kinds
 form aligned metadata instead of undifferentiated prose. Supply rows use catalog parameter
 names. Each row retains its own availability, requirement state, operation and permission
 facts; differences between environments stay explicitly qualified. Common defaults or IAM

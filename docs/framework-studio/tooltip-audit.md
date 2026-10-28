@@ -36,10 +36,13 @@ callbacks, WebSocket management, containment, CDK references and deployment cond
 ## Presentation rules
 
 1. Lead with the resource name or the connection's action and relevant value.
-   Resource type is supporting text. Keep a single connection's environment pair
-   at the top right beside its title; aggregated connections and input groups use
+   Resource type is supporting text. Keep an individual resource or single connection's
+   environment pair at the top right beside its title; aggregated connections and input groups use
    row-level pairs. Physical gateways and stacks retain their own resource pair;
    their full route/field inventories belong in the Inspector.
+   Framework ownership reuses the Inspector's outlined **Framework managed** badge
+   and lock icon on its own left-aligned line beneath the resource type. The type
+   omits a redundant management prefix.
 2. Render **From** and **To** as aligned metadata labels with separate endpoint
    names and kinds. Long names wrap without pushing a pill outside the card.
 3. Retain all original members, including ones present only in the other graph.

@@ -206,7 +206,16 @@ test("resource content retains descriptions, execution locations, source warning
   }));
   assert.ok(body.textContent?.includes("Serves the application's public GraphQL contract."));
   assert.ok(body.textContent?.includes("The configured handler is missing."));
-  assert.ok(body.textContent?.includes("Framework-managed"));
+  assert.ok(body.textContent?.includes("Framework managed"));
+  assert.equal(body.querySelectorAll(".hover-tag").length, 2, "framework ownership is separate from environment availability");
+  assert.equal(body.querySelector(".landscape-hover-resource-meta .resource-status.managed")?.textContent, "Framework managed");
+  const gateway = documentOf(createElement(HoverContent, {
+    title: "HTTP API", subtitle: "Framework-managed API Gateway", lines: [],
+    facts: { places: [{ env: "dev", where: "Your machine" }], frameworkManaged: true },
+  }));
+  assert.equal(gateway.body.textContent?.match(/Framework[- ]managed/g)?.length, 1, "ownership is stated once by the shared Inspector badge");
+  assert.equal(gateway.body.querySelector(".landscape-hover-subtitle")?.textContent, "API Gateway");
+  assert.equal(gateway.body.querySelector(".resource-status.managed")?.textContent, "Framework managed");
   const locations = [...body.querySelectorAll("dl > div")];
   assert.deepEqual(locations.map(location => [location.querySelector("dt")?.textContent, location.querySelector("dd")?.textContent]), [["Dev", "Your machine"], ["Prod", "AWS Lambda · private subnet"]]);
   const declarations = documentOf(createElement(HoverEntries, { entries: [{ id: "input", label: "modelProvider", availability: { dev: true, prod: false } }] }));

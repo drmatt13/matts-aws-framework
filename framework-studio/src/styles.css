@@ -963,8 +963,10 @@ a {
 }
 .landscape-hover-content { display: grid; min-width: 0; gap: var(--space-3); }
 .landscape-hover-heading { display: grid; min-width: 0; gap: var(--space-2); }
-.single-connection-heading { grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: var(--space-3); }
-.single-connection-heading .landscape-hover-tags { padding-top: 1px; }
+.single-connection-heading, .resource-heading-with-environments { grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: var(--space-3); }
+:is(.single-connection-heading, .resource-heading-with-environments) .landscape-hover-tags { padding-top: 1px; }
+.landscape-hover-resource-meta { display: grid; justify-items: start; gap: var(--space-2); grid-column: 1 / -1; }
+.landscape-hover .resource-status.managed { color: #2fb3bc; }
 .landscape-hover p, .landscape-hover dl { margin: 0; }
 .landscape-hover-subtitle, .landscape-hover-endpoint-kind { color: #9ba8b8; font-size: var(--text-caption); }
 
