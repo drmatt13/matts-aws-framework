@@ -88,7 +88,16 @@ before(async () => {
     drawImage(image: { src: string }) { images.push({ src: image.src, alpha: this.globalAlpha }); paintOrder.push({ kind: "image" }); paintedIcon = image.src; },
   }, { get: (target, key) => key in target ? target[key as keyof typeof target] : () => {} });
   dom.window.HTMLCanvasElement.prototype.getContext = (() => context) as unknown as typeof HTMLCanvasElement.prototype.getContext;
-  dom.window.HTMLElement.prototype.getBoundingClientRect = () => ({ x: 0, y: 0, width: 1920, height: 1000, top: 0, left: 0, right: 1920, bottom: 1000, toJSON() {} });
+  dom.window.HTMLElement.prototype.getBoundingClientRect = function () {
+    // Layout is simulated, but tooltip bounds must differ from the canvas: the
+    // measured card and the pointer corridor now share this geometry.
+    const tooltip = this.classList.contains("landscape-hover");
+    const width = tooltip ? Math.min(360, Number.parseFloat(this.style.maxWidth) || 360) : 1920;
+    const height = tooltip ? Math.min(240, Number.parseFloat(this.style.maxHeight) || 240) : 1000;
+    const left = tooltip ? Number.parseFloat(this.style.left) || 0 : 0;
+    const top = tooltip ? Number.parseFloat(this.style.top) || 0 : 0;
+    return { x: left, y: top, width, height, top, left, right: left + width, bottom: top + height, toJSON() {} };
+  };
   dom.window.HTMLCanvasElement.prototype.setPointerCapture = () => {};
   class Pointer extends dom.window.MouseEvent {
     readonly pointerId: number;
@@ -404,17 +413,20 @@ test("clearing map search and tag filters returns focus to their surviving contr
   assert.equal(document.activeElement, key);
 });
 
-test("the keyboard entity navigator browses connections and returns focus to the canvas with Escape", async () => {
+test("the keyboard entity navigator dismisses its preview before Escape returns focus to the canvas", async () => {
   await mount();
   const list = ui.screen.getByRole("list", { name: "Entities in the landscape" });
   assert.ok(list.classList.contains("landscape-entity-list"), "the list becomes visible on keyboard focus");
   assert.match(list.textContent!, /Escape to return to the map/);
   const buttons = ui.within(list).getAllByRole("button");
-  buttons[0]!.focus();
+  await ui.act(async () => buttons[0]!.focus());
   ui.fireEvent.keyDown(buttons[0]!, { key: "ArrowDown" });
   assert.equal(document.activeElement, buttons[1]);
   ui.fireEvent.keyDown(buttons[1]!, { key: "End" });
   assert.equal(document.activeElement, buttons.at(-1));
+  ui.fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  assert.equal(document.activeElement, buttons.at(-1), "the first Escape dismisses information without moving focus");
+  assert.equal(ui.screen.queryByRole("tooltip"), null);
   ui.fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   assert.equal(document.activeElement, document.querySelector("canvas"));
   assert.equal(ui.screen.getByLabelText("Selection").textContent, "none", "keyboard navigation does not change source selection");
@@ -933,6 +945,7 @@ test("the real renderer draws resting connections a little stronger, and those o
 });
 
 async function hoverConnection(member: string) {
+  await approachCanvasAfresh();
   const state = (dom.window as unknown as { __studioLandscape: {
     connections(): { id: string; members: string[]; points: { x: number; y: number }[] }[];
     pickAt(x: number, y: number): { id: string } | undefined;
@@ -958,7 +971,8 @@ test("MFA read and permission arcs have independent hovers and inspection", asyn
   assert.equal(ui.within(reads).queryByText(/^IAM:/), null);
   const permission = await hoverConnection(grant.id);
   assert.equal(permission.querySelector("strong")?.textContent, "Allow AWS actions: cognito.userPool");
-  assert.ok(permission.textContent?.includes("IAM: cognito-idp:AdminGetUser"));
+  assert.equal(ui.within(permission).getByText("Permissions", { selector: ".landscape-hover-section-label" }).textContent, "Permissions");
+  assert.equal(permission.querySelector(".landscape-hover-permission-copy")?.textContent, "cognito-idp:AdminGetUser");
   const state = (dom.window as unknown as { __studioLandscape: { connections(): { id: string; members: string[]; points: { x: number; y: number }[] }[]; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
   const connection = state.connections().find(connection => connection.members.includes(grant.id))!;
   assert.equal(connection.members.length, 1);
@@ -984,10 +998,9 @@ test("HTTP and WebSocket route hovers retain routing purpose in both environment
     for (const source of [http, websocket]) {
       const popup = await hoverConnection(source.id);
       assert.equal(popup.querySelector("strong")?.textContent, `Routes to: ${source.label}`);
-      assert.ok(popup.textContent?.includes(source === http ? "From HTTP API" : "From WebSocket API"));
-      assert.ok(popup.textContent?.includes(source === http ? "To HTTP: /test/start-workflow" : "To WebSocket: customAction"));
-      const permission = ui.within(popup).getByText(/^IAM: lambda:InvokeFunction/);
-      assert.equal(permission.textContent, "IAM: lambda:InvokeFunction");
+      assert.deepEqual(hoverEndpoints(popup), source === http ? { From: ["HTTP API", "API Gateway"], To: ["/test/start-workflow", "HTTP Lambda"] }
+        : { From: ["WebSocket API", "API Gateway"], To: ["customAction", "WebSocket Lambda"] });
+      assert.equal(popup.querySelector(".landscape-hover-permission-copy")?.textContent, "lambda:InvokeFunction");
       assert.ok(!popup.textContent?.includes("Cloud IAM intent"));
       assert.ok(!popup.textContent?.includes("Not generated in this AWS graph"));
       if (source === http) {
@@ -1010,9 +1023,12 @@ test("grouped route previews and member summaries retain each route name without
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Routes and events" })); await draw();
   const popup = await hoverConnection(source.id);
   assert.equal(popup.querySelector("strong")?.textContent, "Routes to: 2 API routes");
-  assert.ok(ui.within(popup).getByText(source.label));
-  assert.ok(ui.within(popup).getByText("anotherAction"));
-  assert.ok(!popup.textContent?.includes("IAM"));
+  const rows = ui.within(ui.within(popup).getByRole("list", { name: "Connection members" }));
+  assert.ok(rows.getByText(source.label));
+  assert.ok(rows.getByText("anotherAction"));
+  assert.equal(popup.querySelectorAll(".landscape-hover-permission-copy").length, 1, "shared permissions appear once below the member rows");
+  assert.equal(popup.querySelector(".landscape-hover-permission-copy")?.textContent, "lambda:InvokeFunction");
+  for (const row of rows.getAllByRole("listitem")) assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: WebSocket API to WebSocket: customAction,/ }));
   await ui.waitFor(() => assert.equal(document.querySelectorAll(".connection-map-member").length, 2));
   const summaries = [...document.querySelectorAll(".connection-map-member > summary")];
@@ -1058,11 +1074,15 @@ test("clicking a grouped connection opens every mapping and retains it across en
   await draw();
   const popup = await ui.screen.findByRole("tooltip");
   assert.ok(popup.textContent?.includes("Maps: 4 client variables"));
-  assert.ok(popup.textContent?.includes("From Stack: cognito"));
-  assert.ok(popup.textContent?.includes("To Environment file: client-app/.env"));
+  assert.deepEqual(hoverEndpoints(popup), { From: ["cognito", "Stack"], To: ["client-app/.env", "Environment file"] });
   assert.ok(!popup.textContent?.includes("Maps into:"), "homogeneous member rows do not repeat the shared purpose");
-  assert.deepEqual(visibleTags(popup), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
-  assert.deepEqual(tagsOf(popup), [["hover-tag dev", "Dev: Connection enabled"], ["hover-tag prod", "Prod: Connection enabled"]]);
+  const hoverRows = ui.within(popup).getAllByRole("listitem");
+  assert.equal(hoverRows.length, 4);
+  assert.equal(popup.querySelector(".landscape-hover-heading .environment-pills"), null, "aggregate headers cannot imply that every member has the same availability");
+  for (const row of hoverRows) {
+    assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
+    assert.deepEqual(tagsOf(row), [["hover-tag dev", "Dev: connection enabled in development"], ["hover-tag prod", "Prod: connection enabled in production"]]);
+  }
   ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   const map = await ui.screen.findByRole("region", { name: "Connection details" });
@@ -1211,19 +1231,37 @@ const pointing = () => (dom.window as unknown as { __studioLandscape: Pointing }
 
 /** Moves the pointer onto an entity's label card, or the middle of its silhouette when no card is drawn, where the real picker finds it. */
 async function hoverOver(id: string) {
+  await approachCanvasAfresh();
   await draw();
+  const point = nodePoint(id);
+  ui.fireEvent.pointerMove(document.querySelector("canvas")!, { pointerId: 1, clientX: point.x, clientY: point.y });
+  await draw();
+  return ui.screen.findByRole("tooltip");
+}
+
+/** A new deliberate hover approaches outside the previous card, which can cover nearby entities. */
+async function approachCanvasAfresh() {
+  if (!document.querySelector(".canvas-tooltip")) return;
+  ui.fireEvent.pointerLeave(document.querySelector("canvas")!); await draw();
+  await ui.waitFor(() => assert.equal(document.querySelector(".canvas-tooltip"), null));
+}
+
+function nodePoint(id: string) {
   const at = pointing().screenOf(id);
   assert.ok(at, `${id} stands in the landscape`);
   const hull = pointing().hullOf(id) ?? [];
   const middle = hull.length ? { x: hull.reduce((sum, p) => sum + p.x, 0) / hull.length, y: hull.reduce((sum, p) => sum + p.y, 0) / hull.length } : undefined;
   const point = at.card ?? middle ?? at.building;
   assert.equal(pointing().pickAt(point.x, point.y)?.id, id, "the pointer is over the entity");
-  ui.fireEvent.pointerMove(document.querySelector("canvas")!, { pointerId: 1, clientX: point.x, clientY: point.y });
-  await draw();
-  return ui.screen.findByRole("tooltip");
+  return point;
 }
 
 const tagsOf = (card: HTMLElement) => [...card.querySelectorAll(".hover-tag")].map((tag) => [tag.className, tag.textContent]);
+
+const hoverEndpoints = (card: HTMLElement) => Object.fromEntries([...card.querySelectorAll(".landscape-hover-endpoints > div")].map(row => [
+  row.querySelector("dt")?.textContent,
+  [row.querySelector(".landscape-hover-endpoint-name")?.textContent, row.querySelector(".landscape-hover-endpoint-kind")?.textContent],
+]));
 
 /** The visible words of a pill; the hidden text after the colon says where, for assistive technology. */
 const visibleTags = (card: HTMLElement) => [...card.querySelectorAll(".hover-tag")].map((tag) => [tag.className, tag.firstChild?.textContent]);
@@ -1239,6 +1277,90 @@ test("hovering a node shows its authored description and a Dev and a Prod pill",
   assert.ok(!text.includes("Runs in development and production."), "the generic lane line is gone");
   assert.ok(!text.includes("Enabled in development"), "the generic presence line is gone");
   assert.ok(!text.includes("Click to inspect"), "no how-to caption under the description");
+});
+
+test("map previews wait for dwell, keep a stable anchor and remain readable across the pointer corridor", async () => {
+  await mount(true, "lambda:sign-out");
+  const canvas = document.querySelector("canvas")!;
+  const point = nodePoint("lambda:sign-out");
+  ui.fireEvent.pointerMove(canvas, { clientX: point.x, clientY: point.y }); await draw();
+  assert.equal(ui.screen.queryByRole("tooltip"), null, "scanning the canvas does not flash previews");
+  assert.equal(canvas.style.cursor, "pointer", "the resource cursor responds before the tooltip dwell");
+  const card = await ui.screen.findByRole("tooltip");
+  const placement = { left: card.style.left, top: card.style.top };
+  assert.equal(pointing().pickAt(point.x + 1, point.y)?.id, "lambda:sign-out");
+  ui.fireEvent.pointerMove(canvas, { clientX: point.x + 1, clientY: point.y }); await draw();
+  assert.equal(ui.screen.getByRole("tooltip"), card);
+  assert.deepEqual({ left: card.style.left, top: card.style.top }, placement, "a small pointer movement does not move text under the reader");
+  const bounds = card.getBoundingClientRect();
+  const corridor = { x: bounds.left + bounds.width / 2, y: bounds.top - 4 };
+  assert.notEqual(pointing().pickAt(corridor.x, corridor.y)?.id, "lambda:sign-out", "the crossing leaves the resource's picking silhouette");
+  ui.fireEvent.pointerMove(canvas, { clientX: corridor.x, clientY: corridor.y }); await draw();
+  assert.equal(ui.screen.getByRole("tooltip"), card, "terrain behind the short crossing corridor cannot replace the card");
+  ui.fireEvent.pointerLeave(canvas); ui.fireEvent.pointerEnter(card);
+  await ui.act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
+  assert.equal(ui.screen.getByRole("tooltip"), card, "entering the card preserves it beyond the leave grace");
+  canvas.focus();
+  ui.fireEvent.keyDown(canvas, { key: "Escape" });
+  assert.equal(ui.screen.queryByRole("tooltip"), null);
+  assert.equal(document.activeElement, canvas);
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "lambda:sign-out", "dismissal retains inspection");
+  ui.fireEvent.pointerMove(canvas, { clientX: point.x, clientY: point.y }); await draw();
+  await ui.act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
+  assert.equal(ui.screen.queryByRole("tooltip"), null, "the same stationary entity cannot reopen an escaped preview");
+  ui.fireEvent.keyDown(canvas, { key: "Escape" });
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "none"));
+});
+
+test("touch pointer movement does not open a hover card and tapping still inspects the resource", async () => {
+  await mount();
+  const canvas = document.querySelector("canvas")!;
+  const point = nodePoint("lambda:sign-out");
+  ui.fireEvent.pointerMove(canvas, { pointerId: 8, pointerType: "touch", clientX: point.x, clientY: point.y }); await draw();
+  await ui.act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
+  assert.equal(ui.screen.queryByRole("tooltip"), null);
+  ui.fireEvent.pointerDown(canvas, { pointerId: 8, pointerType: "touch", clientX: point.x, clientY: point.y, button: 0 });
+  ui.fireEvent.pointerUp(canvas, { pointerId: 8, pointerType: "touch", clientX: point.x, clientY: point.y, button: 0 }); await draw();
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "lambda:sign-out"));
+  assert.ok(ui.screen.getByRole("complementary", { name: "Inspector" }));
+  assert.equal(ui.screen.queryByRole("tooltip"), null);
+});
+
+test("keyboard connection previews expose each member's environments and scroll without moving trigger focus", async () => {
+  const original = response.snapshot.models.dev;
+  const scene = buildScene(original, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
+  const group = scene.edges.find(edge => edge.from === "lambda:graphql-api" && edge.edge.relation === "env" && edge.members.length > 1)!;
+  assert.ok(group);
+  const devOnly = group.members[0]!.edge.id;
+  const prod = { ...response.snapshot.models.prod, edges: response.snapshot.models.prod.edges.filter(edge => edge.id !== devOnly) };
+  await mount(true, undefined, { ...response, snapshot: { ...response.snapshot, models: { dev: original, prod } } });
+  const list = ui.screen.getByRole("list", { name: "Entities in the landscape" });
+  const trigger = [...list.querySelectorAll<HTMLButtonElement>("button")].find(button => button.dataset.hoverId === group.id)!;
+  assert.ok(trigger);
+  await ui.act(async () => trigger.focus());
+  const card = ui.screen.getByRole("tooltip");
+  assert.equal(card.parentElement, document.body, "the accessible navigator cannot clip its preview");
+  assert.equal(trigger.getAttribute("aria-describedby"), card.id);
+  assert.equal(card.querySelector(".landscape-hover-heading .environment-pills"), null);
+  const rows = ui.within(ui.within(card).getByRole("list", { name: "Connection members" })).getAllByRole("listitem");
+  assert.equal(rows.length, group.members.length);
+  for (const member of group.members) {
+    const row = rows.find(row => row.querySelector(".landscape-hover-entry-name")?.textContent === member.edge.label);
+    assert.ok(row, member.edge.label);
+    assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], [member.edge.id === devOnly ? "hover-tag off" : "hover-tag prod", "Prod"]]);
+  }
+  Object.defineProperties(card, { scrollHeight: { configurable: true, value: 900 }, clientHeight: { configurable: true, value: 240 } });
+  ui.fireEvent.keyDown(trigger, { key: "PageDown" });
+  assert.ok(card.scrollTop > 0 && card.scrollTop < 900, "PageDown reveals overflow without changing the focused relationship");
+  assert.equal(document.activeElement, trigger);
+  ui.fireEvent.keyDown(trigger, { key: "PageUp" });
+  assert.equal(card.scrollTop, 0);
+  assert.equal(document.activeElement, trigger);
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, "none");
+  ui.fireEvent.keyDown(trigger, { key: "Escape" });
+  assert.equal(ui.screen.queryByRole("tooltip"), null);
+  assert.equal(trigger.hasAttribute("aria-describedby"), false);
+  assert.equal(document.activeElement, trigger);
 });
 
 test("input group hovers label every entry with its own environments and omit aggregate pills", async () => {
@@ -1270,7 +1392,7 @@ test("supply hovers put environment pills beside each parameter", async () => {
     assert.equal(row.querySelector(".landscape-hover-entry-name")?.textContent, parameter.path.at(-1));
     assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
   }
-  assert.ok(card.textContent?.includes("From Environment file: cdk-app/.env.dev"));
+  assert.deepEqual(hoverEndpoints(card), { From: ["cdk-app/.env.dev", "Environment file"], To: ["client", "Input group"] });
 });
 
 test("an environment that does not deploy the item keeps its pill, dark", async () => {
@@ -1321,6 +1443,8 @@ test("pointer bursts resolve the latest hover once per frame, and leaving cancel
   ui.fireEvent.pointerLeave(canvas); await draw();
   ui.fireEvent.pointerMove(canvas, { clientX: point.x, clientY: point.y });
   ui.fireEvent.pointerLeave(canvas); await draw();
+  await ui.waitFor(() => assert.equal(ui.screen.queryByRole("tooltip"), null, "the crossing grace ends without reopening cancelled work"));
+  await ui.act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
   assert.equal(ui.screen.queryByRole("tooltip"), null, "a queued hover cannot reopen a tooltip after leaving");
 });
 

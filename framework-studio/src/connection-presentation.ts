@@ -3,7 +3,8 @@ import { nativeGrantLabels } from "../shared/grants";
 import { authorizationSummary, NATIVE_GRANT_LABELS } from "../shared/permissions";
 import type { ConnectionGroup } from "./connections";
 import { resourceIcon } from "./icons";
-import { titleOf, type ModelIndex } from "./lookup";
+import { ROLE_LABEL, titleOf, type ModelIndex } from "./lookup";
+import type { Availability } from "./deployment";
 
 export interface RelationshipPresentation {
   readonly action: string;
@@ -163,4 +164,140 @@ export function presentConnection(connection: ConnectionGroup, mode: Mode, index
   const hiddenMissing = members.slice(4).filter(({ edge }) => edge.inputRequirement?.status === "missing").length;
   if (hiddenMissing) lines.push(`${hiddenMissing} more required ${hiddenMissing === 1 ? "value" : "values"} missing.`);
   return { action, value, title, lines, notes: [], homogeneous: true };
+}
+
+/** A fact is qualified whenever it describes only one environment's source evidence. */
+export interface ConnectionHoverDetail {
+  readonly text: string;
+  readonly kind: "detail" | "permission";
+  readonly tone?: "warning";
+  readonly modes?: readonly Mode[];
+}
+
+export interface ConnectionHoverRow {
+  readonly id: string;
+  readonly label: string;
+  readonly availability: Availability;
+  readonly details: readonly ConnectionHoverDetail[];
+}
+
+export interface ConnectionHoverEndpoint {
+  readonly id: string;
+  readonly kind: string;
+  readonly label: string;
+  /** Present only when the same endpoint has different identities in its two graphs. */
+  readonly variants?: readonly { readonly mode: Mode; readonly label: string; readonly kind: string }[];
+}
+
+export interface ConnectionHoverPresentation {
+  readonly title: string;
+  readonly from: ConnectionHoverEndpoint;
+  readonly to: ConnectionHoverEndpoint;
+  readonly availability: Availability;
+  readonly aggregated: boolean;
+  /** Every original relationship, including those present only in the other environment. */
+  readonly rows: readonly ConnectionHoverRow[];
+  /** Facts shared by every row; row-specific differences remain beside their owner. */
+  readonly details: readonly ConnectionHoverDetail[];
+}
+
+const HOVER_MODES: readonly Mode[] = ["dev", "prod"];
+type HoverIndexes = Readonly<Record<Mode, ModelIndex>>;
+
+function hoverEndpoint(id: string, indexes: HoverIndexes): ConnectionHoverEndpoint {
+  const known = (index: ModelIndex) => index.gateways.has(id) || index.targets.has(id) || index.routes.has(id) || index.resources.has(id) || index.localServices.has(id) || index.defaults.has(id);
+  const describe = (index: ModelIndex) => {
+    const target = index.targets.get(id);
+    const resource = index.resources.get(id);
+    const resourceKinds = { envFile: "Environment file", stack: "Stack", member: "Stack member", construct: "Construct", input: "Input", secret: "Secret", group: "Input group" };
+    const kind = index.gateways.has(id) ? "API Gateway" : target ? ROLE_LABEL[target.role]
+      : index.routes.has(id) ? "API route" : index.localServices.has(id) ? "Database"
+        : index.defaults.has(id) ? "Defaults" : resource?.frameworkManaged === "database" ? "Database"
+          : resource ? resourceKinds[resource.kind] : "Resource";
+    return { kind, label: endpointName(index, id) };
+  };
+  const variants = HOVER_MODES.flatMap(mode => {
+    const index = indexes[mode];
+    // Ghost catalog entries keep selection identity but supply no declaration in this graph.
+    return known(index) && !index.resources.get(id)?.absent ? [{ mode, ...describe(index) }] : [];
+  });
+  const primary = variants[0] ?? describe(HOVER_MODES.map(mode => indexes[mode]).find(known) ?? indexes.dev);
+  const differs = variants.some(variant => variant.label !== primary.label || variant.kind !== primary.kind);
+  return { id, kind: primary.kind, label: primary.label, ...(differs ? { variants } : {}) };
+}
+
+/** Supply rows use catalog names; the variable-to-source mapping remains in the inspector. */
+function hoverMemberLabel(edge: ModelEdge, connection: ConnectionGroup, index: ModelIndex): string {
+  const presentation = presentRelationship(edge, index);
+  if (edge.relation === "supplies") {
+    const parameter = index.resources.get(edge.to);
+    const group = index.resources.get(connection.to);
+    return parameter?.path.slice(group?.kind === "group" ? group.path.length : -1).join(".") || presentation.value;
+  }
+  // Rows with distinct operations retain their verbs; homogeneous bindings read as a list.
+  return ["env", "secret", "maps", "routes", "trigger"].includes(edge.relation) || presentation.action === familyOf(edge).verb
+    ? presentation.value : presentation.title;
+}
+
+const detailKey = (detail: ConnectionHoverDetail): string => JSON.stringify([detail.kind, detail.tone, detail.text, detail.modes]);
+
+/**
+ * A tooltip describes both graphs at once. It never borrows the selected graph's
+ * resource names, requirements or permissions to explain another environment.
+ * Keep the older compact presentation API for labels, descriptions and inspectors.
+ */
+export function presentConnectionHover(connection: ConnectionGroup, indexes: HoverIndexes): ConnectionHoverPresentation {
+  const primaryMode = connection.members[0]?.models.dev ? "dev" : "prod";
+  const primaryEdge = connection.members[0]?.models[primaryMode] ?? connection.edge;
+  const rows = connection.members.map((member): ConnectionHoverRow => {
+    const variants = HOVER_MODES.flatMap(mode => {
+      const edge = member.models[mode];
+      return edge ? [{ mode, edge, presentation: presentRelationship(edge, indexes[mode]), label: hoverMemberLabel(edge, connection, indexes[mode]) }] : [];
+    });
+    const labels = new Map<string, Mode[]>();
+    const facts = new Map<string, { detail: Omit<ConnectionHoverDetail, "modes">; modes: Mode[] }>();
+    const add = (detail: Omit<ConnectionHoverDetail, "modes">, mode: Mode) => {
+      const key = detailKey(detail);
+      const fact = facts.get(key) ?? { detail, modes: [] };
+      if (!fact.modes.includes(mode)) fact.modes.push(mode);
+      facts.set(key, fact);
+    };
+    for (const variant of variants) {
+      labels.set(variant.label, [...(labels.get(variant.label) ?? []), variant.mode]);
+      for (const text of variant.presentation.lines) add({ text, kind: "detail", ...(text === "Required value missing." ? { tone: "warning" as const } : {}) }, variant.mode);
+      for (const text of variant.presentation.notes) add({ text, kind: "permission" }, variant.mode);
+    }
+    const details: ConnectionHoverDetail[] = [];
+    if (labels.size > 1) for (const [text, modes] of labels) details.push({ text, kind: "detail", modes });
+    for (const { detail, modes } of facts.values()) details.push({ ...detail, ...(modes.length === HOVER_MODES.length ? {} : { modes }) });
+    const fallback = variants[0]?.presentation ?? presentRelationship(member.edge, indexes[primaryMode]);
+    const noun = familyOf(variants[0]?.edge ?? member.edge).singular;
+    return {
+      id: member.edge.id,
+      label: labels.size > 1 ? noun[0]!.toUpperCase() + noun.slice(1) : variants[0]?.label ?? fallback.value,
+      availability: member.availability,
+      details,
+    };
+  });
+  const sharedKeys = new Set(rows[0]?.details.map(detailKey));
+  for (const row of rows.slice(1)) {
+    const keys = new Set(row.details.map(detailKey));
+    for (const key of sharedKeys) if (!keys.has(key)) sharedKeys.delete(key);
+  }
+  const details = (rows[0]?.details ?? []).filter(detail => sharedKeys.has(detailKey(detail)));
+  const single = rows.length === 1;
+  const presentation = presentRelationship(primaryEdge, indexes[primaryMode]);
+  const distinctLabels = single && HOVER_MODES.every(mode => connection.members[0]?.models[mode])
+    && hoverMemberLabel(connection.members[0]!.models.dev!, connection, indexes.dev) !== hoverMemberLabel(connection.members[0]!.models.prod!, connection, indexes.prod);
+  const family = familyOf(primaryEdge);
+  return {
+    title: single ? distinctLabels ? `${family.verb}: ${family.singular}` : primaryEdge.relation === "supplies" ? `${presentation.action}: ${rows[0]!.label}` : presentation.title
+      : `${family.verb}: ${rows.length} ${family.plural}`,
+    from: hoverEndpoint(connection.from, indexes),
+    to: hoverEndpoint(connection.to, indexes),
+    availability: connection.availability,
+    aggregated: !single,
+    rows: rows.map(row => ({ ...row, details: row.details.filter(detail => !sharedKeys.has(detailKey(detail))) })),
+    details,
+  };
 }

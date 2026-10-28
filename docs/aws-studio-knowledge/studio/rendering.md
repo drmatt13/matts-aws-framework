@@ -108,7 +108,7 @@ Board's [layout.ts](../../../framework-studio/src/layout.ts) arranges entry, com
 | Draw | `SceneRenderer` in [render.ts](../../../framework-studio/src/scene/render.ts): Canvas2D, cached Path2D/geometry, viewport culling, DPR handling, caption collisions and zoom-dependent labels |
 | Interact | [Isometric.tsx](../../../framework-studio/src/views/Isometric.tsx), [picking.ts](../../../framework-studio/src/scene/picking.ts), [focus.ts](../../../framework-studio/src/scene/focus.ts): coalesced pointer/frame work, geometry-based picking, selection/search fades |
 
-`landscapeFocus` highlights one-hop neighbors or selected connection endpoints. Hovering or keyboard-focusing a Resources row temporarily uses that same selection emphasis, with highlighted connections animated according to the map's motion setting. Preview leaves the inspector selection, URL, camera and motion preference unchanged; pointer hover takes precedence over keyboard focus, and leaving restores focus/search emphasis. The row also opens the map's shared `ResourceHoverContent` (description, environment pills and source warnings), in a viewport-bounded portal beside it or above/below on narrow screens. Mouse opening is delayed briefly, keyboard focus is immediate, crossing into the card keeps it open, and Escape dismisses it while retaining focus. Keyboard scrolling repositions the card; wheel scrolling, filtering away the row or closing the list clears it. Touch opens the Inspector without a hover card; clicking still uses normal selection motion. Search changes emphasis, not topology. Zoom label detail is not hierarchical automatic graph collapse. `aggregateConnections` retains hidden relation members; changing visual grouping must preserve selection/evidence access.
+`landscapeFocus` highlights one-hop neighbors or selected connection endpoints. Hovering or keyboard-focusing a Resources row temporarily uses that same selection emphasis, with highlighted connections animated according to the map's motion setting. Preview leaves the inspector selection, URL, camera and motion preference unchanged; pointer hover takes precedence over keyboard focus, and leaving restores focus/search emphasis. The row opens the map's shared `ResourceHoverContent` (description, environment pills, visible execution locations and source warnings), in a measured portal beside it or above/below on narrow screens. `ResourceTooltip.tsx` measures natural content height, retains the visual viewport's margins and constrains oversized lists for scrolling. Canvas previews use the same measured placement primitives against the visible canvas/window intersection, rather than guessed card dimensions. Mouse opening in Resources is delayed briefly, keyboard focus is immediate, crossing into a card keeps it open, and Escape dismisses without changing selection or moving focus. Keyboard scrolling repositions a Resources preview; wheel scrolling its trigger list, filtering away the row or closing that list clears it. Touch opens the Inspector without a hover card; clicking still uses normal selection motion. Search changes emphasis, not topology. Zoom label detail is not hierarchical automatic graph collapse. `aggregateConnections` retains original relation members; changing visual grouping must preserve selection/evidence access. The [tooltip audit](../../framework-studio/tooltip-audit.md) records presentation rules, dynamic cases and validation limits.
 
 Keep optimization bounded for large graphs. Preserve layout stability across selection/mode switches and avoid recomputing source models during a pointer move. Rendering and picking must share geometric assumptions, especially curve sampling and visible endpoints. Avoid claiming a node-count ceiling or browser FPS guarantee from a synthetic timing fixture.
 
@@ -139,15 +139,19 @@ including `Routes to: /api/test/start-workflow`, `Starts workflow: invocation-te
 and `Reads: 3 environment values`. Calls name the configured destination, workflow steps
 name their typed operation and target, and grants retain the resource name. Tooltips,
 inspectors, member rows, Board labels and description reviews use this same formatter.
-Same-type bundles name their shared purpose and count. Most bundled hovers preview at most
-four member labels, a remaining count and any missing required values outside that preview.
-From/To and environment pills remain primary. Supply hovers put the pills beside each
-parameter name, list every supplied entry and omit the aggregate pair; each row retains its own connection availability
-and missing/default status. Concise operational details and a muted IAM
-summary follow when applicable; source paths, inference caveats and full permission facts
-expand under Configuration and Permissions in the inspector. Normal configured inputs need
-no status sentence. Native trigger hovers name the resolved constructor. Resource hovers
-retain descriptions and source warnings without permission counts.
+Same-type bundles name their shared purpose and count. `presentConnectionHover` reads both
+graphs independently and retains every member, including other-environment-only evidence;
+its structured hover rows do not use the compact label API's four-member preview limit.
+Every aggregation puts Dev and Prod pills beside each member and omits the aggregate pair.
+Single connections keep their pair near the title. From/To labels, endpoint names and kinds
+form aligned metadata instead of undifferentiated prose. Supply rows use catalog parameter
+names. Each row retains its own availability, requirement state, operation and permission
+facts; differences between environments stay explicitly qualified. Common defaults or IAM
+summaries appear once, while exceptions remain with their member. Warnings have their own
+emphasis; permissions form a labeled secondary block. Source paths, inference caveats and
+full permission facts expand under Configuration and Permissions in the inspector. Normal
+configured inputs need no status sentence. Native trigger hovers name the resolved
+constructor. Resource hovers retain descriptions and source warnings without permission counts.
 
 Parallel relationships use a stable fan perpendicular to the projected endpoint span.
 Height alone cannot distinguish nearly vertical arcs. The default 48-world-unit
@@ -232,3 +236,6 @@ stack. `src/input-groups.ts` reads a group through its entries for the hover fac
 Group hovers replace the aggregate environment pair and prose name list with entry rows.
 Each row's pills describe its declaration availability across both graphs, including nested
 and other-environment-only entries; they do not claim that a value is set or deployed.
+`groupHoverEntries` retains both modes' exceptional status details; `groupHoverDetails`
+hoists common default, optional, absent or unknown states once. Missing required notices
+name variables and files without projecting authored values or resolved defaults.

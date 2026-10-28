@@ -25,23 +25,93 @@ export interface HoverFacts {
 
 export type ModelIndexes = Readonly<Record<Mode, ModelIndex>>;
 
+export interface HoverEntryDetail {
+  readonly text: string;
+  readonly kind: "detail" | "permission";
+  readonly tone?: "warning";
+  readonly modes?: readonly Mode[];
+}
+
 export interface HoverEntry {
   readonly id: string;
   readonly label: string;
   readonly availability: Availability;
   readonly note?: string;
+  readonly details?: readonly HoverEntryDetail[];
 }
 
-/** Entries retain their own declaration availability, even in a mixed-environment group. */
-export function groupHoverEntries(group: ModelResource, indexes: ModelIndexes): readonly HoverEntry[] {
+const detailKey = (detail: HoverEntryDetail): string => JSON.stringify([detail.text, detail.kind, detail.tone]);
+
+/** A value's presence in one graph, without ever projecting the value or its default. */
+function groupEntryDetail(entry: ModelResource | undefined, mode: Mode, index: ModelIndex): HoverEntryDetail | undefined {
+  const detail = (text: string, warning = false): HoverEntryDetail => ({ text, kind: "detail", ...(warning ? { tone: "warning" as const } : {}), modes: [mode] });
+  if (!entry || entry.absent) return detail("Not declared.");
+  const requirement = entry.inputRequirement;
+  switch (requirement?.status) {
+    case "configured": return undefined;
+    case "default": return detail("Uses the declaration default.");
+    case "optional": return detail("Not set · optional.");
+    case "missing": {
+      const name = requirement.name || entry.fromEnv || entry.path.at(-1)!;
+      const file = requirement.file || index.resources.get(`envfile:${mode}`)?.deploymentFile?.path || `cdk-app/.env.${mode}`;
+      return detail(`Required value missing: ${name} · ${file}`, true);
+    }
+    case "unknown":
+    default: return detail("Value status unavailable.");
+  }
+}
+
+function combineEntryDetails(details: readonly HoverEntryDetail[]): readonly HoverEntryDetail[] {
+  const combined = new Map<string, HoverEntryDetail>();
+  for (const detail of details) {
+    const previous = combined.get(detailKey(detail));
+    combined.set(detailKey(detail), previous ? { ...detail, modes: MODES.filter(mode => previous.modes?.includes(mode) || detail.modes?.includes(mode)) } : detail);
+  }
+  return [...combined.values()];
+}
+
+function rawGroupHoverEntries(group: ModelResource, indexes: ModelIndexes): readonly HoverEntry[] {
   const entries = new Map(MODES.flatMap(mode => groupEntries(group, indexes[mode].resources.values()).map(entry => [entry.id, entry] as const)));
-  return [...entries.values()].map(entry => ({
-    id: entry.id,
-    label: entry.path.slice(group.path.length).join("."),
-    availability: {
-      dev: !!indexes.dev.resources.get(entry.id) && !indexes.dev.resources.get(entry.id)!.absent,
-      prod: !!indexes.prod.resources.get(entry.id) && !indexes.prod.resources.get(entry.id)!.absent,
-    },
+  return [...entries.values()].map(entry => {
+    const dev = indexes.dev.resources.get(entry.id), prod = indexes.prod.resources.get(entry.id);
+    const details = combineEntryDetails(MODES.flatMap(mode => {
+      const detail = groupEntryDetail(indexes[mode].resources.get(entry.id), mode, indexes[mode]);
+      return detail ? [detail] : [];
+    }));
+    return { id: entry.id, label: entry.path.slice(group.path.length).join("."), availability: { dev: !!dev && !dev.absent, prod: !!prod && !prod.absent }, ...(details.length ? { details } : {}) };
+  });
+}
+
+/** Shared status belongs once below the list, rather than under every parameter name. */
+function commonGroupDetails(entries: readonly HoverEntry[]): readonly HoverEntryDetail[] {
+  if (!entries.length) return [];
+  return (entries[0]!.details ?? []).flatMap(detail => {
+    const modes = MODES.filter(mode => detail.modes?.includes(mode) && entries.every(entry => entry.details?.some(candidate => detailKey(candidate) === detailKey(detail) && candidate.modes?.includes(mode))));
+    return modes.length ? [{ ...detail, modes }] : [];
+  });
+}
+
+/** Entries retain individual declarations and exceptional value states across both graphs. */
+export function groupHoverEntries(group: ModelResource, indexes: ModelIndexes): readonly HoverEntry[] {
+  const entries = rawGroupHoverEntries(group, indexes);
+  const common = commonGroupDetails(entries);
+  return entries.map(entry => {
+    const details = (entry.details ?? []).flatMap(detail => {
+      const shared = common.find(candidate => detailKey(candidate) === detailKey(detail));
+      const modes = detail.modes?.filter(mode => !shared?.modes?.includes(mode));
+      return modes?.length ? [{ ...detail, modes }] : [];
+    });
+    const { details: _details, ...identity } = entry;
+    return { ...identity, ...(details.length ? { details } : {}) };
+  });
+}
+
+export function groupHoverDetails(group: ModelResource, indexes: ModelIndexes): readonly HoverEntryDetail[] {
+  return commonGroupDetails(rawGroupHoverEntries(group, indexes)).map(detail => ({ ...detail,
+    text: detail.text === "Uses the declaration default." ? "All entries use declaration defaults."
+      : detail.text === "Not set · optional." ? "All entries are unset and optional."
+      : detail.text === "Not declared." ? "No entries are declared."
+      : detail.text === "Value status unavailable." ? "Value status is unavailable for all entries." : detail.text,
   }));
 }
 
@@ -165,9 +235,7 @@ export function groupHoverLines(group: ModelResource, model: ModeModel, index: M
     use.feeds.some((feed) => feed.relation === "deployWhen") ? `Controls deployment of ${nameList(use.feeds.filter((feed) => feed.relation === "deployWhen").map((feed) => titleOf(index, feed.id)))}.` : undefined,
     !use.readers.length && !use.feeds.length && entries.some((entry) => !entry.absent) ? "No workload reads these entries yet." : undefined,
   ].filter((line): line is string => !!line);
-  const missing = entries.filter((entry) => entry.inputRequirement?.status === "missing");
-  const file = index.resources.get(`envfile:${model.mode}`)?.deploymentFile?.path ?? "the environment file";
-  return { lines, notes: missing.length ? [`Missing required ${missing.length === 1 ? "value" : "values"} in ${file}: ${nameList(missing.map((entry) => entry.fromEnv ?? name(entry.id)))}.`] : [] };
+  return { lines, notes: [] };
 }
 
 /** Gateways and endpoints exist only because the framework builds the declared network, and only a production deployment builds it. */

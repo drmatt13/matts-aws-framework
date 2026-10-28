@@ -1,10 +1,10 @@
 import assert from "./support/assert";
 import { test } from "node:test";
 import type { DeploymentInputEntry, InputRequirement } from "../shared/deployment-inputs";
-import type { ModeModel, ModelEdge, ModelResource, Relation, SourceLocation } from "../shared/model";
+import type { ModeModel, ModelEdge, ModelResource, ModelTarget, Relation, SourceLocation } from "../shared/model";
 import { withConnectionAuthorizations } from "../shared/permissions";
 import { aggregateConnections } from "../src/connections";
-import { presentConnection, presentRelationship } from "../src/connection-presentation";
+import { presentConnection, presentConnectionHover, presentRelationship } from "../src/connection-presentation";
 import { indexModel } from "../src/lookup";
 
 const source: SourceLocation = { file: "stack.ts", line: 20, column: 1, start: 100, end: 140 };
@@ -271,4 +271,176 @@ test("bundle previews use selected-mode evidence and label relationships belongi
   assert.equal(production.title, development.title);
   const single = aggregateConnections({ ...dev, edges: [shared] }, [{ ...prod, edges: [prod.edges[0]!] }])[0]!;
   assert.equal(presentConnection(single, "prod", indexModel(prod)).title, "Reads: PROD_VALUE");
+});
+
+const hoverResources: readonly ModelResource[] = [
+  { id: "resource:caller", path: ["caller"], kind: "construct", absent: false },
+  { id: "resource:data", path: ["data"], kind: "stack", absent: false },
+  ...["first", "second", "third"].map(name => ({ id: `resource:data.${name}`, path: ["data", name], kind: "member" as const, parent: "resource:data", absent: false })),
+];
+const hoverEdge = (relation: Relation, id: string, extra: Partial<ModelEdge> = {}): ModelEdge => edge(relation, {
+  id, from: "resource:caller", to: `resource:data.${id}`, label: `VALUE_${id}`, ...extra,
+});
+const hoverPair = (devEdges: readonly ModelEdge[], prodEdges: readonly ModelEdge[], resources: readonly ModelResource[] = hoverResources) => {
+  const dev = model({ resources, edges: devEdges });
+  const prod = model({ mode: "prod", resources, edges: prodEdges });
+  return { dev, prod, indexes: { dev: indexModel(dev), prod: indexModel(prod) }, connection: aggregateConnections(dev, [prod])[0]! };
+};
+
+test("every aggregation family retains all members and their independent development and production pills", () => {
+  const relations: readonly Relation[] = ["env", "secret", "supplies", "maps", "routes", "authorizes", "grant", "database", "localReplay", "trigger", "runsTask", "startsWorkflow", "invokesAgent", "usesTool", "step", "integration", "completesCallback", "manageConnections", "contains", "cdk", "deployWhen"];
+  for (const relation of relations) {
+    const first = hoverEdge(relation, "first"), second = hoverEdge(relation, "second"), third = hoverEdge(relation, "third");
+    const { connection, indexes } = hoverPair([first, second], [second, third]);
+    const before = JSON.stringify(connection);
+    const result = presentConnectionHover(connection, indexes);
+    assert.equal(result.aggregated, true, relation);
+    assert.deepEqual(result.rows.map(row => [row.id, row.availability]), [
+      ["first", { dev: true, prod: false }], ["second", { dev: true, prod: true }], ["third", { dev: false, prod: true }],
+    ], relation);
+    assert.equal(result.from.label, "caller", relation);
+    assert.deepEqual(result.to, { id: "resource:data", kind: "Stack", label: "data" }, relation);
+    assert.equal(JSON.stringify(connection), before, "hover derivation never modifies model evidence");
+    const disabled = { ...connection, availability: { dev: false, prod: false }, members: connection.members.map(member => ({ ...member, availability: { dev: false, prod: false } })) };
+    assert.ok(presentConnectionHover(disabled, indexes).rows.every(row => !row.availability.dev && !row.availability.prod), relation);
+  }
+});
+
+test("a large aggregation has no hidden members or missing requirements beyond an arbitrary preview limit", () => {
+  const edges = Array.from({ length: 40 }, (_, at) => hoverEdge("env", String(at).padStart(2, "0"), { to: "resource:data.first", label: `VALUE_${at}`, ...(at === 39 ? { inputRequirement: requirement("missing") } : {}) }));
+  const { connection, indexes } = hoverPair(edges, edges);
+  const result = presentConnectionHover(connection, indexes);
+  assert.equal(result.rows.length, 40);
+  assert.equal(result.rows.at(-1)?.label, "VALUE_39");
+  assert.deepEqual(result.rows.at(-1)?.details, [{ text: "Required value missing.", kind: "detail", tone: "warning" }]);
+  assert.ok(!result.rows[0]?.details.length);
+  assert.deepEqual(result.details, []);
+});
+
+test("shared declaration defaults are explained once while different environment requirements stay qualified", () => {
+  const defaults = ["first", "second", "third"].map(id => hoverEdge("supplies", id, { inputRequirement: requirement("default") }));
+  const { connection, indexes } = hoverPair(defaults, defaults);
+  const common = presentConnectionHover(connection, indexes);
+  assert.deepEqual(common.rows.map(row => row.label), ["first", "second", "third"]);
+  assert.deepEqual(common.details, [{ text: "Uses the declaration default.", kind: "detail" }]);
+  assert.ok(common.rows.every(row => row.details.length === 0));
+  const production = defaults.map((edge, at) => at === 1 ? { ...edge, inputRequirement: requirement("missing", { mode: "prod" }) } : edge);
+  const mixed = hoverPair(defaults, production);
+  const result = presentConnectionHover(mixed.connection, mixed.indexes);
+  assert.deepEqual(result.details, [], "the shared default cannot describe one member's missing production value");
+  assert.deepEqual(result.rows[1]?.details, [
+    { text: "Uses the declaration default.", kind: "detail", modes: ["dev"] },
+    { text: "Required value missing.", kind: "detail", tone: "warning", modes: ["prod"] },
+  ]);
+});
+
+test("environment-specific variable labels and facts remain explicit without borrowing the active graph", () => {
+  const devEdge = hoverEdge("env", "first", { label: "DEVELOPMENT_POOL_ID", inputRequirement: requirement("missing") });
+  const prodEdge = { ...devEdge, label: "PRODUCTION_POOL_ID", inputRequirement: requirement("configured", { mode: "prod" }) };
+  const { connection, indexes } = hoverPair([devEdge], [prodEdge]);
+  const result = presentConnectionHover(connection, indexes);
+  assert.equal(result.aggregated, false);
+  assert.equal(result.title, "Reads: environment value");
+  assert.equal(result.rows[0]?.label, "Environment value");
+  assert.deepEqual(result.details, [
+    { text: "DEVELOPMENT_POOL_ID", kind: "detail", modes: ["dev"] },
+    { text: "PRODUCTION_POOL_ID", kind: "detail", modes: ["prod"] },
+    { text: "Required value missing.", kind: "detail", tone: "warning", modes: ["dev"] },
+  ]);
+  const prodOnly = hoverPair([], [prodEdge]);
+  assert.equal(presentConnectionHover(prodOnly.connection, prodOnly.indexes).title, "Reads: PRODUCTION_POOL_ID");
+});
+
+test("conditional facts resolve against each environment's own target rather than the selected index", () => {
+  const condition = edge("deployWhen", { id: "condition", from: "resource:features.enabled", to: "workflow:reports" });
+  const resources: readonly ModelResource[] = [{ id: condition.from, path: ["features", "enabled"], kind: "input", absent: false }];
+  const target = (equals: string): ModelTarget => ({
+    ref: condition.to, kind: "workflow", id: "reports", role: "workflow", title: "reports", origins: [], constructId: "Reports", constructIdPinned: false,
+    lanes: { deploy: "both", origin: "declared", local: true, cloud: true, dev: true, prod: true,
+      when: { resource: condition.from, equals, dev: "holds", prod: "holds" } },
+    compute: { kind: "workflow", type: "standard", steps: 1, timeoutSeconds: 30 }, placement: { kind: "managed", reason: "Workflow" },
+    environment: [], secrets: [], access: [], requirements: 0, outputs: [],
+  });
+  const dev = model({ resources, targets: [target("preview")], edges: [condition] });
+  const prod = model({ mode: "prod", resources, targets: [target("released")], edges: [condition] });
+  const connection = aggregateConnections(dev, [prod])[0]!;
+  const result = presentConnectionHover(connection, { dev: indexModel(dev), prod: indexModel(prod) });
+  assert.deepEqual(result.details, [
+    { text: 'Matches "preview".', kind: "detail", modes: ["dev"] },
+    { text: 'Matches "released".', kind: "detail", modes: ["prod"] },
+  ]);
+  assert.deepEqual(result.to, { id: target("released").ref, kind: "Workflow", label: "reports" });
+});
+
+test("stable endpoint ids preserve differing target titles and catalog kinds across environments", () => {
+  const declaration: ModelTarget = {
+    ref: "lambda:caller", kind: "lambda", id: "caller", role: "http", title: "/preview/graphql", origins: [], constructId: "Caller", constructIdPinned: false,
+    lanes: { deploy: "both", origin: "declared", local: true, cloud: true, dev: true, prod: true },
+    compute: { kind: "lambda", implementation: "typescript", packaging: "zip", architecture: "arm64", memorySize: 512, timeoutSeconds: 30, logRetentionDays: 7, subnet: "none" },
+    placement: { kind: "outside", reason: "Outside the VPC" }, environment: [], secrets: [], access: [], requirements: 0, outputs: [],
+  };
+  const resource: ModelResource = { id: "resource:setting", path: ["setting"], kind: "input", absent: false };
+  const binding = edge("env", { to: resource.id, label: "SETTING" });
+  const dev = model({ resources: [resource], targets: [declaration], edges: [binding] });
+  const prod = model({ mode: "prod", resources: [{ ...resource, kind: "secret" }], targets: [{ ...declaration, title: "/graphql" }], edges: [binding] });
+  const result = presentConnectionHover(aggregateConnections(dev, [prod])[0]!, { dev: indexModel(dev), prod: indexModel(prod) });
+  assert.deepEqual(result.from, { id: declaration.ref, kind: "HTTP Lambda", label: "/preview/graphql", variants: [
+    { mode: "dev", label: "/preview/graphql", kind: "HTTP Lambda" }, { mode: "prod", label: "/graphql", kind: "HTTP Lambda" },
+  ] });
+  assert.deepEqual(result.to, { id: resource.id, kind: "Input", label: "setting", variants: [
+    { mode: "dev", label: "setting", kind: "Input" }, { mode: "prod", label: "setting", kind: "Secret" },
+  ] });
+  const same = { ...prod, resources: [resource], targets: [declaration] };
+  const matching = presentConnectionHover(aggregateConnections(dev, [same])[0]!, { dev: indexModel(dev), prod: indexModel(same) });
+  assert.equal(matching.from.variants, undefined);
+  assert.equal(matching.to.variants, undefined);
+  const absent = { ...prod, resources: [{ ...resource, kind: "secret" as const, absent: true }], targets: [] };
+  const missing = presentConnectionHover(aggregateConnections(dev, [absent])[0]!, { dev: indexModel(dev), prod: indexModel(absent) });
+  assert.equal(missing.from.variants, undefined, "an absent target never becomes an invented second title");
+  assert.equal(missing.to.variants, undefined, "a ghost catalog entry never becomes an invented second kind");
+});
+
+test("per-environment native scopes and IAM summaries stay attached to their actual member", () => {
+  const resources = hoverResources.map(resource => resource.kind === "member" ? { ...resource, typeText: "s3.IBucket" } : resource);
+  const permissions = (action: string) => ({ kind: "iam" as const, operation: "Read bucket", state: "planned" as const, notes: [], grants: [{ principal: "Lambda role", policy: "Identity policy" as const, actions: [action], scope: "bucket" }] });
+  const first = hoverEdge("grant", "first", { permissionContext: { kind: "native", method: "grantRead", arguments: ["dev/*"] }, authorization: permissions("s3:GetObject") });
+  const second = hoverEdge("grant", "second", { permissionContext: { kind: "native", method: "grantRead", arguments: ["reports/*"] }, authorization: permissions("s3:GetObject") });
+  const pair = hoverPair([first, second], [{ ...first, permissionContext: { kind: "native", method: "grantRead", arguments: ["prod/*"] }, authorization: permissions("s3:ListBucket") }, second], resources);
+  const result = presentConnectionHover(pair.connection, pair.indexes);
+  assert.deepEqual(result.rows[0]?.details, [
+    { text: "Object scope: dev/*", kind: "detail", modes: ["dev"] },
+    { text: "IAM: s3:GetObject", kind: "permission", modes: ["dev"] },
+    { text: "Object scope: prod/*", kind: "detail", modes: ["prod"] },
+    { text: "IAM: s3:ListBucket", kind: "permission", modes: ["prod"] },
+  ]);
+  assert.deepEqual(result.rows[1]?.details, [{ text: "Object scope: reports/*", kind: "detail" }, { text: "IAM: s3:GetObject", kind: "permission" }]);
+  assert.deepEqual(result.details, []);
+  const common = hoverPair([first, second], [first, second], resources);
+  assert.deepEqual(presentConnectionHover(common.connection, common.indexes).details, [{ text: "IAM: s3:GetObject", kind: "permission" }]);
+});
+
+test("native permission subtypes and workflow integrations retain operational details in structured hovers", () => {
+  const contexts: NonNullable<ModelEdge["permissionContext"]>[] = [
+    { kind: "database", connection: "direct", readers: true },
+    { kind: "native", method: "grantRead", arguments: [] },
+    { kind: "secret", delivery: "arn" }, { kind: "secret", delivery: "startup" },
+    { kind: "step", target: "task", callback: true },
+    { kind: "integration", service: "table", operations: ["get", "update"] },
+    { kind: "integration", service: "queue", operations: ["send"] },
+    { kind: "integration", service: "topic", operations: ["publish"] },
+    { kind: "integration", service: "eventBus", operations: ["put"] },
+    { kind: "integration", service: "httpConnection", operations: ["request"] },
+    { kind: "trigger", adapter: "sqs" }, { kind: "trigger-dlq", adapter: "sns" },
+    { kind: "subscription", protocol: "sqs" }, { kind: "failure" },
+  ];
+  for (const context of contexts) {
+    const relation = context.kind === "database" ? "database" : context.kind === "step" ? "step" : context.kind === "integration" ? "integration" : context.kind === "trigger" ? "trigger" : context.kind === "secret" ? "secret" : "grant";
+    const connection = hoverEdge(relation, "first", { permissionContext: context, sourceConstruct: context.kind === "trigger" ? "cdk.aws_sqs.Queue" : undefined });
+    const pair = hoverPair([connection], [connection]);
+    const expected = presentRelationship(connection, pair.indexes.dev);
+    const result = presentConnectionHover(pair.connection, pair.indexes);
+    assert.equal(result.title, expected.title, context.kind);
+    assert.deepEqual(result.details.map(detail => detail.text), [...expected.lines, ...expected.notes], context.kind);
+    assert.ok(result.details.every(detail => detail.modes === undefined), context.kind);
+  }
 });

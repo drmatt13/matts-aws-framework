@@ -82,17 +82,28 @@ centred; an axis it cannot fit on stays put. Missing implementation artifacts ap
 on the relevant resource, plaque, hover card and Inspector; these warnings describe source
 readiness, not deployed health.
 
-Hovering a Resources row opens the same description, Dev/Prod pills and source warnings
-as its map resource, using `views/ResourceHoverContent.tsx`. Mouse previews wait briefly
-while scanning; keyboard focus opens them immediately. The portal card sits beside the
-row toward the map, or above/below it on narrow screens, and stays within the visible
-window. It remains open while the pointer crosses into it and Escape dismisses it without
-moving focus. Keyboard scrolling keeps the preview with its focused row; wheel scrolling,
-filtering away the row or closing the panel clears it. Touch continues straight to the
-Inspector. A preview never changes selection or the camera.
-Input groups list their parameter names with Dev/Prod pills beside each entry instead
-of a group-level pair. Supply connections likewise show pills per parameter; those pills
-describe supply by the named file, while group pills describe declaration availability.
+Hovering a Resources row opens the same description, Dev/Prod pills, execution locations
+and source warnings as its map resource, using `views/ResourceHoverContent.tsx`. Mouse
+previews wait briefly while scanning; keyboard focus opens them immediately. The portal
+card sits beside the row toward the map, or above/below it on narrow screens. Both list
+and map cards measure their actual content; list cards respect the visual viewport, and
+map cards respect its intersection with the visible canvas. Oversized member lists scroll
+within the card instead of being silently truncated or extending outside the viewport.
+The pointer can enter a card to read it. Escape dismisses the preview without changing
+selection or moving focus. Keyboard scrolling keeps a Resources preview with its focused
+row; wheel scrolling the trigger list, filtering away the row or closing the panel clears
+it. Touch continues straight to the Inspector. A preview never changes selection or the
+camera. See the [tooltip audit](tooltip-audit.md) for rationale and validation coverage.
+
+Every multi-member connection and input group lists its members with Dev/Prod pills beside
+each row, without a redundant group-level pair. Single connections retain the pair near
+their title. Group pills describe declaration availability; supply pills describe delivery
+by the named file; other connection pills describe enabled relationships. All original
+members remain visible in the scrollable list. Differing labels, requirements, conditions
+and permission facts are qualified by environment. Shared default or permission details
+appear once; missing requirements and other exceptions stay with their row. Identity,
+labeled From/To endpoints, rows and supporting details use separate visual blocks with
+shared spacing tokens, while permissions remain secondary to operational information.
 
 Stack plaques carry an unplug badge when the configured CDK app has no constructor
 reference for their class in its local runtime import graph. These unattached stacks
@@ -726,9 +737,10 @@ from the scene and offers validated catalog edits.
 
 Input groups follow the same rule: a group's entries stand in its building, its arcs bundle
 the entries' relationships by type (for example `Reads: 4 environment values` from the
-agent), and selecting an entry highlights the group. The group's hover counts its entries
-per graph against that graph's CDK input file, names its readers and client mappings, and
-notes missing required variable names. Its inspector lists **Entries** (variable name,
+agent), and selecting an entry highlights the group. The group's hover lists each entry's
+declaration environments, names its readers and client mappings, and retains required,
+default, optional, absent and unknown value states from both graphs. Shared states appear
+once; a missing requirement names only the variable and file, never its value. Its inspector lists **Entries** (variable name,
 Dev/Prod declaration and the selected graph's value status, never a value), **Used by**,
 environment-file coverage, entry tags and every member connection; **Add input** opens the
 shared creator with the catalog group preset. An entry's inspector links back to its group.

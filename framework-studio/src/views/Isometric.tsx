@@ -1,5 +1,5 @@
 import { ChevronLeft, Crosshair, Maximize2, Minus, PanelRight, Pause, Play, Plus, Search, X } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { CATEGORY_DESCRIPTION, CATEGORY_LABEL, endpointLabel, type EdgeCategory } from "../lookup";
 import { buildScene, type Scene, type SceneNode } from "../scene/build";
 import { islandDrawOrder, islandSlabs } from "../scene/slabs";
@@ -25,7 +25,6 @@ import { connectionMidpoint } from "../scene/routing";
 import { landscapeFocus, searchOpacity, searchScene } from "../scene/focus";
 import { filterSceneByTag } from "../scene/tag-filter";
 import { SceneRenderer, type Stage } from "../scene/render";
-import type { HoverEntry, HoverFacts } from "../scene/hover";
 import { connectionVisible } from "../scene/connections";
 import { EDGE_COLORS } from "../scene/look";
 import { catalogAvailability } from "../deployment";
@@ -35,7 +34,9 @@ import { useStudio } from "../studio";
 import { HoverContent, ResourceHoverContent } from "./ResourceHoverContent";
 import { InspectorContent } from "./Inspector";
 import { ResourceBrowser, type BrowserMemory } from "./ResourceBrowser";
-import { presentConnection, presentRelationship } from "../connection-presentation";
+import { presentConnection } from "../connection-presentation";
+import { ConnectionHoverContent } from "./ConnectionHoverContent";
+import { CanvasTooltip, ResourceTooltip } from "./ResourceTooltip";
 import { WorkspacePanel } from "./WorkspacePanel";
 import { tagGroups, tagKeys, tagValueLabel, UNTAGGED_FILTER } from "../tag-groups";
 
@@ -83,7 +84,6 @@ interface Tween {
 
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-const ENVIRONMENTS = [["dev", "Dev"], ["prod", "Prod"]] as const;
 // Ownership and native references are context for inspection, not background activity.
 const CATEGORIES = (Object.keys(CATEGORY_LABEL) as EdgeCategory[]).filter(category => category !== "structure");
 
@@ -108,6 +108,17 @@ export function Isometric() {
   const tagKeyRef = useRef<HTMLSelectElement>(null);
   const [tagFilter, setTagFilter] = useState(rememberedTagFilter);
   const [hover, setHover] = useState<Hover | undefined>();
+  const [pointingAtEntity, setPointingAtEntity] = useState(false);
+  const tooltipId = useId();
+  const [keyboardAnchor, setKeyboardAnchor] = useState<HTMLButtonElement>();
+  const hoverCandidate = useRef<Hover | undefined>(undefined);
+  const visibleHover = useRef<Hover | undefined>(undefined);
+  visibleHover.current = hover;
+  const hoverOpenTimer = useRef<number | undefined>(undefined);
+  const hoverCloseTimer = useRef<number | undefined>(undefined);
+  const dismissedHover = useRef<string | undefined>(undefined);
+  const tooltipPointed = useRef(false);
+  const touchNavigator = useRef(false);
   const [dragging, setDragging] = useState(false);
   const [aspect, setAspect] = useState(16 / 9);
   const previousLayout = useRef<LayoutResult | undefined>(undefined);
@@ -416,7 +427,8 @@ export function Isometric() {
   );
 
   const setHovered = useCallback(
-    (next: Hover | undefined) => {
+    (next: Hover | undefined, immediate = false) => {
+      setPointingAtEntity(!!next);
       const state = live.current;
       const hovered = next?.kind === "node" ? next.id : undefined;
       const hoveredEdge = next?.kind === "edge" ? next.id : undefined;
@@ -427,10 +439,64 @@ export function Isometric() {
         state.hoveredIsland = hoveredIsland;
         schedule();
       }
-      setHover((current) => current?.kind === next?.kind && current?.id === next?.id && current?.band === next?.band && current?.x === next?.x && current?.y === next?.y ? current : next);
+      const previous = hoverCandidate.current;
+      hoverCandidate.current = next;
+      window.clearTimeout(hoverCloseTimer.current);
+      if (!next) {
+        window.clearTimeout(hoverOpenTimer.current);
+        dismissedHover.current = undefined;
+        if (!tooltipPointed.current) hoverCloseTimer.current = window.setTimeout(() => setHover(undefined), 120);
+        return;
+      }
+      if (dismissedHover.current && dismissedHover.current !== next.id) dismissedHover.current = undefined;
+      if (dismissedHover.current === next.id) return;
+      if (visibleHover.current?.kind === next.kind && visibleHover.current.id === next.id && visibleHover.current.band === next.band) return;
+      if (!immediate && previous?.kind === next.kind && previous.id === next.id && previous.band === next.band) return;
+      window.clearTimeout(hoverOpenTimer.current);
+      setHover(undefined);
+      if (immediate) setHover(next);
+      else hoverOpenTimer.current = window.setTimeout(() => {
+        if (hoverCandidate.current?.id === next.id && dismissedHover.current !== next.id) setHover(next);
+      }, 220);
     },
     [schedule],
   );
+
+  useEffect(() => () => { window.clearTimeout(hoverOpenTimer.current); window.clearTimeout(hoverCloseTimer.current); }, []);
+  const keepTooltip = useCallback(() => {
+    tooltipPointed.current = true; window.clearTimeout(hoverCloseTimer.current);
+    if (visibleHover.current) setHovered(visibleHover.current, true);
+  }, [setHovered]);
+  const leaveTooltip = useCallback(() => {
+    tooltipPointed.current = false;
+    if (!keyboardAnchor) setHovered(undefined);
+  }, [keyboardAnchor, setHovered]);
+  // Escape dismisses additional information without moving the reader or ending inspection.
+  useEffect(() => {
+    if (!hover || resourcePreview) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if ((event.key === "PageDown" || event.key === "PageUp") && (keyboardAnchor || document.activeElement === canvasRef.current)) {
+        const card = document.getElementById(tooltipId);
+        if (card && card.scrollHeight > card.clientHeight) {
+          event.preventDefault(); event.stopPropagation();
+          card.scrollTop += card.clientHeight * 0.8 * (event.key === "PageDown" ? 1 : -1);
+          return;
+        }
+      }
+      if (event.key !== "Escape") return;
+      event.preventDefault(); event.stopPropagation();
+      window.clearTimeout(hoverOpenTimer.current); window.clearTimeout(hoverCloseTimer.current);
+      dismissedHover.current = hover.id; tooltipPointed.current = false;
+      setHover(undefined);
+    };
+    document.addEventListener("keydown", dismiss, true);
+    return () => document.removeEventListener("keydown", dismiss, true);
+  }, [hover, resourcePreview, keyboardAnchor, tooltipId]);
+  useLayoutEffect(() => {
+    if (!keyboardAnchor || !hover) return;
+    keyboardAnchor.setAttribute("aria-describedby", tooltipId);
+    return () => keyboardAnchor.removeAttribute("aria-describedby");
+  }, [keyboardAnchor, hover, tooltipId]);
 
   // High-rate pointers only need one hit test and tooltip position per paint.
   const hoverFrame = useRef<number | undefined>(undefined);
@@ -448,7 +514,17 @@ export function Isometric() {
       hoverFrame.current = undefined;
       const point = pendingHover.current;
       pendingHover.current = undefined;
-      if (point) setHovered(pick(point));
+      if (point) {
+        const current = visibleHover.current;
+        const next = pick(point);
+        // The short corridor between trigger and card must not switch to terrain underneath it.
+        const card = current && document.getElementById(tooltipId)?.getBoundingClientRect();
+        const canvas = canvasRef.current?.getBoundingClientRect();
+        const crossing = current && card && canvas && next?.id !== current.id
+          && point.x >= Math.min(current.x - 6, card.left - canvas.left - 6) && point.x <= Math.max(current.x + 6, card.right - canvas.left + 6)
+          && point.y >= Math.min(current.y - 6, card.top - canvas.top - 6) && point.y <= Math.max(current.y + 6, card.bottom - canvas.top + 6);
+        if (!crossing) setHovered(next);
+      }
     });
   };
 
@@ -464,6 +540,8 @@ export function Isometric() {
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0 && event.pointerType === "mouse") return;
     cancelHover();
+    window.clearTimeout(hoverOpenTimer.current); window.clearTimeout(hoverCloseTimer.current);
+    setHover(undefined); setKeyboardAnchor(undefined);
     canvasRef.current!.setPointerCapture(event.pointerId);
     const point = local(event);
     pointers.current.set(event.pointerId, point);
@@ -481,7 +559,7 @@ export function Isometric() {
     const point = local(event);
     const current = gesture.current;
     if (!current || !pointers.current.has(event.pointerId)) {
-      queueHover(point);
+      if (event.pointerType !== "touch") queueHover(point);
       return;
     }
     pointers.current.set(event.pointerId, point);
@@ -547,6 +625,7 @@ export function Isometric() {
     if (!canvas) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
+      setHovered(undefined); setHover(undefined);
       const state = live.current;
       state.tween = undefined;
       const point = local(event);
@@ -559,7 +638,7 @@ export function Isometric() {
     };
     canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", onWheel);
-  }, [schedule, hasEntities]);
+  }, [schedule, hasEntities, setHovered]);
 
   const zoomBy = (factor: number) => {
     const state = live.current;
@@ -645,7 +724,24 @@ export function Isometric() {
   // Hover coordinates and the timing readout must not rebuild hundreds of
   // hidden controls. Selection, source and scene updates still refresh them.
   const accessibleEntities = useMemo(() => (
-    <ul className="sr-only landscape-entity-list" aria-label="Entities in the landscape" onKeyDown={(event) => {
+    <ul className="sr-only landscape-entity-list" aria-label="Entities in the landscape"
+    onPointerDownCapture={event => { touchNavigator.current = event.pointerType === "touch"; }}
+    onFocusCapture={event => {
+      const button = (event.target as HTMLElement).closest("button");
+      if (!button) return;
+      const kind = button.dataset.hoverKind as Hover["kind"] | undefined;
+      const id = button.dataset.hoverId;
+      if (!kind || !id || touchNavigator.current) return;
+      dismissedHover.current = undefined;
+      setKeyboardAnchor(button);
+      setHovered({ kind, id, x: live.current.viewport.width / 2, y: live.current.viewport.height / 2 }, true);
+    }}
+    onBlurCapture={event => {
+      if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+      setKeyboardAnchor(undefined); setHovered(undefined);
+    }}
+    onKeyDown={(event) => {
+      touchNavigator.current = false;
       if (event.key === "Escape") {
         event.preventDefault(); event.stopPropagation(); canvasRef.current?.focus(); return;
       }
@@ -657,16 +753,16 @@ export function Isometric() {
       event.preventDefault(); items[next]?.focus();
     }}>
       <li className="landscape-entity-help"><strong>Map resources and connections</strong><span>Use arrow keys or Tab to browse, Enter to inspect, Escape to return to the map.</span></li>
-      {scene.edges.map((connection) => <li key={connection.id}><button onClick={() => inspect(connection.id)} aria-current={visibleSelected === connection.id}>
+      {scene.edges.map((connection) => <li key={connection.id}><button data-hover-kind="edge" data-hover-id={connection.id} onClick={() => { setHover(undefined); inspect(connection.id); }} aria-current={visibleSelected === connection.id}>
         {missingConnectionInput(connection) ? "Missing required value: " : "Connection: "}{endpointLabel(index, connection.from)} to {endpointLabel(index, connection.to)}, {presentConnection(connection, scene.mode, index).title}
       </button></li>)}
-      {scene.islands.map((island) => <li key={island.id}><button onClick={() => inspect(island.id)} aria-current={visibleSelected === island.id}>{island.title} island settings</button></li>)}
-      {scene.props.map((prop) => <li key={prop.id}><button data-entity-id={prop.id} aria-description={prop.id} onClick={() => inspect(prop.id)} aria-current={visibleSelected === prop.id}>{prop.label}</button></li>)}
-      {scene.nodes.map((node) => <li key={node.id}><button onClick={() => inspect(node.id)} aria-current={visibleSelected === node.id}>
+      {scene.islands.map((island) => <li key={island.id}><button data-hover-kind="island" data-hover-id={island.id} onClick={() => { setHover(undefined); inspect(island.id); }} aria-current={visibleSelected === island.id}>{island.title} island settings</button></li>)}
+      {scene.props.map((prop) => <li key={prop.id}><button data-hover-kind="prop" data-hover-id={prop.id} data-entity-id={prop.id} aria-description={prop.id} onClick={() => { setHover(undefined); inspect(prop.id); }} aria-current={visibleSelected === prop.id}>{prop.label}</button></li>)}
+      {scene.nodes.map((node) => <li key={node.id}><button data-hover-kind="node" data-hover-id={node.id} onClick={() => { setHover(undefined); inspect(node.id); }} aria-current={visibleSelected === node.id}>
         {node.label}, {node.kindLabel}. {node.presenceText}{node.sourceProblems?.length ? ". Implementation needs attention" : ""}
       </button></li>)}
     </ul>
-  ), [scene, visibleSelected, index, inspect]);
+  ), [scene, visibleSelected, index, inspect, setHovered]);
 
   if (!hasEntities) {
     return <div className="landscape-workspace"><p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p></div>;
@@ -742,7 +838,7 @@ export function Isometric() {
           }}
           onDoubleClick={onDoubleClick}
           onKeyDown={onKeyDown}
-          style={{ cursor: dragging ? "grabbing" : hover ? "pointer" : "grab" }}
+          style={{ cursor: dragging ? "grabbing" : pointingAtEntity ? "pointer" : "grab" }}
         />
         <div className="landscape-bar landscape-connection-bar">
           <div className="landscape-chips" role="group" aria-label="Background connections" aria-describedby="connection-filter-help">
@@ -764,7 +860,7 @@ export function Isometric() {
           <span className="spacer" />
           <AddMenu />
         </div>
-        {hover && !resourcePreview ? <HoverCard hover={hover} scene={scene} nodes={nodes} index={index} viewport={live.current.viewport} /> : null}
+        {hover && !resourcePreview ? <HoverCard hover={hover} scene={scene} nodes={nodes} viewport={live.current.viewport} id={tooltipId} anchor={keyboardAnchor} onPointerEnter={keepTooltip} onPointerLeave={leaveTooltip} /> : null}
         {accessibleEntities}
       </div>
       {view !== "closed" ? <WorkspacePanel id={PANEL_ID} label={view === "inspector" ? "Inspector" : "Resources"} onClose={() => close()}
@@ -790,59 +886,31 @@ function HoverCard(props: {
   readonly hover: Hover;
   readonly scene: Scene;
   readonly nodes: ReadonlyMap<string, SceneNode>;
-  readonly index: ReturnType<typeof useStudio>["index"];
   readonly viewport: Viewport;
+  readonly id: string;
+  readonly anchor?: HTMLElement;
+  readonly onPointerEnter: () => void;
+  readonly onPointerLeave: () => void;
 }) {
-  const { hover: current, index } = props;
-  let title: string;
-  let lines: (string | undefined)[] = [];
-  let notes: readonly string[] = [];
-  let facts: HoverFacts | undefined;
-  let entries: readonly HoverEntry[] | undefined;
+  const { hover: current } = props;
+  let content;
   const resource = current.kind === "node" ? props.nodes.get(current.id) : current.kind === "prop" ? props.scene.props.find(prop => prop.id === current.id) : undefined;
   if (current.kind === "node" || current.kind === "prop") {
     if (!resource) return null;
-    title = resource.label;
+    content = <ResourceHoverContent resource={resource} />;
   } else if (current.kind === "edge") {
     const sceneEdge = props.scene.edges.find((candidate) => candidate.id === current.id);
     const edge = sceneEdge?.edge;
     if (!edge) return null;
-    const presentation = presentConnection(sceneEdge, props.scene.mode, index);
-    title = presentation.title;
-    facts = {
-      places: ENVIRONMENTS.flatMap(([env]) => sceneEdge.availability[env] ? [{ env, where: "Connection enabled" }] : []),
-      frameworkManaged: false,
-    };
-    lines = [`From ${endpointLabel(index, sceneEdge.from)}`, `To ${endpointLabel(index, sceneEdge.to)}`, ...presentation.lines];
-    notes = presentation.notes;
-    if (edge.relation === "supplies") {
-      facts = undefined;
-      lines = lines.slice(0, 2);
-      entries = sceneEdge.members.map(member => {
-        const supplied = member.models[props.scene.mode] ?? member.edge;
-        const detail = presentRelationship(supplied, index);
-        const parameter = index.resources.get(supplied.to);
-        const group = index.resources.get(sceneEdge.to);
-        const label = parameter?.path.slice(group?.kind === "group" ? group.path.length : -1).join(".") || detail.value;
-        return { id: supplied.id, label, availability: member.availability, note: detail.lines.join(" ") || undefined };
-      });
-    }
+    content = <ConnectionHoverContent connection={sceneEdge} />;
   } else {
     const island = props.scene.islands.find((candidate) => candidate.id === current.id);
     if (!island) return null;
     const band = props.scene.mode === "prod" && island?.bands.length && island.bands.length > 1 ? island.bands.find((band) => band.id === current.band) : undefined;
-    title = island ? `${island.title}${band ? `: ${band.title}` : ""}` : "";
-    lines = [...(island?.caption ?? []), ...(band?.caption ?? []), "Click empty terrain for island settings and service defaults."];
+    content = <HoverContent title={`${island.title}${band ? `: ${band.title}` : ""}`} subtitle="Island" lines={[...(island.caption ?? []), ...(band?.caption ?? [])]} />;
   }
-  // Stay inside the canvas: near an edge, anchor the card to the pointer's other side.
-  const { width, height } = props.viewport;
-  const placement = {
-    ...(current.x + 340 > width ? { right: Math.max(8, width - current.x + 16) } : { left: current.x + 16 }),
-    ...(current.y + 260 > height ? { bottom: Math.max(8, height - current.y + 16) } : { top: current.y + 16 }),
-  };
-  return (
-    <div className="landscape-hover" style={placement} role="tooltip">
-      {resource ? <ResourceHoverContent resource={resource} /> : <HoverContent title={title} facts={facts} lines={lines} notes={notes} entries={entries} entryContext="supply" />}
-    </div>
-  );
+  const events = { onPointerEnter: props.onPointerEnter, onPointerLeave: props.onPointerLeave };
+  const key = `${current.kind}:${current.id}:${current.band ?? ""}`;
+  return props.anchor ? <ResourceTooltip key={key} id={props.id} anchor={props.anchor} {...events}>{content}</ResourceTooltip>
+    : <CanvasTooltip key={key} id={props.id} point={current} viewport={props.viewport} {...events}>{content}</CanvasTooltip>;
 }
