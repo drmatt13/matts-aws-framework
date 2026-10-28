@@ -129,25 +129,16 @@ export function bandTrim(island: Pick<Island, "id" | "region" | "bands">, index:
 }
 
 /**
- * A development network is one raised deck of dark
- * glass rather than a slice per subnet. Its single dashed rim in the VPC violet says it is not built here; the
- * subnets are quiet zones on its surface, each a faint wash of its own colour without visible subnet headings
- * and nothing drawn between them, so the icons and labels stay the loudest things on it. Pads under the solid
- * buildings anchor them. Production networks keep their separate terraces.
+ * A development network is one raised deck rather than a slice per subnet. Its surface is a built island's
+ * opaque graphite in one colour, the VPC violet, as on the APIs island, so ghosted and solid icons stay legible:
+ * no subnet washes, headings or lines between subnets. Its dashed rim and wall edges in that violet say it is
+ * not built here. Production networks keep their separate terraces.
  */
 export const DECK = {
-  /** The glass, mixed a little toward the VPC violet: its top and each kind of wall. */
-  glass: { color: [11, 14, 24] as Rgb, tint: 0.14, top: 0.6 },
-  wall: { front: 0.5, left: 0.42, right: 0.58 },
-  /** Each subnet's wash over the glass: a whisper. */
-  zone: 0.085,
-  /** The etched grid (white), and the dashed rim of the whole deck. */
-  grid: 0.06,
+  /** The dashed rim of the whole deck. */
   rim: 0.9,
   /** The dashed edge along each wall. */
   wallEdge: 0.4,
-  /** The pad under each solid building: its fill (white) and its outline in the subnet's colour. */
-  pad: { fill: 0.05, stroke: 0.42 },
   /** The share of a built island's cast shadow, so the deck stands off the ground. */
   shadow: 0.35,
 } as const;

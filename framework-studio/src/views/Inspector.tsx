@@ -81,24 +81,25 @@ function Relations(props: { readonly id: string }) {
   if (edges.length === 0) return null;
   const outgoing = edges.filter((edge) => owns(edge.from));
   const incoming = edges.filter((edge) => owns(edge.to) && !owns(edge.from));
+  // The connection leads, as on the map; the other end is its supporting line.
   const row = (edge: ModelEdge, other: string, verb: string) => (
     <li key={`${edge.id}:${verb}`}>
-      <span>
-        <span className="muted small">{verb} </span>
+      <button className="linkish relation-title" onClick={() => select(edge.id)}>{presentRelationship(edge, index).title}</button>
+      <EnvironmentPills availability={edgeAvailability(edge, snapshot.models)} />
+      <span className="relation-endpoint small">
+        {verb}{" "}
         <button className="linkish" onClick={() => select(other)}>
           {endpointLabel(index, other)}
         </button>
-        {edge.provenance === "derived" ? <span className="muted small"> (derived)</span> : null}
-        {edge.provenance === "source" ? <span className="muted small"> ({edge.relation === "supplies" ? "input file" : "CDK source"})</span> : null}
+        {edge.provenance === "derived" ? " (derived)" : null}
+        {edge.provenance === "source" ? ` (${edge.relation === "supplies" ? "input file" : "CDK source"})` : null}
       </span>
-      <button className="linkish small" onClick={() => select(edge.id)}>{presentRelationship(edge, index).title}</button>
-      <EnvironmentPills availability={edgeAvailability(edge, snapshot.models)} />
     </li>
   );
   return (
     <InspectorDisclosure title="Connections" count={edges.length}>
       {edges.some((edge) => edge.relation === "cdk" && edge.provenance === "source") ? <p className="small muted">CDK links are inferred from direct source references. Helpers and conditional wiring may add connections this view cannot resolve.</p> : null}
-      <ul className="relations">
+      <ul className="relations connection-relations">
         {outgoing.map((edge) => row(edge, edge.to, "To"))}
         {incoming.map((edge) => row(edge, edge.from, "From"))}
       </ul>
@@ -254,7 +255,7 @@ function TargetEnvironment({ target }: { readonly target: ModelTarget }) {
   const poolEdge = poolEdges.find(edge => removalForConnection(target, edge, model, snapshot.source)?.connection === "userPool") ?? poolEdges[0];
   return <InspectorDisclosure title="Environment" count={target.environment.length + target.secrets.length}>
     <div className="env">
-      {pool.length ? <div className="env-row"><strong>User-pool identifiers</strong><div>{pool.map(entry => <div key={entry.name}><code>{entry.name}</code>{" · "}<code>{entry.value.kind === "reference" ? entry.value.display : JSON.stringify(entry.value.value)}</code></div>)}<EnvironmentBindingAction target={target} edge={poolEdge} name="User-pool identifiers" grouped /></div></div> : null}
+      {pool.length ? <div className="env-row"><strong>User-pool identifiers</strong><div>{pool.map(entry => <div key={entry.name}><code>{entry.name}</code>{" · "}<code className="muted">{entry.value.kind === "reference" ? entry.value.display : JSON.stringify(entry.value.value)}</code></div>)}<EnvironmentBindingAction target={target} edge={poolEdge} name="User-pool identifiers" grouped /></div></div> : null}
       {target.environment.filter(entry => entry.via !== "userPool").map(entry => {
         const edge = edges.find(edge => edge.relation === "env" && edge.label === entry.name && entry.value.kind === "reference" && edge.to === entry.value.resource);
         return <EnvRow key={entry.name} name={entry.name} value={entry.value.kind === "literal" ? JSON.stringify(entry.value.value) : entry.value.display}
@@ -336,17 +337,18 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         <h2><EntityIcon icon={resourceIcon(resource)} />{resource.kind === "stack" ? resource.stackClass ?? resource.path.join(".") : resource.path.at(-1)}</h2>
         <ResourceStatus resource={resource} />
         {resource.kind === "input" || resource.kind === "secret" ? <EnvironmentPills availability={catalogAvailability(snapshot.models)[resource.id] ?? { dev: false, prod: false }} label="Declaration environments" descriptions={{ dev: "declared in development", prod: "declared in production" }} unavailableDescription="not declared" /> : null}
-        {resource.frameworkStack || resource.stackUsage?.status === "unreferenced" || resource.frameworkManaged ? <details className="header-details"><summary>About this resource</summary>
-        {resource.frameworkStack ? <p className="small muted">No <code>resource.stack&lt;{resource.stackClass}&gt;()</code> entry in <code>framework-config/resources.ts</code>. Declare and link one if workloads should reference this stack's public fields.</p> : null}
-        {resource.stackUsage?.status === "unreferenced" ? <p className="small muted">Declared in the catalog, with no constructor reference in the CDK app's runtime imports. Add it to the app to include it in synthesis.</p> : null}
-        {resource.frameworkManaged === "database" ? <p className="small muted">Its database declaration owns PostgreSQL policy and placement; the framework supplies IAM-only workload connections.</p> : resource.frameworkManaged ? <p className="small muted">The framework manages this stack and its generated environment outputs.</p> : null}
-        </details> : null}
-        {resource.kind !== "stack" ? <code className="ref">resources.{resource.path.join(".")}</code> : null}
+        {resource.kind !== "stack" || !resource.frameworkStack ? <code className="ref">resources.{resource.path.join(".")}</code> : null}
         {resource.typeText ? <code className="ref">{resource.typeText}</code> : null}
         {owningGroup ? <p className="small muted">In input group <button className="linkish" onClick={() => select(owningGroup.id)}>{owningGroup.path.join(".")}</button></p> : null}
         {/* A group is declared as an object in its module and composed into the catalog by name. */}
         {group && entity?.value && entity.value.file !== entity.key.file ? <><Written location={entity.value} label="Declared in" /><Written location={entity.key} label="Added to the catalog in" /></>
           : <Written location={entity?.key} label={resource.frameworkStack ? "Class in" : resource.kind === "member" ? "Declared on the stack in" : "Written in"} />}
+        {/* Ownership and source explanations follow the identity lines. */}
+        {resource.frameworkStack || resource.stackUsage?.status === "unreferenced" || resource.frameworkManaged ? <details className="header-details"><summary>About this resource</summary>
+        {resource.frameworkStack ? <p className="small muted">No <code>resource.stack&lt;{resource.stackClass}&gt;()</code> entry in <code>framework-config/resources.ts</code>. Declare and link one if workloads should reference this stack's public fields.</p> : null}
+        {resource.stackUsage?.status === "unreferenced" ? <p className="small muted">Declared in the catalog, with no constructor reference in the CDK app's runtime imports. Add it to the app to include it in synthesis.</p> : null}
+        {resource.frameworkManaged === "database" ? <p className="small muted">Its database declaration owns PostgreSQL policy and placement; the framework supplies IAM-only workload connections.</p> : resource.frameworkManaged ? <p className="small muted">The framework manages this stack and its generated environment outputs.</p> : null}
+        </details> : null}
       </header>
       {group ? <InputGroupTags group={resource} /> : <Tags entity={resource.id} />}
       <ResourceDeployment resource={resource} />

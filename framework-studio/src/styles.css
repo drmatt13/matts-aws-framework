@@ -205,6 +205,11 @@ textarea {
   text-overflow: ellipsis;
 }
 :where(input, textarea)::placeholder { color: var(--faint); opacity: 1; }
+/* A suggestion field's own indicator becomes the select chevron, in the same place, and stays clickable. */
+:where(input[list])::-webkit-calendar-picker-indicator {
+  appearance: none; display: block; width: var(--select-icon-size); height: var(--select-icon-size); margin: 0; padding: 0; opacity: 1; cursor: pointer; color: transparent;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2385909c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / var(--select-icon-size) no-repeat;
+}
 :where(textarea) { resize: vertical; }
 :where(input[type=checkbox], input[type=radio]) { width: 16px; height: 16px; margin: 0; accent-color: var(--dev); flex: none; }
 :where(input, select, textarea):hover:not(:disabled):not(:focus) { border-color: var(--graphite); }

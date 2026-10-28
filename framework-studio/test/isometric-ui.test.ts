@@ -15,7 +15,7 @@ import { UNTAGGED_FILTER } from "../src/tag-groups";
 import { connectionMidpoint } from "../src/scene/routing";
 import { screenToWorld, worldToScreen, type Camera, type Viewport } from "../src/scene/camera";
 import { catalogAvailability } from "../src/deployment";
-import { DECK, hexRgb, ICON_TINT, ISLAND_TRIM } from "../src/scene/look";
+import { BAND_TRIM, DECK, hexRgb, ICON_TINT, ISLAND_TRIM } from "../src/scene/look";
 import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, SUBNET_LABEL, subnetLabelPresentation, subnetLabelRect, rectanglesOverlap } from "../src/scene/labels";
 import { project } from "../src/scene/iso";
 import { insidePolygon, pickEntity, pickIsland } from "../src/scene/picking";
@@ -148,7 +148,7 @@ async function mount(withInspector = false, selection?: string, initialResponse 
 test("permission connections show generated principal and scope while local database links show no cloud IAM", async () => {
   const launch = response.snapshot.models.dev.edges.find(edge => edge.relation === "runsTask")!;
   await mount(true, launch.id);
-  assert.ok(ui.screen.getByRole("heading", { name: "Runs task: invocation-test-task" }));
+  assert.ok(ui.screen.getByRole("heading", { name: "Runs task" }), "the To row names the task the heading would repeat");
   const permissions = document.querySelector<HTMLDetailsElement>(".connection-authorization")!;
   assert.ok(permissions);
   assert.equal(permissions.open, false, "permissions start behind a disclosure");
@@ -164,7 +164,7 @@ test("permission connections show generated principal and scope while local data
   ui.cleanup();
   const local = response.snapshot.models.dev.edges.find(edge => edge.relation === "database" && edge.to === "local:postgres")!;
   await mount(true, local.id);
-  assert.ok(ui.screen.getByRole("heading", { name: "Connects to: Local PostgreSQL" }));
+  assert.ok(ui.screen.getByRole("heading", { name: "Connects to database" }), "the To row names Local PostgreSQL");
   ui.fireEvent.click(ui.screen.getByText("Permissions", { selector: ".connection-authorization > summary" }));
   assert.ok(ui.screen.getAllByText("Local connection").length);
   assert.equal(ui.screen.queryByText("rds-db:connect"), null);
@@ -184,7 +184,7 @@ test("conditional deployment inspection names its framework input and points fro
   const condition = response.snapshot.models.dev.edges.find(edge => edge.relation === "deployWhen" && edge.to === "lambda:ws-connect-route")!;
   assert.ok(condition);
   await mount(true, condition.id);
-  assert.ok(ui.screen.getByRole("heading", { name: "Conditional deployment: $enableWebSocketApi" }));
+  assert.ok(ui.screen.getByRole("heading", { name: "Controls deployment" }), "the From row names the input the heading would repeat as $enableWebSocketApi");
   const endpoints = document.querySelector(".connection-header .connection-endpoints")!;
   assert.ok(endpoints);
   const rows = [...endpoints.querySelectorAll("div")].map(row => ({ direction: row.querySelector("dt")?.textContent, label: row.querySelector("button")?.textContent }));
@@ -980,7 +980,7 @@ test("MFA read and permission arcs have independent hovers and inspection", asyn
   const canvas = document.querySelector("canvas")!;
   ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 }); await draw();
-  assert.ok(ui.screen.getByRole("heading", { name: "Allow AWS actions: cognito.userPool" }));
+  assert.ok(ui.screen.getByRole("heading", { name: "Allow AWS actions" }), "the To row names cognito.userPool");
   assert.equal(document.querySelectorAll(".connection-map-member").length, 0, "the grant inspector contains no environment-read members");
 });
 
@@ -1034,7 +1034,7 @@ test("grouped route previews and member summaries retain each route name without
   const summaries = [...document.querySelectorAll(".connection-map-member > summary")];
   assert.ok(summaries.some(summary => summary.textContent?.includes(source.label)));
   assert.ok(summaries.some(summary => summary.textContent?.includes("anotherAction")));
-  assert.ok(summaries.every(summary => summary.textContent?.includes("Routes to: ")), "member titles use the same action/value format as hovers");
+  assert.ok(summaries.every(summary => !summary.textContent?.includes("Routes to: ")), "member rows name their route; the heading already names the shared purpose, as hover rows do");
   assert.equal(document.querySelector(".connection-map-label .authorization-badge"), null);
 });
 
@@ -1058,6 +1058,45 @@ test("clicking a disabled wire explains its endpoints in the inspector and the n
   assert.ok(notice.textContent?.includes(".env.prod"));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
   await ui.waitFor(() => assert.equal(ui.screen.queryByRole("note", { name: "Connection deployment status" }), null));
+});
+
+test("a bundle member names only the end and the value its heading does not", async () => {
+  const id = "connection:resource%3Aclient:client-envfile:maps";
+  await mount(true, id);
+  const map = await ui.screen.findByRole("region", { name: "Connection details" });
+  const heading = document.querySelector(".connection-header h2")!.textContent!;
+  assert.match(heading, /^Maps: \d+ client variables$/);
+  const members = [...map.querySelectorAll<HTMLDetailsElement>(".connection-map-member")];
+  assert.ok(members.length > 1);
+  for (const member of members) {
+    assert.ok(!member.querySelector("summary")!.textContent!.includes("Maps into:"), "rows do not repeat the shared purpose");
+    member.open = true;
+  }
+  await ui.waitFor(() => assert.ok(map.querySelector(".connection-map-detail .connection-endpoints")));
+  for (const member of members) {
+    const rows = [...member.querySelectorAll(".connection-map-detail .connection-endpoints > div")].map(row => [row.querySelector("dt")?.textContent, row.querySelector("dd")?.textContent]);
+    // Every member maps a different input field into the same client-app/.env.
+    assert.equal(rows.length, 1, "the shared To is the heading's");
+    assert.equal(rows[0]![0], "From");
+    assert.match(rows[0]![1]!, /^Input: client\./);
+  }
+});
+
+test("inspector connection rows lead with the connection and keep the other end as their supporting line", async () => {
+  await mount(true, "agent:example-agent");
+  const summary = await ui.screen.findByText("Connections", { selector: ".inspector-disclosure summary span" });
+  (summary.closest("details") as HTMLDetailsElement).open = true;
+  const rows = [...document.querySelectorAll<HTMLLIElement>(".connection-relations > li")];
+  assert.ok(rows.length > 3);
+  for (const row of rows) {
+    const [title, pills, endpoint] = [...row.children];
+    assert.ok(title?.matches("button.relation-title"), "the connection leads");
+    assert.match(title!.textContent!, /^[^:]+: \S/, "with its action and value");
+    assert.ok(pills?.matches(".environment-pills"));
+    assert.ok(endpoint?.matches(".relation-endpoint"));
+    assert.match(endpoint!.textContent!, /^(To|From) /);
+  }
+  assert.ok(rows.some(row => row.textContent?.includes("Reads: OPENAI_API_KEY_SECRET_ARN")), "long identifiers keep their own line instead of a narrow column");
 });
 
 test("clicking a grouped connection opens every mapping and retains it across environments", async () => {
@@ -1115,11 +1154,16 @@ test("connections available in both environments retain two pills in every inspe
 });
 
 test("in Development the real renderer strokes the unbuilt VPC as one deck with a single violet rim", async () => {
-  await mount();
+  await mount(true);
   await draw();
   const [r, g, b] = hexRgb(ISLAND_TRIM["island:vpc"]!);
   assert.ok(strokes.includes(`rgba(${r}, ${g}, ${b}, ${DECK.rim})`), "the dashed rim of the whole deck");
   assert.ok(strokes.includes(`rgba(${r}, ${g}, ${b}, ${DECK.wallEdge})`), "the dashed edge along its walls");
+  const subnetStrokes = () => strokes.filter(style => ["band:public", "band:private"].some(band => style.startsWith(`rgba(${hexRgb(BAND_TRIM[band]!).join(", ")},`)));
+  assert.deepEqual(subnetStrokes(), [], "the deck is one surface in the VPC violet: no subnet takes its own colour");
+  strokes.length = 0;
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
+  assert.ok(subnetStrokes().length > 0, "production terraces keep their subnet colours");
 });
 
 test("production subnet headings stay horizontal and legible across zoom; development draws none", () => {

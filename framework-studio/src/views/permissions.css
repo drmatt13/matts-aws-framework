@@ -9,6 +9,9 @@
 .access-summary-text { display: grid; gap: 3px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .access-summary-text > strong, .pending-access strong { font-weight: 500; }
 .incoming-access { margin-top: var(--ui-space-3); }
+.inspector .access-note { margin: var(--ui-space-3) 0 0; }
+/* A permission list that ends its section leaves the closing rule to the section. */
+.inspector :is(.section-content, .incoming-access) > .authorization-summary:last-child { border-bottom: 0; padding-bottom: 0; }
 .incoming-access > summary { color: var(--graphite); cursor: pointer; font-size: var(--ui-caption); }
 .pending-access { padding: var(--ui-space-3) 0; border-bottom: 1px solid var(--rule); }
 .pending-access > span > :last-child { color: var(--accept); }

@@ -103,8 +103,26 @@
 .section-state + .section-count { margin-left: 0; }
 .inspector .form-group { border: 0; border-top: 1px solid var(--rule); padding: var(--ui-space-3) 0 0; margin: var(--ui-space-4) 0 0; min-width: 0; }
 .inspector .form-group legend { font-size: var(--ui-label); font-weight: 600; padding: 0 var(--ui-space-2) 0 0; }
+/* A floated legend sits inside its group, so the group's rule runs above the heading rather than through it. */
+.inspector .form-group > legend { float: left; width: 100%; padding: 0; margin-bottom: var(--ui-space-3); }
+.inspector .form-group > legend + * { clear: both; }
 .inspector .form-group:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
 .inspector .header-details { margin-top: var(--ui-space-3); color: var(--graphite); font-size: var(--ui-caption); }
+/*
+ * One disclosure marker across the inspector: the section chevron, at its summary's own text size, in place of
+ * the browser's triangle or a +/- sign. Section disclosures draw an icon, permission rows are whole-row summaries
+ * and the description's summary is its Edit affordance, so they keep their own.
+ */
+:where(.inspector) details:not(.inspector-disclosure > details, .description-editor, .authorization-summary) > summary { list-style: none; }
+:where(.inspector) details:not(.inspector-disclosure > details, .description-editor, .authorization-summary) > summary::-webkit-details-marker { display: none; }
+:where(.inspector) details:not(.inspector-disclosure > details, .description-editor, .authorization-summary) > summary::before {
+  content: ""; display: inline-block; flex: none; width: 1.1em; height: 1.1em; margin-inline-end: .35em; vertical-align: -.2em;
+  background-color: var(--graphite); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+:where(.inspector) details[open]:not(.inspector-disclosure > details, .description-editor, .authorization-summary) > summary::before { transform: rotate(90deg); }
+@media (forced-colors: active) {
+  :where(.inspector) details:not(.inspector-disclosure > details, .description-editor, .authorization-summary) > summary::before { forced-color-adjust: none; background-color: CanvasText; }
+}
 .inspector .header-details summary { cursor: pointer; }
 .inspector .header-details[open] summary { margin-bottom: var(--ui-space-2); }
 
@@ -140,16 +158,17 @@
 .connection-evidence { display: grid; gap: var(--ui-space-3); margin-top: var(--ui-space-4); }
 .connection-description, .connection-configuration, .connection-authorization { margin: 10px 0; }
 .connection-description > summary, .connection-configuration > summary, .connection-authorization > summary { cursor: pointer; font-size: 12px; color: var(--graphite); }
-.connection-header > .environment-pills { margin: var(--ui-space-1) 0 var(--ui-space-2); }
+/* Every identity header gives its pills the same room between the title and the lines below. */
+.inspector-content > header > .environment-pills { display: flex; margin: var(--ui-space-1) 0 var(--ui-space-2); }
 .connection-endpoints { display: grid; gap: 3px; margin: var(--ui-space-1) 0 0; font-size: 12px; }
 .connection-endpoints > div { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 6px; }
 .connection-endpoints dt { color: var(--graphite); }
 .connection-endpoints dd { margin: 0; overflow-wrap: anywhere; }
-.connection-map-members { border-top: 1px solid var(--rule); }
-.connection-map-member { border-bottom: 1px solid var(--rule); overflow-wrap: anywhere; }
-.connection-map-member > summary::-webkit-details-marker { display: none; }
-.connection-map-member > summary::before { content: "+"; color: var(--graphite); flex: 0 0 8px; }
-.connection-map-member[open] > summary::before { content: "−"; }
+/* Rules separate members; the section's own borders bound the list, so it draws none at its edges. */
+.connection-map-member + .connection-map-member { border-top: 1px solid var(--rule); }
+.connection-map-members:first-child > .connection-map-member:first-child > summary { padding-top: 0; }
+.connection-map-member:last-child:not([open]) > summary { padding-bottom: 0; }
+.connection-map-member > summary::before { margin-inline-end: 0; }
 .connection-map-label { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .connection-map-detail .connection-endpoints { margin: 0 0 var(--ui-space-2); }
 .connection-map-detail .connection-availability { margin-top: 0; }
@@ -211,7 +230,10 @@
 .guide-code { position: relative; }
 .guide-code pre { margin: 0; padding: 32px 10px var(--ui-space-2);background: var(--wash); border-radius: var(--radius); font-family: var(--mono); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .guide-code button { position: absolute; top: 4px; right: 4px; padding: 2px var(--ui-space-2); background: var(--sheet); }
-.evidence-line { display: block; font-size: 11px; overflow-wrap: anywhere; color: var(--graphite); }
+.evidence-line { display: block; font-size: 11px; overflow-wrap: anywhere; color: var(--graphite); text-decoration: none; }
+.evidence-line:hover { color: var(--ink); text-decoration: underline; }
+/* The evidence grid's gap separates entries; each source line needs no margin of its own above it. */
+.inspector .connection-evidence > div > .written:first-child { margin-top: 0; }
 .inspector .connection-evidence .written { margin-bottom: 3px; }
 
 .inspector-content > section {
@@ -219,6 +241,8 @@
   border-bottom: 1px solid var(--rule);
 }
 .inspector-content > .inspector-disclosure { padding-block: var(--ui-space-2); }
+/* A section's own padding is its top margin; a leading notice or paragraph adds none of its own. */
+.inspector-content > section > :first-child, .inspector-content > section > .connection-details > :first-child { margin-top: 0; }
 
 .inspector h3 {
   font-size: var(--ui-label);
@@ -578,6 +602,9 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .deploy-control .field .note { grid-column: 1 / -1; }
 .deploy-control > p { margin: 0; }
 .deployment-owners { display: flex; flex-wrap: wrap; gap: var(--ui-space-2); }
+/* A long owner list is supporting detail, sized like the inspector's other secondary disclosures. */
+.deployment-ownership details > summary { color: var(--graphite); font-size: var(--ui-caption); }
+.deployment-ownership details[open] > summary { margin-bottom: var(--ui-space-2); }
 .deployment-owners button { max-width: 100%; white-space: normal; text-align: left; overflow-wrap: anywhere; }
 .deploy-condition { display: grid; min-width: 0; gap: var(--ui-space-3); margin: 0; padding: var(--ui-space-3); border: 1px solid var(--rule); border-radius: var(--ui-control-radius); }
 .deploy-condition legend { padding: 0 var(--ui-space-1); color: var(--graphite); font-size: var(--ui-caption); }
@@ -594,6 +621,8 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .env {
   font-size: var(--ui-caption); display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; }
 .env-row { display: grid; gap: var(--ui-space-1); border-bottom: 1px solid var(--rule); padding: 10px 0; overflow-wrap: anywhere; }
+.env-row:first-child { padding-top: 0; }
+.env-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .env-row > code { font-weight: 500; }
 .env-row > span { color: var(--graphite); }
 .relations li {
@@ -602,10 +631,22 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
   overflow-wrap: anywhere; padding: 10px 0; border-bottom: 1px solid var(--rule); gap: 5px 10px; align-items: start; }
 .relations li > button { max-width: 160px; overflow-wrap: anywhere; }
 .relations .environment-pills { grid-column: 1 / -1; }
+/* Lists sit inside ruled sections: rules only between rows, and no extra padding at the list's ends. */
+.inspector .relations > li:first-child { padding-top: 0; }
+.inspector .relations > li:last-child { border-bottom: 0; padding-bottom: 0; }
+/* A connection row leads with what the connection does and where it is enabled; its other end supports it. */
+.relations.connection-relations li { row-gap: 2px; }
+.relations.connection-relations li > .relation-title { max-width: none; justify-self: start; text-align: left; }
+.relations.connection-relations .environment-pills { grid-column: 2; grid-row: 1; }
+.relations.connection-relations .relation-endpoint { grid-column: 1 / -1; color: var(--graphite); overflow-wrap: anywhere; }
+.resource-consumers li { align-items: baseline; }
+.resource-consumers li > span { text-align: right; }
 .inspector .written {
   color: var(--graphite);
   display: flex;
   flex-wrap: wrap; margin-top: var(--ui-space-2); gap: 6px; align-items: center; font-size: 11px; }
+/* Consecutive source lines already have their link's touch-target height between them. */
+.inspector .written + .written { margin-top: 0; }
 .written > a { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; min-height: 28px; gap: var(--ui-space-1); text-decoration: none; color: var(--graphite); }
 .written > a > code { min-width: 0; overflow-wrap: anywhere; }
 .written > a:hover { color: var(--ink); text-decoration: underline; }
@@ -762,6 +803,7 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
 .database-environment code, .database-home code { color: var(--graphite); font-size: 11px; overflow-wrap: anywhere; }
 .database-environment > span:last-child, .database-home > span:last-child { flex: none; }
 .database-home { width: 100%; text-align: left; color: var(--ink); font: inherit; cursor: pointer; }
+.inspector :is(.database-environments, .database-home) + p { margin-top: var(--ui-space-2); }
 .database-home:hover { border-color: var(--graphite); background: var(--wash); }
 .database-placement-editor > summary { cursor: pointer; font-size: var(--ui-label); font-weight: 500; padding-block: var(--ui-space-2); }
 .database-placement-editor fieldset { min-width: 0; border: 0; padding: 0; margin: 0; }
@@ -881,6 +923,10 @@ dialog.preview[open] { display: flex; flex-direction: column; overflow: hidden; 
   .endpoint-selected { grid-template-columns: minmax(0, 1fr); }
   .database-consumers li { flex-wrap: wrap; }
   .database-consumers li > span { text-align: left; padding-left: 30px; }
+}
+/* Too narrow for a title beside its pills: the pills take their own line rather than starving the title. */
+@container inspector (max-width: 300px) {
+  .relations.connection-relations .environment-pills { grid-column: 1 / -1; grid-row: auto; }
 }
 @container inspector (max-width: 360px) {
   .tag-row, .tag-column-labels { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--ui-icon-target); }

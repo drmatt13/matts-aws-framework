@@ -356,7 +356,8 @@ export class SceneRenderer {
       const south = project({ x: island.gx1 + 0.5, y: island.gy1 + 0.5, h: island.top });
       const bands = slab.bands.map((band): GraphiteBand => {
         const meta = island.bands[band.index]!;
-        const trim = bandTrim(island, band.index);
+        // A development deck is one surface: every subnet takes the VPC's trim rather than its own colour.
+        const trim = slab.deck ? hexRgb(trimColor(island)) : bandTrim(island, band.index);
         const topFill = context.createLinearGradient(north.x, north.y, south.x, south.y);
         topFill.addColorStop(0, rgba(mixRgb(GRAPHITE.top.light, trim, GRAPHITE.tint)));
         topFill.addColorStop(1, rgba(mixRgb(GRAPHITE.top.dark, trim, GRAPHITE.tint)));
@@ -617,7 +618,7 @@ export class SceneRenderer {
     context.lineCap = "round";
     context.lineWidth = pixel;
     if (ghost === "blueprint") {
-      this.drawDeckBand(island, band);
+      this.drawDeckBand(island, band, focus);
       return;
     }
     context.globalAlpha = this.opacity * (ghost ? 0.3 : 1);
@@ -668,32 +669,29 @@ export class SceneRenderer {
   }
 
   /**
-   * One subnet of a development network, as a quiet zone on the single raised deck: the deck's dark glass
-   * with a whisper of the subnet's colour and nothing drawn between subnets, one dashed rim around the whole
-   * deck (drawn with the last subnet), and pads under the solid buildings.
+   * One subnet of a development network, as part of the single raised deck. Its top, etched grid, pads and
+   * walls are a built island's graphite, all in the VPC's trim so the subnets read as one opaque surface
+   * with nothing drawn between them. Dashed wall edges and one dashed rim around the whole deck (drawn with
+   * the last subnet) take the place of a built island's lips and glow.
    */
-  private drawDeckBand(island: GraphiteIsland, band: GraphiteBand): void {
+  private drawDeckBand(island: GraphiteIsland, band: GraphiteBand, focus: number): void {
     const context = this.context;
     const pixel = this.pixel;
     const meta = island.slab.island;
-    const violet = hexRgb(trimColor(meta));
-    const glass = (alpha: number) => rgba(mixRgb(DECK.glass.color, violet, DECK.glass.tint), alpha);
-    context.fillStyle = glass(DECK.glass.top);
-    context.fill(band.top);
-    context.fillStyle = rgba(band.trim, DECK.zone);
+    const violet = band.trim;
+    context.fillStyle = band.topFill;
     context.fill(band.top);
     context.save();
     context.clip(band.top);
-    context.strokeStyle = `rgba(255, 255, 255, ${DECK.grid})`;
+    context.strokeStyle = `rgba(255, 255, 255, ${GRAPHITE.etch})`;
     context.stroke(band.grid);
     context.restore();
-    // What stands on the deck is anchored by a pad of its own.
-    context.fillStyle = `rgba(255, 255, 255, ${DECK.pad.fill})`;
+    context.fillStyle = "rgba(255, 255, 255, 0.03)";
     context.fill(band.pads);
-    context.strokeStyle = rgba(band.trim, DECK.pad.stroke);
+    context.strokeStyle = rgba(violet, 0.34 * focus);
     context.stroke(band.pads);
     for (const wall of band.walls) {
-      context.fillStyle = glass(DECK.wall[wall.run.side]);
+      context.fillStyle = wall.fill;
       context.fill(wall.path);
     }
     context.setLineDash([4 * pixel, 4 * pixel]);

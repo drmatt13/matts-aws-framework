@@ -27,7 +27,8 @@ Filter state is a view preference and never stages a source edit.
 Tag keys and value totals use active-mode membership: enabled workload lanes and routes,
 non-absent catalog entries, enabled local services and built production VPCs. Union-topology
 placeholders retain their metadata for filtering/inspection but contribute no counts.
-Development VPCs use the continuous blueprint deck. Production renders every declared VPC
+Development VPCs use the continuous blueprint deck: one opaque surface in the VPC violet with
+dashed edges, with no per-subnet colour. Production renders every declared VPC
 and its gateways/endpoints as solid terraces, including unused VPCs. Captions and hover facts
 still report whether production actually builds the network; rendering never provisions it.
 The first tag selector includes **Untagged**, matching entities with no effective tags at all,
@@ -139,9 +140,11 @@ including `Routes to: /api/test/start-workflow`, `Starts workflow: invocation-te
 and `Reads: 3 environment values`. Calls name the configured destination, workflow steps
 name their typed operation and target, and grants retain the resource name. Tooltips,
 inspectors, member rows, Board labels and description reviews use this same formatter.
-The one exception is a single connection's hover title: when the value only repeats a
-From/To endpoint name, it keeps a complete verb phrase (`Calls tool`, `Connects to database`,
-`Provides database`, `Controls deployment`). Authored labels (route keys, variables, trigger
+The exception is a heading with From/To beneath it, the hover title and the inspector's
+`connectionTitle`: when the value only repeats a From/To endpoint name, it keeps a complete
+verb phrase (`Calls tool`, `Connects to database`, `Provides database`, `Controls deployment`).
+An inspector bundle whose members share one action lists their values only, and an expanded
+member shows only the endpoint that differs from the bundle's. Authored labels (route keys, variables, trigger
 events) always stay in the title. Deploy conditions read `Deploys when <input> equals "<value>".`
 Same-type bundles name their shared purpose and count. `presentConnectionHover` reads both
 graphs independently and retains every member, including other-environment-only evidence;

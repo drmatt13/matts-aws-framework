@@ -4,7 +4,7 @@ import type { DeploymentInputEntry, InputRequirement } from "../shared/deploymen
 import type { ModeModel, ModelEdge, ModelResource, ModelTarget, Relation, SourceLocation } from "../shared/model";
 import { withConnectionAuthorizations } from "../shared/permissions";
 import { aggregateConnections } from "../src/connections";
-import { presentConnection, presentConnectionHover, presentRelationship } from "../src/connection-presentation";
+import { connectionTitle, presentConnection, presentConnectionHover, presentRelationship } from "../src/connection-presentation";
 import { indexModel } from "../src/lookup";
 
 const source: SourceLocation = { file: "stack.ts", line: 20, column: 1, start: 100, end: 140 };
@@ -391,6 +391,18 @@ test("a single connection's title keeps its verb rather than repeating an endpoi
   const field = edge("usesTool", { from: "resource:caller", to: "resource:data", label: "data" });
   const named = hoverPair([{ ...field, to: "resource:data.first" }], [{ ...field, to: "resource:data.first" }]);
   assert.equal(presentConnectionHover(named.connection, named.indexes).title, "Calls tool: data.first", "a field folded into its stack keeps the name To does not show");
+});
+
+test("an inspector heading follows the hover rule against repeating the From and To it sits above", () => {
+  const index = indexModel(model({ resources: hoverResources }));
+  for (const relation of ["usesTool", "runsTask", "grant", "contains"] as const) {
+    const current = edge(relation, { from: "resource:caller", to: "resource:data", label: "data" });
+    const { connection, indexes } = hoverPair([current], [current]);
+    assert.equal(connectionTitle(current, index), presentConnectionHover(connection, indexes).title, relation);
+  }
+  assert.equal(connectionTitle(edge("database", { from: "resource:caller", to: "resource:data" }), index), "Connects to database");
+  assert.equal(connectionTitle(edge("usesTool", { from: "resource:caller", to: "resource:data.first" }), index), "Calls tool", "a member endpoint is named by its full path in the inspector's To row");
+  assert.equal(connectionTitle(edge("routes", { from: "resource:caller", to: "resource:data", label: "data" }), index), "Routes to: data", "authored labels stay");
 });
 
 test("a fact about the only environment that holds a connection is not qualified by it", () => {

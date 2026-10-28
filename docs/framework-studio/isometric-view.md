@@ -243,7 +243,7 @@ subnet terraces inside the VPC foundation.
   - absent stacks have ghost nodes on the shared Stacks island;
   - an island with nodes but none enabled in the selected environment uses the same
     20 % opacity and grid outline; an island with any enabled node stays solid;
-  - development VPCs are translucent blueprint decks; production uses subnet terraces,
+  - development VPCs are one-colour decks with dashed edges; production uses subnet terraces,
     solid regardless of usage. `network.builtInProd` remains a deployment fact in captions and hover details.
 - Labels have no badge for entities available in both environments. A teal flask Dev
   badge marks Development only, a violet diamond Prod badge Production only, and Off
@@ -311,12 +311,13 @@ Each island is drawn as continuous slabs, one per band, rather than a field of t
   runs while the camera is still.
 - **Ghosts.**
   - A development VPC is one
-    raised deck of dark glass rather than a slice per subnet (the `DECK` values in
-    `look.ts`). Its subnets are flush zones on that deck, each a faint wash of its own
-    colour, without subnet names or lines between zones. Development hover titles also
-    omit subnet names. A single
-    dashed rim in the VPC violet says it is not built here, a light cast shadow stands the
-    deck off the ground, and a pad under each solid building anchors it. Production VPCs
+    raised deck rather than a slice per subnet (the `DECK` values in `look.ts`). Its
+    surface is a built island's opaque graphite in one colour, the VPC violet, as on the
+    APIs island, so solid and ghosted icons stay legible. Its subnets are flush, with no
+    colour of their own, subnet names or lines between them. Development hover titles also
+    omit subnet names. A dashed rim and dashed wall edges in the VPC violet say it is not
+    built here, a light cast shadow stands the deck off the ground, and a pad under each
+    solid building anchors it. Production VPCs
     keep solid separate terraces and gateways/endpoints even when unused. Captions and
     hover details explain that a network without consumers is not actually built.
   - Disabled islands draw at 30 % with a dashed trim.

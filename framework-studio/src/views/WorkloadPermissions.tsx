@@ -4,7 +4,7 @@ import type { ModelResource, ModelTarget } from "../../shared/model";
 import { configuredAccessOptions, accessConnectionExists } from "../access-options";
 import { targetAccess, type AccessEntry } from "../access";
 import { iconUrl, targetIcon, ICONS } from "../icons";
-import { editorLink } from "../lookup";
+import { editorLink, ROLE_LABEL } from "../lookup";
 import { useStudio } from "../studio";
 import { AuthorizationBadge, AuthorizationDetails } from "./Authorization";
 import { ConfiguredResourcePicker } from "./ConfiguredResourcePicker";
@@ -147,7 +147,7 @@ export function WorkloadPermissions({ target }: { readonly target: ModelTarget }
     {owned.map(entry => <AccessRow key={entry.id} entry={entry} disabled={disabled} />)}
     <PendingAccess target={target.ref} />
     {!owned.length && !editing ? <p className="small muted">No outgoing access configured.</p> : null}
-    {target.kind === "workflow" ? <p className="small muted">Access is defined by this workflow’s steps.{source ? <> <a href={editorLink(snapshot.repositoryRoot, source)}>Open workflow definition</a>.</> : null}</p> : null}
+    {target.kind === "workflow" ? <p className="small muted access-note">Access is defined by this workflow’s steps.{source ? <> <a href={editorLink(snapshot.repositoryRoot, source)}>Open workflow definition</a>.</> : null}</p> : null}
     {incoming.length || callable ? <details className="incoming-access" open={target.kind === "workflow" || undefined}><summary>Incoming access <span className="section-count">{incoming.length}</span></summary>
       {callable && !addingCaller ? <p><button ref={caller} className="quiet" disabled={disabled} onClick={() => setAddingCaller(true)}>Add caller</button></p> : null}
       {addingCaller ? <ConsumerAccessEditor destination={target.ref} onDone={callerDone} /> : null}
@@ -190,7 +190,7 @@ export function ResourceAccess({ resource }: { readonly resource: ModelResource 
   const input = resource.kind === "input";
   return <InspectorSection title={input ? "Connected workloads" : "Workload access"} actions={!choosing ? <button ref={add} className="quiet" disabled={disabled} onClick={() => setChoosing(true)}>{input ? "Connect workload" : "Grant access"}</button> : undefined}>
     {choosing ? <ConsumerAccessEditor destination={resource.id} onDone={done} /> : null}
-    {consumers.length ? <ul className="relations">{consumers.map(target => <li key={target.ref}><button className="linkish" onClick={() => select(target.ref)}>{target.title}</button></li>)}</ul> : !choosing ? <p className="small muted">{input ? "No workloads use this input yet." : "No workloads have access yet."}</p> : null}
+    {consumers.length ? <ul className="relations resource-consumers">{consumers.map(target => <li key={target.ref}><button className="linkish" onClick={() => select(target.ref)}>{target.title}</button><span className="small muted">{ROLE_LABEL[target.role]}</span></li>)}</ul> : !choosing ? <p className="small muted">{input ? "No workloads use this input yet." : "No workloads have access yet."}</p> : null}
     <PendingAccess destination={resource.id} />
   </InspectorSection>;
 }

@@ -38,8 +38,8 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
   const disabled = !!draftState.busy || draft.conflict || live.evaluating || live.running !== null || model.stale || resource.absent || descriptionPending || environmentPending;
   return <>
     <LocalValue resource={resource} details={details} error={detailsError} busy={!!draftState.busy} onRetry={() => setReload((value) => value + 1)} />
-    <section className="resource-editor">
-      <h3>Configuration</h3>
+    {/* Its first group's legend heads the section; a generic "Configuration" heading above it said nothing more. */}
+    <section className="resource-editor" aria-label="Input settings">
       {descriptionPending ? <p className="small muted">Apply or discard the description before editing input settings.</p> : null}
       {environmentPending ? <p className="small muted">Apply or discard local value changes before editing input settings.</p> : null}
       <fieldset disabled={disabled}><FormGroup title="Input behavior">

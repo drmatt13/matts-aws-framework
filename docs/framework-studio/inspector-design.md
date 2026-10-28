@@ -167,6 +167,33 @@ inheritance expressions in every select option. Connection evidence and user-aut
 descriptions remain separate. Connection endpoints include their type (for example,
 API versus WebSocket) so identically named routes and handlers remain distinguishable.
 
+## Presentation details
+
+Every inspector follows these rules, so that generated content never repeats or crowds itself
+(audited across all 135 map inspectors in both modes on 2026-10-28):
+
+- Identity headers stack eyebrow, title, pills or badges, catalog reference and source lines
+  with one rhythm: pills keep 4 px above and 8 px below; consecutive source lines share only
+  their link's touch-target height. Catalog stacks show `resources.<key>` beneath their class
+  name, as inputs and secrets do. **About this resource** follows the identity lines.
+- One disclosure marker: section disclosures draw the lucide chevron; every other summary
+  uses the same chevron at its own text size (a CSS mask in `inspector.css`), never the
+  browser triangle or a +/− sign. Permission rows and the description's **Edit** summary
+  carry their own affordance.
+- Lists inside ruled sections draw rules only between rows, never at the list's ends, so a
+  section never shows two lines together. This covers relation, permission, environment and
+  bundle-member lists.
+- **Connections** rows lead with the connection title and its pills; the other endpoint and
+  its provenance form the supporting line, so long identifiers never break inside a narrow
+  column. Workload access rows name the consumer's kind beside it.
+- A connection heading follows the hover rule against repeating its From/To. Bundle rows
+  omit a shared action, and an expanded member lists only the endpoint that differs.
+- Local values state each fact once: the status line covers Empty and Not set, and an empty
+  value select already reads **Use default · value**, so no help line repeats either.
+- Input settings begin with their **Input behavior** group rather than a generic heading.
+  Form-group legends sit inside their group, below its rule.
+- Suggestion fields (`input[list]`) show the shared select chevron in its usual place.
+
 ## Workflows
 
 Environment search and add actions share one toolbar. Mapping rows use the same control

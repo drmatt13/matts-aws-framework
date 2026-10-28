@@ -293,14 +293,10 @@ export function presentConnectionHover(connection: ConnectionGroup, indexes: Hov
   const family = familyOf(primaryEdge);
   const from = hoverEndpoint(connection.from, indexes), to = hoverEndpoint(connection.to, indexes);
   const value = primaryEdge.relation === "supplies" ? rows[0]!.label : presentation.value;
-  // An authored label (route key, variable, event) is information even when a handler shares its name.
-  const repeats = !["routes", "env", "secret", "maps", "trigger"].includes(primaryEdge.relation)
-    && [from, to].some(endpoint => value === endpoint.label || value === `$${endpoint.label}`);
   return {
     title: !single ? `${family.verb}: ${rows.length} ${family.plural}`
       : distinctLabels ? `${family.verb}: ${family.singular}`
-      : repeats ? standaloneAction(presentation.action, primaryEdge.relation)
-      : `${presentation.action}: ${value}`,
+      : endpointTitle(presentation, primaryEdge.relation, value, [from.label, to.label]),
     from,
     to,
     availability: connection.availability,
@@ -308,6 +304,21 @@ export function presentConnectionHover(connection: ConnectionGroup, indexes: Hov
     rows: rows.map(row => ({ ...row, details: row.details.filter(detail => !sharedKeys.has(detailKey(detail))) })),
     details: single ? details : details.map(detail => SHARED_DETAILS[detail.text] ? { ...detail, text: SHARED_DETAILS[detail.text]!(family.singular) } : detail),
   };
+}
+
+/**
+ * A heading with From and To beneath it: "action: value", unless the value only repeats one of those
+ * endpoint names. An authored label (route key, variable, event) is information even when a handler shares its name.
+ */
+function endpointTitle(presentation: RelationshipPresentation, relation: Relation, value: string, endpoints: readonly string[]): string {
+  const repeats = !["routes", "env", "secret", "maps", "trigger"].includes(relation) && endpoints.some(name => value === name || value === `$${name}`);
+  return repeats ? standaloneAction(presentation.action, relation) : `${presentation.action}: ${value}`;
+}
+
+/** The inspector heading of one connection, consistent with its hover title. */
+export function connectionTitle(edge: ModelEdge, index: ModelIndex): string {
+  const presentation = presentRelationship(edge, index);
+  return endpointTitle(presentation, edge.relation, presentation.value, [endpointName(index, edge.from), endpointName(index, edge.to)]);
 }
 
 /** From and To name both ends, so a title whose value only repeats one keeps a complete verb phrase. */

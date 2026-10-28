@@ -844,9 +844,13 @@ test("blank local values show the effective default and constrained values offer
   mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "enum-hash" }, configured: false, consumers: [] }));
   await mount(resource.id);
   const field = await ui.screen.findByRole("combobox", { name: `Value for ${resource.fromEnv}` });
-  assert.ok(ui.within(ui.screen.getByRole("region", { name: "Local value" })).getByText("Using default"));
+  const local = ui.screen.getByRole("region", { name: "Local value" });
+  assert.ok(ui.within(local).getByText("Using default"));
+  assert.equal((field as HTMLSelectElement).selectedOptions[0]?.textContent, "Use default · bedrock");
+  assert.ok(!local.textContent?.includes("Default: bedrock"), "the empty select already states the default it uses");
   ui.fireEvent.change(field, { target: { value: "openai" } });
   assert.match(count(), /1 unsaved change/);
+  assert.ok(local.textContent?.includes("Default: bedrock"), "a chosen value keeps the default it replaces in view");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Use default" }));
   assert.equal((field as HTMLSelectElement).value, "");
   assert.ok(!ui.screen.queryByLabelText("Pending inspector changes"));

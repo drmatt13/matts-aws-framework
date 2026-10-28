@@ -1400,10 +1400,8 @@ test("an unbuilt VPC is one continuous deck, and a built one keeps its terraces 
   for (const band of terraces.bands) assert.equal(band.walls.filter((wall) => wall.rim && wall.side === "right").length, 1, band.id);
 });
 
-test("the unbuilt deck keeps its subnets quiet and its rim the strongest line", () => {
-  assert.ok(DECK.zone <= 0.12, "a subnet is a whisper of its colour");
-  assert.ok(DECK.zone < DECK.pad.stroke && DECK.pad.stroke < DECK.rim, "pads anchor what stands on it, and the rim outranks them");
-  assert.ok(DECK.glass.top >= 0.5 && DECK.glass.top < 0.8, "dark glass with body, still glass");
+test("the unbuilt deck's dashed rim is its strongest line", () => {
+  assert.ok(DECK.wallEdge < DECK.rim, "the rim of the whole deck outranks its wall edges");
   assert.ok(DECK.shadow > 0 && DECK.shadow < 1, "a lighter shadow than a built island's");
 });
 

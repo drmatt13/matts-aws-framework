@@ -8,7 +8,7 @@ import { EnvironmentPills } from "./DeploymentBadge";
 import { edgeAvailability } from "../connections";
 import { connectionDescriptionId } from "../../shared/descriptions";
 import { Description } from "./Description";
-import { presentRelationship } from "../connection-presentation";
+import { connectionTitle, presentRelationship } from "../connection-presentation";
 import { AuthorizationDetails } from "./Authorization";
 
 export function RequirementNotice({ requirement }: { requirement?: InputRequirement }) {
@@ -22,18 +22,20 @@ export function RequirementNotice({ requirement }: { requirement?: InputRequirem
   </div>;
 }
 
-export function ConnectionEndpoints({ from, to }: { readonly from: string; readonly to: string }) {
+/** From and To, omitting an end the surrounding heading already names (a bundle member's shared endpoint). */
+export function ConnectionEndpoints({ from, to, except }: { readonly from: string; readonly to: string; readonly except?: { readonly from: string; readonly to: string } }) {
   const { index, select } = useStudio();
+  const rows = ([["From", from], ["To", to]] as const).filter(([direction, id]) => except?.[direction === "From" ? "from" : "to"] !== id);
+  if (!rows.length) return null;
   return <dl className="connection-endpoints">
-    <div><dt>From</dt><dd><button className="linkish" onClick={() => select(from)}>{endpointLabel(index, from)}</button></dd></div>
-    <div><dt>To</dt><dd><button className="linkish" onClick={() => select(to)}>{endpointLabel(index, to)}</button></dd></div>
+    {rows.map(([direction, id]) => <div key={direction}><dt>{direction}</dt><dd><button className="linkish" onClick={() => select(id)}>{endpointLabel(index, id)}</button></dd></div>)}
   </dl>;
 }
 
 export function ConnectionView({ edge, onlyIn, availability }: { edge: ModelEdge; onlyIn?: Mode; availability?: Availability }) {
   const { snapshot, index } = useStudio();
   return <>
-    <header className="connection-header"><span className="kind">{edge.inputRequirement ? "Input connection" : "Connection"}</span><h2>{presentRelationship(edge, index).title}</h2>
+    <header className="connection-header"><span className="kind">{edge.inputRequirement ? "Input connection" : "Connection"}</span><h2>{connectionTitle(edge, index)}</h2>
       <EnvironmentPills availability={availability ?? edgeAvailability(edge, snapshot.models)} />
       <ConnectionEndpoints from={edge.from} to={edge.to} />
     </header>

@@ -58,7 +58,8 @@ export function LocalValue({ resource, details, error, busy, onRetry }: {
             </div>
           </>}
         <div id={help} className="local-input-help small muted">
-          {hasDefault ? <p>Default: <code>{resource.default}</code></p> : !value.trim() ? <p>{requiredMissing ? "A non-blank value is required." : "No local value is supplied."}</p> : null}
+          {/* The status line already says Empty or Not set, and an empty value select already reads "Use default · value". */}
+          {hasDefault && !(resource.values && !secret && value === "") ? <p>Default: <code>{resource.default}</code></p> : requiredMissing ? <p>A non-blank value is required.</p> : null}
           {edit ? <p>Review Changes to save this value. Nothing is deployed.</p> : null}
           {secret ? <p>Masked by default. Saved only in this local file.</p> : null}
           {!details.inputFile ? <p>Restart Studio to enable inline value editing.</p> : null}
