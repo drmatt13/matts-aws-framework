@@ -4,7 +4,7 @@ import type { DeploymentInputEntry, InputRequirement } from "../shared/deploymen
 import type { ModeModel, ModelEdge, ModelResource, ModelTarget, Relation, SourceLocation } from "../shared/model";
 import { withConnectionAuthorizations } from "../shared/permissions";
 import { aggregateConnections } from "../src/connections";
-import { connectionTitle, presentConnection, presentConnectionHover, presentRelationship } from "../src/connection-presentation";
+import { connectionTitle, presentConnection, presentConnectionHover, presentRelationship, suppliedByEnvironmentFile } from "../src/connection-presentation";
 import { indexModel } from "../src/lookup";
 
 const source: SourceLocation = { file: "stack.ts", line: 20, column: 1, start: 100, end: 140 };
@@ -88,6 +88,21 @@ test("input hovers show actionable state without repeating paths or generic sour
   assert.deepEqual(presentRelationship(inputEdge(requirement("missing")), inputIndex("empty")).lines, ["Required value missing."]);
   assert.deepEqual(presentRelationship(inputEdge(requirement("default")), inputIndex("empty", true)).lines, ["Uses the declaration default."]);
   assert.deepEqual(presentRelationship(inputEdge(requirement("unknown")), inputIndex("missing")).lines, ["Input status unavailable."]);
+});
+
+test("only a CDK environment file's connections share one availability across their members", () => {
+  const index = inputIndex("configured");
+  const supplies = [inputEdge(), edge("supplies", { id: "model", from: "envfile:dev", to: "resource:input", label: "MODEL_ID", provenance: "source" })];
+  const grouped = aggregateConnections(model({ edges: supplies }))[0]!;
+  const devOnly = { dev: true, prod: false };
+  const fromFile = { ...grouped, availability: devOnly, members: grouped.members.map(member => ({ ...member, availability: devOnly })) };
+  assert.equal(fromFile.members.length, 2);
+  assert.equal(suppliedByEnvironmentFile(fromFile, index), true);
+  const mixed = { ...fromFile, members: fromFile.members.map((member, at) => at ? { ...member, availability: { dev: false, prod: false } } : member) };
+  assert.equal(suppliedByEnvironmentFile(mixed, index), false, "a member that differs keeps its own pair");
+  const clientFile = indexModel(model({ resources: [{ id: "envfile:dev", path: ["Client environment"], kind: "envFile", absent: false }] }));
+  assert.equal(suppliedByEnvironmentFile(fromFile, clientFile), false, "client environment mappings are not a CDK input file");
+  assert.equal(suppliedByEnvironmentFile(aggregateConnections(model({ edges: [edge("env"), edge("env", { id: "other", label: "OTHER" })] }))[0]!, index), false);
 });
 
 test("destination input requirements take precedence over defaults on another use of the same variable", () => {

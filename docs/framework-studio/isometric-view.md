@@ -97,8 +97,10 @@ camera. See the [tooltip audit](tooltip-audit.md) for rationale and validation c
 
 Every multi-member connection and input group lists its members with Dev/Prod pills beside
 each row, without a redundant group-level pair. Single connections retain the pair near
-their title. Group pills describe declaration availability; supply pills describe delivery
-by the named file; other connection pills describe enabled relationships. All original
+their title. A connection from a CDK environment file (`cdk-app/.env.<mode>`) is the
+exception: the file belongs to one environment, so one pair beside the title describes its
+delivery and its rows carry none, in the hover and the inspector alike. Group pills describe
+declaration availability; other connection pills describe enabled relationships. All original
 members remain visible in the scrollable list. Differing labels, requirements, conditions
 and permission facts are qualified by environment. Shared default or permission details
 appear once; missing requirements and other exceptions stay with their row. Identity,
@@ -106,11 +108,11 @@ labeled From/To endpoints, rows and supporting details use separate visual block
 shared spacing tokens, while permissions remain secondary to operational information.
 
 Stack plaques carry an unplug badge when the configured CDK app has no constructor
-reference for their class in its local runtime import graph. These unattached stacks
-have transparent plaques without solid plinths; their unplug badges and names stay
-fully visible in both environments, including when another node is selected.
-Search still fades nonmatching items. A lock badge marks the
-framework's configured database, its stack and the selected root `.env` export stacks.
+reference for their class in its local runtime import graph. The badge is the only
+difference: an unattached stack's plaque, plinth and name render like any other stack.
+A lock badge marks the
+framework's configured database (production RDS and its local PostgreSQL counterpart), its
+stack and the selected root `.env` export stacks.
 The export stacks are selected by the same public-output mapping used by the exporter;
 they are not a complete framework stack inventory. Their inspector outputs use styled
 `$` symbolic source values. The database member has its own RDS
@@ -422,7 +424,8 @@ been removed; the renderer has one visual style.
    any missing required values outside that preview receive a separate notice.
    Both pills keep their names; unavailable environments are dimmed.
    Connection inspectors and their individual relationship rows use the same two pills,
-   including when both environments are enabled. Shared endpoints appear once above a
+   including when both environments are enabled; rows from a CDK environment file rely on
+   the header's pair. Shared endpoints appear once above a
    compact list of relationship names and types; expanding a row reveals its original
    field endpoints and evidence. Availability requires a
    relationship and both enabled endpoints in that graph. Selecting a grouped arc opens

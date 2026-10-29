@@ -347,7 +347,7 @@ export class SceneRenderer {
   private prepareGraphite(scene: Scene, items: readonly Standing[]): GraphiteIsland[] {
     const context = this.context;
     const ghosts = new Set([
-      ...scene.nodes.filter((node) => node.tagFiltered || node.roleIcon === "unattached" || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent").map((node) => node.id),
+      ...scene.nodes.filter((node) => node.tagFiltered || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent").map((node) => node.id),
       ...scene.props.filter((prop) => propIsGhost(prop, scene.mode)).map((prop) => prop.id),
     ]);
     return islandDrawOrder(islandSlabs(scene)).map((slab) => {
@@ -918,13 +918,11 @@ export class SceneRenderer {
     const tile = project({ x: node.gx, y: node.gy, h: node.h });
     const selected = state.selected === node.id || (state.focus.kind === "search" && state.focus.nodes.has(node.id));
     const hovered = state.hovered === node.id;
-    const unattached = node.roleIcon === "unattached";
-    const ghost = !!node.tagFiltered || unattached || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
+    const ghost = !!node.tagFiltered || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
     const factor = dimmed ? 0.32 : 1;
     if (!ghost) this.drawStand(tile, node.geometry.faces, node.icon, factor);
     this.drawPlaqueGraphite(tile, node.icon, factor * (ghost ? 0.32 : 1), selected, ghost, hovered);
-    // An unattached stack stays identifiable even though its main plaque is a ghost.
-    if (node.roleIcon) this.drawRoleIconGraphite(tile, node.roleIcon, unattached ? 1 : factor * (ghost ? 0.32 : 1), ghost && !unattached);
+    if (node.roleIcon) this.drawRoleIconGraphite(tile, node.roleIcon, factor * (ghost ? 0.32 : 1), ghost);
     if (selected || hovered) {
       trace(context, node.geometry.hull);
       context.strokeStyle = selected ? "rgba(255, 248, 230, 0.6)" : "rgba(255, 255, 255, 0.35)";
@@ -1151,7 +1149,7 @@ export class SceneRenderer {
     if (node.id === state.selected || (state.focus.kind === "search" && state.focus.nodes.has(node.id))) return 1;
     const quiet = state.focus.kind === "selection" && !state.focus.nodes.has(node.id);
     const ghost = !!node.tagFiltered || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
-    const prominence = node.roleIcon === "unattached" ? 1 : quiet ? 0.35 : ghost ? 0.7 : 1;
+    const prominence = quiet ? 0.35 : ghost ? 0.7 : 1;
     const resting = NODE_CAPTION.minOpacity + (prominence - NODE_CAPTION.minOpacity) * detail;
     return resting + (1 - resting) * hover;
   }
@@ -1177,8 +1175,7 @@ export class SceneRenderer {
     for (const { node, scale, font, text, textWidth, x, y, width, height } of layout.placed) {
       const padding = 7 * scale;
       const selected = node.id === state.selected || (state.focus.kind === "search" && state.focus.nodes.has(node.id));
-      const unattached = node.roleIcon === "unattached";
-      const ghost = !unattached && (node.tagFiltered || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent");
+      const ghost = node.tagFiltered || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
       const hover = hovers.get(node.id)!;
       const alpha = this.captionAlpha(node, state, detail, hover);
       // Let the plate dissolve faster than its name so distant islands keep a quiet texture.

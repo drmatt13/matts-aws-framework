@@ -94,7 +94,10 @@ test("framework-managed resources are flagged and application declarations are n
   assert.equal(factsOf("resource:openaiApiKey").frameworkManaged, false);
   assert.deepEqual(labels(factsOf("resource:openaiApiKey")), ["dev: AWS Secrets Manager", "prod: AWS Secrets Manager"]);
   const index = indexes();
-  for (const node of sceneOf("prod").nodes.filter((candidate) => candidate.entity !== "resource" && candidate.entity !== "gateway")) assert.equal(nodeHoverFacts(node, index).frameworkManaged, false, node.id);
+  const local = sceneOf("prod").nodes.filter((candidate) => candidate.entity === "local");
+  assert.ok(local.length, "the fixture places local PostgreSQL beside RDS");
+  for (const node of local) assert.equal(nodeHoverFacts(node, index).frameworkManaged, true, node.id);
+  for (const node of sceneOf("prod").nodes.filter((candidate) => candidate.entity !== "resource" && candidate.entity !== "gateway" && candidate.entity !== "local")) assert.equal(nodeHoverFacts(node, index).frameworkManaged, false, node.id);
 });
 
 test("an item no environment deploys gives its specific reason", () => {

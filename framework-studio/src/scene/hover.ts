@@ -227,7 +227,7 @@ export function nodeHoverFacts(node: SceneNode, indexes: ModelIndexes): HoverFac
         const service = indexes[mode].localServices.get(node.id);
         if (mode === "prod") return { reason: NOT_DEPLOYED };
         return service?.enabled ? { where: "Your machine · Docker Compose" } : { reason: "Docker Compose service, not enabled" };
-      }), false);
+      }), true);
   }
 }
 

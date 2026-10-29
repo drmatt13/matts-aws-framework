@@ -199,6 +199,15 @@ export interface ConnectionHoverPresentation {
   readonly rows: readonly ConnectionHoverRow[];
   /** Facts shared by every row; row-specific differences remain beside their owner. */
   readonly details: readonly ConnectionHoverDetail[];
+  /** Supplied by one CDK environment file: the heading's pair speaks for every row. */
+  readonly environmentFile?: boolean;
+}
+
+/** A CDK environment file belongs to one environment, so nothing it supplies can differ from the connection's own pair. */
+export function suppliedByEnvironmentFile(connection: ConnectionGroup, index: ModelIndex): boolean {
+  const { dev, prod } = connection.availability;
+  return !!index.resources.get(connection.from)?.deploymentFile
+    && connection.members.every(member => member.availability.dev === dev && member.availability.prod === prod);
 }
 
 const HOVER_MODES: readonly Mode[] = ["dev", "prod"];
@@ -303,6 +312,7 @@ export function presentConnectionHover(connection: ConnectionGroup, indexes: Hov
     aggregated: !single,
     rows: rows.map(row => ({ ...row, details: row.details.filter(detail => !sharedKeys.has(detailKey(detail))) })),
     details: single ? details : details.map(detail => SHARED_DETAILS[detail.text] ? { ...detail, text: SHARED_DETAILS[detail.text]!(family.singular) } : detail),
+    ...(suppliedByEnvironmentFile(connection, indexes[primaryMode]) ? { environmentFile: true } : {}),
   };
 }
 

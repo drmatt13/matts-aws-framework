@@ -369,7 +369,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   const localServices = model.localServices ?? [];
   byVpc.get(model.databaseNetworkId ?? "")?.isolated.push(...localServices.map((service): Item => ({
     id: service.id, entity: "local", icon: "postgres", label: service.title,
-    kindLabel: "Compose database", badge: "dev", presence: service.enabled ? "built" : "other",
+    kindLabel: "Framework-managed Compose database", roleIcon: "managed", badge: "dev", presence: service.enabled ? "built" : "other",
     presenceText: service.enabled ? "Development database, declared in docker-compose.yml. Container status is not monitored." : "Used during development on your machine.",
   })));
   for (const target of model.targets) {

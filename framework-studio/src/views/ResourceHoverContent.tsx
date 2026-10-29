@@ -41,18 +41,20 @@ export function HoverDetails({ details }: { readonly details?: readonly HoverEnt
 }
 
 /** Every member keeps its own Dev and Prod pair, beside its name. */
-export function HoverEntries({ entries, context = "declaration", label = "Input parameters and secrets" }: {
+export function HoverEntries({ entries, context = "declaration", label = "Input parameters and secrets", pills = true }: {
   readonly entries: readonly HoverEntry[];
   readonly context?: "declaration" | "supply" | "connection";
   readonly label?: string;
+  /** False when the heading's pair already describes every entry. */
+  readonly pills?: boolean;
 }) {
   if (!entries.length) return null;
   const descriptions = context === "supply" ? { dev: "supplied by this file in development", prod: "supplied by this file in production" }
     : context === "connection" ? { dev: "connection enabled in development", prod: "connection enabled in production" } : { dev: "declared in development", prod: "declared in production" };
   return <ul data-ui="landscape-hover-entries" className="m-0 grid list-none border-y border-[#ffffff14] p-0 last:border-b-0 [&>li]:grid [&>li]:grid-cols-[minmax(0,1fr)_auto] [&>li]:items-start [&>li]:gap-x-3 [&>li]:gap-y-1 [&>li]:py-2 [&>li+li]:border-t [&>li+li]:border-[#ffffff0d] [&:last-child>li:last-child]:pb-0" aria-label={label}>{entries.map(entry => <li key={entry.id}>
     <span data-ui="landscape-hover-entry-name" className="min-w-0 pt-px text-[#dfe5ed] wrap-anywhere">{entry.label}</span>
-    <EnvironmentPills availability={entry.availability} label={`${entry.label} environments`} descriptions={descriptions}
-      unavailableDescription={context === "supply" ? "not supplied by this file" : context === "connection" ? "connection not enabled" : "not declared"} />
+    {pills ? <EnvironmentPills availability={entry.availability} label={`${entry.label} environments`} descriptions={descriptions}
+      unavailableDescription={context === "supply" ? "not supplied by this file" : context === "connection" ? "connection not enabled" : "not declared"} /> : null}
     {entry.note ? <p data-ui="landscape-hover-entry-note landscape-hover-note" className="col-span-full text-caption text-[#a6b0bf]">{entry.note}</p> : null}
     <HoverDetails details={entry.details} />
   </li>)}</ul>;

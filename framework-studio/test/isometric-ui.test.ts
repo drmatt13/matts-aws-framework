@@ -1419,7 +1419,7 @@ test("input group hovers label every entry with its own environments and omit ag
   assert.ok(!card.textContent?.includes("Holds apiPort"), "the list replaces the prose name summary");
 });
 
-test("supply hovers put environment pills beside each parameter", async () => {
+test("an environment file's supply carries one pair in its hover heading and inspector header, none per parameter", async () => {
   await mount();
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
@@ -1430,15 +1430,21 @@ test("supply hovers put environment pills beside each parameter", async () => {
   assert.ok(point, "the supply wire is pickable");
   ui.fireEvent.pointerMove(document.querySelector("canvas")!, { clientX: point.x, clientY: point.y }); await draw();
   const card = await ui.screen.findByRole("tooltip");
-  assert.equal(card.querySelector("[data-ui~=\"landscape-hover-tags\"]"), null);
+  assert.deepEqual(tagsOf(card.querySelector<HTMLElement>("[data-ui~=\"landscape-hover-tags\"]")!), [["dev", "Dev: supplied by this file in development"], ["off", "Prod: not supplied by this file"]]);
   const rows = [...card.querySelectorAll<HTMLElement>("[data-ui~=\"landscape-hover-entries\"] > li")];
   assert.equal(rows.length, edge.members.length);
   for (const [at, row] of rows.entries()) {
     const parameter = response.snapshot.models.dev.resources.find(resource => resource.id === edge.members[at]!.edge.to)!;
     assert.equal(row.querySelector("[data-ui~=\"landscape-hover-entry-name\"]")?.textContent, parameter.path.at(-1));
-    assert.deepEqual(tagsOf(row), [["dev", "Dev: supplied by this file in development"], ["off", "Prod: not supplied by this file"]]);
+    assert.deepEqual(tagsOf(row), [], "the file belongs to one environment, so no row repeats the heading's pair");
   }
   assert.deepEqual(hoverEndpoints(card), { From: ["cdk-app/.env.dev", "Environment file"], To: ["client", "Input group"] });
+  ui.fireEvent.pointerDown(document.querySelector("canvas")!, { clientX: point.x, clientY: point.y, button: 0 });
+  ui.fireEvent.pointerUp(document.querySelector("canvas")!, { clientX: point.x, clientY: point.y, button: 0 });
+  const map = await ui.screen.findByRole("region", { name: "Connection details" });
+  assert.deepEqual(visibleTags(document.querySelector("[data-slot=\"connection-header\"]")!), [["dev", "Dev"], ["off", "Prod"]]);
+  assert.equal(map.querySelectorAll("[data-slot=\"connection-map-member\"]").length, edge.members.length);
+  assert.equal(map.querySelectorAll("[data-slot=\"connection-map-member\"] [data-slot=\"environment-pills\"]").length, 0);
 });
 
 test("an environment that does not deploy the item keeps its pill, dark", async () => {

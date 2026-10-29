@@ -147,6 +147,24 @@ test("every member keeps its own pair beside its name, even when all members sha
   }
 });
 
+test("a CDK environment file's supplies carry one pair in the heading instead of one per member", () => {
+  const envFile = (mode: "dev" | "prod"): ModelResource => ({ id: `envfile:${mode}`, path: [`cdk-app/.env.${mode}`], kind: "envFile", absent: false,
+    deploymentFile: { mode, path: `cdk-app/.env.${mode}`, template: `cdk-app/.env.${mode}.template`, exists: true, entries: [] } });
+  for (const mode of ["dev", "prod"] as const) {
+    const supplies = ["devOnly", "shared", "prodOnly"].map(id => edge("supplies", id, { from: `envfile:${mode}` }));
+    const files = { resources: [...resources, envFile("dev"), envFile("prod")] };
+    const pair = fixture(mode === "dev" ? supplies : [], mode === "prod" ? supplies : [], { dev: files, prod: files });
+    const { document, content } = tooltip(pair, pair.connection, true);
+    assert.equal(content.environmentFile, true);
+    assert.equal(memberRows(document).length, 3);
+    for (const row of memberRows(document)) assert.deepEqual(pillCopy(row), [], `${mode}: rows repeat nothing the heading says`);
+    const heading = document.querySelector("[data-ui~=\"landscape-hover-heading\"]")!;
+    assert.deepEqual(pillCopy(heading), mode === "dev"
+      ? ["Dev: supplied by this file in development", "Prod: not supplied by this file"]
+      : ["Dev: not supplied by this file", "Prod: supplied by this file in production"]);
+  }
+});
+
 test("mixed environment labels and missing requirements stay explicit beside permission metadata", () => {
   const permissions = { kind: "iam" as const, operation: "Read", state: "planned" as const, notes: [], grants: [{ principal: "Lambda role", policy: "Identity policy" as const, actions: ["cognito-idp:AdminGetUser"], scope: "pool" }] };
   const dev = edge("env", "shared", { label: "DEV_POOL_ID", inputRequirement: requirement("missing"), authorization: permissions });

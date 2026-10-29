@@ -4,7 +4,7 @@ import type { ConnectionGroup } from "../connections";
 import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { ConnectionDetails, ConnectionEndpoints } from "./InputRequirement";
-import { presentConnection, presentRelationship } from "../connection-presentation";
+import { presentConnection, presentRelationship, suppliedByEnvironmentFile } from "../connection-presentation";
 
 export function ConnectionMap({ connection }: { readonly connection: ConnectionGroup }) {
   const { model, index } = useStudio();
@@ -15,6 +15,8 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
   });
   // The heading already names a shared purpose ("Reads: 2 environment values"); its rows name only what differs.
   const shared = new Set(members.map(({ relationship }) => relationship.action)).size === 1;
+  // A CDK environment file's rows all share the header's pair.
+  const rowPills = !suppliedByEnvironmentFile(connection, index);
   return <>
     <header data-slot="connection-header"><span className={"text-graphite text-meta font-medium tracking-[.03em]"}>Connection</span><h2>{presentation.title}</h2><EnvironmentPills availability={connection.availability} />
       <ConnectionEndpoints from={connection.from} to={connection.to} />
@@ -27,7 +29,7 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
           return <details key={edge.id} className={"[&:last-child:not([open])>summary]:pb-0 [&>summary>svg:first-child]:mr-0 [&>summary]:flex [&>summary]:gap-2 [&>summary]:items-center [&>summary]:cursor-pointer [&>summary]:text-caption [&>summary]:list-none [&>summary]:p-[var(--space-3)_0]"} data-slot="connection-map-member">
             <InspectorSummary>
               <span className={"grid [gap:2px] min-w-0 flex-1 [&_code]:wrap-anywhere [&_code]:text-caption"} data-slot="connection-map-label">{shared ? relationship.value : relationship.title}</span>
-              <EnvironmentPills availability={member.availability} />
+              {rowPills ? <EnvironmentPills availability={member.availability} /> : null}
             </InspectorSummary>
             <div className={"pb-3 text-caption [&>[data-slot=connection-endpoints]]:mt-0 [&>[data-slot=connection-endpoints]]:mb-2 [&_[data-slot=connection-availability]]:mt-0"} data-slot="connection-map-detail">
               <ConnectionEndpoints from={edge.from} to={edge.to} except={{ from: connection.from, to: connection.to }} />
