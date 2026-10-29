@@ -1,0 +1,36 @@
+/* CodeMirror owns these nodes; its theme and lexical token classes are the vendor adapter. */
+/* Match the former low-specificity form foundation without overriding CodeMirror's own classes. */
+:where([data-prisma-editor] input:not([type=checkbox]):not([type=radio])) {
+  min-width: 0; max-width: 100%; min-height: var(--control-height); padding: var(--space-1) var(--control-padding);
+  border: 1px solid var(--rule-strong); border-radius: var(--radius); background-color: var(--paper); color: var(--ink);
+  font: 400 var(--text-label)/1.5 var(--sans); transition: border-color var(--motion-fast), background-color var(--motion-fast);
+}
+:where([data-prisma-editor] input)::placeholder { color: var(--faint); opacity: 1; }
+:where([data-prisma-editor] input):hover:not(:disabled):not(:focus) { border-color: var(--graphite); }
+:where([data-prisma-editor] input):disabled { opacity: .55; cursor: not-allowed; }
+:where([data-prisma-editor] input, [data-prisma-editor] button)[aria-invalid=true] { border-color: var(--refuse); }
+:where([data-prisma-editor] input[type=checkbox], [data-prisma-editor] input[type=radio]) { width: 16px; height: 16px; margin: 0; accent-color: var(--dev); flex: none; }
+[data-prisma-editor] { --prisma-keyword: #7444a1; --prisma-type: #126575; --prisma-string: #97601f; --prisma-comment: #64756b; }
+.prisma-token-keyword, .prisma-token-attribute { color: var(--prisma-keyword); }
+.prisma-token-type, .prisma-token-function { color: var(--prisma-type); }
+.prisma-token-definition { color: var(--ink); font-weight: 600; }
+.prisma-token-string { color: var(--prisma-string); }
+.prisma-token-number { color: var(--dev); }
+.prisma-token-comment { color: var(--prisma-comment); font-style: italic; }
+.prisma-token-invalid { text-decoration: underline wavy var(--refuse); }
+[data-prisma-editor] .cm-search { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 8px 28px 8px 10px; font-size: 12px; }
+[data-prisma-editor] .cm-search input { min-height: 28px; font: 12px var(--mono); padding: 3px 6px; }
+[data-prisma-editor] .cm-search label { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+[data-prisma-editor] .cm-search input[type=checkbox] { min-height: initial; margin: 0; }
+[data-prisma-editor] .cm-search button { min-height: 26px; font: 12px var(--sans); padding: 2px 6px; }
+[data-prisma-editor] .cm-search button[name=close] { position: absolute; right: 4px; top: 5px; }
+[data-prisma-editor] .cm-tooltip-autocomplete { max-width: min(520px, 80vw); }
+[data-prisma-editor] .cm-tooltip-autocomplete ul { font: 12px/1.8 var(--mono); }
+[data-prisma-editor] .cm-completionInfo { padding: 9px 12px; font: 12px/1.6 var(--sans); max-width: 330px; white-space: normal; }
+[data-prisma-editor] .cm-diagnostic { font: 12px/1.6 var(--sans); }
+[data-prisma-editor] .cm-diagnosticSource { font: 10px var(--mono); color: var(--graphite); }
+[data-prisma-editor] .cm-lintRange-error { background-image: none; text-decoration: underline wavy var(--refuse); text-underline-offset: 3px; }
+[data-prisma-editor] .cm-lintRange-warning { background-image: none; text-decoration: underline wavy var(--local); text-underline-offset: 3px; }
+@media (prefers-color-scheme: dark) {
+  [data-prisma-editor] { --prisma-keyword: #c29be2; --prisma-type: #7bcbd1; --prisma-string: #dfb379; --prisma-comment: #95a99d; }
+}

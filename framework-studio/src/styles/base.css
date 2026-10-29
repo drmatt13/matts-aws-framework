@@ -1,0 +1,26 @@
+/* Owner: Studio document foundation. No component appearance lives here.
+ * Preflight is intentionally omitted to preserve native document/control rules.
+ * Browser-owned pseudo-elements and accessibility safeguards belong here. */
+*, *::before, *::after { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: var(--text-body)/1.45 var(--sans); -webkit-font-smoothing: antialiased; }
+button, select, input, textarea { font: inherit; color: inherit; }
+a { color: inherit; }
+code { font-family: var(--mono); font-size: 0.86em; }
+:focus-visible { outline: 2px solid var(--prod); outline-offset: 2px; }
+/* Utilities must never reveal mounted inactive panels or a closed native dialog. */
+[hidden]:not([hidden="until-found"]) { display: none !important; }
+dialog:not([open]) { display: none; }
+:where(button, summary, a) { -webkit-tap-highlight-color: transparent; }
+:where(button) { touch-action: manipulation; }
+:where(button):disabled { cursor: not-allowed; }
+:where(summary) { cursor: pointer; }
+:where(input[list])::-webkit-calendar-picker-indicator {
+  appearance: none; display: block; width: 14px; height: 14px; margin: 0; padding: 0; opacity: 1; cursor: pointer; color: transparent;
+  background: var(--select-chevron) center / 14px no-repeat;
+}
+/* Search controls provide explicit accessible clear actions. */
+input[type="search"][data-clear-action]::-webkit-search-cancel-button { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: 0s !important; }
+}

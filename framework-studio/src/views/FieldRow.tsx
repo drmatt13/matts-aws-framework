@@ -1,3 +1,8 @@
+import { InspectorSummary } from "./InspectorUI";
+import { Select, TextInput } from "../ui/FormControls";
+import { buttonClasses } from "../ui/Button";
+import { cx } from "../ui/classes";
+import { inspectorFieldClasses, inspectorLabelClasses, inspectorControlClasses, inspectorLockedClasses, inspectorHelpClasses, inspectorFullWidthHelpClasses } from "../inspector-ui";
 import { useId } from "react";
 import type { Editability, FieldFact, ModelTarget } from "../../shared/model";
 import { describeValue } from "../lookup";
@@ -41,23 +46,23 @@ function ValueField({ target, fact, editability, allowInherit }: Props) {
   const inheritLabel = fact.inherited ? `Inherit · ${display(inherited)}${unit}` : "Inherit";
   const numericDefault = fact.domain.kind === "number" && inherited !== undefined;
   const describedBy = [numericDefault ? `${id}-default` : undefined, entry?.error ? `${id}-error` : undefined].filter(Boolean).join(" ") || undefined;
-  return <div className={`field ${entry ? "field-dirty" : ""}`}>
-    {locked ? <span className="name">{fact.label}</span> : <label className="name" htmlFor={id}>{fact.label}</label>}
-    <span className="control">
-      {locked ? <code>{display(fact.effective)}{unit}</code> : fact.domain.kind === "enum" ? <select id={id} value={value === undefined ? INHERIT : String(value)} onChange={(event) => draft.setField(target.ref, fact, event.target.value === INHERIT ? undefined : event.target.value)} aria-label={fact.label} aria-invalid={!!entry?.error} aria-describedby={describedBy} disabled={!!draftState.busy || live.evaluating}>
+  return <div className={cx(inspectorFieldClasses, entry ? "[&_[data-slot=field-label]]:after:content-['_•'] [&_[data-slot=field-label]]:after:text-dev" : "")} data-slot="field">
+    {locked ? <span className={inspectorLabelClasses} data-slot="field-label">{fact.label}</span> : <label className={inspectorLabelClasses} htmlFor={id} data-slot="field-label">{fact.label}</label>}
+    <span className={inspectorControlClasses} data-slot="control">
+      {locked ? <code>{display(fact.effective)}{unit}</code> : fact.domain.kind === "enum" ? <Select id={id} value={value === undefined ? INHERIT : String(value)} onChange={(event) => draft.setField(target.ref, fact, event.target.value === INHERIT ? undefined : event.target.value)} aria-label={fact.label} aria-invalid={!!entry?.error} aria-describedby={describedBy} disabled={!!draftState.busy || live.evaluating}>
         {fact.domain.values.map((value) => <option key={String(value)} value={String(value)}>{display(value)}</option>)}
         {allowInherit !== false ? <option value={INHERIT}>{inheritLabel}</option> : null}
-      </select> : <><input id={id} type="number" min={fact.domain.min} max={fact.domain.max} required={allowInherit === false} value={value === undefined ? "" : String(value)} placeholder={inherited === undefined ? "" : String(inherited)} onChange={(event) => draft.setField(target.ref, fact, event.target.validity.badInput ? "Invalid number" : event.target.value === "" ? undefined : event.target.value)} aria-label={`${fact.label} in ${fact.domain.unit}`} aria-invalid={!!entry?.error} aria-describedby={describedBy} disabled={!!draftState.busy || live.evaluating} /><span className="muted small">{fact.domain.unit}</span></>}
+      </Select> : <><TextInput id={id} type="number" min={fact.domain.min} max={fact.domain.max} required={allowInherit === false} value={value === undefined ? "" : String(value)} placeholder={inherited === undefined ? "" : String(inherited)} onChange={(event) => draft.setField(target.ref, fact, event.target.validity.badInput ? "Invalid number" : event.target.value === "" ? undefined : event.target.value)} aria-label={`${fact.label} in ${fact.domain.unit}`} aria-invalid={!!entry?.error} aria-describedby={describedBy} disabled={!!draftState.busy || live.evaluating} /><span className="min-w-[3ch] shrink-0 whitespace-nowrap text-caption text-graphite" data-slot="field-unit">{fact.domain.unit}</span></>}
     </span>
-    {entry?.error ? <span className="locked" role="alert" id={`${id}-error`}>{entry.error}</span> : null}
-    <div className="note field-support">
-    {numericDefault ? <div className="numeric-default">
+    {entry?.error ? <span className={inspectorLockedClasses} role="alert" id={`${id}-error`} data-slot="locked">{entry.error}</span> : null}
+    <div className={cx(inspectorHelpClasses, "flex flex-wrap items-baseline gap-x-3 empty:hidden [&>details]:min-w-0 [&>details[open]]:basis-full")} data-slot="field-support">
+    {numericDefault ? <div className={"flex items-baseline flex-wrap gap-[var(--space-1)_var(--space-3)] [&>button]:[font:inherit]"} data-slot="numeric-default">
       <span id={`${id}-default`} title={fact.inherited?.from}>Default: {display(inherited)}{unit}</span>
-      {value !== undefined && allowInherit !== false && !locked ? <button className="linkish" aria-label={`Use default ${fact.label.toLowerCase()}`} disabled={!!draftState.busy || live.evaluating} onClick={() => draft.setField(target.ref, fact, undefined)}>Use default</button> : null}
+      {value !== undefined && allowInherit !== false && !locked ? <button className={buttonClasses({ variant: "link" })} aria-label={`Use default ${fact.label.toLowerCase()}`} disabled={!!draftState.busy || live.evaluating} onClick={() => draft.setField(target.ref, fact, undefined)}>Use default</button> : null}
     </div> : null}
-    {locked ? null : <details className="field-origin"><summary>{entry ? "Unsaved change" : fact.authored === undefined ? "Inherited value" : "Configured here"}</summary><span>{entry ? `Unsaved: ${value === undefined ? inheritLabel : display(value) + unit}.` : fact.authored === undefined ? `Inherited: ${display(draft.effective(target.ref, fact))}${unit} from ${fact.provenance}.` : `Written as ${describeValue(fact.authored)}.`}</span></details>}
+    {locked ? null : <details className={"[&>summary]:min-h-(--panel-caption-target) [&>summary]:cursor-pointer [&>summary]:py-1 [&>summary]:text-caption [&>summary]:leading-[1.5] [&>summary]:text-graphite [&[open]>span]:block [&[open]>span]:pt-1 [&[open]>span]:wrap-anywhere"} data-slot="field-origin"><InspectorSummary>{entry ? "Unsaved change" : fact.authored === undefined ? "Inherited value" : "Configured here"}</InspectorSummary><span>{entry ? `Unsaved: ${value === undefined ? inheritLabel : display(value) + unit}.` : fact.authored === undefined ? `Inherited: ${display(draft.effective(target.ref, fact))}${unit} from ${fact.provenance}.` : `Written as ${describeValue(fact.authored)}.`}</span></details>}
     </div>
-    {locked ? <span className="locked">{locked}</span> : null}
+    {locked ? <span className={inspectorLockedClasses} data-slot="locked">{locked}</span> : null}
   </div>;
 }
 
@@ -69,11 +74,11 @@ export function BooleanField({ target, fact, editability, description }: Props) 
   const enabled = draft.effective(target.ref, fact) === true;
   const entry = draft.field(target.ref, fact);
   const describedBy = [description ? `${id}-help` : undefined, locked || entry?.error ? `${id}-status` : undefined].filter(Boolean).join(" ") || undefined;
-  return <div className={`field ${entry ? "field-dirty" : ""}`}>
-    <label className="name" htmlFor={id}>{fact.label}</label><span className="control"><InspectorSwitch id={id} label={fact.label} checked={enabled} describedBy={describedBy} invalid={!!entry?.error} disabled={!!locked || !!draftState.busy || live.evaluating} onChange={() => draft.toggleField(target.ref, fact)} /></span>
-    {description ? <span className="note field-help" id={`${id}-help`}>{description}</span> : null}
-    <details className="note field-origin"><summary>{entry ? "Unsaved change" : fact.authored === undefined ? "Inherited value" : "Configured here"}</summary><span>{fact.authored === undefined ? `Inherited from ${fact.provenance}.` : "Written in this configuration."}</span>
-    {draft.value(target.ref, fact) !== undefined && fact.inherited && !locked ? <span className="note"><button className="linkish small" disabled={!!draftState.busy || live.evaluating} onClick={() => draft.setField(target.ref, fact, undefined)}>Use inherited value ({draft.inherited(fact) ? "On" : "Off"})</button></span> : null}</details>
-    {locked || entry?.error ? <span className="locked" id={`${id}-status`} role={entry?.error ? "alert" : undefined}>{locked ?? entry?.error}</span> : null}
+  return <div className={cx(inspectorFieldClasses, entry ? "[&_[data-slot=field-label]]:after:content-['_•'] [&_[data-slot=field-label]]:after:text-dev" : "")} data-slot="field">
+    <label className={inspectorLabelClasses} htmlFor={id} data-slot="field-label">{fact.label}</label><span className={inspectorControlClasses} data-slot="control"><InspectorSwitch id={id} label={fact.label} checked={enabled} describedBy={describedBy} invalid={!!entry?.error} disabled={!!locked || !!draftState.busy || live.evaluating} onChange={() => draft.toggleField(target.ref, fact)} /></span>
+    {description ? <span className={inspectorFullWidthHelpClasses} id={`${id}-help`} data-slot="field-help">{description}</span> : null}
+    <details className={cx(inspectorFullWidthHelpClasses, "[&>summary]:min-h-(--panel-caption-target) [&>summary]:cursor-pointer [&>summary]:py-1 [&>summary]:text-caption [&>summary]:leading-[1.5] [&>summary]:text-graphite [&[open]>span]:block [&[open]>span]:pt-1 [&[open]>span]:wrap-anywhere")} data-slot="field-origin"><InspectorSummary>{entry ? "Unsaved change" : fact.authored === undefined ? "Inherited value" : "Configured here"}</InspectorSummary><span>{fact.authored === undefined ? `Inherited from ${fact.provenance}.` : "Written in this configuration."}</span>
+    {draft.value(target.ref, fact) !== undefined && fact.inherited && !locked ? <span className={inspectorFullWidthHelpClasses} data-slot="note"><button className={cx(buttonClasses({ variant: "link" }), "text-caption")} disabled={!!draftState.busy || live.evaluating} onClick={() => draft.setField(target.ref, fact, undefined)}>Use inherited value ({draft.inherited(fact) ? "On" : "Off"})</button></span> : null}</details>
+    {locked || entry?.error ? <span className={inspectorLockedClasses} id={`${id}-status`} role={entry?.error ? "alert" : undefined} data-slot="locked">{locked ?? entry?.error}</span> : null}
   </div>;
 }

@@ -1,3 +1,6 @@
+import { buttonClasses } from "../ui/Button";
+import { cx } from "../ui/classes";
+import { inputGroupRelationListClasses, inspectorRelationListClasses } from "../inspector-ui";
 import { useMemo } from "react";
 import type { ModelResource } from "../../shared/model";
 import { catalogAvailability } from "../deployment";
@@ -39,20 +42,20 @@ export function InputGroupEntries({ group }: { readonly group: ModelResource }) 
     const entry = draft.creation();
     if (entry) draft.setCreation(entry.resourceKind, { ...entry.form, group: group.path[0]! });
   });
-  return <InspectorSection title="Entries" className="input-group-entries"
+  return <InspectorSection title="Entries" className={"[&_[data-slot=relations]>li]:grid-cols-[minmax(0,1fr)_auto] [&_[data-slot=relations]>li]:items-center [&_[data-slot=relations]>li]:gap-x-3 [&_[data-slot=relations]>li]:gap-y-1 [&_[data-slot=environment-pills]]:col-auto [&_li>code]:col-span-full [&_li>[data-slot=local-input-status]]:col-span-full [&_li>span]:col-span-full"}
     description={`${entryCount(groupEntries(group, model.resources))}. Select an entry to edit its local value, default, requirement or consumers.`}
-    actions={addable ? <button className="quiet" disabled={disabled} onClick={add}>Add input</button> : undefined}>
-    {children.length ? <ul className="relations">{children.map((child) => {
+    actions={addable ? <button className={buttonClasses({ variant: "quiet" })} disabled={disabled} onClick={add}>Add input</button> : undefined} data-slot="input-group-entries">
+    {children.length ? <ul className={inputGroupRelationListClasses} data-slot="relations">{children.map((child) => {
       const nested = child.kind === "group";
       const status = nested ? { text: entryCount(groupEntries(child, model.resources)) } : entryStatus(child, file);
       return <li key={child.id}>
-        <span className="input-group-entry-name"><EntityIcon icon={resourceIcon(child)} /><button className="linkish" onClick={() => select(child.id)}>{child.path.at(-1)}</button></span>
+        <span className={"flex items-center gap-2 min-w-0 [&>button]:max-w-none [&>button]:wrap-anywhere [&>button]:text-left [&>[data-entity-icon]]:size-5 [&>[data-entity-icon]]:flex-none"} data-slot="input-group-entry-name"><EntityIcon icon={resourceIcon(child)} /><button className={buttonClasses({ variant: "link" })} onClick={() => select(child.id)}>{child.path.at(-1)}</button></span>
         <EnvironmentPills availability={availability[child.id] ?? { dev: false, prod: false }} label={`${child.path.at(-1)} environments`}
           descriptions={{ dev: "declared in development", prod: "declared in production" }} unavailableDescription="not declared" />
-        {child.fromEnv ? <code className="small muted">{child.fromEnv}</code> : <span className="small muted">{nested ? "Input group" : child.kind === "secret" ? "Secret" : "Input"}</span>}
-        <span className={`local-input-status${status.tone ? ` ${status.tone}` : ""}`}><span aria-hidden /><span className="inspector-status-copy">{child.kind === "secret" && !nested ? `Secret · ${status.text}` : status.text}</span></span>
+        {child.fromEnv ? <code className={"text-caption text-graphite"}>{child.fromEnv}</code> : <span className={"text-caption text-graphite"}>{nested ? "Input group" : child.kind === "secret" ? "Secret" : "Input"}</span>}
+        <span className={cx("flex items-center [gap:6px] mb-2 text-graphite text-caption [&>span:first-child]:flex-none [&>span:first-child]:w-1.5 [&>span:first-child]:h-1.5 [&>span:first-child]:rounded-full [&>span:first-child]:bg-graphite", status.tone ? status.tone : "")} data-slot="local-input-status"><span aria-hidden /><span className={"grid min-w-0 [&>span]:[grid-area:1/1] [&>[aria-hidden=true]]:invisible"} data-slot="inspector-status-copy">{child.kind === "secret" && !nested ? `Secret · ${status.text}` : status.text}</span></span>
       </li>;
-    })}</ul> : <p className="small muted">This group holds no entries yet.</p>}
+    })}</ul> : <p className={"text-caption text-graphite"}>This group holds no entries yet.</p>}
   </InspectorSection>;
 }
 
@@ -62,11 +65,11 @@ export function InputGroupUse({ group }: { readonly group: ModelResource }) {
   const entries = groupEntries(group, model.resources);
   const name = (id: string) => index.resources.get(id)?.path.at(-1) ?? id;
   const reads = (ids: readonly string[]) => ids.length === entries.length && entries.length > 1 ? `Reads all ${entries.length} entries` : `Reads ${nameList(ids.map(name))}`;
-  return <InspectorSection title="Used by" className="input-group-use"
-    description={use.readers.length + use.feeds.length ? undefined : "Nothing reads these entries in this graph. Select an entry to connect a workload."}>
-    {use.readers.length + use.feeds.length ? <ul className="relations">
-      {use.readers.map((reader) => <li key={reader.id}><button className="linkish" onClick={() => select(reader.id)}>{titleOf(index, reader.id)}</button><span className="small muted">{reads(reader.entries)}</span></li>)}
-      {use.feeds.map((feed) => <li key={feed.id}><button className="linkish" onClick={() => select(feed.id)}>{titleOf(index, feed.id)}</button><span className="small muted">{feed.relation === "maps" ? `Maps ${nameList(feed.entries.map(name))}` : `Deploys when ${nameList(feed.entries.map(name))} matches`}</span></li>)}
+  return <InspectorSection title="Used by" className={"[&_li>span]:text-right inspector-360:[&_[data-slot=relations]>li]:grid-cols-1 inspector-360:[&_li>span]:text-left"}
+    description={use.readers.length + use.feeds.length ? undefined : "Nothing reads these entries in this graph. Select an entry to connect a workload."} data-slot="input-group-use">
+    {use.readers.length + use.feeds.length ? <ul className={inspectorRelationListClasses} data-slot="relations">
+      {use.readers.map((reader) => <li key={reader.id}><button className={buttonClasses({ variant: "link" })} onClick={() => select(reader.id)}>{titleOf(index, reader.id)}</button><span className={"text-caption text-graphite"}>{reads(reader.entries)}</span></li>)}
+      {use.feeds.map((feed) => <li key={feed.id}><button className={buttonClasses({ variant: "link" })} onClick={() => select(feed.id)}>{titleOf(index, feed.id)}</button><span className={"text-caption text-graphite"}>{feed.relation === "maps" ? `Maps ${nameList(feed.entries.map(name))}` : `Deploys when ${nameList(feed.entries.map(name))} matches`}</span></li>)}
     </ul> : null}
   </InspectorSection>;
 }
@@ -85,10 +88,10 @@ export function InputGroupSources({ group }: { readonly group: ModelResource }) 
   }
   if (!files.size) return null;
   return <InspectorDisclosure title="Environment file sources" count={files.size}>
-    <p className="small muted">Names and presence only. Open a file inspector to edit its local values.</p>
-    <ul className="relations">{[...files].map(([file, counts]) => <li key={file}>
-      <button className="linkish" onClick={() => select(file.endsWith(".dev") ? "envfile:dev" : "envfile:prod")}>{file}</button>
-      <span className="small muted">{[counts.configured ? `${counts.configured} set` : "", counts.defaulted ? `${counts.defaulted} using defaults` : "", counts.unset ? `${counts.unset} not set` : ""].filter(Boolean).join(" · ")}</span>
+    <p className={"text-caption text-graphite"}>Names and presence only. Open a file inspector to edit its local values.</p>
+    <ul className={inspectorRelationListClasses} data-slot="relations">{[...files].map(([file, counts]) => <li key={file}>
+      <button className={buttonClasses({ variant: "link" })} onClick={() => select(file.endsWith(".dev") ? "envfile:dev" : "envfile:prod")}>{file}</button>
+      <span className={"text-caption text-graphite"}>{[counts.configured ? `${counts.configured} set` : "", counts.defaulted ? `${counts.defaulted} using defaults` : "", counts.unset ? `${counts.unset} not set` : ""].filter(Boolean).join(" · ")}</span>
     </li>)}</ul>
   </InspectorDisclosure>;
 }
@@ -102,11 +105,11 @@ export function InputGroupTags({ group }: { readonly group: ModelResource }) {
     const tag = JSON.stringify([key, value]);
     tags.set(tag, (tags.get(tag) ?? 0) + 1);
   }
-  return <InspectorDisclosure title="Tags" className="declaration-tags" count={tags.size}>
-    <p className="section-description">A group organizes catalog entries and owns no AWS resource, so it has no tags of its own. Tag each entry from its inspector.</p>
-    {tags.size ? <div className="inherited-tags">{[...tags].map(([tag, count]) => {
+  return <InspectorDisclosure title="Tags" className={"[&>[data-slot=section-content]]:grid [&>[data-slot=section-content]]:gap-3 [&>[data-slot=section-content]>:is(p,dl)]:m-0"} count={tags.size} data-slot="declaration-tags">
+    <p className={"mb-3 text-caption leading-[1.5] text-graphite"} data-slot="section-description">A group organizes catalog entries and owns no AWS resource, so it has no tags of its own. Tag each entry from its inspector.</p>
+    {tags.size ? <div className={"grid gap-2"} data-slot="inherited-tags">{[...tags].map(([tag, count]) => {
       const [key, value] = JSON.parse(tag) as [string, string];
-      return <div className="inherited-tag" key={tag}><code>{key}</code><span>{value || "(empty)"}</span><span className="small muted">{count === entries.length ? "Every entry" : `${count} of ${entries.length}`}</span></div>;
-    })}</div> : <p className="small muted">No entry carries a tag.</p>}
+      return <div className={"grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-[6px] text-caption wrap-anywhere"} key={tag} data-slot="inherited-tag"><code>{key}</code><span>{value || "(empty)"}</span><span className={"text-caption text-graphite"}>{count === entries.length ? "Every entry" : `${count} of ${entries.length}`}</span></div>;
+    })}</div> : <p className={"text-caption text-graphite"}>No entry carries a tag.</p>}
   </InspectorDisclosure>;
 }

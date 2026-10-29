@@ -1,3 +1,6 @@
+import { cx } from "../ui/classes";
+import { buttonClasses } from "../ui/Button";
+
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JobView, OperationKind, OperationRequest, PlanView, StackEventView } from "../../shared/deploy";
@@ -12,7 +15,6 @@ import { Rail, type RailRow } from "./deploy/Rail";
 import { ServiceLogs, Teardown } from "./deploy/Teardown";
 import { DeploymentIdentities, FrontendRelease } from "./deploy/FrontendRelease";
 import { LifecycleDisclosure } from "./DataRetention";
-import "./deploy/deploy.css";
 
 /**
  * Deploy & Run: what this repository intends, what the chosen account holds,
@@ -223,11 +225,11 @@ export function Deploy() {
   const reviewBusy = reviewKey ? runningFor(plansQuery.data?.find((plan) => plan.key === reviewKey)?.deployment)?.title : undefined;
 
   const readError = overviewQuery.error ?? discoveryQuery.error ?? statusQuery.error ?? plansQuery.error;
-  if (overviewQuery.error && !overview) return <div className="deploy-empty" role="alert"><h1>Deploy & Run could not be read</h1><p className="diagnostic">{overviewQuery.error instanceof Error ? overviewQuery.error.message : String(overviewQuery.error)}</p><button className="quiet" onClick={() => void overviewQuery.refetch()}>Try again</button></div>;
-  if (!overview) return <p className="empty" role="status">Reading this machine and its AWS profiles…</p>;
+  if (overviewQuery.error && !overview) return <div className={"max-w-[640px] px-6 py-8 [&>h1]:mt-0 [&>h1]:mb-2.5 [&>h1]:font-condensed [&>h1]:text-[26px] [&>h1]:font-semibold"} role="alert"><h1>Deploy & Run could not be read</h1><p className={"border-l-[3px] border-refuse py-0.5 pl-[10px]"}>{overviewQuery.error instanceof Error ? overviewQuery.error.message : String(overviewQuery.error)}</p><button className={buttonClasses({ variant: "quiet", size: "regular" })} onClick={() => void overviewQuery.refetch()}>Try again</button></div>;
+  if (!overview) return <p className={"px-6 py-20 text-center text-graphite"} role="status">Reading this machine and its AWS profiles…</p>;
 
   return (
-    <div className="deploy-view">
+    <div className={"grid h-full min-h-0 grid-cols-[minmax(0,1fr)] grid-rows-[auto_minmax(0,1fr)_auto] vp-900:h-auto"}>
       <AccountBar
         profiles={overview.profiles}
         profile={profile}
@@ -243,12 +245,12 @@ export function Deploy() {
         onRemedy={remedy}
       />
       {overview.profiles.length === 0 ? (
-        <div className="deploy-empty">
+        <div className={"max-w-[640px] px-6 py-8 [&>h1]:mt-0 [&>h1]:mb-2.5 [&>h1]:font-condensed [&>h1]:text-[26px] [&>h1]:font-semibold"}>
           <h1>No AWS profiles on this machine</h1>
           <p>Studio reads AWS through named profiles in ~/.aws/config. Create one with <code>aws configure sso</code> (or <code>aws configure</code>), then refresh.</p>
         </div>
       ) : (
-        <div className="deploy-body">
+        <div className={"grid min-h-0 grid-cols-[280px_minmax(0,1fr)] vp-900:grid-cols-1"}>
           <Rail rows={rows} unrecognized={discovery?.unrecognized ?? []} selected={row?.name} onSelect={select} known={Boolean(discovery)} local={overview.local} />
           {row ? (
             <Detail
@@ -270,7 +272,7 @@ export function Deploy() {
               onServiceLogs={setServiceLogs}
               frontend={<><DeploymentIdentities account={selectedContext?.account} region={selectedRegion ?? selectedContext?.region} onCreated={select} /><FrontendRelease key={[row.name, profile, selectedRegion ?? selectedContext?.region].join("|")} deployment={row.name} profile={profile} region={selectedRegion ?? selectedContext?.region} />{row.target && row.mode && profile && (selectedRegion ?? selectedContext?.region) ? <LifecycleDisclosure selection={{ deployment: row.name, mode: row.mode, profile, region: (selectedRegion ?? selectedContext?.region)! }} /> : null}</>}
             />
-          ) : <p className="empty">No deployments are declared in this repository.</p>}
+          ) : <p className={"px-6 py-20 text-center text-graphite"}>No deployments are declared in this repository.</p>}
         </div>
       )}
       <Activity
@@ -314,8 +316,8 @@ export function Deploy() {
         />
       ) : null}
       {serviceLogs ? <ServiceLogs service={serviceLogs} onClose={() => setServiceLogs(undefined)} /> : null}
-      <div className="toasts" role="status" aria-live="polite">
-        {toasts.map((entry) => <div key={entry.id} className={`toast ${entry.tone === "refuse" ? "refuse" : ""}`}>{entry.text}</div>)}
+      <div className={"fixed bottom-4 left-4 z-30 grid max-w-[min(460px,calc(100vw-32px))] gap-2"} role="status" aria-live="polite">
+        {toasts.map((entry) => <div key={entry.id} className={cx("rounded-md px-4 py-3 text-step-minus1 text-sheet shadow-popover wrap-anywhere", entry.tone === "refuse" ? "bg-refuse" : "bg-ink")}>{entry.text}</div>)}
       </div>
     </div>
   );

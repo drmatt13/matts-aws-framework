@@ -57,7 +57,7 @@ function tooltip(pair: ReturnType<typeof fixture>, connection: ConnectionGroup =
   return { content, document: documentOf(createElement(ConnectionTooltipContent, { content, supply })) };
 }
 const memberRows = (document: Document) => [...document.querySelectorAll<HTMLLIElement>('ul[aria-label="Connection members"] > li')];
-const pillCopy = (element: Element): string[] => [...element.querySelectorAll<HTMLElement>('.environment-pills > span')].map(pill => pill.textContent ?? "");
+const pillCopy = (element: Element): string[] => [...element.querySelectorAll<HTMLElement>("[data-slot=\"environment-pills\"] > span")].map(pill => pill.textContent ?? "");
 
 test("every relationship aggregation renders a separate accurate environment pair on each member", () => {
   const relations: readonly Relation[] = ["deployWhen", "contains", "routes", "authorizes", "env", "supplies", "maps", "secret", "grant", "database", "localReplay", "trigger", "runsTask", "startsWorkflow", "invokesAgent", "usesTool", "step", "integration", "completesCallback", "manageConnections", "cdk"];
@@ -68,7 +68,7 @@ test("every relationship aggregation renders a separate accurate environment pai
     const { document, content } = tooltip(pair, connection);
     const rows = memberRows(document);
     assert.equal(rows.length, 4, relation);
-    assert.equal(document.querySelector(".landscape-hover-tags"), null, `${relation}: no aggregate pair can obscure member differences`);
+    assert.equal(document.querySelector("[data-ui~=\"landscape-hover-tags\"]"), null, `${relation}: no aggregate pair can obscure member differences`);
     for (const row of content.rows) {
       const at = content.rows.indexOf(row), rendered = rows[at]!;
       assert.ok(rendered.textContent?.includes(row.label), relation);
@@ -76,7 +76,7 @@ test("every relationship aggregation renders a separate accurate environment pai
       assert.equal(copy.length, 2, relation);
       assert.equal(copy[0], row.availability.dev ? "Dev: connection enabled in development" : "Dev: connection not enabled", `${relation}: ${row.id}`);
       assert.equal(copy[1], row.availability.prod ? "Prod: connection enabled in production" : "Prod: connection not enabled", `${relation}: ${row.id}`);
-      assert.equal(rendered.querySelectorAll(".environment-pills").length, 1, relation);
+      assert.equal(rendered.querySelectorAll("[data-slot=\"environment-pills\"]").length, 1, relation);
     }
     assert.ok(!document.body.textContent?.includes(SECRET_SENTINEL), relation);
   }
@@ -88,7 +88,7 @@ test("single connections keep one environment pair and separate endpoint names f
     const pair = fixture(availability === "prod" ? [] : [current], availability === "dev" ? [] : [current]);
     const connection = availability === "off" ? { ...pair.connection, availability: { dev: false, prod: false } } : pair.connection;
     const { document } = tooltip(pair, connection);
-    assert.equal(document.querySelectorAll(".landscape-hover-tags .environment-pills").length, 1);
+    assert.equal(document.querySelectorAll("[data-ui~=\"landscape-hover-tags\"] [data-slot=\"environment-pills\"]").length, 1);
     assert.equal(memberRows(document).length, 0);
     const endpoints = [...document.querySelectorAll("dl > div")];
     assert.deepEqual(endpoints.map(endpoint => endpoint.querySelector("dt")?.textContent), ["From", "To"]);
@@ -128,7 +128,7 @@ test("repeated defaults have one shared sentence while supply pills beside each 
   assert.ok(!copy.includes("Applies to every entry"), "the sentence names its scope without a separate label");
   assert.ok(memberRows(document).every(row => !row.textContent?.includes("declaration default")), "the common note is outside individual rows");
   for (const row of memberRows(document)) assert.deepEqual(pillCopy(row), ["Dev: supplied by this file in development", "Prod: supplied by this file in production"]);
-  assert.equal(document.querySelector(".landscape-hover-tags"), null, "an aggregation's title carries no pair");
+  assert.equal(document.querySelector("[data-ui~=\"landscape-hover-tags\"]"), null, "an aggregation's title carries no pair");
 });
 
 test("every member keeps its own pair beside its name, even when all members share one availability", () => {
@@ -139,7 +139,7 @@ test("every member keeps its own pair beside its name, even when all members sha
     const connection = availability.dev ? pair.connection : { ...both.connection, members: both.connection.members.map(member => ({ ...member, availability })) };
     const { document } = tooltip(availability.dev ? pair : both, connection);
     assert.equal(memberRows(document).length, 3);
-    assert.equal(document.querySelector(".landscape-hover-heading .environment-pills"), null, JSON.stringify(availability));
+    assert.equal(document.querySelector("[data-ui~=\"landscape-hover-heading\"] [data-slot=\"environment-pills\"]"), null, JSON.stringify(availability));
     for (const row of memberRows(document)) assert.deepEqual(pillCopy(row), [
       availability.dev ? "Dev: connection enabled in development" : "Dev: connection not enabled",
       availability.prod ? "Prod: connection enabled in production" : "Prod: connection not enabled",
@@ -170,7 +170,7 @@ test("conditional comparison literals remain qualified by their actual environme
   const facts = [...document.querySelectorAll("p")].map(fact => fact.textContent);
   assert.ok(facts.includes('DevDeploys when settings.shared equals "preview".'));
   assert.ok(facts.includes('ProdDeploys when settings.shared equals "released".'));
-  assert.equal(document.querySelector("strong")?.textContent, "Conditional deployment: $settings.shared", "a member folded into its stack keeps the field the From endpoint does not name");
+  assert.equal(document.querySelector("strong")?.textContent, "Conditional Deployment: $settings.shared", "a member folded into its stack keeps the field the From endpoint does not name");
 });
 
 test("native permission subtypes render their operational facts without exposing raw source", () => {
@@ -196,7 +196,7 @@ test("native permission subtypes render their operational facts without exposing
     const { document } = tooltip(fixture([member], [member], { dev: { resources: typedResources }, prod: { resources: typedResources } }));
     if (fixtureCase.contains) assert.ok(document.body.textContent?.includes(fixtureCase.contains), fixtureCase.context.kind);
     assert.ok(!document.body.textContent?.includes(SECRET_SENTINEL), fixtureCase.context.kind);
-    assert.equal(document.querySelectorAll(".environment-pills").length, 1, fixtureCase.context.kind);
+    assert.equal(document.querySelectorAll("[data-slot=\"environment-pills\"]").length, 1, fixtureCase.context.kind);
   }
 });
 
@@ -212,7 +212,7 @@ test("long identifiers and all forty members remain present with warnings beyond
   assert.ok(rows[0]?.textContent?.includes(identifier), "no identifier characters are removed from accessible content");
   assert.ok(rows.at(-1)?.textContent?.includes("SETTING_39"));
   assert.ok(rows.at(-1)?.textContent?.includes("Required value missing."));
-  assert.equal(rows.reduce((count, row) => count + row.querySelectorAll(".environment-pills").length, 0), 40);
+  assert.equal(rows.reduce((count, row) => count + row.querySelectorAll("[data-slot=\"environment-pills\"]").length, 0), 40);
 });
 
 test("resource content retains descriptions, execution locations, source warnings and honest declaration language", () => {
@@ -224,15 +224,15 @@ test("resource content retains descriptions, execution locations, source warning
   assert.ok(body.textContent?.includes("Serves the application's public GraphQL contract."));
   assert.ok(body.textContent?.includes("The configured handler is missing."));
   assert.ok(body.textContent?.includes("Framework managed"));
-  assert.equal(body.querySelectorAll(".hover-tag").length, 2, "framework ownership is separate from environment availability");
-  assert.equal(body.querySelector(".landscape-hover-resource-meta .resource-status.managed")?.textContent, "Framework managed");
+  assert.equal(body.querySelectorAll("[data-environment][data-enabled]").length, 2, "framework ownership is separate from environment availability");
+  assert.equal(body.querySelector("[data-ui~=\"landscape-hover-resource-meta\"] [data-resource-status=\"managed\"]")?.textContent, "Framework managed");
   const gateway = documentOf(createElement(HoverContent, {
     title: "HTTP API", subtitle: "Framework-managed API Gateway", lines: [],
     facts: { places: [{ env: "dev", where: "Your machine" }], frameworkManaged: true },
   }));
   assert.equal(gateway.body.textContent?.match(/Framework[- ]managed/g)?.length, 1, "ownership is stated once by the shared Inspector badge");
-  assert.equal(gateway.body.querySelector(".landscape-hover-subtitle")?.textContent, "API Gateway");
-  assert.equal(gateway.body.querySelector(".resource-status.managed")?.textContent, "Framework managed");
+  assert.equal(gateway.body.querySelector("[data-ui~=\"landscape-hover-subtitle\"]")?.textContent, "API Gateway");
+  assert.equal(gateway.body.querySelector("[data-resource-status=\"managed\"]")?.textContent, "Framework managed");
   const locations = [...body.querySelectorAll("dl > div")];
   assert.deepEqual(locations.map(location => [location.querySelector("dt")?.textContent, location.querySelector("dd")?.textContent]), [["Dev", "Your machine"], ["Prod", "AWS Lambda · private subnet"]]);
   const declarations = documentOf(createElement(HoverEntries, { entries: [{ id: "input", label: "modelProvider", availability: { dev: true, prod: false } }] }));

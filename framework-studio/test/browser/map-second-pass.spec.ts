@@ -1,0 +1,116 @@
+import { test, expect } from "./support/test";
+
+for (const width of [320, 800, 1440]) {
+  test(`map menus previews and resized panels stay reachable at ${width}px`, async ({ page, studio }, info) => {
+    await page.setViewportSize({ width, height: 900 });
+    await studio.goto();
+    const add = page.getByRole("button", { name: "Add to application", exact: true });
+    await add.click();
+    const chooser = page.locator('[data-ui="landscape-add-menu"]');
+    await expect(chooser).toBeVisible();
+    const bounds = await chooser.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    expect(bounds!.y).toBeGreaterThanOrEqual(0);
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(900);
+    await page.screenshot({ path: info.outputPath(`creation-chooser-${width}.png`) });
+    await chooser.getByRole("button", { name: "Function", exact: true }).focus();
+    await page.keyboard.press("End");
+    await expect(chooser.getByRole("button", { name: "Authentication provider", exact: true })).toBeFocused();
+    await expect(chooser.getByRole("button", { name: "Authentication provider", exact: true })).toBeInViewport();
+    await page.keyboard.press("Escape");
+    await expect(add).toBeFocused();
+    await page.getByRole("button", { name: "Resources", exact: true }).click();
+    const resource = page.locator('[data-resource-id="lambda:fixture-0"]');
+    await resource.hover();
+    const tooltip = page.getByRole("tooltip");
+    await expect(tooltip).toBeVisible();
+    const preview = await tooltip.boundingBox();
+    expect(preview!.x).toBeGreaterThanOrEqual(0);
+    expect(preview!.x + preview!.width).toBeLessThanOrEqual(width);
+    expect(preview!.y).toBeGreaterThanOrEqual(0);
+    expect(preview!.y + preview!.height).toBeLessThanOrEqual(900);
+    expect(await tooltip.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`resource-preview-${width}.png`) });
+    await page.keyboard.press("Escape");
+    await resource.click();
+    const inspector = page.getByRole("complementary", { name: "Inspector", exact: true });
+    await expect(inspector).toBeVisible();
+    for (const resizedWidth of [799, 801, width]) {
+      await page.setViewportSize({ width: resizedWidth, height: 900 });
+      await studio.settle();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      const panel = await inspector.boundingBox(), canvas = await page.locator("canvas").boundingBox();
+      expect(panel!.width).toBeGreaterThan(250);
+      expect(panel!.x + panel!.width).toBeLessThanOrEqual(resizedWidth + 1);
+      expect(canvas!.width).toBeGreaterThan(100);
+      expect(canvas!.height).toBeGreaterThan(100);
+      if (resizedWidth <= 800) expect(panel!.y).toBeGreaterThanOrEqual(canvas!.y + canvas!.height - 1);
+      else expect(panel!.x).toBeGreaterThanOrEqual(canvas!.x + canvas!.width - 1);
+    }
+    await page.screenshot({ path: info.outputPath(`resized-inspector-${width}.png`) });
+    await page.getByRole("button", { name: "Close panel", exact: true }).click();
+    await page.getByRole("button", { name: "Resources", exact: true }).click();
+    await resource.hover();
+    await expect(tooltip).toBeVisible();
+    await page.emulateMedia({ forcedColors: "active" });
+    const colors = await tooltip.evaluate(element => { const style = getComputedStyle(element); return { background: style.backgroundColor, text: style.color, border: style.borderColor }; });
+    expect(colors.background).not.toBe(colors.text);
+    expect(colors.border).toBe(colors.text);
+    expect(await page.evaluate(() => matchMedia("(forced-colors: active)").matches)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`forced-colors-preview-${width}.png`) });
+    expect(studio.requests.filter(request => request.method !== "GET")).toEqual([]);
+  });
+}
+
+test("Board narrow filters and creation chooser remain reachable while its graph scrolls", async ({ page, studio }, info) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.goto("http://127.0.0.1:4593/?view=board");
+  const board = page.getByRole("group", { name: "Application architecture" });
+  await expect(board).toBeVisible();
+  const toolbar = page.locator('[data-ui="workspace-toolbar"]');
+  const initial = await toolbar.boundingBox();
+  await board.evaluate(element => { const container = element.closest("main")!; container.scrollTop = 100; container.scrollLeft = 300; });
+  const scrolled = await toolbar.boundingBox();
+  expect(scrolled!.x).toBe(initial!.x);
+  expect(scrolled!.y).toBe(initial!.y);
+  const filters = page.getByRole("group", { name: "Relations shown" });
+  const last = filters.getByRole("button").last();
+  await last.focus();
+  await expect(last).toBeInViewport();
+  await page.getByRole("button", { name: "Add to application", exact: true }).click();
+  const chooser = page.locator('[data-ui="landscape-add-menu"]');
+  await expect(chooser).toBeVisible();
+  const bounds = await chooser.boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(900);
+  await page.screenshot({ path: info.outputPath("board-narrow-creation.png") });
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Add to application", exact: true })).toBeFocused();
+  await studio.settle();
+});
+
+test("short phone viewport can scroll to resource rows and inspector controls", async ({ page, studio }, info) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await studio.goto();
+  await page.getByRole("button", { name: "Resources", exact: true }).click();
+  const resources = page.getByRole("complementary", { name: "Resources", exact: true });
+  expect((await resources.boundingBox())!.height).toBeGreaterThanOrEqual(260);
+  const list = resources.locator('[data-ui="resource-browser-list"]');
+  expect((await list.boundingBox())!.height).toBeGreaterThanOrEqual(100);
+  const resource = page.locator('[data-resource-id="lambda:fixture-0"]');
+  await resource.scrollIntoViewIfNeeded();
+  await expect(resource).toBeInViewport({ ratio: 1 });
+  await page.screenshot({ path: info.outputPath("resources-short-phone.png") });
+  await resource.click();
+  const inspector = page.getByRole("complementary", { name: "Inspector", exact: true });
+  await expect(inspector).toBeVisible();
+  expect((await inspector.boundingBox())!.height).toBeGreaterThanOrEqual(260);
+  const memory = inspector.getByRole("spinbutton", { name: "Memory" });
+  await memory.scrollIntoViewIfNeeded();
+  await expect(memory).toBeInViewport({ ratio: 1 });
+  await page.screenshot({ path: info.outputPath("inspector-short-phone.png") });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(studio.requests.filter(request => request.method !== "GET")).toEqual([]);
+});

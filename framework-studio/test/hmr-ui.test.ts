@@ -74,22 +74,22 @@ test("entry replacement retains one React root, query cache and pending inspecto
       previous = module.exports;
     };
     await ui.act(async () => evaluate());
-    await ui.waitFor(() => assert.ok(document.querySelector(".declaration-tags summary")), { timeout: 10000 });
-    ui.fireEvent.click(document.querySelector(".declaration-tags summary")!);
+    await ui.waitFor(() => assert.ok(document.querySelector("[data-slot=declaration-tags] summary")), { timeout: 10000 });
+    ui.fireEvent.click(document.querySelector("[data-slot=declaration-tags] summary")!);
     const key = await ui.screen.findByRole("textbox", { name: "Tag 1 key" });
     const value = `${(key as HTMLInputElement).value}-pending`;
     ui.fireEvent.change(key, { target: { value } });
     await ui.screen.findByLabelText("Pending inspector changes");
-    const inspector = document.querySelector(".inspector");
+    const inspector = document.querySelector("[data-inspector-context]");
     for (let replacement = 0; replacement < 2; replacement++) {
       assert.ok(dispose);
       dispose(hot.data);
       await ui.act(async () => { evaluate(); await new Promise(resolve => setTimeout(resolve, 30)); });
       assert.equal(roots, 1, "entry replacement must reuse the container's React root");
       assert.equal(clients.size, 1, "entry replacement must retain the mounted query cache");
-      assert.equal(document.querySelectorAll(".shell").length, 1);
-      assert.equal(document.querySelectorAll(".landscape-top").length, 1);
-      assert.equal(document.querySelector(".inspector"), inspector, "Fast Refresh must preserve the mounted draft provider");
+      assert.equal(document.querySelectorAll('[data-ui="shell"]').length, 1);
+      assert.equal(document.querySelectorAll("[data-ui~=landscape-top]").length, 1);
+      assert.equal(document.querySelector("[data-inspector-context]"), inspector, "Fast Refresh must preserve the mounted draft provider");
       assert.equal((ui.screen.getByRole("textbox", { name: "Tag 1 key" }) as HTMLInputElement).value, value);
       assert.ok(ui.screen.getByLabelText("Pending inspector changes"));
       assert.equal(sources.length, 1, "entry replacement must leave one active source stream");

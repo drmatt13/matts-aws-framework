@@ -1,3 +1,8 @@
+import { InspectorSummary } from "./InspectorUI";
+import { buttonClasses } from "../ui/Button";
+import { iconButtonClasses } from "../ui/IconButton";
+import { cx } from "../ui/classes";
+import { connectionRelationListClasses, inspectorRelationListClasses, inspectorPanelClasses, inspectorContentClasses } from "../inspector-ui";
 import { GatewayView } from "./GatewayView";
 import { drawnAs } from "../drawn-as";
 import { PlacementControl } from "./NetworkControls";
@@ -50,7 +55,7 @@ function PlacementText(props: { readonly placement: Placement }) {
       <p>
         VPC {placement.networkId}, {placement.subnet} subnet. {placement.reason}
       </p>
-      <p className="small muted">
+      <p className={"text-caption text-graphite"}>
         {out.length > 0 ? `${out.join(" and ")} leave this subnet.` : "Nothing leaves this subnet except through the network's endpoints."}
         {placement.dualStack ? " It calls AWS's dual-stack endpoints." : ""}
       </p>
@@ -62,14 +67,14 @@ function ApiAuthControl({ target }: { readonly target: ModelTarget }) {
   const { snapshot, model } = useStudio();
   const fact = model.fields[target.ref]?.find((fact) => fact.field === "http.auth");
   if (!fact) return null;
-  return <section className="api-auth"><BooleanField target={target} fact={fact} editability={snapshot.source.editability[target.ref]?.[fact.field]} description="Uses the API's Cognito user pool to admit signed-in callers. Handler-side token checks still apply." /></section>;
+  return <section className={"[&>[data-slot=field]]:py-0"} data-slot="api-auth"><BooleanField target={target} fact={fact} editability={snapshot.source.editability[target.ref]?.[fact.field]} description="Uses the API's Cognito user pool to admit signed-in callers. Handler-side token checks still apply." /></section>;
 }
 
 function LocalReplayControl({ target }: { readonly target: ModelTarget }) {
   const { snapshot, model } = useStudio();
   const fact = model.fields[target.ref]?.find((fact) => fact.field === "events.localReplay");
   if (!fact) return null;
-  return <section className="api-auth"><BooleanField target={target} fact={fact} editability={snapshot.source.editability[target.ref]?.[fact.field]} description="Captures AWS invocations in development through DevLambdaReplayStack and replays them against the local handler. Production runs the handler in AWS. Review Changes updates the config and handler wrapper together." /></section>;
+  return <section className={"[&>[data-slot=field]]:py-0"} data-slot="api-auth"><BooleanField target={target} fact={fact} editability={snapshot.source.editability[target.ref]?.[fact.field]} description="Captures AWS invocations in development through DevLambdaReplayStack and replays them against the local handler. Production runs the handler in AWS. Review Changes updates the config and handler wrapper together." /></section>;
 }
 
 function Relations(props: { readonly id: string }) {
@@ -84,11 +89,11 @@ function Relations(props: { readonly id: string }) {
   // The connection leads, as on the map; the other end is its supporting line.
   const row = (edge: ModelEdge, other: string, verb: string) => (
     <li key={`${edge.id}:${verb}`}>
-      <button className="linkish relation-title" onClick={() => select(edge.id)}>{presentRelationship(edge, index).title}</button>
+      <button className={cx(buttonClasses({ variant: "link" }), "max-w-none justify-self-start text-left")} onClick={() => select(edge.id)} data-slot="relation-title">{presentRelationship(edge, index).title}</button>
       <EnvironmentPills availability={edgeAvailability(edge, snapshot.models)} />
-      <span className="relation-endpoint small">
+      <span className={"col-span-full text-graphite wrap-anywhere text-caption"} data-slot="relation-endpoint">
         {verb}{" "}
-        <button className="linkish" onClick={() => select(other)}>
+        <button className={buttonClasses({ variant: "link" })} onClick={() => select(other)}>
           {endpointLabel(index, other)}
         </button>
         {edge.provenance === "derived" ? " (derived)" : null}
@@ -98,8 +103,8 @@ function Relations(props: { readonly id: string }) {
   );
   return (
     <InspectorDisclosure title="Connections" count={edges.length}>
-      {edges.some((edge) => edge.relation === "cdk" && edge.provenance === "source") ? <p className="small muted">CDK links are inferred from direct source references. Helpers and conditional wiring may add connections this view cannot resolve.</p> : null}
-      <ul className="relations connection-relations">
+      {edges.some((edge) => edge.relation === "cdk" && edge.provenance === "source") ? <p className={"text-caption text-graphite"}>CDK links are inferred from direct source references. Helpers and conditional wiring may add connections this view cannot resolve.</p> : null}
+      <ul className={connectionRelationListClasses} data-slot="connection-relations">
         {outgoing.map((edge) => row(edge, edge.to, "To"))}
         {incoming.map((edge) => row(edge, edge.from, "From"))}
       </ul>
@@ -167,14 +172,14 @@ function Steps(props: { readonly workflow: ModelWorkflow }) {
   return (
     <section>
       <h3>Steps</h3>
-      <ul className="steps">
+      <ul className={"list-none m-0 p-0 text-caption [&_li]:p-[2px_0]"} data-slot="steps">
         {rows.map(({ depth, node }) => (
           <li key={node.id} style={{ paddingLeft: depth * 14 }}>
-            <code>{props.workflow.names[node.id] ?? node.id}</code> <span className="step-kind">{detail(node)}</span>
+            <code>{props.workflow.names[node.id] ?? node.id}</code> <span className={"text-graphite"} data-slot="step-kind">{detail(node)}</span>
           </li>
         ))}
       </ul>
-      <p className="small muted">State names are what the local runner's history and Step Functions call each step.</p>
+      <p className={"text-caption text-graphite"}>State names are what the local runner's history and Step Functions call each step.</p>
     </section>
   );
 }
@@ -193,9 +198,9 @@ function TargetView(props: { readonly target: ModelTarget }) {
   return (
     <>
       <header>
-        <span className="kind">{ROLE_LABEL[target.role]}</span>
+        <span className={"text-graphite text-meta font-medium tracking-[.03em]"}>{ROLE_LABEL[target.role]}</span>
         <h2><EntityIcon icon={targetIcon(target)} />{target.title}</h2>
-        <code className="ref">{target.ref}</code>
+        <code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{target.ref}</code>
         <Written location={snapshot.source.entities[target.ref]?.key} />
       </header>
       <Tags entity={target.ref} />
@@ -211,7 +216,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
       {target.role === "event" ? <Triggers key={`triggers:${target.ref}`} target={target} /> : null}
       <HttpRoutes target={target} />
       {compute.kind === "lambda" ? <InspectorDisclosure title="Build and runtime">
-        <dl className="lambda-build">
+        <dl className={"grid grid-cols-[95px_minmax(0,1fr)] gap-[8px_12px] m-[0_0_14px] text-step-minus1 [&_dt]:text-graphite [&_dd]:m-0 [&_dd]:wrap-anywhere"} data-slot="lambda-build">
           <dt>Implementation</dt><dd>{compute.implementation === "container" ? "Container image" : compute.implementation === "python" ? "Python" : "TypeScript"}</dd>
           <dt>Source</dt><dd><code>{target.directory}</code></dd>
           <dt>Handler</dt><dd><code>{compute.packaging === "container" ? "Dockerfile CMD" : compute.handler}</code></dd>
@@ -223,7 +228,7 @@ function TargetView(props: { readonly target: ModelTarget }) {
         <PlacementControl target={target} />
         <PlacementText placement={target.placement} />
         {compute.kind === "container" ? (
-          <p className="small muted">
+          <p className={"text-caption text-graphite"}>
             {compute.cpu} CPU units, {compute.memoryMiB} MiB, {compute.architecture}
             {compute.port ? `, port ${compute.port}` : ""}.
           </p>
@@ -243,8 +248,8 @@ function EnvironmentBindingAction({ target, edge, name, grouped = false }: { rea
   const pending = remove && draftState.entries.find(entry => entry.kind === "operation" && entry.operation.kind === "connection" && !entry.operation.enabled && entry.operation.target === target.ref && entry.operation.connection === remove.connection && entry.operation.destination === remove.destination && entry.operation.variable === remove.variable);
   const source = edge?.bindingSetting?.source ?? edge?.source ?? snapshot.source.entities[target.ref]?.value;
   const disabled = !!draftState.busy || draft.conflict || model.stale || live.evaluating;
-  if (!remove) return source ? <a className="linkish small" href={editorLink(snapshot.repositoryRoot, source)}>Open declaration</a> : null;
-  return <span className="access-actions">{pending ? <><span className="small muted">Removal staged</span><button className="linkish small" disabled={disabled} onClick={() => draft.discardOperation(pending.key)} aria-label={`Undo removal of ${name}`}>Undo removal</button></> : <button className="linkish small" disabled={disabled} onClick={() => draft.stageOperation(remove)} aria-label={grouped ? "Remove user-pool identifiers" : `Remove ${name} mapping`}>Remove{grouped ? " identifiers" : " mapping"}</button>}</span>;
+  if (!remove) return source ? <a className={cx(buttonClasses({ variant: "link" }), "text-caption")} href={editorLink(snapshot.repositoryRoot, source)}>Open declaration</a> : null;
+  return <span className={"flex flex-wrap items-center gap-3"} data-slot="access-actions">{pending ? <><span className={"text-caption text-graphite"}>Removal staged</span><button className={cx(buttonClasses({ variant: "link" }), "text-caption")} disabled={disabled} onClick={() => draft.discardOperation(pending.key)} aria-label={`Undo removal of ${name}`}>Undo removal</button></> : <button className={cx(buttonClasses({ variant: "link" }), "text-caption")} disabled={disabled} onClick={() => draft.stageOperation(remove)} aria-label={grouped ? "Remove user-pool identifiers" : `Remove ${name} mapping`}>Remove{grouped ? " identifiers" : " mapping"}</button>}</span>;
 }
 
 function TargetEnvironment({ target }: { readonly target: ModelTarget }) {
@@ -254,8 +259,8 @@ function TargetEnvironment({ target }: { readonly target: ModelTarget }) {
   const poolEdges = edges.filter(edge => edge.relation === "env" && pool.some(entry => entry.name === edge.label && entry.value.kind === "reference" && entry.value.resource === edge.to));
   const poolEdge = poolEdges.find(edge => removalForConnection(target, edge, model, snapshot.source)?.connection === "userPool") ?? poolEdges[0];
   return <InspectorDisclosure title="Environment" count={target.environment.length + target.secrets.length}>
-    <div className="env">
-      {pool.length ? <div className="env-row"><strong>User-pool identifiers</strong><div>{pool.map(entry => <div key={entry.name}><code>{entry.name}</code>{" · "}<code className="muted">{entry.value.kind === "reference" ? entry.value.display : JSON.stringify(entry.value.value)}</code></div>)}<EnvironmentBindingAction target={target} edge={poolEdge} name="User-pool identifiers" grouped /></div></div> : null}
+    <div className={"[&_code]:wrap-anywhere text-caption grid grid-cols-[minmax(0,1fr)] gap-0"} data-slot="env">
+      {pool.length ? <div className={"grid gap-1 border-b border-rule p-[10px_0] wrap-anywhere first:pt-0 last:[border-bottom:0] last:pb-0 [&>code]:font-medium [&>span]:text-graphite"} data-slot="env-row"><strong>User-pool identifiers</strong><div>{pool.map(entry => <div key={entry.name}><code>{entry.name}</code>{" · "}<code className={"text-graphite"}>{entry.value.kind === "reference" ? entry.value.display : JSON.stringify(entry.value.value)}</code></div>)}<EnvironmentBindingAction target={target} edge={poolEdge} name="User-pool identifiers" grouped /></div></div> : null}
       {target.environment.filter(entry => entry.via !== "userPool").map(entry => {
         const edge = edges.find(edge => edge.relation === "env" && edge.label === entry.name && entry.value.kind === "reference" && edge.to === entry.value.resource);
         return <EnvRow key={entry.name} name={entry.name} value={entry.value.kind === "literal" ? JSON.stringify(entry.value.value) : entry.value.display}
@@ -269,7 +274,7 @@ function TargetEnvironment({ target }: { readonly target: ModelTarget }) {
 
 function EnvRow(props: { readonly name: string; readonly value: string; readonly action?: ReactNode }) {
   return (
-    <div className="env-row">
+    <div className={"grid gap-1 border-b border-rule p-[10px_0] wrap-anywhere first:pt-0 last:[border-bottom:0] last:pb-0 [&>code]:font-medium [&>span]:text-graphite"} data-slot="env-row">
       <code>{props.name}</code>
       <span>
         <code>{props.value}</code>
@@ -286,26 +291,26 @@ function RouteView(props: { readonly route: ModelRoute }) {
   return (
     <>
       <header>
-        <span className="kind">{route.kind === "http" ? "HTTP route" : route.kind === "service" ? "Service mount" : route.kind === "webSocket" ? "WebSocket route key" : "Agent route"}</span>
+        <span className={"text-graphite text-meta font-medium tracking-[.03em]"}>{route.kind === "http" ? "HTTP route" : route.kind === "service" ? "Service mount" : route.kind === "webSocket" ? "WebSocket route key" : "Agent route"}</span>
         <h2><EntityIcon icon={routeIcon(route)} />{route.browserPath ?? route.path}</h2>
         <RouteStatus route={route} />
-        <code className="ref">{route.origin}</code>
+        <code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{route.origin}</code>
         <Written location={snapshot.source.entities[route.id]?.key} />
       </header>
       <Tags entity={target?.ref ?? route.id} route />
       {target ? <TargetDeployment target={target} route /> : null}
       <Description entity={route.id} />
       <section>
-<p className="small muted">Served by <button className="linkish" onClick={() => select(drawnAs(model)[route.id])}>{route.kind === "agent" ? index.targets.get(route.target)?.id ?? route.target : route.kind === "webSocket" ? "WebSocket API" : "HTTP API"}</button>.</p>
+<p className={"text-caption text-graphite"}>Served by <button className={buttonClasses({ variant: "link" })} onClick={() => select(drawnAs(model)[route.id])}>{route.kind === "agent" ? index.targets.get(route.target)?.id ?? route.target : route.kind === "webSocket" ? "WebSocket API" : "HTTP API"}</button>.</p>
         {route.methods ? <p>Answers {route.methods === "*" ? "every method" : route.methods.join(", ")}.</p> : null}
-        <p className="muted small">
+        <p className={"text-graphite text-caption"}>
           {route.auth
             ? route.kind === "webSocket"
               ? "The $connect authorizer admits the connection."
               : "The gateway admits signed-in users only. The handler still checks the user itself if it needs one."
             : "Open to any caller."}
         </p>
-        <p className="muted small">The public name is separate from the target, so renaming it does not rename what is deployed.</p>
+        <p className={"text-graphite text-caption"}>The public name is separate from the target, so renaming it does not rename what is deployed.</p>
       </section>
       {(route.kind === "http" || route.kind === "service") && target ? <ApiAuthControl target={target} /> : null}
       <Relations id={route.id} />
@@ -333,33 +338,33 @@ function ResourceView(props: { readonly resource: ModelResource }) {
   return (
     <>
       <header>
-        <span className="kind">{kind}</span>
+        <span className={"text-graphite text-meta font-medium tracking-[.03em]"}>{kind}</span>
         <h2><EntityIcon icon={resourceIcon(resource)} />{resource.kind === "stack" ? resource.stackClass ?? resource.path.join(".") : resource.path.at(-1)}</h2>
         <ResourceStatus resource={resource} />
         {resource.kind === "input" || resource.kind === "secret" ? <EnvironmentPills availability={catalogAvailability(snapshot.models)[resource.id] ?? { dev: false, prod: false }} label="Declaration environments" descriptions={{ dev: "declared in development", prod: "declared in production" }} unavailableDescription="not declared" /> : null}
-        {resource.kind !== "stack" || !resource.frameworkStack ? <code className="ref">resources.{resource.path.join(".")}</code> : null}
-        {resource.typeText ? <code className="ref">{resource.typeText}</code> : null}
-        {owningGroup ? <p className="small muted">In input group <button className="linkish" onClick={() => select(owningGroup.id)}>{owningGroup.path.join(".")}</button></p> : null}
+        {resource.kind !== "stack" || !resource.frameworkStack ? <code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">resources.{resource.path.join(".")}</code> : null}
+        {resource.typeText ? <code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{resource.typeText}</code> : null}
+        {owningGroup ? <p className={"text-caption text-graphite"}>In input group <button className={buttonClasses({ variant: "link" })} onClick={() => select(owningGroup.id)}>{owningGroup.path.join(".")}</button></p> : null}
         {/* A group is declared as an object in its module and composed into the catalog by name. */}
         {group && entity?.value && entity.value.file !== entity.key.file ? <><Written location={entity.value} label="Declared in" /><Written location={entity.key} label="Added to the catalog in" /></>
           : <Written location={entity?.key} label={resource.frameworkStack ? "Class in" : resource.kind === "member" ? "Declared on the stack in" : "Written in"} />}
         {/* Ownership and source explanations follow the identity lines. */}
-        {resource.frameworkStack || resource.stackUsage?.status === "unreferenced" || resource.frameworkManaged ? <details className="header-details"><summary>About this resource</summary>
-        {resource.frameworkStack ? <p className="small muted">No <code>resource.stack&lt;{resource.stackClass}&gt;()</code> entry in <code>framework-config/resources.ts</code>. Declare and link one if workloads should reference this stack's public fields.</p> : null}
-        {resource.stackUsage?.status === "unreferenced" ? <p className="small muted">Declared in the catalog, with no constructor reference in the CDK app's runtime imports. Add it to the app to include it in synthesis.</p> : null}
-        {resource.frameworkManaged === "database" ? <p className="small muted">Its database declaration owns PostgreSQL policy and placement; the framework supplies IAM-only workload connections.</p> : resource.frameworkManaged ? <p className="small muted">The framework manages this stack and its generated environment outputs.</p> : null}
+        {resource.frameworkStack || resource.stackUsage?.status === "unreferenced" || resource.frameworkManaged ? <details className={"mt-3 text-caption text-graphite [&>summary]:cursor-pointer [&[open]>summary]:mb-2"} data-slot="header-details"><InspectorSummary>About this resource</InspectorSummary>
+        {resource.frameworkStack ? <p className={"text-caption text-graphite"}>No <code>resource.stack&lt;{resource.stackClass}&gt;()</code> entry in <code>framework-config/resources.ts</code>. Declare and link one if workloads should reference this stack's public fields.</p> : null}
+        {resource.stackUsage?.status === "unreferenced" ? <p className={"text-caption text-graphite"}>Declared in the catalog, with no constructor reference in the CDK app's runtime imports. Add it to the app to include it in synthesis.</p> : null}
+        {resource.frameworkManaged === "database" ? <p className={"text-caption text-graphite"}>Its database declaration owns PostgreSQL policy and placement; the framework supplies IAM-only workload connections.</p> : resource.frameworkManaged ? <p className={"text-caption text-graphite"}>The framework manages this stack and its generated environment outputs.</p> : null}
         </details> : null}
       </header>
       {group ? <InputGroupTags group={resource} /> : <Tags entity={resource.id} />}
       <ResourceDeployment resource={resource} />
-      {members.some(member => member.id === model.managedDatabase?.resource) ? <InspectorSection title="Application database"><button className="button" onClick={() => select(model.managedDatabase!.resource)}>Configure application PostgreSQL</button><p className="small muted">One database declaration coordinates production RDS and local PostgreSQL.</p></InspectorSection> : null}
+      {members.some(member => member.id === model.managedDatabase?.resource) ? <InspectorSection title="Application database"><button className={buttonClasses({ variant: "neutral" })} onClick={() => select(model.managedDatabase!.resource)}>Configure application PostgreSQL</button><p className={"text-caption text-graphite"}>One database declaration coordinates production RDS and local PostgreSQL.</p></InspectorSection> : null}
       <Description entity={resource.id} />
-      {resource.stackOutputs?.length ? <InspectorDisclosure title="CloudFormation outputs" count={resource.stackOutputs.length} defaultOpen={!!resource.frameworkStack} className="stack-outputs"><p className="small muted">Symbolic source values mapped by the root .env exporter.</p><ul>{resource.stackOutputs.map((output) => <li key={output.name}>
-        <span className="stack-output-name">{output.name}</span>
-        <code className="stack-output-value"><span>$</span>{output.symbol}</code>
-        <span className="small muted">Root .env · <code>{output.envName}</code></span>
+      {resource.stackOutputs?.length ? <InspectorDisclosure title="CloudFormation outputs" count={resource.stackOutputs.length} defaultOpen={!!resource.frameworkStack} className={"[&_ul]:m-0 [&_ul]:list-none [&_ul]:p-0 [&_li]:grid [&_li]:justify-items-start [&_li]:gap-1.75 [&_li]:border-b [&_li]:border-rule [&_li]:py-3.25"} data-slot="stack-outputs"><p className={"text-caption text-graphite"}>Symbolic source values mapped by the root .env exporter.</p><ul>{resource.stackOutputs.map((output) => <li key={output.name}>
+        <span className={"text-caption font-semibold wrap-anywhere"} data-slot="stack-output-name">{output.name}</span>
+        <code className={"inline-flex [gap:5px] max-w-full p-[5px_8px] [border:1px_solid_color-mix(in_srgb,_var(--dev)_30%,_transparent)] rounded-[5px] [background:color-mix(in_srgb,_var(--dev)_8%,_transparent)] text-dev [font:12px_var(--mono)] wrap-anywhere [&>span]:font-bold [&>span]:opacity-[0.7]"} data-slot="stack-output-value"><span>$</span>{output.symbol}</code>
+        <span className={"text-caption text-graphite"}>Root .env · <code>{output.envName}</code></span>
       </li>)}</ul></InspectorDisclosure> : null}
-      {database ? <section><SchemaLink /><p className="small muted">The application contract is shared with local PostgreSQL.</p></section> : null}
+      {database ? <section><SchemaLink /><p className={"text-caption text-graphite"}>The application contract is shared with local PostgreSQL.</p></section> : null}
       {resource.absent || (resource.kind === "member" && resource.memberSource === "class") || (facts?.stackClass && !resource.frameworkStack) || (facts?.stackLocation && !resource.frameworkStack) || links.length ? <InspectorDisclosure title="Declaration details">
         {resource.absent && resource.frameworkStack ? <p>Not enabled in the {model.mode === "dev" ? "development" : "production"} environment.</p> : resource.absent && group ? (
           <p>Every entry in this group is declared undefined in the {model.mode === "dev" ? "development" : "production"} graph, so nothing that reads them sees a value.</p>
@@ -371,7 +376,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
             {facts?.condition ? <>, because the catalog writes it under <code>{facts.condition}</code></> : ""}. Anything that reads it never sees the value.
           </p>
         ) : null}
-        {resource.kind === "member" && resource.memberSource === "class" ? <p className="muted">Declared by its stack; no workload references it.</p> : null}
+        {resource.kind === "member" && resource.memberSource === "class" ? <p className={"text-graphite"}>Declared by its stack; no workload references it.</p> : null}
         {facts?.stackClass && !resource.frameworkStack ? <p>The stack class {facts.stackClass} is the declaration: each public field is an entry.</p> : null}
         {facts?.stackLocation && !resource.frameworkStack ? <Written location={facts.stackLocation} label="Class in" /> : null}
         {links.map((link) => (
@@ -379,10 +384,10 @@ function ResourceView(props: { readonly resource: ModelResource }) {
         ))}
       </InspectorDisclosure> : null}
       {group ? <><InputGroupEntries group={resource} /><InputGroupUse group={resource} /><InputGroupSources group={resource} /></> : null}
-      {resource.kind === "stack" && members.length ? <InspectorDisclosure title="Public fields" count={members.length} defaultOpen className="stack-members"><ul className="relations">{members.map((member) => <li key={member.id}><button className="linkish" onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className="small muted" title={member.typeText ?? member.kind}>{member.typeText ?? member.kind}</code></li>)}</ul><p className="small muted section-footnote">Declared by the stack class.</p></InspectorDisclosure> : null}
+      {resource.kind === "stack" && members.length ? <InspectorDisclosure title="Public fields" count={members.length} defaultOpen className={"[&_[data-slot=relations]>li]:grid-cols-2 [&_[data-slot=relations]>li]:gap-x-3 [&_[data-slot=relations]>li]:gap-y-2 [&_li>code]:text-right inspector-360:[&_[data-slot=relations]>li]:grid-cols-1 inspector-360:[&_li>code]:text-left"} data-slot="stack-members"><ul className={inspectorRelationListClasses} data-slot="relations">{members.map((member) => <li key={member.id}><button className={buttonClasses({ variant: "link" })} onClick={() => select(member.id)}>{member.path.at(-1)}</button><code className={"text-caption text-graphite"} title={member.typeText ?? member.kind}>{member.typeText ?? member.kind}</code></li>)}</ul><p className={"text-caption text-graphite mt-2"} data-slot="section-footnote">Declared by the stack class.</p></InspectorDisclosure> : null}
       <ResourceAccess key={`access:${resource.id}`} resource={resource} />
       {resource.kind === "member" ? <Triggers key={resource.id} resource={resource} /> : null}
-      {manual.length ? <section>{manual.map((item) => <div key={`${item.source.file}:${item.source.start}`}><p className="small muted">{item.reason}</p><Written location={item.source} label="Wiring in" /></div>)}</section> : null}
+      {manual.length ? <section>{manual.map((item) => <div key={`${item.source.file}:${item.source.start}`}><p className={"text-caption text-graphite"}>{item.reason}</p><Written location={item.source} label="Wiring in" /></div>)}</section> : null}
       {resource.kind === "input" || resource.kind === "secret" ? <ResourceEditor key={`${resource.id}:${model.mode}`} resource={resource} /> : null}
       <InputSources resource={resource} />
       <Relations id={resource.id} />
@@ -392,10 +397,10 @@ function ResourceView(props: { readonly resource: ModelResource }) {
 
 function LocalDatabaseView({ database }: { readonly database: LocalDatabase }) {
   return <>
-    <header><span className="kind">Local development service</span><h2><EntityIcon icon="postgres" />{database.title}</h2><code className="ref">{database.service} · {database.image}</code><Written location={database.source} /></header>
+    <header><span className={"text-graphite text-meta font-medium tracking-[.03em]"}>Local development service</span><h2><EntityIcon icon="postgres" />{database.title}</h2><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{database.service} · {database.image}</code><Written location={database.source} /></header>
     <DeploymentSection availability={{ dev: database.enabled, prod: false }} locations={{ dev: "On your machine" }}><DeploymentOwnership reason="Configured in Docker Compose; start and stop this service through Deploy & Run. Container health and running state are separate from source availability." /></DeploymentSection>
     <Description entity={database.id} />
-    <section><SchemaLink /><p className="small muted">Shares the application contract with production RDS.</p></section>
+    <section><SchemaLink /><p className={"text-caption text-graphite"}>Shares the application contract with production RDS.</p></section>
     {database.volumes.length ? <section><h3>Persistent storage</h3>{database.volumes.map((volume) => <p key={volume}><code>{volume}</code></p>)}</section> : null}
     <Relations id={database.id} />
   </>;
@@ -408,7 +413,7 @@ function NetworkFixtureView({ id }: { readonly id: string }) {
   const production = snapshot.models.prod;
   const inProduction = !!production.networks?.find(network => id.startsWith(`prop:vpc:${network.id}:`))?.builtInProd && buildScene(production).props.some((prop) => prop.id === id);
   return <>
-    <header><span className="kind">Network fixture</span><h2><EntityIcon icon={fixture.icon} />{fixture.label}</h2><code className="ref">{id}</code><Written location={snapshot.source.entities[`island:vpc:${model.networks?.find(network => id.startsWith(`prop:vpc:${network.id}:`))?.id}`]?.value} /></header>
+    <header><span className={"text-graphite text-meta font-medium tracking-[.03em]"}>Network fixture</span><h2><EntityIcon icon={fixture.icon} />{fixture.label}</h2><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{id}</code><Written location={snapshot.source.entities[`island:vpc:${model.networks?.find(network => id.startsWith(`prop:vpc:${network.id}:`))?.id}`]?.value} /></header>
     <DeploymentSection availability={{ dev: false, prod: inProduction }} locations={{ prod: "In AWS" }}><DeploymentOwnership reason="This component is created by its production VPC. Configure the owning network instead of deploying the component independently." owners={(model.networks ?? []).filter(network => id.startsWith(`prop:vpc:${network.id}:`)).map(network => ({ id: `island:vpc:${network.id}`, title: network.name ?? network.id }))} /></DeploymentSection>
     <Description entity={id} />
     <section>{fixture.caption.map((line) => <p key={line}>{line}</p>)}</section>
@@ -420,9 +425,9 @@ export function Inspector() {
   const { selected, select } = useStudio();
   if (!selected) return null;
   return (
-    <aside className="inspector" aria-label="Inspector">
-      <div className="inspector-toolbar"><span>Inspector</span>
-        <button className="icon-button" onClick={() => select(undefined)} aria-label="Close the inspector">
+    <aside className={inspectorPanelClasses} aria-label="Inspector" data-slot="inspector" data-inspector-context>
+      <div className={"flex justify-between items-center flex-none [min-height:44px] p-[var(--space-1)_var(--space-4)_var(--space-1)_var(--panel-padding)] border-b border-rule text-graphite text-meta font-semibold [letter-spacing:.06em] uppercase"} data-slot="inspector-toolbar"><span>Inspector</span>
+        <button className={iconButtonClasses({ variant: "quiet" })} onClick={() => select(undefined)} aria-label="Close the inspector">
           <X size={16} aria-hidden />
         </button>
       </div>
@@ -448,7 +453,7 @@ export function InspectorContent({ selected }: { readonly selected: string }) {
   const fixture = (model.networks ?? []).flatMap(networkFixtureIds).includes(selected);
   return (
     <>
-      <div className="inspector-content" key={selected}>
+      <div className={inspectorContentClasses} key={selected} data-slot="inspector-content">
       {gateway ? <GatewayView gateway={gateway} /> : null}
       {target ? <TargetView target={target} /> : null}
       {route ? <RouteView route={route} /> : null}
@@ -459,7 +464,7 @@ export function InspectorContent({ selected }: { readonly selected: string }) {
       {island ? <IslandInspector id={selected} key={selected} /> : null}
       {fixture ? <NetworkFixtureView id={selected} /> : null}
       {resource?.kind === "stack" && !resource.frameworkStack ? <StackInfrastructure id={resource.id} /> : null}
-      {!gateway && !target && !route && !resource && !connection && !groupedConnection && !otherLens && !localDatabase && !schemaEntity && !island && !fixture ? <p className="empty">{selected} is not in this graph.</p> : null}
+      {!gateway && !target && !route && !resource && !connection && !groupedConnection && !otherLens && !localDatabase && !schemaEntity && !island && !fixture ? <p className={"px-6 py-10 text-graphite"}>{selected} is not in this graph.</p> : null}
       </div><DraftFooter />
     </>
   );

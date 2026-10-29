@@ -83,7 +83,7 @@ async function mount(navigate: (id: string) => void = () => {}, initialOwner?: s
 
 test("the header keeps only the source mode", async () => {
   await mount(() => {}, undefined, undefined, true);
-  const header = document.querySelector(".bar")! as HTMLElement;
+  const header = document.querySelector('[data-ui="bar"]')! as HTMLElement;
   assert.equal(ui.within(header).queryByRole("button", { name: "Check" }), null);
   assert.equal(ui.within(header).queryByRole("button", { name: "Infrastructure" }), null);
   assert.equal(ui.within(header).queryByRole("button", { name: "Undo" }), null);
@@ -147,7 +147,7 @@ test("client mappings give a searchable source overview and show where each fiel
   let selected = "";
   await mount((id) => { selected = id; }, undefined, file);
   for (const entry of file.clientEnvironment!.entries) assert.ok(ui.screen.getByText(entry.name, { selector: "strong code" }));
-  assert.equal(document.querySelector(".client-mapping-controls"), null, "source controls stay collapsed until needed");
+  assert.equal(document.querySelector("[data-slot=client-mapping-controls]"), null, "source controls stay collapsed until needed");
   assert.equal(ui.screen.queryByRole("button", { name: /^Generate / }), null, "where a field is generated is not a switch");
   assert.equal(pills("VITE_LOCAL_WS_URL"), "Dev: generated in developmentProd: blank", "development-only ports leave the field blank in production");
   assert.equal(pills("VITE_USER_POOL_ID"), "Dev: generated in developmentProd: generated in production");

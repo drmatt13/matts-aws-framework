@@ -134,8 +134,8 @@ test("diagram fields navigate to source and cursor navigation highlights their l
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Locate Entry.title" }));
   const selection = view.state.selection.main;
   assert.match(view.state.sliceDoc(selection.from, selection.to), /title String @map\("entry_title"\)/);
-  assert.match(document.querySelector(".workbench-entity-details")!.textContent!, /Entry\.title/);
-  assert.match(document.querySelector(".workbench-entity-details")!.textContent!, /entry_title/);
+  assert.match(document.querySelector("[data-ui~=\"workbench-entity-details\"]")!.textContent!, /Entry\.title/);
+  assert.match(document.querySelector("[data-ui~=\"workbench-entity-details\"]")!.textContent!, /entry_title/);
   const person = source.indexOf("id Uuid");
   ui.act(() => view.dispatch({ selection: { anchor: person } }));
   assert.equal(ui.screen.getByRole("button", { name: "Select table Person" }).getAttribute("aria-pressed"), "true");
@@ -173,7 +173,7 @@ test("source review requires explicit Save schema and keeps text, comments and m
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Save schema" }));
   await ui.waitFor(() => assert.ok(!ui.screen.queryByRole("dialog"), "source review closes after save"));
   assert.deepEqual(saves, ["review-1"]);
-  assert.ok(ui.screen.getByText("Saved source", { selector: ".workbench-badge" }));
+  assert.ok(ui.screen.getByText("Saved source", { selector: "[data-ui~=\"workbench-badge\"]" }));
 });
 
 test("discard asks deliberately, preserves undo and never writes source", async () => {
@@ -260,12 +260,12 @@ test("keyboard resizing and schema focus modes preserve keyboard focus and the s
   const sourceControl = ui.screen.getByRole("button", { name: "Focus source" });
   sourceControl.focus();
   ui.fireEvent.click(sourceControl);
-  assert.equal(document.querySelector(".workbench-split")?.getAttribute("data-mode"), "source");
+  assert.equal(document.querySelector("[data-ui~=\"workbench-split\"]")?.getAttribute("data-mode"), "source");
   await ui.waitFor(() => assert.equal(document.activeElement, ui.screen.getByRole("button", { name: "Focus source" }), "entering source-only mode preserves focus on its layout control"));
   const diagramControl = ui.screen.getByRole("button", { name: "Focus diagram" });
   diagramControl.focus();
   ui.fireEvent.click(diagramControl);
-  assert.equal(document.querySelector(".workbench-split")?.getAttribute("data-mode"), "diagram");
+  assert.equal(document.querySelector("[data-ui~=\"workbench-split\"]")?.getAttribute("data-mode"), "diagram");
   await ui.waitFor(() => assert.equal(document.activeElement, ui.screen.getByRole("button", { name: "Focus diagram" }), "leaving source-only mode preserves focus on its layout control"));
   const controls = ui.screen.getByRole("group", { name: "Editing layout" });
   assert.equal(ui.within(controls).getByRole("button", { name: "Focus diagram" }).getAttribute("aria-pressed"), "true");
@@ -289,15 +289,15 @@ test("one workspace fullscreen control preserves each layout, draft, selection a
     const trigger = triggers[0]!;
     trigger.focus();
     ui.fireEvent.click(trigger);
-    await ui.waitFor(() => assert.ok(document.fullscreenElement === document.querySelector(".database-workbench"), "workbench enters fullscreen"));
-    assert.equal(document.querySelector(".workbench-split")?.getAttribute("data-mode"), layout.mode);
+    await ui.waitFor(() => assert.ok(document.fullscreenElement === document.querySelector("[data-ui~=\"database-workbench\"]"), "workbench enters fullscreen"));
+    assert.equal(document.querySelector("[data-ui~=\"workbench-split\"]")?.getAttribute("data-mode"), layout.mode);
     assert.equal(editor(), view);
     assert.deepEqual(view.state.selection.main, selection);
     assert.match(view.state.doc.toString(), /title String\?/);
     // The same event is emitted when the browser handles Escape.
     await ui.act(() => document.exitFullscreen());
     await ui.waitFor(() => assert.ok(document.activeElement === trigger, "keyboard focus returns to the fullscreen trigger"));
-    assert.equal(document.querySelector(".workbench-split")?.getAttribute("data-mode"), layout.mode);
+    assert.equal(document.querySelector("[data-ui~=\"workbench-split\"]")?.getAttribute("data-mode"), layout.mode);
   }
   ui.act(() => require("@codemirror/commands").undo(view));
   assert.equal(view.state.doc.toString(), source);
@@ -321,7 +321,7 @@ test("fullscreen keeps layout switching and source review available; exit return
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to editing" }));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Exit fullscreen" }));
   await ui.waitFor(() => assert.equal(document.fullscreenElement, null));
-  assert.equal(document.querySelector(".workbench-split")?.getAttribute("data-mode"), "source");
+  assert.equal(document.querySelector("[data-ui~=\"workbench-split\"]")?.getAttribute("data-mode"), "source");
   await ui.waitFor(() => assert.equal(document.activeElement, ui.screen.getByRole("button", { name: "Fullscreen schema workspace" }), "focus returns to the current fullscreen control after changing layouts"));
   assert.equal(saves.length, 0);
 });
@@ -332,7 +332,7 @@ test("a rejected fullscreen request restores the workspace and preserves unsaved
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Fullscreen schema workspace" }));
   await ui.screen.findByText(/The browser could not change fullscreen mode/);
   assert.equal(document.fullscreenElement, null);
-  assert.equal(document.querySelector(".workbench-split")?.getAttribute("data-mode"), "split");
+  assert.equal(document.querySelector("[data-ui~=\"workbench-split\"]")?.getAttribute("data-mode"), "split");
   assert.match(editor().state.doc.toString(), /title String\?/);
   assert.equal(saves.length, 0);
 });
@@ -352,7 +352,7 @@ test("save freezes the reviewed draft and remains a source success when graph re
   await ui.act(async () => { finish(); await saveGate; });
   await ui.waitFor(() => assert.ok(!ui.screen.queryByRole("dialog"), "review closes after successful source write"));
   assert.match(persisted.source, /title String\?/);
-  assert.ok(ui.screen.getByText("Saved source", { selector: ".workbench-badge" }));
+  assert.ok(ui.screen.getByText("Saved source", { selector: "[data-ui~=\"workbench-badge\"]" }));
   const feedback = await ui.screen.findByText("Source saved; graph refresh unavailable. Refresh separately.");
   assert.ok(document.fullscreenElement!.contains(feedback), "partial-effect feedback remains visible in fullscreen");
   assert.equal(saves.length, 1);

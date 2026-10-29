@@ -1,3 +1,6 @@
+import { TextInput, Textarea } from "../ui/FormControls";
+import { buttonClasses } from "../ui/Button";
+import { cx } from "../ui/classes";
 import { useState } from "react";
 
 /** Values stay in the private inspector draft; secrets start masked in either editor. */
@@ -10,10 +13,10 @@ export function EnvironmentValueControl({ name, value, sensitive, disabled, onCh
   const [revealed, setRevealed] = useState(false);
   const toggle = async () => { if (!revealed && onReveal) await onReveal(); setRevealed(!revealed); };
   const props = { "aria-label": `Value for ${name}`, "aria-describedby": describedBy, autoComplete: "off", spellCheck: false, disabled, value, placeholder };
-  return <div className="env-value-control">
+  return <div className={"flex min-w-0 items-center gap-2 [&>input]:min-h-(--panel-control-height) [&>textarea]:min-h-(--panel-control-height) [&>input]:flex-[1_1_0] [&>textarea]:flex-[1_1_0] [&>input]:font-mono [&>textarea]:font-mono [&>input]:leading-[1.5] [&>textarea]:leading-[1.5] [&>input]:text-caption [&>textarea]:text-caption [&>button]:min-h-(--panel-control-height) [&>button]:min-w-12 [&>button]:flex-none [&>button]:px-1 [&>button]:py-0 [&>button]:text-center"} data-slot="env-value-control">
     {sensitive && !revealed
-      ? <input {...props} type="password" onChange={(event) => onChange(event.target.value)} />
-      : <textarea {...props} rows={value.includes("\n") ? Math.max(4, rows) : rows} onChange={(event) => onChange(event.target.value)} />}
-    {sensitive ? <button className="linkish small" disabled={disabled && !!onReveal && !revealed} aria-label={`${revealed ? "Hide" : "Reveal"} ${name}`} aria-pressed={revealed} onClick={() => void toggle()}>{revealed ? "Hide" : "Reveal"}</button> : null}
+      ? <TextInput {...props} type="password" onChange={(event) => onChange(event.target.value)} />
+      : <Textarea {...props} rows={value.includes("\n") ? Math.max(4, rows) : rows} onChange={(event) => onChange(event.target.value)} />}
+    {sensitive ? <button className={cx(buttonClasses({ variant: "link" }), "text-caption")} disabled={disabled && !!onReveal && !revealed} aria-label={`${revealed ? "Hide" : "Reveal"} ${name}`} aria-pressed={revealed} onClick={() => void toggle()}>{revealed ? "Hide" : "Reveal"}</button> : null}
   </div>;
 }

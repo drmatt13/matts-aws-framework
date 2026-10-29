@@ -91,7 +91,7 @@ before(async () => {
   dom.window.HTMLElement.prototype.getBoundingClientRect = function () {
     // Layout is simulated, but tooltip bounds must differ from the canvas: the
     // measured card and the pointer corridor now share this geometry.
-    const tooltip = this.classList.contains("landscape-hover");
+    const tooltip = this.hasAttribute("data-map-tooltip");
     const width = tooltip ? Math.min(360, Number.parseFloat(this.style.maxWidth) || 360) : 1920;
     const height = tooltip ? Math.min(240, Number.parseFloat(this.style.maxHeight) || 240) : 1000;
     const left = tooltip ? Number.parseFloat(this.style.left) || 0 : 0;
@@ -141,7 +141,7 @@ async function mount(withInspector = false, selection?: string, initialResponse 
   const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: [selection ? `/?select=${encodeURIComponent(selection)}` : "/"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null })]) });
   const client = new query.QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
   ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
-  await ui.waitFor(() => assert.ok(document.querySelector(".landscape, .empty"))); await draw();
+  await ui.waitFor(() => assert.ok(document.querySelector("[data-ui~=\"landscape\"], [data-ui~=\"empty\"]"))); await draw();
   return async (next: SnapshotResponse) => { await ui.act(async () => updateResponse(next)); await draw(); };
 }
 
@@ -149,10 +149,10 @@ test("permission connections show generated principal and scope while local data
   const launch = response.snapshot.models.dev.edges.find(edge => edge.relation === "runsTask")!;
   await mount(true, launch.id);
   assert.ok(ui.screen.getByRole("heading", { name: "Runs task" }), "the To row names the task the heading would repeat");
-  const permissions = document.querySelector<HTMLDetailsElement>(".connection-authorization")!;
+  const permissions = document.querySelector<HTMLDetailsElement>("[data-slot=\"connection-authorization\"]")!;
   assert.ok(permissions);
   assert.equal(permissions.open, false, "permissions start behind a disclosure");
-  assert.equal(document.querySelector(".connection-header .authorization-badge"), null);
+  assert.equal(document.querySelector("[data-slot=\"connection-header\"] [data-slot=\"authorization-badge\"]"), null);
   ui.fireEvent.click(ui.within(permissions).getByText("Permissions", { selector: "summary" }));
   assert.equal(permissions.open, true);
   assert.ok(ui.screen.getByText("iam:PassRole"));
@@ -165,7 +165,7 @@ test("permission connections show generated principal and scope while local data
   const local = response.snapshot.models.dev.edges.find(edge => edge.relation === "database" && edge.to === "local:postgres")!;
   await mount(true, local.id);
   assert.ok(ui.screen.getByRole("heading", { name: "Connects to database" }), "the To row names Local PostgreSQL");
-  ui.fireEvent.click(ui.screen.getByText("Permissions", { selector: ".connection-authorization > summary" }));
+  ui.fireEvent.click(ui.screen.getByText("Permissions", { selector: "[data-slot=\"connection-authorization\"] > summary" }));
   assert.ok(ui.screen.getAllByText("Local connection").length);
   assert.equal(ui.screen.queryByText("rds-db:connect"), null);
 });
@@ -176,8 +176,8 @@ test("connection inspection keeps secret environment names ahead of optional per
   assert.ok(source, "a real secret delivery relationship is available");
   await mount(true, source.id);
   assert.ok(ui.screen.getByRole("heading", { name: `${source.relation === "env" ? "Reads" : "Loads secret"}: ${source.label}` }));
-  assert.equal(document.querySelector(".connection-header .authorization-badge"), null);
-  assert.equal(document.querySelector<HTMLDetailsElement>(".connection-authorization")?.open, false);
+  assert.equal(document.querySelector("[data-slot=\"connection-header\"] [data-slot=\"authorization-badge\"]"), null);
+  assert.equal(document.querySelector<HTMLDetailsElement>("[data-slot=\"connection-authorization\"]")?.open, false);
 });
 
 test("conditional deployment inspection names its framework input and points from that input to the workload", async () => {
@@ -185,7 +185,7 @@ test("conditional deployment inspection names its framework input and points fro
   assert.ok(condition);
   await mount(true, condition.id);
   assert.ok(ui.screen.getByRole("heading", { name: "Conditional Deployment" }), "the From row names the input the heading would repeat as $enableWebSocketApi");
-  const endpoints = document.querySelector(".connection-header .connection-endpoints")!;
+  const endpoints = document.querySelector("[data-slot=\"connection-header\"] [data-slot=\"connection-endpoints\"]")!;
   assert.ok(endpoints);
   const rows = [...endpoints.querySelectorAll("div")].map(row => ({ direction: row.querySelector("dt")?.textContent, label: row.querySelector("button")?.textContent }));
   assert.deepEqual(rows, [{ direction: "From", label: "Input: enableWebSocketApi" }, { direction: "To", label: "WebSocket: $connect" }]);
@@ -416,7 +416,7 @@ test("clearing map search and tag filters returns focus to their surviving contr
 test("the keyboard entity navigator dismisses its preview before Escape returns focus to the canvas", async () => {
   await mount();
   const list = ui.screen.getByRole("list", { name: "Entities in the landscape" });
-  assert.ok(list.classList.contains("landscape-entity-list"), "the list becomes visible on keyboard focus");
+  assert.ok(list.matches('[data-ui~="landscape-entity-list"]'), "the list becomes visible on keyboard focus");
   assert.match(list.textContent!, /Escape to return to the map/);
   const buttons = ui.within(list).getAllByRole("button");
   await ui.act(async () => buttons[0]!.focus());
@@ -445,7 +445,7 @@ test("Resources opens from the toolbar, inspects in place and Back returns to th
   const results = ui.within(panel);
   assert.ok(results.getByRole("button", { name: /graphql-api.*HTTP Lambda/ }));
   assert.equal(results.queryByRole("button", { name: /sign-in/ }), null);
-  assert.ok(panel.querySelector('.resource-row img[src$="aws/lambda.svg"]'), "rows reuse the shared icon registry");
+  assert.ok(panel.querySelector("[data-ui~=\"resource-row\"] img[src$=\"aws/lambda.svg\"]"), "rows reuse the shared icon registry");
   ui.fireEvent.change(results.getByRole("combobox", { name: "Map resource type" }), { target: { value: "HTTP Lambda" } });
   ui.fireEvent.click(results.getByRole("button", { name: /graphql-api.*HTTP Lambda/ }));
   await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "lambda:graphql-api"));
@@ -485,7 +485,7 @@ test("resource browsing previews successive rows with animated connections and l
     const last = () => render.mock.calls.at(-1)!.arguments[0] as RenderState;
     const camera = { ...last().camera };
     const panel = ui.screen.getByRole("complementary", { name: "Resources" });
-    const rows = [...panel.querySelectorAll<HTMLButtonElement>(".resource-row")];
+    const rows = [...panel.querySelectorAll<HTMLButtonElement>("[data-ui~=\"resource-row\"]")];
     for (const row of rows.slice(0, 8)) {
       pathStrokes.length = 0;
       ui.fireEvent.pointerEnter(row, { pointerType: "mouse" }); await draw();
@@ -570,7 +570,7 @@ test("resource previews follow keyboard focus, include source warnings, and igno
   ui.fireEvent.keyDown(row, { key: "ArrowDown" });
   const next = document.activeElement as HTMLElement;
   assert.equal(ui.screen.getByRole("tooltip").querySelector("strong")?.textContent, next.querySelector("strong")?.textContent);
-  const list = panel.querySelector<HTMLElement>(".resource-browser-list")!;
+  const list = panel.querySelector<HTMLElement>("[data-ui~=\"resource-browser-list\"]")!;
   context.mock.method(list, "getBoundingClientRect", () => new dom.window.DOMRect(600, 50, 320, 400));
   context.mock.method(next, "getBoundingClientRect", () => new dom.window.DOMRect(600, 380, 320, 44));
   ui.fireEvent.scroll(list);
@@ -598,12 +598,12 @@ test("scrolling, filtering and closing Resources clear the preview and pending o
   const panel = ui.screen.getByRole("complementary", { name: "Resources" });
   const row = panel.querySelector<HTMLButtonElement>('[data-resource-id="lambda:sign-out"]')!;
   ui.fireEvent.pointerEnter(row); await ui.screen.findByRole("tooltip");
-  ui.fireEvent.scroll(panel.querySelector(".resource-browser-list")!);
+  ui.fireEvent.scroll(panel.querySelector("[data-ui~=\"resource-browser-list\"]")!);
   assert.equal(ui.screen.queryByRole("tooltip"), null, "a scrolling list does not leave a floating stale card");
   ui.fireEvent.pointerEnter(row); await ui.screen.findByRole("tooltip");
   ui.fireEvent.change(search(), { target: { value: "graphql" } });
   assert.equal(ui.screen.queryByRole("tooltip"), null, "a removed row loses its tooltip");
-  const remaining = panel.querySelector<HTMLButtonElement>(".resource-row")!;
+  const remaining = panel.querySelector<HTMLButtonElement>("[data-ui~=\"resource-row\"]")!;
   ui.fireEvent.pointerEnter(remaining);
   ui.fireEvent.click(toggle);
   await ui.act(async () => { await new Promise(resolve => setTimeout(resolve, 260)); });
@@ -613,10 +613,10 @@ test("scrolling, filtering and closing Resources clear the preview and pending o
 test("a map selection opens the inspector directly, and Back from it opens Resources", async () => {
   await mount(false, "lambda:sign-in");
   assert.ok(ui.screen.getByRole("complementary", { name: "Inspector" }));
-  assert.equal(document.querySelector(".inspector-content .ref")!.textContent, "lambda:sign-in");
+  assert.equal(document.querySelector("[data-slot=\"inspector-content\"] [data-slot=\"ref\"]")!.textContent, "lambda:sign-in");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /^graphql-api, HTTP Lambda/ }));
-  await ui.waitFor(() => assert.equal(document.querySelector(".inspector-content .ref")!.textContent, "lambda:graphql-api"));
-  assert.equal(document.querySelectorAll(".workspace-panel").length, 1, "another selection reuses the open panel");
+  await ui.waitFor(() => assert.equal(document.querySelector("[data-slot=\"inspector-content\"] [data-slot=\"ref\"]")!.textContent, "lambda:graphql-api"));
+  assert.equal(document.querySelectorAll("[data-ui~=\"workspace-panel\"]").length, 1, "another selection reuses the open panel");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Resources" }));
   await ui.waitFor(() => assert.ok(ui.screen.getByRole("complementary", { name: "Resources" })));
   assert.equal(ui.screen.getByLabelText("Selection").textContent, "none", "Back ends the selection");
@@ -631,7 +631,7 @@ test("a map selection opens the inspector directly, and Back from it opens Resou
 
 test("Back, Close and the Resources toggle keep unsaved inspector edits behind the navigation warning", async () => {
   await mount(false, "lambda:graphql-api");
-  const description = () => document.querySelector<HTMLTextAreaElement>('.workspace-panel textarea[aria-label="Description"]')!;
+  const description = () => document.querySelector<HTMLTextAreaElement>("[data-ui~=\"workspace-panel\"] textarea[aria-label=\"Description\"]")!;
   ui.fireEvent.change(description(), { target: { value: "Pending panel edit" } });
   for (const name of ["Back to Resources", "Close panel", "Resources"]) {
     ui.fireEvent.click(ui.screen.getByRole("button", { name }));
@@ -795,7 +795,7 @@ test("connections over terrain receive hover and clicks while clear terrain stil
   ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, hit.id));
-  assert.ok(ui.screen.getByRole("complementary", { name: "Inspector" }).querySelector(".connection-header"));
+  assert.ok(ui.screen.getByRole("complementary", { name: "Inspector" }).querySelector("[data-slot=\"connection-header\"]"));
 
   const clear = scene.tiles.map((tile) => worldToScreen(state.camera(), state.viewport(), project({ x: tile.gx, y: tile.gy, h: tile.h })))
     .find((point) => state.pickAt(point.x, point.y)?.kind === "island");
@@ -971,8 +971,8 @@ test("MFA read and permission arcs have independent hovers and inspection", asyn
   assert.equal(ui.within(reads).queryByText(/^IAM:/), null);
   const permission = await hoverConnection(grant.id);
   assert.equal(permission.querySelector("strong")?.textContent, "Allow AWS actions: cognito.userPool");
-  assert.equal(ui.within(permission).getByText("Permissions", { selector: ".landscape-hover-section-label" }).textContent, "Permissions");
-  assert.equal(permission.querySelector(".landscape-hover-permission-copy")?.textContent, "cognito-idp:AdminGetUser");
+  assert.equal(ui.within(permission).getByText("Permissions", { selector: "[data-ui~=\"landscape-hover-section-label\"]" }).textContent, "Permissions");
+  assert.equal(permission.querySelector("[data-ui~=\"landscape-hover-permission-copy\"]")?.textContent, "cognito-idp:AdminGetUser");
   const state = (dom.window as unknown as { __studioLandscape: { connections(): { id: string; members: string[]; points: { x: number; y: number }[] }[]; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
   const connection = state.connections().find(connection => connection.members.includes(grant.id))!;
   assert.equal(connection.members.length, 1);
@@ -981,7 +981,7 @@ test("MFA read and permission arcs have independent hovers and inspection", asyn
   ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 }); await draw();
   assert.ok(ui.screen.getByRole("heading", { name: "Allow AWS actions" }), "the To row names cognito.userPool");
-  assert.equal(document.querySelectorAll(".connection-map-member").length, 0, "the grant inspector contains no environment-read members");
+  assert.equal(document.querySelectorAll("[data-slot=\"connection-map-member\"]").length, 0, "the grant inspector contains no environment-read members");
 });
 
 test("HTTP and WebSocket route hovers retain routing purpose in both environments with secondary IAM details", async () => {
@@ -1000,7 +1000,7 @@ test("HTTP and WebSocket route hovers retain routing purpose in both environment
       assert.equal(popup.querySelector("strong")?.textContent, `Routes to: ${source.label}`);
       assert.deepEqual(hoverEndpoints(popup), source === http ? { From: ["HTTP API", "API Gateway"], To: ["/test/start-workflow", "HTTP Lambda"] }
         : { From: ["WebSocket API", "API Gateway"], To: ["customAction", "WebSocket Lambda"] });
-      assert.equal(popup.querySelector(".landscape-hover-permission-copy")?.textContent, "lambda:InvokeFunction");
+      assert.equal(popup.querySelector("[data-ui~=\"landscape-hover-permission-copy\"]")?.textContent, "lambda:InvokeFunction");
       assert.ok(!popup.textContent?.includes("Cloud IAM intent"));
       assert.ok(!popup.textContent?.includes("Not generated in this AWS graph"));
       if (source === http) {
@@ -1009,8 +1009,8 @@ test("HTTP and WebSocket route hovers retain routing purpose in both environment
     }
   }
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: WebSocket API to WebSocket: customAction,/ }));
-  await ui.waitFor(() => assert.ok([...document.querySelectorAll(".connection-endpoints")].some(element => element.textContent?.includes("FromAPI: customActionToWebSocket: customAction"))));
-  assert.equal(document.querySelector(".connection-header .authorization-badge"), null);
+  await ui.waitFor(() => assert.ok([...document.querySelectorAll("[data-slot=\"connection-endpoints\"]")].some(element => element.textContent?.includes("FromAPI: customActionToWebSocket: customAction"))));
+  assert.equal(document.querySelector("[data-slot=\"connection-header\"] [data-slot=\"authorization-badge\"]"), null);
 });
 
 test("grouped route previews and member summaries retain each route name without IAM badges", async () => {
@@ -1026,16 +1026,16 @@ test("grouped route previews and member summaries retain each route name without
   const rows = ui.within(ui.within(popup).getByRole("list", { name: "Connection members" }));
   assert.ok(rows.getByText(source.label));
   assert.ok(rows.getByText("anotherAction"));
-  assert.equal(popup.querySelectorAll(".landscape-hover-permission-copy").length, 1, "shared permissions appear once below the member rows");
-  assert.equal(popup.querySelector(".landscape-hover-permission-copy")?.textContent, "lambda:InvokeFunction");
-  for (const row of rows.getAllByRole("listitem")) assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
+  assert.equal(popup.querySelectorAll("[data-ui~=\"landscape-hover-permission-copy\"]").length, 1, "shared permissions appear once below the member rows");
+  assert.equal(popup.querySelector("[data-ui~=\"landscape-hover-permission-copy\"]")?.textContent, "lambda:InvokeFunction");
+  for (const row of rows.getAllByRole("listitem")) assert.deepEqual(visibleTags(row), [["dev", "Dev"], ["prod", "Prod"]]);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: WebSocket API to WebSocket: customAction,/ }));
-  await ui.waitFor(() => assert.equal(document.querySelectorAll(".connection-map-member").length, 2));
-  const summaries = [...document.querySelectorAll(".connection-map-member > summary")];
+  await ui.waitFor(() => assert.equal(document.querySelectorAll("[data-slot=\"connection-map-member\"]").length, 2));
+  const summaries = [...document.querySelectorAll("[data-slot=\"connection-map-member\"] > summary")];
   assert.ok(summaries.some(summary => summary.textContent?.includes(source.label)));
   assert.ok(summaries.some(summary => summary.textContent?.includes("anotherAction")));
   assert.ok(summaries.every(summary => !summary.textContent?.includes("Routes to: ")), "member rows name their route; the heading already names the shared purpose, as hover rows do");
-  assert.equal(document.querySelector(".connection-map-label .authorization-badge"), null);
+  assert.equal(document.querySelector("[data-slot=\"connection-map-label\"] [data-slot=\"authorization-badge\"]"), null);
 });
 
 test("clicking a disabled wire explains its endpoints in the inspector and the notice follows the mode", async () => {
@@ -1053,7 +1053,7 @@ test("clicking a disabled wire explains its endpoints in the inspector and the n
   ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   const notice = await ui.screen.findByRole("note", { name: "Connection deployment status" });
-  assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), [["hover-tag off", "Dev"], ["hover-tag prod", "Prod"]]);
+  assert.deepEqual(visibleTags(document.querySelector("[data-slot=\"connection-header\"]")!), [["off", "Dev"], ["prod", "Prod"]]);
   assert.ok(notice.textContent?.includes("Disabled in Development"));
   assert.ok(notice.textContent?.includes(".env.prod"));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
@@ -1064,17 +1064,17 @@ test("a bundle member names only the end and the value its heading does not", as
   const id = "connection:resource%3Aclient:client-envfile:maps";
   await mount(true, id);
   const map = await ui.screen.findByRole("region", { name: "Connection details" });
-  const heading = document.querySelector(".connection-header h2")!.textContent!;
+  const heading = document.querySelector("[data-slot=\"connection-header\"] h2")!.textContent!;
   assert.match(heading, /^Maps: \d+ client variables$/);
-  const members = [...map.querySelectorAll<HTMLDetailsElement>(".connection-map-member")];
+  const members = [...map.querySelectorAll<HTMLDetailsElement>("[data-slot=\"connection-map-member\"]")];
   assert.ok(members.length > 1);
   for (const member of members) {
     assert.ok(!member.querySelector("summary")!.textContent!.includes("Maps into:"), "rows do not repeat the shared purpose");
     member.open = true;
   }
-  await ui.waitFor(() => assert.ok(map.querySelector(".connection-map-detail .connection-endpoints")));
+  await ui.waitFor(() => assert.ok(map.querySelector("[data-slot=\"connection-map-detail\"] [data-slot=\"connection-endpoints\"]")));
   for (const member of members) {
-    const rows = [...member.querySelectorAll(".connection-map-detail .connection-endpoints > div")].map(row => [row.querySelector("dt")?.textContent, row.querySelector("dd")?.textContent]);
+    const rows = [...member.querySelectorAll("[data-slot=\"connection-map-detail\"] [data-slot=\"connection-endpoints\"] > div")].map(row => [row.querySelector("dt")?.textContent, row.querySelector("dd")?.textContent]);
     // Every member maps a different input field into the same Client environment.
     assert.equal(rows.length, 1, "the shared To is the heading's");
     assert.equal(rows[0]![0], "From");
@@ -1084,16 +1084,16 @@ test("a bundle member names only the end and the value its heading does not", as
 
 test("inspector connection rows lead with the connection and keep the other end as their supporting line", async () => {
   await mount(true, "agent:example-agent");
-  const summary = await ui.screen.findByText("Connections", { selector: ".inspector-disclosure summary span" });
+  const summary = await ui.screen.findByText("Connections", { selector: "[data-slot=\"inspector-disclosure\"] summary span" });
   (summary.closest("details") as HTMLDetailsElement).open = true;
-  const rows = [...document.querySelectorAll<HTMLLIElement>(".connection-relations > li")];
+  const rows = [...document.querySelectorAll<HTMLLIElement>("[data-slot=\"connection-relations\"] > li")];
   assert.ok(rows.length > 3);
   for (const row of rows) {
     const [title, pills, endpoint] = [...row.children];
-    assert.ok(title?.matches("button.relation-title"), "the connection leads");
+    assert.ok(title?.matches("button[data-slot=\"relation-title\"]"), "the connection leads");
     assert.match(title!.textContent!, /^[^:]+: \S/, "with its action and value");
-    assert.ok(pills?.matches(".environment-pills"));
-    assert.ok(endpoint?.matches(".relation-endpoint"));
+    assert.ok(pills?.matches("[data-slot=\"environment-pills\"]"));
+    assert.ok(endpoint?.matches("[data-slot=\"relation-endpoint\"]"));
     assert.match(endpoint!.textContent!, /^(To|From) /);
   }
   assert.ok(rows.some(row => row.textContent?.includes("Reads: OPENAI_API_KEY_SECRET_ARN")), "long identifiers keep their own line instead of a narrow column");
@@ -1117,35 +1117,35 @@ test("clicking a grouped connection opens every mapping and retains it across en
   assert.ok(!popup.textContent?.includes("Maps into:"), "homogeneous member rows do not repeat the shared purpose");
   const hoverRows = ui.within(popup).getAllByRole("listitem");
   assert.equal(hoverRows.length, 4);
-  assert.equal(popup.querySelector(".landscape-hover-heading .environment-pills"), null, "aggregate headers cannot imply that every member has the same availability");
+  assert.equal(popup.querySelector("[data-ui~=\"landscape-hover-heading\"] [data-slot=\"environment-pills\"]"), null, "aggregate headers cannot imply that every member has the same availability");
   for (const row of hoverRows) {
-    assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
-    assert.deepEqual(tagsOf(row), [["hover-tag dev", "Dev: connection enabled in development"], ["hover-tag prod", "Prod: connection enabled in production"]]);
+    assert.deepEqual(visibleTags(row), [["dev", "Dev"], ["prod", "Prod"]]);
+    assert.deepEqual(tagsOf(row), [["dev", "Dev: connection enabled in development"], ["prod", "Prod: connection enabled in production"]]);
   }
   ui.fireEvent.pointerDown(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   const map = await ui.screen.findByRole("region", { name: "Connection details" });
-  assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
-  assert.equal(map.querySelectorAll(".connection-map-member").length, 4);
-  assert.deepEqual(visibleTags(map.querySelector("summary")!), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
+  assert.deepEqual(visibleTags(document.querySelector("[data-slot=\"connection-header\"]")!), [["dev", "Dev"], ["prod", "Prod"]]);
+  assert.equal(map.querySelectorAll("[data-slot=\"connection-map-member\"]").length, 4);
+  assert.deepEqual(visibleTags(map.querySelector("summary")!), [["dev", "Dev"], ["prod", "Prod"]]);
   assert.ok(!map.textContent?.includes("→"), "connection rows omit repeated arrows");
   assert.equal(ui.screen.getByLabelText("Selection").textContent, id);
   ui.fireEvent.click(map.querySelector("summary")!);
-  assert.ok(map.querySelector(".connection-map-detail .connection-details"), "original details are retained without a repeated header");
+  assert.ok(map.querySelector("[data-slot=\"connection-map-detail\"] [data-slot=\"connection-details\"]"), "original details are retained without a repeated header");
   ui.fireEvent.click(map.querySelector("summary")!);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
   await ui.waitFor(() => assert.equal(ui.screen.queryByRole("note", { name: "Connection deployment status" }), null));
   assert.equal(ui.screen.getByLabelText("Selection").textContent, id);
-  assert.equal(ui.screen.getByRole("region", { name: "Connection details" }).querySelectorAll(".connection-map-member").length, 4);
+  assert.equal(ui.screen.getByRole("region", { name: "Connection details" }).querySelectorAll("[data-slot=\"connection-map-member\"]").length, 4);
 });
 
 test("connections available in both environments retain two pills in every inspector row", async () => {
   await mount(true);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Connection: Stack: cognito to Environment file: Client environment, / }));
   const map = await ui.screen.findByRole("region", { name: "Connection details" });
-  const expected = [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]];
-  assert.deepEqual(visibleTags(document.querySelector(".connection-header")!), expected);
-  const rows = [...map.querySelectorAll<HTMLElement>(".connection-map-member > summary")];
+  const expected = [["dev", "Dev"], ["prod", "Prod"]];
+  assert.deepEqual(visibleTags(document.querySelector("[data-slot=\"connection-header\"]")!), expected);
+  const rows = [...map.querySelectorAll<HTMLElement>("[data-slot=\"connection-map-member\"] > summary")];
   assert.equal(rows.length, 4);
   for (const row of rows) {
     assert.deepEqual(visibleTags(row), expected);
@@ -1285,9 +1285,9 @@ async function hoverOver(id: string) {
 
 /** A new deliberate hover approaches outside the previous card, which can cover nearby entities. */
 async function approachCanvasAfresh() {
-  if (!document.querySelector(".canvas-tooltip")) return;
+  if (!document.querySelector("[data-ui~=\"canvas-tooltip\"]")) return;
   ui.fireEvent.pointerLeave(document.querySelector("canvas")!); await draw();
-  await ui.waitFor(() => assert.equal(document.querySelector(".canvas-tooltip"), null));
+  await ui.waitFor(() => assert.equal(document.querySelector("[data-ui~=\"canvas-tooltip\"]"), null));
 }
 
 function nodePoint(id: string) {
@@ -1300,15 +1300,15 @@ function nodePoint(id: string) {
   return point;
 }
 
-const tagsOf = (card: HTMLElement) => [...card.querySelectorAll(".hover-tag")].map((tag) => [tag.className, tag.textContent]);
+const tagsOf = (card: HTMLElement) => [...card.querySelectorAll("[data-environment][data-enabled]")].map((tag) => [tag.getAttribute("data-enabled") === "false" ? "off" : tag.getAttribute("data-environment"), tag.textContent]);
 
-const hoverEndpoints = (card: HTMLElement) => Object.fromEntries([...card.querySelectorAll(".landscape-hover-endpoints > div")].map(row => [
+const hoverEndpoints = (card: HTMLElement) => Object.fromEntries([...card.querySelectorAll("[data-ui~=\"landscape-hover-endpoints\"] > div")].map(row => [
   row.querySelector("dt")?.textContent,
-  [row.querySelector(".landscape-hover-endpoint-name")?.textContent, row.querySelector(".landscape-hover-endpoint-kind")?.textContent],
+  [row.querySelector("[data-ui~=\"landscape-hover-endpoint-name\"]")?.textContent, row.querySelector("[data-ui~=\"landscape-hover-endpoint-kind\"]")?.textContent],
 ]));
 
 /** The visible words of a pill; the hidden text after the colon says where, for assistive technology. */
-const visibleTags = (card: HTMLElement) => [...card.querySelectorAll(".hover-tag")].map((tag) => [tag.className, tag.firstChild?.textContent]);
+const visibleTags = (card: HTMLElement) => [...card.querySelectorAll("[data-environment][data-enabled]")].map((tag) => [tag.getAttribute("data-enabled") === "false" ? "off" : tag.getAttribute("data-environment"), tag.firstChild?.textContent]);
 
 test("hovering a node shows its authored description and a Dev and a Prod pill", async () => {
   await mount();
@@ -1316,8 +1316,8 @@ test("hovering a node shows its authored description and a Dev and a Prod pill",
   const text = card.textContent ?? "";
   assert.ok(text.includes(response.snapshot.descriptions.values["lambda:sign-out"]!), "the authored description");
   assert.ok(!/IAM relationships?/.test(text), "resource previews leave permission counts to inspection");
-  assert.deepEqual(visibleTags(card), [["hover-tag dev", "Dev"], ["hover-tag prod", "Prod"]]);
-  assert.deepEqual(tagsOf(card), [["hover-tag dev", "Dev: Your machine"], ["hover-tag prod", "Prod: AWS Lambda · outside the VPC"]]);
+  assert.deepEqual(visibleTags(card), [["dev", "Dev"], ["prod", "Prod"]]);
+  assert.deepEqual(tagsOf(card), [["dev", "Dev: Your machine"], ["prod", "Prod: AWS Lambda · outside the VPC"]]);
   assert.ok(!text.includes("Runs in development and production."), "the generic lane line is gone");
   assert.ok(!text.includes("Enabled in development"), "the generic presence line is gone");
   assert.ok(!text.includes("Click to inspect"), "no how-to caption under the description");
@@ -1385,13 +1385,13 @@ test("keyboard connection previews expose each member's environments and scroll 
   const card = ui.screen.getByRole("tooltip");
   assert.equal(card.parentElement, document.body, "the accessible navigator cannot clip its preview");
   assert.equal(trigger.getAttribute("aria-describedby"), card.id);
-  assert.equal(card.querySelector(".landscape-hover-heading .environment-pills"), null);
+  assert.equal(card.querySelector("[data-ui~=\"landscape-hover-heading\"] [data-slot=\"environment-pills\"]"), null);
   const rows = ui.within(ui.within(card).getByRole("list", { name: "Connection members" })).getAllByRole("listitem");
   assert.equal(rows.length, group.members.length);
   for (const member of group.members) {
-    const row = rows.find(row => row.querySelector(".landscape-hover-entry-name")?.textContent === member.edge.label);
+    const row = rows.find(row => row.querySelector("[data-ui~=\"landscape-hover-entry-name\"]")?.textContent === member.edge.label);
     assert.ok(row, member.edge.label);
-    assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], [member.edge.id === devOnly ? "hover-tag off" : "hover-tag prod", "Prod"]]);
+    assert.deepEqual(visibleTags(row), [["dev", "Dev"], [member.edge.id === devOnly ? "off" : "prod", "Prod"]]);
   }
   Object.defineProperties(card, { scrollHeight: { configurable: true, value: 900 }, clientHeight: { configurable: true, value: 240 } });
   ui.fireEvent.keyDown(trigger, { key: "PageDown" });
@@ -1410,11 +1410,11 @@ test("keyboard connection previews expose each member's environments and scroll 
 test("input group hovers label every entry with its own environments and omit aggregate pills", async () => {
   await mount();
   const card = await hoverOver("resource:client");
-  assert.equal(card.querySelector(".landscape-hover-tags"), null);
-  const rows = [...card.querySelectorAll<HTMLElement>(".landscape-hover-entries > li")];
-  assert.deepEqual(rows.map(row => row.querySelector(".landscape-hover-entry-name")?.textContent), ["apiPort", "webSocketPort", "webSocketTesterPort", "apiUrl"]);
-  for (const row of rows) assert.deepEqual(visibleTags(row), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
-  assert.equal(card.querySelector(".landscape-hover-subtitle")?.textContent, "Input group · 4 inputs");
+  assert.equal(card.querySelector("[data-ui~=\"landscape-hover-tags\"]"), null);
+  const rows = [...card.querySelectorAll<HTMLElement>("[data-ui~=\"landscape-hover-entries\"] > li")];
+  assert.deepEqual(rows.map(row => row.querySelector("[data-ui~=\"landscape-hover-entry-name\"]")?.textContent), ["apiPort", "webSocketPort", "webSocketTesterPort", "apiUrl"]);
+  for (const row of rows) assert.deepEqual(visibleTags(row), [["dev", "Dev"], ["off", "Prod"]]);
+  assert.equal(card.querySelector("[data-ui~=\"landscape-hover-subtitle\"]")?.textContent, "Input group · 4 inputs");
   assert.ok(!card.textContent?.includes("Not declared"), "the unlit Prod pill already says it");
   assert.ok(!card.textContent?.includes("Holds apiPort"), "the list replaces the prose name summary");
 });
@@ -1430,13 +1430,13 @@ test("supply hovers put environment pills beside each parameter", async () => {
   assert.ok(point, "the supply wire is pickable");
   ui.fireEvent.pointerMove(document.querySelector("canvas")!, { clientX: point.x, clientY: point.y }); await draw();
   const card = await ui.screen.findByRole("tooltip");
-  assert.equal(card.querySelector(".landscape-hover-tags"), null);
-  const rows = [...card.querySelectorAll<HTMLElement>(".landscape-hover-entries > li")];
+  assert.equal(card.querySelector("[data-ui~=\"landscape-hover-tags\"]"), null);
+  const rows = [...card.querySelectorAll<HTMLElement>("[data-ui~=\"landscape-hover-entries\"] > li")];
   assert.equal(rows.length, edge.members.length);
   for (const [at, row] of rows.entries()) {
     const parameter = response.snapshot.models.dev.resources.find(resource => resource.id === edge.members[at]!.edge.to)!;
-    assert.equal(row.querySelector(".landscape-hover-entry-name")?.textContent, parameter.path.at(-1));
-    assert.deepEqual(tagsOf(row), [["hover-tag dev", "Dev: supplied by this file in development"], ["hover-tag off", "Prod: not supplied by this file"]]);
+    assert.equal(row.querySelector("[data-ui~=\"landscape-hover-entry-name\"]")?.textContent, parameter.path.at(-1));
+    assert.deepEqual(tagsOf(row), [["dev", "Dev: supplied by this file in development"], ["off", "Prod: not supplied by this file"]]);
   }
   assert.deepEqual(hoverEndpoints(card), { From: ["cdk-app/.env.dev", "Environment file"], To: ["client", "Input group"] });
 });
@@ -1444,20 +1444,20 @@ test("supply hovers put environment pills beside each parameter", async () => {
 test("an environment that does not deploy the item keeps its pill, dark", async () => {
   await mount();
   const devOnly = await hoverOver("service:example-service");
-  assert.deepEqual(visibleTags(devOnly), [["hover-tag dev", "Dev"], ["hover-tag off", "Prod"]]);
+  assert.deepEqual(visibleTags(devOnly), [["dev", "Dev"], ["off", "Prod"]]);
   assert.equal(tagsOf(devOnly)[1]![1], "Prod: not deployed");
   const prodOnly = await hoverOver("task:db-migrate");
-  assert.deepEqual(visibleTags(prodOnly), [["hover-tag off", "Dev"], ["hover-tag prod", "Prod"]]);
+  assert.deepEqual(visibleTags(prodOnly), [["off", "Dev"], ["prod", "Prod"]]);
 });
 
 test("hovering a framework-managed resource labels it, and an undescribed node asks for a description", async () => {
   await mount();
   const card = await hoverOver("resource:rds");
-  assert.deepEqual(visibleTags(card), [["hover-tag off", "Dev"], ["hover-tag prod", "Prod"]]);
-  assert.equal(card.querySelector(".resource-status.managed")?.textContent, "Framework managed");
+  assert.deepEqual(visibleTags(card), [["off", "Dev"], ["prod", "Prod"]]);
+  assert.equal(card.querySelector("[data-resource-status=\"managed\"]")?.textContent, "Framework managed");
   const unused = await hoverOver("resource:referenceExamples");
-  assert.deepEqual(visibleTags(unused), [["hover-tag off", "Dev"], ["hover-tag off", "Prod"]], "both go dark");
-  assert.equal(unused.querySelector(".landscape-hover-note")?.textContent, "Not added to the CDK app");
+  assert.deepEqual(visibleTags(unused), [["off", "Dev"], ["off", "Prod"]], "both go dark");
+  assert.equal(unused.querySelector("[data-ui~=\"landscape-hover-note\"]")?.textContent, "Not added to the CDK app");
 
   const original = response;
   const { ["lambda:sign-out"]: _removed, ...descriptions } = response.snapshot.descriptions.values;
@@ -1467,7 +1467,7 @@ test("hovering a framework-managed resource labels it, and an undescribed node a
     await mount();
     const bare = await hoverOver("lambda:sign-out");
     assert.ok(bare.textContent?.includes("No description yet."), "an undescribed node says so");
-    assert.equal(bare.querySelectorAll(".hover-tag").length, 2, "the deployment labels stay");
+    assert.equal(bare.querySelectorAll("[data-environment][data-enabled]").length, 2, "the deployment labels stay");
   } finally { response = original; }
 });
 
@@ -1848,7 +1848,7 @@ test("a member overriding every stack tag still shows its parent and removal pre
   } };
   try {
     await mount(true, member.id);
-    ui.fireEvent.click(document.querySelector(".declaration-tags summary")!);
+    ui.fireEvent.click(document.querySelector("[data-slot=\"declaration-tags\"] summary")!);
     assert.ok(ui.screen.getByText("Overridden"));
     assert.ok(ui.screen.getByText("platform"));
     assert.ok(ui.screen.getByRole("button", { name: parent.replace(/^resource:/, "resources.") }));
@@ -1864,7 +1864,7 @@ test("existing workload, catalog, network and database inspectors expose tag con
   const model = response.snapshot.models.dev;
   for (const selected of ["lambda:graphql-api", "resource:cognito", "resource:cognito.userPool", "island:vpc:application", model.managedDatabase!.resource]) {
     await mount(true, selected);
-    const section = document.querySelector<HTMLElement>(".inspector-content > .declaration-tags")!;
+    const section = document.querySelector<HTMLElement>("[data-slot=\"inspector-content\"] > [data-slot=\"declaration-tags\"]")!;
     assert.ok(section, selected);
     assert.equal(section.previousElementSibling?.tagName, "HEADER", `${selected} tags are immediately visible after its header`);
     assert.equal(section.querySelector("details")!.open, false);
@@ -1887,7 +1887,7 @@ test("a snapshot missing tag metadata offers an inline editor refresh", async ()
   response = { ...response, snapshot: { ...response.snapshot, models: { dev: { ...response.snapshot.models.dev, tagging: undefined }, prod: { ...response.snapshot.models.prod, tagging: undefined } } } };
   try {
     await mount(true, "lambda:graphql-api");
-    ui.fireEvent.click(document.querySelector(".declaration-tags summary")!);
+    ui.fireEvent.click(document.querySelector("[data-slot=\"declaration-tags\"] summary")!);
     assert.ok(ui.screen.getByRole("button", { name: "Refresh editor" }));
   } finally { response = original; }
 });
@@ -1898,17 +1898,17 @@ test("an older source index shows tag inputs and refresh instead of a read-only 
   response = { ...response, snapshot: { ...response.snapshot, source: { ...response.snapshot.source, editability: { ...response.snapshot.source.editability, [target]: fields } } } };
   try {
     await mount(true, target);
-    ui.fireEvent.click(document.querySelector(".declaration-tags summary")!);
+    ui.fireEvent.click(document.querySelector("[data-slot=\"declaration-tags\"] summary")!);
     assert.equal((ui.screen.getByRole("textbox", { name: "Tag 1 value" }) as HTMLInputElement).disabled, true);
     assert.ok(ui.screen.getByRole("button", { name: "Refresh editor" }));
-    assert.equal(document.querySelector(".tag-readonly"), null);
+    assert.equal(document.querySelector("[data-slot=\"tag-readonly\"]"), null);
     assert.ok(ui.screen.getByRole("link", { name: "Open tag declaration in VS Code" }));
   } finally { response = original; }
 });
 
 test("discarding invalid tag edits restores source rows and clears the local validation message", async () => {
   await mount(true, "lambda:graphql-api");
-  const section = document.querySelector<HTMLElement>(".declaration-tags")!, tags = ui.within(section);
+  const section = document.querySelector<HTMLElement>("[data-slot=\"declaration-tags\"]")!, tags = ui.within(section);
   ui.fireEvent.click(section.querySelector("summary")!);
   const first = tags.getByRole("textbox", { name: "Tag 1 key" });
   ui.fireEvent.change(first, { target: { value: "aws:reserved" } });

@@ -12,11 +12,29 @@ source:
   - framework-studio/src/scene/render.ts
   - framework-studio/src/endpoint-services.ts
   - framework-studio/src/input-groups.ts
+  - framework-studio/src/styles/theme.css
+  - framework-studio/src/views/Isometric.tsx
 related:
   - studio.graph-model
   - studio.snapshots
 ---
 # Board and Isometric rendering
+
+React-owned map/Board controls, panels, resource lists and tooltip portals use Tailwind
+utilities and shared UI recipes; the [design system](../../framework-studio/ui-design-system.md)
+owns their conventions. CSS variables in `styles/theme.css` own application colors,
+fonts and density. Always-dark map DOM tokens are root-visible so portals receive the
+same palette. `scene/look.ts` continues to own artwork/material palettes;
+`deployment.ts` supplies deployment badge data to both Canvas and DOM. Runtime geometry,
+SVG paths, tooltip positions and splitter dimensions remain TypeScript/inline values.
+Never read computed CSS in the drawing frame loop or move camera/routing state into
+styling abstractions. Preserve `window.__studioLandscape` diagnostics and stable data
+markers used for workspace measurement and accessible row navigation.
+
+The database diagram retains its 340px tables, 69px header plus border (70px routing
+accounting), 30px rows and 34px footer. CodeMirror's generated DOM uses its dedicated
+adapter; editor identity/undo and Canvas scheduling are independent of utility CSS.
+
 
 Isometric always retains its topology islands and real VPC/subnet terraces. The compact
 key/value tag filter changes only visual presence: nonmatches use the same transparent

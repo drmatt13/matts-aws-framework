@@ -1,3 +1,8 @@
+import { InspectorSummary } from "./InspectorUI";
+import { Select, TextInput } from "../ui/FormControls";
+import { buttonClasses } from "../ui/Button";
+import { cx } from "../ui/classes";
+import { inspectorRelationListClasses } from "../inspector-ui";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { DraftEdit } from "../../shared/api";
 import type { ModelResource, ModelTarget } from "../../shared/model";
@@ -8,7 +13,7 @@ import { editorLink, ROLE_LABEL } from "../lookup";
 import { useStudio } from "../studio";
 import { AuthorizationBadge, AuthorizationDetails } from "./Authorization";
 import { ConfiguredResourcePicker } from "./ConfiguredResourcePicker";
-import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
+import { InspectorSection } from "./InspectorUI";
 
 type ConnectionEdit = Extract<DraftEdit, { kind: "connection" }>;
 type DisplayedAccess = AccessEntry & { readonly environmentLabel?: string };
@@ -46,16 +51,16 @@ function AccessEditor({ target, destination, onDone }: {
   const variableUsed = action?.variable && [...target.environment, ...target.secrets].some(entry => entry.name === variable);
   const problem = option.reason ?? action?.reason ?? (duplicate ? "This access is already configured." : pending ? "This change is already staged." : variableUsed ? "This environment variable is already in use." : action?.variable && variable && !/^[A-Z][A-Z0-9_]*$/.test(variable) ? "Use uppercase letters, digits and underscores, starting with a letter." : undefined);
   const valid = !!edit && !problem && (!action?.variable || /^[A-Z][A-Z0-9_]{0,127}$/.test(variable)) && (!action?.scope || scope.length <= 256 && !/[\r\n\0]/.test(scope));
-  return <div ref={form} className="access-editor" role="group" aria-label={`Access to ${option.title}`} onKeyDown={event => {
+  return <div ref={form} className={"grid gap-3 pb-3 [&>p]:m-0"} role="group" aria-label={`Access to ${option.title}`} onKeyDown={event => {
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onDone(); }
-  }}>
-    <div className="access-destination"><img src={iconUrl(option.icon)} alt="" /><span><strong>{option.title}</strong><span className="small muted">{option.subtitle}</span></span>{!destination ? <button className="linkish small" disabled={disabled} onClick={() => choose("")}>Change</button> : null}</div>
-    {option.actions.length > 1 ? <label className="resource-control"><span>Permission</span><select value={action?.id ?? ""} disabled={disabled} onChange={event => setActionId(event.target.value)}>{option.actions.map(item => <option key={item.id} value={item.id} disabled={!!item.reason}>{item.label}{item.existing ? " · configured" : ""}</option>)}</select></label> : <p>{action?.label}</p>}
-    {action?.scope ? <label className="resource-control"><span>Bucket object scope</span><input aria-label="Bucket object scope" aria-describedby={scopeHelp} value={scope} disabled={disabled} maxLength={256} onChange={event => setScope(event.target.value)} placeholder="* (all objects)" spellCheck={false} /><span id={scopeHelp} className="small muted">Limit access to an object prefix, or use * for all objects.</span></label> : null}
-    {action?.variable ? <label className="resource-control"><span>Environment variable</span><input value={variable} disabled={disabled} maxLength={128} onChange={event => setVariable(event.target.value)} placeholder="MY_RESOURCE" spellCheck={false} /></label> : null}
+  }} data-slot="access-editor">
+    <div className={"flex items-center gap-2 min-w-0"} data-slot="access-destination"><img src={iconUrl(option.icon)} alt="" /><span><strong>{option.title}</strong><span className={"text-caption text-graphite"}>{option.subtitle}</span></span>{!destination ? <button className={cx(buttonClasses({ variant: "link" }), "text-caption")} disabled={disabled} onClick={() => choose("")}>Change</button> : null}</div>
+    {option.actions.length > 1 ? <label className={"my-3 grid min-w-0 gap-2 text-label font-medium wrap-anywhere [&>input]:w-full [&>select]:w-full"} data-slot="resource-control"><span>Permission</span><Select value={action?.id ?? ""} disabled={disabled} onChange={event => setActionId(event.target.value)}>{option.actions.map(item => <option key={item.id} value={item.id} disabled={!!item.reason}>{item.label}{item.existing ? " · configured" : ""}</option>)}</Select></label> : <p>{action?.label}</p>}
+    {action?.scope ? <label className={"my-3 grid min-w-0 gap-2 text-label font-medium wrap-anywhere [&>input]:w-full [&>select]:w-full"} data-slot="resource-control"><span>Bucket object scope</span><TextInput aria-label="Bucket object scope" aria-describedby={scopeHelp} value={scope} disabled={disabled} maxLength={256} onChange={event => setScope(event.target.value)} placeholder="* (all objects)" spellCheck={false} /><span id={scopeHelp} className={"text-caption text-graphite"}>Limit access to an object prefix, or use * for all objects.</span></label> : null}
+    {action?.variable ? <label className={"my-3 grid min-w-0 gap-2 text-label font-medium wrap-anywhere [&>input]:w-full [&>select]:w-full"} data-slot="resource-control"><span>Environment variable</span><TextInput value={variable} disabled={disabled} maxLength={128} onChange={event => setVariable(event.target.value)} placeholder="MY_RESOURCE" spellCheck={false} /></label> : null}
     {action ? <AccessUsage edit={action.edit} /> : null}
-    {problem ? <p className="small reason" role="status">{problem}</p> : null}
-    <div className="access-actions"><button data-stage className="button" disabled={disabled || !valid} onClick={() => { if (edit && valid) { draft.stageOperation(edit); onDone(); } }}>Stage access</button><button className="quiet" onClick={onDone}>Cancel</button></div>
+    {problem ? <p className={"text-caption text-refuse wrap-anywhere"} role="status">{problem}</p> : null}
+    <div className={"flex flex-wrap items-center gap-3"} data-slot="access-actions"><button data-stage className={buttonClasses({ variant: "neutral" })} disabled={disabled || !valid} onClick={() => { if (edit && valid) { draft.stageOperation(edit); onDone(); } }}>Stage access</button><button className={buttonClasses({ variant: "quiet" })} onClick={onDone}>Cancel</button></div>
   </div>;
 }
 
@@ -63,16 +68,16 @@ function AccessUsage({ edit }: { readonly edit: ConnectionEdit }) {
   const { snapshot } = useStudio();
   const destination = Object.values(snapshot.models).flatMap(model => model.targets).find(target => target.ref === edit.destination);
   const helper = edit.connection === "startsWorkflow" ? "startWorkflow" : edit.connection === "runsTask" ? "runTask" : undefined;
-  if (helper && destination) return <p className="small muted">Call <code>{helper}({JSON.stringify(destination.id)}, input)</code> from your handler using <code>@repo/framework/runtime/invocation</code>.</p>;
-  if (edit.connection === "invokesAgent") return <p className="small muted">Call <code>invokeAgent</code> from <code>@repo/framework/runtime/agentcore</code>; authenticated agents also require the caller’s session.</p>;
-  if (edit.connection === "userPool") return <p className="small muted">Supplies the pool and client identifiers. To require a signed-in user, wrap the handler with <code>authenticated</code>.</p>;
-  if (edit.connection === "database") return <p className="small muted">Connects to the application’s PostgreSQL database with IAM login and its private network placement.</p>;
+  if (helper && destination) return <p className={"text-caption text-graphite"}>Call <code>{helper}({JSON.stringify(destination.id)}, input)</code> from your handler using <code>@repo/framework/runtime/invocation</code>.</p>;
+  if (edit.connection === "invokesAgent") return <p className={"text-caption text-graphite"}>Call <code>invokeAgent</code> from <code>@repo/framework/runtime/agentcore</code>; authenticated agents also require the caller’s session.</p>;
+  if (edit.connection === "userPool") return <p className={"text-caption text-graphite"}>Supplies the pool and client identifiers. To require a signed-in user, wrap the handler with <code>authenticated</code>.</p>;
+  if (edit.connection === "database") return <p className={"text-caption text-graphite"}>Connects to the application’s PostgreSQL database with IAM login and its private network placement.</p>;
   if (edit.connection === "resource") {
     const resource = Object.values(snapshot.models).flatMap(model => model.resources).find(item => item.id === edit.destination);
     const consumer = Object.values(snapshot.models).flatMap(model => model.targets).find(item => item.ref === edit.target);
-    if (resource?.kind === "secret") return <p className="small muted">{consumer?.kind === "service" || consumer?.kind === "task" ? "Loads the secret into the container’s environment at startup." : "Supplies the secret ARN and grants the workload permission to read it."}</p>;
+    if (resource?.kind === "secret") return <p className={"text-caption text-graphite"}>{consumer?.kind === "service" || consumer?.kind === "task" ? "Loads the secret into the container’s environment at startup." : "Supplies the secret ARN and grants the workload permission to read it."}</p>;
   }
-  if (edit.connection === "grant" && edit.grant === "grantConsumeMessages") return <p className="small muted">Allows your code to read queue messages. For automatic delivery to an event function, add the queue under Triggers.</p>;
+  if (edit.connection === "grant" && edit.grant === "grantConsumeMessages") return <p className={"text-caption text-graphite"}>Allows your code to read queue messages. For automatic delivery to an event function, add the queue under Triggers.</p>;
   return null;
 }
 
@@ -82,14 +87,14 @@ function AccessRow({ entry, disabled }: { readonly entry: DisplayedAccess; reado
   const source = entry.edge?.source;
   const context = entry.edge?.permissionContext;
   const scope = context?.kind === "native" && context.arguments.length === 1 && typeof context.arguments[0] === "string" ? context.arguments[0] : undefined;
-  return <details className="authorization-summary access-summary">
-    <summary><img src={iconUrl(entry.destination.icon)} alt="" /><span className="access-summary-text"><strong>{entry.destination.title}</strong><span className="small muted">{entry.operation}{scope ? ` · ${scope}` : ""}{entry.environmentLabel ? ` · ${entry.environmentLabel}` : ""}</span></span>{pending ? <span className="section-state modified">Removal staged</span> : <AuthorizationBadge authorization={entry.authorization} />}</summary>
+  return <details className={"border-b border-rule py-2 [&>summary]:flex [&>summary]:flex-wrap [&>summary]:items-center [&>summary]:gap-2 [&>summary]:cursor-pointer [&>summary]:flex-nowrap [&>summary>img]:size-6.5 [&>summary>img]:flex-none vp-420:[&>summary]:flex-wrap vp-420:[&>summary>[data-slot=authorization-badge]]:ml-8.5 [&:last-child]:border-b-0 [&:last-child]:pb-0"} data-slot="access-summary" data-disclosure="permission">
+    <InspectorSummary marker={false}><img src={iconUrl(entry.destination.icon)} alt="" /><span className={"grid [gap:3px] flex-1 min-w-0 wrap-anywhere [&>strong]:font-medium"} data-slot="access-summary-text"><strong>{entry.destination.title}</strong><span className={"text-caption text-graphite"}>{entry.operation}{scope ? ` · ${scope}` : ""}{entry.environmentLabel ? ` · ${entry.environmentLabel}` : ""}</span></span>{pending ? <span className={"ml-auto text-caption font-medium text-dev text-local"} data-slot="section-state">Removal staged</span> : <AuthorizationBadge authorization={entry.authorization} />}</InspectorSummary>
     <AuthorizationDetails authorization={entry.authorization} />
     {entry.remove ? <AccessUsage edit={entry.remove} /> : null}
-    <div className="access-actions">
-      {entry.destination.id ? <button className="linkish small" onClick={() => select(entry.destination.id)}>Inspect resource</button> : null}
-      {entry.connection ? <button className="linkish small" onClick={() => select(entry.connection)}>Inspect connection</button> : null}
-      {pending ? <button className="linkish small" disabled={disabled} onClick={() => draft.discardOperation(pending.key)}>Undo removal</button> : entry.remove ? <button className="linkish small" disabled={disabled} onClick={() => draft.stageOperation(entry.remove!)}>Remove access</button> : source ? <a className="linkish small" href={editorLink(snapshot.repositoryRoot, source)}>Open declaration</a> : null}
+    <div className={"flex flex-wrap items-center gap-3"} data-slot="access-actions">
+      {entry.destination.id ? <button className={cx(buttonClasses({ variant: "link" }), "text-caption")} onClick={() => select(entry.destination.id)}>Inspect resource</button> : null}
+      {entry.connection ? <button className={cx(buttonClasses({ variant: "link" }), "text-caption")} onClick={() => select(entry.connection)}>Inspect connection</button> : null}
+      {pending ? <button className={cx(buttonClasses({ variant: "link" }), "text-caption")} disabled={disabled} onClick={() => draft.discardOperation(pending.key)}>Undo removal</button> : entry.remove ? <button className={cx(buttonClasses({ variant: "link" }), "text-caption")} disabled={disabled} onClick={() => draft.stageOperation(entry.remove!)}>Remove access</button> : source ? <a className={cx(buttonClasses({ variant: "link" }), "text-caption")} href={editorLink(snapshot.repositoryRoot, source)}>Open declaration</a> : null}
     </div>
   </details>;
 }
@@ -105,8 +110,8 @@ function PendingAccess({ target, destination }: { readonly target?: string; read
     const options = consumer ? configuredAccessOptions(consumer, snapshot) : [];
     const option = options.find(item => item.actions.some(action => action.edit.connection === edit.connection && action.edit.destination === edit.destination));
     const action = option?.actions.find(item => item.edit.connection === edit.connection && item.edit.grant === edit.grant);
-    return <div className="pending-access" key={entry.key} role="status">
-      {option ? <img src={iconUrl(option.icon)} alt="" /> : null}<span><strong>{destination ? consumer?.title : option?.title}</strong><span className="small muted">{action?.label ?? "Access"}{edit.scope ? ` · ${edit.scope}` : ""}{edit.variable ? ` · ${edit.variable}` : ""}</span><span className="small">Staged for review</span></span><button className="linkish small" disabled={disabled} onClick={() => draft.discardOperation(entry.key)}>Undo</button>
+    return <div className={"flex items-center gap-2 min-w-0 [&_strong]:font-medium p-[var(--space-3)_0] border-b border-rule [&>span>:last-child]:text-accept"} key={entry.key} role="status" data-slot="pending-access">
+      {option ? <img src={iconUrl(option.icon)} alt="" /> : null}<span><strong>{destination ? consumer?.title : option?.title}</strong><span className={"text-caption text-graphite"}>{action?.label ?? "Access"}{edit.scope ? ` · ${edit.scope}` : ""}{edit.variable ? ` · ${edit.variable}` : ""}</span><span className={"text-caption"}>Staged for review</span></span><button className={cx(buttonClasses({ variant: "link" }), "text-caption")} disabled={disabled} onClick={() => draft.discardOperation(entry.key)}>Undo</button>
     </div>;
   })}</>;
 }
@@ -142,14 +147,14 @@ export function WorkloadPermissions({ target }: { readonly target: ModelTarget }
   const callerDone = () => { setAddingCaller(false); requestAnimationFrame(() => caller.current?.focus()); };
   const source = snapshot.source.entities[target.ref]?.value;
   const callable = ["task", "workflow", "agent"].includes(target.kind);
-  return <InspectorSection title="Permissions" actions={target.kind !== "workflow" && !editing ? <button ref={add} className="quiet" disabled={disabled} onClick={() => setEditing(true)}>Add access</button> : undefined}>
+  return <InspectorSection title="Permissions" actions={target.kind !== "workflow" && !editing ? <button ref={add} className={buttonClasses({ variant: "quiet" })} disabled={disabled} onClick={() => setEditing(true)}>Add access</button> : undefined}>
     {editing ? <AccessEditor target={target} onDone={done} /> : null}
     {owned.map(entry => <AccessRow key={entry.id} entry={entry} disabled={disabled} />)}
     <PendingAccess target={target.ref} />
-    {!owned.length && !editing ? <p className="small muted">No outgoing access configured.</p> : null}
-    {target.kind === "workflow" ? <p className="small muted access-note">Access is defined by this workflow’s steps.{source ? <> <a href={editorLink(snapshot.repositoryRoot, source)}>Open workflow definition</a>.</> : null}</p> : null}
-    {incoming.length || callable ? <details className="incoming-access" open={target.kind === "workflow" || undefined}><summary>Incoming access <span className="section-count">{incoming.length}</span></summary>
-      {callable && !addingCaller ? <p><button ref={caller} className="quiet" disabled={disabled} onClick={() => setAddingCaller(true)}>Add caller</button></p> : null}
+    {!owned.length && !editing ? <p className={"text-caption text-graphite"}>No outgoing access configured.</p> : null}
+    {target.kind === "workflow" ? <p className={"text-caption text-graphite mt-3 mb-0"} data-slot="access-note">Access is defined by this workflow’s steps.{source ? <> <a href={editorLink(snapshot.repositoryRoot, source)}>Open workflow definition</a>.</> : null}</p> : null}
+    {incoming.length || callable ? <details className={"mt-3 [&>summary]:cursor-pointer [&>summary]:text-caption [&>summary]:text-graphite"} open={target.kind === "workflow" || undefined} data-slot="incoming-access"><InspectorSummary>Incoming access <span className={"shrink-0 text-meta text-graphite bg-wash rounded-sm p-[0_var(--space-2)] font-medium ml-auto"} data-slot="section-count">{incoming.length}</span></InspectorSummary>
+      {callable && !addingCaller ? <p><button ref={caller} className={buttonClasses({ variant: "quiet" })} disabled={disabled} onClick={() => setAddingCaller(true)}>Add caller</button></p> : null}
       {addingCaller ? <ConsumerAccessEditor destination={target.ref} onDone={callerDone} /> : null}
       {incoming.map(entry => <AccessRow key={entry.id} entry={entry} disabled={disabled} />)}
       {callable ? <PendingAccess destination={target.ref} /> : null}
@@ -165,7 +170,7 @@ function ConsumerAccessEditor({ destination, onDone }: { readonly destination: s
     return option ? [{ target, option }] : [];
   }), [snapshot, destination]);
   const disabled = !!draftState.busy || draft.conflict || model.stale || live.evaluating;
-  return consumer ? <><p className="small muted">Grant to <strong>{consumer.title}</strong></p><AccessEditor key={consumer.ref} target={consumer} destination={destination} onDone={onDone} /></> : <ConfiguredResourcePicker label="Workloads" options={candidates.map(({ target, option }) => ({ id: target.ref, title: target.title, subtitle: `${ICONS[targetIcon(target)][1]} · ${target.role}`, icon: targetIcon(target), reason: option.reason, searchTerms: target.ref }))} onChoose={id => setConsumer(candidates.find(item => item.target.ref === id)?.target)} onCancel={onDone} disabled={disabled} />;
+  return consumer ? <><p className={"text-caption text-graphite"}>Grant to <strong>{consumer.title}</strong></p><AccessEditor key={consumer.ref} target={consumer} destination={destination} onDone={onDone} /></> : <ConfiguredResourcePicker label="Workloads" options={candidates.map(({ target, option }) => ({ id: target.ref, title: target.title, subtitle: `${ICONS[targetIcon(target)][1]} · ${target.role}`, icon: targetIcon(target), reason: option.reason, searchTerms: target.ref }))} onChoose={id => setConsumer(candidates.find(item => item.target.ref === id)?.target)} onCancel={onDone} disabled={disabled} />;
 }
 
 /** A resource can grant access without making the developer hunt for its consumer. */
@@ -192,9 +197,9 @@ export function ResourceAccess({ resource }: { readonly resource: ModelResource 
   const disabled = !!draftState.busy || draft.conflict || model.stale || live.evaluating;
   const done = () => { setChoosing(false); requestAnimationFrame(() => add.current?.focus()); };
   const input = resource.kind === "input";
-  return <InspectorSection title={input ? "Connected workloads" : "Workload access"} actions={!choosing ? <button ref={add} className="quiet" disabled={disabled} onClick={() => setChoosing(true)}>{input ? "Connect workload" : "Grant access"}</button> : undefined}>
+  return <InspectorSection title={input ? "Connected workloads" : "Workload access"} actions={!choosing ? <button ref={add} className={buttonClasses({ variant: "quiet" })} disabled={disabled} onClick={() => setChoosing(true)}>{input ? "Connect workload" : "Grant access"}</button> : undefined}>
     {choosing ? <ConsumerAccessEditor destination={resource.id} onDone={done} /> : null}
-    {consumers.length ? <ul className="relations resource-consumers">{consumers.map(target => <li key={target.ref}><button className="linkish" onClick={() => select(target.ref)}>{target.title}</button><span className="small muted">{conditions.has(target.ref) ? "Deployment condition" : ROLE_LABEL[target.role]}</span></li>)}</ul> : !choosing ? <p className="small muted">{input ? "No workloads use this input yet." : "No workloads have access yet."}</p> : null}
+    {consumers.length ? <ul className={cx(inspectorRelationListClasses, "[&>li]:items-baseline [&>li>span]:text-right")} data-slot="resource-consumers">{consumers.map(target => <li key={target.ref}><button className={buttonClasses({ variant: "link" })} onClick={() => select(target.ref)}>{target.title}</button><span className={"text-caption text-graphite"}>{conditions.has(target.ref) ? "Deployment condition" : ROLE_LABEL[target.role]}</span></li>)}</ul> : !choosing ? <p className={"text-caption text-graphite"}>{input ? "No workloads use this input yet." : "No workloads have access yet."}</p> : null}
     <PendingAccess destination={resource.id} />
   </InspectorSection>;
 }

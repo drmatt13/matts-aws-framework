@@ -62,12 +62,12 @@ const code = `async (page) => {
     await search.fill('');
     for (let at = 0; at < 5; at++) {
       const start = Date.now();
-      await page.locator('.landscape-entity-list button').filter({ hasText: /^fixture-0, HTTP Lambda/ }).press('Enter');
+      await page.getByRole('list', { name: 'Entities in the landscape' }).getByRole('button').filter({ hasText: /^fixture-0, HTTP Lambda/ }).press('Enter');
       await page.getByRole('heading', { name: 'Fixture handler 0', exact: true }).waitFor();
       await settle(); inspectors.push(Date.now() - start);
       await page.getByRole('button', { name: 'Close panel', exact: true }).click();
     }
-    await page.locator('.landscape-entity-list button').filter({ hasText: /^fixture-0, HTTP Lambda/ }).press('Enter');
+    await page.getByRole('list', { name: 'Entities in the landscape' }).getByRole('button').filter({ hasText: /^fixture-0, HTTP Lambda/ }).press('Enter');
     await page.getByRole('button', { name: 'Resume motion', exact: true }).click();
     const paint = await page.evaluate(() => new Promise(resolve => {
       const draws = [], intervals = []; let frames = -1, previous = 0, remaining = 90;

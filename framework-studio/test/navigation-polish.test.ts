@@ -296,13 +296,13 @@ test("creation helpers and validation stay associated with controls and source c
   assert.equal(describedBy.length, 2, "validation retains the naming help alongside its error");
   for (const reference of describedBy) assert.ok(document.getElementById(reference));
   assert.equal(controls.getByRole("textbox", { name: "Description" }).hasAttribute("aria-describedby"), false, "no dangling description references for fields without help");
-  assert.ok(controls.getByRole("group", { name: "Tags" }).closest(".creation-field-wide"));
+  assert.ok(controls.getByRole("group", { name: "Tags" }).closest("[data-creation-field][data-wide=true]"));
   ui.fireEvent.change(id, { target: { value: "polishedInput" } });
   assert.equal(id.getAttribute("aria-invalid"), "false");
   assert.equal(id.getAttribute("aria-describedby")!.split(" ").length, 1);
   await update({ ...response, snapshot: { ...response.snapshot, revision: `${response.snapshot.revision}-external` } });
   await ui.waitFor(() => assert.ok(controls.getByRole("alert")));
-  for (const element of wizard.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLSelectElement>(".creation-form-fields input, .creation-form-fields select, .creation-form-fields button")) assert.equal(element.disabled, true);
+  for (const element of wizard.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLSelectElement>("[data-slot=\"creation-form-fields\"] input, [data-slot=\"creation-form-fields\"] select, [data-slot=\"creation-form-fields\"] button")) assert.equal(element.disabled, true);
   assert.equal((controls.getByRole("button", { name: "Review generated changes" }) as HTMLButtonElement).disabled, true);
   assert.equal((controls.getByRole("button", { name: "Cancel creation" }) as HTMLButtonElement).disabled, false);
 });
@@ -312,7 +312,7 @@ test("the architecture board keeps valid resource-only applications visible and 
   const models = { dev: { ...snapshot.models.dev, targets: [], routes: [], edges: [] }, prod: { ...snapshot.models.prod, targets: [], routes: [], edges: [] } };
   await mount(() => h(shell.Shell, { children: h(board.Board) }), { ...response, snapshot: { ...snapshot, models } });
   assert.ok(ui.screen.getByRole("group", { name: "Application architecture" }));
-  assert.ok(document.querySelector(".board [data-entity-id^='resource:']"));
+  assert.ok(document.querySelector("[data-ui~=\"board\"] [data-entity-id^='resource:']"));
   assert.ok(ui.screen.getByRole("button", { name: "Add to application" }));
   assert.equal(ui.screen.queryByText(/graph did not load/), null);
 });

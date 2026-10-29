@@ -1,3 +1,5 @@
+import { InspectorSummary } from "./InspectorUI";
+
 import type { ConnectionGroup } from "../connections";
 import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
@@ -14,20 +16,20 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
   // The heading already names a shared purpose ("Reads: 2 environment values"); its rows name only what differs.
   const shared = new Set(members.map(({ relationship }) => relationship.action)).size === 1;
   return <>
-    <header className="connection-header"><span className="kind">Connection</span><h2>{presentation.title}</h2><EnvironmentPills availability={connection.availability} />
+    <header data-slot="connection-header"><span className={"text-graphite text-meta font-medium tracking-[.03em]"}>Connection</span><h2>{presentation.title}</h2><EnvironmentPills availability={connection.availability} />
       <ConnectionEndpoints from={connection.from} to={connection.to} />
     </header>
     <section aria-label="Connection details">
-      {!connection.availability[model.mode] ? <div className="connection-availability" role="note" aria-label="Connection deployment status"><strong>Disabled in {model.mode === "dev" ? "Development" : "Production"}</strong><p>Both endpoints must be enabled and a relationship must exist in this environment.</p></div> : null}
-      <div className="connection-map-members">
+      {!connection.availability[model.mode] ? <div className={"[margin-top:14px] p-[10px_var(--space-3)] border border-rule [border-left:3px_solid_var(--faint)] rounded-md [background:rgba(141,159,183,.06)] text-caption [&>strong]:inline-block [&>strong]:text-graphite [&_p]:m-[6px_0] [&_ul]:m-[6px_0_0] [&_ul]:pl-4.5"} role="note" aria-label="Connection deployment status" data-slot="connection-availability"><strong>Disabled in {model.mode === "dev" ? "Development" : "Production"}</strong><p>Both endpoints must be enabled and a relationship must exist in this environment.</p></div> : null}
+      <div data-slot="connection-map-members" className="[&>details+details]:border-t [&>details+details]:border-rule [&:first-child>details:first-child>summary]:pt-0">
         {members.map(({ member, edge, relationship }) => {
           const onlyIn = member.models[model.mode] ? undefined : member.models.dev ? "dev" : "prod";
-          return <details key={edge.id} className="connection-map-member">
-            <summary>
-              <span className="connection-map-label">{shared ? relationship.value : relationship.title}</span>
+          return <details key={edge.id} className={"[&:last-child:not([open])>summary]:pb-0 [&>summary>svg:first-child]:mr-0 [&>summary]:flex [&>summary]:gap-2 [&>summary]:items-center [&>summary]:cursor-pointer [&>summary]:text-caption [&>summary]:list-none [&>summary]:p-[var(--space-3)_0]"} data-slot="connection-map-member">
+            <InspectorSummary>
+              <span className={"grid [gap:2px] min-w-0 flex-1 [&_code]:wrap-anywhere [&_code]:text-caption"} data-slot="connection-map-label">{shared ? relationship.value : relationship.title}</span>
               <EnvironmentPills availability={member.availability} />
-            </summary>
-            <div className="connection-map-detail">
+            </InspectorSummary>
+            <div className={"pb-3 text-caption [&>[data-slot=connection-endpoints]]:mt-0 [&>[data-slot=connection-endpoints]]:mb-2 [&_[data-slot=connection-availability]]:mt-0"} data-slot="connection-map-detail">
               <ConnectionEndpoints from={edge.from} to={edge.to} except={{ from: connection.from, to: connection.to }} />
               <ConnectionDetails edge={edge} onlyIn={onlyIn} />
             </div>

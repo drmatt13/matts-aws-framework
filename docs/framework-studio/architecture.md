@@ -568,7 +568,7 @@ infrastructure inventory carry references and identifiers, never resolved input 
     a canvas.
   - [Shell](../../framework-studio/src/views/Shell.tsx): the top bar, the health and
     command drawers, and the toasts.
-- **Styles.** [styles.css](../../framework-studio/src/styles.css) holds the shell and map tokens. [inspector.css](../../framework-studio/src/inspector.css) holds shared interaction tokens, panels, forms, disclosures and reviews; see the [inspector conventions](inspector-design.md). The
+- **Styles.** [styles.css](../../framework-studio/src/styles.css) registers Tailwind sources and layers. [theme.css](../../framework-studio/src/styles/theme.css) owns runtime tokens; `src/ui/`, `InspectorUI` and [inspector-ui.ts](../../framework-studio/src/inspector-ui.ts) own reusable utility presentation. See the [design system](ui-design-system.md) for the four CSS owners and [inspector conventions](inspector-design.md). The
   light theme is "drafting film and ink". Compact exception badges use teal for Dev and violet for Prod;
   shared entities have no badge. `src/deployment.ts` supplies the same availability,
   badge paths and descriptions to Inspector and the canvas renderer.

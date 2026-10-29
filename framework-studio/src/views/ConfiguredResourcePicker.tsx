@@ -1,3 +1,7 @@
+import { TextInput } from "../ui/FormControls";
+import { buttonClasses } from "../ui/Button";
+import { cx } from "../ui/classes";
+import { pickerOptionClasses } from "../inspector-ui";
 import { ArrowRight, Search } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { iconUrl, type IconKey } from "../icons";
@@ -35,18 +39,18 @@ export function ConfiguredResourcePicker({ label, options, onChoose, onCancel, d
 
   const focusResult = (index: number) => {
     const option = matches[index];
-    const button = root.current?.querySelectorAll<HTMLButtonElement>(".endpoint-option")[index];
+    const button = root.current?.querySelectorAll<HTMLButtonElement>('[data-slot=endpoint-option]')[index];
     if (option && button) { setActive(option.id); button.focus(); }
   };
 
-  return <div ref={root} className="endpoint-picker" role="group" aria-label={label}
+  return <div ref={root} className={"min-w-0"} role="group" aria-label={label}
     onKeyDown={event => {
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onCancel(); }
-    }}>
-    <div className="endpoint-dropdown">
-      <div className="endpoint-search">
+    }} data-slot="endpoint-picker">
+    <div className={"mt-2 border border-rule-strong rounded-md p-2 bg-paper"} data-slot="endpoint-dropdown">
+      <div className={"flex items-center gap-2 relative [&>svg]:absolute [&>svg]:left-2.5 [&>svg]:text-graphite [&>svg]:pointer-events-none [&>input[type=search]]:w-full [&>input[type=search]]:pl-8"} data-slot="endpoint-search">
         <Search size={15} aria-hidden />
-        <input ref={search} type="search" aria-label={`Search ${label.toLowerCase()}`} placeholder="Find a resource or service…"
+        <TextInput ref={search} type="search" aria-label={`Search ${label.toLowerCase()}`} placeholder="Find a resource or service…"
           value={query} disabled={disabled} aria-controls={`${prefix}-results`}
           onChange={event => { setQuery(event.target.value); setActive(""); }}
           onKeyDown={event => {
@@ -56,13 +60,13 @@ export function ConfiguredResourcePicker({ label, options, onChoose, onCancel, d
             }
           }} />
       </div>
-      <div className="endpoint-picker-status">
-        <span className="small muted" role="status">{matches.length} {matches.length === 1 ? "resource" : "resources"}</span>
-        <button type="button" className="linkish small" onClick={onCancel}>Cancel</button>
+      <div className={"flex items-center justify-between gap-2 p-2 [&>button]:min-h-(--panel-caption-target)"} data-slot="endpoint-picker-status">
+        <span className={"text-caption text-graphite"} role="status">{matches.length} {matches.length === 1 ? "resource" : "resources"}</span>
+        <button type="button" className={cx(buttonClasses({ variant: "link" }), "text-caption")} onClick={onCancel}>Cancel</button>
       </div>
-      <ul id={`${prefix}-results`} className="endpoint-options" aria-label={label}>
+      <ul id={`${prefix}-results`} className={"m-0 max-h-[300px] list-none overflow-auto overscroll-contain p-[2px] scrollbar-thin [scroll-padding:4px] [&>li+li]:mt-0.5"} aria-label={label} data-slot="endpoint-options">
         {matches.map((option, index) => <li key={option.id}>
-          <button type="button" className="endpoint-option" tabIndex={focused === option.id ? 0 : -1}
+          <button type="button" className={pickerOptionClasses} tabIndex={focused === option.id ? 0 : -1}
             aria-label={`${option.title} · ${option.subtitle}`} aria-describedby={option.reason ? `${prefix}-reason-${index}` : undefined}
             aria-disabled={disabled || !!option.reason || undefined}
             onFocus={() => setActive(option.id)}
@@ -75,16 +79,16 @@ export function ConfiguredResourcePicker({ label, options, onChoose, onCancel, d
                 event.preventDefault(); event.stopPropagation();
                 if (next < 0) search.current?.focus(); else focusResult(next);
               } else if (event.key === "Enter" || event.key === " ") event.stopPropagation();
-            }}>
+            }} data-slot="endpoint-option">
             <img src={iconUrl(option.icon)} alt="" aria-hidden />
-            <span><strong>{option.title}</strong><span className="small muted">{option.subtitle}</span>
-              {option.reason ? <span id={`${prefix}-reason-${index}`} className="small muted">{option.reason}</span> : null}
+            <span><strong>{option.title}</strong><span className={"text-caption text-graphite"}>{option.subtitle}</span>
+              {option.reason ? <span id={`${prefix}-reason-${index}`} className={"text-caption text-graphite"}>{option.reason}</span> : null}
             </span>
-            {!option.reason ? <span className="endpoint-option-mark" aria-hidden><ArrowRight size={15} /></span> : null}
+            {!option.reason ? <span className={"grid size-[22px] flex-none place-items-center rounded-full text-graphite"} aria-hidden data-slot="endpoint-option-mark"><ArrowRight size={15} /></span> : null}
           </button>
         </li>)}
       </ul>
-      {!matches.length ? <p className="small muted endpoint-no-results">{query.trim() ? `No resources match “${query.trim()}”.` : "No resources available."}</p> : null}
+      {!matches.length ? <p className={"text-caption text-graphite my-3 mx-[2px]"} data-slot="endpoint-no-results">{query.trim() ? `No resources match “${query.trim()}”.` : "No resources available."}</p> : null}
     </div>
   </div>;
 }

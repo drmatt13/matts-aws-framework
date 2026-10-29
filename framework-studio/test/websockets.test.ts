@@ -148,9 +148,9 @@ test("a panel connects, prefills the example payload, sends it, logs replies and
   await ui.act(async () => socket.onmessage!({ data: JSON.stringify({ greeting: "hello back" }) }));
   // As in ws-tester, a reply arrives folded (`collapsed={0}`) and opens on click.
   const log = ui.screen.getByRole("log", { name: "Messages" });
-  await ui.waitFor(() => assert.ok(log.querySelector(".ws-tester-message .node-ellipsis")));
+  await ui.waitFor(() => assert.ok(log.querySelector(".node-ellipsis")));
   assert.equal(ui.within(log).queryByText(/hello back/), null);
-  ui.fireEvent.click(log.querySelector(".ws-tester-message .node-ellipsis")!);
+  ui.fireEvent.click(log.querySelector(".node-ellipsis")!);
   await ui.within(log).findByText(/hello back/);
 
   await ui.act(async () => socket.onclose!());

@@ -110,12 +110,12 @@ async function mount(selected = target, mode: "dev" | "prod" = "dev") {
   return app;
 }
 function openSection(title: string) {
-  const summary = [...document.querySelectorAll<HTMLElement>(".inspector-disclosure > details > summary")].find((summary) => summary.querySelector("span")?.textContent === title)!;
+  const summary = [...document.querySelectorAll<HTMLElement>("[data-inspector-disclosure] > details > summary")].find((summary) => summary.querySelector("span")?.textContent === title)!;
   assert.ok(summary, `section: ${title}`);
   if (!summary.closest("details")!.open) ui.fireEvent.click(summary);
 }
 function descriptionField(): HTMLTextAreaElement {
-  const editor = document.querySelector<HTMLDetailsElement>(".description-editor");
+  const editor = document.querySelector<HTMLDetailsElement>("[data-slot=description-editor]");
   if (editor && !editor.open) ui.fireEvent.click(editor.querySelector("summary")!);
   return ui.screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement;
 }
@@ -167,11 +167,11 @@ test("managed resource families explain inferred deployment without a Deploy sel
     const resource = model.resources.find(resource => resource.id === id);
     const input = id === "island:inputs" || resource?.deploymentFile || resource?.clientEnvironment || ["input", "secret", "group"].includes(resource?.kind ?? "");
     if (input) assert.equal(ui.screen.queryByRole("region", { name: "Deployment" }), null, id);
-    else assert.ok(document.querySelector(".deployment-ownership .deployment-note")?.textContent, id);
+    else assert.ok(document.querySelector("[data-slot=deployment-ownership] [data-slot=deployment-note]")?.textContent, id);
     if (id === "island:vpc:application") {
-      assert.equal(document.querySelector(".lane-line.dev strong")?.textContent, "Not enabled", "local workloads do not create a development VPC");
+      assert.equal(document.querySelector("[data-slot=lane-line][data-mode=dev] strong")?.textContent, "Not enabled", "local workloads do not create a development VPC");
       const built = baseline.models.prod.networks?.find(network => network.id === "application")?.builtInProd;
-      assert.equal(document.querySelector(".lane-line.prod strong")?.textContent, built ? "Enabled" : "Not enabled");
+      assert.equal(document.querySelector("[data-slot=lane-line][data-mode=prod] strong")?.textContent, built ? "Enabled" : "Not enabled");
     }
     ui.cleanup();
   }
@@ -181,44 +181,44 @@ test("managed resource families explain inferred deployment without a Deploy sel
 test("inspectors prioritize controls, disclose supporting details, and reset scroll on selection", async () => {
   await mount();
   assert.ok(memory());
-  assert.equal(document.querySelector<HTMLDetailsElement>(".description-editor")!.open, false);
-  const build = [...document.querySelectorAll<HTMLDetailsElement>(".inspector-disclosure > details")].find((details) => details.querySelector("summary > span")?.textContent === "Build and runtime")!;
+  assert.equal(document.querySelector<HTMLDetailsElement>("[data-slot=description-editor]")!.open, false);
+  const build = [...document.querySelectorAll<HTMLDetailsElement>("[data-inspector-disclosure] > details")].find((details) => details.querySelector("summary > span")?.textContent === "Build and runtime")!;
   assert.equal(build.open, false);
   assert.ok(!memory().closest("details"), "operational controls stay outside disclosures");
-  assert.equal(document.querySelector(".inspector-section .field .name")?.textContent, "Deploy");
-  assert.ok(!document.querySelector(".inspector")?.textContent?.includes("Source and identity"));
+  assert.equal(document.querySelector("[data-inspector-section] [data-slot=field] [data-slot=field-label]")?.textContent, "Deploy");
+  assert.ok(!document.querySelector("[data-inspector-context]")?.textContent?.includes("Source and identity"));
   openSection("Build and runtime");
   assert.ok(ui.screen.getByRole("combobox", { name: "Architecture" }));
-  const content = document.querySelector<HTMLElement>(".inspector-content")!;
-  const toolbar = document.querySelector(".inspector-toolbar")!;
+  const content = document.querySelector<HTMLElement>("[data-slot=inspector-content]")!;
+  const toolbar = document.querySelector("[data-slot=inspector-toolbar]")!;
   assert.ok(!content.contains(toolbar), "close remains outside the scrolled region");
   content.scrollTop = 240;
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Open node B" }));
-  await ui.waitFor(() => assert.ok(document.querySelector(".inspector-content") !== content, "selection replaces the scroll container"));
-  assert.equal(document.querySelector(".inspector-content")!.scrollTop, 0);
+  await ui.waitFor(() => assert.ok(document.querySelector("[data-slot=inspector-content]") !== content, "selection replaces the scroll container"));
+  assert.equal(document.querySelector("[data-slot=inspector-content]")!.scrollTop, 0);
   assert.equal(planCalls.length + applyCalls, 0, "inspecting and expanding never saves source");
 });
 
 test("tag metadata stays compact while collapsed drafts and errors remain discoverable", async () => {
   await mount("lambda:ws-connect-route");
-  const section = document.querySelector<HTMLElement>(".declaration-tags")!;
+  const section = document.querySelector<HTMLElement>("[data-slot=declaration-tags]")!;
   const details = section.querySelector("details")!;
   const summary = details.querySelector("summary")!;
   assert.equal(details.open, false);
-  assert.equal(summary.querySelector(".section-count")?.textContent, "1");
+  assert.equal(summary.querySelector("[data-slot=section-count]")?.textContent, "1");
   openSection("Tags");
   ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Tag 1 key" }), { target: { value: "aws:reserved" } });
   ui.fireEvent.click(summary);
   assert.equal(details.open, false);
-  assert.equal(summary.querySelector(".section-state")?.textContent, "Needs attention");
+  assert.equal(summary.querySelector("[data-slot=section-state]")?.textContent, "Needs attention");
   assert.equal((ui.screen.getByRole("button", { name: "Review Changes" }) as HTMLButtonElement).disabled, true);
   openSection("Tags");
   ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Tag 1 key" }), { target: { value: "Team" } });
   ui.fireEvent.click(summary);
-  assert.equal(summary.querySelector(".section-state")?.textContent, "Modified");
+  assert.equal(summary.querySelector("[data-slot=section-state]")?.textContent, "Modified");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard" }));
-  assert.equal(summary.querySelector(".section-state"), null);
-  assert.equal(summary.querySelector(".section-count")?.textContent, "1");
+  assert.equal(summary.querySelector("[data-slot=section-state]"), null);
+  assert.equal(summary.querySelector("[data-slot=section-count]")?.textContent, "1");
   assert.equal(planCalls.length + applyCalls, 0);
 });
 
@@ -249,11 +249,11 @@ test("numeric defaults stay visible through overrides and restoring them stages 
   await mount();
   const fact = baseline.models.dev.fields[target]!.find((fact) => fact.field === "lambda.memorySize")!;
   const inherited = fact.inherited!.value;
-  const row = memory().closest(".field")!;
-  assert.equal(row.querySelector(".numeric-default > span")?.textContent, `Default: ${inherited} MB`);
+  const row = memory().closest("[data-slot=field]")!;
+  assert.equal(row.querySelector("[data-slot=numeric-default] > span")?.textContent, `Default: ${inherited} MB`);
   changeMemory();
   assert.equal((memory() as HTMLInputElement).value, "768");
-  assert.equal(row.querySelector(".numeric-default > span")?.textContent, `Default: ${inherited} MB`);
+  assert.equal(row.querySelector("[data-slot=numeric-default] > span")?.textContent, `Default: ${inherited} MB`);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Use default memory" }));
   assert.equal((memory() as HTMLInputElement).value, "");
   assert.equal(memory().getAttribute("placeholder"), String(inherited));
@@ -268,7 +268,7 @@ test("field errors and boolean help are associated with the controls they explai
   await mount();
   const authentication = ui.screen.getByRole("switch", { name: "API user-pool authorizer" });
   const help = document.getElementById(authentication.getAttribute("aria-describedby")!);
-  assert.ok(help?.closest(".field")?.contains(authentication), "boolean help stays in its setting row");
+  assert.ok(help?.closest("[data-slot=field]")?.contains(authentication), "boolean help stays in its setting row");
   assert.match(help!.textContent!, /Cognito user pool/);
   ui.fireEvent.change(memory(), { target: { value: "1" } });
   const descriptions = memory().getAttribute("aria-describedby")!.split(" ").map(id => document.getElementById(id));
@@ -288,10 +288,10 @@ test("field errors and boolean help are associated with the controls they explai
 test("route tag ownership guidance stays inside the shared Tags section", async () => {
   const route = baseline.models.dev.routes.find(route => route.kind === "service")!;
   await mount(route.id);
-  const section = document.querySelector<HTMLElement>(".declaration-tags")!;
+  const section = document.querySelector<HTMLElement>("[data-slot=declaration-tags]")!;
   assert.equal(section.previousElementSibling?.tagName, "HEADER");
-  assert.match(section.querySelector(".section-description")!.textContent!, /Route tags follow the workload declaration/);
-  assert.equal(document.querySelector(".inspector-content > p"), null, "supporting copy shares the panel gutters");
+  assert.match(section.querySelector("[data-slot=section-description]")!.textContent!, /Route tags follow the workload declaration/);
+  assert.equal(document.querySelector("[data-slot=inspector-content] > p"), null, "supporting copy shares the panel gutters");
   assert.equal(planCalls.length + applyCalls, 0);
 });
 
@@ -315,15 +315,15 @@ test("every configurable workload places Tags before the shared Deployment secti
     const item = baseline.models.dev.targets.find((target) => target.role === role)!;
     if (!baseline.models.dev.fields[item.ref]?.some((fact) => fact.field === "deploy")) continue;
     await mount(item.ref);
-    const section = document.querySelector(".inspector-content > .inspector-deployment")!;
+    const section = document.querySelector("[data-slot=inspector-content] > [data-slot=inspector-deployment]")!;
     assert.ok(section, role);
-    assert.ok(section.previousElementSibling?.matches(".declaration-tags"), role);
+    assert.ok(section.previousElementSibling?.matches("[data-slot=declaration-tags]"), role);
     assert.equal(section.previousElementSibling?.previousElementSibling?.tagName, "HEADER", role);
     assert.equal(section.querySelector("h3")?.textContent, "Deployment", role);
-    assert.equal(section.querySelector(".field .name")?.textContent, "Deploy", role);
+    assert.equal(section.querySelector("[data-slot=field] [data-slot=field-label]")?.textContent, "Deploy", role);
     const control = ui.within(section as HTMLElement).getByRole("combobox", { name: "Deploy" });
     ui.fireEvent.change(control, { target: { value: "none" } });
-    assert.deepEqual([...section.querySelectorAll(".lane-line strong")].map((item) => item.textContent), ["Not enabled", "Not enabled"], role);
+    assert.deepEqual([...section.querySelectorAll("[data-slot=lane-line] strong")].map((item) => item.textContent), ["Not enabled", "Not enabled"], role);
     assert.equal(applyCalls + planCalls.length, 0, "changing deployment only stages a draft");
     ui.cleanup();
   }
@@ -409,7 +409,7 @@ test("grouped relationships have separate description drafts and unique accessib
   const group = aggregateConnections(baseline.models.dev, Object.values(baseline.models)).find((group) => group.members.length > 1)!;
   assert.ok(group);
   await mount(group.id);
-  const members = [...document.querySelectorAll<HTMLDetailsElement>(".connection-map-member")].slice(0, 2);
+  const members = [...document.querySelectorAll<HTMLDetailsElement>("[data-slot=connection-map-member]")].slice(0, 2);
   for (const [index, member] of members.entries()) {
     ui.fireEvent.click(member.querySelector("summary")!);
     ui.fireEvent.click(ui.within(member).getByText("Add description", { selector: "summary" }));
@@ -425,7 +425,7 @@ test("grouped relationships have separate description drafts and unique accessib
 test("event and public-field trigger flows stage through the shared review and keep native hooks occupied", async () => {
   for (const selected of ["lambda:cognito-pre-signup-trigger", "resource:cognito.userPool"]) {
     await mount(selected);
-    const summary = document.querySelector<HTMLElement>(".trigger-editor > details > summary")!;
+    const summary = document.querySelector<HTMLElement>("[data-slot=trigger-editor] > details > summary")!;
     assert.equal(summary.closest("details")!.open, false);
     ui.fireEvent.click(summary);
     ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add trigger" }));
@@ -463,7 +463,7 @@ test("event and public-field trigger flows stage through the shared review and k
 
 test("a native hook stages removal, can be restored, and reviews as one CDK source edit", async () => {
   await mount("lambda:cognito-pre-signup-trigger");
-  ui.fireEvent.click(document.querySelector<HTMLElement>(".trigger-editor > details > summary")!);
+  ui.fireEvent.click(document.querySelector<HTMLElement>("[data-slot=trigger-editor] > details > summary")!);
   const edge = baseline.models.dev.edges.find((item) => item.relation === "trigger" && item.provenance === "source" && item.label === "preSignUp")!;
   assert.equal(edge.removal && "kind" in edge.removal ? edge.removal.kind : undefined, "property");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Remove native trigger preSignUp" }));
@@ -482,7 +482,7 @@ test("a declared trigger shows its pending removal until restored, and the edit 
   const binding = { event: "invocation-test-step", id: "before-auth", key: "cognito.userPool/before-auth", adapter: "cognito", resource: "resource:cognito.userPool", accepts: "cognito", options: { operation: "preAuthentication" } };
   persisted = { ...baseline, models: { dev: { ...baseline.models.dev, triggers: [binding] }, prod: { ...baseline.models.prod, triggers: [binding] } } } as Snapshot;
   await mount("lambda:invocation-test-step");
-  ui.fireEvent.click(document.querySelector<HTMLElement>(".trigger-editor > details > summary")!);
+  ui.fireEvent.click(document.querySelector<HTMLElement>("[data-slot=trigger-editor] > details > summary")!);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Remove trigger before-auth" }));
   assert.ok(ui.screen.getByText("Will be removed"));
   assert.match(count(), /1 unsaved change/);
@@ -498,7 +498,7 @@ test("a declared trigger shows its pending removal until restored, and the edit 
 
 const openAddTrigger = async (selected: string) => {
   await mount(selected);
-  ui.fireEvent.click(document.querySelector<HTMLElement>(".trigger-editor > details > summary")!);
+  ui.fireEvent.click(document.querySelector<HTMLElement>("[data-slot=trigger-editor] > details > summary")!);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add trigger" }));
 };
 
@@ -517,7 +517,7 @@ test("step one lists every service, explains requirements and starts settings fr
   ui.fireEvent.click(ui.screen.getByRole("button", { name: /^Cognito:/ }));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Use userPool" }));
   assert.equal(ui.screen.queryByRole("region", { name: /Triggered by/ }), null);
-  assert.match(document.querySelector(".trigger-route")!.textContent!, /^Cognito · .*userPool.*→ invocation-test-step/);
+  assert.match(document.querySelector("[data-slot=trigger-route]")!.textContent!, /^Cognito · .*userPool.*→ invocation-test-step/);
   assert.ok(ui.screen.getByRole("combobox", { name: "Trigger Hook" }));
   assert.equal(planCalls.length, 0);
 });
@@ -550,7 +550,7 @@ test("the checklist lists every remaining problem at once and the button enables
 test("a schedule needs no resource and builds its expression from a repeat interval", async () => {
   await openAddTrigger("lambda:invocation-test-step");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Schedule: no resource needed" }));
-  assert.match(document.querySelector(".trigger-route")!.textContent!, /^Schedule → invocation-test-step/);
+  assert.match(document.querySelector("[data-slot=trigger-route]")!.textContent!, /^Schedule → invocation-test-step/);
   ui.fireEvent.change(ui.screen.getByRole("spinbutton", { name: "Trigger every" }), { target: { value: "15" } });
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Trigger unit" }), { target: { value: "minutes" } });
   assert.ok(ui.screen.getByText("rate(15 minutes)"));
@@ -667,18 +667,18 @@ test("managed API routes show their target's environment cards and owning config
     assert.ok(ui.within(header).getByText(route.origin));
     const target = baseline.models.dev.targets.find((target) => target.ref === route.target)!;
     const productionTarget = baseline.models.prod.targets.find((item) => item.ref === route.target)!;
-    const cards = [...document.querySelectorAll(".lane-line")];
+    const cards = [...document.querySelectorAll("[data-slot=lane-line]")];
     assert.equal(cards.length, 2);
-    assert.equal(cards[0]!.querySelector(".environment-name")?.textContent, "Development");
+    assert.equal(cards[0]!.querySelector("[data-slot=environment-name]")?.textContent, "Development");
     assert.equal(cards[0]!.querySelector("strong")?.textContent, target.lanes.local || target.lanes.dev ? "Enabled" : "Not enabled");
-    assert.equal(cards[0]!.querySelector(".small")?.textContent, target.lanes.local && target.lanes.dev ? "Your machine + AWS" : target.lanes.local ? "On your machine" : target.lanes.dev ? "In AWS" : undefined);
-    assert.equal(cards[1]!.querySelector(".environment-name")?.textContent, "Production");
+    assert.equal(cards[0]!.querySelector("[data-slot=execution-location]")?.textContent, target.lanes.local && target.lanes.dev ? "Your machine + AWS" : target.lanes.local ? "On your machine" : target.lanes.dev ? "In AWS" : undefined);
+    assert.equal(cards[1]!.querySelector("[data-slot=environment-name]")?.textContent, "Production");
     assert.equal(cards[1]!.querySelector("strong")?.textContent, productionTarget.lanes.prod ? "Enabled" : "Not enabled");
-    assert.equal(cards[1]!.querySelector(".small")?.textContent, productionTarget.lanes.prod ? "In AWS" : undefined);
+    assert.equal(cards[1]!.querySelector("[data-slot=execution-location]")?.textContent, productionTarget.lanes.prod ? "In AWS" : undefined);
     const control = ui.screen.getByRole("combobox", { name: "Deploy" });
     ui.fireEvent.change(control, { target: { value: "none" } });
-    assert.equal(document.querySelector(".lane-line.dev strong")?.textContent, "Not enabled");
-    assert.equal(document.querySelector(".lane-line.prod strong")?.textContent, "Not enabled");
+    assert.equal(document.querySelector("[data-slot=lane-line][data-mode=dev] strong")?.textContent, "Not enabled");
+    assert.equal(document.querySelector("[data-slot=lane-line][data-mode=prod] strong")?.textContent, "Not enabled");
     await ui.act(async () => { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); });
     await waitDialog("Review 1 change");
     assert.deepEqual(planCalls.at(-1), [{ kind: "deploy", target: target.ref, value: "none" }], "route and target share the same deployment declaration");
@@ -695,18 +695,18 @@ test("infrastructure and workload tags precede deployment cards while inputs omi
   for (const id of ["resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "prop:vpc:application:endpoint:s3", "lambda:cognito-post-confirmation-trigger", tool.ref, ...(local ? [local] : [])]) {
     persisted = id === local ? { ...baseline, models: { dev: { ...baseline.models.dev, managedDatabase: undefined }, prod: { ...baseline.models.prod, managedDatabase: undefined } } } : baseline;
     await mount(id);
-    const section = document.querySelector(".inspector-content > .inspector-deployment");
+    const section = document.querySelector("[data-slot=inspector-content] > [data-slot=inspector-deployment]");
     if (id === "resource:openaiApiKey") {
       assert.equal(section, null);
-      assert.ok(document.querySelector(".declaration-tags"));
+      assert.ok(document.querySelector("[data-slot=declaration-tags]"));
       ui.cleanup(); continue;
     }
     assert.ok(section, id);
     if (baseline.models.dev.tagging?.[id]) {
-      assert.ok(section.previousElementSibling?.matches(".declaration-tags"), id);
+      assert.ok(section.previousElementSibling?.matches("[data-slot=declaration-tags]"), id);
       assert.equal(section.previousElementSibling?.previousElementSibling?.tagName, "HEADER", id);
     } else assert.equal(section.previousElementSibling?.tagName, "HEADER", id);
-    assert.deepEqual([...section.querySelectorAll(".environment-name")].map((item) => item.textContent), ["Development", "Production"], id);
+    assert.deepEqual([...section.querySelectorAll("[data-slot=environment-name]")].map((item) => item.textContent), ["Development", "Production"], id);
     const deployment = ui.screen.queryByRole("combobox", { name: "Deploy" }) as HTMLSelectElement | null;
     if (baseline.models.dev.targets.some(item => item.ref === id)) assert.equal(deployment?.disabled, false);
     else assert.equal(deployment, null, "inferred ownership has no selector");
@@ -726,11 +726,11 @@ test("route cards retain disabled environments and show AWS-only development pla
       targets: baseline.models.dev.targets.map((target) => target.ref === route.target ? { ...target, lanes: { ...target.lanes, local: false, dev: enabled, prod: false } } : target),
     }, prod: { ...baseline.models.prod, targets: baseline.models.prod.targets.map(target => target.ref === route.target ? { ...target, lanes: { ...target.lanes, prod: false } } : target) } } };
     await mount(route.id);
-    const cards = [...document.querySelectorAll(".lane-line")];
+    const cards = [...document.querySelectorAll("[data-slot=lane-line]")];
     assert.equal(cards[0]!.querySelector("strong")?.textContent, enabled ? "Enabled" : "Not enabled");
-    assert.equal(cards[0]!.querySelector(".small")?.textContent, enabled ? "In AWS" : undefined);
+    assert.equal(cards[0]!.querySelector("[data-slot=execution-location]")?.textContent, enabled ? "In AWS" : undefined);
     assert.equal(cards[1]!.querySelector("strong")?.textContent, "Not enabled");
-    assert.equal(cards[1]!.querySelector(".small"), null);
+    assert.equal(cards[1]!.querySelector("[data-slot=execution-location]"), null);
     assert.equal(ui.screen.queryByRole("button", { name: "Review Changes" }), null, "opening a managed route stages no edits");
     ui.cleanup();
   }
@@ -746,8 +746,8 @@ test("WebSocket cloud deployment choices preview both AWS environments", async (
   const control = ui.screen.getByRole("combobox", { name: "Deploy" });
   assert.equal(ui.within(control).getByRole("option", { name: "Dev + Prod (AWS)" }).getAttribute("value"), "cloud-only");
   ui.fireEvent.change(control, { target: { value: "cloud-only" } });
-  assert.equal(document.querySelector(".lane-line.dev strong")?.textContent, "Enabled");
-  assert.equal(document.querySelector(".lane-line.prod strong")?.textContent, "Enabled");
+  assert.equal(document.querySelector("[data-slot=lane-line][data-mode=dev] strong")?.textContent, "Enabled");
+  assert.equal(document.querySelector("[data-slot=lane-line][data-mode=prod] strong")?.textContent, "Enabled");
   assert.equal(applyCalls + planCalls.length, 0);
 });
 
@@ -757,10 +757,10 @@ test("event Lambda local replay switches stage true or property removal through 
     const control = ui.screen.getByRole("switch", { name: "Local replay" });
     assert.equal(control.getAttribute("aria-checked"), String(enabled));
     assert.equal(ui.screen.queryByRole("switch", { name: "API user-pool authorizer" }), null);
-    const development = () => document.querySelector(".lane-line.dev .small")?.textContent;
+    const development = () => document.querySelector("[data-slot=lane-line][data-mode=dev] [data-slot=execution-location]")?.textContent;
     const replayLocation = "AWS first → captured → replayed on your machine";
     assert.equal(development(), enabled ? replayLocation : "In AWS");
-    assert.equal(document.querySelector(".lane-line.prod .small")?.textContent, "In AWS");
+    assert.equal(document.querySelector("[data-slot=lane-line][data-mode=prod] [data-slot=execution-location]")?.textContent, "In AWS");
     ui.fireEvent.click(control);
     assert.equal(control.getAttribute("aria-checked"), String(!enabled));
     assert.equal(development(), enabled ? "In AWS" : replayLocation, "the Development card previews the staged replay setting");
@@ -794,7 +794,7 @@ test("required flags stage quietly and the connection inspector guides missing v
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Edit .env.dev" }));
   await ui.screen.findByRole("heading", { name: "cdk-app/.env.dev" });
   assert.ok(ui.screen.getByText(/A required value is missing/));
-  assert.ok(ui.screen.getByText("Required", { selector: ".input-flag" }), "the row is flagged where its value is entered");
+  assert.ok(ui.screen.getByText("Required", { selector: "[data-slot=input-flag]" }), "the row is flagged where its value is entered");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: resource.fromEnv! }));
   assert.equal((ui.screen.getByRole("searchbox", { name: "Filter environment variables" }) as HTMLInputElement).value, resource.fromEnv);
   const field = await ui.screen.findByRole("textbox", { name: `Value for ${resource.fromEnv}` });
@@ -895,7 +895,7 @@ test("inline secrets stay masked and local value read errors can be retried", as
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Retry value read" }));
   const field = await ui.screen.findByLabelText(`Value for ${resource.fromEnv}`) as HTMLInputElement;
   assert.equal(field.type, "password");
-  assert.ok(!document.querySelector(".local-input")!.textContent!.includes("private-selected-sentinel"));
+  assert.ok(!document.querySelector("[data-slot=local-input]")!.textContent!.includes("private-selected-sentinel"));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: `Reveal ${resource.fromEnv}` }));
   assert.equal((ui.screen.getByLabelText(`Value for ${resource.fromEnv}`) as HTMLTextAreaElement).value, "private-selected-sentinel");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: `Hide ${resource.fromEnv}` }));
@@ -1080,7 +1080,7 @@ test("the creation chooser enters the guarded wizard; review/back retains form a
   assert.equal((ui.screen.getByRole("textbox", { name: "Stable identifier" }) as HTMLInputElement).value, "reviewedInput");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Cancel creation" }));
   assert.equal(applyCalls, 0);
-  assert.ok(!document.querySelector(".creation-wizard"));
+  assert.ok(!document.querySelector("[data-slot=creation-wizard]"));
 });
 
 test("input and secret creation share a switch and preserve compatible settings through review", async () => {
@@ -1139,7 +1139,7 @@ test("creation tags use reviewed pairs and duplicate keys remain invalid after e
 test("inspector tag rows focus additions, show delete controls, and stage edits for review", async () => {
   await mount("lambda:ws-connect-route");
   openSection("Tags");
-  const tags = ui.within(document.querySelector<HTMLElement>(".declaration-tags")!);
+  const tags = ui.within(document.querySelector<HTMLElement>("[data-slot=declaration-tags]")!);
   assert.ok(tags.getByText("Key")); assert.ok(tags.getByText("Value"));
   assert.equal((tags.getByRole("textbox", { name: "Tag 1 value" }) as HTMLInputElement).value, "realtime");
   ui.fireEvent.click(tags.getByRole("button", { name: "Add tag" }));
@@ -1164,7 +1164,7 @@ test("inspector tag rows focus additions, show delete controls, and stage edits 
 test("tag validation identifies invalid fields and removing the final row returns focus to Add tag", async () => {
   await mount("lambda:ws-connect-route");
   openSection("Tags");
-  const tags = ui.within(document.querySelector<HTMLElement>(".declaration-tags")!);
+  const tags = ui.within(document.querySelector<HTMLElement>("[data-slot=declaration-tags]")!);
   const key = tags.getByRole("textbox", { name: "Tag 1 key" });
   const value = tags.getByRole("textbox", { name: "Tag 1 value" });
   ui.fireEvent.change(key, { target: { value: "aws:reserved" } });
@@ -1321,7 +1321,7 @@ test("VPC settings freeze every control while a review is being prepared", async
   reviewGate = new Promise<void>(resolve => { finish = resolve; });
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
   await waitDialog("Review 1 change");
-  const controls = document.querySelectorAll<HTMLInputElement | HTMLButtonElement>(".inspector .fields input, .inspector .fields button");
+  const controls = document.querySelectorAll<HTMLInputElement | HTMLButtonElement>("[data-inspector-context] [data-slot=fields] input, [data-inspector-context] [data-slot=fields] button");
   assert.ok(controls.length > 4);
   try { for (const control of controls) assert.equal(control.disabled, true, control.getAttribute("aria-label") ?? control.id); }
   finally { await ui.act(async () => { finish(); await reviewGate; }); }
@@ -1332,7 +1332,7 @@ test("VPC settings freeze every control while a review is being prepared", async
 test("stale configuration freezes VPC settings and workload placement", async () => {
   persisted = { ...baseline, models: { ...baseline.models, dev: { ...baseline.models.dev, stale: true } } };
   await mount("island:vpc:application");
-  const settings = document.querySelectorAll<HTMLInputElement | HTMLButtonElement>(".inspector .fields input, .inspector .fields button");
+  const settings = document.querySelectorAll<HTMLInputElement | HTMLButtonElement>("[data-inspector-context] [data-slot=fields] input, [data-inspector-context] [data-slot=fields] button");
   assert.ok(settings.length > 4);
   for (const control of settings) assert.equal(control.disabled, true);
   ui.cleanup();
@@ -1354,7 +1354,7 @@ test("VPC creation switches preserve boolean choices through review without subm
   ui.fireEvent.click(control);
   assert.equal(control.getAttribute("aria-checked"), "true");
   assert.equal(planCalls.length, 0);
-  ui.fireEvent.click([...document.querySelectorAll(".creation-wizard summary")].find(summary => summary.textContent === "Advanced settings")!);
+  ui.fireEvent.click([...document.querySelectorAll("[data-slot=creation-wizard] summary")].find(summary => summary.textContent === "Advanced settings")!);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Choose interface endpoint services" }));
   ui.fireEvent.change(ui.screen.getByRole("searchbox", { name: "Search interface endpoint services" }), { target: { value: "secretsmanager" } });
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Secrets Manager · secretsmanager" }));
@@ -1375,14 +1375,14 @@ test("local PostgreSQL and RDS open the same application database workflow witho
   for (const id of ["local:postgres", "resource:rds.database"]) {
     await mount(id);
     assert.ok(ui.screen.getByRole("heading", { name: "Application PostgreSQL" }));
-    assert.deepEqual([...document.querySelectorAll(".database-environment strong")].map(node => node.textContent), ["Development", "Production"]);
+    assert.deepEqual([...document.querySelectorAll("[data-slot=database-environment] strong")].map(node => node.textContent), ["Development", "Production"]);
     assert.ok(ui.screen.getByText(/data is not synchronized/));
     assert.ok(ui.screen.getByRole("heading", { name: "Database home" }));
     assert.equal(ui.screen.queryByRole("combobox", { name: "Deploy" }), null);
     assert.ok(ui.screen.getByText(/production RDS follows its owning stack/));
     openSection("Connected workloads");
-    assert.ok(document.querySelector(".database-consumers")?.textContent?.includes("Direct writer"));
-    assert.ok(document.querySelector(".database-consumers")?.textContent?.includes("task:db-migrate"));
+    assert.ok(document.querySelector("[data-slot=database-consumers]")?.textContent?.includes("Direct writer"));
+    assert.ok(document.querySelector("[data-slot=database-consumers]")?.textContent?.includes("task:db-migrate"));
     assert.equal(planCalls.length + applyCalls, 0);
     ui.cleanup();
   }
@@ -1404,7 +1404,7 @@ test("database placement stages a coordinated review, guards navigation, and res
   ui.fireEvent.change(vpc(), { target: { value: spare.id } });
   ui.fireEvent.change(subnet(), { target: { value: "private" } });
   assert.ok(ui.screen.getByText("Coordinated placement review"));
-  assert.match(document.querySelector(".database-placement-impact")!.textContent!, /task:db-migrate/);
+  assert.match(document.querySelector("[data-slot=database-placement-impact]")!.textContent!, /task:db-migrate/);
   assert.equal(planCalls.length + applyCalls, 0);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
   await waitDialog("Review 1 change");
@@ -1563,10 +1563,10 @@ test("empty Permissions offers Add access and separates incoming API Gateway inv
   const permissions = ui.screen.getByRole("region", { name: "Permissions" });
   assert.ok(ui.within(permissions).getByRole("button", { name: "Add access" }));
   assert.ok(ui.within(permissions).getByText("No outgoing access configured."));
-  const incoming = permissions.querySelector<HTMLDetailsElement>(".incoming-access")!;
+  const incoming = permissions.querySelector<HTMLDetailsElement>("[data-slot=incoming-access]")!;
   assert.ok(incoming); assert.equal(incoming.open, false);
   assert.match(incoming.querySelector("summary")!.textContent!, /Incoming access/);
-  assert.equal(permissions.querySelectorAll(".section-content > .access-summary").length, 0);
+  assert.equal(permissions.querySelectorAll("[data-slot=section-content] > [data-slot=access-summary]").length, 0);
   ui.fireEvent.click(incoming.querySelector("summary")!);
   assert.ok(ui.within(incoming).getByText("HTTP API"));
   assert.ok(ui.within(incoming).getByText("Invoke function"));
@@ -1585,7 +1585,7 @@ test("Permissions picker supports keyboard navigation, empty search and Escape b
   ui.fireEvent.change(search, { target: { value: "SQS" } });
   ui.fireEvent.keyDown(search, { key: "ArrowDown" });
   const picker = ui.screen.getByRole("group", { name: "Configured resources" });
-  assert.equal(document.activeElement, picker.querySelector(".endpoint-option"));
+  assert.equal(document.activeElement, picker.querySelector("[data-slot=endpoint-option]"));
   ui.fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   assert.equal(ui.screen.queryByRole("searchbox", { name: "Search configured resources" }), null);
   await ui.waitFor(() => assert.equal(document.activeElement, ui.screen.getByRole("button", { name: "Add access" })));
@@ -1616,7 +1616,7 @@ test("Permissions removes the exact scoped grant and can undo before review", as
   withNativeAccess(bucket.resource, ["uploads/*", "reports/*"]);
   await mount();
   const permissions = ui.screen.getByRole("region", { name: "Permissions" });
-  const row = [...permissions.querySelectorAll<HTMLDetailsElement>(".access-summary")].find(item => item.textContent?.includes('grantRead("reports/*")'))!;
+  const row = [...permissions.querySelectorAll<HTMLDetailsElement>("[data-slot=access-summary]")].find(item => item.textContent?.includes('grantRead("reports/*")'))!;
   assert.ok(row);
   ui.fireEvent.click(row.querySelector("summary")!);
   ui.fireEvent.click(ui.within(row).getByRole("button", { name: "Remove access" }));
@@ -1637,7 +1637,7 @@ test("Permissions retains different Dev and Prod object scopes for the same conn
   }) } };
   await mount();
   const permissions = ui.screen.getByRole("region", { name: "Permissions" });
-  const rows = [...permissions.querySelectorAll<HTMLDetailsElement>(".access-summary")];
+  const rows = [...permissions.querySelectorAll<HTMLDetailsElement>("[data-slot=access-summary]")];
   const dev = rows.find(row => row.querySelector("summary")?.textContent?.includes("uploads/*"));
   const prod = rows.find(row => row.querySelector("summary")?.textContent?.includes("reports/*"));
   assert.ok(dev); assert.ok(prod); assert.notEqual(dev, prod);
@@ -1714,7 +1714,7 @@ test("indexed literal userPool binding has one grouped removal for both identifi
   assert.ok(edges.length >= 2, "real source indexing captures the comma-terminated userPool: true property");
   await mount(ref); openSection("Environment");
   assert.equal(ui.screen.getAllByText("User-pool identifiers").length, 1);
-  const identifiers = ui.screen.getByText("User-pool identifiers").closest(".env-row")!;
+  const identifiers = ui.screen.getByText("User-pool identifiers").closest("[data-slot=env-row]")!;
   assert.ok(ui.within(identifiers as HTMLElement).getByText("USER_POOL_ID")); assert.ok(ui.within(identifiers as HTMLElement).getByText("USER_POOL_CLIENT_ID"));
   assert.equal(ui.screen.getAllByRole("button", { name: "Remove user-pool identifiers" }).length, 1);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Remove user-pool identifiers" }));
@@ -1729,24 +1729,24 @@ test("userPool identifiers without direct literal ownership link to their declar
   persisted = { ...baseline, models: { dev: change("dev"), prod: change("prod") } };
   await mount(ref); openSection("Environment");
   assert.equal(ui.screen.queryByRole("button", { name: "Remove user-pool identifiers" }), null);
-  const group = ui.screen.getByText("User-pool identifiers").closest(".env-row")!;
+  const group = ui.screen.getByText("User-pool identifiers").closest("[data-slot=env-row]")!;
   assert.ok(ui.within(group as HTMLElement).getByRole("link", { name: "Open declaration" }));
   assert.equal(planCalls.length + applyCalls, 0);
 });
 
 test("gateway headers use the same framed framework-managed status as catalog stacks", async () => {
   await mount("resource:rds");
-  const reference = document.querySelector(".inspector-content > header .resource-status.managed")!;
+  const reference = document.querySelector("[data-slot=inspector-content] > header [data-resource-status=managed]")!;
   assert.ok(reference);
   const referenceClasses = reference.className;
   ui.cleanup();
   for (const id of ["gateway:http", "gateway:websocket"]) {
     await mount(id);
-    const header = document.querySelector(".inspector-content > header")!;
+    const header = document.querySelector("[data-slot=inspector-content] > header")!;
     const badge = ui.within(header as HTMLElement).getByText("Framework managed");
     assert.equal(badge.className, referenceClasses);
     assert.ok(badge.querySelector("svg"));
-    assert.equal(header.querySelectorAll(".resource-status.managed").length, 1);
+    assert.equal(header.querySelectorAll("[data-resource-status=managed]").length, 1);
     ui.cleanup();
   }
   assert.equal(planCalls.length + applyCalls, 0);

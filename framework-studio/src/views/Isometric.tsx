@@ -1,3 +1,9 @@
+import { Select } from "../ui/FormControls";
+import { inspectorContextClasses } from "../inspector-ui";
+import { cx } from "../ui/classes";
+import { iconButtonClasses } from "../ui/IconButton";
+import { mapCameraButtonClasses } from "./map-styles";
+import { workspaceToolbarClasses } from "../ui/Surface";
 import { ChevronLeft, Crosshair, Maximize2, Minus, PanelRight, Pause, Play, Plus, Search, X } from "lucide-react";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { CATEGORY_DESCRIPTION, CATEGORY_LABEL, endpointLabel, type EdgeCategory } from "../lookup";
@@ -288,7 +294,7 @@ export function Isometric() {
     if (selectionChanged && state.tween?.source === "reveal") state.tween = undefined;
     // Selection and the panel are presentation; use the containing workspace
     // dimensions so opening a node does not relayout the architecture.
-    const workspace = container.closest(".workspace")?.getBoundingClientRect();
+    const workspace = container.closest("[data-studio-workspace]")?.getBoundingClientRect();
     const nextAspect = layoutAspect(workspace?.width ?? next.width, workspace?.height ?? next.height);
     window.clearTimeout(aspectTimer.current);
     aspectTimer.current = window.setTimeout(() => {
@@ -302,7 +308,7 @@ export function Isometric() {
     state.viewport = next;
     state.origin = origin;
     // The map's whole span, panel included, in viewport coordinates.
-    const span = container.closest(".landscape-content")?.getBoundingClientRect();
+    const span = container.closest("[data-landscape-content]")?.getBoundingClientRect();
     state.stage = span ? { left: span.left - rect.left, width: span.width } : { left: 0, width: next.width };
     if (!state.fitted) {
       state.fitted = true;
@@ -724,7 +730,7 @@ export function Isometric() {
   // Hover coordinates and the timing readout must not rebuild hundreds of
   // hidden controls. Selection, source and scene updates still refresh them.
   const accessibleEntities = useMemo(() => (
-    <ul className="sr-only landscape-entity-list" aria-label="Entities in the landscape"
+    <ul data-ui="landscape-entity-list" className="-m-px h-px w-px overflow-hidden border-0 p-0 whitespace-nowrap [clip:rect(0,0,0,0)] absolute list-none focus-within:bottom-16 focus-within:left-4 focus-within:z-6 focus-within:m-0 focus-within:h-auto focus-within:max-h-[min(420px,55%)] focus-within:w-[min(360px,calc(100%-32px))] focus-within:overflow-auto focus-within:overscroll-contain focus-within:rounded-lg focus-within:border focus-within:border-map-rule focus-within:bg-map-panel focus-within:p-3 focus-within:whitespace-normal focus-within:text-map-ink focus-within:shadow-popover focus-within:[clip:auto] [&_li]:m-0 [&_button]:block [&_button]:min-h-(--control-height) [&_button]:w-full [&_button]:cursor-pointer [&_button]:rounded-sm [&_button]:border-0 [&_button]:bg-transparent [&_button]:p-2 [&_button]:text-left [&_button]:text-caption [&_button]:text-inherit [&_button]:wrap-anywhere [&_button:hover]:bg-map-row [&_button[aria-current=true]]:bg-map-row [&_button:focus-visible]:outline-map-focus [&_button:focus-visible]:-outline-offset-2" aria-label="Entities in the landscape"
     onPointerDownCapture={event => { touchNavigator.current = event.pointerType === "touch"; }}
     onFocusCapture={event => {
       const button = (event.target as HTMLElement).closest("button");
@@ -752,7 +758,7 @@ export function Isometric() {
       if (next === undefined) return;
       event.preventDefault(); items[next]?.focus();
     }}>
-      <li className="landscape-entity-help"><strong>Map resources and connections</strong><span>Use arrow keys or Tab to browse, Enter to inspect, Escape to return to the map.</span></li>
+      <li data-ui="landscape-entity-help" className="mb-2 grid gap-1 p-2 text-caption text-[#a3b1c4] [&_strong]:text-map-ink"><strong>Map resources and connections</strong><span>Use arrow keys or Tab to browse, Enter to inspect, Escape to return to the map.</span></li>
       {scene.edges.map((connection) => <li key={connection.id}><button data-hover-kind="edge" data-hover-id={connection.id} onClick={() => { setHover(undefined); inspect(connection.id); }} aria-current={visibleSelected === connection.id}>
         {missingConnectionInput(connection) ? "Missing required value: " : "Connection: "}{endpointLabel(index, connection.from)} to {endpointLabel(index, connection.to)}, {presentConnection(connection, scene.mode, index).title}
       </button></li>)}
@@ -765,67 +771,67 @@ export function Isometric() {
   ), [scene, visibleSelected, index, inspect, setHovered]);
 
   if (!hasEntities) {
-    return <div className="landscape-workspace"><p className="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p></div>;
+    return <div data-ui="landscape-workspace" className="flex h-full min-h-0 flex-col"><p data-ui="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p></div>;
   }
 
   return (
-    <div className="landscape-workspace">
-      <div className="workspace-toolbar landscape-top">
-        <div className="landscape-search-panel">
-          <div className="landscape-search" role="search" aria-label="Map search">
+    <div data-ui="landscape-workspace" className="flex h-full min-h-0 flex-col">
+      <div data-ui="workspace-toolbar landscape-top" className={cx(workspaceToolbarClasses, "flex flex-none flex-wrap items-start gap-x-3 gap-y-2")}>
+        <div data-ui="landscape-search-panel" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 map-band:basis-full vp-700:basis-full">
+          <div data-ui="landscape-search" className="flex min-h-(--control-height) w-[280px] max-w-full items-center gap-2 rounded-md border border-rule-strong bg-paper px-3 text-graphite focus-within:outline-2 focus-within:outline-prod focus-within:outline-offset-2 map-band:flex-[1_1_240px] vp-700:flex-[1_1_200px] [&>svg]:flex-none" role="search" aria-label="Map search">
             <Search size={16} aria-hidden />
-            <input ref={searchRef} type="search" aria-label="Search isometric map" placeholder="Search the map…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
+            <input className="h-[calc(var(--control-height)-2px)] min-h-0 min-w-0 w-full border-0 bg-transparent p-0 font-[inherit] text-label text-ink outline-none placeholder:text-faint placeholder:opacity-100 [&::-webkit-search-cancel-button]:hidden" ref={searchRef} type="search" aria-label="Search isometric map" placeholder="Search the map…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
               if (event.key !== "Escape") return;
               if (selected) select(undefined); else setQuery("");
               event.preventDefault();
             }} />
             {/* Inside the field, so typing never changes the toolbar's height under the panel. */}
-            {matches ? <span className="landscape-search-count" role="status" title={selected ? "Search resumes when selection clears" : undefined}>
+            {matches ? <span data-ui="landscape-search-count" className="inline-flex flex-none items-center gap-1 whitespace-nowrap text-caption text-graphite tabular-nums" role="status" title={selected ? "Search resumes when selection clears" : undefined}>
               {matches.nodes.size + matches.props.size} {matches.nodes.size + matches.props.size === 1 ? "match" : "matches"}
               {selected ? <><Pause size={11} aria-hidden /><span className="sr-only"> · Search resumes when selection clears</span></> : null}
             </span> : null}
-            {query ? <button className="icon-button" aria-label="Clear map search" title="Clear map search" onClick={() => { setQuery(""); searchRef.current?.focus(); }}><X size={14} aria-hidden /></button> : null}
+            {query ? <button className={iconButtonClasses({ variant: "quiet", size: "compact", className: "-mr-2 text-inherit" })} aria-label="Clear map search" title="Clear map search" onClick={() => { setQuery(""); searchRef.current?.focus(); }}><X size={14} aria-hidden /></button> : null}
           </div>
-          <div className="landscape-tag-controls" role="group" aria-label="Map tag filters"><label htmlFor="map-tag-key">Tags</label>
-            <select ref={tagKeyRef} id="map-tag-key" aria-label="Filter map by tag key" title={untaggedOnly ? "Entities with no tags" : activeTagKey || "All tags"} value={activeTagKey} onChange={event => changeTagFilter({ key: event.target.value, ...(event.target.value === UNTAGGED_FILTER ? { value: null } : {}) })}>
+          <div data-ui="landscape-tag-controls" className="flex min-w-0 max-w-full flex-[0_1_auto] items-center gap-2 text-caption text-graphite vp-700:flex-[1_1_280px]" role="group" aria-label="Map tag filters"><label className="flex-none" htmlFor="map-tag-key">Tags</label>
+            <Select className="w-[168px] flex-[0_1_168px]" ref={tagKeyRef} id="map-tag-key" aria-label="Filter map by tag key" title={untaggedOnly ? "Entities with no tags" : activeTagKey || "All tags"} value={activeTagKey} onChange={event => changeTagFilter({ key: event.target.value, ...(event.target.value === UNTAGGED_FILTER ? { value: null } : {}) })}>
               <option value="">All tags</option>
               <option value={UNTAGGED_FILTER} disabled={!model.tagging}>Untagged ({untaggedCount})</option>
               {activeTagKey && !untaggedOnly && !availableTagKeys.includes(activeTagKey) ? <option value={activeTagKey}>{activeTagKey} (unavailable in this mode)</option> : null}
               {availableTagKeys.map(key => <option key={key} value={key}>{key === "Untagged" ? "Untagged (key)" : key}</option>)}
-            </select>
+            </Select>
             {/* Values belong to a chosen key; "All tags" and "Untagged" have none to pick. */}
-            {activeTagKey && !untaggedOnly ? <select aria-label="Filter map by tag value" title={filterValue === undefined ? "All values" : tagValueLabel(filterValue)} value={filterValue === undefined ? "all" : JSON.stringify(filterValue)} onChange={event => { const chosen = groups.find(group => JSON.stringify(group.value) === event.target.value); changeTagFilter({ key: activeTagKey, ...(chosen ? { value: chosen.value } : {}) }); }}><option value="all">All values</option>{filterValue !== undefined && !groups.some(group => group.value === filterValue) ? <option value={JSON.stringify(filterValue)}>{tagValueLabel(filterValue)} (no matches)</option> : null}{groups.map(group => <option key={JSON.stringify(group.value)} value={JSON.stringify(group.value)}>{tagValueLabel(group.value)} ({group.members.length})</option>)}</select> : null}
-            {activeTagKey ? <button className="icon-button" aria-label="Clear tag filter" title="Clear tag filter" onClick={() => { changeTagFilter({ key: "" }); tagKeyRef.current?.focus(); }}><X size={14} aria-hidden /></button> : null}
+            {activeTagKey && !untaggedOnly ? <Select className="w-[168px] flex-[0_1_168px]" aria-label="Filter map by tag value" title={filterValue === undefined ? "All values" : tagValueLabel(filterValue)} value={filterValue === undefined ? "all" : JSON.stringify(filterValue)} onChange={event => { const chosen = groups.find(group => JSON.stringify(group.value) === event.target.value); changeTagFilter({ key: activeTagKey, ...(chosen ? { value: chosen.value } : {}) }); }}><option value="all">All values</option>{filterValue !== undefined && !groups.some(group => group.value === filterValue) ? <option value={JSON.stringify(filterValue)}>{tagValueLabel(filterValue)} (no matches)</option> : null}{groups.map(group => <option key={JSON.stringify(group.value)} value={JSON.stringify(group.value)}>{tagValueLabel(group.value)} ({group.members.length})</option>)}</Select> : null}
+            {activeTagKey ? <button className={iconButtonClasses({ variant: "quiet", className: "text-inherit" })} aria-label="Clear tag filter" title="Clear tag filter" onClick={() => { changeTagFilter({ key: "" }); tagKeyRef.current?.focus(); }}><X size={14} aria-hidden /></button> : null}
           </div>
           {/* The selects show the counts; the map's footer repeats the match, so the toolbar keeps one height. */}
           {activeTagKey && filterValue !== undefined ? <span className="sr-only" role="status">{tagMatchCount} matching {tagMatchCount === 1 ? "entity" : "entities"} in {model.mode === "dev" ? "development" : "production"}</span> : null}
         </div>
-        <div className="landscape-tools" role="group" aria-label="Map view controls">
-          <button onClick={() => zoomBy(0.8)} aria-label="Zoom out" title="Zoom out (−)">
+        <div data-ui="landscape-tools" className="inline-flex shrink-0 rounded-md border border-rule-strong bg-paper map-band:ml-auto vp-700:ml-auto" role="group" aria-label="Map view controls">
+          <button className={mapCameraButtonClasses} onClick={() => zoomBy(0.8)} aria-label="Zoom out" title="Zoom out (−)">
             <Minus size={16} aria-hidden />
           </button>
-          <button onClick={() => zoomBy(1.25)} aria-label="Zoom in" title="Zoom in (+)">
+          <button className={mapCameraButtonClasses} onClick={() => zoomBy(1.25)} aria-label="Zoom in" title="Zoom in (+)">
             <Plus size={16} aria-hidden />
           </button>
-          <button onClick={() => fit()} aria-label="Fit the whole application" title="Fit everything (0)">
+          <button className={mapCameraButtonClasses} onClick={() => fit()} aria-label="Fit the whole application" title="Fit everything (0)">
             <Maximize2 size={16} aria-hidden />
           </button>
-          <button onClick={() => focus(visibleSelected)} disabled={!selected} aria-label="Focus the selection" title="Focus the selection (F)">
+          <button className={mapCameraButtonClasses} onClick={() => focus(visibleSelected)} disabled={!selected} aria-label="Focus the selection" title="Focus the selection (F)">
             <Crosshair size={16} aria-hidden />
           </button>
-          <button onClick={() => setMotion((current) => !current)} aria-pressed={!motion} aria-label={motion ? "Pause motion" : "Resume motion"} title={motion ? "Pause motion" : "Resume motion"}>
+          <button className={mapCameraButtonClasses} onClick={() => setMotion((current) => !current)} aria-pressed={!motion} aria-label={motion ? "Pause motion" : "Resume motion"} title={motion ? "Pause motion" : "Resume motion"}>
             {motion ? <Pause size={16} aria-hidden /> : <Play size={16} aria-hidden />}
           </button>
         </div>
-        <button className="panel-toggle" onClick={toggleResources} aria-expanded={view === "resources"} aria-controls={PANEL_ID} title={view === "resources" ? "Hide resources" : "Browse resources by name and type"}>
+        <button data-ui="panel-toggle" className="inline-flex min-h-(--control-height) flex-none cursor-pointer items-center gap-2 rounded-md border border-rule-strong bg-paper py-0 pr-3 pl-2 font-sans text-label leading-none font-medium text-graphite hover:bg-wash hover:text-ink aria-expanded:border-graphite aria-expanded:bg-wash aria-expanded:text-ink" onClick={toggleResources} aria-expanded={view === "resources"} aria-controls={PANEL_ID} title={view === "resources" ? "Hide resources" : "Browse resources by name and type"}>
           <PanelRight size={16} aria-hidden /><span>Resources</span>
         </button>
       </div>
-      <div className="landscape-content">
-      <div className="landscape" ref={containerRef}>
+      <div data-ui="landscape-content" data-landscape-content className="flex min-h-0 min-w-0 flex-1 vp-800:flex-col">
+      <div data-ui="landscape" className="relative min-h-0 flex-1 overflow-hidden bg-map-ground text-map-ink vp-800:min-h-45" ref={containerRef}>
         <canvas
           ref={canvasRef}
-          className="landscape-canvas"
+          data-ui="landscape-canvas" className="absolute inset-0 block size-full touch-none outline-none focus-visible:shadow-[inset_0_0_0_2px_rgba(135,137,255,0.8)]"
           tabIndex={0}
           aria-label="Isometric landscape of the application. Use the list of entities below, or arrow keys to pan, plus and minus to zoom, 0 to fit, F to focus the selection."
           onPointerDown={onPointerDown}
@@ -840,10 +846,10 @@ export function Isometric() {
           onKeyDown={onKeyDown}
           style={{ cursor: dragging ? "grabbing" : pointingAtEntity ? "pointer" : "grab" }}
         />
-        <div className="landscape-bar landscape-connection-bar">
-          <div className="landscape-chips" role="group" aria-label="Background connections" aria-describedby="connection-filter-help">
+        <div data-ui="landscape-bar landscape-connection-bar" className="pointer-events-none absolute right-(--workspace-gutter) left-(--workspace-gutter) flex gap-3 top-3 z-3 items-start">
+          <div data-ui="landscape-chips" className="pointer-events-none flex max-w-full flex-wrap gap-2" role="group" aria-label="Background connections" aria-describedby="connection-filter-help">
             <span id="connection-filter-help" className="sr-only">Filter background connections. Selecting or previewing a resource always shows its connections.</span>
-            {visibleCategories.map(category => <button key={category} className="landscape-chip" aria-pressed={categories.has(category)}
+            {visibleCategories.map(category => <button key={category} data-ui="landscape-chip" className="pointer-events-auto inline-flex min-h-(--control-height-sm) cursor-pointer items-center gap-[7px] rounded-full border border-dashed border-[#ffffff24] bg-[#0e131be6] px-[10px] py-[3px] font-sans text-caption leading-[1.3] font-medium whitespace-nowrap text-[#8d97a6] before:h-0.5 before:w-3.5 before:flex-none before:rounded-[1px] before:bg-(--swatch) before:opacity-30 before:content-[''] aria-pressed:border-solid aria-pressed:border-[#ffffff45] aria-pressed:text-map-ink aria-pressed:before:opacity-100 hover:border-[#ffffff70] hover:bg-[#263140] hover:text-map-title focus-visible:outline-2 focus-visible:outline-map-focus focus-visible:outline-offset-2" aria-pressed={categories.has(category)}
               style={{ "--swatch": EDGE_COLORS[category] } as CSSProperties}
               title={`${categories.has(category) ? "Hide" : "Show"} ${CATEGORY_DESCRIPTION[category]}. Selected resources keep all their connections.`}
               onClick={() => {
@@ -852,22 +858,22 @@ export function Isometric() {
               }}>{CATEGORY_LABEL[category]}</button>)}
           </div>
         </div>
-        <div className="landscape-bar landscape-bottom">
-          <span className="landscape-stats">
+        <div data-ui="landscape-bar landscape-bottom" className="pointer-events-none absolute right-(--workspace-gutter) left-(--workspace-gutter) flex gap-3 bottom-3 items-end">
+          <span data-ui="landscape-stats" className="pointer-events-auto max-w-[calc(100%-72px)] px-1 pb-[6px] text-step-minus1 text-[#7f8a98] [&_strong]:font-medium [&_strong]:text-[#c9d3df] vp-700:max-w-[calc(100%-64px)] vp-700:text-caption vp-700:whitespace-normal">
             {scene.nodes.length} resources · {scene.edges.length} connections
             {activeTagKey && filterValue !== undefined ? <> · <strong>{tagMatchCount} {tagMatchCount === 1 ? "matches" : "match"} the tag filter</strong></> : null}
           </span>
-          <span className="spacer" />
+          <span className="pointer-events-none flex-1" />
           <AddMenu />
         </div>
         {hover && !resourcePreview ? <HoverCard hover={hover} scene={scene} nodes={nodes} viewport={live.current.viewport} id={tooltipId} anchor={keyboardAnchor} onPointerEnter={keepTooltip} onPointerLeave={leaveTooltip} /> : null}
         {accessibleEntities}
       </div>
       {view !== "closed" ? <WorkspacePanel id={PANEL_ID} label={view === "inspector" ? "Inspector" : "Resources"} onClose={() => close()}
-        bodyClassName={view === "inspector" ? "inspector" : "resource-browser"}
+        bodyClassName={view === "inspector" ? inspectorContextClasses : "overflow-hidden"}
         heading={view === "inspector"
-          ? <button ref={backButton} className="workspace-panel-back" onClick={back} aria-label="Back to Resources" title="Back to Resources"><ChevronLeft size={16} aria-hidden />Resources</button>
-          : <><h2 className="workspace-panel-title">Resources</h2><span className="section-count" title={`${scene.nodes.length} resources on the map`}>{scene.nodes.length}</span></>}>
+          ? <button ref={backButton} data-ui="workspace-panel-back" className="-ml-2 inline-flex min-h-(--control-height-sm) cursor-pointer items-center gap-[2px] rounded-md border-0 bg-transparent py-0 pr-2 pl-1 font-sans text-label leading-none font-semibold text-ink hover:bg-wash [&>svg]:text-graphite" onClick={back} aria-label="Back to Resources" title="Back to Resources"><ChevronLeft size={16} aria-hidden />Resources</button>
+          : <><h2 data-ui="workspace-panel-title" className="m-0 font-sans text-label leading-[1.3] font-semibold">Resources</h2><span data-ui="section-count" className="ml-0 text-caption font-normal text-graphite" title={`${scene.nodes.length} resources on the map`}>{scene.nodes.length}</span></>}>
         {view === "inspector" && selected !== undefined ? <InspectorContent selected={selected} /> : <ResourceBrowser
           scene={scene} nodes={navigatorNodes} fixtures={navigatorFixtures} total={scene.nodes.length}
           kinds={resourceKinds} kind={resourceKind} onKind={setResourceKind}

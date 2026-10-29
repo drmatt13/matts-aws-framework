@@ -2,9 +2,9 @@
 
 Studio is a visual control room. Inspectors should answer what an item is, where it
 runs, and what can be changed before asking the developer to read implementation detail.
-The shared tokens and base controls live in `framework-studio/src/styles.css`.
-`src/inspector.css` owns panel layout and aliases those tokens; the section primitives
-live in `src/views/InspectorUI.tsx`. Board, Isometric and Database use the same inspector.
+The shared tokens live in `framework-studio/src/styles/theme.css`; native controls
+live in `src/ui/`. Tailwind panel/dialog recipes live in `src/inspector-ui.ts` and
+section/disclosure/switch implementations in `src/views/InspectorUI.tsx`. Board, Isometric and Database use the same inspector.
 
 ## Conventions
 
@@ -177,7 +177,7 @@ Every inspector follows these rules, so that generated content never repeats or 
   their link's touch-target height. Catalog stacks show `resources.<key>` beneath their class
   name, as inputs and secrets do. **About this resource** follows the identity lines.
 - One disclosure marker: section disclosures draw the lucide chevron; every other summary
-  uses the same chevron at its own text size (a CSS mask in `inspector.css`), never the
+  uses the same chevron at its own text size (a mask utility owned by `InspectorUI`), never the
   browser triangle or a +/− sign. Permission rows and the description's **Edit** summary
   carry their own affordance.
 - Lists inside ruled sections draw rules only between rows, never at the list's ends, so a

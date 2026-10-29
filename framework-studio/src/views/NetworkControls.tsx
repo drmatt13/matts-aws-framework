@@ -1,3 +1,8 @@
+import { InspectorSummary } from "./InspectorUI";
+import { Select, TextInput } from "../ui/FormControls";
+import { buttonClasses } from "../ui/Button";
+import { cx } from "../ui/classes";
+import { inspectorFieldClasses, inspectorWideFieldClasses, inspectorLabelClasses, inspectorControlClasses, inspectorHelpClasses } from "../inspector-ui";
 import { CREATORS } from "../../shared/creation";
 import type { ModelTarget } from "../../shared/model";
 import type { NetworkSettings, PlacementEdit } from "../../shared/networks";
@@ -19,19 +24,19 @@ export function PlacementControl({ target }: { readonly target: ModelTarget }) {
     vpc: target.placement.kind === "vpc" ? target.placement.networkId : null,
     subnet: target.placement.kind === "vpc" ? target.placement.subnet : "none",
   };
-  return <div className="fields">
-    <div className="field"><label className="name" htmlFor={`${prefix}-vpc`}>VPC</label><span className="control"><select id={`${prefix}-vpc`} aria-label="Workload VPC" disabled={disabled} value={current.vpc ?? ""} onChange={event => {
+  return <div className={"[&>div+div]:border-t [&>div+div]:border-rule [&>div>[data-slot=field]]:border-0"} data-slot="fields">
+    <div className={inspectorFieldClasses} data-slot="field"><label className={inspectorLabelClasses} htmlFor={`${prefix}-vpc`} data-slot="field-label">VPC</label><span className={inspectorControlClasses} data-slot="control"><Select id={`${prefix}-vpc`} aria-label="Workload VPC" disabled={disabled} value={current.vpc ?? ""} onChange={event => {
       const vpc = event.target.value || null;
       draft.setPlacement({ ...current, vpc, subnet: vpc ? current.subnet === "none" ? "private" : current.subnet : "none" });
     }}>
       {lambda ? <option value="">Outside VPCs</option> : null}
       {(model.networks ?? []).map(network => <option key={network.id} value={network.id}>{network.id} · {network.cidr}</option>)}
-    </select></span></div>
-    {current.vpc ? <div className="field"><label className="name" htmlFor={`${prefix}-subnet`}>Subnet</label><span className="control"><select id={`${prefix}-subnet`} aria-label="Workload subnet" disabled={disabled} value={current.subnet} onChange={event => draft.setPlacement({ ...current, subnet: event.target.value as PlacementEdit["subnet"] })}>
+    </Select></span></div>
+    {current.vpc ? <div className={inspectorFieldClasses} data-slot="field"><label className={inspectorLabelClasses} htmlFor={`${prefix}-subnet`} data-slot="field-label">Subnet</label><span className={inspectorControlClasses} data-slot="control"><Select id={`${prefix}-subnet`} aria-label="Workload subnet" disabled={disabled} value={current.subnet} onChange={event => draft.setPlacement({ ...current, subnet: event.target.value as PlacementEdit["subnet"] })}>
       {(lambda ? ["private", "isolated"] : ["public", "private"]).map(subnet => <option key={subnet} value={subnet}>{subnet}</option>)}
-    </select></span></div> : null}
-    {target.origins.length > 1 ? <p className="small muted">Updates all routes sharing this workload.</p> : null}
-    {!model.networks?.length ? <p className="small muted">Create a VPC before placing this workload in a network.</p> : null}
+    </Select></span></div> : null}
+    {target.origins.length > 1 ? <p className={"text-caption text-graphite"}>Updates all routes sharing this workload.</p> : null}
+    {!model.networks?.length ? <p className={"text-caption text-graphite"}>Create a VPC before placing this workload in a network.</p> : null}
   </div>;
 }
 
@@ -54,27 +59,27 @@ export function NetworkControls({ id }: { readonly id: string }) {
   const used = assigned || Object.values(snapshot.models).some(model => model.networks?.find(item => item.id === network.id)?.builtInProd);
   const database = Object.values(snapshot.models).flatMap(graph => graph.managedDatabase?.networkId === network.id ? [graph.managedDatabase] : [])[0];
   return <InspectorSection title="VPC settings" description="Applies to this VPC and its assigned resources.">
-    <p className="small muted">Identity: {network.id} · {network.constructId}</p>
-    {database ? <div className="network-database-home"><strong>Home of the application database</strong><p className="small muted">This VPC cannot be removed while the database is placed here.</p><button className="linkish small" onClick={() => select(database.resource)}>Configure application PostgreSQL</button></div> : null}
-    <div className="fields">{fields.map(field => <div className="field" key={field.key}><label className="name" htmlFor={`${prefix}-${field.key}`}>{field.label}</label><span className="control">
+    <p className={"text-caption text-graphite"}>Identity: {network.id} · {network.constructId}</p>
+    {database ? <div className={"m-[var(--space-3)_0] p-3 border border-rule-strong rounded-md bg-wash [&_strong]:text-label [&_strong]:font-medium [&_p]:m-[var(--space-2)_0]"} data-slot="network-database-home"><strong>Home of the application database</strong><p className={"text-caption text-graphite"}>This VPC cannot be removed while the database is placed here.</p><button className={cx(buttonClasses({ variant: "link" }), "text-caption")} onClick={() => select(database.resource)}>Configure application PostgreSQL</button></div> : null}
+    <div className={"[&>div+div]:border-t [&>div+div]:border-rule [&>div>[data-slot=field]]:border-0"} data-slot="fields">{fields.map(field => <div className={inspectorFieldClasses} key={field.key} data-slot="field"><label className={inspectorLabelClasses} htmlFor={`${prefix}-${field.key}`} data-slot="field-label">{field.label}</label><span className={inspectorControlClasses} data-slot="control">
       {field.type === "boolean" ? <InspectorSwitch id={`${prefix}-${field.key}`} label={field.label} disabled={disabled} checked={form[field.key as keyof typeof form] === true} onChange={checked => update(field.key, checked)} describedBy={field.help ? `${prefix}-${field.key}-help` : undefined} />
-        : <input id={`${prefix}-${field.key}`} disabled={disabled} type={field.type === "number" ? "number" : "text"} value={String(form[field.key as keyof typeof form])} onChange={event => update(field.key, field.type === "number" ? Number(event.target.value) : event.target.value)} />}</span>
-      {field.help ? <span id={`${prefix}-${field.key}-help`} className="note">{field.help}</span> : null}
-    </div>)}<div className="field endpoint-field"><label className="name" htmlFor={`${prefix}-endpoints`}>Interface endpoints</label>
+        : <TextInput id={`${prefix}-${field.key}`} disabled={disabled} type={field.type === "number" ? "number" : "text"} value={String(form[field.key as keyof typeof form])} onChange={event => update(field.key, field.type === "number" ? Number(event.target.value) : event.target.value)} />}</span>
+      {field.help ? <span id={`${prefix}-${field.key}-help`} className={inspectorHelpClasses} data-slot="note">{field.help}</span> : null}
+    </div>)}<div className={cx(inspectorWideFieldClasses, "[&>[data-slot=field-label]]:pt-0")} data-slot="endpoint-field"><label className={inspectorLabelClasses} htmlFor={`${prefix}-endpoints`} data-slot="field-label">Interface endpoints</label>
       <InterfaceEndpointPicker id={`${prefix}-endpoints`} services={model.interfaceEndpointServices} selected={settings.endpoints}
         onChange={endpoints => draft.setNetwork(network.id, { ...settings, endpoints })} disabled={disabled}
         describedBy={`${prefix}-endpoints-help`} />
-      <p id={`${prefix}-endpoints-help`} className="small muted">Each service incurs hourly charges in each zone and per GB.</p>
+      <p id={`${prefix}-endpoints-help`} className={"text-caption text-graphite"}>Each service incurs hourly charges in each zone and per GB.</p>
     </div></div>
-    {error ? <p className="reason small" role="alert">{error}</p> : null}
-    <p className="small muted">CIDR or zone changes may replace attached infrastructure on deployment. NAT gateways and interface endpoints incur charges when built.</p>
-    <p className="small muted">Local Compose networking is shared; the selected VPC controls declaration checks and existing Lambda egress rules.</p>
-    <p className="small muted">All VPCs inherit the named deployment's region from cdk-app/cdk.json.</p>
-    {source ? <a className="small" href={editorLink(snapshot.repositoryRoot, source)}>Open VPC declaration in VS Code</a> : null}
-    <details><summary>Remove VPC</summary>
-      <p className="small muted">Removes this unused declaration and registry entry through diff review. Applying source does not delete AWS resources.</p>
-      {used ? <p className="small muted">Reassign workloads, the database, and native resource references before removal.</p> : null}
-      <button className="button" disabled={disabled || used || draft.dirty} onClick={() => { draft.removeNetwork(network.id); void draft.review(); }}>Review VPC removal</button>
+    {error ? <p className={"text-refuse wrap-anywhere text-caption"} role="alert">{error}</p> : null}
+    <p className={"text-caption text-graphite"}>CIDR or zone changes may replace attached infrastructure on deployment. NAT gateways and interface endpoints incur charges when built.</p>
+    <p className={"text-caption text-graphite"}>Local Compose networking is shared; the selected VPC controls declaration checks and existing Lambda egress rules.</p>
+    <p className={"text-caption text-graphite"}>All VPCs inherit the named deployment's region from cdk-app/cdk.json.</p>
+    {source ? <a className={"text-caption"} href={editorLink(snapshot.repositoryRoot, source)}>Open VPC declaration in VS Code</a> : null}
+    <details><InspectorSummary>Remove VPC</InspectorSummary>
+      <p className={"text-caption text-graphite"}>Removes this unused declaration and registry entry through diff review. Applying source does not delete AWS resources.</p>
+      {used ? <p className={"text-caption text-graphite"}>Reassign workloads, the database, and native resource references before removal.</p> : null}
+      <button className={buttonClasses({ variant: "neutral" })} disabled={disabled || used || draft.dirty} onClick={() => { draft.removeNetwork(network.id); void draft.review(); }}>Review VPC removal</button>
     </details>
   </InspectorSection>;
 }

@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+import { buttonClasses } from "./ui/Button";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
@@ -16,16 +17,7 @@ import { createRoot } from "react-dom/client";
 import { useSnapshot } from "./api";
 import { StudioProvider } from "./studio";
 import { Shell } from "./views/Shell";
-// This stylesheet also styles shared inspector controls. Preserve its original
-// cascade order while loading the Deploy component only when its route opens.
-import "./views/deploy/deploy.css";
 import "./styles.css";
-import "./inspector.css";
-import "./views/database-workbench.css";
-import "./views/prisma-editor.css";
-import "./views/stateful-resources.css";
-import "./views/authorization.css";
-import "./views/permissions.css";
 
 interface Search {
   readonly select?: string;
@@ -40,13 +32,13 @@ export function Root() {
     (id: string | undefined) => void navigate({ to: ".", search: (previous: Search) => ({ ...previous, select: id }) }),
     [navigate],
   );
-  if (isPending) return <main className="startup-state" aria-busy="true"><h1>AWS Studio</h1><p role="status">Evaluating the repository’s configuration…</p><p className="small muted">Loading the Development and Production maps.</p></main>;
+  if (isPending) return <main className="mx-auto my-[12vh] max-w-[600px] p-6 wrap-anywhere [&>h1]:mt-0 [&>h1]:mb-4 [&>h1]:font-sans [&>h1]:text-step2 [&>h1]:font-semibold [&>h1]:leading-[1.3] [&>p]:mt-0 [&>p]:mb-3" aria-busy="true"><h1>AWS Studio</h1><p role="status">Evaluating the repository’s configuration…</p><p className="text-caption text-graphite">Loading the Development and Production maps.</p></main>;
   if (!data) {
-    return <main className="startup-state"><h1>Studio couldn’t load the configuration</h1><p role="alert">{error instanceof Error ? error.message : "The server returned no snapshot."}</p><p className="muted">Check that <code>npm run studio</code> is running in this checkout, then try again.</p><button className="primary" disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Connecting…" : "Try again"}</button></main>;
+    return <main className="mx-auto my-[12vh] max-w-[600px] p-6 wrap-anywhere [&>h1]:mt-0 [&>h1]:mb-4 [&>h1]:font-sans [&>h1]:text-step2 [&>h1]:font-semibold [&>h1]:leading-[1.3] [&>p]:mt-0 [&>p]:mb-3"><h1>Studio couldn’t load the configuration</h1><p role="alert">{error instanceof Error ? error.message : "The server returned no snapshot."}</p><p className="text-graphite">Check that <code>npm run studio</code> is running in this checkout, then try again.</p><button className={buttonClasses({variant:"primary"})} disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Connecting…" : "Try again"}</button></main>;
   }
   return (
     <StudioProvider response={data} selected={search.select} select={select}>
-      <Shell notice={error ? <><span role="status">Studio couldn’t refresh the configuration. Your current map and draft are preserved.</span><button className="quiet" disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Connecting…" : "Try again"}</button></> : undefined}>
+      <Shell notice={error ? <><span role="status">Studio couldn’t refresh the configuration. Your current map and draft are preserved.</span><button className={buttonClasses({variant:"quiet"})} disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Connecting…" : "Try again"}</button></> : undefined}>
         <Outlet />
       </Shell>
     </StudioProvider>

@@ -1,3 +1,6 @@
+import { InspectorSummary } from "./InspectorUI";
+import { buttonClasses } from "../ui/Button";
+import { cx } from "../ui/classes";
 import { DeployControl } from "./DeployControl";
 import { Code2, Diamond } from "lucide-react";
 import type { ReactNode } from "react";
@@ -13,11 +16,11 @@ export function DeploymentSection({ availability, locations, children, catalog =
   readonly children?: ReactNode;
   readonly catalog?: boolean;
 }) {
-  return <InspectorSection title="Deployment" className="inspector-deployment">
-    <div className="lane-lines" aria-live="polite" aria-atomic="true">{(["dev", "prod"] as const).map((mode) => <div key={mode} className={`lane-line ${mode}${availability[mode] ? "" : " off"}`}>
-      <span className="environment-name">{mode === "dev" ? <Code2 size={14} aria-hidden /> : <Diamond size={14} aria-hidden />}{mode === "dev" ? "Development" : "Production"}</span>
+  return <InspectorSection title="Deployment" className={"[&>[data-slot=section-content]]:grid [&>[data-slot=section-content]]:gap-4"} data-slot="inspector-deployment">
+    <div className={"grid grid-cols-2 gap-2 m-0"} aria-live="polite" aria-atomic="true" data-slot="lane-lines">{(["dev", "prod"] as const).map((mode) => <div key={mode} className={cx("[&_strong]:text-ink [&_strong]:text-label [&_strong]:font-medium flex flex-col border border-rule rounded-md text-caption p-[var(--space-2)_var(--space-3)] gap-1 [background:color-mix(in_srgb,_currentColor_3%,_var(--sheet))]", mode === "dev" ? "text-dev" : "text-prod", availability[mode] ? "" : "[border-top-style:dotted] [&_strong]:text-faint [&_span]:text-faint")} data-slot="lane-line" data-mode={mode}>
+      <span className={"flex items-center gap-[6px] text-meta font-medium text-inherit"} data-slot="environment-name">{mode === "dev" ? <Code2 size={14} aria-hidden /> : <Diamond size={14} aria-hidden />}{mode === "dev" ? "Development" : "Production"}</span>
       <strong>{catalog ? availability[mode] ? "Available" : "Unavailable" : availability[mode] ? "Enabled" : "Not enabled"}</strong>
-      {availability[mode] && locations?.[mode] ? <span className="small muted">{locations[mode]}</span> : null}
+      {availability[mode] && locations?.[mode] ? <span data-slot="execution-location" className="text-meta text-graphite">{locations[mode]}</span> : null}
     </div>)}</div>
     {children}
   </InspectorSection>;
@@ -52,18 +55,18 @@ export function TargetDeployment({ target, route = false }: { readonly target: M
   }
   return <DeploymentSection availability={{ dev: environments(dev).dev, prod: lanes("prod").prod }} locations={{ dev: development, prod: "In AWS" }}>
     <DeployControl target={target} />
-    {route ? <p className="deployment-note small muted">Shared with <button className="linkish" onClick={() => select(target.ref)}>{target.title}</button>.</p> : null}
-    {target.role === "event" ? <p className="deployment-note small muted">Enabled cloud lanes include native AWS triggers. Local-only execution requires a local caller; AWS triggers are omitted.</p> : null}
-    {target.role === "tool" && target.lanes.origin === "derived" ? <p className="deployment-note small muted">{target.lanes.derivedFrom?.length ? <>Inherits from {target.lanes.derivedFrom.map((ref, index) => <span key={ref}>{index ? ", " : ""}<button className="linkish" onClick={() => select(ref)}>{model.targets.find((item) => item.ref === ref)?.title ?? ref}</button></span>)}. Set Deploy to override.</> : "No agent lists this tool. Set Deploy to enable it independently."}</p> : null}
+    {route ? <p className={"m-0 wrap-anywhere text-caption text-graphite"} data-slot="deployment-note">Shared with <button className={buttonClasses({ variant: "link" })} onClick={() => select(target.ref)}>{target.title}</button>.</p> : null}
+    {target.role === "event" ? <p className={"m-0 wrap-anywhere text-caption text-graphite"} data-slot="deployment-note">Enabled cloud lanes include native AWS triggers. Local-only execution requires a local caller; AWS triggers are omitted.</p> : null}
+    {target.role === "tool" && target.lanes.origin === "derived" ? <p className={"m-0 wrap-anywhere text-caption text-graphite"} data-slot="deployment-note">{target.lanes.derivedFrom?.length ? <>Inherits from {target.lanes.derivedFrom.map((ref, index) => <span key={ref}>{index ? ", " : ""}<button className={buttonClasses({ variant: "link" })} onClick={() => select(ref)}>{model.targets.find((item) => item.ref === ref)?.title ?? ref}</button></span>)}. Set Deploy to override.</> : "No agent lists this tool. Set Deploy to enable it independently."}</p> : null}
   </DeploymentSection>;
 }
 
 /** Child infrastructure follows its owner; never offers an ineffective flag. */
 export function DeploymentOwnership({ reason, owners = [] }: { readonly reason: string; readonly owners?: readonly { readonly id: string; readonly title: string }[] }) {
   const { select } = useStudio();
-  return <div className="deployment-ownership">
-    <p className="deployment-note small muted">{reason}</p>
-    {owners.length > 3 ? <details><summary>Configure owners ({owners.length})</summary><div className="deployment-owners">{owners.map(owner => <button key={owner.id} className="quiet small" onClick={() => select(owner.id)}>Configure {owner.title}</button>)}</div></details> : owners.length ? <div className="deployment-owners">{owners.map(owner => <button key={owner.id} className="quiet small" onClick={() => select(owner.id)}>Configure {owner.title}</button>)}</div> : null}
+  return <div className={"grid min-w-0 gap-3 [&_details>summary]:text-graphite [&_details>summary]:text-caption [&_details[open]>summary]:mb-2"} data-slot="deployment-ownership">
+    <p className={"m-0 wrap-anywhere text-caption text-graphite"} data-slot="deployment-note">{reason}</p>
+    {owners.length > 3 ? <details><InspectorSummary>Configure owners ({owners.length})</InspectorSummary><div className={"flex flex-wrap gap-2 [&_button]:max-w-full [&_button]:whitespace-normal [&_button]:text-left [&_button]:wrap-anywhere"} data-slot="deployment-owners">{owners.map(owner => <button key={owner.id} className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} onClick={() => select(owner.id)}>Configure {owner.title}</button>)}</div></details> : owners.length ? <div className={"flex flex-wrap gap-2 [&_button]:max-w-full [&_button]:whitespace-normal [&_button]:text-left [&_button]:wrap-anywhere"} data-slot="deployment-owners">{owners.map(owner => <button key={owner.id} className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} onClick={() => select(owner.id)}>Configure {owner.title}</button>)}</div> : null}
   </div>;
 }
 

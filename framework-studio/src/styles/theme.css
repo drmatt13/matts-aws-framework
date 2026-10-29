@@ -1,0 +1,146 @@
+/* Owner: Studio design system. Runtime CSS variables are authoritative for UI,
+ * including OS themes and editor integrations. Tailwind aliases resolve at use.
+ * Scene material/geometry palettes remain in TypeScript; map DOM tokens are
+ * available at the document root so portal content shares the same palette. */
+:root {
+  --paper: #edefea;
+  --sheet: #f7f8f5;
+  --ink: #1b2430;
+  --graphite: #5f6874;
+  --faint: #8d949c;
+  --rule: #cdd2cc;
+  --rule-strong: #b3b9b2;
+  --wash: #e2e6df;
+
+  --local: #b7791f;
+  --dev: #0e7c86;
+  --prod: #3b3dbf;
+
+  --refuse: #b42318;
+  --refuse-wash: #fbe9e7;
+  --accept: #2f6f3e;
+  --accept-wash: #e5f1e6;
+  --added: #e2f0e3;
+  --removed: #f8e3e1;
+
+  --sans: "Barlow", system-ui, sans-serif;
+  --condensed: "Barlow Semi Condensed", "Barlow", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+
+  --step--1: 0.8125rem;
+  --step-0: 0.9375rem;
+  --step-1: 1.125rem;
+  --step-2: 1.5rem;
+
+  /* A compact 4px rhythm shared by canvas chrome, panels, forms and dialogs. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --text-body: 14px;
+  --text-label: 13px;
+  --text-caption: 12px;
+  --control-height: 32px;
+  --control-height-sm: 28px;
+  --control-height-lg: 36px;
+  /* Shared controls also render outside inspector/dialog contexts. */
+  --panel-control-height: var(--control-height);
+  --panel-icon-target: var(--control-height);
+  --panel-caption-target: 24px;
+  --control-padding: 12px;
+  --select-icon-size: 14px;
+  --select-icon-inset: 12px;
+  --select-text-gap: 10px;
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 8px;
+  --panel-padding: 20px;
+  --workspace-gutter: 16px;
+  --workspace-page-max: 1280px;
+  --toolbar-padding: 12px;
+  --toolbar-height: 57px;
+  --motion-fast: 120ms;
+  --shadow-popover: 0 12px 36px #0005;
+  --bar: 52px;
+  --inspector: clamp(380px, 32vw, 480px);
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2385909c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #12161c;
+    --sheet: #181d24;
+    --ink: #e4e8ee;
+    --graphite: #a2aab5;
+    --faint: #727b87;
+    --rule: #2b323c;
+    --rule-strong: #3b434f;
+    --wash: #1f252e;
+    --local: #e0a43a;
+    --dev: #2fb3bc;
+    --prod: #8789ff;
+    --refuse: #ff7b6e;
+    --refuse-wash: #3a1c1a;
+    --accept: #6cc483;
+    --accept-wash: #18301f;
+    --added: #173022;
+    --removed: #3a1d1c;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --spacing: 4px;
+  --color-paper: var(--paper);
+  --color-sheet: var(--sheet);
+  --color-ink: var(--ink);
+  --color-graphite: var(--graphite);
+  --color-faint: var(--faint);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-wash: var(--wash);
+  --color-local: var(--local);
+  --color-dev: var(--dev);
+  --color-prod: var(--prod);
+  --color-refuse: var(--refuse);
+  --color-refuse-wash: var(--refuse-wash);
+  --color-accept: var(--accept);
+  --color-accept-wash: var(--accept-wash);
+  --color-added: var(--added);
+  --color-removed: var(--removed);
+  --color-map-ground: #0a0d13;
+  --color-map-surface: #0e131b;
+  --color-map-panel: #131b27;
+  --color-map-ink: #e4e8ee;
+  --color-map-title: #f0f2f5;
+  --color-map-text: #c9d1dc;
+  --color-map-muted: #9ba8b8;
+  --color-map-focus: #a7d7ff;
+  --color-map-rule: #3c485a;
+  --color-map-row: #26364b;
+  --font-sans: var(--sans);
+  --font-condensed: var(--condensed);
+  --font-mono: var(--mono);
+  --text-body: 14px;
+  --text-label: 13px;
+  --text-caption: 12px;
+  --text-meta: 11px;
+  --text-micro: 10px;
+  --text-step-minus1: var(--step--1);
+  --text-step0: var(--step-0);
+  --text-step1: var(--step-1);
+  --text-step2: var(--step-2);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --shadow-popover: 0 12px 36px #0005;
+  --animate-deploy-pulse: deploy-pulse 1.4s ease-in-out infinite;
+  --animate-ws-pulse: ws-pulse 1.6s ease-in-out infinite;
+  @keyframes deploy-pulse { 50% { opacity: 0.35; } }
+  @keyframes ws-pulse { 50% { opacity: 0.5; } }
+}

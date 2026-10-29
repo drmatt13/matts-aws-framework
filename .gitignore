@@ -255,3 +255,7 @@ packages/framework/.generator-fixtures/
 # deployment parameters instead, so nothing reads or writes this any more and an
 # existing file can be deleted.
 cdk-app/.secret-bindings.json
+
+# Studio browser artifacts (reviewed *.spec.ts-snapshots remain tracked).
+framework-studio/test/browser/.dist/
+output/playwright/

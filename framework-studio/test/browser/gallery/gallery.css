@@ -1,0 +1,7 @@
+@import "../../../src/styles.css";
+@source "./main.tsx";
+/* Harness-only layout; test sources are excluded from the production utility scan. */
+.browser-gallery { max-width: 760px; margin: 24px auto; padding: 20px; }
+.browser-gallery > h1 { font-size: 22px; }
+.browser-gallery-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.browser-gallery :is(.inspector-section, [data-ui~="inspector-section"]) { padding-inline: 0; }

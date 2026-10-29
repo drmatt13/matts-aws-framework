@@ -1,3 +1,4 @@
+import { cx } from "../../ui/classes";
 import { Send } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 
@@ -64,6 +65,13 @@ export interface WebSocketTesterProps {
   readonly description: string;
   readonly initialConnectionURL: string;
 }
+
+const connectionUrlClasses = "h-full min-h-0 min-w-0 flex-1 rounded-md border bg-sheet px-3 py-0 font-mono text-caption leading-none placeholder:text-faint placeholder:opacity-100";
+const connectionButtonClasses = {
+  connect: "bg-accept text-paper enabled:hover:bg-[color-mix(in_srgb,var(--accept)_85%,var(--ink))] border-transparent",
+  disconnect: "bg-refuse text-paper enabled:hover:bg-[color-mix(in_srgb,var(--refuse)_85%,var(--ink))] border-transparent",
+  unavailable: "border-rule-strong bg-wash text-faint",
+} as const;
 
 export function WebSocketTester({ title, description, initialConnectionURL }: WebSocketTesterProps) {
   const [mounted, setMounted] = useState(false);
@@ -232,14 +240,14 @@ export function WebSocketTester({ title, description, initialConnectionURL }: We
       : !ws ? "connect" : "disconnect";
 
   return (
-    <section className="ws-tester" aria-labelledby={`${id}-title`}>
-      <header className="ws-tester-heading">
-        <h2 id={`${id}-title`}>{title}</h2>
-        <span>{description}</span>
+    <section className="flex min-h-0 min-w-0 flex-[1_1_0] flex-col gap-3 vp-760:min-h-130 vp-760:flex-none" aria-labelledby={`${id}-title`}>
+      <header className="flex min-w-0 items-baseline gap-2">
+        <h2 id={`${id}-title`} className="m-0 font-sans text-body font-semibold leading-[1.3]">{title}</h2>
+        <span className="min-w-0 overflow-hidden text-caption text-graphite text-ellipsis whitespace-nowrap">{description}</span>
       </header>
 
       {/* WebSocket URL Input */}
-      <div className="ws-tester-connection">
+      <div className="flex h-8 min-w-0 gap-3">
         {!ws ? (
           <input
             type="text"
@@ -251,18 +259,18 @@ export function WebSocketTester({ title, description, initialConnectionURL }: We
             }}
             placeholder="ws://"
             aria-label={`${title} connection URL`}
-            className={`ws-tester-url ${loadingConnection ? "connecting" : ""}`}
+            className={cx(connectionUrlClasses, "border-rule-strong text-ink transition-[border-color,background-color] duration-120 enabled:hover:not-focus:border-graphite disabled:opacity-55 disabled:cursor-not-allowed", loadingConnection && "animate-ws-pulse")}
             disabled={!!ws}
             spellCheck={false}
           />
         ) : (
-          <div className="ws-tester-url connected" title={wsUrl} aria-label={`${title} connected to`}>
-            <span>{wsUrl}</span>
+          <div className={cx(connectionUrlClasses, "flex select-none items-center border-[color-mix(in_srgb,var(--accept)_45%,var(--rule))] text-accept")} title={wsUrl} aria-label={`${title} connected to`}>
+            <span className="overflow-hidden text-ellipsis whitespace-nowrap">{wsUrl}</span>
           </div>
         )}
         <button
           type="button"
-          className={`ws-tester-connect ${buttonState}`}
+          className={cx("h-full flex-none cursor-pointer rounded-md border px-5 py-0 font-sans text-caption font-semibold leading-none transition-[background-color,color] duration-75 ease-in", connectionButtonClasses[buttonState])}
           onClick={() => (!ws ? connectWebSocket() : disconnectWebSocket())}
           disabled={loadingConnection || !wsUrl || !URLisValid}
         >
@@ -271,9 +279,10 @@ export function WebSocketTester({ title, description, initialConnectionURL }: We
       </div>
 
       {/* Payload Input */}
-      <label className="ws-tester-label" htmlFor={`${id}-payload`}>Send payload</label>
-      <div className="ws-tester-payload">
+      <label className="mt-0 mr-0 -mb-1 ml-1 text-label font-medium text-graphite" htmlFor={`${id}-payload`}>Send payload</label>
+      <div className="relative min-h-24 flex-[1_1_0]">
         <textarea
+          className="h-full min-h-8 w-full min-w-0 max-w-none resize-none rounded-md border border-rule-strong bg-sheet p-3 font-mono text-caption leading-[1.5] text-ink transition-[border-color,background-color] duration-120 placeholder:text-faint placeholder:opacity-100 enabled:hover:not-focus:border-graphite disabled:cursor-not-allowed disabled:opacity-55"
           id={`${id}-payload`}
           ref={textareaRef}
           value={loadingConnection || !ws ? "" : payload}
@@ -293,16 +302,16 @@ export function WebSocketTester({ title, description, initialConnectionURL }: We
           spellCheck={false}
           disabled={!ws || loadingConnection}
         />
-        <div className="ws-tester-send" data-visible={validPayload} style={{ right: hasScrollbar ? "23px" : "10px" }}>
-          <button type="button" className="icon-button" onClick={handleIconClick} disabled={!validPayload} tabIndex={validPayload ? 0 : -1} aria-label={`Send payload to ${title}`} title="Send payload">
+        <div className="pointer-events-none absolute bottom-[6px] opacity-0 transition-[opacity,right] duration-[200ms,100ms] ease-out data-[visible=true]:pointer-events-auto data-[visible=true]:opacity-100 data-[visible=true]:duration-100 data-[visible=true]:ease-in" data-visible={validPayload} style={{ right: hasScrollbar ? "23px" : "10px" }}>
+          <button type="button" className="inline-flex size-8 min-h-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-transparent bg-transparent p-0 text-faint transition-[background-color,border-color,color] duration-120 enabled:hover:text-prod disabled:cursor-not-allowed disabled:opacity-45" onClick={handleIconClick} disabled={!validPayload} tabIndex={validPayload ? 0 : -1} aria-label={`Send payload to ${title}`} title="Send payload">
             <Send size={15} aria-hidden />
           </button>
         </div>
       </div>
 
       {/* Messages Display */}
-      <p className="ws-tester-label" id={`${id}-messages`}>Messages</p>
-      <div ref={messagesRef} className="ws-tester-messages" role="log" aria-labelledby={`${id}-messages`}>
+      <p className="mt-0 mr-0 -mb-1 ml-1 text-label font-medium text-graphite" id={`${id}-messages`}>Messages</p>
+      <div ref={messagesRef} className="flex min-h-[140px] flex-[2_1_0] flex-col gap-2 overflow-y-auto overscroll-contain rounded-lg border border-rule bg-sheet p-3 text-caption" role="log" aria-labelledby={`${id}-messages`}>
         <div hidden>
           {mounted && (
             <Suspense fallback={<></>}>
@@ -311,12 +320,12 @@ export function WebSocketTester({ title, description, initialConnectionURL }: We
           )}
         </div>
         {messages.map((msg, index) => (
-          <div key={index} className="ws-tester-message">
+          <div key={index} className="min-w-0 wrap-anywhere">
             {isLifecycleMessage(msg) &&
             (msg.connectionEvent ||
               msg.disconnectionEvent ||
               msg.failedConnectionEvent) ? (
-              <div className={`ws-tester-event ${msg.connectionEvent ? "opened" : "closed"}`}>
+              <div className={cx("font-medium", msg.connectionEvent ? "text-accept" : "text-refuse")}>
                 {msg.connectionEvent
                   ? "Connected to WebSocket"
                   : msg.disconnectionEvent

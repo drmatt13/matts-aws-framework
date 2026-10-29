@@ -1,20 +1,81 @@
 # Studio UI design system
 
 Studio keeps its graphite surfaces, environment colors, AWS artwork and isometric map.
-The shared interaction rules live in `framework-studio/src/styles.css`; inspector and
-dialog layouts live in `src/inspector.css`, and deployment layouts in
-`src/views/deploy/deploy.css`. New surfaces should consume these rules before adding
-component-specific styling. [Inspector conventions](inspector-design.md) describe the
-information order and source-review workflow.
+React presentation uses Tailwind CSS 4 through the native Vite plugin. Keep layout
+next to JSX and repeated appearance in `src/ui/` primitives or existing component
+implementations. [Inspector conventions](inspector-design.md) describe the information
+order and source-review workflow. The migration changes presentation ownership, not the
+visual system or source-editing contracts.
+
+## Styling ownership
+
+There are exactly four production stylesheets:
+
+| File | Owner and allowed contents |
+| --- | --- |
+| `src/styles.css` | Application entry, layer order, explicit `src/` and `index.html` sources, inclusive media/container variants |
+| `src/styles/theme.css` | Runtime tokens, OS light/dark values, `@theme inline` aliases, shared keyframes |
+| `src/styles/base.css` | Document sizing, native font inheritance, focus/hidden/reduced-motion safeguards and browser-owned pseudo-elements |
+| `src/styles/codemirror.css` | CodeMirror-owned DOM and Prisma syntax integration, loaded by `PrismaEditor` |
+
+Preflight is intentionally omitted. Import theme and utilities separately; do not add
+PostCSS, Autoprefixer, forms plugins, JavaScript Tailwind configuration or a second
+runtime theme. Ordinary feature stylesheets and `@apply` facades are not supported.
+CodeMirror's narrowly scoped adapter remains unlayered to cooperate with injected
+editor styles. Its controls explicitly own appearance that React primitives cannot reach.
+
+`Button`/`buttonClasses` share primary, neutral, quiet and link variants; compact,
+regular and prominent sizes; default and danger tones. `IconButton` requires an
+accessible label. `TextInput`, `Select` and `Textarea` retain native props/events/refs;
+`controlSize` is separate from the native `size`. `Card`, `Notice` and
+`WorkspaceToolbar` cover shared surfaces. `Notice` does not invent an ARIA role.
+`InspectorUI`, `FieldRow`, `NavigationStrip`, `WorkspacePanel`, `WorkbenchUI` and
+`DocumentCard` remain the higher-level owners. `cx` joins complete static class strings;
+it does not resolve conflicting utilities, and JSX class order is not CSS precedence.
+Use appearance props/recipes instead of conflicting caller overrides.
+
+`Button` emits its `data-variant` automatically. Native buttons using `buttonClasses`
+inside shared dialog footers must also expose `data-variant="primary"` for primary
+actions: the footer preserves their 110px minimum and full row at 420px and below.
+Native dialogs explicitly restore pointer events when rendered inside map overlays.
+Boolean field help and inheritance details span both grid columns, leaving the
+switch column sized by the switch itself; never place long support copy in that
+auto-sized column.
+On short windows, the stacked map panel retains a 260px minimum and uses workspace
+scrolling so its resource rows remain reachable. Dense operational tables retain
+readable column widths inside named, keyboard-focusable horizontal scroll regions.
+Database review transitions reset the modal body scroll when the review title changes.
+
+`src/inspector-ui.ts` owns shared inspector, field, relationship-list and native-dialog
+recipes. The theme supplies 32px control/icon and 24px disclosure-target defaults for
+shared controls rendered outside panels. Inspector and dialog contexts own their 44px
+coarse-pointer overrides. Keep contextual density changes scoped to those contexts;
+ordinary document fieldsets retain native geometry. Existing tag and trigger padding
+exceptions have explicit, documented specificity beside their component recipes.
+
+Put one-off placement in JSX. Extract repeated appearance into its actual component or
+small typed variant recipe, never a runtime mapping from old presentation class names.
+Do not interpolate utility fragments. Use semantic colors, preserve the 4px spacing
+base and the existing rem type roles, and reserve arbitrary values for actual geometry
+or documented parity exceptions. Do not replace exact pixel/container boundaries with
+Tailwind defaults: `vp-*`, `map-band`, `inspector-*`, `detail-640`, `coarse` and
+`forced-colors` variants encode the original inclusive queries.
+
+Tailwind side-border utilities already set that side's style. Without Preflight, adding
+an all-sides `border-solid` to `border-b` can activate unwanted native medium widths on
+other sides. Native dialogs must only acquire flex/grid while open; `[hidden]` remains
+a document safeguard. Preserve explicit submit buttons, cancellation/busy guards,
+autofocus and focus return. Behavior and measurements use refs, roles and stable data
+attributes, never presentation classes or assertions about utility strings.
 
 | Concern | Shared convention |
 | --- | --- |
 | Spacing | `--space-1` through `--space-8`: 4–32px in 4px steps; workspace gutters: 16px; inspector gutters: 20px |
-| Type | 14px body, 13px controls/labels, 12px supporting text; existing display and monospace families |
+| Type | 14px body, 13px labels, 12px supporting text; native controls inherit their context; existing display and monospace families |
 | Controls | 32px regular, 28px compact, 36px prominent; icon actions are square |
-| Surfaces | Existing theme colors; 4px small, 6px regular, 8px surface radii |
+| Surfaces | Existing theme colors; `rounded-sm` is 4px, `rounded-md` is the regular 6px, `rounded-lg` is 8px |
 | Selects | Native keyboard interaction; 14px chevron inset 12px with a 10px text gap |
-| Actions | `.primary`, `.quiet`, `.button`, `.icon-button`, `.linkish`; destructive actions add `.danger` |
+| Actions | `Button`, `IconButton` and their recipes; destructive actions use `tone="danger"` |
 | Feedback | Stable outline focus, shared disabled and invalid states, reduced-motion support, native select arrows in forced colors |
 | Density | 4px label-to-control, 8px related helpers/actions, 12–16px groups; avoid stacked default paragraph margins |
 
@@ -39,13 +100,13 @@ Cognito sections and Database workspaces. Native links and buttons retain their 
 behavior. Overflow scrolls within the strip; active items and keyboard focus are revealed
 without moving the surrounding page. Keep each name on one line.
 
-Every route starts immediately below navigation with `.workspace-toolbar`. It owns
+Every route starts immediately below navigation with `WorkspaceToolbar`. It owns
 `--workspace-gutter` (16px), `--toolbar-padding` (12px vertically), `--toolbar-height`
 (57px minimum including the rule), `--sheet` surface and `--rule` bottom border.
 Controls are 32px tall. Content follows the same horizontal gutter. Additional rows
 accommodate genuine controls, warnings or narrow widths; do not add a route-specific
-heading spacer or an inset rule above the first toolbar. Keep shell and map responsive
-rules in `styles.css`, not in inspector or feature stylesheets.
+heading spacer or an inset rule above the first toolbar. Keep responsive utilities with their owning component; register shared query variants
+in the application entry.
 
 Composition preserves each workspace's purpose. Isometric devotes its area
 to the map, without a redundant page heading. Database leads with its workspace tabs
@@ -53,22 +114,22 @@ and editor controls. Deploy leads with account context, then a target rail and o
 detail. Cognito and Domains use compact page identity and a shared reading width; Cognito's
 section navigation precedes variable inspection evidence so its position remains stable.
 
-Document workspaces (Cognito and Domains) use `.workspace-page-width` for their
+Document workspaces (Cognito and Domains) use `pageWidthClasses` for their
 header, subsection navigation and content: one centered 1280px maximum including
-16px gutters. Their `.workspace-page-title` is 18px. Shared `.identity-card` rules
+16px gutters. Their the shared page-title utilities is 18px. Shared `DocumentCard` and its native child controls
 own card headings, padding and 12px spacing between content groups; avoid per-route
 card overrides. Inspection/search rows align control bottoms, with no bottom margin
 on toolbar labels. Source actions group their button and supporting explanation;
 on narrow screens the actions wrap within the card. Flow-spacing selectors exclude
 native dialogs so browser modal centering remains intact.
 
-Cognito and Domains share `.inspection-controls` for profile, deployment and region
+Cognito and Domains share `inspectionControlClasses` for profile, deployment and region
 fields, including label spacing, 32px inputs and responsive wrapping. Cognito groups
 source provenance and its evidence disclosure on one wrapping support row. Inspection
 transport failures explain how to restore the Studio connection and retry; server
 diagnostics and earlier observations remain available.
 
-Load failures use a contained `.workspace-alert` in the same content column, with
+Load failures use a contained `Notice` in the same content column, with
 wrapping details and a nearby retry action. Keep independent source and deployment
 context failures independently recoverable, and show progress during retry. Alerts
 must remain visible without widening the document or separating them from their controls.
@@ -185,3 +246,29 @@ keyboard focus as well as the draft transitions. Browser checks should report th
 actual viewports and workflows exercised; unit fixtures alone establish neither layout
 quality nor live AWS behavior. Build output and current checks belong in the engineering
 handoff rather than permanent historical test counts here.
+
+## Browser regression workflow
+
+Run `npm --workspace framework-studio run test:browser` after the production build and
+focused Node suites. Playwright owns strict preview ports 4592 (production entry) and
+4593 (test-only gallery); it never reuses an unknown development server. The gallery
+has a separate HTML entry/output and explicit test sources, and never enters the app's
+routes or production scan. Install the pinned browser binaries with
+`npm exec --workspace framework-studio -- playwright install chromium firefox webkit`.
+
+Fixtures intercept APIs and designated WebSocket URLs and simulate EventSource events;
+unexpected network requests fail. They inject the protocol/token before modules execute,
+fix time/locale, and fulfill the seven production font faces from licensed local test
+copies. Source writes and cloud/database operations are represented only by explicit
+fixture responses. This suite verifies UI response to events; the real middleware and
+transport need their own smoke checks.
+
+Reference PNGs are tied to their named browser project and OS. Compare on the same
+platform, inspect every diff, and only update baselines as an explicit reviewed action:
+`npm --workspace framework-studio run test:browser -- --update-snapshots`.
+Do not update references to silence a regression. Keyboard, settled-route/dialog axe,
+responsive geometry, editor identity, route revisits and visual checks supplement one
+another. The [browser regression guide](../../framework-studio/test/browser/README.md)
+documents the executable acceptance matrix and its limits; report remaining unverified
+states separately. The styling contract Node test rejects new production CSS owners
+and retired feature stylesheet imports.

@@ -1,3 +1,5 @@
+import { cx } from "../ui/classes";
+import { mapTooltipClasses } from "./map-styles";
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
@@ -113,8 +115,8 @@ export function CanvasTooltip(props: {
       window.visualViewport?.removeEventListener("scroll", measure);
     };
   }, [measure]);
-  return <div ref={card} id={props.id} className="landscape-hover canvas-tooltip" role="tooltip"
-    style={{ ...placement, visibility: placement ? "visible" : "hidden", overflow: "auto", overscrollBehavior: "contain", pointerEvents: "auto" }}
+  return <div ref={card} id={props.id} data-ui="landscape-hover canvas-tooltip" data-map-tooltip className={cx("group", mapTooltipClasses())} role="tooltip"
+    style={{ ...placement, visibility: placement ? "visible" : "hidden" }}
     onPointerEnter={props.onPointerEnter} onPointerLeave={props.onPointerLeave}>
     {props.children}
   </div>;
@@ -156,7 +158,7 @@ export function ResourceTooltip(props: {
       window.visualViewport?.removeEventListener("scroll", measure);
     };
   }, [props.anchor]);
-  return createPortal(<div ref={card} id={props.id} className="landscape-hover resource-tooltip" role="tooltip"
+  return createPortal(<div ref={card} id={props.id} data-ui="landscape-hover resource-tooltip" data-map-tooltip className={cx("group", mapTooltipClasses(true))} role="tooltip"
     style={{ ...placement, visibility: placement ? "visible" : "hidden" }}
     onPointerEnter={props.onPointerEnter} onPointerLeave={props.onPointerLeave}>
     {props.children}

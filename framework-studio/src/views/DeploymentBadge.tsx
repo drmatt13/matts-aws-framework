@@ -1,5 +1,12 @@
 import { DEPLOYMENT_BADGES, type Availability, type DeploymentBadgeKind } from "../deployment";
 import type { Mode } from "../../shared/model";
+import { cx } from "../ui/classes";
+import { environmentStyle } from "./map-styles";
+
+const environmentPillClasses = "inline-flex items-center gap-[5px] rounded-full border px-[9px] py-px font-semibold leading-[1.5] whitespace-nowrap before:box-border before:size-1.5 before:flex-none before:rounded-full before:content-[''] group-data-[map-tooltip]:min-h-5.5 group-data-[map-tooltip]:py-0.5";
+function pillClasses(enabled: boolean) {
+  return cx(environmentPillClasses, enabled ? "border-transparent bg-(--badge-bg) text-(--badge-fg) before:bg-current" : "border-white/8 bg-white/3 text-[#5f6978] before:border before:border-current group-data-[map-tooltip]:border-[#ffffff24] group-data-[map-tooltip]:text-[#a1acbb]");
+}
 
 /** Keep both environment names visible in hover cards and connection inspectors. */
 export function EnvironmentPills({ availability, descriptions, unavailableDescription = "not deployed", onToggle, disabled, label = "Deployment environments" }: {
@@ -10,8 +17,8 @@ export function EnvironmentPills({ availability, descriptions, unavailableDescri
   readonly disabled?: boolean;
   readonly label?: string;
 }) {
-  return <span className="environment-pills" role={onToggle ? "group" : undefined} aria-label={label}>
-    {(["dev", "prod"] as const).map((mode) => onToggle ? <button key={mode} type="button" className={`hover-tag ${availability[mode] ? mode : "off"}`} disabled={disabled} aria-pressed={availability[mode]} aria-label={`${label} in ${mode === "dev" ? "Development" : "Production"}`} title={`${availability[mode] ? "Included" : "Omitted"} in ${mode === "dev" ? "Development" : "Production"} · click to toggle`} onClick={() => onToggle(mode)}>{mode === "dev" ? "Dev" : "Prod"}</button> : <span key={mode} className={`hover-tag ${availability[mode] ? mode : "off"}`}>
+  return <span data-ui="environment-pills" data-slot="environment-pills" className="inline-flex flex-nowrap items-center gap-1 text-meta font-normal" role={onToggle ? "group" : undefined} aria-label={label}>
+    {(["dev", "prod"] as const).map((mode) => onToggle ? <button key={mode} type="button" className={pillClasses(availability[mode])} style={environmentStyle(mode)} data-environment={mode} data-enabled={availability[mode]} disabled={disabled} aria-pressed={availability[mode]} aria-label={`${label} in ${mode === "dev" ? "Development" : "Production"}`} title={`${availability[mode] ? "Included" : "Omitted"} in ${mode === "dev" ? "Development" : "Production"} · click to toggle`} onClick={() => onToggle(mode)}>{mode === "dev" ? "Dev" : "Prod"}</button> : <span key={mode} className={pillClasses(availability[mode])} style={environmentStyle(mode)} data-environment={mode} data-enabled={availability[mode]}>
       {mode === "dev" ? "Dev" : "Prod"}<span className="sr-only">: {availability[mode] ? descriptions?.[mode] ?? "Connection enabled" : unavailableDescription}</span>
     </span>)}
   </span>;
@@ -20,16 +27,12 @@ export function EnvironmentPills({ availability, descriptions, unavailableDescri
 export function DeploymentBadge({ kind }: { readonly kind: DeploymentBadgeKind | undefined }) {
   if (!kind) return null;
   const badge = DEPLOYMENT_BADGES[kind];
-  return (
-    <span className={`deployment-badge ${kind}`} title={badge.description} aria-label={badge.description} style={{ color: badge.color, backgroundColor: badge.background }}>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        {badge.paths.map((d) => <path key={d} d={d} />)}
-      </svg>
-      <span>{badge.label}</span>
-    </span>
-  );
+  return <span data-ui="deployment-badge" data-environment={kind} title={badge.description} aria-label={badge.description} className="inline-flex shrink-0 items-center gap-1 rounded-sm border border-[color-mix(in_srgb,currentColor_28%,transparent)] px-[5px] py-[2px] text-micro leading-none font-semibold tracking-[0.04em] whitespace-nowrap uppercase" style={{ color: badge.color, backgroundColor: badge.background }}>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{badge.paths.map((d) => <path key={d} d={d} />)}</svg>
+    <span>{badge.label}</span>
+  </span>;
 }
 
 export function DeploymentLegend() {
-  return <span className="deployment-legend"><span>Unmarked · Dev + Prod</span><DeploymentBadge kind="dev" /><DeploymentBadge kind="prod" /></span>;
+  return <span data-ui="deployment-legend" className="inline-flex flex-wrap items-center justify-end gap-2 text-step-minus1 text-graphite"><span>Unmarked · Dev + Prod</span><DeploymentBadge kind="dev" /><DeploymentBadge kind="prod" /></span>;
 }

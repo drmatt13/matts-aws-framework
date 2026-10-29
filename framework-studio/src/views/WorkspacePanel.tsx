@@ -1,3 +1,4 @@
+import { iconButtonClasses } from "../ui/IconButton";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -18,14 +19,14 @@ export function WorkspacePanel(props: {
   readonly children: ReactNode;
 }) {
   return (
-    <aside id={props.id} className="workspace-panel" aria-label={props.label}>
-      <header className="workspace-panel-header">
-        <div className="workspace-panel-heading">{props.heading}</div>
-        <button className="icon-button" onClick={props.onClose} aria-label="Close panel" title="Close panel">
+    <aside id={props.id} data-ui="workspace-panel" className="flex min-h-0 min-w-0 w-(--inspector) flex-[0_0_var(--inspector)] flex-col border-l border-rule bg-sheet text-ink vp-800:min-h-65 vp-800:w-auto vp-800:flex-[0_1_55%] vp-800:border-t vp-800:border-l-0" aria-label={props.label}>
+      <header data-ui="workspace-panel-header" className="flex min-h-[44px] flex-none items-center gap-2 border-b border-rule py-1 pr-3 pl-(--panel-padding)">
+        <div data-ui="workspace-panel-heading" className="flex min-w-0 flex-1 items-center gap-2">{props.heading}</div>
+        <button className={iconButtonClasses({ variant: "quiet", className: "text-graphite" })} onClick={props.onClose} aria-label="Close panel" title="Close panel">
           <X size={16} aria-hidden />
         </button>
       </header>
-      <div className={`workspace-panel-body ${props.bodyClassName}`}>{props.children}</div>
+      <div data-inspector-context={props.label === "Inspector" || undefined} data-ui="workspace-panel-body" className={`flex min-h-0 flex-1 flex-col ${props.bodyClassName}`}>{props.children}</div>
     </aside>
   );
 }

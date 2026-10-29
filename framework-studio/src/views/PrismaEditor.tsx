@@ -187,8 +187,9 @@ export const PrismaEditor = forwardRef<PrismaEditorHandle, PrismaEditorProps>(fu
   }, [props.diagnostics]);
   useEffect(() => { view.current?.dispatch({ effects: readOnly.current.reconfigure(EditorState.readOnly.of(!!props.readOnly)) }); }, [props.readOnly]);
 
-  return <div className={`prisma-editor ${props.className ?? ""}`}>
-    <div className="prisma-editor-host" ref={host} />
-    <span id="prisma-editor-keyboard-help" className="prisma-editor-help">Prisma 8 source editor. Tab indents; press Escape then Tab to leave. Control or Command F searches, Control or Command S reviews source changes, F12 goes to a definition. Completion suggests syntax; validation checks the contract.</span>
+  return <div data-prisma-editor data-ui="prisma-editor" className={`flex h-full min-h-0 min-w-0 flex-1 flex-col ${props.className ?? ""}`}>
+    <div data-ui="prisma-editor-host" className="min-h-0 min-w-0 flex-1 overflow-hidden" ref={host} />
+    <span id="prisma-editor-keyboard-help" className="sr-only">Prisma 8 source editor. Tab indents; press Escape then Tab to leave. Control or Command F searches, Control or Command S reviews source changes, F12 goes to a definition. Completion suggests syntax; validation checks the contract.</span>
   </div>;
 });
+import "../styles/codemirror.css";

@@ -684,6 +684,12 @@ node:assert diffs a failing comparison's operands without bound, and one failing
 `assert.equal(element, null)` committed ~100 GB and took the whole machine down. Small
 operands keep node:assert's messages; large ones report their first difference.
 
+The Node suites register `test/support/register-css.mjs` to ignore browser-owned CSS
+imports; they verify component behavior, not stylesheet rendering. For a focused run
+from the repository root, use `npm --workspace framework-studio exec -- node
+--conditions=development --import ./test/support/register-css.mjs --import tsx
+--test test/isometric-ui.test.ts`. Browser checks separately exercise the generated CSS.
+
 VPC placement is explicit: Lambdas import `vpc`, services/tasks import `cloud.vpc`,
 and native application resources call `frameworkVpc(this, importedVpc)`. Each VPC has
 its own Isometric island, subnet bands, gateway/endpoint selection and settings Inspector.
@@ -699,3 +705,23 @@ input reader. Events follow their owning AWS resource; tools follow their agents
 The APIs island shows actual HTTP and WebSocket gateways. Routes are listed in their
 gateway inspector, and agent browser routes belong to their agent. Both gateways are
 framework managed; workload Deploy settings control their routes and handlers.
+
+
+### Frontend styling and browser checks
+
+Studio's React UI uses Tailwind CSS 4 through `@tailwindcss/vite`, with CSS-first
+configuration and no Preflight. Read the [UI design system](../docs/framework-studio/ui-design-system.md)
+before changing appearance. `src/styles.css` is the entry, `styles/theme.css` owns
+runtime tokens, `styles/base.css` owns document/browser safeguards, and
+`styles/codemirror.css` adapts editor-owned DOM. Layout lives in JSX; repeated controls
+and surfaces use `src/ui/` and the existing inspector/workbench/document primitives.
+Canvas palettes/geometry stay in TypeScript, and runtime positions stay inline.
+
+`npm --workspace framework-studio run test:browser` builds two isolated previews and
+runs the permanent Playwright suite, including the otherwise unrouted Board gallery.
+The test gallery is excluded from production routes and source scanning. All APIs and
+external transports are fixture-backed, including simulated event streams and mocked
+WebSocket sessions. Pinned licensed fonts and platform-specific reference PNGs make
+visual comparisons reproducible. Review diffs before explicitly updating screenshots;
+see the design-system guide for commands and ownership. Real middleware/HMR smoke tests
+are separate from these fixture-driven checks and from offline Node verification.

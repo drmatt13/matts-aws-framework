@@ -1,41 +1,25 @@
-import {
-  ArrowLeft,
-  Check,
-  CircleAlert,
-  Info,
-  Pencil,
-  RotateCcw,
-  Trash2,
-  TriangleAlert,
-} from "lucide-react";
+import { InspectorSummary } from "./InspectorUI";
+
+import { Select, TextInput, checkboxClasses, Textarea } from "../ui/FormControls";
+import { buttonClasses } from "../ui/Button";
+import { iconButtonClasses } from "../ui/IconButton";
+import { cx } from "../ui/classes";
+import { ArrowLeft, Check, CircleAlert, Info, Pencil, RotateCcw, Trash2, TriangleAlert } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
 import type { ModelResource, ModelTarget } from "../../shared/model";
 import type { TriggerBinding, TriggerField } from "../../shared/triggers";
-import {
-  blockingProblems,
-  eventUnavailable,
-  triggerProblems,
-  triggerUnavailable,
-  type TriggerProblem,
-} from "../../shared/trigger-availability";
-import {
-  enumChoices,
-  eventPatternBasics,
-  eventPatternFrom,
-  fieldGroups,
-  initialOptions,
-  nextAttachmentId,
-  S3_BASIC_EVENTS,
-  scheduleBasics,
-  scheduleExpression,
-  type ScheduleBasics,
-} from "../../shared/trigger-presets";
+import { blockingProblems, eventUnavailable, triggerProblems, triggerUnavailable, type TriggerProblem } from "../../shared/trigger-availability";
+import { enumChoices, eventPatternBasics, eventPatternFrom, fieldGroups, initialOptions, nextAttachmentId, S3_BASIC_EVENTS, scheduleBasics, scheduleExpression, type ScheduleBasics } from "../../shared/trigger-presets";
 import { useStudio } from "../studio";
 import { titleOf } from "../lookup";
 import { Written } from "./Written";
 import { TriggerSourcePicker } from "./TriggerGuide";
 import { FailureDestination } from "./FailureDestination";
 import { InspectorDisclosure } from "./InspectorUI";
+
+// Nested trigger actions retain their compact padding while sharing regular control height.
+// Semantic part selectors make this exception win independently of utility emission order.
+const triggerEditorClasses = "[&_summary]:cursor-pointer [&_summary]:font-semibold [&_[data-slot=trigger-row]_[data-variant=quiet]]:gap-1 [&_[data-slot=trigger-row]_[data-variant=quiet]]:px-2 [&_[data-slot=trigger-row]_[data-variant=quiet]]:py-0.75 [&_[data-slot=trigger-form]_[data-variant=quiet]]:gap-1 [&_[data-slot=trigger-form]_[data-variant=quiet]]:px-2 [&_[data-slot=trigger-form]_[data-variant=quiet]]:py-0.75";
 
 type Step = "source" | "settings" | "confirm";
 
@@ -265,7 +249,7 @@ export function Triggers({
       count={managed.length + native.length}
       open={open}
       onToggle={setOpen}
-      className="trigger-editor"
+      className={triggerEditorClasses} data-slot="trigger-editor"
     >
       {native.map((edge) => {
         const removed = draft.nativeRemoved(edge.id);
@@ -276,27 +260,27 @@ export function Triggers({
             : undefined;
         return (
           <div
-            className={`trigger-row${removed ? " removed" : ""}`}
-            key={edge.id}
+            className={cx("flex gap-2 flex-wrap items-baseline p-[10px_0] m-0 border-b border-rule", removed ? "[&>:first-child]:line-through [&>:first-child]:text-faint" : "")}
+            key={edge.id} data-slot="trigger-row"
           >
-            <button className="linkish" onClick={() => select(edge.id)}>
+            <button className={buttonClasses({ variant: "link" })} onClick={() => select(edge.id)}>
               {nativeLabel(edge)}
             </button>
-            <span className="small muted">
+            <span className={"text-caption text-graphite"}>
               {removed ? "Will be removed" : "Native"}
             </span>
             {removed ? (
               <button
-                className="quiet small"
+                className={cx(buttonClasses({ variant: "quiet" }), "text-caption")}
                 aria-label={`Restore native trigger ${edge.label}`}
-                onClick={() => draft.restoreNative(edge.id)}
+                onClick={() => draft.restoreNative(edge.id)} data-variant="quiet"
               >
                 <RotateCcw size={13} aria-hidden />
                 Restore
               </button>
             ) : (
               <button
-                className="icon-button"
+                className={iconButtonClasses()}
                 aria-label={`Remove native trigger ${edge.label}`}
                 title={refused ?? `Remove from ${edge.source?.file}`}
                 aria-disabled={!!refused}
@@ -319,10 +303,10 @@ export function Triggers({
             binding.event !== form.editing.event,
         )
         .map((binding) => (
-          <div className="trigger-row" key={`${binding.event}:${binding.key}`}>
-            <span className="small">{describe(binding)}</span>
+          <div className={"flex gap-2 flex-wrap items-baseline p-[10px_0] m-0 border-b border-rule"} key={`${binding.event}:${binding.key}`} data-slot="trigger-row">
+            <span className={"text-caption"}>{describe(binding)}</span>
             <button
-              className="icon-button"
+              className={iconButtonClasses()}
               aria-label={`Edit trigger ${binding.id}`}
               title="Edit"
               onClick={() => edit(binding)}
@@ -330,7 +314,7 @@ export function Triggers({
               <Pencil size={14} aria-hidden />
             </button>
             <button
-              className="icon-button"
+              className={iconButtonClasses()}
               aria-label={`Remove trigger ${binding.id}`}
               title="Remove"
               onClick={() =>
@@ -348,20 +332,20 @@ export function Triggers({
         ))}
       {pendingRemovals.map((binding) => (
         <div
-          className="trigger-row removed"
-          key={`removed:${binding.event}:${binding.key}`}
+          className={"flex gap-2 flex-wrap items-baseline p-[10px_0] m-0 border-b border-rule [&>:first-child]:line-through [&>:first-child]:text-faint"}
+          key={`removed:${binding.event}:${binding.key}`} data-slot="trigger-row"
         >
-          <span className="small">{describe(binding)}</span>
-          <span className="small muted">Will be removed</span>
+          <span className={"text-caption"}>{describe(binding)}</span>
+          <span className={"text-caption text-graphite"}>Will be removed</span>
           <button
-            className="quiet small"
+            className={cx(buttonClasses({ variant: "quiet" }), "text-caption")}
             aria-label={`Restore trigger ${binding.id}`}
             onClick={() =>
               draft.setTriggers(binding.event, [
                 ...draft.triggers(binding.event),
                 binding,
               ])
-            }
+            } data-variant="quiet"
           >
             <RotateCcw size={13} aria-hidden />
             Restore
@@ -369,18 +353,18 @@ export function Triggers({
         </div>
       ))}
       {resourceReason ? (
-        <p className="small muted">{resourceReason}</p>
+        <p className={"text-caption text-graphite"}>{resourceReason}</p>
       ) : !form ? (
         <button
-          className="quiet small"
+          className={cx(buttonClasses({ variant: "quiet" }), "text-caption")}
           onClick={start}
-          style={{ marginTop: 12 }}
+          style={{ marginTop: 12 }} data-variant="quiet"
         >
           Add trigger
         </button>
       ) : (
-        <div className="trigger-form" ref={formRoot}>
-          <ol className="trigger-steps" aria-label="Trigger setup">
+        <div className={"[&_label:not([data-slot=trigger-check]):not([data-slot=trigger-ack])]:grid [&_label:not([data-slot=trigger-check]):not([data-slot=trigger-ack])]:gap-1 [&_label:not([data-slot=trigger-check]):not([data-slot=trigger-ack])]:text-step-minus1 [&_input:not([type=checkbox])]:w-full [&_select]:w-full [&_textarea]:w-full grid mt-3 [gap:14px] [padding-top:6px]"} ref={formRoot} data-slot="trigger-form">
+          <ol className={"[&[aria-current=step]]:text-ink [&[aria-current=step]]:font-semibold flex m-0 p-0 list-none text-faint gap-2 pb-3 border-b border-rule text-caption [&_li]:flex-1"} aria-label="Trigger setup" data-slot="trigger-steps">
             {(["source", "settings", "confirm"] as const).map(
               (step, position) => (
                 <li
@@ -433,8 +417,8 @@ export function Triggers({
               choose(current, { resource: chosen, adapter, service: adapter })
             }
           />
-          <div className="resource-actions">
-            <button className="quiet small" onClick={close}>
+          <div className={"empty:hidden flex flex-wrap gap-2 mt-3 items-center"} data-slot="resource-actions">
+            <button className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} onClick={close} data-variant="quiet">
               Cancel
             </button>
           </div>
@@ -445,7 +429,7 @@ export function Triggers({
         {(capability?.adapters.length ?? 0) > 1 ? (
           <label>
             Invocation
-            <select
+            <Select
               aria-label="Trigger invocation"
               value={current.adapter}
               onChange={(event) =>
@@ -470,12 +454,12 @@ export function Triggers({
                   </option>
                 );
               })}
-            </select>
+            </Select>
           </label>
         ) : null}
         <label>
           Event Lambda
-          <select
+          <Select
             aria-label="Trigger event Lambda"
             value={current.event}
             onChange={(event) => choose(current, { event: event.target.value })}
@@ -497,10 +481,10 @@ export function Triggers({
                 </option>
               );
             })}
-          </select>
+          </Select>
         </label>
-        <div className="resource-actions">
-          <button className="quiet small" onClick={close}>
+        <div className={"empty:hidden flex flex-wrap gap-2 mt-3 items-center"} data-slot="resource-actions">
+          <button className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} onClick={close} data-variant="quiet">
             Cancel
           </button>
         </div>
@@ -514,12 +498,12 @@ export function Triggers({
       ? metadata.label
       : `${metadata?.label ?? current.adapter} · ${titleOf(index, current.resource)}`;
     return (
-      <p className="trigger-route small">
+      <p className={"[&>span]:min-w-0 [&>span]:wrap-anywhere [&>button]:flex-none [&>button]:whitespace-nowrap flex justify-between gap-2 m-0 bg-wash rounded-md [padding:10px] items-center text-caption"} data-slot="trigger-route">
         <span>
           <strong>{source}</strong> → {current.event}
         </span>
         <button
-          className="linkish small"
+          className={cx(buttonClasses({ variant: "link" }), "text-caption")}
           onClick={() => setForm({ ...current, step: "source" })}
         >
           Change
@@ -540,12 +524,12 @@ export function Triggers({
             <Fragment key={field.name}>{renderField(field)}</Fragment>
           ))
         ) : (
-          <p className="small muted">
+          <p className={"text-caption text-graphite"}>
             Nothing to set; the defaults suit most {metadata!.label} triggers.
           </p>
         )}
         <details
-          className="trigger-advanced"
+          className={"grid gap-2 [&_summary]:text-step-minus1 [&_summary]:text-graphite [&[open]>:not(summary)]:mt-2"}
           open={
             !!id ||
             groups!.advanced.some((field) =>
@@ -554,43 +538,43 @@ export function Triggers({
                   problem.field === field.name && problem.kind === "form",
               ),
             )
-          }
+          } data-slot="trigger-advanced"
         >
-          <summary>Advanced options</summary>
+          <InspectorSummary>Advanced options</InspectorSummary>
           <label>
             Attachment id
-            <input
+            <TextInput
               aria-label="Trigger attachment id"
               value={current.id}
               onChange={(event) =>
                 setForm({ ...current, id: event.target.value })
               }
             />
-            {id ? <span className="reason small">{id}</span> : null}
+            {id ? <span className={"text-refuse wrap-anywhere text-caption"}>{id}</span> : null}
           </label>
           {groups!.advanced.map((field) => (
             <Fragment key={field.name}>{renderField(field)}</Fragment>
           ))}
         </details>
-        <div className="resource-actions">
+        <div className={"empty:hidden flex flex-wrap gap-2 mt-3 items-center"} data-slot="resource-actions">
           <button
-            className="quiet small"
-            onClick={() => setForm({ ...current, step: "source" })}
+            className={cx(buttonClasses({ variant: "quiet" }), "text-caption")}
+            onClick={() => setForm({ ...current, step: "source" })} data-variant="quiet"
           >
             <ArrowLeft size={13} aria-hidden />
             Back
           </button>
           <button
-            className="primary compact"
-            onClick={() => setForm({ ...current, step: "confirm" })}
+            className={buttonClasses({ variant: "primary", size: "compact" })}
+            onClick={() => setForm({ ...current, step: "confirm" })} data-variant="primary"
           >
             Next
           </button>
-          <button className="quiet small" onClick={close}>
+          <button className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} onClick={close} data-variant="quiet">
             Cancel
           </button>
           {current.editing ? (
-            <button className="quiet small danger" onClick={removeEditing}>
+            <button className={cx(buttonClasses({ variant: "quiet" }), "text-caption text-refuse [&&]:border-refuse")} onClick={removeEditing} data-variant="quiet">
               <Trash2 size={13} aria-hidden />
               Remove trigger
             </button>
@@ -624,19 +608,19 @@ export function Triggers({
     const left = blocking.length;
     return (
       <>
-        <ul className="trigger-checklist" aria-label="Trigger checklist">
+        <ul className={"list-none m-0 p-0 grid [gap:6px] text-step-minus1 [&_li]:flex [&_li]:items-start [&_li]:gap-1.5 [&_li>svg]:flex-none [&_li>svg]:mt-0.5 [&_li>span]:flex-1"} aria-label="Trigger checklist" data-slot="trigger-checklist">
           {listed.map((problem) => {
             const Icon = PROBLEM_ICONS[problem.kind];
             return (
               <li
                 key={`${problem.kind}:${problem.field ?? ""}:${problem.message}`}
-                className={problem.kind}
+                className={problem.kind === "form" || problem.kind === "source" ? "text-refuse" : problem.kind === "warning" ? "text-local" : "text-graphite"}
               >
                 <Icon size={14} aria-hidden />
                 <span>{problem.message}</span>
                 {problem.kind === "form" ? (
                   <button
-                    className="linkish small"
+                    className={cx(buttonClasses({ variant: "link" }), "text-caption")}
                     onClick={() => setForm({ ...current, step: "settings" })}
                   >
                     Fix
@@ -648,68 +632,68 @@ export function Triggers({
           {!listed.some(
             (problem) => problem.kind === "form" || problem.kind === "source",
           ) ? (
-            <li className="ready">
+            <li className={"text-accept"}>
               <Check size={14} aria-hidden />
               <span>Source and settings check out.</span>
             </li>
           ) : null}
         </ul>
-        <label className="trigger-ack">
+        <label className={"flex items-start gap-2 [&_input]:mt-0.5 border border-rule-strong rounded-md bg-sheet text-caption! p-3 [line-height:1.5]"} data-slot="trigger-ack">
           <input
             type="checkbox"
             aria-label="Acknowledge trigger handler contract"
             checked={current.accepts}
             onChange={(event) =>
               setForm({ ...current, accepts: event.target.checked })
-            }
+            } className={checkboxClasses}
           />
           <span>
             My handler accepts this event: {metadata!.delivery}.{" "}
-            <span className="muted">
+            <span className={"text-graphite"}>
               Contract <code>{metadata!.contract}</code>.
             </span>
           </span>
         </label>
         {groups!.confirm.map((field) => (
-          <label key={field.name} className="trigger-ack">
+          <label key={field.name} className={"flex items-start gap-2 [&_input]:mt-0.5 border border-rule-strong rounded-md bg-sheet text-caption! p-3 [line-height:1.5]"} data-slot="trigger-ack">
             <input
               type="checkbox"
               aria-label={`Trigger ${field.label}`}
               checked={current.options[field.name] === true}
               onChange={(event) =>
                 setOption(field.name, event.target.checked ? true : undefined)
-              }
+              } className={checkboxClasses}
             />
             <span>{field.label}</span>
           </label>
         ))}
-        <div className="resource-actions">
+        <div className={"empty:hidden flex flex-wrap gap-2 mt-3 items-center"} data-slot="resource-actions">
           <button
-            className="quiet small"
-            onClick={() => setForm({ ...current, step: "settings" })}
+            className={cx(buttonClasses({ variant: "quiet" }), "text-caption")}
+            onClick={() => setForm({ ...current, step: "settings" })} data-variant="quiet"
           >
             <ArrowLeft size={13} aria-hidden />
             Back
           </button>
           <button
-            className="primary compact"
+            className={buttonClasses({ variant: "primary", size: "compact" })}
             disabled={!!left || !!draftState.busy}
-            onClick={commit}
+            onClick={commit} data-variant="primary"
           >
             {current.editing ? "Save trigger" : "Add trigger"}
           </button>
-          <button className="quiet small" onClick={close}>
+          <button className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} onClick={close} data-variant="quiet">
             Cancel
           </button>
           {current.editing ? (
-            <button className="quiet small danger" onClick={removeEditing}>
+            <button className={cx(buttonClasses({ variant: "quiet" }), "text-caption text-refuse [&&]:border-refuse")} onClick={removeEditing} data-variant="quiet">
               <Trash2 size={13} aria-hidden />
               Remove trigger
             </button>
           ) : null}
         </div>
         {left ? (
-          <p className="small muted" role="status">
+          <p className={"text-caption text-graphite"} role="status">
             {left === 1 ? "1 item left" : `${left} items left`} before this
             trigger can be {current.editing ? "saved" : "added"}.
           </p>
@@ -768,7 +752,7 @@ export function Triggers({
         problem.field === field.name &&
         (problem.kind === "form" || problem.kind === "source"),
     )?.message;
-    const note = error ? <span className="reason small">{error}</span> : null;
+    const note = error ? <span className={"text-refuse wrap-anywhere text-caption"}>{error}</span> : null;
     const raw =
       current.text[field.name] ??
       (value === undefined
@@ -815,11 +799,11 @@ export function Triggers({
         });
       };
       return (
-        <fieldset className="trigger-fieldset">
+        <fieldset className={"grid [gap:6px] m-0 p-[var(--space-2)_10px] border border-rule rounded-md [&_legend]:p-[0_var(--space-1)] [&_legend]:text-step-minus1 [&_legend]:font-semibold"} data-slot="trigger-fieldset">
           <legend>Match events</legend>
           <label>
             Source
-            <input
+            <TextInput
               aria-label="Trigger event source"
               placeholder="my.app.orders"
               value={part("source")}
@@ -828,16 +812,16 @@ export function Triggers({
           </label>
           <label>
             Detail type
-            <input
+            <TextInput
               aria-label="Trigger detail type"
               placeholder="OrderPlaced"
               value={part("detailType")}
               onChange={(event) => change("detailType", event.target.value)}
             />
           </label>
-          <span className="small muted">
+          <span className={"text-caption text-graphite"}>
             Separate several values with commas.{" "}
-            <button className="linkish small" onClick={toJson}>
+            <button className={cx(buttonClasses({ variant: "link" }), "text-caption")} onClick={toJson}>
               Edit full pattern as JSON
             </button>
           </span>
@@ -855,11 +839,11 @@ export function Triggers({
       const set = (next: ScheduleBasics) =>
         setOption(field.name, scheduleExpression(next));
       return (
-        <fieldset className="trigger-fieldset">
+        <fieldset className={"grid [gap:6px] m-0 p-[var(--space-2)_10px] border border-rule rounded-md [&_legend]:p-[0_var(--space-1)] [&_legend]:text-step-minus1 [&_legend]:font-semibold"} data-slot="trigger-fieldset">
           <legend>Run</legend>
           <label>
             Repeat
-            <select
+            <Select
               aria-label="Trigger repeat"
               value={scheduled.kind}
               onChange={(event) =>
@@ -872,11 +856,11 @@ export function Triggers({
             >
               <option value="rate">Every…</option>
               <option value="daily">Daily at…</option>
-            </select>
+            </Select>
           </label>
           {scheduled.kind === "rate" ? (
-            <div className="trigger-inline">
-              <input
+            <div className="flex gap-[6px] [&&_input]:w-[6em]" data-slot="trigger-inline">
+              <TextInput
                 aria-label="Trigger every"
                 type="number"
                 min={1}
@@ -891,7 +875,7 @@ export function Triggers({
                   })
                 }
               />
-              <select
+              <Select
                 aria-label="Trigger unit"
                 value={scheduled.unit}
                 onChange={(event) =>
@@ -904,7 +888,7 @@ export function Triggers({
                 <option value="minutes">minutes</option>
                 <option value="hours">hours</option>
                 <option value="days">days</option>
-              </select>
+              </Select>
             </div>
           ) : (
             <label>
@@ -912,7 +896,7 @@ export function Triggers({
               {typeof current.options.timezone === "string"
                 ? ` (${current.options.timezone})`
                 : " (UTC)"}
-              <input
+              <TextInput
                 aria-label="Trigger time"
                 type="time"
                 value={scheduled.time}
@@ -922,10 +906,10 @@ export function Triggers({
               />
             </label>
           )}
-          <span className="small muted">
+          <span className={"text-caption text-graphite"}>
             <code>{String(value ?? field.default)}</code> ·{" "}
             <button
-              className="linkish small"
+              className={cx(buttonClasses({ variant: "link" }), "text-caption")}
               onClick={() =>
                 setForm({
                   ...current,
@@ -950,10 +934,10 @@ export function Triggers({
       );
     if (s3Basic)
       return (
-        <fieldset className="trigger-fieldset">
+        <fieldset className={"grid [gap:6px] m-0 p-[var(--space-2)_10px] border border-rule rounded-md [&_legend]:p-[0_var(--space-1)] [&_legend]:text-step-minus1 [&_legend]:font-semibold"} data-slot="trigger-fieldset">
           <legend>When objects are</legend>
           {S3_BASIC_EVENTS.map((basic) => (
-            <label key={basic.value} className="trigger-check">
+            <label key={basic.value} className={"flex items-start gap-2 coarse:min-h-11"} data-slot="trigger-check">
               <input
                 type="checkbox"
                 aria-label={`Trigger on ${basic.label.toLowerCase()}`}
@@ -967,14 +951,14 @@ export function Triggers({
                           (item) => item !== basic.value,
                         ),
                   )
-                }
+                } className={checkboxClasses}
               />
               {basic.label}
             </label>
           ))}
           {current.options.delivery !== "eventbridge" ? (
-            <span className="small muted">
-              <button className="linkish small" onClick={toJson}>
+            <span className={"text-caption text-graphite"}>
+              <button className={cx(buttonClasses({ variant: "link" }), "text-caption")} onClick={toJson}>
                 Choose specific S3 events
               </button>
             </span>
@@ -999,9 +983,9 @@ export function Triggers({
         value === workable[0]!.value
       )
         return (
-          <p className="small trigger-fact">
+          <p className={"text-caption m-0"} data-slot="trigger-fact">
             <strong>{field.label}:</strong> {String(value)}{" "}
-            <span className="muted">
+            <span className={"text-graphite"}>
               {choices
                 .filter((choice) => choice.reason)
                 .map((choice) => choice.reason)
@@ -1012,7 +996,7 @@ export function Triggers({
       return (
         <label>
           {field.label}
-          <select
+          <Select
             aria-label={label}
             value={typeof value === "string" ? value : ""}
             onChange={(event) =>
@@ -1033,7 +1017,7 @@ export function Triggers({
                 {choice.short ? ` · ${choice.short}` : ""}
               </option>
             ))}
-          </select>
+          </Select>
           {note}
         </label>
       );
@@ -1042,7 +1026,7 @@ export function Triggers({
       return (
         <label>
           {field.label}
-          <select
+          <Select
             aria-label={label}
             value={value === undefined ? "" : String(value)}
             onChange={(event) =>
@@ -1057,7 +1041,7 @@ export function Triggers({
             <option value="">Default</option>
             <option value="true">On</option>
             <option value="false">Off</option>
-          </select>
+          </Select>
           {note}
         </label>
       );
@@ -1069,7 +1053,7 @@ export function Triggers({
       return (
         <label>
           {field.label}
-          <select
+          <Select
             aria-label={label}
             value={chosen ? `resource:${chosen.join(".")}` : ""}
             onChange={(event) =>
@@ -1103,7 +1087,7 @@ export function Triggers({
                   </option>
                 );
               })}
-          </select>
+          </Select>
           {note}
         </label>
       );
@@ -1112,7 +1096,7 @@ export function Triggers({
       return (
         <label>
           {field.label}
-          <textarea
+          <Textarea
             aria-label={label}
             rows={4}
             value={raw}
@@ -1124,7 +1108,7 @@ export function Triggers({
     return (
       <label>
         {field.label}
-        <input
+        <TextInput
           aria-label={label}
           type={field.kind === "number" ? "number" : "text"}
           min={field.min}

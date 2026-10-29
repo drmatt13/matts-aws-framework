@@ -280,7 +280,7 @@ test("a plan job finishing while another plan is under review does not replace i
   await ui.waitFor(() => assert.equal(operations().length, 1));
   const started = `job-${posted.findIndex((entry) => entry.path === "/deploy/operations") + 1}`;
   ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }));
-  const review = () => ui.within(document.querySelector("dialog.plan-review") as HTMLElement);
+  const review = () => ui.within(document.querySelector('dialog[data-ui="plan-review"]') as HTMLElement);
   await ui.waitFor(() => assert.ok(review().queryByText("CognitoStack")));
   // The second plan finishes while the first is under review.
   ui.act(() => emit("deploy-job", { id: started, kind: "deploy-plan", title: "Plan my-aws-app-prod", params: {}, status: "succeeded", startedAt: "2026-10-17T12:00:00Z", endedAt: "2026-10-17T12:01:00Z", lastSeq: 3, planId: "my-aws-app-prod-xxxxxx", deployment: "my-aws-app-prod", steps: [{ label: "Plan", status: "done" }] }));

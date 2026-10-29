@@ -1,3 +1,6 @@
+import { Select } from "../ui/FormControls";
+import { buttonClasses } from "../ui/Button";
+import { cx } from "../ui/classes";
 import { useId } from "react";
 import type { ModelResource } from "../../shared/model";
 import type { ResourceDetails } from "../../shared/resources";
@@ -33,31 +36,31 @@ export function LocalValue({ resource, details, error, busy, onRetry }: {
   };
   const status = edit ? "Unsaved change" : usingDefault ? "Using default" : value.trim() ? "Set locally" : details?.configured ? "Empty" : "Not set";
   const requiredMissing = resource.inputRequirement?.required && !value.trim() && !usingDefault;
-  return <section className="resource-editor local-input" aria-label="Local value">
-    <div className="section-heading"><h3>Local value</h3><span className={`local-input-mode ${mode}`}>{mode === "dev" ? "Development" : "Production"} file</span></div>
-    <code className="local-input-name">{name}</code>
-    <p className="local-input-source small muted">Saves to <button className="linkish" title="Open all variables in this local file" onClick={() => select(`envfile:${mode}`)}>{file}</button></p>
-    {resource.absent || model.stale ? <p className="small muted">{resource.absent ? "Not declared in this graph." : "Unavailable until the configuration loads."}</p>
-      : error ? <div className="local-input-error"><p className="reason" role="alert">{error}</p><button className="quiet small" onClick={onRetry}>Retry value read</button></div>
-      : !details ? <p role="status" className="small muted">Reading local value…</p>
+  return <section className={"[&_fieldset]:[border:0] [&_fieldset]:p-0 [&_fieldset]:m-0 [&_fieldset]:min-w-0 [&_h4]:m-[var(--space-6)_0_var(--space-3)] [&>[data-slot=env-value-control]]:items-start [&_textarea]:max-h-40"} aria-label="Local value" data-slot="local-input">
+    <div className={"mb-3 flex items-center justify-between gap-3 [&>:first-child]:min-w-0 [&>:first-child]:wrap-anywhere [&_h3]:m-0 [&>button]:shrink-0"} data-slot="section-heading"><h3>Local value</h3><span className={"ml-auto text-graphite text-caption font-medium"} data-slot="local-input-mode" data-mode={mode}>{mode === "dev" ? "Development" : "Production"} file</span></div>
+    <code className={"block wrap-anywhere m-[var(--space-3)_0_var(--space-1)] text-caption"} data-slot="local-input-name">{name}</code>
+    <p className="mb-3 text-caption text-graphite [&_button]:[font:inherit]" data-slot="local-input-source">Saves to <button className={buttonClasses({ variant: "link" })} title="Open all variables in this local file" onClick={() => select(`envfile:${mode}`)}>{file}</button></p>
+    {resource.absent || model.stale ? <p className={"text-caption text-graphite"}>{resource.absent ? "Not declared in this graph." : "Unavailable until the configuration loads."}</p>
+      : error ? <div className={"grid justify-items-start gap-2"} data-slot="local-input-error"><p className={"text-refuse wrap-anywhere"} role="alert">{error}</p><button className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} onClick={onRetry}>Retry value read</button></div>
+      : !details ? <p role="status" className={"text-caption text-graphite"}>Reading local value…</p>
       : <>
-        <div className={`local-input-status${edit ? " pending" : requiredMissing ? " missing" : ""}`} role="status"><span aria-hidden /><span className="inspector-status-copy">
+        <div className={cx("flex items-center [gap:6px] mb-2 text-caption [&>span:first-child]:flex-none [&>span:first-child]:w-1.5 [&>span:first-child]:h-1.5 [&>span:first-child]:rounded-full ", edit ? "text-dev [&>span:first-child]:bg-dev" : requiredMissing ? "text-refuse [&>span:first-child]:bg-refuse" : "text-graphite [&>span:first-child]:bg-graphite")} role="status" data-slot="local-input-status"><span aria-hidden /><span className={"grid min-w-0 [&>span]:[grid-area:1/1] [&>[aria-hidden=true]]:invisible"} data-slot="inspector-status-copy">
           <span aria-hidden={otherChanges}>{status}</span>
           <span aria-hidden={!otherChanges}>Apply or discard settings to edit this value.</span>
         </span></div>
-        {details.inputFile?.exists === false ? <div className="local-input-empty"><p className="small muted">Create this environment file before setting a local value.</p><button className="quiet small" onClick={() => select(`envfile:${mode}`)}>Set up .env.{mode}</button></div>
+        {details.inputFile?.exists === false ? <div className={"grid justify-items-start gap-2"} data-slot="local-input-empty"><p className={"text-caption text-graphite"}>Create this environment file before setting a local value.</p><button className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} onClick={() => select(`envfile:${mode}`)}>Set up .env.{mode}</button></div>
           : <>
-            {resource.values && !secret ? <select className="local-input-choice" aria-label={`Value for ${name}`} aria-describedby={help} value={value} disabled={disabled} onChange={(event) => update(event.target.value)}>
+            {resource.values && !secret ? <Select className={"w-full"} aria-label={`Value for ${name}`} aria-describedby={help} value={value} disabled={disabled} onChange={(event) => update(event.target.value)} data-slot="local-input-choice">
               <option value="">{hasDefault ? `Use default · ${resource.default}` : "No local value"}</option>
               {value && !resource.values.includes(value) ? <option value={value}>{value} (current)</option> : null}
               {resource.values.map((option) => <option key={option}>{option}</option>)}
-            </select> : <EnvironmentValueControl key={`${resource.id}:${mode}`} name={name} value={value} sensitive={secret} disabled={disabled} describedBy={help} placeholder={hasDefault ? "Blank uses the default" : secret ? "Enter a secret value…" : "Enter a local value…"} onChange={update} />}
-            <div className="local-input-actions">
-              {value !== "" ? <button className="linkish small" disabled={disabled} onClick={() => update("")}>{hasDefault ? "Use default" : "Clear local value"}</button> : null}
-              {edit ? <button className="linkish small" disabled={!!draftState.busy} onClick={revert}>Revert value</button> : null}
+            </Select> : <EnvironmentValueControl key={`${resource.id}:${mode}`} name={name} value={value} sensitive={secret} disabled={disabled} describedBy={help} placeholder={hasDefault ? "Blank uses the default" : secret ? "Enter a secret value…" : "Enter a local value…"} onChange={update} />}
+            <div className={"mt-2 flex flex-wrap items-center justify-between gap-2 empty:hidden [&>button]:min-h-(--panel-icon-target)"} data-slot="local-input-actions">
+              {value !== "" ? <button className={cx(buttonClasses({ variant: "link" }), "text-caption")} disabled={disabled} onClick={() => update("")}>{hasDefault ? "Use default" : "Clear local value"}</button> : null}
+              {edit ? <button className={cx(buttonClasses({ variant: "link" }), "text-caption")} disabled={!!draftState.busy} onClick={revert}>Revert value</button> : null}
             </div>
           </>}
-        <div id={help} className="local-input-help small muted">
+        <div id={help} className={"mt-2 wrap-anywhere [&_code]:[font-size:inherit] text-caption text-graphite"} data-slot="local-input-help">
           {/* The status line already says Empty or Not set, and an empty value select already reads "Use default · value". */}
           {hasDefault && !(resource.values && !secret && value === "") ? <p>Default: <code>{resource.default}</code></p> : requiredMissing ? <p>A non-blank value is required.</p> : null}
           {edit ? <p>Review Changes to save this value. Nothing is deployed.</p> : null}
@@ -65,7 +68,7 @@ export function LocalValue({ resource, details, error, busy, onRetry }: {
           {!details.inputFile ? <p>Restart Studio to enable inline value editing.</p> : null}
         </div>
         {!edit ? <RequirementNotice requirement={resource.inputRequirement} /> : null}
-        {pending?.error ? <p className="reason small" role="alert">{pending.error}</p> : null}
+        {pending?.error ? <p className={"text-refuse wrap-anywhere text-caption"} role="alert">{pending.error}</p> : null}
       </>}
   </section>;
 }
