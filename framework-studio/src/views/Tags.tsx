@@ -96,7 +96,7 @@ export function Tags({ entity, route = false }: { readonly entity: string; reado
     const resource = model.resources.find(resource => resource.id === entity);
     const known = model.targets.some(target => target.ref === entity) || resource || model.networks?.some(network => `island:vpc:${network.id}` === entity) || (model.managedDatabase && `database:${model.managedDatabase.id}` === entity);
     if (!known) return null;
-    const generated = resource && (resource.frameworkStack || resource.kind === "envFile" || resource.kind === "group" || resource.deploymentFile || resource.clientEnvironment);
+    const generated = resource && (resource.kind === "envFile" || resource.kind === "group" || resource.deploymentFile || resource.clientEnvironment);
     return <InspectorDisclosure title="Tags" className={"[&>[data-slot=section-content]]:grid [&>[data-slot=section-content]]:gap-3 [&>[data-slot=section-content]>:is(p,dl)]:m-0"} data-slot="declaration-tags">{generated || model.tagging ? <p className={"text-caption text-graphite"}>This generated or logical resource has no independently authored tag declaration. Its producing declaration owns its tags; follow the source link above.</p> : <RefreshTagEditor entity={entity} />}</InspectorDisclosure>;
   }
   const editability = snapshot.source.editability[entity]?.tags;
@@ -106,7 +106,8 @@ export function Tags({ entity, route = false }: { readonly entity: string; reado
   const inheritedSource = facts.inherited?.entity ?? Object.values(facts.provenance).find(value => value.kind === "inherited")?.entity ?? model.resources.find(resource => resource.id === entity)?.parent;
   const inherited = Object.entries(facts.inherited?.values ?? (inheritedSource ? model.tagging?.[inheritedSource]?.effective ?? {} : {}));
   const parent = inheritedSource;
-  const source = snapshot.source.entities[entity]?.value;
+  // An uncataloged stack's tags live in framework.config.ts stacks, not beside its class.
+  const source = entity.startsWith("framework-stack:") ? snapshot.source.catalog[entity]?.tagLocation : snapshot.source.entities[entity]?.value;
   const staged = draftState.entries.find(entry => entry.kind === "tags" && entry.entity === entity);
   const count = Object.keys({ ...Object.fromEntries(inherited), ...current }).length;
   const disabled = !!draftState.busy || live.evaluating || !!model.stale || draft.conflict || draftState.entries.some(entry => ["create", "resource", "environment"].includes(entry.kind));

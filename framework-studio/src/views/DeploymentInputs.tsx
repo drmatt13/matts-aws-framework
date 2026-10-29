@@ -12,7 +12,7 @@ import { EntityIcon } from "./EntityIcon";
 import type { DeploymentInputDetails, DeploymentInputEntry } from "../../shared/deployment-inputs";
 import type { EnvironmentEdit } from "../draft";
 import { Description } from "./Description";
-import { InspectorDisclosure } from "./InspectorUI";
+import { InspectorDisclosure, InspectorKind } from "./InspectorUI";
 import { EnvironmentValueControl as ValueControl } from "./EnvironmentValueControl";
 
 const inputFlagClasses = (attention = false) => cx("flex-none rounded-full border px-[7px] py-px text-meta leading-[1.5]", attention ? "border-refuse bg-refuse-wash text-refuse" : "border-rule-strong text-graphite");
@@ -134,7 +134,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
     </li>;
   };
   return <>
-    <header><span className={"text-graphite text-meta font-medium tracking-[.03em]"}>CDK {MODE_NAMES[file.mode]} inputs</span><h2><EntityIcon icon="envFile" />{file.path}</h2></header>
+    <header><InspectorKind environments={{ availability: { dev: file.mode === "dev", prod: file.mode === "prod" }, descriptions: { [file.mode]: `inputs for ${MODE_NAMES[file.mode]}` }, unavailableDescription: "not this file's environment" }}>CDK inputs</InspectorKind><h2><EntityIcon icon="envFile" />{file.path}</h2></header>
     <Description entity={resource.id} />
     {descriptionPending ? <p className={"text-caption text-graphite"}>Apply or discard the description before editing environment variables.</p> : null}
     <InspectorDisclosure title="File and template" defaultOpen={!file.exists}><p>{file.exists ? "Local inputs file exists." : "This inputs file has not been generated."} {file.mode === mode ? "Used for synthesis in the selected graph." : "Switch the graph to use this environment for synthesis."}</p>

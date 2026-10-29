@@ -1,4 +1,4 @@
-import { InspectorSummary } from "./InspectorUI";
+import { InspectorKind, InspectorSummary } from "./InspectorUI";
 
 import type { ConnectionGroup } from "../connections";
 import { useStudio } from "../studio";
@@ -18,7 +18,7 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
   // A CDK environment file's rows all share the header's pair.
   const rowPills = !suppliedByEnvironmentFile(connection, index);
   return <>
-    <header data-slot="connection-header"><span className={"text-graphite text-meta font-medium tracking-[.03em]"}>Connection</span><h2>{presentation.title}</h2><EnvironmentPills availability={connection.availability} />
+    <header data-slot="connection-header"><InspectorKind environments={{ availability: connection.availability }}>Connection</InspectorKind><h2>{presentation.title}</h2>
       <ConnectionEndpoints from={connection.from} to={connection.to} />
     </header>
     <section aria-label="Connection details">
@@ -31,7 +31,7 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
               <span className={"grid [gap:2px] min-w-0 flex-1 [&_code]:wrap-anywhere [&_code]:text-caption"} data-slot="connection-map-label">{shared ? relationship.value : relationship.title}</span>
               {rowPills ? <EnvironmentPills availability={member.availability} /> : null}
             </InspectorSummary>
-            <div className={"pb-3 text-caption [&>[data-slot=connection-endpoints]]:mt-0 [&>[data-slot=connection-endpoints]]:mb-2 [&_[data-slot=connection-availability]]:mt-0"} data-slot="connection-map-detail">
+            <div className={"pb-3 text-caption [&>[data-slot=connection-endpoints]]:mt-0 [&>[data-slot=connection-endpoints]]:mb-2 [&_[data-slot=connection-description]]:mt-0 [&_[data-slot=connection-availability]]:mt-0"} data-slot="connection-map-detail">
               <ConnectionEndpoints from={edge.from} to={edge.to} except={{ from: connection.from, to: connection.to }} />
               <ConnectionDetails edge={edge} onlyIn={onlyIn} />
             </div>

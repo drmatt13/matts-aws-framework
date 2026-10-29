@@ -1,12 +1,13 @@
 import path from "node:path";
 import ts from "typescript";
 import { locateConfigSource, type LocatedConfigSource } from "../../../packages/framework/scripts/config-source";
-import type { Editability, ModeModel } from "../../shared/model";
+import type { Editability, ModeModel, SourceLocation } from "../../shared/model";
+import { toRelative } from "../files";
 import { parseOrigin } from "../model/origin";
 import { readCatalogSource, type CatalogEntrySource } from "./catalog";
 import { locateManagedDatabase } from "./database";
 import type { SourceFiles } from "./index";
-import { declarationObject, expressionAt, findProperty, literalKey, unwrap } from "./syntax";
+import { declarationObject, expressionAt, findProperty, lineAndColumn, literalKey, unwrap } from "./syntax";
 
 /** Reuse one snapshot's discovery results; never retain them across source overlays. */
 export interface TagSourceContext {
@@ -71,6 +72,27 @@ export function locateTagSites(root: string, model: ModeModel, files: SourceFile
     if (!object || !ts.isObjectLiteralExpression(object)) return refuse("VPC options are computed. Edit tags in source.");
     return [{ file: entry.file, source, object, segments: ["tags"] }];
   }
+  if (entity.startsWith("framework-stack:")) {
+    const name = entity.slice("framework-stack:".length);
+    // framework.config.ts tags an uncataloged stack by class, in stacks or the module it imports.
+    const stacks = located.properties.stacks;
+    if (stacks) {
+      const source = files.get(stacks.file);
+      const value = expressionAt(source, stacks.span.start, stacks.span.end);
+      const object = value && unwrap(value);
+      if (!object || !ts.isObjectLiteralExpression(object)) return refuse("stacks is computed. Edit its tags in source.");
+      return [{ file: stacks.file, source, object, segments: [name, "tags"] }];
+    }
+    const source = files.get(located.configFile);
+    const configs: ts.ObjectLiteralExpression[] = [];
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "defineFrameworkConfig" && node.arguments[0] && ts.isObjectLiteralExpression(unwrap(node.arguments[0]))) configs.push(unwrap(node.arguments[0]) as ts.ObjectLiteralExpression);
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    if (configs.length !== 1) return refuse("framework.config.ts needs one literal defineFrameworkConfig({ ... }) for Studio to add stack tags.");
+    return [{ file: located.configFile, source, object: configs[0]!, segments: ["stacks", name, "tags"] }];
+  }
   if (entity.startsWith("database:")) {
     const database = locateManagedDatabase(root, files);
     if (!database || entity !== `database:${database.id}`) return refuse("The database declaration could not be located.");
@@ -97,6 +119,17 @@ export function locateTagSites(root: string, model: ModeModel, files: SourceFile
     return [optionsObject(source, value, member ? ["members", member, "tags"] : ["tags"])];
   }
   return refuse("This logical item has no independently authored tags. Follow its owning declaration.");
+}
+
+/** An uncataloged stack's entry in stacks, once one is written. */
+export function stackTagLocation(root: string, model: ModeModel, files: SourceFiles, name: string, context?: TagSourceContext): SourceLocation | undefined {
+  try {
+    const [site] = locateTagSites(root, model, files, `framework-stack:${name}`, context);
+    const property = site?.object && site.segments.length === 2 ? findProperty(site.object, name).property : undefined;
+    if (!site || !property) return undefined;
+    const start = property.getStart(site.source);
+    return { file: toRelative(root, site.file), ...lineAndColumn(site.source, start), start, end: property.end };
+  } catch { return undefined; }
 }
 
 /** Only explicit string pairs are editable. Shared fragments stay source-owned. */

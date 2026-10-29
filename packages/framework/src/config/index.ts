@@ -2296,6 +2296,35 @@ export interface FrameworkConfig {
    * resources.cognito.userPoolClient.userPoolClientId }`.
    */
   readonly userPool?: FrameworkUserPool;
+  /**
+   * Tags for stacks the CDK app constructs without a catalog entry, keyed by
+   * class, such as `{ HttpApiGatewayStack: { tags: { area: "api" } } }`.
+   */
+  readonly stacks?: FrameworkStacks;
+}
+
+/**
+ * A stack's tags reach every taggable resource it owns, as a catalog stack's
+ * tags do; a workload's own tags still win on its compute. A stack in the
+ * resource catalog keeps its tags on its `resource.stack()` entry instead.
+ */
+export interface FrameworkStack {
+  readonly tags?: DeclarationTags;
+}
+export type FrameworkStacks = Readonly<Record<string, FrameworkStack>>;
+
+/** Tags only: everything else a stack does belongs to its class. */
+function assertFrameworkStacks(stacks: unknown): void {
+  if (!stacks || typeof stacks !== "object" || Array.isArray(stacks)) {
+    throw new Error('stacks must be an object keyed by stack class, such as { HttpApiGatewayStack: { tags: { area: "api" } } }.');
+  }
+  for (const [name, stack] of Object.entries(stacks)) {
+    if (!/^[A-Za-z_$][\w$]*$/.test(name)) throw new Error(`stacks["${name}"] must be keyed by the stack's class name, such as HttpApiGatewayStack.`);
+    if (!stack || typeof stack !== "object" || Array.isArray(stack)) throw new Error(`stacks.${name} must be an object such as { tags: { area: "api" } }.`);
+    const other = Object.keys(stack).filter((key) => key !== "tags");
+    if (other.length) throw new Error(`stacks.${name} declares ${other.join(", ")}. A stack entry holds only tags; its other settings belong to its class.`);
+    validateTags((stack as FrameworkStack).tags, `stacks.${name}.tags`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2333,6 +2362,7 @@ export interface FrameworkConfigInput {
   readonly networks?: readonly FrameworkNetwork[];
   readonly database?: DatabaseReference;
   readonly userPool?: FrameworkUserPool;
+  readonly stacks?: FrameworkStacks;
 }
 
 type UnionToIntersection<Union> = (
@@ -2437,6 +2467,7 @@ export function defineFrameworkConfig<const Input extends FrameworkConfigInput>(
     resolveNetwork(input, input.database.vpc);
   }
   if (input.userPool !== undefined) assertFrameworkUserPool(input.userPool);
+  if (input.stacks !== undefined) assertFrameworkStacks(input.stacks);
   if ("gateways" in input) {
     throw new Error(
       "gateways is no longer a section. An agent's Gateway is derived from its tools list: move each Gateway's tools onto the agents that used it, as agents.<id>.tools.",

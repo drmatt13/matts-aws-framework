@@ -37,6 +37,14 @@ export function applyFrameworkTags(root: IConstruct, config: FrameworkConfig, id
     }
     own.set(node, tags);
   }
+  // A stack without a catalog entry is tagged by its class's stacks entry,
+  // as the outermost layer, exactly as a catalog stack's tags are.
+  for (const stack of root.node.findAll().filter(cdk.Stack.isStack)) {
+    const declared = config.stacks?.[stack.constructor.name];
+    if (!declared) continue;
+    if (own.has(stack)) throw new Error(`${stack.node.path} is linked to the resource catalog, so stacks.${stack.constructor.name} cannot tag it. Declare its tags on that resource.stack() entry.`);
+    own.set(stack, validateTags(declared.tags, `stacks.${stack.constructor.name}.tags`));
+  }
   for (const node of root.node.findAll()) {
     if (!cdk.CfnResource.isCfnResource(node) && !cdk.Stack.isStack(node)) continue;
     const manager = cdk.TagManager.of(node);

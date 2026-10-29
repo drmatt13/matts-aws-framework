@@ -9,10 +9,11 @@ import { CLIENT_ENVIRONMENT_FILES, CLIENT_ENVIRONMENT_ID, clientBindingFor, isSp
 import { previewClientBinding } from "../../shared/client-environment-preview";
 import type { ModelResource } from "../../shared/model";
 import { useStudio } from "../studio";
+import { catalogAvailability } from "../deployment";
 import { Description } from "./Description";
 import { EntityIcon } from "./EntityIcon";
 import { EnvironmentPills } from "./DeploymentBadge";
-import { InspectorSwitch } from "./InspectorUI";
+import { InspectorKind, InspectorSwitch } from "./InspectorUI";
 
 const sourceKinds = { input: "Input parameter", output: "Stack output", region: "Stack region", endpoint: "URL from input parameter", empty: "Empty value" } as const;
 
@@ -185,9 +186,11 @@ export function ClientEnvironmentMappings() {
 const clientBindingSplit = (mapping: ClientEnvironmentMapping) => ({ dev: clientBindingFor(mapping, "dev"), prod: clientBindingFor(mapping, "prod") });
 
 export function ClientEnvironmentFileView({ resource }: { readonly resource: ModelResource }) {
+  const { snapshot } = useStudio();
+  const availability = catalogAvailability(snapshot.models)[resource.id] ?? { dev: false, prod: false };
   return <>
-    <header><span className={"text-graphite text-meta font-medium tracking-[.03em]"}>Generated client settings</span><h2><EntityIcon icon="envFile" />Client environment</h2><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{CLIENT_ENVIRONMENT_FILES.dev}</code><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{CLIENT_ENVIRONMENT_FILES.prod}</code></header>
-    <ClientEnvironmentMappings />
+    <header><InspectorKind environments={{ availability, descriptions: { dev: "generated for development", prod: "generated for production" }, unavailableDescription: "not generated" }}>Generated client settings</InspectorKind><h2><EntityIcon icon="envFile" />Client environment</h2><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{CLIENT_ENVIRONMENT_FILES.dev}</code><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{CLIENT_ENVIRONMENT_FILES.prod}</code></header>
     <Description entity={resource.id} />
+    <ClientEnvironmentMappings />
   </>;
 }

@@ -310,15 +310,17 @@ test("placement-only workloads omit empty settings and secret-only bindings rema
   assert.equal(planCalls.length + applyCalls, 0);
 });
 
-test("every configurable workload places Tags before the shared Deployment section and previews its draft", async () => {
+test("every configurable workload places Tags and Description before the shared Deployment section and previews its draft", async () => {
   for (const role of new Set(baseline.models.dev.targets.map((target) => target.role))) {
     const item = baseline.models.dev.targets.find((target) => target.role === role)!;
     if (!baseline.models.dev.fields[item.ref]?.some((fact) => fact.field === "deploy")) continue;
     await mount(item.ref);
     const section = document.querySelector("[data-slot=inspector-content] > [data-slot=inspector-deployment]")!;
     assert.ok(section, role);
-    assert.ok(section.previousElementSibling?.matches("[data-slot=declaration-tags]"), role);
-    assert.equal(section.previousElementSibling?.previousElementSibling?.tagName, "HEADER", role);
+    const description = section.previousElementSibling!;
+    assert.ok(description.matches("[data-slot=node-description]"), role);
+    assert.ok(description.previousElementSibling?.matches("[data-slot=declaration-tags]"), role);
+    assert.equal(description.previousElementSibling?.previousElementSibling?.tagName, "HEADER", role);
     assert.equal(section.querySelector("h3")?.textContent, "Deployment", role);
     assert.equal(section.querySelector("[data-slot=field] [data-slot=field-label]")?.textContent, "Deploy", role);
     const control = ui.within(section as HTMLElement).getByRole("combobox", { name: "Deploy" });
@@ -347,11 +349,22 @@ test("node descriptions stage with workload settings, review, save and reload in
   assert.equal((descriptionField()).value, value);
 });
 
-test("all selectable item kinds expose their authored description", async () => {
-  for (const id of ["route:http:/graphql", "resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "framework-stack:DevLambdaReplayStack", "envfile:dev", "local:postgres", "island:vpc:application", "prop:vpc:application:endpoint:s3"]) {
+test("all selectable item kinds lead with tags, where they have them, then their authored description", async () => {
+  const model = baseline.models.dev;
+  // A lone connection keeps its edge's id; a bundle's rows place their descriptions inside each row.
+  const edge = model.edges.find(edge => aggregateConnections(model, Object.values(baseline.models)).some(group => group.id === edge.id))!;
+  for (const id of [target, "route:http:/graphql", "gateway:http", "resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "framework-stack:DevLambdaReplayStack", "envfile:dev", model.resources.find(resource => resource.clientEnvironment)!.id, model.managedDatabase!.resource, "local:postgres", "island:lambda", "island:vpc:application", "prop:vpc:application:endpoint:s3", edge.id]) {
     await mount(id);
+    const first = document.querySelector("[data-slot=inspector-content] > header")?.nextElementSibling;
+    const second = first?.getAttribute("data-slot") === "declaration-tags" ? first.nextElementSibling : first;
+    assert.equal(second?.getAttribute("data-slot"), "node-description", id);
+    // Framework-built stacks and their gateways are tagged like any other stack.
+    if ([target, "route:http:/graphql", "gateway:http", "resource:cognito", "resource:openaiApiKey", "framework-stack:DevLambdaReplayStack", model.managedDatabase!.resource, "island:vpc:application"].includes(id)) {
+      assert.equal(first?.getAttribute("data-slot"), "declaration-tags", id);
+      assert.ok(ui.within(first as HTMLElement).queryByRole("button", { name: "Add tag" }), `${id} tags are editable`);
+    }
     const description = descriptionField();
-    assert.equal(description.value, baseline.descriptions.values[id], id);
+    assert.equal(description.value, baseline.descriptions.values[id === edge.id ? connectionDescriptionId(edge) : id] ?? "", id);
     assert.equal(description.disabled, false, id);
     ui.cleanup();
   }
@@ -386,9 +399,9 @@ test("a plain connection has no filler context and optional descriptions review,
   await mount(edge.id);
   assert.equal(ui.screen.queryByText("This relationship comes from the framework graph."), null);
   assert.equal(ui.screen.queryByText("Configuration", { selector: "summary" }), null);
-  const add = ui.screen.getByText("Add description", { selector: "summary" });
-  assert.equal(add.closest("details")!.open, false);
-  ui.fireEvent.click(add);
+  const description = ui.screen.getByRole("region", { name: "Connection description" });
+  assert.equal(ui.within(description).getByText("Add a description of this connection.").getAttribute("data-slot"), "description-preview");
+  assert.equal(description.querySelector("details")!.open, false);
   ui.fireEvent.change(descriptionField(), { target: { value: "Used for account identity." } });
   assert.equal(planCalls.length, 0);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
@@ -627,6 +640,31 @@ test("stack inspectors surface unattached status and the database's framework ow
   assert.ok(ui.within(ui.screen.getByRole("complementary", { name: "Inspector" }).querySelector("header")!).getByText("Framework managed"));
 });
 
+test("inspector headers carry their Dev | Prod pair at the right of the type label, except input groups", async () => {
+  const header = () => ui.screen.getByRole("complementary", { name: "Inspector" }).querySelector("header")!;
+  const pair = () => [...header().querySelectorAll("[data-slot=\"inspector-kind\"] [data-environment]")].map(pill => `${pill.getAttribute("data-environment")}:${pill.getAttribute("data-enabled")}`);
+  for (const [id, expected] of [
+    ["lambda:sign-in", ["dev:true", "prod:true"]],
+    ["resource:rds", ["dev:false", "prod:true"]],
+    ["resource:referenceExamples", ["dev:false", "prod:false"]],
+    ["resource:openaiApiKey", ["dev:true", "prod:true"]],
+    ["envfile:dev", ["dev:true", "prod:false"]],
+  ] as const) {
+    await mount(id);
+    assert.deepEqual(pair(), expected, id);
+    assert.equal(header().querySelectorAll("[data-slot=\"environment-pills\"]").length, 1, `${id}: one pair, on the type row`);
+    ui.cleanup();
+  }
+  await mount("resource:referenceExamples");
+  assert.deepEqual([...document.querySelectorAll("[data-slot=\"lane-lines\"] strong")].map(line => line.textContent), ["Unavailable", "Unavailable"], "the Deployment section agrees with the header that an unattached stack is deployed nowhere");
+  ui.cleanup();
+  await mount("envfile:dev");
+  assert.equal(header().querySelector("[data-slot=\"inspector-kind\"] > span")?.textContent, "CDK inputs", "the pair names the environment, so the label does not repeat it");
+  ui.cleanup();
+  await mount("resource:client");
+  assert.equal(header().querySelectorAll("[data-slot=\"environment-pills\"]").length, 0, "an input group's entries carry their own pairs");
+});
+
 test("an exported framework stack shows symbolic CfnOutputs and root env names without generic infrastructure controls", async () => {
   await mount("framework-stack:DevLambdaReplayStack");
   assert.ok(ui.screen.getByRole("heading", { name: "DevLambdaReplayStack" }));
@@ -689,7 +727,7 @@ test("managed API routes show their target's environment cards and owning config
   for (const title of ["HTTP API", "WebSocket API"]) assert.ok(ui.screen.getByRole("button", { name: title }));
 });
 
-test("infrastructure and workload tags precede deployment cards while inputs omit them", async () => {
+test("infrastructure and workload tags and descriptions precede deployment cards while inputs omit them", async () => {
   const tool = baseline.models.dev.targets.find((target) => target.role === "tool")!;
   const local = baseline.models.dev.localServices?.[0]?.id;
   for (const id of ["resource:cognito", "resource:cognito.userPool", "resource:openaiApiKey", "prop:vpc:application:endpoint:s3", "lambda:cognito-post-confirmation-trigger", tool.ref, ...(local ? [local] : [])]) {
@@ -702,10 +740,12 @@ test("infrastructure and workload tags precede deployment cards while inputs omi
       ui.cleanup(); continue;
     }
     assert.ok(section, id);
+    const description = section.previousElementSibling!;
+    assert.ok(description.matches("[data-slot=node-description]"), id);
     if (baseline.models.dev.tagging?.[id]) {
-      assert.ok(section.previousElementSibling?.matches("[data-slot=declaration-tags]"), id);
-      assert.equal(section.previousElementSibling?.previousElementSibling?.tagName, "HEADER", id);
-    } else assert.equal(section.previousElementSibling?.tagName, "HEADER", id);
+      assert.ok(description.previousElementSibling?.matches("[data-slot=declaration-tags]"), id);
+      assert.equal(description.previousElementSibling?.previousElementSibling?.tagName, "HEADER", id);
+    } else assert.equal(description.previousElementSibling?.tagName, "HEADER", id);
     assert.deepEqual([...section.querySelectorAll("[data-slot=environment-name]")].map((item) => item.textContent), ["Development", "Production"], id);
     const deployment = ui.screen.queryByRole("combobox", { name: "Deploy" }) as HTMLSelectElement | null;
     if (baseline.models.dev.targets.some(item => item.ref === id)) assert.equal(deployment?.disabled, false);

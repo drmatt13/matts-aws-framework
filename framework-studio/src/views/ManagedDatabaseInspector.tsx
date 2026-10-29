@@ -4,7 +4,7 @@ import type { ModelResource } from "../../shared/model";
 import type { LocalDatabase } from "../../shared/database";
 import { databaseConsumers } from "../../shared/managed-database";
 import { useStudio } from "../studio";
-import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
+import { InspectorDisclosure, InspectorKind, InspectorSection } from "./InspectorUI";
 import { EntityIcon } from "./EntityIcon";
 import { Description } from "./Description";
 import { Written } from "./Written";
@@ -23,10 +23,13 @@ export function ManagedDatabaseInspector({ resource, local }: { readonly resourc
   const rds = snapshot.models.prod.resources.find(item => item.id === database.resource);
   const owner = rds?.parent ?? snapshot.models.prod.resources.find(item => item.kind === "stack" && database.resource.startsWith(`${item.id}.`))?.id;
   const source = snapshot.source.entities[`database:${database.id}`]?.value;
+  const availability = { dev: !!postgres?.enabled, prod: !!rds && !rds.absent };
+  const locations = { dev: "On your machine", prod: "In AWS" };
   return <>
-    <header><span className={"text-graphite text-meta font-medium tracking-[.03em]"}>Framework-managed database</span><h2><EntityIcon icon={local ? "postgres" : "database"} />Application PostgreSQL</h2><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{database.databaseName} · {database.id}</code><Written location={source} label="Declared in" /></header>
+    <header><InspectorKind environments={{ availability, descriptions: locations, unavailableDescription: "not enabled" }}>Framework-managed database</InspectorKind><h2><EntityIcon icon={local ? "postgres" : "database"} />Application PostgreSQL</h2><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{database.databaseName} · {database.id}</code><Written location={source} label="Declared in" /></header>
     <Tags entity={`database:${database.id}`} />
-    <DeploymentSection availability={{ dev: !!postgres?.enabled, prod: !!rds && !rds.absent }} locations={{ dev: "On your machine", prod: "In AWS" }}><DeploymentOwnership reason="The local database follows Compose; production RDS follows its owning stack. Consumer Deploy controls do not delete database storage." owners={owner ? [{ id: owner, title: "database stack" }] : []} /></DeploymentSection>
+    <Description entity={local?.id ?? resource?.id ?? database.resource} />
+    <DeploymentSection availability={availability} locations={locations}><DeploymentOwnership reason="The local database follows Compose; production RDS follows its owning stack. Consumer Deploy controls do not delete database storage." owners={owner ? [{ id: owner, title: "database stack" }] : []} /></DeploymentSection>
     <InspectorSection title="Environments" description="One application schema. Independent data in development and production.">
       <div className={"grid gap-2"} data-slot="database-environments">
         <div className={cx("flex items-center gap-3 min-w-0 p-3 border border-rule-strong rounded-md bg-paper [&>[data-entity-icon]]:size-8 [&>[data-entity-icon]]:flex-none [&>span:first-of-type]:grid [&>span:first-of-type]:gap-0.5 [&>span:first-of-type]:flex-1 [&>span:first-of-type]:min-w-0 [&_strong]:text-label [&_strong]:font-semibold [&_strong]:wrap-anywhere [&_code]:text-graphite [&_code]:text-meta [&_code]:wrap-anywhere [&>span:last-child]:flex-none", mode === "dev" ? "[&]:border-[color-mix(in_srgb,var(--dev)_65%,var(--rule-strong))]" : "")} data-slot="database-environment"><EntityIcon icon="postgres" /><span><strong>Development</strong><span>Local PostgreSQL</span><code>{postgres?.image ?? "Not configured"}</code></span><span className={"text-caption text-graphite"}>Compose</span></div>
@@ -36,7 +39,6 @@ export function ManagedDatabaseInspector({ resource, local }: { readonly resourc
       <SchemaLink />
     </InspectorSection>
     <DatabasePlacement />
-    <Description entity={local?.id ?? resource?.id ?? database.resource} />
     <ManagedDatabaseControls />
     <InspectorDisclosure title="Connected workloads" count={consumers.length}>
       <p className={"text-caption text-graphite"}>Declared database consumers, including workloads disabled in the selected environment. Access is granted only through their database declarations.</p>

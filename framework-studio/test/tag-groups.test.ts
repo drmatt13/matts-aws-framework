@@ -117,7 +117,7 @@ test("generated stacks without declaration metadata are exempt from Untagged", (
   assert.ok(filterSceneByTag(buildScene(model), model, "Team", null).nodes.find(node => node.id === id)?.tagFiltered);
 });
 
-test("Untagged exempts parameters, environment metadata and managed stacks while retaining authored resources", () => {
+test("Untagged exempts parameters, environment metadata and undeclared projections while retaining every taggable stack", () => {
   const source = fixture();
   const resources: typeof source.resources = [
     ...source.resources,
@@ -125,19 +125,20 @@ test("Untagged exempts parameters, environment metadata and managed stacks while
     { id: "envfile:fixture", path: ["cdk-app/.env.dev"], kind: "envFile", absent: false },
     { id: "client-envfile", path: ["Client environment"], kind: "envFile", absent: false },
     { id: "framework-stack:Generated", path: ["Generated"], kind: "stack", frameworkStack: true, absent: false },
+    { id: "framework-stack:HttpApiGatewayStack", path: ["HttpApiGatewayStack"], kind: "stack", frameworkStack: true, absent: false },
     { id: "resource:managed", path: ["managed"], kind: "stack", frameworkManaged: "outputs", absent: false },
     { id: "resource:managed.output", path: ["managed", "output"], kind: "member", parent: "resource:managed", absent: false },
     { id: "resource:bareSecret", path: ["bareSecret"], kind: "secret", absent: false },
     { id: "resource:bareStack", path: ["bareStack"], kind: "stack", absent: false },
   ];
-  const model = { ...source, resources };
-  const exempt = ["resource:plainParameter", "envfile:fixture", "client-envfile", "framework-stack:Generated", "resource:managed", "resource:managed.output"];
+  // A framework-built stack is tagged like any other once it has a tag declaration.
+  const declared = { authored: {}, effective: {}, provenance: {}, aws: { kind: "owned" as const, note: "" } };
+  const model = { ...source, resources, tagging: { ...source.tagging, "framework-stack:HttpApiGatewayStack": declared } };
+  const exempt = ["resource:plainParameter", "envfile:fixture", "client-envfile", "framework-stack:Generated"];
   for (const key of [UNTAGGED_FILTER, "Team"]) {
     const ids = new Set(tagGroups(model, key).find(group => group.value === null)!.members.map(member => member.id));
     for (const id of exempt) assert.ok(!ids.has(id), `${key}: ${id} needs no application tags`);
-    assert.ok(ids.has("resource:bareSecret"));
-    assert.ok(ids.has("resource:bareStack"));
-    assert.ok(ids.has("lambda:untagged"));
+    for (const id of ["resource:bareSecret", "resource:bareStack", "lambda:untagged", "framework-stack:HttpApiGatewayStack", "resource:managed", "resource:managed.output"]) assert.ok(ids.has(id), `${key}: ${id}`);
     const matches = tagSceneMatches(buildScene(model), model, key, null);
     for (const id of exempt) assert.ok(!matches.nodes.has(id), `${id} is not an untagged match`);
   }

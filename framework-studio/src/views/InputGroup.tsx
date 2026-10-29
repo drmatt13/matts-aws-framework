@@ -42,7 +42,7 @@ export function InputGroupEntries({ group }: { readonly group: ModelResource }) 
     const entry = draft.creation();
     if (entry) draft.setCreation(entry.resourceKind, { ...entry.form, group: group.path[0]! });
   });
-  return <InspectorSection title="Entries" className={"[&_[data-slot=relations]>li]:grid-cols-[minmax(0,1fr)_auto] [&_[data-slot=relations]>li]:items-center [&_[data-slot=relations]>li]:gap-x-3 [&_[data-slot=relations]>li]:gap-y-1 [&_[data-slot=environment-pills]]:col-auto [&_li>code]:col-span-full [&_li>[data-slot=local-input-status]]:col-span-full [&_li>span]:col-span-full"}
+  return <InspectorSection title="Entries" className={"[&_[data-slot=relations]>li]:grid-cols-[minmax(0,1fr)_auto] [&_[data-slot=relations]>li]:items-center [&_[data-slot=relations]>li]:gap-x-3 [&_[data-slot=relations]>li]:gap-y-1 [&_[data-slot=environment-pills]]:col-auto [&_li>code]:col-span-full [&_li>[data-slot=local-input-status]]:col-span-full [&_li>span:not([data-slot])]:col-span-full"}
     description={`${entryCount(groupEntries(group, model.resources))}. Select an entry to edit its local value, default, requirement or consumers.`}
     actions={addable ? <button className={buttonClasses({ variant: "quiet" })} disabled={disabled} onClick={add}>Add input</button> : undefined} data-slot="input-group-entries">
     {children.length ? <ul className={inputGroupRelationListClasses} data-slot="relations">{children.map((child) => {
@@ -53,7 +53,7 @@ export function InputGroupEntries({ group }: { readonly group: ModelResource }) 
         <EnvironmentPills availability={availability[child.id] ?? { dev: false, prod: false }} label={`${child.path.at(-1)} environments`}
           descriptions={{ dev: "declared in development", prod: "declared in production" }} unavailableDescription="not declared" />
         {child.fromEnv ? <code className={"text-caption text-graphite"}>{child.fromEnv}</code> : <span className={"text-caption text-graphite"}>{nested ? "Input group" : child.kind === "secret" ? "Secret" : "Input"}</span>}
-        <span className={cx("flex items-center [gap:6px] mb-2 text-graphite text-caption [&>span:first-child]:flex-none [&>span:first-child]:w-1.5 [&>span:first-child]:h-1.5 [&>span:first-child]:rounded-full [&>span:first-child]:bg-graphite", status.tone ? status.tone : "")} data-slot="local-input-status"><span aria-hidden /><span className={"grid min-w-0 [&>span]:[grid-area:1/1] [&>[aria-hidden=true]]:invisible"} data-slot="inspector-status-copy">{child.kind === "secret" && !nested ? `Secret · ${status.text}` : status.text}</span></span>
+        <span className={cx("flex items-center [gap:6px] text-graphite text-caption [&>span:first-child]:flex-none [&>span:first-child]:w-1.5 [&>span:first-child]:h-1.5 [&>span:first-child]:rounded-full [&>span:first-child]:bg-graphite", status.tone ? status.tone : "")} data-slot="local-input-status"><span aria-hidden /><span className={"grid min-w-0 [&>span]:[grid-area:1/1] [&>[aria-hidden=true]]:invisible"} data-slot="inspector-status-copy">{child.kind === "secret" && !nested ? `Secret · ${status.text}` : status.text}</span></span>
       </li>;
     })}</ul> : <p className={"text-caption text-graphite"}>This group holds no entries yet.</p>}
   </InspectorSection>;

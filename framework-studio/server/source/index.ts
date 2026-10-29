@@ -17,7 +17,7 @@ import { scanCdkLinks } from "./cdk-links";
 import { discoverCapabilities } from "./capabilities";
 import { locateManagedDatabase } from "./database";
 import { declarationObject, expressionAt, findProperty, lineAndColumn, literalValue, parse, propertyAt } from "./syntax";
-import { tagEditability } from "./tags";
+import { stackTagLocation, tagEditability } from "./tags";
 
 /**
  * Where every entity was written, and what the studio may change in it.
@@ -169,7 +169,7 @@ export function buildSourceIndex(
   const problems: string[] = [];
   const entities: Record<string, EntitySource> = {};
   const editability: Record<string, Record<string, Editability>> = {};
-  const catalogFacts: Record<string, { condition?: string; stackClass?: string; stackLocation?: SourceLocation }> = {};
+  const catalogFacts: Record<string, { condition?: string; stackClass?: string; stackLocation?: SourceLocation; tagLocation?: SourceLocation }> = {};
   let located: LocatedConfigSource | undefined;
   try {
     located = locateConfigSource(path.join(repositoryRoot, "framework.config.ts"), { repositoryRoot, host: files.host() });
@@ -280,6 +280,13 @@ export function buildSourceIndex(
     for (const member of entry.stack?.members ?? []) taggedEntities.add(`resource:${key}.${member.name}`);
   }
   const tagSources = located ? { located, catalog } : undefined;
+  for (const stack of exportStacks) {
+    if ([...catalog.values()].some(item => item.stack?.className === stack.className)) continue;
+    const id = `framework-stack:${stack.className}`;
+    taggedEntities.add(id);
+    const tagLocation = stackTagLocation(repositoryRoot, model, files, stack.className, tagSources);
+    if (tagLocation) catalogFacts[id] = { ...catalogFacts[id], tagLocation };
+  }
   for (const entity of taggedEntities) editability[entity] = { ...editability[entity], tags: tagEditability(repositoryRoot, model, files, entity, tagSources) };
   return {
     index: { entities, editability, links, catalog: catalogFacts, problems, cdkLinks, triggerCapabilities, capabilityFiles },

@@ -96,6 +96,29 @@ test("catalog tag add/change/removal edits its descriptor without flattening its
   assert.equal(readFileSync(inputs, "utf8"), originalInputs);
 });
 
+test("a framework-built stack is tagged like any other, in framework.config.ts stacks", async () => {
+  const stack = path.join(fixture, "cdk-app/lib/framework/http-api-gateway-stack.ts");
+  mkdirSync(path.dirname(stack), { recursive: true });
+  writeFileSync(stack, 'import * as cdk from "aws-cdk-lib";\nexport class HttpApiGatewayStack extends cdk.Stack {\n  readonly url = "https://example.invalid";\n  constructor(scope: cdk.App, id: string) {\n    super(scope, id);\n    new cdk.CfnOutput(this, "HttpApiUrl", { value: this.url });\n  }\n}\n');
+  await builder.refresh();
+  const entity = "framework-stack:HttpApiGatewayStack", config = path.join(fixture, "framework.config.ts");
+  assert.equal(state().snapshot.source.editability[entity]!.tags.kind, "absent");
+  assert.equal(state().snapshot.source.catalog[entity]!.tagLocation, undefined, "nothing is declared yet");
+  const plan = await edits.planBatch([{ kind: "tags", entity, tags: { area: "api" } }], revision());
+  assert.ok(plan.ok, JSON.stringify(plan.preflight));
+  assert.deepEqual(plan.changes.map(change => change.file), ["framework.config.ts"]);
+  const applied = await edits.applyBatch(plan.planId);
+  assert.equal(applied.status, "applied", JSON.stringify(applied));
+  assert.match(readFileSync(config, "utf8"), /stacks: \{\s*HttpApiGatewayStack: \{\s*tags: \{\s*"?area"?: ?"api"/);
+  assert.deepEqual(state().snapshot.models.dev.tagging![entity]!.authored, { area: "api" });
+  assert.equal(state().snapshot.source.editability[entity]!.tags.kind, "literal");
+  assert.equal(state().snapshot.source.catalog[entity]!.tagLocation!.file, "framework.config.ts");
+  const change = await edits.planBatch([{ kind: "tags", entity, tags: { area: "edge", team: "platform" } }], revision());
+  assert.equal((await edits.applyBatch(change.planId)).status, "applied");
+  assert.deepEqual(state().snapshot.models.dev.tagging![entity]!.authored, { area: "edge", team: "platform" });
+  await restoreSource();
+});
+
 test("tagging a derived input materializes its stable environment name", async () => {
   const entity = "resource:modelInputs.secondary";
   const envName = state().snapshot.models.dev.resources.find(resource => resource.id === entity)!.fromEnv;

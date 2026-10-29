@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import { useId, type ReactNode, type ComponentProps } from "react";
 import { cx } from "../ui/classes";
+import { EnvironmentPills } from "./DeploymentBadge";
 
 /** Boolean settings use the same named, keyboard-operable On/Off control. */
 export function InspectorSwitch({ id, label, checked, onChange, disabled, describedBy, invalid }: {
@@ -16,6 +17,14 @@ export function InspectorSwitch({ id, label, checked, onChange, disabled, descri
       <span className="absolute top-[2px] left-[2px] size-[18px] rounded-full bg-faint shadow-[0_1px_3px_rgb(0_0_0/.35)] transition-[transform,background-color] duration-180 ease-[ease] group-aria-checked/switch:translate-x-5 group-aria-checked/switch:bg-white motion-reduce:transition-none" />
     </span>
   </button>;
+}
+
+/** An inspector header's type label, with its subject's Dev | Prod pair at the right where it has one. */
+export function InspectorKind({ children, environments }: { readonly children: ReactNode; readonly environments?: ComponentProps<typeof EnvironmentPills> }) {
+  return <div data-slot="inspector-kind" className="flex items-center justify-between gap-3 [&>[data-slot=environment-pills]]:-my-1 [&>[data-slot=environment-pills]]:shrink-0">
+    <span className="min-w-0 text-graphite text-meta font-medium tracking-[.03em] wrap-anywhere">{children}</span>
+    {environments ? <EnvironmentPills {...environments} /> : null}
+  </div>;
 }
 
 /** One heading and content rhythm across every inspector and configuration form. */

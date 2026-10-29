@@ -41,6 +41,32 @@ test("stack tags reach owned primary and supporting resources; member overrides 
   assert.deepEqual(stack.tags.tagValues(), { area: "data", owner: "infra" });
 });
 
+test("a stack without a catalog entry is tagged by its class's stacks entry, beneath workload tags", () => {
+  class HttpApiGatewayStack extends Stack {}
+  const config = configuration(undefined, { http: [{ "/consume": { directory: "/lambda_functions/http_functions/consume", methods: ["GET"], tags: { area: "consumer" } } }], stacks: { HttpApiGatewayStack: { tags: { area: "api", team: "edge" } } } });
+  const app = new App(); const stack = new HttpApiGatewayStack(app, "Api");
+  new sqs.Queue(stack, "Queue");
+  const fn = new lambda.Function(stack, "Consumer", { runtime: lambda.Runtime.NODEJS_24_X, handler: "index.handler", code: lambda.Code.fromInline("exports.handler=()=>{}") });
+  new FrameworkTargetRegistry().lambda("consume", fn);
+  const unrelated = new Stack(app, "Other"); new sqs.Queue(unrelated, "Queue");
+  applyFrameworkTags(app, config);
+  const template = Template.fromStack(stack);
+  assert.deepEqual(tagsOf(template, "AWS::SQS::Queue"), [{ area: "api", team: "edge" }]);
+  assert.deepEqual(tagsOf(template, "AWS::Lambda::Function"), [{ area: "consumer", team: "edge" }]);
+  assert.deepEqual(stack.tags.tagValues(), { area: "api", team: "edge" });
+  assert.deepEqual(tagsOf(Template.fromStack(unrelated), "AWS::SQS::Queue"), [{}]);
+});
+
+test("a cataloged stack keeps its tags on its resource.stack() entry", () => {
+  class Data extends Stack { readonly queue = new sqs.Queue(this, "Queue"); }
+  const catalog = defineResources({ data: resource.stack<Data>({ tags: { area: "data" } }) });
+  const app = new App(); const stack = new Data(app, "Data");
+  linkResources(stack, catalog.data);
+  assert.throws(() => applyFrameworkTags(app, configuration(catalog, { stacks: { Data: { tags: { area: "other" } } } })), /linked to the resource catalog, so stacks\.Data cannot tag it/);
+  assert.throws(() => configuration(undefined, { stacks: { Data: { tags: { area: "data" }, removalPolicy: "retain" } } }), /stacks\.Data declares removalPolicy/);
+  assert.throws(() => configuration(undefined, { stacks: { Data: { tags: { "aws:owner": "x" } } } }), /stacks\.Data\.tags: tag key "aws:owner" is reserved/);
+});
+
 test("consumer tags stay on compute and supporting role without traversing a grant to its producer", () => {
   const catalog = defineResources({ bucket: resource.cdk<s3.Bucket>({ tags: { area: "producer" } }) });
   const config = configuration(catalog, { http: [{ "/consume": { directory: "/lambda_functions/http_functions/consume", methods: ["GET"], tags: { area: "consumer" } } }] });

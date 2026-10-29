@@ -549,7 +549,7 @@ export interface SourceIndex {
   readonly links: Readonly<Record<string, readonly SourceLocation[]>>;
   /** Resource id to what its declaration says beyond its value. */
   readonly catalog: Readonly<
-    Record<string, { readonly condition?: string; readonly stackClass?: string; readonly stackLocation?: SourceLocation }>
+    Record<string, { readonly condition?: string; readonly stackClass?: string; readonly stackLocation?: SourceLocation; /** An uncataloged stack's entry in framework.config.ts stacks. */ readonly tagLocation?: SourceLocation }>
   >;
   /** Problems the index met, reported rather than thrown. */
   readonly problems: readonly string[];

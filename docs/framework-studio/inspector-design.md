@@ -15,7 +15,7 @@ Deployment information follows the resource's actual configuration authority:
 | HTTP, WebSocket, authorizer, event and tool Lambdas; services, tasks, workflows, agents | Editable Deploy tokens and input conditions; review validates both environments |
 | Tool with no authored override | Inherit follows consuming agents; explicit Deploy overrides it |
 | API gateway, stack member, network component | Read-only deployment summary and ownership explanation with navigation to handlers, stack or VPC |
-| Catalog input, secret or group | No Deployment section. Inputs/secrets show declaration pills in their header; groups show pills beside each entry. Sources, requirements and consumers explain delivery |
+| Catalog input, secret or group | No Deployment section. Inputs/secrets show declaration pills in their header; groups show pills beside each entry and none in the header. Sources, requirements and consumers explain delivery |
 | Native/framework stack, managed database, VPC island | Explicit ownership explanation and navigation; no ineffective independent workload flag |
 | CDK/client environment file and input/environment islands | No Deployment section; file status, mappings and entry navigation describe their purpose |
 | Other grouping islands | Read-only deployment summary with navigation to entries |
@@ -94,14 +94,20 @@ operation and resource. **Remove workload** is a separate supporting disclosure.
 reviews dependencies and an implementation archive, with an explicit explanation that
 deployed resources and their costs require a separate operation.
 
-Workload, route and catalog inspectors begin with identity, source access and a compact **Tags** disclosure.
+Every inspector opens the same way: the identity header, then a compact **Tags** disclosure
+wherever the selection has tags, then its **Description**. This holds for workloads, routes,
+catalog resources, gateways, databases, islands, fixtures, environment files and single
+connections, so Description sits in the same place whatever is selected. A bundled connection
+has no description of its own; each row leads with its relationship's description instead.
+Framework-built stacks and the API gateways they hold edit Tags like any stack; the editor
+writes `stacks` in `framework.config.ts`.
 Workloads, routes and infrastructure then show the shared **Deployment** section (`src/views/Deployment.tsx`);
-catalog inputs, secrets and groups proceed directly to their description and input settings.
+catalog inputs, secrets and groups proceed directly to their input settings.
 Tags show their effective count without opening the editor, and retain **Modified** or
 **Needs attention** on the collapsed heading while a draft exists. Supporting disclosure
 headings use a 32px target with 8px vertical padding on each side and the shared panel gutter;
 expanded forms keep their normal spacing.
-Generated fixtures and local services keep their deployment summary immediately after identity.
+Generated fixtures and local services keep their deployment summary immediately after the description.
 Development always
 precedes Production; both cards remain visible when disabled. Configurable workloads
 and their routes expose the same **Deploy** selector beneath the cards. A route edits
@@ -131,7 +137,7 @@ deployment scope. Client mapping Dev/Prod pills
 continue to control file generation rather than workload deployment.
 
 The managed application database has a dedicated inspector shared by the RDS resource and
-local Postgres node. Identity leads into Development/Production implementations, the required
+local Postgres node. Identity and description lead into Development/Production implementations, the required
 VPC home and connection paths. Group production capacity, availability, connections and
 maintenance into disclosures, followed by caller pool defaults, deployment overrides and
 supporting ownership details. Explain independent data and shared schema without implying
@@ -139,7 +145,7 @@ local replication or live health. Placement uses a separate coordinated source r
 the database and its consumers, with no public or unplaced option. Existing RDS moves need
 migration/cutover planning and separate deployment; routine policy toggles never perform it.
 
-For compute, a compact description preview follows Deployment and precedes memory,
+For compute, Deployment precedes memory,
 timeout and other lifecycle settings. Numeric fields keep their
 inherited default visible after an override and offer a direct way to restore it.
 Default, reset and collapsed provenance share one wrapping support row; expanding
@@ -172,9 +178,20 @@ API versus WebSocket) so identically named routes and handlers remain distinguis
 Every inspector follows these rules, so that generated content never repeats or crowds itself
 (audited across all 135 map inspectors in both modes on 2026-10-28):
 
-- Identity headers stack eyebrow, title, pills or badges, catalog reference and source lines
-  with one rhythm: pills keep 4 px above and 8 px below; consecutive source lines share only
-  their link's touch-target height. Catalog stacks show `resources.<key>` beneath their class
+- Identity headers stack eyebrow, title, badges, catalog reference and source lines with one
+  rhythm. The subject's Dev | Prod pair sits at the right end of the eyebrow row
+  (`InspectorKind`), where the hover card puts it, so titles keep the panel's full width. Every
+  inspector with an environment answer has one: workloads and routes (draft-aware, from the
+  same lanes as their Deployment section), gateways, catalog resources, the managed and local
+  databases, network fixtures, connections and both kinds of environment file. A stack the CDK
+  app never constructs is off in both, as its hover card says. Islands and input groups have
+  none. Source lines (`SourceLines` in `Written.tsx`) are one definition list: labels share a
+  column so every file name starts at the same x, and each link keeps the panel's caption
+  target (24 px, 44 px on coarse pointers). Identifiers and source lines form one evenly spaced
+  block, 10 px text to text; a badge keeps its usual margin above them, and a header ending on a
+  source line closes with the space it opens with. Header labels use one vocabulary: **Declared
+  in** for config declarations, **Cataloged in** for a group's `resources.ts` entry, **Class
+  in** for a stack class and **Defined in** for framework-owned CDK code. Catalog stacks show `resources.<key>` beneath their class
   name, as inputs and secrets do. **About this resource** follows the identity lines.
 - One disclosure marker: section disclosures draw the lucide chevron; every other summary
   uses the same chevron at its own text size (a mask utility owned by `InspectorUI`), never the

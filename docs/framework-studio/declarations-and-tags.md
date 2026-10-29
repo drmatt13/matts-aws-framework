@@ -62,12 +62,27 @@ An input's tag values are ordinary metadata, never references to its value. Do n
 secrets in tags. Config evaluation, graph construction and source review resolve no secret
 contents and require no AWS access.
 
+A stack the CDK app builds without a catalog entry is tagged the same way, from `stacks`
+in `framework.config.ts`, keyed by its class. These are the framework's own
+`HttpApiGatewayStack`, `WebSocketApiStack`, `FrontendWebsiteS3Stack` and
+`DevLambdaReplayStack`:
+
+```ts
+// framework.config.ts
+stacks: {
+  HttpApiGatewayStack: { tags: { area: "api" } },
+},
+```
+
+`stacks` may also be imported from a module. An entry holds only `tags`. A cataloged stack
+keeps its tags on its `resource.stack()` entry; naming it in `stacks` as well fails synthesis.
+
 ## Tag semantics and ownership
 
 `DeclarationTags` is a readonly string-to-string map. There are no global tag defaults.
 Workloads (including tools, agents, workflows and the WebSocket authorizer), networks,
-database declarations, catalog stack descriptors, public members, inputs and secrets all
-support metadata. Routes display their target's metadata; several routes sharing one target
+database declarations, catalog stack descriptors, framework-built stacks, public members,
+inputs and secrets all support metadata. Routes display their target's metadata; several routes sharing one target
 must agree on tags, and editing the shared target updates its literal route declarations.
 
 Putting tags in compute defaults is rejected with a migration diagnostic; attach tags to
@@ -99,6 +114,7 @@ and the [RDS tag API](https://docs.aws.amazon.com/AmazonRDS/latest/APIReference/
 | Owned workload compute | Tags its primary compute and owned supporting taggable constructs |
 | Owned VPC | Tags its network and owned taggable descendants; consumers retain their own tags |
 | Owned stack | Tags its stack and owned taggable resources; member overrides have explicit precedence |
+| Framework-built stack (`stacks`) | The same as an owned stack; a workload inside keeps its own tags on its compute |
 | Owned public construct | Tags the owned construct subtree where CDK supports tags |
 | Managed database declaration | Overrides catalog metadata on the owned primary database |
 | Imported/external construct | Metadata only; no tagging API calls and no retagging of an external producer |
@@ -154,8 +170,8 @@ inflate the totals. Nonmatching resources use the same transparent treatment as 
 the active deployment mode. **Untagged** in the first selector finds entities with no effective tags. In the value
 selector, **Untagged** finds resources missing the selected key. An empty value is still a
 tag, and inherited tags count. Plain input parameters, environment files, namespace
-containers, local database fixtures and framework-managed stack projections are exempt
-from both Untagged choices. Authored secrets, workloads and custom resources remain
+containers and local database fixtures are exempt from both Untagged choices. Authored
+secrets, workloads, custom resources and every stack, framework-built or cataloged, remain
 candidates. Parameters with tags still participate in explicit value filters. Filtering never
 moves, removes or duplicates resources, changes their deployment status, or hides real
 VPC/subnet and execution information. Selection, connections and source links retain their

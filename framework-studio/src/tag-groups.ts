@@ -10,18 +10,17 @@ function entityTagFacts(model: ModeModel, id: string, index?: ModelIndex): TagFa
   return model.tagging?.[id];
 }
 export const entityTagValue = (model: ModeModel, id: string, key: string, index?: ModelIndex): string | null => entityTagFacts(model, id, index)?.effective[key] ?? null;
-/** Plain parameters, file metadata and framework-owned projections do not need application tags. */
-function isUntaggedCandidate(id: string, index: ModelIndex): boolean {
+/** Plain parameters, file metadata and a stack with no tag declaration do not need application tags. Framework-managed stacks are tagged like any other. */
+function isUntaggedCandidate(model: ModeModel, id: string, index: ModelIndex): boolean {
   if (index.localServices.has(id)) return false;
   const resource = index.resources.get(id);
   if (!resource) return true;
-  const owner = resource.parent ? index.resources.get(resource.parent) : undefined;
   return resource.kind !== "input" && resource.kind !== "envFile" && resource.kind !== "group"
-    && !resource.frameworkStack && !resource.frameworkManaged && !owner?.frameworkStack && !owner?.frameworkManaged;
+    && !(resource.frameworkStack && !model.tagging?.[id]);
 }
 export const matchesTagFilter = (model: ModeModel, id: string, key: string, value: string | null, index: ModelIndex): boolean => key === UNTAGGED_FILTER
-  ? isUntaggedCandidate(id, index) && Object.keys(entityTagFacts(model, id, index)?.effective ?? {}).length === 0
-  : (value !== null || isUntaggedCandidate(id, index)) && entityTagValue(model, id, key, index) === value;
+  ? isUntaggedCandidate(model, id, index) && Object.keys(entityTagFacts(model, id, index)?.effective ?? {}).length === 0
+  : (value !== null || isUntaggedCandidate(model, id, index)) && entityTagValue(model, id, key, index) === value;
 export const tagValueLabel = (value: string | null): string => value === null ? "Untagged" : value === "" ? "(empty value)" : value === "Untagged" ? '"Untagged" (value)' : value;
 export const compareTagValues = (a: string | null, b: string | null): number => a === b ? 0 : a === null ? 1 : b === null ? -1 : a < b ? -1 : 1;
 export function tagKeys(model: ModeModel, index = indexModel(model)): readonly string[] {
@@ -50,7 +49,7 @@ export function tagGroups(model: ModeModel, key: string, index = indexModel(mode
   const groups = new Map<string | null, TagMember[]>();
   for (const member of tagMembers(model)) {
     const value = entityTagValue(model, member.id, key, index);
-    if (value === null && !isUntaggedCandidate(member.id, index)) continue;
+    if (value === null && !isUntaggedCandidate(model, member.id, index)) continue;
     const members = groups.get(value);
     if (members) members.push(member); else groups.set(value, [member]);
   }

@@ -75,7 +75,9 @@ export function tagSignature(model: ModeModel): string {
   // The source index discovers additional public stack members after evaluation.
   // Inherited-only members are derived from their owner; they are not another
   // authored declaration to compare against the evaluator's preflight result.
-  return JSON.stringify(Object.entries(model.tagging ?? {}).filter(([entity, facts]) => Object.keys(facts.authored).length && !model.resources.some(resource => resource.id === entity && resource.absent)).map(([entity, facts]) => [entity, facts.authored, facts.effective]).sort(([a], [b]) => String(a).localeCompare(String(b))));
+  // An absent catalog placeholder borrows the other graph's tags; a framework
+  // stack's come straight from framework.config.ts in both.
+  return JSON.stringify(Object.entries(model.tagging ?? {}).filter(([entity, facts]) => Object.keys(facts.authored).length && !model.resources.some(resource => resource.id === entity && resource.absent && !resource.frameworkStack)).map(([entity, facts]) => [entity, facts.authored, facts.effective]).sort(([a], [b]) => String(a).localeCompare(String(b))));
 }
 
 export function tagDifferences(actual: ModeModel, expected: ModeModel): string {

@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import type { Mode, ModelResource, ModelTarget } from "../../shared/model";
 import { catalogAvailability, developmentLocation, environments, previewDeploymentLanes, type Availability } from "../deployment";
 import { useStudio } from "../studio";
-import { InspectorSection } from "./InspectorUI";
+import { InspectorKind, InspectorSection } from "./InspectorUI";
 
 /** One place, order and vocabulary for deployment throughout the inspector. */
 export function DeploymentSection({ availability, locations, children, catalog = false }: {
@@ -26,8 +26,9 @@ export function DeploymentSection({ availability, locations, children, catalog =
   </InspectorSection>;
 }
 
-export function TargetDeployment({ target, route = false }: { readonly target: ModelTarget; readonly route?: boolean }) {
-  const { snapshot, model, draft, draftState, select } = useStudio();
+/** Where a workload runs in each environment, previewing a staged Deploy change, for its header and Deployment section alike. */
+export function useTargetEnvironments(target: ModelTarget): { readonly availability: Availability; readonly locations: Readonly<Record<Mode, string>> } {
+  const { snapshot, model, draft, draftState } = useStudio();
   const fact = model.fields[target.ref]?.find((fact) => fact.field === "deploy");
   const changed = fact && draft.field(target.ref, fact);
   const lanes = (mode: Mode) => {
@@ -53,7 +54,19 @@ export function TargetDeployment({ target, route = false }: { readonly target: M
     const replay = replayFact ? draft.effective(target.ref, replayFact) === true : saved.compute.kind === "lambda" && saved.compute.localReplay;
     development = dev.dev ? replay && dev.local ? "AWS first → captured → replayed on your machine" : "In AWS" : dev.local ? "On your machine" : "Not enabled";
   }
-  return <DeploymentSection availability={{ dev: environments(dev).dev, prod: lanes("prod").prod }} locations={{ dev: development, prod: "In AWS" }}>
+  return { availability: { dev: environments(dev).dev, prod: lanes("prod").prod }, locations: { dev: development, prod: "In AWS" } };
+}
+
+/** A workload's header type label, with the same Dev | Prod answer as its Deployment section; a route shows its target's. */
+export function TargetKind({ target, children }: { readonly target: ModelTarget; readonly children: ReactNode }) {
+  const { availability, locations } = useTargetEnvironments(target);
+  return <InspectorKind environments={{ availability, descriptions: locations, unavailableDescription: "not enabled" }}>{children}</InspectorKind>;
+}
+
+export function TargetDeployment({ target, route = false }: { readonly target: ModelTarget; readonly route?: boolean }) {
+  const { model, select } = useStudio();
+  const { availability, locations } = useTargetEnvironments(target);
+  return <DeploymentSection availability={availability} locations={locations}>
     <DeployControl target={target} />
     {route ? <p className={"m-0 wrap-anywhere text-caption text-graphite"} data-slot="deployment-note">Shared with <button className={buttonClasses({ variant: "link" })} onClick={() => select(target.ref)}>{target.title}</button>.</p> : null}
     {target.role === "event" ? <p className={"m-0 wrap-anywhere text-caption text-graphite"} data-slot="deployment-note">Enabled cloud lanes include native AWS triggers. Local-only execution requires a local caller; AWS triggers are omitted.</p> : null}
@@ -70,10 +83,16 @@ export function DeploymentOwnership({ reason, owners = [] }: { readonly reason: 
   </div>;
 }
 
+/** Catalog availability, except that a stack the CDK app never constructs is deployed nowhere, as its hover card says. */
+export function resourceAvailability(resource: ModelResource, models: Parameters<typeof catalogAvailability>[0]): Availability {
+  if (resource.stackUsage?.status === "unreferenced") return { dev: false, prod: false };
+  return catalogAvailability(models)[resource.id] ?? { dev: false, prod: false };
+}
+
 export function ResourceDeployment({ resource }: { readonly resource: ModelResource }) {
   const { snapshot, model } = useStudio();
   if (resource.kind === "input" || resource.kind === "secret" || resource.kind === "group") return null;
-  const availability = catalogAvailability(snapshot.models)[resource.id] ?? { dev: false, prod: false };
+  const availability = resourceAvailability(resource, snapshot.models);
   const parent = resource.kind === "member" && resource.parent ? model.resources.find((item) => item.id === resource.parent) : undefined;
   const consumers = model.targets.filter(target => model.edges.some(edge => edge.from === target.ref && (edge.to === resource.id || edge.to.startsWith(`${resource.id}.`))));
   const owners = parent ? [{ id: parent.id, title: parent.stackClass ?? parent.path.join(".") }] : consumers.map(target => ({ id: target.ref, title: target.title }));

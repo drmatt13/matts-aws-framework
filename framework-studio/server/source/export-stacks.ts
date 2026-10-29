@@ -8,6 +8,7 @@ import { typeScriptFiles, type CatalogEntrySource } from "./catalog";
 import { readConstructorSites, readStackUsage } from "./stack-usage";
 import { lineAndColumn, literalKey, parse, unwrap } from "./syntax";
 import { toRelative } from "../files";
+import { tagFacts, UNCATALOGED_STACK_TAGGING } from "../model/tags";
 
 export interface ExportStackSource {
   readonly className: string;
@@ -83,12 +84,15 @@ function absent(stack: ExportStackSource, model: ModeModel): boolean {
 /** Reuse catalog identities such as Cognito and RDS; add only missing export stacks. */
 export function withExportStacks(model: ModeModel, stacks: readonly ExportStackSource[]): ModeModel {
   const resources = [...model.resources];
+  const tagging = { ...model.tagging };
   for (const stack of stacks) {
     const existing = resources.findIndex((item) => item.kind === "stack" && item.stackClass === stack.className);
     const id = existing >= 0 ? resources[existing]!.id : `framework-stack:${stack.className}`;
     const item: ModelResource = existing >= 0 ? resources[existing]! : { id, path: [stack.className], kind: "stack", absent: absent(stack, model), stackClass: stack.className, frameworkStack: true, stackUsage: stack.usage };
     const updated = { ...item, frameworkManaged: item.frameworkManaged ?? ("outputs" as const), stackOutputs: stack.outputs };
     if (existing >= 0) resources[existing] = updated; else resources.push(updated);
+    // Tagged like any stack; one without a stacks entry yet starts empty.
+    if (existing < 0) tagging[id] ??= tagFacts(id, {}, UNCATALOGED_STACK_TAGGING);
   }
   const replay = resources.find((item) => item.kind === "stack" && item.stackClass === "DevLambdaReplayStack");
   const edges = model.edges.filter((edge) => edge.relation !== "localReplay");
@@ -100,5 +104,5 @@ export function withExportStacks(model: ModeModel, stacks: readonly ExportStackS
       detail: "localReplay: true captures AWS invocations through the development replay stack for local execution. Production invokes the handler directly.",
     });
   }
-  return { ...model, resources, edges, gateways: gatewaysOf(model).map(gateway => ({ ...gateway, stackResource: resources.find(resource => resource.stackClass === (gateway.protocol === "http" ? "HttpApiGatewayStack" : "WebSocketApiStack"))?.id ?? gateway.stackResource })) };
+  return { ...model, resources, tagging, edges, gateways: gatewaysOf(model).map(gateway => ({ ...gateway, stackResource: resources.find(resource => resource.stackClass === (gateway.protocol === "http" ? "HttpApiGatewayStack" : "WebSocketApiStack"))?.id ?? gateway.stackResource })) };
 }

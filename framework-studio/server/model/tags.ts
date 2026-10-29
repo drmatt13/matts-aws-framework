@@ -12,6 +12,8 @@ export function tagFacts(entity: string, authored: Tags = {}, aws: TagFacts["aws
 }
 
 export const STACK_MEMBER_TAGGING: TagFacts["aws"] = { kind: "linked", note: "Applied only to taggable constructs owned by this stack. Imported resources and public string values keep metadata without AWS changes; native ownership is checked during synthesis." };
+/** A stack the app constructs without a catalog entry; framework.config.ts tags it by class. */
+export const UNCATALOGED_STACK_TAGGING: TagFacts["aws"] = { kind: "owned", note: "Stack tags apply to its owned, taggable resources. A workload inside keeps its own tags on its compute." };
 
 /** An absent placeholder has no builder options; the other graph can retain
  * that same declaration's authored metadata without making the resource present. */
@@ -42,6 +44,7 @@ export function projectTagging(config: FrameworkConfig, targets: readonly Normal
     const entity = `database:${config.database.id}`;
     result[entity] = tagFacts(entity, (config.database as Metadata).tags, { kind: "owned", note: "Applied to the owned database and taggable database support resources. Local PostgreSQL has no AWS tagging capability." });
   }
+  for (const [name, stack] of Object.entries(config.stacks ?? {})) result[`framework-stack:${name}`] = tagFacts(`framework-stack:${name}`, stack.tags, UNCATALOGED_STACK_TAGGING);
   const visit = (group: Record<string, unknown>, prefix: readonly string[]): void => {
     for (const [name, entry] of Object.entries(group)) {
       const path = [...prefix, name], entity = `resource:${path.join(".")}`;

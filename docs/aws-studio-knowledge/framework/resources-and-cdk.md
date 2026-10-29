@@ -26,6 +26,9 @@ Tags follow ownership rather than consumer traversal. Stack descriptors carry `t
 typed `members: { field: { tags } }` overrides; references and public string values retain
 metadata without independent AWS tagging. Imported constructs are not retagged. Owned
 compute/network/native subtrees use CDK tagging, preserving deployment ownership keys.
+A stack built without a catalog entry (the framework's API, frontend and replay stacks) takes
+`framework.config.ts` `stacks.<Class>.tags` as its outermost layer, matched by class name in
+`applyFrameworkTags`; a cataloged stack named there is refused.
 The database declaration owns final overrides on its primary resource. Conflicting aliases
 must fail instead of choosing import order. The
 [tag guide](../../framework-studio/declarations-and-tags.md) describes limits and unsupported

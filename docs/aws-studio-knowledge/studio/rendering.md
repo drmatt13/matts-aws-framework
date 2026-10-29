@@ -52,8 +52,8 @@ still report whether production actually builds the network; rendering never pro
 The first tag selector includes **Untagged**, matching entities with no effective tags at all,
 with mode-scoped totals. The value selector's **Untagged** option instead means missing the
 selected key. Empty values and inherited tags count as tags.
-Untagged results exclude plain input parameters, namespace containers, environment files,
-local database fixtures, and framework-managed stacks and their member projections. Tagged
+Untagged results exclude plain input parameters, namespace containers, environment files
+and local database fixtures. Every stack, framework-built or cataloged, is a candidate. Tagged
 parameters still match explicit tag values. This applies to both no-tags and missing-key filters.
 
 VPC fixtures wrap into approximately square grids within their subnet. Measurement reserves
