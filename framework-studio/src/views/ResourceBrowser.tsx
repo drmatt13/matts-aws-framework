@@ -114,7 +114,11 @@ export function ResourceBrowser(props: {
     const returnTo = memory.current.returnTo;
     memory.current.returnTo = undefined;
     const row = returnTo ? [...element.querySelectorAll<HTMLElement>("[data-resource-id]")].find(candidate => candidate.dataset.resourceId === returnTo) : undefined;
-    if (!row) return;
+    if (!row) {
+      // A removed or filtered origin still needs a usable keyboard landing point.
+      if (returnTo) element.closest("aside")?.querySelector<HTMLSelectElement>('select[aria-label="Map resource type"]')?.focus({ preventScroll: true });
+      return;
+    }
     row.focus({ preventScroll: true });
     row.scrollIntoView?.({ block: "nearest" });
   }, [memory]);

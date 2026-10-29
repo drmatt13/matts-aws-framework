@@ -12,8 +12,10 @@ source:
   - framework-studio/src/scene/render.ts
   - framework-studio/src/endpoint-services.ts
   - framework-studio/src/input-groups.ts
+  - framework-studio/src/inspector-navigation.ts
   - framework-studio/src/styles/theme.css
   - framework-studio/src/views/Isometric.tsx
+  - framework-studio/src/views/InspectorNavigation.tsx
 related:
   - studio.graph-model
   - studio.snapshots
@@ -88,7 +90,35 @@ No independent heading animation runs at rest. Placement caches invalidate with
 camera, viewport, scene and font changes. Development shows no subnet names on the canvas
 or VPC hover title; the declaration and inspector still retain their networking configuration.
 
-Isometric's one side panel, below its toolbar, shows **Resources** or the **Inspector**, never both; Database keeps the right-hand inspector. The panel sits on the map's right; it starts closed and the **Resources** toggle sits at the toolbar's far right, after the view controls. The list shows canonical map entities with registry icons, names and types, grouped by island, plus search results and validation errors; any selection opens the same Inspector in the same panel. Back to Resources ends the selection and keeps the list's search, type and scroll; Close panel ends the selection and closes the panel. Back, Close and the toggle reuse the draft navigation warning only while edits are pending. Opening the panel keeps the map's window position, and every new selection comes into view at the same zoom (cut-off ones slide just far enough, unseen ones are centred); on narrow windows the panel sits below the canvas. Search/type filtering changes the list and map emphasis, never source or infrastructure identity. Missing implementation artifacts add an attention marker to the resource navigator, Board node and Isometric caption/hover; selecting that canonical resource exposes its configured path and reviewed repair. These source-health facts do not imply runtime readiness. Existing keyboard access to every connection and network fixture is retained. The navigator explicitly distinguishes the declaration map from running-state evidence in Deploy.
+Isometric's one side panel, below its toolbar, shows **Resources** or the **Inspector**, never
+both; Database keeps the right-hand inspector. The panel sits on the map's right; it starts
+closed and the **Resources** toggle sits at the toolbar's far right, after the view controls.
+The list shows canonical map entities with registry icons, names and types, grouped by
+island, plus search results and validation errors; any selection opens the same Inspector
+in the same panel.
+
+Inspector links extend a contextual trail through the shared `StudioProvider` navigation.
+**Back to <previous title>** retraces one accepted browser-history visit; the separate
+**Resources** action ends the selection and restores the original root list row, search,
+type and scroll. A new map/list selection starts a new trail, while a direct link has the
+Resources fallback. The standalone inspector uses the same contextual Back control.
+Back and browser Back/Forward restore scroll, open disclosures and triggering-control
+focus; a fresh destination opened inside the panel starts at its header and focuses Back.
+`inspector-navigation.ts` retains presentation metadata in memory for at most 200 accepted
+visits, separately per source mode, without form values, drafts, secrets or DOM references.
+Close panel ends the selection, closes the panel and returns focus to the map. Contextual
+Back, Resources, Close and the toggle retain the existing unsaved-draft warning; cancelled
+navigation never changes the trail.
+
+Opening the panel keeps the map's window position, and every new selection comes into view
+at the same zoom (cut-off ones slide just far enough, unseen ones are centred); on narrow
+windows the panel sits below the canvas. Search/type filtering changes the list and map
+emphasis, never source or infrastructure identity. Missing implementation artifacts add an
+attention marker to the resource navigator, Board node and Isometric caption/hover;
+selecting that canonical resource exposes its configured path and reviewed repair. These
+source-health facts do not imply runtime readiness. Existing keyboard access to every
+connection and network fixture is retained. The navigator explicitly distinguishes the
+declaration map from running-state evidence in Deploy.
 
 Search and tag filters use the shared control geometry and inset chevrons. The search match count sits inside the field, and tag selects keep fixed widths with their clear control following the last one (the value select appears only once a key other than Untagged is chosen); the tag match count appears in the map footer (and is announced), so the toolbar keeps one height. Clearing
 either restores keyboard focus to the surviving search/key control. Camera controls

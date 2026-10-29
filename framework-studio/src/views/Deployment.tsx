@@ -2,6 +2,7 @@ import { InspectorSummary } from "./InspectorUI";
 import { buttonClasses } from "../ui/Button";
 import { cx } from "../ui/classes";
 import { DeployControl } from "./DeployControl";
+import { RequiredInputs } from "./RequiredInputs";
 import { Code2, Diamond } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Mode, ModelResource, ModelTarget } from "../../shared/model";
@@ -68,6 +69,7 @@ export function TargetDeployment({ target, route = false }: { readonly target: M
   const { availability, locations } = useTargetEnvironments(target);
   return <DeploymentSection availability={availability} locations={locations}>
     <DeployControl target={target} />
+    <RequiredInputs target={target} />
     {route ? <p className={"m-0 wrap-anywhere text-caption text-graphite"} data-slot="deployment-note">Shared with <button className={buttonClasses({ variant: "link" })} onClick={() => select(target.ref)}>{target.title}</button>.</p> : null}
     {target.role === "event" ? <p className={"m-0 wrap-anywhere text-caption text-graphite"} data-slot="deployment-note">Enabled cloud lanes include native AWS triggers. Local-only execution requires a local caller; AWS triggers are omitted.</p> : null}
     {target.role === "tool" && target.lanes.origin === "derived" ? <p className={"m-0 wrap-anywhere text-caption text-graphite"} data-slot="deployment-note">{target.lanes.derivedFrom?.length ? <>Inherits from {target.lanes.derivedFrom.map((ref, index) => <span key={ref}>{index ? ", " : ""}<button className={buttonClasses({ variant: "link" })} onClick={() => select(ref)}>{model.targets.find((item) => item.ref === ref)?.title ?? ref}</button></span>)}. Set Deploy to override.</> : "No agent lists this tool. Set Deploy to enable it independently."}</p> : null}

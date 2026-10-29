@@ -68,7 +68,7 @@ test("only defined authored resources can reveal a targeted .env value, snapshot
   assert.ok(!snapshot.includes("test secret with # and ="));
   assert.ok(!snapshot.includes("do not return"));
   assert.ok(!snapshot.includes("from local env"));
-  assert.equal(service.details("resource:key", "dev").consumers[0]?.rules[0]?.when?.equals, "required");
+  assert.equal(Object.hasOwn(service.details("resource:key", "dev"), "consumers"), false, "consumers and their rules come from the model, not the value endpoint");
 });
 
 test("missing and empty values differ from a configured value", () => {
@@ -134,11 +134,11 @@ test("secret conversion cannot keep a fallback or bypass a string-only requireme
 });
 
 test("workload requirement edits preserve the other rule fields ", async () => {
-  const consumer = service.details("resource:key", "dev").consumers[0]!.target;
-  const plan = await service.plan(intent({ resource: "resource:key", kind: "secret", default: null, requirements: { [consumer]: "required" } }), revision(), "dev");
+  const consumer = () => builder.current!.snapshot.models.dev.targets.find((target) => target.ref === "lambda:fixture")!;
+  const plan = await service.plan(intent({ resource: "resource:key", kind: "secret", default: null, requirements: { [consumer().ref]: "required" } }), revision(), "dev");
   assert.equal(plan.ok, true, JSON.stringify(plan.diagnostics));
   await service.apply(plan.planId);
-  const rules = service.details("resource:key", "dev").consumers[0]!.rules;
+  const rules = consumer().requirementRules ?? [];
   assert.ok(rules.some((rule) => !rule.when && rule.require.includes("resource:key")));
   await restoreSource();
   assert.equal(readFileSync(route, "utf8"), http);

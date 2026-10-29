@@ -7,7 +7,9 @@ import { GatewayView } from "./GatewayView";
 import { drawnAs } from "../drawn-as";
 import { PlacementControl } from "./NetworkControls";
 import { X } from "lucide-react";
-import type { ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { captureInspectorPresentation, restoreInspectorPresentation } from "../inspector-navigation";
+import { InspectorNavigationControls } from "./InspectorNavigation";
 import type { ModelEdge, ModelResource, ModelRoute, ModelTarget, ModelWorkflow, Placement } from "../../shared/model";
 import { ROLE_LABEL, endpointLabel, editorLink } from "../lookup";
 import { useStudio } from "../studio";
@@ -429,7 +431,7 @@ export function Inspector() {
   if (!selected) return null;
   return (
     <aside className={inspectorPanelClasses} aria-label="Inspector" data-slot="inspector" data-inspector-context>
-      <div className={"flex justify-between items-center flex-none [min-height:44px] p-[var(--space-1)_var(--space-4)_var(--space-1)_var(--panel-padding)] border-b border-rule text-graphite text-meta font-semibold [letter-spacing:.06em] uppercase"} data-slot="inspector-toolbar"><span>Inspector</span>
+      <div className={"flex justify-between items-center gap-2 flex-none [min-height:44px] p-[var(--space-1)_var(--space-4)_var(--space-1)_var(--panel-padding)] border-b border-rule text-graphite text-meta font-semibold"} data-slot="inspector-toolbar"><InspectorNavigationControls />
         <button className={iconButtonClasses({ variant: "quiet" })} onClick={() => select(undefined)} aria-label="Close the inspector">
           <X size={16} aria-hidden />
         </button>
@@ -441,7 +443,21 @@ export function Inspector() {
 
 /** Every section, setting, action and source link for one selection, with its pending-change footer. */
 export function InspectorContent({ selected }: { readonly selected: string }) {
-  const { index, snapshot, model } = useStudio();
+  const { index, snapshot, model, inspectorNavigation } = useStudio();
+  const content = useRef<HTMLDivElement>(null);
+  const memory = inspectorNavigation.presentation;
+  useLayoutEffect(() => {
+    const element = content.current!;
+    const focus = inspectorNavigation.restore ? restoreInspectorPresentation(element, memory) : undefined;
+    if (inspectorNavigation.restore || inspectorNavigation.focus) {
+      const back = element.closest("aside")?.querySelector<HTMLElement>('[data-ui="workspace-panel-back"]');
+      focus?.focus({ preventScroll: true });
+      if (!focus || document.activeElement !== focus) back?.focus({ preventScroll: true });
+    }
+    const remember = () => captureInspectorPresentation(element, memory);
+    element.addEventListener("toggle", remember, true);
+    return () => { remember(); element.removeEventListener("toggle", remember, true); };
+  }, [selected, inspectorNavigation.key, memory]);
   const gateway = index.gateways.get(selected);
   const target = index.targets.get(selected);
   const route = index.routes.get(selected);
@@ -456,7 +472,9 @@ export function InspectorContent({ selected }: { readonly selected: string }) {
   const fixture = (model.networks ?? []).flatMap(networkFixtureIds).includes(selected);
   return (
     <>
-      <div className={inspectorContentClasses} key={selected} data-slot="inspector-content">
+      <div className={inspectorContentClasses} key={selected} data-slot="inspector-content" ref={content}
+        onFocusCapture={() => { if (content.current) captureInspectorPresentation(content.current, memory); }}
+        onScroll={() => { if (content.current) captureInspectorPresentation(content.current, memory); }}>
       {gateway ? <GatewayView gateway={gateway} /> : null}
       {target ? <TargetView target={target} /> : null}
       {route ? <RouteView route={route} /> : null}

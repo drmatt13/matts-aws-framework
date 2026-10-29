@@ -193,7 +193,11 @@ test("private bucket template, native scoped grant and secret delivery use catal
   assert.ok(disconnect.ok, JSON.stringify(disconnect.preflight)); await assertApplied(edits.applyBatch(disconnect.planId));
   assert.ok(!state().snapshot.models.prod.edges.some(edge => edge.from === "lambda:sign-in" && edge.to === "resource:auditUploads.bucket" && edge.relation === "grant"));
   await restoreSource();
-  await assert.rejects(edits.planBatch([{ kind: "connection", target: "lambda:sign-in", connection: "resource", destination: "resource:openaiApiKey", variable: "AUDIT_PROVIDER_SECRET_ARN", enabled: true }], revision()), /computed/);
+  // sign-in's environment is `{ ...authEndpointEnvironment }`: a new variable follows the spread, a name it supplies is refused.
+  await assert.rejects(edits.planBatch([{ kind: "connection", target: "lambda:sign-in", connection: "resource", destination: "resource:openaiApiKey", variable: "TRUSTED_FRONTEND_ORIGINS", enabled: true }], revision()), /already exists/);
+  const afterSpread = await edits.planBatch([{ kind: "connection", target: "lambda:sign-in", connection: "resource", destination: "resource:openaiApiKey", variable: "AUDIT_PROVIDER_SECRET_ARN", enabled: true }], revision());
+  assert.ok(afterSpread.ok, JSON.stringify(afterSpread.preflight));
+  assert.match(afterSpread.changes.find(change => change.file.endsWith("workloads/http.ts"))!.diff.unified, /\+\s+environment: \{ \.\.\.authEndpointEnvironment, AUDIT_PROVIDER_SECRET_ARN: resources\["openaiApiKey"\]\.arn \},/);
   const secret = await edits.planBatch([{ kind: "connection", target: "lambda:test-run-task", connection: "resource", destination: "resource:openaiApiKey", variable: "AUDIT_PROVIDER_SECRET_ARN", enabled: true }], revision());
   assert.ok(secret.ok, JSON.stringify(secret.preflight));
   assert.ok(secret.changes.some(change => /\.arn/.test(change.diff.unified)));

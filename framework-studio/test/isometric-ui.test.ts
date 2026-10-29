@@ -33,6 +33,7 @@ let map: typeof import("../src/views/Isometric");
 let shell: typeof import("../src/views/Shell");
 const frames = new Map<number, FrameRequestCallback>();
 let nextFrame = 0;
+const disposeHistories: (() => void)[] = [];
 const images: { src: string; alpha: number }[] = [];
 const strokes: string[] = [];
 const labels: string[] = [];
@@ -112,7 +113,7 @@ before(async () => {
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, busy: null };
 });
 after(async () => { await builder.dispose(); dom.window.close(); });
-afterEach(() => { ui.cleanup(); frames.clear(); images.length = 0; strokes.length = 0; labels.length = 0; labelPaints.length = 0; iconStrokes.length = 0; pathStrokes.length = 0; paintOrder.length = 0; glyphWidth = 6; });
+afterEach(() => { ui.cleanup(); for (const dispose of disposeHistories.splice(0)) dispose(); frames.clear(); images.length = 0; strokes.length = 0; labels.length = 0; labelPaints.length = 0; iconStrokes.length = 0; pathStrokes.length = 0; paintOrder.length = 0; glyphWidth = 6; });
 
 interface Debug { search(): { active: boolean; nodes: string[]; opacityOf(id: string): number }; stats(): { focus: string }; tagFilter(): { key: string; value?: string | null; muted: readonly string[] } }
 const debug = () => (dom.window as unknown as { __studioLandscape: Debug }).__studioLandscape;
@@ -122,7 +123,7 @@ const draw = async () => ui.act(async () => {
   for (const callback of pending) callback(performance.now() + 500);
 });
 
-async function mount(withInspector = false, selection?: string, initialResponse = response) {
+async function mount(withInspector = false, selection?: string, initialResponse = response, browserHistory = false) {
   let updateResponse: (next: SnapshotResponse) => void;
   function Workbench() {
     const context = studio.useStudio();
@@ -138,11 +139,17 @@ async function mount(withInspector = false, selection?: string, initialResponse 
     return h(studio.StudioProvider, { response: current, selected: search.select, select: (id: string | undefined) => void navigate({ to: ".", search: { select: id } } as never), children: h(Workbench) });
   }
   const root = router.createRootRoute({ component: Root, validateSearch: (search) => ({ select: typeof search.select === "string" ? search.select : undefined }) });
-  const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: [selection ? `/?select=${encodeURIComponent(selection)}` : "/"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null })]) });
+  const entry = selection ? `/?select=${encodeURIComponent(selection)}` : "/";
+  // Memory history does not invoke blockers for POP/GO; guard regressions use the
+  // browser implementation against JSDOM's isolated window and actual popstate.
+  if (browserHistory) dom.window.history.replaceState({}, "", entry);
+  const history = browserHistory ? router.createBrowserHistory({ window: dom.window }) : router.createMemoryHistory({ initialEntries: [entry] });
+  disposeHistories.push(() => history.destroy());
+  const app = router.createRouter({ history, routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null })]) });
   const client = new query.QueryClient({ defaultOptions: { queries: { gcTime: 0 } } });
   ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
   await ui.waitFor(() => assert.ok(document.querySelector("[data-ui~=\"landscape\"], [data-ui~=\"empty\"]"))); await draw();
-  return async (next: SnapshotResponse) => { await ui.act(async () => updateResponse(next)); await draw(); };
+  return Object.assign(async (next: SnapshotResponse) => { await ui.act(async () => updateResponse(next)); await draw(); }, { router: app });
 }
 
 test("permission connections show generated principal and scope while local database links show no cloud IAM", async () => {
@@ -472,6 +479,154 @@ test("Resources opens from the toolbar, inspects in place and Back returns to th
   assert.ok(ui.screen.getByRole("complementary", { name: "Resources" }));
   ui.fireEvent.click(toggle);
   assert.equal(ui.screen.queryByRole("complementary"), null);
+});
+
+/** Exercise navigation through the real inspector, rather than calling the navigation store. */
+const inspector = () => ui.within(ui.screen.getByRole("complementary", { name: "Inspector" }));
+const selectionIs = async (id: string) => ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, id));
+const openModelProvider = async () => {
+  const entry = inspector().getByRole("button", { name: "modelProvider" });
+  entry.focus(); ui.fireEvent.click(entry);
+  await selectionIs("resource:langgraph.modelProvider");
+};
+
+for (const useResources of [false, true]) test(`inspector drilldowns ${useResources ? "jump to Resources at their original row" : "return one hop at a time before the original resource row"}`, async () => {
+  await mount();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Resources" }));
+  ui.fireEvent.change(search(), { target: { value: "langgraph" } });
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Map resource type" }), { target: { value: "Input group" } });
+  const list = document.querySelector<HTMLElement>('[data-ui="resource-browser-list"]')!;
+  list.scrollTop = 180; ui.fireEvent.scroll(list);
+  const group = ui.within(ui.screen.getByRole("complementary", { name: "Resources" })).getByRole("button", { name: /langgraph.*Input group/ });
+  group.focus(); ui.fireEvent.click(group);
+  await selectionIs("resource:langgraph");
+  await openModelProvider();
+  const consumer = inspector().getByRole("button", { name: "AgentCore agent: example-agent" });
+  consumer.focus(); ui.fireEvent.click(consumer);
+  await selectionIs("agent:example-agent");
+  assert.equal(document.activeElement, inspector().getByRole("button", { name: "Back to modelProvider" }), "a related selection focuses its contextual back control");
+  if (!useResources) {
+    ui.fireEvent.click(inspector().getByRole("button", { name: "Back to modelProvider" }));
+    await selectionIs("resource:langgraph.modelProvider");
+    assert.equal(document.activeElement?.textContent, "AgentCore agent: example-agent", "returning restores the selected consumer link");
+    ui.fireEvent.click(inspector().getByRole("button", { name: "Back to langgraph" }));
+    await selectionIs("resource:langgraph");
+    assert.equal(document.activeElement, inspector().getByRole("button", { name: "modelProvider" }));
+  }
+  ui.fireEvent.click(inspector().getByRole("button", { name: "Back to Resources" }));
+  await selectionIs("none");
+  assert.ok(ui.screen.getByRole("complementary", { name: "Resources" }));
+  assert.equal((search() as HTMLInputElement).value, "langgraph");
+  assert.equal((ui.screen.getByRole("combobox", { name: "Map resource type" }) as HTMLSelectElement).value, "Input group");
+  assert.equal((document.activeElement as HTMLElement).dataset.resourceId, "resource:langgraph", "the origin is the group, not its unlisted child or consumer");
+  assert.equal(document.querySelector<HTMLElement>('[data-ui="resource-browser-list"]')!.scrollTop, 180);
+});
+
+test("nested Back and Resources commit history only after the unsaved-edit guard accepts navigation", async () => {
+  await mount(true, "resource:langgraph", response, true);
+  await openModelProvider();
+  const description = () => document.querySelector<HTMLTextAreaElement>('[data-slot="inspector-content"] textarea[aria-label="Description"]')!;
+  ui.fireEvent.change(description(), { target: { value: "Unsaved child description" } });
+  assert.ok(document.querySelector('[data-slot="draft-footer"]'), `Description edit must stage before navigation: ${description().outerHTML}`);
+  for (const name of ["Back to langgraph", "Back to Resources"]) {
+    ui.fireEvent.click(inspector().getByRole("button", { name }));
+    await ui.waitFor(() => assert.ok(document.querySelector("dialog[open]")));
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Keep Editing" }));
+    await ui.waitFor(() => assert.equal(document.querySelector("dialog[open]"), null));
+    await selectionIs("resource:langgraph.modelProvider");
+    assert.equal(description().value, "Unsaved child description");
+    assert.ok(inspector().getByRole("button", { name: "Back to langgraph" }), "cancel must retain the same predecessor");
+  }
+  ui.fireEvent.click(inspector().getByRole("button", { name: "Back to langgraph" }));
+  await ui.waitFor(() => assert.ok(document.querySelector("dialog[open]")));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard and Continue" }));
+  await selectionIs("resource:langgraph");
+  assert.equal(document.querySelector("dialog[open]"), null);
+  assert.equal(document.querySelector('[data-slot="draft-footer"]'), null);
+  assert.equal(inspector().queryByRole("button", { name: "Back to langgraph" }), null, "returning pops one history entry");
+  assert.equal(document.activeElement, inspector().getByRole("button", { name: "modelProvider" }));
+});
+
+test("panel and browser Back restore parent scroll, disclosures and trigger focus while Forward retains the chain", async () => {
+  const mounted = await mount(true, "resource:langgraph");
+  const content = document.querySelector<HTMLElement>('[data-slot="inspector-content"]')!;
+  const sources = [...content.querySelectorAll<HTMLDetailsElement>("details")].find(details => /Environment file sources/.test(details.querySelector("summary")?.textContent ?? ""))!;
+  assert.ok(sources);
+  sources.open = true;
+  content.scrollTop = 348; ui.fireEvent.scroll(content);
+  await openModelProvider();
+  assert.equal(document.querySelector<HTMLElement>('[data-slot="inspector-content"]')!.scrollTop, 0, "a fresh destination starts at its identity header");
+  assert.equal(document.activeElement, inspector().getByRole("button", { name: "Back to langgraph" }));
+  await ui.act(async () => mounted.router.history.back());
+  await selectionIs("resource:langgraph");
+  const restored = document.querySelector<HTMLElement>('[data-slot="inspector-content"]')!;
+  assert.equal(restored.scrollTop, 348);
+  assert.equal([...restored.querySelectorAll<HTMLDetailsElement>("details")].find(details => /Environment file sources/.test(details.querySelector("summary")?.textContent ?? ""))!.open, true);
+  assert.equal(document.activeElement, inspector().getByRole("button", { name: "modelProvider" }));
+  await ui.act(async () => mounted.router.history.forward());
+  await selectionIs("resource:langgraph.modelProvider");
+  assert.ok(inspector().getByRole("button", { name: "Back to langgraph" }));
+  ui.fireEvent.click(inspector().getByRole("button", { name: "Back to langgraph" }));
+  await selectionIs("resource:langgraph");
+  assert.equal(document.querySelector<HTMLElement>('[data-slot="inspector-content"]')!.scrollTop, 348);
+  assert.equal(document.activeElement, inspector().getByRole("button", { name: "modelProvider" }));
+});
+
+test("browser Back cancellation preserves the drilldown before discard accepts the same return", async () => {
+  const mounted = await mount(true, "resource:langgraph", response, true);
+  await openModelProvider();
+  const description = () => document.querySelector<HTMLTextAreaElement>('[data-slot="inspector-content"] textarea[aria-label="Description"]')!;
+  ui.fireEvent.change(description(), { target: { value: "Preserve browser return draft" } });
+  assert.ok(document.querySelector('[data-slot="draft-footer"]'), `Description edit must stage before navigation: ${description().outerHTML}`);
+  await ui.act(async () => mounted.router.history.back());
+  await ui.waitFor(() => assert.ok(document.querySelector("dialog[open]")));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Keep Editing" }));
+  await ui.waitFor(() => assert.equal(document.querySelector("dialog[open]"), null));
+  await selectionIs("resource:langgraph.modelProvider");
+  assert.equal(description().value, "Preserve browser return draft");
+  assert.ok(inspector().getByRole("button", { name: "Back to langgraph" }));
+  await ui.act(async () => mounted.router.history.back());
+  await ui.waitFor(() => assert.ok(document.querySelector("dialog[open]")));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard and Continue" }));
+  await selectionIs("resource:langgraph");
+  assert.equal(document.querySelector('[data-slot="draft-footer"]'), null);
+  assert.equal(document.activeElement, inspector().getByRole("button", { name: "modelProvider" }));
+});
+
+test("revisiting the same resource through an owner link preserves each step of the inspection path", async () => {
+  await mount(true, "resource:langgraph");
+  await openModelProvider();
+  const owner = ui.within(document.querySelector('[data-slot="inspector-content"] > header')! as HTMLElement).getByRole("button", { name: "langgraph" });
+  owner.focus(); ui.fireEvent.click(owner);
+  await selectionIs("resource:langgraph");
+  ui.fireEvent.click(inspector().getByRole("button", { name: "Back to modelProvider" }));
+  await selectionIs("resource:langgraph.modelProvider");
+  ui.fireEvent.click(inspector().getByRole("button", { name: "Back to langgraph" }));
+  await selectionIs("resource:langgraph");
+  assert.equal(inspector().queryByRole("button", { name: "Back to modelProvider" }), null);
+  assert.ok(inspector().getByRole("button", { name: "Back to Resources" }));
+});
+
+test("a direct nested input link returns to its visible owning group in Resources", async () => {
+  const mounted = await mount(true, "resource:langgraph.modelProvider");
+  assert.equal(mounted.router.history.length, 1, "a deep link has no prior in-app visit");
+  assert.equal(inspector().queryByRole("button", { name: "Back to langgraph" }), null, "an owner link does not invent navigation history");
+  ui.fireEvent.click(inspector().getByRole("button", { name: "Back to Resources" }));
+  await selectionIs("none");
+  assert.ok(ui.screen.getByRole("complementary", { name: "Resources" }));
+  assert.equal((document.activeElement as HTMLElement).dataset.resourceId, "resource:langgraph", "the grouped map representative receives return focus");
+});
+
+test("choosing a new map resource starts a root inspector instead of extending a previous drilldown", async () => {
+  await mount(true, "resource:langgraph");
+  await openModelProvider();
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: /^graphql-api, HTTP Lambda/ }));
+  await selectionIs("lambda:graphql-api");
+  assert.equal(inspector().queryByRole("button", { name: "Back to modelProvider" }), null);
+  assert.equal(inspector().queryByRole("button", { name: "Back to langgraph" }), null);
+  ui.fireEvent.click(inspector().getByRole("button", { name: "Back to Resources" }));
+  await selectionIs("none");
+  assert.equal((document.activeElement as HTMLElement).dataset.resourceId, "lambda:graphql-api");
 });
 
 test("resource browsing previews successive rows with animated connections and leaves selection and camera alone", async () => {

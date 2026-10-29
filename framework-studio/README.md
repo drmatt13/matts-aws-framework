@@ -178,6 +178,15 @@ length, obstacle and viewport costs. Small edits retain nearby positions; major 
 aspect changes reflow automatically. Pan, zoom, search, selection and the mode switch keep
 the current arrangement. See [graph-aware layout and measurements](../docs/framework-studio/graph-layout.md).
 
+Following a link inside an inspector keeps its return path. Opening `modelProvider`
+from the `langgraph` input group offers **Back to langgraph**; stack fields, routes,
+handlers, connection endpoints and island entries use the same navigation. The separate
+**Resources** action returns to the original list row, retaining search, type and scroll.
+Back and browser Back/Forward restore the visited inspector's scroll, open sections and
+keyboard focus. Selecting another map or list resource starts a new path. A direct link
+with no earlier inspector falls back to Resources. Unsaved edits keep the existing
+**Keep Editing**, **Discard and Continue** and **Review Changes** guard.
+
 ## What it shows, and where that comes from
 
 Framework behavior comes from the framework's own answers. CDK links are separately marked source inferences:

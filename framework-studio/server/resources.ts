@@ -8,7 +8,7 @@ import { EditError, writeAtomically, writeSourceChange } from "./edits/io";
 import { diffOf } from "./edits/plan";
 import { hashEditableFiles, sha256, toRelative } from "./files";
 import type { SnapshotBuilder, StudioState } from "./snapshot";
-import { assertResourceFile, consumesResource, planResourceSource, resourceTypeErrors } from "./resources-source";
+import { assertResourceFile, planResourceSource, resourceTypeErrors } from "./resources-source";
 import { inputText, selectedDeploymentInput } from "./deployment-inputs";
 import { SourceJournal } from "./edits/journal";
 
@@ -61,8 +61,7 @@ export class ResourceService {
     const values = text === undefined ? {} : parseEnv(text);
     const value = values[resource.fromEnv!];
     // Configuration presence (even NAME=) is distinct from the framework's non-blank requirement.
-    const consumers = this.state().snapshot.models[mode].targets.filter((target) => consumesResource(target, id)).map((target) => ({ target: target.ref, title: target.title, rules: target.requirementRules ?? [] }));
-    return { file, inputFile: { exists: text !== undefined, hash: sha256(text ?? "") }, configured: value !== undefined, ...(value !== undefined ? { value } : {}), consumers };
+    return { file, inputFile: { exists: text !== undefined, hash: sha256(text ?? "") }, configured: value !== undefined, ...(value !== undefined ? { value } : {}) };
   }
   plan(intent: ResourceIntent, revision: string, mode: Mode): Promise<ResourcePlan> {
     return this.exclusive(async () => {

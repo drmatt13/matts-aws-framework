@@ -28,13 +28,33 @@ hooks on the next deployment, and the source review calls out that effect.
 | Element | Convention |
 | --- | --- |
 | Panel | 380–480 px on desktop; bounded split view on narrow screens |
-| Scrolling | One content region, with close and draft actions outside it; a new selection starts at the top |
+| Scrolling | One content region, with close and draft actions outside it; a fresh destination starts at the top, while returning restores its position |
 | Type | 20 px item titles, 14 px body, 13 px labels, 12 px captions; monospace for identifiers and source |
 | Spacing | Shared 4, 8, 12, 16 and 20 px tokens; 20 px panel gutters |
 | Controls | 32 px inputs/selects, actions and icon actions, 24 px supporting disclosures; shared On/Off switches for boolean settings, checkboxes for acknowledgements and multi-selection; 44 px control targets for touch |
 | Sections | `InspectorSection` for immediate controls; `InspectorDisclosure` for supporting information |
 | Forms | Associated labels, inline units, visible error messages, semantic `FormGroup` boundaries |
 | Color | Existing theme surfaces; teal/violet for environments, accept/refuse colors for validation |
+
+Links inside an inspector extend a contextual return path. **Back to langgraph**, for
+example, returns from an input to the group that opened it. The same control serves
+routes, handlers, stack fields, connection endpoints and island entries, including the
+standalone inspector outside the map. The map panel also offers **Resources**, which
+returns to the original list row with its search, type and scroll retained. A new map or
+list selection starts a new path; direct links without a predecessor fall back to Resources.
+
+Contextual Back retraces browser history. Back and browser Back/Forward restore each
+visit's scroll, disclosure states and triggering control focus. A fresh destination opened
+inside the panel focuses its Back control; direct map selections keep map focus. If the
+original focus target is unavailable, use the Back control. Navigation only becomes part
+of the trail after the existing unsaved-edit guard accepts it; **Keep Editing** preserves
+the current visit and draft.
+
+`src/inspector-navigation.ts` owns this presentation memory, shared through `StudioProvider`.
+It is limited to 200 accepted visits, with separate presentation state per source mode,
+and expires with the mounted session. Store structural focus locations, open states and
+scroll only; never retain form values, drafts, secrets or detached DOM nodes in the trail,
+URL or browser history state.
 
 Controls share horizontal padding and a single select-arrow treatment: a 14 px chevron
 inset 12 px from the edge, with 10 px between text and icon. Native selects retain keyboard

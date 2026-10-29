@@ -6,6 +6,7 @@ import { createElement as h } from "react";
 import type { DraftEdit, SnapshotResponse } from "../shared/api";
 import type { ModelEdge, Snapshot } from "../shared/model";
 import type { DeploymentInputEdit } from "../shared/deployment-inputs";
+import type { ResourceIntent } from "../shared/resources";
 import { SnapshotBuilder } from "../server/snapshot";
 import { connectionDescriptionId } from "../shared/descriptions";
 import { aggregateConnections } from "../src/connections";
@@ -75,7 +76,7 @@ beforeEach(() => {
     return { status: "applied", message: "Applied all changes.", revision: persisted.revision };
   });
   mock.method(apiModule.api, "snapshot", async () => response());
-  mock.method(apiModule.api, "resourceDetails", async () => ({ configured: false, consumers: [] }));
+  mock.method(apiModule.api, "resourceDetails", async () => ({ configured: false }));
   mock.method(apiModule.api, "resourcePlan", async (intent: unknown) => { resourceCalls.push(intent); await reviewGate; return { planId: "resource", resource: "resource:input", nextResource: "resource:input", ok: true, diagnostics: [], changes: [{ file: "framework-config/resources.ts", diff: { unified: "resource changes", lines: [] } }] }; });
 });
 function response(): SnapshotResponse { return { snapshot: persisted, evaluating: false, commands: {}, busy: null }; }
@@ -870,7 +871,7 @@ test("local values edit inline, revert, review privately and reload after apply 
   const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv && !item.values)!;
   let stored = "";
   const inputPlans: { mode: string; edits: unknown; hash: string }[] = [];
-  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "selected-hash" }, configured: true, value: stored, consumers: [] }));
+  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "selected-hash" }, configured: true, value: stored }));
   mock.method(apiModule.api, "inputDetails", async () => { throw new Error("Inline editing must read only the selected variable."); });
   mock.method(apiModule.api, "inputPlan", async (mode: "dev" | "prod", edits: readonly DeploymentInputEdit[], hash: string) => {
     inputPlans.push({ mode, edits, hash });
@@ -906,7 +907,7 @@ test("local values edit inline, revert, review privately and reload after apply 
 test("blank local values show the effective default and constrained values offer a direct choice", async () => {
   const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv)!;
   persisted = { ...baseline, models: { ...baseline.models, dev: { ...baseline.models.dev, resources: baseline.models.dev.resources.map((item) => item.id === resource.id ? { ...item, default: "bedrock", values: ["bedrock", "openai"], inputRequirement: undefined } : item) } } };
-  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "enum-hash" }, configured: false, consumers: [] }));
+  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "enum-hash" }, configured: false }));
   await mount(resource.id);
   const field = await ui.screen.findByRole("combobox", { name: `Value for ${resource.fromEnv}` });
   const local = ui.screen.getByRole("region", { name: "Local value" });
@@ -928,7 +929,7 @@ test("inline secrets stay masked and local value read errors can be retried", as
   let reads = 0;
   mock.method(apiModule.api, "resourceDetails", async () => {
     if (++reads === 1) throw new Error("Could not read the local file.");
-    return { file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "secret-hash" }, configured: true, value: "private-selected-sentinel", consumers: [] };
+    return { file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "secret-hash" }, configured: true, value: "private-selected-sentinel" };
   });
   await mount(resource.id);
   await ui.screen.findByText("Could not read the local file.");
@@ -945,7 +946,7 @@ test("inline secrets stay masked and local value read errors can be retried", as
 
 test("a missing environment file offers setup rather than an unusable value editor", async () => {
   const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv)!;
-  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: false, hash: "missing" }, configured: false, consumers: [] }));
+  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: false, hash: "missing" }, configured: false }));
   await mount(resource.id);
   await ui.screen.findByRole("button", { name: "Set up .env.dev" });
   assert.ok(!ui.screen.queryByLabelText(`Value for ${resource.fromEnv}`));
@@ -1026,6 +1027,36 @@ test("Review Changes from the navigation warning opens immediately while validat
   assert.ok(ui.screen.getByLabelText("Changes to framework-config/settings.ts"));
   assert.equal(ui.screen.getByLabelText("Current selection").textContent, target);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" })); assert.equal((memory() as HTMLInputElement).value, "768");
+});
+
+test("an input or secret lists its consumers only under Connections, and each workload edits its own requirements", async () => {
+  const condition = baseline.models.dev.resources.find(resource => resource.kind === "input" && baseline.models.dev.targets.some(target => target.lanes.when?.resource === resource.id))!;
+  const secret = baseline.models.dev.resources.find(resource => resource.kind === "secret" && baseline.models.dev.targets.some(target => target.requirementRules?.some(rule => rule.when && rule.require.includes(resource.id))))!;
+  const consumer = baseline.models.dev.targets.find(target => target.requirementRules?.some(rule => rule.when && rule.require.includes(secret.id)))!;
+  assert.ok(condition && secret && consumer);
+  for (const id of [condition.id, secret.id]) {
+    await mount(id);
+    for (const name of ["Connected workloads", "Workload access"]) assert.equal(ui.screen.queryByRole("region", { name }), null, `${id}: ${name}`);
+    for (const name of ["Connect workload", "Grant access"]) assert.equal(ui.screen.queryByRole("button", { name }), null, `${id}: ${name}`);
+    assert.equal(ui.screen.queryByText("Workload requirements"), null);
+    openSection("Connections");
+    const connections = [...document.querySelectorAll<HTMLElement>("[data-inspector-disclosure]")].find(section => section.querySelector("summary span")?.textContent === "Connections")!.textContent!;
+    assert.ok(connections.includes(id === condition.id ? "Conditional Deployment" : consumer.title), connections);
+    ui.cleanup();
+  }
+  await mount(consumer.ref);
+  const required = ui.screen.getByRole("group", { name: "Required inputs" });
+  const select = ui.within(required).getByRole("combobox", { name: secret.path.join(".") }) as HTMLSelectElement;
+  assert.equal(select.value, "conditional");
+  assert.match(select.options[select.selectedIndex]!.textContent!, /^When .+ equals ".+"$/);
+  ui.fireEvent.change(select, { target: { value: "required" } });
+  assert.ok(ui.screen.getByLabelText("Pending inspector changes"));
+  ui.fireEvent.change(select, { target: { value: "conditional" } });
+  assert.equal(ui.screen.queryByLabelText("Pending inspector changes"), null, "returning to the declared rule leaves nothing staged");
+  ui.fireEvent.change(select, { target: { value: "required" } });
+  await ui.act(async () => { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); }); await waitDialog("Review 1 change");
+  assert.deepEqual((resourceCalls[0] as ResourceIntent).requirements, { [consumer.ref]: "required" });
+  assert.equal(applyCalls, 0);
 });
 
 test("resource review also opens immediately from the warning before TypeScript validation finishes", async () => {

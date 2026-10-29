@@ -4,7 +4,7 @@ import { cx } from "../ui/classes";
 import { iconButtonClasses } from "../ui/IconButton";
 import { mapCameraButtonClasses } from "./map-styles";
 import { workspaceToolbarClasses } from "../ui/Surface";
-import { ChevronLeft, Crosshair, Maximize2, Minus, PanelRight, Pause, Play, Plus, Search, X } from "lucide-react";
+import { Crosshair, Maximize2, Minus, PanelRight, Pause, Play, Plus, Search, X } from "lucide-react";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { CATEGORY_DESCRIPTION, CATEGORY_LABEL, endpointLabel, type EdgeCategory } from "../lookup";
 import { buildScene, type Scene, type SceneNode } from "../scene/build";
@@ -39,6 +39,7 @@ import { AddMenu } from "./AddMenu";
 import { useStudio } from "../studio";
 import { HoverContent, ResourceHoverContent } from "./ResourceHoverContent";
 import { InspectorContent } from "./Inspector";
+import { InspectorNavigationControls } from "./InspectorNavigation";
 import { ResourceBrowser, type BrowserMemory } from "./ResourceBrowser";
 import { presentConnection } from "../connection-presentation";
 import { ConnectionHoverContent } from "./ConnectionHoverContent";
@@ -94,7 +95,7 @@ const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("
 const CATEGORIES = (Object.keys(CATEGORY_LABEL) as EdgeCategory[]).filter(category => category !== "structure");
 
 export function Isometric() {
-  const { model, index, snapshot, selected, select, created, draft } = useStudio();
+  const { model, index, snapshot, selected, select, inspect: startInspection, inspectorNavigation, created, draft } = useStudio();
   const hasEntities = model.targets.length > 0 || model.resources.length > 0 || !!model.networks?.length;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -373,11 +374,12 @@ export function Isometric() {
   /** Opens an inspector in the panel, from the list, the map or the keyboard entity list. */
   const inspect = useCallback((id: string, fromPanel = false) => {
     focusBack.current = fromPanel;
-    select(id);
-  }, [select]);
+    startInspection(id, fromPanel);
+  }, [startInspection]);
   /** Back to Resources: end the selection and return to the list as it was, at the row it opened. Pending edits ask first. */
   const back = () => draft.requestNavigation(() => {
-    browserMemory.current.returnTo = selected;
+    const origin = inspectorNavigation.origin ?? selected;
+    browserMemory.current.returnTo = origin ? scene.representatives[origin] ?? origin : undefined;
     setBrowsing(true);
     select(undefined);
   });
@@ -872,7 +874,7 @@ export function Isometric() {
       {view !== "closed" ? <WorkspacePanel id={PANEL_ID} label={view === "inspector" ? "Inspector" : "Resources"} onClose={() => close()}
         bodyClassName={view === "inspector" ? inspectorContextClasses : "overflow-hidden"}
         heading={view === "inspector"
-          ? <button ref={backButton} data-ui="workspace-panel-back" className="-ml-2 inline-flex min-h-(--control-height-sm) cursor-pointer items-center gap-[2px] rounded-md border-0 bg-transparent py-0 pr-2 pl-1 font-sans text-label leading-none font-semibold text-ink hover:bg-wash [&>svg]:text-graphite" onClick={back} aria-label="Back to Resources" title="Back to Resources"><ChevronLeft size={16} aria-hidden />Resources</button>
+          ? <InspectorNavigationControls onResources={back} buttonRef={backButton} />
           : <><h2 data-ui="workspace-panel-title" className="m-0 font-sans text-label leading-[1.3] font-semibold">Resources</h2><span data-ui="section-count" className="ml-0 text-caption font-normal text-graphite" title={`${scene.nodes.length} resources on the map`}>{scene.nodes.length}</span></>}>
         {view === "inspector" && selected !== undefined ? <InspectorContent selected={selected} /> : <ResourceBrowser
           scene={scene} nodes={navigatorNodes} fixtures={navigatorFixtures} total={scene.nodes.length}

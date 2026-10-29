@@ -2,7 +2,7 @@ import { checkboxClasses, Select, TextInput } from "../ui/FormControls";
 
 import { useEffect, useId, useState } from "react";
 import type { Mode, ModelResource } from "../../shared/model";
-import type { ResourceDetails, ResourceIntent } from "../../shared/resources";
+import type { ResourceDetails } from "../../shared/resources";
 import { api } from "../api";
 import { useStudio } from "../studio";
 import type { ResourceModeForm } from "../draft";
@@ -31,13 +31,11 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
   }, [resource, snapshot.revision, mode, model.stale, reload]);
 
   const form = draft.resourceForm(resource);
-  const { secret, modes, group, requirements } = form;
+  const { secret, modes, group } = form;
   const update = (change: Partial<typeof form>) => draft.setResource(resource, { ...form, ...change });
   const setSecret = (secret: boolean) => update({ secret });
   const setMode = (mode: Mode, change: Partial<ResourceModeForm>) => update({ modes: { ...modes, [mode]: { ...modes[mode], ...change } } });
   const setGroup = (group: string) => update({ group });
-  const requiredEverywhere = MODES.every((mode) => !modes[mode].present || modes[mode].required);
-  const setRequirements = (change: (current: ResourceIntent["requirements"]) => ResourceIntent["requirements"]) => update({ requirements: change(requirements) });
   const entry = draftState.entries.find((entry) => entry.kind === "resource" && entry.intent.resource === resource.id);
   const descriptionPending = draftState.entries.some((entry) => entry.kind === "description");
   const environmentPending = draftState.entries.some((entry) => entry.kind === "environment");
@@ -64,18 +62,6 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
         <p id={`${help}-secret`} className={"text-caption text-graphite"}>Store the value from cdk-app/.env.{mode} in Secrets Manager at deployment. Turn off to use a regular string.</p>
         <label className={"my-3 grid min-w-0 gap-2 text-label font-medium wrap-anywhere [&>input]:w-full [&>select]:w-full"} data-slot="resource-control"><span>Group</span><TextInput aria-label="Resource group" aria-describedby={`${help}-group`} list={`${help}-groups`} value={group} placeholder="Ungrouped" onChange={(event) => setGroup(event.target.value)} /><datalist id={`${help}-groups`}>{model.resources.filter((item) => item.kind === "group").map((item) => <option key={item.id} value={item.path[0]} />)}</datalist></label>
         <p id={`${help}-group`} className={"text-caption text-graphite"}>Leave empty for no group. Moving an input updates references and preserves its environment variable name.</p>
-        </FormGroup><FormGroup title="Workload requirements">
-        {details?.consumers.length ? details.consumers.map((consumer) => {
-          const rules = consumer.rules.filter((rule) => rule.require.includes(resource.id));
-          const summary = rules.length ? rules.map((rule) => rule.when ? `When ${rule.when.resource.slice(9)} = ${JSON.stringify(rule.when.equals)}` : "Required").join("; ") : "Optional";
-          return <label key={consumer.target} className={"my-3 grid min-w-0 gap-2 text-label font-medium wrap-anywhere [&>input]:w-full [&>select]:w-full"} data-slot="resource-control"><span>{consumer.title}</span><Select aria-label={`Deployment requirement for ${consumer.title}`} value={requirements[consumer.target] ?? "preserve"} onChange={(event) => setRequirements((current) => {
-            const next = { ...current };
-            if (event.target.value === "preserve") delete next[consumer.target];
-            else next[consumer.target] = event.target.value as "required" | "optional";
-            return next;
-          })} disabled={requiredEverywhere}><option value="preserve">Keep current: {summary}</option><option value="required">Required</option><option value="optional">Optional</option></Select></label>;
-        }) : <p className={"text-caption text-graphite"}>No workload consumes this input. Application stacks may have their own requirements.</p>}
-        <p className={"text-caption text-graphite"}>{requiredEverywhere ? "Required in every environment it is in, so every consumer needs it. Clear Required to set individual workload rules." : "Required applies to every consumer in that environment. Conditional rules stay as declared unless changed here."}</p>
       </FormGroup></fieldset>
       {entry?.error ? <p className={"text-refuse wrap-anywhere"} role="alert">{entry.error}</p> : null}
 

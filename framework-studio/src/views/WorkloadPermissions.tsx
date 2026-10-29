@@ -173,33 +173,30 @@ function ConsumerAccessEditor({ destination, onDone }: { readonly destination: s
   return consumer ? <><p className={"text-caption text-graphite"}>Grant to <strong>{consumer.title}</strong></p><AccessEditor key={consumer.ref} target={consumer} destination={destination} onDone={onDone} /></> : <ConfiguredResourcePicker label="Workloads" options={candidates.map(({ target, option }) => ({ id: target.ref, title: target.title, subtitle: `${ICONS[targetIcon(target)][1]} · ${target.role}`, icon: targetIcon(target), reason: option.reason, searchTerms: target.ref }))} onChoose={id => setConsumer(candidates.find(item => item.target.ref === id)?.target)} onCancel={onDone} disabled={disabled} />;
 }
 
-/** A resource can grant access without making the developer hunt for its consumer. */
+/** A resource can grant access without making the developer hunt for its consumer.
+ * An authored input or secret has no such section: its Connections list each consumer,
+ * and each workload edits how it reads, requires or deploys on it. */
 export function ResourceAccess({ resource }: { readonly resource: ModelResource }) {
   const { snapshot, model, draft, draftState, live, select } = useStudio();
   const [choosing, setChoosing] = useState(false);
   const add = useRef<HTMLButtonElement>(null);
-  const { supported, consumers, conditions } = useMemo(() => {
+  const { supported, consumers } = useMemo(() => {
     const targets = [...new Map(Object.values(snapshot.models).flatMap(item => item.targets).map(target => [target.ref, target])).values()];
     const supported = targets.some(target => configuredAccessOptions(target, snapshot, resource.id).some(option => option.id === resource.id));
     const consumers = targets.filter(target => Object.values(snapshot.models).some(item => {
       const candidate = item.targets.find(value => value.ref === target.ref);
       return candidate && (targetAccess(candidate, item, snapshot.source).owned.some(entry => entry.destination.id === resource.id)
         || candidate.environment.some(entry => entry.value.kind === "reference" && entry.value.resource === resource.id)
-        || candidate.secrets.some(entry => entry.resource === resource.id)
-        || candidate.lanes.when?.resource === resource.id);
+        || candidate.secrets.some(entry => entry.resource === resource.id));
     }));
-    // A deploy condition is a use too, but not one this section grants or removes.
-    const conditions = new Set(targets.filter(target => target.lanes.when?.resource === resource.id
-      && !target.environment.some(entry => entry.value.kind === "reference" && entry.value.resource === resource.id)).map(target => target.ref));
-    return { supported, consumers, conditions };
+    return { supported, consumers };
   }, [snapshot, resource.id]);
-  if (!supported) return null;
+  if (resource.kind === "input" || resource.kind === "secret" || !supported) return null;
   const disabled = !!draftState.busy || draft.conflict || model.stale || live.evaluating;
   const done = () => { setChoosing(false); requestAnimationFrame(() => add.current?.focus()); };
-  const input = resource.kind === "input";
-  return <InspectorSection title={input ? "Connected workloads" : "Workload access"} actions={!choosing ? <button ref={add} className={buttonClasses({ variant: "quiet" })} disabled={disabled} onClick={() => setChoosing(true)}>{input ? "Connect workload" : "Grant access"}</button> : undefined}>
+  return <InspectorSection title="Workload access" actions={!choosing ? <button ref={add} className={buttonClasses({ variant: "quiet" })} disabled={disabled} onClick={() => setChoosing(true)}>Grant access</button> : undefined}>
     {choosing ? <ConsumerAccessEditor destination={resource.id} onDone={done} /> : null}
-    {consumers.length ? <ul className={cx(inspectorRelationListClasses, "[&>li]:items-baseline [&>li>span]:text-right")} data-slot="resource-consumers">{consumers.map(target => <li key={target.ref}><button className={buttonClasses({ variant: "link" })} onClick={() => select(target.ref)}>{target.title}</button><span className={"text-caption text-graphite"}>{conditions.has(target.ref) ? "Deployment condition" : ROLE_LABEL[target.role]}</span></li>)}</ul> : !choosing ? <p className={"text-caption text-graphite"}>{input ? "No workloads use this input yet." : "No workloads have access yet."}</p> : null}
+    {consumers.length ? <ul className={cx(inspectorRelationListClasses, "[&>li]:items-baseline [&>li>span]:text-right")} data-slot="resource-consumers">{consumers.map(target => <li key={target.ref}><button className={buttonClasses({ variant: "link" })} onClick={() => select(target.ref)}>{target.title}</button><span className={"text-caption text-graphite"}>{ROLE_LABEL[target.role]}</span></li>)}</ul> : !choosing ? <p className={"text-caption text-graphite"}>No workloads have access yet.</p> : null}
     <PendingAccess destination={resource.id} />
   </InspectorSection>;
 }

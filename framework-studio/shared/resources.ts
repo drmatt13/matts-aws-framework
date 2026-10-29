@@ -14,11 +14,6 @@ export interface ResourceDetails {
   /** Only the selected, declared key is returned. Never included in a snapshot. */
   readonly value?: string;
   readonly configured: boolean;
-  readonly consumers: readonly {
-    readonly target: string;
-    readonly title: string;
-    readonly rules: readonly RequirementRule[];
-  }[];
 }
 
 /** One graph's settings for an authored input, as an edit states them. */

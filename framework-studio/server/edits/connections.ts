@@ -28,6 +28,7 @@ function planCatalogConnection(root: string, state: StudioState, edit: Connectio
     if (!option) throw new EditError(422, "Choose a supported native grant for this resource's discovered CDK type. Custom grants remain source-owned.");
     if (edit.scope !== undefined && (typeof edit.scope !== "string" || edit.scope.length > 256 || /[\r\n\0]/.test(edit.scope) || !option.scope && !!edit.scope)) throw new EditError(422, "Only bucket grants accept a literal object-key scope (at most 256 characters).");
   }
+  const delivered = new Set(Object.values(state.snapshot.models).flatMap(model => model.targets).filter(item => item.ref === edit.target).flatMap(item => [...item.environment, ...item.secrets].map(entry => entry.name)));
   for (const origin of target.origins) {
     const files = new SourceFiles(overrides), parsed = parseOrigin(origin), located = locateConfigSource(path.join(root, "framework.config.ts"), { repositoryRoot: root, host: files.host() });
     const entry = parsed && findEntry(located, parsed), value = entry && entryValue(files, entry);
@@ -41,7 +42,10 @@ function planCatalogConnection(root: string, state: StudioState, edit: Connectio
     const container = target.kind === "service" || target.kind === "task";
     const keys = grant ? ["cloud", "bindings"] : [container && resource.kind === "secret" ? "secrets" : "environment", edit.variable!];
     const position = propertyAt(declaration.object, keys);
-    if (["spread", "unsupported"].includes(position.editability.kind) || position.editability.kind === "computed" && !position.property) throw new EditError(422, "This binding map is computed. Edit it in source.");
+    // A new variable follows a spread in its own map, so it wins; the evaluated workload says whether the spread already supplies it.
+    const afterSpread = !grant && edit.enabled && position.editability.kind === "spread" && position.missing.length === 1;
+    if (afterSpread && delivered.has(edit.variable!)) throw new EditError(422, "This environment variable already exists. Choose another name or disconnect its current mapping first.");
+    if (!afterSpread && (["spread", "unsupported"].includes(position.editability.kind) || position.editability.kind === "computed" && !position.property)) throw new EditError(422, "This binding map is computed. Edit it in source.");
     if (grant) {
       const expression = `${reference}.${edit.grant}(${edit.scope ? JSON.stringify(edit.scope) : ""})`;
       const array = position.property && unwrap(position.property.initializer);

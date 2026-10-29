@@ -5,7 +5,8 @@ import type { SnapshotResponse } from "../shared/api";
 import type { Mode, ModeModel, Snapshot } from "../shared/model";
 import { api, useLiveUpdates, type LiveState } from "./api";
 import { InspectorDraft, protectBeforeUnload, type DraftState } from "./draft";
-import { indexModel, type ModelIndex } from "./lookup";
+import { indexModel, titleOf, type ModelIndex } from "./lookup";
+import { useInspectorNavigation, type InspectorNavigation } from "./inspector-navigation";
 
 export interface Toast { readonly id: number; readonly text: string; readonly tone: "plain" | "refuse" }
 interface StudioContextValue {
@@ -17,6 +18,8 @@ interface StudioContextValue {
   readonly index: ModelIndex;
   readonly selected: string | undefined;
   readonly select: (id: string | undefined) => void;
+  readonly inspect: (id: string, focus?: boolean) => void;
+  readonly inspectorNavigation: InspectorNavigation;
   readonly live: LiveState;
   readonly toast: (text: string, tone?: Toast["tone"]) => void;
   readonly toasts: readonly Toast[];
@@ -51,6 +54,12 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
   }));
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
   useLayoutEffect(() => draft.sync(response.snapshot, props.selected, mode), [draft, response.snapshot, props.selected, mode]);
+  const snapshot = draftState.baseline;
+  const model = snapshot.models[draftState.mode];
+  const index = useMemo(() => indexModel(model), [model]);
+  const inspection = useInspectorNavigation({ selected: props.selected, ready: props.selected === draftState.selected,
+    mode: draftState.mode, select: props.select, requestNavigation: proceed => draft.requestNavigation(proceed),
+    label: id => index.resources.get(id)?.path.at(-1) ?? titleOf(index, id) });
   const live = useLiveUpdates((files) => toast(`${files.join(", ")} changed outside the studio. ${draft.dirty ? "Your draft is preserved; review the source conflict before applying." : "The view has been refreshed."}`));
 
   // Covers selection search params, view links, browser back/forward and programmatic
@@ -61,8 +70,8 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
       // subsection change does not leave that editing session or change target.
       const inAuthentication = (path: string) => path === "/cognito" || path.startsWith("/cognito/");
       if (inAuthentication(current.pathname) && inAuthentication(next.pathname) && JSON.stringify(current.search) === JSON.stringify(next.search)) return false;
-      return new Promise<boolean>((resolve) => draft.requestNavigation(() => resolve(false), () => resolve(true)));
-  }, [draft]);
+      return new Promise<boolean>((resolve) => draft.requestNavigation(() => resolve(false), () => { inspection.cancel(); resolve(true); }));
+  }, [draft, inspection.cancel]);
   useBlocker({ shouldBlockFn, enableBeforeUnload: false });
   useEffect(() => {
     if (!draft.dirty) return;
@@ -82,11 +91,9 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
     if (result.select) { setCreated({ id: result.select, revision: result.revision }); props.select(result.select); }
     else if ("resource" in result && result.resource !== draftState.selected) props.select(result.resource);
   };
-  const snapshot = draftState.baseline;
-  const model = snapshot.models[draftState.mode];
-  const index = useMemo(() => indexModel(model), [model]);
   return <StudioContext.Provider value={{ response, snapshot, mode: draftState.mode,
     setMode: (next) => { if (next !== draftState.mode) draft.requestNavigation(() => setMode(next)); },
-    model, index, selected: draftState.selected, select: props.select, live, toast, toasts, draft, draftState, applyDraft, created,
+    model, index, selected: draftState.selected, select: inspection.select, inspect: inspection.inspect,
+    inspectorNavigation: inspection.navigation, live, toast, toasts, draft, draftState, applyDraft, created,
   }}>{props.children}</StudioContext.Provider>;
 }

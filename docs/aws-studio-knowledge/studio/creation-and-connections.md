@@ -117,12 +117,18 @@ writer share the native grant definitions; a picker action must be accepted by t
 Imports reuse existing catalog aliases. Secret delivery follows
 ARN/read for Lambda/agent and startup-value delivery for containers. Literal grants have
 optional bucket key scope; disconnect matches the exact resource/method/scope and
-preserves other bindings. Spreads, computed owners, commented arrays, custom grants and
-ambiguous shared bindings stay source-owned. Handler authentication is separate from
-providing pool identifiers.
+preserves other bindings. A new variable may follow a spread in the workload's own
+`environment`/`secrets` map (`{ ...shared, NAME: … }`), since the literal key wins; it is
+refused when the evaluated workload already has that name. Other spreads, computed owners,
+commented arrays, custom grants and ambiguous shared bindings stay source-owned. Handler
+authentication is separate from providing pool identifiers.
 
 Workload **Permissions → Add access** and resource **Workload access → Grant access**
-share the destination-first editor in `WorkloadPermissions.tsx`. Tasks, workflows and
+share the destination-first editor in `WorkloadPermissions.tsx`. An authored input or
+secret has no consumer section: its **Connections** list each consumer, and each workload
+edits its own use in its inspector: **Add access** to read it, **Deploy** to deploy only
+when it matches, and **Required inputs** (`RequiredInputs.tsx`, the workload's
+`cloud.requirements`) to need a value before deploying. Tasks, workflows and
 agents also offer **Incoming access → Add caller**. `access-options.ts` builds options
 from both source modes, discovers compatible native methods from canonical CDK types,
 and supplies service names/icons without inventing new writer authority. An unconstructed
