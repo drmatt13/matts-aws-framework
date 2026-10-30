@@ -1,7 +1,7 @@
 import { useEffect,useRef,useState } from "react";
 import type { IdentitySelection } from "../../shared/identity";
 import type { CognitoAction,CognitoOperation,CognitoOperationRecord,CognitoOperationResult,CognitoOperationReview } from "../../shared/identity-operations";
-import { call } from "../api";
+import { call } from "../http";
 import { buttonClasses } from "../ui/Button";
 import { Select,TextInput } from "../ui/FormControls";
 import { noticeClasses } from "../ui/Surface";

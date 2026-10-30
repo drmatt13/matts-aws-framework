@@ -2,7 +2,7 @@ import { workbenchNoticeClasses } from "./WorkbenchUI";
 import { Select, TextInput, Textarea } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
 import { useEffect, useState } from "react";
-import { call } from "../api";
+import { call } from "../http";
 import type { SavedSqlCommand, SqlCatalog, SqlExecutionResult, SqlExecutionReview, SqlSourceReview } from "../../shared/database-sql";
 import { SourceComparison, WorkbenchDialog } from "./WorkbenchUI";
 

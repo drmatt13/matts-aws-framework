@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useBlocker } from "@tanstack/react-router";
 import type { DatabaseHistory as HistoryData, DatabaseMigration, DatabaseMigrationInstallResult, DatabaseMigrationReview, DatabaseSchemaComparison } from "../../shared/database-history";
 import type { DatabaseValidation, DatabaseWorkbench } from "../../shared/database-workbench";
-import { call } from "../api";
+import { call } from "../http";
 import { WorkbenchDialog, workbenchCardClasses, workbenchNoticeClasses } from "./WorkbenchUI";
 
 export const historyApi = {

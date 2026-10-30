@@ -1,3 +1,6 @@
+import { RetryNotice } from "./RetryNotice";
+import { identitySourceQuery } from "../identity-queries";
+import { deploymentOverviewQuery } from "../deploy/queries";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect,useRef,useState } from "react";
 import { domainSettingsProblems } from "../../shared/domain-settings";
@@ -14,7 +17,6 @@ import { DomainOperations } from "./DomainOperations";
 import { DraftFooter } from "./DraftControls";
 import { InspectorSwitch } from "./InspectorUI";
 
-export { identityApi } from "../identity-api";
 
 function DomainControls({ source }: { readonly source: IdentitySource }) {
   const { draft, draftState, live } = useStudio();
@@ -44,10 +46,10 @@ function DomainEvidence({ result }: { result?: DomainsObservation }) {
 
 /** Domains retain their production-only input authority. Authentication lives
  * in AuthenticationWorkspace; only the transport is shared with this view. */
-export function Domains() {
+export function DomainsWorkspace() {
   const { snapshot, draft, draftState, select } = useStudio();
-  const source = useQuery({ queryKey: ["identity-source", "prod", snapshot.revision], queryFn: ({ signal }) => identityApi.source("prod", signal) });
-  const overview = useQuery({ queryKey: ["deploy", "overview"], queryFn: () => deployApi.overview() });
+  const source = useQuery(identitySourceQuery("prod", snapshot.revision));
+  const overview = useQuery(deploymentOverviewQuery());
   const [selection, setSelection] = useState<IdentitySelection>({ profile: "dev", deployment: "", region: "us-east-1" });
   const [result, setResult] = useState<DomainsObservation>();
   const [error, setError] = useState("");
@@ -65,11 +67,11 @@ export function Domains() {
   };
   return <div className={"h-full w-full min-w-0 overflow-auto"}><header className={cx(workspaceToolbarClasses, "px-0! [&_p]:m-0 [&_p]:text-label [&_p]:text-graphite")}><div className={cx(pageWidthClasses, "grid gap-2")}><div className={"flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2"}><h1 className={"m-0 font-sans text-step1 font-semibold leading-[1.3]"}>DNS / Domains</h1><span className={"inline-flex items-center gap-2 text-label"}>Production domain settings</span></div><p>Source intent, deployed metadata and actual application health have independent evidence.</p></div></header>
     <div className={cx(pageWidthClasses, "pt-4 pb-6 [&>:not(dialog)+:not(dialog)]:mt-3")}>
-    {source.error ? <div className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2 [&>span]:min-w-0 [&>span]:flex-[1_1_280px] [&>button]:max-w-full [&>button]:flex-none [&>p]:m-0 [&>p]:basis-full")} role="alert"><span>{source.error.message}</span><button className={buttonClasses({ variant: "quiet" })} disabled={source.isFetching} onClick={() => void source.refetch()}>Retry source</button></div> : null}
+    {source.error ? <RetryNotice message={source.error.message} retryLabel="Retry source" retrying={source.isFetching} onRetry={() => void source.refetch()} /> : null}
     {source.isFetching && !source.data && !source.error ? <p className={"text-graphite"} role="status">Loading source declaration…</p> : null}
     {source.data && !source.data.exists ? <DocumentCard ><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>{source.data.file} does not exist. Generate it from its own template before staging settings.</p><button className={buttonClasses({ variant: "quiet" })} onClick={() => select("envfile:prod")}>Open environment file</button></DocumentCard> : null}
     <DocumentCard ><h2 className={"mt-0 mb-2 text-[15px] leading-[1.4]"}>Read-only deployment inspection</h2>
-      {overview.error ? <div className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2 [&>span]:min-w-0 [&>span]:flex-[1_1_280px] [&>button]:max-w-full [&>button]:flex-none [&>p]:m-0 [&>p]:basis-full")} role="alert"><span>{overview.error.message}</span><button className={buttonClasses({ variant: "quiet" })} disabled={overview.isFetching} onClick={() => void overview.refetch()}>Retry deployments</button></div> : null}
+      {overview.error ? <RetryNotice message={overview.error.message} retryLabel="Retry deployments" retrying={overview.isFetching} onRetry={() => void overview.refetch()} /> : null}
       {overview.isFetching && !overview.data && !overview.error ? <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite"} role="status">Loading deployment context…</p> : null}
       <div className={inspectionControlClasses}>
       <label className={documentLabelClasses}>Profile<TextInput className={"w-full"} aria-label="Identity AWS profile" value={selection.profile} onChange={event => setSelection({ ...selection, profile: event.target.value })} list="identity-profiles" /><datalist id="identity-profiles">{overview.data?.profiles.map(profile => <option key={profile.name}>{profile.name}</option>)}</datalist></label>

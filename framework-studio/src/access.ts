@@ -3,7 +3,7 @@ import { grantOptions } from "../shared/grants";
 import type { ModeModel, ModelEdge, ModelTarget, SourceIndex } from "../shared/model";
 import type { ConnectionAuthorization } from "../shared/permissions";
 import { ICONS, resourceIcon, targetIcon, type IconKey } from "./icons";
-import { indexModel, ROLE_LABEL, type ModelIndex } from "./lookup";
+import { indexModel, titleOf, ROLE_LABEL, type ModelIndex } from "./lookup";
 
 export type ConnectionEdit = Extract<DraftEdit, { kind: "connection" }>;
 
@@ -30,19 +30,19 @@ export interface AccessEntry {
 
 export function accessDestination(id: string, model: ModeModel, index: ModelIndex = indexModel(model)): AccessDestination {
   const target = index.targets.get(id);
-  if (target) return { id, title: target.title, icon: targetIcon(target), subtitle: ROLE_LABEL[target.role] };
+  if (target) return { id, title: titleOf(index, id), icon: targetIcon(target), subtitle: ROLE_LABEL[target.role] };
   const gateway = index.gateways.get(id);
-  if (gateway) return { id, title: gateway.title, icon: "gateway", subtitle: "API Gateway" };
+  if (gateway) return { id, title: titleOf(index, id), icon: "gateway", subtitle: "API Gateway" };
   const route = index.routes.get(id);
   if (route && route.kind !== "agent") {
     return { id: route.kind === "webSocket" ? "gateway:websocket" : "gateway:http", title: route.kind === "webSocket" ? "WebSocket API" : "HTTP API", icon: "gateway", subtitle: route.browserPath ?? route.path };
   }
   const local = index.localServices.get(id);
-  if (local) return { id, title: local.title, icon: "postgres", subtitle: "Local database" };
+  if (local) return { id, title: titleOf(index, id), icon: "postgres", subtitle: "Local database" };
   const resource = index.resources.get(id);
   if (resource) {
     const icon = resource.frameworkManaged === "database" ? "database" : resourceIcon(resource);
-    return { id, title: resource.path.join("."), icon, subtitle: ICONS[icon][1] };
+    return { id, title: titleOf(index, id), icon, subtitle: ICONS[icon][1] };
   }
   // Some source-only permission scopes do not produce graph resources.
   return { title: id, icon: "construct" };

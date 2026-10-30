@@ -1,7 +1,23 @@
+import { initialResourceForm, normalizeResourceEntry, toDraftEdit } from "./draft-entries";
+import type {
+  EnvironmentEdit, EnvironmentEntry, ResourceForm, FieldEntry,
+  RouteEntry, DescriptionEntry, TagsEntry, RenameEntry,
+  DisplayNameEntry, NameEntry, ResourceEntry, TriggerEntry,
+  FailureEntry, ClientMappingEntry, CreationEntry, PlacementEntry,
+  NetworkEntry, DatabaseEntry, DatabasePlacementEntry, OperationEntry,
+  DraftEntry,
+} from "./draft-entries";
+export { initialResourceForm } from "./draft-entries";
+export type {
+  EnvironmentEdit, ResourceModeForm, ResourceForm, RenameEntry,
+  DisplayNameEntry, NameEntry, CreationEntry, PlacementEntry,
+  NetworkEntry, NetworkRemovalEntry, DatabaseEntry, DatabasePlacementEntry,
+  OperationEntry, DraftEntry,
+} from "./draft-entries";
+
 import { networkCreationProblem, unusedNetworkCidr, networkSettings, type NetworkSettings, type PlacementEdit } from "../shared/networks";
 import type { ApplyResponse, BatchPlanResponse, CommentReviewOptions, DraftEdit, EditIntent, LiteralValue } from "../shared/api";
 import type { FieldFact, Mode, ModelResource, Snapshot } from "../shared/model";
-import { inputModeIntents, type ResourceApply, type ResourceIntent, type ResourcePlan } from "../shared/resources";
 import type { DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
 import { descriptionError } from "../shared/descriptions";
 import { triggerBindingsEqual, type FailureDestinationSettings, type TriggerBinding } from "../shared/triggers";
@@ -9,33 +25,13 @@ import { CLIENT_ENVIRONMENT_ID, clientMappingsError, type ClientEnvironmentMappi
 import { readDatabaseDraft, readDatabasePlacementDraft, type DatabasePlacementEdit } from "../shared/managed-database";
 import type { DatabaseSettingsInput } from "@repo/framework/config/database";
 import { validateTags } from "@repo/framework/config/tags";
+import { codeNameError, displayNameError, remapEntity } from "../shared/naming";
 
 import { CREATORS, creationDefaults, readCreationRequest, type CreationKind, type CreationRequest } from "../shared/creation";
 
-export type Review = { readonly kind: "batch"; readonly plan: BatchPlanResponse } | { readonly kind: "resource"; readonly plan: ResourcePlan } | { readonly kind: "environment"; readonly plan: DeploymentInputPlan };
-export interface EnvironmentEdit extends DeploymentInputEdit { readonly key: string; readonly original?: string }
-interface EnvironmentEntry { readonly kind: "environment"; readonly key: string; readonly mode: Mode; readonly hash: string; readonly edits: readonly EnvironmentEdit[]; readonly error?: string }
-/** One graph's column of the input settings. An empty default means none. */
-export interface ResourceModeForm { readonly present: boolean; readonly required: boolean; readonly default: string; readonly value?: string }
-export interface ResourceForm { readonly secret: boolean; readonly fromEnv?: string | null; readonly modes: Readonly<Record<Mode, ResourceModeForm>>; readonly group: string; readonly requirements: ResourceIntent["requirements"] }
-interface FieldEntry { readonly kind: "field"; readonly key: string; readonly raw: LiteralValue | undefined; readonly intent: EditIntent; readonly error?: string }
-interface RouteEntry { readonly kind: "route"; readonly key: string; readonly route: string; readonly value: string; readonly error?: string }
-interface DescriptionEntry { readonly kind: "description"; readonly key: string; readonly entity: string; readonly value: string; readonly error?: string }
-interface TagsEntry { readonly kind: "tags"; readonly key: string; readonly entity: string; readonly tags: Readonly<Record<string, string>>; readonly error?: string }
-interface ResourceEntry { readonly kind: "resource"; readonly key: string; readonly intent: ResourceIntent; readonly form: ResourceForm; readonly count: number; readonly error?: string }
-interface TriggerEntry { readonly kind: "triggers"; readonly key: string; readonly event: string; readonly bindings: readonly TriggerBinding[]; readonly error?: string }
-interface NativeEntry { readonly kind: "native"; readonly key: string; readonly edge: string; readonly error?: string }
-interface FailureEntry { readonly kind: "failure"; readonly key: string; readonly event: string; readonly value: FailureDestinationSettings | null; readonly error?: string }
-interface ClientMappingEntry { readonly kind: "clientEnvironment"; readonly key: string; readonly mappings: ClientEnvironmentMappings; readonly count: number; readonly error?: string }
-export interface CreationEntry { readonly kind: "create"; readonly key: "create"; readonly resourceKind: CreationKind; readonly form: Readonly<Record<string, string | number | boolean>>; readonly request?: CreationRequest; readonly error?: string; readonly inputSettings?: { readonly defaultValue: string; readonly choices: string; readonly linkedToEnv: boolean; readonly value: string } }
-export interface PlacementEntry { readonly kind: "placement"; readonly key: string; readonly edit: PlacementEdit; readonly error?: string }
-export interface NetworkEntry { readonly kind: "network"; readonly key: string; readonly network: string; readonly settings: NetworkSettings; readonly error?: string }
-export interface NetworkRemovalEntry { readonly kind: "removeNetwork"; readonly key: string; readonly network: string; readonly error?: string }
-export interface DatabaseEntry { readonly kind: "database"; readonly key: string; readonly database: string; readonly settings: DatabaseSettingsInput; readonly error?: string }
-export interface DatabasePlacementEntry { readonly kind: "databasePlacement"; readonly key: string; readonly edit: DatabasePlacementEdit; readonly error?: string }
-export interface OperationEntry { readonly kind: "operation"; readonly key: string; readonly operation: Extract<DraftEdit, { kind: "deploy" | "implementation" | "connection" | "removeWorkload" | "identityPolicy" }>; readonly error?: string }
-export type DraftEntry = OperationEntry | TagsEntry | DatabasePlacementEntry | DatabaseEntry | NetworkRemovalEntry | PlacementEntry | NetworkEntry | CreationEntry | FieldEntry | RouteEntry | DescriptionEntry | ResourceEntry | EnvironmentEntry | TriggerEntry | NativeEntry | FailureEntry | ClientMappingEntry;
+export type Review = { readonly kind: "batch"; readonly plan: BatchPlanResponse } | { readonly kind: "environment"; readonly plan: DeploymentInputPlan };
 export interface DraftState {
+  readonly applied?: { readonly revision: string; readonly names: boolean; readonly entityRemap?: Readonly<Record<string, string>> };
   readonly baseline: Snapshot;
   readonly latest: Snapshot;
   readonly selected: string | undefined;
@@ -50,21 +46,13 @@ export interface DraftState {
 }
 export interface DraftTransport {
   planBatch(edits: readonly DraftEdit[], revision: string, options?: CommentReviewOptions): Promise<BatchPlanResponse>;
-  resourcePlan(intent: ResourceIntent, revision: string, mode: Mode): Promise<ResourcePlan>;
   applyBatch(id: string): Promise<ApplyResponse>;
-  resourceApply(id: string): Promise<ResourceApply>;
   inputPlan(mode: Mode, edits: readonly DeploymentInputEdit[], hash: string, revision: string): Promise<DeploymentInputPlan>;
   inputApply(id: string): Promise<ApplyResponse>;
   snapshot(): Promise<Snapshot>;
   refreshSource?(): Promise<Snapshot>;
 }
 export const fieldKey = (target: string, field: string) => `field:${target}:${field}`;
-export function initialResourceForm(resource: ModelResource): ResourceForm {
-  const modes = inputModeIntents(resource);
-  const column = (mode: Mode): ResourceModeForm => ({ present: modes[mode].present, required: modes[mode].required, default: modes[mode].default ?? "", ...(resource.fromEnv ? {} : { value: modes[mode].value ?? resource.authoredValue ?? "" }) });
-  return { secret: resource.kind === "secret", fromEnv: resource.fromEnv ?? null, modes: { dev: column("dev"), prod: column("prod") }, group: resource.path.length > 1 ? resource.path[0]! : "", requirements: {} };
-}
-
 /** One in-memory inspector transaction. Only edited dotenv values enter this store;
  * they are never persisted to storage or included in graph snapshots.
  * React controls, navigation guards and tests all use these same transitions. */
@@ -72,6 +60,8 @@ export class InspectorDraft {
   private state: DraftState;
   private readonly listeners = new Set<() => void>();
   private serial = 0;
+  private resets = 0;
+  get resetVersion(): number { return this.resets; }
   private navigation: { proceed: () => void; cancel: () => void } | undefined;
   constructor(snapshot: Snapshot, selected: string | undefined, mode: Mode, private readonly transport: DraftTransport) {
     this.state = { baseline: snapshot, latest: snapshot, selected, mode, entries: [], reviewOpen: false, pendingNavigation: false };
@@ -84,7 +74,7 @@ export class InspectorDraft {
   get invalid(): boolean { return this.state.entries.some((entry) => !!entry.error); }
   reviewAgainstLatest(): void {
     if (this.state.busy || !this.conflict) return;
-    if (this.state.entries.some(entry => entry.kind === "environment" || entry.kind === "resource")) { this.publish({ ...this.state, error: "The selected input file or catalog changed. Preserve your values, then reload that inspector before reviewing." }); return; }
+    if (this.state.entries.some(entry => entry.kind === "environment")) { this.publish({ ...this.state, error: "The selected input file changed. Preserve your values, then reload that inspector before reviewing." }); return; }
     ++this.serial;
     this.publish({ ...this.state, baseline: this.state.latest, reviewOpen: false, review: undefined, error: undefined, commentResolutions: undefined });
     void this.review();
@@ -93,7 +83,7 @@ export class InspectorDraft {
   sync(snapshot: Snapshot, selected: string | undefined, mode: Mode): void {
     if (this.state.latest === snapshot && this.state.selected === selected && this.state.mode === mode) return;
     if (this.dirty || this.state.busy) { this.publish({ ...this.state, latest: snapshot }); return; }
-    this.publish({ baseline: snapshot, latest: snapshot, selected, mode, entries: [], reviewOpen: false, pendingNavigation: false });
+    this.publish({ baseline: snapshot, latest: snapshot, selected, mode, entries: [], reviewOpen: false, pendingNavigation: false, applied: this.state.applied });
   }
   private put(key: string, entry: DraftEntry | undefined): void {
     // An accepted write cannot be cancelled by a control still dispatching an
@@ -288,27 +278,39 @@ export class InspectorDraft {
     const error = descriptionError(value);
     this.put(key, value === (this.state.baseline.descriptions.values[entity] ?? "") ? undefined : { kind: "description", key, entity, value, ...(error ? { error } : {}) });
   }
+  nameEntries(entity: string): readonly NameEntry[] { return this.state.entries.filter((entry): entry is NameEntry => (entry.kind === "rename" || entry.kind === "displayName") && entry.entity === entity); }
+  codeName(entity: string): string { return this.state.entries.find((entry): entry is RenameEntry => entry.kind === "rename" && entry.entity === entity)?.name ?? this.state.baseline.namingCapabilities?.[entity]?.codeName ?? entity.split(/[.:]/).at(-1)!; }
+  savedDisplayName(entity: string): string {
+    const network = this.state.baseline.models[this.state.mode].networks?.find(network => entity === `island:vpc:${network.id}`);
+    return network ? network.name && network.name !== network.id ? network.name : "" : this.state.baseline.displayNames?.values[entity] ?? "";
+  }
+  displayName(entity: string): string { const pending = this.nameEntries(entity).find((entry): entry is DisplayNameEntry => entry.kind === "displayName"); return pending ? pending.value ?? "" : this.savedDisplayName(entity); }
+  setCodeName(entity: string, value: string): void {
+    const name = value.trim(), capability = this.state.baseline.namingCapabilities?.[entity];
+    if (!capability?.code || this.state.busy) return;
+    let error = codeNameError(name);
+    if (this.state.entries.some(entry => entry.kind === "rename" && entry.entity !== entity)) error ??= "Review one code rename at a time.";
+    if (this.state.entries.some(entry => entry.kind === "create" || entry.kind === "removeNetwork" || entry.kind === "operation" && entry.operation.kind === "removeWorkload")) error ??= "Apply or discard creation and removal changes before renaming code.";
+    const resource = Object.values(this.state.baseline.models).flatMap(model => model.resources).find(resource => resource.id === entity);
+    const configuration = this.state.entries.find((entry): entry is ResourceEntry => entry.kind === "resource" && entry.intent.resource === entity);
+    if (resource && configuration && configuration.intent.group !== (resource.path.length > 1 ? resource.path[0]! : "")) error ??= "Apply or discard the group move before renaming code.";
+    const next = entity.slice(0, Math.max(entity.lastIndexOf("."), entity.lastIndexOf(":")) + 1) + name;
+    if (next !== entity && Object.values(this.state.baseline.models).some(model => model.resources.some(resource => resource.id === next))) error ??= "This name already exists in the catalog.";
+    this.put(`rename:${entity}`, name === capability.codeName ? undefined : { kind: "rename", key: `rename:${entity}`, entity, name: value, ...(error ? { error } : {}) });
+  }
+  setDisplayName(entity: string, raw: string): void {
+    if (this.state.busy || !this.state.baseline.namingCapabilities?.[entity]?.display) return;
+    const value = raw.trim() || null, error = displayNameError(raw);
+    this.put(`displayName:${entity}`, !error && (value ?? "") === this.savedDisplayName(entity) ? undefined : { kind: "displayName", key: `displayName:${entity}`, entity, value, ...(error ? { error } : {}) });
+  }
+  restoreNameEntries(entity: string, entries: readonly NameEntry[]): void {
+    if (this.state.busy) return;
+    ++this.serial;
+    this.publish({ ...this.state, entries: [...this.state.entries.filter(entry => !((entry.kind === "rename" || entry.kind === "displayName") && entry.entity === entity)), ...entries], reviewOpen: false, review: undefined, error: undefined, commentResolutions: undefined });
+  }
   resourceForm(resource: ModelResource): ResourceForm { return this.state.entries.find((entry): entry is ResourceEntry => entry.kind === "resource" && entry.intent.resource === resource.id)?.form ?? initialResourceForm(resource); }
   setResource(resource: ModelResource, form: ResourceForm): void {
-    const requirements: Record<string, "required" | "optional"> = {};
-    for (const [target, policy] of Object.entries(form.requirements)) {
-      const rules = this.state.baseline.models[this.state.mode].targets.find((item) => item.ref === target)?.requirementRules?.filter((rule) => rule.require.includes(resource.id)) ?? [];
-      if (policy === "optional" ? rules.length > 0 : !rules.some((rule) => !rule.when)) requirements[target] = policy;
-    }
-    // A graph that does not hold the input keeps nothing for it, and a secret keeps no default.
-    const fromEnv = form.fromEnv === undefined ? resource.fromEnv ?? null : form.fromEnv;
-    const linked = fromEnv !== null;
-    const column = ({ present, required, default: fallback, value }: ResourceModeForm) => ({ present, required: present && linked && required,
-      default: present && linked && !form.secret && fallback.trim() ? fallback : null,
-      ...(!linked && !form.secret ? { value: present ? value ?? fallback : null } : {}) });
-    const intent: ResourceIntent = { resource: resource.id, kind: form.secret ? "secret" : "input", fromEnv, modes: { dev: column(form.modes.dev), prod: column(form.modes.prod) }, group: form.group.trim(), requirements };
-    const saved = inputModeIntents(resource);
-    const settings = (["dev", "prod"] as const).reduce((sum, mode) => sum + Number(intent.modes[mode].present !== saved[mode].present) + Number(intent.modes[mode].required !== saved[mode].required) + Number(intent.modes[mode].default !== saved[mode].default) + Number((intent.modes[mode].value ?? null) !== (saved[mode].value ?? null)), 0);
-    const count = settings + Number(fromEnv !== (resource.fromEnv ?? null)) + Number(intent.kind !== resource.kind) + Number(intent.group !== (resource.path.length > 1 ? resource.path[0] : "")) + Object.keys(requirements).length;
-    const missingValue = !linked && (["dev", "prod"] as const).some(mode => intent.modes[mode].present && !intent.modes[mode].value?.trim());
-    const invalidValue = !linked && resource.values && (["dev", "prod"] as const).some(mode => intent.modes[mode].present && !resource.values!.includes(intent.modes[mode].value ?? ""));
-    const error = !intent.modes.dev.present && !intent.modes.prod.present ? "Keep this input in at least one environment." : form.secret && !linked ? "Secrets require an environment-file link." : linked && !/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(fromEnv) ? "Use a SCREAMING_SNAKE_CASE environment variable name." : missingValue ? "Enter a value for each environment that holds this input." : invalidValue ? "Choose one of the allowed values for each environment." : intent.group && !/^[A-Za-z_$][\w$]*$/.test(intent.group) ? "Use a single valid group name." : undefined;
-    this.put(`resource:${resource.id}`, count ? { kind: "resource", key: `resource:${resource.id}`, form: { ...form, requirements }, intent, count, ...(error ? { error } : {}) } : undefined);
+    this.put(`resource:${resource.id}`, normalizeResourceEntry(this.state.baseline, this.state.mode, resource, form, this.state.entries.some(entry => entry.kind === "rename")));
   }
   environment(mode: Mode): EnvironmentEntry | undefined { return this.state.entries.find((entry): entry is EnvironmentEntry => entry.kind === "environment" && entry.mode === mode); }
   clientMappings(): ClientEnvironmentMappings {
@@ -349,8 +351,8 @@ export class InspectorDraft {
   }
   discard(): void {
     if (this.state.busy === "apply") return;
-    this.keepEditing(); ++this.serial;
-    this.publish({ baseline: this.state.latest, latest: this.state.latest, selected: this.state.selected, mode: this.state.mode, entries: [], reviewOpen: false, pendingNavigation: false });
+    this.keepEditing(); ++this.serial; ++this.resets;
+    this.publish({ baseline: this.state.latest, latest: this.state.latest, selected: this.state.selected, mode: this.state.mode, entries: [], reviewOpen: false, pendingNavigation: false, applied: this.state.applied });
   }
   discardAndContinue(): void {
     if (this.state.busy === "apply") return;
@@ -371,7 +373,7 @@ export class InspectorDraft {
   }
   async refreshAndReview(): Promise<void> {
     if (!this.dirty || this.state.busy || this.invalid) return;
-    if (this.state.entries.some(entry => entry.kind === "environment" || entry.kind === "resource")) {
+    if (this.state.entries.some(entry => entry.kind === "environment")) {
       this.publish({ ...this.state, error: "Preserve your values, then reload that inspector before reviewing changes to its source." });
       return;
     }
@@ -396,44 +398,25 @@ export class InspectorDraft {
     const state = this.state;
     this.publish({ ...state, reviewOpen: true, review: preservePreview ? state.review : undefined, busy: "review", error: undefined });
     try {
-      const resource = state.entries.find((entry): entry is ResourceEntry => entry.kind === "resource");
       const environment = state.entries.find((entry): entry is EnvironmentEntry => entry.kind === "environment");
-      if ((resource || environment) && state.entries.length !== 1) throw new Error("Review this configuration in its own inspector session.");
+      if (environment && state.entries.length !== 1) throw new Error("Review private environment values in their own inspector session.");
       const review: Review = environment
         ? { kind: "environment", plan: await this.transport.inputPlan(environment.mode, environment.edits.map(({ name, value, create }) => ({ name, value, ...(create ? { create } : {}) })), environment.hash, state.baseline.revision) }
-        : resource
-        ? { kind: "resource", plan: await this.transport.resourcePlan(resource.intent, state.baseline.revision, state.mode) }
-        : { kind: "batch", plan: await this.transport.planBatch(state.entries.map((entry): DraftEdit => {
-          if (entry.kind === "operation") return entry.operation;
-          if (entry.kind === "removeNetwork") return { kind: "removeNetwork", network: entry.network };
-          if (entry.kind === "database") return { kind: "database", database: entry.database, settings: entry.settings };
-          if (entry.kind === "databasePlacement") return entry.edit;
-          if (entry.kind === "placement") return { kind: "placement", ...entry.edit };
-          if (entry.kind === "network") return { kind: "network", network: entry.network, settings: entry.settings };
-          if (entry.kind === "create" && entry.request) return { kind: "create", request: entry.request };
-          if (entry.kind === "field") return { kind: "field", intent: entry.intent };
-          if (entry.kind === "description") return { kind: "description", entity: entry.entity, value: entry.value };
-          if (entry.kind === "tags") return { kind: "tags", entity: entry.entity, tags: entry.tags };
-          if (entry.kind === "route") return { kind: "route", route: entry.route, value: entry.value };
-          if (entry.kind === "triggers") return { kind: "triggers", event: entry.event, bindings: entry.bindings };
-          if (entry.kind === "native") return { kind: "nativeTrigger", edge: entry.edge };
-          if (entry.kind === "failure") return { kind: "onFailure", event: entry.event, value: entry.value };
-          if (entry.kind === "clientEnvironment") return { kind: "clientEnvironment", mappings: entry.mappings };
-          throw new Error("Review this configuration in its own inspector session.");
-        }), state.baseline.revision, state.commentResolutions ? { comments: state.commentResolutions } : undefined) };
+        : { kind: "batch", plan: await this.transport.planBatch(state.entries.map(toDraftEdit), state.baseline.revision, state.commentResolutions ? { comments: state.commentResolutions } : undefined) };
       if (serial === this.serial) this.publish({ ...this.state, busy: undefined, review });
     } catch (error) { if (serial === this.serial) this.publish({ ...this.state, busy: undefined, error: error instanceof Error ? error.message : String(error) }); }
   }
-  async apply(): Promise<ApplyResponse | ResourceApply | undefined> {
+  async apply(): Promise<ApplyResponse | undefined> {
     const review = this.state.review;
     if (!review?.plan.ok || this.state.busy || this.state.error || this.invalid || this.conflict) return;
     this.publish({ ...this.state, busy: "apply", error: undefined });
     try {
-      const result = await (review.kind === "batch" ? this.transport.applyBatch(review.plan.planId) : review.kind === "environment" ? this.transport.inputApply(review.plan.planId) : this.transport.resourceApply(review.plan.planId));
+      const result = await (review.kind === "batch" ? this.transport.applyBatch(review.plan.planId) : this.transport.inputApply(review.plan.planId));
       if (result.status !== "applied") throw new Error(result.message);
       const latest = await this.transport.snapshot().catch(() => this.state.latest);
-      ++this.serial;
-      this.publish({ baseline: latest, latest, selected: this.state.selected, mode: this.state.mode, entries: [], reviewOpen: false, pendingNavigation: false });
+      ++this.serial; ++this.resets;
+      const applied = { revision: result.revision, names: this.state.entries.some(entry => entry.kind === "rename" || entry.kind === "displayName"), entityRemap: result.entityRemap };
+      this.publish({ baseline: latest, latest, selected: this.state.selected && result.entityRemap ? remapEntity(this.state.selected, result.entityRemap) : this.state.selected, mode: this.state.mode, entries: [], reviewOpen: false, pendingNavigation: false, applied });
       return result;
     } catch (error) {
       this.publish({ ...this.state, busy: undefined, reviewOpen: false, review: undefined, error: error instanceof Error ? error.message : String(error) });

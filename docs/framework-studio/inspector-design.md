@@ -5,8 +5,22 @@ runs, and what can be changed before asking the developer to read implementation
 The shared tokens live in `framework-studio/src/styles/theme.css`; native controls
 live in `src/ui/`. Tailwind panel/dialog recipes live in `src/inspector-ui.ts` and
 section/disclosure/switch implementations in `src/views/InspectorUI.tsx`. Board, Isometric and Database use the same inspector.
+The [editing architecture](../aws-studio-knowledge/studio/editing.md#inspector-module-ownership)
+locates entity/trigger rendering and session ownership; the [source map](../aws-studio-knowledge/REPOSITORY-MAP.md#where-to-change-studio)
+locates implementation and tests for common changes.
 
 ## Conventions
+
+The title's compact Rename action opens an inline header editor without adding a new
+Inspector section. Supported inputs and groups show Code name first, followed by an
+optional Display name disclosure; other resources edit their display label and explain
+where code identity is owned. Keep the identity → Tags → Description order. Enter
+finishes editing, while Escape restores the naming state captured on opening and
+preserves other pending settings. Both actions leave source application to Review
+Changes → Apply All. Show the resulting caption separately from its actual code
+reference. A custom display name survives code renaming; clearing it restores automatic
+naming. Search matches both, including duplicate display labels. VPCs reuse their
+existing authored network name rather than gaining another label authority.
 
 Deployment information follows the resource's actual configuration authority:
 

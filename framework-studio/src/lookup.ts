@@ -1,3 +1,4 @@
+import { namesOf, type DisplayNames } from "./naming";
 import { drawnAs } from "./drawn-as";
 import { gatewaysOf, type ModelGateway } from "../shared/gateways";
 import type { ModeModel, ModelDefaults, ModelEdge, ModelResource, ModelRoute, ModelTarget, Relation, SourceLocation, TargetRole } from "../shared/model";
@@ -5,6 +6,7 @@ import type { LocalDatabase } from "../shared/database";
 
 /** Lookups over one mode's model, built once per snapshot. */
 export interface ModelIndex {
+  readonly displayNames: DisplayNames;
   readonly representatives: Readonly<Record<string, string>>;
   readonly gateways: ReadonlyMap<string, ModelGateway>;
   readonly defaults: ReadonlyMap<string, ModelDefaults>;
@@ -28,6 +30,7 @@ export function indexModel(model: ModeModel): ModelIndex {
     if (edge.to !== edge.from) add(edge.to, edge);
   }
   return {
+    displayNames: namesOf(model),
     representatives: drawnAs(model),
     gateways: new Map(gatewaysOf(model).map(gateway => [gateway.id, gateway])),
     defaults: new Map((model.defaults ?? []).map((group) => [group.ref, group])),
@@ -115,6 +118,7 @@ export function edgeCategory(edge: Pick<ModelEdge, "relation" | "permissionConte
 
 /** The name a person reads for any entity id. */
 export function titleOf(index: ModelIndex, id: string): string {
+  if (index.displayNames[id]) return index.displayNames[id]!;
   const gateway = index.gateways.get(id);
   if (gateway) return gateway.title;
   const defaults = index.defaults.get(id);

@@ -18,10 +18,8 @@ function fixture() {
   let resourceRequests = 0;
   let applies = 0;
   const transport: DraftTransport = {
-    planBatch: async (edits) => { requests.push(edits); return { planId: "review", ok: true, summaries: edits.map((edit) => edit.kind === "implementation" || edit.kind === "connection" || edit.kind === "removeWorkload" || edit.kind === "identityPolicy" ? `${edit.kind} ${edit.target}` : edit.kind === "tags" ? `tags ${edit.entity}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "databasePlacement" ? `database placement ${edit.database}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? edit.intent.field : edit.kind === "description" ? edit.entity : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.kind === "deploy" ? edit.target : edit.route), changes: [{ file: "settings.ts", diff: { unified: "combined diff", lines: [] } }], preflight: { dev: verdict("dev"), prod: verdict("prod") }, impact: [] }; },
-    resourcePlan: async (intent) => { resourceRequests++; return { planId: "resource-review", ok: true, resource: intent.resource, nextResource: intent.resource, changes: [], diagnostics: [] }; },
+    planBatch: async (edits) => { requests.push(edits); resourceRequests += edits.filter(edit => edit.kind === "resourceConfig").length; return { planId: "review", ok: true, summaries: edits.map((edit) => edit.kind === "implementation" || edit.kind === "connection" || edit.kind === "removeWorkload" || edit.kind === "identityPolicy" ? `${edit.kind} ${edit.target}` : edit.kind === "tags" ? `tags ${edit.entity}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "databasePlacement" ? `database placement ${edit.database}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? edit.intent.field : edit.kind === "description" || edit.kind === "rename" || edit.kind === "displayName" ? edit.entity : edit.kind === "resourceConfig" ? edit.intent.resource : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.kind === "deploy" ? edit.target : edit.route), changes: [{ file: "settings.ts", diff: { unified: "combined diff", lines: [] } }], preflight: { dev: verdict("dev"), prod: verdict("prod") }, impact: [] }; },
     applyBatch: async () => { applies++; return { status: "applied", revision: "saved", message: "Applied all changes." }; },
-    resourceApply: async () => { applies++; return { status: "applied", resource: "resource:updated", revision: "saved", message: "Applied resource changes." }; },
     inputPlan: async (_mode, edits) => ({ planId: "input-review", ok: true, summaries: edits.map((edit) => edit.name), changes: [] }),
     inputApply: async () => { applies++; return { status: "applied", revision: "saved", message: "Saved inputs." }; },
     snapshot: async () => ({ ...baseline, revision: "saved" }),
@@ -214,7 +212,7 @@ test("resource fields use the same review and navigation session with meaningful
   draft.setResource(resource, { ...form, group: "draftGroup", secret: true });
   assert.ok(draft.count >= 2); assert.equal(resourceRequests(), 0);
   let left = false; draft.requestNavigation(() => { left = true; }); draft.keepEditing(); assert.equal(left, false);
-  await draft.review(); assert.equal(resourceRequests(), 1); assert.equal(draft.getSnapshot().review?.kind, "resource");
+  await draft.review(); assert.equal(resourceRequests(), 1); assert.equal(draft.getSnapshot().review?.kind, "batch");
   draft.backToEditing(); assert.equal(draft.resourceForm(resource).group, "draftGroup");
   draft.setResource(resource, form); assert.equal(draft.dirty, false);
 });
@@ -347,4 +345,60 @@ test("comment choices cannot bypass source conflicts or compiler-directive resol
   await draft.apply();
   assert.equal(requests.length, 1);
   assert.equal(applies(), 0);
+});
+
+test("code and display naming compose with input configuration, tags and description in one batch", async () => {
+  const { draft, requests } = fixture();
+  const entity = "resource:enableWebSocketApi";
+  const resource = baseline.models.dev.resources.find(item => item.id === entity)!;
+  draft.sync(baseline, entity, "dev");
+  draft.setCodeName(entity, "allowWebSockets");
+  draft.setDisplayName(entity, "WebSocket feature");
+  draft.setDescription(entity, "Controls WebSocket deployment.");
+  draft.changeTags(entity, { feature: "websockets" });
+  const form = initialResourceForm(resource);
+  draft.setResource(resource, { ...form, modes: { ...form.modes, dev: { ...form.modes.dev, value: "false" } } });
+  assert.equal(draft.invalid, false);
+  assert.equal(draft.codeName(entity), "allowWebSockets");
+  assert.equal(draft.getSnapshot().baseline.models.dev.resources.find(item => item.id === entity)?.path.at(-1), "enableWebSocketApi");
+  await draft.review();
+  assert.deepEqual(requests[0].map(edit => edit.kind), ["rename", "displayName", "description", "tags", "resourceConfig"]);
+});
+
+test("canceling one rename restores its opening draft while preserving other staged settings", () => {
+  const { draft } = fixture();
+  const entity = "resource:enableWebSocketApi";
+  draft.setCodeName(entity, "allowWebSockets");
+  const checkpoint = [...draft.nameEntries(entity)];
+  draft.setCodeName(entity, "anotherName");
+  draft.setDisplayName(entity, "Another label");
+  draft.setDescription(entity, "Keep this edit.");
+  draft.restoreNameEntries(entity, checkpoint);
+  assert.equal(draft.codeName(entity), "allowWebSockets");
+  assert.equal(draft.displayName(entity), "");
+  assert.equal(draft.description(entity), "Keep this edit.");
+  assert.equal(draft.count, 2);
+});
+
+test("name validation catches collisions and multiple renames while display-only owners stay protected", async () => {
+  const { draft, requests } = fixture();
+  const entity = "resource:enableWebSocketApi";
+  draft.setCodeName(entity, "bad name");
+  assert.ok(draft.nameEntries(entity).some(entry => entry.error));
+  await draft.review(); assert.equal(requests.length, 0);
+  for (const invalid of ["enabled_flag", "$enabled", "_enabled", "1enabled"]) {
+    draft.setCodeName(entity, invalid);
+    assert.match(draft.nameEntries(entity)[0]!.error!, /only letters and digits/, invalid);
+  }
+  draft.setCodeName(entity, "class");
+  assert.match(draft.nameEntries(entity)[0]!.error!, /reserved TypeScript identifier/);
+  draft.setCodeName(entity, "allowWebSockets");
+  const other = Object.entries(baseline.namingCapabilities!).find(([id, capability]) => id !== entity && capability.code)!;
+  draft.setCodeName(other[0], "otherName");
+  assert.match(draft.nameEntries(other[0])[0]!.error!, /one code rename/);
+  draft.discard();
+  draft.setCodeName("lambda:graphql-api", "api");
+  assert.equal(draft.dirty, false);
+  draft.setDisplayName("lambda:graphql-api", "x".repeat(121));
+  assert.match(draft.nameEntries("lambda:graphql-api")[0]!.error!, /120/);
 });

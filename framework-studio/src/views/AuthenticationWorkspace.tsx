@@ -1,3 +1,7 @@
+import { RetryNotice } from "./RetryNotice";
+import { sourceEditBlocked } from "../editing-state";
+import { identitySourceQuery } from "../identity-queries";
+import { deploymentOverviewQuery } from "../deploy/queries";
 import { useQuery } from "@tanstack/react-query";
 import { Link,useLocation } from "@tanstack/react-router";
 import { useEffect,useRef,useState } from "react";
@@ -67,8 +71,8 @@ export function AuthenticationWorkspace() {
   const { mode, snapshot, model, draft, draftState, select, live } = useStudio();
   const pathname = useLocation({ select: location => location.pathname });
   const section: Section = sections.find(entry => pathname.endsWith(`/${entry.id}`))?.id ?? "user-pools";
-  const source = useQuery({ queryKey: ["identity-source", mode, snapshot.revision], queryFn: ({ signal }) => identityApi.source(mode, signal) });
-  const overview = useQuery({ queryKey: ["deploy", "overview"], queryFn: () => deployApi.overview() });
+  const source = useQuery(identitySourceQuery(mode, snapshot.revision));
+  const overview = useQuery(deploymentOverviewQuery());
   const [selections, setSelections] = useState<Partial<Record<Mode, IdentitySelection>>>({});
   const candidate = selections[mode];
   const selection = candidate && (!candidate.deployment || overview.data?.targets.some(target => target.name === candidate.deployment && target.mode === mode)) ? candidate : authenticationSelection(mode, overview.data);
@@ -119,7 +123,7 @@ export function AuthenticationWorkspace() {
     }));
     if (!controller.signal.aborted && currentKey.current === key) { setBusy(false); setClock(Date.now()); }
   };
-  const canAuthor = !draftState.busy && !draft.conflict && !model.stale && !live.evaluating;
+  const canAuthor = !sourceEditBlocked({ draftState, draft, model, live });
   const createPool = () => draft.requestNavigation(() => { draft.beginCreation("stack"); const entry = draft.creation()!; draft.setCreation("stack", { ...entry.form, template: "identity-pool", scope: mode }); });
   const declaredPools = model.resources.filter(resource => resource.kind === "member" && /(?:Cfn)?IdentityPool$/.test(resource.typeText ?? ""));
   const declaredUserPool = model.resources.find(resource => resource.kind === "member" && /(?:I)?UserPool$/.test(resource.typeText ?? ""));
@@ -135,9 +139,9 @@ export function AuthenticationWorkspace() {
       <div className={"flex flex-wrap items-baseline gap-x-5 gap-y-2 [&>details[open]]:basis-full"}><p ><strong>Source inputs</strong> <code>{sourceInputsFile}</code>{targetInputsMismatch ? <> · Deployment inputs <code>{selectedTarget?.inputs}</code></> : null}</p><details className={"text-caption [&>summary]:w-fit [&>summary]:cursor-pointer [&>summary]:py-0.5 [&_p]:mt-2 [&_p]:max-w-250"}><summary>Evidence and action boundaries</summary><p>Inspect reads verified deployment-owned AWS resources. Source actions propose TypeScript for review; Apply source never deploys infrastructure. User/group operations require their own exact live-operation review. IAM simulation evaluates saved source policy and does not establish issued credentials, deployed IAM or application RBAC.</p><p>Profile/deployment defaults reuse Deploy preferences. Evidence is isolated by environment, profile, deployment and region. Changing context never transfers an AWS observation or an operation approval.</p></details></div>
       {targetInputsMismatch ? <p className={"border-l-2 border-local bg-wash px-[10px] py-2"} role="status">This deployment uses different inputs. Google input-presence evidence and retention settings here refer to <code>{sourceInputsFile}</code>; the deployment’s input presence and freshness are unverified. Review <code>{selectedTarget?.inputs}</code> in Deploy. Provider declarations still follow the selected environment.</p> : null}
       {sourceStale || timeStale ? <p className={"border-l-2 border-local bg-wash px-[10px] py-2"} role="status">{sourceStale ? "Source changed since inspection." : "Inspection is more than five minutes old."} Previous metadata is retained; inspect again before relying on it.</p> : null}
-      {overview.error ? <div className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2 [&>span]:min-w-0 [&>span]:flex-[1_1_280px] [&>button]:max-w-full [&>button]:flex-none [&>p]:m-0 [&>p]:basis-full")} role="alert"><span>Deployment context could not load: {overview.error.message}</span><button className={buttonClasses({ variant: "quiet" })} disabled={overview.isFetching} onClick={() => void overview.refetch()}>Retry context</button></div> : null}
+      {overview.error ? <RetryNotice message={<>Deployment context could not load: {overview.error.message}</>} retryLabel="Retry context" retrying={overview.isFetching} onRetry={() => void overview.refetch()} /> : null}
       {!overview.isPending && !selectedTarget ? <p className={"border-l-2 border-local bg-wash px-[10px] py-2"}>No {mode === "dev" ? "development" : "production"} deployment is declared. Source proposals are still available; configure a target in Deploy before AWS inspection.</p> : null}
-      {source.error ? <div className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2 [&>span]:min-w-0 [&>span]:flex-[1_1_280px] [&>button]:max-w-full [&>button]:flex-none [&>p]:m-0 [&>p]:basis-full")} role="alert"><span>{source.error.message}</span><button className={buttonClasses({ variant: "quiet" })} disabled={source.isFetching} onClick={() => void source.refetch()}>Retry source</button></div> : null}
+      {source.error ? <RetryNotice message={source.error.message} retryLabel="Retry source" retrying={source.isFetching} onRetry={() => void source.refetch()} /> : null}
       {source.data?.problems.map(problem => <p className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2 [&>span]:min-w-0 [&>span]:flex-[1_1_280px] [&>button]:max-w-full [&>button]:flex-none [&>p]:m-0 [&>p]:basis-full")} role="alert" key={problem}>{problem}</p>)}
       {Object.entries(observation?.errors ?? {}).map(([kind, error]) => error ? <p className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2 [&>span]:min-w-0 [&>span]:flex-[1_1_280px] [&>button]:max-w-full [&>button]:flex-none [&>p]:m-0 [&>p]:basis-full")} role="alert" key={kind}>{kind === "cognito" ? "User-pool" : "Identity-pool"} inspection failed: {error} {observation?.[kind as "cognito" | "pools"] ? "Previous metadata remains visible." : "No metadata verified."}</p> : null)}
       {cog?.warnings.length ? <details className={"text-caption [&>summary]:w-fit [&>summary]:cursor-pointer [&>summary]:py-0.5 [&_p]:mt-2 [&_p]:max-w-250"}><summary>User-pool inspection notes ({cog.warnings.length})</summary>{cog.warnings.map(warning => <p key={warning}>{warning}</p>)}</details> : null}

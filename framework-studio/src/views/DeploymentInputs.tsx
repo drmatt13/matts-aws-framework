@@ -1,3 +1,4 @@
+import { EntityName } from "./EntityName";
 import { Select, TextInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
 import { cx } from "../ui/classes";
@@ -135,7 +136,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
     </li>;
   };
   return <>
-    <header><InspectorKind environments={{ availability: { dev: file.mode === "dev", prod: file.mode === "prod" }, descriptions: { [file.mode]: `inputs for ${MODE_NAMES[file.mode]}` }, unavailableDescription: "not this file's environment" }}>Environment file</InspectorKind><h2><EntityIcon icon="envFile" />{file.path}</h2><EnvironmentFileStatus resource={resource} /></header>
+    <header><InspectorKind environments={{ availability: { dev: file.mode === "dev", prod: file.mode === "prod" }, descriptions: { [file.mode]: `inputs for ${MODE_NAMES[file.mode]}` }, unavailableDescription: "not this file's environment" }}>Environment file</InspectorKind><EntityName entity={resource.id} fallback={file.path} icon={<EntityIcon icon="envFile" />} /><EnvironmentFileStatus resource={resource} /></header>
     <Description entity={resource.id} />
     {descriptionPending ? <p className={"text-caption text-graphite"}>Apply or discard the description before editing environment variables.</p> : null}
     <InspectorDisclosure title="File and template" defaultOpen={!file.exists}><p>{file.exists ? "Local inputs file exists." : "This inputs file has not been generated."} {file.mode === mode ? "Used for synthesis in the selected graph." : "Switch the graph to use this environment for synthesis."}</p>

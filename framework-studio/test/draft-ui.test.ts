@@ -26,6 +26,7 @@ let dialogs: typeof import("../src/views/DraftControls");
 let review: typeof import("../src/views/EditDialog");
 let addMenu: typeof import("../src/views/AddMenu");
 let apiModule: typeof import("../src/api");
+let snapshotModule: typeof import("../src/snapshot");
 let planCalls: (readonly DraftEdit[])[];
 let resourceCalls: unknown[];
 let applyCalls: number;
@@ -51,7 +52,7 @@ before(async () => {
   const require = createRequire(import.meta.url);
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
   ui.configure({ getElementError: (message) => new Error(message ?? "Element not found") });
-  studio = await import("../src/studio"); inspector = await import("../src/views/Inspector"); dialogs = await import("../src/views/DraftControls"); review = await import("../src/views/EditDialog"); apiModule = await import("../src/api");
+  studio = await import("../src/studio"); inspector = await import("../src/views/Inspector"); dialogs = await import("../src/views/DraftControls"); review = await import("../src/views/EditDialog"); apiModule = await import("../src/api"); snapshotModule = await import("../src/snapshot");
   addMenu = await import("../src/views/AddMenu");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../..")); baseline = (await builder.refresh()).snapshot;
 });
@@ -61,9 +62,10 @@ beforeEach(() => {
   persisted = baseline; planCalls = []; resourceCalls = []; applyCalls = 0; failApply = false; failReview = false; reviewGate = undefined;
   mock.method(apiModule.api, "planBatch", async (edits: readonly DraftEdit[]) => {
     planCalls.push(edits);
+    resourceCalls.push(...edits.flatMap(edit => edit.kind === "resourceConfig" ? [edit.intent] : []));
     await reviewGate;
     if (failReview) throw new Error("Could not validate changes. Try reviewing again.");
-    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "implementation" || edit.kind === "connection" || edit.kind === "removeWorkload" || edit.kind === "identityPolicy" || edit.kind === "deploy" ? `${edit.kind} ${edit.target}` : edit.kind === "tags" ? `tags ${edit.entity}` : edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "databasePlacement" ? `database placement ${edit.database}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.value), changes: [{ file: "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
+    return { planId: "batch", ok: true, summaries: edits.map((edit) => edit.kind === "implementation" || edit.kind === "connection" || edit.kind === "removeWorkload" || edit.kind === "identityPolicy" || edit.kind === "deploy" ? `${edit.kind} ${edit.target}` : edit.kind === "tags" ? `tags ${edit.entity}` : edit.kind === "placement" ? `placement ${edit.target}` : edit.kind === "network" ? `network ${edit.network}` : edit.kind === "removeNetwork" ? `remove ${edit.network}` : edit.kind === "databasePlacement" ? `database placement ${edit.database}` : edit.kind === "database" ? `database ${edit.database}` : edit.kind === "create" ? "create resource" : edit.kind === "clientEnvironment" ? "client mappings" : edit.kind === "field" ? `${edit.intent.field}: ${String(edit.intent.value ?? "inherit")}` : edit.kind === "triggers" ? edit.event : edit.kind === "nativeTrigger" ? edit.edge : edit.kind === "onFailure" ? edit.event : edit.kind === "rename" ? edit.name : edit.kind === "resourceConfig" ? edit.intent.resource : edit.value), changes: [{ file: edits.some(edit => edit.kind === "resourceConfig") ? "framework-config/resources.ts" : "framework-config/settings.ts", diff: { unified: "combined", lines: [{ kind: "add", text: "// complete proposed draft", newLine: 1 }] } }], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] };
   });
   mock.method(apiModule.api, "applyBatch", async () => {
     applyCalls++; if (failApply) throw new Error("Source changed. Your draft is preserved.");
@@ -79,7 +81,6 @@ beforeEach(() => {
   });
   mock.method(apiModule.api, "snapshot", async () => response());
   mock.method(apiModule.api, "resourceDetails", async () => ({ configured: false }));
-  mock.method(apiModule.api, "resourcePlan", async (intent: unknown) => { resourceCalls.push(intent); await reviewGate; return { planId: "resource", resource: "resource:input", nextResource: "resource:input", ok: true, diagnostics: [], changes: [{ file: "framework-config/resources.ts", diff: { unified: "resource changes", lines: [] } }] }; });
 });
 function response(): SnapshotResponse { return { snapshot: persisted, evaluating: false, commands: {}, busy: null }; }
 
@@ -101,7 +102,7 @@ async function mount(selected = target, mode: "dev" | "prod" = "dev") {
   function Root() {
     const search = router.useSearch({ strict: false }) as { select?: string };
     const navigate = router.useNavigate();
-    const current = apiModule.useSnapshot().data!;
+    const current = snapshotModule.useSnapshot().data!;
     return h(studio.StudioProvider, { response: current, selected: search.select, select: (id: string | undefined) => void navigate({ to: ".", search: { select: id } } as never), children: h(Workbench) });
   }
   const root = router.createRootRoute({ component: Root, validateSearch: (search) => ({ select: typeof search.select === "string" ? search.select : undefined }) });
@@ -1263,7 +1264,7 @@ test("resource controls and island service groups participate in the same shared
   assert.match(count(), /2 unsaved changes/);
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Default service type" }), { target: { value: "defaults:lambda" } });
   assert.equal(ui.screen.getByRole("switch", { name: "Minify" }).getAttribute("aria-checked"), "false");
-  await ui.act(async () => { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); }); await waitDialog("Review 2 changes"); assert.equal(planCalls[0].length, 2);
+  await ui.act(async () => { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); }); await waitDialog("Review 2 changes"); assert.equal(planCalls.at(-1)!.length, 2);
 });
 
 
@@ -1969,7 +1970,7 @@ test("every resource family uses one framed ownership status directly below its 
         const badge = ui.within(header as HTMLElement).getByText("Framework managed");
         assert.equal(badge.className, referenceClasses);
         assert.ok(badge.querySelector("svg"));
-        assert.equal(header.querySelector("h2")!.nextElementSibling, badge, `${mode}: ${id} ownership follows its title`);
+        assert.equal((header.querySelector("[data-slot=entity-name]") ?? header.querySelector("h2"))!.nextElementSibling, badge, `${mode}: ${id} ownership follows its title`);
       }
       ui.cleanup();
     }
@@ -2034,4 +2035,112 @@ test("conditional Deploy offers only inputs present in both graphs from either s
   }
   assert.deepEqual(choices[0], choices[1]);
   assert.equal(planCalls.length + applyCalls, 0);
+});
+
+test("header rename stages beside input settings and Escape restores only its opening names", async () => {
+  await mount("resource:enableWebSocketApi");
+  ui.fireEvent.change(descriptionField(), { target: { value: "Keep these notes." } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Rename enableWebSocketApi" }));
+  const code = ui.screen.getByRole("textbox", { name: "Code name" });
+  assert.equal(document.activeElement, code);
+  ui.fireEvent.change(code, { target: { value: "allowWebSockets" } });
+  assert.ok(ui.screen.getByRole("heading", { name: "enableWebSocketApi", level: 2 }));
+  assert.equal(ui.screen.getByRole("combobox", { name: "Value in development" }).matches(":disabled"), false);
+  assert.equal(planCalls.length, 0);
+  ui.fireEvent.keyDown(code, { key: "Escape" });
+  assert.equal(ui.screen.queryByRole("textbox", { name: "Code name" }), null);
+  assert.match(count(), /1 unsaved change/);
+  assert.equal(descriptionField().value, "Keep these notes.");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Rename enableWebSocketApi" }));
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Code name" }), { target: { value: "allowWebSockets" } });
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Value in development" }), { target: { value: "false" } });
+  ui.fireEvent.submit(ui.screen.getByRole("form", { name: "Rename enableWebSocketApi" }));
+  assert.equal(ui.screen.queryByRole("textbox", { name: "Code name" }), null);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await ui.waitFor(() => assert.equal(planCalls.length, 1));
+  assert.deepEqual(planCalls[0].map(edit => edit.kind), ["description", "rename", "resourceConfig"]);
+});
+
+test("managed resource names edit display text and explain the code owner beside canonical references", async () => {
+  await mount("resource:cognito");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Rename CognitoStack" }));
+  assert.equal(ui.screen.queryByRole("textbox", { name: "Code name" }), null);
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Display name" }), { target: { value: "Customer identity" } });
+  assert.ok(ui.screen.getByRole("link", { name: "Open code declaration in VS Code" }).getAttribute("href")!.includes("resources.ts"));
+  assert.ok(document.querySelector('[data-slot="entity-name"]')!.textContent!.includes(baseline.namingCapabilities!["resource:cognito"]!.reason!));
+  assert.ok(ui.screen.getByRole("heading", { name: "CognitoStack", level: 2 }));
+  assert.ok(ui.screen.getByText("resources.cognito"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Done" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await ui.waitFor(() => assert.equal(planCalls.length, 1));
+  assert.deepEqual(planCalls[0], [{ kind: "displayName", entity: "resource:cognito", value: "Customer identity" }]);
+});
+
+test("rename replaces the current URL, restores earlier visits and allows a fresh URL to reuse the old id", async () => {
+  const from = "resource:enableWebSocketApi", to = "resource:allowWebSockets";
+  const source = baseline.models.dev.resources.find(resource => resource.id === from)!;
+  mock.method(apiModule.api, "applyBatch", async () => {
+    const renamed = (mode: "dev" | "prod") => ({ ...baseline.models[mode], resources: baseline.models[mode].resources.map(resource => resource.id === from ? { ...resource, id: to, path: ["allowWebSockets"] } : resource) });
+    persisted = { ...baseline, revision: "rename-saved", models: { dev: renamed("dev"), prod: renamed("prod") }, namingCapabilities: { ...baseline.namingCapabilities, [to]: { code: true, codeName: "allowWebSockets", display: true } } };
+    return { status: "applied", message: "Renamed source.", revision: persisted.revision, select: to, entityRemap: { [from]: to } };
+  });
+  const app = await mount(from);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Open node B" }));
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Current selection").textContent, "lambda:sign-in"));
+  await ui.act(async () => { await app.navigate({ to: ".", search: { select: from } } as never); });
+  ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Rename enableWebSocketApi" }));
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Code name" }), { target: { value: "allowWebSockets" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Done" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await ui.screen.findByRole("button", { name: "Apply All" });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Apply All" }));
+  await ui.waitFor(() => assert.equal(app.state.location.search.select, to));
+  assert.equal(app.history.location.state.__TSR_index, 2);
+  await ui.act(async () => app.history.back());
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Current selection").textContent, "lambda:sign-in"));
+  await ui.act(async () => app.history.back());
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Current selection").textContent, to));
+  assert.equal(app.state.location.search.select, to);
+  persisted = { ...persisted, revision: "reused", models: { dev: { ...persisted.models.dev, resources: [...persisted.models.dev.resources, source] }, prod: { ...persisted.models.prod, resources: [...persisted.models.prod.resources, source] } } };
+  await ui.act(async () => { await app.navigate({ to: ".", search: { select: from } } as never); });
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Current selection").textContent, from));
+});
+
+test("clearing an existing display alias keeps its disclosure open and Discard closes the naming editor", async () => {
+  const entity = "resource:enableWebSocketApi";
+  persisted = { ...baseline, displayNames: { values: { [entity]: "WebSocket feature" } } };
+  await mount(entity);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Rename enableWebSocketApi" }));
+  const label = ui.screen.getByRole("textbox", { name: "Display name" });
+  assert.equal(label.closest("details")!.open, true);
+  ui.fireEvent.change(label, { target: { value: "" } });
+  assert.equal(label.closest("details")!.open, true);
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard" }));
+  await ui.waitFor(() => assert.equal(ui.screen.queryByRole("textbox", { name: "Code name" }), null));
+  assert.ok(ui.screen.getByRole("heading", { level: 2, name: "WebSocket feature" }));
+  assert.equal(planCalls.length, 0);
+});
+
+test("blocked rename retains its diff and offers exact editor links and a draft-preserving source retry", async () => {
+  const plan = apiModule.api.planBatch;
+  let blocked = true;
+  mock.method(apiModule.api, "refreshSource", async () => { persisted = { ...baseline, revision: "manual-fix" }; });
+  mock.method(apiModule.api, "planBatch", async (...args: Parameters<typeof plan>) => ({ ...await plan(...args), ok: !blocked,
+    rename: { from: "enableWebSocketApi", to: "allowWebSockets", referenceCount: 5, fileCount: 3 },
+    renameIssues: blocked ? [{ message: "Make the computed access explicit as resources.enableWebSocketApi.", source: { file: "framework-config/websockets.ts", line: 19, column: 7, start: 0, end: 10 } }] : [],
+  }));
+  await mount("resource:enableWebSocketApi");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Rename enableWebSocketApi" }));
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Code name" }), { target: { value: "allowWebSockets" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Done" }));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  const issues = await ui.screen.findByRole("region", { name: "Resolve rename in source" });
+  assert.equal((ui.screen.getByRole("button", { name: "Apply All" }) as HTMLButtonElement).disabled, true);
+  assert.ok(ui.screen.getByLabelText("Changes to framework-config/settings.ts"));
+  assert.match(ui.within(issues).getByRole("link").getAttribute("href")!, /websockets\.ts:19:7$/);
+  assert.match(issues.textContent!, /current saved code name/);
+  blocked = false;
+  ui.fireEvent.click(ui.within(issues).getByRole("button", { name: "Refresh source and retry" }));
+  await ui.waitFor(() => assert.equal((ui.screen.getByRole("button", { name: "Apply All" }) as HTMLButtonElement).disabled, false));
+  assert.deepEqual(planCalls[1], [{ kind: "rename", entity: "resource:enableWebSocketApi", name: "allowWebSockets" }]);
 });

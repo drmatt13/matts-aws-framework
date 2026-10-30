@@ -102,7 +102,7 @@ for (const status of ["applied", "reverted"] as const) test(`${status} federatio
 async function workspaceApi(policy = false, simulate?: () => Promise<Response>) {
   const policies: { sources: IdentityPolicySource[] } = { sources: policy ? [{ target: "resource:qaAccess", file: "cdk-app/lib/app/qa-access-stack.ts", statements: [{ Effect: "Allow", Action: ["s3:GetObject"], Resource: ["arn:aws:s3:::qa-fixture/tenant/*"] }], allowUnauthenticated: false }] : [] };
   const workspace = await import("../src/views/AuthenticationWorkspace");
-  const identity = await import("../src/views/IdentityWorkspace");
+  const identity = await import("../src/identity-api");
   const deploy = await import("../src/deploy/api");
   const management = await import("../src/views/CognitoManagement");
   mock.method(identity.identityApi, "source", async (mode: "dev" | "prod"): Promise<IdentitySource> => ({ mode, file: `cdk-app/.env.${mode}`, hash: `hash-${mode}`, exists: true, inputs: {}, google: { clientIdPresent: false, authoredSecretPresent: false }, providers: ["Google", "Oidc", "Saml"], declaredProviders: [], identityPools: "not-declared", problems: [] }));

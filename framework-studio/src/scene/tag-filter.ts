@@ -1,5 +1,5 @@
 import type { ModeModel } from "../../shared/model";
-import type { Scene } from "./build";
+import type { Scene } from "./types";
 import { tagSceneMatches } from "./focus";
 
 /** A presentation overlay: retain the exact topology, routing, lanes and presence. */

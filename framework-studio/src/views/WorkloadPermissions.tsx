@@ -1,3 +1,5 @@
+import { sourceEditBlocked } from "../editing-state";
+import { displayName } from "../naming";
 import { InspectorSummary } from "./InspectorUI";
 import { Select, TextInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
@@ -39,7 +41,7 @@ function AccessEditor({ target, destination, onDone }: {
   const action = option?.actions.find(item => item.id === actionId) ?? option?.actions.find(item => !item.reason) ?? option?.actions[0];
   const [scope, setScope] = useState("uploads/*");
   const [variable, setVariable] = useState(() => suggestedVariable(destination ?? ""));
-  const disabled = !!draftState.busy || draft.conflict || model.stale || live.evaluating;
+  const disabled = sourceEditBlocked({ draftState, draft, model, live });
   useEffect(() => {
     if (option) form.current?.querySelector<HTMLElement>("select:not(:disabled), input:not(:disabled), button[data-stage]")?.focus();
   }, [option?.id]);
@@ -101,7 +103,7 @@ function AccessRow({ entry, disabled }: { readonly entry: DisplayedAccess; reado
 
 function PendingAccess({ target, destination }: { readonly target?: string; readonly destination?: string }) {
   const { draft, draftState, snapshot, model, live } = useStudio();
-  const disabled = !!draftState.busy || draft.conflict || model.stale || live.evaluating;
+  const disabled = sourceEditBlocked({ draftState, draft, model, live });
   const entries = draftState.entries.filter(entry => entry.kind === "operation" && entry.operation.kind === "connection" && entry.operation.enabled && (!target || entry.operation.target === target) && (!destination || entry.operation.destination === destination));
   return <>{entries.map(entry => {
     if (entry.kind !== "operation" || entry.operation.kind !== "connection") return null;
@@ -122,7 +124,7 @@ export function WorkloadPermissions({ target }: { readonly target: ModelTarget }
   const [addingCaller, setAddingCaller] = useState(false);
   const add = useRef<HTMLButtonElement>(null);
   const caller = useRef<HTMLButtonElement>(null);
-  const disabled = !!draftState.busy || draft.conflict || model.stale || live.evaluating;
+  const disabled = sourceEditBlocked({ draftState, draft, model, live });
   const { owned, incoming } = useMemo(() => {
     const modes = [...Object.values(snapshot.models).filter(item => item !== model), model];
     const access = modes.flatMap(item => {
@@ -169,8 +171,8 @@ function ConsumerAccessEditor({ destination, onDone }: { readonly destination: s
     const option = configuredAccessOptions(target, snapshot, destination).find(item => item.id === destination);
     return option ? [{ target, option }] : [];
   }), [snapshot, destination]);
-  const disabled = !!draftState.busy || draft.conflict || model.stale || live.evaluating;
-  return consumer ? <><p className={"text-caption text-graphite"}>Grant to <strong>{consumer.title}</strong></p><AccessEditor key={consumer.ref} target={consumer} destination={destination} onDone={onDone} /></> : <ConfiguredResourcePicker label="Workloads" options={candidates.map(({ target, option }) => ({ id: target.ref, title: target.title, subtitle: `${ICONS[targetIcon(target)][1]} · ${target.role}`, icon: targetIcon(target), reason: option.reason, searchTerms: target.ref }))} onChoose={id => setConsumer(candidates.find(item => item.target.ref === id)?.target)} onCancel={onDone} disabled={disabled} />;
+  const disabled = sourceEditBlocked({ draftState, draft, model, live });
+  return consumer ? <><p className={"text-caption text-graphite"}>Grant to <strong>{displayName(model, consumer.ref, consumer.title)}</strong></p><AccessEditor key={consumer.ref} target={consumer} destination={destination} onDone={onDone} /></> : <ConfiguredResourcePicker label="Workloads" options={candidates.map(({ target, option }) => ({ id: target.ref, title: displayName(model, target.ref, target.title), subtitle: `${ICONS[targetIcon(target)][1]} · ${target.role}`, icon: targetIcon(target), reason: option.reason, searchTerms: target.ref }))} onChoose={id => setConsumer(candidates.find(item => item.target.ref === id)?.target)} onCancel={onDone} disabled={disabled} />;
 }
 
 /** A resource can grant access without making the developer hunt for its consumer.
@@ -192,11 +194,11 @@ export function ResourceAccess({ resource }: { readonly resource: ModelResource 
     return { supported, consumers };
   }, [snapshot, resource.id]);
   if (resource.kind === "input" || resource.kind === "secret" || !supported) return null;
-  const disabled = !!draftState.busy || draft.conflict || model.stale || live.evaluating;
+  const disabled = sourceEditBlocked({ draftState, draft, model, live });
   const done = () => { setChoosing(false); requestAnimationFrame(() => add.current?.focus()); };
   return <InspectorSection title="Workload access" actions={!choosing ? <button ref={add} className={buttonClasses({ variant: "quiet" })} disabled={disabled} onClick={() => setChoosing(true)}>Grant access</button> : undefined}>
     {choosing ? <ConsumerAccessEditor destination={resource.id} onDone={done} /> : null}
-    {consumers.length ? <ul className={cx(inspectorRelationListClasses, "[&>li]:items-baseline [&>li>span]:text-right")} data-slot="resource-consumers">{consumers.map(target => <li key={target.ref}><button className={buttonClasses({ variant: "link" })} onClick={() => select(target.ref)}>{target.title}</button><span className={"text-caption text-graphite"}>{ROLE_LABEL[target.role]}</span></li>)}</ul> : !choosing ? <p className={"text-caption text-graphite"}>No workloads have access yet.</p> : null}
+    {consumers.length ? <ul className={cx(inspectorRelationListClasses, "[&>li]:items-baseline [&>li>span]:text-right")} data-slot="resource-consumers">{consumers.map(target => <li key={target.ref}><button className={buttonClasses({ variant: "link" })} onClick={() => select(target.ref)}>{displayName(model, target.ref, target.title)}</button><span className={"text-caption text-graphite"}>{ROLE_LABEL[target.role]}</span></li>)}</ul> : !choosing ? <p className={"text-caption text-graphite"}>No workloads have access yet.</p> : null}
     <PendingAccess destination={resource.id} />
   </InspectorSection>;
 }

@@ -575,15 +575,19 @@ their own inspection, review and approval paths.
 
 [src/](../../framework-studio/src)
 
-- **Routing.** [main.tsx](../../framework-studio/src/main.tsx) declares the routes `/` (the isometric
-  landscape; `/isometric` redirects to it), `/database`, `/deploy`, `/cognito`, `/domains` and `/websockets`. The selection is the `?select=<id>` search parameter, shared
-  by every view.
+- **Routing.** [main.tsx](../../framework-studio/src/main.tsx) declares the seven
+  workspaces, including the GraphQL placeholder, and compatible redirects listed in
+  the [interface guide](../aws-studio-knowledge/studio/interface.md). Selection is the
+  `?select=<id>` search parameter shared by every view.
 - **State.** [studio.tsx](../../framework-studio/src/studio.tsx) is the context every view
   reads: the snapshot, the selected mode, the model and an index, the selection, live
   state, toasts and the shared inspector draft/review. `draft.ts` holds the session's
   transitions independently of React; `DraftControls.tsx` renders its footer and warning.
-- **Data.** [api.ts](../../framework-studio/src/api.ts) holds the TanStack Query snapshot,
-  the SSE subscription and the edit and command calls.
+- **Data.** [http.ts](../../framework-studio/src/http.ts) owns token/protocol transport;
+  [api.ts](../../framework-studio/src/api.ts) owns typed source/edit/command calls.
+  [snapshot.ts](../../framework-studio/src/snapshot.ts) owns the snapshot query and
+  event invalidation. Feature query definitions share read identity while callers
+  retain polling/refresh policy; the shared `events.ts` hub retains one stream per tab.
 - **Views.**
   - [Board](../../framework-studio/src/views/Board.tsx), laid out by
     [layout.ts](../../framework-studio/src/layout.ts): absolutely positioned DOM nodes
@@ -593,7 +597,9 @@ their own inspection, review and approval paths.
   - [Deploy](../../framework-studio/src/views/Deploy.tsx): deployment discovery, reviewed plans, authorized operations and local lifecycle controls; see [current operations](../aws-studio-knowledge/deployment/operations.md).
   - [Inspector](../../framework-studio/src/views/Inspector.tsx) and the
     [edit dialog](../../framework-studio/src/views/EditDialog.tsx), in React DOM, never on
-    a canvas.
+    a canvas. Inspector dispatch/lifetime stays at that entry; entity rendering lives
+    in [views/inspector/](../../framework-studio/src/views/inspector/). See
+    [editing](../aws-studio-knowledge/studio/editing.md) for draft and module contracts.
   - [Shell](../../framework-studio/src/views/Shell.tsx): the top bar, the health and
     command drawers, and the toasts.
 - **Styles.** [styles.css](../../framework-studio/src/styles.css) registers Tailwind sources and layers. [theme.css](../../framework-studio/src/styles/theme.css) owns runtime tokens; `src/ui/`, `InspectorUI` and [inspector-ui.ts](../../framework-studio/src/inspector-ui.ts) own reusable utility presentation. See the [design system](ui-design-system.md) for the four CSS owners and [inspector conventions](inspector-design.md). The
@@ -638,6 +644,12 @@ identity, deployment and lifecycle API families are mapped in
 | `server/infrastructure.ts`, `shared/infrastructure.ts` | Synthesis lifecycle, mode/input adapter and HTTP state contract |
 | `scripts/cloud-assembly.ts`, `scripts/infrastructure-inventory.ts`, `scripts/cdk-synthesis.ts` (repository root) | Shared manifest reader, values-free inventory and synthesis-only runner |
 | `shared/` | `model.ts` (snapshot types), `api.ts` (HTTP contract) |
-| `src/` | The page: views, lookups, the Board layout |
-| `src/scene/` | The isometric engine, see [Isometric view](isometric-view.md) |
+| `src/main.tsx`, `src/studio.tsx` | Route tree and shared application/draft lifetime |
+| `src/http.ts`, `src/api.ts`, `src/snapshot.ts`, `src/events.ts` | HTTP mechanics, typed source endpoints, snapshot/query invalidation and shared event stream |
+| `src/draft.ts`, `src/draft-entries.ts` | Session coordination versus staged contracts and pure normalization/request conversion |
+| `src/deploy/`, `src/identity-api.ts`, `src/identity-queries.ts` | Feature endpoint/query/live-log ownership; explicit operation authority stays with existing server services |
+| `src/views/` | Workspace entries and existing specialized editors; use the [source map](../aws-studio-knowledge/REPOSITORY-MAP.md#where-to-change-studio) for common changes |
+| `src/views/inspector/`, `src/views/map/` | Cohesive feature rendering beneath the persistent Inspector/map coordinators |
+| `src/ui/`, `src/inspector-ui.ts` | Native primitives and existing presentation recipes; see [UI design system](ui-design-system.md) |
+| `src/scene/` | Scene contracts in `types.ts`, construction, bounded layout/routing and cached drawing/picking; see [rendering](../aws-studio-knowledge/studio/rendering.md) |
 | `test/` | `node --import tsx --test`, against the real repository and disposable fixtures |

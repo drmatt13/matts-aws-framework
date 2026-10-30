@@ -6,7 +6,7 @@ import { EditError, sourceContents, writeSourceChange } from "./io";
 import { sha256, toRelative } from "../files";
 import type { SourceRecovery } from "../../shared/source-recovery";
 
-interface Change { readonly file: string; readonly before: string | null; readonly after: string | null; readonly authority?: "native" }
+interface Change { readonly file: string; readonly before: string | null; readonly after: string | null; readonly authority?: "native" | "resource" }
 interface Journal { readonly version: 1; readonly id: string; readonly root: string; readonly ownerPid?: number; readonly authority?: "resource"; readonly label: string; readonly createdAt: string; readonly changes: readonly Change[]; readonly status: "pending" | "complete" | "restored" | "conflicted" }
 interface SourceLock { readonly id: string; readonly root: string; readonly ownerPid: number }
 /** Shared by edit/recovery service instances in this process. A running apply is never recovery work. */
@@ -47,9 +47,9 @@ export class SourceJournal {
     const recoveryId = randomUUID(); this.lock(recoveryId, "recovery.lock");
     try { return action(); } finally { this.unlock(recoveryId, "recovery.lock"); }
   }
-  private sourceFile(journal: Pick<Journal, "authority">, relative: string, authority?: "native"): string {
+  private sourceFile(journal: Pick<Journal, "authority">, relative: string, authority?: "native" | "resource"): string {
     if (authority === "native" && !/^cdk-app\/lib\/[A-Za-z0-9._/-]+\.ts$/.test(relative)) throw new EditError(422, "This is not a native stack recovery path.");
-    if (journal.authority !== "resource" && authority !== "native") return assertCreationFile(this.root, relative);
+    if (journal.authority !== "resource" && authority !== "native" && authority !== "resource") return assertCreationFile(this.root, relative);
     // Resource reference moves have an existing, separate authored-TypeScript authority.
     // Check lexical ownership even if an external editor deleted the file since apply.
     if (!/^[A-Za-z0-9._/-]+\.tsx?$/.test(relative) || relative.split("/").some(part => ["", ".", "..", "node_modules", "generated", ".cache", ".git"].includes(part) || part.startsWith(".env")) || /\.gen\.tsx?$/.test(relative)) throw new EditError(422, "This is not an authored resource recovery path.");
@@ -116,7 +116,7 @@ export class SourceJournal {
     }
     if (journal.version !== 1 || journal.id !== id || journal.root !== realpathSync(this.root) || !Array.isArray(journal.changes) || journal.authority !== undefined && journal.authority !== "resource") throw new EditError(422, "This source recovery record does not belong to this checkout.");
     for (const change of journal.changes) {
-      if (typeof change.file !== "string" || change.before !== null && typeof change.before !== "string" || change.after !== null && typeof change.after !== "string" || change.authority !== undefined && change.authority !== "native") throw new EditError(422, "This source recovery record is invalid.");
+      if (typeof change.file !== "string" || change.before !== null && typeof change.before !== "string" || change.after !== null && typeof change.after !== "string" || change.authority !== undefined && change.authority !== "native" && change.authority !== "resource") throw new EditError(422, "This source recovery record is invalid.");
       this.sourceFile(journal, change.file, change.authority);
     }
     return journal;

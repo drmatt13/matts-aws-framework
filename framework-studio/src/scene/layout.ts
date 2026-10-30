@@ -1,4 +1,4 @@
-import type { Region } from "./build";
+import type { Region } from "./types";
 import type { Bounds } from "./camera";
 
 const COLUMN_GAP = 6;

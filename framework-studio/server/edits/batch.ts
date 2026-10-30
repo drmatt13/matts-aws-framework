@@ -24,7 +24,14 @@ import { replayHandlerFile, rewriteReplayHandler } from "./local-replay";
 import type { RouteChange } from "./route";
 import { DESCRIPTION_FILE, connectionDescriptionId, descriptionEntityIds } from "../../shared/descriptions";
 import { parseDescriptions, renameRouteDescriptions, rewriteDescription } from "../descriptions";
-import { resourceTypeErrors } from "../resources-source";
+import { assertResourceFile, planResourceSource, resourceTypeErrors } from "../resources-source";
+import { namingCapabilities, parseDisplayNames, remapNamingMetadata, rewriteDisplayName } from "../naming-metadata";
+import { DISPLAY_NAMES_FILE, type RenameIssue, type RenameSummary } from "../../shared/naming";
+import { namingSourceFingerprint } from "../naming-program";
+import { planResourceNaming } from "../naming-service";
+import { renameEquivalenceSignature } from "../naming-equivalence";
+import { namingEntityRemap } from "../naming-continuity";
+import { networkSettings } from "../../shared/networks";
 import { planFailureDestination, planTriggers, validateTriggerBindings } from "./triggers";
 import { triggerTiming } from "../../shared/trigger-availability";
 import { assertStackFile, nativeSignature, planNativeRemovals, scanWith } from "./native-triggers";
@@ -44,6 +51,11 @@ import { indexModel } from "../../src/lookup";
 
 interface Change { readonly file: string; readonly before: string | null; readonly after: string | null }
 interface BatchChanges {
+  readonly namingSources?: readonly string[];
+  readonly namingFingerprint?: string;
+  readonly namingHashes?: Readonly<Record<string, string>>;
+  readonly entityRemap?: Readonly<Record<string, string>>;
+  readonly namingModels?: Readonly<Record<"dev" | "prod", string>>;
   readonly commentOptions?: CommentReviewOptions;
   readonly label: string;
   readonly changes: readonly Change[];
@@ -131,6 +143,35 @@ export class BatchEditor {
     }
     const model = state.snapshot.models.dev;
     const overrides = new Map<string, string>(creation?.overrides);
+    const namingSources = new Set<string>();
+    let namingFingerprint: string | undefined;
+    let namingHashes: Readonly<Record<string, string>> | undefined;
+    let entityRemap: Readonly<Record<string, string>> | undefined;
+    let rename: RenameSummary | undefined;
+    const renameIssues: RenameIssue[] = [];
+    const renames = edits.filter(edit => edit.kind === "rename");
+    if (renames.length > 1) throw new EditError(422, "Review one code rename per draft.");
+    if (renames.length && edits.some(edit => ["create", "removeWorkload", "removeNetwork"].includes(edit.kind))) throw new EditError(422, "Review creation or removal separately from a code rename.");
+    const moves: { entity: string; path: readonly string[] }[] = [];
+    for (const edit of edits) if (edit.kind === "resourceConfig") {
+      if (edits.filter(item => item.kind === "resourceConfig" && item.intent.resource === edit.intent.resource).length !== 1) throw new EditError(422, "Review one configuration change per input.");
+      const resource = Object.values(state.snapshot.models).flatMap(model => model.resources).find(resource => resource.id === edit.intent.resource && !resource.absent)
+        ?? model.resources.find(resource => resource.id === edit.intent.resource);
+      if (!resource || !["input", "secret"].includes(resource.kind) || !namingCapabilities(Object.values(state.snapshot.models))[resource.id]?.code) throw new EditError(422, "Select an authored input or secret to edit its configuration.");
+      const oldGroup = resource.path.slice(0, -1).join(".");
+      if (oldGroup !== edit.intent.group) moves.push({ entity: resource.id, path: [...(edit.intent.group ? [edit.intent.group] : []), resource.path.at(-1)!] });
+      const references = edit.intent.kind !== resource.kind ? await planResourceNaming(this.root, state, { kind: "references", entity: resource.id }, overrides) : undefined;
+      const referenceIssues = references?.issues ?? [];
+      if (edit.intent.kind !== resource.kind) {
+        namingFingerprint = references!.sourceFingerprint; namingHashes = references!.sourceHashes;
+        renameIssues.push(...referenceIssues);
+      }
+      try {
+        const planned = planResourceSource(this.root, state, resource, { ...edit.intent, group: oldGroup }, overrides, true, referenceIssues.length > 0);
+        for (const [file, text] of Object.entries(planned.overrides)) { overrides.set(file, text); if (!toRelative(this.root, file).startsWith("framework-config/")) namingSources.add(file); }
+      } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
+    }
+    if (moves.length > 1 || moves.length && renames.length) throw new EditError(422, "Review one group move at a time, separately from a code rename.");
     const deletions = new Map<string, Change>();
     const creationBefore = new Map(creation?.before);
     let generationInputs: Readonly<Record<string, string>> | undefined;
@@ -152,6 +193,28 @@ export class BatchEditor {
     const replayTargets: string[] = [];
     const handlerBefore = new Map<string, string>();
     for (const edit of edits) {
+      if (edit.kind === "rename") continue;
+      if (edit.kind === "resourceConfig") { summaries.push(`${edit.intent.resource} — update input configuration`); continue; }
+      if (edit.kind === "displayName") {
+        if (edits.filter(item => item.kind === "displayName" && item.entity === edit.entity).length !== 1) throw new EditError(422, "Review one display name per resource.");
+        if (!namingCapabilities(Object.values(state.snapshot.models))[edit.entity]?.display) throw new EditError(404, "Select a managed map item to edit its display name.");
+        try {
+          if (edit.entity.startsWith("island:vpc:")) {
+            const id = edit.entity.slice("island:vpc:".length);
+            const network = Object.values(state.snapshot.models).flatMap(model => model.networks ?? []).find(network => network.id === id)!;
+            const pending = edits.find(edit => edit.kind === "network" && edit.network === id);
+            const settings = pending?.kind === "network" ? pending.settings : networkSettings(network);
+            const planned = planNetwork(this.root, state, id, { ...settings, name: edit.value?.trim() || id }, new SourceFiles(overrides));
+            overrides.set(planned.file, planned.after);
+          } else {
+            const file = assertCreationFile(this.root, DISPLAY_NAMES_FILE);
+            const before = overrides.get(file) ?? sourceContents(file);
+            if (before !== null || edit.value?.trim()) overrides.set(file, rewriteDisplayName(before, edit.entity, edit.value));
+          }
+        } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
+        summaries.push(`${edit.entity} — ${edit.value?.trim() ? `display as ${JSON.stringify(edit.value.trim())}` : "restore automatic name"}`);
+        continue;
+      }
       if (edit.kind === "deploy") {
         if (edits.filter(item => item.kind === "deploy" && item.target === edit.target || item.kind === "field" && item.intent.target === edit.target && item.intent.field === "deploy").length !== 1) throw new EditError(422, "Review one Deploy change per workload.");
         planDeploy(this.root, state, edit, overrides);
@@ -222,7 +285,8 @@ export class BatchEditor {
         summaries.push(`${edit.target} — ${edit.vpc ? `VPC ${edit.vpc}, ${edit.subnet}` : "outside VPCs"}`);
       }
       if (edit.kind === "network") {
-        const planned = planNetwork(this.root, state, edit.network, edit.settings, new SourceFiles(overrides));
+        const name = edits.find(item => item.kind === "displayName" && item.entity === `island:vpc:${edit.network}`);
+        const planned = planNetwork(this.root, state, edit.network, { ...edit.settings, ...(name?.kind === "displayName" ? { name: name.value?.trim() || edit.network } : {}) }, new SourceFiles(overrides));
         overrides.set(planned.file, planned.after);
         summaries.push(`VPC ${edit.network} — update network settings`);
       }
@@ -323,9 +387,33 @@ export class BatchEditor {
         if (after !== before) overrides.set(descriptionFile, after);
       } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
     }
-    if (!deletions.size && [...overrides].every(([file, after]) => sourceContents(file) === after)) throw new EditError(422, "This draft has no source changes.");
+    const beforeNaming = new Map(overrides);
+    const codeRename = renames[0];
+    if (codeRename?.kind === "rename" || moves.length) {
+      if (codeRename?.kind === "rename" && !namingCapabilities(Object.values(state.snapshot.models))[codeRename.entity]?.code) throw new EditError(422, "This resource supports display-name editing. Its code identity requires compatibility checks before it can be renamed.");
+      const planned = await planResourceNaming(this.root, state, codeRename?.kind === "rename"
+        ? { kind: "rename", entity: codeRename.entity, name: codeRename.name }
+        : { kind: "move", entity: moves[0]!.entity, nextPath: moves[0]!.path }, overrides);
+      entityRemap = planned.entityRemap;
+      namingFingerprint = planned.sourceFingerprint; namingHashes = planned.sourceHashes;
+      for (const file of planned.sourceFiles) namingSources.add(file);
+      renameIssues.push(...planned.issues);
+      const from = codeRename?.kind === "rename" ? codeRename.entity : moves[0]!.entity;
+      const to = entityRemap[from];
+      if (to) {
+        for (const file of [DESCRIPTION_FILE, DISPLAY_NAMES_FILE] as const) {
+          try {
+            const absolute = assertCreationFile(this.root, file), before = overrides.get(absolute) ?? sourceContents(absolute);
+            if (before !== null) { const after = remapNamingMetadata(before, file, entityRemap); if (after !== before) overrides.set(absolute, after); }
+          } catch (error) { renameIssues.push({ message: error instanceof Error ? error.message : String(error), source: { file, line: 1, column: 1, start: 0, end: 0 } }); }
+        }
+        rename = { from, to, referenceCount: planned.referenceCount, fileCount: [...overrides].filter(([file, after]) => sourceContents(file) !== after).length };
+        summaries.push(`${from} → ${to} — update code references and naming associations`);
+      }
+    }
+    if (!renameIssues.length && !deletions.size && [...overrides].every(([file, after]) => sourceContents(file) === after)) throw new EditError(422, "This draft has no source changes.");
     let generationFailure: { error: unknown } | undefined;
-    if (!creation && edits.some(edit => !["identityPolicy", "description", "tags", "clientEnvironment", "network", "database", "databasePlacement", "placement", "removeNetwork"].includes(edit.kind))) {
+    if (!creation && !renameIssues.length && (edits.some(edit => !["identityPolicy", "description", "displayName", "rename", "resourceConfig", "tags", "clientEnvironment", "network", "database", "databasePlacement", "placement", "removeNetwork"].includes(edit.kind)) || entityRemap && Object.keys(entityRemap).length && existsSync(path.join(this.root, "package.json")))) {
       // Generate in the private copy first, then validate the exact final overlay
       // once. A second full evaluation of the same candidate provided no extra
       // authority; Apply still revalidates it and checks the written models.
@@ -346,18 +434,31 @@ export class BatchEditor {
       assertCreationFile(this.root, toRelative(this.root, change.file));
       if (sourceContents(change.file) !== change.before) throw new EditError(409, `${toRelative(this.root, change.file)} changed during creation review. No files were written.`);
     }
-    if (!changes.length) throw new EditError(422, "This draft has no source changes.");
+    if (!changes.length && !renameIssues.length) throw new EditError(422, "This draft has no source changes.");
     // Removing native wiring must take away exactly the selected triggers and nothing else.
     const expectedNative = native && (() => {
       const remaining = nativeSignature(state.snapshot.source.cdkLinks);
       for (const edge of native.removed) remaining.splice(remaining.indexOf(`trigger|${edge.from}|${edge.to}|${edge.label}|${edge.source?.file}`), 1);
       return remaining;
     })();
-    const checked = await this.validate(Object.fromEntries(overrides), state, routes, expectedNative, creation?.expected, edits.filter(edit => edit.kind === "removeWorkload").map(edit => edit.target), [...deletions.keys()]);
+    const checked = await this.validate(Object.fromEntries(overrides), state, routes, expectedNative, creation?.expected, edits.filter(edit => edit.kind === "removeWorkload").map(edit => edit.target), [...deletions.keys()], !!entityRemap || edits.some(edit => edit.kind === "resourceConfig"));
+    if (entityRemap && Object.keys(entityRemap).length && !renameIssues.length && checked.preflight.dev.ok && checked.preflight.prod.ok) {
+      const pool = new EvaluatorPool(this.root, undefined, this.builder.evaluators);
+      try {
+        const evaluated = await pool.evaluate(Object.fromEntries(beforeNaming));
+        const before = { dev: withAbsentTagging(evaluated.dev, evaluated.prod), prod: withAbsentTagging(evaluated.prod, evaluated.dev) };
+        for (const mode of ["dev", "prod"] as const) {
+          if (before[mode].status !== "ok" || renameEquivalenceSignature(before[mode], entityRemap, { reparent: moves.length > 0 }) !== renameEquivalenceSignature(checked.models[mode], {}, { reparent: moves.length > 0 })) {
+            const entity = codeRename?.kind === "rename" ? codeRename.entity : moves[0]!.entity;
+            renameIssues.push({ message: `The ${mode === "dev" ? "Development" : "Production"} rename would change behavior beyond the approved identity remap. Resolve the source before applying.`, source: state.snapshot.source.entities[entity]!.key });
+          }
+        }
+      } finally { await pool.dispose(); }
+    }
     // Preserve useful both-mode diagnostics when the generator rejected invalid
     // authored intent. A generator failure on otherwise valid intent still blocks
     // review; it can never silently omit required generated artifacts.
-    if (generationFailure && checked.preflight.dev.ok && checked.preflight.prod.ok) throw generationFailure.error;
+    if (generationFailure && !renameIssues.length && checked.preflight.dev.ok && checked.preflight.prod.ok) throw generationFailure.error;
     for (const [file, before] of handlerBefore) if (readFileSync(file, "utf8") !== before) throw new EditError(409, "The event handler changed during review. Your draft is preserved; review it again.");
     for (const mode of [checked.models.dev, checked.models.prod]) for (const ref of replayTargets) {
       if (!checked.preflight[mode.mode].ok) continue;
@@ -365,12 +466,14 @@ export class BatchEditor {
       if (!target || !handlerBefore.has(replayHandlerFile(this.root, target).file)) throw new EditError(422, "Local replay must keep the event's TypeScript handler entry point.");
     }
     this.unchanged(revision, hashes, triggerSources, generationInputs);
+    if (namingFingerprint && namingSourceFingerprint(this.root) !== namingFingerprint) throw new EditError(409, "Source files or project configuration changed during rename review. Your draft is preserved; review again.");
     const comments = reviewedComments();
     const response: BatchPlanResponse = {
+      ...(rename ? { rename } : {}), ...(renameIssues.length ? { renameIssues } : {}), ...(entityRemap ? { entityRemap } : {}),
       ...(comments.length ? { comments } : {}),
       planId: randomUUID(), summaries,
       changes: changes.map(({ file, before, after }) => ({ file: toRelative(this.root, file), operation: before === null ? "create" : after === null ? "delete" : "modify", diff: diffOf(toRelative(this.root, file), before ?? "", after ?? "") })),
-      preflight: checked.preflight, ok: checked.preflight.dev.ok && checked.preflight.prod.ok && !comments.some(comment => comment.manualReason),
+      preflight: checked.preflight, ok: checked.preflight.dev.ok && checked.preflight.prod.ok && !renameIssues.length && !comments.some(comment => comment.manualReason),
       ...(creation ? { select: creation.expected.select } : {}),
       impact: creation ? creation.impact : edits.every((edit) => edit.kind === "clientEnvironment") ? ["Saves mapping definitions for the next environment export. Environment-file generation is separate."] : ["Applies this complete draft as one source change. Individual workload overrides remain in place when shared defaults change.",
         ...(edits.some(edit => edit.kind === "deploy" && model.targets.some(target => target.ref === edit.target && target.role === "event")) ? ["Disabled event functions and their native AWS hooks, trigger descriptors and failure destinations are omitted on the next deployment. Cognito event changes can remove sign-up validation, custom messaging or post-confirmation behavior; this review only saves source."] : []),
@@ -414,19 +517,21 @@ export class BatchEditor {
     const replaySources = [...handlerBefore].map(([file, before]) => ({ file, before, after: overrides.get(file)! }));
     if (edits.some(edit => edit.kind === "identityPolicy")) (response.impact as string[]).push("ReaderRole IAM and explicit guest opt-in changes take effect only after a separate synth/diff/deployment review. Enabled guests can obtain a separate permissionless unauthenticated identity role; ReaderRole grants never attach to guests. Source statements and policy simulation do not prove group claims, trust, boundaries/SCPs, resource policies or runtime API authorization. The default authenticated role remains permissionless.");
     const addedDirectories = changes.filter(change => change.before === null).flatMap(change => { const folders: string[] = []; for (let folder = path.dirname(change.file); folder !== this.root && !existsSync(folder); folder = path.dirname(folder)) folders.push(folder); return folders; });
-    this.plans.set(response.planId, { label: creation ? `Create ${creation.expected.select}` : `${edits.length} inspector changes`, response, revision, hashes, changes, edits, routes, replayTargets, replaySources, triggerSources, commentOptions: { comments: Object.fromEntries(comments.map(comment => [comment.id, comment.resolution])) }, generatedFiles: [...generatedFiles], generationInputs, ...(addedDirectories.length ? { createdDirectories: [...new Set(addedDirectories)] } : {}), implementationFiles: [...implementationFiles], ...(edits.some(edit => edit.kind === "deploy" || edit.kind === "connection" || edit.kind === "removeWorkload") ? { operationModels: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) } } : {}), ...(deletions.size ? { networkRemovals: [...deletions.keys()], createdDirectories: [...new Set([...addedDirectories, ...[...deletions.keys()].map(file => path.dirname(file))])] } : {}), ...((native || policyFiles.size) ? { cdkSources: [...new Set([...(native?.changes.keys() ?? []), ...policyFiles])] } : {}), ...(creation ? { creation: creation.expected, creationModels: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, createdDirectories: [...new Set(changes.filter((change) => change.before === null).flatMap((change) => {
+    this.plans.set(response.planId, { namingSources: [...namingSources], namingFingerprint, namingHashes, entityRemap, ...(entityRemap ? { namingModels: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) } } : {}), label: creation ? `Create ${creation.expected.select}` : `${edits.length} inspector changes`, response, revision, hashes, changes, edits, routes, replayTargets, replaySources, triggerSources, commentOptions: { comments: Object.fromEntries(comments.map(comment => [comment.id, comment.resolution])) }, generatedFiles: [...generatedFiles], generationInputs, ...(addedDirectories.length ? { createdDirectories: [...new Set(addedDirectories)] } : {}), implementationFiles: [...implementationFiles], ...(edits.some(edit => edit.kind === "deploy" || edit.kind === "connection" || edit.kind === "removeWorkload") ? { operationModels: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) } } : {}), ...(deletions.size ? { networkRemovals: [...deletions.keys()], createdDirectories: [...new Set([...addedDirectories, ...[...deletions.keys()].map(file => path.dirname(file))])] } : {}), ...((native || policyFiles.size) ? { cdkSources: [...new Set([...(native?.changes.keys() ?? []), ...policyFiles])] } : {}), ...(creation ? { creation: creation.expected, creationModels: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, createdDirectories: [...new Set(changes.filter((change) => change.before === null).flatMap((change) => {
       const directories: string[] = [];
       for (let directory = path.dirname(change.file); directory !== this.root && !existsSync(directory); directory = path.dirname(directory)) directories.push(directory);
       return directories;
     }))] } : {}) });
     return response;
   }
-  private async validate(overrides: Record<string, string>, state: StudioState, routes: readonly RouteChange[], expectedNative?: readonly string[], creation?: CreationExpectation, removedTargets: readonly string[] = [], deletedFiles: readonly string[] = []) {
+  private async validate(overrides: Record<string, string>, state: StudioState, routes: readonly RouteChange[], expectedNative?: readonly string[], creation?: CreationExpectation, removedTargets: readonly string[] = [], deletedFiles: readonly string[] = [], naming = false) {
     const descriptions = overrides[path.join(this.root, DESCRIPTION_FILE)];
     if (descriptions !== undefined) parseDescriptions(descriptions);
+    const names = overrides[path.join(this.root, DISPLAY_NAMES_FILE)];
+    if (names !== undefined) parseDisplayNames(names);
     const clientMappings = overrides[path.join(this.root, CLIENT_ENVIRONMENT_FILE)];
     if (clientMappings !== undefined) {
-      try { validateClientMappings(parseClientMappings(clientMappings).mappings, Object.values(state.snapshot.models)); }
+      try { parseClientMappings(clientMappings); }
       catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
     }
     const pool = new EvaluatorPool(this.root, undefined, this.builder.evaluators);
@@ -435,12 +540,13 @@ export class BatchEditor {
       // Review uses the same cross-mode metadata projection as the visible
       // snapshot, including a production-only database's inherited stack tags.
       const models = { dev: withAbsentTagging(evaluated.dev, evaluated.prod), prod: withAbsentTagging(evaluated.prod, evaluated.dev) };
+      if (clientMappings !== undefined) validateClientMappings(parseClientMappings(clientMappings).mappings, Object.values(models));
       const triggerChange = [models.dev, models.prod].some((model: ModeModel) => JSON.stringify([model.triggers, model.failureDestinations]) !== JSON.stringify([state.snapshot.models[model.mode].triggers, state.snapshot.models[model.mode].failureDestinations]));
       const stackChange = Object.keys(overrides).some((file) => toRelative(this.root, file).startsWith("cdk-app/lib/"));
       const databasePlacementChanged = [models.dev, models.prod].some(model => model.managedDatabase?.networkId !== state.snapshot.models[model.mode].managedDatabase?.networkId || model.managedDatabase?.subnet !== state.snapshot.models[model.mode].managedDatabase?.subnet);
       const implementationChanged = Object.keys(overrides).some(file => /\/(?:lambda_functions|agents)\//.test(file));
       const connectionsChanged = [models.dev, models.prod].some(model => connectionSignature(model) !== connectionSignature(state.snapshot.models[model.mode]));
-      const typeErrors = triggerChange || stackChange || databasePlacementChanged || implementationChanged || connectionsChanged || creation ? resourceTypeErrors(this.root, overrides, new Set(deletedFiles)) : [];
+      const typeErrors = triggerChange || stackChange || databasePlacementChanged || implementationChanged || connectionsChanged || creation || naming ? resourceTypeErrors(this.root, overrides, new Set(deletedFiles)) : [];
       const native = stackChange ? nativeSignature(scanWith(this.root, state, overrides)) : undefined;
       const unexpected = expectedNative && native ? [...native.filter((item) => !expectedNative.includes(item)).map((item) => `adds ${item}`), ...expectedNative.filter((item) => !native.includes(item)).map((item) => `removes ${item}`)] : [];
       const nativeMismatch = expectedNative && (JSON.stringify(native) !== JSON.stringify(expectedNative));
@@ -477,15 +583,21 @@ export class BatchEditor {
     const plan = this.plans.get(planId);
     if (!plan) throw new EditError(410, "This review expired. Your draft is preserved; review it again.");
     if (!plan.response.ok) throw new EditError(422, "Fix the rejected settings before applying this draft.");
-    this.unchanged(plan.revision, plan.hashes, plan.triggerSources, plan.generationInputs);
+    this.unchanged(plan.revision, plan.hashes, plan.triggerSources, plan.generationInputs, plan.namingHashes);
+    this.namingUnchanged(plan);
     return this.write(plan);
   }
+  private namingUnchanged(entry: BatchChanges): void {
+    if (entry.namingFingerprint && namingSourceFingerprint(this.root) !== entry.namingFingerprint) throw new EditError(409, "Source files or project configuration changed since rename review. Your draft is preserved; review again.");
+  }
   private async write(entry: BatchChanges): Promise<ApplyResponse> {
+    this.namingUnchanged(entry);
     const state = this.state();
     const hashes = hashEditableFiles(this.root);
     const unchangedInputs = Object.fromEntries(Object.entries(entry.generationInputs ?? {}).filter(([file]) => !entry.changes.some(change => toRelative(this.root, change.file) === file)));
     const triggerSources = { ...(entry.triggerSources && !entry.creation ? state.snapshot.source.capabilityFiles : {}), ...unchangedInputs };
-    this.unchanged(state.snapshot.revision, hashes, triggerSources);
+    this.unchanged(state.snapshot.revision, hashes, triggerSources, entry.namingHashes);
+    this.namingUnchanged(entry);
     const changes = entry.changes;
     const handlers = entry.replayTargets.map((ref) => state.snapshot.models.dev.targets.find((target) => target.ref === ref)).map((target) => target && replayHandlerFile(this.root, target).file);
     for (const source of entry.replaySources) {
@@ -493,6 +605,8 @@ export class BatchEditor {
     }
     for (const change of changes) {
       if ((entry.cdkSources ?? []).includes(change.file)) assertStackFile(this.root, state, toRelative(this.root, change.file));
+      else if (entry.namingSources?.includes(change.file)) assertResourceFile(this.root, change.file);
+      else if (change.file === path.join(this.root, DISPLAY_NAMES_FILE)) assertCreationFile(this.root, DISPLAY_NAMES_FILE);
       else if (entry.creation || entry.networkRemovals?.includes(change.file) || entry.generatedFiles?.includes(change.file) || entry.implementationFiles?.includes(change.file)) assertCreationFile(this.root, toRelative(this.root, change.file));
       else if (!handlers.includes(change.file)) assertWritable(this.root, toRelative(this.root, change.file));
       if (sourceContents(change.file) !== change.before) throw new EditError(409, `${toRelative(this.root, change.file)} changed. Your draft is preserved; no files were written.`);
@@ -503,17 +617,19 @@ export class BatchEditor {
     });
     checkNetworkConsumers();
     const routes = entry.routes;
-    const checked = await this.validate(Object.fromEntries(changes.filter((change) => change.after !== null).map((change) => [change.file, change.after!])), state, routes, undefined, entry.creation, entry.edits.filter(edit => edit.kind === "removeWorkload").map(edit => edit.target), changes.filter(change => change.after === null).map(change => change.file));
+    const checked = await this.validate(Object.fromEntries(changes.filter((change) => change.after !== null).map((change) => [change.file, change.after!])), state, routes, undefined, entry.creation, entry.edits.filter(edit => edit.kind === "removeWorkload").map(edit => edit.target), changes.filter(change => change.after === null).map(change => change.file), !!entry.entityRemap || entry.edits.some(edit => edit.kind === "resourceConfig"));
     if (!checked.preflight.dev.ok || !checked.preflight.prod.ok) throw new EditError(422, "The complete draft no longer validates. Review the current configuration before trying again.");
+    if (entry.namingModels) for (const mode of ["dev", "prod"] as const) if (creationSignature(checked.models[mode]) !== entry.namingModels[mode]) throw new EditError(409, "The reviewed naming semantics changed. Review current source before applying.");
     if (entry.creationModels) for (const mode of ["dev", "prod"] as const) {
       if (creationSignature(checked.models[mode]) !== entry.creationModels[mode]) throw new EditError(409, "The creation's framework semantics changed since review. Review the current source before applying.");
     }
     if (entry.operationModels) for (const mode of ["dev", "prod"] as const) if (creationSignature(checked.models[mode]) !== entry.operationModels[mode]) throw new EditError(409, "The reviewed connection/removal semantics changed. Review current source before applying.");
-    this.unchanged(state.snapshot.revision, hashes, triggerSources);
+    this.unchanged(state.snapshot.revision, hashes, triggerSources, entry.namingHashes);
+    this.namingUnchanged(entry);
     checkNetworkConsumers();
     for (const source of entry.replaySources) if (readFileSync(source.file, "utf8") !== source.before) throw new EditError(409, "The event handler changed while validating. No files were written.");
     const written: Change[] = [];
-    const journalId = this.journal.begin(entry.label, changes.map(change => (entry.cdkSources ?? []).includes(change.file) ? { ...change, authority: "native" as const } : change));
+    const journalId = this.journal.begin(entry.label, changes.map(change => (entry.cdkSources ?? []).includes(change.file) ? { ...change, authority: "native" as const } : entry.namingSources?.includes(change.file) ? { ...change, authority: "resource" as const } : change));
     try {
       for (const change of changes) {
         if (entry.creation || entry.networkRemovals?.includes(change.file) || entry.generatedFiles?.includes(change.file) || entry.implementationFiles?.includes(change.file)) assertCreationFile(this.root, toRelative(this.root, change.file));
@@ -529,6 +645,8 @@ export class BatchEditor {
         const file = actual.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)?.clientEnvironment;
         if (file?.problem || JSON.stringify(file?.mappings) !== JSON.stringify(parseClientMappings(mappingChange.after!).mappings)) throw new Error("Client mappings did not match the review.");
       }
+      const nameChange = changes.find(change => change.file === path.join(this.root, DISPLAY_NAMES_FILE));
+      if (nameChange && (actual.snapshot.displayNames?.problem || JSON.stringify(actual.snapshot.displayNames?.values) !== JSON.stringify(parseDisplayNames(nameChange.after!).values))) throw new Error("The display names did not match the review.");
       const descriptionChange = changes.find((change) => change.file === path.join(this.root, DESCRIPTION_FILE));
       if (descriptionChange && (descriptionChange.after === null
         ? sourceContents(descriptionChange.file) !== null
@@ -536,6 +654,7 @@ export class BatchEditor {
       for (const mode of ["dev", "prod"] as const) {
         const model = actual.snapshot.models[mode];
         const expected = checked.models[mode];
+        if ((entry.namingModels || entry.edits.some(edit => edit.kind === "resourceConfig")) && creationSignature(model) !== creationSignature(expected)) throw new Error(`The ${mode} naming and input relationships did not match the review.`);
         if (model.stale || model.status === "error" || identity(model) !== identity(expected)) throw new Error(`The ${mode} configuration did not match the review.`);
         if (JSON.stringify(model.triggers) !== JSON.stringify(expected.triggers)) throw new Error("Trigger connections did not match the review.");
         if (JSON.stringify(model.failureDestinations) !== JSON.stringify(expected.failureDestinations)) throw new Error("Failure destinations did not match the review.");
@@ -572,11 +691,12 @@ export class BatchEditor {
           if (!actual.snapshot.models.dev.resources.some((item) => ["queue", "bucket", "identityPool"].some(member => item.id === `${entry.creation!.select}.${member}`) && item.parent === entry.creation!.select && item.kind === "member")) throw new Error("The stack's typed public resource was not exposed in the resource catalog.");
         }
       }
+      const entityRemap = entry.entityRemap ? namingEntityRemap(state.snapshot, actual.snapshot, entry.entityRemap) : undefined;
       this.journal.finish(journalId, "complete");
       this.expirePlans();
       const removed = entry.edits.find(edit => edit.kind === "removeNetwork");
       const selection = entry.creation ? entry.creation.select : removed?.kind === "removeNetwork" ? actual.snapshot.models.prod.networks?.[0] ? `island:vpc:${actual.snapshot.models.prod.networks[0].id}` : "island:lambda" : undefined;
-      return { status: "applied", message: `Applied all ${entry.edits.length} changes.`, revision: actual.snapshot.revision, ...(selection ? { select: selection } : {}) };
+      return { ...(entityRemap ? { entityRemap } : {}), status: "applied", message: `Applied all ${entry.edits.length} changes.`, revision: actual.snapshot.revision, ...(selection ? { select: selection } : {}) };
     } catch (error) {
       let conflicted = false;
       for (const change of written.reverse()) {

@@ -1,7 +1,7 @@
 import type { Lanes, Mode, ModeModel, ModelResource, ModelRoute, ModelTarget } from "../../shared/model";
 import { titleOf, type ModelIndex } from "../lookup";
 import { entryCount, groupEntries, groupUse, nameList } from "../input-groups";
-import type { SceneNode } from "./build";
+import type { SceneNode } from "./types";
 import type { Availability } from "../deployment";
 import { isFrameworkManagedResource } from "../../shared/framework-management";
 
@@ -86,7 +86,7 @@ function rawGroupHoverEntries(group: ModelResource, indexes: ModelIndexes): read
       const detail = groupEntryDetail(indexes[mode].resources.get(entry.id), mode, indexes[mode]);
       return detail ? [detail] : [];
     }));
-    return { id: entry.id, label: entry.path.slice(group.path.length).join("."), availability: { dev: !!dev && !dev.absent, prod: !!prod && !prod.absent }, ...(details.length ? { details } : {}) };
+    return { id: entry.id, label: indexes.dev.displayNames[entry.id] ?? indexes.prod.displayNames[entry.id] ?? entry.path.slice(group.path.length).join("."), availability: { dev: !!dev && !dev.absent, prod: !!prod && !prod.absent }, ...(details.length ? { details } : {}) };
   });
 }
 

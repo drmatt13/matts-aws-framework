@@ -3,7 +3,7 @@ import { useBlocker } from "@tanstack/react-router";
 import { useEffect,useRef,useState } from "react";
 import { createPortal } from "react-dom";
 import { identityPolicyStatements,type IdentityPolicySimulation,type IdentityPolicySource,type IdentityPolicyStatement } from "../../shared/identity-policy";
-import { call } from "../api";
+import { call } from "../http";
 import { useStudio } from "../studio";
 import { buttonClasses } from "../ui/Button";
 import { Select,Textarea,TextInput } from "../ui/FormControls";

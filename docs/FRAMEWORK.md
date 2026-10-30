@@ -441,6 +441,26 @@ The deliveries, identical for either source:
 
 None of the three puts a secret's value in a CloudFormation template.
 
+When renaming an authored secret or its catalog group, preserve its original binding
+path and its environment variable name:
+
+```ts
+// Previously: providers.apiKey: resource.secret("API_KEY")
+renamedKey: resource.secret("API_KEY", { bindingPath: ["providers", "apiKey"] })
+```
+
+`bindingPath` keeps the existing generated ARN parameter, secret ownership metadata,
+development output and local manifest identity. References still use the new catalog
+path. Keep the same pin on later renames; it is an identity, not a previous name.
+If the original declaration omitted its variable name, write that resolved name explicitly
+before renaming. Neither the pin nor a rename changes an environment file or secret value.
+The option belongs to input declarations, not native `stack` or `cdk` resources.
+It may remain on `fromEnv` or `value` while a secret is converted to an ordinary input;
+it is dormant there and resumes if the declaration becomes an authored secret again.
+Catalog validation reserves pinned identities, including dormant and mode-absent inputs,
+so another declaration cannot claim them. Ordinary inputs need only retain an explicit
+environment name when applicable; they do not otherwise need a new pin.
+
 Use cloud.requirements on the consuming workload for conditional inputs. An unused
 optional secret imposes no requirement. The canonical command is:
 

@@ -10,6 +10,8 @@ import { readDeclaredSchema, readLocalDatabases, withLocalDatabases } from "./da
 import { withDeploymentInputs } from "./deployment-inputs";
 import { withExportStacks } from "./source/export-stacks";
 import { readDescriptions } from "./descriptions";
+import { namingCapabilities, readDisplayNames } from "./naming-metadata";
+import { disposeNamingWorkers } from "./naming-service";
 import { withConnectionEvidence } from "./source/evidence";
 import { withConnectionAuthorizations } from "../shared/permissions";
 import { withClientEnvironment } from "./client-environment";
@@ -201,17 +203,17 @@ export class SnapshotBuilder {
       const enriched = withClientEnvironment(withDeploymentInputs(this.repositoryRoot, withLocalDatabases(declared, localDatabase.services), { dev, prod }, comparisons), clientMappings);
       return withConnectionAuthorizations(withConnectionEvidence(this.repositoryRoot, enriched, built.index, built.catalog, sources));
     };
+    const models = { dev: project(dev), prod: project(prod) };
     const snapshot: Snapshot = {
+      displayNames: readDisplayNames(this.repositoryRoot),
+      namingCapabilities: namingCapabilities(Object.values(models)),
       descriptions: readDescriptions(this.repositoryRoot),
       schema,
       databaseProblems: localDatabase.problems,
       revision: `${this.generation}-${content.slice(0, 12)}`,
       generatedAt: new Date().toISOString(),
       repositoryRoot: this.repositoryRoot,
-      models: {
-        dev: project(dev),
-        prod: project(prod),
-      },
+      models,
       source: built.index,
       files,
     };
@@ -221,6 +223,6 @@ export class SnapshotBuilder {
 
   dispose(): Promise<void> {
     this.closed = true;
-    return this.evaluators.dispose();
+    return Promise.all([disposeNamingWorkers(this.repositoryRoot), this.evaluators.dispose()]).then(() => undefined);
   }
 }

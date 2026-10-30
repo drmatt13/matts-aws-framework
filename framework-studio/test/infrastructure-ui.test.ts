@@ -22,6 +22,7 @@ let clientInputs: typeof import("../src/views/ClientEnvironment");
 let controls: typeof import("../src/views/DraftControls");
 let review: typeof import("../src/views/EditDialog");
 let api: typeof import("../src/api");
+let http: typeof import("../src/http");
 let builder: SnapshotBuilder;
 let response: SnapshotResponse;
 const clients: import("@tanstack/react-query").QueryClient[] = [];
@@ -44,7 +45,7 @@ before(async () => {
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   dom.window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   ui = require("@testing-library/react"); query = require("@tanstack/react-query"); router = require("@tanstack/react-router");
-  studio = await import("../src/studio"); component = await import("../src/views/Infrastructure"); api = await import("../src/api");
+  studio = await import("../src/studio"); component = await import("../src/views/Infrastructure"); api = await import("../src/api"); http = await import("../src/http");
   shell = await import("../src/views/Shell");
   inputs = await import("../src/views/DeploymentInputs");
   clientInputs = await import("../src/views/ClientEnvironment");
@@ -320,7 +321,7 @@ test("switching environment reads its independent inventory and synthesizes only
 
 test("an outdated running server explains how to recover instead of offering a synthesis that returns Not Found", async () => {
   let runs = 0;
-  mock.method(api.api, "infrastructure", async () => { throw new api.ApiError(404, "Not Found"); });
+  mock.method(api.api, "infrastructure", async () => { throw new http.ApiError(404, "Not Found"); });
   mock.method(api.api, "synthesize", async () => { runs++; return ready; });
   await mount();
   const alert = await ui.screen.findByRole("alert");
@@ -334,7 +335,7 @@ test("an outdated running server explains how to recover instead of offering a s
 test("the inventory API rejects an old server's HTML fallback even when its HTTP status is successful", async () => {
   mock.method(globalThis, "fetch", async () => new Response("<!doctype html><html></html>", { status: 200, headers: { "content-type": "text/html" } }));
   for (const request of [() => api.api.infrastructure("dev"), () => api.api.synthesize("dev")]) {
-    await assert.rejects(request(), (error: unknown) => error instanceof api.ApiError && error.status === 502 && /Restart npm run studio/.test(error.message));
+    await assert.rejects(request(), (error: unknown) => error instanceof http.ApiError && error.status === 502 && /Restart npm run studio/.test(error.message));
   }
 });
 
@@ -408,7 +409,7 @@ test("a stale page blocks source writes before transport and explains how to rel
   let calls = 0;
   mock.method(globalThis, "fetch", async () => { calls++; throw new Error("A stale page must not send a write."); });
   try {
-    await assert.rejects(api.api.applyBatch("not-sent"), (error: unknown) => error instanceof api.ApiError && error.status === 409 && /Restart npm run studio/.test(error.message));
+    await assert.rejects(api.api.applyBatch("not-sent"), (error: unknown) => error instanceof http.ApiError && error.status === 409 && /Restart npm run studio/.test(error.message));
     assert.equal(calls, 0);
   } finally { meta.content = original; }
 });

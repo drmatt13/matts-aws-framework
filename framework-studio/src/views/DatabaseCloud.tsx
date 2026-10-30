@@ -5,7 +5,7 @@ import { useBlocker } from "@tanstack/react-router";
 import type { DatabaseTarget } from "../../shared/database-workbench";
 import type { DatabaseApplicationResult } from "../../shared/database-application";
 import type { DatabaseCloudApproval, DatabaseCloudDestination } from "../../shared/database-cloud";
-import { call } from "../api";
+import { call } from "../http";
 import { WorkbenchDialog, workbenchCardClasses, workbenchNoticeClasses } from "./WorkbenchUI";
 
 export const databaseCloudApi = {

@@ -1,3 +1,4 @@
+import { displayName } from "./naming";
 import type { DraftEdit } from "../shared/api";
 import { grantOptions } from "../shared/grants";
 import type { ModelResource, ModelTarget, Snapshot } from "../shared/model";
@@ -86,11 +87,11 @@ export function configuredAccessOptions(target: ModelTarget, snapshot: AccessSna
   const selectedResource = destinationId ? resources.get(destinationId) : undefined;
   for (const resource of destinationId ? selectedResource ? [selectedResource] : [] : resources.values()) {
     if (!/^resource:(?:[A-Za-z_$][\w$]*)(?:\.[A-Za-z_$][\w$]*)*$/.test(resource.id)) continue;
-    const title = resource.path.join(".");
+    const title = displayName(snapshot.models.dev, resource.id, resource.path.join("."));
     if (resource.kind === "input" || resource.kind === "secret") {
       const secret = resource.kind === "secret", startup = target.kind === "service" || target.kind === "task";
       add({ id: resource.id, title, subtitle: secret ? "AWS Secrets Manager · Secret" : "Input parameter", icon: secret ? "secret" : "input",
-        searchTerms: `${resource.fromEnv ?? ""} environment configuration ${secret ? "secrets" : "inputs"}`,
+        searchTerms: `${resource.id} ${resource.path.join(".")} ${resource.fromEnv ?? ""} environment configuration ${secret ? "secrets" : "inputs"}`,
         actions: [action("resource", secret ? startup ? "Load secret at startup" : "Read secret" : "Use as environment variable", { destination: resource.id }, { variable: true })] });
       continue;
     }
@@ -104,7 +105,7 @@ export function configuredAccessOptions(target: ModelTarget, snapshot: AccessSna
     const grants = grantOptions(types);
     const reason = owningStack(resource)?.stackUsage?.status === "unreferenced" ? "Add this stack to the CDK app before granting access."
       : !grants.length ? "Configure access to this resource in source." : undefined;
-    add({ id: resource.id, title, subtitle: grants.length ? service.subtitle : service.subtitle.split(" · ")[0]!, icon: service.icon, searchTerms: types.join(" "), reason,
+    add({ id: resource.id, title, subtitle: grants.length ? service.subtitle : service.subtitle.split(" · ")[0]!, icon: service.icon, searchTerms: `${resource.id} ${resource.path.join(".")} ${types.join(" ")}`, reason,
       actions: grants.map(grant => action("grant", grant.label, { destination: resource.id, grant: grant.method }, { scope: grant.scope })) });
   }
 
@@ -117,7 +118,7 @@ export function configuredAccessOptions(target: ModelTarget, snapshot: AccessSna
     const label = connection === "runsTask" ? "Run task" : connection === "startsWorkflow" ? "Start workflow" : connection === "invokesAgent" ? "Invoke agent" : "Use agent tool";
     const subtitle = connection === "runsTask" ? "AWS Fargate · Container task" : connection === "startsWorkflow" ? "AWS Step Functions · Workflow"
       : connection === "invokesAgent" ? "Amazon Bedrock AgentCore · Agent" : "AWS Lambda · Agent tool";
-    add({ id: destination.ref, title: destination.title, subtitle, icon: destination.kind,
+    add({ id: destination.ref, title: displayName(snapshot.models.dev, destination.ref, destination.title), subtitle, icon: destination.kind,
       searchTerms: `${destination.id} ${destination.ref} ${label}`, actions: [action(connection, label, { destination: destination.ref })] });
   }
 
@@ -126,7 +127,7 @@ export function configuredAccessOptions(target: ModelTarget, snapshot: AccessSna
     const resource = resources.get(database.resource);
     const reason = target.role === "event" && target.compute.kind === "lambda" && !target.compute.localReplay
       ? "Enable local replay before connecting this event to the application database." : undefined;
-    add({ id: database.resource, title: resource?.path.join(".") ?? database.id, subtitle: "PostgreSQL · Application database", icon: "database",
+    add({ id: database.resource, title: displayName(snapshot.models.dev, database.resource, resource?.path.join(".") ?? database.id), subtitle: "PostgreSQL · Application database", icon: "database",
       searchTerms: `${database.id} RDS database`, actions: [action("database", "Connect to database", {}, { reason })] });
   }
   if (!destinationId || destinationId === "framework:userPool") {

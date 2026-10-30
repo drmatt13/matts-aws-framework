@@ -1,3 +1,4 @@
+import { displayName } from "./naming";
 import type { ModeModel, TagFacts } from "../shared/model";
 import { environments } from "./deployment";
 import { indexModel, type ModelIndex } from "./lookup";
@@ -35,11 +36,11 @@ function tagMembers(model: ModeModel): readonly TagMember[] {
   const targets = model.targets.filter(target => environments(target.lanes)[model.mode]);
   const targetIds = new Set(targets.map(target => target.ref));
   return [
-    ...targets.map(target => ({ id: target.ref, label: target.title, kind: target.role, placement: target.placement.kind === "vpc" ? `${target.placement.networkId} · ${target.placement.subnet}` : target.placement.kind === "managed" ? "AWS managed" : "Outside VPCs" })),
-    ...model.routes.filter(route => targetIds.has(route.target)).map(route => ({ id: route.id, label: route.browserPath ?? route.path, kind: `${route.kind} route` })),
-    ...model.resources.filter(resource => resource.kind !== "group" && !resource.absent).map(resource => ({ id: resource.id, label: resource.path.join("."), kind: resource.kind, placement: resource.networkId ? `${resource.networkId} · ${resource.networkPlacement ?? "VPC"}` : undefined })),
-    ...(model.localServices ?? []).filter(service => service.enabled).map(service => ({ id: service.id, label: service.title, kind: "local service" })),
-    ...(model.networks ?? []).filter(network => model.mode === "prod" && network.builtInProd).map(network => ({ id: `island:vpc:${network.id}`, label: network.name ?? network.id, kind: "VPC" })),
+    ...targets.map(target => ({ id: target.ref, label: displayName(model, target.ref, target.title), kind: target.role, placement: target.placement.kind === "vpc" ? `${target.placement.networkId} · ${target.placement.subnet}` : target.placement.kind === "managed" ? "AWS managed" : "Outside VPCs" })),
+    ...model.routes.filter(route => targetIds.has(route.target)).map(route => ({ id: route.id, label: displayName(model, route.id, route.browserPath ?? route.path), kind: `${route.kind} route` })),
+    ...model.resources.filter(resource => resource.kind !== "group" && !resource.absent).map(resource => ({ id: resource.id, label: displayName(model, resource.id, resource.path.join(".")), kind: resource.kind, placement: resource.networkId ? `${resource.networkId} · ${resource.networkPlacement ?? "VPC"}` : undefined })),
+    ...(model.localServices ?? []).filter(service => service.enabled).map(service => ({ id: service.id, label: displayName(model, service.id, service.title), kind: "local service" })),
+    ...(model.networks ?? []).filter(network => model.mode === "prod" && network.builtInProd).map(network => ({ id: `island:vpc:${network.id}`, label: displayName(model, `island:vpc:${network.id}`, network.name ?? network.id), kind: "VPC" })),
   ];
 }
 

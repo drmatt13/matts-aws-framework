@@ -1,3 +1,4 @@
+import { EntityName } from "./EntityName";
 import { buttonClasses } from "../ui/Button";
 import { cx } from "../ui/classes";
 import type { ModelResource } from "../../shared/model";
@@ -27,7 +28,7 @@ export function ManagedDatabaseInspector({ resource, local }: { readonly resourc
   const availability = { dev: !!postgres?.enabled, prod: !!rds && !rds.absent };
   const locations = { dev: "On your machine", prod: "In AWS" };
   return <>
-    <header><InspectorKind environments={{ availability, descriptions: locations, unavailableDescription: "not enabled" }}>PostgreSQL database</InspectorKind><h2><EntityIcon icon={local ? "postgres" : "database"} />Application PostgreSQL</h2><FrameworkManagedStatus /><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{database.databaseName} · {database.id}</code><Written location={source} label="Declared in" /></header>
+    <header><InspectorKind environments={{ availability, descriptions: locations, unavailableDescription: "not enabled" }}>PostgreSQL database</InspectorKind><EntityName entity={local?.id ?? resource?.id ?? database.resource} fallback="Application PostgreSQL" icon={<EntityIcon icon={local ? "postgres" : "database"} />} /><FrameworkManagedStatus /><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{database.databaseName} · {database.id}</code><Written location={source} label="Declared in" /></header>
     <Tags entity={`database:${database.id}`} />
     <Description entity={local?.id ?? resource?.id ?? database.resource} />
     <DeploymentSection availability={availability} locations={locations}><DeploymentOwnership reason="The local database follows Compose; production RDS follows its owning stack. Consumer Deploy controls do not delete database storage." owners={owner ? [{ id: owner, title: "database stack" }] : []} /></DeploymentSection>

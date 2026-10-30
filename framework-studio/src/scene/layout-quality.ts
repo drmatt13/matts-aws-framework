@@ -3,7 +3,7 @@ import type { LayoutGraph, LayoutLink } from "./layout-graph";
 import { boundsOf, intersects, pathHits, pathLength, pathsCross, translated, type Obstacle } from "./layout-geometry";
 import type { ConnectionRoutes } from "./routing";
 import { arcControl, arcPoints } from "./picking";
-import type { Scene } from "./build";
+import type { Scene } from "./types";
 
 export interface LayoutQuality {
   readonly crossings: number; readonly weightedCrossings: number; readonly length: number;

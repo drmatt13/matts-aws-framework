@@ -36,6 +36,9 @@ export interface EditIntent {
 export type DeployValue = import("./model").DeploySetting | "inherit" | { readonly when: { readonly resource: string; readonly equals: string } };
 
 export type DraftEdit =
+  | { readonly kind: "rename"; readonly entity: string; readonly name: string }
+  | { readonly kind: "displayName"; readonly entity: string; readonly value: string | null }
+  | { readonly kind: "resourceConfig"; readonly intent: import("./resources").ResourceIntent }
   | { readonly kind: "deploy"; readonly target: string; readonly value: DeployValue }
   | import("./identity-policy").IdentityPolicyEdit
   | { readonly kind: "implementation"; readonly target: string }
@@ -59,6 +62,10 @@ export type DraftEdit =
   | { readonly kind: "route"; readonly route: string; readonly value: string };
 
 export interface BatchPlanResponse {
+  readonly rename?: import("./naming").RenameSummary;
+  readonly renameIssues?: readonly import("./naming").RenameIssue[];
+  /** Preview only. Clients remap live selection after confirmed application. */
+  readonly entityRemap?: Readonly<Record<string, string>>;
   readonly comments?: readonly SourceCommentReview[];
   readonly planId: string;
   readonly summaries: readonly string[];
@@ -110,6 +117,7 @@ export interface PlanResponse {
 }
 
 export interface ApplyResponse {
+  readonly entityRemap?: Readonly<Record<string, string>>;
   /** `unconfirmed`: written, not as predicted, and changed by someone else since, so left alone. */
   readonly status: "applied" | "reverted" | "unconfirmed";
   readonly message: string;

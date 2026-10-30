@@ -12,7 +12,7 @@ import {
   assertRequirementsMet,
   formatResourceReference, frameworkSecretName, getFrameworkTargets, isCdkResource, isCdkResourceGroup,
   isResourceAbsent, isResourceReference, isResourceValueReference, isTargetEnabled,
-  resourceAttributeKey, resolveResourceFromEnv, isUnresolvedTokenString, STACK_OWN_VALUE_KEYS,
+  resourceAttributeKey, secretBindingPath, resolveResourceFromEnv, isUnresolvedTokenString, STACK_OWN_VALUE_KEYS,
   type CdkResource, type CdkResourceGroup, type CdkResourceSpec, type CloudMode, type FrameworkConfig,
   type SecretProjections,
   type NativeGrantBinding, type NormalizedTarget, type ResolvedCloudRequirement,
@@ -282,18 +282,20 @@ function deploymentSecret(scope: IConstruct, reference: ResourceReference, requi
   if (!options || !reference.fromEnv) throw new Error("Initialize framework resources before resolving a deployment secret.");
   const configured = !!options.readers?.env?.[reference.fromEnv]?.trim();
   const stack = cdk.Stack.of(scope);
-  const key = `${stack.node.path}:${keyOf(reference)}`;
+  const bindingPath = secretBindingPath(reference);
+  const bindingKey = JSON.stringify(bindingPath);
+  const key = `${stack.node.path}:${bindingKey}`;
   let entry = state.parameters.get(key);
   if (!configured && !required && !entry) return undefined;
   if (!entry) {
-    const parameter = new cdk.CfnParameter(stack, `FrameworkResourceArn${digest(keyOf(reference))}`, {
-      type: "String", description: `Managed resource ARN for ${reference.path.join(".")}; supplied by npm run deploy.`,
+    const parameter = new cdk.CfnParameter(stack, `FrameworkResourceArn${digest(bindingKey)}`, {
+      type: "String", description: `Managed resource ARN for ${bindingPath.join(".")}; supplied by npm run deploy.`,
       allowedPattern: "arn:[^:]+:secretsmanager:[^:]+:[0-9]{12}:secret:.+",
     });
     entry = { parameter, required };
     state.parameters.set(key, entry);
     parameter.node.addMetadata(SECRET_PARAMETER_METADATA, {
-      version: 1, path: reference.path, variable: reference.fromEnv,
+      version: 1, path: bindingPath, variable: reference.fromEnv,
       name: frameworkSecretName(options.deployment, reference.fromEnv), deployment: options.deployment,
       mode: options.mode, account: stack.account, region: stack.region,
       parameter: stack.getLogicalId(parameter),

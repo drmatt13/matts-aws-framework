@@ -14,7 +14,7 @@ import {
 } from "@tanstack/react-router";
 import { StrictMode, useCallback } from "react";
 import { createRoot } from "react-dom/client";
-import { useSnapshot } from "./api";
+import { useSnapshot } from "./snapshot";
 import { StudioProvider } from "./studio";
 import { Shell } from "./views/Shell";
 import "./styles.css";
@@ -63,7 +63,7 @@ const providersRoute = createRoute({ getParentRoute: () => cognitoRoute, path: "
 const permissionsRoute = createRoute({ getParentRoute: () => cognitoRoute, path: "permissions", component: () => null });
 const identityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/identity-pools", beforeLoad: () => { throw redirect({ to: "/cognito/identity-pools", replace: true }); } });
 const legacyIdentityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/identity", beforeLoad: () => { throw redirect({ to: "/cognito/identity-pools", replace: true }); } });
-const domainsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/domains", component: lazyRouteComponent(() => import("./views/IdentityWorkspace"), "Domains") });
+const domainsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/domains", component: lazyRouteComponent(() => import("./views/DomainsWorkspace"), "DomainsWorkspace") });
 const webSocketsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/websockets", component: lazyRouteComponent(() => import("./views/websockets/WebSockets"), "WebSockets") });
 const routeTree = rootRoute.addChildren([isometricRoute, legacyIsometricRoute, databaseRoute, deployRoute, graphqlRoute, cognitoRoute.addChildren([userPoolsRoute, identityPoolsRoute, providersRoute, permissionsRoute]), identityRoute, legacyIdentityRoute, domainsRoute, webSocketsRoute]);
 function createStudioRouter() { return createRouter({ routeTree }); }

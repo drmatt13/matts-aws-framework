@@ -7,6 +7,8 @@ read_when:
 source:
   - framework-studio/src/main.tsx
   - framework-studio/src/studio.tsx
+  - framework-studio/src/snapshot.ts
+  - framework-studio/src/views/DomainsWorkspace.tsx
   - framework-studio/src/views/Shell.tsx
   - framework-studio/src/views/CreationWizard.tsx
   - framework-studio/shared/creation.ts
@@ -52,6 +54,22 @@ draft. The draft retains its baseline if newer source arrives; it becomes confli
 instead of silently accepting a new baseline. Source-mode changes, selecting another
 resource and route navigation use the unsaved-change guard. Database text editing has its
 own exact-text session and navigation protection.
+
+| State | Owner and lifetime |
+| --- | --- |
+| Requested entity | Router `?select`; the draft/navigation guard controls acceptance |
+| Accepted source mode, graph and pending edits | One mounted `StudioProvider`/`InspectorDraft`; dirty sessions retain their baseline |
+| Latest snapshot and source-read evidence | TanStack Query; [snapshot.ts](../../../framework-studio/src/snapshot.ts) and feature query definitions retain existing keys and refresh policies |
+| Inspector return trail | In-memory accepted visits, with presentation retained separately per source mode; see [rendering](rendering.md) |
+| Prisma text, validation and diagram | Independent `DatabaseSession`, preserving editor identity/undo |
+| Deployment target and observations | Owning operational workspace; separate from source mode and source-save approval |
+| Camera, hover, filters and disclosures | Local view state; never persisted as framework configuration |
+
+`http.ts` owns token/protocol HTTP mechanics; endpoint adapters own typed calls.
+Query definitions share read identity without selecting a deployment or performing
+an explicit AWS inspection. Page components keep observation/error state and action
+approval flows. Use the [source ownership map](../REPOSITORY-MAP.md#where-to-change-studio)
+to locate the rendering, state, transport and tests for a change.
 
 ## Reading the map
 

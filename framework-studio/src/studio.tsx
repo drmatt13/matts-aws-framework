@@ -1,10 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useBlocker } from "@tanstack/react-router";
+import { useBlocker, useLocation, useNavigate } from "@tanstack/react-router";
 import type { SnapshotResponse } from "../shared/api";
 import type { Mode, ModeModel, Snapshot } from "../shared/model";
-import { api, useLiveUpdates, type LiveState } from "./api";
+import { api } from "./api";
+import { useLiveUpdates, snapshotQueryKey, type LiveState } from "./snapshot";
 import { InspectorDraft, protectBeforeUnload, type DraftState } from "./draft";
+import { NamingHistory, presentedSnapshot, type DisplayNames } from "./naming";
+import { remapEntity } from "../shared/naming";
 import { indexModel, titleOf, type ModelIndex } from "./lookup";
 import { useInspectorNavigation, type InspectorNavigation } from "./inspector-navigation";
 
@@ -25,6 +28,8 @@ interface StudioContextValue {
   readonly toasts: readonly Toast[];
   readonly draft: InspectorDraft;
   readonly draftState: DraftState;
+  readonly entityAliases: DisplayNames;
+  readonly namingRevision?: string;
   readonly created?: { readonly id: string; readonly revision: string };
   readonly applyDraft: () => Promise<void>;
 }
@@ -37,6 +42,15 @@ export function useStudio(): StudioContextValue {
 
 export function StudioProvider(props: { readonly response: SnapshotResponse; readonly selected: string | undefined; readonly select: (id: string | undefined) => void; readonly children: ReactNode }) {
   const { response } = props;
+  const navigate = useNavigate();
+  const location = useLocation();
+  const lastRemap = useRef<DisplayNames>({});
+  const acceptedWrite = useRef<DraftState["applied"]>(undefined);
+  const historySelections = useRef(new NamingHistory());
+  const historyKey = String(location.state.__TSR_key ?? location.state.key ?? location.state.__TSR_index);
+  // Read the key and its selection from one location. Router search subscriptions
+  // may render a turn later during Back/Forward; mixing them corrupts that visit.
+  const routedSelection = (location.search as { select?: string }).select;
   const query = useQueryClient();
   const [created, setCreated] = useState<{ id: string; revision: string }>();
   const [mode, setMode] = useState<Mode>("dev");
@@ -48,19 +62,33 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
     window.setTimeout(() => setToasts((current) => current.filter((item) => item.id !== id)), tone === "refuse" ? 9000 : 6000);
   }, []);
   const [draft] = useState(() => new InspectorDraft(response.snapshot, props.selected, mode, {
-    planBatch: api.planBatch, resourcePlan: api.resourcePlan, applyBatch: api.applyBatch, resourceApply: api.resourceApply,
+    planBatch: api.planBatch, applyBatch: api.applyBatch,
     inputPlan: api.inputPlan, inputApply: api.inputApply,
-    snapshot: async () => { const next = await api.snapshot(); query.setQueryData(["snapshot"], next); return next.snapshot; },
-    refreshSource: async () => { await api.refreshSource(); const next = await api.snapshot(); query.setQueryData(["snapshot"], next); return next.snapshot; },
+    snapshot: async () => { const next = await api.snapshot(); query.setQueryData(snapshotQueryKey, next); return next.snapshot; },
+    refreshSource: async () => { await api.refreshSource(); const next = await api.snapshot(); query.setQueryData(snapshotQueryKey, next); return next.snapshot; },
   }));
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
-  useLayoutEffect(() => draft.sync(response.snapshot, props.selected, mode), [draft, response.snapshot, props.selected, mode]);
-  const snapshot = draftState.baseline;
+  // Identity, source model and layout continuity become visible in one accepted write.
+  if (draftState.applied && acceptedWrite.current !== draftState.applied) {
+    if (draftState.applied.entityRemap) {
+      historySelections.current.accept(draftState.applied.entityRemap);
+      lastRemap.current = draftState.applied.entityRemap;
+    }
+    acceptedWrite.current = draftState.applied;
+  }
+  const entityAliases = lastRemap.current;
+  const namingRevision = draftState.applied?.names ? draftState.applied.revision : undefined;
+  const selected = historySelections.current.selection(historyKey, routedSelection);
+  useLayoutEffect(() => {
+    if (selected !== routedSelection) void navigate({ to: ".", search: (previous: Record<string, unknown>) => ({ ...previous, select: selected }), replace: true });
+  }, [selected, routedSelection, navigate]);
+  useLayoutEffect(() => draft.sync(response.snapshot, selected, mode), [draft, response.snapshot, selected, mode]);
+  const snapshot = useMemo(() => presentedSnapshot(draftState.baseline), [draftState.baseline]);
   const model = snapshot.models[draftState.mode];
   const index = useMemo(() => indexModel(model), [model]);
-  const inspection = useInspectorNavigation({ selected: props.selected, ready: props.selected === draftState.selected,
+  const inspection = useInspectorNavigation({ selected, ready: selected === draftState.selected, aliases: entityAliases,
     mode: draftState.mode, select: props.select, requestNavigation: proceed => draft.requestNavigation(proceed),
-    label: id => index.resources.get(id)?.path.at(-1) ?? titleOf(index, id) });
+    label: id => index.displayNames[id] ?? index.resources.get(id)?.path.at(-1) ?? titleOf(index, id) });
   const live = useLiveUpdates((files) => toast(`${files.join(", ")} changed outside the studio. ${draft.dirty ? "Your draft is preserved; review the source conflict before applying." : "The view has been refreshed."}`));
 
   // Covers selection search params, view links, browser back/forward and programmatic
@@ -86,15 +114,21 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
     const result = await draft.apply();
     if (!result) return;
     toast(result.message);
+    if (draft.getSnapshot().applied?.names) setCreated(undefined);
+    if (result.entityRemap && Object.keys(result.entityRemap).length) {
+      const remap = result.entityRemap;
+      const next = selected ? remapEntity(selected, remap) : undefined;
+      if (next !== routedSelection) await navigate({ to: ".", search: (previous: Record<string, unknown>) => ({ ...previous, select: next }), replace: true });
+      return;
+    }
     // Federation creation can return its new secret as the generic source target.
     // Keep this workflow in place without opening an inspector that reads values.
     if (authenticationProvider && result.status === "applied") { setCreated(undefined); props.select(undefined); return; }
     if (result.select) { setCreated({ id: result.select, revision: result.revision }); props.select(result.select); }
-    else if ("resource" in result && result.resource !== draftState.selected) props.select(result.resource);
   };
   return <StudioContext.Provider value={{ response, snapshot, mode: draftState.mode,
     setMode: (next) => { if (next !== draftState.mode) draft.requestNavigation(() => setMode(next)); },
     model, index, selected: draftState.selected, select: inspection.select, inspect: inspection.inspect,
-    inspectorNavigation: inspection.navigation, live, toast, toasts, draft, draftState, applyDraft, created,
+    inspectorNavigation: inspection.navigation, live, toast, toasts, draft, draftState, applyDraft, created: draftState.applied?.names ? undefined : created, entityAliases, namingRevision,
   }}>{props.children}</StudioContext.Provider>;
 }

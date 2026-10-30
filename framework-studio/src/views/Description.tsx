@@ -10,7 +10,7 @@ export function Description({ entity, connection = false, inline = false }: { re
   const id = useId();
   const { draft, draftState, snapshot, live, model } = useStudio();
   const entry = draftState.entries.find((entry) => entry.kind === "description" && entry.entity === entity);
-  const separate = draftState.entries.some((entry) => entry.kind === "environment" || entry.kind === "resource");
+  const separate = draftState.entries.some((entry) => entry.kind === "environment");
   const problem = snapshot.descriptions.problem;
   const editor = <div data-slot="description-editor-content">
     <label className={"sr-only"} htmlFor={id}>Description</label>
@@ -23,7 +23,7 @@ export function Description({ entity, connection = false, inline = false }: { re
     {problem ? <p className={"text-refuse wrap-anywhere"} role="alert">{problem}</p> : null}
     <p className={"text-caption text-graphite"}><span className={"grid min-w-0 [&>span]:[grid-area:1/1] [&>[aria-hidden=true]]:invisible"} data-slot="inspector-status-copy">
       <span aria-hidden={separate}>{entry ? "Unsaved · Review Changes to save." : "Shared across environments."}</span>
-      <span aria-hidden={!separate}>Apply or discard input changes to edit this description.</span>
+      <span aria-hidden={!separate}>Apply or discard local value changes to edit this description.</span>
     </span><a href={editorLink(snapshot.repositoryRoot, { file: DESCRIPTION_FILE, line: 1, column: 1, start: 0, end: 0 })}>Open descriptions.ts</a></p>
   </div>;
   return <section className={cx("[&_textarea]:w-full", inline && "[&_textarea]:min-h-25")} aria-label={connection ? "Connection description" : "Node description"} data-slot="node-description">

@@ -1,4 +1,5 @@
-import { chamferSize, type Island, type Scene } from "./build";
+import { chamferSize } from "./build";
+import type { Island, Scene } from "./types";
 import type { Bounds } from "./camera";
 import { ELEVATION_STEP, project } from "./iso";
 import { GRAPHITE } from "./look";

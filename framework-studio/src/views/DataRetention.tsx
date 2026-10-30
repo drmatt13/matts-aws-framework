@@ -1,3 +1,4 @@
+import { deploymentOverviewQuery } from "../deploy/queries";
 import { InspectorSummary } from "./InspectorUI";
 import { Select, TextInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
@@ -7,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import type { Mode } from "../../shared/model";
 import type { StatefulInventory, StatefulKind, StatefulPlan, StatefulSelection, StatefulSource } from "../../shared/stateful-resources";
 import type { TeardownPlanView } from "../../shared/deploy";
-import { call } from "../api";
+import { call } from "../http";
 import { deployApi } from "../deploy/api";
 import { useStudio } from "../studio";
 import { WorkbenchDialog } from "./WorkbenchUI";
@@ -58,7 +59,7 @@ export function DataRetention({ kind, selection: suppliedSelection }: { readonly
 }
 
 function StatefulRecovery({ mode, kinds, selection: supplied, disabled, onReview }: { mode: Mode; kinds: readonly StatefulKind[]; selection?: StatefulSelection; disabled: boolean; onReview(payload: Record<string, unknown>): Promise<void> }) {
-  const overview = useQuery({ queryKey: ["deploy", "overview"], queryFn: () => deployApi.overview(), staleTime: 15_000 });
+  const overview = useQuery({ ...deploymentOverviewQuery(), staleTime: 15_000 });
   const [profile, setProfile] = useState(supplied?.profile ?? "dev"), [deployment, setDeployment] = useState(supplied?.deployment ?? ""), [region, setRegion] = useState(supplied?.region ?? "");
   const [kind, setKind] = useState<StatefulKind>(kinds[0]!);
   const [id, setId] = useState(""), [originalDeployment, setOriginalDeployment] = useState(""), [clientId, setClientId] = useState("");

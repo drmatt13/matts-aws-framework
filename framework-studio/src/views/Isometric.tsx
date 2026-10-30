@@ -1,12 +1,7 @@
-import { Select } from "../ui/FormControls";
+import { remapEntity } from "../../shared/naming";
 import { inspectorContextClasses } from "../inspector-ui";
-import { cx } from "../ui/classes";
-import { iconButtonClasses } from "../ui/IconButton";
-import { mapCameraButtonClasses } from "./map-styles";
-import { workspaceToolbarClasses } from "../ui/Surface";
-import { Crosshair, Maximize2, Minus, PanelRight, Pause, Play, Plus, Search, X } from "lucide-react";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { CATEGORY_DESCRIPTION, CATEGORY_LABEL, endpointLabel, type EdgeCategory } from "../lookup";
+import { CATEGORY_DESCRIPTION, CATEGORY_LABEL, type EdgeCategory } from "../lookup";
 import { buildScene, type Scene, type SceneNode } from "../scene/build";
 import { islandDrawOrder, islandSlabs } from "../scene/slabs";
 import {
@@ -28,6 +23,7 @@ import { distanceToPolyline, insidePolygon, pickEntity, pickIsland, type CardHit
 import { layoutAspect, type LayoutResult } from "../scene/layout-optimize";
 import { fitScene, selectionBounds } from "../scene/fit";
 import { connectionMidpoint } from "../scene/routing";
+import { pathBounds } from "../scene/layout-geometry";
 import { landscapeFocus, searchOpacity, searchScene } from "../scene/focus";
 import { filterSceneByTag } from "../scene/tag-filter";
 import { SceneRenderer, type Stage } from "../scene/render";
@@ -41,11 +37,12 @@ import { HoverContent, ResourceHoverContent } from "./ResourceHoverContent";
 import { InspectorContent } from "./Inspector";
 import { InspectorNavigationControls } from "./InspectorNavigation";
 import { ResourceBrowser, type BrowserMemory } from "./ResourceBrowser";
-import { presentConnection } from "../connection-presentation";
 import { ConnectionHoverContent } from "./ConnectionHoverContent";
 import { CanvasTooltip, ResourceTooltip } from "./ResourceTooltip";
 import { WorkspacePanel } from "./WorkspacePanel";
-import { tagGroups, tagKeys, tagValueLabel, UNTAGGED_FILTER } from "../tag-groups";
+import { MapEntityNavigator } from "./map/MapEntityNavigator";
+import { MapToolbar } from "./map/MapToolbar";
+import { tagGroups, tagKeys, UNTAGGED_FILTER } from "../tag-groups";
 
 const TAG_VIEW_STORAGE = "framework-studio:isometric-tag-filter";
 interface TagFilterPreference { readonly key: string; readonly value?: string | null }
@@ -95,7 +92,7 @@ const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("
 const CATEGORIES = (Object.keys(CATEGORY_LABEL) as EdgeCategory[]).filter(category => category !== "structure");
 
 export function Isometric() {
-  const { model, index, snapshot, selected, select, inspect: startInspection, inspectorNavigation, created, draft } = useStudio();
+  const { model, index, snapshot, selected, select, inspect: startInspection, inspectorNavigation, created, draft, entityAliases, namingRevision } = useStudio();
   const hasEntities = model.targets.length > 0 || model.resources.length > 0 || !!model.networks?.length;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -109,6 +106,7 @@ export function Isometric() {
   const [resourcePreview, setResourcePreview] = useState<string>();
   const view: PanelView = selected !== undefined ? "inspector" : browsing ? "resources" : "closed";
   const browserMemory = useRef<BrowserMemory>({ scrollTop: 0 });
+  const appliedEntityRemap = useRef(entityAliases);
   const backButton = useRef<HTMLButtonElement>(null);
   const focusBack = useRef(false);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -146,7 +144,7 @@ export function Isometric() {
   const groups = useMemo(() => activeTagKey ? tagGroups(model, activeTagKey, index) : [], [model, activeTagKey, index]);
   const tagMatchCount = groups.find(group => group.value === filterValue)?.members.length ?? 0;
   const topology = useMemo(() => buildScene(model, { conditions, resourceAvailability,
-    layoutModels: [snapshot.models.dev, snapshot.models.prod], layoutSettings: { aspect, previous: previousLayout.current?.positions, previousKey: previousLayout.current?.topologyKey } }), [model, snapshot.models, conditions, resourceAvailability, aspect]);
+    layoutModels: [snapshot.models.dev, snapshot.models.prod], layoutSettings: { aspect, previous: previousLayout.current?.positions, previousKey: previousLayout.current?.topologyKey, preservePositions: namingRevision === snapshot.revision } }), [model, snapshot.models, conditions, resourceAvailability, aspect, namingRevision]);
   const scene = useMemo(() => activeTagKey && filterValue !== undefined ? filterSceneByTag(topology, model, activeTagKey, filterValue) : topology, [topology, model, activeTagKey, filterValue]);
   const visibleCategories = useMemo(() => CATEGORIES.filter(category => scene.edges.some(edge => edge.categories.includes(category))), [scene]);
   useLayoutEffect(() => { previousLayout.current = scene.layout; }, [scene]);
@@ -166,9 +164,7 @@ export function Isometric() {
     () =>
       scene.edges.map((edge) => {
         const points = scene.routes[edge.id]!.points;
-        return { edge, points, missing: missingConnectionInput(edge), midpoint: connectionMidpoint(points),
-          minX: Math.min(...points.map((point) => point.x)), maxX: Math.max(...points.map((point) => point.x)),
-          minY: Math.min(...points.map((point) => point.y)), maxY: Math.max(...points.map((point) => point.y)) };
+        return { edge, points, missing: missingConnectionInput(edge), midpoint: connectionMidpoint(points), ...pathBounds(points) };
       }),
     [scene],
   );
@@ -200,6 +196,12 @@ export function Isometric() {
     samples: [] as number[],
     frames: 0,
   });
+  // A confirmed rename changes identity without changing this person's place on the map.
+  if (appliedEntityRemap.current !== entityAliases) {
+    if (browserMemory.current.returnTo) browserMemory.current.returnTo = remapEntity(browserMemory.current.returnTo, entityAliases);
+    if (live.current.inspectedSelection) live.current.inspectedSelection = remapEntity(live.current.inspectedSelection, entityAliases);
+    appliedEntityRemap.current = entityAliases;
+  }
   live.current.scene = scene;
   live.current.selected = visibleSelected;
   live.current.preview = preview;
@@ -732,44 +734,35 @@ export function Isometric() {
   // Hover coordinates and the timing readout must not rebuild hundreds of
   // hidden controls. Selection, source and scene updates still refresh them.
   const accessibleEntities = useMemo(() => (
-    <ul data-ui="landscape-entity-list" className="-m-px h-px w-px overflow-hidden border-0 p-0 whitespace-nowrap [clip:rect(0,0,0,0)] absolute list-none focus-within:bottom-16 focus-within:left-4 focus-within:z-6 focus-within:m-0 focus-within:h-auto focus-within:max-h-[min(420px,55%)] focus-within:w-[min(360px,calc(100%-32px))] focus-within:overflow-auto focus-within:overscroll-contain focus-within:rounded-lg focus-within:border focus-within:border-map-rule focus-within:bg-map-panel focus-within:p-3 focus-within:whitespace-normal focus-within:text-map-ink focus-within:shadow-popover focus-within:[clip:auto] [&_li]:m-0 [&_button]:block [&_button]:min-h-(--control-height) [&_button]:w-full [&_button]:cursor-pointer [&_button]:rounded-sm [&_button]:border-0 [&_button]:bg-transparent [&_button]:p-2 [&_button]:text-left [&_button]:text-caption [&_button]:text-inherit [&_button]:wrap-anywhere [&_button:hover]:bg-map-row [&_button[aria-current=true]]:bg-map-row [&_button:focus-visible]:outline-map-focus [&_button:focus-visible]:-outline-offset-2" aria-label="Entities in the landscape"
-    onPointerDownCapture={event => { touchNavigator.current = event.pointerType === "touch"; }}
-    onFocusCapture={event => {
-      const button = (event.target as HTMLElement).closest("button");
-      if (!button) return;
-      const kind = button.dataset.hoverKind as Hover["kind"] | undefined;
-      const id = button.dataset.hoverId;
-      if (!kind || !id || touchNavigator.current) return;
-      dismissedHover.current = undefined;
-      setKeyboardAnchor(button);
-      setHovered({ kind, id, x: live.current.viewport.width / 2, y: live.current.viewport.height / 2 }, true);
-    }}
-    onBlurCapture={event => {
-      if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
-      setKeyboardAnchor(undefined); setHovered(undefined);
-    }}
-    onKeyDown={(event) => {
-      touchNavigator.current = false;
-      if (event.key === "Escape") {
-        event.preventDefault(); event.stopPropagation(); canvasRef.current?.focus(); return;
-      }
-      const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
-      const current = items.indexOf(event.target as HTMLButtonElement);
-      if (current < 0) return;
-      const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : event.key === "ArrowDown" ? (current + 1) % items.length : event.key === "ArrowUp" ? (current - 1 + items.length) % items.length : undefined;
-      if (next === undefined) return;
-      event.preventDefault(); items[next]?.focus();
-    }}>
-      <li data-ui="landscape-entity-help" className="mb-2 grid gap-1 p-2 text-caption text-[#a3b1c4] [&_strong]:text-map-ink"><strong>Map resources and connections</strong><span>Use arrow keys or Tab to browse, Enter to inspect, Escape to return to the map.</span></li>
-      {scene.edges.map((connection) => <li key={connection.id}><button data-hover-kind="edge" data-hover-id={connection.id} onClick={() => { setHover(undefined); inspect(connection.id); }} aria-current={visibleSelected === connection.id}>
-        {missingConnectionInput(connection) ? "Missing required value: " : "Connection: "}{endpointLabel(index, connection.from)} to {endpointLabel(index, connection.to)}, {presentConnection(connection, scene.mode, index).title}
-      </button></li>)}
-      {scene.islands.map((island) => <li key={island.id}><button data-hover-kind="island" data-hover-id={island.id} onClick={() => { setHover(undefined); inspect(island.id); }} aria-current={visibleSelected === island.id}>{island.title} island settings</button></li>)}
-      {scene.props.map((prop) => <li key={prop.id}><button data-hover-kind="prop" data-hover-id={prop.id} data-entity-id={prop.id} aria-description={prop.id} onClick={() => { setHover(undefined); inspect(prop.id); }} aria-current={visibleSelected === prop.id}>{prop.label}</button></li>)}
-      {scene.nodes.map((node) => <li key={node.id}><button data-hover-kind="node" data-hover-id={node.id} onClick={() => { setHover(undefined); inspect(node.id); }} aria-current={visibleSelected === node.id}>
-        {node.label}, {node.kindLabel}. {node.presenceText}{node.sourceProblems?.length ? ". Implementation needs attention" : ""}
-      </button></li>)}
-    </ul>
+    <MapEntityNavigator scene={scene} index={index} selected={visibleSelected}
+      onInspect={id => { setHover(undefined); inspect(id); }}
+      onPointerDownCapture={event => { touchNavigator.current = event.pointerType === "touch"; }}
+      onFocusCapture={event => {
+        const button = (event.target as HTMLElement).closest("button");
+        if (!button) return;
+        const kind = button.dataset.hoverKind as Hover["kind"] | undefined;
+        const id = button.dataset.hoverId;
+        if (!kind || !id || touchNavigator.current) return;
+        dismissedHover.current = undefined;
+        setKeyboardAnchor(button);
+        setHovered({ kind, id, x: live.current.viewport.width / 2, y: live.current.viewport.height / 2 }, true);
+      }}
+      onBlurCapture={event => {
+        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
+        setKeyboardAnchor(undefined); setHovered(undefined);
+      }}
+      onKeyDown={(event) => {
+        touchNavigator.current = false;
+        if (event.key === "Escape") {
+          event.preventDefault(); event.stopPropagation(); canvasRef.current?.focus(); return;
+        }
+        const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
+        const current = items.indexOf(event.target as HTMLButtonElement);
+        if (current < 0) return;
+        const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : event.key === "ArrowDown" ? (current + 1) % items.length : event.key === "ArrowUp" ? (current - 1 + items.length) % items.length : undefined;
+        if (next === undefined) return;
+        event.preventDefault(); items[next]?.focus();
+      }} />
   ), [scene, visibleSelected, index, inspect, setHovered]);
 
   if (!hasEntities) {
@@ -778,57 +771,15 @@ export function Isometric() {
 
   return (
     <div data-ui="landscape-workspace" className="flex h-full min-h-0 flex-col">
-      <div data-ui="workspace-toolbar landscape-top" className={cx(workspaceToolbarClasses, "flex flex-none flex-wrap items-start gap-x-3 gap-y-2")}>
-        <div data-ui="landscape-search-panel" className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2 map-band:basis-full vp-700:basis-full">
-          <div data-ui="landscape-search" className="flex min-h-(--control-height) w-[280px] max-w-full items-center gap-2 rounded-md border border-rule-strong bg-paper px-3 text-graphite focus-within:outline-2 focus-within:outline-prod focus-within:outline-offset-2 map-band:flex-[1_1_240px] vp-700:flex-[1_1_200px] [&>svg]:flex-none" role="search" aria-label="Map search">
-            <Search size={16} aria-hidden />
-            <input className="h-[calc(var(--control-height)-2px)] min-h-0 min-w-0 w-full border-0 bg-transparent p-0 font-[inherit] text-label text-ink outline-none placeholder:text-faint placeholder:opacity-100 [&::-webkit-search-cancel-button]:hidden" ref={searchRef} type="search" aria-label="Search isometric map" placeholder="Search the map…" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
-              if (event.key !== "Escape") return;
-              if (selected) select(undefined); else setQuery("");
-              event.preventDefault();
-            }} />
-            {/* Inside the field, so typing never changes the toolbar's height under the panel. */}
-            {matches ? <span data-ui="landscape-search-count" className="inline-flex flex-none items-center gap-1 whitespace-nowrap text-caption text-graphite tabular-nums" role="status" title={selected ? "Search resumes when selection clears" : undefined}>
-              {matches.nodes.size + matches.props.size} {matches.nodes.size + matches.props.size === 1 ? "match" : "matches"}
-              {selected ? <><Pause size={11} aria-hidden /><span className="sr-only"> · Search resumes when selection clears</span></> : null}
-            </span> : null}
-            {query ? <button className={iconButtonClasses({ variant: "quiet", size: "compact", className: "-mr-2 text-inherit" })} aria-label="Clear map search" title="Clear map search" onClick={() => { setQuery(""); searchRef.current?.focus(); }}><X size={14} aria-hidden /></button> : null}
-          </div>
-          <div data-ui="landscape-tag-controls" className="flex min-w-0 max-w-full flex-[0_1_auto] items-center gap-2 text-caption text-graphite vp-700:flex-[1_1_280px]" role="group" aria-label="Map tag filters"><label className="flex-none" htmlFor="map-tag-key">Tags</label>
-            <Select className="w-[168px] flex-[0_1_168px]" ref={tagKeyRef} id="map-tag-key" aria-label="Filter map by tag key" title={untaggedOnly ? "Entities with no tags" : activeTagKey || "All tags"} value={activeTagKey} onChange={event => changeTagFilter({ key: event.target.value, ...(event.target.value === UNTAGGED_FILTER ? { value: null } : {}) })}>
-              <option value="">All tags</option>
-              <option value={UNTAGGED_FILTER} disabled={!model.tagging}>Untagged ({untaggedCount})</option>
-              {activeTagKey && !untaggedOnly && !availableTagKeys.includes(activeTagKey) ? <option value={activeTagKey}>{activeTagKey} (unavailable in this mode)</option> : null}
-              {availableTagKeys.map(key => <option key={key} value={key}>{key === "Untagged" ? "Untagged (key)" : key}</option>)}
-            </Select>
-            {/* Values belong to a chosen key; "All tags" and "Untagged" have none to pick. */}
-            {activeTagKey && !untaggedOnly ? <Select className="w-[168px] flex-[0_1_168px]" aria-label="Filter map by tag value" title={filterValue === undefined ? "All values" : tagValueLabel(filterValue)} value={filterValue === undefined ? "all" : JSON.stringify(filterValue)} onChange={event => { const chosen = groups.find(group => JSON.stringify(group.value) === event.target.value); changeTagFilter({ key: activeTagKey, ...(chosen ? { value: chosen.value } : {}) }); }}><option value="all">All values</option>{filterValue !== undefined && !groups.some(group => group.value === filterValue) ? <option value={JSON.stringify(filterValue)}>{tagValueLabel(filterValue)} (no matches)</option> : null}{groups.map(group => <option key={JSON.stringify(group.value)} value={JSON.stringify(group.value)}>{tagValueLabel(group.value)} ({group.members.length})</option>)}</Select> : null}
-            {activeTagKey ? <button className={iconButtonClasses({ variant: "quiet", className: "text-inherit" })} aria-label="Clear tag filter" title="Clear tag filter" onClick={() => { changeTagFilter({ key: "" }); tagKeyRef.current?.focus(); }}><X size={14} aria-hidden /></button> : null}
-          </div>
-          {/* The selects show the counts; the map's footer repeats the match, so the toolbar keeps one height. */}
-          {activeTagKey && filterValue !== undefined ? <span className="sr-only" role="status">{tagMatchCount} matching {tagMatchCount === 1 ? "entity" : "entities"} in {model.mode === "dev" ? "development" : "production"}</span> : null}
-        </div>
-        <div data-ui="landscape-tools" className="inline-flex shrink-0 rounded-md border border-rule-strong bg-paper map-band:ml-auto vp-700:ml-auto" role="group" aria-label="Map view controls">
-          <button className={mapCameraButtonClasses} onClick={() => zoomBy(0.8)} aria-label="Zoom out" title="Zoom out (−)">
-            <Minus size={16} aria-hidden />
-          </button>
-          <button className={mapCameraButtonClasses} onClick={() => zoomBy(1.25)} aria-label="Zoom in" title="Zoom in (+)">
-            <Plus size={16} aria-hidden />
-          </button>
-          <button className={mapCameraButtonClasses} onClick={() => fit()} aria-label="Fit the whole application" title="Fit everything (0)">
-            <Maximize2 size={16} aria-hidden />
-          </button>
-          <button className={mapCameraButtonClasses} onClick={() => focus(visibleSelected)} disabled={!selected} aria-label="Focus the selection" title="Focus the selection (F)">
-            <Crosshair size={16} aria-hidden />
-          </button>
-          <button className={mapCameraButtonClasses} onClick={() => setMotion((current) => !current)} aria-pressed={!motion} aria-label={motion ? "Pause motion" : "Resume motion"} title={motion ? "Pause motion" : "Resume motion"}>
-            {motion ? <Pause size={16} aria-hidden /> : <Play size={16} aria-hidden />}
-          </button>
-        </div>
-        <button data-ui="panel-toggle" className="inline-flex min-h-(--control-height) flex-none cursor-pointer items-center gap-2 rounded-md border border-rule-strong bg-paper py-0 pr-3 pl-2 font-sans text-label leading-none font-medium text-graphite hover:bg-wash hover:text-ink aria-expanded:border-graphite aria-expanded:bg-wash aria-expanded:text-ink" onClick={toggleResources} aria-expanded={view === "resources"} aria-controls={PANEL_ID} title={view === "resources" ? "Hide resources" : "Browse resources by name and type"}>
-          <PanelRight size={16} aria-hidden /><span>Resources</span>
-        </button>
-      </div>
+      <MapToolbar
+        search={{ query, matches, selected, inputRef: searchRef, onChange: setQuery, onClearSelection: () => select(undefined) }}
+        tags={{ key: activeTagKey, value: filterValue, enabled: !!model.tagging, mode: model.mode,
+          availableKeys: availableTagKeys, groups, untaggedCount, matchCount: tagMatchCount,
+          keyRef: tagKeyRef, onChange: changeTagFilter }}
+        camera={{ motion, onZoom: zoomBy, onFit: () => fit(), onFocus: () => focus(visibleSelected),
+          onToggleMotion: () => setMotion(current => !current) }}
+        resources={{ open: view === "resources", panelId: PANEL_ID, onToggle: toggleResources }}
+      />
       <div data-ui="landscape-content" data-landscape-content className="flex min-h-0 min-w-0 flex-1 vp-800:flex-col">
       <div data-ui="landscape" className="relative min-h-0 flex-1 overflow-hidden bg-map-ground text-map-ink vp-800:min-h-45" ref={containerRef}>
         <canvas

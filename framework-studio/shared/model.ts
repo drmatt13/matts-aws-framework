@@ -270,6 +270,8 @@ export interface ModelResource {
    */
   readonly absent: boolean;
   readonly fromEnv?: string;
+  /** Effective authored-secret storage identity; no secret value is exposed. */
+  readonly bindingPath?: readonly string[];
   /** A standalone non-secret value authored in source; never an environment-file value. */
   readonly authoredValue?: string;
   /** This graph's fallback; `modes` holds both graphs'. */
@@ -570,6 +572,8 @@ export interface CdkLinkIndex {
 }
 
 export interface Snapshot {
+  readonly displayNames?: { readonly values: Readonly<Record<string, string>>; readonly problem?: string };
+  readonly namingCapabilities?: Readonly<Record<string, import("./naming").NamingCapability>>;
   readonly descriptions: { readonly values: Readonly<Record<string, string>>; readonly problem?: string };
   readonly schema: DeclaredSchema;
   readonly databaseProblems: readonly string[];

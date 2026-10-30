@@ -307,7 +307,7 @@ export function assertJsonArguments(value: unknown, origin: string): void {
  * `path`, `optional`, `kind`, `absent` — are answered by the spec itself, and
  * `arn`/`value`/`field` are answered by the secret projections above.
  */
-const REFERENCE_FIELDS = ["tags", "effectiveTags", "memberTags", "fromEnv", "authoredValue", "values", "secretArn", "secretField", "note", "default", "attribute"];
+const REFERENCE_FIELDS = ["tags", "effectiveTags", "memberTags", "bindingPath", "fromEnv", "authoredValue", "values", "secretArn", "secretField", "note", "default", "attribute"];
 
 /** Only accessed attributes become references; the native construct is never enumerated. */
 export function cdkResource<T>(
@@ -384,7 +384,16 @@ export function integrationIdForPath(path: readonly string[]): string {
     .join("-");
 }
 
+/** A catalog rename never redirects an authored secret's existing deployment binding. */
+export function secretBindingPath(reference: Pick<ResourceReference, "path" | "bindingPath" | "fromEnv" | "secretArn" | "kind">): readonly string[] {
+  if (typeof reference.fromEnv !== "string" || !reference.fromEnv || !(reference.kind === "secret" || reference.secretArn === true)) return reference.path;
+  if (!Object.prototype.hasOwnProperty.call(reference, "bindingPath") || reference.bindingPath === undefined) return reference.path;
+  const pin = reference.bindingPath;
+  if (!Array.isArray(pin) || !pin.length || [...pin].some(part => typeof part !== "string" || !/^[A-Za-z][A-Za-z0-9]*$/.test(part))) throw new Error("A secret bindingPath must be a non-empty array of catalog names.");
+  return pin;
+}
+
 /** An unambiguous key shared by synthesis, export, and local execution. */
-export function resourceAttributeKey(reference: Pick<ResourceReference, "path" | "attribute" | "secretArn" | "kind">): string {
-  return JSON.stringify([reference.path, reference.attribute ?? (reference.secretArn || reference.kind === "secret" ? "secretArn" : "value")]);
+export function resourceAttributeKey(reference: Pick<ResourceReference, "path" | "bindingPath" | "fromEnv" | "attribute" | "secretArn" | "kind">): string {
+  return JSON.stringify([secretBindingPath(reference), reference.attribute ?? (reference.secretArn || reference.kind === "secret" ? "secretArn" : "value")]);
 }

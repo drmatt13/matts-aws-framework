@@ -34,6 +34,19 @@ accessible label. `TextInput`, `Select` and `Textarea` retain native props/event
 it does not resolve conflicting utilities, and JSX class order is not CSS precedence.
 Use appearance props/recipes instead of conflicting caller overrides.
 
+| Reuse tier | Owners | Use and limits |
+| --- | --- | --- |
+| Native UI primitives | [src/ui/](../../framework-studio/src/ui/): buttons, form controls, cards, notices and toolbar | Preserve native props, refs, events and submission behavior; appearance variants do not own application state |
+| Shared application composition | `InspectorUI`, `FieldRow`, `NavigationStrip`, `WorkspacePanel`, `DocumentUI`, `WorkbenchUI` | Reuse the existing information/layout contract; each workflow retains its draft, approval and modal policy |
+| Source/context retry feedback | [RetryNotice.tsx](../../framework-studio/src/views/RetryNotice.tsx) | Stateless alert with a retry action for document-workspace read failures; caller owns the query, message, retry label and pending state |
+| Feature rendering | [views/inspector/](../../framework-studio/src/views/inspector/), [views/map/](../../framework-studio/src/views/map/), existing deployment/WebSocket modules | Keep feature-specific props and semantics; extract cohesive rendering without inventing universal configurable components |
+| Domain and integration behavior | `draft-entries`, `editing-state`, typed endpoint/query adapters | Keep validation, edit gating and side effects outside presentation primitives; see [editing](../aws-studio-knowledge/studio/editing.md) and the [source map](../aws-studio-knowledge/REPOSITORY-MAP.md#where-to-change-studio) |
+
+`RetryNotice` intentionally covers only the equivalent source/context retry rows.
+Stale observations, ordinary status messages, operation outcomes and modal errors keep
+their existing components and ARIA behavior. Similar markup alone does not establish
+a shared lifecycle or approval contract.
+
 `Button` emits its `data-variant` automatically. Native buttons using `buttonClasses`
 inside shared dialog footers must also expose `data-variant="primary"` for primary
 actions: the footer preserves their 110px minimum and full row at 420px and below.
@@ -52,6 +65,11 @@ shared controls rendered outside panels. Inspector and dialog contexts own their
 coarse-pointer overrides. Keep contextual density changes scoped to those contexts;
 ordinary document fieldsets retain native geometry. Existing tag and trigger padding
 exceptions have explicit, documented specificity beside their component recipes.
+These recipes, `DocumentUI` and `WorkbenchUI` intentionally target descendant headings,
+paragraphs, controls and semantic slots. Moving JSX into a component preserves that
+contract only if its DOM ancestry remains the same. Do not add a wrapper, reorder
+sections or move a rule between owners as incidental cleanup. Diagnose an actual
+conflict with computed-style and visual evidence before changing specificity.
 
 Put one-off placement in JSX. Extract repeated appearance into its actual component or
 small typed variant recipe, never a runtime mapping from old presentation class names.
@@ -81,7 +99,7 @@ attributes, never presentation classes or assertions about utility strings.
 
 ## Navigation and workspace rhythm
 
-The application bar owns the repository identity, six view links and the **Source**
+The application bar owns the repository identity, seven view links and the **Source**
 Development/Production selector, which sits at the right on every route. The navbar
 uses a 52px row on desktop, 89px with two rows at 760px and below, and 129px with
 three rows at 560px and below. Route changes never add or remove source controls.

@@ -8,7 +8,7 @@ export default defineConfig({
   testDir: "./test/browser", testMatch: "**/*.spec.ts", fullyParallel: false, workers: 2, retries: 0,
   timeout: 30_000, expect: { timeout: 7000, toHaveScreenshot: { animations: "disabled", caret: "hide", threshold: 0.1, maxDiffPixels: 0 } },
   outputDir: "../output/playwright/studio/results", reporter: [["list"], ["html", { outputFolder: "../output/playwright/studio/report", open: "never" }]],
-  use: { baseURL: "http://127.0.0.1:4592", viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, locale: "en-US", timezoneId: "UTC", reducedMotion: "reduce", serviceWorkers: "block", trace: "retain-on-failure", screenshot: "only-on-failure" },
+  use: { baseURL: "http://127.0.0.1:4592", viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1, locale: "en-US", timezoneId: "UTC", reducedMotion: "reduce", serviceWorkers: "block", launchOptions: { chromiumSandbox: true }, trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [
     { name: "chromium-light", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 }, colorScheme: "light" } },
     { name: "chromium-dark", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 }, colorScheme: "dark" } },

@@ -1,3 +1,4 @@
+import { EntityName } from "./EntityName";
 import { InspectorDisclosure, InspectorSummary } from "./InspectorUI";
 import { Select, TextInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
@@ -165,7 +166,7 @@ export function ClientEnvironmentMappings({ file }: { readonly file: ClientEnvir
         </div>
         {rename?.name === name ? <form className={"grid gap-2 [&_p]:m-0"} onSubmit={(event) => { event.preventDefault(); renameField(); }} data-slot="client-mapping-rename">
           <TextInput autoFocus aria-label={`New name for ${name}`} autoComplete="off" spellCheck={false} value={rename.value} onChange={(event) => setRename({ ...rename, value: event.target.value, error: "" })} />
-          <div className={"flex flex-wrap justify-between gap-2"} data-slot="client-mapping-actions"><span className={"text-caption text-graphite"}>Renames in both environments.</span><button className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} type="button" onClick={() => setRename(undefined)}>Cancel rename</button><button className={cx(buttonClasses({ variant: "primary" }), "text-caption")} type="submit" disabled={disabled} data-variant="primary">Save name</button></div>
+          <div className={"flex flex-wrap justify-between gap-2"} data-slot="client-mapping-actions"><span className={"text-caption text-graphite"}>Renames the mapping in both environments. Update application references to the old <code>import.meta.env</code> key separately.</span><button className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} type="button" onClick={() => setRename(undefined)}>Cancel rename</button><button className={cx(buttonClasses({ variant: "primary" }), "text-caption")} type="submit" disabled={disabled} data-variant="primary">Save name</button></div>
           {rename.error ? <p role="alert" className={"text-caption text-refuse wrap-anywhere"}>{rename.error}</p> : null}
         </form> : null}
         <button className={"grid w-full cursor-pointer gap-1 rounded-sm border-0 bg-transparent p-0 text-left text-ink [&[aria-expanded=true]_svg]:[transform:rotate(90deg)] [&>code]:text-caption [&>code]:[line-height:1.6] [&>code]:wrap-anywhere [&:hover>code]:text-dev"} aria-label={`Edit mapping for ${name}`} aria-expanded={open} aria-controls={`mapping-${name}`} onClick={() => setExpanded(open ? null : name)} data-slot="client-mapping-summary">
@@ -198,7 +199,7 @@ export function ClientEnvironmentFileView({ resource }: { readonly resource: Mod
   const file = resource.clientEnvironment;
   if (!file) return null;
   return <>
-    <header><InspectorKind>Environment file</InspectorKind><h2><EntityIcon icon="envFile" />client-app/.env</h2>
+    <header><InspectorKind>Environment file</InspectorKind><EntityName entity={resource.id} fallback="client-app/.env" icon={<EntityIcon icon="envFile" />} />
       <EnvironmentFileStatus resource={resource} />
       <p className="mb-0 text-meta text-graphite">Generated outputs</p>
       <dl aria-label="Generated environment files" data-slot="client-environment-files" className="mb-0 mt-3 grid gap-1 text-meta">{(["dev", "prod"] as const).map(mode => <div key={mode} className="grid min-w-0 grid-cols-[6em_minmax(0,1fr)] gap-2">

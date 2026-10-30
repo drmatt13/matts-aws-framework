@@ -1,3 +1,4 @@
+import { sourceEditBlocked } from "../editing-state";
 import { InspectorSummary } from "./InspectorUI";
 import { Select, TextInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
@@ -52,7 +53,7 @@ export function ManagedDatabaseControls() {
   try { settings = resolveDatabaseSettings({ getContext: () => undefined, env: {}, defaults: authored }); }
   catch { settings = { ...database.settings, ...authored }; }
   const error = draftState.entries.find(entry => entry.kind === "database" && entry.database === database.id)?.error;
-  const disabled = !!draftState.busy || live.evaluating || !!model.stale || draft.conflict;
+  const disabled = sourceEditBlocked({ draftState, draft, model, live });
   const inputNames = new Set<string>(Object.values(DATABASE_SETTING_INPUTS));
   const overrides = Object.values(snapshot.models).flatMap(graph => graph.resources.flatMap(resource => resource.deploymentFile ? [{ file: resource.deploymentFile, entries: resource.deploymentFile.entries.filter(entry => inputNames.has(entry.name)) }] : [])).filter(({ entries }) => entries.length);
   const uniqueOverrides = [...new Map(overrides.map(item => [item.file.mode, item])).values()];

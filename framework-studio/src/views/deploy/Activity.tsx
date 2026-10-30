@@ -6,7 +6,7 @@ import { logClasses } from "./DeployUI";
 import { Check, ChevronDown, ChevronUp, CircleDot, LoaderCircle, Minus, Square, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { JobView } from "../../../shared/deploy";
-import { useJobLog } from "../../deploy/api";
+import { useJobLog } from "../../deploy/live";
 import { relativeTime } from "./format";
 
 /** stderr lines that read as a failure, rather than one of the notices tools write there. */

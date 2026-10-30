@@ -1,5 +1,5 @@
 import type { IdentitySelection, IdentitySource } from "../shared/identity";
-import { call } from "./api";
+import { call } from "./http";
 
 /** Keep server diagnostics intact while making browser transport failures actionable. */
 export function inspectionErrorMessage(reason: unknown): string {

@@ -1,7 +1,7 @@
 import { carriesOwnTile, ICONS, iconUrl, type IconKey } from "../icons";
 import { backgroundGrid } from "./grid";
 import { DEPLOYMENT_BADGES, type DeploymentBadgeKind } from "../deployment";
-import type { Prop, Scene, SceneEdge, SceneNode } from "./build";
+import type { Prop, Scene, SceneEdge, SceneNode } from "./types";
 import { worldToScreen, type Bounds, type Camera, type Point, type Viewport } from "./camera";
 import { project } from "./iso";
 import { searchOpacity, type LandscapeFocus } from "./focus";
@@ -12,6 +12,7 @@ import { placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
 import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, SUBNET_LABEL, nodeCaptionPresentation, subnetLabelPresentation, subnetLabelRect, rectanglesOverlap, visibleNodeCaptions, type LabelRect } from "./labels";
 import { ICON_BADGE, type Face } from "./shapes";
 import { connectionMidpoint } from "./routing";
+import { pathBounds } from "./layout-geometry";
 import { missingConnectionInput } from "../connections";
 import { islandDrawOrder, islandSlabs, type BandSlab, type IslandSlab, type WallRun } from "./slabs";
 
@@ -303,8 +304,7 @@ export class SceneRenderer {
       const path = new Path2D();
       path.moveTo(points[0]!.x, points[0]!.y);
       for (let at = 1; at < points.length; at++) path.lineTo(points[at]!.x, points[at]!.y);
-      const bounds = { minX: Math.min(...points.map((point) => point.x)), maxX: Math.max(...points.map((point) => point.x)),
-        minY: Math.min(...points.map((point) => point.y)), maxY: Math.max(...points.map((point) => point.y)) };
+      const bounds = pathBounds(points);
       arcs.set(edge, { points, path, length, bounds, midpoint: connectionMidpoint(points), missing: missingConnectionInput(edge), color: hex(edge.style.color), offLens: offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)) });
     }
     const boxes = new Map<Standing, { minX: number; minY: number; maxX: number; maxY: number }>();

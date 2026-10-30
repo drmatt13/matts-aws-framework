@@ -1,3 +1,4 @@
+import { EntityName } from "./EntityName";
 import { buttonClasses } from "../ui/Button";
 import { cx } from "../ui/classes";
 import { inspectorRelationListClasses } from "../inspector-ui";
@@ -21,7 +22,7 @@ export function GatewayView({ gateway }: { readonly gateway: ModelGateway }) {
   const availability = { dev: environments(dev.lanes).dev, prod: prod.lanes.prod };
   const locations = { dev: developmentLocation(dev.lanes), prod: "In AWS" };
   return <>
-    <header><InspectorKind environments={{ availability, descriptions: locations, unavailableDescription: "not enabled" }}>Amazon API Gateway</InspectorKind><h2><EntityIcon icon="gateway" />{gateway.title}</h2><FrameworkManagedStatus /><Written location={stack?.stackOutputs?.[0]?.source} label="Defined in" /></header>
+    <header><InspectorKind environments={{ availability, descriptions: locations, unavailableDescription: "not enabled" }}>Amazon API Gateway</InspectorKind><EntityName entity={gateway.id} fallback={gateway.title} icon={<EntityIcon icon="gateway" />} /><FrameworkManagedStatus /><Written location={stack?.stackOutputs?.[0]?.source} label="Defined in" /></header>
     <Tags entity={gateway.stackResource} />
     <Description entity={gateway.id} />
     <DeploymentSection availability={availability} locations={locations}><DeploymentOwnership reason="The framework manages this gateway. Configure Deploy on its handlers to control where they run." owners={[...new Set(routes.map(route => route.target))].map(ref => ({ id: ref, title: model.targets.find(target => target.ref === ref)?.title ?? ref }))} /></DeploymentSection>

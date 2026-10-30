@@ -6,6 +6,7 @@ read_when:
 source:
   - framework-studio/src/layout.ts
   - framework-studio/src/scene/build.ts
+  - framework-studio/src/scene/types.ts
   - framework-studio/src/scene/layout-optimize.ts
   - framework-studio/src/scene/routing.ts
   - framework-studio/src/scene/corridors.ts
@@ -15,6 +16,7 @@ source:
   - framework-studio/src/inspector-navigation.ts
   - framework-studio/src/styles/theme.css
   - framework-studio/src/views/Isometric.tsx
+  - framework-studio/src/views/map/
   - framework-studio/src/views/InspectorNavigation.tsx
 related:
   - studio.graph-model
@@ -110,6 +112,10 @@ Back and browser Back/Forward restore scroll, open disclosures and triggering-co
 focus; a fresh destination opened inside the panel starts at its header and focuses Back.
 `inspector-navigation.ts` retains presentation metadata in memory for at most 200 accepted
 visits, separately per source mode, without form values, drafts, secrets or DOM references.
+Presentation locations are child-index paths plus tag names. A visually neutral wrapper
+or reordered section can therefore change restoration behavior. Preserve the hierarchy
+and selected-entity keys during extraction; test actual focus, scroll and disclosures
+after contextual Back and browser Back/Forward.
 Close panel ends the selection, closes the panel and returns focus to the map. Contextual
 Back, Resources, Close and the toggle retain the existing unsaved-draft warning; cancelled
 navigation never changes the trail.
@@ -149,6 +155,16 @@ wheel listeners mount when a later valid snapshot restores entities, and dispose
 again if the graph becomes empty.
 
 Board's [layout.ts](../../../framework-studio/src/layout.ts) arranges entry, compute and catalog columns with role grouping and SVG connections. Isometric builds a separate geometric scene from the same [graph model](graph-model.md); layout coordinates are disposable projections, never infrastructure configuration.
+
+[Isometric.tsx](../../../framework-studio/src/views/Isometric.tsx) remains the workspace
+coordinator for scene derivation, camera/renderer lifetime, resize, gestures, hover,
+panel navigation and diagnostics. [views/map/](../../../framework-studio/src/views/map/)
+contains the stateless toolbar and accessible entity navigator; their state and event
+callbacks stay in the coordinator, including the navigator's memoization boundary.
+[scene/types.ts](../../../framework-studio/src/scene/types.ts) owns data contracts;
+`build.ts` constructs them and retains type re-exports for existing consumers.
+`layout-geometry.pathBounds` supplies the shared path envelope used by routing,
+render preparation and map picking metadata. It does not change routes or hit tolerance.
 
 | Stage | Source / important behavior |
 | --- | --- |

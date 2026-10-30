@@ -3,7 +3,8 @@ import path from "node:path";
 import ts from "typescript";
 import { randomUUID } from "node:crypto";
 import { locateConfigSource } from "../../packages/framework/scripts/config-source";
-import { SourceFiles } from "./source";
+import { buildSourceIndex, SourceFiles } from "./source";
+import { preserveResourceBuilderComments } from "./resource-config-comments";
 import { inputModeIntents, sameInputModes, type ResourceIntent, type RequirementRule } from "../shared/resources";
 import type { Mode, ModelResource, ModelTarget } from "../shared/model";
 import { editableFiles, toRelative } from "./files";
@@ -122,10 +123,23 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
     const position = base.end - 1 - outer.getStart();
     return original.slice(0, position) + JSON.stringify(resource.fromEnv) + original.slice(position);
   }
-  if (hasComments(outer.getText())) return fail("This resource declaration contains comments. Edit it in source to preserve them.");
+  const commented = hasComments(outer.getText());
   // Always keep the resolved env name explicit when moving between groups.
   const choices = calls.find((call) => call.name === "enum");
-  const metadata = calls[0]!.args[1] ? `, ${calls[0]!.args[1]!.getText()}` : "";
+  let metadataText = calls[0]!.args[1]?.getText();
+  if (resource.kind === "secret" && intent.kind !== "secret") {
+    // A legacy secret can leave Secret mode before it is ever renamed. Reserve
+    // its storage identity now so later conversions/renames cannot adopt a new one.
+    const prefix = "const metadata = ";
+    const source = parse("input-metadata.ts", `${prefix}${metadataText ?? "{}"};`);
+    const object = (source.statements[0] as ts.VariableStatement).declarationList.declarations[0]!.initializer as ts.ObjectLiteralExpression;
+    const pin = findProperty(object, "bindingPath");
+    if (!pin.property) {
+      if (pin.spread) return fail("Secret binding metadata contains a spread. Make its original bindingPath explicit in source before changing its kind.");
+      metadataText = insertExpression(source.text, source, object, ["bindingPath"], JSON.stringify(resource.bindingPath ?? resource.path)).slice(prefix.length, -1);
+    }
+  }
+  const metadata = metadataText ? `, ${metadataText}` : "";
   const choiceCall = intent.kind === "input" && choices ? `.enum(${choices.args.map((argument) => argument.getText()).join(", ")})` : "";
   let result: string;
   if (fromEnv === null) {
@@ -139,6 +153,7 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
     result += policyCalls(intent.modes, choiceCall);
   }
   for (const call of calls.filter((call) => call.name === "note")) result += `.note(${call.args.map((argument) => argument.getText()).join(", ")})`;
+  if (commented) return preserveResourceBuilderComments(outer.getText(), result) ?? fail("This configuration change would remove commented source. Keep the existing resource name, resolve the affected call in your editor, then review again.");
   return result;
 }
 
@@ -260,7 +275,7 @@ function migrateClientInputReferences(root: string, resource: ModelResource, int
   if (JSON.stringify(next) !== JSON.stringify(mappings)) overrides[file] = rewriteClientMappings(before, next);
 }
 
-export function planResourceSource(root: string, state: StudioState, resource: ModelResource, intent: ResourceIntent): { overrides: Record<string, string>; nextResource: string } {
+export function planResourceSource(root: string, state: StudioState, resource: ModelResource, intent: ResourceIntent, overlay: ReadonlyMap<string, string> = new Map(), allowNoop = false, skipReferenceEdits = false): { overrides: Record<string, string>; nextResource: string } {
   if (!IDENTIFIER.test(intent.group || "ungrouped") || ["__proto__", "constructor", "prototype"].includes(intent.group)) return fail("A group must be a safe TypeScript property name, or empty for no group.");
   if (!MODES.some((mode) => intent.modes[mode].present)) return fail("Keep this input in at least one environment, or delete it.");
   const fromEnv = intent.fromEnv === undefined ? resource.fromEnv ?? null : intent.fromEnv;
@@ -283,15 +298,15 @@ export function planResourceSource(root: string, state: StudioState, resource: M
     if (!fallback.trim()) return fail("Use no default instead of a blank default.");
     if (resource.values && !resource.values.includes(fallback)) return fail("The default must be one of the declared choices.");
   }
-  const facts = state.built.catalog.get(resource.path.join("."));
+  const facts = (overlay.size ? buildSourceIndex(root, state.snapshot.models.dev, new SourceFiles(overlay)).catalog : state.built.catalog).get(resource.path.join("."));
   if (!facts) return fail("This resource could not be located in source.");
   const file = path.join(root, facts.value.file);
-  const original = readFileSync(file, "utf8");
+  const original = overlay.get(file) ?? readFileSync(file, "utf8");
   const nextPath = [...(intent.group ? [intent.group] : []), resource.path.at(-1)!];
   const moved = nextPath.join(".") !== resource.path.join(".");
   const metadataChanged = intent.kind !== resource.kind || fromEnv !== (resource.fromEnv ?? null) || !sameInputModes(intent.modes, inputModeIntents(resource));
   let text = original;
-  const overrides: Record<string, string> = {};
+  const overrides: Record<string, string> = Object.fromEntries(overlay);
   const parsed = parse(file, original);
   const resolvedValue = expressionAt(parsed, facts.value.start, facts.value.end);
   const directDescriptor = resolvedValue && !(ts.isCallExpression(unwrap(resolvedValue)) && ts.isIdentifier((unwrap(resolvedValue) as ts.CallExpression).expression) && (unwrap(resolvedValue) as ts.CallExpression).expression.getText(parsed) === "defineResources");
@@ -350,7 +365,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
     if (!target || !consumesResource(target, resource.id)) return fail("Requirements can be edited only for workloads that consume this resource.");
     writeRequirements(root, overrides, target, resource.id, policy);
   }
-  if (moved || intent.kind !== resource.kind) {
+  if (!skipReferenceEdits && (moved || intent.kind !== resource.kind)) {
     for (const candidate of sourceFiles(root)) {
       const before = overrides[candidate] ?? readFileSync(candidate, "utf8");
       const parsed = parse(candidate, before);
@@ -401,7 +416,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
     const diagnostics = ts.transpileModule(candidate, { fileName: name, reportDiagnostics: true }).diagnostics ?? [];
     if (diagnostics.length) return fail(`The change does not parse in ${toRelative(root, name)}.`);
   }
-  if (!Object.keys(overrides).length) return fail("This resource already has these settings.");
+  if (!Object.keys(overrides).length && !allowNoop) return fail("This resource already has these settings.");
   return { overrides, nextResource: `resource:${nextPath.join(".")}` };
 }
 

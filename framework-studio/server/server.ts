@@ -94,6 +94,9 @@ export function readDraftEdits(entries: unknown): readonly DraftEdit[] {
     if (!Array.isArray(entries) || !entries.length || entries.length > 100) throw new EditError(400, "A draft contains between 1 and 100 setting changes.");
     return entries.map((edit: unknown): DraftEdit => {
       const item = edit as Record<string, unknown> | undefined;
+      if (item?.kind === "rename" && Object.keys(item).every(key => ["kind", "entity", "name"].includes(key)) && typeof item.entity === "string" && typeof item.name === "string") return { kind: "rename", entity: item.entity, name: item.name };
+      if (item?.kind === "displayName" && Object.keys(item).every(key => ["kind", "entity", "value"].includes(key)) && typeof item.entity === "string" && (item.value === null || typeof item.value === "string")) return { kind: "displayName", entity: item.entity, value: item.value };
+      if (item?.kind === "resourceConfig" && Object.keys(item).every(key => ["kind", "intent"].includes(key))) return { kind: "resourceConfig", intent: readResourceIntent(item) };
       if (["implementation", "connection", "removeWorkload"].includes(String(item?.kind))) {
         try { return readWorkloadOperation(item); } catch (error) { throw new EditError(400, error instanceof Error ? error.message : "Choose a supported workload operation."); }
       }

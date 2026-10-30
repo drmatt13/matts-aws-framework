@@ -1,3 +1,4 @@
+import { sourceEditBlocked } from "../editing-state";
 import { InspectorSummary } from "./InspectorUI";
 import { Select, TextInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
@@ -18,7 +19,7 @@ export function PlacementControl({ target }: { readonly target: ModelTarget }) {
   const prefix = useId();
   if (!["lambda", "service", "task"].includes(target.kind) || (target.compute.kind === "lambda" && target.compute.implementation !== "typescript")) return null;
   const lambda = target.kind === "lambda";
-  const disabled = !!draftState.busy || live.evaluating || !!model.stale || draft.conflict;
+  const disabled = sourceEditBlocked({ draftState, draft, model, live });
   const current: PlacementEdit = draft.placement(target.ref) ?? {
     target: target.ref,
     vpc: target.placement.kind === "vpc" ? target.placement.networkId : null,
@@ -47,9 +48,9 @@ export function NetworkControls({ id }: { readonly id: string }) {
   if (!network) return null;
   const settings = draft.network(network.id)!;
   const source = snapshot.source.entities[id]?.value;
-  const fields = CREATORS.vpc.fields.filter(field => !["id", "description", "endpoints", "tags"].includes(field.key));
+  const fields = CREATORS.vpc.fields.filter(field => !["id", "name", "description", "endpoints", "tags"].includes(field.key));
   const form = settings;
-  const disabled = !!draftState.busy || live.evaluating || !!model.stale || draft.conflict;
+  const disabled = sourceEditBlocked({ draftState, draft, model, live });
   const update = (key: string, value: string | number | boolean) => {
     const next = { ...form, [key]: value };
     draft.setNetwork(network.id, next as NetworkSettings);

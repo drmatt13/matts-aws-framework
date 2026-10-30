@@ -7,7 +7,7 @@ import type { DatabaseHistory } from "../../shared/database-history";
 import type { DatabaseObservation, DatabaseWorkbench } from "../../shared/database-workbench";
 import type { DatabaseApplicationResult, DatabaseApplicationReview, DatabaseOperationRecord } from "../../shared/database-application";
 import type { DatabaseSession } from "../database-session";
-import { call } from "../api";
+import { call } from "../http";
 import { historyApi, shortHash } from "./DatabaseHistory";
 import { WorkbenchDialog, workbenchNoticeClasses, workbenchCardClasses } from "./WorkbenchUI";
 import { DatabaseCloud } from "./DatabaseCloud";

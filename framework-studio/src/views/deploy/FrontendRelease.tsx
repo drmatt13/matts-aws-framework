@@ -7,7 +7,7 @@ import { statePanelClasses, factsClasses } from "./DeployUI";
 
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { call } from "../../api";
+import { call } from "../../http";
 import type { FrontendReleaseResult, FrontendReleaseReview, FrontendReleaseSettings, FrontendSettingsReview } from "../../../shared/frontend-release";
 import type { DeploymentIdentityRequest, DeploymentIdentityReview } from "../../../shared/deployment-identities";
 

@@ -15,12 +15,17 @@ sanitized fixtures. Unknown API/external requests fail the test. The metadata in
 the test HTML is synthetic and uses the actual shared protocol version.
 
 Chromium checks light and dark themes, screenshots, keyboard interaction, errors,
-draft/review boundaries and accessibility. Firefox and WebKit run the six-route
+draft/review boundaries and accessibility. Firefox and WebKit run the seven-route
 navigation smoke check. Screenshots are platform-specific; the checked-in originals
 were captured with Playwright 1.64.1 Chromium on macOS arm64. Other platforms need
 an explicitly reviewed baseline instead of comparing different font rasterizers.
 Reference changes require visual review; do not automatically accept them to make
-a migration green. A missing baseline fails a normal verification run.
+a migration green. A missing baseline fails a normal verification run. The current
+references were captured from the protected October 30 working tree before structural
+refactoring, reviewed, then compared against the refactored app with no visual diffs.
+The [campaign record](../../../docs/framework-studio/maintainability-campaign-2026-10-30.md)
+records the pre-existing reference drift, source baseline and verification limits.
+The browser configuration keeps the Chromium sandbox enabled.
 Map captures read the existing camera/viewport diagnostics until they remain stable
 for 250ms, covering the application's 180ms aspect-layout debounce. Inspector
 references were reviewed and captured again from the same frozen original assets

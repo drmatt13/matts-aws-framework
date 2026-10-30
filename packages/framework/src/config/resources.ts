@@ -90,6 +90,8 @@ export interface ResourceReference<
 > {
   readonly tags?: DeclarationTags;
   readonly effectiveTags?: DeclarationTags;
+  /** Original deployment binding identity retained across catalog renames. */
+  readonly bindingPath?: readonly string[];
   readonly $resource: typeof RESOURCE_REFERENCE_BRAND;
   /** What the supplied value is: a plain string, or a non-secret secret handle. */
   readonly kind: Kind;
@@ -400,6 +402,12 @@ export type ModeValues<Value extends string = string> =
 /** Per-graph fallbacks. A graph left out has none. */
 export type ModeDefaults<Value extends string = string> = ModeValues<Value>;
 
+/** Input metadata; native construct identities remain owned by their declarations. */
+export interface InputDeclarationOptions extends DeclarationMetadata {
+  /** Preserve a managed secret's original binding, independently of its catalog name. */
+  readonly bindingPath?: readonly string[];
+}
+
 /**
  * A secret whose value you author in cdk-app/.env.<mode>, and nowhere else.
  *
@@ -588,8 +596,17 @@ function inputModes(declaration: ResourceDeclaration, path: readonly string[]): 
   return { dev: resolved("dev"), prod: resolved("prod") };
 }
 
+function inputMetadata(options: InputDeclarationOptions | undefined, origin: string): Pick<ResourceReference, "tags" | "effectiveTags" | "bindingPath"> {
+  const pin = options?.bindingPath;
+  if (pin !== undefined && (!Array.isArray(pin) || !pin.length || [...pin].some(part => typeof part !== "string" || !RESOURCE_NAME_PATTERN.test(part)))) {
+    throw new Error(`${origin}: bindingPath must be a non-empty array of catalog names, such as ["openaiApiKey"].`);
+  }
+  const tags = options?.tags === undefined ? undefined : validateTags(options.tags, origin);
+  return { ...(tags === undefined ? {} : { tags, effectiveTags: tags }), ...(pin === undefined ? {} : { bindingPath: Object.freeze([...pin]) }) };
+}
+
 /** One authored input, of either kind, as the builder a chain continues from. */
-function declareInput(kind: ResourceKind, variable?: string, options?: DeclarationMetadata): BuilderData {
+function declareInput(kind: ResourceKind, variable?: string, options?: InputDeclarationOptions): BuilderData {
   if (
     variable !== undefined &&
     (typeof variable !== "string" || !ENVIRONMENT_VARIABLE_NAME.test(variable))
@@ -602,7 +619,7 @@ function declareInput(kind: ResourceKind, variable?: string, options?: Declarati
     $declaration: RESOURCE_DECLARATION_BRAND,
     $payload: {
       kind,
-      ...(options?.tags === undefined ? {} : { tags: validateTags(options.tags, `resource.${kind === "secret" ? "secret" : "fromEnv"}()`), effectiveTags: validateTags(options.tags) }),
+      ...inputMetadata(options, `resource.${kind === "secret" ? "secret" : "fromEnv"}()`),
       // Optional until a `.default()` answers for it in the graph being built.
       // A secret has no default and stays optional: whether a deployment needs
       // it belongs to the workloads that read it, not to the catalog.
@@ -623,7 +640,7 @@ function declareInput(kind: ResourceKind, variable?: string, options?: Declarati
  */
 export interface ResourceFactory {
   /** A standalone non-secret value, authored once or explicitly for each graph. */
-  value<const Value extends string>(value: Value | ModeValues<Value>, options?: DeclarationMetadata): ValueInputBuilder<Value>;
+  value<const Value extends string>(value: Value | ModeValues<Value>, options?: InputDeclarationOptions): ValueInputBuilder<Value>;
   /** A reference to any native construct, linked beside its definition. */
   cdk<T>(options?: DeclarationMetadata): CdkResource<T>;
   /**
@@ -644,7 +661,7 @@ export interface ResourceFactory {
   /** Read from the SCREAMING_SNAKE_CASE of this declaration's catalog path. */
   fromEnv(): EnvStringBuilder<string, true>;
   /** Read from the named variable, which is the spelling worth preferring. */
-  fromEnv<const Name extends string>(variable: Name, options?: DeclarationMetadata): EnvStringBuilder<Name, true>;
+  fromEnv<const Name extends string>(variable: Name, options?: InputDeclarationOptions): EnvStringBuilder<Name, true>;
   /**
    * A secret you author in cdk-app/.env.<mode>, which `npm run deploy:resources` uploads to
    * Secrets Manager and supplies the ARN for.
@@ -657,19 +674,18 @@ export interface ResourceFactory {
    * startup. None of the three puts the value in a template.
    */
   secret(): EnvSecretBuilder<string>;
-  secret<const Name extends string>(variable: Name, options?: DeclarationMetadata): EnvSecretBuilder<Name>;
+  secret<const Name extends string>(variable: Name, options?: InputDeclarationOptions): EnvSecretBuilder<Name>;
 }
 
 export const resource: ResourceFactory = {
-  value<const Value extends string>(value: Value | ModeValues<Value>, options?: DeclarationMetadata) {
+  value<const Value extends string>(value: Value | ModeValues<Value>, options?: InputDeclarationOptions) {
     const perMode = typeof value === "object" && value !== null && !Array.isArray(value);
     if (perMode && (!Object.keys(value).length || Object.keys(value).some(mode => !CLOUD_MODES.includes(mode as CloudMode)))) throw new Error("resource.value() takes a non-secret string or { dev, prod } values.");
     const values: readonly unknown[] = perMode ? Object.values(value) : [value];
     if (values.some(item => typeof item !== "string" || !item.trim())) throw new Error("resource.value() requires a non-blank standalone value for every declared graph.");
     return Object.assign(Object.create(BUILDER_PROTOTYPE), {
       $declaration: RESOURCE_DECLARATION_BRAND,
-      $payload: { kind: "string", optional: false,
-        ...(options?.tags === undefined ? {} : { tags: validateTags(options.tags, "resource.value()"), effectiveTags: validateTags(options.tags) }) },
+      $payload: { kind: "string", optional: false, ...inputMetadata(options, "resource.value()") },
       $modes: { value: perMode ? { ...value } : value },
     }) as ValueInputBuilder<Value>;
   },
@@ -679,10 +695,10 @@ export const resource: ResourceFactory = {
   stack<T>(options?: import("./cdk-resources").StackResourceOptions<T>): CdkResourceGroup<T> {
     return cdkResourceGroup<T>([], false, options);
   },
-  fromEnv(variable?: string, options?: DeclarationMetadata) {
+  fromEnv(variable?: string, options?: InputDeclarationOptions) {
     return declareInput("string", variable, options) as unknown as EnvStringBuilder<string, true>;
   },
-  secret(variable?: string, options?: DeclarationMetadata) {
+  secret(variable?: string, options?: InputDeclarationOptions) {
     return declareInput("secret", variable, options) as unknown as EnvSecretBuilder<string>;
   },
 };
@@ -880,7 +896,25 @@ export function defineResources<const Catalog extends ResourceDeclarationInput>(
   options: DefineResourcesOptions = {},
 ): WithResourcePaths<Catalog, readonly []> {
   const mode = options.mode === undefined ? undefined : cloudMode(options.mode, "defineResources({ mode })");
-  return withPaths(catalog, [], mode) as unknown as WithResourcePaths<Catalog, readonly []>;
+  const resolved = withPaths(catalog, [], mode);
+  // A pin reserves the same managed identity while input source/kind controls
+  // temporarily make it dormant. Projections of one declaration are not entries.
+  const identities = new Map<string, readonly string[]>();
+  const visit = (entry: ResourceDeclarationGroup[string]): void => {
+    if (isCdkResource(entry) || isCdkResourceGroup(entry)) return;
+    if (isResourceReference(entry)) {
+      if (!entry.bindingPath && !(entry.kind === "secret" && entry.fromEnv)) return;
+      const bindingPath = entry.bindingPath ?? entry.path;
+      const key = JSON.stringify(bindingPath);
+      const previous = identities.get(key);
+      if (previous) throw new Error(`Secret binding identity ${bindingPath.join(".")} is claimed by resources.${previous.join(".")} and resources.${entry.path.join(".")}. Preserve one owning declaration or choose a distinct bindingPath.`);
+      identities.set(key, entry.path);
+      return;
+    }
+    for (const child of Object.values(entry)) visit(child);
+  };
+  for (const entry of Object.values(resolved)) visit(entry);
+  return resolved as unknown as WithResourcePaths<Catalog, readonly []>;
 }
 
 export interface DefineResourcesOptions {

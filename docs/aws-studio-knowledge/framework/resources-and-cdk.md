@@ -42,6 +42,22 @@ graphs retain `modes.value`. Local/cloud consumers and deployment conditions res
 without environment/context reads, links, manifest attributes or resource outputs. Secrets
 continue to use protected environment inputs or a stack-owned secret handle.
 
+Authored-secret catalog renames retain an input-only `bindingPath` option containing the
+original catalog segments, plus the existing explicit `fromEnv` name. Builders, mode
+resolution and secret projections preserve that pin. `secretBindingPath` in
+[cdk-resources.ts](../../../packages/framework/src/config/cdk-resources.ts) uses it only
+for authored secrets and their ARN projections; generic graph/native-link paths remain
+the current catalog paths. It feeds the existing CDK parameter digest/cache, managed
+secret metadata `path` and `resourceAttributeKey`, preserving ownership tags, development
+outputs and existing local manifests without an identity migration. Repeat renames keep
+the first pin. Ordinary `fromEnv` and `value` inputs retain dormant pins through source
+and Secret controls; `defineResources` reserves these along with active bindings and
+rejects duplicate claims, including declarations absent from the selected mode. Native
+`stack`/`cdk` metadata does not accept the option. Tests compare both synth modes,
+existing owned-secret planning and local manifest resolution in
+[secret-binding-rename.test.ts](../../../cdk-app/test/secret-binding-rename.test.ts) and
+[secret-binding-identity.test.ts](../../../packages/framework/test/secret-binding-identity.test.ts).
+
 | Abstraction | Implementation contract |
 | --- | --- |
 | `ResourceReference` | [resources.ts](../../../packages/framework/src/config/resources.ts): branded catalog path, kind, absence, authoredValue or fromEnv/default/required, and attribute/secret projections |

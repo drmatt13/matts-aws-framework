@@ -3,7 +3,7 @@ import type { LayoutGraph, LayoutLink } from "./layout-graph";
 import { layoutLabels, layoutObstacles, measureLayout, type LayoutQuality } from "./layout-quality";
 import { intersects, type Obstacle } from "./layout-geometry";
 
-export interface LayoutSettings { readonly aspect?: number; readonly previous?: readonly IslandPosition[]; readonly previousKey?: string; readonly pins?: Readonly<Record<string, IslandPosition>>; readonly budget?: number }
+export interface LayoutSettings { readonly preservePositions?: boolean; readonly aspect?: number; readonly previous?: readonly IslandPosition[]; readonly previousKey?: string; readonly pins?: Readonly<Record<string, IslandPosition>>; readonly budget?: number }
 export interface LayoutResult { readonly positions: readonly IslandPosition[]; readonly before: LayoutQuality; readonly after: LayoutQuality; readonly evaluations: number; readonly key: string; readonly topologyKey: string }
 /** Aspect buckets avoid reacting to small resizes or inspector toggles. */
 export function layoutAspect(width: number, height: number): number {
@@ -106,7 +106,7 @@ export function optimizeLayout(islands: readonly IslandFootprint[], graph: Layou
   const aspect = settings.aspect ?? 16 / 9;
   const sorted = [...islands].sort((a, b) => a.id < b.id ? -1 : 1);
   const topologyKey = JSON.stringify([sorted, graph.signature, aspect, settings.pins, settings.budget]);
-  const key = JSON.stringify([topologyKey, settings.previous, settings.previousKey]);
+  const key = JSON.stringify([topologyKey, settings.previous, settings.previousKey, settings.preservePositions]);
   const hit = cache.get(key); if (hit) return hit;
   const baseline = clearanceSeed(sorted, layoutIslands(sorted).map((p) => settings.pins?.[p.id] ?? p), settings.pins);
   const proxy = proxyGraph(graph);
@@ -116,7 +116,7 @@ export function optimizeLayout(islands: readonly IslandFootprint[], graph: Layou
   const evaluate = (candidate: readonly IslandPosition[]) => { const q = measureLayout(islands, proxy, candidate, aspect, previous); return settings.previous ? { ...q, cost: q.cost + q.movement * 17 } : q; };
   let best = baseline.map((p) => settings.pins?.[p.id] ?? old.get(p.id) ?? p), quality = evaluate(best), evaluations = 1;
   const localEdit = old.size === islands.length && old.size > 0 && quality.islandOverlaps === 0;
-  if (settings.previousKey === topologyKey && settings.previous?.length === islands.length) {
+  if ((settings.previousKey === topologyKey || settings.preservePositions && old.size === islands.length && sorted.every(island => old.has(island.id)) && quality.islandOverlaps === 0) && settings.previous?.length === islands.length) {
     const after = measureLayout(islands, proxy, settings.previous, aspect, settings.previous);
     return { positions: settings.previous, before, after, evaluations: 0, key, topologyKey };
   }

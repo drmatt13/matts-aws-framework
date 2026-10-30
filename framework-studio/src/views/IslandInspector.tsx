@@ -1,3 +1,4 @@
+import { EntityName } from "./EntityName";
 import { buttonClasses } from "../ui/Button";
 import { NetworkControls } from "./NetworkControls";
 import { useMemo } from "react";
@@ -44,7 +45,7 @@ export function IslandInspector({ id: selection }: { readonly id: string }) {
     return <li key={node.id}><button className={buttonClasses({ variant: "link" })} onClick={() => select(node.id)}>{resource?.clientEnvironment ? "client-app/.env" : node.label}</button><span className={"text-caption text-graphite"}>{node.kindLabel}</span><ResourceStatus resource={resource} />{route ? <RouteStatus route={route} /> : null}</li>;
   })}</ul></InspectorDisclosure>;
   return <>
-    <header><span className={"text-graphite text-meta font-medium tracking-[.03em]"}>Island settings</span><h2>{island.title}</h2>{network ? <FrameworkManagedStatus /> : null}<p className={"text-caption text-graphite"}>{members.length} {members.length === 1 ? "entry" : "entries"}</p></header>
+    <header><span className={"text-graphite text-meta font-medium tracking-[.03em]"}>Island settings</span><EntityName entity={id} fallback={island.title} />{network ? <FrameworkManagedStatus /> : null}<p className={"text-caption text-graphite"}>{members.length} {members.length === 1 ? "entry" : "entries"}</p></header>
     <Tags entity={id} />
     <Description entity={id} />
     {id !== "island:inputs" && id !== "island:environment" && id !== CLIENT_ENVIRONMENT_ISLAND ? <DeploymentSection availability={availability} locations={network ? { prod: "In AWS" } : undefined}><DeploymentOwnership reason={network ? "Production creates this VPC when its database, native resources or enabled workloads require it. Configure those owners; local Compose networking remains shared." : "This island groups resources. Configure deployment on its entries."} owners={members.filter(node => model.targets.some(target => target.ref === node.id) || model.resources.some(resource => resource.id === node.id)).map(node => ({ id: node.id, title: node.label }))} /></DeploymentSection> : null}

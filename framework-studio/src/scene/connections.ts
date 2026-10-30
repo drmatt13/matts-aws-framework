@@ -1,6 +1,6 @@
 import type { Mode, ModelEdge, ModelResource, TargetKind } from "../../shared/model";
 import { API_EDGE_COLOR, COMPUTE_EDGE_COLOR, EDGE_COLORS, GUARD_EDGE_COLOR, ICON_TINT, READ_EDGE_COLOR } from "./look";
-import type { SceneEdge, SceneNode } from "./build";
+import type { SceneEdge, SceneNode } from "./types";
 import { isEventConnection, type EdgeCategory } from "../lookup";
 
 /**

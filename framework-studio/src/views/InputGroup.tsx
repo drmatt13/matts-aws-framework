@@ -1,3 +1,4 @@
+import { displayName } from "../naming";
 import { buttonClasses } from "../ui/Button";
 import { cx } from "../ui/classes";
 import { inputGroupRelationListClasses, inspectorRelationListClasses } from "../inspector-ui";
@@ -50,7 +51,7 @@ export function InputGroupEntries({ group }: { readonly group: ModelResource }) 
       const nested = child.kind === "group";
       const status = nested ? { text: entryCount(groupEntries(child, model.resources)) } : entryStatus(child, file);
       return <li key={child.id}>
-        <span className={"flex items-center gap-2 min-w-0 [&>button]:max-w-none [&>button]:wrap-anywhere [&>button]:text-left [&>[data-entity-icon]]:size-5 [&>[data-entity-icon]]:flex-none"} data-slot="input-group-entry-name"><EntityIcon icon={resourceIcon(child)} /><button className={buttonClasses({ variant: "link" })} onClick={() => select(child.id)}>{child.path.at(-1)}</button></span>
+        <span className={"flex items-center gap-2 min-w-0 [&>button]:max-w-none [&>button]:wrap-anywhere [&>button]:text-left [&>[data-entity-icon]]:size-5 [&>[data-entity-icon]]:flex-none"} data-slot="input-group-entry-name"><EntityIcon icon={resourceIcon(child)} /><button className={buttonClasses({ variant: "link" })} onClick={() => select(child.id)}>{displayName(model, child.id, child.path.at(-1) ?? child.id)}</button></span>
         <EnvironmentPills availability={availability[child.id] ?? { dev: false, prod: false }} label={`${child.path.at(-1)} environments`}
           descriptions={{ dev: "declared in development", prod: "declared in production" }} unavailableDescription="not declared" />
         {child.fromEnv ? <code className={"text-caption text-graphite"}>{child.fromEnv}</code> : <span className={"text-caption text-graphite"}>{nested ? "Input group" : child.kind === "secret" ? "Secret" : "Input"}</span>}
@@ -64,7 +65,7 @@ export function InputGroupUse({ group }: { readonly group: ModelResource }) {
   const { model, index, select } = useStudio();
   const use = groupUse(group, model.edges);
   const entries = groupEntries(group, model.resources);
-  const name = (id: string) => index.resources.get(id)?.path.at(-1) ?? id;
+  const name = (id: string) => displayName(model, id, index.resources.get(id)?.path.at(-1) ?? id);
   const reads = (ids: readonly string[]) => ids.length === entries.length && entries.length > 1 ? `Reads all ${entries.length} entries` : `Reads ${nameList(ids.map(name))}`;
   return <InspectorSection title="Used by" className={"[&_li>span]:text-right inspector-360:[&_[data-slot=relations]>li]:grid-cols-1 inspector-360:[&_li>span]:text-left"}
     description={use.readers.length + use.feeds.length ? undefined : "Nothing reads these entries in this graph. Select an entry to connect a workload."} data-slot="input-group-use">

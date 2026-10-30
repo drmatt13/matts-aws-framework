@@ -1,0 +1,380 @@
+- generic [ref=f2e3]:
+  - banner [ref=f2e4]:
+    - generic [ref=f2e5]:
+      - text: AWS Studio
+      - generic "naming-browser" [ref=f2e6]
+    - navigation "Views" [ref=f2e7]:
+      - link "Map" [ref=f2e8] [cursor=pointer]:
+        - /url: /?select=resource%3AenableWebSocketApi
+      - link "Database" [ref=f2e9] [cursor=pointer]:
+        - /url: /database
+      - link "Deploy" [ref=f2e10] [cursor=pointer]:
+        - /url: /deploy
+      - link "GraphQL" [ref=f2e11] [cursor=pointer]:
+        - /url: /graphql
+      - link "Cognito" [ref=f2e12] [cursor=pointer]:
+        - /url: /cognito
+      - link "Domains" [ref=f2e13] [cursor=pointer]:
+        - /url: /domains
+      - link "WebSockets" [ref=f2e14] [cursor=pointer]:
+        - /url: /websockets
+    - group "Source environment" [ref=f2e16]:
+      - generic [ref=f2e17]: Source
+      - generic [ref=f2e18]:
+        - button "Development" [pressed] [ref=f2e19] [cursor=pointer]
+        - button "Production" [ref=f2e21] [cursor=pointer]
+  - main [ref=f2e24]:
+    - generic [ref=f2e25]:
+      - generic [ref=f2e26]:
+        - generic [ref=f2e27]:
+          - search "Map search" [ref=f2e28]:
+            - searchbox "Search isometric map" [ref=f2e32]
+          - group "Map tag filters" [ref=f2e33]:
+            - generic [ref=f2e34]: Tags
+            - combobox "Filter map by tag key" [ref=f2e35]:
+              - option "All tags" [selected]
+              - option "Untagged (2)"
+              - option "area"
+        - group "Map view controls" [ref=f2e36]:
+          - button "Zoom out" [ref=f2e37] [cursor=pointer]
+          - button "Zoom in" [ref=f2e39] [cursor=pointer]
+          - button "Fit the whole application" [ref=f2e41] [cursor=pointer]
+          - button "Focus the selection" [ref=f2e47] [cursor=pointer]
+          - button "Pause motion" [ref=f2e50] [cursor=pointer]
+        - button "Resources" [ref=f2e54] [cursor=pointer]
+      - generic [ref=f2e58]:
+        - generic [ref=f2e59]:
+          - generic "Isometric landscape of the application. Use the list of entities below, or arrow keys to pan, plus and minus to zoom, 0 to fit, F to focus the selection." [ref=f2e60]
+          - generic:
+            - group "Background connections":
+              - generic: Filter background connections. Selecting or previewing a resource always shows its connections.
+              - button "Routes and events" [ref=f2e61] [cursor=pointer]
+              - button "Environment and secrets" [ref=f2e62] [cursor=pointer]
+              - button "Resource interactions" [pressed] [ref=f2e63] [cursor=pointer]
+          - generic:
+            - generic [ref=f2e64]: 42 resources · 59 connections
+            - button "Add to application" [ref=f2e66] [cursor=pointer]
+          - list "Entities in the landscape" [ref=f2e68]:
+            - listitem [ref=f2e69]:
+              - strong [ref=f2e70]: Map resources and connections
+              - generic [ref=f2e71]: Use arrow keys or Tab to browse, Enter to inspect, Escape to return to the map.
+            - listitem [ref=f2e72]:
+              - 'button "Connection: WebSocket authorizer: $connect authorizer to WebSocket API, Authorizes: $connect" [ref=f2e73] [cursor=pointer]'
+            - listitem [ref=f2e74]:
+              - 'button "Connection: Stack: FrontendWebsiteS3Stack to Environment file: Client environment, Maps into: VITE_API_GATEWAY_URL" [ref=f2e75] [cursor=pointer]'
+            - listitem [ref=f2e76]:
+              - 'button "Connection: WebSocket API to Environment file: Client environment, Maps into: VITE_API_GATEWAY_WS_URL" [ref=f2e77] [cursor=pointer]'
+            - listitem [ref=f2e78]:
+              - 'button "Connection: Input: enableWebSocketApi to Environment file: Client environment, Maps into: VITE_LOCAL_WS_URL" [ref=f2e79] [cursor=pointer]'
+            - listitem [ref=f2e80]:
+              - 'button "Connection: AgentCore agent: example-agent to Stack: cognito, Reads: 2 environment values" [ref=f2e81] [cursor=pointer]'
+            - listitem [ref=f2e82]:
+              - 'button "Connection: AgentCore agent: example-agent to Input group: langgraph, Reads: 4 environment values" [ref=f2e83] [cursor=pointer]'
+            - listitem [ref=f2e84]:
+              - 'button "Missing required value: Environment file: cdk-app/.env.dev to Input group: client, Supplies: 3 inputs" [ref=f2e85] [cursor=pointer]'
+            - listitem [ref=f2e86]:
+              - 'button "Connection: HTTP: /graphql to Stack: cognito, Reads: 2 environment values" [ref=f2e87] [cursor=pointer]'
+            - listitem [ref=f2e88]:
+              - 'button "Connection: HTTP: /mfa to Stack: cognito, Reads: 3 environment values" [ref=f2e89] [cursor=pointer]'
+            - listitem [ref=f2e90]:
+              - 'button "Connection: HTTP: /oauth/callback to Stack: cognito, Reads: 4 environment values" [ref=f2e91] [cursor=pointer]'
+            - listitem [ref=f2e92]:
+              - 'button "Connection: HTTP: /refresh to Stack: cognito, Reads: 3 environment values" [ref=f2e93] [cursor=pointer]'
+            - listitem [ref=f2e94]:
+              - 'button "Connection: HTTP: /sign-in to Stack: cognito, Reads: 3 environment values" [ref=f2e95] [cursor=pointer]'
+            - listitem [ref=f2e96]:
+              - 'button "Connection: HTTP: /sign-out to Stack: cognito, Reads: 3 environment values" [ref=f2e97] [cursor=pointer]'
+            - listitem [ref=f2e98]:
+              - 'button "Connection: HTTP: /test/run-task to Stack: cognito, Reads: 3 environment values" [ref=f2e99] [cursor=pointer]'
+            - listitem [ref=f2e100]:
+              - 'button "Connection: HTTP: /test/start-workflow to Stack: cognito, Reads: 3 environment values" [ref=f2e101] [cursor=pointer]'
+            - listitem [ref=f2e102]:
+              - 'button "Connection: HTTP: /verify-session to Stack: cognito, Reads: 3 environment values" [ref=f2e103] [cursor=pointer]'
+            - listitem [ref=f2e104]:
+              - 'button "Connection: WebSocket authorizer: $connect authorizer to Stack: cognito, Reads: 2 environment values" [ref=f2e105] [cursor=pointer]'
+            - listitem [ref=f2e106]:
+              - 'button "Connection: Input group: client to Environment file: Client environment, Maps: 3 client variables" [ref=f2e107] [cursor=pointer]'
+            - listitem [ref=f2e108]:
+              - 'button "Connection: Stack: cognito to Environment file: Client environment, Maps: 4 client variables" [ref=f2e109] [cursor=pointer]'
+            - listitem [ref=f2e110]:
+              - 'button "Connection: Container service: /example-service/* to Stack: cognito, Reads: 2 environment values" [ref=f2e111] [cursor=pointer]'
+            - listitem [ref=f2e112]:
+              - 'button "Connection: Stack: rds to Database: rds.database, Provides database: rds.database" [ref=f2e113] [cursor=pointer]'
+            - listitem [ref=f2e114]:
+              - 'button "Connection: Event Lambda: cognito-post-confirmation-trigger to Database: rds.database, Connects to: rds.database" [ref=f2e115] [cursor=pointer]'
+            - listitem [ref=f2e116]:
+              - 'button "Connection: HTTP: /graphql to Database: rds.database, Connects to: rds.database" [ref=f2e117] [cursor=pointer]'
+            - listitem [ref=f2e118]:
+              - 'button "Connection: HTTP: /oauth/callback to Database: rds.database, Connects to: rds.database" [ref=f2e119] [cursor=pointer]'
+            - listitem [ref=f2e120]:
+              - 'button "Connection: Container task: db-migrate to Database: rds.database, Connects directly to: rds.database" [ref=f2e121] [cursor=pointer]'
+            - listitem [ref=f2e122]:
+              - 'button "Connection: Input: enableWebSocketApi to WebSocket authorizer: $connect authorizer, Conditional Deployment: $enableWebSocketApi" [ref=f2e123] [cursor=pointer]'
+            - listitem [ref=f2e124]:
+              - 'button "Connection: Input: enableWebSocketApi to WebSocket: $connect, Conditional Deployment: $enableWebSocketApi" [ref=f2e125] [cursor=pointer]'
+            - listitem [ref=f2e126]:
+              - 'button "Connection: Input: enableWebSocketApi to WebSocket: customAction, Conditional Deployment: $enableWebSocketApi" [ref=f2e127] [cursor=pointer]'
+            - listitem [ref=f2e128]:
+              - 'button "Connection: Input: enableWebSocketApi to WebSocket: $default, Conditional Deployment: $enableWebSocketApi" [ref=f2e129] [cursor=pointer]'
+            - listitem [ref=f2e130]:
+              - 'button "Connection: Input: enableWebSocketApi to WebSocket: $disconnect, Conditional Deployment: $enableWebSocketApi" [ref=f2e131] [cursor=pointer]'
+            - listitem [ref=f2e132]:
+              - 'button "Connection: AgentCore agent: example-agent to Secret: openaiApiKey, Reads: OPENAI_API_KEY_SECRET_ARN" [ref=f2e133] [cursor=pointer]'
+            - listitem [ref=f2e134]:
+              - 'button "Connection: Event Lambda: cognito-custom-message to Stack: cognito, Reads: FRONTEND_URL" [ref=f2e135] [cursor=pointer]'
+            - listitem [ref=f2e136]:
+              - 'button "Connection: Event Lambda: cognito-pre-signup-trigger to Stack: cognito, Reads: SKIP_EMAIL_VERIFICATION" [ref=f2e137] [cursor=pointer]'
+            - listitem [ref=f2e138]:
+              - 'button "Connection: HTTP: /mfa to Stack: cognito, Allow AWS actions: cognito.userPool" [ref=f2e139] [cursor=pointer]'
+            - listitem [ref=f2e140]:
+              - 'button "Connection: Event Lambda: cognito-post-confirmation-trigger to Stack: DevLambdaReplayStack, Local replay: cognito-post-confirmation-trigger" [ref=f2e141] [cursor=pointer]'
+            - listitem [ref=f2e142]:
+              - 'button "Connection: HTTP API to HTTP: /examples/python, Routes to: /api/examples/python" [ref=f2e143] [cursor=pointer]'
+            - listitem [ref=f2e144]:
+              - 'button "Connection: HTTP API to HTTP: /graphql, Routes to: /api/graphql" [ref=f2e145] [cursor=pointer]'
+            - listitem [ref=f2e146]:
+              - 'button "Connection: HTTP API to HTTP: /mfa, Routes to: /api/mfa" [ref=f2e147] [cursor=pointer]'
+            - listitem [ref=f2e148]:
+              - 'button "Connection: HTTP API to HTTP: /oauth/callback, Routes to: /api/oauth/callback" [ref=f2e149] [cursor=pointer]'
+            - listitem [ref=f2e150]:
+              - 'button "Connection: HTTP API to HTTP: /refresh, Routes to: /api/refresh" [ref=f2e151] [cursor=pointer]'
+            - listitem [ref=f2e152]:
+              - 'button "Connection: HTTP API to HTTP: /sign-in, Routes to: /api/sign-in" [ref=f2e153] [cursor=pointer]'
+            - listitem [ref=f2e154]:
+              - 'button "Connection: HTTP API to HTTP: /sign-out, Routes to: /api/sign-out" [ref=f2e155] [cursor=pointer]'
+            - listitem [ref=f2e156]:
+              - 'button "Connection: HTTP API to HTTP: /test/run-task, Routes to: /api/test/run-task" [ref=f2e157] [cursor=pointer]'
+            - listitem [ref=f2e158]:
+              - 'button "Connection: HTTP API to HTTP: /test/start-workflow, Routes to: /api/test/start-workflow" [ref=f2e159] [cursor=pointer]'
+            - listitem [ref=f2e160]:
+              - 'button "Connection: HTTP API to HTTP: /verify-session, Routes to: /api/verify-session" [ref=f2e161] [cursor=pointer]'
+            - listitem [ref=f2e162]:
+              - 'button "Connection: HTTP API to Container service: /example-service/*, Routes to: /api/example-service" [ref=f2e163] [cursor=pointer]'
+            - listitem [ref=f2e164]:
+              - 'button "Connection: WebSocket API to WebSocket: $connect, Routes to: $connect" [ref=f2e165] [cursor=pointer]'
+            - listitem [ref=f2e166]:
+              - 'button "Connection: WebSocket API to WebSocket: $default, Routes to: $default" [ref=f2e167] [cursor=pointer]'
+            - listitem [ref=f2e168]:
+              - 'button "Connection: WebSocket API to WebSocket: $disconnect, Routes to: $disconnect" [ref=f2e169] [cursor=pointer]'
+            - listitem [ref=f2e170]:
+              - 'button "Connection: WebSocket API to WebSocket: customAction, Routes to: customAction" [ref=f2e171] [cursor=pointer]'
+            - listitem [ref=f2e172]:
+              - 'button "Connection: HTTP: /test/run-task to Container task: invocation-test-task, Runs task: invocation-test-task" [ref=f2e173] [cursor=pointer]'
+            - listitem [ref=f2e174]:
+              - 'button "Connection: HTTP: /test/start-workflow to Workflow: invocation-test-workflow, Starts workflow: invocation-test-workflow" [ref=f2e175] [cursor=pointer]'
+            - listitem [ref=f2e176]:
+              - 'button "Connection: Workflow: invocation-test-workflow to Event Lambda: invocation-test-step, Invokes function: invocation-test-step" [ref=f2e177] [cursor=pointer]'
+            - listitem [ref=f2e178]:
+              - 'button "Connection: Workflow: invocation-test-workflow to Container task: invocation-test-task, Runs task: invocation-test-task" [ref=f2e179] [cursor=pointer]'
+            - listitem [ref=f2e180]:
+              - 'button "Connection: Stack: cognito to Event Lambda: cognito-custom-message, Triggers: customMessage" [ref=f2e181] [cursor=pointer]'
+            - listitem [ref=f2e182]:
+              - 'button "Connection: Stack: cognito to Event Lambda: cognito-post-confirmation-trigger, Triggers: postConfirmation" [ref=f2e183] [cursor=pointer]'
+            - listitem [ref=f2e184]:
+              - 'button "Connection: Stack: cognito to Event Lambda: cognito-pre-signup-trigger, Triggers: preSignUp" [ref=f2e185] [cursor=pointer]'
+            - listitem [ref=f2e186]:
+              - 'button "Connection: AgentCore agent: example-agent to Agent tool: add-numbers, Calls tool: add-numbers" [ref=f2e187] [cursor=pointer]'
+            - listitem [ref=f2e188]:
+              - 'button "Connection: AgentCore agent: example-agent to Agent tool: multiply-numbers, Calls tool: multiply-numbers" [ref=f2e189] [cursor=pointer]'
+            - listitem [ref=f2e190]:
+              - button "Serverless compute island settings" [ref=f2e191] [cursor=pointer]
+            - listitem [ref=f2e192]:
+              - button "application · 10.0.0.0/16 island settings" [ref=f2e193] [cursor=pointer]
+            - listitem [ref=f2e194]:
+              - button "APIs island settings" [ref=f2e195] [cursor=pointer]
+            - listitem [ref=f2e196]:
+              - button "Environment files island settings" [ref=f2e197] [cursor=pointer]
+            - listitem [ref=f2e198]:
+              - button "Input parameters and secrets island settings" [ref=f2e199] [cursor=pointer]
+            - listitem [ref=f2e200]:
+              - button "Agents island settings" [ref=f2e201] [cursor=pointer]
+            - listitem [ref=f2e202]:
+              - button "Workflows island settings" [ref=f2e203] [cursor=pointer]
+            - listitem [ref=f2e204]:
+              - button "Stacks island settings" [ref=f2e205] [cursor=pointer]
+            - listitem [ref=f2e206]:
+              - button "Internet gateway" [ref=f2e207] [cursor=pointer]
+            - listitem [ref=f2e208]:
+              - button "Egress-only gateway" [ref=f2e209] [cursor=pointer]
+            - listitem [ref=f2e210]:
+              - button "s3 endpoint" [ref=f2e211] [cursor=pointer]
+            - listitem [ref=f2e212]:
+              - button "dynamodb endpoint" [ref=f2e213] [cursor=pointer]
+            - listitem [ref=f2e214]:
+              - button "sign-in, HTTP Lambda. Enabled in development · on your machine." [ref=f2e215] [cursor=pointer]
+            - listitem [ref=f2e216]:
+              - button "sign-out, HTTP Lambda. Enabled in development · on your machine." [ref=f2e217] [cursor=pointer]
+            - listitem [ref=f2e218]:
+              - button "python-example, HTTP Lambda. Enabled in development · on your machine." [ref=f2e219] [cursor=pointer]
+            - listitem [ref=f2e220]:
+              - button "verify-session, HTTP Lambda. Enabled in development · on your machine." [ref=f2e221] [cursor=pointer]
+            - listitem [ref=f2e222]:
+              - button "test-start-workflow, HTTP Lambda. Enabled in development · on your machine." [ref=f2e223] [cursor=pointer]
+            - listitem [ref=f2e224]:
+              - button "ws-default-route, WebSocket Lambda. Enabled in development · your machine + aws." [ref=f2e225] [cursor=pointer]
+            - listitem [ref=f2e226]:
+              - button "HTTP API, Framework-managed API Gateway. Enabled in development · on your machine." [ref=f2e227] [cursor=pointer]
+            - listitem [ref=f2e228]:
+              - button "refresh, HTTP Lambda. Enabled in development · on your machine." [ref=f2e229] [cursor=pointer]
+            - listitem [ref=f2e230]:
+              - button "test-run-task, HTTP Lambda. Enabled in development · on your machine." [ref=f2e231] [cursor=pointer]
+            - listitem [ref=f2e232]:
+              - button "ws-disconnect-route, WebSocket Lambda. Enabled in development · your machine + aws." [ref=f2e233] [cursor=pointer]
+            - listitem [ref=f2e234]:
+              - button "invocation-test-step, Event Lambda. Enabled in development · your machine + aws." [ref=f2e235] [cursor=pointer]
+            - listitem [ref=f2e236]:
+              - button "WebSocket API, Framework-managed API Gateway. Enabled in development · your machine + aws." [ref=f2e237] [cursor=pointer]
+            - listitem [ref=f2e238]:
+              - button "mfa, HTTP Lambda. Enabled in development · on your machine." [ref=f2e239] [cursor=pointer]
+            - listitem [ref=f2e240]:
+              - button "ws-connect-route, WebSocket Lambda. Enabled in development · your machine + aws." [ref=f2e241] [cursor=pointer]
+            - listitem [ref=f2e242]:
+              - button "ws-custom-action-route, WebSocket Lambda. Enabled in development · your machine + aws." [ref=f2e243] [cursor=pointer]
+            - listitem [ref=f2e244]:
+              - button "add-numbers, Agent tool. Enabled in development · on your machine." [ref=f2e245] [cursor=pointer]
+            - listitem [ref=f2e246]:
+              - button "invocation-test-workflow, Workflow. Enabled in development · on your machine." [ref=f2e247] [cursor=pointer]
+            - listitem [ref=f2e248]:
+              - button "ws-authorizer, WebSocket authorizer. Enabled in development · your machine + aws." [ref=f2e249] [cursor=pointer]
+            - listitem [ref=f2e250]:
+              - button "cognito-pre-signup-trigger, Event Lambda. Enabled in development · your machine + aws." [ref=f2e251] [cursor=pointer]
+            - listitem [ref=f2e252]:
+              - button "multiply-numbers, Agent tool. Enabled in development · on your machine." [ref=f2e253] [cursor=pointer]
+            - listitem [ref=f2e254]:
+              - button "cognito-custom-message, Event Lambda. Enabled in development · your machine + aws." [ref=f2e255] [cursor=pointer]
+            - listitem [ref=f2e256]:
+              - button "openaiApiKey, Secret, OPENAI_API_KEY. Held by the development graph." [ref=f2e257] [cursor=pointer]
+            - listitem [ref=f2e258]:
+              - 'button "cdk-app/.env.dev, CDK development environment file. cdk-app/.env.dev: framework inputs; not generated; open the file to generate it. Values stay outside the graph." [ref=f2e259] [cursor=pointer]'
+            - listitem [ref=f2e260]:
+              - button "googleClientSecret, Secret, GOOGLE_CLIENT_SECRET. Held by the development graph." [ref=f2e261] [cursor=pointer]
+            - listitem [ref=f2e262]:
+              - button "client, Input group, 4 inputs. Holds 4 inputs, all held by the development graph." [ref=f2e263] [cursor=pointer]
+            - listitem [ref=f2e264]:
+              - 'button "cdk-app/.env.prod, CDK production environment file. cdk-app/.env.prod: framework inputs; not generated; open the file to generate it. Values stay outside the graph." [ref=f2e265] [cursor=pointer]'
+            - listitem [ref=f2e266]:
+              - button "Client environment, Client-app environment mappings. Application environment file. Variables mapped from input parameters and stack outputs. Select to inspect the mappings." [ref=f2e267] [cursor=pointer]
+            - listitem [ref=f2e268]:
+              - button "enableWebSocketApi, Input, Value in source. Held by the development graph." [ref=f2e269] [cursor=pointer]
+            - listitem [ref=f2e270]:
+              - button "langgraph, Input group, 4 inputs. Holds 4 inputs, all held by the development graph." [ref=f2e271] [cursor=pointer]
+            - listitem [ref=f2e272]:
+              - button "ReferenceExampleStack, Stack, resources.referenceExamples. Held by the development graph." [ref=f2e273] [cursor=pointer]
+            - listitem [ref=f2e274]:
+              - button "CognitoStack, Stack, resources.cognito. Framework-managed stack exporting root .env values." [ref=f2e275] [cursor=pointer]
+            - listitem [ref=f2e276]:
+              - button "FrontendWebsiteS3Stack, Stack. Framework-managed stack exporting root .env values; absent in the development graph. Not defined in resources." [ref=f2e277] [cursor=pointer]
+            - listitem [ref=f2e278]:
+              - button "RdsStack, Stack, resources.rds. Framework-managed database; absent in the development graph." [ref=f2e279] [cursor=pointer]
+            - listitem [ref=f2e280]:
+              - button "DevLambdaReplayStack, Stack. Framework-managed stack exporting root .env values. Not defined in resources." [ref=f2e281] [cursor=pointer]
+            - listitem [ref=f2e282]:
+              - button "example-agent, AgentCore agent. Enabled in development · on your machine." [ref=f2e283] [cursor=pointer]
+            - listitem [ref=f2e284]:
+              - button "example-service, Container service. Enabled in development · on your machine." [ref=f2e285] [cursor=pointer]
+            - listitem [ref=f2e286]:
+              - button "invocation-test-task, Container task. Enabled in development · on your machine." [ref=f2e287] [cursor=pointer]
+            - listitem [ref=f2e288]:
+              - button "oauth-callback, HTTP Lambda. Enabled in development · on your machine." [ref=f2e289] [cursor=pointer]
+            - listitem [ref=f2e290]:
+              - button "db-migrate, Container task. Not enabled in development." [ref=f2e291] [cursor=pointer]
+            - listitem [ref=f2e292]:
+              - button "graphql-api, HTTP Lambda. Enabled in development · on your machine." [ref=f2e293] [cursor=pointer]
+            - listitem [ref=f2e294]:
+              - button "cognito-post-confirmation-trigger, Event Lambda. Enabled in development · your machine + aws." [ref=f2e295] [cursor=pointer]
+            - listitem [ref=f2e296]:
+              - button "RDS database, Framework-managed Amazon RDS, resources.rds.database. Framework-managed database; absent in the development graph." [ref=f2e297] [cursor=pointer]
+        - complementary "Inspector" [ref=f2e298]:
+          - generic [ref=f2e299]:
+            - button "Back to Resources" [ref=f2e301] [cursor=pointer]:
+              - generic [ref=f2e304]: Resources
+            - button "Close panel" [ref=f2e305] [cursor=pointer]
+          - generic [ref=f2e309]:
+            - generic [ref=f2e310]:
+              - generic [ref=f2e311]:
+                - generic [ref=f2e312]:
+                  - generic [ref=f2e313]: Source parameter
+                  - generic "Declaration environments" [ref=f2e314]:
+                    - generic [ref=f2e315]:
+                      - text: Dev
+                      - generic [ref=f2e316]: ": declared in development"
+                    - generic [ref=f2e317]:
+                      - text: Prod
+                      - generic [ref=f2e318]: ": declared in production"
+                - generic [ref=f2e319]:
+                  - generic [ref=f2e320]:
+                    - heading "enableWebSocketApi" [level=2] [ref=f2e321]
+                    - button "Rename enableWebSocketApi" [ref=f2e323] [cursor=pointer]
+                  - status [ref=f2e411]: "Pending name: webSocketEnabled"
+                - code [ref=f2e338]: resources.enableWebSocketApi
+                - generic [ref=f2e339]:
+                  - term [ref=f2e340]: Declared in
+                  - definition [ref=f2e341]:
+                    - link "Open framework-config/resources.ts:45 in VS Code" [ref=f2e342] [cursor=pointer]:
+                      - /url: vscode://file//Users/matt/Desktop/code/framework-fix/matts-aws-framework/.cache/framework-studio/naming-browser/framework-config/resources.ts:45:3
+                      - code [ref=f2e343]: resources.ts:45
+              - group [ref=f2e349]:
+                - generic "Tags 1" [ref=f2e350] [cursor=pointer]:
+                  - generic [ref=f2e353]: Tags
+                  - generic [ref=f2e354]: "1"
+              - region "Node description" [ref=f2e355]:
+                - group [ref=f2e356]:
+                  - generic "Description Edit" [ref=f2e357] [cursor=pointer]:
+                    - text: Description
+                    - generic [ref=f2e358]: Edit
+                - paragraph [ref=f2e359]: Controls the shared Deploy condition on every WebSocket handler and its authorizer. Set its value to true or false in the source declaration; changes take effect on the next local restart or AWS deployment. This parameter does not read an environment file.
+              - region "Value source" [ref=f2e360]:
+                - group [ref=f2e361]:
+                  - generic [ref=f2e362]:
+                    - generic [ref=f2e363]: Link to .env file
+                    - switch "Link to .env file" [ref=f2e364] [cursor=pointer]:
+                      - generic [ref=f2e365]: "Off"
+                  - paragraph [ref=f2e368]: The value is saved in the source declaration. Environment files do not supply or override it.
+              - region "Input settings" [ref=f2e369]:
+                - group [ref=f2e370]:
+                  - group "Input behavior" [ref=f2e371]:
+                    - table [ref=f2e373]:
+                      - rowgroup [ref=f2e374]:
+                        - row [ref=f2e375]:
+                          - cell [ref=f2e376]
+                          - columnheader "Dev" [ref=f2e377]
+                          - columnheader "Prod" [ref=f2e378]
+                      - rowgroup [ref=f2e379]:
+                        - row [ref=f2e380]:
+                          - rowheader "Present" [ref=f2e381]
+                          - cell [ref=f2e382]:
+                            - checkbox "Present in development" [checked] [ref=f2e383]
+                          - cell [ref=f2e384]:
+                            - checkbox "Present in production" [checked] [ref=f2e385]
+                        - row [ref=f2e386]:
+                          - rowheader "Value" [ref=f2e387]
+                          - cell "true" [ref=f2e388]:
+                            - combobox "Value in development" [ref=f2e389]:
+                              - option "Choose a value" [disabled]
+                              - option "true" [selected]
+                              - option "false"
+                          - cell "true" [ref=f2e390]:
+                            - combobox "Value in production" [ref=f2e391]:
+                              - option "Choose a value" [disabled]
+                              - option "true" [selected]
+                              - option "false"
+                    - paragraph [ref=f2e392]: Set a value for each environment that holds the parameter. These values are saved in source and do not use environment files.
+                    - generic [ref=f2e393]:
+                      - generic [ref=f2e394]: Secret
+                      - switch "Secret" [ref=f2e395] [cursor=pointer]:
+                        - generic [ref=f2e396]: "Off"
+                    - paragraph [ref=f2e399]: On creates a secret whose value is authored separately in a protected environment file and delivered through Secrets Manager at deployment.
+                    - generic [ref=f2e400]:
+                      - generic [ref=f2e401]: Group
+                      - combobox "Resource group" [ref=f2e402]
+                    - paragraph [ref=f2e403]: Leave empty for no group. Moving an input updates references.
+              - group [ref=f2e405]:
+                - generic "Connections 6" [ref=f2e406] [cursor=pointer]:
+                  - generic [ref=f2e409]: Connections
+                  - generic [ref=f2e410]: "6"
+            - generic "Pending inspector changes" [ref=f2e412]:
+              - status [ref=f2e413]: 1 unsaved change
+              - generic [ref=f2e414]:
+                - button "Discard" [ref=f2e415] [cursor=pointer]
+                - button "Review Changes" [ref=f2e838] [cursor=pointer]
+  - status

@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties }
 import { useBlocker } from "@tanstack/react-router";
 import type { SourceLocation } from "../../shared/model";
 import { editorLink } from "../lookup";
-import { ApiError, call } from "../api";
+import { ApiError, call } from "../http";
 import type { DatabaseObservation, DatabaseSourceReview, DatabaseValidation, DatabaseWorkbench, DatabaseSaveResult } from "../../shared/database-workbench";
 import { DatabaseSession } from "../database-session";
 import { DatabaseDiagram, type SchemaSelection } from "./DatabaseDiagram";

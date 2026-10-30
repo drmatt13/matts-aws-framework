@@ -1,3 +1,4 @@
+import { sourceEditBlocked } from "../editing-state";
 import { checkboxClasses, Select, TextInput } from "../ui/FormControls";
 
 import { useEffect, useId, useRef, useState } from "react";
@@ -51,9 +52,8 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
   const setMode = (mode: Mode, change: Partial<ResourceModeForm>) => update({ modes: { ...modes, [mode]: { ...modes[mode], ...change } } });
   const setGroup = (group: string) => update({ group });
   const entry = draftState.entries.find((entry) => entry.kind === "resource" && entry.intent.resource === resource.id);
-  const descriptionPending = draftState.entries.some((entry) => entry.kind === "description");
   const environmentPending = draftState.entries.some((entry) => entry.kind === "environment");
-  const disabled = !!draftState.busy || draft.conflict || live.evaluating || live.running !== null || model.stale || descriptionPending || environmentPending;
+  const disabled = sourceEditBlocked({ draftState, draft, model, live }) || live.running !== null || environmentPending;
   return <>
     <section aria-label="Value source" data-slot="input-source">
       <fieldset disabled={disabled} className="m-0 min-w-0 border-0 p-0">
@@ -66,7 +66,6 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
       : linked ? <section aria-label="Local value"><p className="text-caption text-graphite">Review and apply this link before editing values in the environment files.</p></section> : null}
     {/* Its first group's legend heads the section; a generic "Configuration" heading above it said nothing more. */}
     <section className={"[&_fieldset]:[border:0] [&_fieldset]:p-0 [&_fieldset]:m-0 [&_fieldset]:min-w-0 [&_h4]:m-[var(--space-6)_0_var(--space-3)] [&_[data-slot=setting-switch]]:mt-3 [&_[data-slot=setting-switch]]:mb-1"} aria-label="Input settings" data-slot="resource-editor">
-      {descriptionPending ? <p className={"text-caption text-graphite"}>Apply or discard the description before editing input settings.</p> : null}
       {environmentPending ? <p className={"text-caption text-graphite"}>Apply or discard local value changes before editing input settings.</p> : null}
       <fieldset disabled={disabled}><FormGroup title="Input behavior">
         <table className={"w-full border-collapse table-fixed text-caption [&_thead_th]:font-medium [&_thead_th]:text-graphite [&_thead_td]:w-[34%] [&_thead_td]:font-normal [&_tbody_th]:w-[34%] [&_tbody_th]:font-normal [&_td+td]:pl-2 [&_th+td]:pl-2 [&_th+th]:pl-2"} aria-describedby={`${help}-modes`} data-slot="input-modes">

@@ -1,3 +1,4 @@
+import { deploymentOverviewQuery, deploymentDiscoveryQuery, deploymentStatusQuery, deploymentPlansQuery } from "../deploy/queries";
 import { cx } from "../ui/classes";
 import { buttonClasses } from "../ui/Button";
 
@@ -5,8 +6,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { JobView, OperationKind, OperationRequest, PlanView, StackEventView } from "../../shared/deploy";
 import { deploymentFindings, nextAction, type Action } from "../../shared/deploy-findings";
-import { ApiError } from "../api";
-import { deployApi, useDeployLive } from "../deploy/api";
+import { ApiError } from "../http";
+import { deployApi } from "../deploy/api";
+import { useDeployLive } from "../deploy/live";
 import { AccountBar } from "./deploy/AccountBar";
 import { Activity } from "./deploy/Activity";
 import { Detail, type MoreAction } from "./deploy/Detail";
@@ -25,7 +27,7 @@ import { LifecycleDisclosure } from "./DataRetention";
  */
 export function Deploy() {
   const queryClient = useQueryClient();
-  const overviewQuery = useQuery({ queryKey: ["deploy", "overview"], queryFn: () => deployApi.overview(), refetchInterval: 15_000 });
+  const overviewQuery = useQuery({ ...deploymentOverviewQuery(), refetchInterval: 15_000 });
   const overview = overviewQuery.data;
   const [profile, setProfileState] = useState<string>();
   const [selected, setSelected] = useState<string>();
@@ -77,16 +79,14 @@ export function Deploy() {
   // A target pinned to a region is read from that region, as deploying it would use.
   const selectedRegion = overview?.targets.find((target) => target.name === selectedName)?.region;
   const discoveryQuery = useQuery({
-    queryKey: ["deploy", "discover", profile],
-    queryFn: () => deployApi.discover(profile!),
+    ...deploymentDiscoveryQuery(profile),
     enabled: Boolean(profile),
     staleTime: 20_000,
     refetchInterval: 60_000,
   });
   const busySelected = Boolean(runningFor(selectedName));
   const statusQuery = useQuery({
-    queryKey: ["deploy", "status", profile, selectedName, selectedRegion],
-    queryFn: () => deployApi.status(profile!, selectedName!, false, selectedRegion),
+    ...deploymentStatusQuery(profile, selectedName, selectedRegion),
     enabled: Boolean(profile && selectedName),
     staleTime: 3_000,
     refetchInterval: (query) => {
@@ -115,7 +115,7 @@ export function Deploy() {
     return [...repository, ...others];
   }, [overview?.targets, discovery, status]);
   const row = rows.find((entry) => entry.name === selectedName) ?? rows[0];
-  const plansQuery = useQuery({ queryKey: ["deploy", "plans"], queryFn: () => deployApi.plans() });
+  const plansQuery = useQuery(deploymentPlansQuery());
   const driftQuery = useQuery({ queryKey: ["deploy", "drift", selectedContext?.account, selectedContext?.region, row?.name], queryFn: () => deployApi.drift(row!.name, selectedContext?.account, selectedContext?.region), enabled: Boolean(row && selectedContext) });
 
   useDeployLive({
@@ -146,7 +146,7 @@ export function Deploy() {
       setActivityJob(job.id);
       setActivityOpen(true);
       // The live stream may already have reported this job further along: keep that.
-      queryClient.setQueryData(["deploy", "overview"], (current: typeof overview) => current && (current.jobs.some((entry) => entry.id === job.id) ? current : { ...current, jobs: [job, ...current.jobs] }));
+      queryClient.setQueryData(deploymentOverviewQuery().queryKey, (current: typeof overview) => current && (current.jobs.some((entry) => entry.id === job.id) ? current : { ...current, jobs: [job, ...current.jobs] }));
       return job;
     } catch (error) {
       toast(error instanceof ApiError || error instanceof Error ? error.message : String(error));
@@ -161,10 +161,10 @@ export function Deploy() {
     // Fetch through the query cache so pending/errors are observable and a failed
     // refresh keeps the last successful evidence on screen.
     await Promise.allSettled([
-      queryClient.fetchQuery({ queryKey: ["deploy", "overview"], queryFn: () => deployApi.overview(true), staleTime: 0 }),
-      ...(profile ? [queryClient.fetchQuery({ queryKey: ["deploy", "discover", profile], queryFn: () => deployApi.discover(profile, true), staleTime: 0 })] : []),
-      ...(profile && row ? [queryClient.fetchQuery({ queryKey: ["deploy", "status", profile, row.name, row.target?.region], queryFn: () => deployApi.status(profile, row.name, true, row.target?.region), staleTime: 0 })] : []),
-      queryClient.fetchQuery({ queryKey: ["deploy", "plans"], queryFn: () => deployApi.plans(), staleTime: 0 }),
+      queryClient.fetchQuery({ ...deploymentOverviewQuery(true), staleTime: 0 }),
+      ...(profile ? [queryClient.fetchQuery({ ...deploymentDiscoveryQuery(profile, true), staleTime: 0 })] : []),
+      ...(profile && row ? [queryClient.fetchQuery({ ...deploymentStatusQuery(profile, row.name, row.target?.region, true), staleTime: 0 })] : []),
+      queryClient.fetchQuery({ ...deploymentPlansQuery(), staleTime: 0 }),
     ]);
     refreshInFlight.current = false;
     setRefreshing(false);

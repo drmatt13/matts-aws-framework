@@ -1,4 +1,4 @@
-import type { Island } from "./build";
+import type { Island } from "./types";
 import type { Bounds } from "./camera";
 import { ELEVATION_STEP, project } from "./iso";
 

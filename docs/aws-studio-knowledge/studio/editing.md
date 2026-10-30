@@ -6,9 +6,23 @@ read_when:
   - Debugging stale review, conflict, apply, or rollback
 source:
   - framework-studio/src/draft.ts
+  - framework-studio/src/draft-entries.ts
+  - framework-studio/src/editing-state.ts
+  - framework-studio/src/views/Inspector.tsx
+  - framework-studio/src/views/inspector/
+  - framework-studio/src/views/Triggers.tsx
   - framework-studio/src/views/ResourceEditor.tsx
   - framework-studio/shared/creation.ts
   - framework-studio/shared/resources.ts
+  - framework-studio/shared/naming.ts
+  - framework-studio/server/naming-source.ts
+  - framework-studio/server/naming-program.ts
+  - framework-studio/server/naming-metadata.ts
+  - framework-studio/server/naming-service.ts
+  - framework-studio/server/naming-worker.ts
+  - framework-studio/server/naming-equivalence.ts
+  - framework-studio/server/naming-continuity.ts
+  - framework-studio/server/resource-config-comments.ts
   - framework-studio/server/resources.ts
   - framework-studio/server/resources-source.ts
   - framework-studio/src/views/Deployment.tsx
@@ -32,6 +46,41 @@ related:
   - studio.creation-connections
 ---
 # Inspector drafts and source transactions
+
+The shared Rename action stages code and display names in this same draft. Authored
+inputs, secrets and input groups support source refactoring; other resource families
+expose display-name editing and explain their code identity's owner. VPC labels edit
+the existing network name. Optional `framework-config/display-names.ts` exports a literal
+`displayNames` map keyed by canonical entity ID. It is parsed without execution; labels
+are shared between environments, trimmed, single-line and at most 120 characters.
+Clearing a label restores automatic naming; duplicate labels do not change identity.
+
+`naming-source.ts` uses the installed TypeScript language service and workspace compiler
+options to rename an owning exported declaration, refresh the overlay, then rename the
+catalog property. Explicit aliases, source comments and unrelated prose remain intact.
+Client recipes and node/connection/display-name associations have explicit identity
+adapters. Group descendants move together. One code rename or group move is reviewed at
+a time; creation/removal and simultaneous reparenting are separate operations. Dynamic
+or unowned consumers produce located review blockers alongside the available diff.
+The proposed name remains staged for a retry after the developer makes the **old**
+reference explicit in valid saved source. Apply remains disabled while blockers exist.
+
+Rename review fingerprints source membership, indexed bytes, project configuration and
+generator inputs. Apply repeats those checks and both-mode validation, then confirms
+the written relationships before returning `entityRemap`. Source mismatches use the
+existing guarded restoration. Only confirmed application remaps selection, navigation
+memory and layout identities; reviewing a proposal leaves the map on its baseline.
+`naming-continuity.ts` matches actual relationship identities, including source-offset
+IDs and encoded connection bundles, so historical connection selections follow the
+same resource rename. Distinct grant scopes and ambiguous relationships remain distinct.
+External consumers and bookmarks outside the mounted session cannot be rewritten.
+Reference analysis runs in a bounded child process so the HTTP server remains responsive.
+Workers carry only public snapshot metadata and candidate source; they return comment
+choices to the owning batch and terminate on timeout, cancellation or owner shutdown.
+Both-mode semantic comparison uses the overlay immediately before refactoring, allowing
+approved configuration edits while rejecting unrelated behavioral changes. Surgical
+builder edits preserve comments in retained calls; commented removals require deliberate
+source resolution when their attachment cannot be retained safely.
 
 Every workload role exposes Deploy, including event Lambdas and agent tools. The same
 bounded token/condition source writer validates both graphs, applies and restores exact
@@ -107,9 +156,44 @@ evidence and capability limits.
 
 `InspectorDraft` in [draft.ts](../../../framework-studio/src/draft.ts) owns baseline/latest snapshots, staged entries, validation, review and navigation protection. While dirty, the visible graph stays on the baseline. A different snapshot revision marks conflict; it does not auto-merge. Invalid/conflicting drafts cannot apply. An explicit Review against latest source preserves ordinary typed entries and requests a fresh proposal; protected resource/input forms require their own reload. `StudioProvider` in [studio.tsx](../../../framework-studio/src/studio.tsx) connects this lifecycle across routes and browser exit. Drafts remain in memory; interrupted source writes have a separate durable journal.
 
+[draft-entries.ts](../../../framework-studio/src/draft-entries.ts) owns staged entry/form
+types and pure resource normalization/request conversion. It does not own session state
+or make requests. Ordinary edits, including resource configuration, use batch review;
+private environment edits use their isolated input review. The frontend review union
+contains those two actual paths. Existing server resource APIs retain their separate
+compatibility contracts.
+
+## Inspector module ownership
+
+[Inspector.tsx](../../../framework-studio/src/views/Inspector.tsx) owns entity dispatch,
+presentation capture/restoration and the draft footer. `views/inspector/WorkloadInspector`
+renders targets/routes, workflow steps and workload environment mappings;
+`ResourceInspectors` renders catalog resources and local/network fixtures;
+`InspectorRelations` renders their shared relationship list. Specialized editors remain
+the owners of their own forms. Dispatch permits supplementary sections, so adding a
+resource must not replace it with an exclusive renderer registry.
+
+[Triggers.tsx](../../../framework-studio/src/views/Triggers.tsx) retains form/disclosure
+state, availability/validation, step-focus effects and draft staging/removal. Its
+`inspector/triggers` modules share the form contract and render setup steps and typed
+fields without another form store. Guided and raw input representations remain part
+of the same form. Source changes, Confirm/Back and invalid intermediate text retain
+their existing transition semantics.
+
+The [navigation presentation contract](rendering.md) depends on the actual element
+hierarchy, not merely its appearance. Extract existing components without adding
+wrappers or changing conditional order/keys; verify focus, disclosure and scroll
+restoration in real browser Back/Forward cases.
+
+## Reviewed source application
+
 During apply, draft setters and discard are inert until the server responds, preserving
 the accepted review payload. Network creation/settings and workload placement controls
 use the same busy, evaluating, stale and conflict gates as the other Inspectors.
+The pure `sourceEditBlocked` predicate in [editing-state.ts](../../../framework-studio/src/editing-state.ts)
+expresses that common gate. Additional restrictions such as running operations, private
+sessions, missing files or unavailable consumers stay with the owning control; similar
+forms need not have identical permissions.
 
 Inspector settings consume `FieldFact` inheritance and source editability. `FIELDS`, `DEFAULT_FIELDS`, `fieldFacts` and `fieldById` in [edits/fields.ts](../../../framework-studio/server/edits/fields.ts) define recognized fields, domains, parsers, source paths and defaults. Add a field through this shared contract rather than a UI-only input. Effective inherited values and authored overrides must remain distinct; removal restores inheritance. Some boolean fields support true/absence rather than explicit false.
 
@@ -141,7 +225,7 @@ flowchart LR
   F --> G[Confirm source or guarded restoration]
 ```
 
-`EditService` in [transaction.ts](../../../framework-studio/server/edits/transaction.ts) serializes its operations and keeps expiring plans. `BatchEditor` in [batch.ts](../../../framework-studio/server/edits/batch.ts) composes field, route, trigger, failure destination, replay wrapper, description, mapping and creation changes into source overrides. Resource and environment details have specialized services with their own validation/private data; see [secrets](../deployment/secrets.md).
+`EditService` in [transaction.ts](../../../framework-studio/server/edits/transaction.ts) serializes its operations and keeps expiring plans. `BatchEditor` in [batch.ts](../../../framework-studio/server/edits/batch.ts) composes field, route, trigger, failure destination, replay wrapper, naming, public input configuration, tags, description, mapping and creation changes into source overrides. The legacy resource source API delegates to that planner and journal. Private environment values retain a separate service and never enter source diffs; see [secrets](../deployment/secrets.md).
 
 Batch review rejects unchanged source before expensive work. Applicable framework
 artifacts are generated in the existing disposable copy, then the complete candidate

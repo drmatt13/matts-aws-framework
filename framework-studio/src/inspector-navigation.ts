@@ -1,5 +1,7 @@
+import type { DisplayNames } from "./naming";
+import { remapEntity } from "../shared/naming";
 import { useLocation, useRouter } from "@tanstack/react-router";
-import { useCallback, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 
 interface ElementPosition { readonly path: readonly number[]; readonly tag: string }
 export interface InspectorPresentation {
@@ -32,6 +34,7 @@ export interface InspectorNavigation {
 /** Only accepted router locations become visits. Presentation stays in memory, never in URLs or history state. */
 export function useInspectorNavigation(options: {
   selected: string | undefined;
+  aliases?: DisplayNames;
   ready: boolean;
   mode: string;
   label: (id: string) => string;
@@ -45,11 +48,37 @@ export function useInspectorNavigation(options: {
   const pending = useRef<{ from: string; selected: string | undefined; root: boolean; focus: boolean } | undefined>(undefined);
   const cancel = useCallback(() => { pending.current = undefined; }, []);
   const restoring = useRef(false);
+  const appliedAliases = useRef<DisplayNames | undefined>(undefined);
+  if (options.aliases && appliedAliases.current !== options.aliases) {
+    const rename = (id: string | undefined) => id ? remapEntity(id, options.aliases!) : id;
+    const keys = new Map([...visits.current].map(([key, visit]) => [key, visit.selected ? key.slice(0, -visit.selected.length) + rename(visit.selected) : key]));
+    const updated = new Map<string, Visit>();
+    for (const [key, old] of visits.current) {
+      const selected = rename(old.selected);
+      const label = selected && selected !== old.selected ? options.label(selected) : undefined;
+      const visit = { ...old, key: keys.get(key)!, selected, origin: rename(old.origin), parent: old.parent ? keys.get(old.parent) ?? old.parent : undefined, label: label && label !== selected ? label : old.label };
+      updated.set(visit.key, visit);
+      if (current.current === old) current.current = visit;
+    }
+    visits.current = updated;
+    if (pending.current) pending.current = { ...pending.current, from: keys.get(pending.current.from) ?? pending.current.from, selected: rename(pending.current.selected) };
+    appliedAliases.current = options.aliases;
+  }
+  useLayoutEffect(() => {
+    if (!options.ready || !options.selected) return;
+    const label = document.querySelector('[data-slot="inspector-content"] h2')?.textContent?.trim();
+    if (label) for (const visit of visits.current.values()) if (visit.selected === options.selected) visit.label = label;
+  });
   const key = `${location.state.__TSR_key ?? location.state.key ?? location.state.__TSR_index}:${options.selected ?? ""}`;
-  const routedSelection = (location.search as { select?: string }).select;
+  const routedSelection = options.selected;
   if (options.ready && routedSelection === options.selected && current.current?.key !== key) {
     const previous = current.current;
     let visit = visits.current.get(key);
+    // Replacing a renamed URL keeps its history position and Inspector presentation.
+    if (!visit && previous?.position === location.state.__TSR_index && previous.pathname === location.pathname && previous.selected === options.selected) {
+      visit = { ...previous, key };
+      visits.current.set(key, visit);
+    }
     restoring.current = !!visit;
     if (!visit) {
       const intent = pending.current;

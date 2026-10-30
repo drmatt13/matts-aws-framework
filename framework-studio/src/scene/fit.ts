@@ -1,4 +1,4 @@
-import type { Scene } from "./build";
+import type { Scene } from "./types";
 import { fitBounds, type Bounds, type Camera, type Viewport } from "./camera";
 import { islandSlabs } from "./slabs";
 

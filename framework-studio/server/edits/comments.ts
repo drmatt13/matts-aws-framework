@@ -23,11 +23,34 @@ export function withCommentReview<T>(root: string, options: CommentReviewOptions
   return context.run({ root, choices, originals: new Map(), reviews: new Map(), removedPositions: new Set() }, run);
 }
 
-export function reviewedComments(): readonly SourceCommentReview[] {
+export function reviewedComments(deferUnusedChoices = false): readonly SourceCommentReview[] {
   const state = context.getStore();
   if (!state) return [];
-  if (Object.keys(state.choices).some(id => !state.reviews.has(id))) throw new EditError(409, "The comments changed since this review. Review the latest source and choose again.");
+  if (!deferUnusedChoices && Object.keys(state.choices).some(id => !state.reviews.has(id))) throw new EditError(409, "The comments changed since this review. Review the latest source and choose again.");
   return [...state.reviews.values()].sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line || a.column - b.column);
+}
+
+/** A source worker shares choices; the owning batch validates their complete inventory. */
+export function currentCommentOptions(): CommentReviewOptions | undefined {
+  const state = context.getStore(); return state ? { comments: state.choices } : undefined;
+}
+export function removedCommentPositions(): readonly string[] {
+  return [...(context.getStore()?.removedPositions ?? [])];
+}
+/** Internal worker continuation, never populated from an HTTP request. */
+export function continueCommentPositions(positions: readonly string[]): void {
+  const state = context.getStore();
+  if (!state && positions.length) throw new EditError(422, "Comment positions require an owning source review.");
+  positions.forEach(position => state!.removedPositions.add(position));
+}
+export function absorbReviewedComments(comments: readonly SourceCommentReview[]): void {
+  const state = context.getStore();
+  if (!state && comments.length) throw new EditError(422, "Source comment review requires the owning batch.");
+  for (const comment of comments) {
+    const previous = state!.reviews.get(comment.id);
+    if (previous && JSON.stringify(previous) !== JSON.stringify(comment)) throw new EditError(409, "The comments changed during source review. Your draft is preserved; review again.");
+    state!.reviews.set(comment.id, comment);
+  }
 }
 
 /** Locate a separator through trivia without mistaking comment contents for code. */

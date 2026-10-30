@@ -15,7 +15,8 @@ let ui: typeof import("@testing-library/react");
 let router: typeof import("@tanstack/react-router");
 let query: typeof import("@tanstack/react-query");
 let studio: typeof import("../src/studio");
-let view: typeof import("../src/views/IdentityWorkspace");
+let view: typeof import("../src/views/DomainsWorkspace");
+let identity: typeof import("../src/identity-api");
 let deploy: typeof import("../src/deploy/api");
 let builder: SnapshotBuilder;
 let response: SnapshotResponse;
@@ -46,7 +47,7 @@ before(async () => {
   require.extensions[".css"] = () => {};
   ui = require("@testing-library/react"); router = require("@tanstack/react-router"); query = require("@tanstack/react-query");
   ui.configure({ getElementError: message => new Error(message ?? "Element not found") });
-  studio = await import("../src/studio"); view = await import("../src/views/IdentityWorkspace"); deploy = await import("../src/deploy/api");
+  studio = await import("../src/studio"); view = await import("../src/views/DomainsWorkspace"); identity = await import("../src/identity-api"); deploy = await import("../src/deploy/api");
   builder = new SnapshotBuilder(path.resolve(__dirname, "../.."));
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, busy: null };
 });
@@ -58,7 +59,7 @@ async function mount() {
   function Root() { return h(studio.StudioProvider, { response, selected: undefined, select: () => {}, children: h(Capture) }); }
   function Capture() { context = studio.useStudio(); return h(router.Outlet); }
   const root = router.createRootRoute({ component: Root });
-  const domains = router.createRoute({ getParentRoute: () => root, path: "/domains", component: view.Domains });
+  const domains = router.createRoute({ getParentRoute: () => root, path: "/domains", component: view.DomainsWorkspace });
   const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/domains"] }), routeTree: root.addChildren([domains]) });
   queryClient = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   ui.render(h(query.QueryClientProvider, { client: queryClient }, h(router.RouterProvider, { router: app })));
@@ -66,7 +67,7 @@ async function mount() {
 }
 
 function forbidOperations() {
-  const inspect = mock.method(view.identityApi, "inspect", async () => { throw new Error("Inspection must require an explicit action."); });
+  const inspect = mock.method(identity.identityApi, "inspect", async () => { throw new Error("Inspection must require an explicit action."); });
   const requests: { url: string; method?: string }[] = [];
   mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
     requests.push({ url, method: init?.method });
@@ -84,7 +85,7 @@ test("Domains preserves source failure detail and retries production source with
   const failure = "Studio returned an invalid API response. Restart npm run studio in this checkout, reload the page, and retry the operation.";
   const modes: string[] = [];
   let resolve!: (value: IdentitySource) => void;
-  mock.method(view.identityApi, "source", async (mode: "dev" | "prod") => {
+  mock.method(identity.identityApi, "source", async (mode: "dev" | "prod") => {
     modes.push(mode);
     if (modes.length === 1) throw new Error(failure);
     return new Promise<IdentitySource>(done => { resolve = done; });
@@ -117,7 +118,7 @@ test("Domains preserves source failure detail and retries production source with
 
 test("Domains recovers deployment discovery independently while keeping available production source visible", async () => {
   const assertNoOperations = forbidOperations();
-  const sourceRead = mock.method(view.identityApi, "source", async () => source);
+  const sourceRead = mock.method(identity.identityApi, "source", async () => source);
   const failure = "Deployment configuration could not be read. Fix cdk-app/cdk.json and retry.";
   let attempts = 0;
   let resolve!: (value: DeployOverview) => void;
@@ -154,7 +155,7 @@ test("Domains recovers deployment discovery independently while keeping availabl
 });
 
 test("Domains transport failures explain connection recovery, retain prior evidence and retry only on inspection", async () => {
-  mock.method(view.identityApi, "source", async () => source);
+  mock.method(identity.identityApi, "source", async () => source);
   mock.method(deploy.deployApi, "overview", async () => overview);
   const observation: DomainsObservation = {
     context: { profile: "dev", deployment: "qa-prod", region: "us-west-2", account: "444455556666", observedAt: "2026-10-23T12:00:00Z" },

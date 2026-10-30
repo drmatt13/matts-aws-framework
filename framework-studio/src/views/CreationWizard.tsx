@@ -1,3 +1,4 @@
+import { sourceEditBlocked } from "../editing-state";
 import { Select, TextInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
 import { cx } from "../ui/classes";
@@ -24,7 +25,7 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
   const creator = CREATORS[entry.resourceKind];
   const catalogInput = entry.resourceKind === "input" || entry.resourceKind === "secret";
   const linkedToEnv = entry.resourceKind === "secret" || entry.form.linkedToEnv !== false;
-  const disabled = !!draftState.busy || draft.conflict || !!model.stale || live.evaluating;
+  const disabled = sourceEditBlocked({ draftState, draft, model, live });
   useEffect(() => {
     const element = dialog.current!;
     if (!draftState.reviewOpen && !draftState.pendingNavigation) element.showModal();

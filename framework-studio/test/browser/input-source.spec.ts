@@ -1,3 +1,4 @@
+import type { DraftEdit } from "../../shared/api";
 import type { ModelResource } from "../../shared/model";
 import type { ResourceIntent } from "../../shared/resources";
 import { test, expect, assertAccessible } from "./support/test";
@@ -11,10 +12,6 @@ for (const width of [1440, 390]) test(`input source and creator switches preserv
     modes: { dev: { present: true, required: false }, prod: { present: true, required: false } } };
   for (const model of Object.values(studio.response.snapshot.models)) Object.assign(model, { resources: [...model.resources, standalone, linked] });
   studio.reply("GET", "/api/resources/details", async route => { await route.fulfill({ json: { configured: false, file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "browser-inputs" } } }); });
-  studio.reply("POST", "/api/resources/plan", async route => {
-    const { intent } = route.request().postDataJSON() as { intent: ResourceIntent };
-    await route.fulfill({ json: { planId: "input-source-plan", resource: intent.resource, nextResource: intent.resource, ok: true, changes: [], diagnostics: [] } });
-  });
   await studio.goto("/?select=resource%3Astandalone");
   const inspector = page.getByRole("complementary", { name: "Inspector", exact: true });
   const source = inspector.getByRole("switch", { name: "Link to .env file", exact: true });
@@ -35,9 +32,15 @@ for (const width of [1440, 390]) test(`input source and creator switches preserv
   await source.click();
   await expect(inspector.getByRole("textbox", { name: "Value in development", exact: true })).toHaveValue("beta");
   await review.click();
-  let plan = studio.requests.filter(request => request.path === "/api/resources/plan").at(-1)!.body as { intent: ResourceIntent };
-  expect(plan.intent.fromEnv).toBeNull();
-  expect(plan.intent.modes.dev).toMatchObject({ default: null, value: "beta" });
+  const reviewedIntent = (): ResourceIntent => {
+    const body = studio.requests.filter(request => request.path === "/api/edits/batch/plan").at(-1)!.body as { edits: DraftEdit[] };
+    const edit = body.edits.find((edit): edit is Extract<DraftEdit, { kind: "resourceConfig" }> => edit.kind === "resourceConfig");
+    expect(edit).toBeDefined();
+    return edit!.intent;
+  };
+  let intent = reviewedIntent();
+  expect(intent.fromEnv).toBeNull();
+  expect(intent.modes.dev).toMatchObject({ default: null, value: "beta" });
   await page.getByRole("dialog").getByRole("button", { name: "Back to Editing", exact: true }).click();
   await expect(inspector.getByRole("textbox", { name: "Value in development", exact: true })).toHaveValue("beta");
   await source.click();
@@ -52,10 +55,10 @@ for (const width of [1440, 390]) test(`input source and creator switches preserv
   await inspector.getByRole("textbox", { name: "Default in production", exact: true }).fill("");
   await expect(review).toBeEnabled();
   await review.click();
-  plan = studio.requests.filter(request => request.path === "/api/resources/plan").at(-1)!.body as { intent: ResourceIntent };
-  expect(plan.intent.fromEnv).toBe("STANDALONE_OVERRIDE");
-  expect(plan.intent.modes.dev.default).toBeNull();
-  expect(plan.intent.modes.dev.value).toBeUndefined();
+  intent = reviewedIntent();
+  expect(intent.fromEnv).toBe("STANDALONE_OVERRIDE");
+  expect(intent.modes.dev.default).toBeNull();
+  expect(intent.modes.dev.value).toBeUndefined();
   await page.getByRole("dialog").getByRole("button", { name: "Back to Editing", exact: true }).click();
   await inspector.getByRole("button", { name: "Discard", exact: true }).click();
   await inspector.getByRole("button", { name: "Back to Resources", exact: true }).click();

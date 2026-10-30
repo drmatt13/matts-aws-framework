@@ -30,6 +30,7 @@ npm run studio -- --print # the whole model as JSON, then exit
 | Map | `/` | The isometric view: the application as a lit, navigable landscape: gateways, compute, the VPC's subnet terraces, catalog stacks. `/isometric` redirects here |
 | Database | `/database` | Prisma source and diagram editing, semantic migration history, offline artifact review and selected-target database evidence |
 | Deploy | `/deploy` | Deployment discovery, reviewed plans, authorized operations and local development controls |
+| GraphQL | `/graphql` | Existing placeholder workspace, immediately after Deploy in the shared navigation |
 | Authentication | `/cognito` | User pools, identity pools, providers and permissions; source and deployed evidence remain distinct |
 | DNS / Domains | `/domains` | Production domain intent, explicit deployment inspection and separately approved operations |
 | WebSockets | `/websockets` | ws-tester's two connection panels, local-ws-dev-server and the deployed API Gateway stage, with its launch-link handoff |
@@ -63,6 +64,7 @@ separate deployment states.
 
 | Document | Read it when |
 | --- | --- |
+| [Maintainability campaign (2026-10-30)](maintainability-campaign-2026-10-30.md) | You need the architecture audit, protected baseline, refactoring checklist, current verification receipts and deferred debt |
 | [Product and architecture overview](../AWS-STUDIO.md) | You need the system's identity, lifecycle and grounded long-term direction |
 | [October 29 reconstruction](discovery-2026-10-29.md) | You need source/browser evidence, corrected discrepancies and verification limits from this documentation pass |
 | [Resource baseline (2026-10-20)](resource-baseline-2026-10-20.md) | You are experimenting with resources and need the original application inventory, source revision and scoped restoration procedure |

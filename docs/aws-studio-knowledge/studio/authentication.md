@@ -7,7 +7,9 @@ source:
   - framework-studio/src/views/AuthenticationWorkspace.tsx
   - framework-studio/src/views/SourceContext.tsx
   - framework-studio/src/identity-api.ts
-  - framework-studio/src/views/IdentityWorkspace.tsx
+  - framework-studio/src/identity-queries.ts
+  - framework-studio/src/views/DomainsWorkspace.tsx
+  - framework-studio/src/views/RetryNotice.tsx
   - framework-studio/src/views/IdentityPolicyEditor.tsx
   - framework-studio/src/views/CognitoManagement.tsx
   - framework-studio/server/identity/service.ts
@@ -30,13 +32,21 @@ entry point. Domains remain a separate production workspace.
 Subsection navigation sits immediately below the application bar, ahead of inspection
 controls and errors, using the shared workspace tabs. It remains a stable destination
 while context loads or fails. The context toolbar and cards share the bounded workspace
-width used by Domains. The source-environment selector and source edit history live in
-the Cognito context toolbar; selecting a source mode does not inspect or deploy AWS.
+width used by Domains. The shared source-environment selector lives in `Shell`'s
+application bar; selecting a source mode does not inspect or deploy AWS. Saved source
+history belongs to Git.
 Card typography, form spacing and action alignment come from the shared identity
 workspace styles. Source actions stay grouped with their explanation, and failed
 context/source reads use an inline alert with a visible retry action. Keep long messages
 and identifiers wrapping inside the workspace; subsection navigation scrolls
 independently on narrow screens.
+
+`identity-api.ts` owns the shared read-only HTTP adapter. `identity-queries.ts` shares
+the source query's mode/revision identity between this page and `DomainsWorkspace`;
+AWS inspection remains an explicit action with its existing context/cancellation
+checks. `RetryNotice` renders equivalent source/context failures without owning
+either query or observation state. Production Domains keep their own selection,
+input-edit gate and operation approvals.
 
 The workspace inherits Studio's selected development/production mode. Inspection
 uses one profile, declared deployment and region across the subsections. Deploy's

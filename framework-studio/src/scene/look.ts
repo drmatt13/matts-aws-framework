@@ -1,6 +1,6 @@
 import type { IconKey } from "../icons";
 import type { EdgeCategory } from "../lookup";
-import type { Island, Region } from "./build";
+import type { Island, Region } from "./types";
 
 type Rgb = readonly [number, number, number];
 

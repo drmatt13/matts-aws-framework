@@ -1,7 +1,7 @@
 import { useEffect,useRef,useState } from "react";
 import type { DomainDnsDiscovery,DomainDnsReceipt,DomainDnsReview,DomainHealth,DomainPurpose } from "../../shared/domain-operations";
 import type { IdentitySelection } from "../../shared/identity";
-import { call } from "../api";
+import { call } from "../http";
 import { useStudio } from "../studio";
 import { buttonClasses } from "../ui/Button";
 import { Select,TextInput } from "../ui/FormControls";
