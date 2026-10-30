@@ -228,12 +228,14 @@ function illegalCombinations(): void {
 }
 void illegalCombinations;
 
-test("the entry points are the only four, and none of them is an origin chain", () => {
+test("the entry points are the only five, and none of them is an origin chain", () => {
   // The runtime object agrees with the types above, so a config written in
   // plain JavaScript meets the same surface.
-  assert.deepEqual(Object.keys(resource).sort(), ["cdk", "fromEnv", "secret", "stack"]);
+  assert.deepEqual(Object.keys(resource).sort(), ["cdk", "fromEnv", "secret", "stack", "value"]);
   assert.equal((resource.fromEnv() as unknown as Record<string, unknown>).fromCdk, undefined);
   assert.equal((resource.secret() as unknown as Record<string, unknown>).fromCdk, undefined);
+  assert.equal((resource.value("x") as unknown as Record<string, unknown>).fromCdk, undefined);
+  assert.equal((resource.value("x") as unknown as Record<string, unknown>).fromEnv, undefined);
 });
 
 // ---------------------------------------------------------------------------

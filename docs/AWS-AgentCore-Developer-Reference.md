@@ -1,5 +1,11 @@
 # Amazon Bedrock AgentCore — Developer Reference
 
+> Historical external-service reference, verified by its original author on the date
+> below. It is not the repository's implemented AgentCore contract or a current AWS
+> capability audit. Start with [AgentCore in this framework](AGENTCORE.md) and the
+> [source-linked agents/tools reference](aws-studio-knowledge/framework/agents-and-tools.md).
+> Recheck AWS-version-specific details in current primary documentation before use.
+
 **Verified against current AWS documentation: October 1, 2026**
 
 This is a developer-first reference for Amazon Bedrock AgentCore: CLI, local development, Runtime, LangGraph integration, Gateway/MCP, CDK, deployment, invocation, authentication, Cognito, sessions, and the boundary between your agent-framework code and AWS-managed infrastructure.

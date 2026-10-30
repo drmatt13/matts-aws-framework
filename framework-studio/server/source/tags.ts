@@ -35,8 +35,8 @@ const optionsObject = (source: ts.SourceFile, expression: ts.Expression, segment
   }
   while (ts.isCallExpression(value) && ts.isPropertyAccessExpression(value.expression)) {
     const access = value.expression;
-    if (ts.isIdentifier(access.expression) && access.expression.text === "resource" && ["stack", "cdk", "fromEnv", "secret"].includes(access.name.text)) {
-      const argumentIndex = ["fromEnv", "secret"].includes(access.name.text) ? 1 : 0;
+    if (ts.isIdentifier(access.expression) && access.expression.text === "resource" && ["stack", "cdk", "fromEnv", "secret", "value"].includes(access.name.text)) {
+      const argumentIndex = ["fromEnv", "secret", "value"].includes(access.name.text) ? 1 : 0;
       const options = value.arguments[argumentIndex] && unwrap(value.arguments[argumentIndex]!);
       if (!options) return { file: source.fileName, source, call: value, argumentIndex, segments };
       if (!ts.isObjectLiteralExpression(options)) return refuse("Resource options are computed. Edit tags in source so the expression is preserved.");

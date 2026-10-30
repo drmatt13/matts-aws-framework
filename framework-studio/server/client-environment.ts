@@ -8,9 +8,9 @@ export function withClientEnvironment(model: ModeModel, settings?: { mappings: C
   const previous = model.resources.find((resource) => resource.id === CLIENT_ENVIRONMENT_ID)?.clientEnvironment;
   const { mappings, problem } = settings ?? { mappings: previous?.mappings ?? {}, problem: previous?.problem };
   // An input declared `.only()` the other graph is still offered: one recipe serves both graphs.
-  const options: ClientReferenceOption[] = model.resources.filter((resource) => resource.kind === "input" && resource.fromEnv && publicInputName(resource.fromEnv)).map((resource) => {
-    const binding: ClientEnvironmentBinding = { kind: "input", name: resource.fromEnv! };
-    return { id: clientReferenceId(binding), label: `${resource.path.join(".")} (${resource.fromEnv})${resource.absent ? ` · ${model.mode === "dev" ? "production" : "development"} only` : ""}`, group: "Input parameters", binding };
+  const options: ClientReferenceOption[] = model.resources.filter((resource) => resource.kind === "input" && publicInputName(resource.id) && (!resource.fromEnv || publicInputName(resource.fromEnv))).map((resource) => {
+    const binding: ClientEnvironmentBinding = { kind: "input", name: resource.id };
+    return { id: clientReferenceId(binding), label: `${resource.path.join(".")}${resource.fromEnv ? ` (${resource.fromEnv})` : " · standalone value"}${resource.absent ? ` · ${model.mode === "dev" ? "production" : "development"} only` : ""}`, group: "Input parameters", binding };
   });
   for (const stack of model.resources.filter((resource) => resource.kind === "stack" && resource.stackClass)) {
     const region: ClientEnvironmentBinding = { kind: "region", stack: stack.stackClass! };

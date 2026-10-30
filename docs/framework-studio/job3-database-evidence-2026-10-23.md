@@ -1,5 +1,10 @@
 # Job 3 database, persistence and recovery evidence
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 Executed October 23, 2026, against this checkout. This report covers local PostgreSQL
 and Studio's real server services. It makes no claim of RDS recovery, browser
 acceptance, CloudFormation import, snapshot restoration or a complete full-stack pass.

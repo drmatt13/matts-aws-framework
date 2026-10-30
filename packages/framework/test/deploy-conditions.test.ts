@@ -49,6 +49,14 @@ test("selectors must be declared, present fromEnv strings and equals must be can
   assert.throws(() => config({ http: [{ "/conditional": { ...route, deploy: { when: { resource: unrelated.other, equals: "yes" } } } }] } as never), /not declared|absent|catalog/);
 });
 
+test("standalone inputs can select deployment without an environment binding", () => {
+  const standalone = defineResources({ enabled: resource.value("no").enum("yes", "no") });
+  const built = config({ resources: standalone, http: [{ "/conditional": { ...route, deploy: { when: { resource: standalone.enabled, equals: "yes" } } } }] } as never);
+  const inputs = deployInputsFrom({ env: { ENABLED: "yes" }, getContext: () => "yes" });
+  assert.equal(getLocalTargets(built, ["http"], inputs).length, 0);
+  assert.equal(getCloudTargets(built, ["http"], "prod", { inputs }).length, 0);
+});
+
 test("shared routes compare condition data rather than object identity", () => {
   const alias = { ...route, deploy: { when: { resource: resources.enabled, equals: "yes" } } };
   assert.equal(getFrameworkTargets(config({ http: [{ "/first": route, "/second": alias }] } as never)).length, 1);

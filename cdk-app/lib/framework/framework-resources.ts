@@ -11,7 +11,7 @@ import { DEPLOYMENT_METADATA_KEY, FRAMEWORK_OWNER, IDENTITY_TAGS } from "@repo/f
 import {
   assertRequirementsMet,
   formatResourceReference, frameworkSecretName, getFrameworkTargets, isCdkResource, isCdkResourceGroup,
-  isResourceAbsent, isResourceReference, isTargetEnabled,
+  isResourceAbsent, isResourceReference, isResourceValueReference, isTargetEnabled,
   resourceAttributeKey, resolveResourceFromEnv, isUnresolvedTokenString, STACK_OWN_VALUE_KEYS,
   type CdkResource, type CdkResourceGroup, type CdkResourceSpec, type CloudMode, type FrameworkConfig,
   type SecretProjections,
@@ -104,7 +104,7 @@ export function linkResource(scope: IConstruct, reference: CdkResourceSpec | Sec
   if ((!isCdkResource(reference) && !isResourceReference(reference)) || !reference.path.length) {
     throw new Error("linkResource() takes a reference from defineResources().");
   }
-  if (isResourceReference(reference) && (reference.fromEnv || reference.attribute || reference.secretArn || reference.secretField)) {
+  if (isResourceReference(reference) && (reference.fromEnv || isResourceValueReference(reference) || reference.attribute || reference.secretArn || reference.secretField)) {
     throw new Error("Link the catalog resource itself, not an input or attribute projection.");
   }
   const state = registry(scope);
@@ -238,6 +238,7 @@ export function resolveLinkedResource(
     return undefined;
   }
   const state = registry(scope);
+  if (isResourceValueReference(reference)) return resolveResourceFromEnv(reference, {}, origin) as string | undefined;
   if (reference.fromEnv) {
     if (reference.kind === "secret" || reference.secretArn) {
       const handle = deploymentSecret(scope, reference, required);
@@ -362,7 +363,7 @@ export function finalizeFrameworkResources(scope: IConstruct): void {
       if (!isTargetEnabled(config, target.kind, target.id, "local", "unconditioned")) continue;
       const references = [...Object.values(target.environment).filter(isResourceReference), ...Object.values(target.secrets).filter((ref) => !ref.fromEnv)];
       for (const reference of references) {
-        if (isResourceAbsent(reference) || (reference.fromEnv && !reference.secretArn)) continue;
+        if (isResourceAbsent(reference) || isResourceValueReference(reference) || (reference.fromEnv && !reference.secretArn)) continue;
         const key = resourceAttributeKey(reference);
         if (published.has(key)) continue;
         const owner = state.links.get(keyOf(reference))?.scope ?? stacks[0];

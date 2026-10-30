@@ -71,6 +71,11 @@ The Input parameters and secrets island opens the same creator as Add to applica
 One form uses a Secret switch to choose an input parameter or a secret, preserving shared
 settings while retaining their distinct validated source declarations. Input defaults and
 allowed values apply only to parameters; no secret value is entered or written by creation.
+For parameters, **Link to .env file** selects an environment-linked `resource.fromEnv`
+declaration with an optional default, or a public `resource.value` declaration. Source
+parameters have no environment-file fallback, supply edge or generated template row.
+The switch carries form text through the reviewed source change; it never reads or moves
+an existing environment-file value. Secrets keep the protected environment source.
 Wizard fields keep labels, controls, helper text and validation together; tags and
 list editors span the form width. Helpers remain associated when errors appear,
 and all configuration controls freeze during validation, stale-source evaluation
@@ -158,7 +163,7 @@ import, exclusive declaration module and map descriptions together, and uses the
 same conflict checks, guarded rollback as creation. Custom modules or computed
 references stay source-owned and produce an actionable refusal.
 
-Descriptions for every family use [framework-config/descriptions.ts](../../../framework-config/descriptions.ts), which the existing Inspector reads and edits. Optional input/secret consumer bindings reuse compatible catalog imports and the framework's ARN or startup-value delivery. Inputs/secrets share declarations across graphs; their authored values remain independent in each mode's protected input file. Creation refuses collisions, incompatible route reuse, nonliteral compositions and unknown references. Apply selects the created entity and saves the reviewed authored/generated artifacts; it does not deploy or start containers. Preview generation can fail when offline npm cache/workspace inputs are insufficient. Browser usability and live provisioned behavior require separate checks. The [capability matrix](../reference/capabilities.md) distinguishes implemented source paths from external validation.
+Descriptions for every family use [framework-config/descriptions.ts](../../../framework-config/descriptions.ts), which the existing Inspector reads and edits. Optional input/secret consumer bindings reuse compatible catalog imports and the framework's ARN or startup-value delivery. Inputs/secrets share declarations across graphs. Environment-linked values remain independent in each mode's protected input file; source parameters store public values in their declaration. Creation refuses collisions, incompatible route reuse, nonliteral compositions and unknown references. Apply selects the created entity and saves the reviewed authored/generated artifacts; it does not deploy or start containers. Preview generation can fail when offline npm cache/workspace inputs are insufficient. Browser usability and live provisioned behavior require separate checks. The [capability matrix](../reference/capabilities.md) distinguishes implemented source paths from external validation.
 
 Triggers are a separate change surface. [config/triggers.ts](../../../packages/framework/src/config/triggers.ts) defines `TriggerAdapterMetadata`, `defineTriggerAdapter`, `triggerAdapters`, trigger/failure-destination validation and normalization. [framework-triggers.ts](../../../cdk-app/lib/framework/framework-triggers.ts) and [framework-trigger-services.ts](../../../cdk-app/lib/framework/framework-trigger-services.ts) attach supported native integrations. Resource capabilities come from [type-aware discovery](source-indexing.md).
 

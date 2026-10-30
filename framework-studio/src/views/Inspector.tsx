@@ -27,7 +27,7 @@ import { StackInfrastructure } from "./Infrastructure";
 import { EnvironmentFileView, InputSources } from "./DeploymentInputs";
 import { ClientEnvironmentFileView } from "./ClientEnvironment";
 import { ConnectionView } from "./InputRequirement";
-import { ResourceStatus } from "./ResourceStatus";
+import { FrameworkManagedStatus, ResourceStatus } from "./ResourceStatus";
 import { RouteStatus } from "./RouteStatus";
 import { Description } from "./Description";
 import { networkFixtureIds } from "../../shared/descriptions";
@@ -331,7 +331,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
   const root = resource.path[0]!;
   const links = snapshot.source.links[resource.path.join(".")] ?? snapshot.source.links[root] ?? [];
   const kind =
-    resource.frameworkStack ? "Framework stack" : resource.kind === "stack" ? "Stack in the catalog" : resource.kind === "member" ? "Stack member" : resource.kind === "secret" ? "Authored secret" : resource.kind === "input" ? "Authored input" : resource.kind === "group" ? "Input group" : "Construct";
+    resource.frameworkStack ? "Framework stack" : resource.kind === "stack" ? "Stack in the catalog" : resource.kind === "member" ? "Stack member" : resource.kind === "secret" ? "Authored secret" : resource.kind === "input" ? resource.fromEnv ? "Environment parameter" : "Source parameter" : resource.kind === "group" ? "Input group" : "Construct";
   const group = resource.kind === "group";
   const availability = resourceAvailability(resource, snapshot.models);
   const entity = snapshot.source.entities[resource.id];
@@ -402,7 +402,7 @@ function ResourceView(props: { readonly resource: ModelResource }) {
 
 function LocalDatabaseView({ database }: { readonly database: LocalDatabase }) {
   return <>
-    <header><InspectorKind environments={{ availability: { dev: database.enabled, prod: false }, descriptions: { dev: "On your machine" }, unavailableDescription: "not enabled" }}>Local development service</InspectorKind><h2><EntityIcon icon="postgres" />{database.title}</h2><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{database.service} · {database.image}</code><Written location={database.source} label="Declared in" /></header>
+    <header><InspectorKind environments={{ availability: { dev: database.enabled, prod: false }, descriptions: { dev: "On your machine" }, unavailableDescription: "not enabled" }}>Local development service</InspectorKind><h2><EntityIcon icon="postgres" />{database.title}</h2><FrameworkManagedStatus /><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{database.service} · {database.image}</code><Written location={database.source} label="Declared in" /></header>
     <Description entity={database.id} />
     <DeploymentSection availability={{ dev: database.enabled, prod: false }} locations={{ dev: "On your machine" }}><DeploymentOwnership reason="Configured in Docker Compose; start and stop this service through Deploy & Run. Container health and running state are separate from source availability." /></DeploymentSection>
     <section><SchemaLink /><p className={"text-caption text-graphite"}>Shares the application contract with production RDS.</p></section>
@@ -418,7 +418,7 @@ function NetworkFixtureView({ id }: { readonly id: string }) {
   const production = snapshot.models.prod;
   const inProduction = !!production.networks?.find(network => id.startsWith(`prop:vpc:${network.id}:`))?.builtInProd && buildScene(production).props.some((prop) => prop.id === id);
   return <>
-    <header><InspectorKind environments={{ availability: { dev: false, prod: inProduction }, descriptions: { prod: "In AWS" }, unavailableDescription: "not built" }}>Network fixture</InspectorKind><h2><EntityIcon icon={fixture.icon} />{fixture.label}</h2><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{id}</code><Written location={snapshot.source.entities[`island:vpc:${model.networks?.find(network => id.startsWith(`prop:vpc:${network.id}:`))?.id}`]?.value} label="Declared in" /></header>
+    <header><InspectorKind environments={{ availability: { dev: false, prod: inProduction }, descriptions: { prod: "In AWS" }, unavailableDescription: "not built" }}>Network fixture</InspectorKind><h2><EntityIcon icon={fixture.icon} />{fixture.label}</h2><FrameworkManagedStatus /><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{id}</code><Written location={snapshot.source.entities[`island:vpc:${model.networks?.find(network => id.startsWith(`prop:vpc:${network.id}:`))?.id}`]?.value} label="Declared in" /></header>
     <Description entity={id} />
     <DeploymentSection availability={{ dev: false, prod: inProduction }} locations={{ prod: "In AWS" }}><DeploymentOwnership reason="This component is created by its production VPC. Configure the owning network instead of deploying the component independently." owners={(model.networks ?? []).filter(network => id.startsWith(`prop:vpc:${network.id}:`)).map(network => ({ id: `island:vpc:${network.id}`, title: network.name ?? network.id }))} /></DeploymentSection>
     <section>{fixture.caption.map((line) => <p key={line}>{line}</p>)}</section>

@@ -14,8 +14,8 @@ export function inputRequirements(model: ModeModel, values: Record<string, strin
   };
   // A selector's value, by the framework's resolver; an unlisted value selects nothing.
   const valueOf = (resource: ModelResource | undefined) => {
-    if (!resource || resource.kind !== "input" || !resource.fromEnv) return undefined;
-    const resolved = resolveInput({ fromEnv: resource.fromEnv, ...(resource.absent ? { absent: true as const } : {}), default: resource.default, values: resource.values }, { env: values });
+    if (!resource || resource.kind !== "input" || (!resource.fromEnv && resource.authoredValue === undefined)) return undefined;
+    const resolved = resolveInput({ fromEnv: resource.fromEnv, authoredValue: resource.authoredValue, ...(resource.absent ? { absent: true as const } : {}), default: resource.default, values: resource.values }, { env: values });
     return resolved.state === "supplied" || resolved.state === "fallback" ? resolved.value : undefined;
   };
   for (const resource of resources.values()) if (resource.required) need(resource.id, "Marked required in the resource declaration.");

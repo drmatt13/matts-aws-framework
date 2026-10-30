@@ -1,5 +1,10 @@
 # Framework Studio — Build the Isometric Architecture View
 
+> Historical design input. For the current product and supported behavior, read
+> [AWS Studio](docs/AWS-STUDIO.md) and the [implementation status](docs/aws-studio-knowledge/reference/status.md).
+> Preserve this document as context; its proposals and early source names are not current instructions.
+
+
 ## Objective
 
 Framework Studio's first working version is in place. I want the next experiment to be **visual and tangible**: an interactive, dimensional isometric landscape displaying my *actual* framework application, not a mock-up or a static architectural diagram.

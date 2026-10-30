@@ -1,5 +1,10 @@
 # Job 3 integration and adversarial execution — 2026-10-23
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 Two independent application journeys completed through GUI authoring, real local
 execution and PostgreSQL, disposable AWS deployment, actual authentication/IAM/
 VPC/event requests, client publication, retained native identity reuse and verified

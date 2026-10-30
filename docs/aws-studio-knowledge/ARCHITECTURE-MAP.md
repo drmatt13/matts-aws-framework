@@ -14,6 +14,10 @@ related:
 ---
 # Architectural relationships
 
+Read the [product overview](../AWS-STUDIO.md) for the whole system,
+[framework architecture](framework/architecture.md) for the execution pipeline, and
+[decision records](architecture/decisions.md) for the reasoning behind its boundaries.
+
 ```mermaid
 flowchart TD
   A[Literal section modules + resource catalog] --> B[Framework normalization / validation]
@@ -24,7 +28,7 @@ flowchart TD
   A --> G[TypeScript source index + CDK inference]
   F --> H[Revisioned snapshot]
   G --> H
-  H --> I[Board / Isometric / Inspector]
+  H --> I[Map / Inspector / Workspaces]
   I --> J[Draft → source review → guarded transaction]
   J --> A
   D --> K[Exports / resource manifest]

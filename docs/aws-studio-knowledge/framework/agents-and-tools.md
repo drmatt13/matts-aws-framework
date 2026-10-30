@@ -34,3 +34,23 @@ The complete authoring/API guide is [AgentCore](../../AGENTCORE.md). Agent decla
 Local model calls use the configured provider and can incur real external requests. Node processes share host trust; they do not reproduce Runtime microVM isolation or IAM. Tool wrappers and contracts are shared, but Gateway's deployed schema/error behavior, streaming, MMDSv2 and actual Step Functions/AgentCore integration require live evidence. The existing AgentCore guide explicitly records those unverified surfaces; do not infer production readiness from local tests.
 
 Add a tool by implementing its contract/handler, declaring it under `tools`, referencing its ID from an agent, regenerating and checking projections. Add only the necessary native grants/secret references. [Local E2E](../../../local-invocation-runner/test/agent-e2e.test.ts) exercises workload → session → emulated Gateway → tool without a live model; [agentcore tests](../../../cdk-app/test/agentcore.test.ts) cover provisioning, and [tool runtime tests](../../../packages/framework/test/agentcore-tools.test.ts) cover wrappers. See [walkthroughs](../guides/workflows.md) and [extensions](../guides/extensions.md).
+
+## Model providers are declared dependencies
+
+The example agent uses [@repo/models](../../../packages/models/src/index.ts), which
+selects `bedrock`, `bedrock-mantle` or `openai` and returns the provider's LangChain model.
+Its environment, IAM statements and conditional secret requirement are centralized in
+[shared/models.ts](../../../framework-config/shared/models.ts), then composed into the
+agent declaration. Provider selection is application configuration; AgentCore itself is
+the execution/tool/session platform, not the model provider.
+
+The secret reference supplies an ARN and read grant; provider code resolves contents at
+runtime. The OpenAI provider requirement applies when that provider is selected. Bedrock
+Runtime and Mantle use different permission sets in the shared declaration. The declared
+resource patterns are the current application policy, not a claim that the framework can
+infer an arbitrary model provider's permissions. Extending the model catalog requires
+matching environment/IAM/requirement changes and provider integration evidence.
+
+Local tests using fake models establish session and tool behavior without demonstrating
+model availability, billing, region support or deployed provider access. Changing a model
+identifier in source does not validate it against a remote provider.

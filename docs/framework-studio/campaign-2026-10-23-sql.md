@@ -1,5 +1,10 @@
 # SQL, database and retention campaign — 2026-10-23
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 Owner: `/root/sql_recovery`. Source leases were partitioned with the lead; no
 shared application source, shared database, AWS resource or real environment input
 was changed by these experiments. The only HTTP mount edit was the coordinated

@@ -10,7 +10,7 @@ allowed-tools: [Read, Write, Edit, Glob, Grep, Bash]
 Target: **$ARGUMENTS**. Preserve the user's intended behavior and unrelated edits.
 
 Read and follow the repository's
-[feature-build procedure](../../../agents/feature-build-agent.md). It provides
+[feature-build procedure](../../../docs/playbooks/feature-build.md). It provides
 the decisions, build order, development loop, traps, and completion checks; the
 linked Framework guide owns the API reference.
 

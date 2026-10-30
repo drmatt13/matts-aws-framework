@@ -77,7 +77,7 @@ async function mount(navigate: (id: string) => void = () => {}, initialOwner?: s
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); clients.push(client);
   ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
   if (withShell) await ui.screen.findByRole("group", { name: "Source environment" });
-  else if (environmentFile) await ui.screen.findByRole("heading", { name: environmentFile.clientEnvironment ? "Client environment" : environmentFile.path[0] });
+  else if (environmentFile) await ui.screen.findByRole("heading", { name: environmentFile.clientEnvironment ? "client-app/.env" : environmentFile.path[0] });
   else await ui.screen.findByRole("button", { name: /Synthesize CDK|Refresh from CDK/ });
 }
 
@@ -177,6 +177,7 @@ test("client mappings give a searchable source overview and show where each fiel
 
 test("client fields can be added, remapped, split per environment, reviewed and discarded without writing before apply", async () => {
   const file = response.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)!;
+  const testerPort = response.snapshot.models.dev.resources.find((resource) => resource.fromEnv === "WS_TESTER_HOST_PORT")!.id;
   let changes: readonly import("../shared/api").DraftEdit[] = [];
   mock.method(api.api, "planBatch", async (edits: readonly import("../shared/api").DraftEdit[]) => { changes = edits; return { planId: "mappings", ok: true, summaries: ["Client mappings"], changes: [], impact: [], preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } } }; });
   await mount(() => {}, undefined, file);
@@ -189,7 +190,7 @@ test("client fields can be added, remapped, split per environment, reviewed and 
   openMapping("VITE_API_GATEWAY_URL");
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Protocol for VITE_API_GATEWAY_URL in Development" }), { target: { value: "https" } });
   ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Hostname for VITE_API_GATEWAY_URL in Development" }), { target: { value: "app.localhost" } });
-  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Port input for VITE_API_GATEWAY_URL in Development" }), { target: { value: "WS_TESTER_HOST_PORT" } });
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Port input for VITE_API_GATEWAY_URL in Development" }), { target: { value: testerPort } });
   ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Use URL override for VITE_API_GATEWAY_URL in Development" }));
   assert.ok((ui.screen.getByRole("combobox", { name: "Override input for VITE_API_GATEWAY_URL in Development" }) as HTMLSelectElement).disabled);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add field" }));
@@ -205,7 +206,7 @@ test("client fields can be added, remapped, split per environment, reviewed and 
   assert.equal(changes[0]!.kind, "clientEnvironment");
   if (changes[0]!.kind !== "clientEnvironment") return;
   assert.deepEqual(changes[0]!.mappings.VITE_WS_TESTER_URL, { dev: file.clientEnvironment!.mappings.VITE_WS_TESTER_URL, prod: { kind: "empty" } });
-  assert.deepEqual(clientBindingFor(changes[0]!.mappings.VITE_API_GATEWAY_URL!, "dev"), { kind: "endpoint", protocol: "https", host: "app.localhost", port: "WS_TESTER_HOST_PORT" });
+  assert.deepEqual(clientBindingFor(changes[0]!.mappings.VITE_API_GATEWAY_URL!, "dev"), { kind: "endpoint", protocol: "https", host: "app.localhost", port: testerPort });
   assert.deepEqual(changes[0]!.mappings.VITE_CUSTOM_REGION, { kind: "region", stack: "CognitoStack" }, "a new field is one recipe for both environments");
   assert.deepEqual(changes[0]!.mappings.VITE_USER_POOL_ID, { kind: "output", stack: "CognitoStack", outputs: ["UserPoolClientId"] });
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard All" }));

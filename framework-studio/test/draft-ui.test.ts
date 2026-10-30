@@ -12,6 +12,8 @@ import { connectionDescriptionId } from "../shared/descriptions";
 import { aggregateConnections } from "../src/connections";
 import { networkSettings, unusedNetworkCidr } from "../shared/networks";
 import { withConnectionAuthorizations } from "../shared/permissions";
+import { frameworkManagedIds } from "../shared/framework-management";
+import { buildScene } from "../src/scene/build";
 
 let builder: SnapshotBuilder;
 let baseline: Snapshot;
@@ -660,7 +662,7 @@ test("inspector headers carry their Dev | Prod pair at the right of the type lab
   assert.deepEqual([...document.querySelectorAll("[data-slot=\"lane-lines\"] strong")].map(line => line.textContent), ["Unavailable", "Unavailable"], "the Deployment section agrees with the header that an unattached stack is deployed nowhere");
   ui.cleanup();
   await mount("envfile:dev");
-  assert.equal(header().querySelector("[data-slot=\"inspector-kind\"] > span")?.textContent, "CDK inputs", "the pair names the environment, so the label does not repeat it");
+  assert.equal(header().querySelector("[data-slot=\"inspector-kind\"] > span")?.textContent, "Environment file", "the pair names the environment and the file role identifies framework inputs");
   ui.cleanup();
   await mount("resource:client");
   assert.equal(header().querySelectorAll("[data-slot=\"environment-pills\"]").length, 0, "an input group's entries carry their own pairs");
@@ -696,13 +698,12 @@ test("the stacks island distinguishes missing catalog declarations from missing 
 });
 
 test("managed API routes show their target's environment cards and owning config", async () => {
-  const sections = { http: "http", service: "services", webSocket: "websocket", agent: "agents" } as const;
-  for (const [kind, section] of Object.entries(sections)) {
+  for (const kind of ["http", "service", "webSocket", "agent"] as const) {
     const route = baseline.models.dev.routes.find((route) => route.kind === kind)!;
     assert.ok(route, `the repository has a ${kind} route`);
     await mount(route.id);
     const header = ui.screen.getByRole("complementary", { name: "Inspector" }).querySelector("header")!;
-    assert.ok(ui.within(header).getByText(`Managed by framework-config/${section}`));
+    assert.equal(ui.within(header).getByText("Framework managed").title, `Routing generated from ${route.origin}`);
     assert.ok(ui.within(header).getByText(route.origin));
     const target = baseline.models.dev.targets.find((target) => target.ref === route.target)!;
     const productionTarget = baseline.models.prod.targets.find((item) => item.ref === route.target)!;
@@ -954,7 +955,7 @@ test("a missing environment file offers setup rather than an unusable value edit
 });
 
 test("per-environment input settings participate in the unified resource draft", async () => {
-  const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv && !item.absent)!;
+  const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv && !item.absent && item.default !== undefined && item.modes?.dev.present && item.modes.prod.present && !item.modes.prod.required)!;
   await mount(resource.id);
   ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Required in production" }));
   assert.equal(resourceCalls.length, 0);
@@ -967,6 +968,81 @@ test("per-environment input settings participate in the unified resource draft",
   const { modes } = resourceCalls[0] as { modes: Record<"dev" | "prod", { present: boolean; required: boolean; default: string | null }> };
   assert.deepEqual([modes.dev.present, modes.dev.required, modes.dev.default], [false, false, null], "a graph without the input keeps nothing for it");
   assert.deepEqual([modes.prod.present, modes.prod.required], [true, true]);
+});
+
+test("source parameters edit values without reading or presenting an environment file", async () => {
+  let reads = 0;
+  mock.method(apiModule.api, "resourceDetails", async () => { reads++; return { configured: false }; });
+  await mount("resource:enableWebSocketApi");
+  assert.equal(reads, 0);
+  assert.equal(ui.screen.getByRole("switch", { name: "Link to .env file" }).getAttribute("aria-checked"), "false");
+  assert.equal(ui.screen.queryByRole("region", { name: "Local value" }), null);
+  assert.equal(ui.screen.queryByRole("combobox", { name: "Default in development" }), null);
+  assert.equal((ui.screen.getByRole("combobox", { name: "Value in development" }) as HTMLSelectElement).value, "true");
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Value in development" }), { target: { value: "false" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+  await ui.waitFor(() => assert.equal(resourceCalls.length, 1));
+  const intent = resourceCalls[0] as ResourceIntent;
+  assert.equal(intent.fromEnv, null);
+  assert.deepEqual(intent.modes.dev, { present: true, required: false, default: null, value: "false" });
+  assert.equal(intent.modes.prod.value, "true");
+  assert.equal(applyCalls, 0);
+});
+
+test("source linking switches values to optional defaults and back without losing edits", async () => {
+  await mount("resource:enableWebSocketApi");
+  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Link to .env file" }));
+  assert.equal((ui.screen.getByRole("textbox", { name: "Environment variable" }) as HTMLInputElement).value, "ENABLE_WEB_SOCKET_API");
+  assert.equal((ui.screen.getByRole("combobox", { name: "Default in development" }) as HTMLSelectElement).value, "true");
+  assert.equal(ui.screen.queryByRole("combobox", { name: "Value in development" }), null);
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Environment variable" }), { target: { value: "CUSTOM_WEB_SOCKET_API" } });
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Default in development" }), { target: { value: "false" } });
+  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Link to .env file" }));
+  assert.equal((ui.screen.getByRole("combobox", { name: "Value in development" }) as HTMLSelectElement).value, "false");
+  assert.equal(ui.screen.queryByRole("textbox", { name: "Environment variable" }), null);
+  assert.equal(ui.screen.queryByRole("region", { name: "Local value" }), null);
+  assert.match(count(), /1 unsaved change/);
+  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Link to .env file" }));
+  assert.equal((ui.screen.getByRole("textbox", { name: "Environment variable" }) as HTMLInputElement).value, "CUSTOM_WEB_SOCKET_API");
+  assert.equal((ui.screen.getByRole("combobox", { name: "Default in development" }) as HTMLSelectElement).value, "false");
+});
+
+test("unlinking a parameter carries its declared default rather than copying private local values", async () => {
+  mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "fixture" }, configured: true, value: "private-local-value" }));
+  await mount("resource:langgraph.modelProvider");
+  await ui.screen.findByRole("combobox", { name: "Value for LANGGRAPH_MODEL_PROVIDER" });
+  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Link to .env file" }));
+  assert.equal((ui.screen.getByRole("combobox", { name: "Value in development" }) as HTMLSelectElement).value, "bedrock-mantle");
+  assert.ok(!document.querySelector('[data-slot="resource-editor"]')!.textContent!.includes("private-local-value"));
+  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Link to .env file" }));
+  assert.equal((ui.screen.getByRole("combobox", { name: "Default in development" }) as HTMLSelectElement).value, "bedrock-mantle");
+  assert.equal(ui.screen.queryByLabelText("Pending inspector changes"), null);
+});
+
+test("input creation toggles between a value and optional default through the same reviewed draft", async () => {
+  await mount("island:inputs");
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Create input parameter or secret" }));
+  await waitDialog("Create input parameter or secret");
+  const wizard = ui.within(ui.screen.getByRole("dialog", { name: "Create input parameter or secret" }));
+  ui.fireEvent.change(wizard.getByRole("textbox", { name: "Stable identifier" }), { target: { value: "sourceFlag" } });
+  ui.fireEvent.change(wizard.getByRole("textbox", { name: "Default value (optional)" }), { target: { value: "enabled" } });
+  ui.fireEvent.click(wizard.getByRole("switch", { name: "Link to .env file" }));
+  assert.equal(wizard.queryByRole("textbox", { name: "Environment variable" }), null);
+  assert.equal(wizard.queryByRole("textbox", { name: "Default value (optional)" }), null);
+  assert.equal((wizard.getByRole("textbox", { name: "Value" }) as HTMLInputElement).value, "enabled");
+  ui.fireEvent.change(wizard.getByRole("textbox", { name: "Value" }), { target: { value: "disabled" } });
+  ui.fireEvent.click(wizard.getByRole("switch", { name: "Link to .env file" }));
+  assert.equal((wizard.getByRole("textbox", { name: "Default value (optional)" }) as HTMLInputElement).value, "disabled");
+  ui.fireEvent.click(wizard.getByRole("switch", { name: "Link to .env file" }));
+  ui.fireEvent.click(wizard.getByRole("button", { name: "Review generated changes" }));
+  await waitDialog("Review 1 change");
+  const edit = planCalls[0]![0]!;
+  assert.ok(edit.kind === "create" && edit.request.kind === "input");
+  assert.equal(edit.request.linkedToEnv, false);
+  assert.equal(edit.request.value, "disabled");
+  assert.equal(edit.request.defaultValue, "");
+  assert.equal(edit.request.envName, "");
+  assert.equal(applyCalls, 0);
 });
 
 test("actual switches stage immediately, five controls share one review, and Apply All commits once", async () => {
@@ -1136,7 +1212,7 @@ test("the creation chooser enters the guarded wizard; review/back retains form a
   await waitDialog("Create input parameter or secret");
   ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Stable identifier" }), { target: { value: "reviewedInput" } });
   ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Environment variable" }), { target: { value: "REVIEWED_INPUT" } });
-  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Declaration default (optional)" }), { target: { value: "kept" } });
+  ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Default value (optional)" }), { target: { value: "kept" } });
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review generated changes" }));
   await waitDialog("Review 1 change");
   await ui.waitFor(() => assert.equal(planCalls.length, 1));
@@ -1144,7 +1220,7 @@ test("the creation chooser enters the guarded wizard; review/back retains form a
   assert.equal(applyCalls, 0, "review is not approval to write");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to Editing" }));
   await waitDialog("Create input parameter or secret");
-  assert.equal((ui.screen.getByRole("textbox", { name: "Declaration default (optional)" }) as HTMLInputElement).value, "kept");
+  assert.equal((ui.screen.getByRole("textbox", { name: "Default value (optional)" }) as HTMLInputElement).value, "kept");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Back to resource types" }));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Input parameter or secret" }));
   await waitDialog("Create input parameter or secret");
@@ -1160,14 +1236,14 @@ test("input and secret creation share a switch and preserve compatible settings 
   await waitDialog("Create input parameter or secret");
   const wizard = ui.within(ui.screen.getByRole("dialog", { name: "Create input parameter or secret" }));
   ui.fireEvent.change(wizard.getByRole("textbox", { name: "Stable identifier" }), { target: { value: "sharedInput" } });
-  ui.fireEvent.change(wizard.getByRole("textbox", { name: "Declaration default (optional)" }), { target: { value: "enabled" } });
+  ui.fireEvent.change(wizard.getByRole("textbox", { name: "Default value (optional)" }), { target: { value: "enabled" } });
   ui.fireEvent.click(wizard.getByRole("switch", { name: "Secret" }));
   assert.equal(wizard.getByRole("switch", { name: "Secret" }).getAttribute("aria-checked"), "true");
-  assert.equal(wizard.queryByRole("textbox", { name: "Declaration default (optional)" }), null);
+  assert.equal(wizard.queryByRole("textbox", { name: "Default value (optional)" }), null);
   assert.equal(wizard.queryByLabelText(/secret value/i), null, "creation never authors a secret value");
   assert.equal((wizard.getByRole("textbox", { name: "Stable identifier" }) as HTMLInputElement).value, "sharedInput");
   ui.fireEvent.click(wizard.getByRole("switch", { name: "Secret" }));
-  assert.equal((wizard.getByRole("textbox", { name: "Declaration default (optional)" }) as HTMLInputElement).value, "enabled");
+  assert.equal((wizard.getByRole("textbox", { name: "Default value (optional)" }) as HTMLInputElement).value, "enabled");
   ui.fireEvent.click(wizard.getByRole("switch", { name: "Secret" }));
   ui.fireEvent.click(wizard.getByRole("button", { name: "Review generated changes" }));
   await waitDialog("Review 1 change");
@@ -1805,20 +1881,33 @@ test("userPool identifiers without direct literal ownership link to their declar
   assert.equal(planCalls.length + applyCalls, 0);
 });
 
-test("gateway headers use the same framed framework-managed status as catalog stacks", async () => {
+test("every resource family uses one framed ownership status directly below its inspector title", async () => {
   await mount("resource:rds");
   const reference = document.querySelector("[data-slot=inspector-content] > header [data-resource-status=managed]")!;
   assert.ok(reference);
   const referenceClasses = reference.className;
   ui.cleanup();
-  for (const id of ["gateway:http", "gateway:websocket"]) {
-    await mount(id);
-    const header = document.querySelector("[data-slot=inspector-content] > header")!;
-    const badge = ui.within(header as HTMLElement).getByText("Framework managed");
-    assert.equal(badge.className, referenceClasses);
-    assert.ok(badge.querySelector("svg"));
-    assert.equal(header.querySelectorAll("[data-resource-status=managed]").length, 1);
-    ui.cleanup();
+  for (const mode of ["dev", "prod"] as const) {
+    const model = baseline.models[mode];
+    const expected = frameworkManagedIds(model);
+    const scene = buildScene(model);
+    const ids = new Set([...model.resources.map(item => item.id), ...model.targets.map(item => item.ref),
+      ...model.routes.map(item => item.id), ...scene.nodes.map(item => item.id),
+      ...scene.props.map(item => item.id), ...scene.islands.map(item => item.id),
+      ...baseline.schema.tables.map(item => item.id), ...baseline.schema.relations.map(item => item.id)]);
+    for (const id of ids) {
+      await mount(id, mode);
+      const header = document.querySelector("[data-slot=inspector-content] > header")!;
+      assert.ok(header, `${mode}: ${id} has an inspector header`);
+      assert.equal(header.querySelectorAll("[data-resource-status=managed]").length, expected.has(id) ? 1 : 0, `${mode}: ${id}`);
+      if (expected.has(id)) {
+        const badge = ui.within(header as HTMLElement).getByText("Framework managed");
+        assert.equal(badge.className, referenceClasses);
+        assert.ok(badge.querySelector("svg"));
+        assert.equal(header.querySelector("h2")!.nextElementSibling, badge, `${mode}: ${id} ownership follows its title`);
+      }
+      ui.cleanup();
+    }
   }
   assert.equal(planCalls.length + applyCalls, 0);
 });

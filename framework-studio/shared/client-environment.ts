@@ -4,6 +4,8 @@ export type { ClientEnvironmentBinding, ClientEnvironmentMapping, ClientEnvironm
 export { clientBindingFor, isSplitMapping } from "../../scripts/client-environment-mapping";
 
 export const CLIENT_ENVIRONMENT_ID = "client-envfile";
+export const ENVIRONMENT_FILES_ISLAND = "island:environment";
+/** Retained for links saved before environment files shared one island. */
 export const CLIENT_ENVIRONMENT_ISLAND = "island:client-environment";
 export { CLIENT_ENVIRONMENT_FILE } from "../../scripts/client-environment-mapping";
 

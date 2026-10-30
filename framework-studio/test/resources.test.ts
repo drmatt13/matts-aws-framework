@@ -9,6 +9,7 @@ import { SnapshotBuilder } from "../server/snapshot";
 import { readResourceIntent, ResourceService } from "../server/resources";
 import { DeploymentInputService } from "../server/deployment-input-edits";
 import { SourceJournal } from "../server/edits/journal";
+import { parseClientMappings } from "../server/client-environment-source";
 
 const root = path.resolve(__dirname, "../..");
 const fixture = path.join(root, ".cache/framework-studio", `resources-${randomUUID()}`);
@@ -107,6 +108,92 @@ test("default changes are evaluated from candidate source, applied exactly", asy
   assert.equal(readFileSync(catalog, "utf8"), original);
   await restoreSource();
 });
+
+test("input source toggles review declaration values without reading or changing environment files", async () => {
+  const file = path.join(fixture, "cdk-app/.env.dev");
+  const environment = readFileSync(file, "utf8");
+  const tagged = original.replace('resource.fromEnv("FIXTURE_SETTING").default("initial")', 'resource.fromEnv("FIXTURE_SETTING", { tags: { area: "settings" } }).enum("initial", "changed", "from local env").default("initial").note("A source-controlled setting")');
+  writeFileSync(catalog, tagged);
+  await builder.refresh();
+  const standalone = intent({ fromEnv: null, modes: {
+    dev: { present: true, required: false, default: null, value: "changed" },
+    prod: { present: true, required: false, default: null, value: "changed" },
+  } });
+  const plan = await service.plan(standalone, revision(), "dev");
+  assert.ok(plan.ok, JSON.stringify(plan.diagnostics));
+  assert.deepEqual(plan.changes.map(change => change.file), ["framework-config/resources.ts"]);
+  assert.match(plan.changes[0]!.diff.unified, /resource\.value\("changed", \{ tags: \{ area: "settings" \} \}\)\.enum\("initial", "changed", "from local env"\)\.note\("A source-controlled setting"\)/);
+  assert.equal(readFileSync(catalog, "utf8"), tagged, "review does not write source");
+  assert.equal((await service.apply(plan.planId)).status, "applied");
+  assert.equal(builder.current!.snapshot.models.dev.resources.find(item => item.id === standalone.resource)?.authoredValue, "changed");
+  assert.deepEqual(service.details(standalone.resource, "dev"), { configured: true, value: "changed" });
+  assert.equal(readFileSync(file, "utf8"), environment, "unlinking leaves authored environment values intact");
+  const linked = await service.plan(intent({ fromEnv: "FIXTURE_SETTING", default: "changed" }), revision(), "dev");
+  assert.ok(linked.ok, JSON.stringify(linked.diagnostics));
+  assert.equal((await service.apply(linked.planId)).status, "applied");
+  assert.match(readFileSync(catalog, "utf8"), /resource\.fromEnv\("FIXTURE_SETTING", \{ tags: \{ area: "settings" \} \}\)\.enum\("initial", "changed", "from local env"\)\.default\("changed"\)\.note\("A source-controlled setting"\)/);
+  assert.equal(service.details(standalone.resource, "dev").value, "from local env", "linking reads the existing file value rather than overwriting it");
+  assert.equal(readFileSync(file, "utf8"), environment);
+});
+
+test("standalone values preserve mode scope and refuse defaults, requirements and secret source values", async () => {
+  writeFileSync(catalog, original.replace('from "@repo/framework/config";\n', 'from "@repo/framework/config";\nimport { FRAMEWORK_MODE } from "@repo/framework/config/source";\n').replace("});\n", "}, { mode: FRAMEWORK_MODE });\n"));
+  await builder.refresh();
+  const standalone = intent({ fromEnv: null, modes: {
+    dev: { present: true, required: false, default: null, value: "development" },
+    prod: { present: true, required: false, default: null, value: "production" },
+  } });
+  const plan = await service.plan(standalone, revision(), "prod");
+  assert.ok(plan.ok, JSON.stringify(plan.diagnostics));
+  assert.match(plan.changes[0]!.diff.unified, /resource\.value\(\{ dev: "development", prod: "production" \}\)/);
+  assert.equal((await service.apply(plan.planId)).status, "applied");
+  assert.deepEqual(service.details(standalone.resource, "prod"), { configured: true, value: "production" });
+  const devOnly = await service.plan({ ...standalone, modes: { ...standalone.modes, prod: { present: false, required: false, default: null, value: null } } }, revision(), "dev");
+  assert.ok(devOnly.ok, JSON.stringify(devOnly.diagnostics));
+  assert.match(devOnly.changes[0]!.diff.unified, /resource\.value\("development"\)\.only\("dev"\)/);
+  assert.equal((await service.apply(devOnly.planId)).status, "applied");
+  assert.deepEqual(service.details(standalone.resource, "prod"), { configured: false });
+  await assert.rejects(service.plan({ ...standalone, modes: { ...standalone.modes, dev: { ...standalone.modes.dev, default: "fallback" } } }, revision(), "dev"), /standalone input has a value/);
+  await assert.rejects(service.plan({ ...standalone, kind: "secret" }, revision(), "dev"), /Secrets must be linked/);
+});
+
+test("unlinking and moving an input migrate every parsed client recipe reference in the same review", async () => {
+  const client = path.join(fixture, "framework-config/client-environment.ts");
+  const source = `export const clientEnvironment = {
+  // A retained client field comment.
+  VITE_SETTING: { kind: "input", name: "FIXTURE_SETTING" },
+  VITE_GUARDED: { kind: "region", stack: "FrontendWebsiteS3Stack", when: { input: "FIXTURE_SETTING", equals: "initial" } },
+  VITE_URL: { dev: { kind: "endpoint", protocol: "http", host: "localhost", port: "FIXTURE_SETTING", override: "FIXTURE_SETTING" }, prod: { kind: "input", name: "FIXTURE_SETTING" } },
+  // Leave this field exactly as authored.
+  VITE_UNRELATED: { kind: "empty" },
+};\n`;
+  writeFileSync(client, source);
+  await builder.refresh();
+  const standalone = intent({ fromEnv: null, modes: {
+    dev: { present: true, required: false, default: null, value: "initial" },
+    prod: { present: true, required: false, default: null, value: "initial" },
+  } });
+  const review = await service.plan(standalone, revision(), "dev");
+  assert.ok(review.ok, JSON.stringify(review.diagnostics));
+  assert.deepEqual(review.changes.map(change => change.file).sort(), ["framework-config/client-environment.ts", "framework-config/resources.ts"]);
+  assert.equal(readFileSync(client, "utf8"), source, "preview leaves recipes untouched");
+  assert.equal((await service.apply(review.planId)).status, "applied");
+  const migrated = readFileSync(client, "utf8");
+  assert.doesNotMatch(JSON.stringify(parseClientMappings(migrated).mappings), /FIXTURE_SETTING/);
+  assert.equal((JSON.stringify(parseClientMappings(migrated).mappings).match(/resource:setting/g) ?? []).length, 5);
+  assert.ok(migrated.includes("// Leave this field exactly as authored.\n  VITE_UNRELATED: { kind: \"empty\" },"));
+  const moved = await service.plan({ ...standalone, group: "settings" }, revision(), "dev");
+  assert.ok(moved.ok, JSON.stringify(moved.diagnostics));
+  assert.equal((await service.apply(moved.planId)).status, "applied");
+  const names = JSON.stringify(parseClientMappings(readFileSync(client, "utf8")).mappings);
+  assert.doesNotMatch(names, /"resource:setting"/);
+  assert.equal((names.match(/resource:settings\.setting/g) ?? []).length, 5);
+  await assert.rejects(service.plan({ resource: "resource:settings.setting", kind: "secret", fromEnv: "NEW_SETTING_SECRET", group: "settings", requirements: {}, modes: {
+    dev: { present: true, required: false, default: null }, prod: { present: true, required: false, default: null },
+  } }, revision(), "dev"), /Remove this input's public client mappings/);
+});
+
+
 
 test("moving an input rewrites catalog references and keeps a derived env key stable", async () => {
   const plan = await service.plan(intent({ resource: "resource:group.derived", default: null, group: "newGroup" }), revision(), "dev");

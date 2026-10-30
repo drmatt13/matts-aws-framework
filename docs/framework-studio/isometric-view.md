@@ -208,8 +208,8 @@ subnet terraces inside the VPC foundation.
   Network footprints include measured foundation overhang, keeping adjacent frames clear.
   A stable ID order keeps input-array reordering from reshuffling them. The network
   group stays below outside compute in the right cluster and reserves a title gutter
-  from inputs on the left. This supports future multiple network islands in the layout;
-  the current declaration model still supplies the application's single VPC.
+  from inputs on the left. The current declaration model supports multiple explicit
+  VPCs in `networks`; each receives its own island and VPC-qualified fixtures.
 - **Graph-aware refinement.** Node slots remain on their measured lattice. Island
   dependencies guide layered/barycentric seeds and bounded moves and swaps. The lower
   islands need not share one row; Workflows stay left of Stacks. Benchmarks compare
@@ -648,7 +648,7 @@ WebSocket, events, tools, containers and database pools, as relevant to the isla
 Boolean defaults use switches. Every field shows counts of current inheritors and
 overrides; defaults apply across islands and to future declarations. Existing overrides
 win. All service groups share the inspector's draft and pending-change count. Review
-validates the combined configuration, and Apply All creates one undoable edit. Selecting
+validates the combined configuration, and Apply All saves one reviewed source transaction. Selecting
 another icon or terrain island while dirty uses the shared unsaved-changes warning.
 Islands without shared framework defaults show links to their individual entries.
 Selecting an island lights its member nodes without forcing every label card to appear.

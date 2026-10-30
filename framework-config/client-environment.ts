@@ -7,7 +7,7 @@ export const clientEnvironment = {
     dev: { kind: "endpoint", protocol: "http", port: "LOCAL_API_DEV_SERVER_HOST_PORT", override: "VITE_API_GATEWAY_URL" },
     prod: { kind: "output", stack: "FrontendWebsiteS3Stack", outputs: ["CloudFrontUrl", "FrontendWebsiteUrl"] },
   },
-  VITE_LOCAL_WS_URL: { kind: "endpoint", protocol: "ws", port: "LOCAL_WS_DEV_SERVER_HOST_PORT", when: { input: "ENABLE_WEBSOCKET_API", equals: "true" } },
+  VITE_LOCAL_WS_URL: { kind: "endpoint", protocol: "ws", port: "LOCAL_WS_DEV_SERVER_HOST_PORT", when: { input: "resource:enableWebSocketApi", equals: "true" } },
   VITE_API_GATEWAY_WS_URL: { kind: "output", stack: "WebSocketApiStack", outputs: ["WebSocketAPIEndpoint"], optional: true },
   VITE_WS_TESTER_URL: { kind: "endpoint", protocol: "http", port: "WS_TESTER_HOST_PORT" },
   // Cognito's deployment region can differ from LOCAL_AWS_REGION (the local SDK region).

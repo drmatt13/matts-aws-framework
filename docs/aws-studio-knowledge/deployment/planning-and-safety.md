@@ -14,11 +14,16 @@ source:
   - scripts/atomic-replace.cjs
   - packages/framework/src/deploy/classify.ts
 related:
+  - deployment.lifecycle
   - deployment.environments
   - deployment.secrets
   - deployment.operations
 ---
 # Planning, approval and cloud safety
+
+This page owns infrastructure plan/apply. Database application, identity operations and
+frontend publication have independent review/effect boundaries described in the
+[operational lifecycle](lifecycle.md).
 
 Use the [production procedure](../../playbooks/prod-deployment.md) for authorized operations. Source work or this wiki never authorizes deployment. A template plan can be read-oriented, but change-set preparation writes AWS review objects; `--create-secrets` also writes new secrets.
 

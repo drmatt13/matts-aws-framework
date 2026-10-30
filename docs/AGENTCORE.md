@@ -24,9 +24,10 @@ templates and review boundaries. Saving source does not start or deploy an agent
 // framework-config/workloads/tools.ts
 import { startsWorkflow } from "@repo/framework/config";
 import type { ToolsSection } from "../contracts";
+import { applicationVpc } from "../networks/application";
 
 export const tools = {
-  "lookup-case": { directory: "/lambda_functions/tool_functions/lookup-case", auth: true, database: true },
+  "lookup-case": { directory: "/lambda_functions/tool_functions/lookup-case", auth: true, database: true, vpc: applicationVpc },
   "start-review": { directory: "/lambda_functions/tool_functions/start-review", auth: true, cloud: { bindings: [startsWorkflow("case-review")] } },
 } satisfies ToolsSection;
 ```
@@ -140,12 +141,14 @@ sees and cannot set: anything the model writes there is replaced. `authenticated
 the token against Cognito — the tool trusts neither the agent nor the Gateway for who the user
 is — and removes it before the handler runs. Ownership checks stay in the handler, as they do in
 a GraphQL resolver. Exposure is the HTTP API's: a Lambda's event already carries the bearer
-token there. A turn that outlives the token's hour fails its user tools; give background work
+token there. A turn that outlives the ID token's validity fails its user tools; give background work
 a service tool.
 
 Keep database and secret access in tools. An agent then needs no VPC and no database
 access — it thinks, and its tools touch data. A tool that needs the database declares
-`database: true`; an agent cannot, because it runs outside the VPC.
+`database: true` and explicitly imports the database's VPC as `vpc`; the framework does
+not inherit it from defaults. An agent cannot declare database access, because its
+current Runtime integration runs outside the VPC.
 
 ## The model
 
@@ -214,10 +217,13 @@ wire names are mapped for you.
 `context.user` is the verified session of an `auth: true` agent. `conversationId` is the
 caller's. `signal` aborts when the caller goes away; it does not undo a committed write.
 
-AgentCore Memory, Browser and Code Interpreter need nothing new: declare them on an
-application stack, expose them with `resource.stack<T>()` and `linkResources`, pass their ids
-in `environment` and their native grants in `cloud.bindings`, as any resource. In development
-they deploy like other resources and local agents use them with your profile.
+AgentCore Memory, Browser and Code Interpreter are extension candidates through the
+native-resource path: an application stack can expose supported construct attributes and
+grants through `resource.stack<T>()` and `linkResources`, then pass identifiers and access
+to its agent. This repository does not provide dedicated framework adapters, local
+emulators or validated end-to-end workflows for those services. Their SDK/session behavior,
+required IAM, network access and deployment lifecycle must be implemented and verified
+for the application; the generic catalog alone does not establish that integration.
 
 ## Calling an agent
 
@@ -350,7 +356,10 @@ lifetime, and the Gateway derived from its tools.
 
 ## Deployment
 
-`npm run deploy:resources -- -c prodDeployment=true` builds, beside the workflows:
+`npm run deploy:resources -- --all -c prodDeployment=true --profile <PROFILE>`
+builds the following beside workflows after the intended production target is authorized.
+Use the [production review procedure](PROD-DEPLOYMENT.md#deploy) for a saved plan and
+apply; deploying infrastructure does not publish the frontend assets.
 
 | Resource | From |
 | --- | --- |
@@ -358,16 +367,22 @@ lifetime, and the Gateway derived from its tools.
 | A Gateway per agent with tools, IAM inbound | the agent's `tools` and the committed contract projection |
 | A Runtime per agent, Node code from S3 | the agent's directory, bundled with esbuild with the framework's adapter |
 | A Cognito JWT authorizer, `Authorization` allowlisted | an agent's `auth: true`, from the app's user pool |
-| An exact CloudFront behavior per declared agent route, ahead of `/api/*` | agents with `auth: true` and `route`, when `FRONTEND_URL` is configured |
+| An exact CloudFront behavior per declared agent route, ahead of `/api/*` | Agents with `auth: true` and `route`, on either the generated or configured frontend hostname |
 
 Agent route behaviors forward only `Authorization`, `Content-Type`, `Accept`, the session header and
 `?qualifier`. It never forwards cookies, so the refresh cookie scoped to `/api` stays between the
 browser and the HTTP API. Replies are never cached or compressed.
 
-Agent browser routing follows `/api/*`'s domain requirement: both exist only with a configured frontend domain. On a
-generated CloudFront domain, Cognito's callback URLs depend on the distribution, and an
-agent's authorizer depends on Cognito, so the distribution cannot route to agents without a
-dependency cycle. That is the same limitation the HTTP API has today (see Framework).
+Agent browser routing and `/api/*` work on both configured frontend domains and the
+generated CloudFront hostname. For the generated hostname, the website is constructed
+first so Cognito can use its callback origin. CloudFront Functions read API/agent routing
+from a KeyValueStore populated by the later `FrontendRouting` custom resource, avoiding a
+website → Cognito → Runtime → website dependency cycle. Custom-domain routing can bind
+origins directly. This is implemented in
+[frontend-website-s3-stack.ts](../cdk-app/lib/app/frontend-website-s3-stack.ts),
+[frontend-routing.ts](../cdk-app/lib/app/frontend-routing.ts) and the
+[composition root](../cdk-app/bin/cdk-app.ts); live streaming/sign-in verification remains
+separate from synthesis.
 
 Agents deploy as code, not images: no Docker, no registry, no ARM64 cross-build. They run on
 AgentCore's Node 22 runtime and are bundled for it; Lambdas run Node 24. Agents are TypeScript
@@ -376,11 +391,13 @@ modules today — a Python agent would need its own adapter and local lane.
 Every name AgentCore requires is derived from the stack and construct path, so two
 deployments in one account do not collide.
 
-AgentCore refuses to invoke a Runtime without MMDSv2 since June 30, 2026, and CloudFormation
-cannot set it yet. A custom resource per Runtime turns it on after each Runtime update, through
-one provider shared by every agent and granted each Runtime and its execution role by ARN
-(`cdk-app/lib/framework/agentcore-metadata.ts`). Delete it once
-`AWS::BedrockAgentCore::Runtime` accepts `MetadataConfiguration`.
+The current implementation enables MMDSv2 through a custom resource after each Runtime
+update, using one provider shared by the agents and scoped to their Runtime/execution-role
+ARNs ([agentcore-metadata.ts](../cdk-app/lib/framework/agentcore-metadata.ts)). This is the
+repository's compatibility shim for the pinned CDK/CloudFormation integration. Before
+removing it, verify that the replacement native metadata property is supported by the
+installed provider model and exercise creation/update behavior against AWS; a newer SDK
+alone does not replace the deployed custom-resource dependency.
 
 ### Where it deploys
 

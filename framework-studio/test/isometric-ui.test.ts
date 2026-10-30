@@ -280,6 +280,35 @@ test("input and environment grouping inspectors omit deployment controls", async
     await mount(true, id);
     assert.equal(ui.screen.queryByRole("region", { name: "Deployment" }), null, id);
     assert.equal(ui.screen.queryByRole("combobox", { name: "Deploy" }), null, id);
+    if (id === "island:environment" || id === "island:client-environment") {
+      assert.ok(ui.screen.getByRole("heading", { name: "Environment files" }));
+      ui.fireEvent.click(ui.screen.getByText("Island entries", { selector: "summary span" }).closest("summary")!);
+      const members = document.querySelector('[data-slot="island-members"]')!;
+      assert.equal(members.querySelectorAll('[data-resource-status="file-role"]').length, 1);
+      assert.equal(ui.within(members as HTMLElement).getAllByText("Framework managed").length, 2);
+      assert.ok(ui.within(members as HTMLElement).getByText("Application"));
+      assert.ok(ui.screen.getByRole("button", { name: "client-app/.env" }));
+      assert.equal(ui.screen.queryByRole("searchbox", { name: "Search client mappings" }), null);
+      ui.fireEvent.click(ui.screen.getByRole("button", { name: "client-app/.env" }));
+      await draw();
+    }
+    if (id === "client-envfile" || id === "island:environment" || id === "island:client-environment") {
+      assert.ok(ui.screen.getByRole("heading", { name: "client-app/.env" }));
+      assert.ok(ui.screen.getByText("client-app/.env.development.local", { selector: "dd code" }));
+      assert.ok(ui.screen.getByText("client-app/.env.production.local", { selector: "dd code" }));
+      assert.ok(ui.screen.getByRole("button", { name: "Edit mapping for VITE_API_GATEWAY_URL" }));
+      assert.equal(ui.screen.queryByText("Island entries"), null);
+    }
+    ui.cleanup();
+  }
+  for (const island of buildScene(response.snapshot.models.dev).islands) {
+    await mount(true, island.id);
+    const content = document.querySelector('[data-slot="inspector-content"]')!;
+    const summaries = content.querySelectorAll('summary');
+    const entries = ui.screen.getByText("Island entries", { selector: "summary span" }).closest("section");
+    assert.equal(content.lastElementChild, entries, `${island.id}: entries follow all island controls`);
+    assert.equal(ui.screen.queryByRole("heading", { name: "Files" }), null, island.id);
+    assert.equal([...summaries].filter(summary => summary.textContent?.startsWith("Island entries")).length, 1, island.id);
     ui.cleanup();
   }
 });
@@ -290,7 +319,7 @@ test("parameter choices survive switching to a secret and reopening the resource
   const wizard = () => ui.within(ui.screen.getByRole("dialog", { name: "Create input parameter or secret" }));
   start();
   ui.fireEvent.change(wizard().getByRole("textbox", { name: "Stable identifier" }), { target: { value: "preservedInput" } });
-  ui.fireEvent.change(wizard().getByRole("textbox", { name: "Declaration default (optional)" }), { target: { value: "enabled" } });
+  ui.fireEvent.change(wizard().getByRole("textbox", { name: "Default value (optional)" }), { target: { value: "enabled" } });
   ui.fireEvent.click(wizard().getByText("Advanced settings"));
   ui.fireEvent.change(wizard().getByRole("textbox", { name: "Allowed string values (comma-separated)" }), { target: { value: "enabled, disabled" } });
   ui.fireEvent.click(wizard().getByRole("switch", { name: "Secret" }));
@@ -299,12 +328,12 @@ test("parameter choices survive switching to a secret and reopening the resource
   ui.fireEvent.click(chooser.getByRole("button", { name: "Input parameter or secret" }));
   assert.equal(wizard().getByRole("switch", { name: "Secret" }).getAttribute("aria-checked"), "true");
   ui.fireEvent.click(wizard().getByRole("switch", { name: "Secret" }));
-  assert.equal((wizard().getByRole("textbox", { name: "Declaration default (optional)" }) as HTMLInputElement).value, "enabled");
+  assert.equal((wizard().getByRole("textbox", { name: "Default value (optional)" }) as HTMLInputElement).value, "enabled");
   ui.fireEvent.click(wizard().getByText("Advanced settings"));
   assert.equal((wizard().getByRole("textbox", { name: "Allowed string values (comma-separated)" }) as HTMLInputElement).value, "enabled, disabled");
   ui.fireEvent.click(wizard().getByRole("button", { name: "Cancel creation" }));
   start();
-  assert.equal((wizard().getByRole("textbox", { name: "Declaration default (optional)" }) as HTMLInputElement).value, "");
+  assert.equal((wizard().getByRole("textbox", { name: "Default value (optional)" }) as HTMLInputElement).value, "");
   ui.fireEvent.click(wizard().getByText("Advanced settings"));
   assert.equal((wizard().getByRole("textbox", { name: "Allowed string values (comma-separated)" }) as HTMLInputElement).value, "", "a new creation starts without the cancelled form's parameter settings");
 });
@@ -318,7 +347,7 @@ test("new WebSocket creation labels its guarded handshake condition and retains 
   ui.fireEvent.change(wizard.getByRole("combobox", { name: "Function category" }), { target: { value: "webSocket" } });
   const deploy = wizard.getByRole("combobox", { name: "Execution lanes" }) as HTMLSelectElement;
   assert.equal(deploy.selectedOptions[0]!.textContent, "Use $connect condition");
-  assert.match(document.getElementById(deploy.getAttribute("aria-describedby")!)!.textContent!, /ENABLE_WEBSOCKET_API equals "true"/);
+  assert.match(document.getElementById(deploy.getAttribute("aria-describedby")!)!.textContent!, /enableWebSocketApi equals "true"/);
   for (const value of ["local-only", "cloud-only"]) assert.equal(deploy.querySelector<HTMLOptionElement>(`option[value="${value}"]`)!.disabled, true);
   assert.equal(deploy.querySelector<HTMLOptionElement>('option[value="none"]')!.disabled, false);
   ui.fireEvent.change(deploy, { target: { value: "local-only" } });
@@ -1774,6 +1803,27 @@ test("WebSocket and managed lock badges paint identical borders", () => {
   const lock = iconStrokes.find(({ icon }) => icon === iconUrl("managed"));
   assert.ok(socket); assert.ok(lock);
   assert.deepEqual({ color: socket.color, width: socket.width }, { color: lock.color, width: lock.width });
+  renderer.dispose();
+});
+
+test("management locks remain painted alongside missing-file warnings and endpoint service artwork", () => {
+  const model = response.snapshot.models.prod;
+  const scene = buildScene({ ...model, resources: model.resources.map(resource => resource.deploymentFile
+    ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists: false } } : resource) });
+  const files = scene.nodes.filter(node => node.id.startsWith("envfile:"));
+  assert.equal(files.length, 2);
+  for (const node of files) { assert.equal(node.roleIcon, "missingFile"); assert.equal(node.frameworkManaged, true); }
+  const renderer = new SceneRenderer(document.createElement("canvas"));
+  renderer.setScene(scene);
+  const viewport = { width: 1920, height: 1000 };
+  images.length = 0;
+  renderer.render({ camera: fitScene(scene, viewport), viewport, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene) });
+  assert.equal(images.filter(image => image.src === iconUrl("missingFile")).length, 2);
+  const managedCount = [...scene.nodes, ...scene.props].filter(item => item.roleIcon === "managed" || item.frameworkManaged).length;
+  assert.equal(images.filter(image => image.src === iconUrl("managed")).length, managedCount, "every managed node and fixture paints exactly one ownership lock");
+  for (const prop of scene.props.filter(prop => prop.serviceIcon)) {
+    assert.ok(images.some(image => image.src === prop.serviceIcon), `${prop.id} retains its service artwork`);
+  }
   renderer.dispose();
 });
 

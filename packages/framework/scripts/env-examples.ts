@@ -2,6 +2,7 @@ import {
   formatResourceReference,
   frameworkSecretNameTemplate,
   isResourceReference,
+  isResourceValueReference,
   resolveServiceTarget,
   type FrameworkConfig,
   type NormalizedTarget,
@@ -48,7 +49,7 @@ export function serviceEnvironmentExample(config: FrameworkConfig, target: Norma
     // A construct's attribute is read from the development resource manifest,
     // keyed by reference — not from a root .env variable, which carries Compose
     // controls only.
-    const local = value.fromEnv
+    const local = isResourceValueReference(value) ? "its standalone declaration value" : value.fromEnv
       ? `${value.fromEnv} in cdk-app/.env.dev or cdk-app/.env.prod${value.default === undefined ? " (optional)" : `; default ${JSON.stringify(value.default)}`}`
       : "the development resource manifest, written by npm run export:cdk-outputs";
     lines.push(comment(`${name}: ${formatResourceReference(value)}; read locally from ${local}.`));

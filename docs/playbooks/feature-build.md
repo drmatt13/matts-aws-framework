@@ -12,7 +12,9 @@ Establish the requested behavior and authorization before selecting workloads:
 
 - Choose Lambda steps (declared under `events`), container tasks, and callbacks.
 - Decide where workflow state lives. Graph steps can write directly to DynamoDB,
-  SQS, SNS, and EventBridge; other stores need a Lambda or task to perform the write.
+  SQS, SNS, and EventBridge. Other service operations need an explicitly bound
+  `aws.call()` integration or a Lambda/task implementation; no generic SDK call
+  implies its own IAM grant.
 - Identify resources and AWS-invoked handlers that need a deployment.
 - Put commands on their own routes, each with only the binding it uses. Reads go
   through GraphQL with explicit public fields and record authorization.

@@ -13,8 +13,11 @@ import { declarationObject, expressionAt, findProperty, hasComments, literalKey,
 import { parseOrigin } from "./model/origin";
 import type { StudioState } from "./snapshot";
 import { readCatalogSource } from "./source/catalog";
+import { CLIENT_ENVIRONMENT_FILE, isSplitMapping, type ClientEnvironmentBinding, type ClientEnvironmentMappings } from "../shared/client-environment";
+import { parseClientMappings, rewriteClientMappings } from "./client-environment-source";
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+const ENVIRONMENT_VARIABLE = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
 const MODES: readonly Mode[] = ["dev", "prod"];
 const fail = (message: string): never => { throw new Error(message); };
 const replace = (text: string, node: ts.Node, value: string, file: ts.SourceFile) => text.slice(0, node.getStart(file)) + value + text.slice(node.end);
@@ -64,10 +67,10 @@ function policyCalls(modes: ResourceIntent["modes"], choices: string): string {
     + (!defaults.length ? "" : shared ? `.default(${JSON.stringify(modes[defaults[0]!].default)})`
       : `.default({ ${defaults.map((mode) => `${mode}: ${JSON.stringify(modes[mode].default)}`).join(", ")} })`);
 }
-/** A literal argument: a string, or the `{ dev, prod }` object `.default()` takes. */
+/** A literal argument: a string, or the per-mode object a default or source value takes. */
 function literalArgument(call: string, argument: ts.Expression): boolean {
   const value = unwrap(argument);
-  if (call === "default" && ts.isObjectLiteralExpression(value)) return value.properties.every((property) => ts.isPropertyAssignment(property) && MODES.includes(literalKey(property) as Mode) && typeof literalValue(property.initializer)?.value === "string");
+  if ((call === "default" || call === "value") && ts.isObjectLiteralExpression(value)) return value.properties.every((property) => ts.isPropertyAssignment(property) && MODES.includes(literalKey(property) as Mode) && typeof literalValue(property.initializer)?.value === "string");
   return typeof literalValue(argument)?.value === "string";
 }
 function builderExpression(value: ts.Expression, resource: ModelResource, intent: ResourceIntent): string {
@@ -82,7 +85,10 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
     if (MODES.some((mode) => intent.modes[mode].present !== current[mode].present)) return fail("A conditional in source decides where this input is present. Replace it with .only() to change its environments here.");
     const reached = MODES.find((mode) => intent.modes[mode].present);
     const branchIntent = reached ? { ...intent, modes: { dev: intent.modes[reached], prod: intent.modes[reached] } } : intent;
-    const branchResource = reached ? { ...resource, modes: { dev: { present: true, required: current[reached].required, ...(current[reached].default === null ? {} : { default: current[reached].default! }) }, prod: { present: true, required: current[reached].required, ...(current[reached].default === null ? {} : { default: current[reached].default! }) } } } : resource;
+    const branchPolicy = reached ? { present: true, required: current[reached].required,
+      ...(current[reached].default === null ? {} : { default: current[reached].default! }),
+      ...(current[reached].value == null ? {} : { value: current[reached].value! }) } : undefined;
+    const branchResource = branchPolicy ? { ...resource, modes: { dev: branchPolicy, prod: branchPolicy } } : resource;
     const branch = left ? outer.whenFalse : outer.whenTrue;
     const rewritten = builderExpression(branch, branchResource, branchIntent);
     return left ? `${outer.condition.getText()} ? undefined : ${rewritten}` : `${outer.condition.getText()} ? ${rewritten} : undefined`;
@@ -95,12 +101,12 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
     calls.unshift({ name: access.name.text, args: [...call.arguments], node: call });
     const receiver = unwrap(access.expression);
     if (ts.isIdentifier(receiver) && receiver.text === "resource") {
-      if (!["fromEnv", "secret"].includes(access.name.text)) return fail("This entry is not an authored input.");
+      if (!["fromEnv", "secret", "value"].includes(access.name.text)) return fail("This entry is not an input parameter.");
       break;
     }
     node = receiver;
   }
-  if (!calls.length || !["fromEnv", "secret"].includes(calls[0]!.name) || calls.some((call) => !["fromEnv", "secret", "enum", "default", "note", "required", "only"].includes(call.name))) return fail("This resource is computed. Edit its declaration in source.");
+  if (!calls.length || !["fromEnv", "secret", "value"].includes(calls[0]!.name) || calls.some((call) => !["fromEnv", "secret", "value", "enum", "default", "note", "required", "only"].includes(call.name))) return fail("This resource is computed. Edit its declaration in source.");
   for (const [index, call] of calls.entries()) for (const [argumentIndex, argument] of call.args.entries()) {
     if (index === 0 && argumentIndex === 1) {
       // Descriptor metadata is independent of the input value. Keep its exact
@@ -108,7 +114,8 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
       if (!ts.isObjectLiteralExpression(unwrap(argument))) return fail("This resource uses computed options. Edit it in source.");
     } else if (!literalArgument(call.name, argument)) return fail("This resource uses computed arguments. Edit it in source.");
   }
-  if (intent.kind === resource.kind && sameInputModes(intent.modes, current)) {
+  const fromEnv = intent.fromEnv === undefined ? resource.fromEnv ?? null : intent.fromEnv;
+  if (intent.kind === resource.kind && fromEnv === (resource.fromEnv ?? null) && sameInputModes(intent.modes, current)) {
     const original = outer.getText();
     if (calls[0]!.args.length) return original;
     const base = calls[0]!.node;
@@ -118,8 +125,19 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
   if (hasComments(outer.getText())) return fail("This resource declaration contains comments. Edit it in source to preserve them.");
   // Always keep the resolved env name explicit when moving between groups.
   const choices = calls.find((call) => call.name === "enum");
-  let result = `resource.${intent.kind === "secret" ? "secret" : "fromEnv"}(${JSON.stringify(resource.fromEnv)}${calls[0]!.args[1] ? `, ${calls[0]!.args[1]!.getText()}` : ""})`;
-  result += policyCalls(intent.modes, intent.kind === "input" && choices ? `.enum(${choices.args.map((argument) => argument.getText()).join(", ")})` : "");
+  const metadata = calls[0]!.args[1] ? `, ${calls[0]!.args[1]!.getText()}` : "";
+  const choiceCall = intent.kind === "input" && choices ? `.enum(${choices.args.map((argument) => argument.getText()).join(", ")})` : "";
+  let result: string;
+  if (fromEnv === null) {
+    const present = MODES.filter((mode) => intent.modes[mode].present);
+    const shared = new Set(present.map((mode) => intent.modes[mode].value)).size === 1;
+    const value = shared ? JSON.stringify(intent.modes[present[0]!].value)
+      : `{ ${present.map((mode) => `${mode}: ${JSON.stringify(intent.modes[mode].value)}`).join(", ")} }`;
+    result = `resource.value(${value}${metadata})${present.length === 1 ? `.only(${JSON.stringify(present[0])})` : ""}${choiceCall}`;
+  } else {
+    result = `resource.${intent.kind === "secret" ? "secret" : "fromEnv"}(${JSON.stringify(fromEnv)}${metadata})`;
+    result += policyCalls(intent.modes, choiceCall);
+  }
   for (const call of calls.filter((call) => call.name === "note")) result += `.note(${call.args.map((argument) => argument.getText()).join(", ")})`;
   return result;
 }
@@ -214,11 +232,51 @@ function moveImportedMembership(root: string, facts: { readonly key: import("../
   overrides[destination] = insertExpression(text, parsed.source, object, keys, alias);
 }
 
+/** Client recipes name inputs as data, so update their parsed bindings independently of TS references. */
+function migrateClientInputReferences(root: string, resource: ModelResource, intent: ResourceIntent, nextPath: readonly string[], fromEnv: string | null, overrides: Record<string, string>): void {
+  const nextId = `resource:${nextPath.join(".")}`;
+  const names = new Map<string, string>();
+  if (resource.id !== nextId) names.set(resource.id, nextId);
+  if (resource.fromEnv && resource.fromEnv !== fromEnv) names.set(resource.fromEnv, nextId);
+  const becomesSecret = resource.kind === "input" && intent.kind === "secret";
+  if (!names.size && !becomesSecret) return;
+  const file = path.join(root, CLIENT_ENVIRONMENT_FILE);
+  if (!existsSync(file)) return;
+  const before = overrides[file] ?? readFileSync(file, "utf8");
+  const { mappings } = parseClientMappings(before);
+  const previousNames = new Set([resource.id, ...(resource.fromEnv ? [resource.fromEnv] : [])]);
+  const rename = (name: string): string => {
+    if (becomesSecret && previousNames.has(name)) return fail("Remove this input's public client mappings before converting it to a secret.");
+    return names.get(name) ?? name;
+  };
+  const binding = (value: ClientEnvironmentBinding): ClientEnvironmentBinding => ({ ...value,
+    ...(value.kind === "input" ? { name: rename(value.name) } : {}),
+    ...(value.kind === "endpoint" ? { port: rename(value.port), ...(value.override ? { override: rename(value.override) } : {}) } : {}),
+    ...(value.when ? { when: { ...value.when, input: rename(value.when.input) } } : {}),
+  });
+  const next: ClientEnvironmentMappings = Object.fromEntries(Object.entries(mappings).map(([name, value]) => [name,
+    isSplitMapping(value) ? { dev: binding(value.dev), prod: binding(value.prod) } : binding(value),
+  ]));
+  if (JSON.stringify(next) !== JSON.stringify(mappings)) overrides[file] = rewriteClientMappings(before, next);
+}
+
 export function planResourceSource(root: string, state: StudioState, resource: ModelResource, intent: ResourceIntent): { overrides: Record<string, string>; nextResource: string } {
   if (!IDENTIFIER.test(intent.group || "ungrouped") || ["__proto__", "constructor", "prototype"].includes(intent.group)) return fail("A group must be a safe TypeScript property name, or empty for no group.");
   if (!MODES.some((mode) => intent.modes[mode].present)) return fail("Keep this input in at least one environment, or delete it.");
+  const fromEnv = intent.fromEnv === undefined ? resource.fromEnv ?? null : intent.fromEnv;
+  if (fromEnv !== null && !ENVIRONMENT_VARIABLE.test(fromEnv)) return fail("Name one SCREAMING_SNAKE_CASE environment variable.");
+  if (fromEnv === null && intent.kind === "secret") return fail("Secrets must be linked to an environment variable. Never author secret values in source.");
+  if (fromEnv && fromEnv !== resource.fromEnv && [state.snapshot.models.dev, state.snapshot.models.prod].some((model) => model.resources.some((other) => other.id !== resource.id && other.fromEnv === fromEnv))) return fail("This environment variable is already declared by another input.");
   for (const mode of MODES) {
-    const { present, required, default: fallback } = intent.modes[mode];
+    const { present, required, default: fallback, value } = intent.modes[mode];
+    if (fromEnv === null) {
+      if (fallback !== null || required) return fail("A standalone input has a value, without an environment-file default or requirement.");
+      if (!present && value != null) return fail(`${mode === "dev" ? "Development" : "Production"} does not hold this input, so it cannot have a value there.`);
+      if (present && (typeof value !== "string" || !value.trim())) return fail("Enter a value for every environment that holds this standalone input.");
+      if (present && resource.values && !resource.values.includes(value!)) return fail("The value must be one of the declared choices.");
+      continue;
+    }
+    if (value != null) return fail("An environment-linked input has an optional default, not a standalone value.");
     if (!present && (required || fallback !== null)) return fail(`${mode === "dev" ? "Development" : "Production"} does not hold this input, so it cannot be required or have a default there.`);
     if (fallback === null) continue;
     if (intent.kind === "secret") return fail("Secrets cannot have a default in source. Author the value only in cdk-app/.env.");
@@ -231,7 +289,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
   const original = readFileSync(file, "utf8");
   const nextPath = [...(intent.group ? [intent.group] : []), resource.path.at(-1)!];
   const moved = nextPath.join(".") !== resource.path.join(".");
-  const metadataChanged = intent.kind !== resource.kind || !sameInputModes(intent.modes, inputModeIntents(resource));
+  const metadataChanged = intent.kind !== resource.kind || fromEnv !== (resource.fromEnv ?? null) || !sameInputModes(intent.modes, inputModeIntents(resource));
   let text = original;
   const overrides: Record<string, string> = {};
   const parsed = parse(file, original);
@@ -337,6 +395,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
       }
     }
   }
+  migrateClientInputReferences(root, resource, intent, nextPath, fromEnv, overrides);
   // Parsing is mandatory before evaluating code. A failed preview writes nothing.
   for (const [name, candidate] of Object.entries(overrides)) {
     const diagnostics = ts.transpileModule(candidate, { fileName: name, reportDiagnostics: true }).diagnostics ?? [];

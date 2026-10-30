@@ -1,5 +1,10 @@
 # AWS Studio implementation and second pass — 2026-10-22
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 This implements the four work packages in the [product audit](product-audit-2026-10-22.md). The audit remains a record of the earlier behavior; this document records the resulting implementation and its verification boundaries.
 
 The implementation started from a clean working tree. Tests used `AWS_PROFILE=dev`, synthetic deployment inputs and disposable projects. No cloud infrastructure was deployed or deleted, no live database was changed, and the shared Docker environment was not started. The existing Studio process on port 4590 was preserved; browser tests used isolated servers on 4591/4592.

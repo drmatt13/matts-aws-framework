@@ -6,6 +6,11 @@ read_when:
   - Debugging stale review, conflict, apply, or rollback
 source:
   - framework-studio/src/draft.ts
+  - framework-studio/src/views/ResourceEditor.tsx
+  - framework-studio/shared/creation.ts
+  - framework-studio/shared/resources.ts
+  - framework-studio/server/resources.ts
+  - framework-studio/server/resources-source.ts
   - framework-studio/src/views/Deployment.tsx
   - framework-studio/src/views/ManagedDatabaseInspector.tsx
   - framework-studio/src/views/DatabasePlacement.tsx
@@ -34,6 +39,20 @@ edges. Event changes also control native AWS trigger attachment on the next depl
 Catalog entries, stack members, gateway infrastructure, databases, network fixtures and
 islands show their deployment owner and navigation to owner controls instead of a second
 independent flag. Environment mappings explain that files supply inputs rather than deploy.
+
+Inputs distinguish a public **Source parameter** from an **Environment parameter** through
+**Link to .env file** in creation and the Inspector. `resource.value(...)` stores a non-secret
+value directly in source, with per-mode values supported; it has no `fromEnv`, fallback,
+local-value read or catalog-derived environment-file row. A linked input reads its variable and may declare
+an optional `.default(...)`. Switching sources carries the Value/Default form text through
+the normal reviewed source writer, without reading, moving or rewriting `.env` values.
+Secret inputs always remain environment-linked and never accept a source value or default.
+The `enableWebSocketApi` example uses a source value of `true` rather than a file override.
+
+Source projection includes public `authoredValue` and mode `value` metadata, while resolved
+environment-file values stay out of snapshots and symbolic client previews. New client
+input recipes use canonical catalog IDs; legacy variable-name aliases remain readable.
+Changing a link or group reviews affected recipe references with the declaration.
 
 Tags use a typed `tags` draft operation for the owning declaration, including all aliases
 of shared compute. `server/edits/tags.ts` plans narrow literal changes and

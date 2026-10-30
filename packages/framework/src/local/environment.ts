@@ -3,7 +3,7 @@ import path from "node:path";
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { readAuthoredInputs } from "@repo/framework/config/source";
 import {
-  getConnectsToBindings, normalizeFrameworkConfig, resolveLambdaTarget, resolveNetwork, usesDualStackEndpoints, isResourceAbsent, isResourceReference, resourceAttributeKey, DEFAULT_DATABASE_POOL,
+  getConnectsToBindings, normalizeFrameworkConfig, resolveLambdaTarget, resolveNetwork, usesDualStackEndpoints, isResourceAbsent, isResourceReference, isResourceValueReference, resourceAttributeKey, DEFAULT_DATABASE_POOL,
   formatResourceReference, resolveResourceFromEnv, parseResourceManifest, RESOURCE_MANIFEST_FILE,
   type FrameworkConfig, type ResourceManifest, type ResourceReference, type TargetReference,
 } from "@repo/framework/config";
@@ -48,7 +48,7 @@ export async function resolveLocalWorkloadEnvironment(config: FrameworkConfig, t
   const environment: Record<string, string> = localPlatformEnvironment(platform);
   const input = (reference: ResourceReference): string | undefined => {
     if (isResourceAbsent(reference)) return undefined;
-    if (reference.fromEnv && !reference.secretArn && reference.kind !== "secret") {
+    if ((reference.fromEnv || isResourceValueReference(reference)) && !reference.secretArn && reference.kind !== "secret") {
       return resolveResourceFromEnv(reference, { env: authored }, targetId) as string | undefined;
     }
     const value = manifest?.attributes[resourceAttributeKey(reference)];

@@ -12,11 +12,16 @@ source:
   - scripts/deployment-status.ts
   - scripts/destroy.ts
 related:
+  - deployment.lifecycle
   - deployment.planning-safety
   - deployment.environments
   - runtime.local-execution
 ---
 # Deployment jobs and operational evidence
+
+Start with the [operational lifecycle](lifecycle.md) for the complete source-to-runtime
+flow and the separate database, identity and frontend effect boundaries. This page owns
+Deploy's jobs, observation and local process supervision.
 
 `DeployService` in [service.ts](../../../framework-studio/server/deploy/service.ts) coordinates targets/preferences, prerequisites, plans, jobs, cloud observer and local environment state. `buildOperation` in [registry.ts](../../../framework-studio/server/deploy/registry.ts) maps recognized actions to fixed repository commands/argv: plan/apply/discard, export, destroy, drift, local start/stop, dependencies, Docker and AWS login. It is not an arbitrary terminal API.
 

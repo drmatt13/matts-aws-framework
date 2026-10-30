@@ -2,6 +2,9 @@
 
 This guide gets a checkout running and explains the everyday edit/reload loop.
 Commands run from the repository root. Replace placeholders before running commands.
+For a shorter first pass, use [Quick Start](../QUICKSTART.md). The
+[operational lifecycle](aws-studio-knowledge/deployment/lifecycle.md) explains which
+steps save files, inspect state or need separate deployment/database approval.
 
 The local API server uses browser paths: `/api/<http-or-service-path>` for HTTP/service
 declarations and the exact `route` for agents. The Vite proxy preserves those paths.
@@ -107,11 +110,15 @@ AWS modes, while local-ws-dev-server serves locally enabled routes under Compose
 AWS WebSocket handler cannot declare `database: true`, a subnet, or bindings to tasks,
 workflows or agents that the dev graph does not build. Set `deploy: "local-only"` to run
 such a handler locally. An input condition on `deploy` controls both local and AWS
-execution, resolved separately from each environment's authored input file.
-The application's `resources.enableWebSocketApi` input reads `ENABLE_WEBSOCKET_API`
-(`true` by default). All WebSocket routes and their authorizer require it to equal
-`"true"`. Set `ENABLE_WEBSOCKET_API=false` in `.env.dev` to disable them locally and
-in the development AWS graph; restart local containers after changing the input.
+execution, resolved separately for each environment from the selector's declared
+source: standalone value or environment-linked input/default.
+The application's `resources.enableWebSocketApi` currently uses a standalone
+`resource.value("true")` in `framework-config/resources/inputs.ts`. All WebSocket routes
+and their authorizer require it to equal `"true"`. Edit that value in source or Studio
+to disable them; use per-mode values when development and production should differ.
+An `ENABLE_WEBSOCKET_API` dotenv assignment has no effect on this standalone value.
+Link the declaration to a CDK input explicitly if an operator-supplied value is intended.
+Restart local containers after changing a deployment selector.
 The retired `DEPLOY_PROD_WEBSOCKET_API` setting must be removed (`true` warns; `false`
 is refused). Use a separate full cloud deployment when testing HTTP routing.
 
@@ -133,11 +140,14 @@ left panel with the local server and its right panel with the API Gateway stage.
 Application requests continue to use the same-origin `/api` prefix.
 
 Those are the initial mappings in `framework-config/client-environment.ts`. Edit them in
-Studio's **Client environment** inspector, then review and apply. Each field's Dev/Prod
-pills control inclusion; renames retain both environments' sources. The next export uses
-the saved mappings, resolving public CDK inputs from `.env.dev` and public stack outputs
-from the selected deployment. Missing required sources stop export before any file is
-written. Studio edits do not run export or deployment.
+Studio's **Client environment** inspector, then review and apply. Each field uses one
+recipe for both modes, or explicit `dev` and `prod` recipes where sources differ.
+There is no independent `enabled` flag: source availability determines its value.
+A standalone catalog value needs no dotenv line; environment-linked inputs resolve
+through the selected inputs file, context and declaration defaults. An input outside
+the mode or an optional unsupplied input leaves the generated field blank. Required
+missing inputs or invalid choices stop export before file writes. Public stack outputs
+come from the selected deployment. Studio edits do not run export or deployment.
 
 ### macOS (Apple silicon)
 
@@ -185,6 +195,13 @@ The reviewed decisions are:
   tarball ships `fsevents.node`, no install script, and no `binding.gyp`. No rebuild
   is needed. Keep the optional dependency for macOS; npm skips it on Linux/Windows.
   Revisit this decision if its packaging changes.
+
+#### Historical dependency review: October 20, 2026
+
+The findings, versions, advisory counts and test totals below record that review;
+they are not a fresh security audit or current release verification. The root manifests
+and lockfile own installed versions. Preserve the compatibility rationale when changing
+them and rerun the relevant checks for the new dependency set.
 
 The October 20, 2026 dependency review upgraded GraphQL Codegen CLI to 7.4.6,
 schema-ast to 6.1.1, GraphQL Yoga to 5.24.6, Vite to 8.2.4, CDK library to 2.274.0,

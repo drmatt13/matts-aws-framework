@@ -39,6 +39,28 @@ function setup(configuration = config(), mode: "dev" | "prod" = "dev") {
   return { app, owner: new Stack(app, "Owner", { env }), consumer: new Stack(app, "Consumer", { env }) };
 }
 
+test("standalone inputs reach Lambda environments without links or resource exports", () => {
+  const resources = defineResources({ enabled: resource.value("true").enum("true", "false") });
+  const configuration = defineFrameworkConfig({ resources, defaults, http: [{ "/standalone": {
+    directory: "/lambda_functions/http_functions/standalone", methods: ["POST"], auth: false,
+    environment: { ENABLED: resources.enabled }, deploy: { when: { resource: resources.enabled, equals: "true" } },
+    cloud: { requirements: [{ require: [resources.enabled] }] },
+  } }], webSocket: [], events: [], services: [], tasks: [], workflows: [] } as never);
+  for (const mode of ["dev", "prod"] as const) {
+    const app = new App();
+    initializeFrameworkResources(app, { config: configuration, mode, deployment: "example", readers: { env: { ENABLED: "false" } } });
+    const consumer = new Stack(app, "Standalone", { env });
+    const fn = new lambda.Function(consumer, "Work", { runtime: lambda.Runtime.NODEJS_24_X, handler: "index.handler", code: lambda.Code.fromInline("exports.handler = () => {};" ) });
+    attachLambdaResources(consumer, fn, getFrameworkTargets(configuration)[0], { config: configuration, mode });
+    assert.throws(() => linkResource(consumer, resources.enabled, "override"), /not an input/);
+    finalizeFrameworkResources(app);
+    const template = Template.fromStack(consumer);
+    template.hasResourceProperties("AWS::Lambda::Function", { Environment: { Variables: { ENABLED: "true" } } });
+    const outputs = Object.values(template.toJSON().Outputs ?? {}) as { Description?: string }[];
+    assert.equal(outputs.some(output => output.Description?.startsWith("framework:resource:v1:")), false);
+  }
+});
+
 test("native constructs, a custom identifier and typed workflow queues share one late-linked catalog", () => {
   const configuration = config({ QUEUE_URL: catalog.queue.queueUrl, BUCKET: catalog.bucket.bucketName, CUSTOM: catalog.custom.identifier });
   const { app, owner, consumer } = setup(configuration);

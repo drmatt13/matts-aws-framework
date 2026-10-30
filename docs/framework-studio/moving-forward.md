@@ -5,7 +5,8 @@ verify a change, the traps already found, its known limits, and where it could g
 
 ## Where things stand
 
-- Board, Isometric, Database and Deploy share source-linked selection and inspectors.
+- Map, Database, Deploy, Cognito, Domains and WebSockets are the six routed workspaces.
+  Board remains unrouted; the shared shell owns source context and selection.
   Supported authoring uses a draft, validated review and guarded source application.
 - The [knowledge router](../aws-studio-knowledge/README.md) owns current subsystem
   contracts and verification routes. The [declaration guide](declarations-and-tags.md)
@@ -18,33 +19,36 @@ verify a change, the traps already found, its known limits, and where it could g
 
 Break one of these and the studio stops being trustworthy:
 
-1. **One model: the framework's.** Every fact shown comes from `@repo/framework/config`. Do
-   not add a second catalog, identity scheme, workflow representation or deployment rule.
-   If the framework cannot answer a question, show "unknown". Never guess.
+1. **One authoritative application model.** Normalized declarations come from
+   `@repo/framework/config`; source indexing and explicitly observed operational evidence
+   add labeled facts. Do not add a second catalog, identity scheme, workflow representation
+   or deployment rule. Preserve provenance and show unknown where evidence is missing.
 2. **Identities are the framework's.** Targets are `kind:id`, routes are
    `route:<kind>:<path>`, resources are `resource:<catalog path>`. Layout positions and
    workflow node ordinals are not identities, and must not be persisted against.
-3. **Source is the only authority.** The studio edits `framework.config.ts` and
-   `framework-config/**/*.ts` (`assertWritable`). Catalog moves may additionally update
-   imported references in authored TypeScript, through the resource planner. Each edit is a minimal
-   span: never re-print a file, never reorder, never drop a comment.
-4. **Validate before writing; confirm after.** Every write is previewed against both
-   graphs, checked against the file's hash, written atomically, re-evaluated from disk, and
-   reverted if it does not resolve as predicted.
-5. **Never overwrite someone else's change.** A stale revision or a changed file refuses
-   the write. Undo refuses if the file moved on.
-6. **Keep values out of the graph.** Evaluators read synthetic inputs. Graph refresh
-   reads only the two deployment flags. The selected-resource endpoint can return the
-   current `.env` value for a defined authored resource to its inspector, without caching.
-   Snapshots, diffs, logs, printed models and disk journals never contain authored secrets.
-   Deployment status, plans, logs and job records carry secret *names* only.
-7. **The local boundary.** Loopback only, a Host check, the token and the origin check.
-   Processes run only as typed registry operations: a fixed script, validated
-   parameters, no shell and an explicit working directory. Do not add a generic command
-   or file endpoint.
-8. **AWS only through the repository's scripts.** The studio holds no AWS SDK or
-   credentials. Observation (discover and status) is read-only. Cloud writes happen only
-   as an explicit Apply of a reviewed plan, through the same scripts the CLI uses. Database observation and application have their own target-bound review in the [database workbench](database-workbench.md).
+3. **Authored source owns intent.** Supported writers have bounded file authority:
+   configuration, declared native transforms and scaffold/generator outputs use reviewed
+   source changes; Prisma and protected environment values have separate services.
+   Preserve unrelated bytes and comments. Consult [backend boundaries](../aws-studio-knowledge/studio/backend.md)
+   instead of assuming one configuration allowlist covers every editor.
+4. **Validate before writing; verify afterward.** Configuration reviews bind to source
+   hashes and expected effects, then reevaluate disk state after application. Specialized
+   editors have their own validation and recovery rules; a source save does not validate
+   the live application or grant deployment authority.
+5. **Never overwrite someone else's change.** Stale revisions or changed files refuse
+   application. Interrupted-write recovery preserves subsequent edits. Saved-source
+   history is Git; there are no global source Undo/Redo endpoints.
+6. **Distinguish public metadata from private values.** Public source parameters may
+   appear in snapshots. Private environment contents use protected selected-detail
+   services and redacted reviews. Synthetic evaluator inputs do not isolate the inherited
+   host environment or make an untrusted repository safe. See [environment delivery](../aws-studio-knowledge/runtime/environment.md).
+7. **The local boundary.** Loopback, Host/token/origin checks and typed operation adapters
+   protect the local tool. Do not add generic shell or arbitrary-file endpoints. See
+   [backend authorities](../aws-studio-knowledge/studio/backend.md).
+8. **Operational approval is specific.** Deployment scripts and dedicated database,
+   identity, DNS and release services have distinct targets, reviews and outcome rules.
+   Source approval is not cloud authorization; plan preparation can create AWS change
+   sets. See [operational lifecycle](../aws-studio-knowledge/deployment/lifecycle.md).
 9. **Views are views.** Selecting, panning or laying out never writes. The isometric scene
    is a pure function of the model.
 10. **Graph switching shows facts, not new places.** Presence and ghosting change with the
@@ -52,7 +56,8 @@ Break one of these and the studio stops being trustworthy:
 11. **The framework stays usable without the studio.** Changes to `packages/framework` must
     be additive and covered by `framework:check` (as `locateConfigSource` is).
 
-Invariants 6–8 were revised by [Deploy & Run](deploy-and-run.md).
+The [decision records](../aws-studio-knowledge/architecture/decisions.md) explain these
+boundaries. [Deploy & Run](deploy-and-run.md) preserves the original design history.
 
 ## Recipes
 
@@ -66,8 +71,9 @@ Invariants 6–8 were revised by [Deploy & Run](deploy-and-run.md).
    - `applies(target)`;
    - `resolve()`, which returns the effective value, its provenance in words, and what
      removing it would inherit.
-2. Nothing else changes. Planning, splicing, preflight, the transaction, the inspector
-   control and undo are generic.
+2. Reuse generic planning/splicing and draft controls where the source shape permits;
+   check field projection, preflight, generated artifacts and the applicable transaction.
+   A new domain may require a dedicated writer. See the [extension recipe](../aws-studio-knowledge/guides/extensions.md#inspector-editable-property).
 3. The no-op round-trip test in `test/plan.test.ts` already writes back every editable
    literal it finds. Add a targeted plan test for the new field, and a preflight case where
    the framework refuses it.
@@ -96,7 +102,7 @@ Other root properties remain available in `located.properties` (`defaults`, `res
 4. For an edge, give it a `Relation` and a category.
 5. Add a real-repository assertion to `test/model.test.ts`.
 
-The Board, Inspector and isometric view pick up new edges by category. New entity kinds
+The Inspector and isometric view use edge categories; the unrouted Board also consumes them. New entity kinds
 need a building (see the [isometric view's extension table](isometric-view.md#extending-it)).
 
 ## Verifying a change
@@ -150,7 +156,7 @@ Config-level checks are not a synth. Infrastructure claims still need both synth
 - **React 19.** `useRef<T>()` needs an explicit initial value
   (`useRef<T | undefined>(undefined)`).
 - **Vite** runs in middleware mode, from `vite.config.mts`. `npm --workspace
-  framework-studio run build` is only a bundle check (about 136 KB gzipped). Delete
+  framework-studio run build` is only a bundle check (measure the current output rather than relying on an old size). Delete
   `framework-studio/dist` afterwards.
 - **Dependencies.** Change the lockfile only with npm 11, then run
   `node scripts/check-lockfile-platforms.mjs`. The studio deliberately reuses packages
@@ -174,7 +180,8 @@ Config-level checks are not a synth. Infrastructure claims still need both synth
 ## Current boundaries and next work
 
 Use the [capability matrix](../aws-studio-knowledge/reference/capabilities.md) and
-[product audit](product-audit-2026-10-22.md) for implementation scope. The old five-field,
+[current status](../aws-studio-knowledge/reference/status.md) for implementation scope.
+The [product audit](product-audit-2026-10-22.md) is a historical baseline. The old five-field,
 no-network/no-relationship/no-observability roadmap is superseded by source-reviewed
 creators, networks, resource references, database workbench and deployment operations.
 

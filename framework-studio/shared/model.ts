@@ -8,9 +8,10 @@
  * and source-derived CDK relationships carry their evidence separately. Local
  * services use Compose identities; the declared schema is read from authored PSL.
  *
- * Sanitized by construction: resource *references* appear (a catalog path and
- * an attribute), resource *values* never do. Literal environment strings appear
- * because they are already written in the repository's source.
+ * Sanitized by construction: resource references appear as a catalog path and
+ * attribute; resolved CDK and environment-file values never do. Public literal
+ * environment strings, standalone input values and defaults may appear because
+ * they are already written in the repository's source.
  */
 
 import type { DeclaredSchema, LocalDatabase } from "./database";
@@ -239,18 +240,20 @@ export type ResourceKind =
   | "member"
   /** `resource.cdk<T>()`. */
   | "construct"
-  /** `resource.fromEnv("NAME")`: a line authored in cdk-app/.env. */
+  /** `resource.fromEnv("NAME")` or a standalone `resource.value(...)`. */
   | "input"
   /** `resource.secret("NAME")`. */
   | "secret"
   /** A plain object grouping inputs, e.g. `langgraph`. */
   | "group";
 
-/** What an authored input is in one graph. Names and declared defaults only, never a value. */
+/** Authored source policy in one graph. Environment-file values are never included. */
 export interface InputModePolicy {
   readonly present: boolean;
   readonly required: boolean;
   readonly default?: string;
+  /** A non-secret value written directly in the declaration, without an environment-file link. */
+  readonly value?: string;
 }
 
 export interface ModelResource {
@@ -267,18 +270,20 @@ export interface ModelResource {
    */
   readonly absent: boolean;
   readonly fromEnv?: string;
+  /** A standalone non-secret value authored in source; never an environment-file value. */
+  readonly authoredValue?: string;
   /** This graph's fallback; `modes` holds both graphs'. */
   readonly default?: string;
   /** Marked required for this graph; `modes` holds both graphs'. */
   readonly required?: boolean;
   /**
-   * An authored input's presence, requirement and fallback in each graph, as declared with
-   * `.only()`, `.required()` and `.default()`. The server fills it for every input and secret.
+   * An input's presence and source policy in each graph: `.only()`, `.required()`,
+   * `.default()` or the public value of `resource.value(...)`.
    */
   readonly modes?: Readonly<Record<Mode, InputModePolicy>>;
   readonly inputRequirement?: import("./deployment-inputs").InputRequirement;
   /**
-   * How this graph resolves the input, from the framework's resolver over this graph's file: supplied,
+   * How this graph resolves the input through its declared source: supplied,
    * fallback, invalid, unresolved, missing or not-applicable. The state only, never the value.
    */
   readonly inputState?: import("../../packages/framework/src/config/resources").InputResolution["state"];

@@ -10,16 +10,16 @@ import { validateTags, type DeclarationTags, type DeclarationMetadata } from "./
  * imported. That is what keeps this module browser-safe, and what lets
  * `stableStringify()` compare two declarations of one target for agreement.
  *
- * A catalog has exactly two origins, and most of this module exists to hold it
- * to two. `resource.fromEnv("NAME")` and `resource.secret("NAME")` name a line
+ * A catalog holds authored inputs and linked CDK resources. `resource.value()`
+ * supplies a standalone non-secret value directly from its declaration.
+ * `resource.fromEnv("NAME")` and `resource.secret("NAME")` instead name a line
  * authored in cdk-app/.env.<mode> — the one file a deployment reads an input from, so
  * a model id is the same string in AWS and under `docker compose up`.
- * Everything else comes off `resource.stack<T>()`, where the stack class *is*
+ * Native resource values come off `resource.stack<T>()`, where the stack class *is*
  * the declaration: its public fields are the catalog entries under the names
  * they already carry, and the stack answers with a single
- * `linkResources(this, ...)` beside its constructor. There is deliberately no
- * third origin that declares a value in one file and supplies it in another,
- * which is the arrangement where the two drift apart and neither file shows it.
+ * `linkResources(this, ...)` beside its constructor. Computed native values stay
+ * beside the construct that owns them; standalone values stay in their declarations.
  * A secret is the one thing never read bare off either origin, because a field
  * name says which secret and not what the workload wants from it: `.arn`,
  * `.value` and `.field()` are three different answers with three different
@@ -129,7 +129,9 @@ export interface ResourceReference<
    * from its own override.
    */
   readonly fromEnv?: FromEnv;
-  /** Permitted values of an env-backed string, checked after normalization. */
+  /** A non-secret value authored in the declaration itself, never read from an environment file. */
+  readonly authoredValue?: string;
+  /** Permitted values of a string input, checked after normalization. */
   readonly values?: readonly Value[];
   /**
    * Set on the `.arn` projection of a secret, and nowhere else.
@@ -175,6 +177,8 @@ export interface InputModePolicy {
   readonly required: boolean;
   /** What stands in when cdk-app/.env.<mode> leaves it blank. */
   readonly default?: string;
+  /** A standalone input's declared value; it has no environment fallback. */
+  readonly value?: string;
 }
 
 /**
@@ -289,17 +293,19 @@ export type SecretResourceReference<Catalog> =
 // ---------------------------------------------------------------------------
 // Declaring resources
 //
-// There are two things a catalog can declare, and a stack is the rest.
+// A catalog can declare standalone values, environment inputs and secrets;
+// native resource declarations remain owned by their stack.
 //
 //     resource.fromEnv("LANGGRAPH_BEDROCK_MODEL_ID")
 //     resource.secret("OPENAI_API_KEY").note("platform.openai.com/api-keys")
+//     resource.value("true").enum("true", "false")
 //
-// Both name a line you author in cdk-app/.env.<mode>. A string needs no kind, because
+// Environment-backed inputs name a line you author in cdk-app/.env.<mode>. A string needs no kind, because
 // an environment variable has only one; a secret is the same line, marked as
 // one the deployment uploads to Secrets Manager rather than writes into a
 // template.
 //
-// Everything else a workload needs comes off `resource.stack<T>()`: a
+// Standalone values stay in source. Native values come off `resource.stack<T>()`: a
 // construct's attribute, a string the stack computed, a secret the stack built
 // or imported. Those are not declared here at all — the stack class is the
 // declaration, and `linkResources(this, ...)` beside it is the whole binding.
@@ -378,10 +384,21 @@ export interface EnvStringBuilder<
   only(mode: CloudMode): EnvStringBuilder<FromEnv, Optional, Value>;
 }
 
-/** Per-graph fallbacks. A graph left out has none. */
-export type ModeDefaults<Value extends string = string> =
+/** A standalone non-secret input whose declaration supplies its value. */
+export interface ValueInputBuilder<Value extends string = string> extends ResourceDeclaration<
+  ResourceReference<"string", readonly [], false, undefined, Value>
+> {
+  enum<const Values extends readonly [string, ...string[]]>(...values: Values): ValueInputBuilder<Values[number]>;
+  only(mode: CloudMode): ValueInputBuilder<Value>;
+  note(text: string): ValueInputBuilder<Value>;
+}
+
+/** Per-graph string values. A standalone declaration must supply each present graph. */
+export type ModeValues<Value extends string = string> =
   | { readonly dev: Value; readonly prod?: Value }
   | { readonly dev?: Value; readonly prod: Value };
+/** Per-graph fallbacks. A graph left out has none. */
+export type ModeDefaults<Value extends string = string> = ModeValues<Value>;
 
 /**
  * A secret whose value you author in cdk-app/.env.<mode>, and nowhere else.
@@ -433,6 +450,7 @@ interface AuthoredModes {
   readonly required?: CloudMode | "both";
   /** A string falls back in every graph; an object only in the graphs it names. */
   readonly default?: string | ModeDefaults;
+  readonly value?: string | ModeValues;
 }
 
 function cloudMode(value: unknown, method: string): CloudMode {
@@ -462,6 +480,7 @@ function declarationPayload(value: ResourceDeclaration): DeclarationPayload {
 
 const BUILDER_PROTOTYPE = {
   required(this: BuilderData, mode?: CloudMode): BuilderData {
+    if (this.$modes?.value !== undefined) throw new Error("A standalone input already declares its value and cannot be marked required. Link an environment input to require an external value.");
     return rebuild(this, {}, { required: mode === undefined ? "both" : cloudMode(mode, ".required()") });
   },
   only(this: BuilderData, mode: CloudMode): BuilderData {
@@ -477,15 +496,16 @@ const BUILDER_PROTOTYPE = {
     if (new Set(values.map((value) => value.toLowerCase())).size !== values.length) {
       throw new Error(".enum() choices must be distinct without regard to case.");
     }
-    const declared = declaredDefaults(this.$modes?.default).find((value) => !values.includes(value));
+    const declared = declaredDefaults(this.$modes?.value ?? this.$modes?.default).find((value) => !values.includes(value));
     if (declared !== undefined) {
       throw new Error(
-        `A choice list declares .default(${JSON.stringify(declared)}), which is not one of ${values.join(", ")}.`,
+        `A choice list declares ${this.$modes?.value !== undefined ? "resource.value" : ".default"}(${JSON.stringify(declared)}), which is not one of ${values.join(", ")}.`,
       );
     }
     return rebuild(this, { values });
   },
   default(this: BuilderData, value: string | ModeDefaults): BuilderData {
+    if (this.$modes?.value !== undefined) throw new Error("A standalone input has a value, not a default. Use resource.fromEnv() for an environment fallback.");
     const { kind, values } = this.$payload;
     const perMode = typeof value === "object" && value !== null && !Array.isArray(value);
     if (perMode && (!Object.keys(value).length || Object.keys(value).some((mode) => !CLOUD_MODES.includes(mode as CloudMode)))) {
@@ -551,15 +571,18 @@ function inputModes(declaration: ResourceDeclaration, path: readonly string[]): 
   const resolved = (mode: CloudMode): InputModePolicy => {
     const present = authored.only === undefined || authored.only === mode;
     const fallback = typeof authored.default === "string" ? authored.default : authored.default?.[mode];
-    if (!present && (authored.required === mode || (typeof authored.default === "object" && fallback !== undefined))) {
+    const value = typeof authored.value === "string" ? authored.value : authored.value?.[mode];
+    if (authored.value !== undefined && present && value === undefined) throw new Error(`resources.${path.join(".")} needs a standalone value for ${mode}, or .only() for the graph that has a value.`);
+    if (!present && (authored.required === mode || (typeof authored.default === "object" && fallback !== undefined) || (typeof authored.value === "object" && value !== undefined))) {
       throw new Error(
-        `resources.${path.join(".")} is declared .only("${authored.only}"), so it has no ${mode} graph to be ${authored.required === mode ? "required" : "given a default"} in. Remove the ${mode} setting, or .only().`,
+        `resources.${path.join(".")} is declared .only("${authored.only}"), so it has no ${mode} graph to be ${authored.required === mode ? "required" : authored.value !== undefined ? "given a value" : "given a default"} in. Remove the ${mode} setting, or .only().`,
       );
     }
     return {
       present,
       required: present && (authored.required === "both" || authored.required === mode),
       ...(present && fallback !== undefined ? { default: fallback } : {}),
+      ...(present && value !== undefined ? { value } : {}),
     };
   };
   return { dev: resolved("dev"), prod: resolved("prod") };
@@ -592,13 +615,15 @@ function declareInput(kind: ResourceKind, variable?: string, options?: Declarati
 }
 
 /**
- * The four ways to name something a workload needs.
+ * The five ways to name something a workload needs.
  *
- * Deliberately small, and deliberately not a list of AWS service types. Two of
- * these read a line you author; the other two read what the application's own
- * CDK built.
+ * Deliberately small, and deliberately not a list of AWS service types. One
+ * supplies a source value, two read a line you author, and two read what the
+ * application's own CDK built.
  */
 export interface ResourceFactory {
+  /** A standalone non-secret value, authored once or explicitly for each graph. */
+  value<const Value extends string>(value: Value | ModeValues<Value>, options?: DeclarationMetadata): ValueInputBuilder<Value>;
   /** A reference to any native construct, linked beside its definition. */
   cdk<T>(options?: DeclarationMetadata): CdkResource<T>;
   /**
@@ -636,6 +661,18 @@ export interface ResourceFactory {
 }
 
 export const resource: ResourceFactory = {
+  value<const Value extends string>(value: Value | ModeValues<Value>, options?: DeclarationMetadata) {
+    const perMode = typeof value === "object" && value !== null && !Array.isArray(value);
+    if (perMode && (!Object.keys(value).length || Object.keys(value).some(mode => !CLOUD_MODES.includes(mode as CloudMode)))) throw new Error("resource.value() takes a non-secret string or { dev, prod } values.");
+    const values: readonly unknown[] = perMode ? Object.values(value) : [value];
+    if (values.some(item => typeof item !== "string" || !item.trim())) throw new Error("resource.value() requires a non-blank standalone value for every declared graph.");
+    return Object.assign(Object.create(BUILDER_PROTOTYPE), {
+      $declaration: RESOURCE_DECLARATION_BRAND,
+      $payload: { kind: "string", optional: false,
+        ...(options?.tags === undefined ? {} : { tags: validateTags(options.tags, "resource.value()"), effectiveTags: validateTags(options.tags) }) },
+      $modes: { value: perMode ? { ...value } : value },
+    }) as ValueInputBuilder<Value>;
+  },
   cdk<T>(options?: DeclarationMetadata): CdkResource<T> {
     return cdkResource<T>([], options?.tags === undefined ? {} : { tags: validateTags(options.tags), effectiveTags: validateTags(options.tags) });
   },
@@ -781,10 +818,11 @@ function withPaths(
       const reference: ResourceReference = {
         $resource: RESOURCE_REFERENCE_BRAND,
         ...declaration,
-        optional: !own.present || own.default === undefined,
+        optional: !own.present || (own.default === undefined && own.value === undefined),
         ...(own.present ? {} : { absent: true as const }),
         ...(own.required ? { required: true as const } : {}),
         ...(own.default === undefined ? {} : { default: own.default }),
+        ...(own.value === undefined ? {} : { authoredValue: own.value }),
         ...(varies ? { modes } : {}),
         path,
         ...(declaration.fromEnv === ""
@@ -860,6 +898,11 @@ export function isResourceReference(value: unknown): value is ResourceReference 
     value !== null &&
     (value as ResourceReference).$resource === RESOURCE_REFERENCE_BRAND
   );
+}
+
+/** Only an owned string payload is a source value; CDK proxies can synthesize arbitrary attribute names. */
+export function isResourceValueReference(value: unknown): value is ResourceReference<"string"> & { readonly authoredValue: string } {
+  return isResourceReference(value) && value.kind === "string" && Object.prototype.hasOwnProperty.call(value, "authoredValue") && typeof value.authoredValue === "string";
 }
 
 /**
@@ -1214,6 +1257,7 @@ export function resolveResourceReference(
   origin: string,
 ): string | SecretHandle | undefined {
   if (isResourceAbsent(reference)) return undefined;
+  if (isResourceValueReference(reference)) return resolveResourceFromEnv(reference, {}, origin);
   return resolve(reference, origin);
 }
 
@@ -1296,7 +1340,8 @@ export function readSyncedSecret(
  * states the rules through this one function:
  *
  * 1. An input outside its graph (`.only()` the other one) is `not-applicable`.
- * 2. A `-c` context value, then a non-blank line in the inputs file, is `supplied`.
+ * 2. A standalone declaration's value is `supplied`, without any external reads.
+ *    An environment-linked input instead uses `-c` context, then a non-blank file line.
  * 3. Otherwise the graph's declared default is the `fallback`.
  * 4. Otherwise the input is `missing` when its declaration requires it, and
  *    `unresolved` when it is optional. Another graph's value never stands in.
@@ -1310,15 +1355,16 @@ export type InputResolution =
   | { readonly state: "unresolved" | "missing" | "not-applicable" };
 
 export function resolveInput(
-  reference: Pick<ResourceReference, "fromEnv" | "absent" | "default" | "values" | "required">,
+  reference: Pick<ResourceReference, "fromEnv" | "authoredValue" | "absent" | "default" | "values" | "required">,
   readers: Pick<ResourceEnvironmentReaders, "env" | "getContext">,
 ): InputResolution {
   if (reference.absent) return { state: "not-applicable" };
+  const authoredValue = Object.prototype.hasOwnProperty.call(reference, "authoredValue") && typeof reference.authoredValue === "string" ? reference.authoredValue : undefined;
   const variable = reference.fromEnv;
-  const supplied = variable === undefined ? undefined
+  const supplied = authoredValue !== undefined || variable === undefined ? undefined
     : (readers.getContext === undefined ? undefined : readEnvString(readers.getContext(resourceEnvContextKey(variable))))
       ?? (readers.env === undefined ? undefined : readEnvString(readers.env[variable]));
-  const raw = supplied ?? reference.default;
+  const raw = authoredValue ?? supplied ?? reference.default;
   if (raw === undefined) return { state: reference.required ? "missing" : "unresolved" };
   // Trimmed before anything looks at it: a value that arrived with a trailing
   // newline from a shell pipeline is the value, not the value plus whitespace.
@@ -1327,7 +1373,7 @@ export function resolveInput(
     ? reference.values.find((allowed) => allowed.toLowerCase() === trimmed.toLowerCase())
     : trimmed;
   if (value === undefined) return { state: "invalid", value: trimmed };
-  return { state: supplied === undefined ? "fallback" : "supplied", value };
+  return { state: authoredValue !== undefined || supplied !== undefined ? "supplied" : "fallback", value };
 }
 
 /**
@@ -1337,13 +1383,14 @@ export function resolveInput(
 export function referenceForGraph<Reference extends ResourceReference>(reference: Reference, mode: CloudMode): Reference {
   const policy = reference.modes?.[mode];
   if (!policy) return reference;
-  const { absent: _absent, required: _required, default: _default, ...rest } = reference;
+  const { absent: _absent, required: _required, default: _default, authoredValue: _value, ...rest } = reference;
   return {
     ...rest,
-    optional: !policy.present || policy.default === undefined,
+    optional: !policy.present || (policy.default === undefined && policy.value === undefined),
     ...(policy.present ? {} : { absent: true as const }),
     ...(policy.required ? { required: true as const } : {}),
     ...(policy.default === undefined ? {} : { default: policy.default }),
+    ...(policy.value === undefined ? {} : { authoredValue: policy.value }),
   } as Reference;
 }
 
@@ -1364,6 +1411,13 @@ export function resolveResourceFromEnv(
   readers: ResourceEnvironmentReaders,
   origin: string,
 ): string | SecretHandle | undefined {
+  if (isResourceAbsent(reference)) return undefined;
+  if (isResourceValueReference(reference)) {
+    if (reference.kind !== "string" || reference.fromEnv !== undefined || reference.secretArn || reference.secretField || reference.attribute) throw new Error(`${origin}: a standalone value must be a non-secret input without an environment or native attribute binding.`);
+    const resolved = resolveInput(reference, {});
+    if (resolved.state === "invalid") throw new Error(`${origin} ${formatResourceReference(reference)} must be one of ${reference.values!.join(", ")}. Edit its standalone value in source.`);
+    return resolved.state === "supplied" ? resolved.value : undefined;
+  }
   const variable = reference.fromEnv;
   if (!variable) {
     throw new Error(

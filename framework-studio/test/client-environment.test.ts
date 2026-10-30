@@ -6,7 +6,7 @@ import { after, before, test } from "node:test";
 import { withClientEnvironment } from "../server/client-environment";
 import { previewClientBinding } from "../shared/client-environment-preview";
 import { SnapshotBuilder } from "../server/snapshot";
-import { CLIENT_ENVIRONMENT_ID, CLIENT_ENVIRONMENT_ISLAND, clientBindingFor } from "../shared/client-environment";
+import { CLIENT_ENVIRONMENT_ID, CLIENT_ENVIRONMENT_ISLAND, ENVIRONMENT_FILES_ISLAND, clientBindingFor } from "../shared/client-environment";
 import type { ModeModel, Snapshot } from "../shared/model";
 import { buildScene } from "../src/scene/build";
 import { searchScene } from "../src/scene/focus";
@@ -22,6 +22,7 @@ test("every documented client variable maps to the selected graph's inputs or pu
   const expected = Object.keys(parseEnv(readFileSync(path.join(root, "client-app/.env.example"), "utf8"))).sort();
   for (const model of Object.values(snapshot.models)) {
     const file = clientFile(model);
+    assert.equal(file.problem, undefined, "source parameter conditions must not reject the existing client mappings");
     assert.deepEqual(file.entries.map((entry) => entry.name).sort(), expected);
     assert.equal(file.inputs, `cdk-app/.env.${model.mode}`);
     assert.ok(!model.edges.some(edge => edge.relation === "maps" && edge.from.startsWith("envfile:")));
@@ -115,13 +116,16 @@ test("draft previews resolve the new source immediately and distinguish missing,
   assert.match(incomplete.note, /Choose a public output/);
 });
 
-test("the client island, its source connections and variable search exist in both scenes without moving between modes", () => {
+test("environment files share one island while retaining source connections and variable search in both modes", () => {
   const options = { layoutModels: Object.values(snapshot.models) };
   const scenes = Object.values(snapshot.models).map((model) => buildScene(model, options));
   for (const [at, model] of Object.values(snapshot.models).entries()) {
     const scene = scenes[at]!;
-    assert.equal(scene.islands.find((island) => island.id === CLIENT_ENVIRONMENT_ISLAND)?.title, "Client-app environment file");
-    assert.equal(scene.nodes.find((node) => node.id === CLIENT_ENVIRONMENT_ID)?.island, CLIENT_ENVIRONMENT_ISLAND);
+    assert.equal(scene.islands.find((island) => island.id === ENVIRONMENT_FILES_ISLAND)?.title, "Environment files");
+    assert.equal(scene.islands.some(island => island.id === CLIENT_ENVIRONMENT_ISLAND), false);
+    for (const id of [CLIENT_ENVIRONMENT_ID, "envfile:dev", "envfile:prod"]) {
+      assert.equal(scene.nodes.find(node => node.id === id)?.island, ENVIRONMENT_FILES_ISLAND);
+    }
     assert.ok(scene.edges.some((edge) => edge.from === "resource:cognito" && edge.to === CLIENT_ENVIRONMENT_ID));
     // The client URL inputs stand in their group, so the group carries their mappings.
     const connection = scene.edges.find((edge) => edge.from === "resource:client" && edge.to === CLIENT_ENVIRONMENT_ID && edge.members.some((member) => member.edge.from === "resource:client.apiPort"));

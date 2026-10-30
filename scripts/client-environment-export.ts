@@ -1,6 +1,6 @@
 import { clientBindingFor, clientMappingsError, publicInputName, type ClientEnvironmentMappings } from "./client-environment-mapping";
 import { ROOT_ENV_STACK_OUTPUTS } from "./root-env-outputs";
-import { resolveInput, type InputResolution, type ResourceReference } from "@repo/framework/config";
+import { resolveInput, isResourceValueReference, type InputResolution, type ResourceReference } from "@repo/framework/config";
 import { collectDeploymentStacks, type DeploymentStack } from "./resource-export";
 
 /**
@@ -28,10 +28,13 @@ export function resolveClientEnvironmentMappings(mappings: ClientEnvironmentMapp
     throw new Error(`Client inputs must match the ${identity.mode === "prod" ? "production" : "development"} deployment. Existing local files were preserved.`);
   }
   const fail = (name: string, reason: string): never => { throw new Error(`${name}: ${reason} Existing local files were preserved.`); };
-  const declared = new Map(context.declarations.filter((reference) => reference.fromEnv && !reference.secretArn).map((reference) => [reference.fromEnv!, reference]));
+  const declared = new Map(context.declarations.filter((reference) => !reference.secretArn && (reference.fromEnv || isResourceValueReference(reference) || Object.values(reference.modes ?? {}).some(policy => policy.value !== undefined)))
+    .flatMap((reference): [string, ResourceReference][] => [
+      [`resource:${reference.path.join(".")}`, reference], ...(reference.fromEnv ? [[reference.fromEnv, reference] as [string, ResourceReference]] : []),
+    ]));
   const input = (name: string, field: string): InputResolution => {
     const reference = declared.get(name);
-    if (!publicInputName(name) || reference?.kind === "secret") return fail(field, "Secret inputs cannot be exported to the browser.");
+    if (!publicInputName(name) || reference?.kind === "secret" || (reference?.fromEnv && !publicInputName(reference.fromEnv))) return fail(field, "Secret inputs cannot be exported to the browser.");
     if (!reference) return fail(field, `Declare ${name} as a public input parameter.`);
     const resolved = resolveInput(reference, { env: context.inputs, getContext: context.getContext });
     if (resolved.state === "invalid") fail(field, `The ${name} input parameter does not match its declared choices.`);

@@ -1,4 +1,10 @@
-# Framework Studio
+# AWS Studio
+
+AWS Studio is the visual editing and operations interface for Matt's AWS Framework.
+It lives in the `framework-studio` workspace. For a shorter introduction to the six
+workspaces and their action boundaries, read the
+[interface guide](../docs/aws-studio-knowledge/studio/interface.md); for service ownership,
+read [backend boundaries](../docs/aws-studio-knowledge/studio/backend.md).
 
 A local view of `framework.config.ts` with reviewed resource creation and targeted
 source editing. It shows:
@@ -20,8 +26,9 @@ runtime health are inspected separately. Domains edits Production domain intent;
 named deployments keep their own target/profile/account context. See the
 [UI design system](../docs/framework-studio/ui-design-system.md).
 
-The **Database** tab (`/database`) is a source-first Prisma 8 workbench with three
-workspaces: **Schema**, **History & migrations**, and **Database status**. Edit the
+The **Database** tab (`/database`) is a source-first Prisma 8 workbench with five
+workspaces: **Schema**, **History & migrations**, **Database status**, **Saved SQL**,
+and **Data retention**. Edit the
 authored `packages/database/prisma/contract.prisma` beside its diagram, navigate between
 fields and source, format and validate with the installed Prisma interpreter, then
 review the complete source change before saving. Invalid drafts preserve text and undo
@@ -35,9 +42,11 @@ explicit baseline, then plan with pinned Prisma in a disposable workspace. Revie
 actual migration files before saving new artifacts. Database status requires a selected
 target and read-only inspection; a matching marker alone never establishes physical
 schema compatibility. Local Compose PostgreSQL is supported through its existing literal
-loopback binding. Production IAM/TLS access remains outside this workbench. Database
-application is a separate target-bound review and typed approval; opening the page and
-inspection never start Compose. See the [Database workbench guide](../docs/framework-studio/database-workbench.md)
+loopback binding. Production inspection/application uses the deployed migration task
+with IAM/TLS access to the private database. Inspecting production launches a billed
+VPC task and requires its own target-bound approval; applying migrations is a separate
+task and typed approval. Opening the page and local inspection never start Compose.
+See the [Database workbench guide](../docs/framework-studio/database-workbench.md)
 for exact effects, evidence, keyboard behavior and limitations.
 
 **Data retention** and the Cognito User Pools/Deploy lifecycle panels review
@@ -46,7 +55,8 @@ resources. Source authority, legacy compatibility, durable inventory, dependency
 guards and CLI parity are documented in the [stateful lifecycle guide](../docs/framework-studio/stateful-resources.md).
 
 The **Deploy** tab (`/deploy`) provides deployment discovery, reviewed operations and
-local development controls. See [Deploy & Run](../docs/framework-studio/deploy-and-run.md).
+local development controls. See the current [operational lifecycle](../docs/aws-studio-knowledge/deployment/lifecycle.md)
+and the historical [Deploy & Run design](../docs/framework-studio/deploy-and-run.md).
 Its deployment detail also offers reviewed **Development & production deployment
 names** and **Client environment & frontend release** controls: public env generation
 without Docker, configurable static frontend builds, exact S3 publication review and
@@ -99,7 +109,7 @@ the existing Inspector edits, for every resource family.
 | Entry | Authored source | Supported creation choices |
 | --- | --- | --- |
 | Function | Existing `framework-config/workloads/events.ts`, `http.ts` or `websocket.ts` map; registration only if absent; `cdk-app/lambda_functions/<category>/<id>/index.ts` | Event, HTTP and WebSocket; Node 22/24 zip; memory, timeout, architecture, subnet; authenticated HTTP wrapper and pool binding; optional input/secret binding |
-| Stack | `cdk-app/lib/app/<class-name>.ts`, typed catalog entry, import and instantiation in `cdk-app/bin/cdk-app.ts` | SQS queue or encrypted, private, retained S3 bucket exposed as a typed public field, `linkResources`, deployment-prefixed stack/output identity; both/dev/prod scope |
+| Stack | `cdk-app/lib/app/<class-name>.ts`, typed catalog entry, import and instantiation in `cdk-app/bin/cdk-app.ts` | SQS queue, encrypted/private/retained S3 bucket or Cognito identity pool exposed as a typed public field, `linkResources`, deployment-prefixed stack/output identity; both/dev/prod scope |
 | VPC | New `framework-config/networks/<id>/index.ts` and a literal registry reference | Independent VPCs with private /16, two/three zones, NAT, IPv6 egress and endpoints; unused VPCs appear as blueprints |
 | Workflow | Existing workflows.ts map; registration only if absent | Executable pass-through workflow, or a sequence of existing event Lambdas/tasks; deployment lanes and execution timeout; native workflow DSL and IR |
 | Container service | Existing services.ts section, `cdk-app/ecs_containers/services/<id>/{index.mjs,Dockerfile,package.json}` | Node HTTP server and health endpoint; mount, port, gateway auth, CPU/memory, architecture, subnet, input/secret binding; local-only default |
@@ -107,8 +117,9 @@ the existing Inspector edits, for every resource family.
 | API route | Existing HTTP/WebSocket section; optional new handler | New Lambda or an existing routed Lambda of the same category. Reused functions retain their authentication, bindings, handler and construct identity. HTTP methods and literal route paths use normal conflict validation |
 | Agent | Existing agents.ts section, configured agent directory with `{index,contract}.ts`, workspace manifest and tsconfig | Deterministic echo by default (no provider/model prerequisite), or an explicit model/tool loop using `@repo/models`; validated Zod contract; existing tools; authenticated browser route or IAM service agent; input/secret reference |
 | Agent tool | Existing tools.ts section, configured Lambda directory with `{index,contract}.ts` | Validated Zod request/response, authenticated tool wrapper by default; delivered to agents through declared tools |
-| Input parameter | Resource catalog; commented keys in both input templates; optional consumer section/import | String or enumerated string, declaration default, required flag, description, group, existing consumer mapping |
+| Input parameter | Resource catalog; optional consumer section/import; commented template keys only when linked to an environment file | Standalone public value or environment-linked string/enum with default and required policy, description, group, existing consumer mapping |
 | Secret | Resource catalog; commented keys in both input templates; optional consumer section/import | Declaration only, required flag, description, group, existing consumer mapping; automatic ARN/read permissions for Lambdas/agents and startup-value delivery for containers |
+| Authentication provider | Literal `framework-config/auth-providers.ts`; OIDC secret declaration when required | OIDC/SAML source proposal with explicit graph scope and attribute mappings; provider-side setup and sign-in remain separate |
 
 The framework's real generator runs in a disposable source copy before review.
 Changes to framework IDs, browser contracts, agent contracts, service environment
@@ -130,8 +141,9 @@ starters. Unauthenticated Python ZIP repair supports the conventional entry poin
 authenticated Python and image Lambda repair require the linked source editor.
 
 Source creation never synthesizes, deploys, provisions secret values or writes
-authored environment files. Inputs and secrets share declarations across graphs;
-their authored values remain independent in `cdk-app/.env.dev` and `.env.prod`.
+authored environment files. Environment parameters and secrets share declarations
+across graphs; their file values remain independent in `cdk-app/.env.dev` and `.env.prod`.
+Source parameters store their public values directly in the reviewed declaration.
 Use the protected environment-file Inspector for values as a separate operation.
 Network and container forms expose cost-relevant settings before approval.
 
@@ -206,20 +218,37 @@ Framework behavior comes from the framework's own answers. CDK links are separat
 
 Each logical graph is evaluated in its own child process, with a synthetic inputs file holding
 only `PROD_DEPLOYMENT`. Graph evaluation receives only deployment-mode and WebSocket flags;
-the server reads each mode's WebSocket flag from its selected inputs file. Authored values
-never enter evaluator processes.
+the server resolves each mode's WebSocket condition through its declared input source.
+The Studio input protocol passes condition outcomes instead of environment-file values;
+public source parameter values are part of the evaluated declaration. Evaluators still
+inherit the host environment and execute trusted repository code with filesystem access;
+they are not a secret-isolation or hostile-code sandbox.
 
 ## CDK environment files and input parameters
 
 **Input parameters and secrets** contains only inputs and secrets declared in
-`framework-config/resources.ts`. **CDK environment files** is a separate island with `cdk-app/.env.dev` and
-`cdk-app/.env.prod`, using the same full-path labels as `client-app/.env`. File-to-parameter links come from actual assignments, including empty ones;
+`framework-config/resources.ts`. **Environment files** groups `cdk-app/.env.dev`,
+`cdk-app/.env.prod`, and `client-app/.env`. CDK files are labeled **Framework managed**,
+with their values still editable. File-to-parameter links come from actual assignments, including empty ones;
 missing entries stay visible in the inspector without pretending to supply a value.
 Catalog identities are reused, preserving their workload and secret-consumer links.
 
-**Input behavior** in a parameter or secret inspector is a Dev | Prod grid: **Present**,
-**Required** and **Default** for each environment, staged through the normal review/apply flow
-as `.only()`, `.required()`/`.required(mode)` and `.default()`/`.default({ dev, prod })`. An input
+An input has an explicit source in its creation form and Inspector. With **Link to .env file**
+off, a **Source parameter** stores a non-secret **Value** in its declaration through
+`resource.value(...)`. It has no environment variable, fallback default, local-file editor
+or file-to-parameter link. `enableWebSocketApi`, for example, is a source parameter whose
+value is `true`. Environment files cannot override that value.
+
+With the link on, an **Environment parameter** reads its named variable from each
+environment's file and may declare an optional **Default value**. Switching the link carries
+the entered text between Value and Default; source review shows the change before saving.
+Creation or changing the link never overwrites existing `.env` contents. Secrets always use
+the protected environment-file source and have neither public source values nor defaults.
+
+**Input behavior** is a Dev | Prod grid. Both sources expose **Present**; source parameters
+expose **Value**, while environment parameters expose **Required** and optional **Default**.
+The normal review/apply flow writes `resource.value(...)`, `.only()`,
+`.required()`/`.required(mode)` and `.default()`/`.default({ dev, prod })` as appropriate. An input
 can be edited from the graph that does not hold it. Existing conditional and per-workload
 requirements are also evaluated. Missing or whitespace-only effective values create a
 red connection with an X, including when the variable has no assignment yet. Select the
@@ -229,7 +258,8 @@ must be supplied in the local environment file and never get source-code default
 File inspectors flag each required row and summarize missing ones above the list. Requirements
 are checked against each mode's own file (`cdk-app/.env.dev` or `cdk-app/.env.prod`);
 template values are references only. Unknown reads are reported separately from missing
-values. The graph carries presence and requirement metadata, never authored values.
+values. The graph carries public source values and declared defaults; values read from
+environment files stay outside it.
 
 Selecting a file opens an editor for all of that file's variables, including settings
 such as `PGADMIN_HOST_PORT` that have no catalog declaration. Edit multiple values or
@@ -242,7 +272,7 @@ file is written; saving does not synthesize or deploy. Dotenv syntax and value r
 are checked; infrastructure validation remains a separate synthesis action.
 
 Both file inspectors list the same variables: the file's own lines, the other file's lines,
-and every catalog input its graph holds, catalog inputs first. A blank catalog row shows its
+and every environment-linked catalog input its graph holds, catalog inputs first. A blank catalog row shows its
 declared default; a row the other file alone writes says so. An input declared `.only()` the
 other graph is left out, and flagged **Not read** if a line for it is written anyway. Showing a
 row never writes one: typing a value adds the line, and clearing it again drops the edit.
@@ -259,8 +289,9 @@ line's value is withheld from the file inspector: it shows as set, typing replac
 
 There is no `cdk-app/.env`: the mode (`-c prodDeployment`) picks `.env.dev` or `.env.prod`.
 A file that has not been generated wears a red cross on its node in the isometric view.
-Select the **CDK environment files** island to see which files exist and **Generate** the
-missing ones, or select a file and use **Generate .env.<mode> from template**. Generation
+Expand **Island entries** at the bottom of the **Environment files** island inspector
+to select a file. Missing files show **Not generated**; open one and use
+**Generate .env.<mode> from template**. Generation
 copies `cdk-app/.env.dev.template` or `cdk-app/.env.prod.template` without overwriting an
 existing file; production is never seeded from development. Both files are ignored by Git.
 
@@ -269,9 +300,15 @@ changes refresh the map and stale the matching inventory; generating a file does
 
 ## Client-app environment mappings
 
-The **Client-app environment file** island holds the **Client environment**, which the export
-writes to `client-app/.env.development.local` and `client-app/.env.production.local`. Its
-inspector is a searchable source overview. Expand a field to choose its source type, then its
+The **Environment files** island groups the CDK input files and **Client environment**.
+CDK files carry **Framework managed** labels; `client-app/.env` carries **Application**.
+These labels describe purpose; CDK values remain editable. The client export writes
+`client-app/.env.development.local` and `client-app/.env.production.local`, shown as
+generated outputs in the client inspector. **Island entries**, the final section in
+every island inspector, links to each file. Select `client-app/.env` for its export
+paths and searchable mapping overview. Mappings belong to the file, not the island. File details
+stay collapsed. The displayed mappings are source recipes, not a
+read of values saved in `client-app/.env`. Expand a field to choose its source type, then its
 CDK input, stack/output or region; URL sources expose protocol, hostname, port and an optional
 override. A field is one recipe for both environments; **Different source in each environment**
 splits it into `{ dev, prod }` when the sources differ. Each field shows a symbolic preview
@@ -311,15 +348,18 @@ The initial mappings are:
 | `VITE_COGNITO_DOMAIN` | Cognito `UserPoolDomainUrl` output | Same output in the selected deployment |
 
 Client mappings read declared input parameters on the Input parameters and secrets island.
-CDK `.env.dev` and `.env.prod` files supply those parameters; they have no direct mapping
-connection to `client-app/.env`. Parameters carry their selected-mode presence and defaults,
+Environment parameters read CDK `.env.dev` and `.env.prod`; source parameters read their
+declarations. The CDK files have no direct mapping connection to `client-app/.env`.
+Parameters carry their selected-mode presence, source values or defaults,
 and exports evaluate the catalog for the selected deployment. Local URL inputs under
 `resources.client` are declared `.only("dev")`. A mapping's optional `when: { input, equals }`
 uses a public input parameter to control whether its value is populated or empty.
 Region comes from Cognito's deployment rather than
 `LOCAL_AWS_REGION`, which can name a different region for local SDK calls. An absent
 WebSocket stack permits an empty URL; an enabled stack missing its output is reported as
-unavailable. Snapshots and search carry variable names and recipes, never resolved values.
+unavailable. New recipes identify inputs by catalog ID so changing their source preserves
+the mapping; existing environment-variable aliases remain readable. Snapshots and search
+never contain resolved environment-file or stack-output values.
 
 ## Synthesized infrastructure
 
@@ -475,7 +515,7 @@ Routes edit their owning workload; staged changes immediately preview in the car
 Catalog resources and local services reuse the cards and identify what controls their
 availability. Catalog availability describes declarations, not deployed health.
 Edit intents retain the framework's source tokens.
-WebSocket options also account for each environment's own AWS API flag, so the labels do not
+WebSocket options also account for each environment's resolved deployment condition, so the labels do not
 claim a production deployment where no API exists, or hide its AWS-backed Development execution.
 
 | Input | Action |
@@ -599,7 +639,7 @@ Duplicate paths, invalid paths and overlapping routes are refused. Run
 the application checks and update callers of the old path. Generated browser API
 contracts join the rename's review and apply. Studio does not deploy the gateway.
 
-Selecting an authored input or secret loads its current value from the selected mode's inputs file.
+Selecting an environment parameter or secret loads its current value from the selected mode's inputs file.
 **Local value** edits that variable in place, showing the environment and file destination.
 Missing, empty, configured, defaulted and unsaved states stay distinct. Declared choices use
 a dropdown; **Use default** clears the local override and **Revert value** restores the saved
@@ -662,8 +702,10 @@ separately, as Framework describes.
   paths and generator-owned outputs in their reviewed transaction.
   Resource moves can also update references in authored TypeScript modules. The server
   derives those paths from the catalog imports; requests cannot choose arbitrary files.
-- Input values are available only through the token-guarded selected-resource endpoint.
-  It accepts a defined catalog resource id, never an arbitrary environment key or file.
+- Input values are available through token-guarded selected-resource and fixed CDK-file
+  detail endpoints. Resource reads require a defined catalog ID; file reads/edits are
+  restricted to `.env.dev` and `.env.prod`, with sensitive values revealed individually.
+  Neither is an arbitrary filesystem path API.
   Disposable evaluation inputs and the CDK link index live under `.cache/framework-studio/`.
 - Check/generation commands have fixed arguments and no shell. Preview generation runs
   in a disposable copy; only the reviewed Apply action installs its generated files.
@@ -708,8 +750,10 @@ checks and local Lambda egress use the selected VPC. Creation and editing never 
 
 Deploy accepts an input condition through **Only when an input matches…**. Choose a
 non-secret input from Input parameters and secrets and its matching value; review shows
-separate development and production outcomes. Values remain in the server's private
-input reader. Events follow their owning AWS resource; tools follow their agents.
+separate development and production outcomes. Private environment-file values remain in
+the server's input reader; standalone public source values are ordinary declaration
+metadata. Event Lambdas accept deployment policy subject to their native trigger
+constraints; tools inherit their consuming agents' lanes unless explicitly overridden.
 
 The APIs island shows actual HTTP and WebSocket gateways. Routes are listed in their
 gateway inspector, and agent browser routes belong to their agent. Both gateways are

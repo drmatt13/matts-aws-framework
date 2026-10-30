@@ -21,6 +21,7 @@ import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
 /** One entry's value in the viewed graph: names and presence, never the value itself. */
 function entryStatus(entry: ModelResource, file: string): { readonly text: string; readonly tone?: "missing" } {
   if (entry.absent) return { text: "Absent in this graph" };
+  if (entry.authoredValue !== undefined) return { text: `Value · ${entry.authoredValue}` };
   const status = entry.inputRequirement?.status;
   if (status === "configured") return { text: `Set in ${file}` };
   if (status === "default") return { text: `Default · ${entry.default ?? "declared default"}` };
@@ -43,7 +44,7 @@ export function InputGroupEntries({ group }: { readonly group: ModelResource }) 
     if (entry) draft.setCreation(entry.resourceKind, { ...entry.form, group: group.path[0]! });
   });
   return <InspectorSection title="Entries" className={"[&_[data-slot=relations]>li]:grid-cols-[minmax(0,1fr)_auto] [&_[data-slot=relations]>li]:items-center [&_[data-slot=relations]>li]:gap-x-3 [&_[data-slot=relations]>li]:gap-y-1 [&_[data-slot=environment-pills]]:col-auto [&_li>code]:col-span-full [&_li>[data-slot=local-input-status]]:col-span-full [&_li>span:not([data-slot])]:col-span-full"}
-    description={`${entryCount(groupEntries(group, model.resources))}. Select an entry to edit its local value, default, requirement or consumers.`}
+    description={`${entryCount(groupEntries(group, model.resources))}. Select an entry to edit its source, value, requirements or consumers.`}
     actions={addable ? <button className={buttonClasses({ variant: "quiet" })} disabled={disabled} onClick={add}>Add input</button> : undefined} data-slot="input-group-entries">
     {children.length ? <ul className={inputGroupRelationListClasses} data-slot="relations">{children.map((child) => {
       const nested = child.kind === "group";

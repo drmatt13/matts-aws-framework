@@ -1,27 +1,30 @@
-import { InspectorSummary } from "./InspectorUI";
+import { InspectorDisclosure, InspectorSummary } from "./InspectorUI";
 import { Select, TextInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
 import { iconButtonClasses } from "../ui/IconButton";
 import { cx } from "../ui/classes";
 import { useId, useState } from "react";
 import { Plus, Trash2, ArrowUpRight, ChevronRight, Pencil } from "lucide-react";
-import { CLIENT_ENVIRONMENT_FILES, CLIENT_ENVIRONMENT_ID, clientBindingFor, isSplitMapping, type ClientEnvironmentBinding, type ClientEnvironmentMapping, type ClientReferenceOption } from "../../shared/client-environment";
+import { CLIENT_ENVIRONMENT_FILES, CLIENT_ENVIRONMENT_FILE, clientBindingFor, isSplitMapping, type ClientEnvironmentFile, type ClientEnvironmentBinding, type ClientEnvironmentMapping, type ClientReferenceOption } from "../../shared/client-environment";
 import { previewClientBinding } from "../../shared/client-environment-preview";
 import type { ModelResource } from "../../shared/model";
 import { useStudio } from "../studio";
-import { catalogAvailability } from "../deployment";
 import { Description } from "./Description";
 import { EntityIcon } from "./EntityIcon";
+import { EnvironmentFileStatus } from "./ResourceStatus";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { InspectorKind, InspectorSwitch } from "./InspectorUI";
 
 const sourceKinds = { input: "Input parameter", output: "Stack output", region: "Stack region", endpoint: "URL from input parameter", empty: "Empty value" } as const;
 
 function InputSelect({ label, value, options, disabled, onChange }: { label: string; value: string; options: readonly ClientReferenceOption[]; disabled?: boolean; onChange: (name: string) => void }) {
+  const { model } = useStudio();
   const inputs = options.filter((option) => option.binding.kind === "input");
-  return <Select aria-label={label} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
+  const alias = model.resources.find(resource => resource.kind === "input" && resource.fromEnv === value)?.id;
+  const selected = inputs.some(option => option.binding.kind === "input" && option.binding.name === value) ? value : alias ?? value;
+  return <Select aria-label={label} value={selected} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
     <option value="" disabled>Select input parameter…</option>
-    {value && !inputs.some((option) => option.binding.kind === "input" && option.binding.name === value) ? <option value={value}>{value} (undeclared)</option> : null}
+    {selected && !inputs.some((option) => option.binding.kind === "input" && option.binding.name === selected) ? <option value={selected}>{value} (undeclared)</option> : null}
     {inputs.map((option) => <option key={option.id} value={option.binding.kind === "input" ? option.binding.name : ""}>{option.label}</option>)}
   </Select>;
 }
@@ -30,13 +33,19 @@ function SourceControls({ name, binding, options, disabled, onChange }: {
   name: string; binding: ClientEnvironmentBinding; options: readonly ClientReferenceOption[]; disabled: boolean; onChange: (binding: ClientEnvironmentBinding) => void;
 }) {
   const prefix = useId();
+  const { model } = useStudio();
   const stacks = [...new Set(options.flatMap((option) => option.binding.kind === (binding.kind === "output" ? "output" : "region") && "stack" in option.binding ? [option.binding.stack] : []))];
   const outputs = binding.kind === "output" ? options.flatMap((option) => option.binding.kind === "output" && option.binding.stack === binding.stack ? [...option.binding.outputs] : []) : [];
   return <fieldset className={"[&_p]:m-0 grid gap-3 [border:0] p-0 m-0 min-w-0 [&_label]:grid [&_label]:gap-1 [&_label]:text-caption [&_label]:min-w-0 [&_label>code]:wrap-anywhere"} disabled={disabled} data-slot="client-mapping-controls">
     <label>Value from<Select aria-label={`Source type for ${name}`} value={binding.kind} onChange={(event) => {
       const kind = event.target.value as ClientEnvironmentBinding["kind"];
       if (kind === binding.kind) return;
-      const next: ClientEnvironmentBinding = kind === "input" ? { kind, name: options.some((option) => option.id === `input:${name}`) ? name : "" }
+      const matchingInput = options.find(option => {
+        if (option.binding.kind !== "input") return false;
+        const inputName = option.binding.name;
+        return inputName === name || model.resources.find(resource => resource.id === inputName)?.fromEnv === name;
+      });
+      const next: ClientEnvironmentBinding = kind === "input" ? { kind, name: matchingInput?.binding.kind === "input" ? matchingInput.binding.name : "" }
         : kind === "output" ? { kind, stack: "", outputs: [] } : kind === "region" ? { kind, stack: "" }
         : kind === "endpoint" ? { kind, protocol: "http", port: "" } : { kind: "empty" };
       onChange({ ...next, ...(binding.when ? { when: binding.when } : {}) });
@@ -84,16 +93,14 @@ const MODE_LABELS = { dev: "Development", prod: "Production" } as const;
  * and the Dev / Prod pills report the result: an input outside that environment, or an optional
  * one with no value and no default, leaves the field blank there.
  */
-export function ClientEnvironmentMappings() {
+export function ClientEnvironmentMappings({ file }: { readonly file: ClientEnvironmentFile }) {
   const { model, snapshot, select, draft, draftState, live } = useStudio();
-  const file = model.resources.find((resource) => resource.id === CLIENT_ENVIRONMENT_ID)?.clientEnvironment;
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("VITE_");
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [rename, setRename] = useState<{ name: string; value: string; error: string }>();
   const [error, setError] = useState("");
-  if (!file) return null;
   const mappings = draft.clientMappings();
   const disabled = !!draftState.busy || draft.conflict || live.evaluating || !!file.problem;
   const update = (name: string, mapping: ClientEnvironmentMapping) => draft.setClientMappings({ ...mappings, [name]: mapping });
@@ -124,12 +131,13 @@ export function ClientEnvironmentMappings() {
   const editError = draftState.entries.find((entry) => entry.kind === "clientEnvironment")?.error;
   return <section className={"[&_select]:w-full [&_input:not([type=checkbox])]:w-full"} data-slot="client-mapping-editor">
     <div className={"grid gap-2 mb-(--panel-padding) [&_p]:m-0"} data-slot="client-mapping-context">
-      <p className={"text-caption text-graphite"}>Dev / Prod shows where each field gets a value. It follows the field's sources: an input that is not declared in an environment, or has no value and no default there, leaves the field blank.</p>
       <details className={"text-graphite text-caption [&_summary]:cursor-pointer [&_p]:mt-2 [&_p]:wrap-anywhere"} data-slot="client-mapping-help"><InspectorSummary>How mappings and files work</InspectorSummary>
-        <p>Input parameters read each environment's values and defaults from <button className={buttonClasses({ variant: "link" })} disabled={draft.dirty} onClick={() => select("envfile:dev")}>cdk-app/.env.dev</button> and <button className={buttonClasses({ variant: "link" })} disabled={draft.dirty} onClick={() => select("envfile:prod")}>cdk-app/.env.prod</button>. Stack outputs and regions refer to that environment's deployment.</p>
+        <p>Dev / Prod shows where a source supplies a value. Expand a field to edit its mapping.</p>
+        <p>Source parameters use their declared values. Linked parameters read each environment's values or defaults from <button className={buttonClasses({ variant: "link" })} disabled={draft.dirty} onClick={() => select("envfile:dev")}>cdk-app/.env.dev</button> and <button className={buttonClasses({ variant: "link" })} disabled={draft.dirty} onClick={() => select("envfile:prod")}>cdk-app/.env.prod</button>. Stack outputs and regions refer to that environment's deployment.</p>
         <p>One source serves both environments unless a field's sources differ. Review and apply saves references in <code>framework-config/client-environment.ts</code>. This editor does not generate client files or load deployed values.</p>
         <p>An environment export writes <code>client-app/.env.development.local</code> or <code>client-app/.env.production.local</code>, which Vite reads over <code>client-app/.env</code>. A blank field is written blank, so nothing from <code>client-app/.env</code> shows through. Renaming a field changes its exported name in both; update any application code that reads its old name.</p>
         <p>Client settings are public in the browser. Secret inputs are excluded.</p>
+        <p>An input that is not declared in an environment, or has no value and no default there, leaves the field blank.</p>
       </details>
     </div>
     <div className={"flex items-center justify-between gap-2 [&_h3]:m-0 [&_button]:inline-flex [&_button]:items-center [&_button]:gap-1"} data-slot="client-mapping-toolbar"><h3>Fields <span className={"text-graphite"}>{filter ? `${matches.length} / ` : ""}{rows.length}</span></h3><button className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} disabled={disabled} onClick={() => { setAdding(!adding); setError(""); }}><Plus size={14} aria-hidden />Add field</button></div>
@@ -187,10 +195,21 @@ const clientBindingSplit = (mapping: ClientEnvironmentMapping) => ({ dev: client
 
 export function ClientEnvironmentFileView({ resource }: { readonly resource: ModelResource }) {
   const { snapshot } = useStudio();
-  const availability = catalogAvailability(snapshot.models)[resource.id] ?? { dev: false, prod: false };
+  const file = resource.clientEnvironment;
+  if (!file) return null;
   return <>
-    <header><InspectorKind environments={{ availability, descriptions: { dev: "generated for development", prod: "generated for production" }, unavailableDescription: "not generated" }}>Generated client settings</InspectorKind><h2><EntityIcon icon="envFile" />Client environment</h2><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{CLIENT_ENVIRONMENT_FILES.dev}</code><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{CLIENT_ENVIRONMENT_FILES.prod}</code></header>
+    <header><InspectorKind>Environment file</InspectorKind><h2><EntityIcon icon="envFile" />client-app/.env</h2>
+      <EnvironmentFileStatus resource={resource} />
+      <p className="mb-0 text-meta text-graphite">Generated outputs</p>
+      <dl aria-label="Generated environment files" data-slot="client-environment-files" className="mb-0 mt-3 grid gap-1 text-meta">{(["dev", "prod"] as const).map(mode => <div key={mode} className="grid min-w-0 grid-cols-[6em_minmax(0,1fr)] gap-2">
+        <dt className="text-graphite">{mode === "dev" ? "Dev" : "Prod"} export</dt><dd className="m-0 wrap-anywhere"><code>{snapshot.models[mode].resources.find(item => item.id === resource.id)?.clientEnvironment?.path ?? CLIENT_ENVIRONMENT_FILES[mode]}</code></dd>
+      </div>)}</dl>
+    </header>
     <Description entity={resource.id} />
-    <ClientEnvironmentMappings />
+    <ClientEnvironmentMappings file={file} />
+    <InspectorDisclosure title="File details">
+      <p className="text-caption text-graphite">Export writes the Dev / Prod files above. Their values override <code>client-app/.env</code>. These mappings describe sources, not saved file contents.</p>
+      <p className="text-caption text-graphite wrap-anywhere">Mappings saved in <code>{CLIENT_ENVIRONMENT_FILE}</code>.</p>
+    </InspectorDisclosure>
   </>;
 }

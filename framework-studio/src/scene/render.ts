@@ -584,6 +584,7 @@ export class SceneRenderer {
             if (!ghost) this.drawStand(tile, item.prop.geometry.faces, item.prop.icon, factor);
             this.drawPlaqueGraphite(tile, item.prop.icon, (ghost ? 0.32 : 0.9) * factor, matched, ghost, false);
             if (item.prop.roleIcon) this.drawRoleIconGraphite(tile, item.prop.roleIcon, (ghost ? 0.32 : 0.9) * factor, ghost, item.prop.serviceIcon);
+            if (item.prop.frameworkManaged && item.prop.roleIcon !== "managed") this.drawRoleIconGraphite(tile, "managed", (ghost ? 0.32 : 0.9) * factor, ghost, undefined, true);
           }
         }
       }
@@ -871,9 +872,10 @@ export class SceneRenderer {
     context.restore();
   }
 
-  private drawRoleIconGraphite(tile: Point, key: IconKey, alpha: number, ghost: boolean, artworkUrl?: string): void {
+  private drawRoleIconGraphite(tile: Point, key: IconKey, alpha: number, ghost: boolean, artworkUrl?: string, management = false): void {
     const context = this.context;
-    const { x, y, size, padding } = ICON_BADGE;
+    const { y, size, padding } = ICON_BADGE;
+    const x = management ? -ICON_BADGE.x - size : ICON_BADGE.x;
     const badge = ROLE_BADGE[key];
     const artwork = badge?.artwork ?? key;
     context.save();
@@ -923,6 +925,7 @@ export class SceneRenderer {
     if (!ghost) this.drawStand(tile, node.geometry.faces, node.icon, factor);
     this.drawPlaqueGraphite(tile, node.icon, factor * (ghost ? 0.32 : 1), selected, ghost, hovered);
     if (node.roleIcon) this.drawRoleIconGraphite(tile, node.roleIcon, factor * (ghost ? 0.32 : 1), ghost);
+    if (node.frameworkManaged && node.roleIcon !== "managed") this.drawRoleIconGraphite(tile, "managed", factor * (ghost ? 0.32 : 1), ghost, undefined, true);
     if (selected || hovered) {
       trace(context, node.geometry.hull);
       context.strokeStyle = selected ? "rgba(255, 248, 230, 0.6)" : "rgba(255, 255, 255, 0.35)";

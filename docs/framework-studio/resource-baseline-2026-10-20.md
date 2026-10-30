@@ -1,5 +1,10 @@
 # Framework Studio resource baseline — 2026-10-20
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 This records the application's distribution baseline before experiments with Studio
 resource creation, Lambda directories, connections, workflows and deployment controls.
 Use it to recover the original application resources while keeping later improvements

@@ -3,6 +3,12 @@
 How the studio turns `framework.config.ts` into views, and views back into source edits.
 The isometric landscape has [its own document](isometric-view.md).
 
+For the current service map, start with [backend boundaries](../aws-studio-knowledge/studio/backend.md)
+and [interface workflows](../aws-studio-knowledge/studio/interface.md). This reference retains
+the detailed design of evaluation, indexing and editing. Deployment, identity, database
+and lifecycle operations have dedicated authorities rather than extending the generic
+configuration writer. Source-verified on 2026-10-29; cloud execution is a separate check.
+
 ## Shape of the system
 
 ```text
@@ -22,7 +28,9 @@ Studio server (host process: node --import tsx framework-studio/server/index.ts)
   ├─ InfrastructureService: explicit synthesis → assembly inventory, per-mode last-good state
   ├─ Watcher: framework.config.ts, framework-config/, packages/framework/src/config/,
   │     cdk-app/lib/, .env.dev/.env.prod and their templates (input metadata/flags)
-  └─ CommandRunner: framework:check, framework:generate (fixed argv, no shell)
+  ├─ CommandRunner: framework:check, framework:generate (fixed argv, no shell)
+  └─ Separate services: Deploy, database workbench/history/application, identity,
+        private input values, frontend release, stateful lifecycle and source recovery
 ```
 
 The server never imports the application's config itself. It holds the snapshot the
@@ -40,14 +48,16 @@ children produce, the parsed source, and the edit journal.
   `@repo/framework/config`. The workspace's `package.json` therefore has no
   `"type": "module"`.
 - `FRAMEWORK_INPUTS_FILE` points at `.cache/framework-studio/inputs-<mode>.env`, which
-  holds one line, `PROD_DEPLOYMENT=true|false`. The framework reads authored inputs only
-  from that file, so an evaluator never parses a secret. Graph evaluation reads two keys
-  of the selected mode's inputs: `PROD_DEPLOYMENT`, for the current mode, and
-  `DEPLOY_PROD_WEBSOCKET_API`, which decides whether that graph holds WebSocket handlers.
+  holds one line, `PROD_DEPLOYMENT=true|false`. The parent privately resolves declared
+  deployment conditions against each mode's input source and returns only holds/fails/unset
+  outcomes. Source parameters such as `enableWebSocketApi` resolve their declared public
+  value, not an environment-file override. Children inherit the host environment and execute
+  trusted repository code; this is module-lifetime isolation, not a secret-proof sandbox.
   See [server/inputs.ts](../../framework-studio/server/inputs.ts).
 - The selected-resource endpoint separately reads the selected mode's input file for one declared input
   or secret. Its no-store response goes only to the selected inspector; secrets start
-  masked. Values never enter graph evaluation, snapshots, diffs, caches or disk journals.
+  masked. Resolved environment-file values stay out of snapshots, source diffs and disk
+  journals; public source values and declared defaults are ordinary graph metadata.
 - Resource previews send source overlays over IPC to fresh evaluator processes. Their
   private compilation hook loads candidate modules without changing authored files.
   Both graphs and TypeScript must accept a preview before applying it. Multi-file moves
@@ -61,7 +71,7 @@ children produce, the parsed source, and the edit journal.
 [server/model/project.ts](../../framework-studio/server/model/project.ts),
 types in [shared/model.ts](../../framework-studio/shared/model.ts)
 
-`projectModel(config, { mode, webSocketApi })` reshapes the framework's answers and
+`projectModel(config, { mode, inputs })` reshapes the framework's answers and
 decides nothing itself.
 
 | Part | Source in the framework | Notes |
@@ -72,7 +82,7 @@ decides nothing itself.
 | Edges | Environment references, secrets, `cloud.bindings`, agent tools, workflow steps and integrations | Id `relation:from->to#n`, so two relations between one pair stay two edges. `provenance` is `declared` or `derived` (for example a user-pool variable handed by `userPool: true`) |
 | Deployment availability | `isTargetEnabled`, `isTargetDeployed`, `getToolDeploySetting` | Raw `local`, `cloud` (intent), `dev`, `prod` (outcome) remain available for evaluation. The UI presents Development (`local || dev`) and Production (`prod`) with execution location as supporting detail |
 | Placement | `resolveLambdaTarget().subnet`, container `cloud.service/task.subnet`, `subnetEgress`, `usesDualStackEndpoints` | `outside`, `vpc` (with subnet and egress), or `managed` (Step Functions) |
-| Network | `resolveNetwork`, `endpointServices`, `NETWORK_PRICES` | Whether production builds the VPC: something is placed in it |
+| Networks | `config.networks`, `resolveNetwork`, `endpointServices`, `NETWORK_PRICES` | Each explicit VPC's settings and production-use evidence from workloads, database and discovered native consumers |
 | Local database | Authored Compose `services.postgres`, using the framework's Compose parser | Separate `local:postgres` identity; only image, named volumes and source are projected. Local database bindings point here; AWS bindings retain the catalog reference |
 | Workflows | `NormalizedWorkflow` | The IR as plain data, its generated state names, targets and integrations |
 | Fields | [server/edits/fields.ts](../../framework-studio/server/edits/fields.ts) | Each editable field's authored, effective and inherited value, and provenance |
@@ -84,7 +94,7 @@ The snapshot ([server/snapshot.ts](../../framework-studio/server/snapshot.ts)) h
 - the declared Prisma schema and sanitized local-database projection problems;
 - one source index;
 - a sha256 of every editable file;
-- the two deployment settings;
+- public input policy, selected-mode condition outcomes and client mapping metadata;
 - a revision string.
 
 Snapshots are rebuilt whole, never patched. Refreshes are serialized: requests made while
@@ -116,9 +126,9 @@ diagnostics attached. The UI greys it out and pauses editing until the config lo
 - **Locations** come from `locateConfigSource` in
   [packages/framework/scripts/config-source.ts](../../packages/framework/scripts/config-source.ts),
   the reader `framework:check` uses. It follows `defineFrameworkConfig` into each section
-  module, including spread arrays of modules, and returns each entry's file, key span and
+  module through literal section arrays, and returns each entry's file, key span and
   value span. It refuses the same shapes as `framework:check`, with the same messages. The
-  same reader also locates `defaults`, `network`, `resources`, `database` and `userPool`.
+  same reader also locates `defaults`, `networks`, `resources`, `database` and `userPool`.
 - **Origins bridge the two worlds.** Normalization names a declaration
   `section["key"]` with an optional property chain (`webSocket["$connect"].authorizer`).
   [server/model/origin.ts](../../framework-studio/server/model/origin.ts) parses that
@@ -190,7 +200,7 @@ The event and public-field Inspectors share a collapsed Triggers section. They s
 source-scoped attachment IDs, event destinations, adapter options and a handler-contract
 acknowledgement in the existing inspector draft. Native slots remain occupied. Trigger
 edits compose through BatchEditor, validate both graphs and TypeScript, check wiring and
-capability hashes, and use its atomic apply/rollback/undo journal. Computed/spread lists
+capability hashes, and use its reviewed apply/guarded rollback and source-recovery journal. Computed/spread lists
 and commented lists remain source edits. Review identifies changed edges and delivery
 semantics. Synthesis and deployment remain separate checks/actions.
 
@@ -202,12 +212,14 @@ span in the current snapshot and writes only the linked catalog stack's own file
 type-checks the proposed text and re-scans it, including the offset-matched link sites. The
 result must lose exactly the selected triggers and change no other native edge or manual
 wiring. The refreshed snapshot must match that scan before the journal records the change,
-which undoes and redoes through the same checks. A trigger list emptied in framework config
+which supports interrupted-write recovery. Saved change history belongs to Git. A trigger list emptied in framework config
 removes its `triggers` property and the Studio-added imports.
 
 [server/edits/](../../framework-studio/server/edits)
 
-The field registry is the only place that decides what is editable:
+The field registry owns ordinary scalar-field edits. Other typed operations (creation,
+resource inputs, connections, network/database settings and identity policy) have dedicated
+planners and source-shape checks; see [backend boundaries](../aws-studio-knowledge/studio/backend.md).
 
 `defaults.ts` derives shared Lambda fields from that registry, with explicit container
 and database-pool fields. `ModeModel.defaults` groups them under `defaults:<type>`;
@@ -271,8 +283,9 @@ handler, all projected from the resolved spec. Runtime and handler remain Docker
 for an image. Packaging previews validate the existing declaration; no handler/Dockerfile
 is generated or converted.
 
-Tools and events show their `deploy` as derived or AWS-invoked, read-only, which is what
-the framework says about them.
+Event Lambdas expose deployment settings subject to their trigger constraints. Tools
+inherit consuming agents' lanes unless their declaration explicitly overrides them.
+The field registry and deployment resolver own applicability and derived facts.
 
 ### Inspector sessions and batches
 
@@ -280,7 +293,9 @@ the framework says about them.
 persisted snapshot, selected inspector and graph mode. All editable controls stage through
 it: typed fields, switches, routes, island default groups, and the resource declaration
 form. Entries are keyed by underlying target/field, retain invalid input text, and disappear
-when they match the authored baseline. Environment values never enter the draft.
+when they match the authored baseline. Private environment values use a separate
+in-memory environment entry/review within the session; they cannot be mixed with a
+normal source batch and never enter source-diff or source-journal payloads.
 
 The inspector's scrolling content and sticky `DraftFooter` are separate flex children.
 Only explicit **Review Changes** requests a plan. It opens the review dialog immediately,
@@ -309,7 +324,7 @@ event's Node ZIP `index.ts` and declared export; the generic config allowlist st
 unchanged. A recognized exported handler constant is wrapped/unwrapped without rewriting
 its body. Imports are reused, or a collision-free import is added. Unsupported capture
 patterns and wrapper comments that would be lost are refused. Handler contents are
-checked during review, apply, undo and redo, including when the wrapper already matches.
+checked during review and apply, including when the wrapper already matches.
 Both changes share the batch journal and rollback. The legacy single-file edit API
 refuses this field. Both-mode framework validation still enforces replay for events
 requiring local execution. Regenerate the replay manifest before deployment.
@@ -323,10 +338,11 @@ Apply checks revisions and source hashes again, validates the complete candidate
 the existing atomic file replacement primitive, then confirms the evaluated fields and
 routes from disk. On failure it restores files only while their bytes still match the
 write, preserving concurrent external edits. This is one logical transaction with
-per-file atomic replacement, rather than a filesystem-wide atomic commit. Batch entries
-join `EditService`'s existing undo/redo journal and restore all files together. Resource
-inspectors use the same draft/review UX and their existing multi-file resource transaction,
-TypeScript validation and resource undo history.
+per-file atomic replacement, rather than a filesystem-wide atomic commit. Batch and resource
+transactions use a private write-ahead source journal and checkout lock, with explicit
+interrupted-write recovery. Resource inspectors use the same draft/review UX and their
+multi-file resource transaction and TypeScript validation. There is no global source
+Undo/Redo API; use Git for saved-source history.
 
 The original single-field API remains available for compatibility:
 
@@ -348,8 +364,8 @@ The original single-field API remains available for compatibility:
    - run the framework's validators;
    - predict the field's new effective value, the target's lanes and its placement.
    
-   Because only a literal in a literal object is ever edited, validating the patch is
-   validating the edited source.
+   Successful proposals also go through batch overlay evaluation of complete candidate
+   source. A semantic patch alone is not the proof that the proposed file is correct.
 4. **Preview.** The browser shows both verdicts, the unified diff, and impact notes (lane
    changes, `docker-compose.services.yml` needing `framework:generate`, Compose Watch
    restarting the dev servers).
@@ -365,8 +381,10 @@ The original single-field API remains available for compatibility:
    must equal the prediction. If it does not, and the file still holds exactly what was
    written, the original is restored (`reverted`). If someone has changed it since, it is
    left alone (`unconfirmed`).
-7. **Journal.** Undo and redo replay the other side of a recorded write. They are refused
-   if the file no longer holds the side they expect, and they preflight first.
+7. **Journal and recovery.** Before multi-file writes, a private source journal records
+   before/after bytes. Interrupted operations expose explicit recovery, guarded by current
+   hashes and ownership. Restore preserves intervening edits; Keep current source requires
+   validation and an unchanged fingerprint. This is recovery, not saved-source undo history.
 
 Every refresh expires outstanding previews. Writes are serialized through one lock.
 
@@ -385,7 +403,7 @@ Every refresh expires outstanding previews. Writes are serialized through one lo
   | --- | --- |
   | `hello` | The current revision |
   | `status` | `evaluating` |
-  | `snapshot` | The revision, external files, undo and redo labels |
+  | `snapshot` | The revision and external files; observers re-fetch source state |
   | `command` | Which command is running |
   | `infrastructure` | Inventory lifecycle changed; refresh the selected mode state |
 
@@ -408,8 +426,9 @@ killed after 5 minutes.
 
 `server/deployment-inputs.ts` projects fixed local `.env.dev`/`.env.prod` files into
 the snapshot after framework evaluation. `envfile:dev` and `envfile:prod` share one island;
-Only catalog `fromEnv` declarations become input/secret nodes, retaining their existing
-IDs. Other dotenv names remain file metadata. `supplies` edges carry names, presence and assignment locations,
+Catalog `fromEnv` declarations become environment-linked input/secret nodes, retaining their existing
+IDs; public `resource.value` declarations remain source parameter nodes without file-supply edges.
+Other dotenv names remain file metadata. `supplies` edges carry names, presence and assignment locations,
 never values. Multiline contents cannot introduce false parameter names. The file
 inspector loads the selected file's values through a guarded, no-store endpoint, outside
 snapshots, query caches and evaluator processes. `server/deployment-input-edits.ts` accepts
@@ -431,9 +450,11 @@ missing file's node wears a red cross. Reads never create files. Watchers
 refresh both source projections, while inventory fingerprints track the selected mode's
 file. These projections are not framework declarations or a second configuration store.
 
-`framework-config/client-environment.ts` holds literal, mode-specific client-variable
-references. `scripts/client-environment-mapping.ts` defines their types (input, public
-stack output, deployment region, URL from a port, or empty), with per-mode enable flags.
+`framework-config/client-environment.ts` holds literal client-variable references:
+one recipe for both modes, or `{ dev, prod }` where sources differ.
+`scripts/client-environment-mapping.ts` defines their types (input, public stack output,
+deployment region, URL from a port, or empty). Source availability determines values;
+there is no independent `enabled` flag.
 `server/client-environment-source.ts` reads source literals without executing code and
 rewrites only changed fields. Validation rejects secret inputs, raw values and private
 outputs. The source file participates in the existing config hashes and watcher.
@@ -444,25 +465,27 @@ inspector uses this same resolver so source/status previews cannot remain stuck 
 `server/client-environment.ts` binds declarations to current resource IDs after input-file
 and output-stack projection. `client-envfile` stands on `island:client-environment`;
 its `maps` edges point from declared input parameters or existing stack identities into
-`client-envfile`, following variable flow into `client-app/.env`. CDK environment files
+`client-envfile`, following variable flow into generated client environment files. CDK environment files
 connect only to the input parameters they supply. Client mappings inherit parameter
 presence and defaults for the selected mode; undeclared file variables are not sources.
 Optional `when: { input, equals }` conditions use sanitized parameter comparison outcomes
-in Studio and the same declared input/default during export, writing empty on a mismatch. A
-disabled field retains its reference but has no connection in that mode. The compact
+in Studio and the same declared input/default during export, writing empty on a mismatch.
+An absent-mode or optional unsupplied input leaves its generated field blank; a missing
+required input blocks export. Standalone values need no environment-file assignment. The compact
 file/island editor joins the inspector draft and batch review/apply flow, including
-conflict checks, atomic writes, confirmation and global undo/redo. New fields start empty
+conflict checks, atomic file writes, confirmation and interrupted-write recovery. New fields start empty
 in both modes. Region refers to Cognito's deployment metadata, not the local SDK region.
 This projection does not read client values, query deployed outputs or generate files.
 `scripts/client-environment-source.ts` supplies the shared literal reader; the exporter
 and Studio use the same reference validation. `scripts/client-environment-export.ts`
 resolves saved mappings from the selected deployment's metadata, public output allowlist,
-and its own mode's authored CDK input file (or explicit inputs override). Declared defaults
+and its own mode's authored CDK input file (or explicit inputs override). Declared public values, defaults
 and secret classification come from the resource catalog. It validates all results before
-the existing atomic multi-file write; no values enter Studio projections or review data.
-Each row reuses `EnvironmentPills` as toggle buttons to stage its two independent enable
+the existing guarded multi-file write; private resolved values do not enter Studio projections
+or review data. Public authored values/defaults remain visible source metadata.
+Environment pills describe resolved availability rather than stage independent enable
 flags. Inline renames preserve both recipes and stage an object-key rename; the source
-rewriter, review, conflicts and undo/redo keep their ordinary behavior.
+rewriter, review and conflict checks keep their ordinary behavior.
 
 `scripts/cloud-assembly.ts` extends the deployment assembly reader into a shared
 manifest traversal. It follows listed stacks and nested cloud assemblies, validates
@@ -487,8 +510,8 @@ unmarked imports remain unresolved. No deployed status or resource properties ar
 
 `scripts/cdk-synthesis.ts` runs only the local CDK CLI with a bounded timeout/output and
 no shell. Its caller supplies context, environment and profile; it has no dev/prod policy
-or deployment orchestration. Future Deploy & Run can reuse it and the shared assembly
-reader without importing Studio or its UI.
+or deployment orchestration. Deploy & Run has a separate planning/operation authority
+over the shared deployment scripts; it does not gain mutation authority from this inventory.
 
 `server/infrastructure.ts` owns Studio's mode adapter and in-memory last-good states.
 The current adapter copies `cdk-app/.env.dev` or `.env.prod` privately, overrides `PROD_DEPLOYMENT` in that
@@ -497,7 +520,8 @@ active inputs are never written. This one adapter is the migration point for fut
 context-only mode selection. Normal production guards
 remain active; the adapter does not silently override development-only security settings.
 Normal CDK credential/context lookups and local asset bundling can occur during synthesis.
-There is no deployment, secret upload or new selected-secret read/edit API.
+Synthesis itself performs no deployment or secret upload; private input editing belongs
+to the separate DeploymentInputService.
 
 GET reads state without starting work. POST explicitly runs one synthesis at a time in
 an isolated assembly, then deletes its temporary inputs and templates. Input values and
@@ -505,7 +529,7 @@ their encoded forms are redacted from returned errors. Inventories exclude templ
 properties, outputs and arbitrary metadata. Fingerprints of relevant authored sources,
 inputs, context and dependency versions detect stale results, including edits during a
 run. Errors retain the last successful inventory, timestamp and configuration. A server
-restart clears inventory history; this milestone does not persist raw assemblies.
+restart clears inventory history; this service does not persist raw assemblies.
 
 `src/views/Infrastructure.tsx` is an inline inventory shared by the Stacks island inspector
 and catalog stack inspectors. The island exposes synthesis directly; a stack lazily opens
@@ -521,8 +545,9 @@ No generated infrastructure nodes are added to the map. Synthesis is disabled wh
 inspector draft is dirty, validation is pending, or a source operation is running, and never
 starts from view/mode changes. Automatic graph health remains in the header; the distinct
 `framework:check` generated-file/local-wiring audit lives in health's Additional checks.
-Deployment Inputs,
-creation wizards and deployment comparisons remain subsequent milestones.
+Deployment Inputs, creation wizards and deployment planning are implemented through
+their separate services. See [interface workflows](../aws-studio-knowledge/studio/interface.md)
+and [deployment operations](../aws-studio-knowledge/deployment/operations.md).
 
 ## Security model
 
@@ -535,13 +560,16 @@ The studio is a local tool that can write source, so the browser is treated as u
 | Per-process token, served inside the page, required on every API call (SSE takes it as a query parameter) | Other origins and processes | `guards.ts` (`apiGuard`) |
 | State-changing requests need `Origin: http://<host>` | Cross-site requests | `apiGuard` |
 | Generic edits write only to `framework.config.ts` and `framework-config/**/*.ts`, by real path, no symlinks; paired replay edits resolve only the selected event's TypeScript entry point | Arbitrary source writes | `files.ts` (`assertWritable`), `edits/local-replay.ts` |
-| Two fixed commands, no shell | Command execution | `commands.ts` |
+| Two fixed generic commands, no shell; operational services have separate typed actions | Arbitrary request-controlled shell execution | `commands.ts`, dedicated service routers |
 | Separate synthesis-only CLI runner; validated mode/profile; private isolated assembly | Arbitrary command/input-path execution | `infrastructure.ts`, `scripts/cdk-synthesis.ts` |
-| Evaluators read a synthetic inputs file | Secrets in memory, logs or the snapshot | `inputs.ts` |
+| Evaluators receive synthetic mode inputs and condition outcomes | Accidental authored dotenv values in the graph protocol; not hostile repository code | `inputs.ts`, `evaluator/pool.ts` |
 
 No CORS headers are sent. Logical graph evaluation makes no AWS call. Explicit CDK
 synthesis may perform credential/context lookups but never deploys. The snapshot and
-infrastructure inventory carry references and identifiers, never resolved input values.
+infrastructure inventory exclude resolved environment-file values; public source parameters
+and defaults may appear in the logical snapshot. Mutation requests also check the current
+Studio protocol version. Dedicated operational services can make AWS calls only through
+their own inspection, review and approval paths.
 
 ## The browser
 
@@ -577,19 +605,23 @@ infrastructure inventory carry references and identifiers, never resolved input 
 
 | Method and path | Body | Answer |
 | --- | --- | --- |
-| `GET /api/snapshot` | | `{ snapshot, history, evaluating, commands, busy }`; 503 until the first evaluation |
+| `GET /api/snapshot` | | Snapshot, source recovery/watch status, evaluation and command state; 503 until the first evaluation |
 | `GET /api/events?token=` | | Server-sent events, above |
 | `POST /api/edits/batch/plan` | `{ edits, revision }` | Combined per-file diffs, summaries, both complete-source validations |
-| `POST /api/edits/batch/apply` | `{ planId }` | One validated transaction and undo entry |
+| `POST /api/edits/batch/apply` | `{ planId }` | One validated source transaction with guarded rollback/recovery |
 | `POST /api/edits/plan` | `{ intent, revision }` | `PlanResponse`: diff, both preflights, `ok`, impact |
 | `POST /api/edits/apply` | `{ planId }` | `{ status: applied, reverted or unconfirmed, message, revision }` |
-| `POST /api/edits/undo`, `/redo` | `{}` | As apply |
+| `GET /api/source-recovery` | | Pending interrupted-write records |
+| `POST /api/source-recovery/restore`, `/keep` | Reviewed record, typed approval; keep also requires fingerprint | Explicit source recovery |
 | `POST /api/commands/:name` | `{ confirmed? }` | `{ command, exitCode, output, durationMs }` |
 | `GET /api/infrastructure?mode=dev\|prod` | | Mode state, freshness, last-good inventory and generation evidence |
 | `GET /api/websockets/defaults` | | `{ local, apiGateway }`: the WebSockets page's starting URLs, from two keys of root `.env` |
 | `POST /api/infrastructure/synthesize` | `{ mode, profile? }` | Explicit synthesis result; last-good inventory retained on failure |
 
-The types are in [shared/api.ts](../../framework-studio/shared/api.ts).
+The generic types are in [shared/api.ts](../../framework-studio/shared/api.ts).
+This table covers the original editing/synthesis core. Current dedicated database,
+identity, deployment and lifecycle API families are mapped in
+[backend boundaries](../aws-studio-knowledge/studio/backend.md).
 
 ## File map
 
@@ -597,7 +629,7 @@ The types are in [shared/api.ts](../../framework-studio/shared/api.ts).
 | --- | --- |
 | `server/index.ts` | Entry point and `--print` |
 | `server/server.ts` | Express, Vite middleware, routes, SSE, watcher wiring |
-| `server/guards.ts`, `server/files.ts`, `server/inputs.ts` | Host and token guards, the write allowlist and hashes, the two deployment keys |
+| `server/guards.ts`, `server/files.ts`, `server/inputs.ts` | Host and token guards, the write allowlist and hashes, mode inputs and condition outcomes |
 | `server/evaluator/` | `evaluate.ts` (child), `pool.ts` (dev and prod children) |
 | `server/model/` | `project.ts`, `origin.ts`, `preflight.ts` |
 | `server/source/` | `index.ts` (spans and editability), `syntax.ts`, `catalog.ts` |

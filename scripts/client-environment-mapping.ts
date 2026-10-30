@@ -25,7 +25,7 @@ export const isSplitMapping = (mapping: ClientEnvironmentMapping): mapping is { 
 /** The recipe a mapping uses in one environment. */
 export const clientBindingFor = (mapping: ClientEnvironmentMapping, mode: "dev" | "prod"): ClientEnvironmentBinding => isSplitMapping(mapping) ? mapping[mode] : mapping;
 
-export const publicInputName = (name: string) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(name) && !/SECRET|PASSWORD|TOKEN|CREDENTIAL|PRIVATE_KEY|ACCESS_KEY|API_KEY/i.test(name);
+export const publicInputName = (name: string) => (/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || /^resource:[A-Za-z][A-Za-z0-9]*(?:\.[A-Za-z][A-Za-z0-9]*)*$/.test(name)) && !/SECRET|PASSWORD|TOKEN|CREDENTIAL|PRIVATE_KEY|ACCESS_KEY|API_KEY/i.test(name);
 
 /** Shared draft/request validation. Only references can enter source and graph data. */
 export function clientMappingsError(value: unknown): string | undefined {

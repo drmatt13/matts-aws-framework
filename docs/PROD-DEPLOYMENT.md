@@ -4,6 +4,9 @@ This guide owns first deployment, subsequent releases, custom domains/Google set
 and teardown. Commands run from the repository root. Replace placeholders and use the
 intended account/profile/region. [Framework](FRAMEWORK.md) explains configuration semantics;
 [Database](DATABASE.md) owns migration commands.
+Read [the operational lifecycle](aws-studio-knowledge/deployment/lifecycle.md) for
+the distinction between source review, infrastructure apply, database application,
+identity administration and frontend publication. Each has its own destination and approval.
 
 ## Before deployment
 
@@ -37,10 +40,13 @@ share settings or secret values. Set:
 - COGNITO_SES_FROM_EMAIL, an address or domain already verified in Amazon SES. Cognito's
   built-in sender stops after about 50 messages a day, which ends sign-up verification and
   password reset for everyone; synth warns while it is unset.
-- ENABLE_WEBSOCKET_API=true to enable the WebSocket handlers and their authorizer,
-  or false to exclude them at the next deployment. This is a catalog input used by
-  their conditional Deploy settings. Also configure any cloud-enabled workload inputs. The example
-  service and example agent are local-only until their declarations enable cloud deployment. SKIP_EMAIL_VERIFICATION is
+- The `resources.enableWebSocketApi` catalog selector controls the WebSocket handlers
+  and authorizer. It currently authors `resource.value("true")`; edit that standalone
+  value, or its per-mode values, in source/Studio. A dotenv `ENABLE_WEBSOCKET_API` line
+  does not override it unless the declaration is explicitly linked to that input.
+  Also configure any cloud-enabled workload inputs. The example service is local-only;
+  the example agent currently declares `deploy: "both"`, so production includes its
+  AgentCore resources and tools. SKIP_EMAIL_VERIFICATION is
   refused in production.
 
 Both hostname choices serve the frontend and same-origin /api, with Cognito callback,
@@ -261,9 +267,11 @@ resource manifest, which belong to local development. Both output files are igno
 no secrets are exported.
 
 Client settings follow the saved mappings in `framework-config/client-environment.ts`,
-editable through Studio's **Client environment** inspector. The Prod pill on each field
-controls whether production export includes it; renamed fields keep both source recipes.
-Production input references use `cdk-app/.env.prod`, independently of development inputs.
+editable through Studio's **Client environment** inspector. Each field has one shared
+recipe or distinct `dev`/`prod` recipes; presence follows its sources, with no separate
+inclusion toggle. Renamed fields keep both recipes. Standalone public values resolve
+from their declarations. Environment-linked inputs use the selected target's inputs
+file (conventionally `cdk-app/.env.prod`), independently of development inputs.
 Export validates references before writing either output file; a missing required source
 preserves the existing files. Applying a Studio mapping draft does not export or deploy.
 
@@ -417,7 +425,8 @@ The stacks are the ones whose own records name the deployment, found in AWS rath
 synthesizing the current source, so a renamed or removed stack is still deleted and no Docker
 is needed. The mode must be stated and must match what is deployed; omit `-c prodDeployment=true`
 for a development deployment. Importers are deleted before the stacks they import from.
-Termination protection is switched off only after the typed confirmation. Stacks named like
+Termination protection is switched off only when the saved review explicitly includes
+that choice and the operator supplies the typed confirmation. Stacks named like
 the deployment's but without its identity are left in place. A stack that fails to delete
 stops the teardown and names the resources CloudFormation could not remove; `--retain-failed`
 keeps those and deletes the rest. Managed secrets are kept (a returning deployment reuses them),

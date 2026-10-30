@@ -180,7 +180,7 @@ export function Board() {
               }}
               title={[target?.title, route?.browserPath ?? route?.path, resource ? `${resource.path.join(".")}${resource.typeText ? ` · ${resource.typeText}` : ""}` : undefined, localService?.title, resource?.absent ? `Absent in the ${model.mode === "dev" ? "development" : "production"} graph` : undefined].filter(Boolean).join("\n")}
             >
-              <EntityIcon icon={localService ? "postgres" : target ? targetIcon(target) : route ? routeIcon(route) : resourceIcon(resource!)} badge={resource ? resourceBadge(resource) : undefined} />
+              <EntityIcon icon={localService ? "postgres" : target ? targetIcon(target) : route ? routeIcon(route) : resourceIcon(resource!)} badge={resource ? resourceBadge(resource, index.resources) : localService || route ? "managed" : undefined} />
               {localService ? <><span data-ui="label" className="min-w-0 flex-1 truncate group-data-[shape=route]/node:font-mono group-data-[shape=route]/node:text-[0.82rem] group-data-[unread=true]/node:text-graphite">{localService.title}<span data-ui="sub" className="block truncate text-step-minus1 text-graphite">{localService.image} · Compose</span></span><DeploymentBadge kind="dev" /></> : null}
               {target ? <TargetNode target={target} /> : null}
               {route ? (

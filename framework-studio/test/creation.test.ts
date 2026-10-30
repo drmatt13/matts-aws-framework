@@ -216,6 +216,36 @@ test("catalog creation preserves authored environment values and secret consumer
   rmSync(authored);
 });
 
+test("standalone input creation reviews its source value and consumer binding without environment-file links", async () => {
+  const templates = ["dev", "prod"].map(mode => path.join(fixture, `cdk-app/.env.${mode}.template`));
+  const before = templates.map(file => readFileSync(file, "utf8"));
+  const request = valid("input", { id: "standaloneSetting", linkedToEnv: false, envName: "", value: "enabled", choices: ["enabled", "disabled"], consumer: "lambda:graphql-api", consumerVariable: "STANDALONE_SETTING", tags: { area: "settings" } });
+  const proposal = planCreation(fixture, state(), request);
+  assert.ok([...proposal.overrides.keys()].every(file => !/\.env\./.test(file)), "standalone creation never proposes an environment file or template");
+  const plan = await edits.planBatch([{ kind: "create", request }], revision());
+  assert.ok(plan.ok, JSON.stringify(plan.preflight));
+  assert.ok(plan.changes.every(change => !/\.env\./.test(change.file)));
+  const declaration = plan.changes.find(change => change.file === "framework-config/resources/inputs.ts")!.diff.unified;
+  assert.match(declaration, /resource\.value\("enabled",/);
+  assert.match(declaration, /\.enum\("enabled", "disabled"\)/);
+  for (const [index, file] of templates.entries()) assert.equal(readFileSync(file, "utf8"), before[index], "review preserves templates");
+  const applied = await edits.applyBatch(plan.planId);
+  assert.equal(applied.status, "applied", applied.message);
+  for (const model of Object.values(state().snapshot.models)) {
+    const resource = model.resources.find(item => item.id === "resource:standaloneSetting")!;
+    assert.equal(resource.authoredValue, "enabled");
+    assert.equal(resource.fromEnv, undefined);
+    assert.equal(resource.default, undefined);
+    assert.equal(model.tagging?.[resource.id]?.effective.area, "settings");
+    assert.ok(model.targets.find(target => target.ref === "lambda:graphql-api")!.environment.some(entry => entry.name === "STANDALONE_SETTING" && entry.value.kind === "reference" && entry.value.resource === resource.id));
+  }
+  for (const [index, file] of templates.entries()) assert.equal(readFileSync(file, "utf8"), before[index], "apply preserves templates");
+  const deploy = await edits.planBatch([{ kind: "deploy", target: "lambda:graphql-api", value: { when: { resource: "resource:standaloneSetting", equals: "enabled" } } }], revision());
+  assert.ok(deploy.ok, JSON.stringify(deploy.preflight));
+  assert.equal((await edits.applyBatch(deploy.planId)).status, "applied");
+  for (const model of Object.values(state().snapshot.models)) assert.equal(model.targets.find(target => target.ref === "lambda:graphql-api")?.lanes.when?.resource, "resource:standaloneSetting", "the standalone value remains a selectable deployment condition");
+});
+
 test("partial multi-file write failure restores existing files and removes newly created files", async () => {
   let writes = 0;
   const failing = new EditService(fixture, builder, (root, file, before, after) => {

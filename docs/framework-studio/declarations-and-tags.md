@@ -158,7 +158,8 @@ an explanation. Studio does not replace expressions or remove comments to make t
 
 Tag changes join the existing draft. **Review Changes** validates both modes and displays
 per-file source diffs. **Apply All** writes the reviewed source, checks the refreshed model,
-and records undo/redo. Source revisions and file hashes reject stale reviews; guarded
+and records interrupted-write recovery metadata. Use Git for saved-source history.
+Source revisions and file hashes reject stale reviews; guarded
 rollback preserves concurrent changes. Multi-file writes use compensating restoration,
 not a durable crash-atomic transaction. Saving source does not deploy or call live tagging APIs.
 

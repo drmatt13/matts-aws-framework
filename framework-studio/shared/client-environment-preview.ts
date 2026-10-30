@@ -12,24 +12,24 @@ export function previewClientBinding(name: string, binding: ClientEnvironmentBin
   const inputs = `cdk-app/.env.${model.mode}`;
   const graph = model.mode === "dev" ? "development" : "production";
   const inputSource = (name: string) => {
-    const catalog = model.resources.find((resource) => resource.fromEnv === name && resource.kind === "input");
+    const catalog = model.resources.find((resource) => (resource.fromEnv === name || resource.id === name) && resource.kind === "input");
     const entry = catalog?.inputSources?.find((source) => source.file === inputs)?.entry;
     // The server resolved each input with the framework's resolver; the preview only reads the state.
-    const state = catalog?.inputState ?? (catalog?.absent ? "not-applicable" : catalog?.default !== undefined ? "fallback" : catalog?.required ? "missing" : "unresolved");
+    const state = catalog?.inputState ?? (catalog?.absent ? "not-applicable" : catalog?.authoredValue !== undefined ? "supplied" : catalog?.default !== undefined ? "fallback" : catalog?.required ? "missing" : "unresolved");
     const absent = state === "not-applicable";
     const supplied = !!catalog && (state === "supplied" || state === "fallback");
     const required = !!catalog && state === "missing";
-    const source: ClientEnvironmentSource = { entity: catalog?.id, label: catalog ? `${catalog.path.join(".")} · ${name}` : `${name} (undeclared input parameter)`, available: supplied, source: entry?.source };
+    const source: ClientEnvironmentSource = { entity: catalog?.id, label: catalog ? `${catalog.path.join(".")} · ${catalog.fromEnv ?? "standalone value"}` : `${name} (undeclared input parameter)`, available: supplied, source: entry?.source };
     return { source, catalog, state, absent, supplied, required };
   };
   /** Why an input leaves the field blank here, or what it needs. */
   const unsupplied = (input: ReturnType<typeof inputSource>, label: string, expression: string): ClientEnvironmentEntry =>
     !input.catalog ? { name, expression, required: true, status: "unavailable", sources: [input.source], note: `Declare ${label} as a public input parameter.` }
-    : input.state === "invalid" ? { name, expression, required: true, status: "unavailable", sources: [input.source], note: `${label} in ${inputs} is not one of its declared choices.` }
+    : input.state === "invalid" ? { name, expression, required: true, status: "unavailable", sources: [input.source], note: `${label}${input.catalog?.fromEnv ? ` in ${inputs}` : " in its declaration"} is not one of its declared choices.` }
     // An input this graph does not hold connects nothing here; the other graph still shows the link.
     : input.absent ? { name, expression, required: false, status: "empty", sources: [], note: `${label} is not declared in ${graph}, so this field is blank there.` }
-    : input.required ? { name, expression, required: true, status: "unavailable", sources: [input.source], note: `Set ${label} in ${inputs}. It is required in ${graph}.` }
-    : { name, expression, required: false, status: "empty", sources: [input.source], note: `Blank until ${label} is set in ${inputs} or given a default.` };
+    : input.required ? { name, expression, required: true, status: "unavailable", sources: [input.source], note: `Set ${label} in ${input.catalog?.fromEnv ? inputs : "its declaration"}. It is required in ${graph}.` }
+    : { name, expression, required: false, status: "empty", sources: [input.source], note: input.catalog?.fromEnv ? `Blank until ${label} is set in ${inputs} or given a default.` : `Set the value in ${label}'s declaration.` };
   if (binding.when) {
     const { when, ...value } = binding;
     const condition = inputSource(when.input);
@@ -43,7 +43,7 @@ export function previewClientBinding(name: string, binding: ClientEnvironmentBin
   }
   if (binding.kind === "empty") return { name, expression: '""', required: false, status: "empty", sources: [], note: `Written blank in ${graph}.` };
   if (binding.kind === "input") {
-    if (!binding.name) return { name, expression: "Choose an input", required: true, status: "unavailable", sources: [], note: `Choose a public CDK input from ${inputs}.` };
+    if (!binding.name) return { name, expression: "Choose an input", required: true, status: "unavailable", sources: [], note: "Choose a public input parameter." };
     const input = inputSource(binding.name);
     const expression = `\${${binding.name}}`;
     return input.supplied ? { name, expression, required: true, status: "mapped", sources: [input.source], note: `Read ${binding.name} through its input parameter in ${graph}.` }

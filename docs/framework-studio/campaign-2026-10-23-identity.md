@@ -1,5 +1,10 @@
 # Identity, Cognito, domains campaign evidence
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 Owner: `identity_domains`, October 23, 2026. Scope: original families B/C/D and
 Cognito retention in E. Source checkout shared by exclusive file leases. Browser
 experiments use a separate Chrome tab and port 4593; source application is confined

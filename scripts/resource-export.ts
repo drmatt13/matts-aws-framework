@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
-  getLocalTargets, isResourceAbsent, isResourceReference, resourceAttributeKey,
+  getLocalTargets, isResourceAbsent, isResourceReference, isResourceValueReference, resourceAttributeKey,
   resolveWorkflow, integrationKey, parseResourceManifest, type FrameworkConfig, type ResourceManifest,
 } from "@repo/framework/config";
 
@@ -71,7 +71,7 @@ export function collectDevelopmentResources(stacks: readonly DeploymentStack[], 
   const manifest = parseResourceManifest(JSON.stringify({ ...identity, attributes, integrations }));
   for (const target of getLocalTargets(config, ["http", "webSocket", "webSocketAuthorizer", "event", "service", "task", "workflow"], "unconditioned")) {
     for (const reference of [...Object.values(target.environment).filter(isResourceReference), ...Object.values(target.secrets)]) {
-      if (isResourceAbsent(reference) || (reference.fromEnv && !reference.secretArn)) continue;
+      if (isResourceAbsent(reference) || isResourceValueReference(reference) || (reference.fromEnv && !reference.secretArn)) continue;
       if (attributes[resourceAttributeKey(reference)] === undefined && !reference.optional) throw new Error(`${target.reference} needs an attribute absent from the deployment. Deploy the updated resource declarations before exporting.`);
     }
     if (target.kind === "workflow") for (const use of resolveWorkflow(config, target.id).integrations) {

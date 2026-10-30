@@ -47,15 +47,17 @@ both and include enabled cloud functions in both AWS modes. Tools default to con
 agents' union, with explicit policies overriding it. Disabled events omit optional
 native hooks and framework trigger descriptors; required native lookups still fail.
 
-`isTargetEnabled` applies deploy tokens or `{ when: { resource, equals } }` to execution lanes. Conditions select declared non-secret `fromEnv` strings; lane readers resolve context, file and default. Optional unset inputs disable the workload. Conditional queries require explicit `DeployInputs`; generators request `"unconditioned"` supersets. `isTargetDeployed` separately applies the deployment mode: dev builds AWS-invoked event infrastructure, not the normal locally executed HTTP/task/workflow/agent fleet; prod builds cloud-enabled workloads. Events have no target deploy toggle. Tools derive lanes from consuming agents. WebSocket handlers deploy in both AWS graphs when enabled, and the framework builds their API when a route exists. Guard validation requires every route to fit inside `$connect` and its authorizer. These predicates are not synonyms. [Environment modes](../deployment/environments.md) owns named-target behavior.
+`isTargetEnabled` applies deploy tokens or `{ when: { resource, equals } }` to execution lanes. Conditions select declared non-secret strings from `resource.value` or `resource.fromEnv`; standalone values resolve from source, while environment-linked inputs resolve context, file and default. Optional unset inputs disable the workload. Conditional queries require explicit `DeployInputs`; generators request `"unconditioned"` supersets. `isTargetDeployed` separately applies the deployment mode: dev builds AWS-invoked event infrastructure, not the normal locally executed HTTP/task/workflow/agent fleet; prod builds cloud-enabled workloads. Event deploy policies apply in both graphs. Tools derive their default lanes from consuming agents, with explicit policies supported. WebSocket handlers deploy in both AWS graphs when enabled, and the framework builds their API when a route exists. Guard validation requires every route to fit inside `$connect` and its authorizer. These predicates are not synonyms. [Environment modes](../deployment/environments.md) owns named-target behavior.
 
 `assertCloudEdgesResolvable` rejects cloud consumers whose required declared targets/resources cannot resolve. Source validation also checks literal routes, overlap, handler wrappers, invocation cycles, workflow semantics and runtime packaging. `npm run framework:generate` emits projections; `framework:check` detects drift and authoring violations. Neither is a live deployment check.
 
 The application uses one shared conditional Deploy input for its WebSocket routes
-and authorizer: `resources.enableWebSocketApi` reads `ENABLE_WEBSOCKET_API`, accepts
-`"true"`/`"false"` and defaults to `"true"`. Every handler requires `equals: "true"`.
-The two authored mode files and templates set it independently. This catalog input
-does not add another global API Gateway flag to CDK.
+and authorizer: `resources.enableWebSocketApi` is
+`resource.value("true").enum("true", "false")` in
+[resources/inputs.ts](../../../framework-config/resources/inputs.ts). Every handler
+requires `equals: "true"`. This source-owned value has no environment-file line or
+context override; use a mode-valued declaration if the two graphs should differ.
+It does not add another global API Gateway flag to CDK.
 
 Batch tooling uses `getLambdaTargets` and `createTargetArtifactValidator` from the
 configuration/source entry points to resolve Lambda build settings once per

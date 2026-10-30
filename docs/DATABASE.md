@@ -1,5 +1,12 @@
 # Database
 
+Database source generation, offline migration planning, target inspection and SQL
+application are separate stages. The
+[operational lifecycle](aws-studio-knowledge/deployment/lifecycle.md) locates them
+alongside infrastructure deployment and frontend publication; completing either of
+those does not apply a migration. The [Studio workbench](#studio-workbench) is a visual
+interface over this same contract and migration history.
+
 `packages/database` owns storage, migrations, connections, and the persistence API.
 For agent-driven changes through GraphQL and React, start with [Data features](DATA-FEATURES.md).
 

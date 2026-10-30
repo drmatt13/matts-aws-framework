@@ -1,5 +1,10 @@
 # Job 3 independent second application evidence
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 The independently authored second application completed the executed bounded
 Pass Two scope: fresh local database/service journeys, AWS creation and repair,
 native authentication and scoped Identity credentials, HTTP upload/event/read,

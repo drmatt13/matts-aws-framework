@@ -10,6 +10,7 @@ import { InspectorSwitch } from "./InspectorUI";
 import { InterfaceEndpointPicker } from "./InterfaceEndpointPicker";
 import { TagRows } from "./Tags";
 import { deploymentSettingLabel } from "../deployment";
+import { resourceOutputEnvironmentName } from "@repo/framework/config";
 
 /** Forms are part of InspectorDraft: review/back, source conflicts, navigation,
  * browser exit, discard and apply all share the existing session lifecycle. */
@@ -22,6 +23,7 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
   const touch = (field: string) => setTouched(current => current.has(field) ? current : new Set([...current, field]));
   const creator = CREATORS[entry.resourceKind];
   const catalogInput = entry.resourceKind === "input" || entry.resourceKind === "secret";
+  const linkedToEnv = entry.resourceKind === "secret" || entry.form.linkedToEnv !== false;
   const disabled = !!draftState.busy || draft.conflict || !!model.stale || live.evaluating;
   useEffect(() => {
     const element = dialog.current!;
@@ -44,6 +46,10 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
   }
   catch (error) { if (error instanceof CreationValidationError) problem = error; }
   const fields = creator.fields.filter((field) => {
+    if (entry.resourceKind === "input") {
+      if (["envName", "required", "defaultValue"].includes(field.key)) return linkedToEnv;
+      if (field.key === "value") return !linkedToEnv;
+    }
     if (entry.resourceKind === "auth-provider") {
       if (["issuer", "clientId", "secretEnvName", "scopes"].includes(field.key)) return entry.form.providerType === "oidc";
       if (field.key === "metadataUrl") return entry.form.providerType === "saml";
@@ -62,12 +68,16 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
     const serverError = draftState.error?.startsWith(`${field.key}: `) ? draftState.error.slice(field.key.length + 2) : undefined;
     const error = serverError ?? (problem?.field === field.key && touched.has(field.key) ? problem.message : undefined);
     const selector = webSocketCondition && model.resources.find(resource => resource.id === webSocketCondition.resource);
-    const help = field.key === "deploy" && webSocketCondition ? `Copies $connect's current condition: ${selector?.fromEnv ?? webSocketCondition.resource} equals ${JSON.stringify(webSocketCondition.equals)}. Each environment resolves its own value. Off keeps the new handler disabled.` : field.key === "deploy" && webSocketConditionProblem ? webSocketConditionProblem.message : field.help;
+    const help = field.key === "deploy" && webSocketCondition ? `Copies $connect's current condition: ${selector?.fromEnv ?? selector?.path.join(".") ?? webSocketCondition.resource} equals ${JSON.stringify(webSocketCondition.equals)}. Each environment resolves its own value. Off keeps the new handler disabled.` : field.key === "deploy" && webSocketConditionProblem ? webSocketConditionProblem.message : field.help;
     const describedBy = [help ? `${id}-help` : undefined, error ? `${id}-error` : undefined].filter(Boolean).join(" ") || undefined;
     const value = entry.form[field.key];
     const update = (next: string | number | boolean) => {
       touch(field.key);
       const form = { ...entry.form, [field.key]: next };
+      if (field.key === "linkedToEnv") {
+        if (next) { form.defaultValue = String(entry.form.value ?? ""); form.value = ""; }
+        else { form.value = String(entry.form.defaultValue ?? ""); form.defaultValue = ""; form.required = false; }
+      }
       if (field.key === "existingTarget" && next) { const target = model.targets.find(target => target.ref === next); if (target) form.id = target.id; }
       const envName = (value: string) => value.replace(/([a-z0-9])([A-Z])/g, "$1_$2").replaceAll("-", "_").toUpperCase();
       const route = (name: string, category: unknown) => entry.resourceKind === "service" ? `/${name}/*` : category === "webSocket" ? name : `/${name}`;
@@ -82,7 +92,7 @@ export function CreationWizard({ entry, back }: { readonly entry: CreationEntry;
       if (field.key === "category" && (!form.path || form.path === route(String(form.id), entry.form.category))) form.path = route(String(form.id), next);
       if (field.key === "bindingResource" && !form.bindingVariable) {
         const resource = model.resources.find((resource) => resource.id === next);
-        if (resource?.fromEnv) form.bindingVariable = resource.fromEnv + (resource.kind === "secret" && !["service", "task"].includes(entry.resourceKind) ? "_SECRET_ARN" : "");
+        if (resource) form.bindingVariable = (resource.fromEnv ?? resourceOutputEnvironmentName(resource)) + (resource.kind === "secret" && !["service", "task"].includes(entry.resourceKind) ? "_SECRET_ARN" : "");
       }
       if (field.key === "consumer" && !form.consumerVariable) {
         const target = model.targets.find((target) => target.ref === next);

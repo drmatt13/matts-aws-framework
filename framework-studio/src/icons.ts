@@ -1,4 +1,5 @@
 import type { ModelResource, ModelRoute, ModelTarget } from "../shared/model";
+import { isFrameworkManagedResource } from "../shared/framework-management";
 
 /** Shared by the DOM views and the canvas. Paths are local, versioned SVG assets. */
 export const ICONS = {
@@ -78,9 +79,9 @@ export function resourceIcon(resource: ModelResource): IconKey {
   return "construct";
 }
 
-export function resourceBadge(resource: ModelResource): IconKey | undefined {
+export function resourceBadge(resource: ModelResource, resources?: ReadonlyMap<string, ModelResource>): IconKey | undefined {
   if (resource.stackUsage?.status === "unreferenced") return "unattached";
   if (resource.deploymentFile && !resource.deploymentFile.exists) return "missingFile";
-  if (resource.frameworkManaged) return "managed";
+  if (isFrameworkManagedResource(resource, resources)) return "managed";
   return undefined;
 }

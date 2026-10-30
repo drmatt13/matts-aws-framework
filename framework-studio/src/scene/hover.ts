@@ -3,6 +3,7 @@ import { titleOf, type ModelIndex } from "../lookup";
 import { entryCount, groupEntries, groupUse, nameList } from "../input-groups";
 import type { SceneNode } from "./build";
 import type { Availability } from "../deployment";
+import { isFrameworkManagedResource } from "../../shared/framework-management";
 
 /**
  * What a hover label says about an item beyond its authored description: where
@@ -52,6 +53,7 @@ function qualified(detail: HoverEntryDetail, modes: readonly Mode[], held: reado
 function groupEntryDetail(entry: ModelResource | undefined, mode: Mode, index: ModelIndex): HoverEntryDetail | undefined {
   const detail = (text: string, warning = false): HoverEntryDetail => ({ text, kind: "detail", ...(warning ? { tone: "warning" as const } : {}), modes: [mode] });
   if (!entry || entry.absent) return undefined;
+  if (entry.authoredValue !== undefined) return detail("Value defined in source.");
   const requirement = entry.inputRequirement;
   switch (requirement?.status) {
     case "configured": return undefined;
@@ -154,16 +156,6 @@ function laneWhere(lanes: Lanes, mode: Mode, home: string): Where {
   return places.length ? { where: places.join(" + ") } : { reason: NOT_DEPLOYED };
 }
 
-/** A framework stack or the configured database, or a field of one. */
-function frameworkManaged(resource: ModelResource, index: ModelIndex): boolean {
-  let current: ModelResource | undefined = resource;
-  for (let depth = 0; current && depth < 8; depth += 1) {
-    if (current.frameworkManaged || current.frameworkStack) return true;
-    current = current.parent ? index.resources.get(current.parent) : undefined;
-  }
-  return false;
-}
-
 function resourceWhere(resource: ModelResource | undefined, index: ModelIndex, mode: Mode): Where {
   if (!resource || resource.absent) return { reason: NOT_DEPLOYED };
   if (resource.deploymentFile) return { where: `Local file · ${resource.deploymentFile.path}` };
@@ -218,10 +210,10 @@ export function nodeHoverFacts(node: SceneNode, indexes: ModelIndexes): HoverFac
         const route = indexes[mode].routes.get(node.id);
         const target = route && indexes[mode].targets.get(route.target);
         return route && target ? laneWhere(target.lanes, mode, routeHome(route, target)) : { reason: NOT_DEPLOYED };
-      }), false);
+      }), true);
     case "resource":
       return combine(eachMode((mode) => resourceWhere(indexes[mode].resources.get(node.id), indexes[mode], mode)),
-        MODES.some((mode) => { const resource = indexes[mode].resources.get(node.id); return !!resource && frameworkManaged(resource, indexes[mode]); }));
+        MODES.some((mode) => { const resource = indexes[mode].resources.get(node.id); return !!resource && isFrameworkManagedResource(resource, indexes[mode].resources); }));
     case "local":
       return combine(eachMode((mode) => {
         const service = indexes[mode].localServices.get(node.id);

@@ -5,6 +5,8 @@ read_when:
   - Adding secrets/inputs or changing value editing, synchronization, or review artifacts
 source:
   - framework-config/resources.ts
+  - packages/framework/src/config/resources.ts
+  - cdk-app/deployment-inputs.ts
   - scripts/deployment-secrets.ts
   - scripts/deployment-workspace.ts
   - scripts/deploy.ts
@@ -18,6 +20,23 @@ related:
 # Secrets and authored configuration
 
 Every secret has one catalog entry: `resource.secret("NAME")` for a raw authored mode input, or a public ISecret member of `resource.stack<T>()`. Raw authored values live only in the selected private input file (conventionally `cdk-app/.env.<mode>`), never config, templates, generated artifacts or pasted ARN maps. Do not expose a public string computed from secret contents. [Resource projections](../framework/resources-and-cdk.md) distinguish metadata/ARNs from values.
+
+Public catalog values have two distinct sources. `resource.value("text")` (or a
+dev/prod value map) authors a nonsecret value in TypeScript; it has no dotenv key
+to fill or override. `resource.fromEnv("NAME")` names an environment-linked input
+with explicit mode presence, defaults, choices and requirements. `resolveInput`
+owns their interpretation; downstream Studio, deployment and client export should
+consume that result instead of implementing another precedence rule. Deployment
+controls such as domains, frontend URL and the retention fallback are separately
+declared in [cdk-app/deployment-inputs.ts](../../../cdk-app/deployment-inputs.ts).
+They influence the graph rather than becoming workload variables automatically.
+
+The CDK file inspectors, under the shared **Environment files** island, show assignments and their declaration
+owners, including unknown or mode-inapplicable assignments. A name appearing in
+that file does not make it a workload input or a public client field. Required
+inputs can be missing before deployment; Studio exposes the missing requirement
+and active consumers without including the value in its public snapshot. See
+[environment delivery](../runtime/environment.md) for resolution and generated files.
 
 | Value surface | Current contract |
 | --- | --- |

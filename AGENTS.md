@@ -3,10 +3,13 @@
 ## Read the relevant guide
 
 This is a TypeScript npm-workspace monorepo for AWS-backed applications. Start with
-[README.md](README.md). Before changing an area, read its current source and guide:
+[README.md](README.md). For product orientation read [AWS Studio](docs/AWS-STUDIO.md);
+[the documentation index](docs/README.md) separates current guides from historical plans.
+Before changing an area, read its current source and guide:
 
 | Area | Required guidance |
 | --- | --- |
+| Studio interface, graph, source editing or operations | [Knowledge router](docs/aws-studio-knowledge/README.md), then the relevant source-linked subsystem page |
 | Database -> GraphQL -> React Query | [Data features](docs/DATA-FEATURES.md) and the [automation contract](docs/playbooks/typed-contract-propagation.md) |
 | Workload declarations, resources, CDK, local execution | [Framework](docs/FRAMEWORK.md) |
 | Features spanning workloads: routes, events, tasks, workflows, resources | [Feature build procedure](docs/playbooks/feature-build.md) and [Framework](docs/FRAMEWORK.md) |

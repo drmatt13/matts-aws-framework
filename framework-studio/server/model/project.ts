@@ -298,6 +298,7 @@ function catalogModel(config: FrameworkConfig, readPaths: readonly (readonly str
           absent: entry.absent === true,
           ...parent,
           ...(entry.fromEnv ? { fromEnv: entry.fromEnv } : {}),
+          ...(entry.authoredValue !== undefined ? { authoredValue: entry.authoredValue } : {}),
           ...(entry.default !== undefined ? { default: entry.default } : {}),
           ...(entry.required ? { required: true } : {}),
           ...(entry.modes ? { modes: entry.modes } : {}),

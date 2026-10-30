@@ -24,7 +24,7 @@ export function planDeploy(root: string, state: StudioState, edit: Extract<Draft
     if (!value || Object.keys(value).length !== 1 || !value.when || Object.keys(value.when).some(key => !["resource", "equals"].includes(key))) throw new EditError(422, "Choose one input and a matching value.");
     resource = model.resources.find(item => item.id === value.when.resource);
     const versions = Object.values(state.snapshot.models).map(graph => graph.resources.find(item => item.id === value.when.resource));
-    if (!resource || resource.kind !== "input" || !resource.fromEnv || versions.some(item => !item || item.absent)) throw new EditError(422, "Deployment conditions require a non-secret input declared in both environments.");
+    if (!resource || resource.kind !== "input" || (!resource.fromEnv && resource.authoredValue === undefined) || versions.some(item => !item || item.absent)) throw new EditError(422, "Deployment conditions require a non-secret input declared in both environments.");
     if (typeof value.when.equals !== "string" || !value.when.equals.trim() || value.when.equals !== value.when.equals.trim() || resource.values && !resource.values.includes(value.when.equals)) throw new EditError(422, "Choose a non-empty matching value from the input's allowed values.");
   }
   for (const origin of target.origins) {

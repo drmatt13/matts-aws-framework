@@ -65,6 +65,10 @@ its service badge, stable ID, subnet ownership and picking silhouette. Gateways 
 the left-facing perimeter, leaving the interior for compute and the endpoint grid.
 Canvas mini badges use the same local AWS SVG service/family catalog as the endpoint
 picker (`endpoint-services.ts`); the renderer loads selected artwork once per instance.
+Framework ownership is classified by `shared/framework-management.ts` and displayed
+as the same mini lock used by inspector ownership badges. A warning or endpoint-service
+badge remains on the right when the additional management lock occupies the left;
+the icon hull includes both for picking, routing obstacles and label placement.
 The zoom floor permits narrow-view fits as network fixture counts grow.
 Every selectable canvas hit, including gateways, endpoints and connections, uses a pointer cursor.
 Island selection and hover outlines paint with the foundation and terrace surfaces,

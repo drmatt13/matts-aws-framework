@@ -1,4 +1,11 @@
-# Framework Studio
+# AWS Studio documentation
+
+Start with the [interface and action model](../aws-studio-knowledge/studio/interface.md)
+for the current product surface, [backend boundaries](../aws-studio-knowledge/studio/backend.md)
+for implementation ownership, and the [knowledge router](../aws-studio-knowledge/README.md)
+for a focused subsystem reference. The longer documents below preserve detailed design
+reasoning; dated audits and campaign reports are historical evidence, not current capability
+or deployment authorization.
 
 Framework Studio is a local, source-linked visual environment for applications built
 with this framework. It reads `framework.config.ts` the way the framework does, shows what
@@ -23,6 +30,8 @@ npm run studio -- --print # the whole model as JSON, then exit
 | Map | `/` | The isometric view: the application as a lit, navigable landscape: gateways, compute, the VPC's subnet terraces, catalog stacks. `/isometric` redirects here |
 | Database | `/database` | Prisma source and diagram editing, semantic migration history, offline artifact review and selected-target database evidence |
 | Deploy | `/deploy` | Deployment discovery, reviewed plans, authorized operations and local development controls |
+| Authentication | `/cognito` | User pools, identity pools, providers and permissions; source and deployed evidence remain distinct |
+| DNS / Domains | `/domains` | Production domain intent, explicit deployment inspection and separately approved operations |
 | WebSockets | `/websockets` | ws-tester's two connection panels, local-ws-dev-server and the deployed API Gateway stage, with its launch-link handoff |
 | Inspector | beside any view | One entity: source location, resolved settings and where they come from, relationships, and the editable fields |
 
@@ -54,6 +63,8 @@ separate deployment states.
 
 | Document | Read it when |
 | --- | --- |
+| [Product and architecture overview](../AWS-STUDIO.md) | You need the system's identity, lifecycle and grounded long-term direction |
+| [October 29 reconstruction](discovery-2026-10-29.md) | You need source/browser evidence, corrected discrepancies and verification limits from this documentation pass |
 | [Resource baseline (2026-10-20)](resource-baseline-2026-10-20.md) | You are experimenting with resources and need the original application inventory, source revision and scoped restoration procedure |
 | [Product audit (2026-10-22)](product-audit-2026-10-22.md) | You need the original persona journeys, reproduced failures and sequenced implementation plan |
 | [Implementation and second pass](implementation-second-pass-2026-10-22.md) | You need the implemented changes, regression evidence and remaining live-verification boundaries |
@@ -72,15 +83,16 @@ separate deployment states.
 | [Deploy & Run](deploy-and-run.md) | You are working on deployment discovery, planning, deploys, teardown or the local development lifecycle |
 
 The code lives in [framework-studio/](../../framework-studio/README.md). Its README is
-the short user-facing guide. These documents hold the design and the history.
+the detailed user-facing guide. These documents hold the design and the history.
 
 ## Background
 
 - [UNIFIED_AWS_FRAMEWORK_VISUAL_EDITOR_HANDOFF.md](../../UNIFIED_AWS_FRAMEWORK_VISUAL_EDITOR_HANDOFF.md)
   is the original product brief. It is a hypothesis, and the [report](report.md#where-the-brief-was-wrong)
   records where the repository disagreed with it.
-- `FRAMEWORK_STUDIO_ISOMETRIC_PHASE_PROMPT.md`, at the repository root, is the brief for the
-  isometric phase. It is untracked at the time of writing.
+- [FRAMEWORK_STUDIO_ISOMETRIC_PHASE_PROMPT.md](../../FRAMEWORK_STUDIO_ISOMETRIC_PHASE_PROMPT.md)
+  is the historical brief for the isometric phase; consult current rendering documentation
+  before treating a proposal there as implemented behavior.
 - The framework itself: [Framework](../FRAMEWORK.md). The studio's semantics (lanes,
   placement, resources, workflows) are the framework's, so that document is the reference
   for what the studio shows.

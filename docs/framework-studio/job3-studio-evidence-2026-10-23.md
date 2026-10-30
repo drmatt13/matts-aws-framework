@@ -1,5 +1,10 @@
 # Job 3 Studio browser evidence — October 23, 2026
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 Agent A exercised the real Vite-served Studio with Playwright MCP. These are
 source-authoring and live local PostgreSQL observations. AWS deployment,
 authentication, effective cloud IAM and frontend publication require separate

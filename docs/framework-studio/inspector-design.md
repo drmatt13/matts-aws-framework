@@ -17,10 +17,38 @@ Deployment information follows the resource's actual configuration authority:
 | API gateway, stack member, network component | Read-only deployment summary and ownership explanation with navigation to handlers, stack or VPC |
 | Catalog input, secret or group | No Deployment section. Inputs/secrets show declaration pills in their header; groups show pills beside each entry and none in the header. Sources, requirements and consumers explain delivery |
 | Native/framework stack, managed database, VPC island | Explicit ownership explanation and navigation; no ineffective independent workload flag |
-| CDK/client environment file and input/environment islands | No Deployment section; file status, mappings and entry navigation describe their purpose |
+| CDK/client environment file and input/environment islands | No Deployment section; the shared Environment files island labels CDK files Framework managed and client mappings Application; each file retains its editor |
 | Other grouping islands | Read-only deployment summary with navigation to entries |
 
 Inferred ownership is text with owner links, never a disabled Deploy selector.
+
+Framework ownership uses the same framed lock and **Framework managed** label directly
+after the inspector title. Keep type labels factual, such as PostgreSQL database;
+ownership is a separate badge, not a replacement type label. Ownership does not assert
+deployment, health, read-only configuration or secret access.
+
+| Category | Framework managed |
+| --- | --- |
+| Framework export stacks, projected framework stacks and their public members | Yes; members inherit from their owning stack |
+| Application PostgreSQL, its RDS owner and local Compose database | Yes, including unavailable implementations and the standalone local inspector |
+| API gateways and generated route wiring | Yes; route badge tooltips identify their configuration section |
+| Declared VPC infrastructure, gateways, NAT and endpoints | Yes; attached workload implementations retain their own ownership |
+| Fixed CDK environment input files | Yes; their authored values remain editable |
+| Application-native stacks and members, public inputs, authored secrets and input groups | No, unless explicit framework ownership exists on their stack ancestry |
+| HTTP/WebSocket/event/tool handlers, services, tasks, workflows and agents | No; application implementation and configuration remain source-owned |
+| Client environment mapping files and authored database schema entities | No |
+| Grouping islands | No; a grouping does not own its entries' infrastructure |
+
+`shared/framework-management.ts` owns classification. Map icons, inherited resource
+status and hover cards use the same rule. Managed map resources carry the mini lock;
+missing-file/unattached warnings and endpoint service artwork keep their own badge.
+When both are needed, the additional ownership lock uses the other lower corner;
+picking and layout geometry include both badges. Absence from the selected mode
+dims the whole icon, including its ownership context, without changing ownership.
+
+Every island inspector ends with one **Island entries** disclosure, after its controls
+and supporting sections. Environment-file islands use the same entry navigation;
+do not add a separate Files list.
 Native CDK construction remains source-owned. A catalog presence change must never be
 presented as an AWS deployment switch. Event deployment changes omit optional native
 hooks on the next deployment, and the source review calls out that effect.
@@ -181,6 +209,16 @@ file destination and saved/default/empty state. Allowed values use a select; fre
 use the shared environment value control. Secrets start masked. Revert and default actions
 stage through the existing private environment-file review rather than navigating away.
 
+Input identity distinguishes **Source parameter** from **Environment parameter**. The same
+**Link to .env file** switch appears during creation and editing. Off shows a non-secret
+**Value** saved in the declaration, including separate Dev/Prod values when needed. On shows
+the variable name and an optional **Default value**, plus the environment-specific local
+value editor after the link is saved. Switching sources carries the entered Value/Default
+text across and stages source review; it never transfers or rewrites existing environment
+file values. Source parameters have no local-file destination, file-source rows or missing
+environment-file requirement. `enableWebSocketApi` is a source parameter set to `true`.
+Secrets always stay environment-linked, masked and without a source value or default.
+
 Boolean setting help describes what the option does and stays the same when toggled. Keep related
 controls in place and disable them when inapplicable (including input defaults and client
 mapping options). Draft restrictions belong in existing status space; reserve that space
@@ -225,7 +263,7 @@ Every inspector follows these rules, so that generated content never repeats or 
   column. Workload access rows name the consumer's kind beside it.
 - A connection heading follows the hover rule against repeating its From/To. Bundle rows
   omit a shared action, and an expanded member lists only the endpoint that differs.
-- Local values state each fact once: the status line covers Empty and Not set, and an empty
+- Environment-linked local values state each fact once: the status line covers Empty and Not set, and an empty
   value select already reads **Use default · value**, so no help line repeats either.
 - Input settings begin with their **Input behavior** group rather than a generic heading.
   Form-group legends sit inside their group, below its rule.

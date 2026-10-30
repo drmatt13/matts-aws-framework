@@ -1,5 +1,5 @@
 import {
-  isResourceReference, isResourceAbsent, isUnresolvedTokenString,
+  isResourceReference, isResourceValueReference, isResourceAbsent, isUnresolvedTokenString,
   resolveResourceFromEnv, type ResourceReference, type ResourceEnvironmentReaders,
   type StringResourceReference, type AnyResourceCatalog,
 } from "./resources";
@@ -63,8 +63,8 @@ export function assertDeploySetting(setting: DeploySetting, origin: string): voi
   if (typeof setting === "string" && DEPLOY_SETTINGS.includes(setting)) return;
   const when = typeof setting === "object" && setting !== null ? setting.when : undefined;
   const selector = when?.resource;
-  if (!when || Object.keys(setting).some(key => key !== "when") || Object.keys(when).some(key => !["resource", "equals"].includes(key)) || !isResourceReference(selector) || selector.kind !== "string" || !selector.fromEnv || selector.secretArn || selector.secretField || isResourceAbsent(selector)) {
-    throw new Error(`${origin} deploy must be a deploy token or { when: { resource: a declared fromEnv string input, equals: "value" } }. Secrets, stack members and absent inputs cannot select deployment.`);
+  if (!when || Object.keys(setting).some(key => key !== "when") || Object.keys(when).some(key => !["resource", "equals"].includes(key)) || !isResourceReference(selector) || selector.kind !== "string" || (!selector.fromEnv && !isResourceValueReference(selector)) || selector.secretArn || selector.secretField || isResourceAbsent(selector)) {
+    throw new Error(`${origin} deploy must be a deploy token or { when: { resource: a declared string input, equals: "value" } }. Secrets, stack members and absent inputs cannot select deployment.`);
   }
   if (typeof when.equals !== "string" || !when.equals.trim() || when.equals !== when.equals.trim()) throw new Error(`${origin} deploy.when.equals must be a non-empty, trimmed string.`);
   if (selector.values && !selector.values.includes(when.equals)) throw new Error(`${origin} deploy.when.equals must be one of the input's declared values.`);

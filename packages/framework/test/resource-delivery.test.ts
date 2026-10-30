@@ -10,7 +10,7 @@ import { invokeLocalNodeLambda } from "../src/local/lambda-process";
 import { defaults } from "../../../framework-config/defaults";
 
 interface VaultStack { readonly linked: { readonly secretArn: string; grantRead(...args: never[]): unknown } }
-const resources = defineResources({ one: resource.cdk<IQueue>(), two: resource.cdk<IQueue>(), input: resource.fromEnv().default("default-value"), key: resource.secret(), vault: resource.stack<VaultStack>() });
+const resources = defineResources({ one: resource.cdk<IQueue>(), two: resource.cdk<IQueue>(), input: resource.fromEnv().default("default-value"), declared: resource.value("standalone-value"), key: resource.secret(), vault: resource.stack<VaultStack>() });
 const identity = { version: 1, mode: "dev", deployment: "example", account: "111122223333", region: "eu-west-2" } as const;
 const manifest: ResourceManifest = { ...identity, attributes: {
   [resourceAttributeKey(resources.one.queueUrl)]: "queue-one",
@@ -18,9 +18,9 @@ const manifest: ResourceManifest = { ...identity, attributes: {
   [resourceAttributeKey(resources.vault.linked.value)]: "arn:aws:secretsmanager:eu-west-2:111122223333:secret:linked-AbCdEf",
 }, integrations: {} };
 function config(): FrameworkConfig {
-  const environment = { RESOURCE: resources.one.queueUrl, INPUT: resources.input };
+  const environment = { RESOURCE: resources.one.queueUrl, INPUT: resources.input, DECLARED: resources.declared };
   return defineFrameworkConfig({ networks: [fixtureVpc], resources, defaults,
-    http: [{ "/one": { directory: "/lambda_functions/http_functions/one", methods: ["POST"], auth: true, environment }, "/two": { directory: "/lambda_functions/http_functions/two", methods: ["POST"], auth: true, environment: { RESOURCE: resources.two.queueUrl } } }],
+    http: [{ "/one": { directory: "/lambda_functions/http_functions/one", methods: ["POST"], auth: true, environment, cloud: { requirements: [{ require: [resources.declared] }] } }, "/two": { directory: "/lambda_functions/http_functions/two", methods: ["POST"], auth: true, environment: { RESOURCE: resources.two.queueUrl } } }],
     webSocket: [{ $default: { directory: "/lambda_functions/websocket_functions/socket", environment } }],
     services: [{ "/service/*": { cloud: { vpc: fixtureVpc }, directory: "/ecs_containers/services/service", methods: "*", auth: true, port: 5000, environment, secrets: { API_KEY: resources.key, PASSWORD: resources.vault.linked.field("password") } } }],
     events: [{ event: { directory: "/lambda_functions/event_functions/event", environment } }],
@@ -41,7 +41,7 @@ test("all local compute lanes resolve their own declared names, defaults and sec
     const env = await resolveLocalWorkloadEnvironment(config(), target.reference, { repositoryRoot: ".", manifest, authored: { KEY: "authored-key" }, environment: { UNDECLARED: "never-copy", AWS_REGION: identity.region }, readSecret: async () => { reads++; return '{"password":"field-value"}'; } });
     assert.equal(env.RESOURCE, target.id === "two" ? "queue-two" : "queue-one");
     assert.equal(env.UNDECLARED, undefined);
-    if (target.id !== "two") assert.equal(env.INPUT, "default-value");
+    if (target.id !== "two") { assert.equal(env.INPUT, "default-value"); assert.equal(env.DECLARED, "standalone-value"); }
     if (target.kind === "service") { assert.equal(env.API_KEY, "authored-key"); assert.equal(env.PASSWORD, "field-value"); }
   }
   assert.equal(reads, 1);

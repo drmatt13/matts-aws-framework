@@ -4,6 +4,8 @@
 and literal section modules under `framework-config/`. Those declarations drive CDK,
 local execution, and generated browser route/payload contracts.
 
+Read the [framework architecture](aws-studio-knowledge/framework/architecture.md) for
+the model-to-runtime pipeline, ownership boundaries and supported resource categories.
 Start with the [declaration directory guide](../framework-config/README.md) for file
 ownership and [declarations and tags](framework-studio/declarations-and-tags.md) for
 tag validation, inheritance, AWS propagation and Studio authoring.
@@ -15,13 +17,14 @@ call through their derived Gateways, and the browser and local lanes for both.
 
 ## Package boundaries
 
-There are three shared packages:
+The shared packages have distinct responsibilities:
 
 | Package | Responsibility |
 | --- | --- |
 | `@repo/framework` | Configuration machinery, backend runtime, local execution, and generation |
 | `@repo/api-contract` | Browser-safe public routes and payload contracts |
 | `@repo/database` | Storage contract, migrations, records, and repositories |
+| `@repo/models` | Shared model providers used by agents; provider environment and IAM remain declared capabilities |
 
 The framework is one workspace with explicit partitions:
 
@@ -59,7 +62,7 @@ Backend code imports the module it uses:
 | `@repo/framework/runtime/tools` | `tool()` and `authenticatedTool()` for an AgentCore tool's handler |
 | `@repo/framework/runtime/auth` | Cognito ID-token verification and authenticated sessions |
 | `@repo/framework/runtime/http` | HTTP responses, cookies, and trusted browser origin checks |
-| `@repo/framework/runtime/database` | Database connection URL/Secrets Manager resolution |
+| `@repo/framework/runtime/database` | PostgreSQL connection settings, IAM token signing and verified TLS |
 | `@repo/framework/runtime/callbacks` | Completing, failing and heart-beating a workflow callback |
 | `@repo/framework/runtime/event-replay` | Event capture and replay queue handling |
 | `@repo/framework/local/origins` | Shared local browser origin validation |
@@ -157,9 +160,9 @@ always pinned to the resolved architecture, independent of the build host.
 deploy: { when: { resource: resources.realtimeEnabled, equals: "true" } }
 ```
 
-A condition enables the workload in both execution lanes only when a declared `fromEnv`
-string input matches. Each environment reads its own inputs file; CDK context takes
-precedence, then the file, then the declared default. An unset optional input means off.
+A condition enables the workload in both execution lanes only when a declared string
+input matches. A standalone `resource.value(...)` uses its declared value. An environment-linked
+input reads its own inputs file; CDK context takes precedence, then the file, then the declared default. An unset optional input means off.
 Use canonical enum values in `equals`. Secrets, stack members and unresolved CDK tokens
 cannot select deployment. The selector need not also be a workload environment variable.
 A caller of a conditional destination must carry the identical condition. Routes sharing
@@ -180,7 +183,7 @@ Deployment mode separately says what the AWS graph constructs:
 | Website, RDS, HTTP gateway | No | Yes |
 | Routed Lambdas, services, tasks, workflows | No; execute locally | If cloud-enabled |
 | WebSocket API and its handlers | Yes, for enabled route handlers | Yes, for enabled route handlers |
-| Network (VPC) and database | No | Once a Lambda has a `subnet` or `database: true`, or a container is built |
+| Network (VPC) and database | No | RDS is constructed by the production entry point; VPCs are built lazily when a native resource or placed workload uses its declared network |
 
 Events have per-target Deploy controls, including conditions. A dev deployment
 publishes no task/service images. Compose independently runs targets enabled in the local
@@ -307,13 +310,22 @@ links, duplicate links, unavailable required resources and resource dependency c
 fail with catalog/workload context. CDK tokens retain native cross-stack behavior and
 never pass through an environment file on their way to deployed compute.
 
-`resource` has four entry points and no origin chains: `stack<T>()` and `cdk<T>()` for
-what the application's CDK built, `fromEnv(name?)` and `secret(name?)` for a line you
-author. An environment variable is always a string, so `fromEnv("NAME")` needs no kind;
+`resource` has five entry points: `stack<T>()` and `cdk<T>()` for
+what the application's CDK built, `value(...)` for a standalone non-secret input,
+and `fromEnv(name?)` and `secret(name?)` for a line you author in an environment file.
+An environment variable is always a string, so `fromEnv("NAME")` needs no kind;
 chain `.enum(...)` to restrict what it may say, `.default(...)` for the fallback, and
 `.note(...)` for one line of prose beside the declaration. Naming the variable is preferred;
 omitting the name derives the catalog path in SCREAMING_SNAKE_CASE. `-c` context wins
 over the file, and the declared default is last.
+
+Use `resource.value("true").enum("true", "false")` when source owns the setting.
+A standalone input has a **Value**, with no environment variable, fallback or external
+requirement. It can be bound to workload environment variables, used in deployment
+conditions, and selected by client recipes as `resource:<catalog.path>`. It needs no
+CDK input-file line, manifest attribute or generated CloudFormation output. Environment
+and context values never override it. Changing its value is a reviewed source change;
+deployment remains separate. Secrets always use their protected environment-file origin.
 
 cdk-app/.env.dev.template and cdk-app/.env.prod.template are hand-authored templates:
 `framework:generate` never writes them. When you declare a new `fromEnv` or `secret` line,
@@ -338,6 +350,7 @@ An input says how the two graphs differ where it is declared, and nowhere else:
 resource.fromEnv("LOCAL_API_DEV_SERVER_HOST_PORT").only("dev").required()
 resource.secret("OPENAI_API_KEY").required("prod")
 resource.fromEnv("LANGGRAPH_MODEL_PROVIDER").enum("bedrock", "openai").default({ dev: "bedrock", prod: "openai" })
+resource.value({ dev: "preview", prod: "release" })
 ```
 
 `.only(mode)` declares the input in one graph; the other holds it as absent (below).
@@ -351,21 +364,21 @@ import { FRAMEWORK_MODE } from "@repo/framework/config/source";
 export const resources = defineResources({ ... }, { mode: FRAMEWORK_MODE });
 ```
 
-`absent`, `required` and `default` on each reference are then that graph's answer, so every
-lane — synthesis, the local runner, the generator, the client export — reads one graph and
+`absent`, `required`, `default` and a standalone input's `authoredValue` on each reference
+are then that graph's answer, so every lane — synthesis, the local runner, the generator, the client export — reads one graph and
 never compares modes. A reference keeps both graphs' policy in `modes` when they differ, for
 readers such as Studio that describe the other graph; `referenceForGraph(reference, mode)` reads
 it as that graph would. A catalog whose inputs are the same in both graphs needs no mode.
 
 Every reader states an input's outcome through one function, `resolveInput(reference, { env,
-getContext })`: `not-applicable` outside its graph; `supplied` from `-c` context or a non-blank
-line; `fallback` from the graph's default; `invalid` for a value outside its choices; otherwise
+getContext })`: `not-applicable` outside its graph; `supplied` from a standalone declaration,
+`-c` context or a non-blank file line; `fallback` from the graph's default; `invalid` for a value outside its choices; otherwise
 `missing` when required and `unresolved` when optional. Synthesis, the local runner, the
 deployment settings, the client export and Studio all use it, so none reinterprets a blank
 line, a choice list or another graph's default on its own.
 
 Studio's two CDK environment file inspectors list the same variables: each file's own lines,
-the other file's lines, and every input the graph declares, with its default shown in the
+the other file's lines, and every environment-linked input the graph declares, with its default shown in the
 blank field and a **Required** flag where that graph requires it. An input declared `.only()`
 the other graph is left out, and flagged if its line is written anyway. Showing a row never
 writes one; a line is added only when it is given a value.
@@ -1141,11 +1154,11 @@ certificate pairs, and optional Google credentials. WebSocket API Gateway is fra
 `DEPLOY_PROD_WEBSOCKET_API` and its context aliases are retired (`true` warns, `false`
 is refused). Remove those settings and control handlers with `deploy` instead. A gateway
 is omitted only when no route handler is deployed; an authorizer alone creates no API.
-The application's catalog declares `resources.enableWebSocketApi` from
-`ENABLE_WEBSOCKET_API`, an enum input accepting `"true"` or `"false"` and defaulting
-to `"true"`. Each WebSocket handler and its authorizer declares the same
+The application's catalog declares `resources.enableWebSocketApi` as a source parameter
+using `resource.value("true").enum("true", "false")`. Its value is edited in source or
+Studio, without reading a CDK environment file. Each WebSocket handler and its authorizer declares the same
 `deploy: { when: { resource: resources.enableWebSocketApi, equals: "true" } }`.
-Both environment templates set it to true. This is an ordinary workload condition,
+This is an ordinary workload condition,
 not a deployment-wide CDK switch; it gates local execution as well as AWS deployment.
 When `$connect` declares an authorizer, every route must fit inside its deployment lanes
 and condition, and `$connect` must fit inside the authorizer’s. USE_CUSTOM_WS_AUTHORIZER is retired: the

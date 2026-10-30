@@ -9,6 +9,7 @@ import { api } from "../api";
 import { editorLink, titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
+import { EnvironmentFileStatus } from "./ResourceStatus";
 import type { DeploymentInputDetails, DeploymentInputEntry } from "../../shared/deployment-inputs";
 import type { EnvironmentEdit } from "../draft";
 import { Description } from "./Description";
@@ -134,7 +135,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
     </li>;
   };
   return <>
-    <header><InspectorKind environments={{ availability: { dev: file.mode === "dev", prod: file.mode === "prod" }, descriptions: { [file.mode]: `inputs for ${MODE_NAMES[file.mode]}` }, unavailableDescription: "not this file's environment" }}>CDK inputs</InspectorKind><h2><EntityIcon icon="envFile" />{file.path}</h2></header>
+    <header><InspectorKind environments={{ availability: { dev: file.mode === "dev", prod: file.mode === "prod" }, descriptions: { [file.mode]: `inputs for ${MODE_NAMES[file.mode]}` }, unavailableDescription: "not this file's environment" }}>Environment file</InspectorKind><h2><EntityIcon icon="envFile" />{file.path}</h2><EnvironmentFileStatus resource={resource} /></header>
     <Description entity={resource.id} />
     {descriptionPending ? <p className={"text-caption text-graphite"}>Apply or discard the description before editing environment variables.</p> : null}
     <InspectorDisclosure title="File and template" defaultOpen={!file.exists}><p>{file.exists ? "Local inputs file exists." : "This inputs file has not been generated."} {file.mode === mode ? "Used for synthesis in the selected graph." : "Switch the graph to use this environment for synthesis."}</p>

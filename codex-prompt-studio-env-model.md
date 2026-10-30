@@ -1,5 +1,10 @@
 # Framework Studio: one Dev|Prod model for environment variables
 
+> Historical design input. For the current product and supported behavior, read
+> [AWS Studio](docs/AWS-STUDIO.md) and the [implementation status](docs/aws-studio-knowledge/reference/status.md).
+> Preserve this document as context; its proposals and early source names are not current instructions.
+
+
 You are working autonomously in `/Users/matt/Desktop/code/framework-fix/matts-aws-framework`.
 It is a TypeScript npm-workspace monorepo: an AWS application framework plus **Framework
 Studio**, a local, source-linked visual editor (`framework-studio/`). Make the changes

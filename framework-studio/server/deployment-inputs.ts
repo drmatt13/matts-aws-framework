@@ -72,13 +72,16 @@ const lineStatus = (value: string | undefined) => value === undefined ? "missing
  */
 function inputModes(resource: ModelResource, models?: Readonly<Record<Mode, ModeModel>>): Readonly<Record<Mode, InputModePolicy>> {
   if (resource.modes) return resource.modes;
-  const own: InputModePolicy = { present: !resource.absent, required: !resource.absent && !!resource.required, ...(resource.default !== undefined && !resource.absent ? { default: resource.default } : {}) };
+  const own: InputModePolicy = { present: !resource.absent, required: !resource.absent && !!resource.required,
+    ...(resource.default !== undefined && !resource.absent ? { default: resource.default } : {}),
+    ...(resource.authoredValue !== undefined && !resource.absent ? { value: resource.authoredValue } : {}) };
   const read = (mode: Mode): InputModePolicy => {
     const graph = models?.[mode];
     if (!graph || graph.status !== "ok" || graph.stale) return own;
     const found = graph.resources.find((item) => item.id === resource.id);
     if (!found || found.absent) return { present: false, required: false };
-    return { present: true, required: !!found.required, ...(found.default !== undefined ? { default: found.default } : {}) };
+    return { present: true, required: !!found.required, ...(found.default !== undefined ? { default: found.default } : {}),
+      ...(found.authoredValue !== undefined ? { value: found.authoredValue } : {}) };
   };
   return { dev: read("dev"), prod: read("prod") };
 }
@@ -86,7 +89,7 @@ function inputModes(resource: ModelResource, models?: Readonly<Record<Mode, Mode
 export function withDeploymentInputs(root: string, model: ModeModel, models?: Readonly<Record<Mode, ModeModel>>, comparisons: readonly { readonly input: string; readonly equals: string }[] = []): ModeModel {
   const selectedComparisons = new Map<string, Readonly<Record<string, "holds" | "fails" | "unset">>>();
   const catalog = model.resources.filter((resource) => !resource.deploymentFile).map((resource) =>
-    resource.fromEnv && (resource.kind === "input" || resource.kind === "secret") ? { ...resource, modes: inputModes(resource, models) } : resource);
+    (resource.kind === "input" || resource.kind === "secret") ? { ...resource, modes: inputModes(resource, models) } : resource);
   const read = (mode: Mode) => {
     const file = deploymentInputPath(mode);
     try {
@@ -103,15 +106,15 @@ export function withDeploymentInputs(root: string, model: ModeModel, models?: Re
   // Required means required by the declaration or by a consumer active in this graph.
   const requirementsFor = Object.fromEntries(MODES.map((mode) => [mode, inputRequirements(models?.[mode] ?? model, inputs[mode].problem ? {} : inputs[mode].parsed as Record<string, string>, mode, inputs[mode].file, !inputs[mode].problem)])) as Record<Mode, ReturnType<typeof inputRequirements>>;
   const resolutions = new Map<string, InputResolution>();
-  for (const resource of catalog) if (resource.fromEnv && (resource.kind === "input" || resource.kind === "secret")) {
+  for (const resource of catalog) if ((resource.fromEnv || resource.authoredValue !== undefined) && (resource.kind === "input" || resource.kind === "secret")) {
     const required = !!requirementsFor[model.mode].get(resource.id)?.required;
     const declared = { fromEnv: resource.fromEnv, ...(resource.absent ? { absent: true as const } : {}), ...(required ? { required: true as const } : {}),
-      ...(resource.kind === "input" ? { default: resource.default, values: resource.values } : {}) };
+      ...(resource.kind === "input" ? { default: resource.default, authoredValue: resource.authoredValue, values: resource.values } : {}) };
     const resolved = resolveInput(declared, { env: own.parsed });
     resolutions.set(resource.id, resolved);
     if (resource.kind !== "input") continue;
     const value = resolved.state === "supplied" || resolved.state === "fallback" ? resolved.value : undefined;
-    selectedComparisons.set(resource.id, Object.fromEntries(comparisons.filter((condition) => condition.input === resource.fromEnv).map((condition) => [condition.equals,
+    selectedComparisons.set(resource.id, Object.fromEntries(comparisons.filter((condition) => condition.input === resource.fromEnv || condition.input === resource.id).map((condition) => [condition.equals,
       value === undefined ? "unset" : value === condition.equals ? "holds" : "fails",
     ])));
   }
@@ -168,11 +171,13 @@ export function withDeploymentInputs(root: string, model: ModeModel, models?: Re
     });
     return { mode, path: file, template: deploymentInputTemplate(mode), exists: text !== undefined, entries, ...(problem ? { problem } : {}) };
   });
-  const resources: ModelResource[] = catalog.map((resource) => resource.fromEnv ? { ...resource,
+  const resources: ModelResource[] = catalog.map((resource) => resource.fromEnv || resource.authoredValue !== undefined ? { ...resource,
     inputComparisons: selectedComparisons.get(resource.id),
     ...(resolutions.has(resource.id) ? { inputState: resolutions.get(resource.id)!.state } : {}),
-    inputRequirement: files.find((file) => file.mode === model.mode)?.entries.find((entry) => entry.name === resource.fromEnv)?.requirements?.find((requirement) => requirement.resource === resource.id),
-    inputSources: files.flatMap((file) => file.entries.filter((entry) => entry.name === resource.fromEnv).map((entry) => ({ file: file.path, entry }))) } : resource);
+    ...(resource.fromEnv ? {
+      inputRequirement: files.find((file) => file.mode === model.mode)?.entries.find((entry) => entry.name === resource.fromEnv)?.requirements?.find((requirement) => requirement.resource === resource.id),
+      inputSources: files.flatMap((file) => file.entries.filter((entry) => entry.name === resource.fromEnv).map((entry) => ({ file: file.path, entry }))),
+    } : {}) } : resource);
   // A file belongs to its own environment's graph and is absent from the other's, as any resource a graph does
   // not hold is: every view follows `absent`, so the file's connections recede in the other environment too.
   for (const file of files) resources.push({ id: `envfile:${file.mode}`, path: [file.path], kind: "envFile", absent: file.mode !== model.mode, deploymentFile: file });

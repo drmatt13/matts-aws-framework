@@ -1,5 +1,10 @@
 # Job 4 independent performance, correctness and security review — 2026-10-23
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 The independent reviewer did not author the source-proposal, graph, canonical
 validation or local-Lambda optimizations. This pass challenged their correctness
 and replayed isolated failures. The command and evaluator lifetime repairs below

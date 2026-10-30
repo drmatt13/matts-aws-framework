@@ -24,7 +24,22 @@ file is the agent's change checklist.
 7. Coordinate coupled client/server auth changes in the release plan. Do not deploy,
    publish, or alter a live user pool merely to validate a source change.
 
-Useful source entry points: client-app/src/lib/auth.ts and auth.test.ts;
-packages/framework/src/runtime/auth.ts and http.ts;
-cdk-app/lib/app/cognito-stack.ts; auth HTTP/event handlers; local API routeProxyHelpers;
-GraphQL schema/user.test.ts and project.test.ts.
+Useful source entry points:
+
+- [Public client auth facade](../../client-app/src/lib/auth.ts),
+  [session lifecycle](../../client-app/src/lib/auth/session.ts),
+  [OAuth](../../client-app/src/lib/auth/oauth.ts) and
+  [client auth tests](../../client-app/src/lib/auth.test.ts).
+- [Runtime verification](../../packages/framework/src/runtime/auth.ts) and
+  [HTTP/cookie helpers](../../packages/framework/src/runtime/http.ts).
+- [Cognito stack](../../cdk-app/lib/app/cognito-stack.ts), auth HTTP/event handlers,
+  and [local route proxy](../../local-api-dev-server/lib/routeProxyHelpers.ts).
+- [GraphQL context](../../cdk-app/lambda_functions/http_functions/graphql-api/graphql-context.ts),
+  [user schema tests](../../cdk-app/lambda_functions/http_functions/graphql-api/schema/user.test.ts)
+  and [ownership tests](../../cdk-app/lambda_functions/http_functions/graphql-api/schema/project.test.ts).
+
+Application Cognito authentication is separate from Studio's loopback/session security.
+Changes to Studio's operational endpoints also require its
+[backend boundary](../aws-studio-knowledge/studio/backend.md) and the owning operation's
+review/target/recovery contract; a signed-in application user does not authorize a
+Studio deployment or database action.

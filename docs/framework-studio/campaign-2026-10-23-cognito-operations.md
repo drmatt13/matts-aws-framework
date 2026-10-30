@@ -1,5 +1,10 @@
 # Cognito user/group operations — campaign evidence
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 ## Baseline and change
 
 The first campaign pass implemented deployed Cognito inspection and federation

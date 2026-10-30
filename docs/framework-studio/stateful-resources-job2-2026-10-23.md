@@ -1,5 +1,10 @@
 # Job 2: stateful retention and reference reuse — 2026-10-23
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 **Final verification status at 14:44 EDT:** implementation and independent review
 are finished. The final complete `npm run verify` **passed, exit 0**: 1,702 tests
 passed, zero failed and three were explicitly skipped. Generation checks and all

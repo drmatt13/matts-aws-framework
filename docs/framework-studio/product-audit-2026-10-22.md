@@ -1,5 +1,10 @@
 # AWS Studio product audit and implementation plan
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 Date: October 22, 2026. Scope: the working tree at commit `73604fa`, including the pre-existing Studio UI/documentation edits. No product code was changed. All source application experiments used disposable copies. Explicit AWS checks and the primary browser used profile `dev`, account `734849394764`, region `us-east-1`, for identity/status reads only. A secondary tab initially restored `default` before switching to `dev`, potentially initiating automatic reads against the same account. No cloud resources, change sets, models, databases, or Docker services were started, deployed, modified, or deleted.
 
 **Assessment:** Studio has a strong source-review foundation and useful architecture views, but developers cannot yet depend on it for a complete application lifecycle. The largest problems are incomplete deployment reconciliation/recovery, undisclosed database/auth effects behind local startup, and configuration approval that does not establish implementation readiness. Prioritize these correctness and operational-boundary defects before expanding the map or adding more individual settings.

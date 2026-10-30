@@ -8,7 +8,8 @@ import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as lambda from "aws-cdk-lib/aws-lambda";
-import { defineFrameworkConfig, defineResources, resource, getFrameworkTargets, type FrameworkConfig } from "@repo/framework/config";
+import * as cognito from "aws-cdk-lib/aws-cognito";
+import { defineFrameworkConfig, defineResources, resource, getFrameworkTargets, isResourceValueReference, resolveResourceReference, type FrameworkConfig, type ResourceReference } from "@repo/framework/config";
 import { initializeFrameworkResources, linkResources, finalizeFrameworkResources } from "../lib/framework/framework-resources";
 import { attachLambdaResources } from "../lib/framework/framework-cloud";
 import { defaults } from "../../framework-config/defaults";
@@ -64,6 +65,45 @@ function setup(configuration = config()) {
   initializeFrameworkResources(app, { config: configuration, mode: "dev", deployment: "example", readers: { env: {} } });
   return app;
 }
+
+test("standalone metadata never turns Cognito stack members into authored values", () => {
+  class IdentityStack extends Stack {
+    public readonly userPool: cognito.UserPool;
+    public readonly userPoolClient: cognito.UserPoolClient;
+    public readonly userPoolDomainUrl = "https://identity.example.com";
+    constructor(scope: Construct, id: string) {
+      super(scope, id, { env: { account: "111122223333", region: "eu-west-2" } });
+      this.userPool = new cognito.UserPool(this, "UserPool");
+      this.userPoolClient = new cognito.UserPoolClient(this, "Client", { userPool: this.userPool });
+      linkResources(this, resources.identity);
+    }
+  }
+  const resources = defineResources({ identity: resource.stack<IdentityStack>(), enabled: resource.value("true") });
+  assert.equal((resources.identity.userPool as unknown as ResourceReference).authoredValue, undefined);
+  assert.equal((resources.identity.userPoolClient as unknown as ResourceReference).authoredValue, undefined);
+  assert.equal(resources.identity.userPoolDomainUrl.authoredValue, undefined);
+  assert.equal(isResourceValueReference(resources.identity.userPool), false);
+  assert.equal(isResourceValueReference(resources.identity.userPoolDomainUrl), false);
+  assert.equal(isResourceValueReference(resources.enabled), true);
+  assert.equal(resolveResourceReference(resources.identity.userPoolDomainUrl, () => "linked-domain", "fixture"), "linked-domain");
+  const configuration = defineFrameworkConfig({ resources, defaults, http: [{ "/identity": {
+    directory: "/lambda_functions/http_functions/identity", methods: ["POST"], auth: false,
+    environment: { POOL: resources.identity.userPool.userPoolId, CLIENT: resources.identity.userPoolClient.userPoolClientId,
+      DOMAIN: resources.identity.userPoolDomainUrl, ENABLED: resources.enabled },
+  } }], webSocket: [], services: [], events: [], tasks: [], workflows: [] } as never);
+  const app = new App();
+  initializeFrameworkResources(app, { config: configuration, mode: "dev", deployment: "example", readers: { env: {} } });
+  const owner = new IdentityStack(app, "Identity");
+  const consumer = new Stack(app, "Consumer", { env: { account: "111122223333", region: "eu-west-2" } });
+  const fn = new lambda.Function(consumer, "Work", { runtime: lambda.Runtime.NODEJS_24_X, handler: "index.handler", code: lambda.Code.fromInline("exports.handler = () => {};" ) });
+  attachLambdaResources(consumer, fn, getFrameworkTargets(configuration)[0], { config: configuration, mode: "dev" });
+  finalizeFrameworkResources(app);
+  Template.fromStack(owner).resourceCountIs("AWS::Cognito::UserPool", 1);
+  const text = JSON.stringify(Template.fromStack(consumer).toJSON());
+  assert.match(text, /Fn::ImportValue/);
+  assert.match(text, /"DOMAIN":"https:\/\/identity.example.com"/);
+  assert.match(text, /"ENABLED":"true"/);
+});
 
 test("a stack's public constructs become the catalog, and reach a workload in another stack", () => {
   const configuration = config();

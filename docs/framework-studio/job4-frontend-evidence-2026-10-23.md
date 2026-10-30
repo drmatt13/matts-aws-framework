@@ -1,5 +1,10 @@
 # Job 4 frontend and graph evidence — 2026-10-23
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 This report covers presentation graph construction, routing and browser interaction.
 The synthetic fixtures do not evaluate declarations, create application files, contact
 AWS or execute deployment operations. Prior renderer reports are historical evidence;

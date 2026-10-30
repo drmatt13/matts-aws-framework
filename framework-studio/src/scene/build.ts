@@ -16,9 +16,10 @@ import { optimizeLayout, type LayoutSettings, type LayoutResult } from "./layout
 import { layoutLabels, layoutObstacles } from "./layout-quality";
 import { connectionStyle, type ConnectionStyle } from "./connections";
 import { routeConnections, type ConnectionRoutes } from "./routing";
-import { CLIENT_ENVIRONMENT_ISLAND } from "../../shared/client-environment";
+import { ENVIRONMENT_FILES_ISLAND } from "../../shared/client-environment";
 import { aggregateConnections, type ConnectionGroup } from "../connections";
 import { entryCount, groupEntries } from "../input-groups";
+import { isFrameworkManagedResource } from "../../shared/framework-management";
 export { titleRoom } from "./layout";
 
 /**
@@ -89,6 +90,7 @@ export interface Island {
 }
 
 export interface SceneNode {
+  readonly frameworkManaged?: true;
   readonly sourceProblems?: readonly string[];
   /** View-only tag filtering, rendered with the existing disabled-resource style. */
   readonly tagFiltered?: true;
@@ -123,6 +125,7 @@ export function kindText(kindLabel: string, name?: string): string {
 
 /** Network fixtures use stable prop IDs for selection and authored descriptions. */
 export interface Prop {
+  readonly frameworkManaged?: true;
   readonly tagFiltered?: true;
   readonly id: string;
   readonly icon: IconKey;
@@ -221,6 +224,7 @@ function targetPresence(lanes: Lanes, mode: Mode): { presence: Presence; text: s
 // ---------------------------------------------------------------------------
 
 interface Item {
+  readonly frameworkManaged?: true;
   readonly sourceProblems?: readonly string[];
   readonly badge?: DeploymentBadgeKind;
   readonly icon: IconKey;
@@ -286,7 +290,7 @@ function gatewayItem(gateway: import("../../shared/gateways").ModelGateway, mode
   return { id: gateway.id, entity: "gateway", label: gateway.title, kindLabel: "Framework-managed API Gateway", icon: "gateway", roleIcon: "managed", badge: deploymentBadge(gateway.lanes), presence: presence.presence, presenceText: presence.text, lanes: gateway.lanes };
 }
 
-function resourceItem(resource: ModelResource, mode: Mode, availability?: Availability): Item {
+function resourceItem(resource: ModelResource, mode: Mode, availability?: Availability, resources?: ReadonlyMap<string, ModelResource>): Item {
   const name = resource.path[resource.path.length - 1]!;
   const kindLabel =
     resource.clientEnvironment ? "Client-app environment mappings" : resource.deploymentFile ? `CDK ${resource.deploymentFile.mode === "dev" ? "development" : "production"} environment file` : resource.kind === "stack"
@@ -297,7 +301,7 @@ function resourceItem(resource: ModelResource, mode: Mode, availability?: Availa
         : resource.kind === "secret"
           ? `Secret, ${resource.fromEnv ?? ""}`
           : resource.kind === "input"
-            ? `Input, ${resource.fromEnv ?? ""}`
+            ? `Input, ${resource.fromEnv ?? "Value in source"}`
             : resource.kind === "group"
               ? "Input group"
               : "Construct";
@@ -313,7 +317,8 @@ function resourceItem(resource: ModelResource, mode: Mode, availability?: Availa
     id: resource.id,
     badge: availability ? availabilityBadge(availability) : undefined,
     icon: resourceIcon(resource),
-    roleIcon: resourceBadge(resource),
+    roleIcon: resourceBadge(resource, resources),
+    ...(isFrameworkManagedResource(resource, resources) ? { frameworkManaged: true as const } : {}),
     entity: "resource",
     label: resource.kind === "stack" ? resource.path.join(".") : name,
     kindLabel,
@@ -345,7 +350,8 @@ function networkCaptions(network: NetworkModel | undefined) {
 function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSpec[]; compute: IslandSpec[]; catalog: IslandSpec[] } {
   const mode = model.mode;
   const standIns = drawnAs(model);
-  const catalogItem = (resource: ModelResource) => resourceItem(resource, mode, options.resourceAvailability?.[resource.id]);
+  const resourceIndex = new Map(model.resources.map(resource => [resource.id, resource]));
+  const catalogItem = (resource: ModelResource) => resourceItem(resource, mode, options.resourceAvailability?.[resource.id], resourceIndex);
   const targets = new Map(model.targets.map((target) => [target.ref, target]));
   const apiGroups = [gatewaysOf(model).map(gateway => gatewayItem(gateway, mode))];
   const entry: IslandSpec[] = [{
@@ -490,14 +496,13 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   const loose: Item[] = [];
   const stacks: Item[] = [];
   const environmentFiles: Item[] = [];
-  const clientFiles: Item[] = [];
   for (const resource of model.resources) {
     if (resource.parent || standIns[resource.id]?.startsWith("gateway:")) continue;
     if (resource.clientEnvironment) {
-      clientFiles.push({ ...catalogItem(resource), presenceText: "Client-app variables mapped from input parameters and stack outputs. Select to inspect the mappings." });
+      environmentFiles.push({ ...catalogItem(resource), presenceText: "Application environment file. Variables mapped from input parameters and stack outputs. Select to inspect the mappings." });
     } else if (resource.deploymentFile) {
       environmentFiles.push({ ...catalogItem(resource), badge: resource.deploymentFile.mode,
-        presenceText: `${resource.deploymentFile.path}: ${resource.deploymentFile.exists ? "local file" : "not generated; select the island to generate it"}. Values stay outside the graph.` });
+        presenceText: `${resource.deploymentFile.path}: framework inputs; ${resource.deploymentFile.exists ? "local file" : "not generated; open the file to generate it"}. Values stay outside the graph.` });
     } else if (resource.kind === "stack") {
       stacks.push({ ...catalogItem(resource), label: resource.stackClass ?? resource.path.join(".") });
     } else {
@@ -522,12 +527,9 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
       bands: [{ id: "band:inputs", title: "Input parameters and secrets", caption: [], h: 1, groups: [loose] }],
     });
   }
-  if (environmentFiles.length) catalog.push({ id: "island:environment", title: "CDK environment files", region: "catalog",
-    caption: ["Separate development and production inputs. Select a file to edit or add environment variables in a draft; select the island to generate a missing file from its template. Values stay outside the graph."],
-    bands: [{ id: "band:environment", title: "CDK environment files", caption: [], h: 1, groups: [environmentFiles] }] });
-  if (clientFiles.length) catalog.push({ id: CLIENT_ENVIRONMENT_ISLAND, title: "Client-app environment file", region: "catalog",
-    caption: ["Client variables mapped from each environment's input parameters and public stack outputs. Select to inspect their sources."],
-    bands: [{ id: "band:client-environment", title: "Client-app environment file", caption: [], h: 1, groups: [clientFiles] }] });
+  if (environmentFiles.length) catalog.push({ id: ENVIRONMENT_FILES_ISLAND, title: "Environment files", region: "catalog",
+    caption: ["Framework input files and application environment mappings. Select an island entry to inspect its variables, sources and delivery. Values stay outside the graph."],
+    bands: [{ id: "band:environment", title: "Environment files", caption: [], h: 1, groups: [environmentFiles] }] });
   return { entry, compute, catalog };
 }
 
@@ -707,13 +709,14 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
       const gy = gy0 + 1 + ly;
       const h = spec.bands[band]!.h;
       const anchor = project({ x: gx, y: gy, h });
-      nodes.push({ ...item, ...(badgeById.has(item.id) ? { badge: badgeById.get(item.id) } : {}), gx, gy, h, island: spec.id, band: spec.bands[band]!.id, geometry: buildIconShape(anchor.x, anchor.y, !!item.roleIcon) });
+      nodes.push({ ...item, ...(badgeById.has(item.id) ? { badge: badgeById.get(item.id) } : {}), gx, gy, h, island: spec.id, band: spec.bands[band]!.id, geometry: buildIconShape(anchor.x, anchor.y, !!item.roleIcon, !!item.frameworkManaged && item.roleIcon !== "managed") });
     }
     // The measured fixture grid shares the same coordinates as terrain sizing.
     for (const { prop, lx, ly, band } of footprint.furniture) {
       const gx = gx0 + 1 + lx, gy = gy0 + 1 + ly, h = spec.bands[band]!.h;
       const anchor = project({ x: gx, y: gy, h });
-      props.push({ ...prop, presence: spec.propPresence ?? (ghost ? "other" : "built"), gx, gy, h, geometry: buildIconShape(anchor.x, anchor.y, !!prop.roleIcon) });
+      const roleIcon = prop.roleIcon ?? "managed";
+      props.push({ ...prop, roleIcon, frameworkManaged: true, presence: spec.propPresence ?? (ghost ? "other" : "built"), gx, gy, h, geometry: buildIconShape(anchor.x, anchor.y, true, roleIcon !== "managed") });
     }
     const heights = spec.bands.map((band) => band.h);
     islands.push({

@@ -43,7 +43,7 @@ export type CreationRequest =
   | (Named & Binding & { readonly kind: "task"; readonly directory: string; readonly deploy: CreationDeploy; readonly cpu: number; readonly memory: number; readonly architecture: "arm64" | "x86_64"; readonly vpc: string; readonly subnet: "public" | "private" })
   | (Named & Binding & { readonly kind: "agent"; readonly directory: string; readonly starter: "echo" | "model"; readonly deploy: CreationDeploy; readonly auth: boolean; readonly path: string; readonly tools: readonly string[] })
   | (Named & Binding & { readonly kind: "tool"; readonly directory: string; readonly auth: boolean; readonly deploy: CreationDeploy | "inherit" })
-  | (Named & { readonly kind: "input"; readonly envName: string; readonly group: string; readonly required: boolean; readonly defaultValue: string; readonly choices: readonly string[]; readonly consumer: string; readonly consumerVariable: string })
+  | (Named & { readonly kind: "input"; readonly linkedToEnv?: boolean; readonly value?: string; readonly envName: string; readonly group: string; readonly required: boolean; readonly defaultValue: string; readonly choices: readonly string[]; readonly consumer: string; readonly consumerVariable: string })
   | (Named & { readonly kind: "secret"; readonly envName: string; readonly group: string; readonly required: boolean; readonly consumer: string; readonly consumerVariable: string });
 
 export interface CreationField {
@@ -103,7 +103,7 @@ export const CREATORS: Record<CreationKind, { readonly label: string; readonly h
   task: { label: "Container task", help: "Creates a run-to-completion Node container reading FRAMEWORK_TASK_INPUT. Invoke it through a declared runsTask binding or workflow step; timeouts belong to the invocation.", fields: container },
   agent: { label: "Agent", help: "Creates a validated JSON agent. Echo runs without a model call or provider prerequisites; Model and tools uses shared provider configuration and incurs provider charges when invoked.", fields: [id, description, tags, directory, implementation, deploy, { key: "starter", label: "Starter behavior", initial: "echo", options: ["echo", "model"] }, { key: "auth", label: "Require a signed-in user", initial: true, type: "boolean" }, { key: "path", label: "Browser route (optional, authenticated agents)", initial: "" }, { key: "tools", label: "Declared tool IDs (comma-separated)", initial: "", type: "list" }, ...binding] },
   tool: { label: "Agent tool", help: "Creates a Lambda tool with a validated request/response contract. Inherit follows consuming agents; choose an explicit deployment to override it.", fields: [id, description, tags, directory, implementation, { ...deploy, initial: "inherit", options: ["inherit", ...deploy.options!] }, { key: "auth", label: "Act as the signed-in user", initial: true, type: "boolean" }, ...binding] },
-  input: { label: "Input parameter", help: "Inputs are strings in this framework; choices constrain recognized values. Defaults belong to declarations. No environment-specific values are overwritten.", fields: [...input, { key: "defaultValue", label: "Declaration default (optional)", initial: "" }, { key: "choices", label: "Allowed string values (comma-separated)", initial: "", type: "list", advanced: true }] },
+  input: { label: "Input parameter", help: "A standalone parameter stores its value in the declaration. Link to an environment file to read separate development and production values, with an optional default.", fields: [...input.slice(0, 3), { key: "linkedToEnv", label: "Link to .env file", initial: true, type: "boolean", help: "On reads a named environment variable. Off stores the non-secret value in this declaration." }, ...input.slice(3), { key: "defaultValue", label: "Default value (optional)", initial: "" }, { key: "value", label: "Value", initial: "", help: "A non-secret value saved in the input declaration." }, { key: "choices", label: "Allowed string values (comma-separated)", initial: "", type: "list", advanced: true }] },
   secret: { label: "Secret", help: "Declares a secret without a value. Use the protected environment-file Inspector to author values separately. AWS provisioning requires a separately authorized deployment.", fields: input },
 };
 
@@ -166,10 +166,20 @@ export function readCreationRequest(raw: unknown): CreationRequest {
   }
   if ((kind === "input" || kind === "secret" || kind === "stack" ? !safeProperty(result.id) : !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(String(result.id)))) return fail("id", "Enter a safe, unique identifier using the naming convention shown above.");
   if (["input", "secret"].includes(kind)) {
-    if (!/^[A-Z][A-Z0-9_]*$/.test(String(result.envName))) return fail("envName", "Use an uppercase environment variable name.");
+    const linked = kind === "secret" || result.linkedToEnv === true;
+    if (linked && !/^[A-Z][A-Z0-9_]*$/.test(String(result.envName))) return fail("envName", "Use an uppercase environment variable name.");
+    // The editor retains this hidden spelling so toggling the link back on does not lose it.
+    // A standalone request drops it before generation rather than pretending to read it.
+    if (!linked) result.envName = "";
     if (result.group && !safeProperty(result.group)) return fail("group", "Use a TypeScript property name for the group.");
-    if (kind === "input" && (result.choices as string[]).length && result.defaultValue && !(result.choices as string[]).includes(String(result.defaultValue))) return fail("defaultValue", "Choose a default from the allowed values.");
-    if (kind === "input" && result.defaultValue && !String(result.defaultValue).trim()) return fail("defaultValue", "Enter a non-blank default or leave it empty.");
+    if (kind === "input") {
+      if (linked && result.value) return fail("value", "An environment-linked parameter uses an optional default instead of a standalone value.");
+      if (!linked && (result.defaultValue || result.required)) return fail("defaultValue", "A standalone parameter has a value, without a default or environment requirement.");
+      const value = linked ? result.defaultValue : result.value;
+      const field = linked ? "defaultValue" : "value";
+      if ((!linked || value) && !String(value).trim()) return fail(field, linked ? "Enter a non-blank default or leave it empty." : "Enter a non-blank standalone value.");
+      if ((result.choices as string[]).length && value && !(result.choices as string[]).includes(String(value))) return fail(field, linked ? "Choose a default from the allowed values." : "Choose a value from the allowed values.");
+    }
     if (!!result.consumer !== !!result.consumerVariable || (result.consumerVariable && !/^[A-Z][A-Z0-9_]*$/.test(String(result.consumerVariable)))) return fail("consumerVariable", "Choose a workload and an uppercase environment variable.");
   }
   if (kind === "stack" && !/^[A-Z][A-Za-z0-9]*Stack$/.test(String(result.className))) return fail("className", "Use a PascalCase class name ending in Stack.");

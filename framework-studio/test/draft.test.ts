@@ -209,7 +209,7 @@ test("island default groups share a draft and inherited switches reflect staged 
 });
 test("resource fields use the same review and navigation session with meaningful dirty counts", async () => {
   const { draft, resourceRequests } = fixture();
-  const resource = baseline.models.dev.resources.find((resource) => resource.kind === "input" && !resource.absent)!;
+  const resource = baseline.models.dev.resources.find((resource) => resource.kind === "input" && resource.fromEnv && !resource.absent)!;
   const form = initialResourceForm(resource);
   draft.setResource(resource, { ...form, group: "draftGroup", secret: true });
   assert.ok(draft.count >= 2); assert.equal(resourceRequests(), 0);

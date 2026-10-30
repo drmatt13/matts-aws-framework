@@ -1,5 +1,10 @@
 # Unified Visual Development Interface for Matt's AWS Framework
 
+> Historical design input. For the current product and supported behavior, read
+> [AWS Studio](docs/AWS-STUDIO.md) and the [implementation status](docs/aws-studio-knowledge/reference/status.md).
+> Preserve this document as context; its proposals and early source names are not current instructions.
+
+
 **Preliminary architecture and discovery handoff for Claude**  
 **Status:** Exploration / design brief; **not** an approved implementation specification  
 **Prepared from:** (1) a supplied `FRAMEWORK(1).md` architecture document; (2) an independently supplied technical extraction report for a Rust/Bevy/WebAssembly isometric visualization engine; and (3) the owner's stated vision.  

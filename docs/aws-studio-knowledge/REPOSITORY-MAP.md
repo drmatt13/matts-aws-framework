@@ -12,6 +12,9 @@ related:
 ---
 # Source ownership map
 
+For the product map start with [AWS Studio](../AWS-STUDIO.md); for all documentation
+areas use the [documentation index](../README.md).
+
 Paths are relative to the repository. Symbols are search anchors; source links intentionally avoid fragile line numbers.
 
 | Source owner | Entry points / responsibility | Architecture |

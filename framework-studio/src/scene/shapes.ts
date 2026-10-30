@@ -17,7 +17,7 @@ export interface Shape {
 export const ICON_BADGE = { x: 14, y: -30, size: 24, padding: 3 } as const;
 
 /** A service icon on a low isometric plinth. Hull includes the plaque and optional badge. */
-export function buildIconShape(x: number, y: number, withBadge = false): Shape {
+export function buildIconShape(x: number, y: number, withBadge = false, withManagementBadge = false): Shape {
   return {
     faces: [
       { points: [x - 25, y - 2, x, y + 10, x, y + 15, x - 25, y + 3] },
@@ -28,7 +28,9 @@ export function buildIconShape(x: number, y: number, withBadge = false): Shape {
     hull: [x - 24, y - 54, x + 24, y - 54,
       ...(withBadge ? [x + ICON_BADGE.x + ICON_BADGE.size + 1, y + ICON_BADGE.y - 1,
         x + ICON_BADGE.x + ICON_BADGE.size + 1, y + ICON_BADGE.y + ICON_BADGE.size + 1] : []),
-      x + 25, y - 2, x + 25, y + 3, x, y + 15, x - 25, y + 3, x - 25, y - 2],
+      x + 25, y - 2, x + 25, y + 3, x, y + 15, x - 25, y + 3,
+      ...(withManagementBadge ? [x - ICON_BADGE.x - ICON_BADGE.size - 1, y + ICON_BADGE.y + ICON_BADGE.size + 1,
+        x - ICON_BADGE.x - ICON_BADGE.size - 1, y + ICON_BADGE.y - 1] : [x - 25, y - 2])],
     height: 54,
   };
 }

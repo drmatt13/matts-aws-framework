@@ -13,6 +13,7 @@ import { ManagedDatabaseControls } from "./ManagedDatabaseControls";
 import { DatabasePlacement } from "./DatabasePlacement";
 import { Tags } from "./Tags";
 import { DeploymentSection, DeploymentOwnership } from "./Deployment";
+import { FrameworkManagedStatus } from "./ResourceStatus";
 
 /** One application database, presented through its local and AWS implementations. */
 export function ManagedDatabaseInspector({ resource, local }: { readonly resource?: ModelResource; readonly local?: LocalDatabase }) {
@@ -26,7 +27,7 @@ export function ManagedDatabaseInspector({ resource, local }: { readonly resourc
   const availability = { dev: !!postgres?.enabled, prod: !!rds && !rds.absent };
   const locations = { dev: "On your machine", prod: "In AWS" };
   return <>
-    <header><InspectorKind environments={{ availability, descriptions: locations, unavailableDescription: "not enabled" }}>Framework-managed database</InspectorKind><h2><EntityIcon icon={local ? "postgres" : "database"} />Application PostgreSQL</h2><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{database.databaseName} · {database.id}</code><Written location={source} label="Declared in" /></header>
+    <header><InspectorKind environments={{ availability, descriptions: locations, unavailableDescription: "not enabled" }}>PostgreSQL database</InspectorKind><h2><EntityIcon icon={local ? "postgres" : "database"} />Application PostgreSQL</h2><FrameworkManagedStatus /><code className={"block text-graphite text-meta wrap-anywhere"} data-slot="ref">{database.databaseName} · {database.id}</code><Written location={source} label="Declared in" /></header>
     <Tags entity={`database:${database.id}`} />
     <Description entity={local?.id ?? resource?.id ?? database.resource} />
     <DeploymentSection availability={availability} locations={locations}><DeploymentOwnership reason="The local database follows Compose; production RDS follows its owning stack. Consumer Deploy controls do not delete database storage." owners={owner ? [{ id: owner, title: "database stack" }] : []} /></DeploymentSection>

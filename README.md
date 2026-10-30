@@ -1,9 +1,14 @@
-# matt's-aws-framework
+# AWS Studio and Matt's AWS Framework
 
 A TypeScript npm-workspace framework for AWS applications: React, Cognito,
 GraphQL, PostgreSQL, Lambda, container services, tasks, workflows, and AgentCore
 agents and tools. The same
 workload declarations drive AWS infrastructure and the local development servers.
+
+AWS Studio is the visual development and operations interface over the same source model.
+Start with the [product and architecture overview](docs/AWS-STUDIO.md), use the
+[documentation index](docs/README.md) to choose a guide, or go directly to the
+[source-linked knowledge router](docs/aws-studio-knowledge/README.md).
 
 ## Start here
 
@@ -20,7 +25,7 @@ The CDK CLI is installed in the workspace; a global installation is unnecessary.
 | Have an agent wire a data change through the application | [Data features](docs/DATA-FEATURES.md) |
 | Add an endpoint, service, task, workflow, or resource | [Framework](docs/FRAMEWORK.md) |
 | Add an AgentCore agent or the tools it calls | [AgentCore](docs/AGENTCORE.md) |
-| See where everything runs, and change a few settings with a validated preview | [Framework Studio](framework-studio/README.md) (`npm run studio`) |
+| Explore architecture, review source edits and operate selected deployments | [Framework Studio](framework-studio/README.md) (`npm run studio`) |
 
 ## The two declarations you normally edit
 

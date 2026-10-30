@@ -65,7 +65,10 @@ interface StoredBatch extends BatchChanges { readonly response: BatchPlanRespons
 /** Compare framework semantics, excluding source locations and Inspector enrichments. */
 function creationSignature(model: ModeModel): string {
   return JSON.stringify({ targets: model.targets.map(({ ref, constructId, role, lanes, environment, secrets, placement, compute, access, requirementRules }) => ({ ref, constructId, role, lanes, environment, secrets, placement, compute, access, requirementRules })), routes: model.routes,
-    resources: model.resources.filter((resource) => ["input", "secret", "stack"].includes(resource.kind) && resource.id.startsWith("resource:")).map(({ id, kind, absent, fromEnv, default: fallback, required, values, note }) => ({ id, kind, absent, fromEnv, fallback, required, values, note })),
+    // Compare this graph's resolved policy. The snapshot additionally enriches
+    // every input with a two-mode inspector table; evaluators omit that table
+    // when both graphs agree, and each graph is verified separately below.
+    resources: model.resources.filter((resource) => ["input", "secret", "stack"].includes(resource.kind) && resource.id.startsWith("resource:")).map(({ id, kind, absent, fromEnv, default: fallback, authoredValue, required, values, note }) => ({ id, kind, absent, fromEnv, fallback, authoredValue, required, values, note })),
     workflows: model.workflows, tagging: tagSignature(model),
     // Native CDK usage is added by the source index after evaluation. Compare
     // authored settings here, independently of that source-only enrichment.

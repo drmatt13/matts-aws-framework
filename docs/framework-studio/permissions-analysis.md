@@ -4,6 +4,14 @@ Repository investigation, 26 October 2026, followed by source-graph implementati
 The inventory and gaps below describe the baseline inspected before that implementation.
 This work describes IAM intent; it does not establish effective access in an AWS account.
 
+The **Implemented source experience** section describes source permission facts and
+their presentation. The baseline inventory/gaps and recommended follow-ups preserve the
+investigation history; they are not an assertion that all proposals shipped. For the
+current capability boundary, use [implementation status](../aws-studio-knowledge/reference/status.md)
+and [resource/CDK contracts](../aws-studio-knowledge/framework/resources-and-cdk.md).
+Focused test/browser results below belong to that implementation pass and were not rerun
+by the 2026-10-29 documentation reconstruction.
+
 ## Implemented source experience
 
 - [Typed permission facts](../../framework-studio/shared/permissions.ts) derive from

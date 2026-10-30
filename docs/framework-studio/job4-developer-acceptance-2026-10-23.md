@@ -1,5 +1,10 @@
 # Job 4 independent developer acceptance — 2026-10-23
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 This acceptance pass approaches the documented framework and Studio workflows from
 a fresh, isolated checkout. Historical Job 3 evidence informed the scenarios but
 is not counted as current proof. No AWS writes, deployment, publication or shared

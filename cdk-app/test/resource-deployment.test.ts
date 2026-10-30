@@ -87,6 +87,14 @@ test("export discovers resources across pages and rejects conflicting or product
   assert.throws(() => readDeploymentStackPages(() => ({ NextToken: "loop" })), /repeated/);
 });
 
+test("standalone workload inputs require no published development resource attribute", () => {
+  const values = defineResources({ enabled: resource.value("true") });
+  const configuration = defineFrameworkConfig({ resources: values, defaults, http: [{ "/standalone": {
+    directory: "/lambda_functions/http_functions/standalone", methods: ["POST"], auth: false, environment: { ENABLED: values.enabled },
+  } }], webSocket: [], events: [], services: [], tasks: [], workflows: [] } as never);
+  assert.deepEqual(collectDevelopmentResources([deployed([])], "example", configuration).manifest.attributes, {});
+});
+
 test("failed refresh preserves both previous files", () => {
   const cache = path.resolve(__dirname, "../../.cache"); mkdirSync(cache, { recursive: true });
   const fixture = mkdtempSync(path.join(cache, "export-test-"));

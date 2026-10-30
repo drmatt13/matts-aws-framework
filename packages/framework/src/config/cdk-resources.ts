@@ -307,7 +307,7 @@ export function assertJsonArguments(value: unknown, origin: string): void {
  * `path`, `optional`, `kind`, `absent` — are answered by the spec itself, and
  * `arn`/`value`/`field` are answered by the secret projections above.
  */
-const REFERENCE_FIELDS = ["tags", "effectiveTags", "memberTags", "fromEnv", "values", "secretArn", "secretField", "note", "default", "attribute"];
+const REFERENCE_FIELDS = ["tags", "effectiveTags", "memberTags", "fromEnv", "authoredValue", "values", "secretArn", "secretField", "note", "default", "attribute"];
 
 /** Only accessed attributes become references; the native construct is never enumerated. */
 export function cdkResource<T>(

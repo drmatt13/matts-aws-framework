@@ -1,11 +1,19 @@
 # Lambda invocation editing: investigation and design
 
-Status: implementation in progress, October 2026. Read evidence, native trigger
-inventory and typed Cognito, EventBridge, SQS, SNS, DynamoDB stream and S3
-descriptors/adapters are implemented. The
-event-source editor is implemented through the shared draft and transaction path.
-Role conversion and function creation remain outside
-this implementation.
+Historical investigation/design with subsequent implementation decisions. As of the
+2026-10-29 source review, native trigger inventory and typed Cognito, EventBridge,
+SQS, SNS, DynamoDB stream, S3 and schedule adapters are implemented; the event-source
+editor uses shared draft/review/apply. **Add to Application** separately creates
+functions and routes. A general HTTP/WebSocket/event role-conversion selector and
+identity-preserving conversion remain proposed. The earlier baseline and delivery
+sequence below retain their original investigation context, including then-missing
+capabilities and old source locations.
+
+Use [creation and connections](../aws-studio-knowledge/studio/creation-and-connections.md),
+[configuration](../aws-studio-knowledge/framework/configuration.md), and
+[implementation status](../aws-studio-knowledge/reference/status.md) for current behavior.
+Source recovery restores interrupted writes; saved source Undo/Redo is no longer a
+Studio feature. Historical synth/browser evidence below is not a current release check.
 
 ## Product decision
 
@@ -23,7 +31,7 @@ typed invocation adapters, then expose those capabilities in Studio. Keep native
 available for integrations that do not yet have an adapter. Do not make Studio the only
 place that understands how a trigger works.
 
-## What the repository already provides
+## Historical baseline: what the repository provided
 
 | Area | Finding and implication |
 | --- | --- |
@@ -37,7 +45,7 @@ place that understands how a trigger works.
 | Existing relationship inference | [cdk-links.ts](../../framework-studio/server/source/cdk-links.ts) conservatively infers source relationships. Missing edges do not prove that a trigger slot is free. Native trigger inventory needs explicit support. |
 | Source editing | [Edit planning](../../framework-studio/server/edits/plan.ts), [route editing](../../framework-studio/server/edits/route.ts) and [transactions](../../framework-studio/server/edits/transaction.ts) provide source hashes, previews, validation and undo. Type conversion needs a coordinated multi-file transaction, beyond a scalar edit. |
 
-### Resources that would appear today
+### Historical candidates for adapter discovery
 
 These are candidates for future adapters, not capabilities currently offered by Studio.
 Availability comes from [resources.ts](../../framework-config/resources.ts). A public

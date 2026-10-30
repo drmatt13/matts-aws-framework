@@ -25,7 +25,7 @@ test("synchronous form validation and asynchronous planning errors share actiona
 
 test("stale Studio browser/server protocols block edits with a restart instruction", () => {
   assert.equal(studioProtocolProblem(STUDIO_PROTOCOL_VERSION), undefined);
-  for (const version of [undefined, null, "1", "future"]) {
+  for (const version of [undefined, null, "1", "6", "future"]) {
     assert.match(studioProtocolProblem(version)!, /Restart npm run studio/);
     assert.match(studioProtocolProblem(version)!, /No files were written/);
   }

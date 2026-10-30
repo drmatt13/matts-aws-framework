@@ -2,8 +2,9 @@
 
 Development is a hybrid environment. React, application HTTP/WebSocket handlers,
 container services/tasks, workflow orchestration, and agents/tools execute locally.
-Authentication and real AWS event delivery remain in AWS. Managed AWS resources
-used by application logic also remain in AWS.
+Authentication and real AWS event delivery remain in AWS. Enabled WebSocket handlers
+also have an AWS API Gateway deployment; local WebSocket execution is a separate lane.
+Managed AWS resources used by application logic also remain in AWS.
 
 This describes the development graph (no `-c prodDeployment=true`), not a full cloud
 deployment used for production-parity testing. See
@@ -16,13 +17,16 @@ deployment used for production-parity testing. See
 | --- | --- | --- |
 | **Cognito** | Real user pool, app client, domain, sign-up/sign-in, token refresh, and token verification. Local application handlers consume the same Cognito identities. | Core authentication dependency in both modes. |
 | **Lambda** | AWS invokes the declared event handlers. Cognito's pre-sign-up and custom-message triggers execute in AWS; the post-confirmation trigger captures an invocation for local replay. | Event Lambdas exist in both modes. Routed application handlers execute locally in dev. |
+| **API Gateway WebSocket** | Enabled cloud WebSocket routes and their authorizer are built in both modes, alongside local WebSocket execution. | Conditional on the routes' deploy selectors; development cloud handlers cannot assume locally running tasks/workflows/database exist in AWS. |
 | **S3** | Store captured event payloads and callback completions that AWS workers cannot deliver directly to a private local runner. | The replay bucket is development-only infrastructure. |
 | **SQS** | Receive replay-bucket object notifications; local dispatchers consume them. A replay dead-letter queue holds deliveries that exhaust retries. | The replay queue and DLQ are development-only infrastructure. |
 | **IAM** | Roles and policies for deployed event Lambdas, replay access, integration bridges, and the developer's AWS API access. | Supporting permissions in both modes; local direct SDK calls use development credentials. |
 | **CloudWatch Logs** | Logs for deployed Lambdas and development integration bridges. Local application logs remain in Docker or the local processes. | Supporting observability, not a replacement for local logs. |
 
 For ordinary authenticated application development, the functional cloud base is
-**Cognito + event Lambdas + S3/SQS replay**, with AWS permissions.
+**Cognito + event Lambdas + S3/SQS replay**, with AWS permissions. The current application's
+enabled WebSocket declarations additionally build API Gateway and its Lambda handlers.
+An ordinary HTTP request does not invoke that WebSocket API.
 
 CloudFormation and the CDK bootstrap asset infrastructure support deploying and
 exporting this graph. They are setup/deployment dependencies, rather than services
@@ -109,7 +113,7 @@ Source: [CDK entry point](../cdk-app/bin/cdk-app.ts) and
 | RDS | Compose PostgreSQL and local database access. |
 | CloudFront and website hosting | Vite and its same-origin proxy. |
 | HTTP API Gateway and routed Lambdas | Local API server and Lambda executor. |
-| WebSocket API Gateway and routed Lambdas | Local WebSocket server and Lambda executor. |
+| WebSocket API Gateway and routed Lambdas | Local WebSocket server/executor for local-enabled routes; AWS API Gateway/Lambdas also exist for cloud-enabled routes in dev. |
 | ECS services, ECS tasks, and application load balancers | Compose services and dynamically launched Docker tasks. |
 | Application Step Functions state machines | Local workflow interpreter; AWS bridges only for the advanced integrations above. |
 | AgentCore Runtime and Gateway | Local agent session processes and Gateway emulation. Tools run through the local Lambda executor. Cognito and any model/AWS API calls remain external dependencies. |

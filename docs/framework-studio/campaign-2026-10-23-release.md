@@ -1,5 +1,10 @@
 # Frontend release and deployment identity campaign — 2026-10-23
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 Owner: release/identity agent. Scope: original families F/G; no AWS mutation, no change to real authored `.env` files. Root owns the Studio process, Docker and cloud experiment. All source-apply GUI work below used `.cache/studio-campaign-20261023/app` on port 4591.
 
 | Initial capability | Status | Current-source evidence |

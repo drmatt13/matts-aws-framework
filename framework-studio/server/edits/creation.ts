@@ -337,12 +337,15 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
   const uniqueTarget = (id: string) => { if (targetExists(id)) refuse("id", "This workload identifier is already declared."); };
   if (request.kind === "input" || request.kind === "secret") {
     const keys = [...(request.group ? [request.group] : []), request.id];
-    if (models.some((model) => model.resources.some((resource) => resource.fromEnv === request.envName))) refuse("envName", "This environment variable is already declared in the catalog.");
-    let expression = `resource.${request.kind === "secret" ? "secret" : "fromEnv"}(${q(request.envName)}${Object.keys(request.tags ?? {}).length ? `, { tags: ${q(request.tags)} }` : ""})`;
-    if (request.required) expression += ".required()";
+    const linkedToEnv = request.kind === "secret" || request.linkedToEnv !== false;
+    if (linkedToEnv && models.some((model) => model.resources.some((resource) => resource.fromEnv === request.envName))) refuse("envName", "This environment variable is already declared in the catalog.");
+    const metadata = Object.keys(request.tags ?? {}).length ? `, { tags: ${q(request.tags)} }` : "";
+    let expression = !linkedToEnv && request.kind === "input" ? `resource.value(${q(request.value ?? "")}${metadata})`
+      : `resource.${request.kind === "secret" ? "secret" : "fromEnv"}(${q(request.envName)}${metadata})`;
+    if (linkedToEnv && request.required) expression += ".required()";
     if (request.kind === "input") {
       if (request.choices.length) expression += `.enum(${request.choices.map((choice) => q(choice)).join(", ")})`;
-      if (request.defaultValue) expression += `.default(${q(request.defaultValue)})`;
+      if (linkedToEnv && request.defaultValue) expression += `.default(${q(request.defaultValue)})`;
     }
     catalog(keys, expression);
     expected.select = `resource:${keys.join(".")}`; expected.resources.push(expected.select);
@@ -382,11 +385,13 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
       put(relative, imported ? text : addImport(text, `import { resources as ${alias} } from ${q(specifier)};`, alias));
       impact.push(`Connects ${expected.select} to ${target.ref} as ${request.consumerVariable}, using the framework's resource delivery and permission resolution.`);
     }
-    for (const mode of ["dev", "prod"]) {
+    for (const mode of linkedToEnv ? ["dev", "prod"] : []) {
       const file = `cdk-app/.env.${mode}.template`;
       if (existsSync(path.join(root, file)) && !new RegExp(`^\\s*(?:#\\s*)?${request.envName}\\s*=`, "m").test(read(file))) put(file, read(file).replace(/\s*$/, "\n") + `# ${request.envName}=\n`);
     }
-    impact.push("Adds the catalog declaration and commented template keys. Authored environment files are never written. Inputs are strings; secret values are accepted only by the separate protected input lifecycle.");
+    impact.push(linkedToEnv
+      ? "Adds the catalog declaration and commented template keys. Authored environment files are never written. Inputs are strings; secret values are accepted only by the separate protected input lifecycle."
+      : "Adds the input's value in its source declaration. Environment files and templates are unchanged.");
   } else if (request.kind === "function" || request.kind === "route") {
     const section = request.category === "event" ? "events" : request.category === "http" ? "http" : "webSocket";
     const routeId = request.category === "http" ? `route:http:${request.path}` : `route:ws:${request.path}`;
@@ -427,10 +432,10 @@ export function planCreation(root: string, state: StudioState, raw: CreationRequ
         if (condition) {
           if (request.deploy !== "both") return refuse("deploy", "This WebSocket handler must use the $connect condition. Choose Use $connect condition or Off.");
           const selector = models[0]!.resources.find(resource => resource.id === condition.resource);
-          if (!selector || selector.kind !== "input" || !selector.fromEnv || models.some(model => !model.resources.some(resource => resource.id === selector.id && !resource.absent))) return refuse("deploy", "The $connect condition needs an input parameter declared in both environments. Configure the handler in source, or choose Off.");
+          if (!selector || selector.kind !== "input" || (!selector.fromEnv && selector.authoredValue === undefined) || models.some(model => !model.resources.some(resource => resource.id === selector.id && !resource.absent))) return refuse("deploy", "The $connect condition needs an input parameter declared in both environments. Configure the handler in source, or choose Off.");
           deploy = `{ when: { resource: resources${selector.path.map(part => `[${q(part)}]`).join("")}, equals: ${q(condition.equals)} } }`;
           conditionalDeploy = true;
-          impact.push(`Copies $connect deployment condition: ${selector.fromEnv} equals ${q(condition.equals)}. Each environment resolves its own input value.`);
+          impact.push(`Copies $connect deployment condition: ${selector.fromEnv ?? selector.path.join(".")} equals ${q(condition.equals)}. Each environment resolves its own input value.`);
         }
       }
       const directory = request.directory || defaultImplementationDirectory(request.kind, request.id, request.category)!;

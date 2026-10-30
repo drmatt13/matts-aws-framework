@@ -1,5 +1,10 @@
 # Isolated development lifecycle — October 23, 2026
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 The user explicitly approved the reviewed stack apply, invocation and cleanup at
 action time. Profile `dev`, account `734849394764`, region `us-east-1`. No production
 operation was performed. The source came from the event function created through

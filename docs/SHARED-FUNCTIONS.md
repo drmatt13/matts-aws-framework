@@ -19,7 +19,7 @@ All import suffixes below follow `@repo/framework/runtime/`. For example,
 | `startWorkflow(id, input)` | Start a declared workflow; return an `executionId` after acceptance. Local execution uses the workflow interpreter. | `invocation` |
 | `invokeAgent(id, input, options)` | Call a declared agent and receive its JSON response. Options include `conversationId` and, for an agent with users, the caller's session. | `agentcore` |
 | `webSocketConnections(event)` | Get `.send(connectionId, data)` and `.disconnect(connectionId)` for the WebSocket API that delivered the event. Uses the local management endpoint during development. | `websocket` |
-| `authenticated(handler)` | Verify an HTTP caller and pass its session to the handler. Pair with `auth: true` in the route declaration. | `auth` |
+| `authenticated(handler)` | Verify an HTTP caller and pass its session to the handler. Pair with `auth: true` and `userPool: true` in the HTTP declaration. | `auth` |
 | `getAuthenticatedSession`, `getAuthenticatedUser`, `getAuthenticatedSub` | Read a verified session, Cognito claims, or user ID when explicit handling is needed. | `auth` |
 | `databaseConnection()` | Connection settings for `getDatabase(...)` in a workload that declares `database: true`: the Compose Postgres locally, an IAM login that signs a token per connection in AWS. | `database` |
 | `databaseUrl()` | The same connection as a URL, for a tool that takes nothing else (the Prisma CLI). In AWS its password is an IAM token good for 15 minutes. | `database` |
@@ -56,9 +56,15 @@ These exports belong to `@repo/database`, separate from the framework runtime:
 
 | Function | Purpose |
 | --- | --- |
-| `getDatabase(databaseUrl)` | Obtain the typed repository registry and reuse its connection pool. The current registry contains `users` and `projects`. |
-| `disconnectDatabase()` | Close the shared database connection. |
+| `getDatabase(databaseConnection())` | Obtain the typed repository registry from connection settings, reusing one pool per connection identity. The current registry contains `users` and `projects`. |
+| `disconnectDatabase()` | Close all shared database pools in this execution environment. |
 | `ensureCognitoUser()` | Provision or reconcile an application's user record from Cognito identity data. |
+
+Pass the settings returned by `@repo/framework/runtime/database`, not a raw URL
+string. Reader access is explicitly declared with `database: { readers: true }` and
+selected with `databaseConnection({ role: "reader" })`; local execution falls back to
+the writer when its declared reader list is empty. Changing pool settings for an
+active connection identity requires disconnecting first.
 
 The registry and exports are in
 [the database entry point](../packages/database/src/index.ts).
@@ -72,7 +78,8 @@ configuration is being evaluated.
 | Functions | Purpose |
 | --- | --- |
 | `defineFrameworkConfig()` | Compose the workload declarations. |
-| `defineResources()`, `resource.stack<T>()`, `resource.secret()`, `resource.fromEnv()` | Declare the resource catalog, stack references, secrets, and authored inputs. |
+| `defineResources()`, `resource.stack<T>()`, `resource.cdk<T>()`, `resource.value()`, `resource.secret()`, `resource.fromEnv()` | Declare the resource catalog, native references, source-owned public values, secrets and environment-linked inputs. |
+| `defineNetwork()`, `defineDatabase()` | Declare stable network and PostgreSQL intent; register the imported network and explicitly select it on placed workloads. |
 | `runsTask()`, `startsWorkflow()`, `invokesAgent()` | Declare the workloads a caller may invoke. |
 | `completesCallback()` | Declare that an AWS messaging worker completes callbacks from its bound queue. |
 | `workflow()`, `sequence()`, `parallel()`, `map()`, `when()`, `choose()` | Build execution order, concurrency, iteration, and branching. |

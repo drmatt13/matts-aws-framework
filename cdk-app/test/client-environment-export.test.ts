@@ -27,6 +27,35 @@ const mappings = (binding: ClientEnvironmentBinding): ClientEnvironmentMappings 
 /** The application's own input declarations, plus any a test adds, resolved for one graph as the exporter receives them. */
 const catalog = (mode: "dev" | "prod", entries: ResourceDeclarationInput = {}) => ({ declarations: listResourceDeclarations(defineResources({ enableWebSocketApi, client, ...entries }, { mode })) });
 
+test("standalone public client inputs use catalog identities and never read environment values", () => {
+  const entries = {
+    settings: { mode: resource.value({ dev: "preview", prod: "release" }), enabled: resource.value("yes").enum("yes", "no") },
+    localOnly: resource.value("local").only("dev"),
+  };
+  const recipes: ClientEnvironmentMappings = {
+    VITE_MODE: { kind: "input", name: "resource:settings.mode", when: { input: "resource:settings.enabled", equals: "yes" } },
+    VITE_LOCAL: { kind: "input", name: "resource:localOnly" },
+  };
+  for (const mode of ["dev", "prod"] as const) {
+    const declarations = listResourceDeclarations(defineResources(entries, { mode }));
+    const result = resolveClientEnvironmentMappings(recipes, { deployment: "example", stacks: deployed(mode), inputs: { MODE: "override", ENABLED: "no" },
+      declarations, getContext: () => { throw new Error("Standalone inputs must not query context"); } });
+    assert.deepEqual(result, { VITE_MODE: mode === "dev" ? "preview" : "release", VITE_LOCAL: mode === "dev" ? "local" : "" });
+  }
+});
+
+test("canonical client identities preserve the underlying environment input's public-name restriction", () => {
+  const resources = defineResources({ ordinary: resource.fromEnv("PRIVATE_TOKEN") });
+  assert.throws(() => resolveClientEnvironmentMappings(mappings({ kind: "input", name: "resource:ordinary" }), {
+    deployment: "example", stacks: deployed("dev"), inputs: { PRIVATE_TOKEN: "never-export" }, declarations: listResourceDeclarations(resources),
+  }), /Secret inputs cannot be exported/);
+});
+
+test("the application's standalone WebSocket flag ignores unused environment overrides", () => {
+  const context = { deployment: "example", stacks: deployed("dev"), inputs: { ...ports, ENABLE_WEBSOCKET_API: "false" }, ...catalog("dev") };
+  assert.equal(resolveClientEnvironmentMappings(defaults, context).VITE_LOCAL_WS_URL, "ws://localhost:8081");
+});
+
 test("default client mappings preserve endpoint, identity and per-mode behavior", () => {
   const dev = resolveClientEnvironmentMappings(defaults, { deployment: "example", stacks: deployed("dev"), inputs: ports, ...catalog("dev") });
   assert.equal(dev.VITE_API_GATEWAY_URL, "http://localhost:8080");
@@ -111,7 +140,9 @@ test("export CLI reads saved custom mappings and the deployed mode's file, and p
 });
 
 test("client conditions resolve per environment, inherit defaults, and reject undeclared or secret parameters", () => {
-  const context = { deployment: "example", stacks: deployed("dev"), inputs: { ...ports, ENABLE_WEBSOCKET_API: "false" }, ...catalog("dev", { internal: resource.secret("INTERNAL_VALUE") }) };
+  const context = { deployment: "example", stacks: deployed("dev"), inputs: { ...ports, ENABLE_WEBSOCKET_API: "false" }, ...catalog("dev", {
+    enableWebSocketApi: resource.fromEnv("ENABLE_WEBSOCKET_API").enum("true", "false").default("true"), internal: resource.secret("INTERNAL_VALUE"),
+  }) };
   assert.equal(resolveClientEnvironmentMappings(defaults, context).VITE_LOCAL_WS_URL, "");
   assert.equal(resolveClientEnvironmentMappings(defaults, { ...context, inputs: ports }).VITE_LOCAL_WS_URL, "ws://localhost:8081");
   assert.equal(resolveClientEnvironmentMappings(defaults, { ...context, inputs: { ...ports, ENABLE_WEBSOCKET_API: " TRUE " } }).VITE_LOCAL_WS_URL, "ws://localhost:8081", "input enums normalize like framework resource resolution");

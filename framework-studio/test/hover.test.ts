@@ -1,4 +1,5 @@
 import { gatewayModels } from "../shared/gateways";
+import { frameworkManagedIds } from "../shared/framework-management";
 import assert from "./support/assert";
 import path from "node:path";
 import { after, before, test } from "node:test";
@@ -98,6 +99,18 @@ test("framework-managed resources are flagged and application declarations are n
   assert.ok(local.length, "the fixture places local PostgreSQL beside RDS");
   for (const node of local) assert.equal(nodeHoverFacts(node, index).frameworkManaged, true, node.id);
   for (const node of sceneOf("prod").nodes.filter((candidate) => candidate.entity !== "resource" && candidate.entity !== "gateway" && candidate.entity !== "local")) assert.equal(nodeHoverFacts(node, index).frameworkManaged, false, node.id);
+  for (const mode of ["dev", "prod"] as const) {
+    const expected = frameworkManagedIds(snapshot.models[mode]);
+    const scene = sceneOf(mode);
+    for (const node of scene.nodes) {
+      assert.equal(node.roleIcon === "managed" || !!node.frameworkManaged, expected.has(node.id), `${mode}: ${node.id} has its ownership lock`);
+      assert.equal(nodeHoverFacts(node, index).frameworkManaged, expected.has(node.id), `${mode}: ${node.id} hover agrees`);
+    }
+    for (const prop of scene.props) {
+      assert.equal(prop.roleIcon === "managed" || !!prop.frameworkManaged, true, `${mode}: ${prop.id} has its ownership lock`);
+      assert.equal(propHoverFacts(snapshot.models, prop.id).frameworkManaged, true, prop.id);
+    }
+  }
 });
 
 test("an item no environment deploys gives its specific reason", () => {
@@ -107,7 +120,7 @@ test("an item no environment deploys gives its specific reason", () => {
 test("an environment file lights only the environment it belongs to", () => {
   for (const mode of ["dev", "prod"] as const) {
     const file = snapshot.models[mode].resources.find((resource) => resource.id === `envfile:${mode}`)!.deploymentFile!;
-    assert.deepEqual(factsOf(`envfile:${mode}`), { places: [{ env: mode, where: `Local file · ${file.path}` }], frameworkManaged: false });
+    assert.deepEqual(factsOf(`envfile:${mode}`), { places: [{ env: mode, where: `Local file · ${file.path}` }], frameworkManaged: true });
     // Each graph carries both files; the other environment's file never lights this one's pill.
     assert.deepEqual(factsOf(`envfile:${mode}`, mode === "dev" ? "prod" : "dev"), factsOf(`envfile:${mode}`));
   }

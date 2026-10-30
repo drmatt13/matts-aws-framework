@@ -1,72 +1,100 @@
 # Quick Start
 
-Get the framework running locally against your own AWS account, then learn the
-handful of files you'll actually touch.
+Start with Studio's source model, then run the application against your own development
+AWS deployment. The [Development guide](docs/DEV-DEPLOYMENT.md) owns the complete setup
+and troubleshooting procedure; this page is the shortest guided path.
 
 ## What you need
 
-- Node 24+
-- Docker Desktop (running)
+- Node 24+ and npm 11
+- Docker Desktop with Linux containers and Compose Watch, for local application compute
 - The AWS CLI with a configured profile, shown below as `<profile>`
 
 Run every command from the **repository root**.
 
 ## 1. Get it running
 
-**1. Create the CDK env file.** Copy `cdk-app/.env.dev.template` to `cdk-app/.env.dev`
-(development commands read `.env.dev`, `-c prodDeployment=true` commands read `.env.prod`;
-there is no `cdk-app/.env.dev`). You don't need to change anything in it. Studio's
-**CDK environment files** island can generate the file for you.
-
-```bash
-cp cdk-app/.env.dev.template cdk-app/.env.dev
-```
-
-**2. Install dependencies.**
+**1. Install and open Studio.** Viewing the source graph does not require deploying AWS
+or starting Docker. Studio is the visual interface to the same TypeScript declarations
+you edit in your editor.
 
 ```bash
 npm ci
+npm run studio
 ```
 
-**3. Deploy the AWS resources.** This creates Cognito (sign-in) and a few dev helpers
-in your account, then writes the generated values to a root-level `.env`.
+Open the loopback URL printed by Studio. Explore the architecture and inspectors before
+starting deployment operations. Keep this terminal running while using Studio.
+
+**2. Prepare development inputs.** Generate a missing `cdk-app/.env.dev` from Studio's
+**CDK environment files** island, or copy `cdk-app/.env.dev.template` only if the private
+file does not exist. Set a distinct `CDK_APP_NAME`, your local origin/ports and any required
+workload inputs. Preserve existing values. Development reads `.env.dev`; explicit
+production commands read the selected production target's inputs, conventionally
+`.env.prod`. There is no mode-less `cdk-app/.env`.
+
+**3. Select and verify the development account.** Deployment creates real AWS resources
+and is a separate authorized action. Use the same intended profile for deploy and local
+execution:
 
 ```bash
-npm run deploy:resources -- --all --profile=<profile> --yes
+aws sts get-caller-identity --profile <profile>
 ```
 
-> First time using CDK in this AWS account and region? Run this once first:
-> `npm --workspace cdk-app exec -- cdk bootstrap --profile=<profile>`
+If this account/region has not been bootstrapped for CDK, follow the development setup
+before deployment. Bootstrapping also changes AWS infrastructure.
 
-**4. Create the client env file.** Copy `client-app/.env.example` to `client-app/.env`,
-then replace its values with the last section of the root `.env` that step 3 generated,
-headed `# Client app: copy this block into client-app/.env`. It already holds every
-`VITE_*` setting the client reads, including `VITE_LOCAL_WS_URL` for the local
-WebSocket server. AWS deployments also build the WebSocket API for enabled handlers;
-its URL is `VITE_API_GATEWAY_WS_URL`.
+**4. Review and deploy development.** In Studio **Deploy**, select the profile and
+development target, prepare the plan and review its effects before applying. The CLI
+equivalent is:
 
-**5. Start the backend** (Docker containers). Leave this terminal running.
+```bash
+npm run deploy:resources -- --all --profile <profile> --plan .cache/dev-review --review template
+npm run deploy:resources -- --apply .cache/dev-review --profile <profile>
+```
+
+Use a fresh plan directory for a new review. A failed or interrupted apply requires
+inspecting recorded progress and AWS before replanning. Review may require additional
+confirmation for consequential transitions; follow the exact requirement it reports.
+
+Successful dev deployment exports root `.env` for Compose controls,
+`.framework/local/resources.json` for identifiers and
+`client-app/.env.development.local` for public browser settings. Do not copy client
+settings or resource ARNs by hand. Keep any application-specific public overrides in
+`client-app/.env`; never put a backend secret in a `VITE_` variable.
+
+**5. Start local compute.** Studio's **Start development** coordinates containers,
+source watch and the client. From the CLI, leave these commands in separate terminals:
 
 ```bash
 npm run dev:containers -- --profile=<profile>
 ```
 
-**6. Start the frontend** in a second terminal.
+In the second terminal:
 
 ```bash
 npm run dev:client
 ```
 
-**7. Open [http://localhost:3000](http://localhost:3000).** Sign up and you're in.
+**6. Inspect and initialize storage when needed.** Startup verifies the existing local
+database without writing schema or users. On a fresh database, PostgreSQL remains
+available while consumers wait. In Studio **Database → Database status → Local
+PostgreSQL**, inspect it, review the initialization SQL and separately authorize
+initialization. For an existing database, review its pending migrations instead.
+Retry local startup after the database action. See [Database](docs/DATABASE.md#local-database).
 
-> In dev mode, only Cognito and its triggers live in AWS. Your HTTP routes,
-> WebSocket routes, services, tasks and workflows all run locally in Docker.
+**7. Open the configured frontend origin** (`http://localhost:3000` by default), sign
+up/sign in and verify the application. Cognito identities, replay delivery and
+enabled API Gateway WebSocket routes remain in AWS. HTTP, services, tasks, workflows,
+agents and locally enabled WebSocket routes run locally. Model providers and declared
+AWS resources can still be external dependencies. See
+[shared AWS dependencies](docs/SHARED-AWS-DEPENDENCIES.md).
 
-**When you're done**, tear down the AWS resources:
-
-```bash
-npm run destroy:resources -- --all --profile=<profile>
-```
+**When finished**, use `docker compose stop` to stop local containers while preserving
+`postgres_data`. Closing Studio stops its source watch/client, not its containers.
+Cloud teardown is a separate decision: inspect a saved identity-scoped deletion review
+and retention consequences using [the teardown procedure](docs/PROD-DEPLOYMENT.md#teardown)
+with dev mode. Routine shutdown does not require deleting your AWS deployment.
 
 ## 2. The files that matter
 
@@ -85,19 +113,20 @@ const framework = defineFrameworkConfig({
     userPoolId: resources.cognito.userPool.userPoolId,
     userPoolClientId: resources.cognito.userPoolClient.userPoolClientId,
   },
-  http: [authRoutes, graphqlRoutes, exampleRoutes, workflowRoutes, taskRoutes],
-  webSocket: [webSocketRoutes],
-  events: [cognitoEvents, invocationTestEvents],
-  services: [exampleService],
-  tasks: [invocationTestTasks, databaseTasks],
-  workflows: [invocationTestWorkflows],
-  tools: [exampleTools],
-  agents: [exampleAgent],
+  http: [http],
+  webSocket: [webSocket],
+  events: [events],
+  services: [services],
+  tasks: [tasks],
+  workflows: [workflows],
+  tools: [tools],
+  agents: [agents],
 });
 ```
 
-To add something new, write a module in `framework-config/<type>/`, then add it to the
-matching array. The framework builds the routing, local dev servers and AWS
+The excerpt uses imported section objects from `framework-config/workloads/<kind>.ts`.
+Add entries there, or compose an additional imported module through the matching array.
+The framework builds the routing, local dev servers and AWS
 infrastructure from these declarations.
 
 Declare each VPC with `defineNetwork({ id, ...settings })` in
@@ -109,7 +138,20 @@ blueprints and create no production infrastructure.
 
 ### `framework-config/resources.ts`: where workloads get their inputs
 
-This file can provide three kinds of input.
+The catalog joins public values, environment-backed inputs, secrets and linked stacks.
+These references declare how data is supplied; workload `environment`, `secrets`,
+`cloud.bindings` and `cloud.access` declare consumption and access.
+
+**Standalone public values** need no dotenv entry:
+
+```ts
+applicationLabel: resource.value("My application"),
+```
+
+Use `resource.value({ dev: "My application", prod: "My production application" })`
+for mode-specific values.
+Do not put credentials in a public value. Environment-backed inputs are the choice when
+the operator supplies a setting through the selected private inputs file.
 
 **1. Plain env variables.** Set the value in `cdk-app/.env.dev`, then declare it here:
 
@@ -136,7 +178,8 @@ environment: { OPENAI_API_KEY_SECRET_ARN: resources.openaiApiKey.arn }
 
 See `framework-config/workloads/agents.ts` for a real case.
 
-**3. Linked CDK stacks.** Any public field on one of your stacks becomes a resource.
+**3. Linked CDK stacks.** Supported public construct, string and secret fields on
+your stack become typed resource references.
 Cognito is the real example. It takes three steps:
 
 ```ts
@@ -161,8 +204,9 @@ environment: { COGNITO_DOMAIN_URL: resources.cognito.userPoolDomainUrl },
 environment: { FRONTEND_URL: resources.cognito.frontendUrl },
 ```
 
-No ARNs to copy and paste. If you rename a field, the code stops compiling until you
-update every place that uses it.
+No ARNs to copy and paste. TypeScript checks typed field references. Keep deployed
+construct IDs and resource paths stable; a compiling rename can still affect
+infrastructure identity, so inspect the source diff and synthesized plan.
 
 ### `cdk-app/lib/`: where CDK code goes
 
@@ -238,10 +282,15 @@ export const lambdaHandler = tool(contract, async ({ a, b }) => ({ sum: a + b })
 - [docs/FRAMEWORK.md](docs/FRAMEWORK.md): workloads, resources and secrets in detail
 - [docs/DEV-DEPLOYMENT.md](docs/DEV-DEPLOYMENT.md): full development guide and troubleshooting
 - [docs/AGENTCORE.md](docs/AGENTCORE.md): agents and tools
+- [Operational lifecycle](docs/aws-studio-knowledge/deployment/lifecycle.md): source,
+  infrastructure, database, identity and frontend reviews and their separate effects
 
 WebSocket API Gateway is framework managed in both AWS modes. The application's
-`ENABLE_WEBSOCKET_API=true` input enables its handlers and authorizer through their
-shared Deploy condition. It replaces the retired `DEPLOY_PROD_WEBSOCKET_API` setting.
+`resources.enableWebSocketApi` public value enables its handlers and authorizer through
+their shared Deploy condition. The current catalog authors it with `resource.value("true")`;
+edit the value in source or Studio. It does not read an `ENABLE_WEBSOCKET_API` dotenv line
+unless you explicitly change it to an environment-linked input. The retired
+`DEPLOY_PROD_WEBSOCKET_API` setting is not a supported selector.
 Configure individual workloads with `deploy`,
 including `deploy: { when: { resource: resources.input, equals: "value" } }`, or use
 Studio's Deploy control. Input conditions are evaluated separately per environment.

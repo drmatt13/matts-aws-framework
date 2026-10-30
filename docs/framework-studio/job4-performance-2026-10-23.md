@@ -1,5 +1,10 @@
 # Job 4: developer acceptance and performance — October 23, 2026
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 This is the integrated Job 4 implementation and evidence report. Historical
 Jobs 1–3 and the visual refinement campaign supplied test cases; their results
 are not counted as current verification. The initial working tree was clean.

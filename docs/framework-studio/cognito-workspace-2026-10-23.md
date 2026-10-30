@@ -1,5 +1,10 @@
 # Cognito workspace engineering report — 2026-10-23
 
+> Historical evidence record. Results and capability assessments apply to the
+> dated checkout/campaign below, not automatically to the current tree. For current
+> scope use [implementation status](../aws-studio-knowledge/reference/status.md);
+> for current procedures use the [documentation index](../README.md).
+
 This is Job 1, following the [October 23 campaign](campaign-2026-10-23.md).
 The checkout already contained that campaign's uncommitted source, tests and
 documentation; this work preserves it. No live infrastructure, Cognito users,

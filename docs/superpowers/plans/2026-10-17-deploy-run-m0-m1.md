@@ -1,5 +1,10 @@
 # Deploy & Run M0–M1 Implementation Plan
 
+> Historical implementation plan from October 17, 2026. Preserve the tasks below as
+> development context, not current execution instructions or cloud authorization.
+> Start with the [current operational lifecycle](../../aws-studio-knowledge/deployment/lifecycle.md)
+> and [deployment safety](../../aws-studio-knowledge/deployment/planning-and-safety.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Record the approved Deploy & Run design in the repository (M0). Then make `npm run deploy:resources` refuse to touch a deployment whose deployed identity doesn't match what it is about to deploy, before any secret is written (M1).
@@ -49,7 +54,9 @@
   - **#7:** "The local boundary. Loopback only, Host check, token, origin check. Processes run only as typed registry operations (fixed script, validated parameters, no shell, explicit cwd). No generic command or file endpoint."
   - **#8:** "AWS only through the repository's scripts. Studio holds no AWS SDK or credentials. Observation (discover/status) is read-only. Cloud writes happen only as an explicit Apply of a reviewed plan, through the same scripts the CLI uses."
 
-  Add "Revised by [Deploy & Run](deploy-and-run.md)."
+  Add a “Revised by Deploy & Run” link in `moving-forward.md`, relative to that
+  destination file. The [design record](../../framework-studio/deploy-and-run.md)
+  is linked here for historical navigation.
 - [ ] **Step 3:** Commit:
 
 ```bash

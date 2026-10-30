@@ -1,6 +1,13 @@
 # Deploy & Run
 
-> Status: approved design (2026-10-17), implemented through M8; see [As built](#as-built-m2m8) for what exists and where it departs from this plan. The [M0–M1 plan](../superpowers/plans/2026-10-17-deploy-run-m0-m1.md) covers the first milestones. Statements about "today" describe the repository as it stood when the design was approved.
+> Historical design and implementation record, approved 2026-10-17 and supplemented
+> by later updates below. Statements about "today", placeholders, missing guards,
+> mode-less inputs and hand-copied client settings describe that earlier checkout.
+> For current behavior, start with the [operational lifecycle](../aws-studio-knowledge/deployment/lifecycle.md),
+> [planning and safety](../aws-studio-knowledge/deployment/planning-and-safety.md),
+> [operations](../aws-studio-knowledge/deployment/operations.md), and
+> [Development](../DEV-DEPLOYMENT.md). The [M0–M1 plan](../superpowers/plans/2026-10-17-deploy-run-m0-m1.md)
+> and [As built](#as-built-m2m8) remain useful design history, not current runbooks.
 
 ## Context
 
