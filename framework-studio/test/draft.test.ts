@@ -1,7 +1,7 @@
 import assert from "./support/assert";
 import path from "node:path";
 import { after, before, test } from "node:test";
-import type { BatchPlanResponse, DraftEdit } from "../shared/api";
+import type { BatchPlanResponse, CommentReviewOptions, DraftEdit } from "../shared/api";
 import type { Snapshot } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
 import { InspectorDraft, initialResourceForm, protectBeforeUnload, type DraftTransport } from "../src/draft";
@@ -238,4 +238,113 @@ test("Back to Editing cancels a pending review without losing the draft or reope
   assert.equal(draft.getSnapshot().review, undefined);
   assert.equal(draft.getSnapshot().busy, undefined);
   assert.equal(draft.count, 1);
+});
+
+const sourceComment = {
+  id: "comment-memory", file: "framework-config/workloads/http.ts", line: 12, column: 3,
+  text: "// Keep additional capacity during the migration.", resolution: "keep" as const,
+  vscodeUrl: "vscode://file/workspace/framework-config/workloads/http.ts:12:3",
+};
+const settleReview = () => new Promise<void>(resolve => setImmediate(resolve));
+
+test("comment choices replan the complete draft and prevent applying the previous preview", async () => {
+  const { draft, change, transport, applies } = fixture();
+  const requests: (CommentReviewOptions | undefined)[] = [];
+  const plan = transport.planBatch;
+  let finish: (() => void) | undefined;
+  transport.planBatch = async (edits, revision, options) => {
+    requests.push(options);
+    const response = await plan(edits, revision, options);
+    if (requests.length === 2) await new Promise<void>(resolve => { finish = resolve; });
+    return { ...response, comments: [{ ...sourceComment, resolution: options?.comments?.[sourceComment.id] ?? "keep" }] };
+  };
+  change(); await draft.review();
+  const initial = draft.getSnapshot().review;
+  assert.ok(initial?.kind === "batch");
+  assert.equal(initial.plan.comments?.[0]?.resolution, "keep");
+  draft.setCommentResolution(sourceComment.id, "remove");
+  await settleReview();
+  assert.equal(draft.getSnapshot().busy, "review");
+  await draft.apply(); assert.equal(applies(), 0, "a comment choice invalidates the previously accepted bytes");
+  assert.deepEqual(requests[1]?.comments, { [sourceComment.id]: "remove" });
+  finish!(); await settleReview();
+  const removed = draft.getSnapshot().review;
+  assert.ok(removed?.kind === "batch");
+  assert.equal(removed.plan.comments?.[0]?.resolution, "remove");
+  draft.setCommentResolution(sourceComment.id, "keep"); await settleReview();
+  const kept = draft.getSnapshot().review;
+  assert.ok(kept?.kind === "batch");
+  assert.equal(kept.plan.comments?.[0]?.resolution, "keep");
+  assert.equal(draft.count, 1, "comment handling belongs to the original source edit");
+});
+
+test("leaving a pending comment preview keeps typed values and ignores the late response", async () => {
+  const { draft, change, fact, transport } = fixture();
+  const plan = transport.planBatch;
+  let finish!: () => void;
+  let calls = 0;
+  transport.planBatch = async (...args) => {
+    const response = await plan(...args);
+    if (++calls === 2) await new Promise<void>(resolve => { finish = resolve; });
+    return { ...response, comments: [sourceComment] };
+  };
+  change(); await draft.review();
+  draft.setCommentResolution(sourceComment.id, "remove"); await settleReview();
+  draft.backToEditing(); finish(); await settleReview();
+  assert.equal(draft.getSnapshot().reviewOpen, false);
+  assert.equal(draft.getSnapshot().review, undefined);
+  assert.equal(draft.value(target, fact("lambda.memorySize")), 768);
+});
+
+test("manual source retry fetches the current revision and keeps every typed edit", async () => {
+  const { draft, change, fact, transport } = fixture();
+  const plan = transport.planBatch;
+  const revisions: string[] = [];
+  const choices: (CommentReviewOptions | undefined)[] = [];
+  let snapshots = 0;
+  transport.planBatch = async (edits, revision, options) => {
+    revisions.push(revision); choices.push(options);
+    return { ...await plan(edits, revision, options), comments: [sourceComment] };
+  };
+  transport.snapshot = async () => { snapshots++; return { ...baseline, revision: "editor-saved" }; };
+  change(); draft.setField(target, fact("lambda.timeoutSeconds"), 25); await draft.review();
+  await draft.setCommentResolution(sourceComment.id, "remove");
+  draft.sync({ ...baseline, revision: "editor-saved" }, target, "dev");
+  await draft.refreshAndReview();
+  assert.equal(snapshots, 1);
+  assert.deepEqual(revisions, [baseline.revision, baseline.revision, "editor-saved"]);
+  assert.deepEqual(choices[1]?.comments, { [sourceComment.id]: "remove" });
+  assert.equal(choices[2], undefined, "editor changes reset comment deletion choices before the new review");
+  assert.equal(draft.conflict, false);
+  assert.equal(draft.getSnapshot().reviewOpen, true);
+  assert.equal(draft.count, 2);
+  assert.equal(draft.value(target, fact("lambda.memorySize")), 768);
+  assert.equal(draft.value(target, fact("lambda.timeoutSeconds")), 25);
+});
+
+test("a failed source refresh preserves the draft and reports the error inside review", async () => {
+  const { draft, change, fact, transport, applies } = fixture();
+  change(); await draft.review();
+  transport.snapshot = async () => { throw new Error("Studio could not reload source. Try again."); };
+  await draft.refreshAndReview();
+  assert.equal(draft.getSnapshot().baseline.revision, baseline.revision);
+  assert.equal(draft.getSnapshot().reviewOpen, true);
+  assert.match(draft.getSnapshot().error!, /could not reload source/);
+  assert.equal(draft.value(target, fact("lambda.memorySize")), 768);
+  await draft.apply(); assert.equal(applies(), 0, "a failed refresh must not leave the old review applicable");
+});
+
+test("comment choices cannot bypass source conflicts or compiler-directive resolution", async () => {
+  const { draft, change, transport, requests, applies } = fixture();
+  const plan = transport.planBatch;
+  transport.planBatch = async (...args) => ({ ...await plan(...args), ok: false, comments: [{ ...sourceComment, manualReason: "Resolve this compiler directive in your editor." }] });
+  change(); await draft.review();
+  await draft.setCommentResolution(sourceComment.id, "remove");
+  await draft.setCommentResolution("unrecognized-comment", "remove");
+  assert.equal(requests.length, 1, "only ordinary comments in the accepted preview can be toggled");
+  draft.sync({ ...baseline, revision: "external-edit" }, target, "dev");
+  await draft.setCommentResolution(sourceComment.id, "keep");
+  await draft.apply();
+  assert.equal(requests.length, 1);
+  assert.equal(applies(), 0);
 });

@@ -25,7 +25,7 @@ completed. Start Studio with `npm run studio`, then open `http://127.0.0.1:4590/
 
 ## Navigation and state
 
-[main.tsx](../../../framework-studio/src/main.tsx) owns the routes. The navbar has six
+[main.tsx](../../../framework-studio/src/main.tsx) owns the routes. The navbar has seven
 workspaces and a shared **Source** Development/Production selector. Source mode selects a
 declaration graph; it does not select credentials or a live AWS deployment. Named deployment,
 profile, account and region belong to the operational workspace. Domains edits Production
@@ -36,6 +36,7 @@ intent even while the global source selector displays Development.
 | Map | `/` | Isometric declaration graph, search, tag emphasis, connection visibility, camera, resource navigation, creation and Inspector |
 | Database | `/database` | Authored Prisma contract, diagram, validation, migration history and artifact review; separate explicit database target and application controls |
 | Deploy | `/deploy` | Named target discovery, reviewed infrastructure plans and authorized operations, frontend releases, retained resources and local development lifecycle |
+| GraphQL | `/graphql` | Placeholder for the GraphQL workspace |
 | Authentication | `/cognito` | User pools, identity pools, providers and permissions, each with separate source and deployed evidence |
 | DNS / Domains | `/domains` | Production domain input settings, selected-deployment observations and separately approved domain operations |
 | WebSockets | `/websockets` | Local and API Gateway connection panels derived from the existing tester; connecting or sending is an explicit runtime action |
@@ -43,7 +44,7 @@ intent even while the global source selector displays Development.
 Authentication deep links are `/cognito/user-pools`, `/cognito/identity-pools`,
 `/cognito/providers` and `/cognito/permissions`. `/identity` and `/identity-pools` redirect
 to the identity-pool workspace; `/isometric` redirects to `/`. `Board.tsx` remains as an
-unrouted implementation and browser-gallery fixture, not a seventh workspace.
+unrouted implementation and browser-gallery fixture.
 
 `?select=<canonical-id>` identifies the shared Inspector selection. `StudioProvider`
 owns source mode, selection/navigation, the snapshot-derived lookup and one Inspector

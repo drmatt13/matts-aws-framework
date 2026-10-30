@@ -51,6 +51,7 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
     planBatch: api.planBatch, resourcePlan: api.resourcePlan, applyBatch: api.applyBatch, resourceApply: api.resourceApply,
     inputPlan: api.inputPlan, inputApply: api.inputApply,
     snapshot: async () => { const next = await api.snapshot(); query.setQueryData(["snapshot"], next); return next.snapshot; },
+    refreshSource: async () => { await api.refreshSource(); const next = await api.snapshot(); query.setQueryData(["snapshot"], next); return next.snapshot; },
   }));
   const draftState = useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot);
   useLayoutEffect(() => draft.sync(response.snapshot, props.selected, mode), [draft, response.snapshot, props.selected, mode]);

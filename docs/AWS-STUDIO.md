@@ -140,8 +140,9 @@ separate steps before the feature works end to end.
 
 ### Navigating Studio
 
-The six primary routes are **Map**, **Database**, **Deploy**, **Cognito**, **Domains**
-and **WebSockets**. The shared **Source: Development / Production** control selects
+The seven primary routes are **Map**, **Database**, **Deploy**, **GraphQL**, **Cognito**,
+**Domains** and **WebSockets**. GraphQL currently shows a placeholder page.
+The shared **Source: Development / Production** control selects
 declaration context; Deploy has its own target context. Map is the isometric home view;
 the old Board remains in source but has no navigation route.
 

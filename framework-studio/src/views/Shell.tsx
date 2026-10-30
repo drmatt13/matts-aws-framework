@@ -156,6 +156,7 @@ export function Shell(props: { readonly children: ReactNode; readonly notice?: R
           <Link to="/deploy" search={{}} className={navigationItemClasses} activeOptions={{ includeSearch: false }}>
             Deploy
           </Link>
+          <Link to="/graphql" search={{}} className={navigationItemClasses} activeOptions={{ includeSearch: false }}>GraphQL</Link>
           <Link to="/cognito" search={{}} className={navigationItemClasses} activeOptions={{ includeSearch: false }}>Cognito</Link>
           <Link to="/domains" search={{}} className={navigationItemClasses} activeOptions={{ includeSearch: false }}>Domains</Link>
           <Link to="/websockets" search={{}} className={navigationItemClasses} activeOptions={{ includeSearch: false }}>WebSockets</Link>

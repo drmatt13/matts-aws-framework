@@ -1,7 +1,7 @@
 # AWS Studio
 
 AWS Studio is the visual editing and operations interface for Matt's AWS Framework.
-It lives in the `framework-studio` workspace. For a shorter introduction to the six
+It lives in the `framework-studio` workspace. For a shorter introduction to the seven
 workspaces and their action boundaries, read the
 [interface guide](../docs/aws-studio-knowledge/studio/interface.md); for service ownership,
 read [backend boundaries](../docs/aws-studio-knowledge/studio/backend.md).
@@ -18,7 +18,8 @@ Declarations use the same [code-first layout and tags](../docs/framework-studio/
 when authored by hand or created in Studio. Tag edits use source review. Isometric always keeps topology; its tag filter fades
 nonmatches without changing placement, identity or source.
 
-The shared navigation stays stable across all six views. The shared top-right navbar
+The shared navigation stays stable across all seven views. **GraphQL** (`/graphql`),
+immediately after Deploy, currently shows a placeholder page. The shared top-right navbar
 exposes the **Source** Development/Production selector on every route. Switching source
 mode retains the unsaved-draft guard. When the configuration does not load, the canvas
 banner's **Show why** opens Configuration health; AWS credentials, deployments and
@@ -672,6 +673,12 @@ Every editable inspector is one draft session:
    candidate configuration is validated in both graphs, then shows one diff per affected
    file. Planning errors remain in the dialog with Retry Review.
    Resource edits also retain their existing TypeScript validation.
+   Comments attached to removed code stay in the initial preview. **Remove this
+   comment** updates the diff and reruns validation before Apply becomes available.
+   Each comment links to its exact location in VS Code. Tooling directives require
+   an editor decision; the preview remains available with instructions. After saving
+   in your editor, **Refresh source and retry** reloads source and reviews your pending
+   settings again without discarding them. Comment deletion choices reset on refresh.
 3. **Back to Editing, Discard All or Apply All.** Returning keeps every draft value.
    Invalid values are reported inline. Apply writes the whole accepted draft, confirms
    its evaluated result and resets the baseline. A failure preserves the draft.

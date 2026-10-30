@@ -17,6 +17,8 @@ import { assertCreationFile, objectCall, setProperty } from "./creation";
 import { EditError } from "./io";
 import { DESCRIPTION_FILE } from "../../shared/descriptions";
 import { parseDescriptions } from "../descriptions";
+import { removeElement, removeStatement } from "./source-cleanup";
+import { removeWithComments } from "./comments";
 
 function registered(root: string, files: SourceFiles): LocatedConfigSource {
   return locateConfigSource(path.join(root, "framework.config.ts"), { repositoryRoot: root, host: files.host() });
@@ -219,24 +221,15 @@ export function planNetworkRemoval(root: string, state: StudioState, id: string,
   if (!importStatement || !ts.isImportDeclaration(importStatement)) throw new EditError(422, "The VPC import cannot be removed safely. Edit the registry in source.");
   const bindings = importStatement.importClause?.namedBindings;
   if (!bindings || !ts.isNamedImports(bindings) || bindings.elements.length !== 1 || bindings.elements[0]!.name.text !== localName || importStatement.importClause?.name || references.some(reference => reference !== element && reference !== bindings.elements[0]!.name && reference !== bindings.elements[0]!.propertyName)) throw new EditError(422, "The VPC has additional references in framework.config.ts. Remove or reassign them before removing it.");
-  const removeElement = (value: string, currentSource: ts.SourceFile, node: ts.Node, siblings: readonly ts.Node[]): string => {
-    const start = node.getStart(currentSource);
-    if ((ts.getLeadingCommentRanges(value, node.pos) ?? []).length || (ts.getTrailingCommentRanges(value, node.end) ?? []).length) throw new EditError(422, "This VPC registry item has a comment. Remove it in source to preserve the comment deliberately.");
-    const after = /^\s*,[ \t]*/.exec(value.slice(node.end));
-    if (after) return value.slice(0, start) + value.slice(node.end + after[0].length);
-    const previous = siblings[siblings.indexOf(node) - 1];
-    if (previous) {
-      const separator = value.slice(previous.end, start);
-      if (!/^\s*,\s*$/.test(separator)) throw new EditError(422, "This VPC registry item has source comments. Remove it in source.");
-      return value.slice(0, previous.end) + value.slice(node.end);
-    }
-    return value.slice(0, start) + value.slice(node.end);
-  };
-  text = removeElement(text, source, element, array.elements);
+  text = removeElement(text, array, element, source);
   source = parse(config, text);
   const currentImport = source.statements.find(statement => ts.isImportDeclaration(statement) && ts.isStringLiteral(statement.moduleSpecifier) && referencesModule(config, statement.moduleSpecifier.text, file))!;
-  text = text.slice(0, currentImport.getStart(source)) + text.slice(currentImport.end).replace(/^[ \t]*\r?\n/, "");
-  const changes: { file: string; before: string; after: string | null }[] = [{ file: config, before: files.text(config), after: text }, { file, before: files.text(file), after: null }];
+  text = removeStatement(text, currentImport, source);
+  // A comment-only module remains when its prose is kept. Removing its final
+  // comment explicitly allows the now-empty declaration file to be deleted.
+  const declarationBefore = files.text(file);
+  const declarationAfter = removeWithComments(declarationBefore, declaration, declaration, [{ from: 0, to: declarationBefore.length }]);
+  const changes: { file: string; before: string; after: string | null }[] = [{ file: config, before: files.text(config), after: text }, { file, before: declarationBefore, after: declarationAfter.trim() ? declarationAfter : null }];
   const descriptionFile = path.join(root, DESCRIPTION_FILE);
   if (existsSync(descriptionFile)) {
     const before = files.text(descriptionFile);

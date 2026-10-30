@@ -10,18 +10,20 @@ const destinations = [
   { name: "WebSockets", path: "/websockets", ready: "WebSockets" },
 ] as const;
 
-test("six destinations preserve shared navigation and source context", async ({ page, studio }) => {
+test("primary destinations preserve shared navigation and source context", async ({ page, studio }) => {
   await studio.goto();
   const navigation = page.getByRole("navigation", { name: "Views", exact: true });
-  await expect(navigation.getByRole("link")).toHaveCount(6);
-  for (const { name, path: pathname } of destinations) {
+  await expect(navigation.getByRole("link")).toHaveText(["Map", "Database", "Deploy", "GraphQL", "Cognito", "Domains", "WebSockets"]);
+  for (const { name, path: pathname } of [...destinations, { name: "GraphQL", path: "/graphql" }]) {
     await navigation.getByRole("link", { name, exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`${pathname === "/" ? "/" : pathname}$`));
     await expect(page.getByRole("group", { name: "Source environment", exact: true })).toHaveCount(1);
     await expect(navigation.getByRole("link", { name, exact: true })).toHaveAttribute("aria-current", "page");
+    if (name === "GraphQL") await expect(page.getByRole("heading", { name: "GraphQL", exact: true })).toBeVisible();
     await studio.settle();
     expect(await page.evaluate(() => (window as unknown as { __studioBrowserEvents: { active(): number } }).__studioBrowserEvents.active())).toBe(1);
   }
+  await assertAccessible(page);
 });
 
 for (const { name, path: pathname } of destinations) test(`baseline ${name} desktop`, async ({ page, studio }, testInfo) => {

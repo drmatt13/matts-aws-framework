@@ -2,7 +2,6 @@ import { defineFrameworkConfig } from "@repo/framework/config";
 import { defaults } from "./framework-config/defaults";
 import { resources } from "./framework-config/resources";
 import { applicationVpc } from "./framework-config/networks/application";
-import { studioTestVpc } from "./framework-config/networks/test";
 import { applicationDatabase } from "./framework-config/databases/application";
 import { http } from "./framework-config/workloads/http";
 import { webSocket } from "./framework-config/workloads/websocket";
@@ -32,7 +31,7 @@ export { resources } from "./framework-config/resources";
 const framework = defineFrameworkConfig({
   resources,
   defaults,
-  networks: [applicationVpc, studioTestVpc],
+  networks: [applicationVpc],
   // What a workload reaches by declaring database: true. Built only by a
   // production deployment; locally, the Compose Postgres stands in for it.
   database: applicationDatabase,

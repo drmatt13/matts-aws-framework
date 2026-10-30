@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type {
   ApplyResponse,
   BatchPlanResponse,
+  CommentReviewOptions,
   DraftEdit,
   CommandResult,
   SnapshotEvent,
@@ -74,7 +75,7 @@ export const api = {
   inputApply: (planId: string) => call<ApplyResponse>("/deployment-inputs/apply", { planId }),
   infrastructure: (mode: Mode) => callInfrastructure(`/infrastructure?mode=${mode}`),
   synthesize: (mode: Mode, profile?: string) => callInfrastructure("/infrastructure/synthesize", { mode, ...(profile ? { profile } : {}) }),
-  planBatch: (edits: readonly DraftEdit[], revision: string) => call<BatchPlanResponse>("/edits/batch/plan", { edits, revision }),
+  planBatch: (edits: readonly DraftEdit[], revision: string, options?: CommentReviewOptions) => call<BatchPlanResponse>("/edits/batch/plan", { edits, revision, ...(options ? { options } : {}) }),
   applyBatch: (planId: string) => call<ApplyResponse>("/edits/batch/apply", { planId }),
   resourceDetails: (id: string, mode: Mode, signal?: AbortSignal) => call<ResourceDetails>(`/resources/details?id=${encodeURIComponent(id)}&mode=${mode}`, undefined, signal),
   resourcePlan: (intent: ResourceIntent, revision: string, mode: Mode) => call<ResourcePlan>("/resources/plan", { intent, revision, mode }),

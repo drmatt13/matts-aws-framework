@@ -1,26 +1,43 @@
 import ts from "typescript";
+import { followingComma, removeWithComments } from "./comments";
 
 const lineStart = (text: string, position: number) => text.lastIndexOf("\n", position - 1) + 1;
-const comments = (text: string, node: ts.Node) => (ts.getLeadingCommentRanges(text, node.pos) ?? []).length > 0;
 
-/** Removes a whole statement and its line. Refuses one carrying a comment, as removeProperty does. */
+/** Removes a whole statement and its line, sharing property removal's comment decisions. */
 export function removeStatement(text: string, statement: ts.Statement, source: ts.SourceFile): string {
-  if (comments(text, statement) || (ts.getTrailingCommentRanges(text, statement.end) ?? []).length) throw new Error("This wiring has a comment beside it. Remove it in your editor, so the comment's fate is your decision.");
   const start = statement.getStart(source), first = lineStart(text, start);
   const newline = text.indexOf("\n", statement.end);
   const whole = text.slice(first, start).trim() === "" && text.slice(statement.end, newline === -1 ? text.length : newline).trim() === "";
-  return whole ? text.slice(0, first) + text.slice(newline === -1 ? text.length : newline + 1) : text.slice(0, start) + text.slice(statement.end);
+  return removeWithComments(text, source, statement, [{ from: whole ? first : start, to: whole ? newline === -1 ? text.length : newline + 1 : statement.end }]);
 }
 
 /** Removes one array element and its separator, keeping the surrounding layout. */
 export function removeElement(text: string, array: ts.ArrayLiteralExpression, element: ts.Expression, source: ts.SourceFile): string {
-  if (comments(text, element)) throw new Error("This target has a comment beside it. Remove it in your editor.");
-  const index = array.elements.indexOf(element);
-  const next = array.elements[index + 1], previous = array.elements[index - 1];
-  if (next) return text.slice(0, element.getStart(source)) + text.slice(next.getStart(source));
-  // The last element: remove from the previous element's end, keeping any trailing comma style.
-  const trailing = text.slice(element.end, array.end - 1).match(/^\s*,/)?.[0].length ?? 0;
-  return text.slice(0, previous!.end) + (trailing ? "," : "") + text.slice(element.end + trailing);
+  return removeListElement(text, array.elements, element, source);
+}
+
+function removeListElement(text: string, elements: readonly ts.Node[], element: ts.Node, source: ts.SourceFile): string {
+  const index = elements.indexOf(element);
+  const previous = elements[index - 1];
+  const spans = [{ from: element.getStart(source), to: element.end }];
+  const following = followingComma(text, element.end);
+  let trailing = element.end;
+  if (following) {
+    trailing = following.to;
+    spans[0]!.to = trailing;
+    if (index < elements.length - 1) while (text[spans[0]!.to] === " " || text[spans[0]!.to] === "\t") spans[0]!.to++;
+    // When the last element has a trailing comma, keep the previous separator's
+    // style without leaving the removed element's leading whitespace behind.
+    if (index === elements.length - 1 && previous) {
+      const separator = followingComma(text, previous.end);
+      if (separator && /^\s*$/.test(text.slice(separator.to, spans[0]!.from))) spans[0]!.from = separator.to;
+    }
+  } else if (previous) {
+    const separator = followingComma(text, previous.end);
+    if (/^\s*,\s*$/.test(text.slice(previous.end, spans[0]!.from))) spans[0]!.from = previous.end;
+    else if (separator) spans.push(separator);
+  }
+  return removeWithComments(text, source, element, spans, trailing);
 }
 
 /** Names bound by an import, so a removal can drop only what it left unused. */
@@ -63,7 +80,6 @@ export function pruneImports(file: string, before: string, after: string): strin
     }
     const element = bindings.elements.find((item) => orphan(item.name.text));
     if (!element) return text;
-    const index = bindings.elements.indexOf(element), next = bindings.elements[index + 1];
-    text = next ? text.slice(0, element.getStart(source)) + text.slice(next.getStart(source)) : text.slice(0, bindings.elements[index - 1]!.end) + text.slice(element.end);
+    text = removeListElement(text, bindings.elements, element, source);
   }
 }

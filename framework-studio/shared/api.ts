@@ -7,6 +7,23 @@ import type { Diagnostic, FieldFact, Lanes, Mode, Placement, Snapshot } from "./
 
 export type LiteralValue = string | number | boolean;
 
+export interface CommentReviewOptions {
+  readonly comments?: Readonly<Record<string, "keep" | "remove">>;
+}
+
+/** A comment touched by a supported source removal, bound to its saved bytes. */
+export interface SourceCommentReview {
+  readonly id: string;
+  readonly file: string;
+  readonly line: number;
+  readonly column: number;
+  readonly text: string;
+  readonly resolution: "keep" | "remove";
+  readonly vscodeUrl: string;
+  /** Directives must be resolved in source so they cannot attach to different code. */
+  readonly manualReason?: string;
+}
+
 export interface EditIntent {
   readonly target: string;
   readonly field: string;
@@ -42,6 +59,7 @@ export type DraftEdit =
   | { readonly kind: "route"; readonly route: string; readonly value: string };
 
 export interface BatchPlanResponse {
+  readonly comments?: readonly SourceCommentReview[];
   readonly planId: string;
   readonly summaries: readonly string[];
   readonly changes: readonly { readonly file: string; readonly diff: PlanResponse["diff"]; readonly operation?: "create" | "modify" | "delete" }[];

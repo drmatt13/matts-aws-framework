@@ -49,7 +49,7 @@ async function mount(Component: ComponentType, initial = response) {
     return h(studio.StudioProvider, { response: current, selected: undefined, select: () => {}, children: h(Component) });
   }
   const root = router.createRootRoute({ component: Root });
-  const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/"] }), routeTree: root.addChildren(["/", "/database", "/deploy", "/cognito", "/domains", "/websockets"].map(route => router.createRoute({ getParentRoute: () => root, path: route, component: () => null }))) });
+  const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/"] }), routeTree: root.addChildren(["/", "/database", "/deploy", "/graphql", "/cognito", "/domains", "/websockets"].map(route => router.createRoute({ getParentRoute: () => root, path: route, component: () => null }))) });
   const render = () => h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app }));
   ui.render(render());
   await ui.waitFor(() => assert.ok(document.querySelector("button")));
@@ -58,10 +58,10 @@ async function mount(Component: ComponentType, initial = response) {
   };
 }
 
-test("primary navigation retains one source toggle and no validation control across all six destinations", async () => {
+test("primary navigation retains one source toggle and no validation control across all destinations", async () => {
   await mount(() => h(shell.Shell, { children: h("p", null, "Workspace content") }));
   const navigation = ui.screen.getByRole("navigation", { name: "Views" });
-  const destinations = ["Map", "Database", "Deploy", "Cognito", "Domains", "WebSockets"];
+  const destinations = ["Map", "Database", "Deploy", "GraphQL", "Cognito", "Domains", "WebSockets"];
   assert.deepEqual(ui.within(navigation).getAllByRole("link").map(link => link.textContent), destinations);
   const environment = ui.screen.getByRole("group", { name: "Source environment" });
   for (const name of destinations) {

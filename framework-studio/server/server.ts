@@ -5,7 +5,7 @@ import { createServer, type Server } from "node:http";
 import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { readCreationRequest, CreationValidationError } from "../shared/creation";
-import type { DraftEdit, SnapshotResponse } from "../shared/api";
+import type { CommentReviewOptions, DraftEdit, SnapshotResponse } from "../shared/api";
 import { COMMANDS, CommandRunner } from "./commands";
 import { EditError, EditService } from "./edits/transaction";
 import { SourceJournal } from "./edits/journal";
@@ -80,6 +80,15 @@ export function readIntent(body: unknown): EditIntent {
   return { target: intent.target, field: intent.field, value: intent.value };
 }
 
+
+export function readCommentOptions(value: unknown): CommentReviewOptions | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some(key => key !== "comments")) throw new EditError(400, "Comment review options must contain only comment choices.");
+  const comments = (value as Record<string, unknown>).comments;
+  if (comments === undefined) return {};
+  if (!comments || typeof comments !== "object" || Array.isArray(comments) || Object.keys(comments).length > 500 || Object.entries(comments).some(([id, resolution]) => !/^[a-f0-9]{64}$/.test(id) || (resolution !== "keep" && resolution !== "remove"))) throw new EditError(400, "Choose Keep or Remove for each reviewed source comment.");
+  return { comments: comments as Readonly<Record<string, "keep" | "remove">> };
+}
 
 export function readDraftEdits(entries: unknown): readonly DraftEdit[] {
     if (!Array.isArray(entries) || !entries.length || entries.length > 100) throw new EditError(400, "A draft contains between 1 and 100 setting changes.");
@@ -419,7 +428,7 @@ async function configureServer(
   api.post("/edits/plan", (request, response) =>
     send(response, () => edits.plan(readIntent(request.body), String((request.body as { revision?: unknown })?.revision ?? ""))),
   );
-  api.post("/edits/batch/plan", (request, response) => send(response, () => edits.planBatch(readDraftEdits(request.body?.edits), String(request.body?.revision ?? ""))));
+  api.post("/edits/batch/plan", (request, response) => send(response, () => edits.planBatch(readDraftEdits(request.body?.edits), String(request.body?.revision ?? ""), readCommentOptions(request.body?.options))));
   api.post("/edits/batch/apply", (request, response) => send(response, async () => {
     const result = await edits.applyBatch(String(request.body?.planId ?? ""));
     published(result.revision);

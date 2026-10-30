@@ -19,6 +19,7 @@ source:
   - framework-studio/server/edits/database.ts
   - framework-studio/server/edits/plan.ts
   - framework-studio/server/edits/splice.ts
+  - framework-studio/server/edits/comments.ts
   - framework-studio/server/edits/io.ts
   - framework-studio/server/edits/journal.ts
   - framework-studio/src/database-session.ts
@@ -153,12 +154,23 @@ The final review rechecks all captured generator-input hashes after validation.
 Apply repeats validation and confirms actual written models; no review result is
 reused across source changes. See the [performance evidence and replay procedure](../../framework-studio/job4-performance-2026-10-23.md).
 
-`planEdit` in [plan.ts](../../../framework-studio/server/edits/plan.ts) uses [source locations](source-indexing.md), narrow parsing and semantic patches; the shared diff engine preserves interior unchanged runs and emits contextual hunks. [splice.ts](../../../framework-studio/server/edits/splice.ts) replaces/inserts/removes supported literal ranges while preserving surrounding source/quotes. It refuses unsafe computed shapes/comments instead of reprinting entire files.
+`planEdit` in [plan.ts](../../../framework-studio/server/edits/plan.ts) uses [source locations](source-indexing.md), narrow parsing and semantic patches; the shared diff engine preserves interior unchanged runs and emits contextual hunks. [splice.ts](../../../framework-studio/server/edits/splice.ts) replaces/inserts/removes supported literal ranges while preserving surrounding source/quotes. It refuses unsafe computed shapes instead of reprinting entire files.
 
 Comment protection belongs in the shared source operations: inserting the first property
 into a commented empty object is refused, and `setProperty` refuses replacing a literal
 whose range contains comments. Editors may change a neighboring literal while preserving
 comments outside that range. Do not add editor-specific fallbacks that discard this prose.
+Batch removals use [comments.ts](../../../framework-studio/server/edits/comments.ts) to
+keep attached and embedded comments in the initial diff. Review offers a separate
+**Remove this comment** choice for each affected comment and revalidates the complete
+candidate after a choice. Choices bind to saved file bytes and original comment locations;
+the accepted plan stores the exact resulting source under the existing hash guards.
+Tooling directives require manual resolution and block Apply while leaving the preview
+available. Every comment has an exact **Open in VS Code** link and instructions.
+**Refresh source and retry** reloads saved source and reviews the preserved ordinary draft
+in the same dialog, clearing prior comment deletion choices. Protected input/catalog
+forms retain their separate reload requirement. Pending or failed replans cannot apply
+an older preview. Writers outside the batch context keep conservative refusal behavior.
 VPC settings use the registered declaration's source span, including official import
 aliases and modules containing multiple declarations; a helper's spelling or file layout
 does not identify the declaration to edit.

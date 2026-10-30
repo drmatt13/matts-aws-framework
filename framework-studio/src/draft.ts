@@ -1,5 +1,5 @@
 import { networkCreationProblem, unusedNetworkCidr, networkSettings, type NetworkSettings, type PlacementEdit } from "../shared/networks";
-import type { ApplyResponse, BatchPlanResponse, DraftEdit, EditIntent, LiteralValue } from "../shared/api";
+import type { ApplyResponse, BatchPlanResponse, CommentReviewOptions, DraftEdit, EditIntent, LiteralValue } from "../shared/api";
 import type { FieldFact, Mode, ModelResource, Snapshot } from "../shared/model";
 import { inputModeIntents, type ResourceApply, type ResourceIntent, type ResourcePlan } from "../shared/resources";
 import type { DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
@@ -46,15 +46,17 @@ export interface DraftState {
   readonly pendingNavigation: boolean;
   readonly busy?: "review" | "apply";
   readonly error?: string;
+  readonly commentResolutions?: CommentReviewOptions["comments"];
 }
 export interface DraftTransport {
-  planBatch(edits: readonly DraftEdit[], revision: string): Promise<BatchPlanResponse>;
+  planBatch(edits: readonly DraftEdit[], revision: string, options?: CommentReviewOptions): Promise<BatchPlanResponse>;
   resourcePlan(intent: ResourceIntent, revision: string, mode: Mode): Promise<ResourcePlan>;
   applyBatch(id: string): Promise<ApplyResponse>;
   resourceApply(id: string): Promise<ResourceApply>;
   inputPlan(mode: Mode, edits: readonly DeploymentInputEdit[], hash: string, revision: string): Promise<DeploymentInputPlan>;
   inputApply(id: string): Promise<ApplyResponse>;
   snapshot(): Promise<Snapshot>;
+  refreshSource?(): Promise<Snapshot>;
 }
 export const fieldKey = (target: string, field: string) => `field:${target}:${field}`;
 export function initialResourceForm(resource: ModelResource): ResourceForm {
@@ -84,7 +86,7 @@ export class InspectorDraft {
     if (this.state.busy || !this.conflict) return;
     if (this.state.entries.some(entry => entry.kind === "environment" || entry.kind === "resource")) { this.publish({ ...this.state, error: "The selected input file or catalog changed. Preserve your values, then reload that inspector before reviewing." }); return; }
     ++this.serial;
-    this.publish({ ...this.state, baseline: this.state.latest, reviewOpen: false, review: undefined, error: undefined });
+    this.publish({ ...this.state, baseline: this.state.latest, reviewOpen: false, review: undefined, error: undefined, commentResolutions: undefined });
     void this.review();
   }
   private publish(state: DraftState): void { this.state = state; this.listeners.forEach((listener) => listener()); }
@@ -98,7 +100,7 @@ export class InspectorDraft {
     // event. Keep the reviewed entries and busy state until the server answers.
     if (this.state.busy === "apply") return;
     ++this.serial;
-    this.publish({ ...this.state, entries: [...this.state.entries.filter((item) => item.key !== key), ...(entry ? [entry] : [])], reviewOpen: false, review: undefined, error: undefined, busy: undefined });
+    this.publish({ ...this.state, entries: [...this.state.entries.filter((item) => item.key !== key), ...(entry ? [entry] : [])], reviewOpen: false, review: undefined, error: undefined, busy: undefined, commentResolutions: undefined });
     if (!this.dirty && this.state.baseline !== this.state.latest) this.publish({ ...this.state, baseline: this.state.latest });
   }
   stageOperation(operation: OperationEntry["operation"]): void {
@@ -360,13 +362,39 @@ export class InspectorDraft {
     ++this.serial;
     this.publish({ ...this.state, reviewOpen: false, review: undefined, busy: undefined });
   }
-  async review(): Promise<void> {
+  async setCommentResolution(id: string, resolution: "keep" | "remove"): Promise<void> {
+    if (this.state.busy || this.conflict || this.invalid || this.state.review?.kind !== "batch") return;
+    const comment = this.state.review.plan.comments?.find(comment => comment.id === id);
+    if (!comment || comment.manualReason) return;
+    this.publish({ ...this.state, commentResolutions: { ...this.state.commentResolutions, [id]: resolution } });
+    await this.review(true);
+  }
+  async refreshAndReview(): Promise<void> {
+    if (!this.dirty || this.state.busy || this.invalid) return;
+    if (this.state.entries.some(entry => entry.kind === "environment" || entry.kind === "resource")) {
+      this.publish({ ...this.state, error: "Preserve your values, then reload that inspector before reviewing changes to its source." });
+      return;
+    }
+    const serial = ++this.serial;
+    this.publish({ ...this.state, reviewOpen: true, busy: "review", error: undefined });
+    try {
+      const latest = await (this.transport.refreshSource?.() ?? this.transport.snapshot());
+      if (serial !== this.serial) return;
+      // External edits can change comment ownership. Ask for fresh choices on
+      // the new source rather than carrying a deletion decision across revisions.
+      this.publish({ ...this.state, baseline: latest, latest, review: undefined, busy: undefined, commentResolutions: undefined });
+      await this.review();
+    } catch (error) {
+      if (serial === this.serial) this.publish({ ...this.state, busy: undefined, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+  async review(preservePreview = false): Promise<void> {
     this.keepEditing();
     if (!this.dirty || this.state.busy) return;
     if (this.conflict || this.invalid) { this.publish({ ...this.state, error: this.conflict ? "Source files changed while you were editing. Your draft is preserved. Discard it to load the latest configuration." : "Fix the highlighted values before reviewing." }); return; }
     const serial = ++this.serial;
     const state = this.state;
-    this.publish({ ...state, reviewOpen: true, review: undefined, busy: "review", error: undefined });
+    this.publish({ ...state, reviewOpen: true, review: preservePreview ? state.review : undefined, busy: "review", error: undefined });
     try {
       const resource = state.entries.find((entry): entry is ResourceEntry => entry.kind === "resource");
       const environment = state.entries.find((entry): entry is EnvironmentEntry => entry.kind === "environment");
@@ -392,13 +420,13 @@ export class InspectorDraft {
           if (entry.kind === "failure") return { kind: "onFailure", event: entry.event, value: entry.value };
           if (entry.kind === "clientEnvironment") return { kind: "clientEnvironment", mappings: entry.mappings };
           throw new Error("Review this configuration in its own inspector session.");
-        }), state.baseline.revision) };
+        }), state.baseline.revision, state.commentResolutions ? { comments: state.commentResolutions } : undefined) };
       if (serial === this.serial) this.publish({ ...this.state, busy: undefined, review });
     } catch (error) { if (serial === this.serial) this.publish({ ...this.state, busy: undefined, error: error instanceof Error ? error.message : String(error) }); }
   }
   async apply(): Promise<ApplyResponse | ResourceApply | undefined> {
     const review = this.state.review;
-    if (!review?.plan.ok || this.state.busy || this.invalid || this.conflict) return;
+    if (!review?.plan.ok || this.state.busy || this.state.error || this.invalid || this.conflict) return;
     this.publish({ ...this.state, busy: "apply", error: undefined });
     try {
       const result = await (review.kind === "batch" ? this.transport.applyBatch(review.plan.planId) : review.kind === "environment" ? this.transport.inputApply(review.plan.planId) : this.transport.resourceApply(review.plan.planId));

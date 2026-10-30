@@ -12,8 +12,8 @@ export default defineConfig({
   projects: [
     { name: "chromium-light", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 }, colorScheme: "light" } },
     { name: "chromium-dark", use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 1000 }, colorScheme: "dark" } },
-    { name: "firefox-smoke", testMatch: "**/shell.spec.ts", grep: /six destinations/, use: { ...devices["Desktop Firefox"] } },
-    { name: "webkit-smoke", testMatch: "**/shell.spec.ts", grep: /six destinations/, use: { ...devices["Desktop Safari"] } },
+    { name: "firefox-smoke", testMatch: "**/shell.spec.ts", grep: /primary destinations/, use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit-smoke", testMatch: "**/shell.spec.ts", grep: /primary destinations/, use: { ...devices["Desktop Safari"] } },
   ],
   webServer: [
     { command: `${baseline ? "" : "npm run build && "}vite preview --host 127.0.0.1 --port 4592 --strictPort${baseline ? ` --outDir ${frozen}/app` : ""}`, cwd: __dirname, url: "http://127.0.0.1:4592", reuseExistingServer: false, timeout: 120_000 },

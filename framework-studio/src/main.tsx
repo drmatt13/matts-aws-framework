@@ -55,6 +55,7 @@ const isometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/",
 const legacyIsometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/isometric", beforeLoad: ({ search }) => { throw redirect({ to: "/", search, replace: true }); } });
 const databaseRoute = createRoute({ getParentRoute: () => rootRoute, path: "/database", component: lazyRouteComponent(() => import("./views/Database"), "Database") });
 const deployRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deploy", component: lazyRouteComponent(() => import("./views/Deploy"), "Deploy") });
+const graphqlRoute = createRoute({ getParentRoute: () => rootRoute, path: "/graphql", component: lazyRouteComponent(() => import("./views/GraphQL"), "GraphQL") });
 const cognitoRoute = createRoute({ getParentRoute: () => rootRoute, path: "/cognito", component: lazyRouteComponent(() => import("./views/AuthenticationWorkspace"), "AuthenticationWorkspace") });
 const userPoolsRoute = createRoute({ getParentRoute: () => cognitoRoute, path: "user-pools", component: () => null });
 const identityPoolsRoute = createRoute({ getParentRoute: () => cognitoRoute, path: "identity-pools", component: () => null });
@@ -64,7 +65,7 @@ const identityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/ide
 const legacyIdentityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/identity", beforeLoad: () => { throw redirect({ to: "/cognito/identity-pools", replace: true }); } });
 const domainsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/domains", component: lazyRouteComponent(() => import("./views/IdentityWorkspace"), "Domains") });
 const webSocketsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/websockets", component: lazyRouteComponent(() => import("./views/websockets/WebSockets"), "WebSockets") });
-const routeTree = rootRoute.addChildren([isometricRoute, legacyIsometricRoute, databaseRoute, deployRoute, cognitoRoute.addChildren([userPoolsRoute, identityPoolsRoute, providersRoute, permissionsRoute]), identityRoute, legacyIdentityRoute, domainsRoute, webSocketsRoute]);
+const routeTree = rootRoute.addChildren([isometricRoute, legacyIsometricRoute, databaseRoute, deployRoute, graphqlRoute, cognitoRoute.addChildren([userPoolsRoute, identityPoolsRoute, providersRoute, permissionsRoute]), identityRoute, legacyIdentityRoute, domainsRoute, webSocketsRoute]);
 function createStudioRouter() { return createRouter({ routeTree }); }
 interface Application {
   readonly root: ReturnType<typeof createRoot>;

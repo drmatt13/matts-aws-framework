@@ -1,5 +1,5 @@
 import assert from "./support/assert";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -146,5 +146,41 @@ test("unused VPC removal handles registry separators and refuses custom modules 
     const declaration = path.join(root, "framework-config/networks/alpha/index.ts");
     writeFileSync(declaration, 'import { defineNetwork } from "@repo/framework/config";\nexport const alphaVpc = defineNetwork({ id: "alpha", cidr: "10.0.0.0/16", zones: 2 });\nexport const unrelated = true;');
     assert.throws(() => planNetworkRemoval(root, state, "alpha", new SourceFiles()), /other declarations or custom code/);
+  });
+});
+
+test("VPC removal reviews registry, import and declaration comments while preserving unrelated comments", async () => {
+  const { planNetworkRemoval } = await import("../server/edits/networks");
+  const { SourceFiles } = await import("../server/source");
+  const { reviewedComments, withCommentReview } = await import("../server/edits/comments");
+  fixture(root => {
+    const config = path.join(root, "framework.config.ts");
+    const file = path.join(root, "framework-config/networks/alpha/index.ts");
+    const before = '// Network ownership.\nimport { alphaVpc } from "./framework-config/networks/alpha";\nimport { betaVpc } from "./framework-config/networks/beta";\ndefineFrameworkConfig({ networks: [\n  alphaVpc, // staging network\n  // production network\n  betaVpc,\n] });';
+    const declaration = '// Authored network rationale.\n' + readFileSync(file, "utf8");
+    writeFileSync(config, before); writeFileSync(file, declaration);
+    const descriptionsFile = path.join(root, "framework-config/descriptions.ts");
+    const descriptions = 'export const descriptions = {\n  // Repeated context.\n  "island:vpc:alpha": "Network description",\n  // Repeated context.\n  "prop:vpc:alpha:nat": "NAT description",\n};\n';
+    writeFileSync(descriptionsFile, descriptions);
+    const state = { snapshot: { models: Object.fromEntries(["dev", "prod"].map(mode => [mode, { networks: ["alpha", "beta"].map(id => ({ id })), targets: [] }])) } } as unknown as import("../server/snapshot").StudioState;
+    const kept = withCommentReview(root, undefined, () => ({ changes: planNetworkRemoval(root, state, "alpha", new SourceFiles()), comments: reviewedComments() }));
+    assert.equal(kept.comments.length, 5);
+    const descriptionComments = kept.comments.filter(comment => comment.file === "framework-config/descriptions.ts");
+    assert.equal(descriptionComments.length, 2);
+    assert.equal(descriptionComments[0]!.line, 2);
+    assert.equal(descriptionComments[1]!.line, 4);
+    assert.ok(descriptionComments[0]!.vscodeUrl.startsWith(`vscode://file/${encodeURI(descriptionsFile)}:`), "relative parser filenames resolve in the fixture checkout");
+    assert.match(kept.changes.find(change => change.file === config)!.after!, /staging network/);
+    assert.match(kept.changes.find(change => change.file === config)!.after!, /production network/);
+    assert.equal(kept.changes.find(change => change.file === file)!.after, "// Authored network rationale.\n");
+    assert.equal(readFileSync(config, "utf8"), before, "review does not write registry source");
+    assert.equal(readFileSync(file, "utf8"), declaration, "review does not delete declaration source");
+    const mixed = withCommentReview(root, { comments: { [descriptionComments[0]!.id]: "remove", [descriptionComments[1]!.id]: "keep" } }, () => ({ changes: planNetworkRemoval(root, state, "alpha", new SourceFiles()), comments: reviewedComments() }));
+    assert.deepEqual(mixed.comments.filter(comment => comment.file === "framework-config/descriptions.ts").map(comment => [comment.id, comment.resolution]), descriptionComments.map((comment, index) => [comment.id, index ? "keep" : "remove"]));
+    const removed = withCommentReview(root, { comments: Object.fromEntries(kept.comments.map(comment => [comment.id, "remove"])) }, () => ({ changes: planNetworkRemoval(root, state, "alpha", new SourceFiles()), comments: reviewedComments() }));
+    assert.equal(removed.changes.find(change => change.file === file)!.after, null);
+    const after = removed.changes.find(change => change.file === config)!.after!;
+    assert.ok(!after.includes("Network ownership") && !after.includes("staging network"));
+    assert.match(after, /production network/);
   });
 });

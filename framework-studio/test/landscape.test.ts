@@ -267,6 +267,8 @@ test("every VPC endpoint has a service badge included in its hover silhouette", 
     const anchor = project({ x: prop.gx, y: prop.gy, h: prop.h });
     // This point lies in the badge beyond the main plaque's right edge.
     assert.ok(insidePolygon(anchor.x + ICON_BADGE.x + ICON_BADGE.size - ICON_BADGE.padding, anchor.y + ICON_BADGE.y + ICON_BADGE.size / 2, prop.geometry.hull));
+    assert.equal(prop.frameworkManaged, true);
+    assert.ok(insidePolygon(anchor.x - ICON_BADGE.x - ICON_BADGE.size + ICON_BADGE.padding, anchor.y + ICON_BADGE.y + ICON_BADGE.size / 2, prop.geometry.hull), "the management lock is pickable on the other corner");
   }
   const development = buildScene({ ...source, networks: [network], mode: "dev" });
   for (const prop of endpoints) {
@@ -275,7 +277,7 @@ test("every VPC endpoint has a service badge included in its hover silhouette", 
     assert.equal(ghost.roleIcon, prop.roleIcon);
     assert.deepEqual(ghost.geometry, prop.geometry);
   }
-  assert.ok(scene.props.filter((prop) => !prop.id.startsWith("prop:vpc:application:endpoint:")).every((prop) => prop.roleIcon === undefined), "gateway fixtures keep their plain plaques");
+  assert.ok(scene.props.filter((prop) => !prop.id.startsWith("prop:vpc:application:endpoint:")).every((prop) => prop.roleIcon === "managed"), "framework-created gateway fixtures carry the ownership lock");
 });
 
 test("background lattice follows the terrain projection and stays bounded at distant zooms", () => {
@@ -1114,7 +1116,8 @@ test("an environment file that has not been generated wears a missing-file badge
   const withExists = (exists: boolean) => buildScene({ ...model, resources: model.resources.map((resource) => resource.deploymentFile ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists } } : resource) }, { });
   const badges = (scene: Scene) => scene.nodes.filter((node) => node.id.startsWith("envfile:")).map((node) => node.roleIcon);
   assert.deepEqual(badges(withExists(false)), ["missingFile", "missingFile"]);
-  assert.deepEqual(badges(withExists(true)), [undefined, undefined]);
+  assert.deepEqual(badges(withExists(true)), ["managed", "managed"]);
+  assert.ok(withExists(false).nodes.filter(node => node.id.startsWith("envfile:")).every(node => node.frameworkManaged), "a missing-file warning does not remove ownership");
 });
 
 test("an enabled connection reads clearly in its own view and recedes where it is disabled", () => {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import type { ApplyResponse, DraftEdit, PlanResponse, PreflightResult } from "../../shared/api";
+import type { ApplyResponse, CommentReviewOptions, DraftEdit, PlanResponse, PreflightResult } from "../../shared/api";
 import type { FieldFact, Lanes, ModelTarget, Placement } from "../../shared/model";
 import { assertWritable, sha256 } from "../files";
 import { EditError, writeAtomically, writeSourceChange } from "./io";
@@ -105,7 +105,7 @@ export class EditService {
     return state;
   }
 
-  planBatch(edits: readonly DraftEdit[], revision: string) { return this.exclusive(() => this.batches.plan(edits, revision)); }
+  planBatch(edits: readonly DraftEdit[], revision: string, options?: CommentReviewOptions) { return this.exclusive(() => this.batches.plan(edits, revision, options)); }
   applyBatch(planId: string): Promise<ApplyResponse> {
     return this.exclusive(() => this.batches.apply(planId).finally(() => this.plans.clear()));
   }

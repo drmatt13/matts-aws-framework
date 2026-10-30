@@ -1,6 +1,7 @@
 import ts from "typescript";
 import type { LiteralValue } from "../../shared/api";
 import { hasComments, literalKey, unwrap } from "../source/syntax";
+import { followingComma, removeWithComments } from "./comments";
 
 /**
  * Text edits that change one property and nothing else.
@@ -162,7 +163,7 @@ export function insertProperty(
   return `${text.slice(0, start)}${indent}${property},${eolOf(text)}${text.slice(start)}`;
 }
 
-/** Removes a property, its separator and its line. Refuses one that carries a comment. */
+/** Removes a property narrowly; batch review decides how its comments are kept. */
 export function removeProperty(
   text: string,
   sourceFile: ts.SourceFile,
@@ -170,16 +171,15 @@ export function removeProperty(
   property: ts.ObjectLiteralElementLike,
 ): string {
   const start = property.getStart(sourceFile);
-  const comma = commaAfter(text, property.end);
-  if ((ts.getLeadingCommentRanges(text, property.pos) ?? []).length > 0 || (ts.getTrailingCommentRanges(text, comma.end) ?? []).length > 0) {
-    throw new Error("This property has a comment beside it. Remove it in your editor, so the comment's fate is your decision.");
-  }
+  const following = followingComma(text, property.end);
+  const comma = following ? { present: true, end: following.to } : { present: false, end: property.end };
   const containerStart = container.getStart(sourceFile);
   const singleLine = lineOf(sourceFile, containerStart) === lineOf(sourceFile, container.end - 1);
   const first = lineStart(text, start);
   const breakAt = lineBreak(text, comma.end);
 
   let removed: { readonly from: number; readonly to: number };
+  const separators: { from: number; to: number }[] = [];
   if (!singleLine && text.slice(first, start).trim() === "" && text.slice(comma.end, breakAt).trim() === "") {
     const newline = text.indexOf("\n", breakAt);
     removed = { from: first, to: newline === -1 ? text.length : newline + 1 };
@@ -190,11 +190,18 @@ export function removeProperty(
   } else {
     const index = container.properties.indexOf(property);
     const previous = index > 0 ? container.properties[index - 1] : undefined;
-    removed = previous ? { from: previous.end, to: property.end } : { from: start, to: property.end };
+    removed = { from: start, to: property.end };
+    if (previous) {
+      if (/^\s*,\s*$/.test(text.slice(previous.end, start))) removed = { from: previous.end, to: property.end };
+      else {
+        const separator = followingComma(text, previous.end);
+        if (separator) separators.push(separator);
+      }
+    }
   }
 
-  const result = `${text.slice(0, removed.from)}${text.slice(removed.to)}`;
-  const end = container.end - (removed.to - removed.from);
+  const result = removeWithComments(text, sourceFile, property, [removed, ...separators], comma.end);
+  const end = container.end + result.length - text.length;
   const inner = result.slice(containerStart + 1, end - 1);
   return inner.trim() === "" ? `${result.slice(0, containerStart)}{}${result.slice(end)}` : result;
 }

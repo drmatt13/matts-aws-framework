@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { after, afterEach, before, beforeEach, mock, test } from "node:test";
 import { createElement as h } from "react";
-import type { DraftEdit, SnapshotResponse } from "../shared/api";
+import type { BatchPlanResponse, CommentReviewOptions, DraftEdit, SnapshotResponse } from "../shared/api";
 import type { ModelEdge, Snapshot } from "../shared/model";
 import type { DeploymentInputEdit } from "../shared/deployment-inputs";
 import type { ResourceIntent } from "../shared/resources";
@@ -1166,6 +1166,71 @@ test("review errors stay in the review dialog and can be retried without losing 
   assert.ok(ui.screen.getByLabelText("Changes to framework-config/settings.ts"));
   assert.equal(planCalls.length, 2);
   assert.equal((memory() as HTMLInputElement).value, "768");
+});
+
+const reviewComment = {
+  id: "migration-comment", file: "framework-config/workloads/http.ts", line: 12, column: 3,
+  text: "// Keep additional capacity during the migration.", resolution: "keep" as const,
+  vscodeUrl: "vscode://file/workspace/framework-config/workloads/http.ts:12:3",
+};
+
+test("comment review shows the diff, keeps comments by default and reviews an explicit removal", async () => {
+  const plan = apiModule.api.planBatch;
+  const choices: (CommentReviewOptions | undefined)[] = [];
+  let release!: () => void;
+  mock.method(apiModule.api, "planBatch", async (edits: readonly DraftEdit[], revision: string, options?: CommentReviewOptions): Promise<BatchPlanResponse> => {
+    choices.push(options);
+    const response = await plan(edits, revision, options);
+    if (choices.length === 2) await new Promise<void>(resolve => { release = resolve; });
+    return { ...response, comments: [{ ...reviewComment, resolution: options?.comments?.[reviewComment.id] ?? "keep" }] };
+  });
+  await mount(); changeMemory();
+  await ui.act(async () => { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); });
+  const dialog = ui.within(ui.screen.getByRole("dialog", { name: "Review 1 change" }));
+  assert.ok(dialog.getByLabelText("Changes to framework-config/settings.ts"));
+  assert.ok(dialog.getByText(reviewComment.text));
+  const link = dialog.getByRole("link", { name: /Open in VS Code/i });
+  assert.equal(link.getAttribute("href"), reviewComment.vscodeUrl);
+  const toggle = dialog.getByRole("checkbox", { name: /Remove this comment/i }) as HTMLInputElement;
+  assert.equal(toggle.checked, false);
+  assert.equal((dialog.getByRole("button", { name: "Apply All" }) as HTMLButtonElement).disabled, false);
+  ui.fireEvent.click(toggle);
+  await ui.waitFor(() => assert.equal(choices.length, 2));
+  assert.equal((dialog.getByRole("button", { name: "Apply All" }) as HTMLButtonElement).disabled, true);
+  assert.deepEqual(choices[1]?.comments, { [reviewComment.id]: "remove" });
+  assert.equal(applyCalls, 0);
+  await ui.act(async () => release());
+  assert.equal((dialog.getByRole("checkbox", { name: /Remove this comment/i }) as HTMLInputElement).checked, true);
+  assert.equal((dialog.getByRole("button", { name: "Apply All" }) as HTMLButtonElement).disabled, false);
+  ui.fireEvent.click(dialog.getByRole("button", { name: "Back to Editing" }));
+  assert.equal((memory() as HTMLInputElement).value, "768");
+});
+
+test("manual comment resolution links to source and retries against the saved file without losing input", async () => {
+  const plan = apiModule.api.planBatch;
+  const revisions: string[] = [];
+  let resolved = false;
+  mock.method(apiModule.api, "planBatch", async (edits: readonly DraftEdit[], revision: string, options?: CommentReviewOptions): Promise<BatchPlanResponse> => {
+    revisions.push(revision);
+    const response = await plan(edits, revision, options);
+    return resolved ? response : { ...response, ok: false, comments: [{ ...reviewComment, text: "// @ts-expect-error migration compatibility", manualReason: "This compiler directive needs an editor decision." }] };
+  });
+  mock.method(apiModule.api, "refreshSource", async () => ({ revision: persisted.revision }));
+  await mount(); changeMemory();
+  await ui.act(async () => { ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" })); });
+  const dialog = ui.within(ui.screen.getByRole("dialog", { name: "Review 1 change" }));
+  assert.ok(dialog.getByLabelText("Changes to framework-config/settings.ts"));
+  assert.ok(dialog.getByText("This compiler directive needs an editor decision."));
+  assert.equal(dialog.getByRole("link", { name: /Open in VS Code/i }).getAttribute("href"), reviewComment.vscodeUrl);
+  assert.equal((dialog.getByRole("button", { name: "Apply All" }) as HTMLButtonElement).disabled, true);
+  const toggle = dialog.queryByRole("checkbox", { name: /Remove this comment/i }) as HTMLInputElement | null;
+  assert.ok(toggle === null || toggle.disabled, "compiler directives stay an explicit editor task");
+  persisted = { ...baseline, revision: "editor-saved" }; resolved = true;
+  await ui.act(async () => { ui.fireEvent.click(dialog.getByRole("button", { name: /Refresh source and retry/i })); });
+  assert.deepEqual(revisions, [baseline.revision, "editor-saved"]);
+  assert.equal((dialog.getByRole("button", { name: "Apply All" }) as HTMLButtonElement).disabled, false);
+  assert.equal((memory() as HTMLInputElement).value, "768");
+  assert.equal(applyCalls, 0);
 });
 
 test("invalid values are inline, failed applies preserve drafts, and beforeunload only protects dirty sessions", async () => {

@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, rmdirSync } from "node:fs";
 import path from "node:path";
 import { locateConfigSource } from "../../../packages/framework/scripts/config-source";
-import type { ApplyResponse, BatchPlanResponse, DraftEdit } from "../../shared/api";
+import type { ApplyResponse, BatchPlanResponse, CommentReviewOptions, DraftEdit } from "../../shared/api";
+import { reviewedComments, withCommentReview } from "./comments";
 import type { ModeModel } from "../../shared/model";
 import { EvaluatorPool } from "../evaluator/pool";
 import { assertWritable, hashEditableFiles, sha256, toRelative } from "../files";
@@ -43,6 +44,7 @@ import { indexModel } from "../../src/lookup";
 
 interface Change { readonly file: string; readonly before: string | null; readonly after: string | null }
 interface BatchChanges {
+  readonly commentOptions?: CommentReviewOptions;
   readonly label: string;
   readonly changes: readonly Change[];
   readonly edits: readonly DraftEdit[];
@@ -109,7 +111,10 @@ export class BatchEditor {
       if (actual !== hash) throw new EditError(409, `${file} changed after review. Review against the latest source; existing implementation and generated inputs must match the accepted proposal.`);
     }
   }
-  async plan(edits: readonly DraftEdit[], revision: string): Promise<BatchPlanResponse> {
+  plan(edits: readonly DraftEdit[], revision: string, options?: CommentReviewOptions): Promise<BatchPlanResponse> {
+    return withCommentReview(this.root, options, () => this.planSource(edits, revision));
+  }
+  private async planSource(edits: readonly DraftEdit[], revision: string): Promise<BatchPlanResponse> {
     const state = this.state();
     let triggerSources = edits.some((edit) => edit.kind === "triggers" || edit.kind === "nativeTrigger" || edit.kind === "onFailure") ? state.snapshot.source.capabilityFiles : undefined;
     const hashes = hashEditableFiles(this.root);
@@ -360,10 +365,12 @@ export class BatchEditor {
       if (!target || !handlerBefore.has(replayHandlerFile(this.root, target).file)) throw new EditError(422, "Local replay must keep the event's TypeScript handler entry point.");
     }
     this.unchanged(revision, hashes, triggerSources, generationInputs);
+    const comments = reviewedComments();
     const response: BatchPlanResponse = {
+      ...(comments.length ? { comments } : {}),
       planId: randomUUID(), summaries,
       changes: changes.map(({ file, before, after }) => ({ file: toRelative(this.root, file), operation: before === null ? "create" : after === null ? "delete" : "modify", diff: diffOf(toRelative(this.root, file), before ?? "", after ?? "") })),
-      preflight: checked.preflight, ok: checked.preflight.dev.ok && checked.preflight.prod.ok,
+      preflight: checked.preflight, ok: checked.preflight.dev.ok && checked.preflight.prod.ok && !comments.some(comment => comment.manualReason),
       ...(creation ? { select: creation.expected.select } : {}),
       impact: creation ? creation.impact : edits.every((edit) => edit.kind === "clientEnvironment") ? ["Saves mapping definitions for the next environment export. Environment-file generation is separate."] : ["Applies this complete draft as one source change. Individual workload overrides remain in place when shared defaults change.",
         ...(edits.some(edit => edit.kind === "deploy" && model.targets.some(target => target.ref === edit.target && target.role === "event")) ? ["Disabled event functions and their native AWS hooks, trigger descriptors and failure destinations are omitted on the next deployment. Cognito event changes can remove sign-up validation, custom messaging or post-confirmation behavior; this review only saves source."] : []),
@@ -407,7 +414,7 @@ export class BatchEditor {
     const replaySources = [...handlerBefore].map(([file, before]) => ({ file, before, after: overrides.get(file)! }));
     if (edits.some(edit => edit.kind === "identityPolicy")) (response.impact as string[]).push("ReaderRole IAM and explicit guest opt-in changes take effect only after a separate synth/diff/deployment review. Enabled guests can obtain a separate permissionless unauthenticated identity role; ReaderRole grants never attach to guests. Source statements and policy simulation do not prove group claims, trust, boundaries/SCPs, resource policies or runtime API authorization. The default authenticated role remains permissionless.");
     const addedDirectories = changes.filter(change => change.before === null).flatMap(change => { const folders: string[] = []; for (let folder = path.dirname(change.file); folder !== this.root && !existsSync(folder); folder = path.dirname(folder)) folders.push(folder); return folders; });
-    this.plans.set(response.planId, { label: creation ? `Create ${creation.expected.select}` : `${edits.length} inspector changes`, response, revision, hashes, changes, edits, routes, replayTargets, replaySources, triggerSources, generatedFiles: [...generatedFiles], generationInputs, ...(addedDirectories.length ? { createdDirectories: [...new Set(addedDirectories)] } : {}), implementationFiles: [...implementationFiles], ...(edits.some(edit => edit.kind === "deploy" || edit.kind === "connection" || edit.kind === "removeWorkload") ? { operationModels: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) } } : {}), ...(deletions.size ? { networkRemovals: [...deletions.keys()], createdDirectories: [...new Set([...addedDirectories, ...[...deletions.keys()].map(file => path.dirname(file))])] } : {}), ...((native || policyFiles.size) ? { cdkSources: [...new Set([...(native?.changes.keys() ?? []), ...policyFiles])] } : {}), ...(creation ? { creation: creation.expected, creationModels: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, createdDirectories: [...new Set(changes.filter((change) => change.before === null).flatMap((change) => {
+    this.plans.set(response.planId, { label: creation ? `Create ${creation.expected.select}` : `${edits.length} inspector changes`, response, revision, hashes, changes, edits, routes, replayTargets, replaySources, triggerSources, commentOptions: { comments: Object.fromEntries(comments.map(comment => [comment.id, comment.resolution])) }, generatedFiles: [...generatedFiles], generationInputs, ...(addedDirectories.length ? { createdDirectories: [...new Set(addedDirectories)] } : {}), implementationFiles: [...implementationFiles], ...(edits.some(edit => edit.kind === "deploy" || edit.kind === "connection" || edit.kind === "removeWorkload") ? { operationModels: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) } } : {}), ...(deletions.size ? { networkRemovals: [...deletions.keys()], createdDirectories: [...new Set([...addedDirectories, ...[...deletions.keys()].map(file => path.dirname(file))])] } : {}), ...((native || policyFiles.size) ? { cdkSources: [...new Set([...(native?.changes.keys() ?? []), ...policyFiles])] } : {}), ...(creation ? { creation: creation.expected, creationModels: { dev: creationSignature(checked.models.dev), prod: creationSignature(checked.models.prod) }, createdDirectories: [...new Set(changes.filter((change) => change.before === null).flatMap((change) => {
       const directories: string[] = [];
       for (let directory = path.dirname(change.file); directory !== this.root && !existsSync(directory); directory = path.dirname(directory)) directories.push(directory);
       return directories;
@@ -490,10 +497,10 @@ export class BatchEditor {
       else if (!handlers.includes(change.file)) assertWritable(this.root, toRelative(this.root, change.file));
       if (sourceContents(change.file) !== change.before) throw new EditError(409, `${toRelative(this.root, change.file)} changed. Your draft is preserved; no files were written.`);
     }
-    const checkNetworkConsumers = () => {
+    const checkNetworkConsumers = () => withCommentReview(this.root, entry.commentOptions, () => {
       for (const edit of entry.edits) if (edit.kind === "removeNetwork") planNetworkRemoval(this.root, state, edit.network, new SourceFiles());
       for (const edit of entry.edits) if (edit.kind === "removeWorkload") planWorkloadRemoval(this.root, state, edit.target, new Map());
-    };
+    });
     checkNetworkConsumers();
     const routes = entry.routes;
     const checked = await this.validate(Object.fromEntries(changes.filter((change) => change.after !== null).map((change) => [change.file, change.after!])), state, routes, undefined, entry.creation, entry.edits.filter(edit => edit.kind === "removeWorkload").map(edit => edit.target), changes.filter(change => change.after === null).map(change => change.file));

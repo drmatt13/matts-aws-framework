@@ -99,12 +99,6 @@ export const descriptions = {
   "local:postgres": "Local PostgreSQL service declared in docker-compose.yml. Development workloads share the application schema with production RDS; named Compose storage preserves local data.",
 
   // Network fixtures
-  "island:vpc:test": "Unused test VPC declaration. It remains a blueprint until a workload or native resource explicitly uses it.",
-  "prop:vpc:test:internet-gateway": "Internet gateway belonging to the test VPC, independent of the application VPC.",
-  "prop:vpc:test:egress-only-gateway": "Outbound IPv6 gateway declared by the test VPC.",
-  "prop:vpc:test:nat-gateway": "Optional outbound IPv4 NAT gateway declared by the test VPC; it is built only when the VPC is used.",
-  "prop:vpc:test:endpoint:s3": "Test VPC S3 gateway endpoint, separate from the application's endpoint.",
-  "prop:vpc:test:endpoint:dynamodb": "Test VPC DynamoDB gateway endpoint, separate from the application's endpoint.",
   "prop:vpc:application:internet-gateway": "Connects the VPC's public subnets to the internet for IPv4 and IPv6 traffic. Network settings are declared in framework-config/networks/application/index.ts.",
   "prop:vpc:application:egress-only-gateway": "Allows outbound IPv6 traffic from private subnets while preventing unsolicited inbound connections.",
   "prop:vpc:application:nat-gateway": "Optional outbound IPv4 path for private subnets. Appears when NAT is enabled in the network declaration.",

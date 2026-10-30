@@ -92,6 +92,30 @@ test("reviews evaluate the exact generated candidate once and no-op drafts start
   assert.equal(evaluate.mock.callCount(), 1, "unchanged intent does not evaluate or generate");
 });
 
+test("commented field removal reviews exact keep/remove diffs without writes and rejects stale apply", async () => {
+  const file = path.join(fixture, "framework-config/workloads/http.ts");
+  const before = readFileSync(file, "utf8");
+  const intent = [{ kind: "field" as const, intent: { target: "lambda:test-run-task", field: "lambda.memorySize", inherit: true as const } }];
+  const kept = await edits.planBatch(intent, revision());
+  assert.equal(kept.ok, true, JSON.stringify(kept.preflight));
+  assert.equal(kept.comments?.length, 1);
+  assert.equal(kept.comments![0]!.resolution, "keep");
+  assert.match(kept.changes.find(change => change.file.endsWith("http.ts"))!.diff.unified, /The AWS SDK's first ECS call/);
+  assert.equal(readFileSync(file, "utf8"), before, "calculating the review preserves authored source");
+  const choices = { comments: { [kept.comments![0]!.id]: "remove" as const } };
+  const removed = await edits.planBatch(intent, revision(), choices);
+  assert.equal(removed.ok, true);
+  assert.match(removed.changes.find(change => change.file.endsWith("http.ts"))!.diff.unified, /-    \/\/ The AWS SDK's first ECS call/);
+  await withExternalSource(file, before + "\n// A concurrent edit\n", async () => {
+    await assert.rejects(edits.applyBatch(removed.planId), /changed/);
+    assert.ok(readFileSync(file, "utf8").endsWith("// A concurrent edit\n"));
+  });
+  const current = await edits.planBatch(intent, revision(), choices);
+  await assertApplied(edits.applyBatch(current.planId));
+  assert.ok(!readFileSync(file, "utf8").includes("The AWS SDK's first ECS call"));
+  assert.equal(builder.current!.snapshot.models.dev.fields["lambda:test-run-task"]!.find(fact => fact.field === "lambda.memorySize")!.authored, undefined);
+});
+
 test("generator inputs edited during final validation expire a review without source writes", async t => {
   const handler = path.join(fixture, "cdk-app/lambda_functions/http_functions/graphql-api/index.ts");
   const before = readFileSync(handler, "utf8");
