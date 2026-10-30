@@ -134,8 +134,10 @@ Tests do not prove what a browser does. For a UI change, run the studio and use 
    The owner usually has one running on 4590. Leave it alone.
 2. Drive it with real input (Playwright or by hand). For the canvas, ask
    `window.__studioLandscape` where something is drawn, then click there.
-3. Screenshots from the Playwright tools must be saved inside the workspace (for example
-   `.playwright-mcp/`). Delete that folder afterwards.
+3. Save disposable screenshots and traces in ignored `output/playwright/<task>/`.
+   Record useful findings before removing raw output; preserve intentional visual
+   references beside the browser specs. Follow the [repository hygiene guide](../REPOSITORY-HYGIENE.md)
+   for retention and exact-target cleanup.
 4. Confirm that `git status` shows no change under `framework-config/` unless you meant
    one.
 

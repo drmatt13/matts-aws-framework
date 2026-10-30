@@ -16,6 +16,7 @@ Before changing an area, read its current source and guide:
 | Authentication or authorization | [Auth checklist](docs/playbooks/auth.md) and its linked auth model |
 | AgentCore agents and tools | [AgentCore](docs/AGENTCORE.md) and [Framework](docs/FRAMEWORK.md) |
 | Development environment | [Development](docs/DEV-DEPLOYMENT.md) |
+| Repository cleanup, generated output or artifact retention | [Repository hygiene](docs/REPOSITORY-HYGIENE.md) |
 | Production release | [Production](docs/PROD-DEPLOYMENT.md) and [deployment procedure](docs/playbooks/prod-deployment.md) |
 
 For architecture-sensitive changes, use the [AWS Studio knowledge router](docs/aws-studio-knowledge/README.md)
@@ -26,6 +27,10 @@ update affected knowledge pages when those contracts change.
 
 - Preserve unrelated working-tree changes. Use npm workspaces from the root and keep
   package-lock.json synchronized with manifest/dependency changes.
+- Put disposable browser evidence in ignored `output/playwright/<task>/`; keep tests,
+  fixtures and golden screenshots in their existing source locations. Before cleanup,
+  follow the hygiene guide: `.cache/` and `.framework/` also hold private inputs,
+  recovery journals and deployment state, so never treat either as a blanket purge.
 - Never hand-edit client-app/src/api/generated/, packages/database/src/generated/,
   packages/api-contract/src/generated/, packages/framework/src/generated/,
   docker-compose.services.yml, or client-app/src/routeTree.gen.ts. Change source and run

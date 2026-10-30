@@ -22,6 +22,17 @@
 
 *.log
 
+# Disposable browser/verification output. Git ignores do not filter image contexts.
+.playwright-mcp/
+.playwright-cli/
+output/playwright/
+framework-studio/test/browser/.dist/
+**/test-results
+**/playwright-report
+**/blob-report
+**/coverage
+**/.nyc_output
+
 # Exclude artifacts left by the retired local lifecycle tooling.
 .framework
 

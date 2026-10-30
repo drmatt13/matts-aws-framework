@@ -201,6 +201,11 @@ empty executable import/export clauses from actual type-only contracts.
 | Application synth / deployed checks | No campaign infrastructure change; full application dev/prod synthesis, deployment, live cloud verification and Docker lifecycle checks were not performed |
 
 The final receipts and full logs are under the ignored campaign artifact directory.
+The later [repository hygiene pass](../REPOSITORY-HYGIENE.md) pruned duplicate preview
+builds, raw browser reports/results, contact sheets, duplicate reference copies and
+one-off preview adapters. Baseline source copies, patches, hashes, receipts and logs
+remain. Use the normal browser configuration and tracked golden images for future
+regressions; the old temporary campaign preview configuration is no longer retained.
 Fifteen existing TanStack CommonJS `replaceRouteChunk` circular-dependency warnings
 remain visible in the final log; no warning or assertion was suppressed.
 `campaign-source.patch` separates campaign text changes from pre-existing working-tree

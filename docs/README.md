@@ -30,6 +30,7 @@ smallest relevant page.
 | Extension work | [Extension recipes](aws-studio-knowledge/guides/extensions.md), [feature build](playbooks/feature-build.md), [change impact](aws-studio-knowledge/reference/change-impact.md) |
 | Shared utilities and external development dependencies | [Shared functions](SHARED-FUNCTIONS.md), [shared AWS dependencies](SHARED-AWS-DEPENDENCIES.md) |
 | Troubleshooting and evidence limits | [Development troubleshooting](DEV-DEPLOYMENT.md#verification-and-troubleshooting), [verification](aws-studio-knowledge/guides/verification-and-maintenance.md), [discovery record](framework-studio/discovery-2026-10-29.md) |
+| Repository cleanup, output locations and retention | [Repository hygiene](REPOSITORY-HYGIENE.md) |
 
 The source-linked wiki owns concise subsystem contracts. Existing development,
 production, database and AgentCore guides own operational procedures and fuller examples.

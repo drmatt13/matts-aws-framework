@@ -259,3 +259,10 @@ cdk-app/.secret-bindings.json
 # Studio browser artifacts (reviewed *.spec.ts-snapshots remain tracked).
 framework-studio/test/browser/.dist/
 output/playwright/
+/.playwright-mcp/
+/.playwright-cli/
+
+# Default output locations used by standalone Playwright runs.
+test-results/
+playwright-report/
+blob-report/

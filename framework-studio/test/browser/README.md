@@ -66,3 +66,12 @@ Layout measurements, fixture request logs, failure screenshots and traces go und
 `output/playwright/studio/`. Sources and screenshot references stay under this
 directory; generated gallery output is ignored. The root `npm run verify` remains
 the offline unit/type/generation gate; run this browser suite separately.
+
+For retention and cleanup, follow the [repository hygiene guide](../../../docs/REPOSITORY-HYGIENE.md).
+Raw results, reports, traces, recordings and ad hoc tool captures are disposable after
+useful findings are recorded. Tests, fixture data, pinned fonts/licenses and reviewed
+`*.spec.ts-snapshots/` PNGs are source material. Keep one concise durable receipt for a
+completed investigation instead of committing an entire generated report tree. Close
+owned previews before exact-target cleanup, and run cleanup separately from verification
+because CDK tests may be walking the repository. The optional frozen Tailwind baseline
+is historical input, not an ordinary build cache.
