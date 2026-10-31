@@ -284,9 +284,9 @@ test("input and environment grouping inspectors omit deployment controls", async
       assert.ok(ui.screen.getByRole("heading", { name: "Environment files" }));
       ui.fireEvent.click(ui.screen.getByText("Island entries", { selector: "summary span" }).closest("summary")!);
       const members = document.querySelector('[data-slot="island-members"]')!;
-      assert.equal(members.querySelectorAll('[data-resource-status="file-role"]').length, 1);
+      // Only framework ownership is badged; the application's client mappings carry none.
       assert.equal(ui.within(members as HTMLElement).getAllByText("Framework managed").length, 2);
-      assert.ok(ui.within(members as HTMLElement).getByText("Application"));
+      assert.equal(ui.within(members as HTMLElement).queryByText("Application"), null);
       assert.ok(ui.screen.getByRole("button", { name: "client-app/.env" }));
       assert.equal(ui.screen.queryByRole("searchbox", { name: "Search client mappings" }), null);
       ui.fireEvent.click(ui.screen.getByRole("button", { name: "client-app/.env" }));

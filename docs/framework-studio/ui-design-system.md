@@ -25,9 +25,12 @@ CodeMirror's narrowly scoped adapter remains unlayered to cooperate with injecte
 editor styles. Its controls explicitly own appearance that React primitives cannot reach.
 
 `Button`/`buttonClasses` share primary, neutral, quiet and link variants; compact,
-regular and prominent sizes; default and danger tones. `IconButton` requires an
+regular and prominent sizes; default and danger tones. Repeated compact trigger rows use
+`size="dense"`; `size="custom"` leaves padding and minimum height to explicit caller
+utilities for uncommon geometry. `IconButton` requires an
 accessible label. `TextInput`, `Select` and `Textarea` retain native props/events/refs;
-`controlSize` is separate from the native `size`. `Card`, `Notice` and
+`controlSize` is separate from the native `size`; `controlSize="panel"` follows the
+inspector or dialog control-height token. `Card`, `Notice` and
 `WorkspaceToolbar` cover shared surfaces. `Notice` does not invent an ARIA role.
 `InspectorUI`, `FieldRow`, `NavigationStrip`, `WorkspacePanel`, `WorkbenchUI` and
 `DocumentCard` remain the higher-level owners. `cx` joins complete static class strings;
@@ -47,9 +50,11 @@ Stale observations, ordinary status messages, operation outcomes and modal error
 their existing components and ARIA behavior. Similar markup alone does not establish
 a shared lifecycle or approval contract.
 
-`Button` emits its `data-variant` automatically. Native buttons using `buttonClasses`
-inside shared dialog footers must also expose `data-variant="primary"` for primary
-actions: the footer preserves their 110px minimum and full row at 420px and below.
+Dialog primary actions compose `dialogPrimaryActionClasses` directly with
+`buttonClasses`. This preserves their 110px minimum and full row at 420px and below;
+the footer no longer finds them through `data-variant`. `Button` still emits that
+attribute for inspection and integrations. Attributes identify UI, state, focus targets
+and test fixtures; ordinary layout must not depend on a distant selector finding them.
 Native dialogs explicitly restore pointer events when rendered inside map overlays.
 Boolean field help and inheritance details span both grid columns, leaving the
 switch column sized by the switch itself; never place long support copy in that
@@ -59,17 +64,38 @@ scrolling so its resource rows remain reachable. Dense operational tables retain
 readable column widths inside named, keyboard-focusable horizontal scroll regions.
 Database review transitions reset the modal body scroll when the review title changes.
 
-`src/inspector-ui.ts` owns shared inspector, field, relationship-list and native-dialog
-recipes. The theme supplies 32px control/icon and 24px disclosure-target defaults for
-shared controls rendered outside panels. Inspector and dialog contexts own their 44px
-coarse-pointer overrides. Keep contextual density changes scoped to those contexts;
-ordinary document fieldsets retain native geometry. Existing tag and trigger padding
-exceptions have explicit, documented specificity beside their component recipes.
-These recipes, `DocumentUI` and `WorkbenchUI` intentionally target descendant headings,
-paragraphs, controls and semantic slots. Moving JSX into a component preserves that
-contract only if its DOM ancestry remains the same. Do not add a wrapper, reorder
-sections or move a rule between owners as incidental cleanup. Diagnose an actual
-conflict with computed-style and visual evidence before changing specificity.
+`src/inspector-ui.ts` contains explicit recipes for inspector headers, section gutters,
+field rows, labels, relationship rows and native dialogs. Import the recipe at the element
+it styles: `inspectorHeaderClasses` belongs on a header, `inspectorRelationRowClasses`
+on each list item, and `inspectorFieldLabelClasses` on the label. Choose switch/stacked
+field geometry and modified-label treatment from component state instead of inferring
+them through descendant roles or `data-slot`. `InspectorSection` and
+`InspectorDisclosure` accept `contentClassName` for their content layout, so callers can
+set a shared grid or gap without reaching through the component's DOM.
+
+Resource ownership badges own their spacing and appearance in `ResourceStatus.tsx`.
+Their explicit `placement` and `appearance` props cover inspector headers and dark map
+previews. Changing the managed badge's margin starts in that component; neither
+`data-resource-status` nor the inspector scroll area supplies it. `Written` owns its
+source-line layout and header placement. `EntityIcon` accepts a literal pixel `size`
+(20, 22, 24, 26 or 32) and optional badge size; consumers no longer resize its private
+image through an attribute selector.
+
+`DocumentUI` and `WorkbenchUI` keep shared document recipes near their composition
+components. Feature forms own their labels, control widths, supporting copy, table cells
+and disclosure contents. Repeated tooltip typography and fact rows live beside their
+surface recipe in `views/map-styles.ts`; resource and connection tooltip JSX references
+them directly. Use `FormGroup appearance="plain"` when a fieldset needs a plain frame
+instead of overriding nested fieldsets from an ancestor.
+
+The theme supplies 32px control/icon and 24px disclosure-target defaults. Inspector and
+dialog contexts retain their scoped 44px coarse-pointer minimums. Browser-owned
+pseudo-elements, ARIA/native disclosure state, focus-within behavior, forced-color
+adaptation and third-party CodeMirror DOM remain appropriate selector uses. The Shell's
+recovery row uses `:has` because its asynchronous child owns whether it is present.
+These boundaries are distinct from ordinary component spacing and typography. Preserve
+DOM behavior and compare computed geometry when removing a selector; class string order
+alone never establishes which conflicting utility wins.
 
 Put one-off placement in JSX. Extract repeated appearance into its actual component or
 small typed variant recipe, never a runtime mapping from old presentation class names.
@@ -248,6 +274,10 @@ Boards mistaken for load failures, empty map mount/recovery crashes, invisible k
 focus, incomplete creation conflict gating, background refresh errors discarding drafts,
 and log refreshes losing the reader's place. Initial connection failures offer retry;
 background failures preserve the current map and draft with a persistent retry notice.
+
+`inspector-styling.spec.ts` exercises ownership badges, missing-source headers, grouped
+inputs and environment-file inspectors at desktop and phone widths. It records measured
+geometry and screenshots while checking keyboard disclosure and overflow behavior.
 
 Interaction regressions live in `navigation-polish.test.ts`, `isometric-ui.test.ts`,
 `draft-ui.test.ts`, `startup-ui.test.ts`, `cognito-workspace-ui.test.ts`,

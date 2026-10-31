@@ -1,8 +1,17 @@
+import { triggerFieldLabelClasses } from "./styles";
 import { ArrowLeft, Check, CircleAlert, Info, Trash2, TriangleAlert } from "lucide-react";
 import { Fragment, type ReactNode } from "react";
 import type { ModelResource, ModelTarget, Snapshot } from "../../../../shared/model";
-import type { TriggerAdapterMetadata, TriggerCapability, TriggerField } from "../../../../shared/triggers";
-import { eventUnavailable, triggerUnavailable, type TriggerProblem } from "../../../../shared/trigger-availability";
+import type {
+  TriggerAdapterMetadata,
+  TriggerCapability,
+  TriggerField,
+} from "../../../../shared/triggers";
+import {
+  eventUnavailable,
+  triggerUnavailable,
+  type TriggerProblem,
+} from "../../../../shared/trigger-availability";
 import type { fieldGroups } from "../../../../shared/trigger-presets";
 import { titleOf, type ModelIndex } from "../../../lookup";
 import { buttonClasses } from "../../../ui/Button";
@@ -64,7 +73,15 @@ const PROBLEM_ICONS = {
 } as const;
 
 export function TriggerSourceStep({
-  form, resource, capability, events, adapters, snapshot, setForm, choose, close,
+  form,
+  resource,
+  capability,
+  events,
+  adapters,
+  snapshot,
+  setForm,
+  choose,
+  close,
 }: SourceStepProps) {
   const current = form;
   if (!resource)
@@ -78,8 +95,15 @@ export function TriggerSourceStep({
             choose(current, { resource: chosen, adapter, service: adapter })
           }
         />
-        <div className={"empty:hidden flex flex-wrap gap-2 mt-3 items-center"} data-slot="resource-actions">
-          <button className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} onClick={close} data-variant="quiet">
+        <div
+          className="empty:hidden flex flex-wrap gap-2 mt-3 items-center"
+          data-slot="resource-actions"
+        >
+          <button
+            className={cx(buttonClasses({ variant: "quiet", size: "dense" }), "text-caption")}
+            onClick={close}
+            data-variant="quiet"
+          >
             Cancel
           </button>
         </div>
@@ -88,39 +112,29 @@ export function TriggerSourceStep({
   return (
     <>
       {(capability?.adapters.length ?? 0) > 1 ? (
-        <label>
+        <label className={triggerFieldLabelClasses}>
           Invocation
           <Select
+            className="w-full"
             aria-label="Trigger invocation"
             value={current.adapter}
-            onChange={(event) =>
-              setForm({ ...current, adapter: event.target.value })
-            }
+            onChange={(event) => setForm({ ...current, adapter: event.target.value })}
           >
             {capability!.adapters.map((item) => {
-              const reason = triggerUnavailable(
-                snapshot,
-                resource.id,
-                item.kind,
-              );
+              const reason = triggerUnavailable(snapshot, resource.id, item.kind);
               return (
-                <option
-                  key={item.kind}
-                  value={item.kind}
-                  disabled={!!reason}
-                  title={reason}
-                >
-                  {adapters.find((adapter) => adapter.kind === item.kind)
-                    ?.label ?? item.kind}
+                <option key={item.kind} value={item.kind} disabled={!!reason} title={reason}>
+                  {adapters.find((adapter) => adapter.kind === item.kind)?.label ?? item.kind}
                 </option>
               );
             })}
           </Select>
         </label>
       ) : null}
-      <label>
+      <label className={triggerFieldLabelClasses}>
         Event Lambda
         <Select
+          className="w-full"
           aria-label="Trigger event Lambda"
           value={current.event}
           onChange={(event) => choose(current, { event: event.target.value })}
@@ -131,12 +145,7 @@ export function TriggerSourceStep({
               ? eventUnavailable(snapshot, event.id, current.adapter)
               : undefined;
             return (
-              <option
-                key={event.id}
-                value={event.id}
-                disabled={!!reason}
-                title={reason}
-              >
+              <option key={event.id} value={event.id} disabled={!!reason} title={reason}>
                 {event.id}
                 {reason ? " · not available" : ""}
               </option>
@@ -144,8 +153,15 @@ export function TriggerSourceStep({
           })}
         </Select>
       </label>
-      <div className={"empty:hidden flex flex-wrap gap-2 mt-3 items-center"} data-slot="resource-actions">
-        <button className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} onClick={close} data-variant="quiet">
+      <div
+        className="empty:hidden flex flex-wrap gap-2 mt-3 items-center"
+        data-slot="resource-actions"
+      >
+        <button
+          className={cx(buttonClasses({ variant: "quiet", size: "dense" }), "text-caption")}
+          onClick={close}
+          data-variant="quiet"
+        >
           Cancel
         </button>
       </div>
@@ -159,12 +175,18 @@ export function TriggerRoute({ form, metadata, index, setForm }: RouteProps) {
     ? metadata.label
     : `${metadata?.label ?? current.adapter} · ${titleOf(index, current.resource)}`;
   return (
-    <p className={"[&>span]:min-w-0 [&>span]:wrap-anywhere [&>button]:flex-none [&>button]:whitespace-nowrap flex justify-between gap-2 m-0 bg-wash rounded-md [padding:10px] items-center text-caption"} data-slot="trigger-route">
-      <span>
+    <p
+      className="m-0 flex items-center justify-between gap-2 rounded-md bg-wash p-2.5 text-caption"
+      data-slot="trigger-route"
+    >
+      <span className="min-w-0 wrap-anywhere">
         <strong>{source}</strong> → {current.event}
       </span>
       <button
-        className={cx(buttonClasses({ variant: "link" }), "text-caption")}
+        className={cx(
+          buttonClasses({ variant: "link" }),
+          "flex-none whitespace-nowrap text-caption",
+        )}
         onClick={() => setForm({ ...current, step: "source" })}
       >
         Change
@@ -174,70 +196,88 @@ export function TriggerRoute({ form, metadata, index, setForm }: RouteProps) {
 }
 
 export function TriggerSettingsStep({
-  form, metadata, groups, problems, setForm, renderField, close, removeEditing,
+  form,
+  metadata,
+  groups,
+  problems,
+  setForm,
+  renderField,
+  close,
+  removeEditing,
 }: SettingsStepProps) {
   const current = form;
-  const id = problems.find(
-    (problem) => problem.field === "id" && problem.kind === "form",
-  )?.message;
+  const id = problems.find((problem) => problem.field === "id" && problem.kind === "form")?.message;
   return (
     <>
       {groups!.basic.length ? (
-        groups!.basic.map((field) => (
-          <Fragment key={field.name}>{renderField(field)}</Fragment>
-        ))
+        groups!.basic.map((field) => <Fragment key={field.name}>{renderField(field)}</Fragment>)
       ) : (
-        <p className={"text-caption text-graphite"}>
+        <p className="mt-0 mb-2 text-caption text-graphite">
           Nothing to set; the defaults suit most {metadata!.label} triggers.
         </p>
       )}
       <details
-        className={"grid gap-2 [&_summary]:text-step-minus1 [&_summary]:text-graphite [&[open]>:not(summary)]:mt-2"}
+        className="grid gap-2"
         open={
           !!id ||
           groups!.advanced.some((field) =>
-            problems.some(
-              (problem) =>
-                problem.field === field.name && problem.kind === "form",
-            ),
+            problems.some((problem) => problem.field === field.name && problem.kind === "form"),
           )
-        } data-slot="trigger-advanced"
+        }
+        data-slot="trigger-advanced"
       >
-        <InspectorSummary>Advanced options</InspectorSummary>
-        <label>
+        <InspectorSummary className="cursor-pointer text-step-minus1 font-semibold text-graphite">
+          Advanced options
+        </InspectorSummary>
+        <label className={cx(triggerFieldLabelClasses, "mt-2")}>
           Attachment id
           <TextInput
+            className="w-full"
             aria-label="Trigger attachment id"
             value={current.id}
-            onChange={(event) =>
-              setForm({ ...current, id: event.target.value })
-            }
+            onChange={(event) => setForm({ ...current, id: event.target.value })}
           />
-          {id ? <span className={"text-refuse wrap-anywhere text-caption"}>{id}</span> : null}
+          {id ? <span className="text-refuse wrap-anywhere text-caption">{id}</span> : null}
         </label>
         {groups!.advanced.map((field) => (
           <Fragment key={field.name}>{renderField(field)}</Fragment>
         ))}
       </details>
-      <div className={"empty:hidden flex flex-wrap gap-2 mt-3 items-center"} data-slot="resource-actions">
+      <div
+        className="empty:hidden flex flex-wrap gap-2 mt-3 items-center"
+        data-slot="resource-actions"
+      >
         <button
-          className={cx(buttonClasses({ variant: "quiet" }), "text-caption")}
-          onClick={() => setForm({ ...current, step: "source" })} data-variant="quiet"
+          className={cx(buttonClasses({ variant: "quiet", size: "dense" }), "text-caption")}
+          onClick={() => setForm({ ...current, step: "source" })}
+          data-variant="quiet"
         >
           <ArrowLeft size={13} aria-hidden />
           Back
         </button>
         <button
           className={buttonClasses({ variant: "primary", size: "compact" })}
-          onClick={() => setForm({ ...current, step: "confirm" })} data-variant="primary"
+          onClick={() => setForm({ ...current, step: "confirm" })}
+          data-variant="primary"
         >
           Next
         </button>
-        <button className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} onClick={close} data-variant="quiet">
+        <button
+          className={cx(buttonClasses({ variant: "quiet", size: "dense" }), "text-caption")}
+          onClick={close}
+          data-variant="quiet"
+        >
           Cancel
         </button>
         {current.editing ? (
-          <button className={cx(buttonClasses({ variant: "quiet" }), "text-caption text-refuse [&&]:border-refuse")} onClick={removeEditing} data-variant="quiet">
+          <button
+            className={cx(
+              buttonClasses({ variant: "quiet", size: "dense" }),
+              "text-caption text-refuse [&&]:border-refuse",
+            )}
+            onClick={removeEditing}
+            data-variant="quiet"
+          >
             <Trash2 size={13} aria-hidden />
             Remove trigger
           </button>
@@ -248,42 +288,57 @@ export function TriggerSettingsStep({
 }
 
 export function TriggerConfirmStep({
-  form, metadata, groups, problems, blocking, missingFailureDestination, busy,
-  setForm, setOption, commit, close, removeEditing,
+  form,
+  metadata,
+  groups,
+  problems,
+  blocking,
+  missingFailureDestination,
+  busy,
+  setForm,
+  setOption,
+  commit,
+  close,
+  removeEditing,
 }: ConfirmStepProps) {
   const current = form;
-  const confirmations = new Set([
-    "accepts",
-    ...groups!.confirm.map((field) => field.name),
-  ]);
-  const dropped: TriggerProblem[] =
-    missingFailureDestination
-      ? [
-          {
-            kind: "advice",
-            message: `Failed runs are dropped after Lambda's two retries. Once this trigger is added, set where they go under "When a run fails" on ${current.event}.`,
-          },
-        ]
-      : [];
+  const confirmations = new Set(["accepts", ...groups!.confirm.map((field) => field.name)]);
+  const dropped: TriggerProblem[] = missingFailureDestination
+    ? [
+        {
+          kind: "advice",
+          message: `Failed runs are dropped after Lambda's two retries. Once this trigger is added, set where they go under "When a run fails" on ${current.event}.`,
+        },
+      ]
+    : [];
   const listed = [
-    ...problems.filter(
-      (problem) => !problem.field || !confirmations.has(problem.field),
-    ),
+    ...problems.filter((problem) => !problem.field || !confirmations.has(problem.field)),
     ...dropped,
   ];
   const left = blocking.length;
   return (
     <>
-      <ul className={"list-none m-0 p-0 grid [gap:6px] text-step-minus1 [&_li]:flex [&_li]:items-start [&_li]:gap-1.5 [&_li>svg]:flex-none [&_li>svg]:mt-0.5 [&_li>span]:flex-1"} aria-label="Trigger checklist" data-slot="trigger-checklist">
+      <ul
+        className="m-0 grid list-none gap-1.5 p-0 text-step-minus1"
+        aria-label="Trigger checklist"
+        data-slot="trigger-checklist"
+      >
         {listed.map((problem) => {
           const Icon = PROBLEM_ICONS[problem.kind];
           return (
             <li
               key={`${problem.kind}:${problem.field ?? ""}:${problem.message}`}
-              className={problem.kind === "form" || problem.kind === "source" ? "text-refuse" : problem.kind === "warning" ? "text-local" : "text-graphite"}
+              className={cx(
+                "flex items-start gap-1.5",
+                problem.kind === "form" || problem.kind === "source"
+                  ? "text-refuse"
+                  : problem.kind === "warning"
+                    ? "text-local"
+                    : "text-graphite",
+              )}
             >
-              <Icon size={14} aria-hidden />
-              <span>{problem.message}</span>
+              <Icon size={14} aria-hidden className="mt-0.5 flex-none" />
+              <span className="flex-1">{problem.message}</span>
               {problem.kind === "form" ? (
                 <button
                   className={cx(buttonClasses({ variant: "link" }), "text-caption")}
@@ -295,48 +350,55 @@ export function TriggerConfirmStep({
             </li>
           );
         })}
-        {!listed.some(
-          (problem) => problem.kind === "form" || problem.kind === "source",
-        ) ? (
-          <li className={"text-accept"}>
-            <Check size={14} aria-hidden />
-            <span>Source and settings check out.</span>
+        {!listed.some((problem) => problem.kind === "form" || problem.kind === "source") ? (
+          <li className="flex items-start gap-1.5 text-accept">
+            <Check size={14} aria-hidden className="mt-0.5 flex-none" />
+            <span className="flex-1">Source and settings check out.</span>
           </li>
         ) : null}
       </ul>
-      <label className={"flex items-start gap-2 [&_input]:mt-0.5 border border-rule-strong rounded-md bg-sheet text-caption! p-3 [line-height:1.5]"} data-slot="trigger-ack">
+      <label
+        className="flex items-start gap-2 rounded-md border border-rule-strong bg-sheet p-3 text-caption leading-[1.5]"
+        data-slot="trigger-ack"
+      >
         <input
           type="checkbox"
           aria-label="Acknowledge trigger handler contract"
           checked={current.accepts}
-          onChange={(event) =>
-            setForm({ ...current, accepts: event.target.checked })
-          } className={checkboxClasses}
+          onChange={(event) => setForm({ ...current, accepts: event.target.checked })}
+          className={cx(checkboxClasses, "mt-0.5")}
         />
         <span>
           My handler accepts this event: {metadata!.delivery}.{" "}
-          <span className={"text-graphite"}>
+          <span className="text-graphite">
             Contract <code>{metadata!.contract}</code>.
           </span>
         </span>
       </label>
       {groups!.confirm.map((field) => (
-        <label key={field.name} className={"flex items-start gap-2 [&_input]:mt-0.5 border border-rule-strong rounded-md bg-sheet text-caption! p-3 [line-height:1.5]"} data-slot="trigger-ack">
+        <label
+          key={field.name}
+          className="flex items-start gap-2 rounded-md border border-rule-strong bg-sheet p-3 text-caption leading-[1.5]"
+          data-slot="trigger-ack"
+        >
           <input
             type="checkbox"
             aria-label={`Trigger ${field.label}`}
             checked={current.options[field.name] === true}
-            onChange={(event) =>
-              setOption(field.name, event.target.checked ? true : undefined)
-            } className={checkboxClasses}
+            onChange={(event) => setOption(field.name, event.target.checked ? true : undefined)}
+            className={cx(checkboxClasses, "mt-0.5")}
           />
           <span>{field.label}</span>
         </label>
       ))}
-      <div className={"empty:hidden flex flex-wrap gap-2 mt-3 items-center"} data-slot="resource-actions">
+      <div
+        className="empty:hidden flex flex-wrap gap-2 mt-3 items-center"
+        data-slot="resource-actions"
+      >
         <button
-          className={cx(buttonClasses({ variant: "quiet" }), "text-caption")}
-          onClick={() => setForm({ ...current, step: "settings" })} data-variant="quiet"
+          className={cx(buttonClasses({ variant: "quiet", size: "dense" }), "text-caption")}
+          onClick={() => setForm({ ...current, step: "settings" })}
+          data-variant="quiet"
         >
           <ArrowLeft size={13} aria-hidden />
           Back
@@ -344,27 +406,38 @@ export function TriggerConfirmStep({
         <button
           className={buttonClasses({ variant: "primary", size: "compact" })}
           disabled={!!left || busy}
-          onClick={commit} data-variant="primary"
+          onClick={commit}
+          data-variant="primary"
         >
           {current.editing ? "Save trigger" : "Add trigger"}
         </button>
-        <button className={cx(buttonClasses({ variant: "quiet" }), "text-caption")} onClick={close} data-variant="quiet">
+        <button
+          className={cx(buttonClasses({ variant: "quiet", size: "dense" }), "text-caption")}
+          onClick={close}
+          data-variant="quiet"
+        >
           Cancel
         </button>
         {current.editing ? (
-          <button className={cx(buttonClasses({ variant: "quiet" }), "text-caption text-refuse [&&]:border-refuse")} onClick={removeEditing} data-variant="quiet">
+          <button
+            className={cx(
+              buttonClasses({ variant: "quiet", size: "dense" }),
+              "text-caption text-refuse [&&]:border-refuse",
+            )}
+            onClick={removeEditing}
+            data-variant="quiet"
+          >
             <Trash2 size={13} aria-hidden />
             Remove trigger
           </button>
         ) : null}
       </div>
       {left ? (
-        <p className={"text-caption text-graphite"} role="status">
-          {left === 1 ? "1 item left" : `${left} items left`} before this
-          trigger can be {current.editing ? "saved" : "added"}.
+        <p className="mt-0 mb-2 text-caption text-graphite" role="status">
+          {left === 1 ? "1 item left" : `${left} items left`} before this trigger can be{" "}
+          {current.editing ? "saved" : "added"}.
         </p>
       ) : null}
     </>
   );
 }
-

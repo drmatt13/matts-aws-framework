@@ -3,26 +3,49 @@ import { sourceEditBlocked } from "../editing-state";
 import { identitySourceQuery } from "../identity-queries";
 import { deploymentOverviewQuery } from "../deploy/queries";
 import { useQuery } from "@tanstack/react-query";
-import { Link,useLocation } from "@tanstack/react-router";
-import { useEffect,useRef,useState } from "react";
+import { Link, useLocation } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
 import type { DeployOverview } from "../../shared/deploy";
-import type { CognitoObservation,IdentityPoolsObservation,IdentitySelection,IdentitySource } from "../../shared/identity";
+import type {
+  CognitoObservation,
+  IdentityPoolsObservation,
+  IdentitySelection,
+  IdentitySource,
+} from "../../shared/identity";
 import type { Mode } from "../../shared/model";
 import { deployApi } from "../deploy/api";
-import { identityApi,inspectionErrorMessage } from "../identity-api";
+import { identityApi, inspectionErrorMessage } from "../identity-api";
 import { editorLink } from "../lookup";
 import { useStudio } from "../studio";
 import { buttonClasses } from "../ui/Button";
-import { Select,TextInput } from "../ui/FormControls";
-import { noticeClasses,workspaceToolbarClasses } from "../ui/Surface";
+import { Select, TextInput } from "../ui/FormControls";
+import { noticeClasses, workspaceToolbarClasses } from "../ui/Surface";
 import { cx } from "../ui/classes";
 import { CognitoManagement } from "./CognitoManagement";
 import { CreationWizard } from "./CreationWizard";
 import { DataRetention } from "./DataRetention";
-import { DocumentCard,documentCardClasses,documentDataTableClasses,documentLabelClasses,documentTableRegionClasses,documentSearchToolbarClasses,inspectionControlClasses,pageWidthClasses } from "./DocumentUI";
+import {
+  DocumentCard,
+  documentCardClasses,
+  documentDataTableClasses,
+  documentTableRegionClasses,
+  documentToolbarClasses,
+  inspectionControlClasses,
+  pageWidthClasses,
+  inspectionFieldClasses,
+  inspectionRegionFieldClasses,
+  inspectionActionClasses,
+  documentSearchFieldClasses,
+  documentToolbarActionClasses,
+} from "./DocumentUI";
 import { DraftFooter } from "./DraftControls";
 import { IdentityPolicyEditor } from "./IdentityPolicyEditor";
-import { navigationItemClasses,NavigationStrip } from "./NavigationStrip";
+import { navigationItemClasses, NavigationStrip } from "./NavigationStrip";
+
+const evidenceFactsClasses =
+  "m-0 grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-x-5 gap-y-3";
+const evidenceLabelClasses = "mb-1 text-caption font-normal text-graphite";
+const evidenceValueClasses = "m-0 text-label wrap-anywhere";
 
 const sections = [
   { id: "user-pools", label: "User Pools", to: "/cognito/user-pools" },
@@ -30,154 +53,1152 @@ const sections = [
   { id: "providers", label: "Providers", to: "/cognito/providers" },
   { id: "permissions", label: "Permissions & RBAC", to: "/cognito/permissions" },
 ] as const;
-type Section = typeof sections[number]["id"];
-interface Evidence<T> { readonly data: T; readonly revision: string; readonly hash: string }
-interface Inspection { readonly cognito?: Evidence<CognitoObservation>; readonly pools?: Evidence<IdentityPoolsObservation>; readonly errors?: Partial<Record<"cognito" | "pools", string>> }
-
-export function authenticationSelection(mode: Mode, overview?: DeployOverview): IdentitySelection {
-  const preferred = overview?.targets.find(target => target.name === overview.preferences?.deployment && target.mode === mode);
-  const target = preferred ?? overview?.targets.find(target => target.mode === mode);
-  const profile = target && overview?.preferences?.profiles[target.name] || overview?.preferences?.profile || overview?.profiles[0]?.name || "";
-  return { profile, deployment: target?.name ?? "", region: target?.region ?? overview?.profiles.find(entry => entry.name === profile)?.region ?? "us-east-1" };
+type Section = (typeof sections)[number]["id"];
+interface Evidence<T> {
+  readonly data: T;
+  readonly revision: string;
+  readonly hash: string;
+}
+interface Inspection {
+  readonly cognito?: Evidence<CognitoObservation>;
+  readonly pools?: Evidence<IdentityPoolsObservation>;
+  readonly errors?: Partial<Record<"cognito" | "pools", string>>;
 }
 
-function ProviderEvidence({ source, result }: { readonly source?: IdentitySource; readonly result?: CognitoObservation }) {
+export function authenticationSelection(mode: Mode, overview?: DeployOverview): IdentitySelection {
+  const preferred = overview?.targets.find(
+    (target) => target.name === overview.preferences?.deployment && target.mode === mode,
+  );
+  const target = preferred ?? overview?.targets.find((target) => target.mode === mode);
+  const profile =
+    (target && overview?.preferences?.profiles[target.name]) ||
+    overview?.preferences?.profile ||
+    overview?.profiles[0]?.name ||
+    "";
+  return {
+    profile,
+    deployment: target?.name ?? "",
+    region:
+      target?.region ??
+      overview?.profiles.find((entry) => entry.name === profile)?.region ??
+      "us-east-1",
+  };
+}
+
+function ProviderEvidence({
+  source,
+  result,
+}: {
+  readonly source?: IdentitySource;
+  readonly result?: CognitoObservation;
+}) {
   const { snapshot } = useStudio();
   const declared = source?.declaredProviders ?? [];
   const rows = [
-    { name: "Google", type: "Google", declaration: source ? source.google.clientIdPresent ? "Client ID input present" : "Client ID input absent" : "Unknown", secret: source?.google.authoredSecretPresent ? "Authored input present; access unverified" : "Presence / access unverified" },
-    ...declared.map(provider => ({ name: provider.name, type: provider.type.toUpperCase(), declaration: `${provider.scope === "both" || provider.scope === source?.mode ? "Declared for this environment" : "Declared for another environment"} · ${provider.scope}`, secret: provider.type === "oidc" ? "Reference declared; access unverified" : "Not required by SAML" })),
-    ...(result?.providers ?? []).filter(provider => provider.name !== "Google" && !declared.some(entry => entry.name === provider.name)).map(provider => ({ name: provider.name, type: provider.type, declaration: "Not matched to a source declaration", secret: "Presence / access unverified" })),
+    {
+      name: "Google",
+      type: "Google",
+      declaration: source
+        ? source.google.clientIdPresent
+          ? "Client ID input present"
+          : "Client ID input absent"
+        : "Unknown",
+      secret: source?.google.authoredSecretPresent
+        ? "Authored input present; access unverified"
+        : "Presence / access unverified",
+    },
+    ...declared.map((provider) => ({
+      name: provider.name,
+      type: provider.type.toUpperCase(),
+      declaration: `${provider.scope === "both" || provider.scope === source?.mode ? "Declared for this environment" : "Declared for another environment"} · ${provider.scope}`,
+      secret:
+        provider.type === "oidc" ? "Reference declared; access unverified" : "Not required by SAML",
+    })),
+    ...(result?.providers ?? [])
+      .filter(
+        (provider) =>
+          provider.name !== "Google" && !declared.some((entry) => entry.name === provider.name),
+      )
+      .map((provider) => ({
+        name: provider.name,
+        type: provider.type,
+        declaration: "Not matched to a source declaration",
+        secret: "Presence / access unverified",
+      })),
   ];
-  return <DocumentCard className={"mb-3"}><h2 className={"mt-0 mb-2 text-[15px] leading-[1.4]"}>Federation providers</h2><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite"}>Studio supports Google, OIDC and SAML. Source, AWS metadata and a working sign-in are separate checks.</p>
-    {source ? <div className={"flex flex-col items-start gap-2 [&>p]:m-0 vp-720:items-stretch"}><a className={buttonClasses({ variant: "quiet" })} href={editorLink(snapshot.repositoryRoot, { file: source.file, line: 1, column: 1, start: 0, end: 0 })}>Open Google inputs in editor</a><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-caption text-graphite"}><code>{source.file}</code> · <code>GOOGLE_CLIENT_ID</code>: {source.google.clientIdPresent ? "present" : "absent"}; <code>GOOGLE_CLIENT_SECRET</code>: {source.google.authoredSecretPresent ? "present" : "absent"}. Values stay in your editor.</p></div> : null}
-    <div className={"my-2 max-w-full overflow-auto [&_small]:mt-1 [&_small]:block [&_small]:font-normal [&_small]:whitespace-nowrap [&_small]:text-graphite"} tabIndex={0} role="region" aria-label="Provider verification evidence"><table className={"table w-full min-w-[820px] border-collapse"}><thead><tr><th className={"border-b border-rule p-2 text-left align-top text-caption"}>Provider</th><th className={"border-b border-rule p-2 text-left align-top text-caption"}>Source intent</th><th className={"border-b border-rule p-2 text-left align-top text-caption"}>Deployed metadata</th><th className={"border-b border-rule p-2 text-left align-top text-caption"}>Secret</th><th className={"border-b border-rule p-2 text-left align-top text-caption"}>Provider application</th><th className={"border-b border-rule p-2 text-left align-top text-caption"}>Sign-in</th></tr></thead><tbody>{rows.map(row => <tr key={row.name}><th className={"border-b border-rule p-2 text-left align-top text-caption"} scope="row">{row.name}<small>{row.type} · {/^(Google|OIDC|SAML)$/i.test(row.type) ? "supported" : "native provider; source authoring unavailable"}</small></th><td className={"border-b border-rule p-2 text-left align-top text-caption"}>{row.declaration}</td><td className={"border-b border-rule p-2 text-left align-top text-caption"}>{result ? result.providers.some(provider => provider.name === row.name) ? "Observed in selected pool" : "Not returned by inspection" : "Unverified"}</td><td className={"border-b border-rule p-2 text-left align-top text-caption"}>{row.secret}</td><td className={"border-b border-rule p-2 text-left align-top text-caption"}>Unverified</td><td className={"border-b border-rule p-2 text-left align-top text-caption"}>Unverified</td></tr>)}</tbody></table></div>
-    {result?.providers.map(provider => <details className={"mt-3"} key={provider.name}><summary className={"cursor-pointer py-1 text-label [[open]>&]:mb-2"}>{provider.name} · observed configuration</summary><dl className={"m-0 grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-x-5 gap-y-3 [&>div]:min-w-0 [&_dt]:mb-1 [&_dt]:text-caption [&_dt]:font-normal [&_dt]:text-graphite [&_dd]:m-0 [&_dd]:text-label [&_dd]:wrap-anywhere"}>{Object.entries(provider.settings).map(([key, value]) => <div key={key}><dt className={"font-semibold"}>{key}</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}>{value}</dd></div>)}</dl><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>Mapped attributes: {provider.mappedAttributes.join(", ") || "none returned"}</p></details>)}
-    <details className={"mt-3"}><summary className={"cursor-pointer py-1 text-label [[open]>&]:mb-2"}>Provider setup and verification</summary><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>For Google, review the <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">OAuth client settings</a>, consent/test-user policy and <code>https://&lt;cognito-domain&gt;/oauth2/idpresponse</code> redirect. Start sign-in from the application to preserve PKCE/state.</p><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>For <a href="https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-oidc-idp.html" target="_blank" rel="noreferrer">OIDC</a>, verify issuer, discovery, scopes, redirect and verified-email claims. For <a href="https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-saml-idp.html" target="_blank" rel="noreferrer">SAML</a>, verify metadata, SP entity ID and ACS. The application callback is distinct from the provider callback.</p><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>Secret values are never requested here. Authored presence does not establish a deployed value, accessible secret or accepted provider credentials.</p></details>
-  </DocumentCard>;
+  return (
+    <DocumentCard className="mb-3">
+      <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Federation providers</h2>
+      <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+        Studio supports Google, OIDC and SAML. Source, AWS metadata and a working sign-in are
+        separate checks.
+      </p>
+      {source ? (
+        <div className="flex flex-col items-start gap-2 [&>p]:m-0 vp-720:items-stretch">
+          <a
+            className={buttonClasses({ variant: "quiet" })}
+            href={editorLink(snapshot.repositoryRoot, {
+              file: source.file,
+              line: 1,
+              column: 1,
+              start: 0,
+              end: 0,
+            })}
+          >
+            Open Google inputs in editor
+          </a>
+          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-caption text-graphite">
+            <code>{source.file}</code> · <code>GOOGLE_CLIENT_ID</code>{": "}
+            {source.google.clientIdPresent ? "present" : "absent"}{"; "}
+            <code>GOOGLE_CLIENT_SECRET</code>{": "}
+            {source.google.authoredSecretPresent ? "present" : "absent"}. Values stay in your
+            editor.
+          </p>
+        </div>
+      ) : null}
+      <div
+        className="my-2 max-w-full overflow-auto"
+        tabIndex={0}
+        role="region"
+        aria-label="Provider verification evidence"
+      >
+        <table className="table w-full min-w-[820px] border-collapse">
+          <thead>
+            <tr>
+              <th className="border-b border-rule p-2 text-left align-top text-caption">
+                Provider
+              </th>
+              <th className="border-b border-rule p-2 text-left align-top text-caption">
+                Source intent
+              </th>
+              <th className="border-b border-rule p-2 text-left align-top text-caption">
+                Deployed metadata
+              </th>
+              <th className="border-b border-rule p-2 text-left align-top text-caption">Secret</th>
+              <th className="border-b border-rule p-2 text-left align-top text-caption">
+                Provider application
+              </th>
+              <th className="border-b border-rule p-2 text-left align-top text-caption">Sign-in</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.name}>
+                <th
+                  className="border-b border-rule p-2 text-left align-top text-caption"
+                  scope="row"
+                >
+                  {row.name}
+                  <small className="mt-1 block font-normal whitespace-nowrap text-graphite">
+                    {row.type} ·{" "}
+                    {/^(Google|OIDC|SAML)$/i.test(row.type)
+                      ? "supported"
+                      : "native provider; source authoring unavailable"}
+                  </small>
+                </th>
+                <td className="border-b border-rule p-2 text-left align-top text-caption">
+                  {row.declaration}
+                </td>
+                <td className="border-b border-rule p-2 text-left align-top text-caption">
+                  {result
+                    ? result.providers.some((provider) => provider.name === row.name)
+                      ? "Observed in selected pool"
+                      : "Not returned by inspection"
+                    : "Unverified"}
+                </td>
+                <td className="border-b border-rule p-2 text-left align-top text-caption">
+                  {row.secret}
+                </td>
+                <td className="border-b border-rule p-2 text-left align-top text-caption">
+                  Unverified
+                </td>
+                <td className="border-b border-rule p-2 text-left align-top text-caption">
+                  Unverified
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {result?.providers.map((provider) => (
+        <details className="mt-3" key={provider.name}>
+          <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
+            {provider.name} · observed configuration
+          </summary>
+          <dl className={evidenceFactsClasses}>
+            {Object.entries(provider.settings).map(([key, value]) => (
+              <div key={key} className="min-w-0">
+                <dt className={evidenceLabelClasses}>{key}</dt>
+                <dd className={evidenceValueClasses}>{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+            Mapped attributes: {provider.mappedAttributes.join(", ") || "none returned"}
+          </p>
+        </details>
+      ))}
+      <details className="mt-3">
+        <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
+          Provider setup and verification
+        </summary>
+        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          For Google, review the{" "}
+          <a
+            href="https://console.cloud.google.com/apis/credentials"
+            target="_blank"
+            rel="noreferrer"
+          >
+            OAuth client settings
+          </a>
+          , consent/test-user policy and{" "}
+          <code>https://&lt;cognito-domain&gt;/oauth2/idpresponse</code> redirect. Start sign-in
+          from the application to preserve PKCE/state.
+        </p>
+        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          For{" "}
+          <a
+            href="https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-oidc-idp.html"
+            target="_blank"
+            rel="noreferrer"
+          >
+            OIDC
+          </a>
+          , verify issuer, discovery, scopes, redirect and verified-email claims. For{" "}
+          <a
+            href="https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-saml-idp.html"
+            target="_blank"
+            rel="noreferrer"
+          >
+            SAML
+          </a>
+          , verify metadata, SP entity ID and ACS. The application callback is distinct from the
+          provider callback.
+        </p>
+        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          Secret values are never requested here. Authored presence does not establish a deployed
+          value, accessible secret or accepted provider credentials.
+        </p>
+      </details>
+    </DocumentCard>
+  );
 }
 
 function Groups({ result }: { readonly result?: CognitoObservation }) {
-  return <DocumentCard className={"mb-3"}><h2 className={"mt-0 mb-2 text-[15px] leading-[1.4]"}>Groups and role claims</h2>{result ? <><div className={documentTableRegionClasses} role="region" aria-label="Cognito groups" tabIndex={0}><table className={documentDataTableClasses}><colgroup><col className={"w-[180px]"} /><col className={"w-[120px]"} /><col /></colgroup><thead><tr><th className={"border-b border-rule p-2 text-left align-top text-caption"}>Group</th><th className={"border-b border-rule p-2 text-left align-top text-caption"}>Precedence</th><th className={"border-b border-rule p-2 text-left align-top text-caption"}>IAM role claim</th></tr></thead><tbody>{result.groups.map(group => <tr key={group.name}><th className={"border-b border-rule p-2 text-left align-top text-caption"} scope="row">{group.name}</th><td className={"border-b border-rule p-2 text-left align-top text-caption"}>{group.precedence ?? "Unspecified"}</td><td className={"border-b border-rule p-2 text-left align-top text-caption"}>{group.roleArn ?? "No IAM role"}</td></tr>)}</tbody></table></div>{!result.groups.length ? <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>No groups returned for this pool.</p> : null}</> : <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>Inspect authentication to read groups from the selected deployment-owned user pool.</p>}<p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite"}>Cognito groups influence token claims. Application RBAC, identity-pool role selection and IAM authorization are independent.</p></DocumentCard>;
+  return (
+    <DocumentCard className="mb-3">
+      <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Groups and role claims</h2>
+      {result ? (
+        <>
+          <div
+            className={documentTableRegionClasses}
+            role="region"
+            aria-label="Cognito groups"
+            tabIndex={0}
+          >
+            <table className={documentDataTableClasses}>
+              <colgroup>
+                <col className="w-[180px]" />
+                <col className="w-[120px]" />
+                <col />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th className="border-b border-rule p-2 text-left align-top text-caption">
+                    Group
+                  </th>
+                  <th className="border-b border-rule p-2 text-left align-top text-caption">
+                    Precedence
+                  </th>
+                  <th className="border-b border-rule p-2 text-left align-top text-caption">
+                    IAM role claim
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.groups.map((group) => (
+                  <tr key={group.name}>
+                    <th
+                      className="border-b border-rule p-2 text-left align-top text-caption"
+                      scope="row"
+                    >
+                      {group.name}
+                    </th>
+                    <td className="border-b border-rule p-2 text-left align-top text-caption">
+                      {group.precedence ?? "Unspecified"}
+                    </td>
+                    <td className="border-b border-rule p-2 text-left align-top text-caption">
+                      {group.roleArn ?? "No IAM role"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {!result.groups.length ? (
+            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              No groups returned for this pool.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          Inspect authentication to read groups from the selected deployment-owned user pool.
+        </p>
+      )}
+      <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+        Cognito groups influence token claims. Application RBAC, identity-pool role selection and
+        IAM authorization are independent.
+      </p>
+    </DocumentCard>
+  );
 }
 
 function PoolRelationships({ result }: { readonly result?: IdentityPoolsObservation }) {
-  return <>{result?.pools.map(pool => <DocumentCard className={"mb-3"} key={pool.id}><h2 className={"mt-0 mb-2 text-[15px] leading-[1.4]"}>{pool.name}</h2><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}><code>{pool.id}</code> <span className={"inline-block rounded-sm border border-rule bg-wash px-[6px] py-0.5 text-meta leading-[1.5]"}>AWS metadata observed</span></p><dl className={"m-0 grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-x-5 gap-y-3 [&>div]:min-w-0 [&_dt]:mb-1 [&_dt]:text-caption [&_dt]:font-normal [&_dt]:text-graphite [&_dd]:m-0 [&_dd]:text-label [&_dd]:wrap-anywhere"}><div><dt className={"font-semibold"}>Guest identities</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}>{pool.guests ? "Enabled — inspect unauthenticated role permissions" : "Disabled"}</dd></div><div><dt className={"font-semibold"}>User-pool providers</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}>{pool.providers.map(provider => <div key={provider.clientId}>{provider.name}<br />Client <code>{provider.clientId}</code></div>)}</dd></div></dl><details className={"mt-3"} open><summary className={"cursor-pointer py-1 text-label [[open]>&]:mb-2"}>Role selection and mapping</summary><pre className={"max-h-[350px] max-w-full overflow-auto text-caption"}>{JSON.stringify({ roles: pool.roles, mappings: pool.mappings }, null, 2)}</pre></details><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite"}>These role mappings do not prove successful credential issuance or effective AWS access.</p></DocumentCard>)}{result && !result.pools.length ? <DocumentCard className={"mb-3"}><h2 className={"mt-0 mb-2 text-[15px] leading-[1.4]"}>No owned deployed identity pools found</h2><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>This inspection covers resources in verified stacks for the selected deployment. Retained and external pools may exist separately.</p></DocumentCard> : null}</>;
+  return (
+    <>
+      {result?.pools.map((pool) => (
+        <DocumentCard className="mb-3" key={pool.id}>
+          <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">{pool.name}</h2>
+          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+            <code>{pool.id}</code>{" "}
+            <span className="inline-block rounded-sm border border-rule bg-wash px-[6px] py-0.5 text-meta leading-[1.5]">
+              AWS metadata observed
+            </span>
+          </p>
+          <dl className={evidenceFactsClasses}>
+            <div className="min-w-0">
+              <dt className={evidenceLabelClasses}>Guest identities</dt>
+              <dd className={evidenceValueClasses}>
+                {pool.guests ? "Enabled — inspect unauthenticated role permissions" : "Disabled"}
+              </dd>
+            </div>
+            <div className="min-w-0">
+              <dt className={evidenceLabelClasses}>User-pool providers</dt>
+              <dd className={evidenceValueClasses}>
+                {pool.providers.map((provider) => (
+                  <div key={provider.clientId}>
+                    {provider.name}
+                    <br />
+                    Client <code>{provider.clientId}</code>
+                  </div>
+                ))}
+              </dd>
+            </div>
+          </dl>
+          <details className="mt-3" open>
+            <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
+              Role selection and mapping
+            </summary>
+            <pre className="max-h-[350px] max-w-full overflow-auto text-caption">
+              {JSON.stringify({ roles: pool.roles, mappings: pool.mappings }, null, 2)}
+            </pre>
+          </details>
+          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+            These role mappings do not prove successful credential issuance or effective AWS access.
+          </p>
+        </DocumentCard>
+      ))}
+      {result && !result.pools.length ? (
+        <DocumentCard className="mb-3">
+          <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">
+            No owned deployed identity pools found
+          </h2>
+          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+            This inspection covers resources in verified stacks for the selected deployment.
+            Retained and external pools may exist separately.
+          </p>
+        </DocumentCard>
+      ) : null}
+    </>
+  );
 }
 
 /** One route owner keeps all four panels and their drafts mounted. AWS reads are
  * bound to the exact environment/profile/target/region and source revision. */
 export function AuthenticationWorkspace() {
   const { mode, snapshot, model, draft, draftState, select, live } = useStudio();
-  const pathname = useLocation({ select: location => location.pathname });
-  const section: Section = sections.find(entry => pathname.endsWith(`/${entry.id}`))?.id ?? "user-pools";
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const section: Section =
+    sections.find((entry) => pathname.endsWith(`/${entry.id}`))?.id ?? "user-pools";
   const source = useQuery(identitySourceQuery(mode, snapshot.revision));
   const overview = useQuery(deploymentOverviewQuery());
   const [selections, setSelections] = useState<Partial<Record<Mode, IdentitySelection>>>({});
   const candidate = selections[mode];
-  const selection = candidate && (!candidate.deployment || overview.data?.targets.some(target => target.name === candidate.deployment && target.mode === mode)) ? candidate : authenticationSelection(mode, overview.data);
-  const selectedTarget = overview.data?.targets.find(target => target.name === selection.deployment && target.mode === mode);
+  const selection =
+    candidate &&
+    (!candidate.deployment ||
+      overview.data?.targets.some(
+        (target) => target.name === candidate.deployment && target.mode === mode,
+      ))
+      ? candidate
+      : authenticationSelection(mode, overview.data);
+  const selectedTarget = overview.data?.targets.find(
+    (target) => target.name === selection.deployment && target.mode === mode,
+  );
   const sourceInputsFile = source.data?.file ?? `cdk-app/.env.${mode}`;
   const normalizeInputPath = (file: string) => file.replace(/\\/g, "/").replace(/^\.\//, "");
-  const targetInputsMismatch = !!selectedTarget?.inputs && normalizeInputPath(selectedTarget.inputs) !== normalizeInputPath(sourceInputsFile);
-  const contextKey = JSON.stringify([mode, selection.profile, selection.deployment, selection.region, selectedTarget?.account ?? ""]);
+  const targetInputsMismatch =
+    !!selectedTarget?.inputs &&
+    normalizeInputPath(selectedTarget.inputs) !== normalizeInputPath(sourceInputsFile);
+  const contextKey = JSON.stringify([
+    mode,
+    selection.profile,
+    selection.deployment,
+    selection.region,
+    selectedTarget?.account ?? "",
+  ]);
   const [observations, setObservations] = useState<Record<string, Inspection>>({});
   const observation = observations[contextKey];
   const [busy, setBusy] = useState(false);
   const request = useRef<AbortController | undefined>(undefined);
-  const currentKey = useRef(contextKey); currentKey.current = contextKey;
+  const currentKey = useRef(contextKey);
+  currentKey.current = contextKey;
   const [search, setSearch] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
   const panelHeading = useRef<HTMLHeadingElement>(null);
   const creation = draft.creation();
   const cog = observation?.cognito?.data;
   const pools = observation?.pools?.data;
-  const evidence = section === "identity-pools" || section === "permissions" ? observation?.pools : observation?.cognito;
-  const sourceStale = !!evidence && (evidence.revision !== snapshot.revision || evidence.hash !== source.data?.hash);
+  const evidence =
+    section === "identity-pools" || section === "permissions"
+      ? observation?.pools
+      : observation?.cognito;
+  const sourceStale =
+    !!evidence && (evidence.revision !== snapshot.revision || evidence.hash !== source.data?.hash);
   const [clock, setClock] = useState(Date.now());
-  useEffect(() => { const timer = window.setInterval(() => setClock(Date.now()), 30_000); return () => window.clearInterval(timer); }, []);
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const timeStale = !!evidence && clock - Date.parse(evidence.data.context.observedAt) > 5 * 60_000;
-  useEffect(() => { request.current?.abort(); setBusy(false); return () => request.current?.abort(); }, [contextKey]);
-  useEffect(() => { panelHeading.current?.focus({ preventScroll: true }); }, [section]);
+  useEffect(() => {
+    request.current?.abort();
+    setBusy(false);
+    return () => request.current?.abort();
+  }, [contextKey]);
+  useEffect(() => {
+    panelHeading.current?.focus({ preventScroll: true });
+  }, [section]);
   const updateSelection = (patch: Partial<IdentitySelection>) => {
     const next = { ...selection, ...patch };
-    setSelections(current => ({ ...current, [mode]: next }));
+    setSelections((current) => ({ ...current, [mode]: next }));
     // Reuse Deploy's remembered destination authority, without running discovery.
-    void deployApi.preferences({ profile: next.profile, deployment: next.deployment }).catch(() => {});
+    void deployApi
+      .preferences({ profile: next.profile, deployment: next.deployment })
+      .catch(() => {});
   };
   const inspect = async (onlyCognito = false, nextToken?: string) => {
-    request.current?.abort(); const controller = new AbortController(); request.current = controller;
-    const key = contextKey, revision = snapshot.revision, hash = source.data?.hash ?? "";
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
+    const key = contextKey,
+      revision = snapshot.revision,
+      hash = source.data?.hash ?? "";
     setBusy(true);
-    const kinds = onlyCognito ? ["cognito"] as const : ["cognito", "pools"] as const;
-    await Promise.all(kinds.map(async kind => {
-      try {
-        const data = await identityApi.inspect<CognitoObservation | IdentityPoolsObservation>(kind, selection, kind === "cognito" ? nextToken : undefined, kind === "cognito" ? nextToken ? appliedSearch : search : undefined, controller.signal);
-        if (controller.signal.aborted || currentKey.current !== key) return;
-        if (!data?.context || data.context.profile !== selection.profile || data.context.deployment !== selection.deployment || data.context.region !== selection.region) throw new Error("Inspection returned a different destination. Select the intended context and inspect again.");
-        setObservations(current => ({ ...current, [key]: { ...current[key], [kind]: { data, revision, hash }, errors: { ...current[key]?.errors, [kind]: undefined } } }));
-        if (kind === "cognito" && !nextToken) setAppliedSearch(search);
-      } catch (reason) {
-        if (!controller.signal.aborted && currentKey.current === key) setObservations(current => ({ ...current, [key]: { ...current[key], errors: { ...current[key]?.errors, [kind]: inspectionErrorMessage(reason) } } }));
-      }
-    }));
-    if (!controller.signal.aborted && currentKey.current === key) { setBusy(false); setClock(Date.now()); }
+    const kinds = onlyCognito ? (["cognito"] as const) : (["cognito", "pools"] as const);
+    await Promise.all(
+      kinds.map(async (kind) => {
+        try {
+          const data = await identityApi.inspect<CognitoObservation | IdentityPoolsObservation>(
+            kind,
+            selection,
+            kind === "cognito" ? nextToken : undefined,
+            kind === "cognito" ? (nextToken ? appliedSearch : search) : undefined,
+            controller.signal,
+          );
+          if (controller.signal.aborted || currentKey.current !== key) return;
+          if (
+            !data?.context ||
+            data.context.profile !== selection.profile ||
+            data.context.deployment !== selection.deployment ||
+            data.context.region !== selection.region
+          )
+            throw new Error(
+              "Inspection returned a different destination. Select the intended context and inspect again.",
+            );
+          setObservations((current) => ({
+            ...current,
+            [key]: {
+              ...current[key],
+              [kind]: { data, revision, hash },
+              errors: { ...current[key]?.errors, [kind]: undefined },
+            },
+          }));
+          if (kind === "cognito" && !nextToken) setAppliedSearch(search);
+        } catch (reason) {
+          if (!controller.signal.aborted && currentKey.current === key)
+            setObservations((current) => ({
+              ...current,
+              [key]: {
+                ...current[key],
+                errors: { ...current[key]?.errors, [kind]: inspectionErrorMessage(reason) },
+              },
+            }));
+        }
+      }),
+    );
+    if (!controller.signal.aborted && currentKey.current === key) {
+      setBusy(false);
+      setClock(Date.now());
+    }
   };
   const canAuthor = !sourceEditBlocked({ draftState, draft, model, live });
-  const createPool = () => draft.requestNavigation(() => { draft.beginCreation("stack"); const entry = draft.creation()!; draft.setCreation("stack", { ...entry.form, template: "identity-pool", scope: mode }); });
-  const declaredPools = model.resources.filter(resource => resource.kind === "member" && /(?:Cfn)?IdentityPool$/.test(resource.typeText ?? ""));
-  const declaredUserPool = model.resources.find(resource => resource.kind === "member" && /(?:I)?UserPool$/.test(resource.typeText ?? ""));
-  return <div className={"h-full w-full min-w-0 overflow-auto text-ink"}>
-    <div className={cx(workspaceToolbarClasses, "px-0!")}><NavigationStrip className={pageWidthClasses} label="Cognito sections" activeKey={section}>{sections.map(entry => <Link key={entry.id} className={navigationItemClasses} to={entry.to} search={(previous: { select?: string }) => previous} aria-current={section === entry.id ? "page" : undefined}>{entry.label}</Link>)}</NavigationStrip></div>
-    <header className={cx(workspaceToolbarClasses, "px-0! [&_p]:m-0 [&_p]:text-caption [&_p]:leading-[1.5] [&_p]:wrap-anywhere")}><div className={cx(pageWidthClasses, "flex flex-col items-stretch gap-3")}><div className={"flex flex-wrap items-center gap-2"}><h1 className={"m-0 font-sans text-step1 font-semibold leading-[1.3]"}>Cognito</h1></div>
-      <div className={inspectionControlClasses}><label>Profile<TextInput className={"w-full"} aria-label="Identity AWS profile" disabled={overview.isPending || !!overview.error} value={selection.profile} onChange={event => updateSelection({ profile: event.target.value })} list="authentication-profiles" /><datalist id="authentication-profiles">{overview.data?.profiles.map(profile => <option key={profile.name} value={profile.name} />)}</datalist></label>
-        <label>Deployment<Select className={"w-full"} aria-label="Identity deployment" disabled={overview.isPending || !!overview.error} value={selection.deployment} onChange={event => { const target = overview.data?.targets.find(target => target.name === event.target.value); updateSelection({ deployment: event.target.value, region: target?.region ?? selection.region, profile: overview.data?.preferences?.profiles[event.target.value] ?? selection.profile }); }}><option value="">Select a deployment</option>{overview.data?.targets.filter(target => target.mode === mode).map(target => <option key={target.name} value={target.name}>{target.name}</option>)}</Select></label>
-        <label>Region<TextInput className={"w-full"} aria-label="Identity AWS region" disabled={overview.isPending || !!overview.error} value={selection.region} readOnly={!!selectedTarget?.region} title={selectedTarget?.region ? "Pinned by the deployment target" : undefined} onChange={event => updateSelection({ region: event.target.value })} /></label>
-        <button className={buttonClasses({ variant: "primary" })} disabled={busy || overview.isPending || !!overview.error || !selectedTarget || !selection.profile || !selection.deployment || !selection.region || source.isPending} onClick={() => void inspect()}>{busy ? "Inspecting…" : "Inspect authentication"}</button>
+  const createPool = () =>
+    draft.requestNavigation(() => {
+      draft.beginCreation("stack");
+      const entry = draft.creation()!;
+      draft.setCreation("stack", { ...entry.form, template: "identity-pool", scope: mode });
+    });
+  const declaredPools = model.resources.filter(
+    (resource) =>
+      resource.kind === "member" && /(?:Cfn)?IdentityPool$/.test(resource.typeText ?? ""),
+  );
+  const declaredUserPool = model.resources.find(
+    (resource) => resource.kind === "member" && /(?:I)?UserPool$/.test(resource.typeText ?? ""),
+  );
+  return (
+    <div className="h-full w-full min-w-0 overflow-auto text-ink">
+      <div className={cx(workspaceToolbarClasses, "px-0!")}>
+        <NavigationStrip className={pageWidthClasses} label="Cognito sections" activeKey={section}>
+          {sections.map((entry) => (
+            <Link
+              key={entry.id}
+              className={navigationItemClasses}
+              to={entry.to}
+              search={(previous: { select?: string }) => previous}
+              aria-current={section === entry.id ? "page" : undefined}
+            >
+              {entry.label}
+            </Link>
+          ))}
+        </NavigationStrip>
       </div>
-      <div className={"flex flex-wrap gap-x-5 gap-y-[6px] text-caption leading-[1.5] wrap-anywhere [&_strong]:mr-1 [&_strong]:font-semibold"} role="status"><span><strong>Source</strong> {source.isPending ? "Loading…" : source.error ? "Unavailable" : `${mode === "dev" ? "Development" : "Production"} declarations`}</span><span><strong>AWS metadata</strong> {evidence ? `${sourceStale || timeStale ? "Stale · " : "Observed · "}${new Date(evidence.data.context.observedAt).toLocaleString()} · account ${evidence.data.context.account}` : "Unverified for this context"}</span><span><strong>Sign-in / effective access</strong> Unverified</span></div>
-      <div className={"flex flex-wrap items-baseline gap-x-5 gap-y-2 [&>details[open]]:basis-full"}><p ><strong>Source inputs</strong> <code>{sourceInputsFile}</code>{targetInputsMismatch ? <> · Deployment inputs <code>{selectedTarget?.inputs}</code></> : null}</p><details className={"text-caption [&>summary]:w-fit [&>summary]:cursor-pointer [&>summary]:py-0.5 [&_p]:mt-2 [&_p]:max-w-250"}><summary>Evidence and action boundaries</summary><p>Inspect reads verified deployment-owned AWS resources. Source actions propose TypeScript for review; Apply source never deploys infrastructure. User/group operations require their own exact live-operation review. IAM simulation evaluates saved source policy and does not establish issued credentials, deployed IAM or application RBAC.</p><p>Profile/deployment defaults reuse Deploy preferences. Evidence is isolated by environment, profile, deployment and region. Changing context never transfers an AWS observation or an operation approval.</p></details></div>
-      {targetInputsMismatch ? <p className={"border-l-2 border-local bg-wash px-[10px] py-2"} role="status">This deployment uses different inputs. Google input-presence evidence and retention settings here refer to <code>{sourceInputsFile}</code>; the deployment’s input presence and freshness are unverified. Review <code>{selectedTarget?.inputs}</code> in Deploy. Provider declarations still follow the selected environment.</p> : null}
-      {sourceStale || timeStale ? <p className={"border-l-2 border-local bg-wash px-[10px] py-2"} role="status">{sourceStale ? "Source changed since inspection." : "Inspection is more than five minutes old."} Previous metadata is retained; inspect again before relying on it.</p> : null}
-      {overview.error ? <RetryNotice message={<>Deployment context could not load: {overview.error.message}</>} retryLabel="Retry context" retrying={overview.isFetching} onRetry={() => void overview.refetch()} /> : null}
-      {!overview.isPending && !selectedTarget ? <p className={"border-l-2 border-local bg-wash px-[10px] py-2"}>No {mode === "dev" ? "development" : "production"} deployment is declared. Source proposals are still available; configure a target in Deploy before AWS inspection.</p> : null}
-      {source.error ? <RetryNotice message={source.error.message} retryLabel="Retry source" retrying={source.isFetching} onRetry={() => void source.refetch()} /> : null}
-      {source.data?.problems.map(problem => <p className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2 [&>span]:min-w-0 [&>span]:flex-[1_1_280px] [&>button]:max-w-full [&>button]:flex-none [&>p]:m-0 [&>p]:basis-full")} role="alert" key={problem}>{problem}</p>)}
-      {Object.entries(observation?.errors ?? {}).map(([kind, error]) => error ? <p className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2 [&>span]:min-w-0 [&>span]:flex-[1_1_280px] [&>button]:max-w-full [&>button]:flex-none [&>p]:m-0 [&>p]:basis-full")} role="alert" key={kind}>{kind === "cognito" ? "User-pool" : "Identity-pool"} inspection failed: {error} {observation?.[kind as "cognito" | "pools"] ? "Previous metadata remains visible." : "No metadata verified."}</p> : null)}
-      {cog?.warnings.length ? <details className={"text-caption [&>summary]:w-fit [&>summary]:cursor-pointer [&>summary]:py-0.5 [&_p]:mt-2 [&_p]:max-w-250"}><summary>User-pool inspection notes ({cog.warnings.length})</summary>{cog.warnings.map(warning => <p key={warning}>{warning}</p>)}</details> : null}
-      {pools?.warnings.length ? <details className={"text-caption [&>summary]:w-fit [&>summary]:cursor-pointer [&>summary]:py-0.5 [&_p]:mt-2 [&_p]:max-w-250"}><summary>Identity-pool inspection notes ({pools.warnings.length})</summary>{pools.warnings.map(warning => <p key={warning}>{warning}</p>)}</details> : null}
-
-    </div></header>
-    <div className={cx(pageWidthClasses, "pt-4 pb-6 vp-720:pt-3")}><h2 className={"mt-0 mb-3 text-[16px] font-semibold focus:outline-none"} ref={panelHeading} tabIndex={-1}>{sections.find(entry => entry.id === section)?.label}</h2>
-      <div className={"min-w-0"} hidden={section !== "user-pools"}>
-        <DocumentCard className={"mb-3"}><div className={"flex flex-wrap items-center justify-between gap-x-4 gap-y-3 [&>div]:min-w-0 [&>div]:flex-[1_1_360px] [&>button]:flex-[0_1_auto] [&>div>h2]:mb-2 [&>div>p]:m-0 vp-720:flex-col vp-720:items-stretch vp-720:[&>div]:basis-auto"}><div><h2 className={"mt-0 mb-2 text-[15px] leading-[1.4]"}>{cog?.pool.name ?? "Application user pool"}</h2><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0 flex flex-wrap items-baseline gap-2"}><span className={"inline-block rounded-sm border border-rule bg-wash px-[6px] py-0.5 text-meta leading-[1.5]"}>{cog ? "AWS metadata observed" : "Deployment unverified"}</span><span>{cog ? <code>{cog.poolId}</code> : "A source declaration alone does not prove a deployed pool."}</span></p></div>{declaredUserPool ? <button className={buttonClasses({ variant: "quiet" })} onClick={() => select(declaredUserPool.id)}>Inspect source declaration</button> : null}</div>
-          {cog ? <dl className={"m-0 grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-x-5 gap-y-3 [&>div]:min-w-0 [&_dt]:mb-1 [&_dt]:text-caption [&_dt]:font-normal [&_dt]:text-graphite [&_dd]:m-0 [&_dd]:text-label [&_dd]:wrap-anywhere"}><div><dt className={"font-semibold"}>Estimated users</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}>{cog.pool.estimatedUsers ?? "Unknown"}</dd></div><div><dt className={"font-semibold"}>Deletion protection</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}>{cog.pool.deletionProtection ?? "Unknown"}</dd></div><div><dt className={"font-semibold"}>Hosted domain</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}>{cog.pool.customDomain ?? cog.pool.domain ?? "Not returned"}</dd></div></dl> : <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite"}>Select a deployment and inspect authentication to load its pool, app clients, users and groups.</p>}
-          {cog?.management ? <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}><strong>Management:</strong> {cog.management === "external-reference" ? `Externally referenced from ${cog.originalDeployment}; pool and client configuration remain externally managed.` : "Framework-managed User Pool."}{cog.selectedClientId ? <> Selected existing app client: <code>{cog.selectedClientId}</code>.</> : null}</p> : null}
-          <div className={"flex flex-wrap gap-x-5 gap-y-2 text-label"}><Link to="/cognito/providers" search={(previous: { select?: string }) => previous}>Set up federation</Link><Link to="/cognito/identity-pools" search={(previous: { select?: string }) => previous}>Connect AWS access</Link><Link to="/cognito/permissions" search={(previous: { select?: string }) => previous}>Inspect permissions</Link></div>
-        </DocumentCard>
-        <DocumentCard className={"mb-3"}><h2 className={"mt-0 mb-2 text-[15px] leading-[1.4]"}>App clients <span className={"text-graphite"}>{cog ? `(${cog.clients.length})` : ""}</span></h2>{cog?.clients.map(client => <details className={"mt-3"} key={client.id} open><summary className={"cursor-pointer py-1 text-label [[open]>&]:mb-2"}>{client.name ?? client.id}</summary><dl className={"m-0 grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-x-5 gap-y-3 [&>div]:min-w-0 [&_dt]:mb-1 [&_dt]:text-caption [&_dt]:font-normal [&_dt]:text-graphite [&_dd]:m-0 [&_dd]:text-label [&_dd]:wrap-anywhere"}><div><dt className={"font-semibold"}>Client ID</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}><code>{client.id}</code></dd></div><div><dt className={"font-semibold"}>Providers</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}>{client.providers.join(", ") || "None returned"}</dd></div><div><dt className={"font-semibold"}>Callbacks</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}>{client.callbacks.join(", ") || "None"}</dd></div><div><dt className={"font-semibold"}>Logout URLs</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}>{client.logout.join(", ") || "None"}</dd></div></dl></details>)}{!cog?.clients.length ? <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>{cog ? "No app clients returned." : "Inspect authentication to observe app-client configuration."}</p> : null}</DocumentCard>
-        <DocumentCard className={"mb-3"}><h2 className={"mt-0 mb-2 text-[15px] leading-[1.4]"}>Users</h2><form className={documentSearchToolbarClasses} onSubmit={event => { event.preventDefault(); void inspect(true); }}><label className={documentLabelClasses}>Username starts with<TextInput className={"w-full"} aria-label="Search Cognito users" value={search} maxLength={128} onChange={event => setSearch(event.target.value)} /></label><button className={buttonClasses({ variant: "quiet" })} disabled={busy || !selection.deployment || !selection.profile}>Search users</button></form>{cog ? <><div className={documentTableRegionClasses} role="region" aria-label="Cognito users" tabIndex={0}><table className={documentDataTableClasses}><colgroup><col /><col className={"w-[180px]"} /><col className={"w-20"} /><col className={"w-[180px]"} /></colgroup><thead><tr><th className={"border-b border-rule p-2 text-left align-top text-caption"}>Username</th><th className={"border-b border-rule p-2 text-left align-top text-caption"}>Status</th><th className={"border-b border-rule p-2 text-left align-top text-caption"}>Enabled</th><th className={"border-b border-rule p-2 text-left align-top text-caption"}>Created</th></tr></thead><tbody>{cog.users.map(user => <tr key={user.username}><th className={"border-b border-rule p-2 text-left align-top text-caption"} scope="row">{user.username}</th><td className={"border-b border-rule p-2 text-left align-top text-caption"}>{user.status ?? "Unknown"}</td><td className={"border-b border-rule p-2 text-left align-top text-caption"}>{user.enabled ? "Yes" : "No"}</td><td className={"border-b border-rule p-2 text-left align-top text-caption"}>{user.createdAt ?? "Unknown"}</td></tr>)}</tbody></table></div>{!cog.users.length ? <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>No users returned for this page and search.</p> : null}<button className={buttonClasses({ variant: "quiet" })} disabled={busy || !cog.nextToken} onClick={() => void inspect(true, cog.nextToken)}>Next page</button></> : <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>Users are unverified until an explicit AWS inspection.</p>}</DocumentCard>
-        <Groups result={cog} />
-        <CognitoManagement selection={selection} active={section === "user-pools"} onChanged={() => setObservations(current => ({ ...current, [contextKey]: { ...current[contextKey], cognito: undefined } }))} />
-        <details className={cx(documentCardClasses(), "mt-3 mb-3")}><summary className={"cursor-pointer py-1 text-label [[open]>&]:mb-2"}>Retention and retained pool reuse</summary>{targetInputsMismatch ? <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>Retention editing is unavailable for this deployment’s custom inputs. Review <code>{selectedTarget?.inputs}</code> in Deploy; the retention editor supports the standard <code>{sourceInputsFile}</code> inputs only.</p> : <DataRetention kind="cognito" selection={{ ...selection, mode }} />}</details>
+      <header
+        className={cx(
+          workspaceToolbarClasses,
+          "px-0! [&_p]:m-0 [&_p]:text-caption [&_p]:leading-[1.5] [&_p]:wrap-anywhere",
+        )}
+      >
+        <div className={cx(pageWidthClasses, "flex flex-col items-stretch gap-3")}>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="m-0 font-sans text-step1 font-semibold leading-[1.3]">Cognito</h1>
+          </div>
+          <div className={inspectionControlClasses}>
+            <label className={inspectionFieldClasses}>
+              Profile
+              <TextInput
+                className="h-8 w-full"
+                aria-label="Identity AWS profile"
+                disabled={overview.isPending || !!overview.error}
+                value={selection.profile}
+                onChange={(event) => updateSelection({ profile: event.target.value })}
+                list="authentication-profiles"
+              />
+              <datalist id="authentication-profiles">
+                {overview.data?.profiles.map((profile) => (
+                  <option key={profile.name} value={profile.name} />
+                ))}
+              </datalist>
+            </label>
+            <label className={inspectionFieldClasses}>
+              Deployment
+              <Select
+                className="h-8 w-full"
+                aria-label="Identity deployment"
+                disabled={overview.isPending || !!overview.error}
+                value={selection.deployment}
+                onChange={(event) => {
+                  const target = overview.data?.targets.find(
+                    (target) => target.name === event.target.value,
+                  );
+                  updateSelection({
+                    deployment: event.target.value,
+                    region: target?.region ?? selection.region,
+                    profile:
+                      overview.data?.preferences?.profiles[event.target.value] ?? selection.profile,
+                  });
+                }}
+              >
+                <option value="">Select a deployment</option>
+                {overview.data?.targets
+                  .filter((target) => target.mode === mode)
+                  .map((target) => (
+                    <option key={target.name} value={target.name}>
+                      {target.name}
+                    </option>
+                  ))}
+              </Select>
+            </label>
+            <label className={inspectionRegionFieldClasses}>
+              Region
+              <TextInput
+                className="h-8 w-full"
+                aria-label="Identity AWS region"
+                disabled={overview.isPending || !!overview.error}
+                value={selection.region}
+                readOnly={!!selectedTarget?.region}
+                title={selectedTarget?.region ? "Pinned by the deployment target" : undefined}
+                onChange={(event) => updateSelection({ region: event.target.value })}
+              />
+            </label>
+            <button
+              className={cx(inspectionActionClasses, buttonClasses({ variant: "primary" }))}
+              disabled={
+                busy ||
+                overview.isPending ||
+                !!overview.error ||
+                !selectedTarget ||
+                !selection.profile ||
+                !selection.deployment ||
+                !selection.region ||
+                source.isPending
+              }
+              onClick={() => void inspect()}
+            >
+              {busy ? "Inspecting…" : "Inspect authentication"}
+            </button>
+          </div>
+          <div
+            className="flex flex-wrap gap-x-5 gap-y-[6px] text-caption leading-[1.5] wrap-anywhere"
+            role="status"
+          >
+            <span>
+              <strong className="mr-1 font-semibold">Source</strong>{" "}
+              {source.isPending
+                ? "Loading…"
+                : source.error
+                  ? "Unavailable"
+                  : `${mode === "dev" ? "Development" : "Production"} declarations`}
+            </span>
+            <span>
+              <strong className="mr-1 font-semibold">AWS metadata</strong>{" "}
+              {evidence
+                ? `${sourceStale || timeStale ? "Stale · " : "Observed · "}${new Date(evidence.data.context.observedAt).toLocaleString()} · account ${evidence.data.context.account}`
+                : "Unverified for this context"}
+            </span>
+            <span>
+              <strong className="mr-1 font-semibold">Sign-in / effective access</strong> Unverified
+            </span>
+          </div>
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-2 [&>details[open]]:basis-full">
+            <p>
+              <strong>Source inputs</strong> <code>{sourceInputsFile}</code>
+              {targetInputsMismatch ? (
+                <>
+                  {" "}
+                  · Deployment inputs <code>{selectedTarget?.inputs}</code>
+                </>
+              ) : null}
+            </p>
+            <details className="text-caption [&>summary]:w-fit [&>summary]:cursor-pointer [&>summary]:py-0.5 [&_p]:mt-2 [&_p]:max-w-250">
+              <summary>Evidence and action boundaries</summary>
+              <p>
+                Inspect reads verified deployment-owned AWS resources. Source actions propose
+                TypeScript for review; Apply source never deploys infrastructure. User/group
+                operations require their own exact live-operation review. IAM simulation evaluates
+                saved source policy and does not establish issued credentials, deployed IAM or
+                application RBAC.
+              </p>
+              <p>
+                Profile/deployment defaults reuse Deploy preferences. Evidence is isolated by
+                environment, profile, deployment and region. Changing context never transfers an AWS
+                observation or an operation approval.
+              </p>
+            </details>
+          </div>
+          {targetInputsMismatch ? (
+            <p className="border-l-2 border-local bg-wash px-[10px] py-2" role="status">
+              This deployment uses different inputs. Google input-presence evidence and retention
+              settings here refer to <code>{sourceInputsFile}</code>; the deployment’s input
+              presence and freshness are unverified. Review <code>{selectedTarget?.inputs}</code> in
+              Deploy. Provider declarations still follow the selected environment.
+            </p>
+          ) : null}
+          {sourceStale || timeStale ? (
+            <p className="border-l-2 border-local bg-wash px-[10px] py-2" role="status">
+              {sourceStale
+                ? "Source changed since inspection."
+                : "Inspection is more than five minutes old."}{" "}
+              Previous metadata is retained; inspect again before relying on it.
+            </p>
+          ) : null}
+          {overview.error ? (
+            <RetryNotice
+              message={<>Deployment context could not load: {overview.error.message}</>}
+              retryLabel="Retry context"
+              retrying={overview.isFetching}
+              onRetry={() => void overview.refetch()}
+            />
+          ) : null}
+          {!overview.isPending && !selectedTarget ? (
+            <p className="border-l-2 border-local bg-wash px-[10px] py-2">
+              No {mode === "dev" ? "development" : "production"} deployment is declared. Source
+              proposals are still available; configure a target in Deploy before AWS inspection.
+            </p>
+          ) : null}
+          {source.error ? (
+            <RetryNotice
+              message={source.error.message}
+              retryLabel="Retry source"
+              retrying={source.isFetching}
+              onRetry={() => void source.refetch()}
+            />
+          ) : null}
+          {source.data?.problems.map((problem) => (
+            <p
+              className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2")}
+              role="alert"
+              key={problem}
+            >
+              {problem}
+            </p>
+          ))}
+          {Object.entries(observation?.errors ?? {}).map(([kind, error]) =>
+            error ? (
+              <p
+                className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2")}
+                role="alert"
+                key={kind}
+              >
+                {kind === "cognito" ? "User-pool" : "Identity-pool"} inspection failed: {error}{" "}
+                {observation?.[kind as "cognito" | "pools"]
+                  ? "Previous metadata remains visible."
+                  : "No metadata verified."}
+              </p>
+            ) : null,
+          )}
+          {cog?.warnings.length ? (
+            <details className="text-caption [&>summary]:w-fit [&>summary]:cursor-pointer [&>summary]:py-0.5 [&_p]:mt-2 [&_p]:max-w-250">
+              <summary>User-pool inspection notes ({cog.warnings.length})</summary>
+              {cog.warnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+            </details>
+          ) : null}
+          {pools?.warnings.length ? (
+            <details className="text-caption [&>summary]:w-fit [&>summary]:cursor-pointer [&>summary]:py-0.5 [&_p]:mt-2 [&_p]:max-w-250">
+              <summary>Identity-pool inspection notes ({pools.warnings.length})</summary>
+              {pools.warnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+            </details>
+          ) : null}
+        </div>
+      </header>
+      <div className={cx(pageWidthClasses, "pt-4 pb-6 vp-720:pt-3")}>
+        <h2
+          className="mt-0 mb-3 text-[16px] font-semibold focus:outline-none"
+          ref={panelHeading}
+          tabIndex={-1}
+        >
+          {sections.find((entry) => entry.id === section)?.label}
+        </h2>
+        <div className="min-w-0" hidden={section !== "user-pools"}>
+          <DocumentCard className="mb-3">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 vp-720:flex-col vp-720:items-stretch">
+              <div className="min-w-0 flex-[1_1_360px] vp-720:basis-auto">
+                <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">
+                  {cog?.pool.name ?? "Application user pool"}
+                </h2>
+                <p className="m-0 mt-0 mb-2 text-label leading-[1.5] last:mb-0 flex flex-wrap items-baseline gap-2">
+                  <span className="inline-block rounded-sm border border-rule bg-wash px-[6px] py-0.5 text-meta leading-[1.5]">
+                    {cog ? "AWS metadata observed" : "Deployment unverified"}
+                  </span>
+                  <span>
+                    {cog ? (
+                      <code>{cog.poolId}</code>
+                    ) : (
+                      "A source declaration alone does not prove a deployed pool."
+                    )}
+                  </span>
+                </p>
+              </div>
+              {declaredUserPool ? (
+                <button
+                  className={cx("flex-[0_1_auto]", buttonClasses({ variant: "quiet" }))}
+                  onClick={() => select(declaredUserPool.id)}
+                >
+                  Inspect source declaration
+                </button>
+              ) : null}
+            </div>
+            {cog ? (
+              <dl className={evidenceFactsClasses}>
+                <div className="min-w-0">
+                  <dt className={evidenceLabelClasses}>Estimated users</dt>
+                  <dd className={evidenceValueClasses}>{cog.pool.estimatedUsers ?? "Unknown"}</dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className={evidenceLabelClasses}>Deletion protection</dt>
+                  <dd className={evidenceValueClasses}>
+                    {cog.pool.deletionProtection ?? "Unknown"}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className={evidenceLabelClasses}>Hosted domain</dt>
+                  <dd className={evidenceValueClasses}>
+                    {cog.pool.customDomain ?? cog.pool.domain ?? "Not returned"}
+                  </dd>
+                </div>
+              </dl>
+            ) : (
+              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+                Select a deployment and inspect authentication to load its pool, app clients, users
+                and groups.
+              </p>
+            )}
+            {cog?.management ? (
+              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                <strong>Management:</strong>{" "}
+                {cog.management === "external-reference"
+                  ? `Externally referenced from ${cog.originalDeployment}; pool and client configuration remain externally managed.`
+                  : "Framework-managed User Pool."}
+                {cog.selectedClientId ? (
+                  <>
+                    {" "}
+                    Selected existing app client: <code>{cog.selectedClientId}</code>.
+                  </>
+                ) : null}
+              </p>
+            ) : null}
+            <div className="flex flex-wrap gap-x-5 gap-y-2 text-label">
+              <Link to="/cognito/providers" search={(previous: { select?: string }) => previous}>
+                Set up federation
+              </Link>
+              <Link
+                to="/cognito/identity-pools"
+                search={(previous: { select?: string }) => previous}
+              >
+                Connect AWS access
+              </Link>
+              <Link to="/cognito/permissions" search={(previous: { select?: string }) => previous}>
+                Inspect permissions
+              </Link>
+            </div>
+          </DocumentCard>
+          <DocumentCard className="mb-3">
+            <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">
+              App clients{" "}
+              <span className="text-graphite">{cog ? `(${cog.clients.length})` : ""}</span>
+            </h2>
+            {cog?.clients.map((client) => (
+              <details className="mt-3" key={client.id} open>
+                <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
+                  {client.name ?? client.id}
+                </summary>
+                <dl className={evidenceFactsClasses}>
+                  <div className="min-w-0">
+                    <dt className={evidenceLabelClasses}>Client ID</dt>
+                    <dd className={evidenceValueClasses}>
+                      <code>{client.id}</code>
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className={evidenceLabelClasses}>Providers</dt>
+                    <dd className={evidenceValueClasses}>
+                      {client.providers.join(", ") || "None returned"}
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className={evidenceLabelClasses}>Callbacks</dt>
+                    <dd className={evidenceValueClasses}>
+                      {client.callbacks.join(", ") || "None"}
+                    </dd>
+                  </div>
+                  <div className="min-w-0">
+                    <dt className={evidenceLabelClasses}>Logout URLs</dt>
+                    <dd className={evidenceValueClasses}>{client.logout.join(", ") || "None"}</dd>
+                  </div>
+                </dl>
+              </details>
+            ))}
+            {!cog?.clients.length ? (
+              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                {cog
+                  ? "No app clients returned."
+                  : "Inspect authentication to observe app-client configuration."}
+              </p>
+            ) : null}
+          </DocumentCard>
+          <DocumentCard className="mb-3">
+            <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Users</h2>
+            <form
+              className={documentToolbarClasses}
+              onSubmit={(event) => {
+                event.preventDefault();
+                void inspect(true);
+              }}
+            >
+              <label className={documentSearchFieldClasses}>
+                Username starts with
+                <TextInput
+                  className="w-full"
+                  aria-label="Search Cognito users"
+                  value={search}
+                  maxLength={128}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </label>
+              <button
+                className={cx(documentToolbarActionClasses, buttonClasses({ variant: "quiet" }))}
+                disabled={busy || !selection.deployment || !selection.profile}
+              >
+                Search users
+              </button>
+            </form>
+            {cog ? (
+              <>
+                <div
+                  className={documentTableRegionClasses}
+                  role="region"
+                  aria-label="Cognito users"
+                  tabIndex={0}
+                >
+                  <table className={documentDataTableClasses}>
+                    <colgroup>
+                      <col />
+                      <col className="w-[180px]" />
+                      <col className="w-20" />
+                      <col className="w-[180px]" />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th className="border-b border-rule p-2 text-left align-top text-caption">
+                          Username
+                        </th>
+                        <th className="border-b border-rule p-2 text-left align-top text-caption">
+                          Status
+                        </th>
+                        <th className="border-b border-rule p-2 text-left align-top text-caption">
+                          Enabled
+                        </th>
+                        <th className="border-b border-rule p-2 text-left align-top text-caption">
+                          Created
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cog.users.map((user) => (
+                        <tr key={user.username}>
+                          <th
+                            className="border-b border-rule p-2 text-left align-top text-caption"
+                            scope="row"
+                          >
+                            {user.username}
+                          </th>
+                          <td className="border-b border-rule p-2 text-left align-top text-caption">
+                            {user.status ?? "Unknown"}
+                          </td>
+                          <td className="border-b border-rule p-2 text-left align-top text-caption">
+                            {user.enabled ? "Yes" : "No"}
+                          </td>
+                          <td className="border-b border-rule p-2 text-left align-top text-caption">
+                            {user.createdAt ?? "Unknown"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {!cog.users.length ? (
+                  <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                    No users returned for this page and search.
+                  </p>
+                ) : null}
+                <button
+                  className={buttonClasses({ variant: "quiet" })}
+                  disabled={busy || !cog.nextToken}
+                  onClick={() => void inspect(true, cog.nextToken)}
+                >
+                  Next page
+                </button>
+              </>
+            ) : (
+              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                Users are unverified until an explicit AWS inspection.
+              </p>
+            )}
+          </DocumentCard>
+          <Groups result={cog} />
+          <CognitoManagement
+            selection={selection}
+            active={section === "user-pools"}
+            onChanged={() =>
+              setObservations((current) => ({
+                ...current,
+                [contextKey]: { ...current[contextKey], cognito: undefined },
+              }))
+            }
+          />
+          <details className={cx(documentCardClasses(), "mt-3 mb-3")}>
+            <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
+              Retention and retained pool reuse
+            </summary>
+            {targetInputsMismatch ? (
+              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                Retention editing is unavailable for this deployment’s custom inputs. Review{" "}
+                <code>{selectedTarget?.inputs}</code> in Deploy; the retention editor supports the
+                standard <code>{sourceInputsFile}</code> inputs only.
+              </p>
+            ) : (
+              <DataRetention
+                appearance="document"
+                kind="cognito"
+                selection={{ ...selection, mode }}
+              />
+            )}
+          </details>
+        </div>
+        <div className="min-w-0" hidden={section !== "identity-pools"}>
+          <DocumentCard className="mb-3">
+            <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Scoped AWS access</h2>
+            <ol
+              className="my-3 grid list-none grid-cols-3 gap-3 p-0 vp-720:grid-cols-1 vp-720:gap-1.5"
+              aria-label="AWS access relationship"
+            >
+              <li className="border-l-2 border-rule bg-wash px-3 py-2.5 text-label">
+                User Pool
+                <span className="mt-1 block text-caption text-graphite">
+                  Identity and authentication claims
+                </span>
+              </li>
+              <li className="border-l-2 border-rule bg-wash px-3 py-2.5 text-label">
+                Identity Pool
+                <span className="mt-1 block text-caption text-graphite">Claims select a role</span>
+              </li>
+              <li className="border-l-2 border-rule bg-wash px-3 py-2.5 text-label">
+                IAM role
+                <span className="mt-1 block text-caption text-graphite">
+                  Policies authorize AWS calls
+                </span>
+              </li>
+            </ol>
+            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              Keep application RBAC in your application. An identity pool exchanges trusted tokens
+              for scoped AWS credentials.
+            </p>
+            <div className="flex flex-col items-start gap-2 [&>p]:m-0 vp-720:items-stretch">
+              <button
+                className={buttonClasses({ variant: "primary" })}
+                disabled={!canAuthor}
+                aria-describedby="identity-pool-source-help"
+                onClick={createPool}
+              >
+                Create identity pool source
+              </button>
+              <p
+                id="identity-pool-source-help"
+                className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-caption text-graphite"
+              >
+                Reviewed native source connects the application pool/client. Default roles have no
+                AWS API grants; guest access and classic flows start disabled.
+              </p>
+            </div>
+          </DocumentCard>
+          <DocumentCard className="mb-3">
+            <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Declared identity pools</h2>
+            {declaredPools.map((resource) => (
+              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" key={resource.id}>
+                <button
+                  className={buttonClasses({ variant: "link" })}
+                  onClick={() => select(resource.id)}
+                >
+                  {resource.path.join(".")}
+                </button>{" "}
+                <span className="inline-block rounded-sm border border-rule bg-wash px-[6px] py-0.5 text-meta leading-[1.5]">
+                  {resource.absent ? "Excluded from this environment" : "Source declaration"}
+                </span>{" "}
+                · deployment unverified by source
+              </p>
+            ))}
+            {!declaredPools.length ? (
+              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                No typed identity-pool declarations recognized. Create reviewed source above, or
+                inspect custom native resources in your editor.
+              </p>
+            ) : null}
+            <Link to="/cognito/permissions" search={(previous: { select?: string }) => previous}>
+              Review reader policies and simulate permissions
+            </Link>
+          </DocumentCard>
+          <PoolRelationships result={pools} />
+        </div>
+        <div className="min-w-0" hidden={section !== "providers"}>
+          <DocumentCard className="mb-3">
+            <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 vp-720:flex-col vp-720:items-stretch">
+              <div className="min-w-0 flex-[1_1_360px] vp-720:basis-auto">
+                <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Add federation</h2>
+                <p className="m-0 mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                  Propose an OIDC or SAML provider on the existing user pool and app client. Secret
+                  references are declared in source; their values stay out of Studio.
+                </p>
+              </div>
+              <button
+                className={cx("flex-[0_1_auto]", buttonClasses({ variant: "primary" }))}
+                disabled={!canAuthor}
+                onClick={() => draft.requestNavigation(() => draft.beginCreation("auth-provider"))}
+              >
+                Add federation provider
+              </button>
+            </div>
+          </DocumentCard>
+          <ProviderEvidence source={source.data} result={cog} />
+        </div>
+        <div className="min-w-0" hidden={section !== "permissions"}>
+          <DocumentCard className="mb-3">
+            <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Permission layers</h2>
+            <dl className={evidenceFactsClasses}>
+              <div className="min-w-0">
+                <dt className={evidenceLabelClasses}>Application RBAC</dt>
+                <dd className={evidenceValueClasses}>
+                  Application code decides record and feature access.
+                </dd>
+              </div>
+              <div className="min-w-0">
+                <dt className={evidenceLabelClasses}>Cognito groups</dt>
+                <dd className={evidenceValueClasses}>
+                  Group membership and precedence influence token role claims.
+                </dd>
+              </div>
+              <div className="min-w-0">
+                <dt className={evidenceLabelClasses}>Identity-pool mapping</dt>
+                <dd className={evidenceValueClasses}>
+                  Trusted claims select an IAM role; ambiguous mappings can deny credentials.
+                </dd>
+              </div>
+              <div className="min-w-0">
+                <dt className={evidenceLabelClasses}>IAM authorization</dt>
+                <dd className={evidenceValueClasses}>
+                  Role policies, explicit Deny, boundaries and SCPs govern AWS calls.
+                </dd>
+              </div>
+            </dl>
+          </DocumentCard>
+          <Groups result={cog} />
+          <PoolRelationships result={pools} />
+          <IdentityPolicyEditor
+            profile={selection.profile}
+            region={selection.region}
+            account={selectedTarget?.account ?? pools?.context.account ?? cog?.context.account}
+            contextKey={contextKey}
+            contextLabel={`${mode} · ${selection.deployment} · ${selection.profile} · ${selection.region}${selectedTarget?.account ? ` · account ${selectedTarget.account}` : ""}`}
+            active={section === "permissions"}
+          />
+        </div>
+        {draftState.error ? (
+          <p
+            className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2")}
+            role="alert"
+          >
+            {draftState.error}
+          </p>
+        ) : null}
+        {draft.dirty ? (
+          <DraftFooter className="sticky bottom-0 rounded-md border border-rule bg-sheet mt-3" />
+        ) : null}
       </div>
-      <div className={"min-w-0"} hidden={section !== "identity-pools"}>
-        <DocumentCard className={"mb-3"}><h2 className={"mt-0 mb-2 text-[15px] leading-[1.4]"}>Scoped AWS access</h2><ol className={"my-3 grid list-none grid-cols-3 gap-3 p-0 [&>li]:border-l-2 [&>li]:border-rule [&>li]:bg-wash [&>li]:px-3 [&>li]:py-2.5 [&>li]:text-label [&_span]:mt-1 [&_span]:block [&_span]:text-caption [&_span]:text-graphite vp-720:grid-cols-1 vp-720:gap-1.5"} aria-label="AWS access relationship"><li>User Pool<span>Identity and authentication claims</span></li><li>Identity Pool<span>Claims select a role</span></li><li>IAM role<span>Policies authorize AWS calls</span></li></ol><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>Keep application RBAC in your application. An identity pool exchanges trusted tokens for scoped AWS credentials.</p><div className={"flex flex-col items-start gap-2 [&>p]:m-0 vp-720:items-stretch"}><button className={buttonClasses({ variant: "primary" })} disabled={!canAuthor} aria-describedby="identity-pool-source-help" onClick={createPool}>Create identity pool source</button><p id="identity-pool-source-help" className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-caption text-graphite"}>Reviewed native source connects the application pool/client. Default roles have no AWS API grants; guest access and classic flows start disabled.</p></div></DocumentCard>
-        <DocumentCard className={"mb-3"}><h2 className={"mt-0 mb-2 text-[15px] leading-[1.4]"}>Declared identity pools</h2>{declaredPools.map(resource => <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"} key={resource.id}><button className={buttonClasses({ variant: "link" })} onClick={() => select(resource.id)}>{resource.path.join(".")}</button> <span className={"inline-block rounded-sm border border-rule bg-wash px-[6px] py-0.5 text-meta leading-[1.5]"}>{resource.absent ? "Excluded from this environment" : "Source declaration"}</span> · deployment unverified by source</p>)}{!declaredPools.length ? <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>No typed identity-pool declarations recognized. Create reviewed source above, or inspect custom native resources in your editor.</p> : null}<Link to="/cognito/permissions" search={(previous: { select?: string }) => previous}>Review reader policies and simulate permissions</Link></DocumentCard>
-        <PoolRelationships result={pools} />
-      </div>
-      <div className={"min-w-0"} hidden={section !== "providers"}>
-        <DocumentCard className={"mb-3"}><div className={"flex flex-wrap items-center justify-between gap-x-4 gap-y-3 [&>div]:min-w-0 [&>div]:flex-[1_1_360px] [&>button]:flex-[0_1_auto] [&>div>h2]:mb-2 [&>div>p]:m-0 vp-720:flex-col vp-720:items-stretch vp-720:[&>div]:basis-auto"}><div><h2 className={"mt-0 mb-2 text-[15px] leading-[1.4]"}>Add federation</h2><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>Propose an OIDC or SAML provider on the existing user pool and app client. Secret references are declared in source; their values stay out of Studio.</p></div><button className={buttonClasses({ variant: "primary" })} disabled={!canAuthor} onClick={() => draft.requestNavigation(() => draft.beginCreation("auth-provider"))}>Add federation provider</button></div></DocumentCard><ProviderEvidence source={source.data} result={cog} />
-      </div>
-      <div className={"min-w-0"} hidden={section !== "permissions"}>
-        <DocumentCard className={"mb-3"}><h2 className={"mt-0 mb-2 text-[15px] leading-[1.4]"}>Permission layers</h2><dl className={"m-0 grid grid-cols-[repeat(auto-fit,minmax(min(100%,240px),1fr))] gap-x-5 gap-y-3 [&>div]:min-w-0 [&_dt]:mb-1 [&_dt]:text-caption [&_dt]:font-normal [&_dt]:text-graphite [&_dd]:m-0 [&_dd]:text-label [&_dd]:wrap-anywhere"}><div><dt className={"font-semibold"}>Application RBAC</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}>Application code decides record and feature access.</dd></div><div><dt className={"font-semibold"}>Cognito groups</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}>Group membership and precedence influence token role claims.</dd></div><div><dt className={"font-semibold"}>Identity-pool mapping</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}>Trusted claims select an IAM role; ambiguous mappings can deny credentials.</dd></div><div><dt className={"font-semibold"}>IAM authorization</dt><dd className={"mt-0 mr-0 mb-2 ml-0"}>Role policies, explicit Deny, boundaries and SCPs govern AWS calls.</dd></div></dl></DocumentCard><Groups result={cog} /><PoolRelationships result={pools} />
-        <IdentityPolicyEditor profile={selection.profile} region={selection.region} account={selectedTarget?.account ?? pools?.context.account ?? cog?.context.account} contextKey={contextKey} contextLabel={`${mode} · ${selection.deployment} · ${selection.profile} · ${selection.region}${selectedTarget?.account ? ` · account ${selectedTarget.account}` : ""}`} active={section === "permissions"} />
-      </div>
-      {draftState.error ? <p className={cx(noticeClasses(), "flex flex-wrap items-center gap-x-3 gap-y-2 [&>span]:min-w-0 [&>span]:flex-[1_1_280px] [&>button]:max-w-full [&>button]:flex-none [&>p]:m-0 [&>p]:basis-full")} role="alert">{draftState.error}</p> : null}{draft.dirty ? <DraftFooter className={"sticky bottom-0 rounded-md border border-rule bg-sheet mt-3"} /> : null}
+      {creation ? <CreationWizard entry={creation} back={() => draft.discard()} /> : null}
     </div>
-    {creation ? <CreationWizard entry={creation} back={() => draft.discard()} /> : null}
-  </div>;
+  );
 }
-
-
-

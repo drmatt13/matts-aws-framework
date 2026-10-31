@@ -29,16 +29,64 @@ export function Root() {
   const search = useSearch({ from: rootRoute.id });
   const navigate = useNavigate();
   const select = useCallback(
-    (id: string | undefined) => void navigate({ to: ".", search: (previous: Search) => ({ ...previous, select: id }) }),
+    (id: string | undefined) =>
+      void navigate({ to: ".", search: (previous: Search) => ({ ...previous, select: id }) }),
     [navigate],
   );
-  if (isPending) return <main className="mx-auto my-[12vh] max-w-[600px] p-6 wrap-anywhere [&>h1]:mt-0 [&>h1]:mb-4 [&>h1]:font-sans [&>h1]:text-step2 [&>h1]:font-semibold [&>h1]:leading-[1.3] [&>p]:mt-0 [&>p]:mb-3" aria-busy="true"><h1>AWS Studio</h1><p role="status">Evaluating the repository’s configuration…</p><p className="text-caption text-graphite">Loading the Development and Production maps.</p></main>;
+  if (isPending)
+    return (
+      <main className="mx-auto my-[12vh] max-w-[600px] p-6 wrap-anywhere" aria-busy="true">
+        <h1 className="mt-0 mb-4 font-sans text-step2 font-semibold leading-[1.3]">AWS Studio</h1>
+        <p className="mt-0 mb-3" role="status">
+          Evaluating the repository’s configuration…
+        </p>
+        <p className="mt-0 mb-3 text-caption text-graphite">
+          Loading the Development and Production maps.
+        </p>
+      </main>
+    );
   if (!data) {
-    return <main className="mx-auto my-[12vh] max-w-[600px] p-6 wrap-anywhere [&>h1]:mt-0 [&>h1]:mb-4 [&>h1]:font-sans [&>h1]:text-step2 [&>h1]:font-semibold [&>h1]:leading-[1.3] [&>p]:mt-0 [&>p]:mb-3"><h1>Studio couldn’t load the configuration</h1><p role="alert">{error instanceof Error ? error.message : "The server returned no snapshot."}</p><p className="text-graphite">Check that <code>npm run studio</code> is running in this checkout, then try again.</p><button className={buttonClasses({variant:"primary"})} disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Connecting…" : "Try again"}</button></main>;
+    return (
+      <main className="mx-auto my-[12vh] max-w-[600px] p-6 wrap-anywhere">
+        <h1 className="mt-0 mb-4 font-sans text-step2 font-semibold leading-[1.3]">
+          Studio couldn’t load the configuration
+        </h1>
+        <p className="mt-0 mb-3" role="alert">
+          {error instanceof Error ? error.message : "The server returned no snapshot."}
+        </p>
+        <p className="mt-0 mb-3 text-graphite">
+          Check that <code>npm run studio</code> is running in this checkout, then try again.
+        </p>
+        <button
+          className={buttonClasses({ variant: "primary" })}
+          disabled={isFetching}
+          onClick={() => void refetch()}
+        >
+          {isFetching ? "Connecting…" : "Try again"}
+        </button>
+      </main>
+    );
   }
   return (
     <StudioProvider response={data} selected={search.select} select={select}>
-      <Shell notice={error ? <><span role="status">Studio couldn’t refresh the configuration. Your current map and draft are preserved.</span><button className={buttonClasses({variant:"quiet"})} disabled={isFetching} onClick={() => void refetch()}>{isFetching ? "Connecting…" : "Try again"}</button></> : undefined}>
+      <Shell
+        notice={
+          error ? (
+            <>
+              <span role="status">
+                Studio couldn’t refresh the configuration. Your current map and draft are preserved.
+              </span>
+              <button
+                className={buttonClasses({ variant: "quiet" })}
+                disabled={isFetching}
+                onClick={() => void refetch()}
+              >
+                {isFetching ? "Connecting…" : "Try again"}
+              </button>
+            </>
+          ) : undefined
+        }
+      >
         <Outlet />
       </Shell>
     </StudioProvider>
@@ -51,22 +99,100 @@ const rootRoute = createRootRoute({
     typeof search.select === "string" ? { select: search.select } : {},
 });
 // The landscape is the home view. The Board (views/Board.tsx) is set aside, unrouted.
-const isometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: lazyRouteComponent(() => import("./views/Isometric"), "Isometric") });
-const legacyIsometricRoute = createRoute({ getParentRoute: () => rootRoute, path: "/isometric", beforeLoad: ({ search }) => { throw redirect({ to: "/", search, replace: true }); } });
-const databaseRoute = createRoute({ getParentRoute: () => rootRoute, path: "/database", component: lazyRouteComponent(() => import("./views/Database"), "Database") });
-const deployRoute = createRoute({ getParentRoute: () => rootRoute, path: "/deploy", component: lazyRouteComponent(() => import("./views/Deploy"), "Deploy") });
-const graphqlRoute = createRoute({ getParentRoute: () => rootRoute, path: "/graphql", component: lazyRouteComponent(() => import("./views/GraphQL"), "GraphQL") });
-const cognitoRoute = createRoute({ getParentRoute: () => rootRoute, path: "/cognito", component: lazyRouteComponent(() => import("./views/AuthenticationWorkspace"), "AuthenticationWorkspace") });
-const userPoolsRoute = createRoute({ getParentRoute: () => cognitoRoute, path: "user-pools", component: () => null });
-const identityPoolsRoute = createRoute({ getParentRoute: () => cognitoRoute, path: "identity-pools", component: () => null });
-const providersRoute = createRoute({ getParentRoute: () => cognitoRoute, path: "providers", component: () => null });
-const permissionsRoute = createRoute({ getParentRoute: () => cognitoRoute, path: "permissions", component: () => null });
-const identityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/identity-pools", beforeLoad: () => { throw redirect({ to: "/cognito/identity-pools", replace: true }); } });
-const legacyIdentityRoute = createRoute({ getParentRoute: () => rootRoute, path: "/identity", beforeLoad: () => { throw redirect({ to: "/cognito/identity-pools", replace: true }); } });
-const domainsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/domains", component: lazyRouteComponent(() => import("./views/DomainsWorkspace"), "DomainsWorkspace") });
-const webSocketsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/websockets", component: lazyRouteComponent(() => import("./views/websockets/WebSockets"), "WebSockets") });
-const routeTree = rootRoute.addChildren([isometricRoute, legacyIsometricRoute, databaseRoute, deployRoute, graphqlRoute, cognitoRoute.addChildren([userPoolsRoute, identityPoolsRoute, providersRoute, permissionsRoute]), identityRoute, legacyIdentityRoute, domainsRoute, webSocketsRoute]);
-function createStudioRouter() { return createRouter({ routeTree }); }
+const isometricRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  component: lazyRouteComponent(() => import("./views/Isometric"), "Isometric"),
+});
+const legacyIsometricRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/isometric",
+  beforeLoad: ({ search }) => {
+    throw redirect({ to: "/", search, replace: true });
+  },
+});
+const databaseRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/database",
+  component: lazyRouteComponent(() => import("./views/Database"), "Database"),
+});
+const deployRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/deploy",
+  component: lazyRouteComponent(() => import("./views/Deploy"), "Deploy"),
+});
+const graphqlRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/graphql",
+  component: lazyRouteComponent(() => import("./views/GraphQL"), "GraphQL"),
+});
+const cognitoRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/cognito",
+  component: lazyRouteComponent(
+    () => import("./views/AuthenticationWorkspace"),
+    "AuthenticationWorkspace",
+  ),
+});
+const userPoolsRoute = createRoute({
+  getParentRoute: () => cognitoRoute,
+  path: "user-pools",
+  component: () => null,
+});
+const identityPoolsRoute = createRoute({
+  getParentRoute: () => cognitoRoute,
+  path: "identity-pools",
+  component: () => null,
+});
+const providersRoute = createRoute({
+  getParentRoute: () => cognitoRoute,
+  path: "providers",
+  component: () => null,
+});
+const permissionsRoute = createRoute({
+  getParentRoute: () => cognitoRoute,
+  path: "permissions",
+  component: () => null,
+});
+const identityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/identity-pools",
+  beforeLoad: () => {
+    throw redirect({ to: "/cognito/identity-pools", replace: true });
+  },
+});
+const legacyIdentityRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/identity",
+  beforeLoad: () => {
+    throw redirect({ to: "/cognito/identity-pools", replace: true });
+  },
+});
+const domainsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/domains",
+  component: lazyRouteComponent(() => import("./views/DomainsWorkspace"), "DomainsWorkspace"),
+});
+const webSocketsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/websockets",
+  component: lazyRouteComponent(() => import("./views/websockets/WebSockets"), "WebSockets"),
+});
+const routeTree = rootRoute.addChildren([
+  isometricRoute,
+  legacyIsometricRoute,
+  databaseRoute,
+  deployRoute,
+  graphqlRoute,
+  cognitoRoute.addChildren([userPoolsRoute, identityPoolsRoute, providersRoute, permissionsRoute]),
+  identityRoute,
+  legacyIdentityRoute,
+  domainsRoute,
+  webSocketsRoute,
+]);
+function createStudioRouter() {
+  return createRouter({ routeTree });
+}
 interface Application {
   readonly root: ReturnType<typeof createRoot>;
   readonly queryClient: QueryClient;
@@ -82,11 +208,17 @@ declare module "@tanstack/react-router" {
   }
 }
 
-const application = previous ?? { root: createRoot(document.getElementById("root")!), queryClient: new QueryClient(), router };
+const application = previous ?? {
+  root: createRoot(document.getElementById("root")!),
+  queryClient: new QueryClient(),
+  router,
+};
 if (import.meta.hot) {
   // Replacing an entry must retain React ownership, caches and the mounted draft.
   // React Refresh updates components; unmount only when the entry is removed.
-  import.meta.hot.dispose(data => { data.application = application; });
+  import.meta.hot.dispose((data) => {
+    data.application = application;
+  });
   import.meta.hot.prune(() => {
     application.root.unmount();
     application.queryClient.clear();
@@ -94,10 +226,11 @@ if (import.meta.hot) {
   });
 }
 
-if (!previous) application.root.render(
-  <StrictMode>
-    <QueryClientProvider client={application.queryClient}>
-      <RouterProvider router={router} />
-    </QueryClientProvider>
-  </StrictMode>,
-);
+if (!previous)
+  application.root.render(
+    <StrictMode>
+      <QueryClientProvider client={application.queryClient}>
+        <RouterProvider router={router} />
+      </QueryClientProvider>
+    </StrictMode>,
+  );

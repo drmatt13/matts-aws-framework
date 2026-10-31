@@ -159,13 +159,22 @@ nested inside an artifact directory count as dependencies. Bytes are logical siz
 Allocated size fell from 9,014,878,208 to 5,664,358,400 bytes. All 161 symlinks remained.
 Tracked regular files present fell from 2,012 to 1,489; ignored files from 283,812 to
 221,405. Three new untracked files are this guide and the two archived receipts. The
-Git index still names the original 2,012 paths until the changes are staged. The starting
+Git index at that measurement still named the original 2,012 paths, before staging. The starting
 working tree contained no untracked files, so no untracked user-authored file was deleted.
 
 These are point-in-time measurements. New documentation and receipt locations add files,
 and retained active fixture logs continue growing; the exact deletion ledger therefore
 differs slightly from the net size reduction. Verification output is accounted for
 separately below.
+
+The final post-verification inventory recorded 228,154 regular files, 5,021,295,924
+logical bytes and 5,664,419,840 allocated bytes: approximately 39% less logical size
+and 22% fewer files than the starting checkout. It contained 1,492 tracked files,
+221,405 ignored files, 5,257 Git metadata files and no untracked files. HEAD advanced
+during the run to `1c081b20fedcd8f353ac5ab5e67b3bc6d9a00e0c`, which includes the reviewed
+cleanup; the final documentation additions follow that commit. The campaign made no
+Git commit, staging change or history rewrite. Current generated files, active logs/state
+and Git metadata explain differences from the immediate post-cleanup measurement.
 
 ### Retained items requiring owner review
 
@@ -209,13 +218,25 @@ removal; no scheduled cleanup service or additional dependency was introduced.
 | Production and browser-gallery builds | Both passed through the existing browser command |
 | Focused Chromium light browser run | 3/3 passed: primary destinations/source context, baseline Inspector/reviewed-draft visual comparison, native dialog keyboard focus and accessibility |
 | Independent diff review | All tracked removals confined to disposable browser output and duplicate ZIP; receipts unchanged; no application-source changes |
-| Full `npm run verify` | In progress; completion receipt pending |
+| Full `npm run verify` | Passed in 15m27s: 2,121 passed, 0 failed, 3 opt-in live skips |
+| Offline schema/workspace units and mocked integration | Schema 22, client 65, local API 16, runner 27, CDK 292 + 1 skip, database 28, framework 513, ws-tester 4, Studio 1,154 + 2 skips |
+| Final protected-file comparison | 1,481 tracked files unchanged; only the 8 documented hygiene/test/doc edits and 523 planned old-path removals; both receipts, 36 goldens, 161 symlinks and 30 private fixture roots preserved |
+| Final documentation checks | 115 Markdown files / 1,498 local links / 66 heading links; wiki 36 pages / 769 local links / 251 source references; all passed |
+| Final diff whitespace check | Passed |
 
 The browser run used the existing sandboxed browser and pinned references, without
 updating snapshots or loosening assertions. Its previews/contexts were closed. The two
 new report/result files it generated were recorded and removed after the run; normal
 workspace/gallery build output remains regenerable. Known large-chunk and `NO_COLOR`
-warnings remained visible.
+warnings remained visible. The full offline gate also retained 15 existing CommonJS
+`replaceRouteChunk` circular-module warnings, Vite's future native-config-loader warning
+and CDK fixture-template validation warnings. No warning was suppressed. The complete
+receipts and logs are in the temporary audit directory named above.
+
+All 124 Studio unit entrypoints and 15 browser specifications remain. No application
+logic, styling, framework semantics, package manifest, lockfile or deployment configuration
+changed. The production/gallery builds and focused browser assertions passed without
+visual differences in the checked states; the full browser matrix was not rerun.
 
 Unit and fixture integration checks run in the offline gate, including mocked CDK and
 source-transaction tests. Live database checks, Docker lifecycle/image builds, full

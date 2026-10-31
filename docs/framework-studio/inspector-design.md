@@ -31,7 +31,7 @@ Deployment information follows the resource's actual configuration authority:
 | API gateway, stack member, network component | Read-only deployment summary and ownership explanation with navigation to handlers, stack or VPC |
 | Catalog input, secret or group | No Deployment section. Inputs/secrets show declaration pills in their header; groups show pills beside each entry and none in the header. Sources, requirements and consumers explain delivery |
 | Native/framework stack, managed database, VPC island | Explicit ownership explanation and navigation; no ineffective independent workload flag |
-| CDK/client environment file and input/environment islands | No Deployment section; the shared Environment files island labels CDK files Framework managed and client mappings Application; each file retains its editor |
+| CDK/client environment file and input/environment islands | No Deployment section; the shared Environment files island labels CDK files Framework managed and leaves client mappings unlabeled; each file retains its editor |
 | Other grouping islands | Read-only deployment summary with navigation to entries |
 
 Inferred ownership is text with owner links, never a disabled Deploy selector.
@@ -260,11 +260,20 @@ Every inspector follows these rules, so that generated content never repeats or 
   none. Source lines (`SourceLines` in `Written.tsx`) are one definition list: labels share a
   column so every file name starts at the same x, and each link keeps the panel's caption
   target (24 px, 44 px on coarse pointers). Identifiers and source lines form one evenly spaced
-  block, 10 px text to text; a badge keeps its usual margin above them, and a header ending on a
-  source line closes with the space it opens with. Header labels use one vocabulary: **Declared
+  block, 10 px text to text. Every title keeps 4 px above and 6 px below whether or not it has a
+  Rename action, which overhangs the title line rather than heightening it. Ownership and status
+  badges sit 10 px clear of the title and of the identifiers, 6 px apart when stacked. A header
+  closes with the space it opens with, whatever its last line is. Every eyebrow is `InspectorKind`,
+  islands and schema entities included. Client-app/.env lists its Dev and Prod exports in the same
+  label/value rows as source lines. Header labels use one vocabulary: **Declared
   in** for config declarations, **Cataloged in** for a group's `resources.ts` entry, **Class
   in** for a stack class and **Defined in** for framework-owned CDK code. Catalog stacks show `resources.<key>` beneath their class
   name, as inputs and secrets do. **About this resource** follows the identity lines.
+- Every section title sits the same distance below its rule. A 32 px heading action (Add access,
+  Add input, the Description row, a leading switch or boolean field) keeps its target but overhangs
+  the title line; a described section with an action moves its description clear of the overhang.
+- Counts use the shared `InspectorCount` chip beside a heading or supporting summary (right-aligned in
+  `InspectorDisclosure`), never parentheses or bare numbers.
 - One disclosure marker: section disclosures draw the lucide chevron; every other summary
   uses the same chevron at its own text size (a mask utility owned by `InspectorUI`), never the
   browser triangle or a +/− sign. Permission rows and the description's **Edit** summary

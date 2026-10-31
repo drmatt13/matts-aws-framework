@@ -1,7 +1,20 @@
+import { triggerFieldLabelClasses, triggerFieldsetClasses, triggerLegendClasses } from "./styles";
 import type { ModeModel, Snapshot } from "../../../../shared/model";
-import type { TriggerBinding, TriggerCapability, TriggerField as TriggerFieldDefinition } from "../../../../shared/triggers";
+import type {
+  TriggerBinding,
+  TriggerCapability,
+  TriggerField as TriggerFieldDefinition,
+} from "../../../../shared/triggers";
 import type { TriggerProblem } from "../../../../shared/trigger-availability";
-import { enumChoices, eventPatternBasics, eventPatternFrom, S3_BASIC_EVENTS, scheduleBasics, scheduleExpression, type ScheduleBasics } from "../../../../shared/trigger-presets";
+import {
+  enumChoices,
+  eventPatternBasics,
+  eventPatternFrom,
+  S3_BASIC_EVENTS,
+  scheduleBasics,
+  scheduleExpression,
+  type ScheduleBasics,
+} from "../../../../shared/trigger-presets";
 import { buttonClasses } from "../../../ui/Button";
 import { Select, TextInput, Textarea, checkboxClasses } from "../../../ui/FormControls";
 import { cx } from "../../../ui/classes";
@@ -21,17 +34,29 @@ interface TriggerFieldProps {
 }
 
 export function TriggerField({
-  field, form, snapshot, model, capabilities, others, problems, setForm, setOption, setRaw,
+  field,
+  form,
+  snapshot,
+  model,
+  capabilities,
+  others,
+  problems,
+  setForm,
+  setOption,
+  setRaw,
 }: TriggerFieldProps) {
   const current = form;
+  const rootLabelClasses = cx(triggerFieldLabelClasses, field.advanced && "mt-2");
+  const rootFieldsetClasses = cx(triggerFieldsetClasses, field.advanced && "mt-2");
   const label = `Trigger ${field.label}`;
   const value = current.options[field.name];
   const error = problems.find(
     (problem) =>
-      problem.field === field.name &&
-      (problem.kind === "form" || problem.kind === "source"),
+      problem.field === field.name && (problem.kind === "form" || problem.kind === "source"),
   )?.message;
-  const note = error ? <span className={"text-refuse wrap-anywhere text-caption"}>{error}</span> : null;
+  const note = error ? (
+    <span className="text-refuse wrap-anywhere text-caption">{error}</span>
+  ) : null;
   const raw =
     current.text[field.name] ??
     (value === undefined
@@ -45,14 +70,11 @@ export function TriggerField({
       json: { ...current.json, [field.name]: true },
       text: {
         ...current.text,
-        [field.name]:
-          value === undefined ? "" : JSON.stringify(value, null, 2),
+        [field.name]: value === undefined ? "" : JSON.stringify(value, null, 2),
       },
     });
   const basics =
-    current.adapter === "eventbridge" &&
-    field.name === "eventPattern" &&
-    !current.json[field.name]
+    current.adapter === "eventbridge" && field.name === "eventPattern" && !current.json[field.name]
       ? eventPatternBasics(value)
       : undefined;
   if (basics) {
@@ -78,29 +100,34 @@ export function TriggerField({
       });
     };
     return (
-      <fieldset className={"grid [gap:6px] m-0 p-[var(--space-2)_10px] border border-rule rounded-md [&_legend]:p-[0_var(--space-1)] [&_legend]:text-step-minus1 [&_legend]:font-semibold"} data-slot="trigger-fieldset">
-        <legend>Match events</legend>
-        <label>
+      <fieldset className={rootFieldsetClasses} data-slot="trigger-fieldset">
+        <legend className={triggerLegendClasses}>Match events</legend>
+        <label className={triggerFieldLabelClasses}>
           Source
           <TextInput
+            className="w-full"
             aria-label="Trigger event source"
             placeholder="my.app.orders"
             value={part("source")}
             onChange={(event) => change("source", event.target.value)}
           />
         </label>
-        <label>
+        <label className={triggerFieldLabelClasses}>
           Detail type
           <TextInput
+            className="w-full"
             aria-label="Trigger detail type"
             placeholder="OrderPlaced"
             value={part("detailType")}
             onChange={(event) => change("detailType", event.target.value)}
           />
         </label>
-        <span className={"text-caption text-graphite"}>
+        <span className="text-caption text-graphite">
           Separate several values with commas.{" "}
-          <button className={cx(buttonClasses({ variant: "link" }), "text-caption")} onClick={toJson}>
+          <button
+            className={cx(buttonClasses({ variant: "link" }), "text-caption")}
+            onClick={toJson}
+          >
             Edit full pattern as JSON
           </button>
         </span>
@@ -109,20 +136,18 @@ export function TriggerField({
     );
   }
   const scheduled =
-    current.adapter === "schedule" &&
-    field.name === "expression" &&
-    !current.json[field.name]
+    current.adapter === "schedule" && field.name === "expression" && !current.json[field.name]
       ? scheduleBasics(value ?? field.default)
       : undefined;
   if (scheduled) {
-    const set = (next: ScheduleBasics) =>
-      setOption(field.name, scheduleExpression(next));
+    const set = (next: ScheduleBasics) => setOption(field.name, scheduleExpression(next));
     return (
-      <fieldset className={"grid [gap:6px] m-0 p-[var(--space-2)_10px] border border-rule rounded-md [&_legend]:p-[0_var(--space-1)] [&_legend]:text-step-minus1 [&_legend]:font-semibold"} data-slot="trigger-fieldset">
-        <legend>Run</legend>
-        <label>
+      <fieldset className={rootFieldsetClasses} data-slot="trigger-fieldset">
+        <legend className={triggerLegendClasses}>Run</legend>
+        <label className={triggerFieldLabelClasses}>
           Repeat
           <Select
+            className="w-full"
             aria-label="Trigger repeat"
             value={scheduled.kind}
             onChange={(event) =>
@@ -138,8 +163,9 @@ export function TriggerField({
           </Select>
         </label>
         {scheduled.kind === "rate" ? (
-          <div className="flex gap-[6px] [&&_input]:w-[6em]" data-slot="trigger-inline">
+          <div className="flex gap-1.5" data-slot="trigger-inline">
             <TextInput
+              className="w-[6em]"
               aria-label="Trigger every"
               type="number"
               min={1}
@@ -147,14 +173,12 @@ export function TriggerField({
               onChange={(event) =>
                 set({
                   ...scheduled,
-                  count: Math.max(
-                    1,
-                    Math.floor(Number(event.target.value) || 1),
-                  ),
+                  count: Math.max(1, Math.floor(Number(event.target.value) || 1)),
                 })
               }
             />
             <Select
+              className="w-full"
               aria-label="Trigger unit"
               value={scheduled.unit}
               onChange={(event) =>
@@ -170,22 +194,21 @@ export function TriggerField({
             </Select>
           </div>
         ) : (
-          <label>
+          <label className={triggerFieldLabelClasses}>
             Time
             {typeof current.options.timezone === "string"
               ? ` (${current.options.timezone})`
               : " (UTC)"}
             <TextInput
+              className="w-full"
               aria-label="Trigger time"
               type="time"
               value={scheduled.time}
-              onChange={(event) =>
-                set({ kind: "daily", time: event.target.value || "00:00" })
-              }
+              onChange={(event) => set({ kind: "daily", time: event.target.value || "00:00" })}
             />
           </label>
         )}
-        <span className={"text-caption text-graphite"}>
+        <span className="text-caption text-graphite">
           <code>{String(value ?? field.default)}</code> ·{" "}
           <button
             className={cx(buttonClasses({ variant: "link" }), "text-caption")}
@@ -208,15 +231,17 @@ export function TriggerField({
     field.name === "eventTypes" &&
     !current.json[field.name] &&
     Array.isArray(value) &&
-    value.every((item) =>
-      S3_BASIC_EVENTS.some((basic) => basic.value === item),
-    );
+    value.every((item) => S3_BASIC_EVENTS.some((basic) => basic.value === item));
   if (s3Basic)
     return (
-      <fieldset className={"grid [gap:6px] m-0 p-[var(--space-2)_10px] border border-rule rounded-md [&_legend]:p-[0_var(--space-1)] [&_legend]:text-step-minus1 [&_legend]:font-semibold"} data-slot="trigger-fieldset">
-        <legend>When objects are</legend>
+      <fieldset className={rootFieldsetClasses} data-slot="trigger-fieldset">
+        <legend className={triggerLegendClasses}>When objects are</legend>
         {S3_BASIC_EVENTS.map((basic) => (
-          <label key={basic.value} className={"flex items-start gap-2 coarse:min-h-11"} data-slot="trigger-check">
+          <label
+            key={basic.value}
+            className="flex items-start gap-2 coarse:min-h-11"
+            data-slot="trigger-check"
+          >
             <input
               type="checkbox"
               aria-label={`Trigger on ${basic.label.toLowerCase()}`}
@@ -226,18 +251,20 @@ export function TriggerField({
                   field.name,
                   event.target.checked
                     ? [...(value as string[]), basic.value]
-                    : (value as string[]).filter(
-                        (item) => item !== basic.value,
-                      ),
+                    : (value as string[]).filter((item) => item !== basic.value),
                 )
-              } className={checkboxClasses}
+              }
+              className={checkboxClasses}
             />
             {basic.label}
           </label>
         ))}
         {current.options.delivery !== "eventbridge" ? (
-          <span className={"text-caption text-graphite"}>
-            <button className={cx(buttonClasses({ variant: "link" }), "text-caption")} onClick={toJson}>
+          <span className="text-caption text-graphite">
+            <button
+              className={cx(buttonClasses({ variant: "link" }), "text-caption")}
+              onClick={toJson}
+            >
               Choose specific S3 events
             </button>
           </span>
@@ -262,9 +289,9 @@ export function TriggerField({
       value === workable[0]!.value
     )
       return (
-        <p className={"text-caption m-0"} data-slot="trigger-fact">
+        <p className="text-caption m-0" data-slot="trigger-fact">
           <strong>{field.label}:</strong> {String(value)}{" "}
-          <span className={"text-graphite"}>
+          <span className="text-graphite">
             {choices
               .filter((choice) => choice.reason)
               .map((choice) => choice.reason)
@@ -273,14 +300,13 @@ export function TriggerField({
         </p>
       );
     return (
-      <label>
+      <label className={rootLabelClasses}>
         {field.label}
         <Select
+          className="w-full"
           aria-label={label}
           value={typeof value === "string" ? value : ""}
-          onChange={(event) =>
-            setOption(field.name, event.target.value || undefined)
-          }
+          onChange={(event) => setOption(field.name, event.target.value || undefined)}
         >
           {value === undefined || !field.required ? (
             <option value="">{field.required ? "Choose" : "Default"}</option>
@@ -303,17 +329,16 @@ export function TriggerField({
   }
   if (field.kind === "boolean")
     return (
-      <label>
+      <label className={rootLabelClasses}>
         {field.label}
         <Select
+          className="w-full"
           aria-label={label}
           value={value === undefined ? "" : String(value)}
           onChange={(event) =>
             setOption(
               field.name,
-              event.target.value === ""
-                ? undefined
-                : event.target.value === "true",
+              event.target.value === "" ? undefined : event.target.value === "true",
             )
           }
         >
@@ -326,13 +351,12 @@ export function TriggerField({
     );
   if (field.kind === "resource") {
     const type = `${field.resourceType?.module}:${field.resourceType?.name}`;
-    const chosen = (
-      value as { readonly path?: readonly string[] } | undefined
-    )?.path;
+    const chosen = (value as { readonly path?: readonly string[] } | undefined)?.path;
     return (
-      <label>
+      <label className={rootLabelClasses}>
         {field.label}
         <Select
+          className="w-full"
           aria-label={label}
           value={chosen ? `resource:${chosen.join(".")}` : ""}
           onChange={(event) =>
@@ -341,9 +365,7 @@ export function TriggerField({
               event.target.value
                 ? {
                     $cdk: "@repo/framework/cdk-resource",
-                    path: model.resources.find(
-                      (item) => item.id === event.target.value,
-                    )!.path,
+                    path: model.resources.find((item) => item.id === event.target.value)!.path,
                     optional: false,
                   }
                 : undefined,
@@ -356,11 +378,7 @@ export function TriggerField({
             .map((item) => {
               const imported = field.resourceType?.owned && !item.owned;
               return (
-                <option
-                  key={item.resource}
-                  value={item.resource}
-                  disabled={!!imported}
-                >
+                <option key={item.resource} value={item.resource} disabled={!!imported}>
                   {item.resource.replace(/^resource:/, "")}
                   {imported ? " · imported" : ""}
                 </option>
@@ -373,9 +391,10 @@ export function TriggerField({
   }
   if (field.kind === "json")
     return (
-      <label>
+      <label className={rootLabelClasses}>
         {field.label}
         <Textarea
+          className="w-full"
           aria-label={label}
           rows={4}
           value={raw}
@@ -385,9 +404,10 @@ export function TriggerField({
       </label>
     );
   return (
-    <label>
+    <label className={rootLabelClasses}>
       {field.label}
       <TextInput
+        className="w-full"
         aria-label={label}
         type={field.kind === "number" ? "number" : "text"}
         min={field.min}

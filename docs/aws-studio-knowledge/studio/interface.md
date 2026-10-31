@@ -127,9 +127,9 @@ authored dotenv values or reveal their AWS contents.
 The CDK-file editor writes only `cdk-app/.env.dev` or `.env.prod`, preserving untouched
 assignments and comments. Client environment mapping edits symbolic recipes in
 `framework-config/client-environment.ts`; export later resolves these into ignored Vite
-environment files. One **Environment files** island groups CDK files labeled
-**Framework managed** and client mappings labeled **Application**. The labels describe
-purpose; framework input values remain editable. Every island ends with one
+environment files. One **Environment files** island groups the CDK files, labeled
+**Framework managed**, with the application's client mappings, which carry no ownership
+label. The label describes ownership; framework input values remain editable. Every island ends with one
 **Island entries** disclosure; there is no separate Files list. Select
 `client-app/.env` from its island entries for both export destinations and
 the file's mappings; file details remain collapsed. These are symbolic sources, not the

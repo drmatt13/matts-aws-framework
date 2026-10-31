@@ -1,48 +1,408 @@
-import { useEffect,useRef,useState } from "react";
-import type { DomainDnsDiscovery,DomainDnsReceipt,DomainDnsReview,DomainHealth,DomainPurpose } from "../../shared/domain-operations";
+import { dialogPrimaryActionClasses, dialogBodyHeadingClasses } from "../inspector-ui";
+import { useEffect, useRef, useState } from "react";
+import type {
+  DomainDnsDiscovery,
+  DomainDnsReceipt,
+  DomainDnsReview,
+  DomainHealth,
+  DomainPurpose,
+} from "../../shared/domain-operations";
 import type { IdentitySelection } from "../../shared/identity";
 import { call } from "../http";
 import { useStudio } from "../studio";
 import { buttonClasses } from "../ui/Button";
-import { Select,TextInput } from "../ui/FormControls";
+import { Select, TextInput } from "../ui/FormControls";
 import { noticeClasses } from "../ui/Surface";
 import { cx } from "../ui/classes";
-import { DocumentCard,documentLabelClasses,documentToolbarClasses } from "./DocumentUI";
+import {
+  DocumentCard,
+  documentLabelClasses,
+  documentToolbarClasses,
+  documentToolbarActionClasses,
+} from "./DocumentUI";
 import { WorkbenchDialog } from "./WorkbenchUI";
 
 /** Separate production operations; this component never changes domain source intent. */
 export function DomainOperations({ selection }: { readonly selection: IdentitySelection }) {
   const { draft, draftState, snapshot, live } = useStudio();
-  return <DomainOperationsPanel selection={selection} sourceBusy={draft.dirty || !!draftState.busy || draft.conflict || live.evaluating} sourceRevision={snapshot.revision} />;
+  return (
+    <DomainOperationsPanel
+      selection={selection}
+      sourceBusy={draft.dirty || !!draftState.busy || draft.conflict || live.evaluating}
+      sourceRevision={snapshot.revision}
+    />
+  );
 }
-export function DomainOperationsPanel({ selection, sourceBusy, sourceRevision }: { readonly selection: IdentitySelection; readonly sourceBusy: boolean; readonly sourceRevision: string }) {
-  const [purpose, setPurpose] = useState<DomainPurpose>("frontend"); const [zoneId, setZoneId] = useState("");
-  const [health, setHealth] = useState<DomainHealth>(); const [discovery, setDiscovery] = useState<DomainDnsDiscovery>();
-  const [review, setReview] = useState<DomainDnsReview>(); const [receipt, setReceipt] = useState<DomainDnsReceipt>();
+export function DomainOperationsPanel({
+  selection,
+  sourceBusy,
+  sourceRevision,
+}: {
+  readonly selection: IdentitySelection;
+  readonly sourceBusy: boolean;
+  readonly sourceRevision: string;
+}) {
+  const [purpose, setPurpose] = useState<DomainPurpose>("frontend");
+  const [zoneId, setZoneId] = useState("");
+  const [health, setHealth] = useState<DomainHealth>();
+  const [discovery, setDiscovery] = useState<DomainDnsDiscovery>();
+  const [review, setReview] = useState<DomainDnsReview>();
+  const [receipt, setReceipt] = useState<DomainDnsReceipt>();
   const [history, setHistory] = useState<readonly DomainDnsReceipt[]>([]);
-  const [confirmation, setConfirmation] = useState(""); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
   const generation = useRef(0);
-  useEffect(() => { generation.current++; setHealth(undefined); setDiscovery(undefined); setReview(undefined); setReceipt(undefined); setConfirmation(""); setZoneId(""); setError(""); setBusy(false); }, [selection.profile, selection.deployment, selection.region, purpose, sourceRevision]);
-  useEffect(() => { const controller = new AbortController(); void call<DomainDnsReceipt[]>("/identity/domain-dns/history", undefined, controller.signal).then(value => { if (!controller.signal.aborted && Array.isArray(value)) setHistory(value); }).catch(() => {}); return () => controller.abort(); }, [receipt, selection.profile, selection.deployment]);
+  useEffect(() => {
+    generation.current++;
+    setHealth(undefined);
+    setDiscovery(undefined);
+    setReview(undefined);
+    setReceipt(undefined);
+    setConfirmation("");
+    setZoneId("");
+    setError("");
+    setBusy(false);
+  }, [selection.profile, selection.deployment, selection.region, purpose, sourceRevision]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void call<DomainDnsReceipt[]>("/identity/domain-dns/history", undefined, controller.signal)
+      .then((value) => {
+        if (!controller.signal.aborted && Array.isArray(value)) setHistory(value);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [receipt, selection.profile, selection.deployment]);
   const blocked = busy || sourceBusy || !selection.deployment;
-  const run = async (work: () => Promise<void>) => { const current = ++generation.current; setBusy(true); setError(""); try { await work(); } catch (error) { if (current === generation.current) setError(error instanceof Error ? error.message : "Domain operation failed."); } finally { if (current === generation.current) setBusy(false); } };
+  const run = async (work: () => Promise<void>) => {
+    const current = ++generation.current;
+    setBusy(true);
+    setError("");
+    try {
+      await work();
+    } catch (error) {
+      if (current === generation.current)
+        setError(error instanceof Error ? error.message : "Domain operation failed.");
+    } finally {
+      if (current === generation.current) setBusy(false);
+    }
+  };
   const query = new URLSearchParams({ ...selection, purpose });
-  const inspectHealth = () => run(async () => { const current = generation.current; const value = await call<DomainHealth>(`/identity/domain-health?${query}`); if (!value?.dns || !value.tls || !value.http || !value.application) throw new Error("Domain health is unavailable in the running server. Restart npm run studio in this checkout."); if (current === generation.current) setHealth(value); });
-  const discover = () => run(async () => { const current = generation.current; const value = await call<DomainDnsDiscovery>(`/identity/domain-dns?${query}`); if (!Array.isArray(value?.zones)) throw new Error("Managed DNS is unavailable in the running server. Restart npm run studio in this checkout."); if (current === generation.current) { setDiscovery(value); setZoneId(""); } });
-  return <>
-    <DocumentCard ><h2 className={"mt-0 mb-2 text-[15px] leading-[1.4]"}>Live domain health and managed DNS</h2><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>These explicit operations use only the saved production hostname and the selected account/deployment above. Source approval, TLS/HTTP inspection and DNS routing changes are separate actions.</p>
-      <label className={documentLabelClasses}>Configured domain purpose<Select className={"w-full"} aria-label="Domain operation purpose" value={purpose} disabled={busy} onChange={event => setPurpose(event.target.value as DomainPurpose)}><option value="frontend">Frontend</option><option value="cognito">Cognito authentication</option></Select></label>
-      {sourceBusy ? <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"} role="status">Review/apply or discard source edits before inspecting or changing the saved domain.</p> : null}
-      <div className={documentToolbarClasses}><button className={buttonClasses({ variant: "quiet" })} disabled={blocked} onClick={() => void inspectHealth()}>Inspect live DNS / TLS / HTTP</button><button className={buttonClasses({ variant: "quiet" })} disabled={blocked} onClick={() => void discover()}>Discover managed DNS zones</button></div>
-      {busy ? <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"} role="status">Reading/revalidating exact domain evidence…</p> : null}{error ? <p className={cx(noticeClasses(), "mt-0 mb-2 text-label leading-[1.5] last:mb-0")} role="alert">{error}</p> : null}
-      {health ? <div><h3 className={"mt-3 mb-2 text-label"}>Observed {health.hostname}</h3><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>{health.observedAt} · account {health.context.account} · source hash <code>{health.sourceHash.slice(0, 12)}</code></p><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>DNS: <strong>{health.dns.status}</strong> · {health.dns.addresses.join(", ")} {health.dns.pinnedAddress ? `· pinned ${health.dns.pinnedAddress}` : ""}. {health.dns.detail}</p><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>TLS: <strong>{health.tls.status}</strong>. {health.tls.detail} {health.tls.expires ? `Expires ${health.tls.expires}.` : ""}</p><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>HTTP routing: <strong>{health.http.status}</strong>{health.http.code ? ` · ${health.http.code}` : ""}{health.http.cloudFrontHeaders ? " · CloudFront headers observed" : ""}. {health.http.detail} {health.http.redirectOrigin ? `Redirect origin ${health.http.redirectOrigin}; not followed.` : ""}</p><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>Application response: <strong>{health.application.status}</strong>{health.application.title ? ` · title: ${health.application.title}` : ""}. {health.application.detail}</p></div> : null}
-      {discovery ? <div><h3 className={"mt-3 mb-2 text-label"}>Accessible public hosted zones</h3><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>Observed account {discovery.context.account}. Choose the explicit containing zone; review verifies its public NS delegation and existing records before any mutation.</p><label className={documentLabelClasses}>Managed DNS zone<Select className={"w-full"} aria-label="Managed DNS zone" value={zoneId} disabled={blocked} onChange={event => setZoneId(event.target.value)}><option value="">Select a containing public zone</option>{discovery.zones.filter(zone => zone.matching.includes(purpose)).map(zone => <option key={zone.id} value={zone.id}>{zone.name} · {zone.id}</option>)}</Select></label>{!discovery.zones.some(zone => zone.matching.includes(purpose)) ? <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>No accessible public zone contains this configured non-apex hostname. Use the external-DNS instructions or manage apex/alias records through a separately supported process.</p> : null}<button className={buttonClasses({ variant: "primary" })} disabled={blocked || !zoneId} onClick={() => void run(async () => { const current = generation.current; const value = await call<DomainDnsReview>("/identity/domain-dns/review", { selection, purpose, zoneId }); if (current === generation.current) { setReview(value); setConfirmation(""); } })}>Review exact production DNS change</button></div> : null}
-      <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite"}>Public addresses are pinned for TLS/HTTP; local/private/reserved and mixed DNS answers are blocked. Redirects are not followed. A 200 response, HTML title or Route53 INSYNC does not establish application runtime or successful sign-in.</p>
-      {receipt ? <div role="status"><h3 className={"mt-3 mb-2 text-label"}>DNS operation {receipt.status}</h3><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>{receipt.hostname} · {receipt.zoneId} · account {receipt.context.account}</p><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>{receipt.message}</p>{receipt.changeId ? <><p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"}>Change ID <code>{receipt.changeId}</code></p><button className={buttonClasses({ variant: "quiet" })} disabled={busy} onClick={() => void run(async () => { const current = generation.current; const value = await call<DomainDnsReceipt>(`/identity/domain-dns/receipts/${receipt.id}/observe`, {}); if (current === generation.current) setReceipt(value); })}>Observe authoritative propagation</button></> : null}</div> : null}
-      {history.length ? <details className={"mt-3"}><summary className={"cursor-pointer py-1 text-label [[open]>&]:mb-2"}>Saved DNS operation receipts</summary>{history.map(item => <p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0"} key={item.id}><button className={buttonClasses({ variant: "link" })} onClick={() => setReceipt(item)}>{item.hostname} · {item.status}</button> · zone {item.zoneId} · account {item.context.account} · {item.submittedAt}</p>)}<p className={"mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite"}>Receipts survive server restart. Interrupted/unconfirmed operations never replay automatically.</p></details> : null}
-    </DocumentCard>
-    {review ? <WorkbenchDialog title="Review production DNS routing" busy={busy} onClose={() => setReview(undefined)} footer={<><button className={buttonClasses({ variant: "quiet" })} disabled={busy} onClick={() => setReview(undefined)}>Cancel</button><button className={buttonClasses({ variant: "primary" })} data-variant="primary" disabled={blocked || confirmation !== review.confirmation} onClick={() => void run(async () => { const current = generation.current; const result = await call<DomainDnsReceipt>("/identity/domain-dns/apply", { reviewId: review.id, confirmation }); if (current === generation.current) { setReceipt(result); setReview(undefined); setConfirmation(""); } })}>Apply this production DNS change</button></>}>
-      {error ? <p role="alert">{error}</p> : null}<p><strong>Production AWS mutation</strong> · profile {review.context.profile} · account {review.context.account} · region {review.context.region} · deployment {review.context.deployment}</p><p>Zone {review.zone.name} · {review.zone.id} · hostname {review.hostname} → {review.target}</p><h3>Current record</h3><pre>{JSON.stringify(review.current, null, 2)}</pre><h3>Exact desired record and atomic change batch</h3><pre>{JSON.stringify(review.changeBatch, null, 2)}</pre><h3>Verified dependencies</h3>{review.dependencies.map(item => <p key={item}>{item}</p>)}{review.risks.map(item => <p className={"text-refuse wrap-anywhere"} key={item}>{item}</p>)}<p>Review expires {review.expiresAt}. Current source, deployment, certificate, delegation and records are rechecked before submission. No automatic retry follows an unconfirmed outcome.</p><label>Type <code>{review.confirmation}</code><TextInput className={"w-full"} aria-label="Confirm exact production DNS change" value={confirmation} disabled={busy} autoComplete="off" onChange={event => setConfirmation(event.target.value)} /></label>
-    </WorkbenchDialog> : null}
-  </>;
+  const inspectHealth = () =>
+    run(async () => {
+      const current = generation.current;
+      const value = await call<DomainHealth>(`/identity/domain-health?${query}`);
+      if (!value?.dns || !value.tls || !value.http || !value.application)
+        throw new Error(
+          "Domain health is unavailable in the running server. Restart npm run studio in this checkout.",
+        );
+      if (current === generation.current) setHealth(value);
+    });
+  const discover = () =>
+    run(async () => {
+      const current = generation.current;
+      const value = await call<DomainDnsDiscovery>(`/identity/domain-dns?${query}`);
+      if (!Array.isArray(value?.zones))
+        throw new Error(
+          "Managed DNS is unavailable in the running server. Restart npm run studio in this checkout.",
+        );
+      if (current === generation.current) {
+        setDiscovery(value);
+        setZoneId("");
+      }
+    });
+  return (
+    <>
+      <DocumentCard>
+        <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Live domain health and managed DNS</h2>
+        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          These explicit operations use only the saved production hostname and the selected
+          account/deployment above. Source approval, TLS/HTTP inspection and DNS routing changes are
+          separate actions.
+        </p>
+        <label className={documentLabelClasses}>
+          Configured domain purpose
+          <Select
+            className="w-full"
+            aria-label="Domain operation purpose"
+            value={purpose}
+            disabled={busy}
+            onChange={(event) => setPurpose(event.target.value as DomainPurpose)}
+          >
+            <option value="frontend">Frontend</option>
+            <option value="cognito">Cognito authentication</option>
+          </Select>
+        </label>
+        {sourceBusy ? (
+          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" role="status">
+            Review/apply or discard source edits before inspecting or changing the saved domain.
+          </p>
+        ) : null}
+        <div className={documentToolbarClasses}>
+          <button
+            className={cx(documentToolbarActionClasses, buttonClasses({ variant: "quiet" }))}
+            disabled={blocked}
+            onClick={() => void inspectHealth()}
+          >
+            Inspect live DNS / TLS / HTTP
+          </button>
+          <button
+            className={cx(documentToolbarActionClasses, buttonClasses({ variant: "quiet" }))}
+            disabled={blocked}
+            onClick={() => void discover()}
+          >
+            Discover managed DNS zones
+          </button>
+        </div>
+        {busy ? (
+          <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" role="status">
+            Reading/revalidating exact domain evidence…
+          </p>
+        ) : null}
+        {error ? (
+          <p
+            className={cx(noticeClasses(), "mt-0 mb-2 text-label leading-[1.5] last:mb-0")}
+            role="alert"
+          >
+            {error}
+          </p>
+        ) : null}
+        {health ? (
+          <div>
+            <h3 className="mt-3 mb-2 text-label">Observed {health.hostname}</h3>
+            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              {health.observedAt} · account {health.context.account} · source hash{" "}
+              <code>{health.sourceHash.slice(0, 12)}</code>
+            </p>
+            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              DNS: <strong>{health.dns.status}</strong> · {health.dns.addresses.join(", ")}{" "}
+              {health.dns.pinnedAddress ? `· pinned ${health.dns.pinnedAddress}` : ""}.{" "}
+              {health.dns.detail}
+            </p>
+            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              TLS: <strong>{health.tls.status}</strong>. {health.tls.detail}{" "}
+              {health.tls.expires ? `Expires ${health.tls.expires}.` : ""}
+            </p>
+            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              HTTP routing: <strong>{health.http.status}</strong>
+              {health.http.code ? ` · ${health.http.code}` : ""}
+              {health.http.cloudFrontHeaders ? " · CloudFront headers observed" : ""}.{" "}
+              {health.http.detail}{" "}
+              {health.http.redirectOrigin
+                ? `Redirect origin ${health.http.redirectOrigin}; not followed.`
+                : ""}
+            </p>
+            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              Application response: <strong>{health.application.status}</strong>
+              {health.application.title ? ` · title: ${health.application.title}` : ""}.{" "}
+              {health.application.detail}
+            </p>
+          </div>
+        ) : null}
+        {discovery ? (
+          <div>
+            <h3 className="mt-3 mb-2 text-label">Accessible public hosted zones</h3>
+            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              Observed account {discovery.context.account}. Choose the explicit containing zone;
+              review verifies its public NS delegation and existing records before any mutation.
+            </p>
+            <label className={documentLabelClasses}>
+              Managed DNS zone
+              <Select
+                className="w-full"
+                aria-label="Managed DNS zone"
+                value={zoneId}
+                disabled={blocked}
+                onChange={(event) => setZoneId(event.target.value)}
+              >
+                <option value="">Select a containing public zone</option>
+                {discovery.zones
+                  .filter((zone) => zone.matching.includes(purpose))
+                  .map((zone) => (
+                    <option key={zone.id} value={zone.id}>
+                      {zone.name} · {zone.id}
+                    </option>
+                  ))}
+              </Select>
+            </label>
+            {!discovery.zones.some((zone) => zone.matching.includes(purpose)) ? (
+              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                No accessible public zone contains this configured non-apex hostname. Use the
+                external-DNS instructions or manage apex/alias records through a separately
+                supported process.
+              </p>
+            ) : null}
+            <button
+              className={buttonClasses({ variant: "primary" })}
+              disabled={blocked || !zoneId}
+              onClick={() =>
+                void run(async () => {
+                  const current = generation.current;
+                  const value = await call<DomainDnsReview>("/identity/domain-dns/review", {
+                    selection,
+                    purpose,
+                    zoneId,
+                  });
+                  if (current === generation.current) {
+                    setReview(value);
+                    setConfirmation("");
+                  }
+                })
+              }
+            >
+              Review exact production DNS change
+            </button>
+          </div>
+        ) : null}
+        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+          Public addresses are pinned for TLS/HTTP; local/private/reserved and mixed DNS answers are
+          blocked. Redirects are not followed. A 200 response, HTML title or Route53 INSYNC does not
+          establish application runtime or successful sign-in.
+        </p>
+        {receipt ? (
+          <div role="status">
+            <h3 className="mt-3 mb-2 text-label">DNS operation {receipt.status}</h3>
+            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+              {receipt.hostname} · {receipt.zoneId} · account {receipt.context.account}
+            </p>
+            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">{receipt.message}</p>
+            {receipt.changeId ? (
+              <>
+                <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+                  Change ID <code>{receipt.changeId}</code>
+                </p>
+                <button
+                  className={buttonClasses({ variant: "quiet" })}
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      const current = generation.current;
+                      const value = await call<DomainDnsReceipt>(
+                        `/identity/domain-dns/receipts/${receipt.id}/observe`,
+                        {},
+                      );
+                      if (current === generation.current) setReceipt(value);
+                    })
+                  }
+                >
+                  Observe authoritative propagation
+                </button>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+        {history.length ? (
+          <details className="mt-3">
+            <summary className="cursor-pointer py-1 text-label [[open]>&]:mb-2">
+              Saved DNS operation receipts
+            </summary>
+            {history.map((item) => (
+              <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0" key={item.id}>
+                <button
+                  className={buttonClasses({ variant: "link" })}
+                  onClick={() => setReceipt(item)}
+                >
+                  {item.hostname} · {item.status}
+                </button>{" "}
+                · zone {item.zoneId} · account {item.context.account} · {item.submittedAt}
+              </p>
+            ))}
+            <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
+              Receipts survive server restart. Interrupted/unconfirmed operations never replay
+              automatically.
+            </p>
+          </details>
+        ) : null}
+      </DocumentCard>
+      {review ? (
+        <WorkbenchDialog
+          title="Review production DNS routing"
+          busy={busy}
+          onClose={() => setReview(undefined)}
+          footer={
+            <>
+              <button
+                className={buttonClasses({ variant: "quiet" })}
+                disabled={busy}
+                onClick={() => setReview(undefined)}
+              >
+                Cancel
+              </button>
+              <button
+                className={cx(dialogPrimaryActionClasses, buttonClasses({ variant: "primary" }))}
+                data-variant="primary"
+                disabled={blocked || confirmation !== review.confirmation}
+                onClick={() =>
+                  void run(async () => {
+                    const current = generation.current;
+                    const result = await call<DomainDnsReceipt>("/identity/domain-dns/apply", {
+                      reviewId: review.id,
+                      confirmation,
+                    });
+                    if (current === generation.current) {
+                      setReceipt(result);
+                      setReview(undefined);
+                      setConfirmation("");
+                    }
+                  })
+                }
+              >
+                Apply this production DNS change
+              </button>
+            </>
+          }
+        >
+          {error ? (
+            <p role="alert" className="text-label">
+              {error}
+            </p>
+          ) : null}
+          <p className="text-label">
+            <strong>Production AWS mutation</strong> · profile {review.context.profile} · account{" "}
+            {review.context.account} · region {review.context.region} · deployment{" "}
+            {review.context.deployment}
+          </p>
+          <p className="text-label">
+            Zone {review.zone.name} · {review.zone.id} · hostname {review.hostname} →{" "}
+            {review.target}
+          </p>
+          <h3 className={dialogBodyHeadingClasses}>Current record</h3>
+          <pre className="min-w-0 max-w-full overflow-auto">
+            {JSON.stringify(review.current, null, 2)}
+          </pre>
+          <h3 className={dialogBodyHeadingClasses}>Exact desired record and atomic change batch</h3>
+          <pre className="min-w-0 max-w-full overflow-auto">
+            {JSON.stringify(review.changeBatch, null, 2)}
+          </pre>
+          <h3 className={dialogBodyHeadingClasses}>Verified dependencies</h3>
+          {review.dependencies.map((item) => (
+            <p key={item} className="text-label">
+              {item}
+            </p>
+          ))}
+          {review.risks.map((item) => (
+            <p className="text-label text-refuse wrap-anywhere" key={item}>
+              {item}
+            </p>
+          ))}
+          <p className="text-label">
+            Review expires {review.expiresAt}. Current source, deployment, certificate, delegation
+            and records are rechecked before submission. No automatic retry follows an unconfirmed
+            outcome.
+          </p>
+          <label>
+            Type <code>{review.confirmation}</code>
+            <TextInput
+              className="w-full"
+              aria-label="Confirm exact production DNS change"
+              value={confirmation}
+              disabled={busy}
+              autoComplete="off"
+              onChange={(event) => setConfirmation(event.target.value)}
+            />
+          </label>
+        </WorkbenchDialog>
+      ) : null}
+    </>
+  );
 }

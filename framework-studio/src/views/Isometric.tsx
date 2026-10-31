@@ -1,6 +1,15 @@
 import { remapEntity } from "../../shared/naming";
 import { inspectorContextClasses } from "../inspector-ui";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { CATEGORY_DESCRIPTION, CATEGORY_LABEL, type EdgeCategory } from "../lookup";
 import { buildScene, type Scene, type SceneNode } from "../scene/build";
 import { islandDrawOrder, islandSlabs } from "../scene/slabs";
@@ -19,7 +28,13 @@ import {
   type Point,
   type Viewport,
 } from "../scene/camera";
-import { distanceToPolyline, insidePolygon, pickEntity, pickIsland, type CardHit } from "../scene/picking";
+import {
+  distanceToPolyline,
+  insidePolygon,
+  pickEntity,
+  pickIsland,
+  type CardHit,
+} from "../scene/picking";
 import { layoutAspect, type LayoutResult } from "../scene/layout-optimize";
 import { fitScene, selectionBounds } from "../scene/fit";
 import { connectionMidpoint } from "../scene/routing";
@@ -45,9 +60,22 @@ import { MapToolbar } from "./map/MapToolbar";
 import { tagGroups, tagKeys, UNTAGGED_FILTER } from "../tag-groups";
 
 const TAG_VIEW_STORAGE = "framework-studio:isometric-tag-filter";
-interface TagFilterPreference { readonly key: string; readonly value?: string | null }
+interface TagFilterPreference {
+  readonly key: string;
+  readonly value?: string | null;
+}
 const rememberedTagFilter = (): TagFilterPreference => {
-  try { const value = JSON.parse(window.localStorage.getItem(TAG_VIEW_STORAGE) ?? "null"); if (value && typeof value.key === "string" && (value.value === undefined || value.value === null || typeof value.value === "string")) return value; } catch { /* Invalid preferences fall back to the whole topology. */ }
+  try {
+    const value = JSON.parse(window.localStorage.getItem(TAG_VIEW_STORAGE) ?? "null");
+    if (
+      value &&
+      typeof value.key === "string" &&
+      (value.value === undefined || value.value === null || typeof value.value === "string")
+    )
+      return value;
+  } catch {
+    /* Invalid preferences fall back to the whole topology. */
+  }
   return { key: "" };
 };
 
@@ -86,19 +114,37 @@ interface Tween {
   readonly source?: "reveal";
 }
 
-const reducedMotion = () => typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const reducedMotion = () =>
+  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // Ownership and native references are context for inspection, not background activity.
-const CATEGORIES = (Object.keys(CATEGORY_LABEL) as EdgeCategory[]).filter(category => category !== "structure");
+const CATEGORIES = (Object.keys(CATEGORY_LABEL) as EdgeCategory[]).filter(
+  (category) => category !== "structure",
+);
 
 export function Isometric() {
-  const { model, index, snapshot, selected, select, inspect: startInspection, inspectorNavigation, created, draft, entityAliases, namingRevision } = useStudio();
-  const hasEntities = model.targets.length > 0 || model.resources.length > 0 || !!model.networks?.length;
+  const {
+    model,
+    index,
+    snapshot,
+    selected,
+    select,
+    inspect: startInspection,
+    inspectorNavigation,
+    created,
+    draft,
+    entityAliases,
+    namingRevision,
+  } = useStudio();
+  const hasEntities =
+    model.targets.length > 0 || model.resources.length > 0 || !!model.networks?.length;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<SceneRenderer | undefined>(undefined);
   const [motion, setMotion] = useState(() => !reducedMotion());
-  const [categories, setCategories] = useState<ReadonlySet<EdgeCategory>>(() => new Set(CATEGORIES.filter(category => category !== "routes" && category !== "inputs")));
+  const [categories, setCategories] = useState<ReadonlySet<EdgeCategory>>(
+    () => new Set(CATEGORIES.filter((category) => category !== "routes" && category !== "inputs")),
+  );
   const [query, setQuery] = useState("");
   const [resourceKind, setResourceKind] = useState("");
   // Whether Resources is open beneath any inspector; a selection always shows its inspector.
@@ -132,43 +178,124 @@ export function Isometric() {
   const appliedAspect = useRef(16 / 9);
 
   const conditions = useMemo(
-    () => Object.fromEntries(Object.entries(snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])),
+    () =>
+      Object.fromEntries(
+        Object.entries(snapshot.source.catalog).map(([id, facts]) => [id, facts.condition]),
+      ),
     [snapshot.source.catalog],
   );
-  const resourceAvailability = useMemo(() => catalogAvailability(snapshot.models), [snapshot.models]);
+  const resourceAvailability = useMemo(
+    () => catalogAvailability(snapshot.models),
+    [snapshot.models],
+  );
   const availableTagKeys = useMemo(() => tagKeys(model, index), [model, index]);
   const activeTagKey = model.tagging ? tagFilter.key : "";
   const untaggedOnly = activeTagKey === UNTAGGED_FILTER;
   const filterValue = untaggedOnly ? null : tagFilter.value;
-  const untaggedCount = useMemo(() => tagGroups(model, UNTAGGED_FILTER, index)[0]!.members.length, [model, index]);
-  const groups = useMemo(() => activeTagKey ? tagGroups(model, activeTagKey, index) : [], [model, activeTagKey, index]);
-  const tagMatchCount = groups.find(group => group.value === filterValue)?.members.length ?? 0;
-  const topology = useMemo(() => buildScene(model, { conditions, resourceAvailability,
-    layoutModels: [snapshot.models.dev, snapshot.models.prod], layoutSettings: { aspect, previous: previousLayout.current?.positions, previousKey: previousLayout.current?.topologyKey, preservePositions: namingRevision === snapshot.revision } }), [model, snapshot.models, conditions, resourceAvailability, aspect, namingRevision]);
-  const scene = useMemo(() => activeTagKey && filterValue !== undefined ? filterSceneByTag(topology, model, activeTagKey, filterValue) : topology, [topology, model, activeTagKey, filterValue]);
-  const visibleCategories = useMemo(() => CATEGORIES.filter(category => scene.edges.some(edge => edge.categories.includes(category))), [scene]);
-  useLayoutEffect(() => { previousLayout.current = scene.layout; }, [scene]);
-  const visibleSelected = selected ? scene.representatives[selected] ?? scene.edges.find((edge) => edge.members.some((member) => member.edge.id === selected))?.id ?? selected : undefined;
+  const untaggedCount = useMemo(
+    () => tagGroups(model, UNTAGGED_FILTER, index)[0]!.members.length,
+    [model, index],
+  );
+  const groups = useMemo(
+    () => (activeTagKey ? tagGroups(model, activeTagKey, index) : []),
+    [model, activeTagKey, index],
+  );
+  const tagMatchCount = groups.find((group) => group.value === filterValue)?.members.length ?? 0;
+  const topology = useMemo(
+    () =>
+      buildScene(model, {
+        conditions,
+        resourceAvailability,
+        layoutModels: [snapshot.models.dev, snapshot.models.prod],
+        layoutSettings: {
+          aspect,
+          previous: previousLayout.current?.positions,
+          previousKey: previousLayout.current?.topologyKey,
+          preservePositions: namingRevision === snapshot.revision,
+        },
+      }),
+    [model, snapshot.models, conditions, resourceAvailability, aspect, namingRevision],
+  );
+  const scene = useMemo(
+    () =>
+      activeTagKey && filterValue !== undefined
+        ? filterSceneByTag(topology, model, activeTagKey, filterValue)
+        : topology,
+    [topology, model, activeTagKey, filterValue],
+  );
+  const visibleCategories = useMemo(
+    () =>
+      CATEGORIES.filter((category) =>
+        scene.edges.some((edge) => edge.categories.includes(category)),
+      ),
+    [scene],
+  );
+  useLayoutEffect(() => {
+    previousLayout.current = scene.layout;
+  }, [scene]);
+  const visibleSelected = selected
+    ? (scene.representatives[selected] ??
+      scene.edges.find((edge) => edge.members.some((member) => member.edge.id === selected))?.id ??
+      selected)
+    : undefined;
   const matches = useMemo(() => searchScene(scene, model, query), [scene, model, query]);
   const nodes = useMemo(() => new Map(scene.nodes.map((node) => [node.id, node])), [scene]);
-  const resourceKinds = useMemo(() => [...new Set(scene.nodes.map(node => node.kindLabel.split(",")[0]!))].sort(), [scene]);
-  const navigatorNodes = useMemo(() => scene.nodes.filter(node => (!matches || matches.nodes.has(node.id)) && (!resourceKind || node.kindLabel.split(",")[0] === resourceKind))
-    .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)), [scene, matches, resourceKind]);
-  const navigatorFixtures = useMemo(() => matches ? scene.props.filter(prop => matches.props.has(prop.id)) : [], [scene, matches]);
-  const preview = view === "resources" && (navigatorNodes.some(node => node.id === resourcePreview) || navigatorFixtures.some(prop => prop.id === resourcePreview)) ? resourcePreview : undefined;
-  const focusState = useMemo(() => landscapeFocus(scene, preview ?? visibleSelected, matches), [scene, preview, visibleSelected, matches]);
-  const needsAttention = useCallback((id: string) => !!nodes.get(id)?.sourceProblems?.length
-    || model.diagnostics.some(diagnostic => diagnostic.entity === id && diagnostic.severity === "error"), [nodes, model.diagnostics]);
+  const resourceKinds = useMemo(
+    () => [...new Set(scene.nodes.map((node) => node.kindLabel.split(",")[0]!))].sort(),
+    [scene],
+  );
+  const navigatorNodes = useMemo(
+    () =>
+      scene.nodes
+        .filter(
+          (node) =>
+            (!matches || matches.nodes.has(node.id)) &&
+            (!resourceKind || node.kindLabel.split(",")[0] === resourceKind),
+        )
+        .sort((a, b) => a.label.localeCompare(b.label) || a.id.localeCompare(b.id)),
+    [scene, matches, resourceKind],
+  );
+  const navigatorFixtures = useMemo(
+    () => (matches ? scene.props.filter((prop) => matches.props.has(prop.id)) : []),
+    [scene, matches],
+  );
+  const preview =
+    view === "resources" &&
+    (navigatorNodes.some((node) => node.id === resourcePreview) ||
+      navigatorFixtures.some((prop) => prop.id === resourcePreview))
+      ? resourcePreview
+      : undefined;
+  const focusState = useMemo(
+    () => landscapeFocus(scene, preview ?? visibleSelected, matches),
+    [scene, preview, visibleSelected, matches],
+  );
+  const needsAttention = useCallback(
+    (id: string) =>
+      !!nodes.get(id)?.sourceProblems?.length ||
+      model.diagnostics.some(
+        (diagnostic) => diagnostic.entity === id && diagnostic.severity === "error",
+      ),
+    [nodes, model.diagnostics],
+  );
   const slabs = useMemo(() => islandDrawOrder(islandSlabs(scene)), [scene]);
   const arcs = useMemo(
     () =>
       scene.edges.map((edge) => {
         const points = scene.routes[edge.id]!.points;
-        return { edge, points, missing: missingConnectionInput(edge), midpoint: connectionMidpoint(points), ...pathBounds(points) };
+        return {
+          edge,
+          points,
+          missing: missingConnectionInput(edge),
+          midpoint: connectionMidpoint(points),
+          ...pathBounds(points),
+        };
       }),
     [scene],
   );
-  const silhouettes = useMemo(() => scene.nodes.map((node) => ({ id: node.id, hull: node.geometry.hull })), [scene]);
+  const silhouettes = useMemo(
+    () => scene.nodes.map((node) => ({ id: node.id, hull: node.geometry.hull })),
+    [scene],
+  );
 
   // Everything the frame loop reads, without re-subscribing it on every render.
   const live = useRef({
@@ -198,8 +325,10 @@ export function Isometric() {
   });
   // A confirmed rename changes identity without changing this person's place on the map.
   if (appliedEntityRemap.current !== entityAliases) {
-    if (browserMemory.current.returnTo) browserMemory.current.returnTo = remapEntity(browserMemory.current.returnTo, entityAliases);
-    if (live.current.inspectedSelection) live.current.inspectedSelection = remapEntity(live.current.inspectedSelection, entityAliases);
+    if (browserMemory.current.returnTo)
+      browserMemory.current.returnTo = remapEntity(browserMemory.current.returnTo, entityAliases);
+    if (live.current.inspectedSelection)
+      live.current.inspectedSelection = remapEntity(live.current.inspectedSelection, entityAliases);
     appliedEntityRemap.current = entityAliases;
   }
   live.current.scene = scene;
@@ -216,7 +345,10 @@ export function Isometric() {
     if (!renderer) return;
     const now = performance.now();
     if (state.tween) {
-      const t = state.tween.duration <= 0 ? 1 : Math.min(1, (now - state.tween.start) / state.tween.duration);
+      const t =
+        state.tween.duration <= 0
+          ? 1
+          : Math.min(1, (now - state.tween.start) / state.tween.duration);
       state.camera = interpolate(state.tween.from, state.tween.to, t);
       if (t >= 1) state.tween = undefined;
     }
@@ -252,7 +384,8 @@ export function Isometric() {
   const moveCamera = useCallback(
     (to: Camera, animate = true) => {
       const state = live.current;
-      if (animate && !reducedMotion()) state.tween = { from: state.camera, to, start: performance.now(), duration: 450 };
+      if (animate && !reducedMotion())
+        state.tween = { from: state.camera, to, start: performance.now(), duration: 450 };
       else {
         state.tween = undefined;
         state.camera = to;
@@ -269,19 +402,27 @@ export function Isometric() {
 
   const focus = useCallback(
     (id: string | undefined, zoom?: number) => {
-      const node = id ? live.current.scene.nodes.find((candidate) => candidate.id === id) : undefined;
+      const node = id
+        ? live.current.scene.nodes.find((candidate) => candidate.id === id)
+        : undefined;
       if (!node) {
         const island = islandSlabs(live.current.scene).find((slab) => slab.island.id === id);
         if (island) moveCamera(fitBounds(island.bounds, live.current.viewport, 60));
         return;
       }
       const camera = live.current.camera;
-      moveCamera({ x: node.geometry.top.x, y: node.geometry.top.y, zoom: zoom ?? Math.max(camera.zoom, 0.9) });
+      moveCamera({
+        x: node.geometry.top.x,
+        y: node.geometry.top.y,
+        zoom: zoom ?? Math.max(camera.zoom, 0.9),
+      });
     },
     [moveCamera],
   );
 
-  useEffect(() => { if (created) focus(scene.representatives[created.id] ?? created.id); }, [created, focus]);
+  useEffect(() => {
+    if (created) focus(scene.representatives[created.id] ?? created.id);
+  }, [created, focus]);
 
   const resize = useCallback(() => {
     const container = containerRef.current;
@@ -298,21 +439,36 @@ export function Isometric() {
     // Selection and the panel are presentation; use the containing workspace
     // dimensions so opening a node does not relayout the architecture.
     const workspace = container.closest("[data-studio-workspace]")?.getBoundingClientRect();
-    const nextAspect = layoutAspect(workspace?.width ?? next.width, workspace?.height ?? next.height);
+    const nextAspect = layoutAspect(
+      workspace?.width ?? next.width,
+      workspace?.height ?? next.height,
+    );
     window.clearTimeout(aspectTimer.current);
     aspectTimer.current = window.setTimeout(() => {
       if (appliedAspect.current === nextAspect) return;
-      appliedAspect.current = nextAspect; previousLayout.current = undefined; pendingLayoutFit.current = true; setAspect(nextAspect);
+      appliedAspect.current = nextAspect;
+      previousLayout.current = undefined;
+      pendingLayoutFit.current = true;
+      setAspect(nextAspect);
     }, 180);
     // Only a side panel holds the map still; vertical changes (a wrapping toolbar, the panel
     // stacked above a narrow map) keep the map anchored to the canvas's top, as before.
     const moved = { x: origin.x - previousOrigin.x, y: 0 };
-    if (state.fitted && next.width === previous.width && next.height === previous.height && !moved.x && !selectionChanged) return;
+    if (
+      state.fitted &&
+      next.width === previous.width &&
+      next.height === previous.height &&
+      !moved.x &&
+      !selectionChanged
+    )
+      return;
     state.viewport = next;
     state.origin = origin;
     // The map's whole span, panel included, in viewport coordinates.
     const span = container.closest("[data-landscape-content]")?.getBoundingClientRect();
-    state.stage = span ? { left: span.left - rect.left, width: span.width } : { left: 0, width: next.width };
+    state.stage = span
+      ? { left: span.left - rect.left, width: span.width }
+      : { left: 0, width: next.width };
     if (!state.fitted) {
       state.fitted = true;
       state.camera = fitScene(state.scene, next);
@@ -320,15 +476,25 @@ export function Isometric() {
       state.camera = resizeCamera(state.camera, previous, next, moved);
       // An in-flight focus starts from the resized camera, without jumping back to its old origin,
       // and takes precedence over revealing the selection.
-      if (state.tween) state.tween = { ...state.tween, from: state.camera, start: performance.now() };
+      if (state.tween)
+        state.tween = { ...state.tween, from: state.camera, start: performance.now() };
       // A new selection from the map, the list or a link comes into view, however it was cut off.
-      const bounds = selectionChanged && state.selected && !state.tween ? selectionBounds(state.scene, state.selected) : undefined;
+      const bounds =
+        selectionChanged && state.selected && !state.tween
+          ? selectionBounds(state.scene, state.selected)
+          : undefined;
       // What the map showed before this change, in the new viewport's coordinates: wider than
       // the viewport when a panel has just opened over part of it.
       const shown = { left: -moved.x, right: previous.width - moved.x };
       const revealed = bounds ? revealSelection(state.camera, next, bounds, shown) : undefined;
       if (revealed) {
-        state.tween = { from: state.camera, to: revealed, start: performance.now(), duration: reducedMotion() ? 0 : 450, source: "reveal" };
+        state.tween = {
+          from: state.camera,
+          to: revealed,
+          start: performance.now(),
+          duration: reducedMotion() ? 0 : 450,
+          source: "reveal",
+        };
       }
     }
     // A ResizeObserver runs before paint but after animation callbacks. Waiting for another
@@ -365,7 +531,12 @@ export function Isometric() {
   }, [schedule, resize, hasEntities]);
 
   useEffect(schedule, [schedule, scene, selected, motion, focusState, categories]);
-  useEffect(() => { if (pendingLayoutFit.current) { pendingLayoutFit.current = false; fit(); } }, [scene, fit]);
+  useEffect(() => {
+    if (pendingLayoutFit.current) {
+      pendingLayoutFit.current = false;
+      fit();
+    }
+  }, [scene, fit]);
 
   // Opening/closing the panel changes CSS layout during this commit. Resize and paint
   // now, rather than leaving a stretched frame until the observer's next animation callback.
@@ -374,17 +545,23 @@ export function Isometric() {
   }, [visibleSelected, view, resize]);
 
   /** Opens an inspector in the panel, from the list, the map or the keyboard entity list. */
-  const inspect = useCallback((id: string, fromPanel = false) => {
-    focusBack.current = fromPanel;
-    startInspection(id, fromPanel);
-  }, [startInspection]);
+  const inspect = useCallback(
+    (id: string, fromPanel = false) => {
+      focusBack.current = fromPanel;
+      startInspection(id, fromPanel);
+    },
+    [startInspection],
+  );
   /** Back to Resources: end the selection and return to the list as it was, at the row it opened. Pending edits ask first. */
-  const back = () => draft.requestNavigation(() => {
-    const origin = inspectorNavigation.origin ?? selected;
-    browserMemory.current.returnTo = origin ? scene.representatives[origin] ?? origin : undefined;
-    setBrowsing(true);
-    select(undefined);
-  });
+  const back = () =>
+    draft.requestNavigation(() => {
+      const origin = inspectorNavigation.origin ?? selected;
+      browserMemory.current.returnTo = origin
+        ? (scene.representatives[origin] ?? origin)
+        : undefined;
+      setBrowsing(true);
+      select(undefined);
+    });
   /** Close Panel: collapse it, end the selection and hand the keyboard back to the map. */
   const close = (focusMap = true) => {
     const proceed = () => {
@@ -392,9 +569,14 @@ export function Isometric() {
       if (selected) select(undefined);
       if (focusMap) canvasRef.current?.focus({ preventScroll: true });
     };
-    if (selected !== undefined) draft.requestNavigation(proceed); else proceed();
+    if (selected !== undefined) draft.requestNavigation(proceed);
+    else proceed();
   };
-  const toggleResources = () => { if (view === "resources") close(false); else if (view === "inspector") back(); else setBrowsing(true); };
+  const toggleResources = () => {
+    if (view === "resources") close(false);
+    else if (view === "inspector") back();
+    else setBrowsing(true);
+  };
   // Opening a row keeps keyboard users in the panel; a map click leaves focus on the map.
   useEffect(() => {
     if (view !== "inspector" || !focusBack.current) return;
@@ -410,26 +592,45 @@ export function Isometric() {
       const entity = pickEntity(screen, world, [...state.badges, ...state.cards], silhouettes);
       if (entity) return { kind: "node", id: entity, ...screen };
       for (const arc of arcs) {
-        if (!arc.missing || !connectionVisible(arc.edge, state.categories, state.preview ?? state.selected)) continue;
+        if (
+          !arc.missing ||
+          !connectionVisible(arc.edge, state.categories, state.preview ?? state.selected)
+        )
+          continue;
         const marker = worldToScreen(state.camera, state.viewport, arc.midpoint);
-        if (Math.hypot(marker.x - screen.x, marker.y - screen.y) <= 12) return { kind: "edge", id: arc.edge.id, ...screen };
+        if (Math.hypot(marker.x - screen.x, marker.y - screen.y) <= 12)
+          return { kind: "edge", id: arc.edge.id, ...screen };
       }
       for (let position = scene.props.length - 1; position >= 0; position -= 1) {
-        if (insidePolygon(world.x, world.y, scene.props[position]!.geometry.hull)) return { kind: "prop", id: scene.props[position]!.id, ...screen };
+        if (insidePolygon(world.x, world.y, scene.props[position]!.geometry.hull))
+          return { kind: "prop", id: scene.props[position]!.id, ...screen };
       }
       const tolerance = 6 / state.camera.zoom;
       let best: { id: string; distance: number } | undefined;
       for (const arc of arcs) {
-        if (!connectionVisible(arc.edge, state.categories, state.preview ?? state.selected)) continue;
-        if (world.x < arc.minX - tolerance || world.x > arc.maxX + tolerance || world.y < arc.minY - tolerance || world.y > arc.maxY + tolerance) continue;
+        if (!connectionVisible(arc.edge, state.categories, state.preview ?? state.selected))
+          continue;
+        if (
+          world.x < arc.minX - tolerance ||
+          world.x > arc.maxX + tolerance ||
+          world.y < arc.minY - tolerance ||
+          world.y > arc.maxY + tolerance
+        )
+          continue;
         const distance = distanceToPolyline(world, arc.points);
-        if (distance < tolerance && (!best || distance < best.distance)) best = { id: arc.edge.id, distance };
+        if (distance < tolerance && (!best || distance < best.distance))
+          best = { id: arc.edge.id, distance };
       }
       if (best) return { kind: "edge", id: best.id, ...screen };
       const island = pickIsland(world, slabs);
       if (island) return { kind: "island", ...island, ...screen };
       for (const frame of scene.frames) {
-        if ([frame.geometry.top, frame.geometry.left, frame.geometry.right].some((polygon) => insidePolygon(world.x, world.y, polygon))) return { kind: "island", id: frame.members[0]!, ...screen };
+        if (
+          [frame.geometry.top, frame.geometry.left, frame.geometry.right].some((polygon) =>
+            insidePolygon(world.x, world.y, polygon),
+          )
+        )
+          return { kind: "island", id: frame.members[0]!, ...screen };
       }
       return undefined;
     },
@@ -443,7 +644,11 @@ export function Isometric() {
       const hovered = next?.kind === "node" ? next.id : undefined;
       const hoveredEdge = next?.kind === "edge" ? next.id : undefined;
       const hoveredIsland = next?.kind === "island" ? next.id : undefined;
-      if (hovered !== state.hovered || hoveredEdge !== state.hoveredEdge || hoveredIsland !== state.hoveredIsland) {
+      if (
+        hovered !== state.hovered ||
+        hoveredEdge !== state.hoveredEdge ||
+        hoveredIsland !== state.hoveredIsland
+      ) {
         state.hovered = hovered;
         state.hoveredEdge = hoveredEdge;
         state.hoveredIsland = hoveredIsland;
@@ -455,26 +660,48 @@ export function Isometric() {
       if (!next) {
         window.clearTimeout(hoverOpenTimer.current);
         dismissedHover.current = undefined;
-        if (!tooltipPointed.current) hoverCloseTimer.current = window.setTimeout(() => setHover(undefined), 120);
+        if (!tooltipPointed.current)
+          hoverCloseTimer.current = window.setTimeout(() => setHover(undefined), 120);
         return;
       }
-      if (dismissedHover.current && dismissedHover.current !== next.id) dismissedHover.current = undefined;
+      if (dismissedHover.current && dismissedHover.current !== next.id)
+        dismissedHover.current = undefined;
       if (dismissedHover.current === next.id) return;
-      if (visibleHover.current?.kind === next.kind && visibleHover.current.id === next.id && visibleHover.current.band === next.band) return;
-      if (!immediate && previous?.kind === next.kind && previous.id === next.id && previous.band === next.band) return;
+      if (
+        visibleHover.current?.kind === next.kind &&
+        visibleHover.current.id === next.id &&
+        visibleHover.current.band === next.band
+      )
+        return;
+      if (
+        !immediate &&
+        previous?.kind === next.kind &&
+        previous.id === next.id &&
+        previous.band === next.band
+      )
+        return;
       window.clearTimeout(hoverOpenTimer.current);
       setHover(undefined);
       if (immediate) setHover(next);
-      else hoverOpenTimer.current = window.setTimeout(() => {
-        if (hoverCandidate.current?.id === next.id && dismissedHover.current !== next.id) setHover(next);
-      }, 220);
+      else
+        hoverOpenTimer.current = window.setTimeout(() => {
+          if (hoverCandidate.current?.id === next.id && dismissedHover.current !== next.id)
+            setHover(next);
+        }, 220);
     },
     [schedule],
   );
 
-  useEffect(() => () => { window.clearTimeout(hoverOpenTimer.current); window.clearTimeout(hoverCloseTimer.current); }, []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(hoverOpenTimer.current);
+      window.clearTimeout(hoverCloseTimer.current);
+    },
+    [],
+  );
   const keepTooltip = useCallback(() => {
-    tooltipPointed.current = true; window.clearTimeout(hoverCloseTimer.current);
+    tooltipPointed.current = true;
+    window.clearTimeout(hoverCloseTimer.current);
     if (visibleHover.current) setHovered(visibleHover.current, true);
   }, [setHovered]);
   const leaveTooltip = useCallback(() => {
@@ -485,18 +712,25 @@ export function Isometric() {
   useEffect(() => {
     if (!hover || resourcePreview) return;
     const dismiss = (event: KeyboardEvent) => {
-      if ((event.key === "PageDown" || event.key === "PageUp") && (keyboardAnchor || document.activeElement === canvasRef.current)) {
+      if (
+        (event.key === "PageDown" || event.key === "PageUp") &&
+        (keyboardAnchor || document.activeElement === canvasRef.current)
+      ) {
         const card = document.getElementById(tooltipId);
         if (card && card.scrollHeight > card.clientHeight) {
-          event.preventDefault(); event.stopPropagation();
+          event.preventDefault();
+          event.stopPropagation();
           card.scrollTop += card.clientHeight * 0.8 * (event.key === "PageDown" ? 1 : -1);
           return;
         }
       }
       if (event.key !== "Escape") return;
-      event.preventDefault(); event.stopPropagation();
-      window.clearTimeout(hoverOpenTimer.current); window.clearTimeout(hoverCloseTimer.current);
-      dismissedHover.current = hover.id; tooltipPointed.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+      window.clearTimeout(hoverOpenTimer.current);
+      window.clearTimeout(hoverCloseTimer.current);
+      dismissedHover.current = hover.id;
+      tooltipPointed.current = false;
       setHover(undefined);
     };
     document.addEventListener("keydown", dismiss, true);
@@ -530,9 +764,15 @@ export function Isometric() {
         // The short corridor between trigger and card must not switch to terrain underneath it.
         const card = current && document.getElementById(tooltipId)?.getBoundingClientRect();
         const canvas = canvasRef.current?.getBoundingClientRect();
-        const crossing = current && card && canvas && next?.id !== current.id
-          && point.x >= Math.min(current.x - 6, card.left - canvas.left - 6) && point.x <= Math.max(current.x + 6, card.right - canvas.left + 6)
-          && point.y >= Math.min(current.y - 6, card.top - canvas.top - 6) && point.y <= Math.max(current.y + 6, card.bottom - canvas.top + 6);
+        const crossing =
+          current &&
+          card &&
+          canvas &&
+          next?.id !== current.id &&
+          point.x >= Math.min(current.x - 6, card.left - canvas.left - 6) &&
+          point.x <= Math.max(current.x + 6, card.right - canvas.left + 6) &&
+          point.y >= Math.min(current.y - 6, card.top - canvas.top - 6) &&
+          point.y <= Math.max(current.y + 6, card.bottom - canvas.top + 6);
         if (!crossing) setHovered(next);
       }
     });
@@ -540,7 +780,9 @@ export function Isometric() {
 
   // Pointer input: a press that travels less than the threshold is a click.
   const pointers = useRef(new Map<number, Point>());
-  const gesture = useRef<{ start: Point; last: Point; dragging: boolean; pinch?: number } | undefined>(undefined);
+  const gesture = useRef<
+    { start: Point; last: Point; dragging: boolean; pinch?: number } | undefined
+  >(undefined);
 
   const local = (event: { clientX: number; clientY: number }): Point => {
     const rect = canvasRef.current!.getBoundingClientRect();
@@ -550,15 +792,22 @@ export function Isometric() {
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0 && event.pointerType === "mouse") return;
     cancelHover();
-    window.clearTimeout(hoverOpenTimer.current); window.clearTimeout(hoverCloseTimer.current);
-    setHover(undefined); setKeyboardAnchor(undefined);
+    window.clearTimeout(hoverOpenTimer.current);
+    window.clearTimeout(hoverCloseTimer.current);
+    setHover(undefined);
+    setKeyboardAnchor(undefined);
     canvasRef.current!.setPointerCapture(event.pointerId);
     const point = local(event);
     pointers.current.set(event.pointerId, point);
     live.current.tween = undefined;
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
-      gesture.current = { start: point, last: point, dragging: true, pinch: Math.hypot(a!.x - b!.x, a!.y - b!.y) };
+      gesture.current = {
+        start: point,
+        last: point,
+        dragging: true,
+        pinch: Math.hypot(a!.x - b!.x, a!.y - b!.y),
+      };
       setDragging(true);
     } else {
       gesture.current = { start: point, last: point, dragging: false };
@@ -583,7 +832,10 @@ export function Isometric() {
       schedule();
       return;
     }
-    if (!current.dragging && Math.hypot(point.x - current.start.x, point.y - current.start.y) >= DRAG_THRESHOLD) {
+    if (
+      !current.dragging &&
+      Math.hypot(point.x - current.start.x, point.y - current.start.y) >= DRAG_THRESHOLD
+    ) {
       current.dragging = true;
       setDragging(true);
       setHovered(undefined);
@@ -604,8 +856,10 @@ export function Isometric() {
     if (!current || current.dragging) return;
     const hit = pick(local(event));
     // Clicking the inspected entity again ends its inspection.
-    if (hit) { if (hit.id === selected) select(undefined); else inspect(hit.id); }
-    else select(undefined);
+    if (hit) {
+      if (hit.id === selected) select(undefined);
+      else inspect(hit.id);
+    } else select(undefined);
   };
 
   const onPointerCancel = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -624,8 +878,7 @@ export function Isometric() {
       // Its two clicks toggled the selection on and off again; a double-click means this one.
       inspect(hit.id);
       focus(hit.id, Math.max(1.3, live.current.camera.zoom));
-    }
-    else moveCamera(zoomAt(live.current.camera, live.current.viewport, point, 1.8));
+    } else moveCamera(zoomAt(live.current.camera, live.current.viewport, point, 1.8));
   };
 
   // Wheel: zoom about the pointer. Registered by hand, because React's wheel
@@ -635,12 +888,18 @@ export function Isometric() {
     if (!canvas) return;
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      setHovered(undefined); setHover(undefined);
+      setHovered(undefined);
+      setHover(undefined);
       const state = live.current;
       state.tween = undefined;
       const point = local(event);
       if (event.ctrlKey || Math.abs(event.deltaY) >= Math.abs(event.deltaX)) {
-        state.camera = zoomAt(state.camera, state.viewport, point, wheelFactor(event.deltaY, event.deltaMode, state.viewport.height));
+        state.camera = zoomAt(
+          state.camera,
+          state.viewport,
+          point,
+          wheelFactor(event.deltaY, event.deltaMode, state.viewport.height),
+        );
       } else {
         state.camera = pan(state.camera, -event.deltaX, 0);
       }
@@ -652,13 +911,25 @@ export function Isometric() {
 
   const zoomBy = (factor: number) => {
     const state = live.current;
-    moveCamera(zoomAt(state.camera, state.viewport, { x: state.viewport.width / 2, y: state.viewport.height / 2 }, factor));
+    moveCamera(
+      zoomAt(
+        state.camera,
+        state.viewport,
+        { x: state.viewport.width / 2, y: state.viewport.height / 2 },
+        factor,
+      ),
+    );
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLCanvasElement>) => {
     const state = live.current;
     const step = 80;
-    const moves: Record<string, [number, number]> = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] };
+    const moves: Record<string, [number, number]> = {
+      ArrowLeft: [step, 0],
+      ArrowRight: [-step, 0],
+      ArrowUp: [0, step],
+      ArrowDown: [0, -step],
+    };
     const move = moves[event.key];
     if (move) {
       moveCamera(pan(state.camera, move[0], move[1]));
@@ -673,7 +944,12 @@ export function Isometric() {
 
   const changeTagFilter = (value: TagFilterPreference) => {
     setTagFilter(value);
-    try { if (value.key) window.localStorage.setItem(TAG_VIEW_STORAGE, JSON.stringify(value)); else window.localStorage.removeItem(TAG_VIEW_STORAGE); } catch { /* View preferences do not block the map. */ }
+    try {
+      if (value.key) window.localStorage.setItem(TAG_VIEW_STORAGE, JSON.stringify(value));
+      else window.localStorage.removeItem(TAG_VIEW_STORAGE);
+    } catch {
+      /* View preferences do not block the map. */
+    }
   };
 
   // Test and console access to where things are drawn. Read-only.
@@ -682,7 +958,7 @@ export function Isometric() {
       camera: () => live.current.camera,
       viewport: () => live.current.viewport,
       screenOf: (id: string) => {
-        const node = nodes.get(id) ?? scene.props.find(prop => prop.id === id);
+        const node = nodes.get(id) ?? scene.props.find((prop) => prop.id === id);
         if (!node) return undefined;
         const card = live.current.cards.find((candidate) => candidate.id === id);
         return {
@@ -693,18 +969,35 @@ export function Isometric() {
       pickAt: (x: number, y: number) => pick({ x, y }),
       cards: () => live.current.cards,
       badges: () => live.current.badges,
-      connections: () => scene.edges.map((connection) => ({
-        id: connection.id, from: connection.from, to: connection.to, members: connection.members.map((member) => member.edge.id),
-        availability: connection.availability, label: connectionLabel(connection), style: connection.style,
-        points: scene.routes[connection.id]!.points.map((point) => worldToScreen(live.current.camera, live.current.viewport, point)),
-        midpoint: worldToScreen(live.current.camera, live.current.viewport, connectionMidpoint(scene.routes[connection.id]!.points)),
-      })),
+      connections: () =>
+        scene.edges.map((connection) => ({
+          id: connection.id,
+          from: connection.from,
+          to: connection.to,
+          members: connection.members.map((member) => member.edge.id),
+          availability: connection.availability,
+          label: connectionLabel(connection),
+          style: connection.style,
+          points: scene.routes[connection.id]!.points.map((point) =>
+            worldToScreen(live.current.camera, live.current.viewport, point),
+          ),
+          midpoint: worldToScreen(
+            live.current.camera,
+            live.current.viewport,
+            connectionMidpoint(scene.routes[connection.id]!.points),
+          ),
+        })),
       hullOf: (id: string) => {
-        const node = nodes.get(id) ?? scene.props.find(prop => prop.id === id);
+        const node = nodes.get(id) ?? scene.props.find((prop) => prop.id === id);
         if (!node) return undefined;
         const points: Point[] = [];
         for (let index = 0; index < node.geometry.hull.length; index += 2) {
-          points.push(worldToScreen(live.current.camera, live.current.viewport, { x: node.geometry.hull[index]!, y: node.geometry.hull[index + 1]! }));
+          points.push(
+            worldToScreen(live.current.camera, live.current.viewport, {
+              x: node.geometry.hull[index]!,
+              y: node.geometry.hull[index + 1]!,
+            }),
+          );
         }
         return points;
       },
@@ -723,7 +1016,11 @@ export function Isometric() {
         props: [...live.current.focus.props],
         opacityOf: (id: string) => searchOpacity(live.current.focus, "nodes", id),
       }),
-      tagFilter: () => ({ key: activeTagKey, value: tagFilter.value, muted: scene.nodes.filter(node => node.tagFiltered).map(node => node.id) }),
+      tagFilter: () => ({
+        key: activeTagKey,
+        value: tagFilter.value,
+        muted: scene.nodes.filter((node) => node.tagFiltered).map((node) => node.id),
+      }),
     };
     (window as unknown as { __studioLandscape?: typeof debug }).__studioLandscape = debug;
     return () => {
@@ -733,108 +1030,268 @@ export function Isometric() {
 
   // Hover coordinates and the timing readout must not rebuild hundreds of
   // hidden controls. Selection, source and scene updates still refresh them.
-  const accessibleEntities = useMemo(() => (
-    <MapEntityNavigator scene={scene} index={index} selected={visibleSelected}
-      onInspect={id => { setHover(undefined); inspect(id); }}
-      onPointerDownCapture={event => { touchNavigator.current = event.pointerType === "touch"; }}
-      onFocusCapture={event => {
-        const button = (event.target as HTMLElement).closest("button");
-        if (!button) return;
-        const kind = button.dataset.hoverKind as Hover["kind"] | undefined;
-        const id = button.dataset.hoverId;
-        if (!kind || !id || touchNavigator.current) return;
-        dismissedHover.current = undefined;
-        setKeyboardAnchor(button);
-        setHovered({ kind, id, x: live.current.viewport.width / 2, y: live.current.viewport.height / 2 }, true);
-      }}
-      onBlurCapture={event => {
-        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
-        setKeyboardAnchor(undefined); setHovered(undefined);
-      }}
-      onKeyDown={(event) => {
-        touchNavigator.current = false;
-        if (event.key === "Escape") {
-          event.preventDefault(); event.stopPropagation(); canvasRef.current?.focus(); return;
-        }
-        const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
-        const current = items.indexOf(event.target as HTMLButtonElement);
-        if (current < 0) return;
-        const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : event.key === "ArrowDown" ? (current + 1) % items.length : event.key === "ArrowUp" ? (current - 1 + items.length) % items.length : undefined;
-        if (next === undefined) return;
-        event.preventDefault(); items[next]?.focus();
-      }} />
-  ), [scene, visibleSelected, index, inspect, setHovered]);
+  const accessibleEntities = useMemo(
+    () => (
+      <MapEntityNavigator
+        scene={scene}
+        index={index}
+        selected={visibleSelected}
+        onInspect={(id) => {
+          setHover(undefined);
+          inspect(id);
+        }}
+        onPointerDownCapture={(event) => {
+          touchNavigator.current = event.pointerType === "touch";
+        }}
+        onFocusCapture={(event) => {
+          const button = (event.target as HTMLElement).closest("button");
+          if (!button) return;
+          const kind = button.dataset.hoverKind as Hover["kind"] | undefined;
+          const id = button.dataset.hoverId;
+          if (!kind || !id || touchNavigator.current) return;
+          dismissedHover.current = undefined;
+          setKeyboardAnchor(button);
+          setHovered(
+            { kind, id, x: live.current.viewport.width / 2, y: live.current.viewport.height / 2 },
+            true,
+          );
+        }}
+        onBlurCapture={(event) => {
+          if (
+            event.relatedTarget instanceof Node &&
+            event.currentTarget.contains(event.relatedTarget)
+          )
+            return;
+          setKeyboardAnchor(undefined);
+          setHovered(undefined);
+        }}
+        onKeyDown={(event) => {
+          touchNavigator.current = false;
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            canvasRef.current?.focus();
+            return;
+          }
+          const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
+          const current = items.indexOf(event.target as HTMLButtonElement);
+          if (current < 0) return;
+          const next =
+            event.key === "Home"
+              ? 0
+              : event.key === "End"
+                ? items.length - 1
+                : event.key === "ArrowDown"
+                  ? (current + 1) % items.length
+                  : event.key === "ArrowUp"
+                    ? (current - 1 + items.length) % items.length
+                    : undefined;
+          if (next === undefined) return;
+          event.preventDefault();
+          items[next]?.focus();
+        }}
+      />
+    ),
+    [scene, visibleSelected, index, inspect, setHovered],
+  );
 
   if (!hasEntities) {
-    return <div data-ui="landscape-workspace" className="flex h-full min-h-0 flex-col"><p data-ui="empty">The {model.mode === "dev" ? "development" : "production"} graph did not load. Open configuration health for the reason.</p></div>;
+    return (
+      <div data-ui="landscape-workspace" className="flex h-full min-h-0 flex-col">
+        <p data-ui="empty">
+          The {model.mode === "dev" ? "development" : "production"} graph did not load. Open
+          configuration health for the reason.
+        </p>
+      </div>
+    );
   }
 
   return (
     <div data-ui="landscape-workspace" className="flex h-full min-h-0 flex-col">
       <MapToolbar
-        search={{ query, matches, selected, inputRef: searchRef, onChange: setQuery, onClearSelection: () => select(undefined) }}
-        tags={{ key: activeTagKey, value: filterValue, enabled: !!model.tagging, mode: model.mode,
-          availableKeys: availableTagKeys, groups, untaggedCount, matchCount: tagMatchCount,
-          keyRef: tagKeyRef, onChange: changeTagFilter }}
-        camera={{ motion, onZoom: zoomBy, onFit: () => fit(), onFocus: () => focus(visibleSelected),
-          onToggleMotion: () => setMotion(current => !current) }}
+        search={{
+          query,
+          matches,
+          selected,
+          inputRef: searchRef,
+          onChange: setQuery,
+          onClearSelection: () => select(undefined),
+        }}
+        tags={{
+          key: activeTagKey,
+          value: filterValue,
+          enabled: !!model.tagging,
+          mode: model.mode,
+          availableKeys: availableTagKeys,
+          groups,
+          untaggedCount,
+          matchCount: tagMatchCount,
+          keyRef: tagKeyRef,
+          onChange: changeTagFilter,
+        }}
+        camera={{
+          motion,
+          onZoom: zoomBy,
+          onFit: () => fit(),
+          onFocus: () => focus(visibleSelected),
+          onToggleMotion: () => setMotion((current) => !current),
+        }}
         resources={{ open: view === "resources", panelId: PANEL_ID, onToggle: toggleResources }}
       />
-      <div data-ui="landscape-content" data-landscape-content className="flex min-h-0 min-w-0 flex-1 vp-800:flex-col">
-      <div data-ui="landscape" className="relative min-h-0 flex-1 overflow-hidden bg-map-ground text-map-ink vp-800:min-h-45" ref={containerRef}>
-        <canvas
-          ref={canvasRef}
-          data-ui="landscape-canvas" className="absolute inset-0 block size-full touch-none outline-none focus-visible:shadow-[inset_0_0_0_2px_rgba(135,137,255,0.8)]"
-          tabIndex={0}
-          aria-label="Isometric landscape of the application. Use the list of entities below, or arrow keys to pan, plus and minus to zoom, 0 to fit, F to focus the selection."
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onPointerCancel={onPointerCancel}
-          onPointerLeave={() => {
-            cancelHover();
-            if (!gesture.current) setHovered(undefined);
-          }}
-          onDoubleClick={onDoubleClick}
-          onKeyDown={onKeyDown}
-          style={{ cursor: dragging ? "grabbing" : pointingAtEntity ? "pointer" : "grab" }}
-        />
-        <div data-ui="landscape-bar landscape-connection-bar" className="pointer-events-none absolute right-(--workspace-gutter) left-(--workspace-gutter) flex gap-3 top-3 z-3 items-start">
-          <div data-ui="landscape-chips" className="pointer-events-none flex max-w-full flex-wrap gap-2" role="group" aria-label="Background connections" aria-describedby="connection-filter-help">
-            <span id="connection-filter-help" className="sr-only">Filter background connections. Selecting or previewing a resource always shows its connections.</span>
-            {visibleCategories.map(category => <button key={category} data-ui="landscape-chip" className="pointer-events-auto inline-flex min-h-(--control-height-sm) cursor-pointer items-center gap-[7px] rounded-full border border-dashed border-[#ffffff24] bg-[#0e131be6] px-[10px] py-[3px] font-sans text-caption leading-[1.3] font-medium whitespace-nowrap text-[#8d97a6] before:h-0.5 before:w-3.5 before:flex-none before:rounded-[1px] before:bg-(--swatch) before:opacity-30 before:content-[''] aria-pressed:border-solid aria-pressed:border-[#ffffff45] aria-pressed:text-map-ink aria-pressed:before:opacity-100 hover:border-[#ffffff70] hover:bg-[#263140] hover:text-map-title focus-visible:outline-2 focus-visible:outline-map-focus focus-visible:outline-offset-2" aria-pressed={categories.has(category)}
-              style={{ "--swatch": EDGE_COLORS[category] } as CSSProperties}
-              title={`${categories.has(category) ? "Hide" : "Show"} ${CATEGORY_DESCRIPTION[category]}. Selected resources keep all their connections.`}
-              onClick={() => {
-                setCategories(current => { const next = new Set(current); if (next.has(category)) next.delete(category); else next.add(category); return next; });
-                setHovered(undefined);
-              }}>{CATEGORY_LABEL[category]}</button>)}
+      <div
+        data-ui="landscape-content"
+        data-landscape-content
+        className="flex min-h-0 min-w-0 flex-1 vp-800:flex-col"
+      >
+        <div
+          data-ui="landscape"
+          className="relative min-h-0 flex-1 overflow-hidden bg-map-ground text-map-ink vp-800:min-h-45"
+          ref={containerRef}
+        >
+          <canvas
+            ref={canvasRef}
+            data-ui="landscape-canvas"
+            className="absolute inset-0 block size-full touch-none outline-none focus-visible:shadow-[inset_0_0_0_2px_rgba(135,137,255,0.8)]"
+            tabIndex={0}
+            aria-label="Isometric landscape of the application. Use the list of entities below, or arrow keys to pan, plus and minus to zoom, 0 to fit, F to focus the selection."
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
+            onPointerLeave={() => {
+              cancelHover();
+              if (!gesture.current) setHovered(undefined);
+            }}
+            onDoubleClick={onDoubleClick}
+            onKeyDown={onKeyDown}
+            style={{ cursor: dragging ? "grabbing" : pointingAtEntity ? "pointer" : "grab" }}
+          />
+          <div
+            data-ui="landscape-bar landscape-connection-bar"
+            className="pointer-events-none absolute right-(--workspace-gutter) left-(--workspace-gutter) flex gap-3 top-3 z-3 items-start"
+          >
+            <div
+              data-ui="landscape-chips"
+              className="pointer-events-none flex max-w-full flex-wrap gap-2"
+              role="group"
+              aria-label="Background connections"
+              aria-describedby="connection-filter-help"
+            >
+              <span id="connection-filter-help" className="sr-only">
+                Filter background connections. Selecting or previewing a resource always shows its
+                connections.
+              </span>
+              {visibleCategories.map((category) => (
+                <button
+                  key={category}
+                  data-ui="landscape-chip"
+                  className="pointer-events-auto inline-flex min-h-(--control-height-sm) cursor-pointer items-center gap-[7px] rounded-full border border-dashed border-[#ffffff24] bg-[#0e131be6] px-[10px] py-[3px] font-sans text-caption leading-[1.3] font-medium whitespace-nowrap text-[#8d97a6] before:h-0.5 before:w-3.5 before:flex-none before:rounded-[1px] before:bg-(--swatch) before:opacity-30 before:content-[''] aria-pressed:border-solid aria-pressed:border-[#ffffff45] aria-pressed:text-map-ink aria-pressed:before:opacity-100 hover:border-[#ffffff70] hover:bg-[#263140] hover:text-map-title focus-visible:outline-2 focus-visible:outline-map-focus focus-visible:outline-offset-2"
+                  aria-pressed={categories.has(category)}
+                  style={{ "--swatch": EDGE_COLORS[category] } as CSSProperties}
+                  title={`${categories.has(category) ? "Hide" : "Show"} ${CATEGORY_DESCRIPTION[category]}. Selected resources keep all their connections.`}
+                  onClick={() => {
+                    setCategories((current) => {
+                      const next = new Set(current);
+                      if (next.has(category)) next.delete(category);
+                      else next.add(category);
+                      return next;
+                    });
+                    setHovered(undefined);
+                  }}
+                >
+                  {CATEGORY_LABEL[category]}
+                </button>
+              ))}
+            </div>
           </div>
+          <div
+            data-ui="landscape-bar landscape-bottom"
+            className="pointer-events-none absolute right-(--workspace-gutter) left-(--workspace-gutter) flex gap-3 bottom-3 items-end"
+          >
+            <span
+              data-ui="landscape-stats"
+              className="pointer-events-auto max-w-[calc(100%-72px)] px-1 pb-[6px] text-step-minus1 text-[#7f8a98] vp-700:max-w-[calc(100%-64px)] vp-700:text-caption vp-700:whitespace-normal"
+            >
+              {scene.nodes.length} resources · {scene.edges.length} connections
+              {activeTagKey && filterValue !== undefined ? (
+                <>
+                  {" "}
+                  ·{" "}
+                  <strong className="font-medium text-[#c9d3df]">
+                    {tagMatchCount} {tagMatchCount === 1 ? "matches" : "match"} the tag filter
+                  </strong>
+                </>
+              ) : null}
+            </span>
+            <span className="pointer-events-none flex-1" />
+            <AddMenu />
+          </div>
+          {hover && !resourcePreview ? (
+            <HoverCard
+              hover={hover}
+              scene={scene}
+              nodes={nodes}
+              viewport={live.current.viewport}
+              id={tooltipId}
+              anchor={keyboardAnchor}
+              onPointerEnter={keepTooltip}
+              onPointerLeave={leaveTooltip}
+            />
+          ) : null}
+          {accessibleEntities}
         </div>
-        <div data-ui="landscape-bar landscape-bottom" className="pointer-events-none absolute right-(--workspace-gutter) left-(--workspace-gutter) flex gap-3 bottom-3 items-end">
-          <span data-ui="landscape-stats" className="pointer-events-auto max-w-[calc(100%-72px)] px-1 pb-[6px] text-step-minus1 text-[#7f8a98] [&_strong]:font-medium [&_strong]:text-[#c9d3df] vp-700:max-w-[calc(100%-64px)] vp-700:text-caption vp-700:whitespace-normal">
-            {scene.nodes.length} resources · {scene.edges.length} connections
-            {activeTagKey && filterValue !== undefined ? <> · <strong>{tagMatchCount} {tagMatchCount === 1 ? "matches" : "match"} the tag filter</strong></> : null}
-          </span>
-          <span className="pointer-events-none flex-1" />
-          <AddMenu />
-        </div>
-        {hover && !resourcePreview ? <HoverCard hover={hover} scene={scene} nodes={nodes} viewport={live.current.viewport} id={tooltipId} anchor={keyboardAnchor} onPointerEnter={keepTooltip} onPointerLeave={leaveTooltip} /> : null}
-        {accessibleEntities}
-      </div>
-      {view !== "closed" ? <WorkspacePanel id={PANEL_ID} label={view === "inspector" ? "Inspector" : "Resources"} onClose={() => close()}
-        bodyClassName={view === "inspector" ? inspectorContextClasses : "overflow-hidden"}
-        heading={view === "inspector"
-          ? <InspectorNavigationControls onResources={back} buttonRef={backButton} />
-          : <><h2 data-ui="workspace-panel-title" className="m-0 font-sans text-label leading-[1.3] font-semibold">Resources</h2><span data-ui="section-count" className="ml-0 text-caption font-normal text-graphite" title={`${scene.nodes.length} resources on the map`}>{scene.nodes.length}</span></>}>
-        {view === "inspector" && selected !== undefined ? <InspectorContent selected={selected} /> : <ResourceBrowser
-          scene={scene} nodes={navigatorNodes} fixtures={navigatorFixtures} total={scene.nodes.length}
-          kinds={resourceKinds} kind={resourceKind} onKind={setResourceKind}
-          filtered={!!matches || !!resourceKind} onClearFilters={() => { setQuery(""); setResourceKind(""); }}
-          attention={needsAttention} memory={browserMemory}
-          onPreview={setResourcePreview}
-          onInspect={id => inspect(id, true)} />}
-      </WorkspacePanel> : null}
+        {view !== "closed" ? (
+          <WorkspacePanel
+            id={PANEL_ID}
+            label={view === "inspector" ? "Inspector" : "Resources"}
+            onClose={() => close()}
+            bodyClassName={view === "inspector" ? inspectorContextClasses : "overflow-hidden"}
+            heading={
+              view === "inspector" ? (
+                <InspectorNavigationControls onResources={back} buttonRef={backButton} />
+              ) : (
+                <>
+                  <h2
+                    data-ui="workspace-panel-title"
+                    className="m-0 font-sans text-label leading-[1.3] font-semibold"
+                  >
+                    Resources
+                  </h2>
+                  <span
+                    data-ui="section-count"
+                    className="ml-0 text-caption font-normal text-graphite"
+                    title={`${scene.nodes.length} resources on the map`}
+                  >
+                    {scene.nodes.length}
+                  </span>
+                </>
+              )
+            }
+          >
+            {view === "inspector" && selected !== undefined ? (
+              <InspectorContent selected={selected} />
+            ) : (
+              <ResourceBrowser
+                scene={scene}
+                nodes={navigatorNodes}
+                fixtures={navigatorFixtures}
+                total={scene.nodes.length}
+                kinds={resourceKinds}
+                kind={resourceKind}
+                onKind={setResourceKind}
+                filtered={!!matches || !!resourceKind}
+                onClearFilters={() => {
+                  setQuery("");
+                  setResourceKind("");
+                }}
+                attention={needsAttention}
+                memory={browserMemory}
+                onPreview={setResourcePreview}
+                onInspect={(id) => inspect(id, true)}
+              />
+            )}
+          </WorkspacePanel>
+        ) : null}
       </div>
     </div>
   );
@@ -853,7 +1310,12 @@ function HoverCard(props: {
 }) {
   const { hover: current } = props;
   let content;
-  const resource = current.kind === "node" ? props.nodes.get(current.id) : current.kind === "prop" ? props.scene.props.find(prop => prop.id === current.id) : undefined;
+  const resource =
+    current.kind === "node"
+      ? props.nodes.get(current.id)
+      : current.kind === "prop"
+        ? props.scene.props.find((prop) => prop.id === current.id)
+        : undefined;
   if (current.kind === "node" || current.kind === "prop") {
     if (!resource) return null;
     content = <ResourceHoverContent resource={resource} />;
@@ -865,11 +1327,26 @@ function HoverCard(props: {
   } else {
     const island = props.scene.islands.find((candidate) => candidate.id === current.id);
     if (!island) return null;
-    const band = props.scene.mode === "prod" && island?.bands.length && island.bands.length > 1 ? island.bands.find((band) => band.id === current.band) : undefined;
-    content = <HoverContent title={`${island.title}${band ? `: ${band.title}` : ""}`} lines={[...(island.caption ?? []), ...(band?.caption ?? [])]} />;
+    const band =
+      props.scene.mode === "prod" && island?.bands.length && island.bands.length > 1
+        ? island.bands.find((band) => band.id === current.band)
+        : undefined;
+    content = (
+      <HoverContent
+        title={`${island.title}${band ? `: ${band.title}` : ""}`}
+        lines={[...(island.caption ?? []), ...(band?.caption ?? [])]}
+      />
+    );
   }
   const events = { onPointerEnter: props.onPointerEnter, onPointerLeave: props.onPointerLeave };
   const key = `${current.kind}:${current.id}:${current.band ?? ""}`;
-  return props.anchor ? <ResourceTooltip key={key} id={props.id} anchor={props.anchor} {...events}>{content}</ResourceTooltip>
-    : <CanvasTooltip key={key} id={props.id} point={current} viewport={props.viewport} {...events}>{content}</CanvasTooltip>;
+  return props.anchor ? (
+    <ResourceTooltip key={key} id={props.id} anchor={props.anchor} {...events}>
+      {content}
+    </ResourceTooltip>
+  ) : (
+    <CanvasTooltip key={key} id={props.id} point={current} viewport={props.viewport} {...events}>
+      {content}
+    </CanvasTooltip>
+  );
 }
