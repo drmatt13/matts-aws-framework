@@ -2,6 +2,7 @@ import type { Lanes, Mode, ModeModel, TargetKind } from "../../shared/model";
 import type { ConnectionGroup } from "../connections";
 import type { Availability, DeploymentBadgeKind } from "../deployment";
 import type { IconKey } from "../icons";
+import type { EntityIssue } from "../issues";
 import type { EdgeCategory } from "../lookup";
 import type { Bounds } from "./camera";
 import type { ConnectionStyle } from "./connections";
@@ -63,7 +64,8 @@ export interface Island {
 
 export interface SceneNode {
   readonly frameworkManaged?: true;
-  readonly sourceProblems?: readonly string[];
+  /** Errors first; the first one's badge takes the icon's right corner (see `cornerBadges`). */
+  readonly issues?: readonly EntityIssue[];
   /** View-only tag filtering, rendered with the existing disabled-resource style. */
   readonly tagFiltered?: true;
   readonly badge?: DeploymentBadgeKind;

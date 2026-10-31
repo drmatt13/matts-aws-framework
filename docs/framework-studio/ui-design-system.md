@@ -74,6 +74,16 @@ them through descendant roles or `data-slot`. `InspectorSection` and
 `InspectorDisclosure` accept `contentClassName` for their content layout, so callers can
 set a shared grid or gap without reaching through the component's DOM.
 
+Problems on map entities have one producer, `src/issues.ts`, and one treatment per surface.
+Errors use `refuse` (inspector) or `map-error` (map cards and canvas); warnings use `local`
+or `map-warning`. Inspector headers end with `IssueNotice` (a `Notice` per issue: glyph and
+title, then the same sentences the hover card shows; errors are alerts, warnings notes) and
+pass `issues={false}` to `ResourceStatus`, so a header never states a problem twice. Lists
+too narrow for a notice, such as island entries, use `IssueChips`. Map cards use
+`HoverIssues` and `hoverToneClasses` from `views/map-styles.ts`; a neutral `info` tone
+marks expected, non-problem reasons. Colour is never the only cue: every issue keeps its
+glyph and words.
+
 Resource ownership badges own their spacing and appearance in `ResourceStatus.tsx`.
 Their explicit `placement` and `appearance` props cover inspector headers and dark map
 previews. Changing the managed badge's margin starts in that component; neither
@@ -121,7 +131,7 @@ attributes, never presentation classes or assertions about utility strings.
 | Surfaces | Existing theme colors; `rounded-sm` is 4px, `rounded-md` is the regular 6px, `rounded-lg` is 8px |
 | Selects | Native keyboard interaction; 14px chevron inset 12px with a 10px text gap |
 | Actions | `Button`, `IconButton` and their recipes; destructive actions use `tone="danger"` |
-| Feedback | Stable outline focus, shared disabled and invalid states, reduced-motion support, native select arrows in forced colors |
+| Feedback | Stable outline focus, shared disabled and invalid states, reduced-motion support, native select arrows in forced colors; entity problems through `IssueNotice`, `IssueChips` and `HoverIssues` |
 | Density | 4px within a group (label, control, support; identifier and source), 8px action-to-note, 12px heading-to-content, 16px sections; use container gaps rather than stacked paragraph margins |
 
 ## Navigation and workspace rhythm

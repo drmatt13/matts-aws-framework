@@ -327,7 +327,7 @@ test("a large aggregation has no hidden members or missing requirements beyond a
   const result = presentConnectionHover(connection, indexes);
   assert.equal(result.rows.length, 40);
   assert.equal(result.rows.at(-1)?.label, "VALUE_39");
-  assert.deepEqual(result.rows.at(-1)?.details, [{ text: "Required value missing.", kind: "detail", tone: "warning" }]);
+  assert.deepEqual(result.rows.at(-1)?.details, [{ text: "Required value missing.", kind: "detail", tone: "error" }]);
   assert.ok(!result.rows[0]?.details.length);
   assert.deepEqual(result.details, []);
 });
@@ -345,7 +345,7 @@ test("shared declaration defaults are explained once while different environment
   assert.deepEqual(result.details, [], "the shared default cannot describe one member's missing production value");
   assert.deepEqual(result.rows[1]?.details, [
     { text: "Uses the declaration default.", kind: "detail", modes: ["dev"] },
-    { text: "Required value missing.", kind: "detail", tone: "warning", modes: ["prod"] },
+    { text: "Required value missing.", kind: "detail", tone: "error", modes: ["prod"] },
   ]);
 });
 
@@ -360,7 +360,7 @@ test("environment-specific variable labels and facts remain explicit without bor
   assert.deepEqual(result.details, [
     { text: "DEVELOPMENT_POOL_ID", kind: "detail", modes: ["dev"] },
     { text: "PRODUCTION_POOL_ID", kind: "detail", modes: ["prod"] },
-    { text: "Required value missing.", kind: "detail", tone: "warning", modes: ["dev"] },
+    { text: "Required value missing.", kind: "detail", tone: "error", modes: ["dev"] },
   ]);
   const prodOnly = hoverPair([], [prodEdge]);
   assert.equal(presentConnectionHover(prodOnly.connection, prodOnly.indexes).title, "Reads: PRODUCTION_POOL_ID");

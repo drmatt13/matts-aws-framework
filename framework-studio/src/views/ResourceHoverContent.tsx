@@ -5,6 +5,7 @@ import {
   hoverTitleClasses,
   hoverFactRowClasses,
   hoverFactValueClasses,
+  hoverToneClasses,
 } from "./map-styles";
 import { useMemo } from "react";
 import { indexModel } from "../lookup";
@@ -19,8 +20,10 @@ import {
   type HoverEntryDetail,
   type HoverFacts,
 } from "../scene/hover";
+import type { EntityIssue } from "../issues";
 import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
+import { IssueGlyph } from "./IssueNotice";
 import { FrameworkManagedStatus } from "./ResourceStatus";
 
 /** The map and Resources panel describe the same entity, including staged edits. */
@@ -40,9 +43,6 @@ export function ResourceHoverContent({ resource }: { readonly resource: SceneNod
   const lines = node ? [...(contents?.lines ?? [])] : description ? [] : (resource as Prop).caption;
   const entries = group?.kind === "group" ? groupHoverEntries(group, indexes) : undefined;
   const details = group?.kind === "group" ? groupHoverDetails(group, indexes) : undefined;
-  const warnings = node?.sourceProblems?.length
-    ? [...node.sourceProblems.slice(0, 3), "Select this resource to review implementation repairs."]
-    : undefined;
   const kindLabel = node?.kindLabel ?? (resource as Prop).kindLabel;
   return (
     <HoverContent
@@ -54,7 +54,7 @@ export function ResourceHoverContent({ resource }: { readonly resource: SceneNod
       details={details}
       lines={lines}
       notes={contents?.notes}
-      warnings={warnings}
+      issues={node?.issues}
       unavailableDescription={
         group?.kind === "input" || group?.kind === "secret" ? "not declared" : undefined
       }
@@ -69,6 +69,40 @@ export function ResourceHoverContent({ resource }: { readonly resource: SceneNod
   );
 }
 
+/** At most this many messages per issue; the inspector lists every one. */
+const ISSUE_DETAIL_LIMIT = 3;
+
+/** Problems read first, in one treatment on every card: the issue's title, then what fixes it. */
+export function HoverIssues({ issues }: { readonly issues?: readonly EntityIssue[] }) {
+  if (!issues?.length) return null;
+  return (
+    <div data-ui="landscape-hover-issues" className="grid min-w-0 gap-2">
+      {issues.map((issue) => {
+        const more = issue.details.length - ISSUE_DETAIL_LIMIT;
+        return (
+          <div
+            key={issue.title}
+            data-ui="landscape-hover-issue"
+            data-issue={issue.severity}
+            className={cx("grid min-w-0 gap-0.5 text-caption", hoverToneClasses[issue.severity])}
+          >
+            <strong className="flex items-center gap-1 font-semibold">
+              <IssueGlyph issue={issue} size={12} />
+              {issue.title}
+            </strong>
+            {issue.details.slice(0, ISSUE_DETAIL_LIMIT).map((detail) => (
+              <p key={detail} className="m-0 wrap-anywhere">
+                {detail}
+              </p>
+            ))}
+            {more > 0 ? <p className="m-0">{more} more in the inspector.</p> : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Structured supporting facts preserve their environment and semantic emphasis. */
 export function HoverDetails({ details }: { readonly details?: readonly HoverEntryDetail[] }) {
   if (!details?.length) return null;
@@ -78,7 +112,14 @@ export function HoverDetails({ details }: { readonly details?: readonly HoverEnt
         <p
           key={`${detail.text}:${detail.modes?.join()}:${at}`}
           data-ui="landscape-hover-detail"
-          className={`m-0 flex items-baseline gap-2 text-caption${detail.tone === "warning" ? " border-l-2 border-[#e5a68d] pl-2 text-[#ffc3ad]" : detail.kind === "permission" ? " border-l-2 border-[#637d9b] pl-2 text-[#aeb9c8]" : " text-[#aeb9c8]"}`}
+          className={cx(
+            "m-0 flex items-baseline gap-2 text-caption",
+            detail.tone === "error"
+              ? hoverToneClasses.error
+              : detail.kind === "permission"
+                ? "border-l-2 border-[#637d9b] pl-2 text-[#aeb9c8]"
+                : "text-[#aeb9c8]",
+          )}
         >
           {detail.modes?.length && detail.modes.length < 2 ? (
             <span
@@ -190,7 +231,7 @@ export function HoverContent(props: {
   readonly notes?: readonly string[];
   readonly entries?: readonly HoverEntry[];
   readonly details?: readonly HoverEntryDetail[];
-  readonly warnings?: readonly string[];
+  readonly issues?: readonly EntityIssue[];
   readonly emptyDescription?: boolean;
   readonly showLocations?: boolean;
   readonly unavailableDescription?: string;
@@ -246,26 +287,11 @@ export function HoverContent(props: {
           </div>
         ) : null}
       </div>
+      <HoverIssues issues={props.issues} />
       {facts?.notDeployed ? (
-        <p
-          data-ui="landscape-hover-note"
-          className="m-0 border-l-2 border-[#e5a68d] pl-2 text-caption text-[#ffc3ad]"
-        >
+        <p data-ui="landscape-hover-note" className={cx("m-0 text-caption", hoverToneClasses.info)}>
           {facts.notDeployed}
         </p>
-      ) : null}
-      {props.warnings?.length ? (
-        <div data-ui="landscape-hover-warnings" className="grid min-w-0 gap-2">
-          {props.warnings.map((warning) => (
-            <p
-              key={warning}
-              data-ui="landscape-hover-detail"
-              className="m-0 flex items-baseline gap-2 border-l-2 border-[#e5a68d] pl-2 text-caption text-[#ffc3ad]"
-            >
-              {warning}
-            </p>
-          ))}
-        </div>
       ) : null}
       {description ? (
         <p

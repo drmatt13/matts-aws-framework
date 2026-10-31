@@ -26,4 +26,13 @@ export const environmentTextClasses = "text-(--badge-fg)";
 export const hoverTitleClasses =
   "font-sans text-step0 leading-[1.35] font-semibold text-map-title wrap-anywhere";
 export const hoverFactRowClasses = "grid grid-cols-[34px_minmax(0,1fr)] items-baseline gap-2";
+/**
+ * A fact's emphasis on every map card: an error or warning (`src/issues.ts`) in the canvas's issue
+ * colours, an expected reason with a neutral rule. Colour is never the only cue; each keeps its words.
+ */
+export const hoverToneClasses = {
+  error: "border-l-2 border-map-error pl-2 text-map-error-text",
+  warning: "border-l-2 border-map-warning pl-2 text-map-warning-text",
+  info: "border-l-2 border-map-rule pl-2 text-map-muted",
+} as const;
 export const hoverFactValueClasses = "m-0 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5";

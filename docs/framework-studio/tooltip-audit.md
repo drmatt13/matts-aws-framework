@@ -60,7 +60,7 @@ callbacks, WebSocket management, containment, CDK references and deployment cond
    exceptions remain qualified. A Dev or Prod qualifier distinguishes environments
    that both hold the item; a fact about the only environment that holds it is not
    qualified, and an undeclared entry is its unlit pill rather than a sentence.
-   Missing required values name the affected variable/file and receive warning
+   Missing required values name the affected variable/file and receive error
    emphasis. Normal configured values need no status sentence.
 6. Present permissions after operational information, in a labeled secondary
    block. The summary preserves native operations and scopes; full policy,
@@ -101,6 +101,29 @@ self-evident copy and for spacing. Each change follows from a rendered card:
 
 Group and connection member order is unchanged: connection rows keep
 `aggregateConnections`' stable edge-id order, group rows keep declaration order.
+
+## Issue presentation pass, 2026-10-31
+
+The owner found errors easy to miss: a missing `cdk-app/.env.dev` wore a lock beside its
+cross, its name and card looked healthy, its inspector said nothing, and the
+"Every input is missing its required value." line of a supply bundle read as a peach note
+below its rows, absent from the bundle's inspector. Every problem now comes from
+`src/issues.ts` and reads the same way everywhere:
+
+| Surface | Error | Warning |
+| --- | --- | --- |
+| Map icon | Red cross at the right corner; no ownership lock; a displaced role badge moves left | Unplug or triangle at the right corner, same rule |
+| Map caption | Issue red, with a faint red rim; selected, a white name on a red plate | Amber, with a faint amber rim; selected, a dark name on an amber plate |
+| Connection | Red wire and midpoint cross | (none today) |
+| Hover card | Title and sentences directly below the heading, red rule and text; a connection's shared error above its member list | Amber rule and text |
+| Inspector | `IssueNotice` as the header's last element, same words; bundle rows with the problem carry a red cross | Amber notice |
+| Resources row | Map badge on the icon, red name, issue named to screen readers | Amber, same rule |
+
+Expected reasons with no fix, such as an unbuilt VPC's fixtures or a disabled Compose
+service, became neutral notes. "Not added to the CDK app" is no longer such a reason: it is
+the stack's warning. **Not defined in resources** on framework stacks is a neutral status.
+`test/issues.test.ts` sweeps every node of the repository and a copy broken in every way an
+issue can be, and holds canvas, theme and SVG colours equal.
 
 ## Interaction and placement
 

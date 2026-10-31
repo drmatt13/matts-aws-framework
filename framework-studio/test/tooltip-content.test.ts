@@ -237,7 +237,7 @@ test("resource content retains descriptions, execution locations, source warning
   const { body } = documentOf(createElement(HoverContent, {
     title: "graphql-api", subtitle: "HTTP Lambda", description: "Serves the application's public GraphQL contract.", lines: [],
     facts: { places: [{ env: "dev", where: "Your machine" }, { env: "prod", where: "AWS Lambda · private subnet" }], frameworkManaged: true },
-    warnings: ["The configured handler is missing.", "Select this resource to review implementation repairs."], showLocations: true,
+    issues: [{ severity: "error", title: "Implementation needs attention", details: ["The configured handler is missing."], badge: "error" }], showLocations: true,
   }));
   assert.ok(body.textContent?.includes("Serves the application's public GraphQL contract."));
   assert.ok(body.textContent?.includes("The configured handler is missing."));

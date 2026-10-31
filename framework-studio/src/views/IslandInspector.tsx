@@ -10,7 +10,7 @@ import { useStudio } from "../studio";
 import { InspectorDisclosure, InspectorKind, InspectorSection } from "./InspectorUI";
 import { InfrastructurePanel } from "./Infrastructure";
 import { SharedDefaults } from "./SharedDefaults";
-import { FrameworkManagedStatus, ResourceStatus } from "./ResourceStatus";
+import { FrameworkManagedStatus, IssueChips, ResourceStatus } from "./ResourceStatus";
 import { RouteStatus } from "./RouteStatus";
 import { Description } from "./Description";
 import {
@@ -80,6 +80,8 @@ export function IslandInspector({ id: selection }: { readonly id: string }) {
               </button>
               <span className="text-caption text-graphite">{node.kindLabel}</span>
               <ResourceStatus resource={resource} placement="inline" />
+              {/* A resource's issues are in its status; a workload's come from the same scene node. */}
+              {!resource && node.issues ? <IssueChips issues={node.issues} placement="inline" /> : null}
               {route ? <RouteStatus route={route} placement="inline" /> : null}
             </li>
           );

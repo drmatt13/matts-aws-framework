@@ -431,7 +431,8 @@ been removed; the renderer has one visual style.
    relationship and both enabled endpoints in that graph. Selecting a grouped arc opens
    a connection map with every original source, destination, label, environment and
    expandable evidence or input-resolution action. Any missing required input retains
-   its red X marker on the read connection.
+   its red X marker on the read connection; its inspector leads with the same error as its
+   hover card, and each affected member row carries a red cross.
    Single connections travel linearly along the ground plane and lift in world Z.
    Parallel types fan slightly perpendicular to their projected span, so near-vertical
    paths remain distinct too. Their fan positions are stable by connection ID across

@@ -269,14 +269,6 @@ export function Isometric() {
     () => landscapeFocus(scene, preview ?? visibleSelected, matches),
     [scene, preview, visibleSelected, matches],
   );
-  const needsAttention = useCallback(
-    (id: string) =>
-      !!nodes.get(id)?.sourceProblems?.length ||
-      model.diagnostics.some(
-        (diagnostic) => diagnostic.entity === id && diagnostic.severity === "error",
-      ),
-    [nodes, model.diagnostics],
-  );
   const slabs = useMemo(() => islandDrawOrder(islandSlabs(scene)), [scene]);
   const arcs = useMemo(
     () =>
@@ -1284,7 +1276,6 @@ export function Isometric() {
                   setQuery("");
                   setResourceKind("");
                 }}
-                attention={needsAttention}
                 memory={browserMemory}
                 onPreview={setResourcePreview}
                 onInspect={(id) => inspect(id, true)}

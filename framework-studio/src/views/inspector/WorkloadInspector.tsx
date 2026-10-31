@@ -16,6 +16,7 @@ import { removalForConnection } from "../../access";
 import { drawnAs } from "../../drawn-as";
 import { sourceEditBlocked } from "../../editing-state";
 import { routeIcon, targetIcon } from "../../icons";
+import { targetIssues } from "../../issues";
 import { ROLE_LABEL, editorLink } from "../../lookup";
 import { useStudio } from "../../studio";
 import { buttonClasses } from "../../ui/Button";
@@ -26,6 +27,7 @@ import { EntityIcon } from "../EntityIcon";
 import { EntityName } from "../EntityName";
 import { BooleanField, FieldRow } from "../FieldRow";
 import { HttpRoutes } from "../HttpRoutes";
+import { IssueNotice } from "../IssueNotice";
 import { DottedName, InspectorDisclosure, InspectorKind, InspectorSection } from "../InspectorUI";
 import { PlacementControl, placementEditable } from "../NetworkControls";
 import { RouteStatus } from "../RouteStatus";
@@ -263,6 +265,7 @@ export function TargetView(props: { readonly target: ModelTarget }) {
           location={snapshot.source.entities[target.ref]?.key}
           label="Declared in"
         />
+        <IssueNotice issues={targetIssues(target, model.diagnostics)} />
       </header>
       <Tags entity={target.ref} />
       <Description entity={target.ref} />

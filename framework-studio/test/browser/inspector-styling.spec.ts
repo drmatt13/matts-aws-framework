@@ -258,7 +258,8 @@ for (const width of [1440, 390])
       {
         id: "framework-stack:DetachedPresentationStack",
         name: "unattached",
-        statuses: ["managed", "unattached", "unattached"],
+        // "Not added to CDK app" is the header's issue notice; the catalog status is neutral.
+        statuses: ["managed", "undeclared"],
       },
       { id: inputId, name: "input", statuses: [] },
       { id: groupId, name: "group", statuses: [] },

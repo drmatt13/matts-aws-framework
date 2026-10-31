@@ -9,13 +9,13 @@ import { landscapeFocus, SEARCH_FADE } from "../src/scene/focus";
 import { SceneRenderer, type RenderState } from "../src/scene/render";
 import { fitScene } from "../src/scene/fit";
 import { iconUrl } from "../src/icons";
-import { buildScene } from "../src/scene/build";
+import { buildScene, cornerBadges } from "../src/scene/build";
 import { filterSceneByTag } from "../src/scene/tag-filter";
 import { UNTAGGED_FILTER } from "../src/tag-groups";
 import { connectionMidpoint } from "../src/scene/routing";
 import { screenToWorld, worldToScreen, type Camera, type Viewport } from "../src/scene/camera";
 import { catalogAvailability } from "../src/deployment";
-import { BAND_TRIM, DECK, hexRgb, ICON_TINT, ISLAND_TRIM } from "../src/scene/look";
+import { BAND_TRIM, DECK, hexRgb, ICON_TINT, ISLAND_TRIM, ISSUE_COLOR } from "../src/scene/look";
 import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, SUBNET_LABEL, subnetLabelPresentation, subnetLabelRect, rectanglesOverlap } from "../src/scene/labels";
 import { project } from "../src/scene/iso";
 import { insidePolygon, pickEntity, pickIsland } from "../src/scene/picking";
@@ -37,7 +37,7 @@ const disposeHistories: (() => void)[] = [];
 const images: { src: string; alpha: number }[] = [];
 const strokes: string[] = [];
 const labels: string[] = [];
-const labelPaints: { text: string; alpha: number; x: number; y: number; font: string }[] = [];
+const labelPaints: { text: string; alpha: number; x: number; y: number; font: string; fill: string }[] = [];
 const iconStrokes: { icon: string; color: string; width: number }[] = [];
 const pathStrokes: { color: string; width: number; dash: number[] }[] = [];
 const paintOrder: ({ kind: "highlight"; clipped: boolean } | { kind: "image" })[] = [];
@@ -75,7 +75,7 @@ before(async () => {
       if (paintedIcon) iconStrokes.push({ icon: paintedIcon, color: this.strokeStyle, width: this.lineWidth });
       paintedIcon = "";
     },
-    fillText(text: string, x: number, y: number) { labels.push(text); labelPaints.push({ text, alpha: this.globalAlpha, x, y, font: String((this as unknown as { font: string }).font) }); },
+    fillText(text: string, x: number, y: number) { labels.push(text); labelPaints.push({ text, alpha: this.globalAlpha, x, y, font: String((this as unknown as { font: string }).font), fill: String((this as unknown as { fillStyle: unknown }).fillStyle) }); },
     clip(path?: Path2D) { activeClip = path ?? new Path2D(); },
     setLineDash(dash: number[]) { lineDash = [...dash]; },
     save() { paintStack.push({ alpha: this.globalAlpha, stroke: this.strokeStyle, width: this.lineWidth, dash: [...lineDash], clip: activeClip }); },
@@ -842,11 +842,14 @@ test("missing implementation is visible at its canonical map resource without ch
   const failed = { ...response, snapshot: { ...response.snapshot, models: { dev: breakImplementation(response.snapshot.models.dev), prod: breakImplementation(response.snapshot.models.prod) } } };
   const healthyScene = buildScene(response.snapshot.models.dev), brokenScene = buildScene(failed.snapshot.models.dev);
   assert.deepEqual(brokenScene.nodes.map(node => [node.id, node.gx, node.gy]), healthyScene.nodes.map(node => [node.id, node.gx, node.gy]));
-  assert.deepEqual(brokenScene.nodes.find(node => node.id === "lambda:graphql-api")?.sourceProblems, ["Configured handler index.ts is missing."]);
+  const broken = brokenScene.nodes.find(node => node.id === "lambda:graphql-api")!;
+  assert.deepEqual(broken.issues?.map(issue => [issue.severity, issue.title, ...issue.details]), [["error", "Implementation needs attention", "Configured handler index.ts is missing."]]);
+  assert.equal(cornerBadges(broken).right, "error");
   await mount(false, undefined, failed);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Resources" }));
   const list = ui.screen.getByRole("complementary", { name: "Resources" });
-  const resource = ui.within(list).getByRole("button", { name: /graphql-api.*Needs attention/ });
+  const resource = ui.within(list).getByRole("button", { name: /graphql-api.*Error: Implementation needs attention/ });
+  assert.ok(resource.querySelector("strong")?.className.includes("text-refuse"), "the row names itself in the error colour, as the map caption does");
   ui.fireEvent.click(resource);
   await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "lambda:graphql-api"));
 });
@@ -1647,7 +1650,10 @@ test("hovering a framework-managed resource labels it, and an undescribed node a
   assert.equal(card.querySelector("[data-resource-status=\"managed\"]")?.textContent, "Framework managed");
   const unused = await hoverOver("resource:referenceExamples");
   assert.deepEqual(visibleTags(unused), [["off", "Dev"], ["off", "Prod"]], "both go dark");
-  assert.equal(unused.querySelector("[data-ui~=\"landscape-hover-note\"]")?.textContent, "Not added to the CDK app");
+  const issue = unused.querySelector("[data-ui~=\"landscape-hover-issue\"]");
+  assert.equal(issue?.getAttribute("data-issue"), "warning");
+  assert.equal(issue?.querySelector("strong")?.textContent, "Not added to CDK app", "the issue explains it once, above the description");
+  assert.equal(unused.querySelector("[data-ui~=\"landscape-hover-note\"]"), null, "no second, generic deployment reason");
 
   const original = response;
   const { ["lambda:sign-out"]: _removed, ...descriptions } = response.snapshot.descriptions.values;
@@ -1806,21 +1812,36 @@ test("WebSocket and managed lock badges paint identical borders", () => {
   renderer.dispose();
 });
 
-test("management locks remain painted alongside missing-file warnings and endpoint service artwork", () => {
+test("an error replaces the ownership lock on the map and reddens the name; other locks and service artwork remain", () => {
   const model = response.snapshot.models.prod;
   const scene = buildScene({ ...model, resources: model.resources.map(resource => resource.deploymentFile
     ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists: false } } : resource) });
   const files = scene.nodes.filter(node => node.id.startsWith("envfile:"));
   assert.equal(files.length, 2);
-  for (const node of files) { assert.equal(node.roleIcon, "missingFile"); assert.equal(node.frameworkManaged, true); }
+  for (const node of files) { assert.deepEqual(cornerBadges(node), { right: "error" }); assert.equal(node.frameworkManaged, true); }
   const renderer = new SceneRenderer(document.createElement("canvas"));
   renderer.setScene(scene);
   const viewport = { width: 1920, height: 1000 };
-  images.length = 0;
+  images.length = 0; labelPaints.length = 0;
   renderer.render({ camera: fitScene(scene, viewport), viewport, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene) });
-  assert.equal(images.filter(image => image.src === iconUrl("missingFile")).length, 2);
-  const managedCount = [...scene.nodes, ...scene.props].filter(item => item.roleIcon === "managed" || item.frameworkManaged).length;
-  assert.equal(images.filter(image => image.src === iconUrl("managed")).length, managedCount, "every managed node and fixture paints exactly one ownership lock");
+  assert.equal(images.filter(image => image.src === iconUrl("error")).length, 2);
+  const lockedCount = [...scene.nodes, ...scene.props].filter(item => !("issues" in item && item.issues?.length) && (item.roleIcon === "managed" || item.frameworkManaged)).length;
+  assert.equal(images.filter(image => image.src === iconUrl("managed")).length, lockedCount, "every managed item without an issue paints exactly one lock; the two files paint none");
+  // Close enough to read: the file alone, fitted, names itself in the error red.
+  const file = files.find(node => node.presence !== "absent")!;
+  const alone = { ...scene, nodes: [file], props: [], edges: [], routes: {} };
+  const close = new SceneRenderer(document.createElement("canvas"));
+  close.setScene(alone);
+  labelPaints.length = 0;
+  const frame = close.render({ camera: { ...file.geometry.top, zoom: 1 }, viewport, dpr: 1, time: 1, motion: false, focus: landscapeFocus(alone) });
+  const card = frame.cards.find(({ id }) => id === file.id)!;
+  assert.ok(card, "the file's name is shown");
+  assert.equal(labelPaints.find(({ y }) => y === card.y + card.height / 2 + 0.5)?.fill, ISSUE_COLOR.error, "the name above the cross is red");
+  labelPaints.length = 0;
+  const selected = close.render({ camera: { ...file.geometry.top, zoom: 1 }, viewport, dpr: 1, time: 2, motion: false, selected: file.id, focus: landscapeFocus(alone, file.id) });
+  const chosen = selected.cards.find(({ id }) => id === file.id)!;
+  assert.equal(labelPaints.find(({ y }) => y === chosen.y + chosen.height / 2 + 0.5)?.fill, "#ffffff", "selected, the name is white on a red plate");
+  close.dispose();
   for (const prop of scene.props.filter(prop => prop.serviceIcon)) {
     assert.ok(images.some(image => image.src === prop.serviceIcon), `${prop.id} retains its service artwork`);
   }

@@ -1,7 +1,6 @@
 import { cx } from "../ui/classes";
 import { Select } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
-import { AlertTriangle } from "lucide-react";
 import {
   useId,
   useLayoutEffect,
@@ -11,8 +10,9 @@ import {
   type KeyboardEvent,
   type RefObject,
 } from "react";
-import { kindText, type Prop, type Scene, type SceneNode } from "../scene/build";
+import { cornerBadges, kindText, type Prop, type Scene, type SceneNode } from "../scene/build";
 import type { IconKey } from "../icons";
+import type { EntityIssue } from "../issues";
 import { EntityIcon } from "./EntityIcon";
 import { ResourceHoverContent } from "./ResourceHoverContent";
 import { ResourceTooltip } from "./ResourceTooltip";
@@ -30,7 +30,8 @@ interface Row {
   readonly label: string;
   readonly detail: string;
   readonly muted: boolean;
-  readonly attention: boolean;
+  /** The worst issue: as on the map, its badge marks the icon and its colour the name. */
+  readonly issue?: EntityIssue;
 }
 interface Group {
   readonly id: string;
@@ -61,13 +62,12 @@ export function ResourceBrowser(props: {
   readonly onKind: (kind: string) => void;
   readonly filtered: boolean;
   readonly onClearFilters: () => void;
-  readonly attention: (id: string) => boolean;
   readonly onInspect: (id: string) => void;
   /** Transient map emphasis; never opens an inspector or changes the camera. */
   readonly onPreview: (id: string | undefined) => void;
   readonly memory: RefObject<BrowserMemory>;
 }) {
-  const { scene, nodes, fixtures, attention, memory } = props;
+  const { scene, nodes, fixtures, memory } = props;
   const list = useRef<HTMLDivElement>(null);
   const [pointed, setPointed] = useState<string>();
   const [focused, setFocused] = useState<string>();
@@ -133,15 +133,19 @@ export function ResourceBrowser(props: {
     setTooltip((current) => (current && present(current.id) ? current : undefined));
   }, [nodes, fixtures]);
   const groups = useMemo(() => {
-    const rowOf = (node: SceneNode): Row => ({
-      id: node.id,
-      icon: node.icon,
-      ...(node.roleIcon ? { badge: node.roleIcon } : {}),
-      label: node.label,
-      detail: detailOf(node),
-      muted: !!node.tagFiltered,
-      attention: attention(node.id),
-    });
+    const rowOf = (node: SceneNode): Row => {
+      // The map's right corner: an issue's badge, otherwise the role badge.
+      const badge = cornerBadges(node).right;
+      return {
+        id: node.id,
+        icon: node.icon,
+        ...(badge ? { badge } : {}),
+        label: node.label,
+        detail: detailOf(node),
+        muted: !!node.tagFiltered,
+        ...(node.issues?.[0] ? { issue: node.issues[0] } : {}),
+      };
+    };
     const byIsland = new Map<string, Row[]>();
     for (const node of nodes)
       byIsland.set(node.island, [...(byIsland.get(node.island) ?? []), rowOf(node)]);
@@ -168,11 +172,10 @@ export function ResourceBrowser(props: {
           label: prop.label,
           detail: kindText(prop.kindLabel ?? "Network fixture"),
           muted: !!prop.tagFiltered,
-          attention: false,
         })),
       });
     return groups;
-  }, [scene, nodes, fixtures, attention]);
+  }, [scene, nodes, fixtures]);
 
   // Return to the scroll position the inspector replaced, and to the row it opened.
   useLayoutEffect(() => {
@@ -358,20 +361,25 @@ export function ResourceBrowser(props: {
                       className="grid min-w-0 flex-1 leading-[1.35]"
                     >
                       <strong
-                        className={cx("truncate text-label font-medium", row.muted && "opacity-55")}
+                        className={cx(
+                          "truncate text-label font-medium",
+                          row.muted && "opacity-55",
+                          row.issue?.severity === "error" && "text-refuse",
+                          row.issue?.severity === "warning" && "text-local",
+                        )}
                       >
                         {row.label}
                       </strong>
                       <span className="truncate text-caption text-graphite">{row.detail}</span>
                     </span>
-                    {row.attention ? (
+                    {/* The icon's badge and the name's colour show it; this names it. */}
+                    {row.issue ? (
                       <span
                         data-ui="resource-row-attention"
-                        className="pointer-events-none inline-flex flex-none text-refuse"
-                        title="Needs attention"
+                        data-issue={row.issue.severity}
+                        className="sr-only"
                       >
-                        <AlertTriangle size={14} aria-hidden />
-                        <span className="sr-only">Needs attention</span>
+                        {row.issue.severity === "error" ? "Error" : "Warning"}: {row.issue.title}
                       </span>
                     ) : null}
                   </button>

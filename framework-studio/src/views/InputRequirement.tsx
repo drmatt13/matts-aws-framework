@@ -16,37 +16,31 @@ import { connectionDisabledEndpoints, type Availability } from "../deployment";
 import { edgeAvailability } from "../connections";
 import { connectionDescriptionId } from "../../shared/descriptions";
 import { Description } from "./Description";
-import { connectionTitle, presentRelationship } from "../connection-presentation";
+import { connectionTitle, presentRelationship, REQUIRED_MISSING } from "../connection-presentation";
+import { requirementIssue } from "../issues";
+import { noticeClasses } from "../ui/Surface";
 import { AuthorizationDetails } from "./Authorization";
+import { IssueNotice } from "./IssueNotice";
 
+/** A missing value is an issue in the shared notice; a satisfied requirement is a neutral note. */
 export function RequirementNotice({ requirement }: { requirement?: InputRequirement }) {
   if (!requirement?.required) return null;
-  const missing = requirement.status === "missing";
+  const issue = requirementIssue(requirement);
+  if (issue) return <IssueNotice issues={[issue]} className="my-2.5" />;
   return (
-    <div
-      className={cx(
-        "my-[10px] rounded-md border-l-[3px] px-3 py-[10px] text-caption",
-        missing ? "border-refuse bg-refuse-wash" : "border-graphite bg-[rgba(141,159,183,.06)]",
-      )}
-      role={missing ? "alert" : "note"}
-      data-slot="input-requirement"
-    >
-      <strong className={missing ? "text-refuse" : ""}>
-        {missing ? "Required value missing" : "Required input"}
-      </strong>
-      <p className="my-1.25">
+    <div className={noticeClasses({ tone: "neutral", className: "my-2.5" })} role="note" data-slot="input-requirement">
+      <strong>Required input</strong>
+      <p className="mt-1 mb-0 text-caption">
         <code>{requirement.name}</code> is required for{" "}
         {requirement.mode === "dev" ? "Development" : "Production"}.
-        {missing
-          ? " No non-blank environment value or declaration default supplies it."
-          : requirement.status === "default"
-            ? " A declaration default currently supplies it."
-            : requirement.status === "unknown"
-              ? " Its value could not be checked. Fix the configuration or file read error first."
-              : ` Supplied by ${requirement.file}.`}
+        {requirement.status === "default"
+          ? " A declaration default currently supplies it."
+          : requirement.status === "unknown"
+            ? " Its value could not be checked. Fix the configuration or file read error first."
+            : ` Supplied by ${requirement.file}.`}
       </p>
       {requirement.reasons.map((reason) => (
-        <p className="my-1.25 text-caption text-graphite" key={reason}>
+        <p className="mt-1 mb-0 text-caption text-graphite" key={reason}>
           {reason}
         </p>
       ))}
@@ -116,6 +110,7 @@ export function ConnectionView({
         </InspectorKind>
         <h2 className={inspectorTitleClasses}>{connectionTitle(edge, index)}</h2>
         <ConnectionEndpoints from={edge.from} to={edge.to} />
+        <RequirementIssue requirement={edge.inputRequirement} />
       </header>
       <Description entity={connectionDescriptionId(edge)} connection />
       <section
@@ -124,22 +119,33 @@ export function ConnectionView({
           "has-[>[data-slot=connection-details]:empty]:hidden",
         )}
       >
-        <ConnectionDetails edge={edge} onlyIn={onlyIn} description={false} />
+        <ConnectionDetails edge={edge} onlyIn={onlyIn} description={false} issue={false} />
       </section>
     </>
   );
 }
 
-/** A bundled connection row leads with its own description; a lone connection's sits under the header instead. */
+/** A connection's own issue, as the last element of its header; nothing when its requirement is met. */
+function RequirementIssue({ requirement }: { readonly requirement?: InputRequirement }) {
+  const issue = requirementIssue(requirement);
+  return issue ? <IssueNotice issues={[issue]} /> : null;
+}
+
+/**
+ * A bundled connection row leads with its own description and issue; a lone connection's sit
+ * under and in the header instead (`description` and `issue` false).
+ */
 export function ConnectionDetails({
   edge,
   onlyIn,
   description = true,
+  issue = true,
   compact = false,
 }: {
   edge: ModelEdge;
   onlyIn?: Mode;
   description?: boolean;
+  issue?: boolean;
   compact?: boolean;
 }) {
   const { index, select, snapshot, mode, setMode, draft } = useStudio();
@@ -202,9 +208,9 @@ export function ConnectionDetails({
           ) : null}
         </div>
       ) : null}
-      <RequirementNotice requirement={requirement} />
+      {issue || !requirementIssue(requirement) ? <RequirementNotice requirement={requirement} /> : null}
       {presentation.lines
-        .filter((line) => !requirement || line !== "Required value missing.")
+        .filter((line) => !requirement || line !== REQUIRED_MISSING)
         .map((line) => (
           <p className="mt-0 mb-2 text-caption" key={line}>
             {line}

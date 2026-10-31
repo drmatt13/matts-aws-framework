@@ -31,14 +31,9 @@ export function ImplementationStatus({ target }: { readonly target: ModelTarget 
         <p className={inspectorNoteClasses}>
           {target.implementation?.ready
             ? "Required source artifacts present. Runtime and deployment checks are separate."
-            : "Implementation needs attention."}
+            : "The header lists what is missing; starter files can create it."}
         </p>
       </div>
-      {target.implementation?.problems.map((problem) => (
-        <p key={problem} className="m-0 text-caption text-refuse wrap-anywhere" role="status">
-          {problem}
-        </p>
-      ))}
       <a
         className={cx(buttonClasses({ variant: "link" }), "text-caption")}
         href={editorLink(snapshot.repositoryRoot, { file, line: 1, column: 1, start: 0, end: 0 })}

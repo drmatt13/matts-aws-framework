@@ -5,7 +5,7 @@ import type { Prop, Scene, SceneEdge, SceneNode } from "./types";
 import { worldToScreen, type Bounds, type Camera, type Point, type Viewport } from "./camera";
 import { project } from "./iso";
 import { searchOpacity, type LandscapeFocus } from "./focus";
-import { bandTrim, DECK, GRAPHITE, hexRgb, ICON_TINT, ROLE_BADGE, ROLE_BADGE_PLATE, trimColor } from "./look";
+import { bandTrim, DECK, GRAPHITE, hexRgb, ICON_TINT, ISSUE_COLOR, ROLE_BADGE, ROLE_BADGE_PLATE, trimColor } from "./look";
 import { connectionHoverEase, connectionVisible, EDGE_HOVER_DURATION, offLens, restingAlpha } from "./connections";
 import type { EdgeCategory } from "../lookup";
 import { placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
@@ -15,6 +15,7 @@ import { connectionMidpoint } from "./routing";
 import { pathBounds } from "./layout-geometry";
 import { missingConnectionInput } from "../connections";
 import { islandDrawOrder, islandSlabs, type BandSlab, type IslandSlab, type WallRun } from "./slabs";
+import { cornerBadges } from "./build";
 
 /** Production displays the declared network design, including unused gateways/endpoints. */
 const propIsGhost = (prop: Prop, mode: Scene["mode"]): boolean => !!prop.tagFiltered || (mode === "dev" && prop.presence === "other");
@@ -75,7 +76,17 @@ function hex(value: string): Rgb {
 }
 
 /** A required connection with no value: red wherever it runs. */
-const MISSING_EDGE: Rgb = hex("#ff5f6d");
+const MISSING_EDGE: Rgb = hex(ISSUE_COLOR.error);
+
+/**
+ * A node with an issue names itself in the issue's colour; a ghost from the other graph keeps the
+ * hue but recedes like other ghosts. Selected, the plate itself takes the colour: a white name on
+ * red (deep enough for 4.8:1), a dark name on amber.
+ */
+const ISSUE_CAPTION = {
+  error: { text: ISSUE_COLOR.error, ghost: "#b97c83", rim: hex(ISSUE_COLOR.error), plate: "#d92d3a", ink: "#ffffff", edge: "#ff8f97" },
+  warning: { text: ISSUE_COLOR.warning, ghost: "#b8a07c", rim: hex(ISSUE_COLOR.warning), plate: ISSUE_COLOR.warning, ink: "#141922", edge: "#ffe2b0" },
+} as const;
 
 function rgba(color: Rgb, alpha = 1, factor = 1): string {
   const channel = (value: number) => Math.round(Math.max(0, Math.min(255, value * factor)));
@@ -583,8 +594,9 @@ export class SceneRenderer {
             const tile = project({ x: item.prop.gx, y: item.prop.gy, h: item.prop.h });
             if (!ghost) this.drawStand(tile, item.prop.geometry.faces, item.prop.icon, factor);
             this.drawPlaqueGraphite(tile, item.prop.icon, (ghost ? 0.32 : 0.9) * factor, matched, ghost, false);
-            if (item.prop.roleIcon) this.drawRoleIconGraphite(tile, item.prop.roleIcon, (ghost ? 0.32 : 0.9) * factor, ghost, item.prop.serviceIcon);
-            if (item.prop.frameworkManaged && item.prop.roleIcon !== "managed") this.drawRoleIconGraphite(tile, "managed", (ghost ? 0.32 : 0.9) * factor, ghost, undefined, true);
+            const badges = cornerBadges(item.prop);
+            if (badges.right) this.drawRoleIconGraphite(tile, badges.right, (ghost ? 0.32 : 0.9) * factor, ghost, item.prop.serviceIcon);
+            if (badges.left) this.drawRoleIconGraphite(tile, badges.left, (ghost ? 0.32 : 0.9) * factor, ghost, undefined, true);
           }
         }
       }
@@ -924,8 +936,9 @@ export class SceneRenderer {
     const factor = dimmed ? 0.32 : 1;
     if (!ghost) this.drawStand(tile, node.geometry.faces, node.icon, factor);
     this.drawPlaqueGraphite(tile, node.icon, factor * (ghost ? 0.32 : 1), selected, ghost, hovered);
-    if (node.roleIcon) this.drawRoleIconGraphite(tile, node.roleIcon, factor * (ghost ? 0.32 : 1), ghost);
-    if (node.frameworkManaged && node.roleIcon !== "managed") this.drawRoleIconGraphite(tile, "managed", factor * (ghost ? 0.32 : 1), ghost, undefined, true);
+    const badges = cornerBadges(node);
+    if (badges.right) this.drawRoleIconGraphite(tile, badges.right, factor * (ghost ? 0.32 : 1), ghost);
+    if (badges.left) this.drawRoleIconGraphite(tile, badges.left, factor * (ghost ? 0.32 : 1), ghost, undefined, true);
     if (selected || hovered) {
       trace(context, node.geometry.hull);
       context.strokeStyle = selected ? "rgba(255, 248, 230, 0.6)" : "rgba(255, 255, 255, 0.35)";
@@ -1087,7 +1100,7 @@ export class SceneRenderer {
       const chrome = 14 * scale + (node.auth ? 14 * scale : 0);
       const budget = Math.min(260 * scale, NODE_CAPTION.width * camera.zoom) - chrome;
       if (budget < 24 * scale) return;
-      const text = this.fit(`${node.sourceProblems?.length ? "⚠ " : ""}${node.label}`, font, budget);
+      const text = this.fit(node.label, font, budget);
       const textWidth = this.measure(text, font);
       const width = textWidth + chrome;
       const tile = project({ x: node.gx, y: node.gy, h: node.h });
@@ -1181,10 +1194,11 @@ export class SceneRenderer {
       const ghost = node.tagFiltered || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
       const hover = hovers.get(node.id)!;
       const alpha = this.captionAlpha(node, state, detail, hover);
+      const issue = node.issues?.[0] ? ISSUE_CAPTION[node.issues[0].severity] : undefined;
       // Let the plate dissolve faster than its name so distant islands keep a quiet texture.
       context.globalAlpha = alpha * (selected ? 1 : plate + (1 - plate) * hover);
-      context.fillStyle = selected ? "#f3efe4" : "#0e131b";
-      context.strokeStyle = selected ? "#fff8e6" : `rgba(255, 255, 255, ${0.14 + 0.41 * hover})`;
+      context.fillStyle = selected ? issue?.plate ?? "#f3efe4" : "#0e131b";
+      context.strokeStyle = selected ? issue?.edge ?? "#fff8e6" : issue && !ghost ? rgba(issue.rim, 0.32 + 0.4 * hover) : `rgba(255, 255, 255, ${0.14 + 0.41 * hover})`;
       context.lineWidth = 1;
       context.beginPath();
       context.roundRect(x, y, width, height, 5 * scale);
@@ -1193,13 +1207,13 @@ export class SceneRenderer {
       context.globalAlpha = alpha;
       context.font = font;
       context.textBaseline = "middle";
-      context.fillStyle = selected ? "#141922" : ghost ? "#9aa3ae" : "#e7eaef";
+      context.fillStyle = selected ? issue?.ink ?? "#141922" : issue ? (ghost ? issue.ghost : issue.text) : ghost ? "#9aa3ae" : "#e7eaef";
       context.fillText(text, x + padding, y + height / 2 + 0.5);
       if (node.auth) {
         // A padlock: the gateway admits signed-in users only.
         const lx = x + padding + textWidth + 5 * scale;
         const ly = y + height / 2;
-        context.strokeStyle = selected ? "#141922" : "#cfd5dd";
+        context.strokeStyle = selected ? issue?.ink ?? "#141922" : "#cfd5dd";
         context.fillStyle = context.strokeStyle;
         context.lineWidth = 1.2;
         context.beginPath();

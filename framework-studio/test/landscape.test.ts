@@ -6,7 +6,7 @@ import { after, before, test } from "node:test";
 import type { Snapshot } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
 import { connectionStyle, offLens, restingAlpha } from "../src/scene/connections";
-import { buildScene, chamfered, chamferSize, titleRoom, type Island, type Scene } from "../src/scene/build";
+import { buildScene, chamfered, chamferSize, cornerBadges, titleRoom, type Island, type Scene } from "../src/scene/build";
 import { fitBounds, pan, resizeCamera, revealSelection, screenToWorld, wheelFactor, worldToScreen, zoomAt, MAX_ZOOM, MIN_ZOOM, type Camera } from "../src/scene/camera";
 import { project, unprojectAt } from "../src/scene/iso";
 import { acceptCards, distanceToPolyline, insidePolygon, pickEntity, pickIsland, surfaceOutline } from "../src/scene/picking";
@@ -866,7 +866,7 @@ test("stack constructor evidence produces an unattached badge, while the managed
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
     const example = model.resources.find((resource) => resource.id === "resource:referenceExamples")!;
     assert.equal(example.stackUsage?.status, "unreferenced");
-    assert.equal(node(scene, example.id).roleIcon, "unattached");
+    assert.equal(cornerBadges(node(scene, example.id)).right, "unattached");
     assert.equal(model.resources.find((resource) => resource.id === "resource:cognito")?.stackUsage?.status, "referenced");
     const database = node(scene, "resource:rds.database");
     assert.equal(database.island, "island:vpc:application");
@@ -1111,13 +1111,13 @@ test("an environment file's connections read clearly in its own view and recede 
   }
 });
 
-test("an environment file that has not been generated wears a missing-file badge on its node", () => {
+test("an environment file that has not been generated wears only a red cross on its node", () => {
   const model = snapshot.models.dev;
   const withExists = (exists: boolean) => buildScene({ ...model, resources: model.resources.map((resource) => resource.deploymentFile ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists } } : resource) }, { });
-  const badges = (scene: Scene) => scene.nodes.filter((node) => node.id.startsWith("envfile:")).map((node) => node.roleIcon);
-  assert.deepEqual(badges(withExists(false)), ["missingFile", "missingFile"]);
-  assert.deepEqual(badges(withExists(true)), ["managed", "managed"]);
-  assert.ok(withExists(false).nodes.filter(node => node.id.startsWith("envfile:")).every(node => node.frameworkManaged), "a missing-file warning does not remove ownership");
+  const badges = (scene: Scene) => scene.nodes.filter((node) => node.id.startsWith("envfile:")).map((node) => cornerBadges(node));
+  assert.deepEqual(badges(withExists(false)), [{ right: "error" }, { right: "error" }], "the ownership lock steps aside for the error");
+  assert.deepEqual(badges(withExists(true)), [{ right: "managed" }, { right: "managed" }]);
+  assert.ok(withExists(false).nodes.filter(node => node.id.startsWith("envfile:")).every(node => node.frameworkManaged), "the error does not remove ownership from cards and inspectors");
 });
 
 test("an enabled connection reads clearly in its own view and recedes where it is disabled", () => {
@@ -1451,5 +1451,5 @@ test("a badge lets an AWS service tile fill it, so no plate shows round it as a 
     assert.match(svg, /<rect[^>]*width="80"[^>]*height="80"|<rect[^>]*height="80"[^>]*width="80"/, `${key} paints its own 80 by 80 tile`);
   }
   // Generic glyphs are bare strokes and still need the plate behind them.
-  for (const key of ["event", "eventBadge", "webSocket", "unattached", "managed", "construct"] as const) assert.equal(carriesOwnTile(key), false, key);
+  for (const key of ["event", "eventBadge", "webSocket", "unattached", "error", "warning", "managed", "construct"] as const) assert.equal(carriesOwnTile(key), false, key);
 });

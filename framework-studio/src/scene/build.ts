@@ -1,9 +1,10 @@
 import { displayName } from "../naming";
 import { gatewaysOf } from "../../shared/gateways";
 import { drawnAs } from "../drawn-as";
-import type { Lanes, Mode, ModeModel, ModelResource, ModelRoute, ModelTarget, NetworkModel, TargetKind } from "../../shared/model";
+import type { Diagnostic, Lanes, Mode, ModeModel, ModelResource, ModelRoute, ModelTarget, NetworkModel, TargetKind } from "../../shared/model";
 import { edgeCategory, ROLE_LABEL } from "../lookup";
-import { endpointServiceIcon, resourceBadge, resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
+import { endpointServiceIcon, resourceIcon, routeIcon, targetIcon, type IconKey } from "../icons";
+import { resourceIssues, targetIssues, type EntityIssue } from "../issues";
 import { endpointServiceDetails } from "../endpoint-services";
 import { availabilityBadge, deploymentBadge, developmentLocation, environments, type Availability, type DeploymentBadgeKind } from "../deployment";
 import { ELEVATION_STEP, TILE_HEIGHT, TILE_WIDTH, project } from "./iso";
@@ -39,6 +40,17 @@ export { titleRoom } from "./layout";
  * island, separate from authored inputs and secrets. The VPC's level terraces
  * stand on their own: a subnet is a place, not a permission.
  */
+
+/**
+ * The two badges an icon can wear. An issue takes the right corner and the ownership lock steps
+ * aside, so a problem reads on its own; a role badge (event, WebSocket, tool) it displaces moves
+ * to the left corner. Drawing, picking geometry and the Resources row all read this one rule.
+ */
+export function cornerBadges(item: { readonly roleIcon?: IconKey; readonly frameworkManaged?: true; readonly issues?: readonly EntityIssue[] }): { readonly right?: IconKey; readonly left?: IconKey } {
+  const issue = item.issues?.[0];
+  if (issue) return { right: issue.badge, ...(item.roleIcon && item.roleIcon !== "managed" ? { left: item.roleIcon } : {}) };
+  return { ...(item.roleIcon ? { right: item.roleIcon } : {}), ...(item.frameworkManaged && item.roleIcon !== "managed" ? { left: "managed" as const } : {}) };
+}
 
 /** "Stack member, ITable" reads as "Stack member · ITable"; an empty qualifier, or one that repeats the name, is dropped. */
 export function kindText(kindLabel: string, name?: string): string {
@@ -89,13 +101,19 @@ function targetPresence(lanes: Lanes, mode: Mode): { presence: Presence; text: s
   return { presence: "nowhere", text: "Not enabled in either environment." };
 }
 
+/** Picking, routing obstacles and caption placement cover exactly the corners `cornerBadges` paints. */
+function iconShape(x: number, y: number, item: Parameters<typeof cornerBadges>[0]) {
+  const badges = cornerBadges(item);
+  return buildIconShape(x, y, !!badges.right, !!badges.left);
+}
+
 // ---------------------------------------------------------------------------
 // Items, bands and islands before placement
 // ---------------------------------------------------------------------------
 
 interface Item {
   readonly frameworkManaged?: true;
-  readonly sourceProblems?: readonly string[];
+  readonly issues?: readonly EntityIssue[];
   readonly badge?: DeploymentBadgeKind;
   readonly icon: IconKey;
   readonly roleIcon?: IconKey;
@@ -132,10 +150,11 @@ interface IslandSpec {
   readonly bands: readonly BandSpec[];
 }
 
-function targetItem(target: ModelTarget, mode: Mode): Item {
+function targetItem(target: ModelTarget, mode: Mode, diagnostics?: readonly Diagnostic[]): Item {
   const { presence, text } = targetPresence(target.lanes, mode);
+  const issues = targetIssues(target, diagnostics);
   const base = {
-    sourceProblems: target.implementation?.ready === false ? target.implementation.problems : undefined,
+    ...(issues.length ? { issues } : {}),
     badge: deploymentBadge(target.lanes),
     icon: targetIcon(target),
     id: target.ref,
@@ -183,12 +202,15 @@ function resourceItem(resource: ModelResource, mode: Mode, availability?: Availa
       : resource.kind === "member" && resource.memberSource === "class"
         ? "Declared by its stack; no workload references it."
         : `Held by the ${graph} graph.`;
+  const managed = isFrameworkManagedResource(resource, resources);
+  const issues = resourceIssues(resource);
   return {
     id: resource.id,
     badge: availability ? availabilityBadge(availability) : undefined,
     icon: resourceIcon(resource),
-    roleIcon: resourceBadge(resource, resources),
-    ...(isFrameworkManagedResource(resource, resources) ? { frameworkManaged: true as const } : {}),
+    // A resource's own badge is its ownership; an issue takes the corner in `cornerBadges`.
+    ...(managed ? { roleIcon: "managed" as const, frameworkManaged: true as const } : {}),
+    ...(issues.length ? { issues } : {}),
     entity: "resource",
     label: resource.kind === "stack" ? resource.path.join(".") : name,
     kindLabel,
@@ -249,7 +271,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
     presenceText: service.enabled ? "Development database, declared in docker-compose.yml. Container status is not monitored." : "Used during development on your machine.",
   })));
   for (const target of model.targets) {
-    const item = targetItem(target, mode);
+    const item = targetItem(target, mode, model.diagnostics);
     if (target.placement.kind === "vpc") byVpc.get(target.placement.networkId)?.[target.placement.subnet].push(item);
     else if (target.kind === "workflow") workflows.push(item);
     else if (target.kind === "agent") agents.push(item);
@@ -579,14 +601,14 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
       const gy = gy0 + 1 + ly;
       const h = spec.bands[band]!.h;
       const anchor = project({ x: gx, y: gy, h });
-      nodes.push({ ...item, ...(badgeById.has(item.id) ? { badge: badgeById.get(item.id) } : {}), gx, gy, h, island: spec.id, band: spec.bands[band]!.id, geometry: buildIconShape(anchor.x, anchor.y, !!item.roleIcon, !!item.frameworkManaged && item.roleIcon !== "managed") });
+      nodes.push({ ...item, ...(badgeById.has(item.id) ? { badge: badgeById.get(item.id) } : {}), gx, gy, h, island: spec.id, band: spec.bands[band]!.id, geometry: iconShape(anchor.x, anchor.y, item) });
     }
     // The measured fixture grid shares the same coordinates as terrain sizing.
     for (const { prop, lx, ly, band } of footprint.furniture) {
       const gx = gx0 + 1 + lx, gy = gy0 + 1 + ly, h = spec.bands[band]!.h;
       const anchor = project({ x: gx, y: gy, h });
       const roleIcon = prop.roleIcon ?? "managed";
-      props.push({ ...prop, roleIcon, frameworkManaged: true, presence: spec.propPresence ?? (ghost ? "other" : "built"), gx, gy, h, geometry: buildIconShape(anchor.x, anchor.y, true, roleIcon !== "managed") });
+      props.push({ ...prop, roleIcon, frameworkManaged: true, presence: spec.propPresence ?? (ghost ? "other" : "built"), gx, gy, h, geometry: iconShape(anchor.x, anchor.y, { roleIcon, frameworkManaged: true }) });
     }
     const heights = spec.bands.map((band) => band.h);
     islands.push({

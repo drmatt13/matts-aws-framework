@@ -35,6 +35,8 @@ import {
 } from "../InspectorUI";
 import { ResourceEditor } from "../ResourceEditor";
 import { FrameworkManagedStatus, ResourceStatus } from "../ResourceStatus";
+import { IssueNotice } from "../IssueNotice";
+import { resourceIssues } from "../../issues";
 import { SchemaLink } from "../SchemaDetails";
 import { Tags } from "../Tags";
 import { Triggers } from "../Triggers";
@@ -126,7 +128,7 @@ export function ResourceView(props: { readonly resource: ModelResource }) {
           }
           icon={<EntityIcon size={24} icon={resourceIcon(resource)} />}
         />
-        <ResourceStatus resource={resource} />
+        <ResourceStatus resource={resource} issues={false} />
         {resource.kind !== "stack" || !resource.frameworkStack ? (
           <code className="block text-graphite text-meta wrap-anywhere" data-slot="ref">
             resources.{resource.path.join(".")}
@@ -165,9 +167,7 @@ export function ResourceView(props: { readonly resource: ModelResource }) {
           />
         )}
         {/* Ownership and source explanations follow the identity lines. */}
-        {resource.frameworkStack ||
-        resource.stackUsage?.status === "unreferenced" ||
-        resource.frameworkManaged ? (
+        {resource.frameworkStack || resource.frameworkManaged ? (
           <details
             className="group/header-details mt-2 text-caption text-graphite"
             data-slot="header-details"
@@ -179,12 +179,6 @@ export function ResourceView(props: { readonly resource: ModelResource }) {
                   No <code>resource.stack&lt;{resource.stackClass}&gt;()</code> entry in{" "}
                   <code>framework-config/resources.ts</code>. Declare and link one if workloads
                   should reference this stack's public fields.
-                </p>
-              ) : null}
-              {resource.stackUsage?.status === "unreferenced" ? (
-                <p className={inspectorNoteClasses}>
-                  Declared in the catalog, with no constructor reference in the CDK app's runtime
-                  imports. Add it to the app to include it in synthesis.
                 </p>
               ) : null}
               {resource.frameworkManaged === "database" ? (
@@ -200,6 +194,7 @@ export function ResourceView(props: { readonly resource: ModelResource }) {
             </div>
           </details>
         ) : null}
+        <IssueNotice issues={resourceIssues(resource)} />
       </header>
       {group ? <InputGroupTags group={resource} /> : <Tags entity={resource.id} />}
       <Description entity={resource.id} />

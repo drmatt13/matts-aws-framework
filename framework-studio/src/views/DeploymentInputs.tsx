@@ -17,6 +17,8 @@ import { editorLink, titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
 import { EnvironmentFileStatus } from "./ResourceStatus";
+import { IssueNotice } from "./IssueNotice";
+import { resourceIssues } from "../issues";
 import type { DeploymentInputDetails, DeploymentInputEntry } from "../../shared/deployment-inputs";
 import type { EnvironmentEdit } from "../draft";
 import { Description } from "./Description";
@@ -349,6 +351,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
           icon={<EntityIcon size={24} icon="envFile" />}
         />
         <EnvironmentFileStatus resource={resource} />
+        <IssueNotice issues={resourceIssues(resource)} />
       </header>
       <Description entity={resource.id} />
       {descriptionPending ? (
@@ -361,8 +364,9 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
         defaultOpen={!file.exists}
         contentClassName="grid justify-items-start gap-2"
       >
+        {/* A missing or unreadable file is the header's issue notice; this states only its role. */}
         <p className="m-0 text-caption text-ink">
-          {file.exists ? "Local inputs file exists." : "This inputs file has not been generated."}{" "}
+          {file.exists ? "Local inputs file exists. " : ""}
           {file.mode === mode
             ? "Used for synthesis in the selected graph."
             : "Switch the graph to use this environment for synthesis."}
@@ -394,9 +398,9 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
           you give it a value; blank catalog inputs use their declared default. Review and apply to
           save. Values stay outside the graph, and production is never filled from development.
         </p>
-        {file.problem || error ? (
+        {error ? (
           <p className="m-0 text-caption text-refuse wrap-anywhere" role="alert">
-            {file.problem || error}
+            {error}
           </p>
         ) : null}
       </InspectorDisclosure>

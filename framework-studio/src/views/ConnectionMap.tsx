@@ -4,13 +4,17 @@ import {
   inspectorHeaderClasses,
 } from "../inspector-ui";
 
+import { X } from "lucide-react";
+import { cx } from "../ui/classes";
 import { InspectorKind, InspectorSummary } from "./InspectorUI";
+import { IssueNotice } from "./IssueNotice";
 
 import type { ConnectionGroup } from "../connections";
 import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { ConnectionDetails, ConnectionEndpoints } from "./InputRequirement";
 import {
+  connectionIssues,
   presentConnection,
   presentRelationship,
   suppliedByEnvironmentFile,
@@ -35,6 +39,7 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
         </InspectorKind>
         <h2 className={inspectorTitleClasses}>{presentation.title}</h2>
         <ConnectionEndpoints from={connection.from} to={connection.to} />
+        <IssueNotice issues={connectionIssues(connection, model.mode, index)} />
       </header>
       <section className={inspectorSectionClasses} aria-label="Connection details">
         {!connection.availability[model.mode] ? (
@@ -59,6 +64,8 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
               : member.models.dev
                 ? "dev"
                 : "prod";
+            // The header's notice names the problem; a collapsed row still shows which members have it.
+            const missing = edge.inputRequirement?.status === "missing";
             return (
               <details
                 key={edge.id}
@@ -68,8 +75,16 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
                 <InspectorSummary
                   className={`flex items-center gap-2 cursor-pointer text-caption list-none pb-3 [details:last-child:not([open])>&]:pb-0 [&>svg:first-child]:mr-0 ${position === 0 && connection.availability[model.mode] ? "pt-0" : "pt-3"}`}
                 >
-                  <span className="grid gap-0.5 min-w-0 flex-1" data-slot="connection-map-label">
+                  <span
+                    className={cx(
+                      "flex items-center gap-1.5 min-w-0 flex-1 wrap-anywhere",
+                      missing && "text-refuse",
+                    )}
+                    data-slot="connection-map-label"
+                  >
+                    {missing ? <X size={14} aria-hidden className="flex-none" /> : null}
                     {shared ? relationship.value : relationship.title}
+                    {missing ? <span className="sr-only">, required value missing</span> : null}
                   </span>
                   {rowPills ? <EnvironmentPills availability={member.availability} /> : null}
                 </InspectorSummary>

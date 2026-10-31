@@ -19,7 +19,7 @@ export interface HoverPlace {
 export interface HoverFacts {
   /** Every environment that deploys it, development first. An environment not listed is not deployed there. */
   readonly places: readonly HoverPlace[];
-  /** A specific reason nothing deploys it ("Not added to the CDK app"); only when `places` is empty. */
+  /** A specific, expected reason nothing deploys it ("Not built: nothing is placed in the VPC"); only when `places` is empty. Problems are issues instead. */
   readonly notDeployed?: string;
   readonly frameworkManaged: boolean;
 }
@@ -29,7 +29,8 @@ export type ModelIndexes = Readonly<Record<Mode, ModelIndex>>;
 export interface HoverEntryDetail {
   readonly text: string;
   readonly kind: "detail" | "permission";
-  readonly tone?: "warning";
+  /** A problem the reader must fix, in the map's issue red. */
+  readonly tone?: "error";
   readonly modes?: readonly Mode[];
 }
 
@@ -51,7 +52,7 @@ function qualified(detail: HoverEntryDetail, modes: readonly Mode[], held: reado
 
 /** A value's presence in one graph, without ever projecting the value or its default. An absent entry's unlit pill already says so. */
 function groupEntryDetail(entry: ModelResource | undefined, mode: Mode, index: ModelIndex): HoverEntryDetail | undefined {
-  const detail = (text: string, warning = false): HoverEntryDetail => ({ text, kind: "detail", ...(warning ? { tone: "warning" as const } : {}), modes: [mode] });
+  const detail = (text: string, error = false): HoverEntryDetail => ({ text, kind: "detail", ...(error ? { tone: "error" as const } : {}), modes: [mode] });
   if (!entry || entry.absent) return undefined;
   if (entry.authoredValue !== undefined) return detail("Value defined in source.");
   const requirement = entry.inputRequirement;
@@ -162,7 +163,8 @@ function resourceWhere(resource: ModelResource | undefined, index: ModelIndex, m
   if (resource.clientEnvironment) return { where: `Client environment mappings · ${resource.clientEnvironment.path}` };
   switch (resource.kind) {
     case "stack":
-      return resource.stackUsage?.status === "unreferenced" ? { reason: "Not added to the CDK app" } : { where: "CloudFormation stack" };
+      // An unreferenced stack's reason is its "Not added to CDK app" issue, shown above the facts.
+      return resource.stackUsage?.status === "unreferenced" ? { reason: NOT_DEPLOYED } : { where: "CloudFormation stack" };
     case "member": {
       if (resource.frameworkManaged === "database") return { where: `Amazon RDS${resource.networkPlacement ? ` · ${resource.networkPlacement} subnet` : ""}` };
       const parent = resource.parent ? index.resources.get(resource.parent) : undefined;

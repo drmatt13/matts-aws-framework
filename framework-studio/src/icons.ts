@@ -1,5 +1,6 @@
 import type { ModelResource, ModelRoute, ModelTarget } from "../shared/model";
 import { isFrameworkManagedResource } from "../shared/framework-management";
+import { resourceIssues } from "./issues";
 
 /** Shared by the DOM views and the canvas. Paths are local, versioned SVG assets. */
 export const ICONS = {
@@ -18,8 +19,9 @@ export const ICONS = {
   agent: ["aws/agentcore", "Amazon Bedrock AgentCore"],
   stack: ["aws/cloudformation", "AWS CloudFormation stack"],
   unattached: ["generic/unplug", "Not added to CDK app"],
-  /** Red cross on an environment file node whose file has not been generated. */
-  missingFile: ["generic/x", "Environment file not generated"],
+  /** Issue badges (`src/issues.ts`): a red cross for every error, an amber triangle for a warning without its own glyph. */
+  error: ["generic/x", "Error"],
+  warning: ["generic/triangle-alert", "Warning"],
   managed: ["generic/lock-keyhole", "Framework managed"],
   table: ["aws/dynamodb", "Amazon DynamoDB"],
   bucket: ["aws/s3", "Amazon S3"],
@@ -79,9 +81,7 @@ export function resourceIcon(resource: ModelResource): IconKey {
   return "construct";
 }
 
+/** A resource's one badge where only one fits: its worst issue, otherwise its ownership lock. */
 export function resourceBadge(resource: ModelResource, resources?: ReadonlyMap<string, ModelResource>): IconKey | undefined {
-  if (resource.stackUsage?.status === "unreferenced") return "unattached";
-  if (resource.deploymentFile && !resource.deploymentFile.exists) return "missingFile";
-  if (isFrameworkManagedResource(resource, resources)) return "managed";
-  return undefined;
+  return resourceIssues(resource)[0]?.badge ?? (isFrameworkManagedResource(resource, resources) ? "managed" : undefined);
 }

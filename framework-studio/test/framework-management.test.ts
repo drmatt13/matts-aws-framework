@@ -24,11 +24,11 @@ test("ownership follows framework stack parents without treating application dec
   assert.equal(isFrameworkManagedResource(loop, new Map([[loop.id, loop]])), false);
 });
 
-test("missing framework input files retain ownership alongside their warning, with room for both badges", () => {
+test("a missing framework input file keeps its ownership while its error takes the badge alone", () => {
   const file = resource("envfile:dev", { kind: "envFile", deploymentFile: { mode: "dev", path: "cdk-app/.env.dev", template: "cdk-app/.env.dev.template", exists: false, entries: [] } });
-  assert.equal(isFrameworkManagedResource(file), true);
-  assert.equal(resourceBadge(file), "missingFile", "the warning remains visible beside the management lock");
-  const shape = buildIconShape(0, 0, true, true);
-  const xs = shape.hull.filter((_, at) => at % 2 === 0);
-  assert.ok(Math.min(...xs) <= -39 && Math.max(...xs) >= 39, "picking and layout include both corner badges");
+  assert.equal(isFrameworkManagedResource(file), true, "hover cards and inspectors still state ownership");
+  assert.equal(resourceBadge(file), "error", "where one badge fits, the error wins over the lock");
+  const xs = (shape: ReturnType<typeof buildIconShape>) => shape.hull.filter((_, at) => at % 2 === 0);
+  assert.ok(Math.max(...xs(buildIconShape(0, 0, true, false))) >= 39 && Math.min(...xs(buildIconShape(0, 0, true, false))) > -39, "one right badge reserves only its own corner");
+  assert.ok(Math.min(...xs(buildIconShape(0, 0, true, true))) <= -39, "a role badge displaced to the left keeps its corner too");
 });

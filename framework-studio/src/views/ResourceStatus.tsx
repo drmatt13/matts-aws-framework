@@ -1,8 +1,10 @@
-import { FileQuestionMark, LockKeyhole, Unplug, X } from "lucide-react";
+import { FileQuestionMark, LockKeyhole } from "lucide-react";
 import type { ModelResource } from "../../shared/model";
 import { cx } from "../ui/classes";
 import { isFrameworkManagedResource } from "../../shared/framework-management";
+import { resourceIssues, type EntityIssue } from "../issues";
 import { useStudio } from "../studio";
+import { IssueGlyph } from "./IssueNotice";
 
 type StatusPlacement = "header" | "inline";
 
@@ -18,7 +20,37 @@ function resourceStatusClasses(placement: StatusPlacement | "map", stacked = fal
         : "mt-0 mb-2",
   );
 }
-const unattachedClasses = "bg-[#e7ac4410] text-[#996016] dark:text-[#f0b96b]";
+const issueChipClasses = {
+  error: "bg-[#ef444410] text-[#b42318] dark:text-[#f87171]",
+  warning: "bg-[#e7ac4410] text-[#996016] dark:text-[#f0b96b]",
+} as const;
+
+/** Compact issue chips for lists such as island entries; an inspector header shows `IssueNotice` instead. */
+export function IssueChips({
+  issues,
+  placement = "header",
+  stacked = false,
+}: {
+  readonly issues: readonly EntityIssue[];
+  readonly placement?: StatusPlacement;
+  /** A status chip precedes the first one. */
+  readonly stacked?: boolean;
+}) {
+  return (
+    <>
+      {issues.map((issue, at) => (
+        <p
+          key={issue.title}
+          data-resource-status={issue.severity}
+          className={cx(resourceStatusClasses(placement, stacked || at > 0), issueChipClasses[issue.severity])}
+        >
+          <IssueGlyph issue={issue} />
+          {issue.title}
+        </p>
+      ))}
+    </>
+  );
+}
 
 export function FrameworkManagedStatus({
   title,
@@ -60,53 +92,35 @@ export function EnvironmentFileStatus({
   return resource.deploymentFile ? <FrameworkManagedStatus placement={placement} /> : null;
 }
 
+/** Ownership, issue and catalog status chips. `issues={false}` leaves issues to the header's `IssueNotice`. */
 export function ResourceStatus({
   resource,
   placement = "header",
+  issues: showIssues = true,
 }: {
   resource?: ModelResource;
   placement?: StatusPlacement;
+  issues?: boolean;
 }) {
   const { index } = useStudio();
   if (!resource) return null;
   const managed =
     !!resource.deploymentFile || isFrameworkManagedResource(resource, index.resources);
+  const issues = showIssues ? resourceIssues(resource) : [];
   return (
     <>
       <EnvironmentFileStatus resource={resource} placement={placement} />
       {!resource.deploymentFile && isFrameworkManagedResource(resource, index.resources) ? (
         <FrameworkManagedStatus placement={placement} />
       ) : null}
-      {resource.deploymentFile && !resource.deploymentFile.exists ? (
-        <p
-          data-resource-status="missing"
-          className={cx(
-            resourceStatusClasses(placement, true),
-            "bg-[#ef444410] text-[#b42318] dark:text-[#f87171]",
-          )}
-        >
-          <X size={14} aria-hidden />
-          Not generated
-        </p>
-      ) : null}
-      {resource.stackUsage?.status === "unreferenced" ? (
-        <p
-          data-resource-status="unattached"
-          className={cx(resourceStatusClasses(placement, managed), unattachedClasses)}
-        >
-          <Unplug size={14} aria-hidden />
-          Not added to CDK app
-        </p>
-      ) : null}
+      <IssueChips issues={issues} placement={placement} stacked={managed} />
       {resource.frameworkStack ? (
+        // Expected for a framework stack, so a neutral status rather than an issue.
         <p
-          data-resource-status="unattached"
+          data-resource-status="undeclared"
           className={cx(
-            resourceStatusClasses(
-              placement,
-              managed || resource.stackUsage?.status === "unreferenced",
-            ),
-            unattachedClasses,
+            resourceStatusClasses(placement, managed || issues.length > 0),
+            "text-graphite",
           )}
         >
           <FileQuestionMark size={14} aria-hidden />

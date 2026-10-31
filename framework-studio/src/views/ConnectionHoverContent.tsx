@@ -40,6 +40,9 @@ export function ConnectionTooltipContent({
 }) {
   // An aggregation's rows carry their own pairs, except a CDK environment file's, which share one.
   const headingPair = !content.aggregated || !!content.environmentFile;
+  // Problems every member shares read before the list, as a resource card's issues lead its card.
+  const errors = content.details.filter((detail) => detail.tone === "error");
+  const facts = content.details.filter((detail) => detail.tone !== "error");
   return (
     <div data-ui="landscape-hover-content connection-hover-content" className="grid min-w-0 gap-3">
       <div
@@ -131,6 +134,7 @@ export function ConnectionTooltipContent({
           </div>
         ))}
       </dl>
+      <HoverDetails details={errors} />
       {content.aggregated ? (
         <HoverEntries
           entries={content.rows}
@@ -139,7 +143,7 @@ export function ConnectionTooltipContent({
           pills={!content.environmentFile}
         />
       ) : null}
-      <HoverDetails details={content.details} />
+      <HoverDetails details={facts} />
     </div>
   );
 }

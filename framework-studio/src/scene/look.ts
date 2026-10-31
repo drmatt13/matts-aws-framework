@@ -21,6 +21,12 @@ const AWS = {
 const NEUTRAL = "#9fb3c8";
 const EVENT_YELLOW = "#facc15";
 
+/**
+ * One palette for problems (`src/issues.ts`): badge borders, node captions, wires and their markers.
+ * The map's DOM cards use the matching `map-error` and `map-warning` theme tokens.
+ */
+export const ISSUE_COLOR = { error: "#ff5f6d", warning: "#f0b96b" } as const;
+
 /** The dark plate behind a role badge's glyph, unless the badge has a backdrop of its own. */
 export const ROLE_BADGE_PLATE = "#121b28";
 
@@ -45,8 +51,9 @@ export const ICON_TINT: Readonly<Record<IconKey, string>> = {
   workflow: AWS.integration,
   agent: AWS.ai,
   stack: AWS.integration,
-  unattached: "#f0b96b",
-  missingFile: "#ef4444",
+  unattached: ISSUE_COLOR.warning,
+  error: ISSUE_COLOR.error,
+  warning: ISSUE_COLOR.warning,
   managed: "#a9c5e8",
   table: AWS.database,
   bucket: AWS.storage,

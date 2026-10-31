@@ -99,7 +99,9 @@ export function MapEntityNavigator({
             aria-current={selected === node.id}
           >
             {node.label}, {node.kindLabel}. {node.presenceText}
-            {node.sourceProblems?.length ? ". Implementation needs attention" : ""}
+            {node.issues?.length
+              ? node.issues.map((issue) => ` ${issue.severity === "error" ? "Error" : "Warning"}: ${issue.title}.`).join("")
+              : ""}
           </button>
         </li>
       ))}

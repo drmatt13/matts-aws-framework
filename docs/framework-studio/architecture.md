@@ -249,8 +249,9 @@ as a symbolic token. Existing catalog nodes are reused; other selected classes g
 framework stack lifecycle, with WebSocket availability taken from actual model AWS lanes.
 Their inspectors expose outputs without adding generic infrastructure controls.
 The projection's `frameworkStack` origin flag also identifies a missing resource-catalog
-declaration. `ResourceStatus` displays **Not defined in resources** alongside the separate
-managed/constructor statuses, including island lists. Catalog lookup happens before adding
+declaration. `ResourceStatus` displays **Not defined in resources** as a neutral status
+alongside the managed status and any issue chips (such as **Not added to CDK app**),
+including island lists; an inspector header shows those issues as its notice instead. Catalog lookup happens before adding
 a projected stack, so declaring that class as a resource automatically clears this flag
 and reuses the authored resource id. Environment absence never implies missing catalog
 membership.

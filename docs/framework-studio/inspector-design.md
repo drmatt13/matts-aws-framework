@@ -54,10 +54,11 @@ deployment, health, read-only configuration or secret access.
 | Grouping islands | No; a grouping does not own its entries' infrastructure |
 
 `shared/framework-management.ts` owns classification. Map icons, inherited resource
-status and hover cards use the same rule. Managed map resources carry the mini lock;
-missing-file/unattached warnings and endpoint service artwork keep their own badge.
-When both are needed, the additional ownership lock uses the other lower corner;
-picking and layout geometry include both badges. Absence from the selected mode
+status and hover cards use the same rule. Managed map resources carry the mini lock, and
+endpoint service artwork keeps its own badge with the lock in the other lower corner. An
+issue (`src/issues.ts`) replaces the map lock: the problem's badge takes the right corner
+alone, while hover cards and inspector headers still state ownership. Picking and layout
+geometry include exactly the painted badges. Absence from the selected mode
 dims the whole icon, including its ownership context, without changing ownership.
 
 Every island inspector ends with one **Island entries** disclosure, after its controls

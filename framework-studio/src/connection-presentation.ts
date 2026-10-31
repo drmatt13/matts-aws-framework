@@ -5,6 +5,11 @@ import type { ConnectionGroup } from "./connections";
 import { resourceIcon } from "./icons";
 import { ROLE_LABEL, titleOf, type ModelIndex } from "./lookup";
 import type { Availability } from "./deployment";
+import { nameList } from "./input-groups";
+import { requirementIssue, type EntityIssue } from "./issues";
+
+/** The line a relationship carries when no value or default supplies its required input. */
+export const REQUIRED_MISSING = "Required value missing.";
 
 export interface RelationshipPresentation {
   readonly action: string;
@@ -110,7 +115,7 @@ export function presentRelationship(edge: ModelEdge, index: ModelIndex): Relatio
     if (edge.label === "EventBridge rule") action = "Routes events to";
     else if (edge.label === "Dead-letter queue") action = "Sends failed messages to";
   }
-  if (edge.inputRequirement?.status === "missing") lines.push("Required value missing.");
+  if (edge.inputRequirement?.status === "missing") lines.push(REQUIRED_MISSING);
   return { action, value, title: `${action}: ${value}`, lines, notes: edge.authorization ? authorizationSummary(edge.authorization) : [] };
 }
 
@@ -170,7 +175,8 @@ export function presentConnection(connection: ConnectionGroup, mode: Mode, index
 export interface ConnectionHoverDetail {
   readonly text: string;
   readonly kind: "detail" | "permission";
-  readonly tone?: "warning";
+  /** A problem the reader must fix: red, and placed above the member list. */
+  readonly tone?: "error";
   readonly modes?: readonly Mode[];
 }
 
@@ -273,7 +279,7 @@ export function presentConnectionHover(connection: ConnectionGroup, indexes: Hov
     };
     for (const variant of variants) {
       labels.set(variant.label, [...(labels.get(variant.label) ?? []), variant.mode]);
-      for (const text of variant.presentation.lines) add({ text, kind: "detail", ...(text === "Required value missing." ? { tone: "warning" as const } : {}) }, variant.mode);
+      for (const text of variant.presentation.lines) add({ text, kind: "detail", ...(text === REQUIRED_MISSING ? { tone: "error" as const } : {}) }, variant.mode);
       for (const text of variant.presentation.notes) add({ text, kind: "permission" }, variant.mode);
     }
     const details: ConnectionHoverDetail[] = [];
@@ -337,11 +343,37 @@ function standaloneAction(action: string, relation: Relation): string {
   return action.replace(/ (?:to|into|via|from|in)$/, "");
 }
 
+/**
+ * A connection's missing requirements, for the inspector notice. A bundle's sentence is the hover
+ * card's own, so the two agree; a lone connection uses its requirement's full explanation.
+ */
+export function connectionIssues(connection: ConnectionGroup, mode: Mode, index: ModelIndex): readonly EntityIssue[] {
+  const members = connection.members.map(member => member.models[mode] ?? member.edge);
+  const missing = members.filter(edge => edge.inputRequirement?.status === "missing");
+  if (!missing.length) return [];
+  if (members.length === 1) {
+    const issue = requirementIssue(missing[0]!.inputRequirement);
+    return issue ? [issue] : [];
+  }
+  const one = missing.length === 1;
+  const files = [...new Set(missing.map(edge => edge.inputRequirement!.file))];
+  return [{
+    severity: "error",
+    badge: "error",
+    title: one ? "Required value missing" : "Required values missing",
+    details: [
+      missing.length === members.length ? SHARED_DETAILS[REQUIRED_MISSING]!(familyOf(members[0]!).singular)
+        : `${nameList(missing.map(edge => presentRelationship(edge, index).value), 6)} ${one ? "is missing its required value" : "are missing their required values"}.`,
+      `Set ${one ? "a non-blank value" : "non-blank values"} in ${files.join(" and ")}, or define ${one ? "a default on the parameter" : "defaults on the parameters"}.`,
+    ],
+  }];
+}
+
 /** A fact every member shares reads as one sentence about all of them, below the list. */
 const SHARED_DETAILS: Readonly<Record<string, (member: string) => string>> = {
   "Uses the declaration default.": member => `Every ${member} uses its declaration default.`,
   "Empty in this file.": member => `Every ${member} is empty in this file.`,
   "Not set in this file.": member => `No ${member} is set in this file.`,
   "Input status unavailable.": member => `Input status is unavailable for every ${member}.`,
-  "Required value missing.": member => `Every ${member} is missing its required value.`,
+  [REQUIRED_MISSING]: member => `Every ${member} is missing its required value.`,
 };

@@ -123,6 +123,11 @@
   --color-map-focus: #a7d7ff;
   --color-map-rule: #3c485a;
   --color-map-row: #26364b;
+  /* Issues on the map: rules and glyphs match scene/look.ts ISSUE_COLOR; text is a lighter, readable tint. */
+  --color-map-error: #ff5f6d;
+  --color-map-error-text: #ff8f97;
+  --color-map-warning: #f0b96b;
+  --color-map-warning-text: #f5cf94;
   --font-sans: var(--sans);
   --font-condensed: var(--condensed);
   --font-mono: var(--mono);

@@ -13,6 +13,7 @@ source:
   - framework-studio/src/scene/render.ts
   - framework-studio/src/endpoint-services.ts
   - framework-studio/src/input-groups.ts
+  - framework-studio/src/issues.ts
   - framework-studio/src/inspector-navigation.ts
   - framework-studio/src/styles/theme.css
   - framework-studio/src/views/Isometric.tsx
@@ -68,9 +69,26 @@ the left-facing perimeter, leaving the interior for compute and the endpoint gri
 Canvas mini badges use the same local AWS SVG service/family catalog as the endpoint
 picker (`endpoint-services.ts`); the renderer loads selected artwork once per instance.
 Framework ownership is classified by `shared/framework-management.ts` and displayed
-as the same mini lock used by inspector ownership badges. A warning or endpoint-service
-badge remains on the right when the additional management lock occupies the left;
-the icon hull includes both for picking, routing obstacles and label placement.
+as the same mini lock used by inspector ownership badges. An endpoint-service or role
+badge stays on the right when the additional management lock occupies the left.
+`cornerBadges` in `scene/build.ts` decides both corners for drawing, picking geometry
+and the Resources row; the icon hull covers exactly the corners it paints.
+
+Problems follow one presentation, produced once by [issues.ts](../../../framework-studio/src/issues.ts):
+a missing or unreadable environment file, a stack not added to the CDK app, missing
+implementation artifacts and framework validation messages that name a workload. An
+error is red and a warning amber (`ISSUE_COLOR` in `scene/look.ts`, `map-error`/`map-warning`
+theme tokens, and the badge SVG strokes; `test/issues.test.ts` keeps them equal). The
+worst issue takes the icon's right corner (a cross for an error, the unplug or a triangle
+for a warning) and the ownership lock steps aside, so the problem reads alone; a role
+badge it displaces moves to the left corner. The node's caption takes the issue colour
+(receding with ghosts) and a faint tinted rim; selected, the plate fills with it instead, a
+white name on red or a dark name on amber. Hover cards
+put each issue's title and sentences directly below the heading, before the description;
+the inspector repeats the same words in an `IssueNotice` as the header's last element; the
+Resources row wears the map badge on its icon, tints its name and names the issue to screen readers. Ownership still appears on
+the hover card and inspector. Expected reasons that nothing deploys an item, such as an
+unbuilt VPC fixture, are neutral notes rather than issues.
 The zoom floor permits narrow-view fits as network fixture counts grow.
 Every selectable canvas hit, including gateways, endpoints and connections, uses a pointer cursor.
 Island selection and hover outlines paint with the foundation and terrace surfaces,
@@ -123,9 +141,10 @@ navigation never changes the trail.
 Opening the panel keeps the map's window position, and every new selection comes into view
 at the same zoom (cut-off ones slide just far enough, unseen ones are centred); on narrow
 windows the panel sits below the canvas. Search/type filtering changes the list and map
-emphasis, never source or infrastructure identity. Missing implementation artifacts add an
-attention marker to the resource navigator, Board node and Isometric caption/hover;
-selecting that canonical resource exposes its configured path and reviewed repair. These
+emphasis, never source or infrastructure identity. Missing implementation artifacts are an
+issue on the canonical workload (badge, caption, hover, Resources row and inspector notice;
+the set-aside Board keeps its own marker); selecting it exposes its configured path and
+reviewed repair. These
 source-health facts do not imply runtime readiness. Existing keyboard access to every
 connection and network fixture is retained. The navigator explicitly distinguishes the
 declaration map from running-state evidence in Deploy.
@@ -200,7 +219,9 @@ Every Resource interaction and event delivery connection uses the visible source
 replay. Lambda/ECS interactions therefore match their orange resource icons. An aggregated
 wire contains only the same relationship type. Reads and grants between the same resources
 remain separate, with independent styles and filters, even across the mode union.
-Missing inputs keep their red X marker on the read wire. Hover, selection and environment availability change emphasis,
+Missing inputs keep their red X marker and wire in the issue red. Their hover card puts
+the shared error above the member list; the connection inspector repeats it as a header
+notice (`connectionIssues`), and each affected member row carries a red cross. Hover, selection and environment availability change emphasis,
 never its colour or dash style. Folded members use the visible owning stack's icon.
 
 `connection-presentation.ts` supplies every connection title as **action: relevant value**,
