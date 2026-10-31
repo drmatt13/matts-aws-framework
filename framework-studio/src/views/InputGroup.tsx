@@ -15,7 +15,7 @@ import { titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { EntityIcon } from "./EntityIcon";
-import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
+import { InspectorDisclosure, InspectorResourceRow, InspectorSection } from "./InspectorUI";
 
 /**
  * An input group owns no AWS resource. Its inspector reads the group through its entries,
@@ -78,40 +78,43 @@ export function InputGroupEntries({ group }: { readonly group: ModelResource }) 
               ? { text: entryCount(groupEntries(child, model.resources)) }
               : entryStatus(child, file);
             return (
-              <li className={inspectorRelationRowClasses({ layout: "entry" })} key={child.id}>
-                <span
-                  className="flex items-center gap-2 min-w-0"
-                  data-slot="input-group-entry-name"
-                >
-                  <EntityIcon size={20} icon={resourceIcon(child)} />
+              <InspectorResourceRow
+                key={child.id}
+                data-slot="input-group-entry"
+                icon={<EntityIcon size={26} icon={resourceIcon(child)} />}
+                title={
                   <button
                     className={buttonClasses({
                       variant: "link",
                       className: "max-w-none wrap-anywhere text-left",
                     })}
                     onClick={() => select(child.id)}
+                    data-slot="input-group-entry-name"
                   >
                     {displayName(model, child.id, child.path.at(-1) ?? child.id)}
                   </button>
-                </span>
-                <EnvironmentPills
-                  availability={availability[child.id] ?? { dev: false, prod: false }}
-                  label={`${child.path.at(-1)} environments`}
-                  descriptions={{ dev: "declared in development", prod: "declared in production" }}
-                  unavailableDescription="not declared"
-                />
+                }
+                trailing={
+                  <EnvironmentPills
+                    availability={availability[child.id] ?? { dev: false, prod: false }}
+                    label={`${child.path.at(-1)} environments`}
+                    descriptions={{
+                      dev: "declared in development",
+                      prod: "declared in production",
+                    }}
+                    unavailableDescription="not declared"
+                  />
+                }
+              >
                 {child.fromEnv ? (
-                  <code className="col-span-full text-caption text-graphite">{child.fromEnv}</code>
+                  <code className="text-caption">{child.fromEnv}</code>
                 ) : (
-                  <span className="col-span-full text-caption text-graphite">
+                  <span>
                     {nested ? "Input group" : child.kind === "secret" ? "Secret" : "Input"}
                   </span>
                 )}
                 <span
-                  className={cx(
-                    "col-span-full flex items-center gap-1.5 text-graphite text-caption",
-                    status.tone ? status.tone : "",
-                  )}
+                  className={cx("flex items-center gap-1.5", status.tone ? status.tone : "")}
                   data-slot="local-input-status"
                 >
                   <span className="size-1.5 flex-none rounded-full bg-graphite" aria-hidden />
@@ -119,7 +122,7 @@ export function InputGroupEntries({ group }: { readonly group: ModelResource }) 
                     {child.kind === "secret" && !nested ? `Secret · ${status.text}` : status.text}
                   </span>
                 </span>
-              </li>
+              </InspectorResourceRow>
             );
           })}
         </ul>

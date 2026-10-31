@@ -5,7 +5,7 @@ import {
   InspectorSection,
   InspectorSwitch,
 } from "./InspectorUI";
-import { Select, TextInput } from "../ui/FormControls";
+import { Select, TextInput, UnitInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
 import { cx } from "../ui/classes";
 import {
@@ -36,26 +36,42 @@ const fields: readonly {
   label: string;
   group: Group;
   type?: "number" | "boolean";
+  /** Shown inside the input; the accessible name keeps it as "Label (unit)". */
+  unit?: string;
   options?: readonly string[];
 }[] = [
   { key: "instanceClass", label: "Instance class", group: "capacity" },
   { key: "storageType", label: "Storage type", options: ["gp2", "gp3", "io2"], group: "capacity" },
-  { key: "allocatedStorage", label: "Allocated storage (GiB)", type: "number", group: "capacity" },
+  {
+    key: "allocatedStorage",
+    label: "Allocated storage",
+    unit: "GiB",
+    type: "number",
+    group: "capacity",
+  },
   {
     key: "maxAllocatedStorage",
-    label: "Storage autoscaling ceiling (GiB)",
+    label: "Storage autoscaling ceiling",
+    unit: "GiB",
     type: "number",
     group: "capacity",
   },
   { key: "iops", label: "Provisioned IOPS", type: "number", group: "capacity" },
-  { key: "throughput", label: "Storage throughput (MiB/s)", type: "number", group: "capacity" },
+  {
+    key: "throughput",
+    label: "Storage throughput",
+    unit: "MiB/s",
+    type: "number",
+    group: "capacity",
+  },
   { key: "multiAz", label: "Multi-AZ standby", type: "boolean", group: "resilience" },
   { key: "readReplicaCount", label: "Read replicas", type: "number", group: "resilience" },
   { key: "readReplicaInstanceClass", label: "Replica instance class", group: "resilience" },
   { key: "readReplicaMultiAz", label: "Multi-AZ replicas", type: "boolean", group: "resilience" },
   {
     key: "backupRetentionDays",
-    label: "Backup retention (days)",
+    label: "Backup retention",
+    unit: "days",
     type: "number",
     group: "resilience",
   },
@@ -68,19 +84,22 @@ const fields: readonly {
   },
   {
     key: "proxyMaxConnectionsPercent",
-    label: "Proxy connection limit (%)",
+    label: "Proxy connection limit",
+    unit: "%",
     type: "number",
     group: "connections",
   },
   {
     key: "proxyBorrowTimeoutSeconds",
-    label: "Proxy borrow timeout (seconds)",
+    label: "Proxy borrow timeout",
+    unit: "seconds",
     type: "number",
     group: "connections",
   },
   {
     key: "proxyIdleClientTimeoutSeconds",
-    label: "Proxy idle timeout (seconds)",
+    label: "Proxy idle timeout",
+    unit: "seconds",
     type: "number",
     group: "connections",
   },
@@ -104,8 +123,16 @@ const fields: readonly {
     group: "maintenance",
   },
   { key: "maintenanceWindow", label: "Maintenance window (UTC)", group: "maintenance" },
-  { key: "logRetentionDays", label: "Log retention (days)", type: "number", group: "maintenance" },
+  {
+    key: "logRetentionDays",
+    label: "Log retention",
+    unit: "days",
+    type: "number",
+    group: "maintenance",
+  },
 ];
+const fieldName = (field: (typeof fields)[number]) =>
+  field.unit ? `${field.label} (${field.unit})` : field.label;
 const groups: readonly { id: Group; title: string; help: string }[] = [
   {
     id: "capacity",
@@ -216,6 +243,7 @@ export function ManagedDatabaseControls() {
                   />
                 ) : field.options ? (
                   <Select
+                    controlSize="panel"
                     className="w-full"
                     id={id}
                     aria-label={field.label}
@@ -227,8 +255,27 @@ export function ManagedDatabaseControls() {
                       <option key={option}>{option}</option>
                     ))}
                   </Select>
+                ) : field.unit ? (
+                  <UnitInput
+                    controlSize="panel"
+                    unit={field.unit}
+                    id={id}
+                    aria-label={fieldName(field)}
+                    type="number"
+                    disabled={disabled || !!unavailable}
+                    value={value === undefined ? "" : String(value)}
+                    aria-invalid={invalid}
+                    aria-describedby={invalid ? `${prefix}-error` : undefined}
+                    onChange={(event) =>
+                      update(
+                        field.key,
+                        event.target.value !== "" ? Number(event.target.value) : event.target.value,
+                      )
+                    }
+                  />
                 ) : (
                   <TextInput
+                    controlSize="panel"
                     className="w-full flex-1"
                     id={id}
                     aria-label={field.label}
@@ -260,7 +307,7 @@ export function ManagedDatabaseControls() {
                     className={cx(buttonClasses({ variant: "link" }), "text-caption")}
                     type="button"
                     disabled={disabled}
-                    aria-label={`Use framework default for ${field.label}`}
+                    aria-label={`Use framework default for ${fieldName(field)}`}
                     onClick={() => update(field.key, undefined)}
                   >
                     Use framework default
@@ -300,7 +347,7 @@ export function ManagedDatabaseControls() {
             </strong>
           </div>
         </div>
-        <p className="mt-0 mb-2 text-caption text-graphite">
+        <p className="mt-3 mb-0 text-caption text-graphite">
           Reader access is opt-in per workload. Replica reads can be stale; development uses the
           same local instance for both roles.
         </p>

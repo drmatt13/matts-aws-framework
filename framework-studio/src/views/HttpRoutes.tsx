@@ -1,3 +1,4 @@
+import { inspectorFieldClasses, inspectorNoteClasses } from "../inspector-ui";
 import { TextInput } from "../ui/FormControls";
 
 import { useId } from "react";
@@ -13,13 +14,14 @@ function HttpRouteRow({ route }: { readonly route: ModelRoute }) {
     (entry) => entry.kind === "route" && entry.route === route.id,
   );
   return (
-    <div className="group/route" data-slot="http-route-editor">
+    <div className={inspectorFieldClasses} data-slot="http-route-editor">
       <label
-        className="my-3 grid min-w-0 gap-2 text-label font-medium wrap-anywhere group-first/route:mt-0"
+        className="grid min-w-0 gap-1 text-label font-medium wrap-anywhere"
         data-slot="resource-control"
       >
         <span>Route path</span>
         <TextInput
+          controlSize="panel"
           className="w-full"
           aria-label={`HTTP route ${route.path}`}
           aria-describedby={`${id}-path${entry?.error ? ` ${id}-error` : ""}`}
@@ -30,12 +32,12 @@ function HttpRouteRow({ route }: { readonly route: ModelRoute }) {
           disabled={!!draftState.busy || live.evaluating || model.stale}
         />
       </label>
-      <p id={`${id}-path`} className="mt-0 mb-2 text-caption text-graphite">
+      <p id={`${id}-path`} className={inspectorNoteClasses}>
         Browser path: <code>/api{value}</code>
         {entry ? " · Unsaved change" : ""}
       </p>
       {entry?.error ? (
-        <p id={`${id}-error`} className="mt-0 mb-2 text-refuse wrap-anywhere" role="alert">
+        <p id={`${id}-error`} className="m-0 text-caption text-refuse wrap-anywhere" role="alert">
           {entry.error}
         </p>
       ) : null}

@@ -33,7 +33,7 @@ test("map panel switches beside and below canvas at 800px", async ({ page, studi
   }
 });
 
-test("real inspector fields respond to named container widths", async ({ page }) => {
+test("real inspector fields keep one stacked grammar at every named container width", async ({ page }) => {
   await page.goto("http://127.0.0.1:4593/?view=containers");
   for (const width of [299, 300, 301, 359, 360, 361, 380, 419, 420, 421]) {
     const container = page.getByRole("region", { name: `Inspector ${width}px`, exact: true });
@@ -41,8 +41,9 @@ test("real inspector fields respond to named container widths", async ({ page })
     const label = await field.locator("label").boundingBox();
     const input = await field.getByRole("spinbutton", { name: "Memory in MB" }).boundingBox();
     expect((await container.boundingBox())!.width).toBe(width);
-    if (width <= 420) expect(input!.y).toBeGreaterThanOrEqual(label!.y + label!.height);
-    else expect(input!.x).toBeGreaterThanOrEqual(label!.x + label!.width);
+    // Label, control and support share one left edge on both sides of the 420px query.
+    expect(input!.y).toBeGreaterThanOrEqual(label!.y + label!.height);
+    expect(Math.abs(input!.x - label!.x)).toBeLessThan(1);
     expect(await container.evaluate(element => element.scrollWidth <= element.clientWidth), `container overflow at ${width}px`).toBe(true);
   }
 });

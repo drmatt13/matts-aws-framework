@@ -5,19 +5,26 @@ import type { SourceLocation } from "../../shared/model";
 import { editorLink } from "../lookup";
 import { useStudio } from "../studio";
 
+type Placement = "body" | "header" | "evidence" | "row";
+
 export interface SourceLine {
   readonly location: SourceLocation | undefined;
   readonly label?: string;
 }
 
-/** Where something is written. Lines share one label column, so their files align and read as one list. */
+/**
+ * Where something is written. Lines share one label column, so their files align and read as one list.
+ * Each line keeps the 24 px caption target, so lines sit on a 24 px pitch with no extra gap; in a
+ * header the first line follows the identifier above it directly. `row` places the lines inside a
+ * list row's metadata, which supplies its own rhythm.
+ */
 export function SourceLines({
   lines,
   placement = "body",
   className,
 }: {
   readonly lines: readonly SourceLine[];
-  readonly placement?: "body" | "header" | "evidence";
+  readonly placement?: Placement;
   readonly className?: string;
 }) {
   const { snapshot } = useStudio();
@@ -29,8 +36,8 @@ export function SourceLines({
     return (
       <p
         className={cx(
-          "mt-0 mb-2 text-caption text-graphite",
-          placement === "header" && "last:mb-0",
+          "text-caption text-graphite",
+          placement === "header" ? "mt-1 mb-0" : placement === "row" ? "m-0" : "mt-0 mb-2",
           className,
         )}
       >
@@ -41,12 +48,12 @@ export function SourceLines({
     <dl
       data-ui="written"
       className={cx(
-        "grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-2.5 text-meta text-graphite",
-        placement === "header"
-          ? "mt-0.5 mb-[1em] last:-mb-1.5 [p+&]:-mt-1"
+        "grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-2 gap-y-0 text-meta text-graphite",
+        placement === "header" || placement === "row"
+          ? "m-0"
           : placement === "evidence"
             ? "mt-0 mb-0.75"
-            : "mt-2 mb-[1em]",
+            : "mt-2 mb-3",
         className,
       )}
     >
@@ -63,7 +70,7 @@ export function SourceLines({
               <code className="min-w-0 text-meta wrap-anywhere">
                 {location.file.split("/").at(-1)}:{location.line}
               </code>{" "}
-              <ExternalLink size={12} aria-hidden />
+              <ExternalLink size={12} className="shrink-0" aria-hidden />
             </a>
           </dd>
         </Fragment>
@@ -75,7 +82,7 @@ export function SourceLines({
 export function Written(props: {
   readonly location: SourceLocation | undefined;
   readonly label?: string;
-  readonly placement?: "body" | "header" | "evidence";
+  readonly placement?: Placement;
   readonly className?: string;
 }) {
   return (

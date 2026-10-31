@@ -35,8 +35,14 @@ export function selectClasses({
       "appearance-none pr-9 bg-(image:--select-chevron) bg-no-repeat bg-position-[right_12px_center] bg-size-[14px] text-ellipsis forced-colors:appearance-auto forced-colors:bg-none",
   );
 }
-export const checkboxClasses =
-  "m-0 size-4 shrink-0 accent-dev disabled:opacity-55 disabled:cursor-not-allowed aria-invalid:border-refuse";
+const checkbox =
+  "m-0 size-4 shrink-0 disabled:opacity-55 disabled:cursor-not-allowed aria-invalid:border-refuse";
+export const checkboxClasses = cx(checkbox, "accent-dev");
+/** A checkbox inside a Development or Production card takes that environment's color. */
+export const environmentCheckboxClasses = {
+  dev: checkboxClasses,
+  prod: cx(checkbox, "accent-prod"),
+} as const;
 export function TextInput({
   controlSize,
   className,
@@ -53,6 +59,34 @@ export function TextInput({
           : inputClasses({ controlSize, className })
       }
     />
+  );
+}
+/**
+ * A text input whose unit sits inside its border at the trailing edge, as a select's chevron
+ * does. The unit is presentation: the caller names it in the input's accessible label.
+ */
+export function UnitInput({
+  unit,
+  controlSize,
+  className,
+  style,
+  ...props
+}: ComponentPropsWithRef<"input"> & ControlAppearance & { readonly unit: string }) {
+  return (
+    <span className={cx("grid min-w-0 flex-1", className)} data-slot="unit-input">
+      <input
+        {...props}
+        style={{ ...style, paddingRight: `calc(var(--control-padding) * 2 + ${unit.length}ch)` }}
+        className={inputClasses({ controlSize, className: "w-full [grid-area:1/1]" })}
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none mr-3 self-center justify-self-end text-caption text-graphite [grid-area:1/1]"
+        data-slot="field-unit"
+      >
+        {unit}
+      </span>
+    </span>
   );
 }
 export function Select({

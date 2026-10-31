@@ -1,6 +1,7 @@
 import {
   inspectorSectionClasses,
   inspectorHeaderClasses,
+  inspectorNoteClasses,
   inspectorRelationListClasses,
   inspectorRelationRowClasses,
 } from "../../inspector-ui";
@@ -137,7 +138,7 @@ export function ResourceView(props: { readonly resource: ModelResource }) {
           </code>
         ) : null}
         {owningGroup ? (
-          <p className="mt-0 mb-2 last:mb-0 text-caption text-graphite">
+          <p className="mt-1 mb-0 text-caption text-graphite">
             In input group{" "}
             <button
               className={buttonClasses({ variant: "link" })}
@@ -168,33 +169,35 @@ export function ResourceView(props: { readonly resource: ModelResource }) {
         resource.stackUsage?.status === "unreferenced" ||
         resource.frameworkManaged ? (
           <details
-            className="mt-3 text-caption text-graphite [&>summary]:cursor-pointer [&[open]>summary]:mb-2"
+            className="group/header-details mt-2 text-caption text-graphite"
             data-slot="header-details"
           >
-            <InspectorSummary>About this resource</InspectorSummary>
-            {resource.frameworkStack ? (
-              <p className="mt-0 mb-2 text-caption text-graphite">
-                No <code>resource.stack&lt;{resource.stackClass}&gt;()</code> entry in{" "}
-                <code>framework-config/resources.ts</code>. Declare and link one if workloads should
-                reference this stack's public fields.
-              </p>
-            ) : null}
-            {resource.stackUsage?.status === "unreferenced" ? (
-              <p className="mt-0 mb-2 text-caption text-graphite">
-                Declared in the catalog, with no constructor reference in the CDK app's runtime
-                imports. Add it to the app to include it in synthesis.
-              </p>
-            ) : null}
-            {resource.frameworkManaged === "database" ? (
-              <p className="mt-0 mb-2 text-caption text-graphite">
-                Its database declaration owns PostgreSQL policy and placement; the framework
-                supplies IAM-only workload connections.
-              </p>
-            ) : resource.frameworkManaged ? (
-              <p className="mt-0 mb-2 text-caption text-graphite">
-                The framework manages this stack and its generated environment outputs.
-              </p>
-            ) : null}
+            <InspectorSummary className="cursor-pointer">About this resource</InspectorSummary>
+            <div className="mt-1 grid gap-2">
+              {resource.frameworkStack ? (
+                <p className={inspectorNoteClasses}>
+                  No <code>resource.stack&lt;{resource.stackClass}&gt;()</code> entry in{" "}
+                  <code>framework-config/resources.ts</code>. Declare and link one if workloads
+                  should reference this stack's public fields.
+                </p>
+              ) : null}
+              {resource.stackUsage?.status === "unreferenced" ? (
+                <p className={inspectorNoteClasses}>
+                  Declared in the catalog, with no constructor reference in the CDK app's runtime
+                  imports. Add it to the app to include it in synthesis.
+                </p>
+              ) : null}
+              {resource.frameworkManaged === "database" ? (
+                <p className={inspectorNoteClasses}>
+                  Its database declaration owns PostgreSQL policy and placement; the framework
+                  supplies IAM-only workload connections.
+                </p>
+              ) : resource.frameworkManaged ? (
+                <p className={inspectorNoteClasses}>
+                  The framework manages this stack and its generated environment outputs.
+                </p>
+              ) : null}
+            </div>
           </details>
         ) : null}
       </header>
@@ -227,7 +230,7 @@ export function ResourceView(props: { readonly resource: ModelResource }) {
           <ul className="m-0 list-none p-0">
             {resource.stackOutputs.map((output) => (
               <li
-                className="grid justify-items-start gap-1.75 border-b border-rule py-3.25"
+                className="grid min-w-0 justify-items-start gap-2 border-b border-rule py-3 first:pt-0 last:border-b-0 last:pb-0"
                 key={output.name}
               >
                 <span
@@ -237,7 +240,7 @@ export function ResourceView(props: { readonly resource: ModelResource }) {
                   {output.name}
                 </span>
                 <code
-                  className="inline-flex [gap:5px] max-w-full p-[5px_8px] [border:1px_solid_color-mix(in_srgb,_var(--dev)_30%,_transparent)] rounded-[5px] [background:color-mix(in_srgb,_var(--dev)_8%,_transparent)] text-dev [font:12px_var(--mono)] wrap-anywhere"
+                  className="inline-flex max-w-full gap-1.5 rounded-md border border-[color-mix(in_srgb,var(--dev)_30%,transparent)] bg-[color-mix(in_srgb,var(--dev)_8%,transparent)] px-2 py-1 font-mono text-caption text-dev wrap-anywhere"
                   data-slot="stack-output-value"
                 >
                   <span className="font-bold opacity-70">$</span>

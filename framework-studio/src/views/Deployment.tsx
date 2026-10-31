@@ -1,9 +1,15 @@
-import { InspectorCount, InspectorSummary, InspectorKind, InspectorSection } from "./InspectorUI";
+import {
+  EnvironmentName,
+  InspectorCount,
+  InspectorSummary,
+  InspectorKind,
+  InspectorSection,
+} from "./InspectorUI";
+import { environmentCardClasses } from "../inspector-ui";
 import { buttonClasses } from "../ui/Button";
 import { cx } from "../ui/classes";
 import { DeployControl } from "./DeployControl";
 import { RequiredInputs } from "./RequiredInputs";
-import { Code2, Diamond } from "lucide-react";
 import type { ReactNode } from "react";
 import type { Mode, ModelResource, ModelTarget } from "../../shared/model";
 import {
@@ -42,28 +48,15 @@ export function DeploymentSection({
         {(["dev", "prod"] as const).map((mode) => (
           <div
             key={mode}
-            className={cx(
-              "flex flex-col border border-rule rounded-md text-caption p-[var(--space-2)_var(--space-3)] gap-1 [background:color-mix(in_srgb,_currentColor_3%,_var(--sheet))]",
-              mode === "dev" ? "text-dev" : "text-prod",
-              availability[mode] ? "" : "[border-top-style:dotted]",
-            )}
+            className={environmentCardClasses({ mode, active: availability[mode] })}
             data-slot="lane-line"
             data-mode={mode}
           >
-            <span
-              className={cx(
-                "flex items-center gap-1.5 text-meta font-medium",
-                availability[mode] ? "text-inherit" : "text-faint",
-              )}
-              data-slot="environment-name"
-            >
-              {mode === "dev" ? <Code2 size={14} aria-hidden /> : <Diamond size={14} aria-hidden />}
-              {mode === "dev" ? "Development" : "Production"}
-            </span>
+            <EnvironmentName mode={mode} active={availability[mode]} />
             <strong
               className={cx(
                 "text-label font-medium",
-                availability[mode] ? "text-ink" : "text-faint",
+                availability[mode] ? "text-ink" : "text-graphite",
               )}
             >
               {catalog

@@ -1,4 +1,8 @@
-import { inspectorHeaderClasses, inspectorSectionClasses } from "../../inspector-ui";
+import {
+  inspectorHeaderClasses,
+  inspectorNoteClasses,
+  inspectorSectionClasses,
+} from "../../inspector-ui";
 
 import type { ReactNode } from "react";
 import type {
@@ -22,8 +26,8 @@ import { EntityIcon } from "../EntityIcon";
 import { EntityName } from "../EntityName";
 import { BooleanField, FieldRow } from "../FieldRow";
 import { HttpRoutes } from "../HttpRoutes";
-import { InspectorDisclosure, InspectorKind, InspectorSection } from "../InspectorUI";
-import { PlacementControl } from "../NetworkControls";
+import { DottedName, InspectorDisclosure, InspectorKind, InspectorSection } from "../InspectorUI";
+import { PlacementControl, placementEditable } from "../NetworkControls";
 import { RouteStatus } from "../RouteStatus";
 import { Tags } from "../Tags";
 import { Triggers } from "../Triggers";
@@ -32,24 +36,73 @@ import { WorkloadPermissions } from "../WorkloadPermissions";
 import { Written } from "../Written";
 import { Relations } from "./InspectorRelations";
 
-function PlacementText(props: { readonly placement: Placement }) {
-  const { placement } = props;
-  if (placement.kind !== "vpc") return <p className="mt-0 mb-2 text-caption">{placement.reason}</p>;
+/**
+ * What a placement means for egress. Beside its own selects the VPC and subnet are already in
+ * view, so they are restated only for a read-only placement or, as the saved placement, while a
+ * different one is staged.
+ */
+function PlacementNotes({
+  placement,
+  restate,
+}: {
+  readonly placement: Placement;
+  readonly restate: "never" | "plain" | "saved";
+}) {
+  const prefix = restate === "saved" ? "Saved placement: " : "";
+  if (placement.kind !== "vpc")
+    return (
+      <p className={inspectorNoteClasses}>
+        {prefix}
+        {placement.reason}
+      </p>
+    );
   const out = [placement.egress.ipv4 ? "IPv4" : null, placement.egress.ipv6 ? "IPv6" : null].filter(
     Boolean,
   );
   return (
     <>
-      <p className="mt-0 mb-2 text-caption">
-        VPC {placement.networkId}, {placement.subnet} subnet. {placement.reason}
+      <p className={inspectorNoteClasses}>
+        {restate === "never"
+          ? placement.reason
+          : `${prefix}VPC ${placement.networkId}, ${placement.subnet} subnet. ${placement.reason}`}
       </p>
-      <p className="mt-0 mb-2 text-caption text-graphite">
+      <p className={inspectorNoteClasses}>
         {out.length > 0
           ? `${out.join(" and ")} leave this subnet.`
           : "Nothing leaves this subnet except through the network's endpoints."}
         {placement.dualStack ? " It calls AWS's dual-stack endpoints." : ""}
       </p>
     </>
+  );
+}
+
+function ProductionPlacement({ target }: { readonly target: ModelTarget }) {
+  const { draft } = useStudio();
+  const compute = target.compute;
+  return (
+    <InspectorDisclosure title="Production placement">
+      {placementEditable(target) ? (
+        <PlacementControl
+          target={target}
+          help={
+            <PlacementNotes
+              placement={target.placement}
+              restate={draft.placement(target.ref) ? "saved" : "never"}
+            />
+          }
+        />
+      ) : (
+        <div className="grid gap-1">
+          <PlacementNotes placement={target.placement} restate="plain" />
+        </div>
+      )}
+      {compute.kind === "container" ? (
+        <p className={cx(inspectorNoteClasses, "mt-3")}>
+          {compute.cpu} CPU units, {compute.memoryMiB} MiB, {compute.architecture}
+          {compute.port ? `, port ${compute.port}` : ""}.
+        </p>
+      ) : null}
+    </InspectorDisclosure>
   );
 }
 
@@ -235,11 +288,11 @@ export function TargetView(props: { readonly target: ModelTarget }) {
       {compute.kind === "lambda" ? (
         <InspectorDisclosure title="Build and runtime">
           <dl
-            className="grid grid-cols-[95px_minmax(0,1fr)] gap-[8px_12px] m-[0_0_14px] text-step-minus1"
+            className="mt-0 mb-4 grid grid-cols-[var(--field-label-width)_minmax(0,1fr)] gap-x-3 gap-y-2 text-caption inspector-420:grid-cols-1 inspector-420:gap-y-0"
             data-slot="lambda-build"
           >
             <dt className="text-graphite">Implementation</dt>
-            <dd className="m-0 wrap-anywhere">
+            <dd className={buildValueClasses}>
               {compute.implementation === "container"
                 ? "Container image"
                 : compute.implementation === "python"
@@ -247,17 +300,17 @@ export function TargetView(props: { readonly target: ModelTarget }) {
                   : "TypeScript"}
             </dd>
             <dt className="text-graphite">Source</dt>
-            <dd className="m-0 wrap-anywhere">
+            <dd className={buildValueClasses}>
               <code>{target.directory}</code>
             </dd>
             <dt className="text-graphite">Handler</dt>
-            <dd className="m-0 wrap-anywhere">
+            <dd className={buildValueClasses}>
               <code>{compute.packaging === "container" ? "Dockerfile CMD" : compute.handler}</code>
             </dd>
             {compute.packaging === "container" ? (
               <>
                 <dt className="text-graphite">Runtime</dt>
-                <dd className="m-0 wrap-anywhere">Defined by the Dockerfile</dd>
+                <dd className={buildValueClasses}>Defined by the Dockerfile</dd>
               </>
             ) : null}
           </dl>
@@ -273,16 +326,7 @@ export function TargetView(props: { readonly target: ModelTarget }) {
             ))}
         </InspectorDisclosure>
       ) : null}
-      <InspectorDisclosure title="Production placement">
-        <PlacementControl target={target} />
-        <PlacementText placement={target.placement} />
-        {compute.kind === "container" ? (
-          <p className="mt-0 mb-2 text-caption text-graphite">
-            {compute.cpu} CPU units, {compute.memoryMiB} MiB, {compute.architecture}
-            {compute.port ? `, port ${compute.port}` : ""}.
-          </p>
-        ) : null}
-      </InspectorDisclosure>
+      <ProductionPlacement target={target} />
       {workflow ? <Steps workflow={workflow} /> : null}
       <Relations id={target.ref} />
       {target.environment.length + target.secrets.length > 0 ? (
@@ -384,30 +428,26 @@ function TargetEnvironment({ target }: { readonly target: ModelTarget }) {
     >
       <div className="text-caption grid grid-cols-[minmax(0,1fr)] gap-0" data-slot="env">
         {pool.length ? (
-          <div
-            className="grid gap-1 border-b border-rule p-[10px_0] wrap-anywhere first:pt-0 last:[border-bottom:0] last:pb-0"
-            data-slot="env-row"
-          >
-            <strong>User-pool identifiers</strong>
-            <div className="grid justify-items-start gap-1">
-              {pool.map((entry) => (
-                <div key={entry.name}>
-                  <code className="wrap-anywhere">{entry.name}</code>
-                  {" · "}
-                  <code className="text-graphite wrap-anywhere">
+          <div className={envRowClasses} data-slot="env-row">
+            <strong className="font-medium">User-pool identifiers</strong>
+            {pool.map((entry) => (
+              <div key={entry.name} className="grid min-w-0 gap-0.5">
+                <code className="wrap-anywhere">{entry.name}</code>
+                <code className="text-graphite wrap-anywhere">
+                  <DottedName>
                     {entry.value.kind === "reference"
                       ? entry.value.display
                       : JSON.stringify(entry.value.value)}
-                  </code>
-                </div>
-              ))}
-              <EnvironmentBindingAction
-                target={target}
-                edge={poolEdge}
-                name="User-pool identifiers"
-                grouped
-              />
-            </div>
+                  </DottedName>
+                </code>
+              </div>
+            ))}
+            <EnvironmentBindingAction
+              target={target}
+              edge={poolEdge}
+              name="User-pool identifiers"
+              grouped
+            />
           </div>
         ) : null}
         {target.environment
@@ -461,19 +501,24 @@ function TargetEnvironment({ target }: { readonly target: ModelTarget }) {
   );
 }
 
+/** Stacked in a narrow panel, each value stays with its label and pairs separate by 8 px. */
+const buildValueClasses = "m-0 wrap-anywhere inspector-420:mb-2 inspector-420:last:mb-0";
+
+const envRowClasses =
+  "grid min-w-0 justify-items-start gap-1 border-b border-rule py-2.5 first:pt-0 last:border-b-0 last:pb-0";
+
 function EnvRow(props: {
   readonly name: string;
   readonly value: string;
   readonly action?: ReactNode;
 }) {
   return (
-    <div
-      className="grid gap-1 border-b border-rule p-[10px_0] wrap-anywhere first:pt-0 last:[border-bottom:0] last:pb-0"
-      data-slot="env-row"
-    >
+    <div className={envRowClasses} data-slot="env-row">
       <code className="font-medium wrap-anywhere">{props.name}</code>
-      <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-graphite">
-        <code className="wrap-anywhere">{props.value}</code>
+      <span className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1 text-graphite">
+        <code className="min-w-0 wrap-anywhere">
+          <DottedName>{props.value}</DottedName>
+        </code>
         {props.action}
       </span>
     </div>

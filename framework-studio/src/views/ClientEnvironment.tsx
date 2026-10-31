@@ -35,7 +35,7 @@ import { EnvironmentPills } from "./DeploymentBadge";
 
 const mappingLabelClasses = "grid min-w-0 gap-1 text-caption";
 const mappingExpressionClasses =
-  "text-caption leading-[1.6] text-graphite wrap-anywhere group-hover/mapping:text-dev";
+  "min-w-0 text-caption leading-[1.5] text-graphite wrap-anywhere group-hover/mapping:text-ink";
 
 const sourceKinds = {
   input: "Input parameter",
@@ -71,6 +71,7 @@ function InputSelect({
     : (alias ?? value);
   return (
     <Select
+      controlSize="panel"
       className="w-full"
       aria-label={label}
       value={selected}
@@ -143,6 +144,7 @@ function SourceControls({
       <label className={mappingLabelClasses}>
         Value from
         <Select
+          controlSize="panel"
           className="w-full"
           aria-label={`Source type for ${name}`}
           value={binding.kind}
@@ -202,6 +204,7 @@ function SourceControls({
         <label className={mappingLabelClasses}>
           Stack
           <Select
+            controlSize="panel"
             className="w-full"
             aria-label={`Stack for ${name}`}
             value={binding.stack}
@@ -232,6 +235,7 @@ function SourceControls({
           <label className={mappingLabelClasses}>
             Public output
             <Select
+              controlSize="panel"
               className="w-full"
               aria-label={`Mapping for ${name}`}
               value={binding.outputs[0] ?? ""}
@@ -293,6 +297,7 @@ function SourceControls({
             <label className={mappingLabelClasses}>
               Protocol
               <Select
+                controlSize="panel"
                 className="w-full"
                 aria-label={`Protocol for ${name}`}
                 value={binding.protocol}
@@ -311,6 +316,7 @@ function SourceControls({
             <label className={mappingLabelClasses}>
               Hostname
               <TextInput
+                controlSize="panel"
                 className="w-full"
                 aria-label={`Hostname for ${name}`}
                 value={binding.host ?? "localhost"}
@@ -404,6 +410,7 @@ function SourceControls({
           <label className={mappingLabelClasses}>
             Equals
             <TextInput
+              controlSize="panel"
               className="w-full"
               aria-label={`Condition value for ${name}`}
               value={binding.when.equals}
@@ -542,7 +549,7 @@ export function ClientEnvironmentMappings({
       data-slot="client-mapping-editor"
     >
       <div
-        className="mb-(--panel-padding) grid gap-2"
+        className="mb-4 grid gap-2"
         data-slot="client-mapping-context"
       >
         <details
@@ -637,6 +644,7 @@ export function ClientEnvironmentMappings({
           data-slot="client-mapping-add"
         >
           <TextInput
+            controlSize="panel"
             className="w-full inspector-420:col-span-full"
             autoFocus
             aria-label="New client field name"
@@ -680,6 +688,7 @@ export function ClientEnvironmentMappings({
         </form>
       ) : null}
       <TextInput
+        controlSize="panel"
         type="search"
         className="mt-2 w-full"
         aria-label="Search client mappings"
@@ -694,7 +703,7 @@ export function ClientEnvironmentMappings({
         </p>
       ) : null}
       <ul
-        className="mx-0 mt-2.5 mb-0 list-none p-0"
+        className="mx-0 mt-3 mb-0 list-none p-0"
         data-slot="client-environment-mappings"
       >
         {matches.map(({ name, mapping, previews, split }) => {
@@ -715,15 +724,16 @@ export function ClientEnvironmentMappings({
             previews[model.mode].sources[0] ??
             previews[model.mode === "dev" ? "prod" : "dev"].sources[0];
           return (
-            <li key={name} className="grid gap-2.5 border-t border-rule py-3.5">
+            <li key={name} className="grid min-w-0 gap-2 border-t border-rule py-4 last:pb-0">
               <div
-                className="flex min-w-0 items-center gap-1.75 inspector-420:flex-wrap"
+                className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-2 gap-y-1"
                 data-slot="client-mapping-name"
               >
-                <strong className="min-w-0 flex-1 text-caption leading-[1.5] wrap-anywhere inspector-420:basis-full">
+                <strong className="min-w-0 text-caption leading-[1.5] wrap-anywhere">
                   <code className="text-caption">{name}</code>
                 </strong>
                 <EnvironmentPills
+                  className="col-span-full row-start-2 justify-self-start"
                   label={`${name} environments`}
                   availability={{
                     dev: previews.dev.status === "mapped",
@@ -736,7 +746,7 @@ export function ClientEnvironmentMappings({
                   unavailableDescription="blank"
                 />
                 <button
-                  className={iconButtonClasses()}
+                  className={iconButtonClasses({ className: "col-start-2 row-start-1" })}
                   title="Rename field in both environments"
                   aria-label={`Rename ${name}`}
                   disabled={disabled}
@@ -745,7 +755,7 @@ export function ClientEnvironmentMappings({
                   <Pencil size={14} aria-hidden />
                 </button>
                 <button
-                  className={iconButtonClasses()}
+                  className={iconButtonClasses({ className: "col-start-3 row-start-1" })}
                   title="Remove field from both environments"
                   aria-label={`Remove ${name}`}
                   disabled={disabled}
@@ -764,6 +774,7 @@ export function ClientEnvironmentMappings({
                   data-slot="client-mapping-rename"
                 >
                   <TextInput
+                    controlSize="panel"
                     className="w-full"
                     autoFocus
                     aria-label={`New name for ${name}`}
@@ -820,7 +831,7 @@ export function ClientEnvironmentMappings({
                 </form>
               ) : null}
               <button
-                className="group/mapping grid w-full cursor-pointer gap-1 rounded-sm border-0 bg-transparent p-0 text-left text-ink"
+                className="group/mapping grid min-w-0 w-full cursor-pointer gap-2 rounded-sm border-0 bg-transparent p-0 text-left text-ink"
                 aria-label={`Edit mapping for ${name}`}
                 aria-expanded={open}
                 aria-controls={`mapping-${name}`}
@@ -828,10 +839,10 @@ export function ClientEnvironmentMappings({
                 data-slot="client-mapping-summary"
               >
                 <span
-                  className="flex items-center gap-2 text-caption text-graphite"
+                  className="flex min-w-0 items-start gap-2 text-caption text-graphite"
                   data-slot="client-mapping-summary-heading"
                 >
-                  <span className="flex-1">
+                  <span className="min-w-0 flex-1">
                     {split
                       ? "Different sources"
                       : sourceKinds[clientBindingFor(mapping, "dev").kind]}
@@ -860,10 +871,15 @@ export function ClientEnvironmentMappings({
                 </span>
                 {split ? (
                   (["dev", "prod"] as const).map((mode) => (
-                    <code key={mode} className={mappingExpressionClasses}>
-                      {mode === "dev" ? "Dev" : "Prod"} ·{" "}
-                      {previews[mode].expression}
-                    </code>
+                    <span
+                      key={mode}
+                      className="grid min-w-0 grid-cols-[4ch_minmax(0,1fr)] items-baseline gap-2"
+                    >
+                      <span className="text-meta text-graphite">
+                        {mode === "dev" ? "Dev" : "Prod"}
+                      </span>
+                      <code className={mappingExpressionClasses}>{previews[mode].expression}</code>
+                    </span>
                   ))
                 ) : (
                   <code className={mappingExpressionClasses}>
@@ -881,10 +897,17 @@ export function ClientEnvironmentMappings({
                     (["dev", "prod"] as const).map((mode) => (
                       <div
                         key={mode}
-                        className="grid gap-2"
+                        className="grid min-w-0 gap-2 border-b border-rule pb-3"
                         data-slot="client-mapping-mode"
                       >
-                        <h4 className="m-0 text-balance text-caption font-medium text-graphite">
+                        <h4 className="m-0 flex items-center gap-2 text-caption font-semibold">
+                          <span
+                            aria-hidden
+                            className={cx(
+                              "size-1.5 shrink-0 rounded-full",
+                              mode === "dev" ? "bg-dev" : "bg-prod",
+                            )}
+                          />
                           {MODE_LABELS[mode]}
                         </h4>
                         <SourceControls
@@ -1044,7 +1067,7 @@ export function ClientEnvironmentFileView({
           aria-label="Generated environment files"
           data-ui="written"
           data-slot="client-environment-files"
-          className="/mt-1 -mb-1.5 grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-2.5 text-meta text-graphite"
+          className="mt-2 mb-0 grid grid-cols-[max-content_minmax(0,1fr)] items-center gap-x-3 gap-y-1 text-meta text-graphite"
         >
           {(["dev", "prod"] as const).map((mode) => (
             <Fragment key={mode}>

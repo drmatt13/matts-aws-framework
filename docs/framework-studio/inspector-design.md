@@ -75,7 +75,7 @@ hooks on the next deployment, and the source review calls out that effect.
 | Spacing | Shared 4, 8, 12, 16 and 20 px tokens; 20 px panel gutters |
 | Controls | 32 px inputs/selects, actions and icon actions, 24 px supporting disclosures; shared On/Off switches for boolean settings, checkboxes for acknowledgements and multi-selection; 44 px control targets for touch |
 | Sections | `InspectorSection` for immediate controls; `InspectorDisclosure` for supporting information |
-| Forms | Associated labels, inline units, visible error messages, semantic `FormGroup` boundaries |
+| Forms | Stacked label → control → support on one left edge; units inside their input; visible error messages; semantic `FormGroup` boundaries |
 | Color | Existing theme surfaces; teal/violet for environments, accept/refuse colors for validation |
 
 Links inside an inspector extend a contextual return path. **Back to langgraph**, for
@@ -105,11 +105,55 @@ without changing control geometry. Component styles should not reset shared cont
 padding, backgrounds or arrow placement.
 
 Field dividers keep 12 px of vertical padding; Deployment instead uses an unruled 16 px
-gap from its cards to its selector. Labels, controls and default notes share column tokens.
-At panel widths up to 420 px, fields stack their labels above controls, mapping actions wrap,
-and primary dialog actions use the full row. Long labels and source references wrap;
+gap from its cards to its selector. Value fields stack label, control and support at every
+width, 4 px apart on one left edge, so a field never switches grammar between a wide and a
+narrow panel; a boolean keeps its label and On/Off switch centered on one line. Numeric units
+(`UnitInput`) sit inside the input's trailing edge, where a select draws its chevron, and the
+accessible label names the unit. Defaults, reset actions and provenance share the support row
+beneath the control. At panel widths up to 420 px, mapping actions wrap and primary dialog
+actions use the full row. Long labels and source references wrap;
 selected options reserve their arrow space and truncate within the control.
 Container queries apply the same behavior to a narrow inspector beside a wide map.
+Local values use `InspectorSection`, including its 20 px gutters and separator in
+loading, missing-file, error and editable states. Keep the environment caption in the
+heading, then group the variable name and destination above the status and value control.
+Input behavior gives each environment one card, sharing the Deployment card's tint,
+icon and dotted absent edge (`environmentCardClasses`, `EnvironmentName`): Present, Required
+and the default or value sit together under Development or Production, and checkboxes take
+their environment's color. Cards sit side by side and stack below 360 px. Secret and Group
+each have their own ruled settings group with nearby help.
+
+Vertical rhythm follows the relationship, not a single gap:
+
+| Relationship | Gap |
+| --- | --- |
+| Identifier and source lines in a header; label → control → support | 4 px (source links keep a 24 px pitch) |
+| Section or group heading → its description | 4 px, in the title's column beside any heading action |
+| Heading or introductory copy → controls, lists or an action group | 12 px |
+| Action → the note that qualifies it (`inspectorActionGroupClasses`) | 8 px |
+| Fields and list rows | ruled, 12 px (fields) or 10 px (rows) each side |
+| Sections | rule and 16 px padding |
+
+Lists of resources (group entries, triggers, failure destinations, permissions) lead each row
+with the 26 px `EntityIcon` tile. `InspectorResourceRow` centers the icon, title and trailing
+badges or icon actions on one line and aligns metadata beneath the title. The title names, and
+links to, the resource the icon depicts; a trigger's event or a destination's retry policy is
+metadata (a trigger's event still opens its connection). Dotted identifiers
+(`DottedName`) wrap after a dot before breaking inside a name. Change and remove are icon
+actions at the row's trailing edge; a staged removal strikes the title through and offers Restore.
+Production placement stacks VPC and Subnet with the placement's explanation beneath the last
+select; the selects already state the VPC and subnet, so the note restates them only for a
+read-only placement or, as the saved placement, while a different one is staged.
+
+Client mapping rows put the identifier and rename/remove actions on one grid row,
+with Dev/Prod badges below the identifier. Split-source previews use a small environment
+column beside wrapping expressions. Expanded editors separate Development and Production
+with a rule. Inactive environment labels remain readable; use the neutral supporting-text
+color rather than treating declaration absence as a disabled control.
+
+Field rows own their first/last padding through `inspectorFieldRowClasses`; section
+containers do not style fields by `data-slot`. Header source lines and generated-file
+metadata use an 8 px top gap and explicit row/column gaps, without negative trailing margins.
 Long public-field types wrap in their metadata column, then stack beneath the field name
 in the narrowest panels. Route tag ownership help belongs inside the Tags section;
 explanatory copy never sits outside a section's gutters. Tag controls share the normal
@@ -259,8 +303,8 @@ Every inspector follows these rules, so that generated content never repeats or 
   app never constructs is off in both, as its hover card says. Islands and input groups have
   none. Source lines (`SourceLines` in `Written.tsx`) are one definition list: labels share a
   column so every file name starts at the same x, and each link keeps the panel's caption
-  target (24 px, 44 px on coarse pointers). Identifiers and source lines form one evenly spaced
-  block, 10 px text to text. Every title keeps 4 px above and 6 px below whether or not it has a
+  target (24 px, 44 px on coarse pointers). Identifiers and source lines form one tight block:
+  the first source line follows its identifier directly and source lines keep a 24 px pitch. Every title keeps 4 px above and 6 px below whether or not it has a
   Rename action, which overhangs the title line rather than heightening it. Ownership and status
   badges sit 10 px clear of the title and of the identifiers, 6 px apart when stacked. A header
   closes with the space it opens with, whatever its last line is. Every eyebrow is `InspectorKind`,

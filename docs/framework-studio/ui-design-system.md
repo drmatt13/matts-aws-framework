@@ -30,7 +30,8 @@ regular and prominent sizes; default and danger tones. Repeated compact trigger 
 utilities for uncommon geometry. `IconButton` requires an
 accessible label. `TextInput`, `Select` and `Textarea` retain native props/events/refs;
 `controlSize` is separate from the native `size`; `controlSize="panel"` follows the
-inspector or dialog control-height token. `Card`, `Notice` and
+inspector or dialog control-height token. `UnitInput` draws a numeric unit inside the
+input's trailing edge; callers keep the unit in the accessible label. `Card`, `Notice` and
 `WorkspaceToolbar` cover shared surfaces. `Notice` does not invent an ARIA role.
 `InspectorUI`, `FieldRow`, `NavigationStrip`, `WorkspacePanel`, `WorkbenchUI` and
 `DocumentCard` remain the higher-level owners. `cx` joins complete static class strings;
@@ -121,7 +122,7 @@ attributes, never presentation classes or assertions about utility strings.
 | Selects | Native keyboard interaction; 14px chevron inset 12px with a 10px text gap |
 | Actions | `Button`, `IconButton` and their recipes; destructive actions use `tone="danger"` |
 | Feedback | Stable outline focus, shared disabled and invalid states, reduced-motion support, native select arrows in forced colors |
-| Density | 4px label-to-control, 8px related helpers/actions, 12–16px groups; avoid stacked default paragraph margins |
+| Density | 4px within a group (label, control, support; identifier and source), 8px action-to-note, 12px heading-to-content, 16px sections; use container gaps rather than stacked paragraph margins |
 
 ## Navigation and workspace rhythm
 
@@ -278,6 +279,10 @@ background failures preserve the current map and draft with a persistent retry n
 `inspector-styling.spec.ts` exercises ownership badges, missing-source headers, grouped
 inputs and environment-file inspectors at desktop and phone widths. It records measured
 geometry and screenshots while checking keyboard disclosure and overflow behavior.
+It also checks local-value gutters, loading/read-error/missing-file states, synthetic
+secret masking and reversion, and long client mappings at 1440, 1100, 390 and 320 px.
+Those fixtures never read real input values or apply source changes; both themes receive
+keyboard, geometry and accessibility checks.
 
 Interaction regressions live in `navigation-polish.test.ts`, `isometric-ui.test.ts`,
 `draft-ui.test.ts`, `startup-ui.test.ts`, `cognito-workspace-ui.test.ts`,

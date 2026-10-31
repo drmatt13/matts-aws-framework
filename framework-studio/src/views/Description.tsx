@@ -119,7 +119,7 @@ export function Description({
             {editor}
           </details>
           <p
-            className="mt-3 mb-0 line-clamp-2 text-caption leading-[1.55] text-graphite peer-open/description:hidden"
+            className="mt-1 mb-0 line-clamp-2 text-caption leading-[1.5] text-graphite peer-open/description:hidden"
             data-slot="description-preview"
           >
             {draft.description(entity).trim() ||

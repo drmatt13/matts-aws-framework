@@ -11,7 +11,7 @@ function pillClasses(enabled: boolean) {
     environmentPillClasses,
     enabled
       ? "border-transparent bg-(--badge-bg) text-(--badge-fg) before:bg-current"
-      : "border-rule-strong bg-transparent text-faint dark:border-white/8 dark:bg-white/3 dark:text-[#5f6978] before:border before:border-current group-data-[map-tooltip]:border-[#ffffff24] group-data-[map-tooltip]:bg-white/3 group-data-[map-tooltip]:text-[#a1acbb]",
+      : "border-rule-strong bg-transparent text-graphite dark:border-white/8 dark:bg-white/3 before:border before:border-current group-data-[map-tooltip]:border-[#ffffff24] group-data-[map-tooltip]:bg-white/3 group-data-[map-tooltip]:text-[#a1acbb]",
   );
 }
 

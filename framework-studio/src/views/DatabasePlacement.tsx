@@ -12,6 +12,8 @@ import {
   inspectorFieldClasses,
   inspectorLabelClasses,
   inspectorControlClasses,
+  inspectorActionGroupClasses,
+  inspectorNoteClasses,
 } from "../inspector-ui";
 import { useId } from "react";
 import { databaseConsumers } from "../../shared/managed-database";
@@ -134,22 +136,22 @@ export function DatabasePlacement() {
             </div>
           </div>
         </fieldset>
-        <p className="mt-0 mb-2 text-caption text-graphite">
+        <p className={cx(inspectorNoteClasses, "mt-1")}>
           Databases are never public. Workload subnet tiers stay as declared.
         </p>
-        {networks.length < 2 ? (
-          <p className="mt-0 mb-2 text-caption text-graphite">
-            Create another VPC to choose a different home.
-          </p>
-        ) : null}
-        <button
-          type="button"
-          className={cx(buttonClasses({ variant: "quiet" }), "text-caption")}
-          disabled={disabled}
-          onClick={() => draft.requestNavigation(() => draft.beginCreation("vpc"))}
-        >
-          Create a VPC
-        </button>
+        <div className={cx(inspectorActionGroupClasses, "mt-4")}>
+          {networks.length < 2 ? (
+            <p className={inspectorNoteClasses}>Create another VPC to choose a different home.</p>
+          ) : null}
+          <button
+            type="button"
+            className={buttonClasses({ variant: "quiet" })}
+            disabled={disabled}
+            onClick={() => draft.requestNavigation(() => draft.beginCreation("vpc"))}
+          >
+            Create a VPC
+          </button>
+        </div>
         {moving ? (
           <div
             className="my-3 rounded-md border border-rule-strong bg-wash p-3"
@@ -173,7 +175,7 @@ export function DatabasePlacement() {
           </div>
         ) : null}
         <p
-          className="mt-0 mb-2 text-caption [border-left:2px_solid_var(--prod)] pl-3 text-graphite"
+          className="mt-4 mb-2 border-l-2 border-prod pl-3 text-caption text-graphite"
           data-slot="database-migration-note"
         >
           For an existing RDS deployment, a VPC change needs a planned migration/cutover. Saving

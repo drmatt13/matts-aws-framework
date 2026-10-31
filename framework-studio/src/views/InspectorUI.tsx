@@ -1,5 +1,6 @@
-import { ChevronRight } from "lucide-react";
-import { useId, type ReactNode, type ComponentProps } from "react";
+import { ChevronRight, Code2, Diamond } from "lucide-react";
+import { Fragment, useId, type ReactNode, type ComponentProps } from "react";
+import type { Mode } from "../../shared/model";
 import { cx } from "../ui/classes";
 import { inspectorSectionClasses } from "../inspector-ui";
 import { EnvironmentPills } from "./DeploymentBadge";
@@ -70,6 +71,90 @@ export function InspectorKind({
   );
 }
 
+/** The Development or Production name at the head of an environment card, in its environment's color. */
+export function EnvironmentName({
+  mode,
+  active = true,
+  id,
+}: {
+  readonly mode: Mode;
+  readonly active?: boolean;
+  readonly id?: string;
+}) {
+  return (
+    <span
+      id={id}
+      className={cx(
+        "flex items-center gap-1.5 text-meta font-medium",
+        // A touch of ink keeps the environment hue readable (4.5:1) on its card's tint in both themes.
+        active ? "[color:color-mix(in_srgb,currentColor_85%,var(--ink))]" : "text-graphite",
+      )}
+      data-slot="environment-name"
+    >
+      {mode === "dev" ? <Code2 size={14} aria-hidden /> : <Diamond size={14} aria-hidden />}
+      {mode === "dev" ? "Development" : "Production"}
+    </span>
+  );
+}
+
+/**
+ * A list row led by its service artwork. The icon, title and trailing badges or actions share
+ * one centered line; metadata lines below align with the title, never under the icon.
+ * Rows inside a list are ruled between one another only.
+ */
+export function InspectorResourceRow({
+  icon,
+  title,
+  trailing,
+  children,
+  as: Row = "li",
+  className,
+  "data-slot": slot,
+}: {
+  readonly icon: ReactNode;
+  readonly title: ReactNode;
+  readonly trailing?: ReactNode;
+  readonly children?: ReactNode;
+  readonly as?: "li" | "div";
+  readonly className?: string;
+  readonly "data-slot"?: string;
+}) {
+  return (
+    <Row
+      data-slot={slot ?? "resource-row"}
+      className={cx(
+        "grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b border-rule py-2.5 first:pt-0 last:border-b-0 last:pb-0",
+        className,
+      )}
+    >
+      {icon}
+      <div className={cx("min-w-0 wrap-anywhere", !trailing && "col-span-2")}>{title}</div>
+      {trailing ? (
+        <div className="flex shrink-0 items-center gap-2 justify-self-end">{trailing}</div>
+      ) : null}
+      {children ? (
+        <div className="col-span-2 col-start-2 grid min-w-0 justify-items-start gap-0.5 text-caption text-graphite wrap-anywhere">
+          {children}
+        </div>
+      ) : null}
+    </Row>
+  );
+}
+
+/** A dotted identifier such as `stack.member` wraps after a dot before it ever breaks inside a name. */
+export function DottedName({ children }: { readonly children: string }) {
+  return children.split(".").map((part, index) => (
+    <Fragment key={index}>
+      {index ? (
+        <>
+          .<wbr />
+        </>
+      ) : null}
+      {part}
+    </Fragment>
+  ));
+}
+
 /** A count beside a heading or supporting summary; the shared disclosure right-aligns its own. */
 export function InspectorCount({
   children,
@@ -93,7 +178,8 @@ export function InspectorCount({
 
 /** One heading and content rhythm across every inspector and configuration form.
  * A heading action keeps its 32 px target without lowering the title, so every section title sits
- * the same distance below its rule. */
+ * the same distance below its rule. A description belongs to its title (4 px below it, in the
+ * title's column, so an action never crowds it); content follows the heading block by 12 px. */
 export function InspectorSection({
   title,
   description,
@@ -125,15 +211,13 @@ export function InspectorSection({
     >
       <div
         data-slot="section-heading"
-        className={cx(
-          "flex items-center justify-between gap-3",
-          description ? (actions ? "mb-2.5" : "mb-1") : "mb-3",
-        )}
+        className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3"
       >
         <h3
           id={id}
           className={cx(
             "min-w-0 wrap-anywhere",
+            !actions && "col-span-full",
             appearance === "inspector" && "m-0 text-label font-semibold text-balance",
           )}
         >
@@ -142,16 +226,21 @@ export function InspectorSection({
         {actions ? (
           <span className="-my-1.5 inline-flex shrink-0 items-center">{actions}</span>
         ) : null}
+        {description ? (
+          <p
+            className={cx(
+              "mt-1 mb-0 min-w-0 text-caption leading-[1.5] text-graphite",
+              !actions && "col-span-full",
+            )}
+            data-slot="section-description"
+          >
+            {description}
+          </p>
+        ) : null}
       </div>
-      {description ? (
-        <p className="mt-0 mb-3 text-caption leading-[1.5] text-graphite">{description}</p>
-      ) : null}
       <div
         data-slot="section-content"
-        className={cx(
-          "min-w-0 [&>:first-child]:mt-0 [&>:last-child]:mb-0 [&>[data-slot=field]:first-child]:pt-0 [&>[data-slot=field]:last-child]:pb-0",
-          contentClassName,
-        )}
+        className={cx("min-w-0 [&>:first-child]:mt-0 [&>:last-child]:mb-0", contentClassName)}
       >
         {children}
       </div>

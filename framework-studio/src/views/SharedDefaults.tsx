@@ -57,22 +57,18 @@ export function SharedDefaults({
         {[...(model.fields[group.ref] ?? [])]
           .sort((a, b) => Number(b.field.endsWith(".deploy")) - Number(a.field.endsWith(".deploy")))
           .map((fact) => (
-            <div className="not-first:border-t border-rule" key={fact.field}>
-              <FieldRow
-                target={group}
-                fact={fact}
-                allowInherit={!!fact.inherited}
-                editability={snapshot.source.editability[group.ref]?.[fact.field]}
-              />
-              {fact.usage ? (
-                <p
-                  className="-mt-1.5 text-caption text-graphite mb-3 pl-[calc(var(--field-label-width)+var(--field-column-gap))] inspector-420:pl-0"
-                  data-slot="default-usage"
-                >
-                  {fact.usage.inherited} inherit · {fact.usage.overridden} overridden
-                </p>
-              ) : null}
-            </div>
+            <FieldRow
+              key={fact.field}
+              target={group}
+              fact={fact}
+              allowInherit={!!fact.inherited}
+              editability={snapshot.source.editability[group.ref]?.[fact.field]}
+              usage={
+                fact.usage
+                  ? `${fact.usage.inherited} inherit · ${fact.usage.overridden} overridden`
+                  : undefined
+              }
+            />
           ))}
       </div>
       {source ? (

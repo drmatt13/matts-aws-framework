@@ -4,6 +4,11 @@ import type { ModelTarget } from "../../shared/model";
 import { useStudio } from "../studio";
 import { editorLink } from "../lookup";
 import { InspectorDisclosure, InspectorSection } from "./InspectorUI";
+import {
+  inspectorActionGroupClasses,
+  inspectorIntroClasses,
+  inspectorNoteClasses,
+} from "../inspector-ui";
 
 export function ImplementationStatus({ target }: { readonly target: ModelTarget }) {
   const { draft, draftState, model, live, snapshot } = useStudio();
@@ -20,15 +25,17 @@ export function ImplementationStatus({ target }: { readonly target: ModelTarget 
       entry.operation.target === target.ref,
   );
   return (
-    <InspectorSection title="Implementation">
-      <code>{target.directory}</code>
-      <p className="mt-0 mb-2 text-caption text-graphite">
-        {target.implementation?.ready
-          ? "Required source artifacts present. Runtime and deployment checks are separate."
-          : "Implementation needs attention."}
-      </p>
+    <InspectorSection title="Implementation" contentClassName="grid justify-items-start gap-2">
+      <div className="grid min-w-0 gap-1">
+        <code className="text-caption wrap-anywhere">{target.directory}</code>
+        <p className={inspectorNoteClasses}>
+          {target.implementation?.ready
+            ? "Required source artifacts present. Runtime and deployment checks are separate."
+            : "Implementation needs attention."}
+        </p>
+      </div>
       {target.implementation?.problems.map((problem) => (
-        <p key={problem} className="mt-0 mb-2 text-refuse wrap-anywhere" role="status">
+        <p key={problem} className="m-0 text-caption text-refuse wrap-anywhere" role="status">
           {problem}
         </p>
       ))}
@@ -39,7 +46,7 @@ export function ImplementationStatus({ target }: { readonly target: ModelTarget 
         Open implementation in editor
       </a>
       {!target.implementation?.ready ? (
-        <p className="mt-0 mb-2">
+        <div className={cx(inspectorActionGroupClasses, "mt-1")}>
           <button
             className={buttonClasses({ variant: "quiet" })}
             disabled={
@@ -49,13 +56,13 @@ export function ImplementationStatus({ target }: { readonly target: ModelTarget 
           >
             {pending ? "Starter files staged" : "Create missing starter files"}
           </button>
-        </p>
-      ) : null}
-      {pending ? (
-        <p className="mt-0 mb-2 text-caption text-graphite">
-          Review shows new files at this configured path. Existing files are preserved; nothing
-          starts or deploys.
-        </p>
+          {pending ? (
+            <p className={inspectorNoteClasses}>
+              Review shows new files at this configured path. Existing files are preserved; nothing
+              starts or deploys.
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </InspectorSection>
   );
@@ -66,28 +73,30 @@ export function WorkloadRemoval({ target }: { readonly target: ModelTarget }) {
   const source = snapshot.source.entities[target.ref]?.value;
   return (
     <InspectorDisclosure title="Remove workload">
-      <p className="mt-0 mb-2 text-caption text-graphite">
+      <p className={inspectorIntroClasses}>
         Review declaration removal and archive its implementation. Connected consumers must be
         removed first.
       </p>
-      <button
-        className={buttonClasses({ variant: "quiet" })}
-        disabled={
-          !!draftState.busy || draft.conflict || model.stale || live.evaluating || draft.dirty
-        }
-        onClick={() => draft.stageOperation({ kind: "removeWorkload", target: target.ref })}
-      >
-        Review declaration removal and source archive
-      </button>
-      <p className="mt-0 mb-2 text-caption text-graphite">
-        Deployed AWS resources remain until a separate deployment.
-        {source ? (
-          <>
-            {" "}
-            <a href={editorLink(snapshot.repositoryRoot, source)}>Open declaration</a>.
-          </>
-        ) : null}
-      </p>
+      <div className={inspectorActionGroupClasses}>
+        <button
+          className={buttonClasses({ variant: "quiet" })}
+          disabled={
+            !!draftState.busy || draft.conflict || model.stale || live.evaluating || draft.dirty
+          }
+          onClick={() => draft.stageOperation({ kind: "removeWorkload", target: target.ref })}
+        >
+          Review declaration removal and source archive
+        </button>
+        <p className={inspectorNoteClasses}>
+          Deployed AWS resources remain until a separate deployment.
+          {source ? (
+            <>
+              {" "}
+              <a href={editorLink(snapshot.repositoryRoot, source)}>Open declaration</a>.
+            </>
+          ) : null}
+        </p>
+      </div>
     </InspectorDisclosure>
   );
 }

@@ -11,6 +11,7 @@ import type { ModelResource, ModelTarget } from "../../shared/model";
 import { configuredAccessOptions, accessConnectionExists } from "../access-options";
 import { targetAccess, type AccessEntry } from "../access";
 import { iconUrl, targetIcon, ICONS } from "../icons";
+import { EntityIcon } from "./EntityIcon";
 import { editorLink, ROLE_LABEL } from "../lookup";
 import { useStudio } from "../studio";
 import { AuthorizationBadge, AuthorizationDetails } from "./Authorization";
@@ -360,7 +361,7 @@ function AccessRow({
       data-disclosure="permission"
     >
       <InspectorSummary marker={false} className="flex flex-wrap items-center gap-2 cursor-pointer">
-        <img className="size-6.5 flex-none" src={iconUrl(entry.destination.icon)} alt="" />
+        <EntityIcon size={26} icon={entry.destination.icon} />
         <span
           className="grid min-w-0 flex-1 gap-0.75 wrap-anywhere"
           data-slot="access-summary-text"

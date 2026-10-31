@@ -76,13 +76,16 @@ export function ConnectionEndpoints({
   if (!rows.length) return null;
   return (
     <dl
-      className={cx("grid gap-0.75 text-caption mx-0", compact ? "mt-0 mb-2" : "mt-1 mb-0")}
+      className={cx(
+        "mx-0 grid grid-cols-[max-content_minmax(0,1fr)] gap-x-2 gap-y-0.75 text-caption",
+        compact ? "mt-0 mb-2" : "mt-1 mb-0",
+      )}
       data-slot="connection-endpoints"
     >
       {rows.map(([direction, id]) => (
-        <div className="grid grid-cols-[34px_minmax(0,1fr)] gap-1.5" key={direction}>
+        <div className="col-span-2 grid grid-cols-subgrid items-baseline" key={direction}>
           <dt className="text-graphite">{direction}</dt>
-          <dd className="m-0 wrap-anywhere">
+          <dd className="m-0 min-w-0 wrap-anywhere">
             <button className={buttonClasses({ variant: "link" })} onClick={() => select(id)}>
               {endpointLabel(index, id)}
             </button>

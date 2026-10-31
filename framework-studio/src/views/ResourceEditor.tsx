@@ -1,7 +1,6 @@
-import { cx } from "../ui/classes";
-import { inspectorSectionClasses } from "../inspector-ui";
+import { environmentCardClasses, inspectorSectionClasses } from "../inspector-ui";
 import { sourceEditBlocked } from "../editing-state";
-import { checkboxClasses, Select, TextInput } from "../ui/FormControls";
+import { environmentCheckboxClasses, Select, TextInput } from "../ui/FormControls";
 
 import { useEffect, useId, useRef, useState } from "react";
 import type { Mode, ModelResource } from "../../shared/model";
@@ -10,12 +9,12 @@ import { api } from "../api";
 import { useStudio } from "../studio";
 import type { ResourceModeForm } from "../draft";
 import { resourceOutputEnvironmentName } from "@repo/framework/config";
-import { FormGroup, InspectorSwitch } from "./InspectorUI";
+import { EnvironmentName, FormGroup, InspectorSwitch } from "./InspectorUI";
 import { LocalValue } from "./LocalValue";
 
-const modeCellClasses = "px-0 py-1 text-left align-middle";
-const insetModeCellClasses = cx(modeCellClasses, "pl-2");
-const modeRowHeadingClasses = cx(modeCellClasses, "w-[34%] font-normal");
+/** An environment card's checkbox options: ink text on the card's tint, a 24 px row, dimmed when unavailable. */
+const modeOptionClasses =
+  "flex min-h-(--panel-caption-target) min-w-0 cursor-pointer items-center gap-2 text-ink has-disabled:cursor-not-allowed has-disabled:text-graphite";
 
 const MODES = ["dev", "prod"] as const;
 const MODE_NAMES = { dev: "development", prod: "production" } as const;
@@ -113,7 +112,7 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
               onChange={setLinked}
             />
           </div>
-          <p id={`${help}-source`} className="mb-2 mt-2 text-caption text-graphite">
+          <p id={`${help}-source`} className="mb-0 mt-2 text-caption text-graphite">
             {secret
               ? "Secrets use a protected environment file. Their values never belong in source."
               : linked
@@ -121,9 +120,11 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
                 : "The value is saved in the source declaration. Environment files do not supply or override it."}
           </p>
           {linked ? (
-            <label className="mt-3 grid gap-2 text-label font-medium">
+            <label className="mt-3 grid gap-1 text-label font-medium">
               <span>Environment variable</span>
               <TextInput
+                className="font-mono text-caption"
+                controlSize="panel"
                 aria-label="Environment variable"
                 value={fromEnv}
                 onChange={(event) => update({ fromEnv: event.target.value })}
@@ -160,109 +161,91 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
         ) : null}
         <fieldset disabled={disabled} className="m-0 min-w-0 border-0 p-0">
           <FormGroup title="Input behavior" appearance="plain">
-            <table
-              className="mb-1 w-full table-fixed border-collapse text-caption"
-              aria-describedby={`${help}-modes`}
+            <div
+              className="grid grid-cols-2 gap-2 inspector-360:grid-cols-1"
               data-slot="input-modes"
             >
-              <thead>
-                <tr>
-                  <td className={cx(modeCellClasses, "w-[34%] font-normal")} />
-                  <th scope="col" className={cx(modeCellClasses, "font-medium text-graphite")}>
-                    Dev
-                  </th>
-                  <th scope="col" className={cx(insetModeCellClasses, "font-medium text-graphite")}>
-                    Prod
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <th scope="row" className={modeRowHeadingClasses}>
-                    Present
-                  </th>
-                  {MODES.map((mode) => (
-                    <td key={mode} className={insetModeCellClasses}>
+              {MODES.map((mode) => {
+                const present = modes[mode].present;
+                const label = `${linked ? "Default" : "Value"} in ${MODE_NAMES[mode]}`;
+                const value = present
+                  ? linked
+                    ? modes[mode].default
+                    : (modes[mode].value ?? "")
+                  : "";
+                const change = (value: string) =>
+                  setMode(mode, linked ? { default: value } : { value });
+                return (
+                  <div
+                    key={mode}
+                    role="group"
+                    aria-labelledby={`${help}-${mode}`}
+                    aria-describedby={`${help}-modes`}
+                    className={environmentCardClasses({ mode, active: present })}
+                    data-slot="input-mode"
+                    data-mode={mode}
+                  >
+                    <EnvironmentName id={`${help}-${mode}`} mode={mode} active={present} />
+                    <label className={modeOptionClasses}>
                       <input
                         type="checkbox"
                         aria-label={`Present in ${MODE_NAMES[mode]}`}
-                        checked={modes[mode].present}
+                        checked={present}
                         onChange={(event) => setMode(mode, { present: event.target.checked })}
-                        className={checkboxClasses}
+                        className={environmentCheckboxClasses[mode]}
                       />
-                    </td>
-                  ))}
-                </tr>
-                {linked ? (
-                  <tr>
-                    <th scope="row" className={modeRowHeadingClasses}>
-                      Required
-                    </th>
-                    {MODES.map((mode) => (
-                      <td key={mode} className={insetModeCellClasses}>
+                      Present
+                    </label>
+                    {linked ? (
+                      <label className={modeOptionClasses}>
                         <input
                           type="checkbox"
                           aria-label={`Required in ${MODE_NAMES[mode]}`}
-                          disabled={!modes[mode].present}
-                          checked={modes[mode].present && modes[mode].required}
+                          disabled={!present}
+                          checked={present && modes[mode].required}
                           onChange={(event) => setMode(mode, { required: event.target.checked })}
-                          className={checkboxClasses}
+                          className={environmentCheckboxClasses[mode]}
                         />
-                      </td>
-                    ))}
-                  </tr>
-                ) : null}
-                {!secret ? (
-                  <tr>
-                    <th scope="row" className={modeRowHeadingClasses}>
-                      {linked ? "Default" : "Value"}
-                    </th>
-                    {MODES.map((mode) => {
-                      const label = `${linked ? "Default" : "Value"} in ${MODE_NAMES[mode]}`;
-                      const value = modes[mode].present
-                        ? linked
-                          ? modes[mode].default
-                          : (modes[mode].value ?? "")
-                        : "";
-                      const change = (value: string) =>
-                        setMode(mode, linked ? { default: value } : { value });
-                      return (
-                        <td key={mode} className={insetModeCellClasses}>
-                          {resource.values ? (
-                            <Select
-                              className="w-full"
-                              aria-label={label}
-                              aria-describedby={`${help}-modes`}
-                              disabled={!modes[mode].present}
-                              value={value}
-                              onChange={(event) => change(event.target.value)}
-                            >
-                              <option value="" disabled={!linked}>
-                                {linked ? "None" : "Choose a value"}
-                              </option>
-                              {resource.values.map((value) => (
-                                <option key={value}>{value}</option>
-                              ))}
-                            </Select>
-                          ) : (
-                            <TextInput
-                              className="w-full"
-                              aria-label={label}
-                              aria-describedby={`${help}-modes`}
-                              disabled={!modes[mode].present}
-                              value={value}
-                              placeholder={linked ? "None" : "Enter a value"}
-                              onChange={(event) => change(event.target.value)}
-                            />
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-            <p id={`${help}-modes`} className="mt-0 mb-2 text-caption text-graphite">
+                        Required
+                      </label>
+                    ) : null}
+                    {!secret ? (
+                      <label className="mt-1 grid min-w-0 gap-1 text-graphite">
+                        {linked ? "Default" : "Value"}
+                        {resource.values ? (
+                          <Select
+                            controlSize="panel"
+                            className="w-full text-ink"
+                            aria-label={label}
+                            disabled={!present}
+                            value={value}
+                            onChange={(event) => change(event.target.value)}
+                          >
+                            <option value="" disabled={!linked}>
+                              {linked ? "None" : "Choose a value"}
+                            </option>
+                            {resource.values.map((value) => (
+                              <option key={value}>{value}</option>
+                            ))}
+                          </Select>
+                        ) : (
+                          <TextInput
+                            controlSize="panel"
+                            className="w-full text-ink"
+                            aria-label={label}
+                            disabled={!present}
+                            value={value}
+                            placeholder={linked ? "None" : "Enter a value"}
+                            onChange={(event) => change(event.target.value)}
+                          />
+                        )}
+                      </label>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+            <p id={`${help}-modes`} className="mt-2 mb-0 text-caption text-graphite">
               {linked ? (
                 <>
                   An environment without the input never reads it. A required input needs a value in
@@ -276,7 +259,7 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
               )}
             </p>
             <div
-              className="mt-3 mb-1 flex min-w-0 items-center justify-between gap-3 text-label font-medium"
+              className="mt-4 mb-1 flex min-w-0 items-center justify-between gap-3 border-t border-rule pt-3 text-label font-medium"
               data-slot="setting-switch"
             >
               <label className="min-w-0 wrap-anywhere" htmlFor={`${help}-secret-switch`}>
@@ -290,16 +273,17 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
                 onChange={setSecret}
               />
             </div>
-            <p id={`${help}-secret`} className="mt-0 mb-2 text-caption text-graphite">
+            <p id={`${help}-secret`} className="m-0 text-caption text-graphite">
               On creates a secret whose value is authored separately in a protected environment file
               and delivered through Secrets Manager at deployment.
             </p>
             <label
-              className="my-3 grid min-w-0 gap-2 text-label font-medium wrap-anywhere"
+              className="mt-4 grid min-w-0 gap-1 border-t border-rule pt-3 text-label font-medium wrap-anywhere"
               data-slot="resource-control"
             >
               <span>Group</span>
               <TextInput
+                controlSize="panel"
                 className="w-full"
                 aria-label="Resource group"
                 aria-describedby={`${help}-group`}
@@ -316,7 +300,7 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
                   ))}
               </datalist>
             </label>
-            <p id={`${help}-group`} className="mt-0 mb-2 text-caption text-graphite">
+            <p id={`${help}-group`} className="mt-2 mb-0 text-caption text-graphite">
               Leave empty for no group. Moving an input updates references
               {linked ? " and preserves its environment variable name" : ""}.
             </p>

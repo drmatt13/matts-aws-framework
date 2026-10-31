@@ -3,6 +3,7 @@ import { cx } from "../ui/classes";
 import {
   inspectorStackedFieldClasses,
   inspectorFieldLabelClasses,
+  inspectorLabelClasses,
   inspectorControlClasses,
   inspectorFullWidthHelpClasses,
 } from "../inspector-ui";
@@ -62,7 +63,7 @@ export function DeployControl({ target }: { readonly target: ModelTarget }) {
     <div className="grid min-w-0 gap-3" data-slot="deploy-control">
       <div className={inspectorStackedFieldClasses} data-slot="field">
         <label
-          className={inspectorFieldLabelClasses({ stacked: true, modified: !!operation })}
+          className={inspectorFieldLabelClasses({ modified: !!operation })}
           htmlFor={id}
           data-slot="field-label"
         >
@@ -106,7 +107,7 @@ export function DeployControl({ target }: { readonly target: ModelTarget }) {
           <legend className="px-1 py-0 text-caption text-graphite">Condition</legend>
           <div className={inspectorStackedFieldClasses} data-slot="field">
             <label
-              className={inspectorFieldLabelClasses({ stacked: true })}
+              className={inspectorLabelClasses}
               htmlFor={`${id}-input`}
               data-slot="field-label"
             >
@@ -157,7 +158,7 @@ export function DeployControl({ target }: { readonly target: ModelTarget }) {
           </div>
           <div className={inspectorStackedFieldClasses} data-slot="field">
             <label
-              className={inspectorFieldLabelClasses({ stacked: true })}
+              className={inspectorLabelClasses}
               htmlFor={`${id}-equals`}
               data-slot="field-label"
             >

@@ -1,4 +1,3 @@
-import { inspectorSectionClasses } from "../inspector-ui";
 import { Select } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
 import { cx } from "../ui/classes";
@@ -9,6 +8,7 @@ import type { EnvironmentEdit } from "../draft";
 import { useStudio } from "../studio";
 import { EnvironmentValueControl } from "./EnvironmentValueControl";
 import { RequirementNotice } from "./InputRequirement";
+import { InspectorSection } from "./InspectorUI";
 
 export function LocalValue({
   resource,
@@ -83,21 +83,21 @@ export function LocalValue({
           : "Not set";
   const requiredMissing = resource.inputRequirement?.required && !value.trim() && !usingDefault;
   return (
-    <section aria-label="Local value" data-slot="local-input">
-      <div className="mb-3 flex items-center justify-between gap-3" data-slot="section-heading">
-        <h3 className="m-0 min-w-0 text-label font-semibold text-balance wrap-anywhere">
-          Local value
-        </h3>
+    <InspectorSection
+      title="Local value"
+      data-slot="local-input"
+      actions={
         <span
-          className="ml-auto text-graphite text-caption font-medium"
+          className="text-caption font-medium text-graphite"
           data-slot="local-input-mode"
           data-mode={mode}
         >
           {mode === "dev" ? "Development" : "Production"} file
         </span>
-      </div>
+      }
+    >
       <code
-        className="block wrap-anywhere m-[var(--space-3)_0_var(--space-1)] text-caption"
+        className="mb-1 block text-caption wrap-anywhere"
         data-slot="local-input-name"
       >
         {name}
@@ -170,6 +170,7 @@ export function LocalValue({
             <>
               {resource.values && !secret ? (
                 <Select
+                  controlSize="panel"
                   className="w-full"
                   aria-label={`Value for ${name}`}
                   aria-describedby={help}
@@ -241,25 +242,25 @@ export function LocalValue({
           )}
           <div
             id={help}
-            className="mt-2 wrap-anywhere text-caption text-graphite"
+            className="mt-2 grid gap-2 text-caption text-graphite wrap-anywhere empty:hidden"
             data-slot="local-input-help"
           >
             {/* The status line already says Empty or Not set, and an empty value select already reads "Use default · value". */}
             {hasDefault && !(resource.values && !secret && value === "") ? (
-              <p className="mt-0 mb-2">
+              <p className="m-0">
                 Default: <code className="text-[inherit]">{resource.default}</code>
               </p>
             ) : requiredMissing ? (
-              <p className="mt-0 mb-2">A non-blank value is required.</p>
+              <p className="m-0">A non-blank value is required.</p>
             ) : null}
             {edit ? (
-              <p className="mt-0 mb-2">Review Changes to save this value. Nothing is deployed.</p>
+              <p className="m-0">Review Changes to save this value. Nothing is deployed.</p>
             ) : null}
             {secret ? (
-              <p className="mt-0 mb-2">Masked by default. Saved only in this local file.</p>
+              <p className="m-0">Masked by default. Saved only in this local file.</p>
             ) : null}
             {!details.inputFile ? (
-              <p className="mt-0 mb-2">Restart Studio to enable inline value editing.</p>
+              <p className="m-0">Restart Studio to enable inline value editing.</p>
             ) : null}
           </div>
           {!edit ? <RequirementNotice requirement={resource.inputRequirement} /> : null}
@@ -270,6 +271,6 @@ export function LocalValue({
           ) : null}
         </>
       )}
-    </section>
+    </InspectorSection>
   );
 }

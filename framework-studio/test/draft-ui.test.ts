@@ -561,7 +561,8 @@ test("the checklist lists every remaining problem at once and the button enables
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Next" }));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add trigger" }));
   assert.match(count(), /1 unsaved change/);
-  assert.ok(ui.screen.getByText("referenceExamples.processingQueue · sqs"));
+  const added = ui.screen.getByText("referenceExamples.processingQueue").closest("[data-slot=trigger-row]")!;
+  assert.match(added.textContent!, /referenceExamples\.processingQueue.*sqs/);
 });
 
 test("a schedule needs no resource and builds its expression from a repeat interval", async () => {
@@ -602,7 +603,8 @@ test("an asynchronous trigger points to the failure destination, which stages an
   assert.ok(ui.screen.getByText(/from 60 to 21600 seconds/));
   ui.fireEvent.change(ui.screen.getByRole("spinbutton", { name: "Failure maximum event age" }), { target: { value: "" } });
   ui.fireEvent.click(save);
-  assert.match(ui.screen.getByText(/^Sent to/).textContent!, /deadLetterQueue after 1 retry\./);
+  const destination = ui.screen.getByRole("button", { name: "referenceExamples.deadLetterQueue" }).closest("[data-slot=failure-destination]")!;
+  assert.match(destination.textContent!, /Amazon SQS · after 1 retry$/);
   assert.match(count(), /2 unsaved changes/);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
   await ui.waitFor(() => assert.equal(planCalls.at(-1)?.length, 2));

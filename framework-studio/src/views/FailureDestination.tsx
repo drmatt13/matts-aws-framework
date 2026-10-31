@@ -1,7 +1,15 @@
 import { triggerFieldLabelClasses } from "./inspector/triggers/styles";
-import { Select, TextInput } from "../ui/FormControls";
+import {
+  inspectorActionGroupClasses,
+  inspectorNoteClasses,
+  inspectorRelationListClasses,
+} from "../inspector-ui";
+import { ICONS, resourceIcon, type IconKey } from "../icons";
+import { iconButtonClasses } from "../ui/IconButton";
+import { EntityIcon } from "./EntityIcon";
+import { DottedName, InspectorResourceRow } from "./InspectorUI";
+import { Select, UnitInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
-import { cx } from "../ui/classes";
 import { Pencil, Trash2 } from "lucide-react";
 import { useState } from "react";
 import type { FailureDestinationSettings } from "../../shared/triggers";
@@ -22,14 +30,26 @@ interface Form {
  * their own failure handling, which the text says.
  */
 export function FailureDestination({ event }: { readonly event: string }) {
-  const { snapshot, index, draft } = useStudio();
+  const { snapshot, index, draft, select } = useStudio();
   const [form, setForm] = useState<Form>();
   const current = draft.failure(event);
   const choices = (snapshot.source.triggerCapabilities ?? []).filter((item) =>
     item.canonicalTypes.some((type) => TYPES.includes(type)),
   );
-  const describe = (value: FailureDestinationSettings) =>
-    `Sent to ${titleOf(index, value.destination)} after ${value.retryAttempts ?? 2} ${value.retryAttempts === 1 ? "retry" : "retries"}${value.maxEventAgeSeconds !== undefined ? `, or once ${value.maxEventAgeSeconds}s old` : ""}.`;
+  // The destination is the row's title; its service and retry policy are the metadata beneath.
+  const destination = current && index.resources.get(current.destination);
+  const destinationIcon: IconKey = destination ? resourceIcon(destination) : "topic";
+  const policy = (value: FailureDestinationSettings) =>
+    [
+      ICONS[destinationIcon][1],
+      `after ${value.retryAttempts ?? 2} ${value.retryAttempts === 1 ? "retry" : "retries"}${value.maxEventAgeSeconds !== undefined ? `, or once ${value.maxEventAgeSeconds}s old` : ""}`,
+    ].join(" · ");
+  const begin = () =>
+    setForm({
+      destination: current?.destination ?? "",
+      retries: current?.retryAttempts === undefined ? "" : String(current.retryAttempts),
+      age: current?.maxEventAgeSeconds === undefined ? "" : String(current.maxEventAgeSeconds),
+    });
   const age = form?.age.trim() ? Number(form.age) : undefined;
   const problem = !form
     ? undefined
@@ -48,52 +68,63 @@ export function FailureDestination({ event }: { readonly event: string }) {
     setForm(undefined);
   };
   return (
-    <div className="mt-3 border-t border-rule pt-2.5" data-slot="failure-destination">
-      <h5 className="mt-0 mb-1 text-step-minus1 uppercase tracking-[.04em] text-graphite text-balance">
-        When a run fails
-      </h5>
+    <div className="mt-4 border-t border-rule pt-3" data-slot="failure-destination">
+      <h4 className="mt-0 mb-3 text-label font-semibold text-balance">When a run fails</h4>
       {!form ? (
-        <p className="m-0 flex flex-wrap items-baseline gap-2 text-caption">
-          <span>{current ? describe(current) : "Dropped after Lambda's two retries."}</span>
-          <button
-            className={cx(
-              buttonClasses({ variant: "link", className: "inline-flex items-center gap-[3px]" }),
-              "text-caption",
-            )}
-            aria-label={current ? "Change failure destination" : "Set failure destination"}
-            onClick={() =>
-              setForm({
-                destination: current?.destination ?? "",
-                retries: current?.retryAttempts === undefined ? "" : String(current.retryAttempts),
-                age:
-                  current?.maxEventAgeSeconds === undefined
-                    ? ""
-                    : String(current.maxEventAgeSeconds),
-              })
-            }
-          >
-            <Pencil size={12} aria-hidden />
-            {current ? "Change" : "Set destination"}
-          </button>
-          {current ? (
-            <button
-              className={cx(
-                buttonClasses({ variant: "link", className: "inline-flex items-center gap-[3px]" }),
-                "text-caption",
-              )}
-              aria-label="Remove failure destination"
-              onClick={() => draft.setFailure(event, null)}
+        current ? (
+          <ul className={inspectorRelationListClasses}>
+            <InspectorResourceRow
+              icon={<EntityIcon size={26} icon={destinationIcon} />}
+              title={
+                <button
+                  className={buttonClasses({ variant: "link" })}
+                  onClick={() => select(current.destination)}
+                >
+                  <DottedName>{titleOf(index, current.destination)}</DottedName>
+                </button>
+              }
+              trailing={
+                <>
+                  <button
+                    className={iconButtonClasses()}
+                    aria-label="Change failure destination"
+                    title="Change"
+                    onClick={begin}
+                  >
+                    <Pencil size={14} aria-hidden />
+                  </button>
+                  <button
+                    className={iconButtonClasses()}
+                    aria-label="Remove failure destination"
+                    title="Remove"
+                    onClick={() => draft.setFailure(event, null)}
+                  >
+                    <Trash2 size={14} aria-hidden />
+                  </button>
+                </>
+              }
             >
-              <Trash2 size={12} aria-hidden />
-              Remove
+              <span>{policy(current)}</span>
+            </InspectorResourceRow>
+          </ul>
+        ) : (
+          <div className={inspectorActionGroupClasses}>
+            <p className={inspectorNoteClasses}>Dropped after Lambda's two retries.</p>
+            <button
+              className={buttonClasses({ variant: "quiet" })}
+              aria-label="Set failure destination"
+              onClick={begin}
+            >
+              Set destination
             </button>
-          ) : null}
-        </p>
+          </div>
+        )
       ) : (
-        <div className="mt-3 grid gap-3.5 pt-1.5" data-slot="trigger-form">
+        <div className="grid gap-3.5" data-slot="trigger-form">
           <label className={triggerFieldLabelClasses}>
             Destination
             <Select
+              controlSize="panel"
               className="w-full"
               aria-label="Failure destination"
               value={form.destination}
@@ -114,6 +145,7 @@ export function FailureDestination({ event }: { readonly event: string }) {
           <label className={triggerFieldLabelClasses}>
             Retries before it is sent
             <Select
+              controlSize="panel"
               className="w-full"
               aria-label="Failure retry attempts"
               value={form.retries}
@@ -126,9 +158,10 @@ export function FailureDestination({ event }: { readonly event: string }) {
             </Select>
           </label>
           <label className={triggerFieldLabelClasses}>
-            Maximum event age (seconds)
-            <TextInput
-              className="w-full"
+            Maximum event age
+            <UnitInput
+              controlSize="panel"
+              unit="seconds"
               aria-label="Failure maximum event age"
               type="number"
               min={60}
@@ -148,11 +181,11 @@ export function FailureDestination({ event }: { readonly event: string }) {
             </p>
           ) : null}
           <div
-            className="empty:hidden flex flex-wrap gap-2 mt-3 items-center"
+            className="flex flex-wrap items-center gap-2 empty:hidden"
             data-slot="resource-actions"
           >
             <button
-              className={buttonClasses({ variant: "primary", size: "compact" })}
+              className={buttonClasses({ variant: "primary" })}
               disabled={!!problem}
               onClick={save}
               data-variant="primary"
@@ -160,7 +193,7 @@ export function FailureDestination({ event }: { readonly event: string }) {
               Save destination
             </button>
             <button
-              className={cx(buttonClasses({ variant: "quiet" }), "text-caption")}
+              className={buttonClasses({ variant: "quiet" })}
               onClick={() => setForm(undefined)}
             >
               Cancel

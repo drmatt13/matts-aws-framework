@@ -1,5 +1,5 @@
 import { InspectorSummary, InspectorSwitch } from "./InspectorUI";
-import { Select, TextInput } from "../ui/FormControls";
+import { Select, UnitInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
 import { cx } from "../ui/classes";
 import {
@@ -12,6 +12,7 @@ import {
   inspectorFullWidthLockedClasses,
   inspectorHelpClasses,
   inspectorFullWidthHelpClasses,
+  inspectorNoteClasses,
 } from "../inspector-ui";
 import { useId } from "react";
 import type { Editability, FieldFact, ModelTarget } from "../../shared/model";
@@ -45,6 +46,8 @@ interface Props {
   readonly allowInherit?: boolean;
   readonly description?: string;
   readonly flush?: boolean;
+  /** How many declarations inherit a shared default; it closes the field's support lines. */
+  readonly usage?: string;
 }
 const INHERIT = "\u0000inherit";
 
@@ -58,7 +61,7 @@ export function FieldRow(props: Props) {
   );
 }
 
-function ValueField({ target, fact, editability, allowInherit }: Props) {
+function ValueField({ target, fact, editability, allowInherit, usage }: Props) {
   const id = useId();
   const { draft, draftState, live, model, snapshot } = useStudio();
   const locked = model.stale
@@ -111,6 +114,7 @@ function ValueField({ target, fact, editability, allowInherit }: Props) {
           </code>
         ) : fact.domain.kind === "enum" ? (
           <Select
+            controlSize="panel"
             className="w-full"
             id={id}
             value={value === undefined ? INHERIT : String(value)}
@@ -134,39 +138,32 @@ function ValueField({ target, fact, editability, allowInherit }: Props) {
             {allowInherit !== false ? <option value={INHERIT}>{inheritLabel}</option> : null}
           </Select>
         ) : (
-          <>
-            <TextInput
-              className="w-full flex-1"
-              id={id}
-              type="number"
-              min={fact.domain.min}
-              max={fact.domain.max}
-              required={allowInherit === false}
-              value={value === undefined ? "" : String(value)}
-              placeholder={inherited === undefined ? "" : String(inherited)}
-              onChange={(event) =>
-                draft.setField(
-                  target.ref,
-                  fact,
-                  event.target.validity.badInput
-                    ? "Invalid number"
-                    : event.target.value === ""
-                      ? undefined
-                      : event.target.value,
-                )
-              }
-              aria-label={`${fact.label} in ${fact.domain.unit}`}
-              aria-invalid={!!entry?.error}
-              aria-describedby={describedBy}
-              disabled={!!draftState.busy || live.evaluating}
-            />
-            <span
-              className="min-w-[3ch] shrink-0 whitespace-nowrap text-caption text-graphite"
-              data-slot="field-unit"
-            >
-              {fact.domain.unit}
-            </span>
-          </>
+          <UnitInput
+            controlSize="panel"
+            unit={fact.domain.unit}
+            id={id}
+            type="number"
+            min={fact.domain.min}
+            max={fact.domain.max}
+            required={allowInherit === false}
+            value={value === undefined ? "" : String(value)}
+            placeholder={inherited === undefined ? "" : String(inherited)}
+            onChange={(event) =>
+              draft.setField(
+                target.ref,
+                fact,
+                event.target.validity.badInput
+                  ? "Invalid number"
+                  : event.target.value === ""
+                    ? undefined
+                    : event.target.value,
+              )
+            }
+            aria-label={`${fact.label} in ${fact.domain.unit}`}
+            aria-invalid={!!entry?.error}
+            aria-describedby={describedBy}
+            disabled={!!draftState.busy || live.evaluating}
+          />
         )}
       </span>
       {entry?.error ? (
@@ -175,12 +172,15 @@ function ValueField({ target, fact, editability, allowInherit }: Props) {
         </span>
       ) : null}
       <div
-        className={cx(inspectorHelpClasses, "flex flex-wrap items-baseline gap-x-3 empty:hidden")}
+        className={cx(
+          inspectorHelpClasses,
+          "flex flex-wrap items-center gap-x-4 gap-y-1 empty:hidden",
+        )}
         data-slot="field-support"
       >
         {numericDefault ? (
           <div
-            className="flex flex-wrap items-baseline gap-x-3 gap-y-1"
+            className="flex min-h-(--panel-caption-target) flex-wrap items-center gap-x-3 gap-y-1"
             data-slot="numeric-default"
           >
             <span id={`${id}-default`} title={fact.inherited?.from}>
@@ -189,7 +189,10 @@ function ValueField({ target, fact, editability, allowInherit }: Props) {
             </span>
             {value !== undefined && allowInherit !== false && !locked ? (
               <button
-                className={buttonClasses({ variant: "link" })}
+                className={buttonClasses({
+                  variant: "link",
+                  className: "min-h-(--panel-caption-target)",
+                })}
                 aria-label={`Use default ${fact.label.toLowerCase()}`}
                 disabled={!!draftState.busy || live.evaluating}
                 onClick={() => draft.setField(target.ref, fact, undefined)}
@@ -223,12 +226,21 @@ function ValueField({ target, fact, editability, allowInherit }: Props) {
           {locked}
         </span>
       ) : null}
+      <FieldUsage usage={usage} />
     </div>
   );
 }
 
+function FieldUsage({ usage }: { readonly usage?: string }) {
+  return usage ? (
+    <p className={cx(inspectorNoteClasses, "col-span-full")} data-slot="default-usage">
+      {usage}
+    </p>
+  ) : null;
+}
+
 /** Auth switches and shared-default switches stage through exactly the same control. */
-export function BooleanField({ target, fact, editability, description, flush }: Props) {
+export function BooleanField({ target, fact, editability, description, flush, usage }: Props) {
   const id = useId();
   const { draft, draftState, model, live } = useStudio();
   const locked = model.stale
@@ -300,6 +312,7 @@ export function BooleanField({ target, fact, editability, description, flush }: 
           {locked ?? entry?.error}
         </span>
       ) : null}
+      <FieldUsage usage={usage} />
     </div>
   );
 }

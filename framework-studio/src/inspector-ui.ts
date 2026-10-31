@@ -24,7 +24,12 @@ export const inspectorTitleClasses =
 /** Shared tag content rhythm; passed directly to InspectorDisclosure's content slot. */
 export const tagDisclosureContentClasses = "grid gap-3";
 
-/** Field layout is chosen by the component, never inferred from a descendant's role. */
+/**
+ * Field layout is chosen by the component, never inferred from a descendant's role.
+ * Value fields stack label → control → support on one left edge at every panel width, with
+ * 4 px between each; a switch keeps its label and On/Off control on one centered line.
+ * Fields are separated by a rule and 12 px on each side.
+ */
 export function inspectorFieldRowClasses({
   switch: isSwitch = false,
   flush = false,
@@ -33,46 +38,70 @@ export function inspectorFieldRowClasses({
   readonly flush?: boolean;
 } = {}) {
   return cx(
-    "grid gap-x-(--field-column-gap) gap-y-1 border-t border-rule first-of-type:border-t-0",
-    isSwitch
-      ? "grid-cols-[minmax(0,1fr)_auto]"
-      : "grid-cols-[var(--field-label-width)_minmax(0,1fr)] inspector-420:grid-cols-[minmax(0,1fr)] inspector-420:gap-2",
-    flush ? "py-0 -mt-1.5" : "py-3",
+    "grid min-w-0 gap-x-(--field-column-gap) gap-y-1 border-t border-rule first-of-type:border-t-0",
+    isSwitch ? "grid-cols-[minmax(0,1fr)_auto] items-center" : "grid-cols-[minmax(0,1fr)]",
+    flush ? "py-0 -mt-1.5" : "py-3 first:pt-0 last:pb-0",
   );
 }
 export const inspectorFieldClasses = inspectorFieldRowClasses();
 export const inspectorSwitchFieldClasses = inspectorFieldRowClasses({ switch: true });
-export const inspectorStackedFieldClasses =
-  "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 inspector-420:gap-2";
-export const inspectorWideFieldClasses =
-  "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 border-t border-rule py-3 first-of-type:border-t-0";
+/** An unruled stacked field, for a single control inside a section that supplies its own rhythm. */
+export const inspectorStackedFieldClasses = "grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1";
+/** A ruled field whose control is a composite (a picker or list) rather than one input. */
+export const inspectorWideFieldClasses = inspectorFieldClasses;
 export function inspectorFieldLabelClasses({
   modified = false,
-  stacked = false,
 }: {
   readonly modified?: boolean;
-  readonly stacked?: boolean;
 } = {}) {
   return cx(
     "min-w-0 text-label font-medium wrap-anywhere",
-    !stacked && "pt-[calc((var(--panel-control-height)-1.5em)/2)] inspector-420:pt-0",
     modified && "after:content-['_•'] after:text-dev",
   );
 }
 export const inspectorLabelClasses = inspectorFieldLabelClasses();
 export const inspectorControlClasses = "flex min-w-0 flex-nowrap items-center gap-2";
 const supportingTextClasses = "min-w-0 text-caption leading-[1.4] text-graphite wrap-anywhere";
-export const inspectorHelpClasses = cx(
-  "col-start-2 inspector-420:col-span-full",
-  supportingTextClasses,
-);
-/** Switch and stacked rows have no help column. A full-width support row keeps
- * long descriptions from sizing the switch's auto track and squeezing its label. */
-export const inspectorFullWidthHelpClasses = cx("col-span-full", supportingTextClasses);
+/** Help sits directly beneath its control, on the label's left edge. */
+export const inspectorHelpClasses = cx("col-span-full", supportingTextClasses);
+/** Switch rows have no help column. A full-width support row keeps long descriptions
+ * from sizing the switch's auto track and squeezing its label. */
+export const inspectorFullWidthHelpClasses = inspectorHelpClasses;
 export const inspectorLockedClasses =
-  "col-start-2 min-w-0 border-l-2 border-rule-strong pl-2 text-step-minus1 text-graphite wrap-anywhere [&[role=alert]]:border-refuse [&[role=alert]]:text-refuse inspector-420:col-span-full";
-export const inspectorFullWidthLockedClasses =
-  "col-span-full min-w-0 border-l-2 border-rule-strong pl-2 text-caption text-graphite wrap-anywhere aria-[invalid=true]:border-refuse [&[role=alert]]:border-refuse [&[role=alert]]:text-refuse";
+  "col-span-full min-w-0 border-l-2 border-rule-strong pl-2 text-caption text-graphite wrap-anywhere [&[role=alert]]:border-refuse [&[role=alert]]:text-refuse";
+export const inspectorFullWidthLockedClasses = cx(
+  inspectorLockedClasses,
+  "aria-[invalid=true]:border-refuse",
+);
+
+const noteTextClasses = "min-w-0 text-caption leading-[1.5] text-graphite wrap-anywhere";
+/** Supporting copy that owns no margins; its container's gap places it. */
+export const inspectorNoteClasses = cx("m-0", noteTextClasses);
+/**
+ * An action and the note that qualifies it: the note follows by 8 px. Copy that introduces the
+ * action sits 12 px above the group, the same distance a heading keeps from its content.
+ */
+export const inspectorActionGroupClasses = "grid min-w-0 justify-items-start gap-2";
+/** Introductory copy above a control, list or action group. */
+export const inspectorIntroClasses = cx("mt-0 mb-3", noteTextClasses);
+
+/**
+ * A Development or Production card: tinted by its environment's color, with a dotted top edge
+ * when the subject is absent from that environment. Deployment and input behavior share it.
+ */
+export function environmentCardClasses({
+  mode,
+  active,
+}: {
+  readonly mode: "dev" | "prod";
+  readonly active: boolean;
+}) {
+  return cx(
+    "flex min-w-0 flex-col gap-1 rounded-md border border-rule px-3 py-2 text-caption [background:color-mix(in_srgb,currentColor_3%,var(--sheet))]",
+    mode === "dev" ? "text-dev" : "text-prod",
+    !active && "[border-top-style:dotted]",
+  );
+}
 
 export const inspectorRelationListClasses = "m-0 list-none p-0";
 /** Rows own their geometry; list containers never reach into buttons or environment badges. */

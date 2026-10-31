@@ -9,13 +9,17 @@ import {
   type TriggerProblem,
 } from "../../shared/trigger-availability";
 import { fieldGroups, initialOptions, nextAttachmentId } from "../../shared/trigger-presets";
+import { resourceIcon, targetIcon, type IconKey } from "../icons";
+import { inspectorNoteClasses, inspectorRelationListClasses } from "../inspector-ui";
 import { titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { buttonClasses } from "../ui/Button";
 import { iconButtonClasses } from "../ui/IconButton";
 import { cx } from "../ui/classes";
+import { EntityIcon } from "./EntityIcon";
 import { FailureDestination } from "./FailureDestination";
-import { InspectorDisclosure } from "./InspectorUI";
+import { DottedName, InspectorDisclosure, InspectorResourceRow } from "./InspectorUI";
+import { iconOf } from "./TriggerGuide";
 import { Written } from "./Written";
 import { TriggerField } from "./inspector/triggers/TriggerField";
 import {
@@ -198,10 +202,28 @@ export function Triggers({
     close();
   };
 
-  const nativeLabel = (edge: (typeof native)[number]) =>
-    `${edge.label} · ${resource ? titleOf(index, edge.to) : titleOf(index, edge.from)}`;
-  const describe = (binding: TriggerBinding) =>
-    `${resource ? titleOf(index, `lambda:${binding.event}`) : binding.resource ? binding.resource.replace(/^resource:/, "") : (adapters.find((item) => item.kind === binding.adapter)?.label ?? binding.adapter)} · ${String(binding.options.operation ?? binding.options.expression ?? binding.adapter)}`;
+  // Like every resource row, a trigger is titled by the resource its artwork depicts (the other
+  // end); the event or operation that fires it is the metadata beneath.
+  const source = (binding: TriggerBinding) =>
+    resource
+      ? titleOf(index, `lambda:${binding.event}`)
+      : binding.resource
+        ? binding.resource.replace(/^resource:/, "")
+        : (adapters.find((item) => item.kind === binding.adapter)?.label ?? binding.adapter);
+  const operation = (binding: TriggerBinding) =>
+    String(binding.options.operation ?? binding.options.expression ?? binding.adapter);
+  const iconFor = (id: string): IconKey => {
+    const workload = index.targets.get(id);
+    if (workload) return targetIcon(workload);
+    const item = index.resources.get(id);
+    return item ? resourceIcon(item) : "event";
+  };
+  const bindingIcon = (binding: TriggerBinding): IconKey =>
+    resource
+      ? iconFor(`lambda:${binding.event}`)
+      : binding.resource
+        ? iconFor(binding.resource)
+        : iconOf(binding.adapter);
 
   return (
     <InspectorDisclosure
@@ -211,123 +233,179 @@ export function Triggers({
       onToggle={setOpen}
       data-slot="trigger-editor"
     >
-      {native.map((edge) => {
-        const removed = draft.nativeRemoved(edge.id);
-        const refused = !edge.removal
-          ? "This wiring must be removed in source."
-          : "refused" in edge.removal
-            ? edge.removal.refused
-            : undefined;
-        return (
-          <div
-            className="m-0 flex flex-wrap items-baseline gap-2 border-b border-rule py-2.5"
-            key={edge.id}
-            data-slot="trigger-row"
-          >
-            <button
-              className={cx(
-                buttonClasses({ variant: "link" }),
-                removed && "line-through text-faint",
-              )}
-              onClick={() => select(edge.id)}
-            >
-              {nativeLabel(edge)}
-            </button>
-            <span className="text-caption text-graphite">
-              {removed ? "Will be removed" : "Native"}
-            </span>
-            {removed ? (
-              <button
-                className={cx(buttonClasses({ variant: "quiet", size: "dense" }), "text-caption")}
-                aria-label={`Restore native trigger ${edge.label}`}
-                onClick={() => draft.restoreNative(edge.id)}
-                data-variant="quiet"
+      {native.length + managed.length + pendingRemovals.length ? (
+        <ul className={inspectorRelationListClasses} data-slot="trigger-rows">
+          {native.map((edge) => {
+            const removed = draft.nativeRemoved(edge.id);
+            const refused = !edge.removal
+              ? "This wiring must be removed in source."
+              : "refused" in edge.removal
+                ? edge.removal.refused
+                : undefined;
+            const other = resource ? edge.to : edge.from;
+            return (
+              <InspectorResourceRow
+                key={edge.id}
+                data-slot="trigger-row"
+                icon={<EntityIcon size={26} icon={iconFor(other)} />}
+                title={
+                  removed ? (
+                    <span className="text-faint line-through">
+                      <DottedName>{titleOf(index, other)}</DottedName>
+                    </span>
+                  ) : (
+                    <button
+                      className={buttonClasses({ variant: "link" })}
+                      onClick={() => select(other)}
+                    >
+                      <DottedName>{titleOf(index, other)}</DottedName>
+                    </button>
+                  )
+                }
+                trailing={
+                  removed ? (
+                    <button
+                      className={cx(
+                        buttonClasses({ variant: "quiet", size: "dense" }),
+                        "text-caption",
+                      )}
+                      aria-label={`Restore native trigger ${edge.label}`}
+                      onClick={() => draft.restoreNative(edge.id)}
+                      data-variant="quiet"
+                    >
+                      <RotateCcw size={13} aria-hidden />
+                      Restore
+                    </button>
+                  ) : (
+                    <button
+                      className={iconButtonClasses()}
+                      aria-label={`Remove native trigger ${edge.label}`}
+                      title={refused ?? `Remove from ${edge.source?.file}`}
+                      aria-disabled={!!refused}
+                      onClick={() => {
+                        if (!refused) draft.removeNative(edge.id);
+                      }}
+                    >
+                      <Trash2 size={14} aria-hidden />
+                    </button>
+                  )
+                }
               >
-                <RotateCcw size={13} aria-hidden />
-                Restore
-              </button>
-            ) : (
-              <button
-                className={iconButtonClasses()}
-                aria-label={`Remove native trigger ${edge.label}`}
-                title={refused ?? `Remove from ${edge.source?.file}`}
-                aria-disabled={!!refused}
-                onClick={() => {
-                  if (!refused) draft.removeNative(edge.id);
-                }}
+                <span>
+                  <button
+                    className={cx(buttonClasses({ variant: "link" }), "text-caption")}
+                    onClick={() => select(edge.id)}
+                  >
+                    {edge.label}
+                  </button>{" "}
+                  · <span>{removed ? "Will be removed" : "Native"}</span>
+                </span>
+                <Written placement="row" location={edge.source} label="Wired in" />
+              </InspectorResourceRow>
+            );
+          })}
+          {managed
+            .filter(
+              (binding) =>
+                !form?.editing ||
+                binding.key !== form.editing.key ||
+                binding.event !== form.editing.event,
+            )
+            .map((binding) => (
+              <InspectorResourceRow
+                key={`${binding.event}:${binding.key}`}
+                data-slot="trigger-row"
+                icon={<EntityIcon size={26} icon={bindingIcon(binding)} />}
+                title={
+                  binding.resource || resource ? (
+                    <button
+                      className={buttonClasses({ variant: "link" })}
+                      onClick={() =>
+                        select(resource ? `lambda:${binding.event}` : binding.resource!)
+                      }
+                    >
+                      <DottedName>{source(binding)}</DottedName>
+                    </button>
+                  ) : (
+                    <span>{source(binding)}</span>
+                  )
+                }
+                trailing={
+                  <>
+                    <button
+                      className={iconButtonClasses()}
+                      aria-label={`Edit trigger ${binding.id}`}
+                      title="Edit"
+                      onClick={() => edit(binding)}
+                    >
+                      <Pencil size={14} aria-hidden />
+                    </button>
+                    <button
+                      className={iconButtonClasses()}
+                      aria-label={`Remove trigger ${binding.id}`}
+                      title="Remove"
+                      onClick={() =>
+                        draft.setTriggers(
+                          binding.event,
+                          draft.triggers(binding.event).filter((item) => item.key !== binding.key),
+                        )
+                      }
+                    >
+                      <Trash2 size={14} aria-hidden />
+                    </button>
+                  </>
+                }
               >
-                <Trash2 size={14} aria-hidden />
-              </button>
-            )}
-            <Written location={edge.source} label="Wired in" />
-          </div>
-        );
-      })}
-      {managed
-        .filter(
-          (binding) =>
-            !form?.editing ||
-            binding.key !== form.editing.key ||
-            binding.event !== form.editing.event,
-        )
-        .map((binding) => (
-          <div
-            className="flex gap-2 flex-wrap items-baseline p-[10px_0] m-0 border-b border-rule"
-            key={`${binding.event}:${binding.key}`}
-            data-slot="trigger-row"
-          >
-            <span className="text-caption">{describe(binding)}</span>
-            <button
-              className={iconButtonClasses()}
-              aria-label={`Edit trigger ${binding.id}`}
-              title="Edit"
-              onClick={() => edit(binding)}
-            >
-              <Pencil size={14} aria-hidden />
-            </button>
-            <button
-              className={iconButtonClasses()}
-              aria-label={`Remove trigger ${binding.id}`}
-              title="Remove"
-              onClick={() =>
-                draft.setTriggers(
-                  binding.event,
-                  draft.triggers(binding.event).filter((item) => item.key !== binding.key),
-                )
+                <span>{operation(binding)}</span>
+              </InspectorResourceRow>
+            ))}
+          {pendingRemovals.map((binding) => (
+            <InspectorResourceRow
+              key={`removed:${binding.event}:${binding.key}`}
+              data-slot="trigger-row"
+              icon={<EntityIcon size={26} icon={bindingIcon(binding)} />}
+              title={
+                <span className="text-faint line-through">
+                  <DottedName>{source(binding)}</DottedName>
+                </span>
+              }
+              trailing={
+                <button
+                  className={cx(buttonClasses({ variant: "quiet", size: "dense" }), "text-caption")}
+                  aria-label={`Restore trigger ${binding.id}`}
+                  onClick={() =>
+                    draft.setTriggers(binding.event, [...draft.triggers(binding.event), binding])
+                  }
+                  data-variant="quiet"
+                >
+                  <RotateCcw size={13} aria-hidden />
+                  Restore
+                </button>
               }
             >
-              <Trash2 size={14} aria-hidden />
-            </button>
-          </div>
-        ))}
-      {pendingRemovals.map((binding) => (
-        <div
-          className="m-0 flex flex-wrap items-baseline gap-2 border-b border-rule py-2.5"
-          key={`removed:${binding.event}:${binding.key}`}
-          data-slot="trigger-row"
-        >
-          <span className="text-caption line-through text-faint">{describe(binding)}</span>
-          <span className="text-caption text-graphite">Will be removed</span>
-          <button
-            className={cx(buttonClasses({ variant: "quiet", size: "dense" }), "text-caption")}
-            aria-label={`Restore trigger ${binding.id}`}
-            onClick={() =>
-              draft.setTriggers(binding.event, [...draft.triggers(binding.event), binding])
-            }
-            data-variant="quiet"
-          >
-            <RotateCcw size={13} aria-hidden />
-            Restore
-          </button>
-        </div>
-      ))}
+              <span>
+                {operation(binding)} · <span>Will be removed</span>
+              </span>
+            </InspectorResourceRow>
+          ))}
+        </ul>
+      ) : null}
       {resourceReason ? (
-        <p className="mt-0 mb-2 text-caption text-graphite">{resourceReason}</p>
+        <p
+          className={cx(
+            inspectorNoteClasses,
+            native.length + managed.length + pendingRemovals.length ? "mt-3" : "",
+          )}
+        >
+          {resourceReason}
+        </p>
       ) : !form ? (
         <button
-          className={cx(buttonClasses({ variant: "quiet" }), "text-caption")}
+          className={cx(
+            buttonClasses({ variant: "quiet" }),
+            native.length + managed.length + pendingRemovals.length ? "mt-3" : "",
+          )}
           onClick={start}
-          style={{ marginTop: 12 }}
           data-variant="quiet"
         >
           Add trigger

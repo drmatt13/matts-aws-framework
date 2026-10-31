@@ -1,4 +1,8 @@
-import { inspectorSectionClasses, inspectorHeaderClasses } from "../inspector-ui";
+import {
+  inspectorSectionClasses,
+  inspectorHeaderClasses,
+  inspectorNoteClasses,
+} from "../inspector-ui";
 
 import { EntityName } from "./EntityName";
 import { Select, TextInput } from "../ui/FormControls";
@@ -352,19 +356,24 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
           Apply or discard the description before editing environment variables.
         </p>
       ) : null}
-      <InspectorDisclosure title="File and template" defaultOpen={!file.exists}>
-        <p className="mt-0 mb-2">
+      <InspectorDisclosure
+        title="File and template"
+        defaultOpen={!file.exists}
+        contentClassName="grid justify-items-start gap-2"
+      >
+        <p className="m-0 text-caption text-ink">
           {file.exists ? "Local inputs file exists." : "This inputs file has not been generated."}{" "}
           {file.mode === mode
             ? "Used for synthesis in the selected graph."
             : "Switch the graph to use this environment for synthesis."}
         </p>
         {file.exists ? (
-          <p className="mt-0 mb-2">
-            <a href={editorLink(snapshot.repositoryRoot, location(file.path))}>
-              Open file in editor
-            </a>
-          </p>
+          <a
+            className={cx(buttonClasses({ variant: "link" }), "text-caption")}
+            href={editorLink(snapshot.repositoryRoot, location(file.path))}
+          >
+            Open file in editor
+          </a>
         ) : (
           <button
             className={buttonClasses({ variant: "neutral" })}
@@ -374,18 +383,19 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
             {busy ? "Generating…" : `Generate .env.${file.mode} from template`}
           </button>
         )}
-        <p className="mt-0 mb-2 text-caption">
-          <a href={editorLink(snapshot.repositoryRoot, location(file.template))}>
-            Template: {file.template}
-          </a>
-        </p>
-        <p className="mt-0 mb-2 text-caption text-graphite">
+        <a
+          className={cx(buttonClasses({ variant: "link" }), "text-caption wrap-anywhere")}
+          href={editorLink(snapshot.repositoryRoot, location(file.template))}
+        >
+          Template: {file.template}
+        </a>
+        <p className={cx(inspectorNoteClasses, "mt-1")}>
           Both files list the same variables. A variable without a line here writes one only when
           you give it a value; blank catalog inputs use their declared default. Review and apply to
           save. Values stay outside the graph, and production is never filled from development.
         </p>
         {file.problem || error ? (
-          <p className="mt-0 mb-2" role="alert">
+          <p className="m-0 text-caption text-refuse wrap-anywhere" role="alert">
             {file.problem || error}
           </p>
         ) : null}
