@@ -1,6 +1,7 @@
 import type { InputRequirement } from "../shared/deployment-inputs";
 import type { Diagnostic, Mode, ModelResource, ModelTarget } from "../shared/model";
 import type { IconKey } from "./icons";
+import { entryCount, groupEntries } from "./input-groups";
 
 /**
  * Something wrong with an entity that its owner can fix. An error stops synthesis or a run; a
@@ -25,7 +26,11 @@ const ENVIRONMENT: Readonly<Record<Mode, string>> = { dev: "Development", prod: 
 const ordered = (issues: readonly EntityIssue[]): readonly EntityIssue[] =>
   [...issues].sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1));
 
-export function resourceIssues(resource: ModelResource): readonly EntityIssue[] {
+/**
+ * `resources` is the viewed graph's catalog: a group's issue reads its entries there. Requirements
+ * are per graph, so the other environment's missing values recede with it.
+ */
+export function resourceIssues(resource: ModelResource, resources?: Iterable<ModelResource>): readonly EntityIssue[] {
   const issues: EntityIssue[] = [];
   const file = resource.deploymentFile;
   if (file && !file.exists) {
@@ -38,7 +43,36 @@ export function resourceIssues(resource: ModelResource): readonly EntityIssue[] 
     issues.push({ severity: "warning", title: "Not added to CDK app", badge: "unattached",
       details: ["Declared in the catalog, with no constructor reference in the CDK app's runtime imports. Add it to the app to include it in synthesis."] });
   }
+  const unset = missingValueIssue(resource, resources);
+  if (unset) issues.push(unset);
   return ordered(issues);
+}
+
+const valueMissing = (entry: ModelResource): boolean => !entry.absent && entry.inputRequirement?.status === "missing";
+
+/**
+ * A required input or secret that no value or default supplies, or a group holding any. Hover
+ * cards show these words, so they name variables and files only, never values or private reasons.
+ */
+function missingValueIssue(resource: ModelResource, resources?: Iterable<ModelResource>): EntityIssue | undefined {
+  if (resource.kind === "input" || resource.kind === "secret") {
+    if (!valueMissing(resource)) return undefined;
+    const { name, file, mode } = resource.inputRequirement!;
+    return { severity: "error", title: "Required value missing", badge: "error", details: [
+      `${name} is required for ${ENVIRONMENT[mode]}, and ${file} gives it no value.`,
+      resource.kind === "secret" ? `Set it in ${file}; a secret never takes a source default.` : `Set it in ${file}, or define a default on the parameter.`,
+    ] };
+  }
+  if (resource.kind !== "group" || !resources) return undefined;
+  const unmet = groupEntries(resource, resources).filter(valueMissing);
+  if (!unmet.length) return undefined;
+  const one = unmet.length === 1;
+  const files = [...new Set(unmet.map(entry => entry.inputRequirement!.file))].join(" and ");
+  const defaults = unmet.some(entry => entry.kind === "input");
+  return { severity: "error", title: one ? "Required value missing" : "Required values missing", badge: "error", details: [
+    `${entryCount(unmet)} ${one ? "is missing its required value" : "are missing their required values"} in ${files}.`,
+    `Set ${one ? "it" : "them"} there${defaults ? `, or define ${one ? "a default on the parameter" : "defaults on the parameters"}` : ""}.`,
+  ] };
 }
 
 /** Missing source artifacts, and the framework's own validation messages that name this workload. */

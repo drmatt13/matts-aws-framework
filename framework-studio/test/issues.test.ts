@@ -15,6 +15,7 @@ import { ICONS } from "../src/icons";
 import { requirementIssue, resourceIssues, targetIssues, type EntityIssue } from "../src/issues";
 import { indexModel } from "../src/lookup";
 import { buildScene, cornerBadges, type Scene } from "../src/scene/build";
+import { connectionVisible } from "../src/scene/connections";
 import { ICON_TINT, ISSUE_COLOR } from "../src/scene/look";
 import { buildIconShape } from "../src/scene/shapes";
 
@@ -92,7 +93,7 @@ test("every node's issues come from the one producer, and its icon corners follo
       for (const node of scene.nodes) {
         const resource = node.entity === "resource" ? resources.get(node.id) : undefined;
         const target = node.entity === "target" ? targets.get(node.id) : undefined;
-        const expected = resource ? resourceIssues(resource) : target ? targetIssues(target, model.diagnostics) : [];
+        const expected = resource ? resourceIssues(resource, model.resources) : target ? targetIssues(target, model.diagnostics) : [];
         assert.deepEqual(node.issues ?? [], expected, `${model.mode}: ${node.id}`);
         const badges = cornerBadges(node);
         const issue = node.issues?.[0];
@@ -126,6 +127,28 @@ test("a missing environment file shows one red cross and keeps its ownership for
   assert.deepEqual(cornerBadges({ roleIcon: "managed", frameworkManaged: true }), { right: "managed" }, "a healthy file keeps its lock");
   assert.deepEqual(resourceIssues(file(true, "EACCES: cdk-app/.env.dev")).map(issue => [issue.title, ...issue.details]), [["Could not be read", "EACCES: cdk-app/.env.dev"]]);
   assert.deepEqual(resourceIssues(file(true)), []);
+});
+
+test("a group with a missing required value is an error, in names and files only", () => {
+  const SECRET = "PRIVATE_REASON_MUST_NOT_SHOW";
+  const entry = (name: string, kind: "input" | "secret", status: InputRequirement["status"], absent = false): ModelResource => ({
+    id: `resource:client.${name}`, parent: "resource:client", path: ["client", name], kind, absent,
+    inputRequirement: { resource: `resource:client.${name}`, name: name.toUpperCase(), mode: "dev", file: "cdk-app/.env.dev", required: status === "missing", status, reasons: [SECRET] },
+  });
+  const group: ModelResource = { id: "resource:client", path: ["client"], kind: "group", absent: false };
+  const entries = [entry("apiPort", "input", "missing"), entry("wsPort", "input", "missing"), entry("token", "secret", "configured"), entry("prodOnly", "input", "missing", true)];
+  const [issue] = resourceIssues(group, [group, ...entries]);
+  assert.deepEqual([issue!.severity, issue!.title, issue!.badge, ...issue!.details], ["error", "Required values missing", "error",
+    "2 inputs are missing their required values in cdk-app/.env.dev.", "Set them there, or define defaults on the parameters."], "an entry absent from this graph is not counted");
+  assert.ok(!JSON.stringify(issue).includes(SECRET), "private reasons never reach previews");
+  assert.deepEqual(cornerBadges({ issues: [issue!] }), { right: "error" });
+  assert.deepEqual(resourceIssues(group), [], "without the catalog a group has nothing to read");
+  const [own] = resourceIssues(entries[0]!);
+  assert.deepEqual(own!.details, ["APIPORT is required for Development, and cdk-app/.env.dev gives it no value.", "Set it in cdk-app/.env.dev, or define a default on the parameter."]);
+  const secret = entry("apiKey", "secret", "missing");
+  assert.equal(resourceIssues(secret)[0]!.details[1], "Set it in cdk-app/.env.dev; a secret never takes a source default.");
+  assert.deepEqual(resourceIssues(entries[2]!), []);
+  assert.deepEqual(resourceIssues(entries[3]!), [], "absent in this graph, so nothing is missing here");
 });
 
 test("warnings and workload errors take the right corner and move a role badge left", () => {
@@ -176,6 +199,15 @@ test("a connection's inspector notice uses the hover card's own sentence", () =>
   assert.deepEqual(connectionIssues(single.connection, "dev", single.index), [requirementIssue(requirement("value0", "missing"))]);
   assert.equal(requirementIssue(requirement("value0", "default")), undefined);
   assert.equal(requirementIssue({ ...requirement("value0", "missing"), required: false }), undefined);
+});
+
+test("the Errors filter keeps a missing-input wire visible whatever its category filter says", () => {
+  const { connection } = bundle(["missing", "configured"]);
+  assert.deepEqual(connection.categories, ["inputs"]);
+  assert.equal(connectionVisible(connection, new Set()), false, "its category is off");
+  assert.equal(connectionVisible(connection, new Set(), undefined, true), true, "the Errors filter pins it");
+  const healthy = bundle(["configured", "default"]).connection;
+  assert.equal(connectionVisible(healthy, new Set(), undefined, true), false, "a healthy wire still follows its category");
 });
 
 test("cards and inspectors show an issue's same words, and problems lead what they describe", () => {

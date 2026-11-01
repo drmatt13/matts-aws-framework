@@ -42,8 +42,11 @@ import { pathBounds } from "../scene/layout-geometry";
 import { landscapeFocus, searchOpacity, searchScene } from "../scene/focus";
 import { filterSceneByTag } from "../scene/tag-filter";
 import { SceneRenderer, type Stage } from "../scene/render";
-import { connectionVisible } from "../scene/connections";
+import { connectionVisible, inLens, offLens } from "../scene/connections";
 import { EDGE_COLORS } from "../scene/look";
+import { CircleAlert } from "lucide-react";
+import { cx } from "../ui/classes";
+import { mapFilterChipClasses, mapFilterSwatchClasses } from "./map-styles";
 import { catalogAvailability } from "../deployment";
 import { connectionLabel, missingConnectionInput } from "../connections";
 import { AddMenu } from "./AddMenu";
@@ -145,6 +148,8 @@ export function Isometric() {
   const [categories, setCategories] = useState<ReadonlySet<EdgeCategory>>(
     () => new Set(CATEGORIES.filter((category) => category !== "routes" && category !== "inputs")),
   );
+  // Starts on with every page load: errors show whatever the category filters hide.
+  const [errorsShown, setErrorsShown] = useState(true);
   const [query, setQuery] = useState("");
   const [resourceKind, setResourceKind] = useState("");
   // Whether Resources is open beneath any inspector; a selection always shows its inspector.
@@ -230,6 +235,16 @@ export function Isometric() {
       ),
     [scene],
   );
+  // The Errors pill exists only while the viewed environment holds an error (`src/issues.ts` or a
+  // missing required input); the other environment's errors recede with it.
+  const errorCount = useMemo(() => {
+    const nodeOf = new Map(scene.nodes.map((node) => [node.id, node]));
+    return {
+      nodes: scene.nodes.filter((node) => inLens(node) && node.issues?.some((issue) => issue.severity === "error")).length,
+      edges: scene.edges.filter((edge) => missingConnectionInput(edge) && !offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to))).length,
+    };
+  }, [scene]);
+  const hasErrors = errorCount.nodes + errorCount.edges > 0;
   useLayoutEffect(() => {
     previousLayout.current = scene.layout;
   }, [scene]);
@@ -306,6 +321,7 @@ export function Isometric() {
     hoveredIsland: undefined as string | undefined,
     motion,
     categories,
+    errors: errorsShown,
     focus: focusState,
     tween: undefined as Tween | undefined,
     cards: [] as readonly CardHit[],
@@ -328,6 +344,7 @@ export function Isometric() {
   live.current.preview = preview;
   live.current.motion = motion;
   live.current.categories = categories;
+  live.current.errors = errorsShown && hasErrors;
   live.current.focus = focusState;
 
   const draw = useCallback(() => {
@@ -359,6 +376,7 @@ export function Isometric() {
       time: now / 1000,
       motion: state.motion,
       categories: state.categories,
+      errors: state.errors,
       focus: state.focus,
     });
     state.cards = result.cards;
@@ -522,7 +540,7 @@ export function Isometric() {
     };
   }, [schedule, resize, hasEntities]);
 
-  useEffect(schedule, [schedule, scene, selected, motion, focusState, categories]);
+  useEffect(schedule, [schedule, scene, selected, motion, focusState, categories, errorsShown]);
   useEffect(() => {
     if (pendingLayoutFit.current) {
       pendingLayoutFit.current = false;
@@ -586,7 +604,7 @@ export function Isometric() {
       for (const arc of arcs) {
         if (
           !arc.missing ||
-          !connectionVisible(arc.edge, state.categories, state.preview ?? state.selected)
+          !connectionVisible(arc.edge, state.categories, state.preview ?? state.selected, state.errors)
         )
           continue;
         const marker = worldToScreen(state.camera, state.viewport, arc.midpoint);
@@ -600,7 +618,7 @@ export function Isometric() {
       const tolerance = 6 / state.camera.zoom;
       let best: { id: string; distance: number } | undefined;
       for (const arc of arcs) {
-        if (!connectionVisible(arc.edge, state.categories, state.preview ?? state.selected))
+        if (!connectionVisible(arc.edge, state.categories, state.preview ?? state.selected, state.errors))
           continue;
         if (
           world.x < arc.minX - tolerance ||
@@ -1177,7 +1195,7 @@ export function Isometric() {
                 <button
                   key={category}
                   data-ui="landscape-chip"
-                  className="pointer-events-auto inline-flex min-h-(--control-height-sm) cursor-pointer items-center gap-[7px] rounded-full border border-dashed border-[#ffffff24] bg-[#0e131be6] px-[10px] py-[3px] font-sans text-caption leading-[1.3] font-medium whitespace-nowrap text-[#8d97a6] before:h-0.5 before:w-3.5 before:flex-none before:rounded-[1px] before:bg-(--swatch) before:opacity-30 before:content-[''] aria-pressed:border-solid aria-pressed:border-[#ffffff45] aria-pressed:text-map-ink aria-pressed:before:opacity-100 hover:border-[#ffffff70] hover:bg-[#263140] hover:text-map-title focus-visible:outline-2 focus-visible:outline-map-focus focus-visible:outline-offset-2"
+                  className={cx(mapFilterChipClasses, mapFilterSwatchClasses)}
                   aria-pressed={categories.has(category)}
                   style={{ "--swatch": EDGE_COLORS[category] } as CSSProperties}
                   title={`${categories.has(category) ? "Hide" : "Show"} ${CATEGORY_DESCRIPTION[category]}. Selected resources keep all their connections.`}
@@ -1194,6 +1212,28 @@ export function Isometric() {
                   {CATEGORY_LABEL[category]}
                 </button>
               ))}
+              {hasErrors ? (
+                <button
+                  data-ui="landscape-chip landscape-errors-chip"
+                  className={mapFilterChipClasses}
+                  aria-pressed={errorsShown}
+                  title={`${errorsShown ? "Stop pinning" : "Pin"} errors: ${[
+                    errorCount.nodes ? `${errorCount.nodes} ${errorCount.nodes === 1 ? "resource" : "resources"}` : "",
+                    errorCount.edges ? `${errorCount.edges} ${errorCount.edges === 1 ? "connection" : "connections"} with missing values` : "",
+                  ].filter(Boolean).join(" and ")}. When on, their connections show whatever the other filters hide, and their names stay fully visible at every zoom.`}
+                  onClick={() => {
+                    setErrorsShown((current) => !current);
+                    setHovered(undefined);
+                  }}
+                >
+                  <CircleAlert
+                    size={14}
+                    aria-hidden
+                    className="flex-none text-map-error opacity-45 group-aria-pressed:opacity-100"
+                  />
+                  Errors
+                </button>
+              ) : null}
             </div>
           </div>
           <div

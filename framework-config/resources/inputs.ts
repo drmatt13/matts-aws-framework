@@ -16,10 +16,7 @@ export const enableWebSocketApi = resource
 // Client URL recipes consume catalog inputs; only development has local servers,
 // so production holds none of these and its client fields built from them stay blank.
 export const client = {
-  apiPort: resource
-    .fromEnv("LOCAL_API_DEV_SERVER_HOST_PORT")
-    .only("dev")
-    .required(),
+  apiPort: resource.fromEnv("LOCAL_API_DEV_SERVER_HOST_PORT").only("dev").required(),
   webSocketPort: resource
     .fromEnv("LOCAL_WS_DEV_SERVER_HOST_PORT")
     .only("dev")

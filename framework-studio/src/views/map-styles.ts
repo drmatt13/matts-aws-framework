@@ -11,6 +11,13 @@ export function mapTooltipClasses(portal = false) {
   );
 }
 
+/** A background-connection filter pill on the canvas; pressed means shown. */
+export const mapFilterChipClasses =
+  "group pointer-events-auto inline-flex min-h-(--control-height-sm) cursor-pointer items-center gap-[7px] rounded-full border border-dashed border-[#ffffff24] bg-[#0e131be6] px-[10px] py-[3px] font-sans text-caption leading-[1.3] font-medium whitespace-nowrap text-[#8d97a6] aria-pressed:border-solid aria-pressed:border-[#ffffff45] aria-pressed:text-map-ink hover:border-[#ffffff70] hover:bg-[#263140] hover:text-map-title focus-visible:outline-2 focus-visible:outline-map-focus focus-visible:outline-offset-2";
+/** A category pill's line swatch, in its `--swatch` colour; faint until pressed. */
+export const mapFilterSwatchClasses =
+  "before:h-0.5 before:w-3.5 before:flex-none before:rounded-[1px] before:bg-(--swatch) before:opacity-30 before:content-[''] aria-pressed:before:opacity-100";
+
 export const mapCameraButtonClasses =
   "inline-flex h-[calc(var(--control-height)-2px)] w-(--control-height) cursor-pointer items-center justify-center border-0 border-l border-rule bg-transparent text-graphite first:rounded-l-md first:border-l-0 last:rounded-r-md hover:not-disabled:bg-wash hover:not-disabled:text-ink aria-pressed:bg-wash aria-pressed:text-ink disabled:cursor-default disabled:opacity-35";
 

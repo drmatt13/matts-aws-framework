@@ -76,7 +76,12 @@ and the Resources row; the icon hull covers exactly the corners it paints.
 
 Problems follow one presentation, produced once by [issues.ts](../../../framework-studio/src/issues.ts):
 a missing or unreadable environment file, a stack not added to the CDK app, missing
-implementation artifacts and framework validation messages that name a workload. An
+implementation artifacts, framework validation messages that name a workload, and an input or
+secret whose required value is missing in the viewed graph (or an input group holding one;
+`resourceIssues` reads its entries from the graph's catalog). Their words name variables and
+files only, never values or private requirement reasons. An input group's entry rows wear the
+cross on their icon and state a missing value as a red chip; an entry's own inspector states it
+once, in its header, not again at the value field. An
 error is red and a warning amber (`ISSUE_COLOR` in `scene/look.ts`, `map-error`/`map-warning`
 theme tokens, and the badge SVG strokes; `test/issues.test.ts` keeps them equal). The
 worst issue takes the icon's right corner (a cross for an error, the unplug or a triangle
@@ -209,6 +214,16 @@ graph for layout and inspection, but have no background filter and appear only i
 or previewed context.
 The filters **Routes and events** and **Environment and secrets** start off on each page
 load; Resource interactions starts on.
+A fourth pill, **Errors**, appears only while the map holds an error (an error issue from
+`src/issues.ts` or a missing required input) and starts on with every page load. It carries a
+red alert icon instead of a line swatch. While on, `connectionVisible(..., errors)` keeps every
+missing-input wire and its marker whatever its category filter says, and each node with an
+error in the viewed environment keeps its full name at full opacity at every zoom: it ignores
+the zoom slot and caption fade, wins overlaps with other names, and may cover neighbouring
+buildings. Only the name is pinned; its deployment tag keeps the zoom fade. The other
+environment's errors recede like the rest of it: their names fade, and their wires and markers
+rest at the out-of-lens strength. The pill counts only the viewed environment's errors.
+Warnings are not pinned.
 An aggregated connection matches any member's category across the dev/prod union, independently
 of its styling representative. Drawing and pointer picking share `connectionVisible`;
 selecting or previewing a resource reveals its links regardless of those filters. Clearing

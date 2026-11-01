@@ -78,7 +78,8 @@ collapsed Permissions disclosure retains mode-specific principal, scope, conditi
 evidence. Raw binding details, source links and inference caveats remain under Configuration.
 Resource previews omit IAM counts. Workload Permissions retains the full capability list.
 
-Three background filters cover Routes and events, Environment and secrets, and Resource interactions.
+Three background filters cover Routes and events, Environment and secrets, and Resource interactions;
+an Errors pill, present only when the map has errors, pins error wires and names (see [Rendering](rendering.md)).
 Structural links retain their internal category for layout and inspection; they appear when a
 resource is selected or previewed, or the connection is inspected, without a background filter.
 `edgeCategory` puts native triggers, subscriptions and event

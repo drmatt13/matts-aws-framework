@@ -456,7 +456,10 @@ been removed; the renderer has one visual style.
    Three purpose categories filter background connections: Routes and events, Environment and secrets,
    and Resource interactions. Categories with no connections have no pill.
    The filters **Routes and events** and **Environment and secrets** start off; Resource
-   interactions starts on. Structural links
+   interactions starts on. An **Errors** pill with a red alert icon appears only while errors
+   exist in the viewed environment and starts on: error wires show regardless of their category,
+   and that environment's error names (not their deployment tags) stay fully opaque at every
+   zoom; the other environment's errors fade with it. Structural links
    remain in the graph and appear only when selecting or previewing their resources or
    inspecting the connection; they have no background filter.
    A bundle matches any member's category across both environments, independently of the

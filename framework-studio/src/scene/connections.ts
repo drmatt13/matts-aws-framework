@@ -2,6 +2,7 @@ import type { Mode, ModelEdge, ModelResource, TargetKind } from "../../shared/mo
 import { API_EDGE_COLOR, COMPUTE_EDGE_COLOR, EDGE_COLORS, GUARD_EDGE_COLOR, ICON_TINT, READ_EDGE_COLOR } from "./look";
 import type { SceneEdge, SceneNode } from "./types";
 import { isEventConnection, type EdgeCategory } from "../lookup";
+import { missingConnectionInput } from "../connections";
 
 /**
  * How a connection is coloured and dashed. Direction follows the model: reads point toward their
@@ -18,9 +19,13 @@ export interface ConnectionStyle {
   readonly dashed: boolean;
 }
 
-/** Category filters hide background wires; inspecting a resource always reveals its links. */
-export function connectionVisible(edge: Pick<SceneEdge, "id" | "categories" | "from" | "to">, categories?: ReadonlySet<EdgeCategory>, selected?: string): boolean {
-  return edge.id === selected || edge.from === selected || edge.to === selected || !categories || edge.categories.some((category) => categories.has(category));
+/**
+ * Category filters hide background wires; inspecting a resource always reveals its links, and the
+ * Errors filter (`errors`) keeps every wire with a missing required input, whatever its category.
+ */
+export function connectionVisible(edge: Pick<SceneEdge, "id" | "categories" | "from" | "to"> & Partial<Pick<SceneEdge, "members">>, categories?: ReadonlySet<EdgeCategory>, selected?: string, errors = false): boolean {
+  return edge.id === selected || edge.from === selected || edge.to === selected || !categories || edge.categories.some((category) => categories.has(category))
+    || (errors && !!edge.members && missingConnectionInput({ members: edge.members }));
 }
 
 /** Lambda functions and container services and tasks: the workloads AWS colours as compute. */
@@ -82,7 +87,8 @@ export function connectionHoverEase(progress: number): number {
 }
 
 /** A node belongs to the environment being viewed when it is built or held there. */
-const inLens = (node: Pick<SceneNode, "presence" | "tagFiltered"> | undefined): boolean => !node || !node.tagFiltered && (node.presence === "built" || node.presence === "present");
+/** Held by the viewed environment and not faded by the tag filter. Nodes outside it, and their names and wires, recede. */
+export const inLens = (node: Pick<SceneNode, "presence" | "tagFiltered"> | undefined): boolean => !node || !node.tagFiltered && (node.presence === "built" || node.presence === "present");
 
 /**
  * Whether a connection is outside the environment being viewed: the other environment alone holds it, or

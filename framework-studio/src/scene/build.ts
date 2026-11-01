@@ -203,7 +203,7 @@ function resourceItem(resource: ModelResource, mode: Mode, availability?: Availa
         ? "Declared by its stack; no workload references it."
         : `Held by the ${graph} graph.`;
   const managed = isFrameworkManagedResource(resource, resources);
-  const issues = resourceIssues(resource);
+  const issues = resourceIssues(resource, resources?.values());
   return {
     id: resource.id,
     badge: availability ? availabilityBadge(availability) : undefined,

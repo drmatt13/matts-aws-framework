@@ -113,11 +113,16 @@ below its rows, absent from the bundle's inspector. Every problem now comes from
 | Surface | Error | Warning |
 | --- | --- | --- |
 | Map icon | Red cross at the right corner; no ownership lock; a displaced role badge moves left | Unplug or triangle at the right corner, same rule |
-| Map caption | Issue red, with a faint red rim; selected, a white name on a red plate | Amber, with a faint amber rim; selected, a dark name on an amber plate |
+| Map caption | Issue red, with a faint red rim; selected, a white name on a red plate; with the Errors filter on, full opacity and full name at every zoom in the viewed environment (its tag and the other environment still fade) | Amber, with a faint amber rim; selected, a dark name on an amber plate |
+| Map filters | An **Errors** pill (red alert icon, on by default) appears while errors exist and shows their wires whatever the other filters hide | Not pinned |
 | Connection | Red wire and midpoint cross | (none today) |
 | Hover card | Title and sentences directly below the heading, red rule and text; a connection's shared error above its member list | Amber rule and text |
 | Inspector | `IssueNotice` as the header's last element, same words; bundle rows with the problem carry a red cross | Amber notice |
 | Resources row | Map badge on the icon, red name, issue named to screen readers | Amber, same rule |
+
+Inputs, secrets and input groups with a missing required value in the viewed graph are errors
+too, so the `client` group wears the cross beside the red supply wire, and its inspector lists
+each entry with the same cross and a red "Required value missing in cdk-app/.env.dev" chip.
 
 Expected reasons with no fix, such as an unbuilt VPC's fixtures or a disabled Compose
 service, became neutral notes. "Not added to the CDK app" is no longer such a reason: it is

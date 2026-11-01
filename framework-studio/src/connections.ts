@@ -81,7 +81,7 @@ export function aggregateConnections(model: ModeModel, layoutModels: readonly Mo
   }).sort((a, b) => a.id.localeCompare(b.id));
 }
 
-export const missingConnectionInput = (connection: ConnectionGroup): boolean =>
+export const missingConnectionInput = (connection: Pick<ConnectionGroup, "members">): boolean =>
   connection.members.some((member) => member.edge.inputRequirement?.status === "missing");
 
 export function connectionLabel(connection: ConnectionGroup): string {

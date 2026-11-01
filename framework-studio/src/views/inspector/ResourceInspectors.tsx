@@ -194,7 +194,7 @@ export function ResourceView(props: { readonly resource: ModelResource }) {
             </div>
           </details>
         ) : null}
-        <IssueNotice issues={resourceIssues(resource)} />
+        <IssueNotice issues={resourceIssues(resource, index.resources.values())} />
       </header>
       {group ? <InputGroupTags group={resource} /> : <Tags entity={resource.id} />}
       <Description entity={resource.id} />

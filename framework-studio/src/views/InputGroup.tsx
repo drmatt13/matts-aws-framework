@@ -16,6 +16,8 @@ import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { EntityIcon } from "./EntityIcon";
 import { InspectorDisclosure, InspectorResourceRow, InspectorSection } from "./InspectorUI";
+import { X } from "lucide-react";
+import { issueChipClasses } from "./ResourceStatus";
 
 /**
  * An input group owns no AWS resource. Its inspector reads the group through its entries,
@@ -77,11 +79,19 @@ export function InputGroupEntries({ group }: { readonly group: ModelResource }) 
             const status = nested
               ? { text: entryCount(groupEntries(child, model.resources)) }
               : entryStatus(child, file);
+            // The row says what the map says: the entry's icon wears the cross, its status is a red chip.
+            const missing = status.tone === "missing";
             return (
               <InspectorResourceRow
                 key={child.id}
                 data-slot="input-group-entry"
-                icon={<EntityIcon size={26} icon={resourceIcon(child)} />}
+                icon={
+                  <EntityIcon
+                    size={26}
+                    icon={resourceIcon(child)}
+                    {...(missing ? { badge: "error" as const } : {})}
+                  />
+                }
                 title={
                   <button
                     className={buttonClasses({
@@ -113,15 +123,29 @@ export function InputGroupEntries({ group }: { readonly group: ModelResource }) 
                     {nested ? "Input group" : child.kind === "secret" ? "Secret" : "Input"}
                   </span>
                 )}
-                <span
-                  className={cx("flex items-center gap-1.5", status.tone ? status.tone : "")}
-                  data-slot="local-input-status"
-                >
-                  <span className="size-1.5 flex-none rounded-full bg-graphite" aria-hidden />
-                  <span className="grid min-w-0" data-slot="inspector-status-copy">
-                    {child.kind === "secret" && !nested ? `Secret · ${status.text}` : status.text}
+                {missing ? (
+                  <span
+                    className={cx(
+                      "mt-0.5 inline-flex w-fit max-w-full items-center gap-1.5 rounded-[5px] border border-current px-[7px] py-0.5 text-meta leading-[1.4] font-medium",
+                      issueChipClasses.error,
+                    )}
+                    data-slot="local-input-status"
+                    data-issue="error"
+                  >
+                    <X size={12} aria-hidden className="flex-none" />
+                    <span className="min-w-0 wrap-anywhere" data-slot="inspector-status-copy">
+                      Required value missing <span className="font-normal">in</span>{" "}
+                      <code className="font-normal">{file}</code>
+                    </span>
                   </span>
-                </span>
+                ) : (
+                  <span className="flex items-center gap-1.5" data-slot="local-input-status">
+                    <span className="size-1.5 flex-none rounded-full bg-graphite" aria-hidden />
+                    <span className="grid min-w-0" data-slot="inspector-status-copy">
+                      {child.kind === "secret" && !nested ? `Secret · ${status.text}` : status.text}
+                    </span>
+                  </span>
+                )}
               </InspectorResourceRow>
             );
           })}

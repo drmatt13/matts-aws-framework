@@ -20,7 +20,8 @@ function resourceStatusClasses(placement: StatusPlacement | "map", stacked = fal
         : "mt-0 mb-2",
   );
 }
-const issueChipClasses = {
+/** Error and warning chip colours; issue chips and input-group entry rows share them. */
+export const issueChipClasses = {
   error: "bg-[#ef444410] text-[#b42318] dark:text-[#f87171]",
   warning: "bg-[#e7ac4410] text-[#996016] dark:text-[#f0b96b]",
 } as const;
@@ -106,7 +107,7 @@ export function ResourceStatus({
   if (!resource) return null;
   const managed =
     !!resource.deploymentFile || isFrameworkManagedResource(resource, index.resources);
-  const issues = showIssues ? resourceIssues(resource) : [];
+  const issues = showIssues ? resourceIssues(resource, index.resources.values()) : [];
   return (
     <>
       <EnvironmentFileStatus resource={resource} placement={placement} />

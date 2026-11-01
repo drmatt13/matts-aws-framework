@@ -83,5 +83,5 @@ export function resourceIcon(resource: ModelResource): IconKey {
 
 /** A resource's one badge where only one fits: its worst issue, otherwise its ownership lock. */
 export function resourceBadge(resource: ModelResource, resources?: ReadonlyMap<string, ModelResource>): IconKey | undefined {
-  return resourceIssues(resource)[0]?.badge ?? (isFrameworkManagedResource(resource, resources) ? "managed" : undefined);
+  return resourceIssues(resource, resources?.values())[0]?.badge ?? (isFrameworkManagedResource(resource, resources) ? "managed" : undefined);
 }

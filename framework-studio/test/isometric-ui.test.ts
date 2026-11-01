@@ -21,6 +21,7 @@ import { project } from "../src/scene/iso";
 import { insidePolygon, pickEntity, pickIsland } from "../src/scene/picking";
 import { islandDrawOrder, islandSlabs } from "../src/scene/slabs";
 import { connectionHoverEase, EDGE_HOVER_DURATION } from "../src/scene/connections";
+import { missingConnectionInput } from "../src/connections";
 
 let builder: SnapshotBuilder;
 let response: SnapshotResponse;
@@ -202,7 +203,7 @@ test("conditional deployment inspection names its framework input and points fro
 test("purpose filters replace IAM filtering and do not arm source edits", async () => {
   await mount();
   assert.equal(ui.screen.queryByRole("button", { name: "Only IAM grants" }), null);
-  const categories = ui.within(ui.screen.getByRole("group", { name: "Background connections" })).getAllByRole("button");
+  const categories = ui.within(ui.screen.getByRole("group", { name: "Background connections" })).getAllByRole("button").filter(button => button.textContent !== "Errors");
   assert.equal(categories.length, 3);
   assert.deepEqual(categories.map(button => button.getAttribute("aria-pressed")), ["false", "false", "true"]);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Resource interactions" })); await draw();
@@ -214,10 +215,39 @@ test("connection filters omit unused purposes and return when source adds those 
   const onlyRoutes = (mode: "dev" | "prod") => ({ ...response.snapshot.models[mode], edges: response.snapshot.models[mode].edges.filter(edge => edge.relation === "routes") });
   const sparse = { ...response, snapshot: { ...response.snapshot, models: { dev: onlyRoutes("dev"), prod: onlyRoutes("prod") } } };
   const update = await mount(false, undefined, sparse);
-  const filterNames = () => ui.within(ui.screen.getByRole("group", { name: "Background connections" })).getAllByRole("button").map(button => button.textContent);
+  const filterNames = () => ui.within(ui.screen.getByRole("group", { name: "Background connections" })).getAllByRole("button").map(button => button.textContent).filter(name => name !== "Errors");
   assert.deepEqual(filterNames(), ["Routes and events"]);
   await update(response);
   assert.deepEqual(filterNames(), ["Routes and events", "Environment and secrets", "Resource interactions"]);
+});
+
+test("an Errors filter appears only with errors, starts on, and keeps error wires whatever their category", async () => {
+  const graph = (model: typeof response.snapshot.models.dev, broken: boolean) => ({
+    ...model,
+    diagnostics: [],
+    resources: model.resources.map(resource => resource.deploymentFile ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists: !broken } }
+      : resource.inputRequirement ? { ...resource, inputRequirement: { ...resource.inputRequirement, status: broken ? "missing" as const : "configured" as const } } : resource),
+    targets: model.targets.map(target => target.implementation ? { ...target, implementation: { ready: true, problems: [] } } : target),
+    edges: model.edges.map(edge => edge.inputRequirement ? { ...edge, inputRequirement: { ...edge.inputRequirement, status: broken ? "missing" as const : "configured" as const } } : edge),
+  });
+  const variant = (broken: boolean) => ({ ...response, snapshot: { ...response.snapshot, models: { dev: graph(response.snapshot.models.dev, broken), prod: graph(response.snapshot.models.prod, broken) } } });
+  const update = await mount(false, undefined, variant(false));
+  assert.equal(ui.screen.queryByRole("button", { name: "Errors" }), null, "no errors, no pill");
+  await update(variant(true)); await draw();
+  const errors = ui.screen.getByRole("button", { name: "Errors" });
+  assert.equal(errors.getAttribute("aria-pressed"), "true", "on with every page load");
+  assert.equal(errors.querySelector("svg") !== null, true, "an icon, not a line swatch");
+  assert.equal(ui.screen.getByRole("button", { name: "Environment and secrets" }).getAttribute("aria-pressed"), "false");
+  const models = variant(true).snapshot.models;
+  const scene = buildScene(models.dev, { layoutModels: Object.values(models), resourceAvailability: catalogAvailability(models) });
+  const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
+  const wire = scene.edges.find(edge => missingConnectionInput(edge) && edge.categories.every(category => category === "inputs"))!;
+  assert.ok(wire, "a missing-input wire whose only category is off by default");
+  const at = scene.routes[wire.id]!.points.map(point => worldToScreen(state.camera(), state.viewport(), point)).find(point => state.pickAt(point.x, point.y)?.id === wire.id);
+  assert.ok(at, "pinned errors keep the wire on the map and pickable");
+  ui.fireEvent.click(errors); await draw();
+  assert.equal(errors.getAttribute("aria-pressed"), "false");
+  assert.notEqual(state.pickAt(at.x, at.y)?.id, wire.id, "off, the wire follows its category filter again");
 });
 
 test("the inputs island opens the shared creator even after using the global chooser", async () => {
@@ -996,7 +1026,7 @@ test("connections over terrain receive hover and clicks while clear terrain stil
 test("connection filter pills hide background wires and preserve selected resource connections", async () => {
   await mount(true); await draw();
   const group = ui.screen.getByRole("group", { name: "Background connections" });
-  const pills = ui.within(group).getAllByRole("button");
+  const pills = ui.within(group).getAllByRole("button").filter(pill => pill.textContent !== "Errors");
   assert.deepEqual(pills.map(pill => pill.textContent), ["Routes and events", "Environment and secrets", "Resource interactions"]);
   assert.deepEqual(pills.map(pill => pill.getAttribute("aria-pressed")), ["false", "false", "true"]);
   assert.equal(pills[0]!.style.getPropertyValue("--swatch"), "#a374ff");
@@ -1841,6 +1871,30 @@ test("an error replaces the ownership lock on the map and reddens the name; othe
   const selected = close.render({ camera: { ...file.geometry.top, zoom: 1 }, viewport, dpr: 1, time: 2, motion: false, selected: file.id, focus: landscapeFocus(alone, file.id) });
   const chosen = selected.cards.find(({ id }) => id === file.id)!;
   assert.equal(labelPaints.find(({ y }) => y === chosen.y + chosen.height / 2 + 0.5)?.fill, "#ffffff", "selected, the name is white on a red plate");
+  // Zoomed out, the Errors filter keeps the name at full opacity; without it the name fades or drops.
+  const far = (errors: boolean) => {
+    labelPaints.length = 0;
+    const frame = close.render({ camera: { ...file.geometry.top, zoom: 0.2 }, viewport, dpr: 1, time: 3, motion: false, errors, focus: landscapeFocus(alone) });
+    const card = frame.cards.find(({ id }) => id === file.id);
+    return card ? labelPaints.find(({ y }) => y === card.y + card.height / 2 + 0.5)?.alpha : undefined;
+  };
+  assert.equal(far(true), 1);
+  const tag = labelPaints.find(({ text }) => text === "PROD");
+  assert.ok(tag, "the deployment tag is drawn at overview zoom");
+  assert.ok(tag.alpha < 1, `only the name is pinned; the deployment tag keeps its zoom fade (${tag.alpha})`);
+  const unpinned = far(false);
+  assert.ok(unpinned === undefined || unpinned < 1, `without the filter the name fades at overview zoom (${unpinned})`);
+  // The other environment's file keeps its lens fade even with the filter on.
+  const ghost = files.find(node => node.presence === "absent")!;
+  const otherLens = { ...scene, nodes: [ghost], props: [], edges: [], routes: {} };
+  const ghostRenderer = new SceneRenderer(document.createElement("canvas"));
+  ghostRenderer.setScene(otherLens);
+  labelPaints.length = 0;
+  const ghostFrame = ghostRenderer.render({ camera: { ...ghost.geometry.top, zoom: 0.2 }, viewport, dpr: 1, time: 3, motion: false, errors: true, focus: landscapeFocus(otherLens) });
+  const ghostCard = ghostFrame.cards.find(({ id }) => id === ghost.id);
+  const ghostAlpha = ghostCard ? labelPaints.find(({ y }) => y === ghostCard.y + ghostCard.height / 2 + 0.5)?.alpha : undefined;
+  assert.ok(ghostAlpha === undefined || ghostAlpha < 1, `the non-matching environment's name still fades (${ghostAlpha})`);
+  ghostRenderer.dispose();
   close.dispose();
   for (const prop of scene.props.filter(prop => prop.serviceIcon)) {
     assert.ok(images.some(image => image.src === prop.serviceIcon), `${prop.id} retains its service artwork`);

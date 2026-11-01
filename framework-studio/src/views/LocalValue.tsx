@@ -8,6 +8,7 @@ import type { EnvironmentEdit } from "../draft";
 import { useStudio } from "../studio";
 import { EnvironmentValueControl } from "./EnvironmentValueControl";
 import { RequirementNotice } from "./InputRequirement";
+import { requirementIssue } from "../issues";
 import { InspectorSection } from "./InspectorUI";
 
 export function LocalValue({
@@ -263,7 +264,10 @@ export function LocalValue({
               <p className="m-0">Restart Studio to enable inline value editing.</p>
             ) : null}
           </div>
-          {!edit ? <RequirementNotice requirement={resource.inputRequirement} /> : null}
+          {/* A missing value is the header's issue notice; here only a met requirement is noted. */}
+          {!edit && !requirementIssue(resource.inputRequirement) ? (
+            <RequirementNotice requirement={resource.inputRequirement} />
+          ) : null}
           {pending?.error ? (
             <p className="mt-0 mb-2 text-refuse wrap-anywhere text-caption" role="alert">
               {pending.error}

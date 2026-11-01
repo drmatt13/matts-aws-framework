@@ -6,7 +6,7 @@ import { worldToScreen, type Bounds, type Camera, type Point, type Viewport } fr
 import { project } from "./iso";
 import { searchOpacity, type LandscapeFocus } from "./focus";
 import { bandTrim, DECK, GRAPHITE, hexRgb, ICON_TINT, ISSUE_COLOR, ROLE_BADGE, ROLE_BADGE_PLATE, trimColor } from "./look";
-import { connectionHoverEase, connectionVisible, EDGE_HOVER_DURATION, offLens, restingAlpha } from "./connections";
+import { connectionHoverEase, connectionVisible, EDGE_ALPHA, EDGE_HOVER_DURATION, inLens, offLens, restingAlpha } from "./connections";
 import type { EdgeCategory } from "../lookup";
 import { placeIslandTitle, surfaceOutline, type CardHit } from "./picking";
 import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, SUBNET_LABEL, nodeCaptionPresentation, subnetLabelPresentation, subnetLabelRect, rectanglesOverlap, visibleNodeCaptions, type LabelRect } from "./labels";
@@ -48,7 +48,19 @@ export interface RenderState {
   readonly focus: LandscapeFocus;
   /** Background connections only; the selected resource's connections remain visible. */
   readonly categories?: ReadonlySet<EdgeCategory>;
+  /**
+   * The Errors filter: every wire with a missing required input stays visible, and every node with
+   * an error keeps its full name at full opacity whatever the zoom (see `pinnedCaption`).
+   */
+  readonly errors?: boolean;
 }
+
+/**
+ * With the Errors filter on, an erroring node in the viewed environment never lets its name fade,
+ * shorten or yield to a neighbour. The other environment's errors recede like the rest of it.
+ */
+const pinnedCaption = (node: SceneNode, state: RenderState): boolean =>
+  !!state.errors && inLens(node) && node.issues?.[0]?.severity === "error";
 
 export interface Stage {
   readonly left: number;
@@ -959,7 +971,7 @@ export class SceneRenderer {
     const lit: { edge: SceneEdge; strength: number; resting: number }[] = [];
     const visible = new Set<string>();
     for (const edge of prepared.scene.edges) {
-      if (!connectionVisible(edge, state.categories, state.selected)) continue;
+      if (!connectionVisible(edge, state.categories, state.selected, state.errors)) continue;
       const arc = prepared.arcs.get(edge)!;
       if (OUTSIDE(arc.bounds, view)) continue;
       visible.add(edge.id);
@@ -972,7 +984,8 @@ export class SceneRenderer {
         (own && state.selected !== undefined && (edge.from === state.selected || edge.to === state.selected));
       const hover = this.hoverAmount(this.edgeHovers, edge.id, state.focus.kind !== "search" && state.hoveredEdge === edge.id ? 1 : 0,
         state, EDGE_HOVER_DURATION, this.snapEdgeHover, connectionHoverEase);
-      const resting = state.focus.kind === "search" ? 0.025 : arc.missing ? state.selected ? 0.35 : 0.9 : state.selected ? 0.06 : restingAlpha(edge.edge.provenance, arc.offLens);
+      // A missing input stays prominent in its own environment and recedes like any wire outside it.
+      const resting = state.focus.kind === "search" ? 0.025 : arc.missing ? (state.selected ? 0.35 : 0.9) * (arc.offLens ? EDGE_ALPHA.outOfLens : 1) : state.selected ? 0.06 : restingAlpha(edge.edge.provenance, arc.offLens);
       if (active || hover > 0) {
         lit.push({ edge, strength: active ? 1 : hover, resting });
         continue;
@@ -1029,11 +1042,11 @@ export class SceneRenderer {
     }
     // Fixed screen-size markers remain readable and clickable at overview zoom.
     context.setLineDash([]);
-    for (const [edge, arc] of prepared.arcs) if (arc.missing && connectionVisible(edge, state.categories, state.selected) && !OUTSIDE(arc.bounds, view)) {
+    for (const [edge, arc] of prepared.arcs) if (arc.missing && connectionVisible(edge, state.categories, state.selected, state.errors) && !OUTSIDE(arc.bounds, view)) {
       const at = arc.midpoint;
       const radius = 8 * pixel, inset = 3 * pixel;
       const matches = state.focus.kind !== "search" || state.focus.nodes.has(edge.from) && state.focus.nodes.has(edge.to);
-      context.globalAlpha = matches ? 1 : 0.08;
+      context.globalAlpha = !matches ? 0.08 : arc.offLens ? EDGE_ALPHA.outOfLens : 1;
       context.fillStyle = "#191c25";
       context.strokeStyle = "#ff5f6d";
       context.lineWidth = 1.8 * pixel;
@@ -1078,7 +1091,7 @@ export class SceneRenderer {
   private placeCards(prepared: Prepared, state: RenderState): NonNullable<SceneRenderer["cardLayout"]> {
     const sections = this.placeSubnetTitles(prepared, state);
     const cached = this.cardLayout;
-    if (cached && cached.sections === sections && sameView(cached.state, state) && cached.state.selected === state.selected &&
+    if (cached && cached.sections === sections && sameView(cached.state, state) && cached.state.selected === state.selected && cached.state.errors === state.errors &&
       cached.state.hovered === state.hovered && cached.state.focus === state.focus) return cached;
     const { camera, viewport } = state;
     const { scale, gap } = nodeCaptionPresentation(camera.zoom);
@@ -1098,14 +1111,16 @@ export class SceneRenderer {
       if (building.x + building.width < 0 || building.x > viewport.width || building.y + building.height < 0 || building.y > viewport.height) return;
       const height = CARD_HEIGHT * scale;
       const chrome = 14 * scale + (node.auth ? 14 * scale : 0);
-      const budget = Math.min(260 * scale, NODE_CAPTION.width * camera.zoom) - chrome;
-      if (budget < 24 * scale) return;
+      // A pinned name keeps its whole width instead of the slot zoom leaves it.
+      const pinned = pinnedCaption(node, state);
+      const budget = (pinned ? 260 * scale : Math.min(260 * scale, NODE_CAPTION.width * camera.zoom)) - chrome;
+      if (!pinned && budget < 24 * scale) return;
       const text = this.fit(node.label, font, budget);
       const textWidth = this.measure(text, font);
       const width = textWidth + chrome;
       const tile = project({ x: node.gx, y: node.gy, h: node.h });
       const anchor = worldToScreen(camera, viewport, { x: tile.x, y: tile.y + NODE_CAPTION.offset });
-      candidates.push({ id: node.id, node, order, priority: 0, scale, font, text, textWidth, width, height, x: anchor.x - width / 2, y: anchor.y - height });
+      candidates.push({ id: node.id, node, order, priority: pinned ? 1 : 0, scale, font, text, textWidth, width, height, x: anchor.x - width / 2, y: anchor.y - height });
       if (node.badge) {
         const at = worldToScreen(camera, viewport, { x: tile.x, y: tile.y + NODE_DEPLOYMENT_TAG.offset });
         const tagWidth = BADGE_WIDTH[node.badge] * tagScale, tagHeight = NODE_DEPLOYMENT_TAG.height * tagScale;
@@ -1126,7 +1141,10 @@ export class SceneRenderer {
         return { x: at.x - 10, y: at.y - 10, width: 20, height: 20 };
       }),
     ];
-    const placed = visibleNodeCaptions(candidates, [...buildings.values(), ...reserved], viewport, gap);
+    // A pinned name may cover neighbouring buildings and wins any overlap with another name.
+    const obstacles = [...buildings.values(), ...reserved];
+    const placed = visibleNodeCaptions(candidates.filter((card) =>
+      (card.priority > 0 ? reserved : obstacles).every((obstacle) => !rectanglesOverlap(card, obstacle, gap))), [], viewport, gap);
     // Tags intentionally sit on their own plinth; every other node and caption
     // remains an obstacle. This fixed slot never borrows width from the name.
     const tags = visibleNodeCaptions(tagCandidates.filter((tag) => [...buildings].every(([id, rect]) => id === tag.id || !rectanglesOverlap(tag, rect))), [...controls, ...sectionLabels, ...placed], viewport);
@@ -1161,8 +1179,9 @@ export class SceneRenderer {
     return sample();
   }
 
-  private captionAlpha(node: SceneNode, state: RenderState, detail: number, hover: number): number {
-    if (node.id === state.selected || (state.focus.kind === "search" && state.focus.nodes.has(node.id))) return 1;
+  /** `pinnable` is false for the deployment tag: only the name is pinned; the tag keeps its zoom fade. */
+  private captionAlpha(node: SceneNode, state: RenderState, detail: number, hover: number, pinnable = true): number {
+    if (node.id === state.selected || (state.focus.kind === "search" && state.focus.nodes.has(node.id)) || (pinnable && pinnedCaption(node, state))) return 1;
     const quiet = state.focus.kind === "selection" && !state.focus.nodes.has(node.id);
     const ghost = !!node.tagFiltered || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
     const prominence = quiet ? 0.35 : ghost ? 0.7 : 1;
@@ -1184,7 +1203,7 @@ export class SceneRenderer {
     for (const tag of layout.tags) {
       const hover = hovers.get(tag.id)!;
       const selected = tag.id === state.selected || (state.focus.kind === "search" && state.focus.nodes.has(tag.id));
-      context.globalAlpha = this.captionAlpha(tag.node, state, detail, hover);
+      context.globalAlpha = this.captionAlpha(tag.node, state, detail, hover, false);
       this.drawDeploymentBadge(tag.kind, tag.x, tag.y + tag.height / 2, tag.scale, selected ? 1 : plate + (1 - plate) * hover);
     }
     context.textAlign = "left";
@@ -1196,7 +1215,7 @@ export class SceneRenderer {
       const alpha = this.captionAlpha(node, state, detail, hover);
       const issue = node.issues?.[0] ? ISSUE_CAPTION[node.issues[0].severity] : undefined;
       // Let the plate dissolve faster than its name so distant islands keep a quiet texture.
-      context.globalAlpha = alpha * (selected ? 1 : plate + (1 - plate) * hover);
+      context.globalAlpha = alpha * (selected || pinnedCaption(node, state) ? 1 : plate + (1 - plate) * hover);
       context.fillStyle = selected ? issue?.plate ?? "#f3efe4" : "#0e131b";
       context.strokeStyle = selected ? issue?.edge ?? "#fff8e6" : issue && !ghost ? rgba(issue.rim, 0.32 + 0.4 * hover) : `rgba(255, 255, 255, ${0.14 + 0.41 * hover})`;
       context.lineWidth = 1;
