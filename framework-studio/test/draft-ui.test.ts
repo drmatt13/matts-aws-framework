@@ -5,7 +5,7 @@ import { after, afterEach, before, beforeEach, mock, test } from "node:test";
 import { createElement as h } from "react";
 import type { BatchPlanResponse, CommentReviewOptions, DraftEdit, SnapshotResponse } from "../shared/api";
 import type { ModelEdge, Snapshot } from "../shared/model";
-import type { DeploymentInputEdit } from "../shared/deployment-inputs";
+import { CDK_ENVIRONMENT_ID, type DeploymentInputFileEdits } from "../shared/deployment-inputs";
 import type { ResourceIntent } from "../shared/resources";
 import { SnapshotBuilder } from "../server/snapshot";
 import { connectionDescriptionId } from "../shared/descriptions";
@@ -84,7 +84,7 @@ beforeEach(() => {
 });
 function response(): SnapshotResponse { return { snapshot: persisted, evaluating: false, commands: {}, busy: null }; }
 
-async function mount(selected = target, mode: "dev" | "prod" = "dev") {
+async function mount(selected = target, mode: "dev" | "prod" = "dev", onClient?: (client: import("@tanstack/react-query").QueryClient) => void) {
   let setMode: ((mode: "dev" | "prod") => void) | undefined;
   function Workbench() {
     const context = studio.useStudio();
@@ -108,6 +108,7 @@ async function mount(selected = target, mode: "dev" | "prod" = "dev") {
   const root = router.createRootRoute({ component: Root, validateSearch: (search) => ({ select: typeof search.select === "string" ? search.select : undefined }) });
   const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: [`/?select=${encodeURIComponent(selected)}`] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null }), router.createRoute({ getParentRoute: () => root, path: "/other", component: () => null })]) });
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); client.setQueryData(["snapshot"], response());
+  onClient?.(client);
   ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
   await ui.screen.findByRole("complementary", { name: "Inspector" });
   if (mode === "prod") await ui.act(async () => { setMode!(mode); });
@@ -121,7 +122,7 @@ function openSection(title: string) {
 function descriptionField(): HTMLTextAreaElement {
   const editor = document.querySelector<HTMLDetailsElement>("[data-slot=description-editor]");
   if (editor && !editor.open) ui.fireEvent.click(editor.querySelector("summary")!);
-  return ui.screen.getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement;
+  return (editor ? ui.within(editor) : ui.screen).getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement;
 }
 const memory = () => ui.screen.getByRole("spinbutton", { name: "Memory in MB" });
 const changeMemory = () => ui.fireEvent.change(memory(), { target: { value: "768" } });
@@ -160,7 +161,7 @@ test("managed resource families explain inferred deployment without a Deploy sel
   const model = baseline.models.dev;
   const kinds = new Set<string>();
   const ids = model.resources.filter(resource => {
-    const kind = resource.deploymentFile ? "envfile" : resource.clientEnvironment ? "clientfile" : resource.kind;
+    const kind = resource.deploymentFile || resource.deploymentFiles ? "envfile" : resource.clientEnvironment ? "clientfile" : resource.kind;
     if (kinds.has(kind)) return false;
     kinds.add(kind); return true;
   }).map(resource => resource.id);
@@ -169,7 +170,7 @@ test("managed resource families explain inferred deployment without a Deploy sel
     await mount(id);
     assert.equal(ui.screen.queryByRole("combobox", { name: "Deploy" }), null, id);
     const resource = model.resources.find(resource => resource.id === id);
-    const input = id === "island:inputs" || resource?.deploymentFile || resource?.clientEnvironment || ["input", "secret", "group"].includes(resource?.kind ?? "");
+    const input = id === "island:inputs" || resource?.deploymentFile || resource?.deploymentFiles || resource?.clientEnvironment || ["input", "secret", "group"].includes(resource?.kind ?? "");
     if (input) assert.equal(ui.screen.queryByRole("region", { name: "Deployment" }), null, id);
     else assert.ok(document.querySelector("[data-slot=deployment-ownership] [data-slot=deployment-note]")?.textContent, id);
     if (id === "island:vpc:application") {
@@ -368,10 +369,32 @@ test("all selectable item kinds lead with tags, where they have them, then their
       assert.ok(ui.within(first as HTMLElement).queryByRole("button", { name: "Add tag" }), `${id} tags are editable`);
     }
     const description = descriptionField();
-    assert.equal(description.value, baseline.descriptions.values[id === edge.id ? connectionDescriptionId(edge) : id] ?? "", id);
+    const descriptionId = id.startsWith("envfile:") ? CDK_ENVIRONMENT_ID : id === edge.id ? connectionDescriptionId(edge) : id;
+    assert.equal(description.value, baseline.descriptions.values[descriptionId] ?? "", id);
     assert.equal(description.disabled, false, id);
     ui.cleanup();
   }
+});
+
+test("the shared environment description leads, and each physical file keeps its authored notes under Files", async () => {
+  persisted = { ...baseline, descriptions: { ...baseline.descriptions, values: { ...baseline.descriptions.values,
+    [CDK_ENVIRONMENT_ID]: "Shared environment notes", "envfile:dev": "Development file notes", "envfile:prod": "Production file notes" } } };
+  mock.method(apiModule.api, "inputDetails", async (mode: "dev" | "prod") => ({ file: `cdk-app/.env.${mode}`, hash: "fixture", entries: [] }));
+  for (const id of ["envfile:dev", "envfile:prod", CDK_ENVIRONMENT_ID]) {
+    await mount(id);
+    assert.equal(descriptionField().value, "Shared environment notes", id);
+    openSection("Files");
+    for (const [mode, notes] of [["dev", "Development file notes"], ["prod", "Production file notes"]] as const) {
+      const file = document.querySelector<HTMLElement>(`[data-slot=environment-file][data-environment=${mode}]`)!;
+      assert.equal(file.querySelector("[data-slot=environment-file-description]")?.textContent, notes, `${id}: ${mode} note reads first`);
+      ui.fireEvent.click(ui.within(file).getByText("Edit description"));
+      const field = ui.within(file).getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement;
+      assert.equal(field.value, notes, `${id}: ${mode}`);
+      assert.equal(field.disabled, false);
+    }
+    ui.cleanup();
+  }
+  assert.equal(planCalls.length + applyCalls, 0, "inspecting shared and per-file notes does not rewrite them");
 });
 
 test("read connection labels open compact evidence with line-numbered VS Code links", async () => {
@@ -654,7 +677,8 @@ test("inspector headers carry their Dev | Prod pair at the right of the type lab
     ["resource:rds", ["dev:false", "prod:true"]],
     ["resource:referenceExamples", ["dev:false", "prod:false"]],
     ["resource:openaiApiKey", ["dev:true", "prod:true"]],
-    ["envfile:dev", ["dev:true", "prod:false"]],
+    ["envfile:dev", ["dev:true", "prod:true"]],
+    [CDK_ENVIRONMENT_ID, ["dev:true", "prod:true"]],
   ] as const) {
     await mount(id);
     assert.deepEqual(pair(), expected, id);
@@ -665,7 +689,8 @@ test("inspector headers carry their Dev | Prod pair at the right of the type lab
   assert.deepEqual([...document.querySelectorAll("[data-slot=\"lane-lines\"] strong")].map(line => line.textContent), ["Unavailable", "Unavailable"], "the Deployment section agrees with the header that an unattached stack is deployed nowhere");
   ui.cleanup();
   await mount("envfile:dev");
-  assert.equal(header().querySelector("[data-slot=\"inspector-kind\"] > span")?.textContent, "Environment file", "the pair names the environment and the file role identifies framework inputs");
+  assert.equal(header().querySelector("[data-slot=\"inspector-kind\"] > span")?.textContent, "Environment files", "the header describes both files, whichever one was selected");
+  assert.deepEqual([...header().querySelectorAll("[data-slot=cdk-environment-files] code")].map(code => code.textContent), ["cdk-app/.env.dev", "cdk-app/.env.prod"]);
   ui.cleanup();
   await mount("resource:client");
   assert.equal(header().querySelectorAll("[data-slot=\"environment-pills\"]").length, 0, "an input group's entries carry their own pairs");
@@ -825,7 +850,7 @@ test("event Lambda local replay switches stage true or property removal through 
   assert.equal(ui.screen.queryByRole("switch", { name: "Local replay" }), null);
 });
 
-test("required flags stage quietly and the connection inspector guides missing values into the file draft", async () => {
+test("a missing required value links from its connection straight to its open, focused row in CDK environment", async () => {
   const resource = baseline.models.dev.resources.find((item) => item.kind === "input" && item.fromEnv)!;
   const requirement = { resource: resource.id, name: resource.fromEnv!, mode: "dev" as const, file: "cdk-app/.env.dev", required: true, status: "missing" as const, reasons: ["Marked required in the resource declaration."] };
   const fileResource = baseline.models.dev.resources.find((item) => item.id === "envfile:dev")!;
@@ -833,21 +858,27 @@ test("required flags stage quietly and the connection inspector guides missing v
   const edge = { id: "required-fixture", from: "envfile:dev", to: resource.id, relation: "supplies" as const, provenance: "source" as const, label: resource.fromEnv!, inputRequirement: requirement };
   persisted = { ...baseline, models: { ...baseline.models, dev: { ...baseline.models.dev,
     resources: baseline.models.dev.resources.map((item) => item.id === resource.id ? { ...item, required: true, default: undefined, inputRequirement: requirement } : item.id === fileResource.id ? { ...item, deploymentFile: { ...fileResource.deploymentFile!, exists: true, entries: [entry] } } : item), edges: [...baseline.models.dev.edges, edge] } } };
-  mock.method(apiModule.api, "inputDetails", async () => ({ file: "cdk-app/.env.dev", hash: "fixture", entries: [] }));
+  mock.method(apiModule.api, "inputDetails", async (mode: "dev" | "prod") => ({ file: `cdk-app/.env.${mode}`, hash: "fixture", entries: [] }));
   await mount(edge.id);
-  assert.ok(ui.screen.getByText("Required value missing"));
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Edit .env.dev" }));
-  await ui.screen.findByRole("heading", { name: "cdk-app/.env.dev" });
-  assert.ok(ui.screen.getByText(/A required value is missing/));
-  assert.ok(ui.screen.getByText("Required", { selector: "[data-slot=input-flag]" }), "the row is flagged where its value is entered");
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: resource.fromEnv! }));
-  assert.equal((ui.screen.getByRole("searchbox", { name: "Filter environment variables" }) as HTMLInputElement).value, resource.fromEnv);
-  const field = await ui.screen.findByRole("textbox", { name: `Value for ${resource.fromEnv}` });
-  await ui.waitFor(() => assert.equal((field as HTMLTextAreaElement).disabled, false));
+  assert.ok(ui.within(document.querySelector("[data-slot=connection-header]")! as HTMLElement).getByText("Required value missing"));
+  const member = [...document.querySelectorAll<HTMLDetailsElement>("[data-slot=connection-map-member]")]
+    .find(item => item.querySelector("[data-slot=connection-map-label]")?.textContent?.includes(resource.fromEnv!));
+  if (member && !member.open) ui.fireEvent.click(member.querySelector("summary")!);
+  ui.fireEvent.click((member ? ui.within(member) : ui.screen).getByRole("button", { name: "Edit .env.dev" }));
+  await ui.screen.findByRole("heading", { name: "CDK environment" });
+  const readiness = () => document.querySelector("[data-slot=environment-readiness-row][data-environment=dev]")!.textContent;
+  await ui.waitFor(() => assert.match(readiness(), /1 required value missing/));
+  const row = document.querySelector<HTMLDetailsElement>(`[data-slot=environment-variable][data-variable="${resource.fromEnv}"]`)!;
+  assert.equal(row.open, true, "the link opens its variable");
+  assert.ok(row.querySelector("summary [data-environment=dev][data-attention]"), "its Dev pill asks for the value");
+  const field = await ui.screen.findByRole("textbox", { name: `Value for ${resource.fromEnv} in Development` }) as HTMLTextAreaElement;
+  await ui.waitFor(() => assert.equal(document.activeElement, field, "and focuses the environment that needs it"));
+  assert.equal(field.placeholder, "Required");
   ui.fireEvent.change(field, { target: { value: "8080" } });
-  assert.equal(ui.screen.queryByText(/A required value is missing/), null, "a staged value satisfies the requirement");
+  assert.match(readiness(), /Every required value is set/, "a staged value satisfies the requirement");
+  assert.equal(row.querySelector("summary [data-environment=dev][data-attention]"), null);
   ui.fireEvent.change(field, { target: { value: "" } });
-  assert.ok(ui.screen.getByText(/A required value is missing/), "clearing a row without a line drops its edit");
+  assert.match(readiness(), /1 required value missing/, "clearing a row without a line drops its edit");
   assert.equal(planCalls.length + resourceCalls.length, 0, "guided editing does not force review");
 });
 
@@ -857,18 +888,65 @@ test("a file's secrets arrive withheld: they count as set, reveal one at a time,
   mock.method(apiModule.api, "inputDetails", async () => ({ file: "cdk-app/.env.dev", hash: "withheld", entries: [{ name: secret.fromEnv!, value: "", sensitive: true, hidden: true }] }));
   mock.method(apiModule.api, "revealInput", async (_mode: "dev" | "prod", name: string) => { reveals.push(name); return { name, value: "revealed-sentinel" }; });
   await mount("envfile:dev");
-  const field = await ui.screen.findByLabelText(`Value for ${secret.fromEnv}`) as HTMLInputElement;
+  const label = `Value for ${secret.fromEnv} in Development`;
+  const field = await ui.screen.findByLabelText(label) as HTMLInputElement;
   await ui.waitFor(() => assert.equal(field.disabled, false));
   assert.equal(field.value, "");
   assert.equal(field.placeholder, "Set · hidden");
   ui.fireEvent.change(field, { target: { value: "x" } });
   ui.fireEvent.change(field, { target: { value: "" } });
   assert.ok(!ui.screen.queryByLabelText("Pending inspector changes"), "clearing an unrevealed secret keeps it instead of blanking it");
-  await ui.waitFor(() => assert.equal((ui.screen.getByLabelText(`Value for ${secret.fromEnv}`) as HTMLInputElement).disabled, false));
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: `Reveal ${secret.fromEnv}` }));
-  await ui.waitFor(() => assert.equal((ui.screen.getByLabelText(`Value for ${secret.fromEnv}`) as HTMLTextAreaElement).value, "revealed-sentinel"));
+  await ui.waitFor(() => assert.equal((ui.screen.getByLabelText(label) as HTMLInputElement).disabled, false));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: `Reveal ${secret.fromEnv} in Development` }));
+  await ui.waitFor(() => assert.equal((ui.screen.getByLabelText(label) as HTMLTextAreaElement).value, "revealed-sentinel"));
   assert.deepEqual(reveals, [secret.fromEnv], "only the revealed variable is fetched");
   assert.equal(planCalls.length + resourceCalls.length, 0);
+});
+
+test("new source remasks file secrets and cancels a late reveal while preserving a dirty value draft", async () => {
+  persisted = { ...baseline, models: { ...baseline.models, dev: { ...baseline.models.dev,
+    resources: baseline.models.dev.resources.map(resource => resource.deploymentFile?.mode === "dev" ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists: true } } : resource) } } };
+  const reads: ("dev" | "prod")[] = [];
+  let client!: import("@tanstack/react-query").QueryClient;
+  let pendingSignal: AbortSignal | undefined;
+  let complete!: (value: { name: string; value: string }) => void;
+  const pending = new Promise<{ name: string; value: string }>(resolve => { complete = resolve; });
+  mock.method(apiModule.api, "inputDetails", async (mode: "dev" | "prod") => {
+    reads.push(mode);
+    return { file: `cdk-app/.env.${mode}`, hash: "before-external-edit", entries: [
+      { name: "REVIEW_SECRET", value: "", sensitive: true, hidden: true },
+      { name: "PENDING_SECRET", value: "", sensitive: true, hidden: true },
+      { name: "DRAFT_VALUE", value: "saved", sensitive: false },
+    ] };
+  });
+  mock.method(apiModule.api, "revealInput", async (_mode: "dev" | "prod", name: string, signal?: AbortSignal) => {
+    if (name === "REVIEW_SECRET") return { name, value: "previously-revealed-private-sentinel" };
+    pendingSignal = signal;
+    return pending;
+  });
+  await mount("envfile:dev", "dev", value => { client = value; });
+  const value = (name: string) => ui.screen.getByLabelText(`Value for ${name} in Development`) as HTMLTextAreaElement;
+  await ui.screen.findByLabelText("Value for DRAFT_VALUE in Development");
+  await ui.waitFor(() => assert.equal(value("DRAFT_VALUE").disabled, false));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Reveal REVIEW_SECRET in Development" }));
+  await ui.waitFor(() => assert.equal(value("REVIEW_SECRET").value, "previously-revealed-private-sentinel"));
+  ui.fireEvent.change(value("DRAFT_VALUE"), { target: { value: "preserved draft" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Reveal PENDING_SECRET in Development" }));
+  assert.ok(pendingSignal);
+  persisted = { ...persisted, revision: "external-input-file-edit" };
+  await ui.act(async () => { client.setQueryData(["snapshot"], response()); });
+  await ui.waitFor(() => assert.equal(pendingSignal!.aborted, true));
+  await ui.act(async () => { complete({ name: "PENDING_SECRET", value: "late-private-sentinel" }); await pending; });
+  for (const name of ["REVIEW_SECRET", "PENDING_SECRET"]) {
+    const field = value(name) as unknown as HTMLInputElement;
+    assert.equal(field.type, "password");
+    assert.equal(field.value, "");
+    assert.equal(field.disabled, true);
+  }
+  assert.equal(value("DRAFT_VALUE").value, "preserved draft");
+  assert.match(count(), /1 unsaved/);
+  assert.equal(reads.filter(mode => mode === "dev").length, 1, "a source conflict preserves the file's existing details and draft");
+  assert.equal(planCalls.length + applyCalls, 0);
 });
 
 test("local values edit inline, revert, review privately and reload after apply without reading the whole file", async () => {
@@ -877,8 +955,8 @@ test("local values edit inline, revert, review privately and reload after apply 
   const inputPlans: { mode: string; edits: unknown; hash: string }[] = [];
   mock.method(apiModule.api, "resourceDetails", async () => ({ file: "cdk-app/.env.dev", inputFile: { exists: true, hash: "selected-hash" }, configured: true, value: stored }));
   mock.method(apiModule.api, "inputDetails", async () => { throw new Error("Inline editing must read only the selected variable."); });
-  mock.method(apiModule.api, "inputPlan", async (mode: "dev" | "prod", edits: readonly DeploymentInputEdit[], hash: string) => {
-    inputPlans.push({ mode, edits, hash });
+  mock.method(apiModule.api, "inputPlan", async (files: readonly DeploymentInputFileEdits[]) => {
+    inputPlans.push(...files.map(({ mode, edits, hash }) => ({ mode, edits, hash })));
     return { planId: "local-value", ok: true, summaries: [`Update ${resource.fromEnv}`], changes: [{ file: "cdk-app/.env.dev", diff: { unified: "redacted", lines: [{ kind: "add" as const, newLine: 1, text: `${resource.fromEnv}=<updated value hidden>` }] } }] };
   });
   mock.method(apiModule.api, "inputApply", async () => {

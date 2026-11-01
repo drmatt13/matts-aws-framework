@@ -124,7 +124,7 @@ test("environment files share one island while retaining source connections and 
     assert.equal(scene.islands.find((island) => island.id === ENVIRONMENT_FILES_ISLAND)?.title, "Environment files");
     assert.equal(scene.islands.some(island => island.id === CLIENT_ENVIRONMENT_ISLAND), false);
     for (const id of [CLIENT_ENVIRONMENT_ID, "envfile:dev", "envfile:prod"]) {
-      assert.equal(scene.nodes.find(node => node.id === id)?.island, ENVIRONMENT_FILES_ISLAND);
+      assert.equal(scene.nodes.find(node => node.id === (scene.representatives[id] ?? id))?.island, ENVIRONMENT_FILES_ISLAND);
     }
     assert.ok(scene.edges.some((edge) => edge.from === "resource:cognito" && edge.to === CLIENT_ENVIRONMENT_ID));
     // The client URL inputs stand in their group, so the group carries their mappings.

@@ -31,13 +31,21 @@ const ordered = (issues: readonly EntityIssue[]): readonly EntityIssue[] =>
  * are per graph, so the other environment's missing values recede with it.
  */
 export function resourceIssues(resource: ModelResource, resources?: Iterable<ModelResource>): readonly EntityIssue[] {
+  if (resource.deploymentFiles && resources) {
+    const files = new Set(Object.values(resource.deploymentFiles));
+    return ordered([...resources].filter((item) => files.has(item.id) && !item.absent).flatMap((item) => resourceIssues(item)));
+  }
   const issues: EntityIssue[] = [];
   const file = resource.deploymentFile;
-  if (file && !file.exists) {
-    issues.push({ severity: "error", title: "Not generated", badge: "error",
-      details: [`${ENVIRONMENT[file.mode]} synthesis reads its inputs from this file. Generate it from ${file.template}.`] });
+  // CDK environment shows both files' issues together, so each names its own file.
+  const name = file && `.env.${file.mode}`;
+  if (file?.setupProblem) {
+    issues.push({ severity: "error", title: `${name} could not be created`, badge: "error", details: [file.setupProblem] });
   } else if (file?.problem) {
-    issues.push({ severity: "error", title: "Could not be read", badge: "error", details: [file.problem] });
+    issues.push({ severity: "error", title: `${name} could not be read`, badge: "error", details: [file.problem] });
+  } else if (file && !file.exists) {
+    issues.push({ severity: "error", title: `${name} is missing`, badge: "error",
+      details: [`${ENVIRONMENT[file.mode]} synthesis reads ${file.path}. Create it from ${file.template} in CDK environment.`] });
   }
   if (resource.stackUsage?.status === "unreferenced") {
     issues.push({ severity: "warning", title: "Not added to CDK app", badge: "unattached",

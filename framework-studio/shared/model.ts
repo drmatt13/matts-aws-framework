@@ -311,6 +311,8 @@ export interface ModelResource {
   readonly networkPlacement?: "public" | "private" | "isolated";
   readonly networkId?: string;
   readonly deploymentFile?: import("./deployment-inputs").DeploymentInputFile;
+  /** Logical environment editor; values refer to the original per-mode resource IDs. */
+  readonly deploymentFiles?: Readonly<Record<Mode, string>>;
   /** Client variable references and transformations, never resolved values. */
   readonly clientEnvironment?: import("./client-environment").ClientEnvironmentFile;
   /**

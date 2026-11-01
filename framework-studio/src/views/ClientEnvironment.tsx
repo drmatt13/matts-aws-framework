@@ -27,6 +27,7 @@ import {
   type ClientReferenceOption,
 } from "../../shared/client-environment";
 import { previewClientBinding } from "../../shared/client-environment-preview";
+import { CDK_ENVIRONMENT_ID } from "../../shared/deployment-inputs";
 import type { ModelResource } from "../../shared/model";
 import { useStudio } from "../studio";
 import { Description } from "./Description";
@@ -569,19 +570,11 @@ export function ClientEnvironmentMappings({
             <button
               className={buttonClasses({ variant: "link" })}
               disabled={draft.dirty}
-              onClick={() => select("envfile:dev")}
+              onClick={() => select(CDK_ENVIRONMENT_ID)}
             >
-              cdk-app/.env.dev
+              CDK environment
             </button>{" "}
-            and{" "}
-            <button
-              className={buttonClasses({ variant: "link" })}
-              disabled={draft.dirty}
-              onClick={() => select("envfile:prod")}
-            >
-              cdk-app/.env.prod
-            </button>
-            . Stack outputs and regions refer to that environment's deployment.
+            (<code>cdk-app/.env.dev</code> and <code>.env.prod</code>). Stack outputs and regions refer to that environment's deployment.
           </p>
           <p className="mt-2 mb-0 wrap-anywhere">
             One source serves both environments unless a field's sources differ.

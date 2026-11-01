@@ -10,6 +10,7 @@ import { InspectorKind, InspectorSummary } from "./InspectorUI";
 import { IssueNotice } from "./IssueNotice";
 
 import type { ConnectionGroup } from "../connections";
+import type { Mode } from "../../shared/model";
 import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { ConnectionDetails, ConnectionEndpoints } from "./InputRequirement";
@@ -65,10 +66,13 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
                 ? "dev"
                 : "prod";
             // The header's notice names the problem; a collapsed row still shows which members have it.
-            const missing = edge.inputRequirement?.status === "missing";
+            const missing = member.models[model.mode]?.inputRequirement?.status === "missing";
+            const versions = member.sourceIds
+              ? (["dev", "prod"] as const).flatMap(mode => member.models[mode] ? [{ mode, edge: member.models[mode]! }] : [])
+              : [{ mode: undefined as Mode | undefined, edge }];
             return (
               <details
-                key={edge.id}
+                key={member.sourceIds?.[0] ?? edge.id}
                 className="border-rule not-first:border-t"
                 data-slot="connection-map-member"
               >
@@ -86,16 +90,28 @@ export function ConnectionMap({ connection }: { readonly connection: ConnectionG
                     {shared ? relationship.value : relationship.title}
                     {missing ? <span className="sr-only">, required value missing</span> : null}
                   </span>
-                  {rowPills ? <EnvironmentPills availability={member.availability} /> : null}
+                  {rowPills ? (
+                    <EnvironmentPills
+                      availability={member.availability}
+                      {...(member.sourceIds
+                        ? { descriptions: { dev: "supplied in development", prod: "supplied in production" }, unavailableDescription: "not supplied in this environment" }
+                        : {})}
+                    />
+                  ) : null}
                 </InspectorSummary>
                 <div className="pb-3 text-caption" data-slot="connection-map-detail">
-                  <ConnectionEndpoints
-                    compact
-                    from={edge.from}
-                    to={edge.to}
-                    except={{ from: connection.from, to: connection.to }}
-                  />
-                  <ConnectionDetails compact edge={edge} onlyIn={onlyIn} />
+                  {versions.map(version => (
+                    <div key={version.mode ?? version.edge.id} data-slot="connection-source-environment">
+                      {version.mode ? <h3 className="mt-3 mb-2 text-label font-semibold">{version.mode === "dev" ? "Development" : "Production"}</h3> : null}
+                      <ConnectionEndpoints
+                        compact
+                        from={version.edge.from}
+                        to={version.edge.to}
+                        except={{ from: connection.from, to: connection.to }}
+                      />
+                      <ConnectionDetails compact edge={version.edge} onlyIn={version.mode ? undefined : onlyIn} contextMode={version.mode} />
+                    </div>
+                  ))}
                 </div>
               </details>
             );

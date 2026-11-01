@@ -1,4 +1,4 @@
-import type { ModeModel, ModelResource, Snapshot } from "../shared/model";
+import type { Mode, ModeModel, ModelResource, Snapshot } from "../shared/model";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
@@ -98,6 +98,7 @@ export class SnapshotBuilder {
   constructor(
     readonly repositoryRoot: string,
     log: (line: string) => void = () => {},
+    private readonly inputSetupProblems: () => Readonly<Partial<Record<Mode, string>>> = () => ({}),
   ) {
     this.pool = new EvaluatorPool(repositoryRoot, log, this.evaluators);
   }
@@ -200,7 +201,7 @@ export class SnapshotBuilder {
     const project = (model: ModeModel): ModeModel => {
       const declared = model.stale ? model : withExportStacks(withClassMembers(model, built.catalog, built.index.cdkLinks.edges), built.exportStacks);
       const comparisons = Object.values(clientMappings.mappings).flatMap(mapping => [clientBindingFor(mapping, "dev"), clientBindingFor(mapping, "prod")].flatMap(binding => binding.when ? [binding.when] : []));
-      const enriched = withClientEnvironment(withDeploymentInputs(this.repositoryRoot, withLocalDatabases(declared, localDatabase.services), { dev, prod }, comparisons), clientMappings);
+      const enriched = withClientEnvironment(withDeploymentInputs(this.repositoryRoot, withLocalDatabases(declared, localDatabase.services), { dev, prod }, comparisons, this.inputSetupProblems()), clientMappings);
       return withConnectionAuthorizations(withConnectionEvidence(this.repositoryRoot, enriched, built.index, built.catalog, sources));
     };
     const models = { dev: project(dev), prod: project(prod) };

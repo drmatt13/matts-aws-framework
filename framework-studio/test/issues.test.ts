@@ -5,7 +5,7 @@ import { after, before, test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import assert from "./support/assert";
-import type { InputRequirement } from "../shared/deployment-inputs";
+import { CDK_ENVIRONMENT_ID, type InputRequirement } from "../shared/deployment-inputs";
 import type { ModeModel, ModelEdge, ModelResource, ModelTarget, Snapshot } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
 import { aggregateConnections } from "../src/connections";
@@ -121,12 +121,31 @@ const file = (exists: boolean, problem?: string): ModelResource => ({
 
 test("a missing environment file shows one red cross and keeps its ownership for the card and inspector", () => {
   const issues = resourceIssues(file(false));
-  assert.deepEqual(issues.map(issue => [issue.severity, issue.title, issue.badge]), [["error", "Not generated", "error"]]);
-  assert.match(issues[0]!.details[0]!, /Development synthesis reads its inputs from this file\. Generate it from cdk-app\/\.env\.dev\.template\./);
+  assert.deepEqual(issues.map(issue => [issue.severity, issue.title, issue.badge]), [["error", ".env.dev is missing", "error"]]);
+  assert.equal(issues[0]!.details[0]!, "Development synthesis reads cdk-app/.env.dev. Create it from cdk-app/.env.dev.template in CDK environment.");
   assert.deepEqual(cornerBadges({ roleIcon: "managed", frameworkManaged: true, issues }), { right: "error" });
   assert.deepEqual(cornerBadges({ roleIcon: "managed", frameworkManaged: true }), { right: "managed" }, "a healthy file keeps its lock");
-  assert.deepEqual(resourceIssues(file(true, "EACCES: cdk-app/.env.dev")).map(issue => [issue.title, ...issue.details]), [["Could not be read", "EACCES: cdk-app/.env.dev"]]);
+  assert.deepEqual(resourceIssues(file(true, "EACCES: cdk-app/.env.dev")).map(issue => [issue.title, ...issue.details]), [[".env.dev could not be read", "EACCES: cdk-app/.env.dev"]]);
   assert.deepEqual(resourceIssues(file(true)), []);
+});
+
+test("the logical CDK environment reports setup errors only from the selected source mode", () => {
+  const environment: ModelResource = { id: CDK_ENVIRONMENT_ID, path: ["CDK environment"], kind: "envFile", absent: false,
+    deploymentFiles: { dev: "envfile:dev", prod: "envfile:prod" } };
+  for (const mode of ["dev", "prod"] as const) {
+    const files: ModelResource[] = (["dev", "prod"] as const).map(fileMode => ({
+      id: `envfile:${fileMode}`, path: [`cdk-app/.env.${fileMode}`], kind: "envFile", absent: fileMode !== mode,
+      deploymentFile: { mode: fileMode, path: `cdk-app/.env.${fileMode}`, template: `cdk-app/.env.${fileMode}.template`,
+        exists: false, entries: [], setupProblem: `Could not initialize cdk-app/.env.${fileMode} (EACCES).` },
+    }));
+    const active = files.find(resource => !resource.absent)!;
+    assert.deepEqual(resourceIssues(environment, [environment, ...files]), resourceIssues(active));
+    assert.equal(resourceIssues(environment, files)[0]!.title, `.env.${mode} could not be created`);
+    const healthyActive = files.map(resource => resource.absent ? resource : {
+      ...resource, deploymentFile: { ...resource.deploymentFile!, exists: true, setupProblem: undefined },
+    });
+    assert.deepEqual(resourceIssues(environment, healthyActive), [], "the other file's setup error does not mark this source mode");
+  }
 });
 
 test("a group with a missing required value is an error, in names and files only", () => {

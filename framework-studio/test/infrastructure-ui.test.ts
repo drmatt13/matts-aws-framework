@@ -78,7 +78,7 @@ async function mount(navigate: (id: string) => void = () => {}, initialOwner?: s
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); clients.push(client);
   ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
   if (withShell) await ui.screen.findByRole("group", { name: "Source environment" });
-  else if (environmentFile) await ui.screen.findByRole("heading", { name: environmentFile.clientEnvironment ? "client-app/.env" : environmentFile.path[0] });
+  else if (environmentFile) await ui.screen.findByRole("heading", { name: environmentFile.clientEnvironment ? "client-app/.env" : "CDK environment" });
   else await ui.screen.findByRole("button", { name: /Synthesize CDK|Refresh from CDK/ });
 }
 
@@ -353,53 +353,70 @@ function environmentFixture() {
   const original = response.snapshot.models.dev.resources.find((resource) => resource.id === "envfile:dev")!;
   return { ...original, deploymentFile: { ...original.deploymentFile!, exists: true } };
 }
+/** Both CDK files present, whatever the checkout's ignored env files hold. */
+function withBothFiles(): SnapshotResponse {
+  const present = (mode: Mode) => ({ ...response.snapshot.models[mode],
+    resources: response.snapshot.models[mode].resources.map((resource) => resource.deploymentFile ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists: true } } : resource) });
+  return { ...response, snapshot: { ...response.snapshot, models: { dev: present("dev"), prod: present("prod") } } };
+}
 
-test("the file inspector loads all local variables privately and links only catalog names", async () => {
+test("CDK environment loads local variables privately and links only catalog names", async () => {
   let reads = 0; let selected = "";
   mock.method(api.api, "resourceDetails", async () => { reads++; throw new Error("A file inspector must not read a value."); });
-  mock.method(api.api, "inputDetails", async () => ({ file: "cdk-app/.env.dev", hash: "baseline", entries: [{ name: "OPENAI_API_KEY", value: "private-ui-sentinel", sensitive: true }, { name: "PGADMIN_HOST_PORT", value: "5050", sensitive: false }] }));
-  const file = environmentFixture();
-  await mount((id) => { selected = id; }, undefined, file);
-  await ui.screen.findByLabelText("Value for PGADMIN_HOST_PORT");
+  mock.method(api.api, "inputDetails", async (mode: Mode) => ({ file: `cdk-app/.env.${mode}`, hash: "baseline", entries: [{ name: "OPENAI_API_KEY", value: "private-ui-sentinel", sensitive: true }, { name: "PGADMIN_HOST_PORT", value: "5050", sensitive: false }] }));
+  await mount((id) => { selected = id; }, undefined, environmentFixture());
+  await ui.screen.findByLabelText("Value for PGADMIN_HOST_PORT in Development");
+  assert.deepEqual([...document.querySelectorAll("[data-slot=cdk-environment-files] code")].map((code) => code.textContent), ["cdk-app/.env.dev", "cdk-app/.env.prod"]);
+  ui.fireEvent.click(ui.screen.getByText("Files", { selector: "summary > span" }));
   assert.ok(ui.screen.getByRole("link", { name: "Template: cdk-app/.env.dev.template" }));
   assert.ok(ui.screen.getByText("OPENAI_API_KEY", { selector: "code" }));
-  assert.equal((ui.screen.getByLabelText("Value for OPENAI_API_KEY") as HTMLInputElement).type, "password");
+  assert.equal((ui.screen.getByLabelText("Value for OPENAI_API_KEY in Development") as HTMLInputElement).type, "password");
   assert.equal(ui.screen.queryByText("private-ui-sentinel"), null);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "openaiApiKey" }));
   assert.equal(selected, "resource:openaiApiKey"); assert.equal(reads, 0);
 });
 
-test("file value edits and additions stay in one guarded draft and Review Changes opens the combined review", async () => {
-  let plans = 0; let applies = 0;
-  const requests: import("../shared/deployment-inputs").DeploymentInputEdit[][] = [];
-  mock.method(api.api, "inputDetails", async () => ({ file: "cdk-app/.env.dev", hash: "baseline", entries: [{ name: "PGADMIN_HOST_PORT", value: "5050", sensitive: false }, { name: "TOKEN", value: "old-private", sensitive: true }] }));
-  mock.method(api.api, "inputPlan", async (mode: Mode, edits: readonly import("../shared/deployment-inputs").DeploymentInputEdit[], hash: string) => { plans++; requests.push([...edits]); assert.equal(mode, "dev"); assert.equal(hash, "baseline"); return { planId: "input-plan", ok: true, summaries: edits.map((edit) => `${edit.create ? "Add" : "Update"} ${edit.name}`), changes: [] }; });
+test("CDK environment stages both files and a new variable in one guarded draft, and one review covers both files", async () => {
+  let applies = 0;
+  const plans: (readonly import("../shared/deployment-inputs").DeploymentInputFileEdits[])[] = [];
+  mock.method(api.api, "inputDetails", async (mode: Mode) => ({ file: `cdk-app/.env.${mode}`, hash: `${mode}-baseline`, entries: [{ name: "PGADMIN_HOST_PORT", value: "5050", sensitive: false }, { name: "TOKEN", value: "old-private", sensitive: true }] }));
+  mock.method(api.api, "inputPlan", async (files: readonly import("../shared/deployment-inputs").DeploymentInputFileEdits[]) => { plans.push(files); return { planId: "input-plan", ok: true, summaries: files.flatMap((file) => file.edits.map((edit) => `${edit.create ? "Add" : "Update"} ${edit.name} in .env.${file.mode}`)), changes: [] }; });
   mock.method(api.api, "inputApply", async () => { applies++; return { status: "applied", revision: "saved", message: "Saved inputs." }; });
   mock.method(api.api, "snapshot", async () => ({ ...response, snapshot: { ...response.snapshot, revision: "saved" } }));
-  await mount(() => {}, undefined, environmentFixture());
-  ui.fireEvent.change(await ui.screen.findByLabelText("Value for PGADMIN_HOST_PORT"), { target: { value: "6060" } });
-  ui.fireEvent.change(ui.screen.getByLabelText("Value for TOKEN"), { target: { value: "new-private" } });
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add environment variable" }));
-  assert.equal((ui.screen.getByRole("button", { name: "Review Changes" }) as HTMLButtonElement).disabled, true, "unfinished additions are guarded and invalid");
-  ui.fireEvent.change(ui.screen.getByLabelText("New variable name 1"), { target: { value: "NEW_SETTING" } });
-  ui.fireEvent.change(ui.screen.getByLabelText("Value for NEW_SETTING"), { target: { value: "new-value" } });
-  assert.equal(plans, 0); assert.equal(applies, 0);
-  assert.ok(ui.screen.getByText("3 unsaved changes"));
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Production" }));
-  const warning = await ui.screen.findByRole("dialog", { name: "Unsaved changes" });
-  ui.fireEvent.click(ui.within(warning).getByRole("button", { name: "Review Changes" }));
-  const dialog = await ui.screen.findByRole("dialog", { name: "Review 3 changes" });
-  await ui.within(dialog).findByText("Update PGADMIN_HOST_PORT");
-  assert.equal(plans, 1); assert.equal(requests[0].length, 3);
-  assert.ok(ui.within(dialog).getByText("Add NEW_SETTING"));
-  assert.equal(ui.within(dialog).queryByText("new-private"), null);
-  ui.fireEvent.click(ui.within(dialog).getByRole("button", { name: "Back to Editing" }));
-  assert.equal((ui.screen.getByLabelText("Value for PGADMIN_HOST_PORT") as HTMLTextAreaElement).value, "6060");
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
-  await ui.screen.findByText("Add NEW_SETTING");
-  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Apply All" }));
-  await ui.waitFor(() => assert.equal(applies, 1));
-  await ui.waitFor(() => assert.equal(ui.screen.queryByText("3 unsaved changes"), null));
+  const previous = response;
+  response = withBothFiles();
+  try {
+    await mount(() => {}, undefined, environmentFixture());
+    const value = (name: string, mode: Mode) => ui.screen.getByLabelText(`Value for ${name} in ${mode === "dev" ? "Development" : "Production"}`) as HTMLTextAreaElement;
+    await ui.screen.findByLabelText("Value for TOKEN in Production");
+    await ui.waitFor(() => assert.equal(value("TOKEN", "prod").disabled, false));
+    ui.fireEvent.change(value("PGADMIN_HOST_PORT", "dev"), { target: { value: "6060" } });
+    ui.fireEvent.change(value("TOKEN", "prod"), { target: { value: "new-private" } });
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add environment variable" }));
+    assert.equal((ui.screen.getByRole("button", { name: "Review Changes" }) as HTMLButtonElement).disabled, true, "unfinished additions are guarded and invalid");
+    ui.fireEvent.change(ui.screen.getByLabelText("New variable name 1"), { target: { value: "NEW_SETTING" } });
+    ui.fireEvent.change(value("NEW_SETTING", "dev"), { target: { value: "new-value" } });
+    assert.equal(plans.length, 0); assert.equal(applies, 0);
+    assert.ok(ui.screen.getByText("4 unsaved changes"), "a new variable is added to both files");
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Production" }));
+    const warning = await ui.screen.findByRole("dialog", { name: "Unsaved changes" });
+    ui.fireEvent.click(ui.within(warning).getByRole("button", { name: "Review Changes" }));
+    const dialog = await ui.screen.findByRole("dialog", { name: "Review 4 changes" });
+    await ui.within(dialog).findByText("Update PGADMIN_HOST_PORT in .env.dev");
+    assert.ok(ui.within(dialog).getByText("Update TOKEN in .env.prod"));
+    assert.deepEqual(plans, [[
+      { mode: "dev", hash: "dev-baseline", edits: [{ name: "PGADMIN_HOST_PORT", value: "6060" }, { name: "NEW_SETTING", value: "new-value", create: true }] },
+      { mode: "prod", hash: "prod-baseline", edits: [{ name: "TOKEN", value: "new-private" }, { name: "NEW_SETTING", value: "", create: true }] },
+    ]], "one review, each file against its own hash");
+    assert.equal(ui.within(dialog).queryByText("new-private"), null);
+    ui.fireEvent.click(ui.within(dialog).getByRole("button", { name: "Back to Editing" }));
+    assert.equal(value("PGADMIN_HOST_PORT", "dev").value, "6060");
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));
+    await ui.screen.findByText("Add NEW_SETTING in .env.dev");
+    ui.fireEvent.click(ui.screen.getByRole("button", { name: "Apply All" }));
+    await ui.waitFor(() => assert.equal(applies, 1));
+    await ui.waitFor(() => assert.equal(ui.screen.queryByText("4 unsaved changes"), null));
+  } finally { response = previous; }
 });
 
 test("a stale page blocks source writes before transport and explains how to reload the server", async () => {

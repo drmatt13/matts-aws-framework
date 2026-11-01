@@ -46,7 +46,10 @@ Deploy's **Development & production deployment names** editor adds independent t
 keys through a reviewed source change; it never renames an existing key or resource.
 Changing the personal dev default preserves its old identity as an explicit target.
 The prod/staging target key remains authoritative; no competing `.env.prod`
-CDK_APP_NAME is added. Missing conventional input files use their own mode's template.
+CDK_APP_NAME is added. Interactive Studio startup creates missing conventional input
+files from their own mode's template, preserving existing files and excluding custom
+target paths. Studio shows them as one CDK environment that edits both side by side;
+the physical storage and deployment input selection remain separate by mode.
 The output exporter resolves a declared named target's custom `inputs` path from that
 same target, checks account/region pins against deployed identity, and offers
 `--client-only` for public client env refresh without Docker or Compose-control outputs.

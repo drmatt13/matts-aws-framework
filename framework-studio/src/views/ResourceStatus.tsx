@@ -71,7 +71,7 @@ export function FrameworkManagedStatus({
       className={cx(
         resourceStatusClasses(appearance === "map" ? "map" : placement),
         "bg-[#6699bb10]",
-        appearance === "map" ? "text-[#2fb3bc]" : "text-dev",
+        appearance === "map" ? "text-[#2fb3bc]" : "text-[#0c7580] dark:text-dev",
         className,
       )}
     >
@@ -90,7 +90,7 @@ export function EnvironmentFileStatus({
   resource: ModelResource;
   readonly placement?: StatusPlacement;
 }) {
-  return resource.deploymentFile ? <FrameworkManagedStatus placement={placement} /> : null;
+  return resource.deploymentFile || resource.deploymentFiles ? <FrameworkManagedStatus placement={placement} /> : null;
 }
 
 /** Ownership, issue and catalog status chips. `issues={false}` leaves issues to the header's `IssueNotice`. */
@@ -106,12 +106,12 @@ export function ResourceStatus({
   const { index } = useStudio();
   if (!resource) return null;
   const managed =
-    !!resource.deploymentFile || isFrameworkManagedResource(resource, index.resources);
+    !!resource.deploymentFile || !!resource.deploymentFiles || isFrameworkManagedResource(resource, index.resources);
   const issues = showIssues ? resourceIssues(resource, index.resources.values()) : [];
   return (
     <>
       <EnvironmentFileStatus resource={resource} placement={placement} />
-      {!resource.deploymentFile && isFrameworkManagedResource(resource, index.resources) ? (
+      {!resource.deploymentFile && !resource.deploymentFiles && isFrameworkManagedResource(resource, index.resources) ? (
         <FrameworkManagedStatus placement={placement} />
       ) : null}
       <IssueChips issues={issues} placement={placement} stacked={managed} />

@@ -45,6 +45,13 @@ function resources(mode: Mode): readonly ModelResource[] {
       },
     },
     {
+      id: "envfile:cdk",
+      path: ["CDK environment"],
+      kind: "envFile",
+      absent: false,
+      deploymentFiles: { dev: "envfile:dev", prod: "envfile:prod" },
+    },
+    {
       id: "envfile:dev",
       path: ["cdk-app/.env.dev"],
       kind: "envFile",
@@ -54,6 +61,20 @@ function resources(mode: Mode): readonly ModelResource[] {
         path: "cdk-app/.env.dev",
         template: "cdk-app/.env.dev.template",
         exists: false,
+        entries: [],
+        setupProblem: "Could not create cdk-app/.env.dev. Check directory permissions and retry.",
+      },
+    },
+    {
+      id: "envfile:prod",
+      path: ["cdk-app/.env.prod"],
+      kind: "envFile",
+      absent: mode !== "prod",
+      deploymentFile: {
+        mode: "prod",
+        path: "cdk-app/.env.prod",
+        template: "cdk-app/.env.prod.template",
+        exists: true,
         entries: [],
       },
     },
@@ -252,6 +273,10 @@ for (const width of [1440, 390])
         ]),
     );
     Object.assign(studio.response.snapshot.source.entities, entities);
+    // CDK environment reads the production file, which exists here; names only, no values.
+    studio.reply("GET", "/api/deployment-inputs/details", async (route, url) => {
+      await route.fulfill({ json: { file: `cdk-app/.env.${url.searchParams.get("mode")}`, hash: "fixture-styling", entries: [] } });
+    });
 
     const cases = [
       { id: "resource:stylingManaged", name: "managed", statuses: ["managed"] },
@@ -264,7 +289,7 @@ for (const width of [1440, 390])
       { id: inputId, name: "input", statuses: [] },
       { id: groupId, name: "group", statuses: [] },
       { id: "client-envfile", name: "client-environment", statuses: [] },
-      { id: "envfile:dev", name: "missing-file", statuses: ["managed"] },
+      { id: "envfile:cdk", name: "missing-file", statuses: ["managed"] },
       { id: "resource:stylingNoSource", name: "missing-source", statuses: [] },
     ] as const;
 
@@ -340,14 +365,14 @@ for (const width of [1440, 390])
       }
     }
 
-    // The missing-file badge is shown in the environment island's entry list.
+    // A startup setup failure belongs to the single CDK environment entry.
     await studio.goto("/?select=island%3Aenvironment");
     const inspector = page.getByRole("complementary", { name: "Inspector", exact: true });
     const entries = inspector.locator("summary").filter({ hasText: "Island entries" });
     await entries.focus();
     await page.keyboard.press("Enter");
     const list = entries.locator("../..");
-    await expect(list.locator('[data-resource-status="missing"]')).toHaveText("Not generated");
+    await expect(list.locator('[data-resource-status="error"]')).toHaveText(".env.dev could not be created");
     await expect(entries).toBeFocused();
     await studio.settle();
     await capture(list, "environment-entries-missing-status", info);

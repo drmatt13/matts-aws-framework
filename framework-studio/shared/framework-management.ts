@@ -8,7 +8,7 @@ export function isFrameworkManagedResource(resource: ModelResource, resources?: 
   let current: ModelResource | undefined = resource;
   while (current && !visited.has(current.id)) {
     visited.add(current.id);
-    if (current.frameworkManaged || current.frameworkStack || current.deploymentFile || current.frameworkInput) return true;
+    if (current.frameworkManaged || current.frameworkStack || current.deploymentFile || current.deploymentFiles || current.frameworkInput) return true;
     current = current.parent ? resources?.get(current.parent) : undefined;
   }
   return false;

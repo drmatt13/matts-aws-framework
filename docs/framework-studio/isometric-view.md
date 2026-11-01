@@ -499,7 +499,7 @@ been removed; the renderer has one visual style.
 
    A missing required input is red, with an X marker. Its separate permission connection
    keeps the source icon's colour and solid style.
-   Derived edges are fainter.
+   Declared, derived and source-discovered edges have equal strength in the same visual state.
    Hovers retain concise purpose details and an optional IAM action/helper note, without
    an AWS-only suffix. Configured inputs need no status sentence; empty, missing, unknown
    or defaulted inputs retain concise guidance. Source paths, inference caveats and raw
@@ -518,9 +518,9 @@ been removed; the renderer has one visual style.
    as `Defined by cdk.aws_cognito.UserPool`; Configuration keeps the wiring location. Both
    lenses retain the same triggers, including cycles back through a Lambda's reads.
 
-   **The lens.** An idle connection rests at 0.30 opacity (0.18 when derived), so what is
+   **The lens.** Every idle connection rests at 0.30 opacity, regardless of provenance, so what is
    part of the environment being viewed reads clearly. A connection outside it rests at
-   a quarter of that (0.075, or 0.045 when derived): either end is enabled only in the
+   a quarter of that (0.075): either end is enabled only in the
    other environment, enabled in neither, or
    a catalog entry the viewed graph declares undefined, or the other environment alone
    holds the connection (`offLens` in `connections.ts`, `EDGE_ALPHA.outOfLens`). Every

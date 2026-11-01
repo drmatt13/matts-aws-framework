@@ -1,4 +1,5 @@
 import { drawnAs } from "./drawn-as";
+import { CDK_ENVIRONMENT_ID } from "../shared/deployment-inputs";
 import type { Mode, ModeModel, ModelEdge, Snapshot } from "../shared/model";
 import { availabilityBadge, connectionDisabledEndpoints, type Availability, type DeploymentBadgeKind } from "./deployment";
 import { CATEGORY_LABEL, edgeCategory, indexModel, type EdgeCategory } from "./lookup";
@@ -19,6 +20,8 @@ export function connectionType(edge: Pick<ModelEdge, "relation" | "permissionCon
 
 export interface ConnectionMember {
   readonly edge: ModelEdge;
+  /** Physical relationships retained when one input joins its development and production sources. */
+  readonly sourceIds?: readonly string[];
   /** Retain each graph's evidence and requirement status, including differences under the same id. */
   readonly models: Readonly<Partial<Record<Mode, ModelEdge>>>;
   readonly availability: Availability;
@@ -37,7 +40,11 @@ export interface ConnectionGroup {
   readonly badge?: DeploymentBadgeKind;
   readonly otherLens?: Mode;
   readonly enabledInLens?: boolean;
+  readonly mode?: Mode;
 }
+
+export const connectionHasSource = (connection: Pick<ConnectionGroup, "members">, id: string): boolean =>
+  connection.members.some(member => member.edge.id === id || member.sourceIds?.includes(id));
 
 /** Bundle only the same relationship type between visible nodes, across both graphs. */
 export function aggregateConnections(model: ModeModel, layoutModels: readonly ModeModel[] = [model]): readonly ConnectionGroup[] {
@@ -46,9 +53,15 @@ export function aggregateConnections(model: ModeModel, layoutModels: readonly Mo
   const representatives = Object.assign({}, ...models.map(drawnAs)) as Readonly<Record<string, string>>;
   const members = new Map<string, Partial<Record<Mode, ModelEdge>>>();
   for (const item of models) for (const edge of item.edges) {
-    const versions = members.get(edge.id) ?? {};
-    versions[item.mode] = edge;
-    members.set(edge.id, versions);
+    const file = indexes.get(item.mode)!.resources.get(edge.from)?.deploymentFile;
+    const combined = edge.relation === "supplies" && !!file && representatives[edge.from] === CDK_ENVIRONMENT_ID;
+    // Both raw graphs retain both files as source evidence. A logical member takes each
+    // physical file only from its own graph, keeping requirements and availability independent.
+    if (combined && item.mode !== file.mode && indexes.has(file.mode)) continue;
+    const key = combined ? JSON.stringify([CDK_ENVIRONMENT_ID, edge.to, edge.label]) : edge.id;
+    const versions = members.get(key) ?? {};
+    versions[combined ? file.mode : item.mode] = edge;
+    members.set(key, versions);
   }
   const groups = new Map<string, { from: string; to: string; type: string; members: ConnectionMember[] }>();
   for (const versions of members.values()) {
@@ -63,11 +76,14 @@ export function aggregateConnections(model: ModeModel, layoutModels: readonly Mo
       const version = versions[mode], index = indexes.get(mode);
       return !!version && !!index && connectionDisabledEndpoints(index, mode, version).length === 0;
     };
-    group.members.push({ edge, models: versions, availability: { dev: enabled("dev"), prod: enabled("prod") } });
+    group.members.push({ edge, models: versions,
+      ...(from === CDK_ENVIRONMENT_ID ? { sourceIds: [...new Set(Object.values(versions).map(version => version.id))].sort() } : {}),
+      availability: { dev: enabled("dev"), prod: enabled("prod") } });
     groups.set(key, group);
   }
   return [...groups.values()].map(({ from, to, type, members }): ConnectionGroup => {
-    members.sort((a, b) => a.edge.id.localeCompare(b.edge.id));
+    const order = (member: ConnectionMember) => member.sourceIds ? JSON.stringify([member.edge.to, member.edge.label]) : member.edge.id;
+    members.sort((a, b) => order(a).localeCompare(order(b)));
     // Keep missing-input and permission evidence first; scene styling considers every member separately.
     const priority = (member: ConnectionMember) => (member.models[model.mode] ? 0 : 10) +
       (member.edge.inputRequirement?.status === "missing" ? 0 : member.edge.relation === "grant" || member.edge.relation === "secret" ? 1 : 2);
@@ -76,13 +92,15 @@ export function aggregateConnections(model: ModeModel, layoutModels: readonly Mo
     const otherLens = members.some((item) => item.models[model.mode]) ? undefined : models.find((item) => item.mode !== model.mode)?.mode;
     const presentCategories = new Set(members.flatMap((member) => Object.values(member.models).map(edgeCategory)));
     const categories = (Object.keys(CATEGORY_LABEL) as EdgeCategory[]).filter((category) => presentCategories.has(category));
-    return { id: members.length === 1 ? edge.id : `connection:${encodeURIComponent(from)}:${encodeURIComponent(to)}:${type}`,
-      from, to, edge, members, categories, availability, enabledInLens: availability[model.mode], badge: availabilityBadge(availability), ...(otherLens ? { otherLens } : {}) };
+    return { id: members.length === 1 && from !== CDK_ENVIRONMENT_ID ? edge.id : `connection:${encodeURIComponent(from)}:${encodeURIComponent(to)}:${type}`,
+      from, to, edge, members, categories, availability, mode: model.mode, enabledInLens: availability[model.mode], badge: availabilityBadge(availability), ...(otherLens ? { otherLens } : {}) };
   }).sort((a, b) => a.id.localeCompare(b.id));
 }
 
-export const missingConnectionInput = (connection: Pick<ConnectionGroup, "members">): boolean =>
-  connection.members.some((member) => member.edge.inputRequirement?.status === "missing");
+export const missingConnectionInput = (connection: Pick<ConnectionGroup, "members" | "mode">): boolean => {
+  const own = connection.mode && connection.members.some(member => member.models[connection.mode!]);
+  return connection.members.some(member => (own ? member.models[connection.mode!] : member.edge)?.inputRequirement?.status === "missing");
+};
 
 export function connectionLabel(connection: ConnectionGroup): string {
   return [connection.members.length > 1 ? String(connection.members.length) : undefined,

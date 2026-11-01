@@ -6,6 +6,7 @@ import type { ModelResource } from "../../shared/model";
 import type { ResourceDetails } from "../../shared/resources";
 import type { EnvironmentEdit } from "../draft";
 import { useStudio } from "../studio";
+import { openEnvironmentVariable } from "../environment-variable-link";
 import { EnvironmentValueControl } from "./EnvironmentValueControl";
 import { RequirementNotice } from "./InputRequirement";
 import { requirementIssue } from "../issues";
@@ -107,8 +108,8 @@ export function LocalValue({
         Saves to{" "}
         <button
           className={buttonClasses({ variant: "link" })}
-          title="Open all variables in this local file"
-          onClick={() => select(`envfile:${mode}`)}
+          title="Open this variable in CDK environment"
+          onClick={() => openEnvironmentVariable(select, mode, name)}
         >
           {file}
         </button>
@@ -162,7 +163,7 @@ export function LocalValue({
               </p>
               <button
                 className={cx(buttonClasses({ variant: "quiet" }), "text-caption")}
-                onClick={() => select(`envfile:${mode}`)}
+                onClick={() => openEnvironmentVariable(select, mode)}
               >
                 Set up .env.{mode}
               </button>

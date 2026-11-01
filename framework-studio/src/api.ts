@@ -10,7 +10,7 @@ import type {
 import type { ResourceDetails } from "../shared/resources";
 import type { Mode } from "../shared/model";
 import type { InfrastructureState } from "../shared/infrastructure";
-import type { DeploymentInputDetails, DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
+import type { DeploymentInputDetails, DeploymentInputFileEdits, DeploymentInputPlan } from "../shared/deployment-inputs";
 import type { WebSocketDefaults } from "../shared/websockets";
 
 async function callInfrastructure(path: string, body?: unknown): Promise<InfrastructureState> {
@@ -30,8 +30,8 @@ export const api = {
   snapshot: () => call<SnapshotResponse>("/snapshot"),
   createDeploymentInput: (mode: Mode) => call<{ file: string; created: boolean }>("/deployment-inputs/create", { mode }),
   inputDetails: (mode: Mode, signal?: AbortSignal) => call<DeploymentInputDetails>(`/deployment-inputs/details?mode=${mode}`, undefined, signal),
-  revealInput: (mode: Mode, name: string) => call<{ readonly name: string; readonly value: string }>(`/deployment-inputs/value?mode=${mode}&name=${encodeURIComponent(name)}`),
-  inputPlan: (mode: Mode, edits: readonly DeploymentInputEdit[], hash: string, revision: string) => call<DeploymentInputPlan>("/deployment-inputs/plan", { mode, edits, hash, revision }),
+  revealInput: (mode: Mode, name: string, signal?: AbortSignal) => call<{ readonly name: string; readonly value: string }>(`/deployment-inputs/value?mode=${mode}&name=${encodeURIComponent(name)}`, undefined, signal),
+  inputPlan: (files: readonly DeploymentInputFileEdits[], revision: string) => call<DeploymentInputPlan>("/deployment-inputs/plan", { files, revision }),
   inputApply: (planId: string) => call<ApplyResponse>("/deployment-inputs/apply", { planId }),
   infrastructure: (mode: Mode) => callInfrastructure(`/infrastructure?mode=${mode}`),
   synthesize: (mode: Mode, profile?: string) => callInfrastructure("/infrastructure/synthesize", { mode, ...(profile ? { profile } : {}) }),

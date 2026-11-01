@@ -24,6 +24,7 @@ import {
 } from "@repo/framework/config/database";
 import { useId } from "react";
 import { useStudio } from "../studio";
+import { openEnvironmentVariable } from "../environment-variable-link";
 
 import { SharedDefaults } from "./SharedDefaults";
 
@@ -472,7 +473,7 @@ export function ManagedDatabaseControls() {
           <div key={file.mode}>
             <button
               className={cx(buttonClasses({ variant: "link" }), "text-caption")}
-              onClick={() => select(`envfile:${file.mode}`)}
+              onClick={() => openEnvironmentVariable(select, file.mode)}
             >
               {file.path}
             </button>

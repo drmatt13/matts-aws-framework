@@ -165,14 +165,16 @@ export function HoverEntries({
   pills = true,
 }: {
   readonly entries: readonly HoverEntry[];
-  readonly context?: "declaration" | "supply" | "connection";
+  readonly context?: "declaration" | "supply" | "cdk-supply" | "connection";
   readonly label?: string;
   /** False when the heading's pair already describes every entry. */
   readonly pills?: boolean;
 }) {
   if (!entries.length) return null;
   const descriptions =
-    context === "supply"
+    context === "cdk-supply"
+      ? { dev: "supplied in development", prod: "supplied in production" }
+      : context === "supply"
       ? { dev: "supplied by this file in development", prod: "supplied by this file in production" }
       : context === "connection"
         ? { dev: "connection enabled in development", prod: "connection enabled in production" }
@@ -200,7 +202,7 @@ export function HoverEntries({
               label={`${entry.label} environments`}
               descriptions={descriptions}
               unavailableDescription={
-                context === "supply"
+                context === "cdk-supply" ? "not supplied in this environment" : context === "supply"
                   ? "not supplied by this file"
                   : context === "connection"
                     ? "connection not enabled"

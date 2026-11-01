@@ -13,6 +13,7 @@ import { resourceIcon } from "../icons";
 import { entryCount, groupEntries, groupUse, nameList } from "../input-groups";
 import { titleOf } from "../lookup";
 import { useStudio } from "../studio";
+import { openEnvironmentVariable } from "../environment-variable-link";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { EntityIcon } from "./EntityIcon";
 import { InspectorDisclosure, InspectorResourceRow, InspectorSection } from "./InspectorUI";
@@ -245,7 +246,7 @@ export function InputGroupSources({ group }: { readonly group: ModelResource }) 
           <li className={inspectorRelationRowClasses()} key={file}>
             <button
               className={buttonClasses({ variant: "link", className: "max-w-40 wrap-anywhere" })}
-              onClick={() => select(file.endsWith(".dev") ? "envfile:dev" : "envfile:prod")}
+              onClick={() => openEnvironmentVariable(select, file.endsWith(".dev") ? "dev" : "prod")}
             >
               {file}
             </button>

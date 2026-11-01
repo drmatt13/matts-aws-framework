@@ -18,7 +18,7 @@ export type {
 import { networkCreationProblem, unusedNetworkCidr, networkSettings, type NetworkSettings, type PlacementEdit } from "../shared/networks";
 import type { ApplyResponse, BatchPlanResponse, CommentReviewOptions, DraftEdit, EditIntent, LiteralValue } from "../shared/api";
 import type { FieldFact, Mode, ModelResource, Snapshot } from "../shared/model";
-import type { DeploymentInputEdit, DeploymentInputPlan } from "../shared/deployment-inputs";
+import type { DeploymentInputFileEdits, DeploymentInputPlan } from "../shared/deployment-inputs";
 import { descriptionError } from "../shared/descriptions";
 import { triggerBindingsEqual, type FailureDestinationSettings, type TriggerBinding } from "../shared/triggers";
 import { CLIENT_ENVIRONMENT_ID, clientMappingsError, type ClientEnvironmentMappings } from "../shared/client-environment";
@@ -47,7 +47,7 @@ export interface DraftState {
 export interface DraftTransport {
   planBatch(edits: readonly DraftEdit[], revision: string, options?: CommentReviewOptions): Promise<BatchPlanResponse>;
   applyBatch(id: string): Promise<ApplyResponse>;
-  inputPlan(mode: Mode, edits: readonly DeploymentInputEdit[], hash: string, revision: string): Promise<DeploymentInputPlan>;
+  inputPlan(files: readonly DeploymentInputFileEdits[], revision: string): Promise<DeploymentInputPlan>;
   inputApply(id: string): Promise<ApplyResponse>;
   snapshot(): Promise<Snapshot>;
   refreshSource?(): Promise<Snapshot>;
@@ -398,10 +398,12 @@ export class InspectorDraft {
     const state = this.state;
     this.publish({ ...state, reviewOpen: true, review: preservePreview ? state.review : undefined, busy: "review", error: undefined });
     try {
-      const environment = state.entries.find((entry): entry is EnvironmentEntry => entry.kind === "environment");
-      if (environment && state.entries.length !== 1) throw new Error("Review private environment values in their own inspector session.");
-      const review: Review = environment
-        ? { kind: "environment", plan: await this.transport.inputPlan(environment.mode, environment.edits.map(({ name, value, create }) => ({ name, value, ...(create ? { create } : {}) })), environment.hash, state.baseline.revision) }
+      // Both CDK files review together, privately, and never beside source edits.
+      const environments = state.entries.filter((entry): entry is EnvironmentEntry => entry.kind === "environment").sort((a, b) => a.mode.localeCompare(b.mode));
+      if (environments.length && state.entries.length !== environments.length) throw new Error("Review private environment values in their own inspector session.");
+      const review: Review = environments.length
+        ? { kind: "environment", plan: await this.transport.inputPlan(environments.map((environment) => ({ mode: environment.mode, hash: environment.hash,
+            edits: environment.edits.map(({ name, value, create }) => ({ name, value, ...(create ? { create } : {}) })) })), state.baseline.revision) }
         : { kind: "batch", plan: await this.transport.planBatch(state.entries.map(toDraftEdit), state.baseline.revision, state.commentResolutions ? { comments: state.commentResolutions } : undefined) };
       if (serial === this.serial) this.publish({ ...this.state, busy: undefined, review });
     } catch (error) { if (serial === this.serial) this.publish({ ...this.state, busy: undefined, error: error instanceof Error ? error.message : String(error) }); }

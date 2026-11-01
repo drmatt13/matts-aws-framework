@@ -182,7 +182,7 @@ function gatewayItem(gateway: import("../../shared/gateways").ModelGateway, mode
 function resourceItem(resource: ModelResource, mode: Mode, availability?: Availability, resources?: ReadonlyMap<string, ModelResource>): Item {
   const name = resource.path[resource.path.length - 1]!;
   const kindLabel =
-    resource.clientEnvironment ? "Client-app environment mappings" : resource.deploymentFile ? `CDK ${resource.deploymentFile.mode === "dev" ? "development" : "production"} environment file` : resource.kind === "stack"
+    resource.clientEnvironment ? "Client-app environment mappings" : resource.deploymentFiles ? "cdk-app/.env.dev · .env.prod" : resource.deploymentFile ? `CDK ${resource.deploymentFile.mode === "dev" ? "development" : "production"} environment file` : resource.kind === "stack"
       // A stack stands under its class name, so the qualifier names its catalog entry instead.
       ? resource.stackClass && !resource.frameworkStack ? `Stack, resources.${resource.path.join(".")}` : "Stack"
       : resource.kind === "member"
@@ -389,12 +389,14 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   const stacks: Item[] = [];
   const environmentFiles: Item[] = [];
   for (const resource of model.resources) {
-    if (resource.parent || standIns[resource.id]?.startsWith("gateway:")) continue;
+    if (resource.parent || standIns[resource.id]?.startsWith("gateway:") || resource.deploymentFile && standIns[resource.id]) continue;
     if (resource.clientEnvironment) {
       environmentFiles.push({ ...catalogItem(resource), presenceText: "Application environment file. Variables mapped from input parameters and stack outputs. Select to inspect the mappings." });
+    } else if (resource.deploymentFiles) {
+      environmentFiles.push({ ...catalogItem(resource), presenceText: "Framework-managed inputs for development and production, in cdk-app/.env.dev and cdk-app/.env.prod. Select to compare and edit both." });
     } else if (resource.deploymentFile) {
       environmentFiles.push({ ...catalogItem(resource), badge: resource.deploymentFile.mode,
-        presenceText: `${resource.deploymentFile.path}: framework inputs; ${resource.deploymentFile.exists ? "local file" : "not generated; open the file to generate it"}. Values stay outside the graph.` });
+        presenceText: `${resource.deploymentFile.path}: framework inputs; ${resource.deploymentFile.exists ? "local file" : "file missing; open CDK environment to retry setup"}. Values stay outside the graph.` });
     } else if (resource.kind === "stack") {
       stacks.push({ ...catalogItem(resource), label: resource.stackClass ?? resource.path.join(".") });
     } else {

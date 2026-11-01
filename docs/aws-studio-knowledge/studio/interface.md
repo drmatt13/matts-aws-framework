@@ -124,10 +124,10 @@ inputs remain linked to their selected CDK input file and start masked. Native s
 `ISecret` fields are separate catalog references; this editor does not turn them into
 authored dotenv values or reveal their AWS contents.
 
-The CDK-file editor writes only `cdk-app/.env.dev` or `.env.prod`, preserving untouched
+The CDK-file editor writes only `cdk-app/.env.dev` and `.env.prod`, preserving untouched
 assignments and comments. Client environment mapping edits symbolic recipes in
 `framework-config/client-environment.ts`; export later resolves these into ignored Vite
-environment files. One **Environment files** island groups the CDK files, labeled
+environment files. One **Environment files** island groups **CDK environment**, labeled
 **Framework managed**, with the application's client mappings, which carry no ownership
 label. The label describes ownership; framework input values remain editable. Every island ends with one
 **Island entries** disclosure; there is no separate Files list. Select
@@ -135,7 +135,19 @@ label. The label describes ownership; framework input values remain editable. Ev
 the file's mappings; file details remain collapsed. These are symbolic sources, not the
 contents of the base `.env` file. Editing a recipe does not export values or deploy resources.
 The combined island retains `island:environment`; old `island:client-environment`
-inspector links resolve to it. Individual file IDs and connections stay unchanged.
+inspector links resolve to it. **CDK environment** represents both physical files as one
+variable list: per-environment readiness first, then one row per name with a Dev | Prod pair
+(lit with a value, red when a required value is missing) that opens to both values side by
+side. Editing is independent of the map's Source; one private review saves whichever files
+changed, and refuses both if either file changed. Links to a variable open its row with that
+environment's field focused. Revealed values clear when newer source arrives. Individual
+file IDs and original connection evidence remain available behind the combined node and its
+Dev/Prod supply rows.
+
+Interactive startup creates missing conventional CDK files from their respective templates
+before the first graph is published, preserving every existing file. A setup failure offers
+**Create .env.<mode> from template** for that file only. Files deleted during the session stay
+missing until then or the next launch; snapshot reads, refreshes and `--print` do not create them.
 
 ## Health and verification boundaries
 

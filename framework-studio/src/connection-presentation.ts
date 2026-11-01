@@ -88,10 +88,11 @@ export function presentRelationship(edge: ModelEdge, index: ModelIndex): Relatio
   } else if (edge.relation === "supplies") {
     const requirement = edge.inputRequirement;
     const entry = index.resources.get(edge.from)?.deploymentFile?.entries.find(entry => entry.name === edge.label);
+    // CDK environment draws both files as one source: these lines merge where both agree, and carry Dev/Prod labels where they differ.
     if (requirement?.status === "default" || !requirement && entry?.defaulted) lines.push("Uses the declaration default.");
     else if (requirement?.status === "unknown") lines.push("Input status unavailable.");
-    else if (requirement?.status !== "missing" && entry?.status === "empty") lines.push("Empty in this file.");
-    else if (requirement?.status !== "missing" && entry?.status === "missing") lines.push("Not set in this file.");
+    else if (requirement?.status !== "missing" && entry?.status === "empty") lines.push("Left blank.");
+    else if (requirement?.status !== "missing" && entry?.status === "missing") lines.push("Not set.");
   } else if (edge.relation === "trigger") {
     if (context?.kind === "trigger" && value.toLowerCase() === context.adapter.toLowerCase()) value = destination;
     if (edge.sourceConstruct) lines.push(`Defined by ${edge.sourceConstruct}`);
@@ -205,7 +206,7 @@ export interface ConnectionHoverPresentation {
   readonly rows: readonly ConnectionHoverRow[];
   /** Facts shared by every row; row-specific differences remain beside their owner. */
   readonly details: readonly ConnectionHoverDetail[];
-  /** Supplied by one CDK environment file: the heading's pair speaks for every row. */
+  /** Supplied by one physical CDK environment file: the heading's pair speaks for every row. */
   readonly environmentFile?: boolean;
 }
 
@@ -289,7 +290,7 @@ export function presentConnectionHover(connection: ConnectionGroup, indexes: Hov
     const fallback = variants[0]?.presentation ?? presentRelationship(member.edge, indexes[primaryMode]);
     const noun = familyOf(variants[0]?.edge ?? member.edge).singular;
     return {
-      id: member.edge.id,
+      id: member.sourceIds?.[0] ?? member.edge.id,
       label: labels.size > 1 ? noun[0]!.toUpperCase() + noun.slice(1) : variants[0]?.label ?? fallback.value,
       availability: member.availability,
       details,
@@ -348,7 +349,7 @@ function standaloneAction(action: string, relation: Relation): string {
  * card's own, so the two agree; a lone connection uses its requirement's full explanation.
  */
 export function connectionIssues(connection: ConnectionGroup, mode: Mode, index: ModelIndex): readonly EntityIssue[] {
-  const members = connection.members.map(member => member.models[mode] ?? member.edge);
+  const members = connection.members.flatMap(member => member.models[mode] ? [member.models[mode]!] : []);
   const missing = members.filter(edge => edge.inputRequirement?.status === "missing");
   if (!missing.length) return [];
   if (members.length === 1) {
@@ -374,8 +375,8 @@ export function connectionIssues(connection: ConnectionGroup, mode: Mode, index:
 /** A fact every member shares reads as one sentence about all of them, below the list. */
 const SHARED_DETAILS: Readonly<Record<string, (member: string) => string>> = {
   "Uses the declaration default.": member => `Every ${member} uses its declaration default.`,
-  "Empty in this file.": member => `Every ${member} is empty in this file.`,
-  "Not set in this file.": member => `No ${member} is set in this file.`,
+  "Left blank.": member => `Every ${member} is left blank.`,
+  "Not set.": member => `No ${member} is set.`,
   "Input status unavailable.": member => `Input status is unavailable for every ${member}.`,
   [REQUIRED_MISSING]: member => `Every ${member} is missing its required value.`,
 };

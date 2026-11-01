@@ -16,6 +16,7 @@ import { indexModel } from "../lookup";
 import { useStudio } from "../studio";
 import { EnvironmentPills } from "./DeploymentBadge";
 import { HoverDetails, HoverEntries } from "./ResourceHoverContent";
+import { CDK_ENVIRONMENT_ID } from "../../shared/deployment-inputs";
 
 /** One hierarchy for every relation, including members absent from the selected graph. */
 export function ConnectionHoverContent({ connection }: { readonly connection: ConnectionGroup }) {
@@ -69,7 +70,9 @@ export function ConnectionTooltipContent({
                     },
                     unavailableDescription: "not supplied by this file",
                   }
-                : { unavailableDescription: "connection not enabled" })}
+                : supply && content.from.id === CDK_ENVIRONMENT_ID
+                  ? { descriptions: { dev: "supplied in development", prod: "supplied in production" }, unavailableDescription: "not supplied in this environment" }
+                  : { unavailableDescription: "connection not enabled" })}
             />
           </span>
         ) : null}
@@ -138,7 +141,7 @@ export function ConnectionTooltipContent({
       {content.aggregated ? (
         <HoverEntries
           entries={content.rows}
-          context={supply ? "supply" : "connection"}
+          context={supply ? content.from.id === CDK_ENVIRONMENT_ID ? "cdk-supply" : "supply" : "connection"}
           label="Connection members"
           pills={!content.environmentFile}
         />

@@ -21,8 +21,11 @@ npm ci
 aws sts get-caller-identity
 ```
 
-Create `cdk-app/.env.dev` from [the dev template](../cdk-app/.env.dev.template) if it does
-not already exist (Studio's CDK environment files island has a Generate button for it). Preserve existing values when switching configurations. Set:
+Starting `npm run studio` creates missing `cdk-app/.env.dev` and `.env.prod` files from
+their respective templates, preserving existing files. For CLI-only setup, create
+`cdk-app/.env.dev` from [the dev template](../cdk-app/.env.dev.template) if needed.
+Studio's **CDK environment** inspector edits both files side by side and flags required values each one is missing.
+Template creation supplies framework defaults; configure your own deployment values before deploying. Set:
 
 - A distinct CDK_APP_NAME for your own development deployment. It may not be the name of a
   target declared in `cdk-app/cdk.json` (`framework:targets`), such as the production one.

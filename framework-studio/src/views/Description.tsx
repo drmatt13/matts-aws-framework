@@ -11,10 +11,13 @@ export function Description({
   entity,
   connection = false,
   inline = false,
+  shared = true,
 }: {
   readonly entity: string;
   readonly connection?: boolean;
   readonly inline?: boolean;
+  /** False for an entity that belongs to one environment, such as one CDK input file. */
+  readonly shared?: boolean;
 }) {
   const id = useId();
   const { draft, draftState, snapshot, live, model } = useStudio();
@@ -71,7 +74,7 @@ export function Description({
       >
         <span className="grid min-w-0" data-slot="inspector-status-copy">
           <span className="[grid-area:1/1] aria-hidden:invisible" aria-hidden={separate}>
-            {entry ? "Unsaved · Review Changes to save." : "Shared across environments."}
+            {entry ? "Unsaved · Review Changes to save." : shared ? "Shared across environments." : ""}
           </span>
           <span className="[grid-area:1/1] aria-hidden:invisible" aria-hidden={!separate}>
             Apply or discard local value changes to edit this description.

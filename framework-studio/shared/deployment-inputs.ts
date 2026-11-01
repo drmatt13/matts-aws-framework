@@ -1,6 +1,9 @@
 import type { Mode, SourceLocation } from "./model";
 import type { ApplyResponse, DiffLine } from "./api";
 
+/** One Studio environment editor, backed by two independently authored files. */
+export const CDK_ENVIRONMENT_ID = "envfile:cdk";
+
 /** Requirement resolution metadata only. Never contains an authored value. */
 export interface InputRequirement {
   readonly resource: string;
@@ -82,6 +85,8 @@ export interface DeploymentInputFile {
   readonly exists: boolean;
   readonly entries: readonly DeploymentInputEntry[];
   readonly problem?: string;
+  /** Interactive Studio could not initialize this file; contains no authored values. */
+  readonly setupProblem?: string;
 }
 
 /**
@@ -99,6 +104,12 @@ export interface DeploymentInputEdit {
   readonly name: string;
   readonly value: string;
   readonly create?: true;
+}
+/** One file's staged edits, against the content hash its details were read at. A review holds one or both files. */
+export interface DeploymentInputFileEdits {
+  readonly mode: Mode;
+  readonly hash: string;
+  readonly edits: readonly DeploymentInputEdit[];
 }
 export interface DeploymentInputPlan {
   readonly planId: string;

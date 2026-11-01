@@ -426,7 +426,11 @@ killed after 5 minutes.
 ## Infrastructure inventory
 
 `server/deployment-inputs.ts` projects fixed local `.env.dev`/`.env.prod` files into
-the snapshot after framework evaluation. `envfile:dev` and `envfile:prod` share one island;
+the snapshot after framework evaluation. One `envfile:cdk` resource represents **CDK environment**
+on the map and links to the retained `envfile:dev` and `envfile:prod` records. Those physical
+records and their supply-edge IDs preserve mode-specific file, assignment and description evidence;
+the graph folds their connections by original target and variable, with Dev/Prod pills. The
+inspector selects a local file independently of the global Source mode, with draft navigation guards.
 Catalog `fromEnv` declarations become environment-linked input/secret nodes, retaining their existing
 IDs; public `resource.value` declarations remain source parameter nodes without file-supply edges.
 Variables the framework itself reads (deployment settings, production database overrides and
@@ -437,12 +441,13 @@ dropped one is a missing value on its connection. The sign-in providers are decl
 (`resources.signInProviders`, for their secrets) and marked framework managed in the same projection;
 a provider's lines are required together once a file sets any of them. Other dotenv names remain file metadata. `supplies` edges carry names, presence and assignment locations,
 never values. Multiline contents cannot introduce false parameter names. The file
-inspector loads the selected file's values through a guarded, no-store endpoint, outside
+inspector loads each file's values through a guarded, no-store endpoint, outside
 snapshots, query caches and evaluator processes. `server/deployment-input-edits.ts` accepts
-typed variable edits for only `.env.dev` or `.env.prod`; it does not expand the config
-writer's allowlist. Edits join the inspector draft and navigation guards. Reviews redact
-all values, including unrecognized keys, and private plans stay in memory. Apply checks
-the file hash and snapshot revision again, writes by private sibling/atomic rename, and
+typed variable edits for only `.env.dev` and `.env.prod`, one or both in a review; it does
+not expand the config writer's allowlist. Edits join the inspector draft and navigation guards.
+Reviews redact all values, including unrecognized keys, and private plans stay in memory. Apply
+checks every file's hash and the snapshot revision again, stages each file as a private sibling,
+renames each into place only once all are staged (writing neither if either changed), and
 refreshes the snapshot. Unchanged assignments and comments are preserved; changed duplicate
 keys are consolidated and every value must round-trip through Node's dotenv parser.
 Saving inputs does not run infrastructure synthesis or claim complete CDK validation.
@@ -450,10 +455,12 @@ The input/secret inspector edits its selected variable inline through the same e
 draft and review service. Its targeted value read also returns the selected file's hash
 and presence, never other variables. Input configuration and file-value drafts remain
 separate; secrets start masked and individual value edits can be reverted before review.
-Missing files expose one typed generation operation that copies the corresponding
-`.template` (`cdk-app/.env.<mode>.template`) with exclusive creation; there is no legacy
-`cdk-app/.env`. The environment-files island inspector offers it for every missing file, and a
-missing file's node wears a red cross. Reads never create files. Watchers
+Studio startup initializes each missing file from its own `.template`
+(`cdk-app/.env.<mode>.template`) before constructing the first snapshot; there is no legacy
+`cdk-app/.env`. Initialization writes a complete private sibling, then publishes it with an
+exclusive hard link, preserving any existing file or concurrent winner. Each mode is independent;
+failed initialization stays visible in CDK environment with a **Create .env.<mode> from template** action. The logical
+node's error badge follows the global Source mode. Ordinary reads never create files. Watchers
 refresh both source projections, while inventory fingerprints track the selected mode's
 file. These projections are not framework declarations or a second configuration store.
 

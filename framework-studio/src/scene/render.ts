@@ -985,7 +985,7 @@ export class SceneRenderer {
       const hover = this.hoverAmount(this.edgeHovers, edge.id, state.focus.kind !== "search" && state.hoveredEdge === edge.id ? 1 : 0,
         state, EDGE_HOVER_DURATION, this.snapEdgeHover, connectionHoverEase);
       // A missing input stays prominent in its own environment and recedes like any wire outside it.
-      const resting = state.focus.kind === "search" ? 0.025 : arc.missing ? (state.selected ? 0.35 : 0.9) * (arc.offLens ? EDGE_ALPHA.outOfLens : 1) : state.selected ? 0.06 : restingAlpha(edge.edge.provenance, arc.offLens);
+      const resting = state.focus.kind === "search" ? 0.025 : arc.missing ? (state.selected ? 0.35 : 0.9) * (arc.offLens ? EDGE_ALPHA.outOfLens : 1) : state.selected ? 0.06 : restingAlpha(arc.offLens);
       if (active || hover > 0) {
         lit.push({ edge, strength: active ? 1 : hover, resting });
         continue;

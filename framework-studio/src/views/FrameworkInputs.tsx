@@ -12,6 +12,7 @@ import {
 import { resourceIcon } from "../icons";
 import { resourceIssues } from "../issues";
 import { useStudio } from "../studio";
+import { openEnvironmentVariable } from "../environment-variable-link";
 import { buttonClasses } from "../ui/Button";
 import { cx } from "../ui/classes";
 import { Description } from "./Description";
@@ -39,7 +40,7 @@ const pills = (modes: Readonly<Record<Mode, boolean>>) => ({
 });
 
 /** Links to the inspectors that edit these values: the files themselves. */
-function FileLinks({ modes }: { readonly modes: readonly Mode[] }) {
+function FileLinks({ modes, name }: { readonly modes: readonly Mode[]; readonly name?: string }) {
   const { select } = useStudio();
   return (
     <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-graphite">
@@ -49,7 +50,7 @@ function FileLinks({ modes }: { readonly modes: readonly Mode[] }) {
           key={mode}
           className={cx(buttonClasses({ variant: "link" }), "text-caption")}
           aria-label={`Edit ${file(mode)} values`}
-          onClick={() => select(`envfile:${mode}`)}
+          onClick={() => openEnvironmentVariable(select, mode, name)}
         >
           {file(mode)}
         </button>
@@ -230,6 +231,7 @@ export function FrameworkInputView({
           </p>
           <FileLinks
             modes={MODES.filter((environment) => modes[environment])}
+            name={resource.fromEnv}
           />
         </section>
       ) : (

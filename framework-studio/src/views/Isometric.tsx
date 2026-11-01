@@ -48,7 +48,7 @@ import { CircleAlert } from "lucide-react";
 import { cx } from "../ui/classes";
 import { mapFilterChipClasses, mapFilterSwatchClasses } from "./map-styles";
 import { catalogAvailability } from "../deployment";
-import { connectionLabel, missingConnectionInput } from "../connections";
+import { connectionHasSource, connectionLabel, missingConnectionInput } from "../connections";
 import { AddMenu } from "./AddMenu";
 import { useStudio } from "../studio";
 import { HoverContent, ResourceHoverContent } from "./ResourceHoverContent";
@@ -250,7 +250,7 @@ export function Isometric() {
   }, [scene]);
   const visibleSelected = selected
     ? (scene.representatives[selected] ??
-      scene.edges.find((edge) => edge.members.some((member) => member.edge.id === selected))?.id ??
+      scene.edges.find((edge) => connectionHasSource(edge, selected))?.id ??
       selected)
     : undefined;
   const matches = useMemo(() => searchScene(scene, model, query), [scene, model, query]);
@@ -984,7 +984,7 @@ export function Isometric() {
           id: connection.id,
           from: connection.from,
           to: connection.to,
-          members: connection.members.map((member) => member.edge.id),
+          members: connection.members.flatMap((member) => member.sourceIds ?? [member.edge.id]),
           availability: connection.availability,
           label: connectionLabel(connection),
           style: connection.style,

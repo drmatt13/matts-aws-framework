@@ -8,6 +8,7 @@ import type { DomainsObservation, IdentitySelection, IdentitySource } from "../.
 import { deployApi } from "../deploy/api";
 import { identityApi, inspectionErrorMessage } from "../identity-api";
 import { useStudio } from "../studio";
+import { openEnvironmentVariable } from "../environment-variable-link";
 import { buttonClasses } from "../ui/Button";
 import { Select, TextInput } from "../ui/FormControls";
 import { noticeClasses, workspaceToolbarClasses } from "../ui/Surface";
@@ -321,14 +322,14 @@ export function DomainsWorkspace() {
         {source.data && !source.data.exists ? (
           <DocumentCard>
             <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
-              {source.data.file} does not exist. Generate it from its own template before staging
+              {source.data.file} does not exist. Retry setup in CDK environment before staging
               settings.
             </p>
             <button
               className={buttonClasses({ variant: "quiet" })}
-              onClick={() => select("envfile:prod")}
+              onClick={() => openEnvironmentVariable(select, "prod")}
             >
-              Open environment file
+              Open CDK environment
             </button>
           </DocumentCard>
         ) : null}

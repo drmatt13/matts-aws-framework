@@ -120,11 +120,10 @@ test("a stack missing from the CDK app is explained by its issue, not repeated a
   assert.deepEqual(resourceIssues(stack).map(issue => [issue.severity, issue.title]), [["warning", "Not added to CDK app"]]);
 });
 
-test("an environment file lights only the environment it belongs to", () => {
+test("the combined CDK environment names both files from either physical selection", () => {
+  const places = (["dev", "prod"] as const).map(env => ({ env, where: `Local file · cdk-app/.env.${env}` }));
   for (const mode of ["dev", "prod"] as const) {
-    const file = snapshot.models[mode].resources.find((resource) => resource.id === `envfile:${mode}`)!.deploymentFile!;
-    assert.deepEqual(factsOf(`envfile:${mode}`), { places: [{ env: mode, where: `Local file · ${file.path}` }], frameworkManaged: true });
-    // Each graph carries both files; the other environment's file never lights this one's pill.
+    assert.deepEqual(factsOf(`envfile:${mode}`), { places, frameworkManaged: true });
     assert.deepEqual(factsOf(`envfile:${mode}`, mode === "dev" ? "prod" : "dev"), factsOf(`envfile:${mode}`));
   }
 });

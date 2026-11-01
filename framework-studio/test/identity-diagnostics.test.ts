@@ -107,8 +107,8 @@ test("protected env review refuses invalid domain/retention edits with zero writ
     const model = { resources: [] } as unknown as ModeModel;
     const builder = { current: { snapshot: { revision: "r1", models: { dev: model, prod: model } } }, refresh: async () => ({ snapshot: { revision: "r2" } }) };
     const service = new DeploymentInputService(root, builder); const details = service.details("prod");
-    assert.throws(() => service.plan("prod", [{ name: "USE_COGNITO_CUSTOM_DOMAIN", value: "true" }], details.hash, "r1"), /us-east-1/);
-    assert.throws(() => service.plan("prod", [{ name: "RETAIN_STATEFUL_RESOURCES", value: "maybe" }], details.hash, "r1"), /choose true or false/);
+    assert.throws(() => service.plan([{ mode: "prod", hash: details.hash, edits: [{ name: "USE_COGNITO_CUSTOM_DOMAIN", value: "true" }] }], "r1"), /us-east-1/);
+    assert.throws(() => service.plan([{ mode: "prod", hash: details.hash, edits: [{ name: "RETAIN_STATEFUL_RESOURCES", value: "maybe" }] }], "r1"), /choose true or false/);
     assert.equal(readFileSync(path.join(root, "cdk-app/.env.prod"), "utf8"), before);
   } finally { remove(root); }
 });

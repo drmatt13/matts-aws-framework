@@ -15,9 +15,16 @@ function pillClasses(enabled: boolean) {
   );
 }
 
+/** A required value missing in that environment: unlit, in the refusal color. */
+const attentionPillClasses = cx(
+  environmentPillClasses,
+  "border-refuse bg-refuse-wash text-refuse before:border before:border-current",
+);
+
 /** Keep both environment names visible in hover cards and connection inspectors. */
 export function EnvironmentPills({
   availability,
+  attention,
   descriptions,
   unavailableDescription = "not deployed",
   onToggle,
@@ -26,13 +33,17 @@ export function EnvironmentPills({
   label = "Deployment environments",
 }: {
   readonly availability: Availability;
+  /** Environments that need a value; takes precedence over availability. */
+  readonly attention?: Readonly<Partial<Record<Mode, boolean>>>;
   readonly descriptions?: Readonly<Partial<Record<Mode, string>>>;
-  readonly unavailableDescription?: string;
+  readonly unavailableDescription?: string | Readonly<Partial<Record<Mode, string>>>;
   readonly onToggle?: (mode: Mode) => void;
   readonly disabled?: boolean;
   readonly className?: string;
   readonly label?: string;
 }) {
+  const unavailable = (mode: Mode) =>
+    typeof unavailableDescription === "string" ? unavailableDescription : (unavailableDescription[mode] ?? "not deployed");
   return (
     <span
       data-ui="environment-pills"
@@ -61,17 +72,18 @@ export function EnvironmentPills({
         ) : (
           <span
             key={mode}
-            className={pillClasses(availability[mode])}
+            className={attention?.[mode] ? attentionPillClasses : pillClasses(availability[mode])}
             style={environmentStyle(mode)}
             data-environment={mode}
             data-enabled={availability[mode]}
+            data-attention={attention?.[mode] || undefined}
           >
             {mode === "dev" ? "Dev" : "Prod"}
             <span className="sr-only">
               :{" "}
               {availability[mode]
                 ? (descriptions?.[mode] ?? "Connection enabled")
-                : unavailableDescription}
+                : unavailable(mode)}
             </span>
           </span>
         ),

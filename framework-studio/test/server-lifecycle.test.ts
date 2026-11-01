@@ -1,5 +1,5 @@
 import assert from "./support/assert";
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -13,6 +13,23 @@ function fixture() {
   const cache = path.join(root, ".cache/framework-studio/server-lifecycle-tests");
   mkdirSync(cache, { recursive: true });
   return mkdtempSync(path.join(cache, "case-"));
+}
+
+function inputTemplates(directory: string): void {
+  mkdirSync(path.join(directory, "cdk-app/lambda_functions"), { recursive: true });
+  writeFileSync(path.join(directory, "cdk-app/.env.dev.template"), "SETTING=development\nTOKEN=private-template-dev\n");
+  writeFileSync(path.join(directory, "cdk-app/.env.prod.template"), "SETTING=production\nTOKEN=private-template-prod\n");
+}
+
+async function studioSession(running: ReturnType<typeof start>, port: number) {
+  const deadline = Date.now() + 10_000;
+  while (!running.output().includes("Framework Studio is running")) {
+    assert.ok(Date.now() < deadline, running.output());
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  const base = `http://127.0.0.1:${port}`, page = await (await fetch(base)).text();
+  const headers = { "x-studio-token": page.match(/name="studio-token" content="([^"]+)"/)![1]!, "x-studio-protocol": page.match(/name="studio-protocol" content="([^"]+)"/)![1]!, origin: base, "content-type": "application/json" };
+  return { base, headers };
 }
 
 async function listen(server: Server, port = 0): Promise<number> {
@@ -47,6 +64,7 @@ startServer(${JSON.stringify(directory)}, ["--port", ${JSON.stringify(String(por
 
 test("an occupied Studio port fails before creating services or evaluator state and exits naturally", async () => {
   const directory = fixture();
+  inputTemplates(directory);
   const blocker = createServer();
   const port = await listen(blocker);
   const process = start(directory, port);
@@ -55,12 +73,91 @@ test("an occupied Studio port fails before creating services or evaluator state 
     assert.match(process.output(), /EADDRINUSE/);
     assert.equal(existsSync(path.join(directory, "state")), false);
     assert.equal(existsSync(path.join(directory, ".cache")), false);
+    assert.equal(existsSync(path.join(directory, "cdk-app/.env.dev")), false);
+    assert.equal(existsSync(path.join(directory, "cdk-app/.env.prod")), false);
     assert.equal(blocker.listening, true, "the caller's listener stays owned by the caller");
   } finally {
     process.child.kill();
     await stop(blocker);
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("interactive startup initializes both files before its first snapshot without exposing their values", async () => {
+  const directory = fixture();
+  inputTemplates(directory);
+  writeFileSync(path.join(directory, "framework.config.ts"), "export default {};\n");
+  const reservation = createServer(), port = await listen(reservation); await stop(reservation);
+  const running = start(directory, port);
+  try {
+    const { base, headers } = await studioSession(running, port);
+    const response = await fetch(`${base}/api/snapshot`, { headers });
+    const text = await response.text();
+    const state = JSON.parse(text) as { snapshot: { models: Record<string, { resources: { id: string; deploymentFile?: { exists: boolean; setupProblem?: string } }[] }> } };
+    for (const mode of ["dev", "prod"]) {
+      assert.equal(readFileSync(path.join(directory, `cdk-app/.env.${mode}`), "utf8"), readFileSync(path.join(directory, `cdk-app/.env.${mode}.template`), "utf8"));
+      const file = state.snapshot.models.dev!.resources.find(resource => resource.id === `envfile:${mode}`)!.deploymentFile!;
+      assert.equal(file.exists, true);
+      assert.equal(file.setupProblem, undefined);
+    }
+    assert.ok(state.snapshot.models.dev!.resources.some(resource => resource.id === "envfile:cdk"));
+    assert.ok(!text.includes("private-template") && !running.output().includes("private-template"));
+    rmSync(path.join(directory, "cdk-app/.env.prod"));
+    const refreshed = await fetch(`${base}/api/snapshot/refresh`, { method: "POST", headers, body: "{}" });
+    assert.equal(refreshed.status, 200);
+    assert.equal(existsSync(path.join(directory, "cdk-app/.env.prod")), false, "refresh does not recreate a deliberate mid-session deletion");
+  } finally {
+    running.child.kill("SIGTERM"); await running.exited;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("one startup setup failure stays recoverable in Studio and retry preserves the other file", async () => {
+  const directory = fixture();
+  inputTemplates(directory);
+  rmSync(path.join(directory, "cdk-app/.env.prod.template"));
+  writeFileSync(path.join(directory, "framework.config.ts"), "export default {};\n");
+  const reservation = createServer(), port = await listen(reservation); await stop(reservation);
+  const running = start(directory, port);
+  try {
+    const { base, headers } = await studioSession(running, port);
+    const files = async () => {
+      const state = await (await fetch(`${base}/api/snapshot`, { headers })).json() as { snapshot: { models: { dev: { resources: { id: string; deploymentFile?: { exists: boolean; setupProblem?: string } }[] } } } };
+      return state.snapshot.models.dev.resources;
+    };
+    const initial = await files();
+    assert.equal(initial.find(resource => resource.id === "envfile:dev")!.deploymentFile!.exists, true);
+    assert.match(initial.find(resource => resource.id === "envfile:prod")!.deploymentFile!.setupProblem!, /could not initialize.*\.env\.prod/);
+    const failed = await fetch(`${base}/api/deployment-inputs/create`, { method: "POST", headers, body: JSON.stringify({ mode: "prod" }) });
+    assert.equal(failed.status, 422);
+    assert.match(await failed.text(), /retry setup/);
+    writeFileSync(path.join(directory, "cdk-app/.env.dev"), "TOKEN=private-user-authored\n");
+    writeFileSync(path.join(directory, "cdk-app/.env.prod.template"), "SETTING=production\n");
+    const repaired = await fetch(`${base}/api/deployment-inputs/create`, { method: "POST", headers, body: JSON.stringify({ mode: "prod" }) });
+    assert.equal(repaired.status, 200);
+    assert.deepEqual(await repaired.json(), { file: "cdk-app/.env.prod", created: true });
+    assert.equal((await files()).find(resource => resource.id === "envfile:prod")!.deploymentFile!.setupProblem, undefined);
+    assert.equal(readFileSync(path.join(directory, "cdk-app/.env.dev"), "utf8"), "TOKEN=private-user-authored\n");
+    assert.ok(!running.output().includes("private-user-authored"));
+  } finally {
+    running.child.kill("SIGTERM"); await running.exited;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("the print command observes missing inputs without initializing them", () => {
+  const directory = fixture();
+  inputTemplates(directory);
+  writeFileSync(path.join(directory, "framework.config.ts"), "export default {};\n");
+  try {
+    const result = spawnSync(process.execPath, ["--conditions=development", "--import", "tsx", path.join(root, "framework-studio/server/index.ts"), "--print"], {
+      cwd: directory, env: { ...process.env, FRAMEWORK_STUDIO_STATE_DIRECTORY: path.join(directory, "state") }, encoding: "utf8", timeout: 15_000,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(existsSync(path.join(directory, "cdk-app/.env.dev")), false);
+    assert.equal(existsSync(path.join(directory, "cdk-app/.env.prod")), false);
+    assert.ok(!result.stdout.includes("private-template"));
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
 test("an initialization failure after binding releases the port and exits naturally", async () => {

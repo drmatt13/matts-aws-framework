@@ -16,7 +16,8 @@ import {
 } from "../deployment";
 import { EntityIcon } from "./EntityIcon";
 import { resourceBadge, resourceIcon, routeIcon, targetIcon } from "../icons";
-import { presentRelationship } from "../connection-presentation";
+import { presentConnection, presentRelationship } from "../connection-presentation";
+import { connectionHasSource } from "../connections";
 
 const CATEGORIES = Object.keys(CATEGORY_LABEL) as EdgeCategory[];
 
@@ -117,24 +118,25 @@ export function Board() {
         ?.scrollIntoView?.({ block: "center", inline: "center", behavior: "smooth" });
   }, [created]);
   const availability = useMemo(() => catalogAvailability(snapshot.models), [snapshot.models]);
-  const layout = useMemo(() => layoutBoard(model), [model]);
+  const layout = useMemo(() => layoutBoard(model, Object.values(snapshot.models)), [model, snapshot.models]);
+  const visibleSelected = selected && ((index.resources.get(selected)?.deploymentFile ? index.representatives[selected] : undefined) ?? layout.edges.find(edge => edge.connection && connectionHasSource(edge.connection, selected))?.edge.id ?? selected);
   const [shown, setShown] = useState<ReadonlySet<EdgeCategory>>(() => new Set(CATEGORIES));
 
   const read = useMemo(() => new Set(model.edges.map((edge) => edge.to)), [model]);
   const neighbours = useMemo(() => {
-    if (!selected) return undefined;
-    const ids = new Set([selected]);
-    const connection = model.edges.find((edge) => edge.id === selected);
+    if (!visibleSelected) return undefined;
+    const ids = new Set([visibleSelected]);
+    const connection = layout.edges.find(({ edge }) => edge.id === visibleSelected)?.edge;
     if (connection) {
       ids.add(connection.from);
       ids.add(connection.to);
     }
-    for (const edge of index.edges.get(selected) ?? []) {
+    for (const { edge } of layout.edges.filter(({ edge }) => edge.from === visibleSelected || edge.to === visibleSelected)) {
       ids.add(edge.from);
       ids.add(edge.to);
     }
     return ids;
-  }, [index, model.edges, selected]);
+  }, [layout.edges, visibleSelected]);
 
   if (layout.nodes.length === 0) {
     return (
@@ -148,8 +150,8 @@ export function Board() {
   const visible = layout.edges.filter((edge) => shown.has(edge.category));
   const availableCategories = new Set(layout.edges.map((edge) => edge.category));
   const lit = (edge: (typeof visible)[number]) =>
-    selected !== undefined &&
-    (edge.edge.id === selected || edge.edge.from === selected || edge.edge.to === selected);
+    visibleSelected !== undefined &&
+    (edge.edge.id === visibleSelected || edge.edge.from === visibleSelected || edge.edge.to === visibleSelected);
 
   return (
     <>
@@ -249,7 +251,7 @@ export function Board() {
                 y={edge.label.y - 4}
                 textAnchor="middle"
               >
-                {presentRelationship(edge.edge, index).title}
+                {edge.connection ? presentConnection(edge.connection, model.mode, index).title : presentRelationship(edge.edge, index).title}
               </text>
             </g>
           ))}
@@ -335,10 +337,10 @@ export function Board() {
               data-unread={!!(resource && node.shape === "member" && !read.has(node.id))}
               className={classes}
               style={{ left: node.x, top: node.y, width: node.width, height: node.height }}
-              aria-current={selected === node.id}
+              aria-current={visibleSelected === node.id}
               onClick={(event) => {
                 event.stopPropagation();
-                select(selected === node.id ? undefined : node.id);
+                select(visibleSelected === node.id ? undefined : node.id);
               }}
               title={[
                 target?.title,

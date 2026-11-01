@@ -161,6 +161,10 @@ function laneWhere(lanes: Lanes, mode: Mode, home: string): Where {
 
 function resourceWhere(resource: ModelResource | undefined, index: ModelIndex, mode: Mode): Where {
   if (!resource || resource.absent) return { reason: NOT_DEPLOYED };
+  if (resource.deploymentFiles) {
+    const file = index.resources.get(resource.deploymentFiles[mode])?.deploymentFile;
+    return file ? { where: `Local file · ${file.path}` } : { reason: "Input file unavailable" };
+  }
   if (resource.deploymentFile) return { where: `Local file · ${resource.deploymentFile.path}` };
   if (resource.clientEnvironment) return { where: `Client environment mappings · ${resource.clientEnvironment.path}` };
   switch (resource.kind) {

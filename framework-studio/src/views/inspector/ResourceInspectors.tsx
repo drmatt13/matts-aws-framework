@@ -46,11 +46,11 @@ import { SourceLines, Written } from "../Written";
 import { Relations } from "./InspectorRelations";
 
 export function ResourceView(props: { readonly resource: ModelResource }) {
-  const { snapshot, model, select, index } = useStudio();
+  const { snapshot, model, select, index, inspectorNavigation } = useStudio();
   const { resource } = props;
   if (resource.clientEnvironment)
     return <ClientEnvironmentFileView key={resource.id} resource={resource} />;
-  if (resource.deploymentFile) return <EnvironmentFileView key={resource.id} resource={resource} />;
+  if (resource.deploymentFile || resource.deploymentFiles) return <EnvironmentFileView key={`${resource.id}:${inspectorNavigation.key}`} resource={resource} />;
   // Framework-managed inputs are projected, not declared in source, so they have their own read-only views.
   if (resource.frameworkInput)
     return resource.kind === "group" ? (

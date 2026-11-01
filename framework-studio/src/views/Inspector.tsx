@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 import { networkFixtureIds } from "../../shared/descriptions";
-import { aggregateConnections } from "../connections";
+import { aggregateConnections, connectionHasSource } from "../connections";
 import {
   captureInspectorPresentation,
   restoreInspectorPresentation,
@@ -85,7 +85,7 @@ export function InspectorContent({ selected }: { readonly selected: string }) {
   const localDatabase = index.localServices.get(selected);
   const connection = model.edges.find((edge) => edge.id === selected);
   const groupedConnection = aggregateConnections(model, Object.values(snapshot.models)).find(
-    (group) => group.id === selected,
+    (group) => group.id === selected || group.members.some(member => member.sourceIds) && connectionHasSource(group, selected),
   );
   // The map also draws the other environment's own connections, faintly marked; selecting one opens it here.
   const otherLens = connection
@@ -126,7 +126,7 @@ export function InspectorContent({ selected }: { readonly selected: string }) {
             <ResourceView resource={resource} />
           )
         ) : null}
-        {groupedConnection && groupedConnection.members.length > 1 ? (
+        {groupedConnection && (groupedConnection.members.length > 1 || groupedConnection.members.some(member => member.sourceIds)) ? (
           <ConnectionMap connection={groupedConnection} />
         ) : connection ? (
           <ConnectionView edge={connection} availability={groupedConnection?.availability} />

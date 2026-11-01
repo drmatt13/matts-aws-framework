@@ -234,6 +234,10 @@ Every Resource interaction and event delivery connection uses the visible source
 replay. Lambda/ECS interactions therefore match their orange resource icons. An aggregated
 wire contains only the same relationship type. Reads and grants between the same resources
 remain separate, with independent styles and filters, even across the mode union.
+Every relationship uses the same resting opacity (0.30), independent of declared, derived
+or source provenance. Connections outside the selected environment or tag filter rest at
+one quarter of that (0.075). Hover, selection, search and missing-input emphasis apply
+consistently across relationship types; provenance never reduces their visibility.
 Missing inputs keep their red X marker and wire in the issue red. Their hover card puts
 the shared error above the member list; the connection inspector repeats it as a header
 notice (`connectionIssues`), and each affected member row carries a red cross. Hover, selection and environment availability change emphasis,
@@ -346,6 +350,11 @@ lookups must resolve to the same visible representative without repeated node sc
 These are derived presentation indexes, never cached source authorities or staged edits.
 
 Validation: [graph layout](../../../framework-studio/test/graph-layout.test.ts), [landscape](../../../framework-studio/test/landscape.test.ts), [isometric UI](../../../framework-studio/test/isometric-ui.test.ts), [iso](../../../framework-studio/test/iso.test.ts), [hover](../../../framework-studio/test/hover.test.ts), [labels](../../../framework-studio/test/labels.test.ts). Check overlap/crossing scores, evaluation bounds and reuse on representative fixtures; browser-test zoom/pan/picking/resize for real rendering changes. [Snapshot](snapshots.md) tests do not establish visual performance.
+
+The Environment files island has one **CDK environment** building and one **Client
+environment** building. Physical CDK file records share the logical `envfile:cdk`
+representative for layout, search, focus, navigator entries and connections, including
+the retained Board. Old file selections open the combined editor on the requested mode.
 
 The APIs island has one building per actual API Gateway. Shared `src/drawn-as.ts`
 representatives fold HTTP/service and WebSocket routes and gateway export stacks into

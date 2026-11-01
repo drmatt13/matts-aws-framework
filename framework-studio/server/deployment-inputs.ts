@@ -1,7 +1,8 @@
-import { existsSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { closeSync, constants, fstatSync, fsyncSync, linkSync, lstatSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseEnv } from "node:util";
-import { FRAMEWORK_INPUT_GROUPS, type DeploymentInputEntry, type DeploymentInputFile, type FrameworkSettingOwner, type InputRequirement } from "../shared/deployment-inputs";
+import { CDK_ENVIRONMENT_ID, FRAMEWORK_INPUT_GROUPS, type DeploymentInputEntry, type DeploymentInputFile, type FrameworkSettingOwner, type InputRequirement } from "../shared/deployment-inputs";
 import type { InputModePolicy, Mode, ModeModel, ModelEdge, ModelResource, SourceLocation } from "../shared/model";
 import { inputRequirements } from "./input-requirements";
 import { listResourceDeclarations, resolveInput, type InputResolution } from "../../packages/framework/src/config/resources";
@@ -13,14 +14,25 @@ import { SIGN_IN_PROVIDERS, signInProviderKeys, type SignInProviderId } from "..
 export const deploymentInputPath = (mode: Mode) => `cdk-app/.env.${mode}`;
 export const deploymentInputTemplate = (mode: Mode) => `${deploymentInputPath(mode)}.template`;
 
+const localStat = (file: string) => {
+  try { return lstatSync(file); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
+};
+
 /** Fixed local files only, with no symlink traversal and no arbitrary read/write path API. */
 export function inputText(root: string, relative: string): string | undefined {
   const directory = path.join(root, "cdk-app");
-  if (existsSync(directory) && lstatSync(directory).isSymbolicLink()) throw new Error("CDK input files must stay inside the repository.");
+  const directoryStat = localStat(directory);
+  if (directoryStat && (directoryStat.isSymbolicLink() || !directoryStat.isDirectory())) throw new Error("CDK input files must stay inside a regular repository directory.");
   const file = path.join(root, relative);
-  if (!existsSync(file)) return undefined;
-  if (lstatSync(file).isSymbolicLink() || !lstatSync(file).isFile()) throw new Error("CDK inputs must be regular local files.");
-  return readFileSync(file, "utf8");
+  const stat = localStat(file);
+  if (!stat) return undefined;
+  if (stat.isSymbolicLink() || !stat.isFile()) throw new Error("CDK inputs must be regular local files.");
+  const descriptor = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    if (!fstatSync(descriptor).isFile()) throw new Error("CDK inputs must be regular local files.");
+    return readFileSync(descriptor, "utf8");
+  } finally { closeSync(descriptor); }
 }
 
 /** The mode's inputs file (`-c prodDeployment` picks `.env.prod`, otherwise `.env.dev`), after refusing a link out of the repository. */
@@ -29,15 +41,50 @@ export function selectedDeploymentInput(root: string, mode: Mode): string {
   return deploymentInputPath(mode);
 }
 
-/** Explicit bootstrap only. Never called by snapshot evaluation or synthesis. */
+/** Used by interactive startup and explicit retry, never by snapshot reads or synthesis. */
 export function createDeploymentInput(root: string, mode: Mode): { file: string; created: boolean } {
+  if (mode !== "dev" && mode !== "prod") throw new Error("Choose development or production inputs.");
   const file = deploymentInputPath(mode);
   if (inputText(root, file) !== undefined) return { file, created: false };
   const template = inputText(root, deploymentInputTemplate(mode));
   if (template === undefined) throw new Error(`Missing ${deploymentInputTemplate(mode)}.`);
-  // Exclusive and private: an inputs file is never overwritten, and production is never seeded from development.
-  writeFileSync(path.join(root, file), template, { flag: "wx", mode: 0o600 });
-  return { file, created: true };
+  // Prepare complete private bytes before the authoritative path becomes visible. A failed
+  // write or flush must never leave a partial input that the next startup treats as authored.
+  const temporary = path.join(root, `${file}.studio-${randomUUID()}.tmp`);
+  const descriptor = openSync(temporary, "wx", 0o600);
+  try {
+    try { writeFileSync(descriptor, template); fsyncSync(descriptor); }
+    finally { closeSync(descriptor); }
+    try { linkSync(temporary, path.join(root, file)); }
+    catch (error) {
+      // Atomic no-clobber publication: another process may win, but its path must
+      // still pass the same regular-local-file checks before we accept it.
+      if ((error as NodeJS.ErrnoException).code === "EEXIST" && inputText(root, file) !== undefined) return { file, created: false };
+      throw error;
+    }
+    return { file, created: true };
+  } finally {
+    // Reached only after exclusive open succeeded; never remove a competing file.
+    unlinkSync(temporary);
+  }
+}
+
+export interface DeploymentInputSetupResult {
+  readonly mode: Mode;
+  readonly file: string;
+  readonly created: boolean;
+  readonly problem?: string;
+}
+
+/** One environment's failure must not prevent the other from becoming usable. */
+export function initializeDeploymentInputs(root: string, modes: readonly Mode[] = ["dev", "prod"]): readonly DeploymentInputSetupResult[] {
+  return modes.map((mode) => {
+    try { return { mode, ...createDeploymentInput(root, mode) }; }
+    catch {
+      return { mode, file: deploymentInputPath(mode), created: false,
+        problem: `Studio could not initialize ${deploymentInputPath(mode)}. Check that cdk-app and ${deploymentInputTemplate(mode)} are readable regular local paths, and that cdk-app is writable, then retry setup.` };
+    }
+  });
 }
 
 /** Locate assignments without mistaking lines inside multiline values for parameters. */
@@ -103,11 +150,11 @@ function signInRequirements(requirements: ReturnType<typeof inputRequirements>, 
   return result;
 }
 
-export function withDeploymentInputs(root: string, model: ModeModel, models?: Readonly<Record<Mode, ModeModel>>, comparisons: readonly { readonly input: string; readonly equals: string }[] = []): ModeModel {
+export function withDeploymentInputs(root: string, model: ModeModel, models?: Readonly<Record<Mode, ModeModel>>, comparisons: readonly { readonly input: string; readonly equals: string }[] = [], setupProblems: Readonly<Partial<Record<Mode, string>>> = {}): ModeModel {
   const selectedComparisons = new Map<string, Readonly<Record<string, "holds" | "fails" | "unset">>>();
   // The framework declares its sign-in providers in the catalog; they are framework managed all the same.
   const signIn = FRAMEWORK_INPUT_GROUPS.authentication.id;
-  const catalog = model.resources.filter((resource) => !resource.deploymentFile).map((resource) => {
+  const catalog = model.resources.filter((resource) => !resource.deploymentFile && !resource.deploymentFiles).map((resource) => {
     const managed = resource.id === signIn || resource.id.startsWith(`${signIn}.`) ? { ...resource, frameworkInput: "authentication" as const } : resource;
     return (managed.kind === "input" || managed.kind === "secret") ? { ...managed, modes: inputModes(managed, models) } : managed;
   });
@@ -209,7 +256,8 @@ export function withDeploymentInputs(root: string, model: ModeModel, models?: Re
         requirements: framework ? unread ? [] : [frameworkRequirement(name, known!, mode)] : present.flatMap((target) => requirements.get(target.id) ? [requirements.get(target.id)!] : []),
         ...(source ? { source } : {}) };
     });
-    return { mode, path: file, template: deploymentInputTemplate(mode), exists: text !== undefined, entries, ...(problem ? { problem } : {}) };
+    return { mode, path: file, template: deploymentInputTemplate(mode), exists: text !== undefined, entries, ...(problem ? { problem } : {}),
+      ...(text === undefined && setupProblems[mode] ? { setupProblem: setupProblems[mode] } : {}) };
   });
   const resources: ModelResource[] = catalog.map((resource) => resource.fromEnv || resource.authoredValue !== undefined ? { ...resource,
     // A sign-in provider's lines are required where its file sets any of them.
@@ -223,6 +271,8 @@ export function withDeploymentInputs(root: string, model: ModeModel, models?: Re
   // A file belongs to its own environment's graph and is absent from the other's, as any resource a graph does
   // not hold is: every view follows `absent`, so the file's connections recede in the other environment too.
   for (const file of files) resources.push({ id: `envfile:${file.mode}`, path: [file.path], kind: "envFile", absent: file.mode !== model.mode, deploymentFile: file });
+  resources.push({ id: CDK_ENVIRONMENT_ID, path: ["CDK environment"], kind: "envFile", absent: false,
+    deploymentFiles: { dev: "envfile:dev", prod: "envfile:prod" } });
   const lineState = (entry: DeploymentInputEntry) => entry.status === "configured" ? "set" : entry.defaulted ? `blank, so the default ${entry.default} applies` : entry.status === "empty" ? "blank" : "not written";
   // Framework-managed input groups beside the catalog's, one per reader. Their entries fold into the
   // group's building like catalog entries, and each file's supply edges reach them like any input's.

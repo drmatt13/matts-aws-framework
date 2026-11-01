@@ -13,6 +13,7 @@ export function drawnAs(model: ModeModel): Readonly<Record<string, string>> {
   // A catalog group is one building: its inputs, secrets and nested groups stand in it, as fields stand in a stack.
   const resources = new Map(model.resources.map((resource) => [resource.id, resource]));
   for (const resource of model.resources) {
+    if (resource.deploymentFiles) for (const file of Object.values(resource.deploymentFiles)) representatives[file] = resource.id;
     const group = inputGroupOf(resource, resources);
     if (group) representatives[resource.id] = group.id;
   }

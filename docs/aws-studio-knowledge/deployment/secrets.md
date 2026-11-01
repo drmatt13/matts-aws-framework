@@ -33,8 +33,11 @@ controls such as domains, frontend URL and the retention fallback are separately
 declared in [cdk-app/deployment-inputs.ts](../../../cdk-app/deployment-inputs.ts).
 They influence the graph rather than becoming workload variables automatically.
 
-The CDK file inspectors, under the shared **Environment files** island, show assignments and their declaration
-owners, including unknown or mode-inapplicable assignments.
+The **CDK environment** inspector, under the shared **Environment files** island, lists both
+physical files' assignments as one set of variables with their declaration owners, including
+unknown or mode-inapplicable assignments. Editing does not change the map's Source or a named
+operational target; one private review writes whichever files changed, each checked against its
+own hash.
 
 Every variable the framework itself reads, rather than a workload, has exactly one owner: the
 deployment settings in [cdk-app/deployment-inputs.ts](../../../cdk-app/deployment-inputs.ts), the
@@ -69,7 +72,7 @@ and active consumers without including the value in its public snapshot. See
 | --- | --- |
 | Public snapshot/review | Names, presence, required/default metadata and secret actions; excludes resolved secret values |
 | Protected Studio detail | Selected input/resource detail APIs can return values under local session guards/no-store; the whole Studio is not value-free |
-| Environment editing | [deployment-inputs.ts](../../../framework-studio/server/deployment-inputs.ts) fixes dev/prod paths and rejects symlinks; explicit missing-file bootstrap uses exclusive private creation, never dev-to-prod copying. [deployment-input-edits.ts](../../../framework-studio/server/deployment-input-edits.ts) withholds sensitive values from the file inspector (`hidden`) and reveals one value per explicit request |
+| Environment editing | [deployment-inputs.ts](../../../framework-studio/server/deployment-inputs.ts) fixes dev/prod paths and rejects symlinks; interactive startup creates missing files exclusively and privately from their own templates, never by dev-to-prod copying. Snapshot reads and synthesis remain non-mutating. Setup failures and later deletions have an explicit retry. [deployment-input-edits.ts](../../../framework-studio/server/deployment-input-edits.ts) withholds sensitive values from the file inspector (`hidden`) and reveals one value per explicit request, into its own environment's field; newer source clears reveals and ignores stale responses |
 | Input transaction | [deployment-input-edits.ts](../../../framework-studio/server/deployment-input-edits.ts) keeps values in private in-memory plans, redacts review, checks revision/file hash, round-trips dotenv and replaces privately while preserving unrelated assignments/comments |
 | Catalog editing | `ResourceService` in [resources.ts](../../../framework-studio/server/resources.ts) and [resources-source.ts](../../../framework-studio/server/resources-source.ts) edit declaration kind/group/default, workload requirements (staged from each workload's **Required inputs**) and recognized consumer references; not a general code editor |
 

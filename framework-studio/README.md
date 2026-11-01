@@ -228,9 +228,11 @@ they are not a secret-isolation or hostile-code sandbox.
 ## CDK environment files and input parameters
 
 **Input parameters and secrets** contains only inputs and secrets declared in
-`framework-config/resources.ts`. **Environment files** groups `cdk-app/.env.dev`,
-`cdk-app/.env.prod`, and `client-app/.env`. CDK files are labeled **Framework managed**,
-with their values still editable. File-to-parameter links come from actual assignments, including empty ones;
+`framework-config/resources.ts`. **Environment files** shows one **CDK environment**
+beside **Client environment**. CDK environment is **Framework managed** and represents
+the separate `cdk-app/.env.dev` and `.env.prod` files, with their values still editable.
+Matching supplies share one connection row with Dev/Prod descriptors and separate file evidence.
+File-to-parameter links come from actual assignments, including empty ones;
 missing entries stay visible in the inspector without pretending to supply a value.
 Catalog identities are reused, preserving their workload and secret-consumer links.
 
@@ -289,20 +291,32 @@ line's value is withheld from the file inspector: it shows as set, typing replac
 `PROD_DEPLOYMENT` follows the file's mode.
 
 There is no `cdk-app/.env`: the mode (`-c prodDeployment`) picks `.env.dev` or `.env.prod`.
-A file that has not been generated wears a red cross on its node in the isometric view.
-Expand **Island entries** at the bottom of the **Environment files** island inspector
-to select a file. Missing files show **Not generated**; open one and use
-**Generate .env.<mode> from template**. Generation
-copies `cdk-app/.env.dev.template` or `cdk-app/.env.prod.template` without overwriting an
-existing file; production is never seeded from development. Both files are ignored by Git.
+Interactive Studio creates missing conventional files from their own templates before
+its first snapshot, publishing each complete private file atomically without overwriting
+a competing writer. Existing files, including empty files, remain unchanged; production
+is never seeded from development. Both files are ignored by Git. Snapshot reads,
+`--print`, synthesis and watcher refreshes do not create files. A setup failure or a
+file deleted during the session stays visible with **Create .env.<mode> from template** in CDK environment.
+Custom named-target input paths are not automatically created.
+
+Select **CDK environment** to see both files as one list. Its header names each file, and a
+readiness line per environment counts the required values still missing there; **Show**
+narrows the list to them. Every variable carries a Dev | Prod pair, lit where that
+environment has a value (set or defaulted) and red where a required one is missing; open a
+row to edit both values side by side, independently of the map's **Source** selector. A
+value the other environment never reads says so instead of offering a field. **Add
+variable** adds a name to both files. One private review saves whichever files changed,
+after checking each file's hash, and writes neither if either changed underneath it.
+Links from inputs, connections and framework settings to either file open that variable's
+row with its environment focused; earlier `envfile:dev`/`envfile:prod` links still work.
 
 Studio synthesis reads `cdk-app/.env.dev` or `cdk-app/.env.prod` for its selected mode. File
 changes refresh the map and stale the matching inventory; generating a file does not deploy.
 
 ## Client-app environment mappings
 
-The **Environment files** island groups the CDK input files and **Client environment**.
-CDK files carry **Framework managed** labels; `client-app/.env` carries **Application**.
+The **Environment files** island groups **CDK environment** and **Client environment**.
+CDK environment carries the **Framework managed** label; client mappings are application-owned.
 These labels describe purpose; CDK values remain editable. The client export writes
 `client-app/.env.development.local` and `client-app/.env.production.local`, shown as
 generated outputs in the client inspector. **Island entries**, the final section in

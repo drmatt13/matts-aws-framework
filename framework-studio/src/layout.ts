@@ -1,5 +1,6 @@
 import type { ModeModel, ModelEdge, ModelResource } from "../shared/model";
 import { edgeCategory, ROLE_GROUPS, type EdgeCategory } from "./lookup";
+import { aggregateConnections, type ConnectionGroup } from "./connections";
 
 /**
  * The architecture board's geometry, computed rather than measured.
@@ -27,6 +28,7 @@ export interface BoardNode {
 
 export interface BoardEdge {
   readonly edge: ModelEdge;
+  readonly connection?: ConnectionGroup;
   readonly category: EdgeCategory;
   readonly path: string;
   readonly label: { readonly x: number; readonly y: number };
@@ -56,7 +58,12 @@ function mean(values: readonly number[]): number {
   return values.length === 0 ? Number.POSITIVE_INFINITY : values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-export function layoutBoard(model: ModeModel): BoardLayout {
+export function layoutBoard(model: ModeModel, layoutModels: readonly ModeModel[] = [model]): BoardLayout {
+  const files = new Set(model.resources.flatMap(resource => resource.deploymentFiles ? Object.values(resource.deploymentFiles) : []));
+  const logicalFiles = new Set(model.resources.filter(resource => resource.deploymentFiles).map(resource => resource.id));
+  const connections = aggregateConnections(model, layoutModels).filter(connection => logicalFiles.has(connection.from));
+  const byConnection = new Map(connections.map(connection => [connection.id, connection]));
+  const visibleEdges = [...model.edges.filter(edge => !files.has(edge.from)), ...connections.map(connection => ({ ...connection.edge, id: connection.id, from: connection.from, to: connection.to }))];
   const nodes: BoardNode[] = [];
   const titles: BoardLayout["titles"][number][] = COLUMNS.map((column) => ({ text: column.title, x: column.x, y: 0, kind: "column" }));
   const position = new Map<string, BoardNode>();
@@ -116,7 +123,7 @@ export function layoutBoard(model: ModeModel): BoardLayout {
     if (resource.parent) children.set(resource.parent, [...(children.get(resource.parent) ?? []), resource]);
   }
   const roots = model.resources
-    .filter((resource) => !resource.parent)
+    .filter((resource) => !resource.parent && !files.has(resource.id))
     .map((resource, order) => ({ resource, order, at: mean(readers.get(resource.id) ?? []) }))
     .sort((a, b) => (a.at === b.at ? a.order - b.order : a.at - b.at));
   y = TOP;
@@ -143,7 +150,7 @@ export function layoutBoard(model: ModeModel): BoardLayout {
   // Edges, between the nodes that exist.
   const counts = new Map<string, number>();
   const edges: BoardEdge[] = [];
-  for (const edge of model.edges) {
+  for (const edge of visibleEdges) {
     const from = position.get(edge.from);
     const to = position.get(edge.to);
     if (!from || !to) continue;
@@ -176,6 +183,7 @@ export function layoutBoard(model: ModeModel): BoardLayout {
     }
     edges.push({
       edge,
+      ...(byConnection.has(edge.id) ? { connection: byConnection.get(edge.id)! } : {}),
       category: edgeCategory(edge),
       path: `M ${x1} ${y1} C ${c1x} ${y1}, ${c2x} ${y2}, ${x2} ${y2}`,
       label: { x: (x1 + 3 * c1x + 3 * c2x + x2) / 8, y: (y1 + y2) / 2 },

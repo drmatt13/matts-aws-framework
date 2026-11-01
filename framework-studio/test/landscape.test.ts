@@ -1,4 +1,5 @@
 import { drawnAs } from "../src/drawn-as";
+import { CDK_ENVIRONMENT_ID } from "../shared/deployment-inputs";
 import { gatewaysOf } from "../shared/gateways";
 import assert from "./support/assert";
 import path from "node:path";
@@ -177,7 +178,10 @@ test("every route, target, catalog entry and managed database stands exactly onc
 });
 
 test("aggregated connections retain every original edge and its environment evidence", () => {
-  const visible = (model: typeof snapshot.models.dev, scene: Scene) => model.edges.filter((edge) => (scene.representatives[edge.from] ?? edge.from) !== (scene.representatives[edge.to] ?? edge.to)).map((edge) => edge.id).sort();
+  const visible = (model: typeof snapshot.models.dev, scene: Scene) => model.edges.filter((edge) => {
+    const file = model.resources.find(resource => resource.id === edge.from)?.deploymentFile;
+    return (!file || file.mode === model.mode) && (scene.representatives[edge.from] ?? edge.from) !== (scene.representatives[edge.to] ?? edge.to);
+  }).map((edge) => edge.id).sort();
   assert.deepEqual(dev.edges.flatMap((edge) => edge.members.flatMap((member) => member.models.dev ? [member.models.dev.id] : [])).sort(), visible(snapshot.models.dev, dev));
   assert.deepEqual(prod.edges.flatMap((edge) => edge.members.flatMap((member) => member.models.prod ? [member.models.prod.id] : [])).sort(), visible(snapshot.models.prod, prod));
   for (const [scene, other] of [[dev, snapshot.models.prod], [prod, snapshot.models.dev]] as const) {
@@ -825,15 +829,15 @@ test("an input group is one building: its entries fold into it and their connect
       assert.ok(!scene.nodes.some((candidate) => candidate.id === entry), `${entry} stands in its group`);
       assert.equal(scene.representatives[entry], group);
     }
-    // Four reads by the agent share one arc, and each environment file supplies the group once.
+    // Four reads by the agent share one arc; both files supply the group through one semantic bundle.
     const reads = scene.edges.find((edge) => edge.from === "agent:example-agent" && edge.to === group && edge.edge.relation === "env")!;
     assert.deepEqual(reads.members.map((member) => member.edge.to).sort(), [...entries].sort());
-    for (const file of ["envfile:dev", "envfile:prod"]) assert.equal(scene.edges.find((edge) => edge.from === file && edge.to === group)?.members.length, 4, file);
+    assert.equal(scene.edges.find((edge) => edge.from === CDK_ENVIRONMENT_ID && edge.to === group)?.members.length, 4);
     assert.ok(!scene.edges.some((edge) => entries.includes(edge.from) || entries.includes(edge.to)));
   }
   // Selecting the group, or an entry drawn as it, lights the workloads and files on the other end.
   const focus = landscapeFocus(dev, dev.representatives["resource:langgraph.modelProvider"]);
-  for (const id of [group, "agent:example-agent", "envfile:dev", "envfile:prod"]) assert.ok(focus.nodes.has(id), id);
+  for (const id of [group, "agent:example-agent", CDK_ENVIRONMENT_ID]) assert.ok(focus.nodes.has(id), id);
 });
 
 test("a group is absent only in a graph that holds none of its entries", () => {
@@ -1021,13 +1025,9 @@ test("MFA bundles three environment reads and keeps its IAM grant on a separate 
 });
 
 test("a connection outside the viewed environment rests at a quarter of the strength it has inside it", () => {
-  assert.equal(restingAlpha("declared", false), 0.3);
-  assert.equal(restingAlpha("source", false), 0.3);
-  assert.equal(restingAlpha("derived", false), 0.18);
-  assert.equal(restingAlpha("declared", true), 0.075);
-  assert.equal(restingAlpha("derived", true), 0.045);
-  for (const provenance of ["declared", "derived", "source"] as const) assert.equal(restingAlpha(provenance, true) * 4, restingAlpha(provenance, false), `${provenance}: the same ratio for every connection`);
-  assert.ok(restingAlpha("declared", false) > 0.24, "easier to see than the old resting strength");
+  assert.equal(restingAlpha(false), 0.3);
+  assert.equal(restingAlpha(true), 0.075);
+  assert.equal(restingAlpha(true) * 4, restingAlpha(false));
   // Either end enabled only elsewhere, in neither environment, or absent here puts it outside the lens.
   for (const presence of ["other", "nowhere", "absent"] as const) {
     assert.equal(offLens({}, { presence }, { presence: "built" }), true, `${presence} at the start`);
@@ -1093,21 +1093,16 @@ test("whatever a graph does not hold is absent in that view and its connections 
   }
 });
 
-test("an environment file's connections read clearly in its own view and recede in the other", () => {
-  const supplies = (file: "dev" | "prod") => ({ id: `lens-fixture:${file}`, from: `envfile:${file}`, to: "resource:langgraph.modelProvider", relation: "supplies" as const, provenance: "source" as const, label: "LANGGRAPH_MODEL_PROVIDER" });
+test("both physical file selections point at a present combined node in either view", () => {
   for (const viewed of ["dev", "prod"] as const) {
-    const other = viewed === "dev" ? "prod" : "dev";
     const model = snapshot.models[viewed];
-    const scene = buildScene({ ...model, edges: [...model.edges, supplies("dev"), supplies("prod")] }, { });
+    const scene = buildScene(model, { layoutModels: Object.values(snapshot.models) });
     const nodeOf = new Map(scene.nodes.map((node) => [node.id, node]));
-    assert.equal(nodeOf.get(`envfile:${viewed}`)!.presence, "present", `${viewed} file in the ${viewed} view`);
-    assert.equal(nodeOf.get(`envfile:${other}`)!.presence, "absent", `${other} file in the ${viewed} view`);
-    const strength = (file: "dev" | "prod") => {
-      const edge = scene.edges.find((candidate) => candidate.members.some((member) => member.edge.id === `lens-fixture:${file}`))!;
-      return restingAlpha(edge.edge.provenance, offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)));
-    };
-    assert.equal(strength(viewed), 0.3, `${viewed} file's connection in the ${viewed} view`);
-    assert.equal(strength(other), 0.075, `${other} file's connection in the ${viewed} view`);
+    assert.equal(nodeOf.get(CDK_ENVIRONMENT_ID)!.presence, "present");
+    assert.equal(scene.representatives["envfile:dev"], CDK_ENVIRONMENT_ID);
+    assert.equal(scene.representatives["envfile:prod"], CDK_ENVIRONMENT_ID);
+    const edge = scene.edges.find(candidate => candidate.from === CDK_ENVIRONMENT_ID && candidate.to === "resource:langgraph")!;
+    assert.equal(restingAlpha(offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to))), 0.3);
   }
 });
 
@@ -1115,8 +1110,8 @@ test("an environment file that has not been generated wears only a red cross on 
   const model = snapshot.models.dev;
   const withExists = (exists: boolean) => buildScene({ ...model, resources: model.resources.map((resource) => resource.deploymentFile ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists } } : resource) }, { });
   const badges = (scene: Scene) => scene.nodes.filter((node) => node.id.startsWith("envfile:")).map((node) => cornerBadges(node));
-  assert.deepEqual(badges(withExists(false)), [{ right: "error" }, { right: "error" }], "the ownership lock steps aside for the error");
-  assert.deepEqual(badges(withExists(true)), [{ right: "managed" }, { right: "managed" }]);
+  assert.deepEqual(badges(withExists(false)), [{ right: "error" }], "the ownership lock steps aside for the active file's error");
+  assert.deepEqual(badges(withExists(true)), [{ right: "managed" }]);
   assert.ok(withExists(false).nodes.filter(node => node.id.startsWith("envfile:")).every(node => node.frameworkManaged), "the error does not remove ownership from cards and inspectors");
 });
 
@@ -1125,7 +1120,7 @@ test("an enabled connection reads clearly in its own view and recedes where it i
     const nodeOf = new Map(scene.nodes.map((node) => [node.id, node]));
     const edge = scene.edges.find((candidate) => candidate.edge.from === "route:service:/example-service/*" && candidate.edge.to === "service:example-service")!;
     assert.ok(edge, "the example service's route reaches its service");
-    return restingAlpha(edge.edge.provenance, offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)));
+    return restingAlpha(offLens(edge, nodeOf.get(edge.from), nodeOf.get(edge.to)));
   };
   assert.equal(strength(dev), 0.3, "enabled in Development");
   assert.equal(strength(prod), 0.075, "disabled in Production");
@@ -1134,14 +1129,13 @@ test("an enabled connection reads clearly in its own view and recedes where it i
 test("both views draw the same connections; the other environment's own are marked and dimmed", () => {
   const ids = (scene: Scene) => scene.edges.map((edge) => edge.id).sort();
   assert.deepEqual(ids(dev), ids(prod), "switching the view never makes a connection appear or vanish");
-  const marked = (scene: Scene) => scene.edges.filter((edge) => edge.otherLens).map((edge) => `${edge.otherLens}: ${edge.edge.from} -> ${edge.edge.to}`).sort();
+  const marked = (scene: Scene) => scene.edges.filter((edge) => edge.otherLens && edge.edge.relation !== "supplies").map((edge) => `${edge.otherLens}: ${edge.edge.from} -> ${edge.edge.to}`).sort();
   assert.deepEqual(marked(dev), ["prod: framework-stack:FrontendWebsiteS3Stack -> client-envfile", "prod: lambda:graphql-api -> resource:rds.database", "prod: lambda:oauth-callback -> resource:rds.database"]);
   // The client group's three development-only mappings share one arc from the group.
   assert.deepEqual(marked(prod), ["dev: lambda:cognito-post-confirmation-trigger -> local:postgres", "dev: lambda:graphql-api -> local:postgres", "dev: lambda:oauth-callback -> local:postgres", "dev: resource:client.apiPort -> client-envfile", "dev: resource:enableWebSocketApi -> client-envfile"]);
-  // A connection a lens does not hold itself is one the lens dims, and the model's own edges are never marked.
+  // Supply members retain only their physical file's mode even though both raw graphs carry both files.
   for (const [scene, model] of [[dev, snapshot.models.dev], [prod, snapshot.models.prod]] as const) {
-    const own = new Set(model.edges.map((edge) => edge.id));
-    for (const edge of scene.edges) assert.equal(edge.otherLens !== undefined, !edge.members.some((member) => own.has(member.edge.id)), edge.id);
+    for (const edge of scene.edges) assert.equal(edge.otherLens !== undefined, !edge.members.some((member) => member.models[model.mode]), edge.id);
   }
   // Without the other environment's model there is nothing to add: the viewed model alone is drawn as it always was.
   const alone = buildScene(snapshot.models.dev, { });

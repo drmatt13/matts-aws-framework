@@ -31,7 +31,7 @@ Deployment information follows the resource's actual configuration authority:
 | API gateway, stack member, network component | Read-only deployment summary and ownership explanation with navigation to handlers, stack or VPC |
 | Catalog input, secret or group | No Deployment section. Inputs/secrets show declaration pills in their header; groups show pills beside each entry and none in the header. Sources, requirements and consumers explain delivery |
 | Native/framework stack, managed database, VPC island | Explicit ownership explanation and navigation; no ineffective independent workload flag |
-| CDK/client environment file and input/environment islands | No Deployment section; the shared Environment files island labels CDK files Framework managed and leaves client mappings unlabeled; each file retains its editor |
+| CDK/client environment file and input/environment islands | No Deployment section; Environment files shows one Framework managed CDK environment beside client mappings; each variable row edits both files' values side by side |
 | Other grouping islands | Read-only deployment summary with navigation to entries |
 
 Inferred ownership is text with owner links, never a disabled Deploy selector.
@@ -348,6 +348,16 @@ overview; expand a row to select a source type and its inputs. Keep symbolic pre
 availability in sync with the draft, and distinguish omitted fields from empty values.
 Use the shared Dev/Prod pills on each row to toggle inclusion independently, and keep
 renaming inline with duplicate-name validation and preservation of both source recipes.
+The CDK environment inspector follows the same grammar for both input files. Its header
+names the Dev and Prod files; Variables opens with one readiness line per environment
+(**Show** filters to the missing values and keeps those rows in place while they are filled),
+then search and **Add variable**, then rows grouped by reader. A row's Dev | Prod pair is lit
+where the environment has a value, red where a required one is missing, and unlit where it is
+blank or never read; the row opens to a labeled field per environment, or a "Not read in …"
+line instead of a field. One review saves whichever files changed. Per-file notes read as text
+under **Files**, with editing behind **Edit description**. Transient notices share one
+container so open rows restore by position on Back. Startup creates missing files quietly;
+a setup failure offers **Create .env.<mode> from template** in the header.
 The local environment switch follows the graph's navigation guard. Native selects retain
 keyboard support with an inset arrow and reserved text space. Shared defaults reuse the ordinary field rows;
 membership lists can expand separately from settings. Trigger setup retains its three

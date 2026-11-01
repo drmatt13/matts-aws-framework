@@ -9,8 +9,9 @@ import { buttonClasses } from "../ui/Button";
 import { cx } from "../ui/classes";
 import type { InputRequirement } from "../../shared/deployment-inputs";
 import type { Mode, ModelEdge } from "../../shared/model";
-import { editorLink, endpointLabel, titleOf } from "../lookup";
+import { editorLink, endpointLabel, indexModel, titleOf } from "../lookup";
 import { useStudio } from "../studio";
+import { openEnvironmentVariable } from "../environment-variable-link";
 import { Written } from "./Written";
 import { connectionDisabledEndpoints, type Availability } from "../deployment";
 import { edgeAvailability } from "../connections";
@@ -141,14 +142,18 @@ export function ConnectionDetails({
   description = true,
   issue = true,
   compact = false,
+  contextMode,
 }: {
   edge: ModelEdge;
   onlyIn?: Mode;
   description?: boolean;
   issue?: boolean;
   compact?: boolean;
+  contextMode?: Mode;
 }) {
-  const { index, select, snapshot, mode, setMode, draft } = useStudio();
+  const { index: currentIndex, select, snapshot, mode: currentMode, setMode, draft } = useStudio();
+  const mode = contextMode ?? currentMode;
+  const index = contextMode && contextMode !== currentMode ? indexModel(snapshot.models[contextMode]) : currentIndex;
   const descriptionId = connectionDescriptionId(edge);
   const requirement = edge.inputRequirement;
   const resource = requirement
@@ -251,16 +256,16 @@ export function ConnectionDetails({
           >
             <button
               className={buttonClasses({ variant: "quiet" })}
-              onClick={() => select(`envfile:${requirement.mode}`)}
+              onClick={() => openEnvironmentVariable(select, requirement.mode, requirement.name)}
             >
               Edit .env.{requirement.mode}
             </button>
             <button
               className={buttonClasses({ variant: "quiet" })}
-              onClick={() => {
-                if (mode !== requirement.mode) setMode(requirement.mode);
+              onClick={() => draft.requestNavigation(() => {
+                if (currentMode !== requirement.mode) setMode(requirement.mode);
                 select(requirement.resource);
-              }}
+              })}
             >
               {resource?.kind === "secret" ? "Open secret settings" : "Set a parameter default"}
             </button>

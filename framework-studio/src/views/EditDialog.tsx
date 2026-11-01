@@ -366,7 +366,7 @@ export function EditDialog({ review }: { readonly review: Review | undefined }) 
             ))}
             <p className="text-caption text-graphite">
               {review.kind === "environment"
-                ? "Only these variables in the selected local file will be saved. Other environment files stay unchanged. Nothing is deployed."
+                ? "Only these variables are saved, in the files listed. Every other line stays unchanged, and nothing is deployed."
                 : "Only the reviewed source changes will be written. Validation covers the complete proposed configuration; deployment is a separate action."}
             </p>
           </>

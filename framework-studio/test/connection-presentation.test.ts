@@ -83,8 +83,8 @@ test("input hovers show actionable state without repeating paths or generic sour
   assert.equal(configured.title, "Supplies input: API_KEY");
   assert.deepEqual(configured.lines, []);
   assert.deepEqual(configured.notes, []);
-  assert.deepEqual(presentRelationship(inputEdge(requirement("optional", { required: false })), inputIndex("empty")).lines, ["Empty in this file."]);
-  assert.deepEqual(presentRelationship(inputEdge(), inputIndex("missing")).lines, ["Not set in this file."]);
+  assert.deepEqual(presentRelationship(inputEdge(requirement("optional", { required: false })), inputIndex("empty")).lines, ["Left blank."]);
+  assert.deepEqual(presentRelationship(inputEdge(), inputIndex("missing")).lines, ["Not set."]);
   assert.deepEqual(presentRelationship(inputEdge(requirement("missing")), inputIndex("empty")).lines, ["Required value missing."]);
   assert.deepEqual(presentRelationship(inputEdge(requirement("default")), inputIndex("empty", true)).lines, ["Uses the declaration default."]);
   assert.deepEqual(presentRelationship(inputEdge(requirement("unknown")), inputIndex("missing")).lines, ["Input status unavailable."]);
@@ -111,7 +111,7 @@ test("destination input requirements take precedence over defaults on another us
     "another parameter's default cannot supply a missing required secret");
   assert.deepEqual(presentRelationship(inputEdge(requirement("unknown")), sharedDefault).lines, ["Input status unavailable."],
     "a name-wide default flag cannot establish an unreadable destination's state");
-  assert.deepEqual(presentRelationship(inputEdge(requirement("optional", { required: false })), sharedDefault).lines, ["Empty in this file."],
+  assert.deepEqual(presentRelationship(inputEdge(requirement("optional", { required: false })), sharedDefault).lines, ["Left blank."],
     "a blank declaration default is not an effective value");
 });
 

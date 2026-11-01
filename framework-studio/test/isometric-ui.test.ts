@@ -4,6 +4,7 @@ import path from "node:path";
 import { after, afterEach, before, mock, test } from "node:test";
 import { createElement as h, useState } from "react";
 import type { SnapshotResponse } from "../shared/api";
+import type { Mode } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
 import { landscapeFocus, SEARCH_FADE } from "../src/scene/focus";
 import { SceneRenderer, type RenderState } from "../src/scene/render";
@@ -20,8 +21,10 @@ import { NODE_CAPTION, NODE_DEPLOYMENT_TAG, SUBNET_LABEL, subnetLabelPresentatio
 import { project } from "../src/scene/iso";
 import { insidePolygon, pickEntity, pickIsland } from "../src/scene/picking";
 import { islandDrawOrder, islandSlabs } from "../src/scene/slabs";
-import { connectionHoverEase, EDGE_HOVER_DURATION } from "../src/scene/connections";
+import { connectionHoverEase, EDGE_HOVER_DURATION, offLens } from "../src/scene/connections";
 import { missingConnectionInput } from "../src/connections";
+import { CDK_ENVIRONMENT_ID } from "../shared/deployment-inputs";
+import { connectionDescriptionId } from "../shared/descriptions";
 
 let builder: SnapshotBuilder;
 let response: SnapshotResponse;
@@ -40,7 +43,7 @@ const strokes: string[] = [];
 const labels: string[] = [];
 const labelPaints: { text: string; alpha: number; x: number; y: number; font: string; fill: string }[] = [];
 const iconStrokes: { icon: string; color: string; width: number }[] = [];
-const pathStrokes: { color: string; width: number; dash: number[] }[] = [];
+const pathStrokes: { color: string; width: number; dash: number[]; alpha: number }[] = [];
 const paintOrder: ({ kind: "highlight"; clipped: boolean } | { kind: "image" })[] = [];
 let measurements = 0;
 let glyphWidth = 6;
@@ -72,7 +75,7 @@ before(async () => {
     stroke(path?: Path2D) {
       strokes.push(this.strokeStyle);
       if (this.strokeStyle === "rgba(167, 215, 255, 0.85)" || this.strokeStyle === "rgba(207, 229, 248, 0.6)") paintOrder.push({ kind: "highlight", clipped: !!activeClip });
-      if (path) pathStrokes.push({ color: this.strokeStyle, width: this.lineWidth, dash: [...lineDash] });
+      if (path) pathStrokes.push({ color: this.strokeStyle, width: this.lineWidth, dash: [...lineDash], alpha: this.globalAlpha });
       if (paintedIcon) iconStrokes.push({ icon: paintedIcon, color: this.strokeStyle, width: this.lineWidth });
       paintedIcon = "";
     },
@@ -283,7 +286,7 @@ test("framework-managed input groups stand locked on the inputs island, read onl
   const broken = buildScene(unset(response.snapshot.models.dev), { layoutModels: [unset(response.snapshot.models.dev), response.snapshot.models.prod] });
   const group = broken.nodes.find(item => item.id === "framework:local")!;
   assert.deepEqual([group.issues?.[0]?.title, cornerBadges(group).right], ["Required value missing", "error"]);
-  assert.ok(broken.edges.some(edge => edge.from === "envfile:dev" && edge.to === "framework:local" && missingConnectionInput(edge)), "the file's supply connection to the group is errored");
+  assert.ok(broken.edges.some(edge => edge.from === CDK_ENVIRONMENT_ID && edge.to === "framework:local" && missingConnectionInput(edge)), "the file's supply connection to the group is errored");
 });
 
 test("the inputs island opens the shared creator even after using the global chooser", async () => {
@@ -351,7 +354,7 @@ test("input and environment grouping inspectors omit deployment controls", async
       ui.fireEvent.click(ui.screen.getByText("Island entries", { selector: "summary span" }).closest("summary")!);
       const members = document.querySelector('[data-slot="island-members"]')!;
       // Only framework ownership is badged; the application's client mappings carry none.
-      assert.equal(ui.within(members as HTMLElement).getAllByText("Framework managed").length, 2);
+      assert.equal(ui.within(members as HTMLElement).getAllByText("Framework managed").length, 1);
       assert.equal(ui.within(members as HTMLElement).queryByText("Application"), null);
       assert.ok(ui.screen.getByRole("button", { name: "client-app/.env" }));
       assert.equal(ui.screen.queryByRole("searchbox", { name: "Search client mappings" }), null);
@@ -1295,8 +1298,8 @@ test("clicking a disabled wire explains its endpoints in the inspector and the n
   await mount(true);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models), conditions: Object.fromEntries(Object.entries(response.snapshot.source.catalog).map(([id, facts]) => [id, facts.condition])) });
-  // A single wire, rather than a group's bundled supply, opens the one-connection notice.
-  const edge = scene.edges.find((edge) => edge.edge.from === "envfile:prod" && edge.edge.relation === "supplies" && edge.members.length === 1)!;
+  // A production-only input group retains its own availability after both files share one source node.
+  const edge = scene.edges.find((edge) => edge.from === CDK_ENVIRONMENT_ID && !edge.availability.dev && edge.availability.prod)!;
   assert.ok(edge);
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
   const at = scene.routes[edge.id]!.points.map((point) => worldToScreen(state.camera(), state.viewport(), point))
@@ -1308,7 +1311,7 @@ test("clicking a disabled wire explains its endpoints in the inspector and the n
   const notice = await ui.screen.findByRole("note", { name: "Connection deployment status" });
   assert.deepEqual(visibleTags(document.querySelector("[data-slot=\"connection-header\"]")!), [["off", "Dev"], ["prod", "Prod"]]);
   assert.ok(notice.textContent?.includes("Disabled in Development"));
-  assert.ok(notice.textContent?.includes(".env.prod"));
+  assert.ok(document.querySelector('[data-slot="connection-map-members"]')?.textContent?.includes(".env.prod"));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
   await ui.waitFor(() => assert.equal(ui.screen.queryByRole("note", { name: "Connection deployment status" }), null));
 });
@@ -1672,32 +1675,94 @@ test("input group hovers label every entry with its own environments and omit ag
   assert.ok(!card.textContent?.includes("Holds apiPort"), "the list replaces the prose name summary");
 });
 
-test("an environment file's supply carries one pair in its hover heading and inspector header, none per parameter", async () => {
+test("combined CDK supplies carry each parameter's environment pair in hover and inspector", async () => {
   await mount();
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
-  const edge = scene.edges.find(edge => edge.from === "envfile:dev" && edge.to === "resource:client" && edge.edge.relation === "supplies")!;
+  const edge = scene.edges.find(edge => edge.from === CDK_ENVIRONMENT_ID && edge.to === "resource:client" && edge.edge.relation === "supplies")!;
   assert.ok(edge);
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport } }).__studioLandscape;
   const point = scene.routes[edge.id]!.points.map(point => worldToScreen(state.camera(), state.viewport(), point)).find(point => pointing().pickAt(point.x, point.y)?.id === edge.id);
   assert.ok(point, "the supply wire is pickable");
   ui.fireEvent.pointerMove(document.querySelector("canvas")!, { clientX: point.x, clientY: point.y }); await draw();
   const card = await ui.screen.findByRole("tooltip");
-  assert.deepEqual(tagsOf(card.querySelector<HTMLElement>("[data-ui~=\"landscape-hover-tags\"]")!), [["dev", "Dev: supplied by this file in development"], ["off", "Prod: not supplied by this file"]]);
+  assert.equal(card.querySelector("[data-ui~=\"landscape-hover-tags\"]"), null);
   const rows = [...card.querySelectorAll<HTMLElement>("[data-ui~=\"landscape-hover-entries\"] > li")];
   assert.equal(rows.length, edge.members.length);
   for (const [at, row] of rows.entries()) {
     const parameter = response.snapshot.models.dev.resources.find(resource => resource.id === edge.members[at]!.edge.to)!;
     assert.equal(row.querySelector("[data-ui~=\"landscape-hover-entry-name\"]")?.textContent, parameter.path.at(-1));
-    assert.deepEqual(tagsOf(row), [], "the file belongs to one environment, so no row repeats the heading's pair");
+    assert.deepEqual(tagsOf(row), [["dev", "Dev: supplied in development"], ["off", "Prod: not supplied in this environment"]]);
   }
-  assert.deepEqual(hoverEndpoints(card), { From: ["cdk-app/.env.dev", "Environment file"], To: ["client", "Input group"] });
+  assert.deepEqual(hoverEndpoints(card), { From: ["CDK environment", "Environment file"], To: ["client", "Input group"] });
   ui.fireEvent.pointerDown(document.querySelector("canvas")!, { clientX: point.x, clientY: point.y, button: 0 });
   ui.fireEvent.pointerUp(document.querySelector("canvas")!, { clientX: point.x, clientY: point.y, button: 0 });
   const map = await ui.screen.findByRole("region", { name: "Connection details" });
   assert.deepEqual(visibleTags(document.querySelector("[data-slot=\"connection-header\"]")!), [["dev", "Dev"], ["off", "Prod"]]);
   assert.equal(map.querySelectorAll("[data-slot=\"connection-map-member\"]").length, edge.members.length);
-  assert.equal(map.querySelectorAll("[data-slot=\"connection-map-member\"] [data-slot=\"environment-pills\"]").length, 0);
+  assert.equal(map.querySelectorAll("[data-slot=\"connection-map-member\"] [data-slot=\"environment-pills\"]").length, edge.members.length);
+});
+
+test("a single combined input preserves both physical source descriptions and old edge selections", async () => {
+  const models = response.snapshot.models;
+  const dev = models.dev.edges.find(edge => edge.relation === "supplies" && edge.from === "envfile:dev" && edge.to === "resource:openaiApiKey")!;
+  const prod = models.prod.edges.find(edge => edge.relation === "supplies" && edge.from === "envfile:prod" && edge.to === dev.to)!;
+  assert.ok(dev); assert.ok(prod);
+  const initial = { ...response, snapshot: { ...response.snapshot, descriptions: { values: { ...response.snapshot.descriptions.values,
+    [connectionDescriptionId(dev)]: "Development source note", [connectionDescriptionId(prod)]: "Production source note" } } } };
+  await mount(true, prod.id, initial);
+  const members = document.querySelectorAll<HTMLDetailsElement>('[data-slot="connection-map-member"]');
+  assert.equal(members.length, 1, "two physical supplies form one semantic input");
+  ui.fireEvent.click(members[0]!.querySelector("summary")!);
+  assert.deepEqual([...members[0]!.querySelectorAll('[data-slot="connection-source-environment"] h3')].slice(0, 1).map(heading => heading.textContent), ["Development"]);
+  const descriptions = [...members[0]!.querySelectorAll<HTMLDetailsElement>('[data-slot="connection-description"]')];
+  assert.equal(descriptions.length, 2);
+  for (const description of descriptions) ui.fireEvent.click(description.querySelector("summary")!);
+  assert.deepEqual([...members[0]!.querySelectorAll<HTMLTextAreaElement>('textarea[aria-label="Description"]')].map(input => input.value), ["Development source note", "Production source note"]);
+  const configurations = [...members[0]!.querySelectorAll<HTMLDetailsElement>('[data-slot="connection-configuration"]')];
+  assert.equal(configurations.length, 2);
+  assert.ok(configurations[0]!.textContent?.includes("cdk-app/.env.dev"));
+  assert.ok(configurations[1]!.textContent?.includes("cdk-app/.env.prod"));
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" }));
+  await draw();
+  assert.equal(document.querySelector<HTMLDetailsElement>('[data-slot="connection-map-member"]')!.open, true, "changing Source retains the semantic row's disclosure");
+  assert.deepEqual([...document.querySelectorAll<HTMLTextAreaElement>('[data-slot="connection-map-member"] textarea[aria-label="Description"]')].map(input => input.value), ["Development source note", "Production source note"]);
+});
+
+test("a dirty Production supply action guards its source mode and destination together", async (context) => {
+  const prod = response.snapshot.models.prod.edges.find(edge => edge.relation === "supplies" && edge.from === "envfile:prod" && edge.to === "resource:openaiApiKey")!;
+  assert.ok(prod);
+  const { api } = await import("../src/api");
+  context.mock.method(api, "resourceDetails", async (_resource: string, mode: Mode) => ({
+    configured: false, file: `cdk-app/.env.${mode}`, inputFile: { exists: true, hash: "guard-fixture" },
+  }));
+  await mount(true, prod.id);
+  const member = document.querySelector<HTMLDetailsElement>('[data-slot="connection-map-member"]')!;
+  ui.fireEvent.click(member.querySelector("summary")!);
+  const production = [...member.querySelectorAll<HTMLElement>('[data-slot="connection-source-environment"]')]
+    .find(section => section.querySelector("h3")?.textContent === "Production")!;
+  assert.ok(production);
+  const description = production.querySelector<HTMLDetailsElement>('[data-slot="connection-description"]')!;
+  ui.fireEvent.click(description.querySelector("summary")!);
+  const field = ui.within(description).getByRole("textbox", { name: "Description" }) as HTMLTextAreaElement;
+  ui.fireEvent.change(field, { target: { value: "Unsaved production supply note" } });
+  const source = ui.within(ui.screen.getByRole("group", { name: "Source environment" }));
+  const openSettings = ui.within(production).getByRole("button", { name: "Open secret settings" });
+  ui.fireEvent.click(openSettings);
+  let warning = await ui.screen.findByRole("dialog", { name: "Unsaved changes" });
+  ui.fireEvent.click(ui.within(warning).getByRole("button", { name: "Keep Editing" }));
+  assert.equal(field.value, "Unsaved production supply note");
+  assert.equal(source.getByRole("button", { name: "Development" }).getAttribute("aria-pressed"), "true");
+  assert.equal(ui.screen.getByLabelText("Selection").textContent, prod.id);
+  ui.fireEvent.click(openSettings);
+  warning = await ui.screen.findByRole("dialog", { name: "Unsaved changes" });
+  ui.fireEvent.click(ui.within(warning).getByRole("button", { name: "Discard and Continue" }));
+  await ui.waitFor(() => {
+    assert.equal(ui.screen.getByLabelText("Selection").textContent, prod.to);
+    assert.equal(source.getByRole("button", { name: "Production" }).getAttribute("aria-pressed"), "true");
+  });
+  assert.equal(ui.screen.queryByRole("dialog", { name: "Unsaved changes" }), null);
+  assert.equal(ui.screen.queryByLabelText("Pending inspector changes"), null);
 });
 
 test("an environment that does not deploy the item keeps its pill, dark", async () => {
@@ -1883,16 +1948,16 @@ test("an error replaces the ownership lock on the map and reddens the name; othe
   const scene = buildScene({ ...model, resources: model.resources.map(resource => resource.deploymentFile
     ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists: false } } : resource) });
   const files = scene.nodes.filter(node => node.id.startsWith("envfile:"));
-  assert.equal(files.length, 2);
+  assert.equal(files.length, 1);
   for (const node of files) { assert.deepEqual(cornerBadges(node), { right: "error" }); assert.equal(node.frameworkManaged, true); }
   const renderer = new SceneRenderer(document.createElement("canvas"));
   renderer.setScene(scene);
   const viewport = { width: 1920, height: 1000 };
   images.length = 0; labelPaints.length = 0;
   renderer.render({ camera: fitScene(scene, viewport), viewport, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene) });
-  assert.equal(images.filter(image => image.src === iconUrl("error")).length, 2);
+  assert.equal(images.filter(image => image.src === iconUrl("error")).length, 1);
   const lockedCount = [...scene.nodes, ...scene.props].filter(item => !("issues" in item && item.issues?.length) && (item.roleIcon === "managed" || item.frameworkManaged)).length;
-  assert.equal(images.filter(image => image.src === iconUrl("managed")).length, lockedCount, "every managed item without an issue paints exactly one lock; the two files paint none");
+  assert.equal(images.filter(image => image.src === iconUrl("managed")).length, lockedCount, "every managed item without an issue paints exactly one lock; the combined file node paints none");
   // Close enough to read: the file alone, fitted, names itself in the error red.
   const file = files.find(node => node.presence !== "absent")!;
   const alone = { ...scene, nodes: [file], props: [], edges: [], routes: {} };
@@ -1916,12 +1981,11 @@ test("an error replaces the ownership lock on the map and reddens the name; othe
   };
   assert.equal(far(true), 1);
   const tag = labelPaints.find(({ text }) => text === "PROD");
-  assert.ok(tag, "the deployment tag is drawn at overview zoom");
-  assert.ok(tag.alpha < 1, `only the name is pinned; the deployment tag keeps its zoom fade (${tag.alpha})`);
+  assert.equal(tag, undefined, "the combined resource belongs to both environments and has no one-mode tag");
   const unpinned = far(false);
   assert.ok(unpinned === undefined || unpinned < 1, `without the filter the name fades at overview zoom (${unpinned})`);
-  // The other environment's file keeps its lens fade even with the filter on.
-  const ghost = files.find(node => node.presence === "absent")!;
+  // An absent resource with the same issue keeps its lens fade even with the filter on.
+  const ghost = { ...scene.nodes.find(node => node.presence === "absent")!, issues: file.issues };
   const otherLens = { ...scene, nodes: [ghost], props: [], edges: [], routes: {} };
   const ghostRenderer = new SceneRenderer(document.createElement("canvas"));
   ghostRenderer.setScene(otherLens);
@@ -1981,6 +2045,53 @@ test("distant captions and deployment tags fade together, reverse continuously a
     assert.ok(frame.badges.some(({ id }) => id === node.id), `tag has no hard zoom cutoff at ${zoom}`);
   }
   renderer.dispose();
+});
+
+test("every connection shares opacity and thickness across provenance, relationship types, environments and zoom", () => {
+  const provenance = new Set<string>(), categories = new Set<string>(), relations = new Set<string>();
+  for (const mode of ["dev", "prod"] as const) {
+    const source = buildScene(response.snapshot.models[mode], { layoutModels: Object.values(response.snapshot.models) });
+    const nodes = new Map(source.nodes.map(node => [node.id, node]));
+    const renderer = new SceneRenderer(document.createElement("canvas"));
+    for (const edge of source.edges) {
+      provenance.add(edge.edge.provenance); categories.add(edge.category); relations.add(edge.edge.relation);
+      const scene = { ...source, edges: [edge] };
+      renderer.setScene(scene);
+      const outside = offLens(edge, nodes.get(edge.from), nodes.get(edge.to));
+      const missing = missingConnectionInput(edge);
+      const color = missing && edge.category === "inputs" ? ISSUE_COLOR.error : edge.style.color;
+      const prefix = `rgba(${hexRgb(color).join(", ")}, `;
+      for (const zoom of [0.2, 1]) {
+        const state: RenderState = { camera: { ...connectionMidpoint(scene.routes[edge.id]!.points), zoom },
+          viewport: { width: 1920, height: 1000 }, dpr: 1, time: 1, motion: false, focus: landscapeFocus(scene) };
+        const search = (matches: boolean) => landscapeFocus(scene, undefined, {
+          nodes: new Set(matches ? [edge.from, edge.to] : []), props: new Set(), islands: new Set(),
+        });
+        const cases: { name: string; overrides: Partial<RenderState>; alpha: number; lit: boolean }[] = [
+          { name: "idle", overrides: {}, alpha: (missing ? 0.9 : 0.3) * (outside ? 0.25 : 1), lit: false },
+          { name: "hovered", overrides: { hoveredEdge: edge.id }, alpha: 0.95, lit: true },
+          { name: "selected", overrides: { selected: edge.id, focus: landscapeFocus(scene, edge.id) }, alpha: 0.95, lit: true },
+          { name: "unrelated selection", overrides: { selected: "unrelated", focus: landscapeFocus(scene, "unrelated") }, alpha: missing ? 0.35 * (outside ? 0.25 : 1) : 0.06, lit: false },
+          { name: "search match", overrides: { focus: search(true) }, alpha: edge.otherLens ? 0.025 : 0.95, lit: !edge.otherLens },
+          { name: "search miss", overrides: { focus: search(false) }, alpha: 0.025, lit: false },
+        ];
+        for (const check of cases) {
+          pathStrokes.length = 0;
+          renderer.render({ ...state, ...check.overrides });
+          const stroke = pathStrokes.filter(stroke => stroke.color.startsWith(prefix)).at(-1);
+          const context = `${mode}: ${edge.id}, ${zoom}×, ${check.name}`;
+          assert.ok(stroke, context);
+          assert.ok(Math.abs(Number(stroke.color.slice(prefix.length, -1)) * stroke.alpha - check.alpha) < 1e-10, `${context}: effective opacity`);
+          assert.ok(Math.abs(stroke.width * zoom - (check.lit ? 2.2 : 1.2)) < 1e-10, `${context}: screen thickness`);
+          assert.deepEqual(stroke.dash.map(value => value * zoom), edge.style.dashed ? [check.lit ? 5 : 4, 4] : [], `${context}: dash pattern`);
+        }
+      }
+    }
+    renderer.dispose();
+  }
+  assert.deepEqual([...provenance].sort(), ["declared", "derived", "source"]);
+  assert.deepEqual([...categories].sort(), ["inputs", "interactions", "routes", "structure"]);
+  for (const relation of ["runsTask", "localReplay", "database", "env", "maps", "supplies", "grant", "trigger", "contains"]) assert.ok(relations.has(relation), `${relation} is exercised`);
 });
 
 test("connection hover fades quickly while environment changes update immediately", () => {

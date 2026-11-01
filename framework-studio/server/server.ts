@@ -18,8 +18,8 @@ import { SnapshotBuilder, type StudioState } from "./snapshot";
 import { watchRepository } from "./watch";
 import type { SourceWatchState } from "../shared/watch";
 import { InfrastructureService } from "./infrastructure";
-import { createDeploymentInput } from "./deployment-inputs";
-import { DeploymentInputService, inputMode, readInputEdits } from "./deployment-input-edits";
+import { initializeDeploymentInputs } from "./deployment-inputs";
+import { DeploymentInputService, inputMode, readInputFiles } from "./deployment-input-edits";
 import { DeployService } from "./deploy/service";
 import { deployRouter } from "./deploy/routes";
 import { FrontendReleaseService } from "./frontend-release";
@@ -219,7 +219,20 @@ async function configureServer(
   const token = randomBytes(24).toString("hex");
   const log = (line: string) => process.stderr.write(`${line}\n`);
 
-  const builder = new SnapshotBuilder(repositoryRoot, log);
+  // The interactive server owns initialization, after claiming its port and
+  // before any evaluator or watcher can observe the repository. Read-only
+  // snapshots, --print and synthesis never create authored input files.
+  const inputSetupProblems: Partial<Record<"dev" | "prod", string>> = {};
+  const initializeInputs = (modes?: readonly ("dev" | "prod")[]) => {
+    const results = initializeDeploymentInputs(repositoryRoot, modes);
+    for (const result of results) {
+      if (result.problem) inputSetupProblems[result.mode] = result.problem;
+      else delete inputSetupProblems[result.mode];
+    }
+    return results;
+  };
+  initializeInputs();
+  const builder = new SnapshotBuilder(repositoryRoot, log, () => inputSetupProblems);
   const refreshes = new Set<Promise<StudioState | undefined>>();
   defer(async () => {
     // Close every snapshot/review evaluator before joining refresh wrappers;
@@ -389,9 +402,10 @@ async function configureServer(
   api.get("/infrastructure", (request, response) => send(response, async () => infrastructure.get(request.query.mode === "prod" ? "prod" : "dev")));
   api.post("/deployment-inputs/create", (request, response) => send(response, async () => {
     if (request.body?.mode !== "dev" && request.body?.mode !== "prod") throw new EditError(400, "Choose development or production inputs.");
-    const result = createDeploymentInput(repositoryRoot, request.body.mode);
+    const result = initializeInputs([request.body.mode])[0]!;
     await refresh([result.file]);
-    return result;
+    if (result.problem) throw new EditError(422, result.problem);
+    return { file: result.file, created: result.created };
   }));
   api.get("/deployment-inputs/details", (request, response) => {
     response.setHeader("Cache-Control", "no-store");
@@ -403,7 +417,7 @@ async function configureServer(
   });
   api.post("/deployment-inputs/plan", (request, response) => {
     response.setHeader("Cache-Control", "no-store");
-    send(response, async () => inputs.plan(inputMode(request.body?.mode), readInputEdits(request.body?.edits), String(request.body?.hash ?? ""), String(request.body?.revision ?? "")));
+    send(response, async () => inputs.plan(readInputFiles(request.body?.files), String(request.body?.revision ?? "")));
   });
   api.post("/deployment-inputs/apply", (request, response) => send(response, async () => {
     const result = await inputs.apply(String(request.body?.planId ?? ""));

@@ -137,6 +137,13 @@ failure delivery stay distinct from native grants even when their underlying rel
 `cdk` or `grant`. Bundle IDs include the type; original relationship IDs, evidence and
 description keys remain intact. Hover previews are bounded to four members without
 concealing missing required inputs. The Inspector preserves every member and its evidence.
+The logical `envfile:cdk` resource references the physical `envfile:dev` and `envfile:prod`
+records. Both draw as **CDK environment**. Supply members join matching original input
+IDs and variable names across their own file modes, so two files supplying one parameter
+count as one relationship with Dev/Prod evidence. Original edge IDs and description keys
+remain available; a one-member supply bundle also has a stable aggregate identity.
+Missing-value wire styling follows the selected Source mode, while hover and expanded
+details retain both modes' statuses and source links.
 Dev/prod union topology stabilizes layout while the active mode controls availability and
 styling. `lookup.ts` in [src/lookup.ts](../../../framework-studio/src/lookup.ts) centralizes
 entity/relationship lookup labels and categories.

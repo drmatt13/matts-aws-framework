@@ -1,5 +1,17 @@
-import type { Mode, ModelEdge, ModelResource, TargetKind } from "../../shared/model";
-import { API_EDGE_COLOR, COMPUTE_EDGE_COLOR, EDGE_COLORS, GUARD_EDGE_COLOR, ICON_TINT, READ_EDGE_COLOR } from "./look";
+import type {
+  Mode,
+  ModelEdge,
+  ModelResource,
+  TargetKind,
+} from "../../shared/model";
+import {
+  API_EDGE_COLOR,
+  COMPUTE_EDGE_COLOR,
+  EDGE_COLORS,
+  GUARD_EDGE_COLOR,
+  ICON_TINT,
+  READ_EDGE_COLOR,
+} from "./look";
 import type { SceneEdge, SceneNode } from "./types";
 import { isEventConnection, type EdgeCategory } from "../lookup";
 import { missingConnectionInput } from "../connections";
@@ -23,13 +35,31 @@ export interface ConnectionStyle {
  * Category filters hide background wires; inspecting a resource always reveals its links, and the
  * Errors filter (`errors`) keeps every wire with a missing required input, whatever its category.
  */
-export function connectionVisible(edge: Pick<SceneEdge, "id" | "categories" | "from" | "to"> & Partial<Pick<SceneEdge, "members">>, categories?: ReadonlySet<EdgeCategory>, selected?: string, errors = false): boolean {
-  return edge.id === selected || edge.from === selected || edge.to === selected || !categories || edge.categories.some((category) => categories.has(category))
-    || (errors && !!edge.members && missingConnectionInput({ members: edge.members }));
+export function connectionVisible(
+  edge: Pick<SceneEdge, "id" | "categories" | "from" | "to"> &
+    Partial<Pick<SceneEdge, "members" | "mode">>,
+  categories?: ReadonlySet<EdgeCategory>,
+  selected?: string,
+  errors = false,
+): boolean {
+  return (
+    edge.id === selected ||
+    edge.from === selected ||
+    edge.to === selected ||
+    !categories ||
+    edge.categories.some((category) => categories.has(category)) ||
+    (errors &&
+      !!edge.members &&
+      missingConnectionInput({ members: edge.members, mode: edge.mode }))
+  );
 }
 
 /** Lambda functions and container services and tasks: the workloads AWS colours as compute. */
-const COMPUTE_TARGETS: ReadonlySet<TargetKind> = new Set(["lambda", "service", "task"]);
+const COMPUTE_TARGETS: ReadonlySet<TargetKind> = new Set([
+  "lambda",
+  "service",
+  "task",
+]);
 
 /**
  * `source` is the visible resource the wire leaves, including folded stack members.
@@ -42,20 +72,29 @@ export function connectionStyle(
   destination: Pick<ModelResource, "kind"> | undefined,
 ): ConnectionStyle {
   const { relation } = edge;
-  if (category === "interactions" || isEventConnection(edge)) return { color: ICON_TINT[source?.icon ?? "construct"], dashed: false };
-  if (relation === "deployWhen") return { color: READ_EDGE_COLOR, dashed: true };
+  if (category === "interactions" || isEventConnection(edge))
+    return { color: ICON_TINT[source?.icon ?? "construct"], dashed: false };
+  if (relation === "deployWhen")
+    return { color: READ_EDGE_COLOR, dashed: true };
   if (relation === "maps") return { color: READ_EDGE_COLOR, dashed: true };
   // An authorizer guards its route.
-  if (relation === "authorizes") return { color: GUARD_EDGE_COLOR, dashed: false };
+  if (relation === "authorizes")
+    return { color: GUARD_EDGE_COLOR, dashed: false };
   if (destination && (relation === "env" || relation === "secret")) {
     const guarded = relation === "secret" || destination.kind === "secret";
-    return { color: guarded ? GUARD_EDGE_COLOR : READ_EDGE_COLOR, dashed: true };
+    return {
+      color: guarded ? GUARD_EDGE_COLOR : READ_EDGE_COLOR,
+      dashed: true,
+    };
   }
   // An environment file supplying a secret is as guarded as the secret.
-  if (relation === "supplies" && destination?.kind === "secret") return { color: GUARD_EDGE_COLOR, dashed: true };
+  if (relation === "supplies" && destination?.kind === "secret")
+    return { color: GUARD_EDGE_COLOR, dashed: true };
   // Anything else takes the colour of where it starts, solid out of the APIs island and out of compute.
-  if (relation === "routes" || source?.island === "island:apis") return { color: API_EDGE_COLOR, dashed: false };
-  if (source?.targetKind && COMPUTE_TARGETS.has(source.targetKind)) return { color: COMPUTE_EDGE_COLOR, dashed: false };
+  if (relation === "routes" || source?.island === "island:apis")
+    return { color: API_EDGE_COLOR, dashed: false };
+  if (source?.targetKind && COMPUTE_TARGETS.has(source.targetKind))
+    return { color: COMPUTE_EDGE_COLOR, dashed: false };
   return { color: EDGE_COLORS[category], dashed: true };
 }
 
@@ -65,8 +104,10 @@ export function connectionStyle(
  * What is part of the environment being viewed reads clearly; what is not recedes. A connection outside the
  * viewed environment rests at a quarter of the strength it has inside it, so switching the view dims what the new
  * view leaves out and brightens what it brings in, and every connection keeps the same ratio between the two.
+ * Provenance describes how a relationship was discovered, not its visual importance: declared, derived and
+ * source-discovered connections all use the same resting strength.
  */
-export const EDGE_ALPHA = { declared: 0.3, derived: 0.18, outOfLens: 0.25 } as const;
+export const EDGE_ALPHA = { resting: 0.3, outOfLens: 0.15 } as const;
 
 /** Hover responds faster than captions; environment and selection changes stay immediate. */
 export const EDGE_HOVER_DURATION = 0.05;
@@ -76,10 +117,13 @@ export function connectionHoverEase(progress: number): number {
   if (progress <= 0) return 0;
   if (progress >= 1) return 1;
   // Time is the curve's x coordinate, so solve x(t) before evaluating y(t).
-  let low = 0, high = 1;
+  let low = 0,
+    high = 1;
   for (let iteration = 0; iteration < 12; iteration++) {
-    const t = (low + high) / 2, inverse = 1 - t;
-    const x = 3 * inverse * inverse * t * 0.16 + 3 * inverse * t * t * 0.3 + t * t * t;
+    const t = (low + high) / 2,
+      inverse = 1 - t;
+    const x =
+      3 * inverse * inverse * t * 0.16 + 3 * inverse * t * t * 0.3 + t * t * t;
     if (x < progress) low = t;
     else high = t;
   }
@@ -88,16 +132,30 @@ export function connectionHoverEase(progress: number): number {
 
 /** A node belongs to the environment being viewed when it is built or held there. */
 /** Held by the viewed environment and not faded by the tag filter. Nodes outside it, and their names and wires, recede. */
-export const inLens = (node: Pick<SceneNode, "presence" | "tagFiltered"> | undefined): boolean => !node || !node.tagFiltered && (node.presence === "built" || node.presence === "present");
+export const inLens = (
+  node: Pick<SceneNode, "presence" | "tagFiltered"> | undefined,
+): boolean =>
+  !node ||
+  (!node.tagFiltered &&
+    (node.presence === "built" || node.presence === "present"));
 
 /**
  * Whether a connection is outside the environment being viewed: the other environment alone holds it, or
  * either end is enabled only there, in neither, or a catalog entry the viewed graph declares undefined.
  */
-export function offLens(edge: { readonly otherLens?: Mode; readonly enabledInLens?: boolean }, from: Pick<SceneNode, "presence" | "tagFiltered"> | undefined, to: Pick<SceneNode, "presence" | "tagFiltered"> | undefined): boolean {
-  return edge.enabledInLens === false || edge.otherLens !== undefined || !inLens(from) || !inLens(to);
+export function offLens(
+  edge: { readonly otherLens?: Mode; readonly enabledInLens?: boolean },
+  from: Pick<SceneNode, "presence" | "tagFiltered"> | undefined,
+  to: Pick<SceneNode, "presence" | "tagFiltered"> | undefined,
+): boolean {
+  return (
+    edge.enabledInLens === false ||
+    edge.otherLens !== undefined ||
+    !inLens(from) ||
+    !inLens(to)
+  );
 }
 
-export function restingAlpha(provenance: ModelEdge["provenance"], outOfLens: boolean): number {
-  return (provenance === "derived" ? EDGE_ALPHA.derived : EDGE_ALPHA.declared) * (outOfLens ? EDGE_ALPHA.outOfLens : 1);
+export function restingAlpha(outOfLens: boolean): number {
+  return EDGE_ALPHA.resting * (outOfLens ? EDGE_ALPHA.outOfLens : 1);
 }
