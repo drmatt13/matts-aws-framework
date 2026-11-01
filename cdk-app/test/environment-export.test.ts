@@ -19,6 +19,7 @@ const cognito = {
   userPoolId: "us-east-1_pool",
   userPoolClientId: "client",
   cognitoDomainUrl: "https://example.auth.us-east-1.amazoncognito.com",
+  signInProviders: "google,meta",
 };
 function devClient(authored: Record<string, string>, apiGatewayWebSocketUrl = "") {
   const values = localExportValues({ ...ports, ...authored }, { repositoryRoot: process.cwd() });
@@ -54,7 +55,7 @@ test("development and production write the same client-app names in the same ord
     ],
   });
   const production = collectProductionOutputs([
-    stack("CognitoStack", { UserPoolId: "pool", UserPoolClientId: "client", UserPoolDomainUrl: cognito.cognitoDomainUrl }),
+    stack("CognitoStack", { UserPoolId: "pool", UserPoolClientId: "client", UserPoolDomainUrl: cognito.cognitoDomainUrl, SignInProviders: "google,meta" }),
     stack("FrontendWebsiteS3Stack", { FrontendWebsiteBucketName: "bucket", CloudFrontUrl: "https://example.cloudfront.net", CloudFrontId: "distribution" }),
   ], "example");
   assert.deepEqual(Object.keys(devClient({})), Object.keys(production.client));
@@ -85,4 +86,6 @@ test("client settings are validated before anything is written", () => {
   assert.throws(() => clientEnvironment({ ...cognito, ...endpoints, apiGatewayWebSocketUrl: "https://example.com" }), /VITE_API_GATEWAY_WS_URL must use ws: or wss:/);
   assert.throws(() => clientEnvironment({ ...cognito, ...endpoints, apiUrl: "localhost:8080" }), /VITE_API_GATEWAY_URL must use http: or https:/);
   assert.equal(clientEnvironment({ ...cognito, ...endpoints, cognitoDomainUrl: "https://auth.example.com/" }).VITE_COGNITO_DOMAIN, "https://auth.example.com");
+  assert.equal(clientEnvironment({ ...cognito, ...endpoints }).VITE_SIGN_IN_PROVIDERS, "google,meta");
+  assert.throws(() => clientEnvironment({ ...cognito, ...endpoints, signInProviders: "Google" }), /VITE_SIGN_IN_PROVIDERS must be none or a comma-separated list/);
 });

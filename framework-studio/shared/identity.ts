@@ -7,11 +7,19 @@ export interface IdentitySource {
   readonly exists: boolean;
   /** Fixed public input allowlist. Secrets are represented by presence only. */
   readonly inputs: Readonly<Record<string, string>>;
-  readonly google: { readonly clientIdPresent: boolean; readonly authoredSecretPresent: boolean };
+  /** The framework's sign-in providers as the selected file configures them: line presence only. */
+  readonly signInProviders: readonly SignInProviderSource[];
   readonly providers: readonly string[];
   readonly declaredProviders?: readonly { readonly id: string; readonly name: string; readonly type: string; readonly scope: string }[];
   readonly identityPools: "not-declared" | "source-review-required";
   readonly problems: readonly string[];
+}
+export interface SignInProviderSource {
+  readonly id: string;
+  readonly title: string;
+  /** Its Cognito identity provider name, as an observed pool lists it. */
+  readonly cognitoName: string;
+  readonly lines: readonly { readonly name: string; readonly secret: boolean; readonly present: boolean }[];
 }
 export interface IdentitySelection { readonly profile: string; readonly deployment: string; readonly region: string }
 export interface IdentityContext extends IdentitySelection { readonly account: string; readonly observedAt: string }

@@ -313,6 +313,11 @@ export interface ModelResource {
   readonly deploymentFile?: import("./deployment-inputs").DeploymentInputFile;
   /** Client variable references and transformations, never resolved values. */
   readonly clientEnvironment?: import("./client-environment").ClientEnvironmentFile;
+  /**
+   * A framework-managed input group or entry: a variable the framework itself reads from the CDK
+   * inputs files, by reader. Projected from its declarations, read-only, and never in the catalog.
+   */
+  readonly frameworkInput?: import("./deployment-inputs").FrameworkSettingOwner;
   /** Assignment metadata for this catalog declaration; never dotenv values. */
   readonly inputSources?: readonly { readonly file: string; readonly entry: import("./deployment-inputs").DeploymentInputEntry }[];
 }

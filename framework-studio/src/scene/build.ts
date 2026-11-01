@@ -415,7 +415,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
       id: "island:inputs",
       title: "Input parameters and secrets",
       region: "catalog",
-      caption: ["Input parameters and secrets declared in framework-config/resources.ts. An input group stands as one building for its entries. Environment file links carry names and presence, never secret values."],
+      caption: ["Input parameters and secrets declared in framework-config/resources.ts, and the framework-managed input groups the framework itself reads. An input group stands as one building for its entries. Environment file links carry names and presence, never secret values."],
       bands: [{ id: "band:inputs", title: "Input parameters and secrets", caption: [], h: 1, groups: [loose] }],
     });
   }

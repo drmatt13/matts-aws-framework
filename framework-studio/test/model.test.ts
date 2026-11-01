@@ -266,13 +266,14 @@ test("referenceExamples exposes source-backed CDK flow in both graphs", () => {
   assert.ok(Object.keys(cached.files).includes("cdk-app/lib/app/reference-example-stack.ts"));
 });
 
-test("the three native Cognito hooks connect the public pool to their events in both lenses", () => {
+test("the native Cognito hooks connect the public pool to their events in both lenses", () => {
   for (const model of Object.values(snapshot.models)) {
     const hooks = model.edges.filter((edge) => edge.relation === "trigger");
     assert.deepEqual(hooks.map((edge) => [edge.from, edge.to, edge.label]).sort(), [
       ["resource:cognito.userPool", "lambda:cognito-pre-signup-trigger", "preSignUp"],
       ["resource:cognito.userPool", "lambda:cognito-custom-message", "customMessage"],
       ["resource:cognito.userPool", "lambda:cognito-post-confirmation-trigger", "postConfirmation"],
+      ["resource:cognito.userPool", "lambda:cognito-pre-token-generation", "preTokenGeneration"],
     ].sort());
     for (const edge of hooks) {
       assert.ok(edge.source);

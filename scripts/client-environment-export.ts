@@ -88,6 +88,7 @@ export function resolveClientEnvironmentMappings(mappings: ClientEnvironmentMapp
         if (!value) fail(name, `${binding.stack} has no value for ${binding.outputs.join(" or ")}.`);
       }
     }
+    if (value && name === "VITE_SIGN_IN_PROVIDERS" && !SIGN_IN_PROVIDER_LIST.test(value)) fail(name, `Expected none or a comma-separated list of provider ids. Received: ${value}`);
     if (value) {
       const protocols: Readonly<Record<string, readonly string[]>> = {
         VITE_API_GATEWAY_URL: ["http:", "https:"], VITE_LOCAL_WS_URL: ["ws:", "wss:"],
@@ -105,6 +106,9 @@ export function resolveClientEnvironmentMappings(mappings: ClientEnvironmentMapp
   }
   return result;
 }
+
+/** CognitoStack's SignInProviders output: `none`, or provider ids such as `google,meta`. */
+const SIGN_IN_PROVIDER_LIST = /^(?:none|[a-z]+(?:,[a-z]+)*)$/;
 
 function validateUrl(name: string, value: string, protocols: readonly string[], fail: (name: string, reason: string) => never): URL {
   let parsed: URL;

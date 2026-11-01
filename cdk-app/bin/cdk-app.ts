@@ -21,6 +21,7 @@ import { describeFrameworkNetwork } from "../lib/framework/framework-network";
 import { describeFrameworkDatabase } from "../lib/framework/framework-database";
 import framework from "../../framework.config";
 import { authenticationProviders } from "../../framework-config/auth-providers";
+import { SIGN_IN_PROVIDERS, type SignInProviderId } from "../../framework-config/resources/sign-in-providers";
 import { statefulResources } from "../../framework-config/stateful-resources";
 
 import {
@@ -173,7 +174,7 @@ const cognitoStack = new CognitoStack(app, stackId("CognitoStack"), {
   cognitoDomainPrefix: deployment.cognitoDomainPrefix,
   cognitoDomainName: deployment.cognitoDomainName,
   cognitoDomainCertificateArn: deployment.cognitoDomainCertificateArn,
-  googleClientId: deployment.googleClientId,
+  signInProviders: deployment.signInProviders,
   additionalProviders: authenticationProviders.filter(provider => provider.scope === "both" || provider.scope === mode),
   callbackUrls: frontend.authCallbackUrls,
   logoutUrls: frontend.cognitoFrontendUrls,
@@ -191,7 +192,7 @@ if (rdsStack && deployment.stateful.database.reference) {
   const network = isFrameworkDatabase(framework.database) ? framework.database.vpc : undefined;
   rdsStack.templateOptions.metadata = { ...rdsStack.templateOptions.metadata, "framework:stateful-reference": { kind: "database", reference: deployment.stateful.database.reference, networkPolicy: network ? { natGateway: network.natGateway, egressOnlyInternetGateway: network.egressOnlyInternetGateway, gatewayEndpoints: network.gatewayEndpoints, interfaceEndpoints: network.interfaceEndpoints } : undefined } };
 }
-if (deployment.stateful.cognito.reference) cognitoStack.templateOptions.metadata = { ...cognitoStack.templateOptions.metadata, "framework:stateful-reference": { kind: "cognito", reference: deployment.stateful.cognito.reference, callbackUrls: frontend.authCallbackUrls, logoutUrls: frontend.cognitoFrontendUrls, providers: ["COGNITO", ...(deployment.googleClientId ? ["Google"] : []), ...authenticationProviders.filter(provider => provider.scope === "both" || provider.scope === mode).map(provider => provider.name)] } };
+if (deployment.stateful.cognito.reference) cognitoStack.templateOptions.metadata = { ...cognitoStack.templateOptions.metadata, "framework:stateful-reference": { kind: "cognito", reference: deployment.stateful.cognito.reference, callbackUrls: frontend.authCallbackUrls, logoutUrls: frontend.cognitoFrontendUrls, providers: ["COGNITO", ...(Object.keys(deployment.signInProviders) as SignInProviderId[]).map(id => SIGN_IN_PROVIDERS[id].cognitoName), ...authenticationProviders.filter(provider => provider.scope === "both" || provider.scope === mode).map(provider => provider.name)] } };
 
 // ─── Your application stacks go here ───────────────────────────────────────
 // Built after the event handlers, so a stack can attach a trigger with

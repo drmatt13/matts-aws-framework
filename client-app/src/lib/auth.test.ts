@@ -698,3 +698,27 @@ describe("identity changes", () => {
     expect(changed).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("sign-in providers", () => {
+  it("offers exactly the providers the deployed pool accepts", async () => {
+    vi.stubEnv("VITE_SIGN_IN_PROVIDERS", "google,meta");
+    const auth = await loadAuth();
+    expect(auth.isSsoProviderEnabled("google")).toBe(true);
+    expect(auth.isSsoProviderEnabled("meta")).toBe(true);
+    expect(auth.isSsoProviderEnabled("microsoft")).toBe(false);
+    await expect(auth.signInWithProvider("microsoft")).rejects.toThrow(
+      /not enabled/,
+    );
+  });
+
+  it("offers none when the pool accepts none, or the setting is missing", async () => {
+    for (const value of ["none", ""]) {
+      vi.resetModules();
+      vi.stubEnv("VITE_SIGN_IN_PROVIDERS", value);
+      const auth = await loadAuth();
+      for (const provider of ["google", "microsoft", "meta"] as const) {
+        expect(auth.isSsoProviderEnabled(provider)).toBe(false);
+      }
+    }
+  });
+});

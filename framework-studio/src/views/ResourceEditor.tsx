@@ -189,12 +189,12 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
                     <label className={modeOptionClasses}>
                       <input
                         type="checkbox"
-                        aria-label={`Present in ${MODE_NAMES[mode]}`}
+                        aria-label={`Available in ${MODE_NAMES[mode]}`}
                         checked={present}
                         onChange={(event) => setMode(mode, { present: event.target.checked })}
                         className={environmentCheckboxClasses[mode]}
                       />
-                      Present
+                      Available
                     </label>
                     {linked ? (
                       <label className={modeOptionClasses}>
@@ -248,8 +248,8 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
             <p id={`${help}-modes`} className="mt-2 mb-0 text-caption text-graphite">
               {linked ? (
                 <>
-                  An environment without the input never reads it. A required input needs a value in
-                  that environment's file
+                  An input that isn't available in an environment is undefined there, so nothing reads
+                  it. A required input needs a value in that environment's file
                   {secret
                     ? ". Secrets have no defaults."
                     : ", or a default. Defaults are optional and stand in when the file leaves the value blank."}
@@ -294,7 +294,7 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
               />
               <datalist id={`${help}-groups`}>
                 {model.resources
-                  .filter((item) => item.kind === "group")
+                  .filter((item) => item.kind === "group" && !item.frameworkInput)
                   .map((item) => (
                     <option key={item.id} value={item.path[0]} />
                   ))}

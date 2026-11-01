@@ -55,8 +55,8 @@ test("connection labels reflect relationships and both endpoints in each graph",
     }
     assert.equal(group.badge, group.availability.dev && group.availability.prod ? undefined : group.availability.dev ? "dev" : group.availability.prod ? "prod" : "off");
   }
-  assert.equal(dev.edges.find((group) => group.from === "resource:cognito" && group.to === "client-envfile")?.members.length, 4);
-  assert.equal(connectionLabel(dev.edges.find((group) => group.from === "resource:cognito" && group.to === "client-envfile")!), "4");
+  assert.equal(dev.edges.find((group) => group.from === "resource:cognito" && group.to === "client-envfile")?.members.length, 5);
+  assert.equal(connectionLabel(dev.edges.find((group) => group.from === "resource:cognito" && group.to === "client-envfile")!), "5");
 });
 
 test("aggregation keeps per-mode evidence, direction and stable identities", () => {

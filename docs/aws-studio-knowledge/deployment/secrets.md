@@ -7,6 +7,8 @@ source:
   - framework-config/resources.ts
   - packages/framework/src/config/resources.ts
   - cdk-app/deployment-inputs.ts
+  - cdk-app/framework-inputs.ts
+  - framework-config/resources/sign-in-providers.ts
   - scripts/deployment-secrets.ts
   - scripts/deployment-workspace.ts
   - scripts/deploy.ts
@@ -32,7 +34,32 @@ declared in [cdk-app/deployment-inputs.ts](../../../cdk-app/deployment-inputs.ts
 They influence the graph rather than becoming workload variables automatically.
 
 The CDK file inspectors, under the shared **Environment files** island, show assignments and their declaration
-owners, including unknown or mode-inapplicable assignments. A name appearing in
+owners, including unknown or mode-inapplicable assignments.
+
+Every variable the framework itself reads, rather than a workload, has exactly one owner: the
+deployment settings in [cdk-app/deployment-inputs.ts](../../../cdk-app/deployment-inputs.ts), the
+production database overrides (`DATABASE_SETTING_INPUTS`), or the local development tooling in
+[cdk-app/framework-inputs.ts](../../../cdk-app/framework-inputs.ts) (Compose host ports, the local AWS
+profile and region, warm Lambda processes and the seeded test user). Studio projects them as three
+framework-managed input groups on the inputs island (`framework:deployment`, `framework:database`,
+`framework:local`), each entry an input with no default. `REQUIRED_FRAMEWORK_INPUTS` in that file lists
+the lines each environment's file must write (the uncommented framework lines of its template), so a
+file or template that drops one shows a missing value on its supply connection and an error on the
+group. Their behavior is read-only in Studio; values are edited in place through the file, like any
+input's. Synthesis keeps the fallbacks its own declarations give. A catalog `fromEnv` or `secret` of
+the same name stays the catalog's. `framework-studio/test/framework-settings.test.ts` keeps both
+templates in step with the required list and requires every variable they name to belong to exactly
+one place.
+
+The sign-in providers are the one framework group declared in the catalog, because their client
+secrets are `resource.secret` entries: `resources.signInProviders` in
+[framework-config/resources/sign-in-providers.ts](../../../framework-config/resources/sign-in-providers.ts)
+holds each provider's client ID (and Microsoft's tenant ID) as inputs and its client secret as a
+secret. Studio marks the group and its entries framework managed (`frameworkInput: "authentication"`),
+so they open in the read-only framework views. A provider's lines are all or nothing per file, as
+`cdk-app/deployment.ts` resolves them: once a file sets one, Studio requires the rest there, and a
+partly set provider is a missing value on its connection and stops synthesis. Google's secret keeps
+its earlier managed binding through `bindingPath: ["googleClientSecret"]`. A name appearing in
 that file does not make it a workload input or a public client field. Required
 inputs can be missing before deployment; Studio exposes the missing requirement
 and active consumers without including the value in its public snapshot. See

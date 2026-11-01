@@ -31,7 +31,8 @@ not already exist (Studio's CDK environment files island has a Generate button f
 - Any workload settings, such as the example agent's LangGraph model provider. With
   LANGGRAPH_MODEL_PROVIDER=openai, also set OPENAI_API_KEY and deploy: the agent reads the
   key from Secrets Manager by ARN, locally as in AWS.
-- Optional Google OAuth credentials. Leave custom domains off for routine development.
+- Optional sign-in provider credentials (Google, Microsoft, Meta). Leave custom domains off for
+  routine development.
 - SKIP_EMAIL_VERIFICATION=true if new users should skip the emailed code. Without it, sign-up
   sends Cognito's own verification code, which the Verify page accepts. It is refused in
   production, and federated sign-in never links to an account confirmed this way.

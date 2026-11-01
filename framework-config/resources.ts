@@ -1,7 +1,8 @@
 import { defineResources } from "@repo/framework/config";
 import { FRAMEWORK_MODE } from "@repo/framework/config/source";
 import { cognito, rds, referenceExamples } from "./resources/stacks";
-import { client, enableWebSocketApi, googleClientSecret, langgraph, openaiApiKey } from "./resources/inputs";
+import { client, enableWebSocketApi, langgraph, openaiApiKey } from "./resources/inputs";
+import { signInProviders } from "./resources/sign-in-providers";
 
 /**
  * The application's resource catalog: what this application's workloads need
@@ -41,8 +42,9 @@ export const resources = defineResources({
   cognito,
   rds,
   openaiApiKey,
-  googleClientSecret,
   enableWebSocketApi,
   client,
   langgraph,
+  // The framework's: the Cognito stack reads it by this name. See resources/sign-in-providers.ts.
+  signInProviders,
 }, { mode: FRAMEWORK_MODE });

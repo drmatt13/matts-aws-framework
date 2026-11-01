@@ -41,7 +41,7 @@ export function discovery(): DiscoveryView {
     targets: [{ name: "browser-dev", mode: "dev", origin: "personal", status: "absent" }, { name: "browser-prod", mode: "prod", origin: "declared", status: "absent" }] };
 }
 export function identity(mode: "dev" | "prod"): IdentitySource {
-  return { mode, file: `cdk-app/.env.${mode}`, hash: `identity-${mode}`, exists: true, inputs: {}, google: { clientIdPresent: false, authoredSecretPresent: false }, providers: [], declaredProviders: [], identityPools: "not-declared", problems: [] };
+  return { mode, file: `cdk-app/.env.${mode}`, hash: `identity-${mode}`, exists: true, inputs: {}, signInProviders: [], providers: [], declaredProviders: [], identityPools: "not-declared", problems: [] };
 }
 export function workbench(): DatabaseWorkbench {
   return { file: schema.file, source: 'model Note {\n  id String @id\n  title String\n}\n', revision: "db-browser", configRevision: "browser-config", targets: [],

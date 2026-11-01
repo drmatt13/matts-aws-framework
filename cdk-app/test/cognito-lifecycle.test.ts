@@ -21,13 +21,14 @@ const reference: CognitoReference = {
 function managed(retain: boolean, lateTrigger = false) {
   const app = new App();
   const events = new Stack(app, "Events", { env });
-  for (const id of ["cognito-pre-signup-trigger", "cognito-custom-message", "cognito-post-confirmation-trigger"]) {
+  for (const id of ["cognito-pre-signup-trigger", "cognito-custom-message", "cognito-post-confirmation-trigger", "cognito-pre-token-generation"]) {
     const fn = new Function(events, id, { runtime: Runtime.NODEJS_24_X, handler: "index.handler", code: Code.fromInline("exports.handler=async(event)=>event") });
     appEventRegistry(events).lambda(id, fn);
   }
   const stack = new CognitoStack(app, "FixtureCognito", {
     env, retainStatefulResources: retain,
-    googleClientId: "fixture-google-client", googleClientSecret: SecretValue.unsafePlainText("fixture-placeholder-never-deployed"),
+    signInProviders: { google: { clientId: "fixture-google-client" }, microsoft: { clientId: "fixture-microsoft-client", tenantId: "00000000-1111-2222-3333-444444444444" }, meta: { appId: "fixture-meta-app" } },
+    signInProviderSecrets: Object.fromEntries(["google", "microsoft", "meta"].map(id => [id, SecretValue.unsafePlainText("fixture-placeholder-never-deployed")])),
     additionalProviders: [{ id: "enterprise-saml", name: "EnterpriseSAML", scope: "dev", type: "saml", metadataUrl: "https://idp.example.com/metadata", attributes: { email: "email", givenName: "given_name", familyName: "family_name", emailVerified: "email_verified" } }],
   });
   if (lateTrigger) {
@@ -54,7 +55,8 @@ test("pool retention preserves native client, domain, providers and invoke grant
     }
   }
   assert.ok(Object.values<any>(retained.template.Resources).some(resource => resource.Type === "AWS::Cognito::UserPoolIdentityProvider"));
-  assert.equal(Object.values<any>(retained.template.Resources).filter(resource => resource.Type === "AWS::Lambda::Permission").length, 3);
+  assert.equal(Object.values<any>(retained.template.Resources).filter(resource => resource.Type === "AWS::Cognito::UserPoolIdentityProvider").length, 4, "Google, Microsoft, Meta and the additional provider");
+  assert.equal(Object.values<any>(retained.template.Resources).filter(resource => resource.Type === "AWS::Lambda::Permission").length, 4);
   // Pool retention cannot preserve a function owned by a different stack. The
   // teardown dependency review must keep or refuse these external dependencies.
   for (const resource of Object.values<any>(retained.events.Resources)) if (resource.Type === "AWS::Lambda::Function") assert.notEqual(resource.DeletionPolicy, "Retain");
@@ -63,7 +65,7 @@ test("pool retention preserves native client, domain, providers and invoke grant
 test("retention also preserves pool invoke permissions attached after native stack construction", () => {
   const { template } = managed(true, true);
   const grants = Object.values<any>(template.Resources).filter(resource => resource.Type === "AWS::Lambda::Permission");
-  assert.equal(grants.length, 4);
+  assert.equal(grants.length, 5);
   assert.ok(grants.every(resource => resource.DeletionPolicy === "Retain" && resource.UpdateReplacePolicy === "Retain"));
 });
 
@@ -73,7 +75,7 @@ test("reference mode preserves explicit pool/client/domain identity and emits no
     env, reference,
     // Existing source settings must never result in external pool writes or
     // managed-secret lookups in reference mode.
-    googleClientId: "existing-source-google-client",
+    signInProviders: { google: { clientId: "existing-source-google-client" } },
     additionalProviders: [{ id: "invalid-provider-is-not-applied" } as never],
     frontendUrl: "https://app.example.com", trustedFrontendUrls: ["https://app.example.com"],
   });
@@ -91,6 +93,7 @@ test("reference mode preserves explicit pool/client/domain identity and emits no
   assert.equal(template.Outputs.OAuthProviderRedirectUri.Value, `${reference.userPoolDomainUrl}/oauth2/idpresponse`);
   assert.equal(template.Outputs.UserPoolManagement.Value, "external-reference");
   assert.equal(template.Outputs.UserPoolOriginalDeployment.Value, reference.originalDeployment);
+  assert.equal(template.Outputs.SignInProviders.Value, "google", "The client offers the providers source expects of the referenced pool.");
 });
 
 test("reference mode preserves custom domain endpoint only when explicitly observed", () => {

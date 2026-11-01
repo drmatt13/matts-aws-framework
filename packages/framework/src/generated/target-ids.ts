@@ -11,6 +11,7 @@ export const LAMBDA_SOURCE_DIRECTORY_BY_ID = {
   "cognito-custom-message": "/lambda_functions/event_functions/cognito-custom-message",
   "cognito-post-confirmation-trigger": "/lambda_functions/event_functions/cognito-post-confirmation-trigger",
   "cognito-pre-signup-trigger": "/lambda_functions/event_functions/cognito-pre-signup-trigger",
+  "cognito-pre-token-generation": "/lambda_functions/event_functions/cognito-pre-token-generation",
   "graphql-api": "/lambda_functions/http_functions/graphql-api",
   "invocation-test-step": "/lambda_functions/event_functions/invocation-test-step",
   "mfa": "/lambda_functions/http_functions/mfa",
@@ -36,6 +37,7 @@ export const LAMBDA_TARGET_IDS = [
   "cognito-custom-message",
   "cognito-post-confirmation-trigger",
   "cognito-pre-signup-trigger",
+  "cognito-pre-token-generation",
   "graphql-api",
   "invocation-test-step",
   "mfa",
@@ -63,6 +65,7 @@ export const LAMBDA_SOURCE_DIRECTORIES = [
   "/lambda_functions/event_functions/cognito-custom-message",
   "/lambda_functions/event_functions/cognito-post-confirmation-trigger",
   "/lambda_functions/event_functions/cognito-pre-signup-trigger",
+  "/lambda_functions/event_functions/cognito-pre-token-generation",
   "/lambda_functions/http_functions/graphql-api",
   "/lambda_functions/event_functions/invocation-test-step",
   "/lambda_functions/http_functions/mfa",
@@ -93,6 +96,7 @@ export const EVENT_LAMBDA_IDS = [
   "cognito-custom-message",
   "cognito-post-confirmation-trigger",
   "cognito-pre-signup-trigger",
+  "cognito-pre-token-generation",
   "invocation-test-step",
 ] as const;
 

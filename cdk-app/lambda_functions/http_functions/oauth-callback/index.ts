@@ -126,7 +126,9 @@ export const lambdaHandler = async (
     }
 
     const email = typeof payload.email === "string" ? payload.email : "";
-    if (!email || payload.email_verified !== true) {
+    // A Meta sign-in's claim is the string "true": the pre-token-generation
+    // trigger sets it, and that trigger's claim overrides are strings.
+    if (!email || (payload.email_verified !== true && payload.email_verified !== "true")) {
       return jsonResponse(401, {
         success: false,
         error: "OAuth provider did not return a verified email address",

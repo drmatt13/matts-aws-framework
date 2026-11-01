@@ -147,7 +147,7 @@ Aurora, named databases, cross-region replication and automatic read routing are
 extensions. This release keeps one logical PostgreSQL database and the `app_user` ownership
 model. Database names and custom parameter groups belong in application CDK source.
 
-## Custom domains and Google
+## Custom domains and sign-in providers
 
 Cognito and frontend custom-domain inputs apply to production. Existing development
 deployments created before that rule can still own a custom Cognito domain.
@@ -183,18 +183,39 @@ or an old CloudFront distribution. Create the Cognito DNS alias after deployment
 its own target. A conflicting distribution/DNS alias can cause a generic InvalidRequest;
 see [AWS's CloudFront troubleshooting](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/troubleshooting-distributions.html).
 
-For Google, configure a Web application OAuth client and put its credentials only in
-backend deployment inputs. Keep the two redirect URLs distinct:
+The framework federates Google, Microsoft and Meta sign-in
+([framework-config/resources/sign-in-providers.ts](../framework-config/resources/sign-in-providers.ts)).
+Each is optional and set per environment in `cdk-app/.env.<mode>`: a provider is built when its
+file sets all of its lines, left out when it sets none, and a partly set one stops synthesis.
+Client secrets are catalog secrets that `npm run deploy:resources` uploads; the template carries
+only a reference. Register the CognitoStack `OAuthProviderRedirectUri` output with each provider,
+and keep it distinct from the app callback:
 
 | Purpose | Example |
 | --- | --- |
-| Google authorized redirect URI | https://auth.example.com/oauth2/idpresponse |
+| Provider redirect URI (Google, Entra, Meta) | https://auth.example.com/oauth2/idpresponse |
 | Cognito app-client callback | https://example.com/auth/callback |
 
-With a generated Cognito domain, use that domain in the Google URI. If Google consent is
-in testing mode, include the intended test accounts. Start real sign-in from the application's
-login button so state and PKCE are present. Preserve Cognito's emailVerified mapping for
-federated identity checks. Auth implementation details live in [Framework](FRAMEWORK.md#authentication).
+With a generated Cognito domain, use that domain in the provider URI.
+
+- **Google** (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`): a Web application OAuth client. If its
+  consent screen is in testing mode, include the intended test accounts.
+- **Microsoft** (`MICROSOFT_CLIENT_ID`, `MICROSOFT_TENANT_ID`, `MICROSOFT_CLIENT_SECRET`): a
+  single-tenant Entra app registration. The tenant ID is the directory GUID; `common`,
+  `organizations` and `consumers` are refused, because Cognito trusts one issuer. Add the
+  `email`, `given_name`, `family_name` and `xms_edov` optional claims to its ID token: Cognito
+  maps `xms_edov` to `email_verified`, and without it every Microsoft identity is refused as
+  unverified. Entra client secrets expire; rotate the value and deploy before they do.
+- **Meta** (`META_APP_ID`, `META_APP_SECRET`): a Meta app with Facebook Login and the `email`
+  permission, listing the redirect URI as a valid OAuth redirect URI. Facebook Login returns only
+  confirmed addresses but no claim saying so, so the `cognito-pre-token-generation` trigger marks
+  a Facebook user's email verified in its ID token.
+
+Only Google identities link to an existing account with the same verified email; Microsoft and
+Meta identities always sign in as users of their own. CognitoStack's `SignInProviders` output
+becomes the client's `VITE_SIGN_IN_PROVIDERS` on export, so the login page offers exactly the
+deployed providers. Start real sign-in from the application's login button so state and PKCE are
+present. Auth implementation details live in [Framework](FRAMEWORK.md#authentication).
 
 ## Deploy
 

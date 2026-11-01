@@ -4,6 +4,7 @@ import { entryCount, groupEntries, groupUse, nameList } from "../input-groups";
 import type { SceneNode } from "./types";
 import type { Availability } from "../deployment";
 import { isFrameworkManagedResource } from "../../shared/framework-management";
+import { FRAMEWORK_INPUT_GROUPS } from "../../shared/deployment-inputs";
 
 /**
  * What a hover label says about an item beyond its authored description: where
@@ -63,7 +64,8 @@ function groupEntryDetail(entry: ModelResource | undefined, mode: Mode, index: M
     case "missing": {
       const name = requirement.name || entry.fromEnv || entry.path.at(-1)!;
       const file = requirement.file || index.resources.get(`envfile:${mode}`)?.deploymentFile?.path || `cdk-app/.env.${mode}`;
-      return detail(`Required value missing: ${name} · ${file}`, true);
+      // The file is one remedy and a default the other; a secret takes no default.
+      return detail(entry.kind === "secret" ? `${name} is unset in ${file}.` : `${name} is unset in ${file}, and no default stands in.`, true);
     }
     case "unknown":
     default: return detail("Value status unavailable.");
@@ -238,7 +240,9 @@ export function groupHoverLines(group: ModelResource, model: ModeModel, index: M
     use.readers.length ? `Read by ${nameList(use.readers.map((reader) => titleOf(index, reader.id)))}.` : undefined,
     ...use.feeds.filter((feed) => feed.relation === "maps").map((feed) => `Maps ${nameList(feed.entries.map(name))} into ${titleOf(index, feed.id)}.`),
     use.feeds.some((feed) => feed.relation === "deployWhen") ? `Controls deployment of ${nameList(use.feeds.filter((feed) => feed.relation === "deployWhen").map((feed) => titleOf(index, feed.id)))}.` : undefined,
-    !use.readers.length && !use.feeds.length && entries.some((entry) => !entry.absent) ? "No workload reads these entries yet." : undefined,
+    // The framework itself reads a framework-managed group; workloads never do.
+    group.frameworkInput ? `Read by ${FRAMEWORK_INPUT_GROUPS[group.frameworkInput].reader}; workloads never read it.` : undefined,
+    !group.frameworkInput && !use.readers.length && !use.feeds.length && entries.some((entry) => !entry.absent) ? "No workload reads these entries yet." : undefined,
   ].filter((line): line is string => !!line);
   return { lines, notes: [] };
 }

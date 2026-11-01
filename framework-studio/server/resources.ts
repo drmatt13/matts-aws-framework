@@ -49,7 +49,10 @@ export class ResourceService {
   }
   expirePlans(): void { this.plans.clear(); this.batches.expirePlans(); }
   details(id: string, mode: Mode): ResourceDetails {
-    const resource = this.resource(id, mode);
+    // A framework-managed input is projected, not declared in source, but its value is a file line like any input's.
+    const framework = [this.state().snapshot.models[mode], this.state().snapshot.models[mode === "dev" ? "prod" : "dev"]]
+      .flatMap((graph) => graph.resources).find((item) => item.id === id && item.frameworkInput && item.kind === "input" && !item.absent);
+    const resource = framework ?? this.resource(id, mode);
     if (!resource.fromEnv) {
       const policy = resource.modes?.[mode];
       const value = policy ? policy.value : resource.authoredValue;

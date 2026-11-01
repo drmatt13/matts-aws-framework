@@ -139,14 +139,16 @@ test("a group with a missing required value is an error, in names and files only
   const entries = [entry("apiPort", "input", "missing"), entry("wsPort", "input", "missing"), entry("token", "secret", "configured"), entry("prodOnly", "input", "missing", true)];
   const [issue] = resourceIssues(group, [group, ...entries]);
   assert.deepEqual([issue!.severity, issue!.title, issue!.badge, ...issue!.details], ["error", "Required values missing", "error",
-    "2 inputs are missing their required values in cdk-app/.env.dev.", "Set them there, or define defaults on the parameters."], "an entry absent from this graph is not counted");
+    "2 inputs have no value: cdk-app/.env.dev leaves them unset and no default stands in.", "Set them in cdk-app/.env.dev, or give them defaults."], "an entry absent from this graph is not counted; the file and a default are both named as remedies");
   assert.ok(!JSON.stringify(issue).includes(SECRET), "private reasons never reach previews");
   assert.deepEqual(cornerBadges({ issues: [issue!] }), { right: "error" });
   assert.deepEqual(resourceIssues(group), [], "without the catalog a group has nothing to read");
   const [own] = resourceIssues(entries[0]!);
-  assert.deepEqual(own!.details, ["APIPORT is required for Development, and cdk-app/.env.dev gives it no value.", "Set it in cdk-app/.env.dev, or define a default on the parameter."]);
+  assert.deepEqual(own!.details, ["APIPORT has no value for Development: cdk-app/.env.dev leaves it unset and no default stands in.", "Set it in cdk-app/.env.dev, or give the parameter a default."]);
   const secret = entry("apiKey", "secret", "missing");
-  assert.equal(resourceIssues(secret)[0]!.details[1], "Set it in cdk-app/.env.dev; a secret never takes a source default.");
+  assert.deepEqual(resourceIssues(secret)[0]!.details, ["APIKEY has no value for Development: cdk-app/.env.dev leaves it unset.", "Set it in cdk-app/.env.dev; a secret never takes a source default."], "a secret is never offered a default");
+  const mixed = resourceIssues(group, [group, entries[0]!, secret])[0]!;
+  assert.deepEqual(mixed.details, ["1 input and 1 secret have no value: cdk-app/.env.dev leaves them unset and no default stands in.", "Set them in cdk-app/.env.dev, or give the inputs defaults."]);
   assert.deepEqual(resourceIssues(entries[2]!), []);
   assert.deepEqual(resourceIssues(entries[3]!), [], "absent in this graph, so nothing is missing here");
 });

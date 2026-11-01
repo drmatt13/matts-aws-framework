@@ -35,17 +35,43 @@ export interface DeploymentInputEntry {
   readonly choices?: readonly string[];
   /**
    * Who reads a variable the catalog does not declare: the application's deployment settings
-   * (cdk-app/deployment-inputs.ts) or the production database's overrides. Absent for one nothing
-   * recognizes.
+   * (cdk-app/deployment-inputs.ts), the production database's overrides, or the local development
+   * tooling (cdk-app/local-inputs.ts). Absent for one nothing recognizes.
    */
-  readonly owner?: "deployment" | "database";
+  readonly owner?: FrameworkSettingOwner;
   /** One line from the declaring owner, for a variable the catalog does not declare. */
   readonly note?: string;
-  /** Written here, but this file's graph never reads it: an input declared `.only()` the other graph, or a database override in development. */
+  /** Written here, but this file's graph never reads it: an input declared `.only()` the other graph, a database override in development, or a local tooling setting in production. */
   readonly notRead?: true;
   readonly source?: SourceLocation;
   readonly requirements?: readonly InputRequirement[];
 }
+
+/** What reads a framework setting, and so which framework-managed input group holds it. */
+export type FrameworkSettingOwner = "deployment" | "database" | "local" | "authentication";
+
+/**
+ * The framework-managed input groups: the variables the framework itself reads from the CDK
+ * inputs files, by reader. Projected beside the catalog's groups, never declared in it, except
+ * the sign-in providers: their client secrets are catalog secrets, so the framework declares that
+ * group in the catalog under a key of its own.
+ */
+export const FRAMEWORK_INPUT_GROUPS: Readonly<Record<FrameworkSettingOwner, {
+  readonly id: string;
+  readonly title: string;
+  /** What reads them, for "Read by …" copy. */
+  readonly reader: string;
+  /** The environments whose inputs file supplies them. */
+  readonly modes: readonly Mode[];
+  /** How the reader combines them, where a rule beyond "required lines are required" applies. */
+  readonly rule?: string;
+}>> = {
+  deployment: { id: "framework:deployment", title: "Deployment settings", reader: "cdk-app/deployment-inputs.ts at synthesis", modes: ["dev", "prod"] },
+  database: { id: "framework:database", title: "Production database", reader: "the production database declaration at synthesis", modes: ["prod"] },
+  local: { id: "framework:local", title: "Local development", reader: "Docker Compose and the local tooling", modes: ["dev"] },
+  authentication: { id: "resource:signInProviders", title: "Sign-in providers", reader: "the Cognito stack at synthesis", modes: ["dev", "prod"],
+    rule: "Each provider is included where its file sets all of its lines and left out where it sets none; once one is set, the rest are required there. Client secrets reach Secrets Manager through npm run deploy:resources." },
+};
 
 /** Names, presence and source locations only. Values never enter the graph. */
 export interface DeploymentInputFile {

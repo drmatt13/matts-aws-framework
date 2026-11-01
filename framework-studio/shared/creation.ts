@@ -1,7 +1,14 @@
 import { validateTags, type DeclarationTags } from "@repo/framework/config/tags";
 import type { ModeModel } from "./model";
 
+/**
+ * Cognito's own provider and the framework's sign-in providers' names (see
+ * framework-config/resources/sign-in-providers.ts), which a declared provider cannot take.
+ */
+export const RESERVED_PROVIDER_NAMES: readonly string[] = ["COGNITO", "Google", "MicrosoftEntraID", "Facebook"];
+
 /** Source creation uses the inspector's batch transaction, never a file-writing API. */
+
 export const CREATION_KINDS = ["function", "stack", "vpc", "workflow", "service", "task", "route", "agent", "tool", "input", "secret", "auth-provider"] as const;
 export type CreationKind = typeof CREATION_KINDS[number];
 export type CreationDeploy = "both" | "local-only" | "cloud-only" | "none";
@@ -184,7 +191,7 @@ export function readCreationRequest(raw: unknown): CreationRequest {
   }
   if (kind === "stack" && !/^[A-Z][A-Za-z0-9]*Stack$/.test(String(result.className))) return fail("className", "Use a PascalCase class name ending in Stack.");
   if (kind === "auth-provider") {
-    if (!/^[A-Za-z][A-Za-z0-9_-]{2,31}$/.test(String(result.providerName)) || ["Google", "COGNITO"].includes(String(result.providerName))) return fail("providerName", "Use a unique provider name of 3–32 safe characters; Google and COGNITO are reserved.");
+    if (!/^[A-Za-z][A-Za-z0-9_-]{2,31}$/.test(String(result.providerName)) || RESERVED_PROVIDER_NAMES.includes(String(result.providerName))) return fail("providerName", `Use a unique provider name of 3–32 safe characters; ${RESERVED_PROVIDER_NAMES.join(", ")} are reserved.`);
     const field = result.providerType === "oidc" ? "issuer" : "metadataUrl";
     try { const url = new URL(String(result[field])); if (url.protocol !== "https:" || url.username || url.password || url.hash || (url.port && !["80", "443"].includes(url.port)) || (field === "issuer" && url.search)) return fail(field, "Use an HTTPS URL without credentials or a fragment; OIDC issuers cannot contain a query."); }
     catch { return fail(field, "Use an absolute HTTPS URL."); }

@@ -17,7 +17,7 @@ function stack(suffix: string, values: Record<string, string>, mode = "prod"): D
 }
 function deployed() {
   return [
-    stack("CognitoStack", { UserPoolId: "eu-west-2_pool", UserPoolClientId: "client", UserPoolDomainUrl: "https://example.auth.eu-west-2.amazoncognito.com", SecretArn: "never-export-this" }),
+    stack("CognitoStack", { UserPoolId: "eu-west-2_pool", UserPoolClientId: "client", UserPoolDomainUrl: "https://example.auth.eu-west-2.amazoncognito.com", SignInProviders: "none", SecretArn: "never-export-this" }),
     stack("FrontendWebsiteS3Stack", { FrontendWebsiteBucketName: "website-bucket", CloudFrontUrl: "https://example.cloudfront.net", CloudFrontId: "distribution", CloudFrontDomainName: "example.cloudfront.net" }),
     stack("RdsStack", { Password: "never-export-this", RdsDatabaseEndpoint: "private-db" }),
   ];
@@ -48,7 +48,7 @@ test("production export writes the settings Vite reads for a build, and nothing 
   assert.match(rendered, /vite build/);
   assert.deepEqual([...rendered.matchAll(/^([A-Z_]+)=/gm)].map(match => match[1]), [
     "VITE_API_GATEWAY_URL", "VITE_LOCAL_WS_URL", "VITE_API_GATEWAY_WS_URL", "VITE_WS_TESTER_URL",
-    "VITE_AWS_REGION", "VITE_USER_POOL_ID", "VITE_USER_POOL_CLIENT_ID", "VITE_COGNITO_DOMAIN",
+    "VITE_AWS_REGION", "VITE_USER_POOL_ID", "VITE_USER_POOL_CLIENT_ID", "VITE_COGNITO_DOMAIN", "VITE_SIGN_IN_PROVIDERS",
   ]);
   const values = parseEnv(rendered);
   assert.equal(values.VITE_USER_POOL_ID, "eu-west-2_pool");

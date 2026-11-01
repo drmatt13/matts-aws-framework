@@ -1146,6 +1146,7 @@ from offline/local tests. Use a disposable fixture for deliberate failures.
 | docker-compose.services.yml | Generated: one container per service that runs locally, included by docker-compose.yml |
 | cdk-app/deployment-inputs.ts | The deployment settings (CDK_APP_NAME, domains, SES sender, retention, …), declared with the catalog's builders: default, choices and a note for each |
 | cdk-app/deployment.ts | What each deployment setting means for the graph: validation, production refusals and compatibility aliases |
+| cdk-app/framework-inputs.ts | The local development tooling's settings (Compose host ports, local AWS profile and region, warm Lambda processes, seeded test user), declared the same way with no defaults, and `REQUIRED_FRAMEWORK_INPUTS`: the framework lines each inputs file must write, matching its template. AWS Studio shows every framework setting as a framework-managed input group and flags a required one a file leaves unset |
 
 Each command states the graph it builds as CDK context: development unless it says
 `-c prodDeployment=true` (the deprecated `-c useLocalDevStack` is its inverse). The deployment
@@ -1316,6 +1317,16 @@ it adds no database replication, traffic failover, or connectivity between VPCs.
 
 ## Authentication
 
+The framework's own sign-in providers, Google, Microsoft (one Entra tenant, as OIDC) and Meta
+(Facebook Login), are declared in `framework-config/resources/sign-in-providers.ts` and composed
+into the catalog as `resources.signInProviders`: client IDs as inputs and client secrets as
+`resource.secret`. `cdk-app/deployment.ts` resolves them per inputs file, all or nothing per
+provider, and `CognitoStack` builds the configured ones under their Cognito names (`Google`,
+`MicrosoftEntraID`, `Facebook`) and publishes them as its `SignInProviders` output. The client
+export maps that output to `VITE_SIGN_IN_PROVIDERS`, and the login page offers exactly those, so
+the infrastructure, never the frontend, decides which providers exist. Studio shows the group as
+framework managed. Setup per provider is in [Production](PROD-DEPLOYMENT.md#custom-domains-and-sign-in-providers).
+
 Additional OIDC/SAML federation is declared as a literal, environment-scoped array
 in `framework-config/auth-providers.ts`; the native Cognito stack and its existing
 app client consume it without changing Google/pool/client construct identities.
@@ -1365,7 +1376,11 @@ GraphQL resolvers receive an authenticated session and separately enforce record
   own email is verified, and never happens while SKIP_EMAIL_VERIFICATION is on. A changed
   email takes effect only once verified (`keepOriginal`). The pre-signup trigger resolves
   provider names from Cognito, preserving configured casing; unproven linking is skipped.
-  The provider must map emailVerified along with profile fields.
+  The provider must map emailVerified along with profile fields. Of the framework's providers,
+  only Google links: Microsoft's `xms_edov` is each tenant's claim and Meta's address is verified
+  only by the `cognito-pre-token-generation` trigger, which sets `email_verified` to the string
+  `"true"` in a Facebook user's ID token. The verified-email gates (`currentUser` provisioning and
+  the OAuth callback) accept `true` or exactly `"true"`.
 - Passwords need 12 characters and no particular character classes. Two-step verification
   is optional and uses authenticator apps (TOTP); users turn it on from the Security panel,
   which calls the `/mfa` route, and the login page answers the challenge.

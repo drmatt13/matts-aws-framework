@@ -35,7 +35,11 @@ function entryStatus(
   const status = entry.inputRequirement?.status;
   if (status === "configured") return { text: `Set in ${file}` };
   if (status === "default") return { text: `Default · ${entry.default ?? "declared default"}` };
-  if (status === "missing") return { text: `Required value missing in ${file}`, tone: "missing" };
+  if (status === "missing")
+    return {
+      text: `Required value missing: unset in ${file}${entry.kind === "secret" ? "" : ", no default"}`,
+      tone: "missing",
+    };
   if (status === "optional") return { text: `Not set · optional` };
   return { text: "Not checked in this graph" };
 }
@@ -47,8 +51,9 @@ export function InputGroupEntries({ group }: { readonly group: ModelResource }) 
   const file =
     index.resources.get(`envfile:${model.mode}`)?.deploymentFile?.path ??
     `cdk-app/.env.${model.mode}`;
-  // Creation writes one level of catalog group; a nested group is edited in source.
-  const addable = group.path.length === 1;
+  // Creation writes one level of catalog group; a nested group is edited in source, and a
+  // framework-managed group holds exactly what the framework reads.
+  const addable = group.path.length === 1 && !group.frameworkInput;
   const disabled =
     !!draftState.busy ||
     live.evaluating ||
@@ -62,7 +67,7 @@ export function InputGroupEntries({ group }: { readonly group: ModelResource }) 
   return (
     <InspectorSection
       title="Entries"
-      description={`${entryCount(groupEntries(group, model.resources))}. Select an entry to edit its source, value, requirements or consumers.`}
+      description={`${entryCount(groupEntries(group, model.resources))}. ${group.frameworkInput ? "Select an entry to set its value." : "Select an entry to edit its source, value, requirements or consumers."}`}
       actions={
         addable ? (
           <button className={buttonClasses({ variant: "quiet" })} disabled={disabled} onClick={add}>
@@ -134,8 +139,12 @@ export function InputGroupEntries({ group }: { readonly group: ModelResource }) 
                   >
                     <X size={12} aria-hidden className="flex-none" />
                     <span className="min-w-0 wrap-anywhere" data-slot="inspector-status-copy">
-                      Required value missing <span className="font-normal">in</span>{" "}
-                      <code className="font-normal">{file}</code>
+                      Required value missing
+                      <span className="font-normal">
+                        {" "}
+                        · unset in <code>{file}</code>
+                        {child.kind === "secret" ? "" : ", no default"}
+                      </span>
                     </span>
                   </span>
                 ) : (

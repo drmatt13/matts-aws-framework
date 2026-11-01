@@ -1,10 +1,11 @@
 import * as cdk from "aws-cdk-lib";
 import { createHash } from "crypto";
-import { resolveInput, resourceEnvContextKey, type CloudMode, type ResourceReference } from "@repo/framework/config";
+import { defineResources, resolveInput, resourceEnvContextKey, type CloudMode, type ResourceReference } from "@repo/framework/config";
 import { modeFromContext, type DeploymentTarget } from "@repo/framework/deploy";
 import { resolveDatabaseSettings, type DatabaseSettingsInput } from "./database-settings";
 import { resolveStatefulResources, type StatefulResourcesConfiguration } from "./stateful-resources";
 import { deploymentInputs } from "./deployment-inputs";
+import { SIGN_IN_PROVIDERS, signInProviderKeys, signInProviders as signInProviderDeclarations, type SignInProviderId, type SignInProviderSettings } from "../framework-config/resources/sign-in-providers";
 
 /** Application-owned deployment policy. See docs/FRAMEWORK.md#configuration-and-environment.
  * Importing this module never reads .env, creates an App, or generates code.
@@ -267,13 +268,11 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     );
   }
 
-  const googleClientId = text(settings.googleClientId);
-  // The matching secret is deliberately absent here. It used to be read from
-  // GOOGLE_CLIENT_SECRET and wrapped in SecretValue.unsafePlainText, which put
-  // it in the template in cleartext for anyone who can read the stack. It is a
-  // declared secret now - see resources.googleClientSecret - so the value
-  // reaches Secrets Manager through npm run deploy:resources, and the template
-  // carries a resolve reference to it instead.
+  // Federated sign-in: each provider in resources.signInProviders is built when
+  // the inputs file sets every one of its lines, and left out when it sets
+  // none. Its client secret is checked for presence only: npm run
+  // deploy:resources uploads it, and the template carries a resolve reference.
+  const signInProviders = resolveSignInProviders(mode, text, env);
 
   // Container placement used to be one deployment-wide input. It is each
   // task's own declaration now — cloud.subnet, inherited from
@@ -329,12 +328,50 @@ export function resolveDeploymentInputs({ getContext, env, target, databaseSetti
     useCognitoCustomDomain,
     cognitoDomainName,
     cognitoDomainCertificateArn,
-    googleClientId,
+    signInProviders,
     warnings,
   };
 }
 
 export type DeploymentInputs = ReturnType<typeof resolveDeploymentInputs>;
+
+// One Entra tenant's issuer: Cognito validates the issuer of every ID token, and
+// the multi-tenant endpoints (common, organizations, consumers) issue each
+// tenant's own, so they cannot be trusted as one provider.
+const ENTRA_TENANT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function resolveSignInProviders(
+  mode: CloudMode,
+  text: (reference: ResourceReference) => string | undefined,
+  env: DeploymentSources["env"],
+): SignInProviderSettings {
+  const declared = defineResources(signInProviderDeclarations, { mode });
+  const result: Record<string, Record<string, string>> = {};
+  for (const id of Object.keys(SIGN_IN_PROVIDERS) as SignInProviderId[]) {
+    const provider = SIGN_IN_PROVIDERS[id];
+    const secret = declared[provider.secret];
+    const values = Object.fromEntries(Object.entries(provider.settings).map(([field, key]) => [field, text(declared[key])]));
+    const lines = signInProviderKeys(id).map((key) => declared[key].fromEnv!);
+    const unset = [
+      ...Object.entries(provider.settings).filter(([field]) => values[field] === undefined).map(([, key]) => declared[key].fromEnv!),
+      ...(optionalString(env[secret.fromEnv!]) ? [] : [secret.fromEnv!]),
+    ];
+    if (unset.length === lines.length) continue;
+    if (unset.length > 0) {
+      throw new Error(
+        `${provider.title} sign-in is partly configured: set ${lines.join(", ")} in the inputs file to enable it, or remove them all. Unset: ${unset.join(", ")}.`,
+      );
+    }
+    result[id] = values as Record<string, string>;
+  }
+  const microsoft = result.microsoft;
+  if (microsoft && !ENTRA_TENANT_ID.test(microsoft.tenantId!)) {
+    throw new Error(
+      `MICROSOFT_TENANT_ID must be your Entra directory (tenant) ID, a GUID. Received: ${microsoft.tenantId}. The common, organizations and consumers endpoints sign in other tenants' users, which Cognito cannot verify as one provider.`,
+    );
+  }
+  return result as SignInProviderSettings;
+}
 
 /** Resolve auth/CORS origins and same-origin routing for either frontend hostname. */
 export function resolveFrontendSettings(

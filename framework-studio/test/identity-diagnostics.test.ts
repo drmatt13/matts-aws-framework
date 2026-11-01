@@ -29,7 +29,11 @@ test("source diagnostics return public allowlist and secret presence, without se
     const service = new IdentityService(root, deploy(), async () => { throw new Error("No AWS reads on source load"); });
     const result = service.source("dev");
     assert.deepEqual(result.providers, ["Google"]);
-    assert.deepEqual(result.google, { clientIdPresent: true, authoredSecretPresent: true });
+    assert.deepEqual(result.signInProviders.map((provider) => [provider.cognitoName, provider.lines.map((line) => `${line.name}:${line.secret ? "secret:" : ""}${line.present}`)]), [
+      ["Google", ["GOOGLE_CLIENT_ID:true", "GOOGLE_CLIENT_SECRET:secret:true"]],
+      ["MicrosoftEntraID", ["MICROSOFT_CLIENT_ID:false", "MICROSOFT_TENANT_ID:false", "MICROSOFT_CLIENT_SECRET:secret:false"]],
+      ["Facebook", ["META_APP_ID:false", "META_APP_SECRET:secret:false"]],
+    ]);
     assert.deepEqual(result.inputs, { RETAIN_STATEFUL_RESOURCES: "false" });
     assert.equal(result.identityPools, "not-declared");
     assert.doesNotMatch(JSON.stringify(result), /secret-sentinel|other-sentinel|fake-public-client/);
@@ -140,4 +144,10 @@ test("domain inspection reports pending/mismatched certificate, missing parent D
     assert.ok(result.health.every(check => check.status === "unverified"));
     assert.equal(result.certificates[0]?.validation[0]?.type, "CNAME");
   } finally { remove(root); }
+});
+
+test("a declared provider can never take a framework sign-in provider's Cognito name", async () => {
+  const { RESERVED_PROVIDER_NAMES } = await import("../shared/creation");
+  const { SIGN_IN_PROVIDERS } = await import("../../framework-config/resources/sign-in-providers");
+  assert.deepEqual([...RESERVED_PROVIDER_NAMES].sort(), ["COGNITO", ...Object.values(SIGN_IN_PROVIDERS).map((provider) => provider.cognitoName)].sort());
 });

@@ -134,13 +134,24 @@ test("currentUser provisions only a verified identity and normalizes provider na
   ]);
 });
 
+test("currentUser provisions a Meta identity, whose verified claim the token trigger sets as a string", async () => {
+  const { run, writes } = fixture({
+    missing: true,
+    payload: { email: user.email, email_verified: "true", given_name: "Meta", family_name: "User" },
+  });
+  assert.equal((await run(query)).errors, undefined);
+  assert.equal(writes.length, 1);
+});
+
 test("currentUser refuses provisioning without a verified email", async () => {
   for (const payload of [
     {},
     { email: user.email },
     { email: user.email, email_verified: false },
-    { email: user.email, email_verified: "true" },
+    { email: user.email, email_verified: "false" },
+    { email: user.email, email_verified: "TRUE" },
     { email_verified: true },
+    { email_verified: "true" },
   ]) {
     const { run, writes } = fixture({ missing: true, payload });
     assert.equal((await run(query)).errors![0].extensions.code, "NOT_FOUND");

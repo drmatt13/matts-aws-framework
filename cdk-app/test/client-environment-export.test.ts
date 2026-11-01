@@ -18,7 +18,7 @@ function stack(name: string, mode: "dev" | "prod", outputs: Record<string, strin
   ] };
 }
 function deployed(mode: "dev" | "prod"): DeploymentStack[] {
-  return [stack("CognitoStack", mode, { UserPoolId: "eu-west-2_pool", UserPoolClientId: "client", UserPoolDomainUrl: "https://example.auth.eu-west-2.amazoncognito.com/" }),
+  return [stack("CognitoStack", mode, { UserPoolId: "eu-west-2_pool", UserPoolClientId: "client", UserPoolDomainUrl: "https://example.auth.eu-west-2.amazoncognito.com/", SignInProviders: "google,microsoft" }),
     stack("FrontendWebsiteS3Stack", mode, { CloudFrontUrl: "https://example.cloudfront.net", FrontendWebsiteBucketName: "website", CloudFrontId: "distribution" }),
     ...(mode === "dev" ? [stack("DevLambdaReplayStack", mode, { ReplayBucketName: "replay", ReplayQueueUrl: "https://sqs.eu-west-2.amazonaws.com/111122223333/replay", ReplayQueueArn: "arn:aws:sqs:eu-west-2:111122223333:replay" })] : [])];
 }
@@ -64,6 +64,7 @@ test("default client mappings preserve endpoint, identity and per-mode behavior"
   assert.equal(dev.VITE_API_GATEWAY_WS_URL, "");
   assert.equal(dev.VITE_AWS_REGION, "eu-west-2");
   assert.equal(dev.VITE_COGNITO_DOMAIN, "https://example.auth.eu-west-2.amazoncognito.com");
+  assert.equal(dev.VITE_SIGN_IN_PROVIDERS, "google,microsoft");
   // One local recipe serves both graphs; production declares none of its ports, so it is blank there.
   const prod = resolveClientEnvironmentMappings(defaults, { deployment: "example", stacks: deployed("prod"), inputs: { PROD_DEPLOYMENT: "true" }, ...catalog("prod") });
   assert.equal(prod.VITE_API_GATEWAY_URL, "https://example.cloudfront.net");

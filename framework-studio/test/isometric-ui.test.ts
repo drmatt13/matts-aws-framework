@@ -167,15 +167,21 @@ test("permission connections show generated principal and scope while local data
   assert.ok(ui.screen.getAllByText(/Lambda execution role/).length);
   assert.ok(ui.screen.getByText(/iam:PassedToService = ecs-tasks.amazonaws.com/));
   assert.ok(ui.screen.getByText("Applies when this workload runs in AWS."));
-  assert.ok(ui.screen.getByText("IAM grant"));
+  assert.equal(ui.screen.queryByText("IAM grant"), null, "an IAM grant is the expected case, so it carries no label");
   assert.equal(ui.screen.queryByText("Cloud IAM intent"), null);
   ui.cleanup();
   const local = response.snapshot.models.dev.edges.find(edge => edge.relation === "database" && edge.to === "local:postgres")!;
   await mount(true, local.id);
   assert.ok(ui.screen.getByRole("heading", { name: "Connects to database" }), "the To row names Local PostgreSQL");
   ui.fireEvent.click(ui.screen.getByText("Permissions", { selector: "[data-slot=\"connection-authorization\"] > summary" }));
-  assert.ok(ui.screen.getAllByText("Local connection").length);
+  assert.ok(ui.screen.getAllByText("Local connection").length, "an exception keeps its label");
   assert.equal(ui.screen.queryByText("rds-db:connect"), null);
+  ui.cleanup();
+  const agent = response.snapshot.models.dev.targets.find(target => target.kind === "agent")!;
+  await mount(true, agent.ref);
+  const rows = [...document.querySelectorAll("[data-slot=\"access-summary\"]")];
+  assert.ok(rows.length > 1, "the workload lists its permissions");
+  assert.equal(document.querySelectorAll("[data-slot=\"access-summary\"] [data-slot=\"authorization-badge\"]").length, 0, "no row repeats IAM grant");
 });
 
 test("connection inspection keeps secret environment names ahead of optional permissions", async () => {
@@ -248,6 +254,36 @@ test("an Errors filter appears only with errors, starts on, and keeps error wire
   ui.fireEvent.click(errors); await draw();
   assert.equal(errors.getAttribute("aria-pressed"), "false");
   assert.notEqual(state.pickAt(at.x, at.y)?.id, wire.id, "off, the wire follows its category filter again");
+});
+
+test("framework-managed input groups stand locked on the inputs island, read only, with errored connections for missing lines", async () => {
+  const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
+  const node = scene.nodes.find(item => item.id === "framework:local")!;
+  assert.deepEqual([node.icon, node.island, cornerBadges(node).right, node.label], ["group", "island:inputs", "managed", "Local development"]);
+  assert.ok(!scene.nodes.some(item => item.id.startsWith("framework:local.")), "entries fold into their group's building");
+  await mount(true, "framework:local");
+  const inspector = ui.within(ui.screen.getByRole("complementary", { name: "Inspector" }));
+  assert.ok(inspector.getByText(/Read by Docker Compose and the local tooling from cdk-app\/\.env\.dev/));
+  assert.equal(inspector.queryByRole("button", { name: "Add input" }), null, "the group holds exactly what the framework reads");
+  const port = inspector.getByRole("button", { name: "postgresHostPort" });
+  ui.fireEvent.click(port);
+  await ui.waitFor(() => assert.equal(ui.screen.getByLabelText("Selection").textContent, "framework:local.postgresHostPort"));
+  const behavior = document.querySelector<HTMLElement>("[data-slot=\"framework-input-behavior\"]")!;
+  assert.ok(behavior, "the input's behavior is shown");
+  assert.equal(behavior.querySelectorAll("input, select, textarea").length, 0, "and cannot be edited: no default can be added");
+  assert.ok(behavior.textContent?.includes("Default") && behavior.textContent.includes("None"));
+  assert.equal(document.querySelector("[data-slot=\"resource-editor\"]"), null, "the catalog's input editor never opens on a framework input");
+  ui.cleanup();
+  // A required line its file leaves unset is a missing value on the group's connection.
+  const unset = (model: typeof response.snapshot.models.dev) => ({
+    ...model,
+    resources: model.resources.map(resource => resource.id === "framework:local.postgresHostPort" && resource.inputRequirement ? { ...resource, inputRequirement: { ...resource.inputRequirement, status: "missing" as const } } : resource),
+    edges: model.edges.map(edge => edge.to === "framework:local.postgresHostPort" && edge.inputRequirement ? { ...edge, inputRequirement: { ...edge.inputRequirement, status: "missing" as const } } : edge),
+  });
+  const broken = buildScene(unset(response.snapshot.models.dev), { layoutModels: [unset(response.snapshot.models.dev), response.snapshot.models.prod] });
+  const group = broken.nodes.find(item => item.id === "framework:local")!;
+  assert.deepEqual([group.issues?.[0]?.title, cornerBadges(group).right], ["Required value missing", "error"]);
+  assert.ok(broken.edges.some(edge => edge.from === "envfile:dev" && edge.to === "framework:local" && missingConnectionInput(edge)), "the file's supply connection to the group is errored");
 });
 
 test("the inputs island opens the shared creator even after using the global chooser", async () => {
@@ -1320,7 +1356,7 @@ test("clicking a grouped connection opens every mapping and retains it across en
   await mount(true);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Environment and secrets" })); await draw();
   const id = "connection:resource%3Acognito:client-envfile:maps";
-  assert.ok(!labels.includes("4"), "connection labels stay off the canvas");
+  assert.ok(!labels.includes("5"), "connection labels stay off the canvas");
   const scene = buildScene(response.snapshot.models.dev, { layoutModels: Object.values(response.snapshot.models), resourceAvailability: catalogAvailability(response.snapshot.models) });
   const state = (dom.window as unknown as { __studioLandscape: { camera(): Camera; viewport(): Viewport; pickAt(x: number, y: number): { id: string } | undefined } }).__studioLandscape;
   const at = scene.routes[id]!.points.map((point) => worldToScreen(state.camera(), state.viewport(), point)).find((point) => state.pickAt(point.x, point.y)?.id === id);
@@ -1329,11 +1365,11 @@ test("clicking a grouped connection opens every mapping and retains it across en
   ui.fireEvent.pointerMove(canvas, { clientX: at.x, clientY: at.y });
   await draw();
   const popup = await ui.screen.findByRole("tooltip");
-  assert.ok(popup.textContent?.includes("Maps: 4 client variables"));
+  assert.ok(popup.textContent?.includes("Maps: 5 client variables"));
   assert.deepEqual(hoverEndpoints(popup), { From: ["cognito", "Stack"], To: ["Client environment", "Environment file"] });
   assert.ok(!popup.textContent?.includes("Maps into:"), "homogeneous member rows do not repeat the shared purpose");
   const hoverRows = ui.within(popup).getAllByRole("listitem");
-  assert.equal(hoverRows.length, 4);
+  assert.equal(hoverRows.length, 5);
   assert.equal(popup.querySelector("[data-ui~=\"landscape-hover-heading\"] [data-slot=\"environment-pills\"]"), null, "aggregate headers cannot imply that every member has the same availability");
   for (const row of hoverRows) {
     assert.deepEqual(visibleTags(row), [["dev", "Dev"], ["prod", "Prod"]]);
@@ -1343,7 +1379,7 @@ test("clicking a grouped connection opens every mapping and retains it across en
   ui.fireEvent.pointerUp(canvas, { clientX: at.x, clientY: at.y, button: 0 });
   const map = await ui.screen.findByRole("region", { name: "Connection details" });
   assert.deepEqual(visibleTags(document.querySelector("[data-slot=\"connection-header\"]")!), [["dev", "Dev"], ["prod", "Prod"]]);
-  assert.equal(map.querySelectorAll("[data-slot=\"connection-map-member\"]").length, 4);
+  assert.equal(map.querySelectorAll("[data-slot=\"connection-map-member\"]").length, 5);
   assert.deepEqual(visibleTags(map.querySelector("summary")!), [["dev", "Dev"], ["prod", "Prod"]]);
   assert.ok(!map.textContent?.includes("→"), "connection rows omit repeated arrows");
   assert.equal(ui.screen.getByLabelText("Selection").textContent, id);
@@ -1353,7 +1389,7 @@ test("clicking a grouped connection opens every mapping and retains it across en
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Switch environment" })); await draw();
   await ui.waitFor(() => assert.equal(ui.screen.queryByRole("note", { name: "Connection deployment status" }), null));
   assert.equal(ui.screen.getByLabelText("Selection").textContent, id);
-  assert.equal(ui.screen.getByRole("region", { name: "Connection details" }).querySelectorAll("[data-slot=\"connection-map-member\"]").length, 4);
+  assert.equal(ui.screen.getByRole("region", { name: "Connection details" }).querySelectorAll("[data-slot=\"connection-map-member\"]").length, 5);
 });
 
 test("connections available in both environments retain two pills in every inspector row", async () => {
@@ -1363,7 +1399,7 @@ test("connections available in both environments retain two pills in every inspe
   const expected = [["dev", "Dev"], ["prod", "Prod"]];
   assert.deepEqual(visibleTags(document.querySelector("[data-slot=\"connection-header\"]")!), expected);
   const rows = [...map.querySelectorAll<HTMLElement>("[data-slot=\"connection-map-member\"] > summary")];
-  assert.equal(rows.length, 4);
+  assert.equal(rows.length, 5);
   for (const row of rows) {
     assert.deepEqual(visibleTags(row), expected);
     assert.ok(!row.textContent?.includes("Client environment"), "summaries show each relationship without repeating shared endpoints");

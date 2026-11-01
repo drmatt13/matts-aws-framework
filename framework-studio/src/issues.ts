@@ -51,16 +51,21 @@ export function resourceIssues(resource: ModelResource, resources?: Iterable<Mod
 const valueMissing = (entry: ModelResource): boolean => !entry.absent && entry.inputRequirement?.status === "missing";
 
 /**
- * A required input or secret that no value or default supplies, or a group holding any. Hover
- * cards show these words, so they name variables and files only, never values or private reasons.
+ * A required input or secret that no value or default supplies, or a group holding any. The file
+ * is one remedy, a default the other (secrets take none), so the words name both. Hover cards show
+ * them, so they name variables and files only, never values or private reasons.
  */
 function missingValueIssue(resource: ModelResource, resources?: Iterable<ModelResource>): EntityIssue | undefined {
   if (resource.kind === "input" || resource.kind === "secret") {
     if (!valueMissing(resource)) return undefined;
     const { name, file, mode } = resource.inputRequirement!;
+    const secret = resource.kind === "secret";
+    // A framework input, like a secret, takes no default: only the file supplies it.
     return { severity: "error", title: "Required value missing", badge: "error", details: [
-      `${name} is required for ${ENVIRONMENT[mode]}, and ${file} gives it no value.`,
-      resource.kind === "secret" ? `Set it in ${file}; a secret never takes a source default.` : `Set it in ${file}, or define a default on the parameter.`,
+      `${name} has no value for ${ENVIRONMENT[mode]}: ${file} leaves it unset${secret ? "" : " and no default stands in"}.`,
+      secret ? `Set it in ${file}; a secret never takes a source default.`
+        : resource.frameworkInput ? `Set it in ${file}; the framework reads it from there and takes no default.`
+          : `Set it in ${file}, or give the parameter a default.`,
     ] };
   }
   if (resource.kind !== "group" || !resources) return undefined;
@@ -68,10 +73,11 @@ function missingValueIssue(resource: ModelResource, resources?: Iterable<ModelRe
   if (!unmet.length) return undefined;
   const one = unmet.length === 1;
   const files = [...new Set(unmet.map(entry => entry.inputRequirement!.file))].join(" and ");
-  const defaults = unmet.some(entry => entry.kind === "input");
+  const inputs = unmet.filter(entry => entry.kind === "input" && !entry.frameworkInput).length;
+  const remedy = !inputs ? "" : inputs === unmet.length ? (one ? ", or give it a default" : ", or give them defaults") : ", or give the inputs defaults";
   return { severity: "error", title: one ? "Required value missing" : "Required values missing", badge: "error", details: [
-    `${entryCount(unmet)} ${one ? "is missing its required value" : "are missing their required values"} in ${files}.`,
-    `Set ${one ? "it" : "them"} there${defaults ? `, or define ${one ? "a default on the parameter" : "defaults on the parameters"}` : ""}.`,
+    `${entryCount(unmet)} ${one ? "has" : "have"} no value: ${files} leaves ${one ? "it" : "them"} unset${inputs ? " and no default stands in" : ""}.`,
+    `Set ${one ? "it" : "them"} in ${files}${remedy}.`,
   ] };
 }
 

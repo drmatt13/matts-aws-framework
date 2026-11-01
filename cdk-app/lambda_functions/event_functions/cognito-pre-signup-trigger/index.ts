@@ -41,6 +41,15 @@ function hasAttribute(
   );
 }
 
+/**
+ * Framework sign-in providers whose identities never take over an existing
+ * account, by Cognito's lowercased username prefix. Meta's address is verified
+ * only by the token trigger's word for it, and Entra's xms_edov is each tenant's
+ * own claim; both sign in as users of their own. Google, whose email_verified is
+ * Google's assertion, is the framework provider that links.
+ */
+const NEVER_LINKED_PROVIDERS = new Set(["facebook", "microsoftentraid"]);
+
 function escapeCognitoFilterValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
@@ -81,6 +90,10 @@ async function linkExternalProviderToExistingUser(
   const externalProvider = parseExternalProviderUserName(event.userName);
 
   if (!email || !externalProvider) {
+    return;
+  }
+
+  if (NEVER_LINKED_PROVIDERS.has(externalProvider.providerName.toLowerCase())) {
     return;
   }
 

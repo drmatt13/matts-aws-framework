@@ -3,7 +3,8 @@ import ts from "typescript";
 import path from "node:path";
 import { parseEnv } from "node:util";
 import { resolve4 } from "node:dns/promises";
-import type { CognitoObservation, DomainsObservation, IdentityContext, IdentityPoolsObservation, IdentitySelection, IdentitySource } from "../../shared/identity";
+import { defineResources } from "@repo/framework/config";
+import type { CognitoObservation, DomainsObservation, IdentityContext, IdentityPoolsObservation, IdentitySelection, IdentitySource, SignInProviderSource } from "../../shared/identity";
 import type { Mode } from "../../shared/model";
 import type { VerifiedCognitoTarget } from "../../shared/identity-operations";
 import type { VerifiedDomainContext } from "../../shared/domain-operations";
@@ -15,6 +16,16 @@ import { runCommand, studioEnvironment, Tools, type Runner } from "../deploy/pro
 import type { DeployService } from "../deploy/service";
 import { validateCognitoReference } from "../../../cdk-app/lib/app/cognito-lifecycle";
 import { ExternalCognitoReferenceError } from "./ownership";
+import { SIGN_IN_PROVIDERS, signInProviderKeys, signInProviders, type SignInProviderId } from "../../../framework-config/resources/sign-in-providers";
+
+/** Each framework sign-in provider's lines in one inputs file, by presence. Values never leave. */
+function signInProviderSources(parsed: Readonly<Record<string, string | undefined>>, mode: Mode): SignInProviderSource[] {
+  const declared = defineResources(signInProviders, { mode });
+  return (Object.keys(SIGN_IN_PROVIDERS) as SignInProviderId[]).map((id) => ({
+    id, title: SIGN_IN_PROVIDERS[id].title, cognitoName: SIGN_IN_PROVIDERS[id].cognitoName,
+    lines: signInProviderKeys(id).map((key) => ({ name: declared[key].fromEnv!, secret: declared[key].kind === "secret", present: Boolean(parsed[declared[key].fromEnv!]?.trim()) })),
+  }));
+}
 
 /** Explicit reads only. No credential/token or secret-value API exists here. */
 export class IdentityService {
@@ -41,7 +52,7 @@ export class IdentityService {
     const identityPool = /new\s+[\w.]*\b(?:CfnIdentityPool|IdentityPool)\s*\(/.test(source);
     return { mode, file: deploymentInputPath(mode), hash: sha256(text ?? ""), exists: text !== undefined,
       inputs: Object.fromEntries(PUBLIC_IDENTITY_INPUTS.filter(name => Object.hasOwn(parsed, name)).map(name => [name, parsed[name]!])),
-      google: { clientIdPresent: Boolean(parsed.GOOGLE_CLIENT_ID?.trim()), authoredSecretPresent: Boolean(parsed.GOOGLE_CLIENT_SECRET?.trim()) },
+      signInProviders: signInProviderSources(parsed, mode),
       providers: [...source.matchAll(/new\s+[\w.]*UserPoolIdentityProvider(Google|Facebook|Amazon|Apple|Oidc|Saml)\s*\(/g)].map(match => match[1]!), declaredProviders,
       identityPools: identityPool ? "source-review-required" : "not-declared",
       problems: domainSettingsProblems(mode, parsed),

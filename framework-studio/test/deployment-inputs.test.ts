@@ -4,6 +4,7 @@ import path from "node:path";
 import { parseEnv } from "node:util";
 import { test } from "node:test";
 import { createDeploymentInput, withDeploymentInputs } from "../server/deployment-inputs";
+import { REQUIRED_FRAMEWORK_INPUTS } from "../../cdk-app/framework-inputs";
 import { InfrastructureService } from "../server/infrastructure";
 
 import type { ModeModel } from "../shared/model";
@@ -55,10 +56,13 @@ test("both files list the same names, and the catalog decides each graph's defau
     const dev = file("dev"), prod = file("prod");
     const entry = (from: typeof dev, name: string) => from.entries.find((item) => item.name === name);
     const names = ["DATABASE_MULTI_AZ", "DATABASE_ONLY", "LOCAL_ONLY", "PORT", "SETTING", "SKIP_EMAIL_VERIFICATION", "TOKEN"];
-    assert.deepEqual(dev.entries.map((item) => item.name), names);
-    assert.deepEqual(prod.entries.map((item) => item.name), names, "a line written where the catalog does not read it stays visible");
+    // Each file also lists the framework lines its own environment requires, written or not.
+    const required = (mode: "dev" | "prod") => REQUIRED_FRAMEWORK_INPUTS[mode].filter((name) => !name.startsWith("DATABASE_"));
+    assert.deepEqual(dev.entries.map((item) => item.name), [...new Set([...names, ...required("dev")])].sort());
+    assert.deepEqual(prod.entries.map((item) => item.name), [...new Set([...names, ...required("prod")])].sort(), "a line written where the catalog does not read it stays visible");
     // Variables the application reads outside the catalog name their owner, default and choices.
-    assert.deepEqual([entry(prod, "SKIP_EMAIL_VERIFICATION")!.owner, entry(prod, "SKIP_EMAIL_VERIFICATION")!.default, entry(prod, "SKIP_EMAIL_VERIFICATION")!.choices], ["deployment", "false", ["true", "false"]]);
+    assert.deepEqual([entry(prod, "SKIP_EMAIL_VERIFICATION")!.owner, entry(prod, "SKIP_EMAIL_VERIFICATION")!.default, entry(prod, "SKIP_EMAIL_VERIFICATION")!.choices], ["deployment", undefined, ["true", "false"]],
+      "a framework setting keeps its choices but takes no default: the file supplies it");
     assert.match(entry(prod, "SKIP_EMAIL_VERIFICATION")!.note!, /production deployment refuses/);
     assert.equal(entry(prod, "DATABASE_MULTI_AZ")!.owner, "database");
     assert.equal(entry(dev, "DATABASE_MULTI_AZ")!.notRead, undefined, "a mirrored row writes nothing, so nothing is flagged");
@@ -81,6 +85,81 @@ test("both files list the same names, and the catalog decides each graph's defau
     writeFileSync(path.join(root, "cdk-app/.env.prod"), "DATABASE_ONLY=db.t3.micro\n");
     assert.ok(!file("prod").entries.some((item) => item.name === "PORT"), "a development-only input is not offered to production");
     assert.equal(withDeploymentInputs(root, models.prod, models).resources.find((resource) => resource.id === "resource:port")!.modes!.prod.present, false);
+  } finally { remove(root); }
+});
+
+test("framework inputs project as managed groups with no defaults, and a required line left unset is a missing value", () => {
+  const root = fixture();
+  try {
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), "CDK_APP_NAME=private-name-value\nPOSTGRES_HOST_PORT=15432\nPGADMIN_HOST_PORT=\nLOCAL_AWS_PROFILE=\nSETTING=\n");
+    writeFileSync(path.join(root, "cdk-app/.env.prod"), "DATABASE_MULTI_AZ=true\nPOSTGRES_HOST_PORT=15432\n");
+    const dev: ModeModel = { ...model, mode: "dev" }, prod: ModeModel = { ...model, mode: "prod" };
+    const project = (graph: ModeModel, models = { dev, prod }) => withDeploymentInputs(root, graph, models);
+    const projected = project(dev);
+    const byId = new Map(projected.resources.map((resource) => [resource.id, resource]));
+    const group = byId.get("framework:deployment")!;
+    assert.deepEqual([group.kind, group.frameworkInput, group.absent, group.path], ["group", "deployment", false, ["Deployment settings"]]);
+    assert.equal(byId.get("framework:local")!.absent, false);
+    assert.equal(byId.has("framework:database"), false, "no managed database, so no database group");
+    const entry = (id: string) => byId.get(id)!;
+    const cdk = entry("framework:deployment.cdkAppName");
+    assert.deepEqual([cdk.kind, cdk.parent, cdk.fromEnv, cdk.default, cdk.required, cdk.inputRequirement!.status], ["input", "framework:deployment", "CDK_APP_NAME", undefined, true, "configured"]);
+    assert.deepEqual(cdk.modes, { dev: { present: true, required: true }, prod: { present: true, required: false } }, "required where its template writes it");
+    assert.equal(entry("framework:local.pgadminHostPort").inputRequirement!.status, "missing", "a blank required line has no default to stand in");
+    assert.equal(entry("framework:deployment.skipEmailVerification").inputRequirement!.status, "missing", "an unwritten required line is missing");
+    assert.equal(entry("framework:local.localAwsProfile").inputRequirement!.status, "optional", "the template writes LOCAL_AWS_PROFILE, but blank is allowed");
+    assert.equal(entry("framework:deployment.retainStatefulResources").inputRequirement!.status, "optional", "a commented template line is optional");
+    assert.ok(!projected.resources.some((resource) => resource.frameworkInput && resource.default !== undefined), "framework inputs take no default");
+    assert.ok(!JSON.stringify(projected.resources).includes("private-name-value") && !JSON.stringify(projected.resources).includes("15432"), "values never enter the graph");
+    const shadowed = project({ ...dev, resources: [...model.resources, { id: "resource:devUrl", path: ["devUrl"], kind: "input", fromEnv: "LOCAL_DEV_URL", absent: false }] });
+    assert.ok(!shadowed.resources.some((resource) => resource.id === "framework:deployment.localDevUrl"), "a name the catalog declares stays the catalog's");
+    // Supply connections reach each framework input like any input's, carrying its requirement.
+    const wires = (graph: ModeModel, models = { dev, prod }) => project(graph, models).edges.filter((edge) => edge.to.startsWith("framework:")).map((edge) => `${edge.from} ${edge.label} ${edge.inputRequirement?.status}`);
+    const devWires = wires(dev);
+    for (const wire of ["envfile:dev CDK_APP_NAME configured", "envfile:dev PGADMIN_HOST_PORT missing", "envfile:dev SKIP_EMAIL_VERIFICATION missing", "envfile:dev LOCAL_AWS_PROFILE optional", "envfile:prod USE_FRONTEND_CUSTOM_DOMAIN missing"]) assert.ok(devWires.includes(wire), wire);
+    assert.ok(!devWires.some((wire) => wire.startsWith("envfile:prod POSTGRES_HOST_PORT")), "production never reads a local setting");
+    assert.ok(!devWires.some((wire) => wire.includes("RETAIN_STATEFUL_RESOURCES")), "an optional line nobody wrote has no connection");
+    const devFile = projected.resources.find((item) => item.id === "envfile:dev")!.deploymentFile!;
+    const line = devFile.entries.find((item) => item.name === "SKIP_EMAIL_VERIFICATION")!;
+    assert.deepEqual([line.owner, line.targets, line.default, line.status, line.requirements![0]!.required], ["deployment", ["framework:deployment.skipEmailVerification"], undefined, "missing", true], "a required line is listed before it is written");
+    const prodPort = project(prod).resources.find((item) => item.id === "envfile:prod")!.deploymentFile!.entries.find((item) => item.name === "POSTGRES_HOST_PORT")!;
+    assert.deepEqual([prodPort.owner, prodPort.notRead, prodPort.requirements], ["local", true, []]);
+    const managed = { ...prod, managedDatabase: { settings: { multiAz: false } } as unknown as ModeModel["managedDatabase"] };
+    const withDatabase = new Map(project(dev, { dev, prod: managed }).resources.map((resource) => [resource.id, resource]));
+    assert.equal(withDatabase.get("framework:database")!.absent, true, "development holds the database group as absent");
+    assert.deepEqual(withDatabase.get("framework:database.multiAz")!.values, ["true", "false"]);
+    assert.ok(wires(managed, { dev, prod: managed }).includes("envfile:prod DATABASE_MULTI_AZ configured"));
+    assert.ok(wires(managed, { dev, prod: managed }).includes("envfile:prod DATABASE_INSTANCE_CLASS missing"));
+  } finally { remove(root); }
+});
+
+test("sign-in providers are a framework-managed catalog group whose lines are all or nothing in each file", () => {
+  const root = fixture();
+  try {
+    // Google is partly set in development and complete in production; Meta and Microsoft are unset.
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), "GOOGLE_CLIENT_ID=private-client-value\n");
+    writeFileSync(path.join(root, "cdk-app/.env.prod"), "GOOGLE_CLIENT_ID=private-client-value\nGOOGLE_CLIENT_SECRET=private-secret-value\n");
+    const signIn: ModeModel["resources"] = [
+      { id: "resource:signInProviders", path: ["signInProviders"], kind: "group", absent: false },
+      ...([["googleClientId", "GOOGLE_CLIENT_ID", "input"], ["googleClientSecret", "GOOGLE_CLIENT_SECRET", "secret"], ["metaAppId", "META_APP_ID", "input"], ["metaAppSecret", "META_APP_SECRET", "secret"]] as const)
+        .map(([key, fromEnv, kind]) => ({ id: `resource:signInProviders.${key}`, path: ["signInProviders", key], parent: "resource:signInProviders", kind, fromEnv, absent: false })),
+    ];
+    const dev: ModeModel = { ...model, mode: "dev", resources: [...model.resources, ...signIn] }, prod: ModeModel = { ...dev, mode: "prod" };
+    const projected = (graph: ModeModel) => new Map(withDeploymentInputs(root, graph, { dev, prod }).resources.map((resource) => [resource.id, resource]));
+    const inDev = projected(dev), inProd = projected(prod);
+    assert.equal(inDev.get("resource:signInProviders")!.frameworkInput, "authentication", "the group is framework managed");
+    assert.equal(inDev.get("resource:signInProviders.googleClientSecret")!.frameworkInput, "authentication", "and so is each entry");
+    const secret = inDev.get("resource:signInProviders.googleClientSecret")!;
+    assert.deepEqual([secret.inputRequirement!.required, secret.inputRequirement!.status], [true, "missing"], "a partly set provider needs the rest of its lines");
+    assert.match(secret.inputRequirement!.reasons.join(" "), /Google sign-in reads GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET together/);
+    assert.deepEqual(secret.modes, { dev: { present: true, required: true }, prod: { present: true, required: true } });
+    assert.equal(inProd.get("resource:signInProviders.googleClientSecret")!.inputRequirement!.status, "configured");
+    const meta = inDev.get("resource:signInProviders.metaAppId")!;
+    assert.deepEqual([meta.inputRequirement!.required, meta.inputRequirement!.status, meta.modes!.dev.required], [false, "optional", false], "an unset provider is simply off");
+    const edges = withDeploymentInputs(root, dev, { dev, prod }).edges.filter((edge) => edge.to.startsWith("resource:signInProviders")).map((edge) => `${edge.from} ${edge.label} ${edge.inputRequirement?.status}`);
+    assert.ok(edges.includes("envfile:dev GOOGLE_CLIENT_SECRET missing"), "the missing line is an errored connection");
+    assert.ok(!edges.some((edge) => edge.includes("META_")), "an unset provider has no connection");
+    assert.ok(!JSON.stringify([...inDev.values(), ...inProd.values()]).includes("private-"), "values never enter the graph");
   } finally { remove(root); }
 });
 
@@ -137,7 +216,8 @@ test("input projection links only catalog declarations; CDK-only keys remain ins
     assert.deepEqual(dev.entries.find((entry) => entry.name === "CDK_ONLY")!.targets, []);
     assert.ok(!projected.resources.some((resource) => resource.fromEnv === "CDK_ONLY"));
     assert.ok(!projected.resources.some((resource) => resource.id.startsWith("parameter:")));
-    assert.ok(projected.edges.filter((edge) => edge.relation === "supplies").every((edge) => model.resources.some((resource) => resource.id === edge.to)));
+    assert.ok(projected.edges.filter((edge) => edge.relation === "supplies").every((edge) => model.resources.some((resource) => resource.id === edge.to) || edge.to.startsWith("framework:")),
+      "supplies reach catalog declarations or framework-managed inputs, never an unknown key");
     assert.ok(!projected.edges.some((edge) => edge.from === "envfile:prod" && edge.to === "resource:token"), "missing assignments do not pretend to supply a value");
     const scene = buildScene(projected);
     assert.equal(scene.islands.find((island) => island.id === "island:inputs")!.title, "Input parameters and secrets");
@@ -145,7 +225,8 @@ test("input projection links only catalog declarations; CDK-only keys remain ins
     assert.equal(scene.nodes.find((node) => node.id === "envfile:dev")!.island, "island:environment");
     for (const mode of ["dev", "prod"] as const) assert.equal(scene.nodes.find((node) => node.id === `envfile:${mode}`)!.label, `cdk-app/.env.${mode}`);
     assert.ok(scene.edges.some((edge) => edge.from === "envfile:dev" && edge.to === "resource:token"));
-    assert.deepEqual(scene.nodes.filter((node) => node.island === "island:inputs").map((node) => node.id).sort(), ["resource:setting", "resource:token"]);
+    assert.deepEqual(scene.nodes.filter((node) => node.island === "island:inputs").map((node) => node.id).sort(), ["framework:deployment", "framework:local", "resource:setting", "resource:token"],
+      "framework-managed groups stand beside the catalog's inputs; an unknown key does not");
     assert.deepEqual(scene.nodes.map((node) => [node.id, node.gx, node.gy]), buildScene({ ...projected, mode: "prod" }).nodes.map((node) => [node.id, node.gx, node.gy]));
   } finally { remove(root); }
 });

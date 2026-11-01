@@ -87,21 +87,28 @@ function consumeOAuthState(incomingState: string): OAuthState {
   };
 }
 
-export type SsoProviderId = "google" | "apple" | "microsoft";
+export type SsoProviderId = "google" | "microsoft" | "meta";
 
-type SsoProviderAuthConfig = {
-  cognitoName: string;
-  enabled: boolean;
+/** Each provider's Cognito identity provider name, the hosted UI's identity_provider. */
+const SSO_PROVIDERS: Record<SsoProviderId, { cognitoName: string }> = {
+  google: { cognitoName: "Google" },
+  microsoft: { cognitoName: "MicrosoftEntraID" },
+  meta: { cognitoName: "Facebook" },
 };
 
-const SSO_PROVIDERS: Record<SsoProviderId, SsoProviderAuthConfig> = {
-  google: { cognitoName: "Google", enabled: true },
-  apple: { cognitoName: "SignInWithApple", enabled: false },
-  microsoft: { cognitoName: "MicrosoftEntraID", enabled: false },
-};
+/**
+ * The providers this deployment's user pool accepts: CognitoStack's
+ * SignInProviders output, exported as VITE_SIGN_IN_PROVIDERS. The infrastructure
+ * decides; a button for a provider the pool lacks would end on Cognito's error page.
+ */
+const ENABLED_SSO_PROVIDERS = new Set(
+  String(import.meta.env.VITE_SIGN_IN_PROVIDERS ?? "")
+    .split(",")
+    .map((id) => id.trim()),
+);
 
 export function isSsoProviderEnabled(provider: SsoProviderId): boolean {
-  return SSO_PROVIDERS[provider].enabled;
+  return ENABLED_SSO_PROVIDERS.has(provider);
 }
 
 async function redirectToHostedUi(
@@ -137,12 +144,11 @@ export async function signInWithProvider(
   provider: SsoProviderId,
   rememberMe = false,
 ): Promise<void> {
-  const config = SSO_PROVIDERS[provider];
-  if (!config.enabled) {
+  if (!isSsoProviderEnabled(provider)) {
     throw new Error(`SSO provider "${provider}" is not enabled`);
   }
   await redirectToHostedUi(
-    { identityProvider: config.cognitoName },
+    { identityProvider: SSO_PROVIDERS[provider].cognitoName },
     rememberMe,
   );
 }

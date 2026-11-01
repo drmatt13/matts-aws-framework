@@ -3,6 +3,11 @@ import { cx } from "../ui/classes";
 import { authorizationLabel, type ConnectionAuthorization } from "../../shared/permissions";
 import { useStudio } from "../studio";
 
+/**
+ * Labels only an exception. Permissions are IAM grants unless something says otherwise, so an IAM
+ * badge on every row and heading was clutter; local connections, user tokens and source-only
+ * evidence keep theirs because they change what the permission means.
+ */
 export function AuthorizationBadge({
   authorization,
   className,
@@ -10,11 +15,11 @@ export function AuthorizationBadge({
   readonly authorization?: ConnectionAuthorization;
   readonly className?: string;
 }) {
-  return authorization ? (
+  return authorization && authorization.kind !== "iam" ? (
     <span
       className={cx(
         "inline-flex w-fit items-center rounded-sm border border-rule-strong px-1.5 py-0.5 font-sans text-[10px] font-semibold leading-[normal] tracking-[.035em] whitespace-nowrap",
-        authorization.kind === "iam" ? "text-ink" : "text-graphite",
+        "text-graphite",
         className,
       )}
       data-slot="authorization-badge"

@@ -963,7 +963,7 @@ test("per-environment input settings participate in the unified resource draft",
   ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Required in production" }));
   assert.equal(resourceCalls.length, 0);
   assert.match(count(), /1 unsaved change/);
-  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Present in development" }));
+  ui.fireEvent.click(ui.screen.getByRole("checkbox", { name: "Available in development" }));
   assert.ok(ui.screen.getByRole("checkbox", { name: "Required in development" }).matches(":disabled"), "an environment without the input has nothing to require");
   assert.match(count(), /3 unsaved changes/, "leaving development also drops its default");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Review Changes" }));

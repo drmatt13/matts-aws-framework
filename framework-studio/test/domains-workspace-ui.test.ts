@@ -26,7 +26,7 @@ let queryClient: import("@tanstack/react-query").QueryClient;
 const source: IdentitySource = {
   mode: "prod", file: "cdk-app/.env.prod", hash: "production-domain-source", exists: true,
   inputs: { USE_COGNITO_CUSTOM_DOMAIN: "false", USE_FRONTEND_CUSTOM_DOMAIN: "false" },
-  google: { clientIdPresent: false, authoredSecretPresent: false },
+  signInProviders: [],
   providers: [], declaredProviders: [], identityPools: "not-declared", problems: [],
 };
 const overview = {

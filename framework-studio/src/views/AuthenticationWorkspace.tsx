@@ -94,22 +94,30 @@ function ProviderEvidence({
 }) {
   const { snapshot } = useStudio();
   const declared = source?.declaredProviders ?? [];
+  const framework = source?.signInProviders ?? [];
   const rows = [
-    {
-      name: "Google",
-      type: "Google",
-      declaration: source
-        ? source.google.clientIdPresent
-          ? "Client ID input present"
-          : "Client ID input absent"
-        : "Unknown",
-      secret: source?.google.authoredSecretPresent
-        ? "Authored input present; access unverified"
-        : "Presence / access unverified",
-    },
+    // The framework's own providers: built where the inputs file sets all of a provider's lines.
+    ...framework.map((provider) => {
+      const unset = provider.lines.filter((line) => !line.present);
+      const secret = provider.lines.find((line) => line.secret);
+      return {
+        name: provider.cognitoName,
+        type: `${provider.title} · framework managed`,
+        supported: true,
+        declaration: !unset.length
+          ? "All lines set; built at synthesis"
+          : unset.length === provider.lines.length
+            ? "Not configured"
+            : `Partly set; synthesis stops until ${unset.map((line) => line.name).join(", ")} ${unset.length === 1 ? "is" : "are"} set`,
+        secret: secret?.present
+          ? "Authored input present; access unverified"
+          : "Presence / access unverified",
+      };
+    }),
     ...declared.map((provider) => ({
       name: provider.name,
       type: provider.type.toUpperCase(),
+      supported: true,
       declaration: `${provider.scope === "both" || provider.scope === source?.mode ? "Declared for this environment" : "Declared for another environment"} · ${provider.scope}`,
       secret:
         provider.type === "oidc" ? "Reference declared; access unverified" : "Not required by SAML",
@@ -117,11 +125,13 @@ function ProviderEvidence({
     ...(result?.providers ?? [])
       .filter(
         (provider) =>
-          provider.name !== "Google" && !declared.some((entry) => entry.name === provider.name),
+          !framework.some((entry) => entry.cognitoName === provider.name) &&
+          !declared.some((entry) => entry.name === provider.name),
       )
       .map((provider) => ({
         name: provider.name,
         type: provider.type,
+        supported: /^(OIDC|SAML)$/i.test(provider.type),
         declaration: "Not matched to a source declaration",
         secret: "Presence / access unverified",
       })),
@@ -130,8 +140,8 @@ function ProviderEvidence({
     <DocumentCard className="mb-3">
       <h2 className="mt-0 mb-2 text-[15px] leading-[1.4]">Federation providers</h2>
       <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-graphite">
-        Studio supports Google, OIDC and SAML. Source, AWS metadata and a working sign-in are
-        separate checks.
+        The framework manages Google, Microsoft and Meta sign-in; Studio also supports declared
+        OIDC and SAML providers. Source, AWS metadata and a working sign-in are separate checks.
       </p>
       {source ? (
         <div className="flex flex-col items-start gap-2 [&>p]:m-0 vp-720:items-stretch">
@@ -145,14 +155,17 @@ function ProviderEvidence({
               end: 0,
             })}
           >
-            Open Google inputs in editor
+            Open sign-in provider inputs in editor
           </a>
           <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0 text-caption text-graphite">
-            <code>{source.file}</code> · <code>GOOGLE_CLIENT_ID</code>{": "}
-            {source.google.clientIdPresent ? "present" : "absent"}{"; "}
-            <code>GOOGLE_CLIENT_SECRET</code>{": "}
-            {source.google.authoredSecretPresent ? "present" : "absent"}. Values stay in your
-            editor.
+            <code>{source.file}</code>
+            {framework.flatMap((provider) => provider.lines).map((line) => (
+              <span key={line.name}>
+                {" · "}
+                <code>{line.name}</code>: {line.present ? "present" : "absent"}
+              </span>
+            ))}
+            . Values stay in your editor.
           </p>
         </div>
       ) : null}
@@ -191,9 +204,7 @@ function ProviderEvidence({
                   {row.name}
                   <small className="mt-1 block font-normal whitespace-nowrap text-graphite">
                     {row.type} ·{" "}
-                    {/^(Google|OIDC|SAML)$/i.test(row.type)
-                      ? "supported"
-                      : "native provider; source authoring unavailable"}
+                    {row.supported ? "supported" : "native provider; source authoring unavailable"}
                   </small>
                 </th>
                 <td className="border-b border-rule p-2 text-left align-top text-caption">
@@ -254,6 +265,12 @@ function ProviderEvidence({
           , consent/test-user policy and{" "}
           <code>https://&lt;cognito-domain&gt;/oauth2/idpresponse</code> redirect. Start sign-in
           from the application to preserve PKCE/state.
+        </p>
+        <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
+          For Microsoft, the Entra app registration is single tenant, uses the same redirect and
+          adds the <code>xms_edov</code> optional claim to its ID token; without it every
+          Microsoft identity arrives unverified. For Meta, the Facebook Login app grants the{" "}
+          <code>email</code> permission and lists the same redirect as a valid OAuth redirect URI.
         </p>
         <p className="mt-0 mb-2 text-label leading-[1.5] last:mb-0">
           For{" "}
@@ -709,7 +726,7 @@ export function AuthenticationWorkspace() {
           </div>
           {targetInputsMismatch ? (
             <p className="border-l-2 border-local bg-wash px-[10px] py-2" role="status">
-              This deployment uses different inputs. Google input-presence evidence and retention
+              This deployment uses different inputs. Sign-in provider input-presence evidence and retention
               settings here refer to <code>{sourceInputsFile}</code>; the deployment’s input
               presence and freshness are unverified. Review <code>{selectedTarget?.inputs}</code> in
               Deploy. Provider declarations still follow the selected environment.

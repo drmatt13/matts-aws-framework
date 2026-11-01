@@ -5,9 +5,6 @@ import { resource } from "@repo/framework/config";
 export const openaiApiKey = resource.secret("OPENAI_API_KEY", {
   tags: { area: "examples" },
 });
-export const googleClientSecret = resource.secret("GOOGLE_CLIENT_SECRET", {
-  tags: { area: "auth" },
-});
 
 export const enableWebSocketApi = resource
   .value("true", { tags: { area: "realtime" } })

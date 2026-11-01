@@ -3,6 +3,7 @@ import * as cognito from "aws-cdk-lib/aws-cognito";
 import type { Construct } from "constructs";
 import type { ResourceReference } from "@repo/framework/config";
 import { resolveDeploymentSecret } from "../framework/framework-resources";
+import { SIGN_IN_PROVIDERS } from "../../../framework-config/resources/sign-in-providers";
 
 interface CommonProvider {
   readonly id: string;
@@ -15,9 +16,9 @@ export type AdditionalAuthProvider = CommonProvider & ({ readonly type: "oidc"; 
 type AdditionalProviderOptions = { readonly id: string; readonly type: "oidc"; readonly options: Omit<cognito.UserPoolIdentityProviderOidcProps, "userPool"> } | { readonly id: string; readonly type: "saml"; readonly options: Omit<cognito.UserPoolIdentityProviderSamlProps, "userPool"> };
 /** Prepare provider settings without taking or mutating the application's user pool. */
 export function additionalAuthProviderOptions(scope: Construct, providers: readonly AdditionalAuthProvider[]): readonly AdditionalProviderOptions[] {
-  const names = new Set(["Google", "COGNITO"]);
+  const names = new Set(["COGNITO", ...Object.values(SIGN_IN_PROVIDERS).map((provider) => provider.cognitoName)]);
   return providers.map(provider => {
-    if (!/^[a-z][a-z0-9-]*$/.test(provider.id) || !/^[A-Za-z][A-Za-z0-9_-]{2,31}$/.test(provider.name) || names.has(provider.name)) throw new Error("Authentication provider identifiers and names must be unique, safe literal values; Google and COGNITO are reserved.");
+    if (!/^[a-z][a-z0-9-]*$/.test(provider.id) || !/^[A-Za-z][A-Za-z0-9_-]{2,31}$/.test(provider.name) || names.has(provider.name)) throw new Error("Authentication provider identifiers and names must be unique, safe literal values; COGNITO and the framework's sign-in provider names (Google, MicrosoftEntraID, Facebook) are reserved.");
     names.add(provider.name);
     for (const attribute of Object.values(provider.attributes)) if (!attribute.trim() || /[\x00-\x1f\x7f]/.test(attribute)) throw new Error(`Provider ${provider.name} requires explicit email, name and verified-email claim mappings.`);
     const url = new URL(provider.type === "oidc" ? provider.issuer : provider.metadataUrl);

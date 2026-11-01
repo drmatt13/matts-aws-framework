@@ -210,19 +210,27 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   const groups = [
     {
       title: "Inputs and secrets",
-      rows: matches.filter((entry) => entry.targets.length),
+      rows: matches.filter((entry) => entry.targets.length && !entry.owner),
     },
     {
       title: "Deployment settings",
-      rows: matches.filter((entry) => !entry.targets.length && entry.owner === "deployment"),
+      rows: matches.filter((entry) => entry.owner === "deployment"),
     },
     {
       title: "Database",
-      rows: matches.filter((entry) => !entry.targets.length && entry.owner === "database"),
+      rows: matches.filter((entry) => entry.owner === "database"),
       note:
         file.mode === "prod"
-          ? "Production RDS overrides. Blank uses the database declaration."
-          : "Production RDS overrides. Development builds no RDS, so this file's lines are not read.",
+          ? "Production RDS settings the database declaration reads. The template writes each required one."
+          : "Production RDS settings. Development builds no RDS, so this file's lines are not read.",
+    },
+    {
+      title: "Local development",
+      rows: matches.filter((entry) => entry.owner === "local"),
+      note:
+        file.mode === "dev"
+          ? "Read by Docker Compose and the local tooling. Nothing here is deployed."
+          : "Read by Docker Compose and the local tooling from the development file, so this file's lines are not read.",
     },
     {
       title: "Other variables",
@@ -318,7 +326,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
                 {titleOf(index, id)}
               </button>
             ))}
-            {!entry.targets.length && entry.note ? <span>{entry.note}</span> : null}
+            {(entry.owner || !entry.targets.length) && entry.note ? <span>{entry.note}</span> : null}
             {locked ? <span>Determined by this file's environment.</span> : null}
             {missing(entry) ? (
               <span className="text-refuse wrap-anywhere">{reasons.join(" ")}</span>

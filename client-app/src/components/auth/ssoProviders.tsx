@@ -32,18 +32,6 @@ function GoogleIcon(): ReactElement {
   );
 }
 
-function AppleIcon(): ReactElement {
-  return (
-    <svg
-      aria-hidden="true"
-      className="h-4 w-4 shrink-0 fill-current"
-      viewBox="0 0 24 24"
-    >
-      <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.03 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.56-1.702" />
-    </svg>
-  );
-}
-
 function MicrosoftIcon(): ReactElement {
   return (
     <svg aria-hidden="true" className="h-4 w-4 shrink-0" viewBox="0 0 21 21">
@@ -55,21 +43,37 @@ function MicrosoftIcon(): ReactElement {
   );
 }
 
+function FacebookIcon(): ReactElement {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
+      <path
+        fill="#1877F2"
+        d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.96.93-1.96 1.89v2.25h3.33l-.53 3.49h-2.8V24C19.61 23.1 24 18.1 24 12.07z"
+      />
+    </svg>
+  );
+}
+
 const SSO_PROVIDER_UI_CONFIG: Record<SsoProviderId, Omit<SsoProviderUi, "id">> =
   {
     google: { name: "Google", label: "Continue with Google", Icon: GoogleIcon },
-    apple: { name: "Apple", label: "Continue with Apple", Icon: AppleIcon },
     microsoft: {
       name: "Microsoft",
       label: "Continue with Microsoft",
       Icon: MicrosoftIcon,
     },
+    // Meta's sign-in is Facebook Login, and its button says so.
+    meta: {
+      name: "Facebook",
+      label: "Continue with Facebook",
+      Icon: FacebookIcon,
+    },
   };
 
 const SSO_PROVIDER_DISPLAY_ORDER = [
   "google",
-  "apple",
   "microsoft",
+  "meta",
 ] as const satisfies readonly SsoProviderId[];
 
 export const SSO_PROVIDERS_UI: readonly SsoProviderUi[] =

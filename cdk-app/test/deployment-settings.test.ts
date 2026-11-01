@@ -15,7 +15,7 @@ test("deployment settings resolve like workload inputs: -c, then the inputs file
   assert.equal(resolve({ CDK_APP_NAME: " " }).deploymentName, "matts-aws-framework", "a blank line counts as unset");
   assert.equal(resolve({ SKIP_EMAIL_VERIFICATION: "TRUE" }).requestedSkipEmailVerification, true, "choices match without regard to case");
   assert.throws(() => resolve({ USE_FRONTEND_CUSTOM_DOMAIN: "maybe" }), /USE_FRONTEND_CUSTOM_DOMAIN \(or -c useFrontendCustomDomain\) must be "true" or "false"\. Received: maybe/);
-  assert.equal(resolve({ GOOGLE_CLIENT_ID: "  client  " }).googleClientId, "client");
+  assert.deepEqual(resolve({ GOOGLE_CLIENT_ID: "  client  ", GOOGLE_CLIENT_SECRET: "fixture" }).signInProviders, { google: { clientId: "client" } });
 });
 
 test("older and differently cased context keys are still honored", () => {

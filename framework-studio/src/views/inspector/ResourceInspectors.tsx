@@ -36,6 +36,7 @@ import {
 import { ResourceEditor } from "../ResourceEditor";
 import { FrameworkManagedStatus, ResourceStatus } from "../ResourceStatus";
 import { IssueNotice } from "../IssueNotice";
+import { FrameworkInputGroupView, FrameworkInputView } from "../FrameworkInputs";
 import { resourceIssues } from "../../issues";
 import { SchemaLink } from "../SchemaDetails";
 import { Tags } from "../Tags";
@@ -50,6 +51,13 @@ export function ResourceView(props: { readonly resource: ModelResource }) {
   if (resource.clientEnvironment)
     return <ClientEnvironmentFileView key={resource.id} resource={resource} />;
   if (resource.deploymentFile) return <EnvironmentFileView key={resource.id} resource={resource} />;
+  // Framework-managed inputs are projected, not declared in source, so they have their own read-only views.
+  if (resource.frameworkInput)
+    return resource.kind === "group" ? (
+      <FrameworkInputGroupView key={resource.id} resource={resource} />
+    ) : (
+      <FrameworkInputView key={resource.id} resource={resource} />
+    );
   const members = model.resources.filter((item) => item.parent === resource.id);
   const facts = snapshot.source.catalog[resource.id];
   const root = resource.path[0]!;

@@ -105,7 +105,7 @@ async function workspaceApi(policy = false, simulate?: () => Promise<Response>) 
   const identity = await import("../src/identity-api");
   const deploy = await import("../src/deploy/api");
   const management = await import("../src/views/CognitoManagement");
-  mock.method(identity.identityApi, "source", async (mode: "dev" | "prod"): Promise<IdentitySource> => ({ mode, file: `cdk-app/.env.${mode}`, hash: `hash-${mode}`, exists: true, inputs: {}, google: { clientIdPresent: false, authoredSecretPresent: false }, providers: ["Google", "Oidc", "Saml"], declaredProviders: [], identityPools: "not-declared", problems: [] }));
+  mock.method(identity.identityApi, "source", async (mode: "dev" | "prod"): Promise<IdentitySource> => ({ mode, file: `cdk-app/.env.${mode}`, hash: `hash-${mode}`, exists: true, inputs: {}, signInProviders: [], providers: ["Google", "Oidc", "Saml"], declaredProviders: [], identityPools: "not-declared", problems: [] }));
   mock.method(deploy.deployApi, "preferences", async () => ({ profiles: {} }));
   mock.method(management.cognitoManagementApi, "history", async () => []);
   mock.method(globalThis, "fetch", async (url: string) => {

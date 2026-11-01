@@ -38,7 +38,6 @@ export const deploymentInputs = (mode: CloudMode) => defineResources({
   cognitoDomainName: resource.fromEnv("COGNITO_DOMAIN_NAME").note("Production hosted-UI domain; requires its certificate."),
   cognitoDomainCertificateArn: resource.fromEnv("COGNITO_DOMAIN_CERTIFICATE_ARN")
     .note("ACM certificate in us-east-1, in the deployment account, for COGNITO_DOMAIN_NAME."),
-  googleClientId: resource.fromEnv("GOOGLE_CLIENT_ID").note("Google OAuth client ID; its secret is the GOOGLE_CLIENT_SECRET catalog secret."),
 }, { mode });
 
 export type DeploymentInputDeclarations = ReturnType<typeof deploymentInputs>;

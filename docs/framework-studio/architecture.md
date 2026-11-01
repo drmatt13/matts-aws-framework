@@ -429,7 +429,13 @@ killed after 5 minutes.
 the snapshot after framework evaluation. `envfile:dev` and `envfile:prod` share one island;
 Catalog `fromEnv` declarations become environment-linked input/secret nodes, retaining their existing
 IDs; public `resource.value` declarations remain source parameter nodes without file-supply edges.
-Other dotenv names remain file metadata. `supplies` edges carry names, presence and assignment locations,
+Variables the framework itself reads (deployment settings, production database overrides and
+local tooling settings from `cdk-app/framework-inputs.ts`) project as three framework-managed input
+groups on the inputs island, by reader, with no defaults and read-only behavior. Each file supplies
+them like any input, and `REQUIRED_FRAMEWORK_INPUTS` makes a line its template writes required, so a
+dropped one is a missing value on its connection. The sign-in providers are declared in the catalog
+(`resources.signInProviders`, for their secrets) and marked framework managed in the same projection;
+a provider's lines are required together once a file sets any of them. Other dotenv names remain file metadata. `supplies` edges carry names, presence and assignment locations,
 never values. Multiline contents cannot introduce false parameter names. The file
 inspector loads the selected file's values through a guarded, no-store endpoint, outside
 snapshots, query caches and evaluator processes. `server/deployment-input-edits.ts` accepts

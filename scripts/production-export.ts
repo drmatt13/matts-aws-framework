@@ -10,6 +10,7 @@ const publicOutputs = {
       UserPoolClientId: "USER_POOL_CLIENT_ID",
       UserPoolDomainUrl: "COGNITO_DOMAIN_URL",
       OAuthProviderRedirectUri: "OAUTH_PROVIDER_REDIRECT_URI",
+      SignInProviders: "SIGN_IN_PROVIDERS",
     },
   },
   FrontendWebsiteS3Stack: {
@@ -39,7 +40,7 @@ export function collectProductionOutputs(stacks: readonly DeploymentStack[], dep
       outputs[name] = output.OutputValue;
     }
   }
-  for (const name of ["USER_POOL_ID", "USER_POOL_CLIENT_ID", "COGNITO_DOMAIN_URL", "FRONTEND_WEBSITE_BUCKET_NAME", "CLOUDFRONT_URL", "CLOUDFRONT_ID"]) {
+  for (const name of ["USER_POOL_ID", "USER_POOL_CLIENT_ID", "COGNITO_DOMAIN_URL", "SIGN_IN_PROVIDERS", "FRONTEND_WEBSITE_BUCKET_NAME", "CLOUDFRONT_URL", "CLOUDFRONT_ID"]) {
     if (!outputs[name]) throw new Error(`Required production output ${name} is missing. Existing local files were preserved.`);
   }
   const websocket = outputs.WEBSOCKET_API_URL;
@@ -52,6 +53,7 @@ export function collectProductionOutputs(stacks: readonly DeploymentStack[], dep
       userPoolId: outputs.USER_POOL_ID,
       userPoolClientId: outputs.USER_POOL_CLIENT_ID,
       cognitoDomainUrl: outputs.COGNITO_DOMAIN_URL,
+      signInProviders: outputs.SIGN_IN_PROVIDERS,
       // CloudFront serves /api and the agent routes on the paths the local API
       // server does, and strips /api before the HTTP API. HTTP_API_URL has no
       // /api prefix, so it cannot stand in for the local server.

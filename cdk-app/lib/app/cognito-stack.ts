@@ -8,13 +8,24 @@ import * as ssm from "aws-cdk-lib/aws-ssm";
 import { eventFunction } from "../framework/framework-events";
 import { additionalAuthProviderOptions, type AdditionalAuthProvider } from "./auth-providers";
 import { markExternalCognitoReference, validateCognitoReference, type CognitoReference } from "./cognito-lifecycle";
+import { SIGN_IN_PROVIDERS, type SignInProviderId, type SignInProviderSettings } from "../../../framework-config/resources/sign-in-providers";
 
 export interface CognitoStackProps extends cdk.StackProps {
   cognitoDomainPrefix?: string;
   cognitoDomainName?: string;
   cognitoDomainCertificateArn?: string;
-  googleClientId?: string;
-  googleClientSecret?: cdk.SecretValue;
+  /**
+   * The federated sign-in providers to build, as cdk-app/deployment.ts resolved
+   * them from `resources.signInProviders`.
+   */
+  signInProviders?: SignInProviderSettings;
+  /**
+   * Each provider's client secret, by default its `resources.signInProviders`
+   * secret read from Secrets Manager at deploy time. A provider with no secret is
+   * not built, which is all a stack without framework resources (a test) can do
+   * unless it supplies one here.
+   */
+  signInProviderSecrets?: { readonly [Id in SignInProviderId]?: cdk.SecretValue };
   callbackUrls?: string[];
   logoutUrls?: string[];
   /**
@@ -86,15 +97,19 @@ export class CognitoStack extends cdk.Stack {
         stringValue: JSON.stringify({ version: 1, userPoolId: props.reference.userPoolId, userPoolClientId: props.reference.userPoolClientId, originalDeployment: props.reference.originalDeployment }),
       });
       linkResources(this, resources.cognito);
-      this.publishCognitoOutputs(props.reference.userPoolDomainCloudFrontEndpoint);
+      // The referenced pool's providers are its own; these are the ones source expects of it.
+      this.publishCognitoOutputs(props.reference.userPoolDomainCloudFrontEndpoint, Object.keys(props.signInProviders ?? {}) as SignInProviderId[]);
       new cdk.CfnOutput(this, "UserPoolManagement", { value: "external-reference" });
       new cdk.CfnOutput(this, "UserPoolOriginalDeployment", { value: props.reference.originalDeployment });
       cdk.Annotations.of(this).addWarning("The selected Cognito pool, app client, domain, providers, groups and triggers remain externally managed. Source auth settings and retention do not reconfigure or protect them. Verify existing callbacks, providers and Lambda dependencies before deployment; metadata does not prove sign-in.");
       return;
     }
-    if (hasFrameworkResources(this) && props.googleClientId && !props.googleClientSecret) {
-      const handle = resolveDeploymentSecret(this, resources.googleClientSecret, true)!;
-      props = { ...props, googleClientSecret: cdk.SecretValue.secretsManager(handle.secretArn) };
+    const signInProviders = props.signInProviders ?? {};
+    const secrets: { [Id in SignInProviderId]?: cdk.SecretValue } = { ...props.signInProviderSecrets };
+    for (const id of Object.keys(signInProviders) as SignInProviderId[]) {
+      if (secrets[id] || !hasFrameworkResources(this)) continue;
+      const handle = resolveDeploymentSecret(this, resources.signInProviders[SIGN_IN_PROVIDERS[id].secret], true)!;
+      secrets[id] = cdk.SecretValue.secretsManager(handle.secretArn);
     }
 
 
@@ -244,6 +259,7 @@ export class CognitoStack extends cdk.Stack {
         preSignUp: eventFunction(this, "cognito-pre-signup-trigger", { optional: true }),
         customMessage: eventFunction(this, "cognito-custom-message", { optional: true }),
         postConfirmation: eventFunction(this, "cognito-post-confirmation-trigger", { optional: true }),
+        preTokenGeneration: eventFunction(this, "cognito-pre-token-generation", { optional: true }),
       },
 
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
@@ -280,16 +296,14 @@ export class CognitoStack extends cdk.Stack {
     );
     const userPoolDomainUrl = domain.baseUrl();
 
-    let googleProvider: cognito.UserPoolIdentityProviderGoogle | undefined;
-
-    if (props.googleClientId && props.googleClientSecret) {
-      googleProvider = new cognito.UserPoolIdentityProviderGoogle(
-        this,
-        "Google",
-        {
+    // The framework's sign-in providers, each built only when the inputs file
+    // configures it. Construct ids and names are Cognito's provider names, which
+    // the hosted UI's identity_provider parameter and the client's buttons use.
+    const google = signInProviders.google && secrets.google
+      ? new cognito.UserPoolIdentityProviderGoogle(this, "Google", {
           userPool,
-          clientId: props.googleClientId,
-          clientSecretValue: props.googleClientSecret,
+          clientId: signInProviders.google.clientId,
+          clientSecretValue: secrets.google,
           scopes: ["openid", "email", "profile"],
           attributeMapping: {
             email: cognito.ProviderAttribute.GOOGLE_EMAIL,
@@ -301,22 +315,60 @@ export class CognitoStack extends cdk.Stack {
             // then rejects a perfectly valid Google identity.
             emailVerified: cognito.ProviderAttribute.GOOGLE_EMAIL_VERIFIED,
           },
-        },
-      );
-    }
+        })
+      : undefined;
+    // One Entra tenant, as OIDC. Entra states a verified email only in its
+    // xms_edov optional claim (its email claim alone is unverified and mutable),
+    // so the app registration adds xms_edov to its ID token; without it every
+    // Microsoft identity arrives unverified and the verified-email gates refuse it.
+    const microsoft = signInProviders.microsoft && secrets.microsoft
+      ? new cognito.UserPoolIdentityProviderOidc(this, "MicrosoftEntraID", {
+          userPool,
+          name: SIGN_IN_PROVIDERS.microsoft.cognitoName,
+          clientId: signInProviders.microsoft.clientId,
+          clientSecret: secrets.microsoft.unsafeUnwrap(),
+          issuerUrl: `https://login.microsoftonline.com/${signInProviders.microsoft.tenantId}/v2.0`,
+          scopes: ["openid", "email", "profile"],
+          attributeRequestMethod: cognito.OidcAttributeRequestMethod.GET,
+          attributeMapping: {
+            email: cognito.ProviderAttribute.other("email"),
+            givenName: cognito.ProviderAttribute.other("given_name"),
+            familyName: cognito.ProviderAttribute.other("family_name"),
+            emailVerified: cognito.ProviderAttribute.other("xms_edov"),
+          },
+        })
+      : undefined;
+    // Facebook Login returns only an address Meta has confirmed, but no claim
+    // says so; the cognito-pre-token-generation trigger marks it verified in the
+    // ID token. Facebook identities are never linked to an existing account by
+    // email, so that trust stops at the token.
+    const meta = signInProviders.meta && secrets.meta
+      ? new cognito.UserPoolIdentityProviderFacebook(this, "Facebook", {
+          userPool,
+          clientId: signInProviders.meta.appId,
+          clientSecret: secrets.meta.unsafeUnwrap(),
+          scopes: ["public_profile", "email"],
+          attributeMapping: {
+            email: cognito.ProviderAttribute.FACEBOOK_EMAIL,
+            givenName: cognito.ProviderAttribute.FACEBOOK_FIRST_NAME,
+            familyName: cognito.ProviderAttribute.FACEBOOK_LAST_NAME,
+          },
+        })
+      : undefined;
+    const frameworkProviders = [google, microsoft, meta].filter((provider) => provider !== undefined);
 
     // Keep the pool's native wiring visible here. The settings helper receives
     // declarations, never the pool, so it cannot conceal extra Lambda hooks.
     const providers = additionalAuthProviderOptions(this, props.additionalProviders ?? []).map(provider => provider.type === "oidc"
       ? new cognito.UserPoolIdentityProviderOidc(this, provider.id, { userPool, ...provider.options })
       : new cognito.UserPoolIdentityProviderSaml(this, provider.id, { userPool, ...provider.options }));
-    const supportedIdentityProviders = googleProvider
-      ? [
-          cognito.UserPoolClientIdentityProvider.COGNITO,
-          cognito.UserPoolClientIdentityProvider.GOOGLE,
-        ]
-      : [cognito.UserPoolClientIdentityProvider.COGNITO];
-    supportedIdentityProviders.push(...providers.map(provider => cognito.UserPoolClientIdentityProvider.custom(provider.providerName)));
+    const supportedIdentityProviders = [
+      cognito.UserPoolClientIdentityProvider.COGNITO,
+      ...(google ? [cognito.UserPoolClientIdentityProvider.GOOGLE] : []),
+      ...(microsoft ? [cognito.UserPoolClientIdentityProvider.custom(microsoft.providerName)] : []),
+      ...(meta ? [cognito.UserPoolClientIdentityProvider.FACEBOOK] : []),
+      ...providers.map(provider => cognito.UserPoolClientIdentityProvider.custom(provider.providerName)),
+    ];
 
     const userPoolClient = new cognito.UserPoolClient(this, "UserPoolClient", {
       userPool,
@@ -356,10 +408,7 @@ export class CognitoStack extends cdk.Stack {
       },
     });
 
-    if (googleProvider) {
-      userPoolClient.node.addDependency(googleProvider);
-    }
-    for (const provider of providers) userPoolClient.node.addDependency(provider);
+    for (const provider of [...frameworkProviders, ...providers]) userPoolClient.node.addDependency(provider);
 
     domain.node.addDependency(userPoolClient);
 
@@ -367,7 +416,7 @@ export class CognitoStack extends cdk.Stack {
     // its independently declared auth configuration. Keep the selected client,
     // domain and federation declarations together, with their existing IDs.
     if (retainStatefulResources) {
-      for (const dependent of [userPoolClient, domain, ...providers, ...(googleProvider ? [googleProvider] : [])]) {
+      for (const dependent of [userPoolClient, domain, ...providers, ...frameworkProviders]) {
         dependent.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
       }
       // Declarative trigger attachments finalize after this constructor. Visit
@@ -390,12 +439,15 @@ export class CognitoStack extends cdk.Stack {
     // linked.
     linkResources(this, resources.cognito);
 
-    this.publishCognitoOutputs(props.cognitoDomainName ? domain.cloudFrontEndpoint : undefined);
+    this.publishCognitoOutputs(
+      props.cognitoDomainName ? domain.cloudFrontEndpoint : undefined,
+      (Object.keys(SIGN_IN_PROVIDERS) as SignInProviderId[]).filter((id) => ({ google, microsoft, meta })[id] !== undefined),
+    );
   }
 
   /** Keep native output declarations within their owning class so Studio's
    * static source reader and synthesis share the same public output contract. */
-  private publishCognitoOutputs(cloudFrontEndpoint?: string): void {
+  private publishCognitoOutputs(cloudFrontEndpoint: string | undefined, signInProviders: readonly SignInProviderId[]): void {
     new cdk.CfnOutput(this, "UserPoolId", { value: this.userPool.userPoolId });
 
     new cdk.CfnOutput(this, "UserPoolClientId", { value: this.userPoolClient.userPoolClientId });
@@ -416,7 +468,14 @@ export class CognitoStack extends cdk.Stack {
     new cdk.CfnOutput(this, "OAuthProviderRedirectUri", {
       value: this.oauthProviderRedirectUri,
       exportName: `${this.stackName}:OAuthProviderRedirectUri`,
-      description: "Redirect URI to register with external OAuth providers such as Google.",
+      description: "Redirect URI to register with each external sign-in provider (Google, Microsoft, Meta).",
+    });
+
+    // The client app shows a button for each, and only these: a button for a
+    // provider the pool lacks ends on Cognito's error page.
+    new cdk.CfnOutput(this, "SignInProviders", {
+      value: signInProviders.length ? signInProviders.join(",") : "none",
+      description: "Federated sign-in providers this pool accepts: google, microsoft and meta, comma-separated, or none.",
     });
   }
 }

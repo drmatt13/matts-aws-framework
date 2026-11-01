@@ -29,6 +29,9 @@ export const events = {
     environment: { FRONTEND_URL: resources.cognito.frontendUrl },
     tags: { area: "auth" },
   },
+  "cognito-pre-token-generation": {
+    tags: { area: "auth" },
+  },
   "cognito-post-confirmation-trigger": {
     memorySize: 512,
     timeoutSeconds: 30,

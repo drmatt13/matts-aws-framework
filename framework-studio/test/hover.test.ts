@@ -215,7 +215,7 @@ test("group statuses retain differences across both environments without project
     [inputFixture("provider", "prod", "missing"), inputFixture("model", "prod", "unknown"), inputFixture("optional", "prod", "configured"), inputFixture("nested.secret", "prod", "configured", { kind: "secret" })],
   );
   const entries = groupHoverEntries(groupFixture, index);
-  assert.deepEqual(entries.find(entry => entry.label === "provider")?.details, [{ text: "Required value missing: PROVIDER · cdk-app/.env.prod", kind: "detail", tone: "error", modes: ["prod"] }]);
+  assert.deepEqual(entries.find(entry => entry.label === "provider")?.details, [{ text: "PROVIDER is unset in cdk-app/.env.prod, and no default stands in.", kind: "detail", tone: "error", modes: ["prod"] }]);
   assert.deepEqual(entries.find(entry => entry.label === "model")?.details, [
     { text: "Uses the declaration default.", kind: "detail", modes: ["dev"] },
     { text: "Value status unavailable.", kind: "detail", modes: ["prod"] },
@@ -234,7 +234,7 @@ test("shared group statuses appear once while environment-specific exceptions st
   assert.deepEqual(groupHoverDetails(groupFixture, index), [{ text: "Every entry uses its declaration default.", kind: "detail", modes: ["dev"] }]);
   const entries = groupHoverEntries(groupFixture, index);
   assert.deepEqual(entries[0]!.details, [{ text: "Uses the declaration default.", kind: "detail", modes: ["prod"] }]);
-  assert.deepEqual(entries[1]!.details, [{ text: "Required value missing: SECOND · cdk-app/.env.prod", kind: "detail", tone: "error", modes: ["prod"] }]);
+  assert.deepEqual(entries[1]!.details, [{ text: "SECOND is unset in cdk-app/.env.prod, and no default stands in.", kind: "detail", tone: "error", modes: ["prod"] }]);
   const both = groupIndexes(
     [inputFixture("first", "dev", "default"), inputFixture("second", "dev", "default")],
     [inputFixture("first", "prod", "default"), inputFixture("second", "prod", "default")],

@@ -55,6 +55,7 @@ export function ResourceHoverContent({ resource }: { readonly resource: SceneNod
       lines={lines}
       notes={contents?.notes}
       issues={node?.issues}
+      {...(group?.frameworkInput ? { frameworkManaged: true } : {})}
       unavailableDescription={
         group?.kind === "input" || group?.kind === "secret" ? "not declared" : undefined
       }
@@ -232,12 +233,15 @@ export function HoverContent(props: {
   readonly entries?: readonly HoverEntry[];
   readonly details?: readonly HoverEntryDetail[];
   readonly issues?: readonly EntityIssue[];
+  /** States ownership when no heading pair is shown (the entries carry the environments). */
+  readonly frameworkManaged?: boolean;
   readonly emptyDescription?: boolean;
   readonly showLocations?: boolean;
   readonly unavailableDescription?: string;
 }) {
   const { title, subtitle, facts, description, lines } = props;
-  const resourceType = facts?.frameworkManaged
+  const managed = props.frameworkManaged ?? facts?.frameworkManaged;
+  const resourceType = managed
     ? subtitle?.replace(/^framework[-\s]managed\s*/i, "")
     : subtitle;
   return (
@@ -268,7 +272,7 @@ export function HoverContent(props: {
             />
           </span>
         ) : null}
-        {resourceType || facts?.frameworkManaged ? (
+        {resourceType || managed ? (
           <div
             data-ui="landscape-hover-resource-meta"
             className="col-span-full grid justify-items-start gap-2"
@@ -281,9 +285,7 @@ export function HoverContent(props: {
                 {resourceType}
               </span>
             ) : null}
-            {facts?.frameworkManaged ? (
-              <FrameworkManagedStatus appearance="map" placement="inline" />
-            ) : null}
+            {managed ? <FrameworkManagedStatus appearance="map" placement="inline" /> : null}
           </div>
         ) : null}
       </div>

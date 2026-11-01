@@ -56,11 +56,15 @@ existing app client. Google, user-pool and app-client construct identities remai
 unchanged. Provider IDs/names are stable infrastructure identities; editing or
 removing an existing declaration remains source work followed by synth/diff.
 
-**Open Google inputs in editor** links to the visibly named mode input file using
-Studio's existing editor-link mechanism. Configure `GOOGLE_CLIENT_ID` and
-`GOOGLE_CLIENT_SECRET` there; this handoff does not fetch stored values into the
-authentication workspace. Google input presence, deployed provider metadata and
-accepted Google application credentials remain separate evidence. OIDC/SAML
+The framework's own sign-in providers (Google, Microsoft and Meta) are declared in
+`framework-config/resources/sign-in-providers.ts`, and the Cognito stack builds each one whose
+lines the selected inputs file sets in full. **Open sign-in provider inputs in editor** links to
+the visibly named mode input file using Studio's existing editor-link mechanism; configure
+`GOOGLE_*`, `MICROSOFT_*` and `META_*` there. The workspace reports each line's presence only and
+never fetches stored values. Input presence, deployed provider metadata and accepted provider
+application credentials remain separate evidence. CognitoStack publishes the built providers as
+its `SignInProviders` output, which the client export maps to `VITE_SIGN_IN_PROVIDERS`, so the
+login page offers exactly the providers the pool accepts. OIDC/SAML
 declarations continue through Studio's reviewed source proposals.
 
 OIDC proposals declare or reuse one `resource.secret("NAME")` in the resource

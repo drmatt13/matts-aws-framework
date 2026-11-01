@@ -186,6 +186,9 @@ picker with existing service artwork; selecting a destination reveals only its s
 actions. Services and calls precede configuration inputs. Queue permissions omit bucket
 scopes; bucket permissions start with a bounded object-key scope. Saved entries name the
 destination and operation; exact supported removals and staged additions have Undo.
+Permissions are IAM grants unless labelled otherwise, so neither rows nor the **Authorization**
+heading carry an "IAM grant" badge; only the exceptions (**Local connection**, **User token**,
+**Source evidence**) are labelled, by `AuthorizationBadge`.
 **Incoming access** separates other principals from the workload's own grants, including
 callbacks and pull triggers whose IAM ownership differs from the graph arrow. Tasks,
 workflows and agents offer **Add caller**; resource inspectors offer **Grant access**.

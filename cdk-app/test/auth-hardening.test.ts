@@ -22,12 +22,12 @@ afterEach(() => {
   delete process.env.SKIP_EMAIL_VERIFICATION;
 });
 
-async function signInWithGoogle(existing: NativeUser[]): Promise<string[]> {
+async function signInWithGoogle(existing: NativeUser[], userName = "google_1234567890", providerName = "Google"): Promise<string[]> {
   const linked: string[] = [];
   CognitoIdentityProviderClient.prototype.send = (async (command: { constructor: { name: string }; input: Record<string, unknown> }) => {
     switch (command.constructor.name) {
       case "ListIdentityProvidersCommand":
-        return { Providers: [{ ProviderName: "Google" }] };
+        return { Providers: [{ ProviderName: providerName }] };
       case "ListUsersCommand":
         return { Users: existing };
       case "AdminLinkProviderForUserCommand":
@@ -39,7 +39,7 @@ async function signInWithGoogle(existing: NativeUser[]): Promise<string[]> {
   }) as never;
   const event = {
     triggerSource: "PreSignUp_ExternalProvider",
-    userName: "google_1234567890",
+    userName,
     userPoolId: "us-east-1_pool",
     request: { userAttributes: { email: "victim@example.com", email_verified: "true" } },
     response: {},
@@ -66,6 +66,11 @@ test("never links to an account that has not proved the address", async () => {
   // read a message sent there.
   assert.deepEqual(await signInWithGoogle([native({ verified: "false" })]), []);
   assert.deepEqual(await signInWithGoogle([native({ UserStatus: "UNCONFIRMED" })]), []);
+});
+
+test("Meta and Microsoft identities never take over an existing account, even with a verified email", async () => {
+  assert.deepEqual(await signInWithGoogle([native({})], "facebook_1234567890", "Facebook"), []);
+  assert.deepEqual(await signInWithGoogle([native({})], "microsoftentraid_abc-123", "MicrosoftEntraID"), []);
 });
 
 test("never links while email verification is skipped", async () => {

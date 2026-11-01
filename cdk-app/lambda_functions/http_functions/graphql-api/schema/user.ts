@@ -55,7 +55,9 @@ builder.queryField("currentUser", (t) =>
         const { email, email_verified, given_name, family_name } =
           context.session.payload;
 
-        if (typeof email !== "string" || email_verified !== true) {
+        // A Meta sign-in's claim is the string "true": the pre-token-generation
+        // trigger sets it, and that trigger's claim overrides are strings.
+        if (typeof email !== "string" || (email_verified !== true && email_verified !== "true")) {
           throw notFound("User not found");
         }
 

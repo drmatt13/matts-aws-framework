@@ -7,6 +7,7 @@ export const ROOT_ENV_STACK_OUTPUTS = {
     UserPoolDomainUrl: "COGNITO_DOMAIN_URL",
     UserPoolDomainCloudFrontEndpoint: "COGNITO_DOMAIN_CLOUDFRONT_ENDPOINT",
     OAuthProviderRedirectUri: "OAUTH_PROVIDER_REDIRECT_URI",
+    SignInProviders: "SIGN_IN_PROVIDERS",
   },
   DevLambdaReplayStack: {
     ReplayBucketName: "DEV_LAMBDA_REPLAY_BUCKET_NAME",

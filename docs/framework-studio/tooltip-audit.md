@@ -122,7 +122,10 @@ below its rows, absent from the bundle's inspector. Every problem now comes from
 
 Inputs, secrets and input groups with a missing required value in the viewed graph are errors
 too, so the `client` group wears the cross beside the red supply wire, and its inspector lists
-each entry with the same cross and a red "Required value missing in cdk-app/.env.dev" chip.
+each entry with the same cross and a red "Required value missing · unset in cdk-app/.env.dev, no
+default" chip. Missing-value copy always names both remedies, the file and a default (a secret is
+only offered the file), using the editor's own phrase "no default stands in". The input editor's
+per-environment checkbox reads **Available** rather than "Present".
 
 Expected reasons with no fix, such as an unbuilt VPC's fixtures or a disabled Compose
 service, became neutral notes. "Not added to the CDK app" is no longer such a reason: it is

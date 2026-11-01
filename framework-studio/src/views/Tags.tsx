@@ -271,6 +271,7 @@ export function Tags({
       resource &&
       (resource.kind === "envFile" ||
         resource.kind === "group" ||
+        resource.frameworkInput ||
         resource.deploymentFile ||
         resource.clientEnvironment);
     return (

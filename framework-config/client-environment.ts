@@ -15,4 +15,6 @@ export const clientEnvironment = {
   VITE_USER_POOL_ID: { kind: "output", stack: "CognitoStack", outputs: ["UserPoolId"] },
   VITE_USER_POOL_CLIENT_ID: { kind: "output", stack: "CognitoStack", outputs: ["UserPoolClientId"] },
   VITE_COGNITO_DOMAIN: { kind: "output", stack: "CognitoStack", outputs: ["UserPoolDomainUrl"] },
+  // The sign-in providers the pool accepts; the login page offers exactly these.
+  VITE_SIGN_IN_PROVIDERS: { kind: "output", stack: "CognitoStack", outputs: ["SignInProviders"] },
 } as const;

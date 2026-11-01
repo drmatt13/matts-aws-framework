@@ -357,6 +357,8 @@ export function connectionIssues(connection: ConnectionGroup, mode: Mode, index:
   }
   const one = missing.length === 1;
   const files = [...new Set(missing.map(edge => edge.inputRequirement!.file))];
+  // Framework inputs take no default; only the file can supply them.
+  const defaults = missing.some(edge => !index.resources.get(edge.to)?.frameworkInput);
   return [{
     severity: "error",
     badge: "error",
@@ -364,7 +366,7 @@ export function connectionIssues(connection: ConnectionGroup, mode: Mode, index:
     details: [
       missing.length === members.length ? SHARED_DETAILS[REQUIRED_MISSING]!(familyOf(members[0]!).singular)
         : `${nameList(missing.map(edge => presentRelationship(edge, index).value), 6)} ${one ? "is missing its required value" : "are missing their required values"}.`,
-      `Set ${one ? "a non-blank value" : "non-blank values"} in ${files.join(" and ")}, or define ${one ? "a default on the parameter" : "defaults on the parameters"}.`,
+      `Set ${one ? "a non-blank value" : "non-blank values"} in ${files.join(" and ")}${defaults ? `, or define ${one ? "a default on the parameter" : "defaults on the parameters"}` : ""}.`,
     ],
   }];
 }
