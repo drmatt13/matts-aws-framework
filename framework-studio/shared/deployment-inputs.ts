@@ -108,6 +108,8 @@ export interface DeploymentInputEdit {
   readonly name: string;
   readonly value: string;
   readonly create?: true;
+  /** Delete every assignment for this name; value must be empty and create must be absent. */
+  readonly remove?: true;
 }
 /** One file's staged edits, against the content hash its details were read at. A review holds one or both files. */
 export interface DeploymentInputFileEdits {

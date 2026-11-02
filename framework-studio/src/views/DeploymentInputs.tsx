@@ -36,6 +36,7 @@ import { EnvironmentPills } from "./DeploymentBadge";
 import { RetryNotice } from "./RetryNotice";
 import { openEnvironmentVariable, takeEnvironmentVariableRequest } from "../environment-variable-link";
 import { inputGroupOf } from "../input-groups";
+import { EnvironmentInputDeclaration } from "./EnvironmentInputDeclaration";
 
 /** How a file's line reads, without the value: set, blank with a default standing in, or absent. */
 export function lineSummary(entry: DeploymentInputEntry): string {
@@ -136,6 +137,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   const [createError, setCreateError] = useState("");
   const requests = useRef(new AbortController());
   const rowElements = useRef(new Map<string, HTMLDetailsElement>());
+  const removalBackups = useRef(new Map<string, Partial<Record<Mode, EnvironmentEdit>>>());
 
   const exists = { dev: !!files.dev?.exists, prod: !!files.prod?.exists };
   // A dirty draft pins its baseline; newer source still retires private reveals.
@@ -169,7 +171,8 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   const editsOf = (mode: Mode) => pending[mode]?.edits ?? [];
   const editOf = (mode: Mode, name: string) => editsOf(mode).find((edit) => edit.key === name);
   const descriptionPending = draftState.entries.some((entry) => entry.kind === "description");
-  const locked = !!draftState.busy || draft.conflict || live.evaluating || descriptionPending;
+  const declarationPending = !!draft.creation();
+  const locked = !!draftState.busy || draft.conflict || live.evaluating || descriptionPending || declarationPending;
   const disabledFor = (mode: Mode) => locked || !details[mode];
 
   const update = (mode: Mode, next: readonly EnvironmentEdit[]) => {
@@ -236,6 +239,18 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
     return exists[mode] && reads(entry, mode) && required(entry) && entry?.default === undefined && !hasValue(row, mode);
   };
   const missingRows = byMode((mode) => rows.filter((row) => missing(row, mode)));
+  const removed = (name: string) => MODES.some(mode => !!editOf(mode, name)?.remove);
+  const toggleRemoval = (name: string) => {
+    const undo = removed(name);
+    if (!undo) removalBackups.current.set(name, Object.fromEntries(MODES.flatMap(mode => editOf(mode, name) ? [[mode, editOf(mode, name)!]] : [])));
+    for (const mode of MODES) {
+      if (!lines[mode].has(name)) continue;
+      const others = editsOf(mode).filter(edit => edit.key !== name);
+      const previous = removalBackups.current.get(name)?.[mode];
+      update(mode, undo ? previous ? [...others, previous] : others : [...others, { key: name, name, value: "", remove: true }]);
+    }
+    if (undo) removalBackups.current.delete(name);
+  };
 
   // New variables join both files under one key; a blank value writes an empty line.
   const writable = MODES.filter((mode) => !!details[mode]);
@@ -293,7 +308,9 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
     .sort((a, b) => a.title.localeCompare(b.title));
   const ungrouped = matches.filter((row) => !row.group);
   const errors = [...new Set(MODES.flatMap((mode) => pending[mode]?.error ? [pending[mode]!.error!] : []))];
-  const issues = MODES.flatMap((mode) => fileResources[mode] ? resourceIssues(fileResources[mode]!) : []);
+  // This inspector always covers both files, including a legacy file link in the other source mode.
+  const issues = resourceIssues({ ...(collection ?? resource), deploymentFiles: ids }, Object.values(fileResources).filter(item => !!item).map(item => ({ ...item, absent: false })))
+    .filter(issue => !issue.variable || !removed(issue.variable));
   const unavailableFiles = MODES.filter((mode) => files[mode] && !files[mode]!.exists);
 
   const valueLine = (row: VariableRow, mode: Mode) => {
@@ -308,8 +325,8 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
     else {
       const value = valueOf(mode, row.name);
       const undeclared = isUndeclaredEnvironmentInput(entry);
-      const invalid = missing(row, mode) || undeclared;
-      const errorId = `undeclared-${mode}-${row.name}`;
+      const invalid = missing(row, mode);
+      const errorId = `undeclared-${row.name}`;
       const fixed = row.name === "PROD_DEPLOYMENT";
       const placeholder = hidden(mode, row.name)
         ? "Set · hidden"
@@ -325,7 +342,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
               aria-describedby={undeclared ? errorId : undefined}
               aria-label={`Value for ${label}`}
               value={value}
-              disabled={disabledFor(mode)}
+              disabled={disabledFor(mode) || removed(row.name)}
               onChange={(event) => setValue(mode, row.name, event.target.value)}
             >
               <option value="">{placeholder}</option>
@@ -341,12 +358,11 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
               value={value}
               placeholder={placeholder}
               sensitive={entry.sensitive}
-              disabled={disabledFor(mode) || fixed}
+              disabled={disabledFor(mode) || fixed || removed(row.name)}
               onChange={(next) => setValue(mode, row.name, next)}
               onReveal={reveal(mode, row.name)}
             />
           )}
-          {undeclared ? <p id={errorId} className="m-0 text-caption text-refuse wrap-anywhere">No linked input parameter or secret in Input parameters and secrets. Declare {row.name} there or remove the assignment.</p> : null}
           {entry.notRead ? <p className="m-0 text-caption text-refuse">Written here, but {MODE_NAMES[mode]} never reads it.</p> : null}
           {invalid && reasons.length ? <p className="m-0 text-caption text-refuse wrap-anywhere">{reasons.join(" ")}</p> : null}
           {fixed ? <p className="m-0 text-caption text-graphite">Set by each file's environment.</p> : null}
@@ -366,7 +382,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
     const attention = byMode((mode) => missing(row, mode) || undeclared(mode));
     const lit = (mode: Mode) => !undeclared(mode) && reads(row.entries[mode], mode) && (hasValue(row, mode) || row.entries[mode]?.default !== undefined);
     const edited = MODES.some((mode) => !!editOf(mode, row.name));
-    const absent = attention.dev || attention.prod;
+    const absent = !removed(row.name) && (attention.dev || attention.prod);
     const targets = [...new Set(MODES.flatMap((mode) => row.entries[mode]?.targets ?? []))];
     const note = MODES.map((mode) => row.entries[mode]?.note).find(Boolean);
     return (
@@ -395,6 +411,26 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
           </InspectorSummary>
           {/* Indented past the disclosure chevron, so each environment's label sits under the name. */}
           <div className="grid gap-2 pb-3.5 pl-[17px]" data-slot="environment-variable-values">
+            {MODES.some(undeclared) ? (
+              <div className="grid min-w-0 gap-2" data-slot="environment-variable-resolution">
+                <p id={`undeclared-${row.name}`} className={cx("m-0 text-caption wrap-anywhere", removed(row.name) ? "text-graphite" : "text-refuse")}>
+                  {removed(row.name) ? "Removal staged from every file containing this variable." : "This variable has no input parameter or secret. Create a declaration or remove it from the environment files."}
+                </p>
+                {draft.creation()?.environmentVariable === row.name ? <EnvironmentInputDeclaration name={row.name} resources={declarations} cancel={() => {
+                  draft.discard();
+                  requestAnimationFrame(() => rowElements.current.get(row.name)?.querySelector<HTMLElement>('[data-slot="create-environment-input"]')?.focus());
+                }} /> : (
+                  <div className="flex flex-wrap gap-3">
+                    {!removed(row.name) ? <button data-slot="create-environment-input" className={buttonClasses({ variant: "link" })} disabled={locked || draft.dirty}
+                      onClick={() => draft.beginEnvironmentInput(row.name, Object.values(row.entries).some(entry => entry.sensitive))}>Create input parameter or secret</button> : null}
+                    <button className={buttonClasses({ variant: "link" })}
+                      disabled={locked || MODES.some(mode => !!row.entries[mode] && row.entries[mode]!.status !== "missing" && !details[mode])}
+                      onClick={() => toggleRemoval(row.name)}>{removed(row.name) ? "Undo removal" : "Remove variable"}</button>
+                  </div>
+                )}
+                {draft.dirty && !declarationPending && !removed(row.name) ? <p className="m-0 text-caption text-graphite">Apply or discard value changes before creating a declaration.</p> : null}
+              </div>
+            ) : null}
             {MODES.map((mode) => valueLine(row, mode))}
             {targets.length || note ? (
               <p className="m-0 flex flex-wrap gap-[var(--space-1)_var(--space-3)] text-caption text-graphite" data-slot="input-entry-meta">

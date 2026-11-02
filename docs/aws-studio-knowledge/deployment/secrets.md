@@ -47,6 +47,15 @@ a CDK environment resource error in both source modes. A declaration in either g
 mode-inapplicable assignments retain their separate **Not read** state. Source-only parameters
 have no environment link and cannot satisfy this requirement. Values are never needed for these errors.
 
+An undeclared variable is one issue across both files, listing each file that writes it. Its row
+offers an inline declaration form (name, input/secret type and an existing application input group
+or standalone placement) through the ordinary source creation review. Creation fixes the variable
+link, preserves authored values, and keeps the CDK environment selected after apply. Framework-managed
+groups are not creation destinations. Private value edits and declaration creation are reviewed
+separately. The row can instead stage removal from every file containing the variable, with undo
+before review; the private environment transaction removes all duplicate/multiline assignments,
+preserves unrelated bytes, redacts review values and rechecks every file hash before writing.
+
 Every variable the framework itself reads, rather than a workload, has exactly one owner: the
 deployment settings in [cdk-app/deployment-inputs.ts](../../../cdk-app/deployment-inputs.ts), the
 production database overrides (`DATABASE_SETTING_INPUTS`), or the local development tooling in

@@ -18,8 +18,9 @@ export function readInputEdits(value: unknown): DeploymentInputEdit[] {
   if (!Array.isArray(value) || !value.length || value.length > 200) throw new EditError(400, "Review between 1 and 200 environment variable changes.");
   return value.map((edit: unknown) => {
     const item = edit as Record<string, unknown> | undefined;
-    if (!item || typeof item.name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(item.name) || typeof item.value !== "string" || item.value.includes("\0") || (item.create !== undefined && item.create !== true)) throw new EditError(400, "Use an environment variable name and a text value without null characters.");
-    return { name: item.name, value: item.value, ...(item.create ? { create: true as const } : {}) };
+    if (!item || typeof item.name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(item.name) || typeof item.value !== "string" || item.value.includes("\0") || (item.create !== undefined && item.create !== true) || (item.remove !== undefined && item.remove !== true)) throw new EditError(400, "Use an environment variable name and a text value without null characters.");
+    if (item.remove && (item.create || item.value !== "")) throw new EditError(400, "A removal cannot create a variable or supply a value.");
+    return { name: item.name, value: item.value, ...(item.create ? { create: true as const } : {}), ...(item.remove ? { remove: true as const } : {}) };
   });
 }
 /** One review covers one or both files, each once, within the same total edit limit. */
@@ -48,7 +49,7 @@ function assignment(name: string, value: string): string {
 /** Keep unrelated assignments and comments byte-for-byte. A changed key is written
  * once; duplicate assignments for that key are removed, including multiline spans. */
 export function updateInputText(before: string, edits: readonly DeploymentInputEdit[]): string {
-  const replacements = new Map(edits.map((edit) => [edit.name, assignment(edit.name, edit.value)]));
+  const replacements = new Map(edits.map((edit) => [edit.name, edit.remove ? null : assignment(edit.name, edit.value)]));
   const seen = new Set<string>();
   const lines = before.match(/[^\n]*\n|[^\n]+$/g) ?? [];
   const newline = before.includes("\r\n") ? "\r\n" : "\n";
@@ -68,13 +69,13 @@ export function updateInputText(before: string, edits: readonly DeploymentInputE
     }
     const replacement = replacements.get(name);
     if (replacement === undefined) output.push(block);
-    else if (!seen.has(name)) { output.push(`${replacement}${newline}`); seen.add(name); }
+    else if (!seen.has(name)) { if (replacement !== null) output.push(`${replacement}${newline}`); seen.add(name); }
   }
   let after = output.join("");
-  for (const [name, replacement] of replacements) if (!seen.has(name)) { if (after && !after.endsWith("\n")) after += newline; after += replacement + newline; }
+  for (const [name, replacement] of replacements) if (!seen.has(name) && replacement !== null) { if (after && !after.endsWith("\n")) after += newline; after += replacement + newline; }
   const parsed = parseEnv(after);
   const original = parseEnv(before);
-  if (edits.some((edit) => parsed[edit.name] !== edit.value) || Object.keys(original).some((name) => !replacements.has(name) && parsed[name] !== original[name])) throw new EditError(422, "The dotenv edit could not preserve the file's values. Edit this file in your editor.");
+  if (edits.some((edit) => edit.remove ? Object.hasOwn(parsed, edit.name) : parsed[edit.name] !== edit.value) || Object.keys(original).some((name) => !replacements.has(name) && parsed[name] !== original[name])) throw new EditError(422, "The dotenv edit could not preserve the file's values. Edit this file in your editor.");
   return after;
 }
 
@@ -121,6 +122,7 @@ export class DeploymentInputService {
       const names = new Set<string>();
       const parsed = parseEnv(before);
       for (const edit of edits) {
+        if (edit.remove && (edit.create || edit.value !== "")) throw new EditError(422, "A removal cannot create a variable or supply a value.");
         if (names.has(edit.name)) throw new EditError(422, "Each environment variable can appear only once in a draft.");
         names.add(edit.name);
         if (edit.create ? Object.hasOwn(parsed, edit.name) : !Object.hasOwn(parsed, edit.name)) throw new EditError(409, "A variable already exists or is no longer present. Reload the inputs file.");
@@ -132,9 +134,9 @@ export class DeploymentInputService {
       return { mode, hash, edits, after, file: deploymentInputPath(mode) };
     });
     const response: DeploymentInputPlan = { planId: randomUUID(), ok: true,
-      summaries: planned.flatMap(({ edits, file }) => edits.map((edit) => `${edit.create ? "Add" : "Update"} ${edit.name} in ${path.basename(file)}`)),
+      summaries: planned.flatMap(({ edits, file }) => edits.map((edit) => `${edit.remove ? "Remove" : edit.create ? "Add" : "Update"} ${edit.name} ${edit.remove ? "from" : "in"} ${path.basename(file)}`)),
       // Do not put any dotenv value (including unrecognized secrets) in a diff.
-      changes: planned.map(({ edits, file }) => ({ file, diff: diffOf(file, edits.filter((edit) => !edit.create).map((edit) => `${edit.name}=<value hidden>`).join("\n"), edits.map((edit) => `${edit.name}=<${edit.create ? "new" : "updated"} value hidden>`).join("\n")) })),
+      changes: planned.map(({ edits, file }) => ({ file, diff: diffOf(file, edits.filter((edit) => !edit.create).map((edit) => `${edit.name}=<value hidden>`).join("\n"), edits.filter((edit) => !edit.remove).map((edit) => `${edit.name}=<${edit.create ? "new" : "updated"} value hidden>`).join("\n")) })),
     };
     if (this.plans.size >= 20) this.expirePlans();
     this.plans.set(response.planId, { revision, files: planned.map(({ mode, hash, after }) => ({ mode, hash, after })) });

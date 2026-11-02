@@ -40,7 +40,7 @@ export function EntityName({
     live.evaluating ||
     live.running !== null ||
     !!model.stale ||
-    privateEdits;
+    privateEdits || !!draft.creation()?.environmentVariable;
   const begin = () => {
     checkpoint.current = [...draft.nameEntries(entity)];
     setCode(draft.codeName(entity));

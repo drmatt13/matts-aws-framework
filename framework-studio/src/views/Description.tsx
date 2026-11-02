@@ -24,7 +24,8 @@ export function Description({
   const entry = draftState.entries.find(
     (entry) => entry.kind === "description" && entry.entity === entity,
   );
-  const separate = draftState.entries.some((entry) => entry.kind === "environment");
+  const declaration = !!draft.creation()?.environmentVariable;
+  const separate = declaration || draftState.entries.some((entry) => entry.kind === "environment");
   const problem = snapshot.descriptions.problem;
   const editor = (
     <div data-slot="description-editor-content">
@@ -77,7 +78,7 @@ export function Description({
             {entry ? "Unsaved · Review Changes to save." : shared ? "Shared across environments." : ""}
           </span>
           <span className="[grid-area:1/1] aria-hidden:invisible" aria-hidden={!separate}>
-            Apply or discard local value changes to edit this description.
+            {declaration ? "Apply or discard the declaration to edit this description." : "Apply or discard local value changes to edit this description."}
           </span>
         </span>
         <a

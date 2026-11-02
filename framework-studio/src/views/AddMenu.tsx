@@ -220,7 +220,7 @@ export function AddMenu({
           aria-controls={open ? id : undefined}
           onClick={() => {
             const show = () => setOpen((value) => !value);
-            if (creation) show();
+            if (creation && !creation.environmentVariable) show();
             else draft.requestNavigation(show);
           }}
         >
@@ -228,7 +228,7 @@ export function AddMenu({
           {presentation === "toolbar" ? <span>Add to application</span> : null}
         </button>
       </div>
-      {creation && !open ? <CreationWizard entry={creation} back={() => setOpen(true)} /> : null}
+      {creation && !creation.environmentVariable && !open ? <CreationWizard entry={creation} back={() => setOpen(true)} /> : null}
     </>
   );
 }

@@ -160,11 +160,16 @@ test("undeclared assignments in either file mark the CDK environment as an error
     ] } };
   const expected = resourceIssues(prod);
   assert.equal(expected[0]!.severity, "error");
-  assert.equal(expected[0]!.title, ".env.prod has undeclared variables");
-  assert.deepEqual(expected[0]!.details, ["UNKNOWN_BLANK in cdk-app/.env.prod has no linked input parameter or secret in Input parameters and secrets. Declare it there or remove the assignment."]);
+  assert.equal(expected[0]!.title, "UNKNOWN_BLANK is undeclared");
+  assert.deepEqual(expected[0]!.details, ["Used in .env.prod. Create an input parameter or secret, or remove this variable in CDK environment."]);
   assert.deepEqual(resourceIssues(environment, [dev, prod]), expected, "an undeclared production line is visible from Development");
   assert.deepEqual(resourceIssues(environment, [{ ...dev, absent: true }, { ...prod, absent: false }]), expected);
   assert.deepEqual(cornerBadges({ roleIcon: "managed", frameworkManaged: true, issues: expected }), { right: "error" });
+  const both = { ...dev, deploymentFile: { ...dev.deploymentFile!, entries: prod.deploymentFile!.entries } };
+  const combined = resourceIssues(environment, [both, prod]);
+  assert.equal(combined.length, 1, "one variable is one issue even when both files write it");
+  assert.equal(combined[0]!.variable, "UNKNOWN_BLANK");
+  assert.match(combined[0]!.details[0]!, /\.env.dev and \.env.prod/);
 });
 
 test("a group with a missing required value is an error, in names and files only", () => {

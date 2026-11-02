@@ -111,6 +111,7 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
 
   const applyDraft = async () => {
     const authenticationProvider = draft.creation()?.resourceKind === "auth-provider";
+    const environmentInput = draft.creation()?.environmentVariable;
     const result = await draft.apply();
     if (!result) return;
     toast(result.message);
@@ -124,6 +125,7 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
     // Federation creation can return its new secret as the generic source target.
     // Keep this workflow in place without opening an inspector that reads values.
     if (authenticationProvider && result.status === "applied") { setCreated(undefined); props.select(undefined); return; }
+    if (environmentInput && result.status === "applied") { setCreated(undefined); return; }
     if (result.select) { setCreated({ id: result.select, revision: result.revision }); props.select(result.select); }
   };
   return <StudioContext.Provider value={{ response, snapshot, mode: draftState.mode,

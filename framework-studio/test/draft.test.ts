@@ -6,6 +6,7 @@ import type { Snapshot } from "../shared/model";
 import { SnapshotBuilder } from "../server/snapshot";
 import { InspectorDraft, initialResourceForm, protectBeforeUnload, type DraftTransport } from "../src/draft";
 import { clientBindingFor } from "../shared/client-environment";
+import { creationDefaults } from "../shared/creation";
 
 let builder: SnapshotBuilder;
 let baseline: Snapshot;
@@ -29,6 +30,35 @@ function fixture() {
   const change = () => draft.setField(target, fact("lambda.memorySize"), 768);
   return { draft, fact, change, requests, transport, resourceRequests: () => resourceRequests, applies: () => applies };
 }
+
+test("environment declarations use ordinary source creation with a fixed link and no environment values", async () => {
+  const { draft, requests } = fixture();
+  draft.beginEnvironmentInput("PARTNER_TOKEN");
+  assert.equal(draft.creation()!.environmentVariable, "PARTNER_TOKEN");
+  assert.equal(draft.creation()!.form.id, "partnerToken");
+  draft.setCreation("secret", { ...creationDefaults("secret"), envName: "PARTNER_TOKEN", id: "partnerToken", group: "langgraph" });
+  assert.equal(draft.creation()!.environmentVariable, "PARTNER_TOKEN");
+  await draft.review();
+  assert.deepEqual(requests[0]![0], { kind: "create", request: { ...draft.creation()!.request } });
+  assert.equal(requests[0]![0].kind, "create");
+  assert.ok(!JSON.stringify(requests).includes("environmentVariable"), "UI context never expands source write authority");
+  assert.ok(!JSON.stringify(requests).includes('"value"'), "secret creation carries no value");
+  draft.backToEditing();
+  draft.discard();
+  assert.equal(draft.creation(), undefined);
+});
+
+test("removing a variable retains its removal operation through private review and can be undone", async () => {
+  const { draft, transport } = fixture();
+  let submitted: unknown;
+  transport.inputPlan = async files => { submitted = files; return { planId: "remove", ok: true, summaries: [], changes: [] }; };
+  draft.setEnvironment("dev", "hash-dev", [{ key: "OLD", name: "OLD", value: "", remove: true }], ["OLD"]);
+  await draft.review();
+  assert.deepEqual(submitted, [{ mode: "dev", hash: "hash-dev", edits: [{ name: "OLD", value: "", remove: true }] }]);
+  draft.backToEditing();
+  draft.setEnvironment("dev", "hash-dev", [], ["OLD"]);
+  assert.equal(draft.dirty, false);
+});
 
 test("staging a toggle never opens a review or calls the preview API", () => {
   const { draft, fact, requests } = fixture();

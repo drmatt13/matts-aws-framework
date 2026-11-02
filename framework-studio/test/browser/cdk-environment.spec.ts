@@ -65,6 +65,130 @@ function environmentFixture(studio: Fixture) {
 
 const environmentName = (mode: Mode) => (mode === "dev" ? "Development" : "Production");
 
+function orphanFixture(studio: Fixture) {
+  const base = environmentFixture(studio);
+  const name = "BROWSER_UNDECLARED";
+  const group = "resource:browserEnvironment";
+  for (const model of Object.values(studio.response.snapshot.models)) {
+    Object.assign(model, { resources: [...model.resources,
+      { id: group, kind: "group", path: ["browserEnvironment"], absent: false },
+      { id: "framework:local", kind: "group", path: ["Local development"], absent: false, frameworkInput: "local" },
+    ] });
+    for (const resource of model.resources.filter(resource => resource.deploymentFile)) {
+      const file = resource.deploymentFile!;
+      Object.assign(file, { entries: [...file.entries, { name, status: "configured", counterpart: "configured", sensitive: false, defaulted: false, targets: [] }] });
+    }
+  }
+  const details = (mode: Mode) => ({ ...base.details(mode), entries: [...base.details(mode).entries, { name, value: `private-browser-only-${mode}`, sensitive: false }] });
+  studio.reply("GET", "/api/deployment-inputs/details", async (route, url) => {
+    await route.fulfill({ json: details(url.searchParams.get("mode") === "prod" ? "prod" : "dev") });
+  });
+  return { name, group, details };
+}
+
+for (const width of [1440, 390]) {
+  for (const kind of ["input", "secret"] as const) test(`declare an environment variable as a ${kind} in place at ${width}px`, async ({ page, studio }, info) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const { name, group } = orphanFixture(studio);
+    const groupName = kind === "secret" ? "browserEnvironment" : "";
+    let request: Record<string, unknown> | undefined;
+    studio.reply("POST", "/api/edits/batch/plan", async (route) => {
+      const body = route.request().postDataJSON();
+      request = body.edits[0].request;
+      await route.fulfill({ json: { planId: "declare-variable", ok: true, summaries: [`Create ${kind} for ${name}`],
+        changes: [{ file: "framework-config/resources/inputs.ts", diff: { unified: `${name} declaration`, lines: [] } }],
+        preflight: { dev: { mode: "dev", ok: true, diagnostics: [] }, prod: { mode: "prod", ok: true, diagnostics: [] } }, impact: [] } });
+    });
+    studio.reply("POST", "/api/edits/batch/apply", async route => {
+      const id = `resource:${groupName ? `${groupName}.` : ""}browserUndeclared`;
+      for (const model of Object.values(studio.response.snapshot.models)) {
+        Object.assign(model, { resources: [...model.resources, { id, kind, path: [...(groupName ? [groupName] : []), "browserUndeclared"], fromEnv: name, absent: false, ...(groupName ? { parent: group } : {}) }] });
+        for (const resource of model.resources.filter(resource => resource.deploymentFile))
+          Object.assign(resource.deploymentFile!.entries.find(entry => entry.name === name)!, { targets: [id] });
+      }
+      await route.fulfill({ json: { status: "applied", select: id, revision: studio.response.snapshot.revision, message: "Created declaration." } });
+    });
+    await studio.goto(`/?select=${encodeURIComponent(environmentId)}`);
+    const panel = page.getByRole("complementary", { name: "Inspector", exact: true });
+    const row = panel.locator(`[data-slot="environment-variable"][data-variable="${name}"]`);
+    const issue = panel.getByRole("alert").filter({ hasText: `${name} is undeclared` });
+    await expect(issue).toHaveCount(1);
+    await expect(issue).toContainText(".env.dev and .env.prod");
+    await row.locator("summary").click();
+    await expect(row.locator('[data-slot="environment-variable-resolution"] > p')).toHaveCount(1);
+    const create = row.getByRole("button", { name: "Create input parameter or secret", exact: true });
+    await create.click();
+    const form = row.locator('[data-slot="environment-input-declaration"]');
+    await expect(form.getByRole("textbox", { name: "Name", exact: true })).toBeFocused();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await form.getByRole("button", { name: "Cancel declaration", exact: true }).click();
+    await expect(create).toBeFocused();
+    await create.click();
+    await form.getByRole("textbox", { name: "Name", exact: true }).fill("invalid name");
+    await expect(panel.getByRole("button", { name: "Review Changes", exact: true })).toBeDisabled();
+    await form.getByRole("textbox", { name: "Name", exact: true }).fill("browserUndeclared");
+    await form.getByRole("combobox", { name: "Type", exact: true }).selectOption(kind);
+    await form.getByRole("combobox", { name: "Input group", exact: true }).selectOption(groupName);
+    await expect(form.getByRole("combobox", { name: "Input group", exact: true }).getByRole("option", { name: "Local development", exact: true })).toHaveCount(0);
+    await expect(row.getByRole("textbox", { name: `Value for ${name} in Development`, exact: true })).toBeDisabled();
+    await assertAccessible(page);
+    await panel.screenshot({ path: info.outputPath("declare-environment-input.png"), animations: "disabled" });
+    await panel.getByRole("button", { name: "Review Changes", exact: true }).click();
+    const review = page.getByRole("dialog");
+    await expect(review).not.toContainText("private-browser-only");
+    expect(request).toMatchObject({ kind, id: "browserUndeclared", envName: name, group: groupName });
+    expect(JSON.stringify(request)).not.toContain("private-browser-only");
+    await review.getByRole("button", { name: "Back to Editing", exact: true }).click();
+    await expect(form.getByRole("combobox", { name: "Input group", exact: true })).toHaveValue(groupName);
+    await panel.getByRole("button", { name: "Review Changes", exact: true }).click();
+    await review.getByRole("button", { name: "Apply All", exact: true }).click();
+    await expect(panel.getByRole("heading", { name: "CDK environment", exact: true })).toBeVisible();
+    await expect(issue).toHaveCount(0);
+    await expect(row.locator('[data-slot="environment-variable-name"]')).not.toHaveClass(/text-refuse/);
+    expect(studio.requests.filter(request => /\/deployment-inputs\/(plan|apply)$/.test(request.path))).toHaveLength(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+
+  test(`remove an undeclared variable from both environment files with undo and review at ${width}px`, async ({ page, studio }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const { name, details } = orphanFixture(studio);
+    let planned: { files: { mode: Mode; hash: string; edits: { name: string; value: string; remove: boolean }[] }[] } | undefined;
+    studio.reply("POST", "/api/deployment-inputs/plan", async route => {
+      planned = route.request().postDataJSON();
+      await route.fulfill({ json: { planId: "remove-variable", ok: true, summaries: ["Remove variable from both files"], changes: [] } });
+    });
+    studio.reply("POST", "/api/deployment-inputs/apply", async route => {
+      for (const model of Object.values(studio.response.snapshot.models))
+        for (const resource of model.resources.filter(resource => resource.deploymentFile))
+          Object.assign(resource.deploymentFile!, { entries: resource.deploymentFile!.entries.filter(entry => entry.name !== name) });
+      studio.reply("GET", "/api/deployment-inputs/details", async (route, url) => {
+        const value = details(url.searchParams.get("mode") === "prod" ? "prod" : "dev");
+        await route.fulfill({ json: { ...value, entries: value.entries.filter(entry => entry.name !== name) } });
+      });
+      await route.fulfill({ json: { status: "applied", revision: studio.response.snapshot.revision, message: "Removed variable from both files." } });
+    });
+    await studio.goto(`/?select=${encodeURIComponent(environmentId)}`);
+    const panel = page.getByRole("complementary", { name: "Inspector", exact: true });
+    const row = panel.locator(`[data-slot="environment-variable"][data-variable="${name}"]`);
+    await row.locator("summary").click();
+    const dev = row.getByRole("textbox", { name: `Value for ${name} in Development`, exact: true });
+    await expect(dev).toHaveValue("private-browser-only-dev");
+    await dev.fill("prior-draft-value");
+    await row.getByRole("button", { name: "Remove variable", exact: true }).click();
+    await expect(row.getByText("Removal staged from every file containing this variable.", { exact: true })).toBeVisible();
+    await row.getByRole("button", { name: "Undo removal", exact: true }).click();
+    await expect(dev).toHaveValue("prior-draft-value");
+    await row.getByRole("button", { name: "Remove variable", exact: true }).click();
+    await panel.getByRole("button", { name: "Review Changes", exact: true }).click();
+    await expect(page.getByRole("dialog")).not.toContainText("private-browser-only");
+    expect(planned?.files).toEqual((["dev", "prod"] as const).map(mode => ({ mode, hash: `browser-file-${mode}`, edits: [{ name, value: "", remove: true }] })));
+    await page.getByRole("dialog").getByRole("button", { name: "Apply All", exact: true }).click();
+    await expect(row).toHaveCount(0);
+    await expect(panel.getByRole("alert").filter({ hasText: `${name} is undeclared` })).toHaveCount(0);
+    await assertAccessible(page);
+  });
+}
+
 for (const width of [1440, 390]) test(`environment groups follow input declarations and undeclared assignments are errors at ${width}px`, async ({ page, studio }, info) => {
   await page.setViewportSize({ width, height: 1000 });
   const fixture = environmentFixture(studio);
@@ -106,15 +230,15 @@ for (const width of [1440, 390]) test(`environment groups follow input declarati
   await expect(row(requiredName).locator('xpath=ancestor::*[@data-slot="environment-variable-group"]')).toHaveCount(0);
   await expect(row(unknown).locator('xpath=ancestor::*[@data-slot="environment-variable-group"]')).toHaveCount(0);
   await expect(panel.getByRole("heading", { name: /Inputs and secrets|Other variables|Deployment settings/ })).toHaveCount(0);
-  await expect(panel.getByRole("alert").filter({ hasText: ".env.prod has undeclared variables" })).toBeVisible();
+  await expect(panel.getByRole("alert").filter({ hasText: `${unknown} is undeclared` })).toHaveCount(1);
   await expect(row(unknown).locator('[data-slot="environment-variable-name"]')).toHaveClass(/text-refuse/);
   const summary = row(unknown).locator("summary");
   await summary.focus();
   await page.keyboard.press("Enter");
   await expect(row(unknown)).toHaveJSProperty("open", true);
   const value = panel.getByRole("textbox", { name: `Value for ${unknown} in Production`, exact: true });
-  await expect(value).toHaveAttribute("aria-invalid", "true");
-  await expect(value).toHaveAccessibleDescription(/No linked input parameter or secret/);
+  await expect(value).toHaveAttribute("aria-invalid", "false");
+  await expect(value).toHaveAccessibleDescription(/This variable has no input parameter or secret/);
   await expect(row(unknown).locator('[data-environment="dev"] input, [data-environment="dev"] textarea')).toHaveAttribute("aria-invalid", "false");
   await panel.getByRole("searchbox", { name: "Filter environment variables", exact: true }).fill(inputName);
   await expect(panel.locator('[data-slot="environment-variable"]')).toHaveCount(1);

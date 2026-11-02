@@ -448,6 +448,29 @@ function editing(root: string) {
   return { builder, service: new DeploymentInputService(root, builder) };
 }
 
+test("reviewed removal deletes both files' duplicate and multiline assignments without exposing their values", async () => {
+  const root = fixture();
+  try {
+    const before = '# retained\r\nKEEP="first\nUNUSED=inside-another-value\nlast"\r\nUNUSED="private-multiline\nFAKE=inside-removed-value"\r\nUNUSED=private-duplicate\r\nAFTER=unchanged\r\n';
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), before);
+    writeFileSync(path.join(root, "cdk-app/.env.prod"), "# production\nUNUSED=\nOTHER=preserved\n");
+    const { service } = editing(root);
+    const files = readInputFiles((["dev", "prod"] as const).map(mode => ({ mode, hash: service.details(mode).hash, edits: [{ name: "UNUSED", value: "", remove: true }] })));
+    const plan = service.plan(files, "initial");
+    assert.deepEqual(plan.summaries, ["Remove UNUSED from .env.dev", "Remove UNUSED from .env.prod"]);
+    assert.ok(!JSON.stringify(plan).includes("private-"));
+    assert.ok(plan.changes.every(change => !change.diff.lines.some(line => line.kind === "add")));
+    assert.equal(readFileSync(path.join(root, "cdk-app/.env.dev"), "utf8"), before, "review does not write");
+    assert.equal((await service.apply(plan.planId)).status, "applied");
+    const after = readFileSync(path.join(root, "cdk-app/.env.dev"), "utf8");
+    assert.equal(after, '# retained\r\nKEEP="first\nUNUSED=inside-another-value\nlast"\r\nAFTER=unchanged\r\n');
+    assert.equal(readFileSync(path.join(root, "cdk-app/.env.prod"), "utf8"), "# production\nOTHER=preserved\n");
+    assert.equal(parseEnv(after).UNUSED, undefined);
+    for (const bad of [{ remove: false }, { remove: true, create: true }, { remove: true, value: "private" }])
+      assert.throws(() => readInputEdits([{ name: "UNUSED", value: "", ...bad }]), /removal|variable name/);
+  } finally { remove(root); }
+});
+
 test("a selected file exposes all actual variables and saves a reviewed batch without leaking values or touching other files", async () => {
   const root = fixture();
   try {

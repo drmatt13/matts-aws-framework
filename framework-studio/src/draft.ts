@@ -180,7 +180,20 @@ export class InspectorDraft {
     // The draft outlives the wizard when returning to the resource chooser.
     const inputSettings = resourceKind === "input" ? { defaultValue: String(form.defaultValue ?? ""), choices: String(form.choices ?? ""), linkedToEnv: form.linkedToEnv !== false, value: String(form.value ?? "") }
       : resourceKind === "secret" ? this.creation()?.inputSettings : undefined;
-    this.put("create", { kind: "create", key: "create", resourceKind, form, request, error, ...(inputSettings ? { inputSettings } : {}) });
+    const environmentVariable = (resourceKind === "input" || resourceKind === "secret") && form.envName === this.creation()?.environmentVariable ? this.creation()?.environmentVariable : undefined;
+    this.put("create", { kind: "create", key: "create", resourceKind, form, request, error, ...(inputSettings ? { inputSettings } : {}), ...(environmentVariable ? { environmentVariable } : {}) });
+  }
+  /** Start the normal source creation review in the environment variable's own row. */
+  beginEnvironmentInput(name: string, secret = false): void {
+    const kind = secret ? "secret" : "input";
+    this.beginCreation(kind);
+    const base = name.toLowerCase().replace(/_+([a-z0-9])/g, (_, letter: string) => letter.toUpperCase()).replace(/^_+/, "");
+    const property = /^[a-zA-Z_$]/.test(base) ? base : `input${base}`;
+    const occupied = new Set(Object.values(this.state.baseline.models).flatMap(model => model.resources.map(resource => resource.id)));
+    let id = property || "input";
+    for (let suffix = 2; occupied.has(`resource:${id}`); suffix++) id = `${property}${suffix}`;
+    this.setCreation(kind, { ...this.creation()!.form, id, envName: name });
+    this.put("create", { ...this.creation()!, environmentVariable: name });
   }
   field(target: string, fact: FieldFact): FieldEntry | undefined { return this.state.entries.find((entry): entry is FieldEntry => entry.kind === "field" && entry.key === fieldKey(target, fact.field)); }
   value(target: string, fact: FieldFact): LiteralValue | undefined {
@@ -324,13 +337,14 @@ export class InspectorDraft {
     this.put("clientEnvironment", count ? { kind: "clientEnvironment", key: "clientEnvironment", mappings, count, ...(error ? { error } : {}) } : undefined);
   }
   setEnvironment(mode: Mode, hash: string, edits: readonly EnvironmentEdit[], existingNames: readonly string[]): void {
-    const changed = edits.filter((edit) => edit.create || edit.value !== edit.original);
+    const changed = edits.filter((edit) => edit.remove || edit.create || edit.value !== edit.original);
     const names = new Set<string>();
     let error: string | undefined;
     for (const edit of changed) {
       if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(edit.name)) error = "Enter a variable name using letters, digits and underscores, starting with a letter or underscore.";
       else if (names.has(edit.name) || (edit.create && existingNames.includes(edit.name))) error = "Each environment variable must have a unique name.";
       else if (edit.value.includes("\0")) error = "Environment values cannot contain null characters.";
+      else if (edit.remove && (edit.create || edit.value !== "")) error = "A removal cannot create a variable or supply a value.";
       else if (edit.name === "PROD_DEPLOYMENT" && edit.value !== String(mode === "prod")) error = "PROD_DEPLOYMENT must match the environment file's mode.";
       names.add(edit.name);
     }
@@ -403,7 +417,7 @@ export class InspectorDraft {
       if (environments.length && state.entries.length !== environments.length) throw new Error("Review private environment values in their own inspector session.");
       const review: Review = environments.length
         ? { kind: "environment", plan: await this.transport.inputPlan(environments.map((environment) => ({ mode: environment.mode, hash: environment.hash,
-            edits: environment.edits.map(({ name, value, create }) => ({ name, value, ...(create ? { create } : {}) })) })), state.baseline.revision) }
+            edits: environment.edits.map(({ name, value, create, remove }) => ({ name, value, ...(create ? { create } : {}), ...(remove ? { remove } : {}) })) })), state.baseline.revision) }
         : { kind: "batch", plan: await this.transport.planBatch(state.entries.map(toDraftEdit), state.baseline.revision, state.commentResolutions ? { comments: state.commentResolutions } : undefined) };
       if (serial === this.serial) this.publish({ ...this.state, busy: undefined, review });
     } catch (error) { if (serial === this.serial) this.publish({ ...this.state, busy: undefined, error: error instanceof Error ? error.message : String(error) }); }

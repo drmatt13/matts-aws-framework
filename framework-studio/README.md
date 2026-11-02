@@ -284,7 +284,12 @@ saved description. Standalone parameters and secrets have no section heading. Fr
 inputs follow the same parent-group relationships. Every assignment in either file, including a
 blank one, must link to an environment parameter or secret in **Input parameters and secrets**.
 An undeclared assignment highlights its variable and reports an error on the CDK environment in
-both source modes. Source-only parameters do not claim environment assignments. A declared input
+both source modes. A variable shared by both files is one issue. Its row can create a linked
+parameter or secret in place, standalone or in an existing application input group, through the
+normal source review. Alternatively, **Remove variable** stages deletion from all files containing
+it, with **Undo removal** before private review. Existing values never enter declaration creation;
+removal review is redacted and preserves unrelated assignments and comments.
+Source-only parameters do not claim environment assignments. A declared input
 written in an environment that does not read it is still flagged **Not read** separately.
 File-to-resource links use the input model's declarations. Names, line presence and declared
 defaults remain available without values in the map. Values load only into the selected
