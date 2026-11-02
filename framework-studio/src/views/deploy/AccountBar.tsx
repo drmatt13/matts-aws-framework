@@ -1,7 +1,7 @@
 import { cx } from "../../ui/classes";
 import { buttonClasses } from "../../ui/Button";
 
-import { Select } from "../../ui/FormControls";
+import { AwsConnectionSummary } from "../AwsConnectionSummary";
 import { workspaceToolbarClasses } from "../../ui/Surface";
 
 import { AlertTriangle, Check, ChevronDown, CircleDashed, LogIn, RefreshCw, X } from "lucide-react";
@@ -23,7 +23,6 @@ import { callerName } from "./format";
 export function AccountBar(props: {
   readonly profiles: readonly AwsProfileInfo[];
   readonly profile: string | undefined;
-  readonly onProfile: (name: string) => void;
   readonly context?: AccountContext;
   readonly problem?: AwsProblem;
   readonly loading: boolean;
@@ -42,27 +41,7 @@ export function AccountBar(props: {
   return (
     <header className={cx(workspaceToolbarClasses, "grid gap-2")} aria-label="AWS account">
       <div className="grid min-h-8 min-w-0 grid-cols-[minmax(200px,280px)_minmax(0,1fr)_auto] items-center gap-3 vp-900:grid-cols-[minmax(0,1fr)_auto]">
-        <label className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 vp-420:grid-cols-[minmax(0,1fr)] vp-420:gap-1">
-          <span className="text-caption text-graphite whitespace-nowrap">AWS profile</span>
-          <Select
-            className="w-full min-w-0"
-            value={props.profile ?? ""}
-            onChange={(event) => props.onProfile(event.target.value)}
-            aria-label="AWS profile"
-            title={
-              selected?.region
-                ? `Profile default region: ${selected.region}. A deployment's pinned region takes precedence.`
-                : undefined
-            }
-          >
-            {!props.profile ? <option value="">Choose a profile</option> : null}
-            {props.profiles.map((entry) => (
-              <option key={entry.name} value={entry.name}>
-                {entry.name}
-              </option>
-            ))}
-          </Select>
-        </label>
+        <AwsConnectionSummary />
         {props.problem ? (
           <span
             className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 text-label text-refuse wrap-anywhere vp-900:col-span-full vp-900:row-start-2"

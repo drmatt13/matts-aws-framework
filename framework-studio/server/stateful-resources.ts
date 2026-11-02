@@ -19,6 +19,7 @@ import { sendJson } from "./http";
 import type { DeployService } from "./deploy/service";
 import { runCommand, studioEnvironment, Tools, type Runner } from "./deploy/process";
 import { changeStatefulSource, readStatefulSource, STATEFUL_SOURCE_FILE } from "./stateful-source";
+import { isAwsProfileName } from "../shared/aws-connections";
 
 interface Builder { readonly current?: { readonly snapshot: { readonly revision: string } }; refresh(): Promise<{ readonly snapshot: { readonly revision: string } }> }
 interface PrivatePlan { view: StatefulPlan; mode: Mode; revision: string; hashes: string; sourceHash: string; before: string; after: string; inspect?: readonly string[]; selection?: StatefulSelection }
@@ -57,7 +58,7 @@ export class StatefulResourceService {
   }
   private selection(value: unknown): StatefulSelection {
     const input = value as StatefulSelection | undefined;
-    if (!input || !/^[\w+=,.@-]{1,128}$/.test(input.profile) || !/^[A-Za-z][A-Za-z0-9-]{0,127}$/.test(input.deployment) || !/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/.test(input.region)) throw new EditError(400, "Choose a declared destination, AWS profile and region.");
+    if (!input || !isAwsProfileName(input.profile) || !/^[A-Za-z][A-Za-z0-9-]{0,127}$/.test(input.deployment) || !/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/.test(input.region)) throw new EditError(400, "Choose a declared destination, AWS profile and region.");
     inputMode(input.mode);
     const target = this.deploy.targets().find(target => target.name === input.deployment && target.mode === input.mode);
     if (!target || target.region && target.region !== input.region) throw new EditError(422, "Destination mode or region differs from the declared deployment target.");
@@ -66,7 +67,8 @@ export class StatefulResourceService {
   }
   private args(selection: StatefulSelection): string[] { return ["--deployment", selection.deployment, "--mode", selection.mode, "--profile", selection.profile, "--region", selection.region, "--json"]; }
   private async cli<T>(args: readonly string[]): Promise<T> {
-    const result = await this.run(this.tools.script("scripts/stateful-references.ts", args, studioEnvironment(this.env)), { timeoutMs: 180_000 });
+    const profileIndex = args.indexOf("--profile"), profile = profileIndex >= 0 ? args[profileIndex + 1] : undefined;
+    const result = await this.run(this.tools.script("scripts/stateful-references.ts", args, studioEnvironment(this.env, { profile })), { timeoutMs: 180_000 });
     let value: any; try { value = JSON.parse(result.stdout); } catch { /* Safe message below. */ }
     if (result.code !== 0 || !value || value.error) throw new EditError(422, typeof value?.error?.message === "string" ? value.error.message : "Lifecycle inspection failed. Check the selected profile, account, region and read permissions with the lifecycle CLI. No source or AWS resources were changed.");
     return value as T;

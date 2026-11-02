@@ -2,7 +2,9 @@ import { dialogPrimaryActionClasses } from "../inspector-ui";
 import { cx } from "../ui/classes";
 import { Select, TextInput } from "../ui/FormControls";
 import { buttonClasses } from "../ui/Button";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useStudio } from "../studio";
+import { AwsConnectionSummary } from "./AwsConnectionSummary";
 import { useBlocker } from "@tanstack/react-router";
 import type { DatabaseTarget } from "../../shared/database-workbench";
 import type { DatabaseApplicationResult } from "../../shared/database-application";
@@ -44,7 +46,11 @@ export function DatabaseCloud({
   readonly onBusyChange?: (busy: boolean) => void;
 }) {
   const [deployment, setDeployment] = useState("");
-  const [profile, setProfile] = useState("dev");
+  const { awsProfile, mode, live } = useStudio();
+  const profile = awsProfile ?? "";
+  const context = JSON.stringify([mode, profile, live.awsConnectionRevision, deployment, target.identity]);
+  const latest = useRef(context);
+  latest.current = context;
   const [destination, setDestination] = useState<DatabaseCloudDestination>();
   const [approval, setApproval] = useState<DatabaseCloudApproval>();
   const [confirmation, setConfirmation] = useState("");
@@ -63,13 +69,16 @@ export function DatabaseCloud({
     setDestination(undefined);
     setApproval(undefined);
     setConfirmation("");
-  }, [deployment, profile, target.identity]);
+  }, [deployment, profile, mode, live.awsConnectionRevision, target.identity]);
   const prepare = async () => {
     setBusy("preparing");
     setError(undefined);
     setResult(undefined);
+    const captured = context;
     try {
-      setDestination(await databaseCloudApi.prepare(deployment, profile));
+      const next = await databaseCloudApi.prepare(deployment, profile);
+      if (latest.current !== captured) return;
+      setDestination(next);
       setConfirmation("");
     } catch (error) {
       setError(error instanceof Error ? error.message : String(error));
@@ -81,8 +90,11 @@ export function DatabaseCloud({
     if (!destination) return;
     setBusy("inspecting");
     setError(undefined);
+    const captured = context;
     try {
-      setApproval(await databaseCloudApi.review(destination, confirmation));
+      const next = await databaseCloudApi.review(destination, confirmation);
+      if (latest.current !== captured) return;
+      setApproval(next);
       setDestination(undefined);
       setConfirmation("");
     } catch (error) {
@@ -113,7 +125,7 @@ export function DatabaseCloud({
     <section data-ui="workbench-card" className={workbenchCardClasses}>
       <h3 className={workbenchHeadingClasses}>Production database review</h3>
       <p className={workbenchTextClasses}>
-        Select a named production deployment and AWS profile. Check destination only reads AWS
+        Select a named production deployment. The active declaration mode supplies its AWS profile. Check destination only reads AWS
         metadata. Read-only inspection and the separately approved database write each launch a
         billed Fargate task using its declared VPC networking. Task public-IP assignment may be
         enabled; the database remains private and uses IAM/TLS. Empty storage initialization and
@@ -138,15 +150,7 @@ export function DatabaseCloud({
             ))}
           </Select>
         </label>
-        <label className="grid gap-1.25 text-meta vp-480:w-full">
-          AWS profile
-          <TextInput
-            aria-label="Production database AWS profile"
-            value={profile}
-            disabled={!!busy}
-            onChange={(event) => setProfile(event.target.value)}
-          />
-        </label>
+        <AwsConnectionSummary />
         <button
           className={buttonClasses({ variant: "quiet" })}
           disabled={!deployment || !profile.trim() || !!busy || dirty}

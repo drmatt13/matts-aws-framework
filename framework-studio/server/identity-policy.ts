@@ -6,6 +6,7 @@ import { identityPolicyAuthorityHashes, identityPolicySource, identityPolicySour
 import { EditError } from "./edits/io";
 import { sendJson } from "./http";
 import { runCommand, studioEnvironment, Tools, type Runner } from "./deploy/process";
+import { isAwsProfileName } from "../shared/aws-connections";
 
 export class IdentityPolicyService {
   private readonly tools: Tools;
@@ -19,7 +20,7 @@ export class IdentityPolicyService {
   }
   async simulate(value: unknown): Promise<IdentityPolicySimulation> {
     const input = value as { target?: unknown; revision?: unknown; profile?: unknown; account?: unknown; region?: unknown; role?: unknown; actions?: unknown; resources?: unknown };
-    if (!input || typeof input.target !== "string" || typeof input.revision !== "string" || typeof input.profile !== "string" || !/^[\w+=,.@-]{1,128}$/.test(input.profile) || typeof input.account !== "string" || !/^\d{12}$/.test(input.account) || typeof input.region !== "string" || !/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/.test(input.region) || !["reader", "default"].includes(String(input.role)) || !Array.isArray(input.actions) || !input.actions.length || input.actions.length > 10 || !Array.isArray(input.resources) || !input.resources.length || input.resources.length > 10) throw new EditError(400, "Select the saved pool, source revision, profile, expected account, region, role, and up to 10 explicit actions/resources.");
+    if (!input || typeof input.target !== "string" || typeof input.revision !== "string" || !isAwsProfileName(input.profile) || typeof input.account !== "string" || !/^\d{12}$/.test(input.account) || typeof input.region !== "string" || !/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/.test(input.region) || !["reader", "default"].includes(String(input.role)) || !Array.isArray(input.actions) || !input.actions.length || input.actions.length > 10 || !Array.isArray(input.resources) || !input.resources.length || input.resources.length > 10) throw new EditError(400, "Select the saved pool, source revision, profile, expected account, region, role, and up to 10 explicit actions/resources.");
     try { identityPolicyStatements([{ Effect: "Deny", Action: input.actions, Resource: input.resources }]); } catch (error) { throw new EditError(422, error instanceof Error ? error.message : String(error)); }
     const state = this.current(); if (state.snapshot.revision !== input.revision) throw new EditError(409, "Source changed. Reload the policy before simulating.");
     const source = identityPolicySource(this.root, state, input.target);

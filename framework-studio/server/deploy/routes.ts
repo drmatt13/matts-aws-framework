@@ -74,6 +74,7 @@ export function deployRouter(service: DeployService): express.Router {
     if (!body || typeof body.kind !== "string" || (body.params !== undefined && (typeof body.params !== "object" || body.params === null || Array.isArray(body.params)))) {
       throw new OperationError(400, "An operation names its kind and gives named parameters.");
     }
+    if (body.kind === "aws-login") return service.authenticate(body.params?.profile);
     return service.perform({ kind: body.kind, params: body.params ?? {} });
   }));
 

@@ -7,6 +7,7 @@ import { collectDeploymentStacks, type DeploymentStack } from "../../scripts/res
 import { DEFAULT_FRONTEND_RELEASE, FRONTEND_RELEASE_FILE, type FrontendDestination, type FrontendManifestEntry, type FrontendReleaseResult, type FrontendReleaseReview, type FrontendReleaseSettings, type FrontendSettingsReview } from "../shared/frontend-release";
 import { OperationError } from "./deploy/registry";
 import { runCommand, studioEnvironment, Tools, type CommandSpec, type Runner } from "./deploy/process";
+import { isAwsProfileName } from "../shared/aws-connections";
 
 const digest = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 const fail = (message: string): never => { throw new OperationError(422, message); };
@@ -83,7 +84,7 @@ export class FrontendReleaseService {
     try { return output.trim() ? JSON.parse(output) : {}; } catch { return fail("AWS returned unreadable release evidence. No dependent step ran."); }
   }
   private async deployed(input: { deployment: string; profile: string; region: string }): Promise<{ destination: FrontendDestination; stacks: DeploymentStack[]; fingerprint: string; inputsFile: string }> {
-    if (!/^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(input.deployment) || !/^[\w.@+-]{1,100}$/.test(input.profile) || !/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/.test(input.region)) fail("Choose a deployment, AWS profile and region.");
+    if (!/^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(input.deployment) || !isAwsProfileName(input.profile) || !/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/.test(input.region)) fail("Choose a deployment, AWS profile and region.");
     const caller = await this.aws(["sts", "get-caller-identity"], input.profile, input.region);
     const stacks: DeploymentStack[] = [];
     const tokens = new Set<string>();
@@ -105,7 +106,7 @@ export class FrontendReleaseService {
     const bucket = output("FrontendWebsiteBucketName"); const distribution = output("CloudFrontId", "FrontendDistributionId"); const url = output("CloudFrontUrl", "FrontendWebsiteUrl");
     // Env refresh is valid for dev targets without a website. A release build below requires these destinations.
     return { destination: { deployment: identity.deployment, mode: identity.mode, profile: input.profile, account: identity.account, region: identity.region, bucket, distribution, url }, stacks, inputsFile: selection.inputsFile,
-      fingerprint: digest(JSON.stringify(owned.map(stack => ({ name: stack.StackName, id: stack.StackId, status: stack.StackStatus, outputs: stack.Outputs })).sort((a, b) => String(a.id).localeCompare(String(b.id))))) };
+      fingerprint: digest(JSON.stringify({ actorArn: caller.Arn, stacks: owned.map(stack => ({ name: stack.StackName, id: stack.StackId, status: stack.StackStatus, outputs: stack.Outputs })).sort((a, b) => String(a.id).localeCompare(String(b.id))) })) };
   }
   private environmentPath(settings: FrontendReleaseSettings, mode: "dev" | "prod"): string {
     return `${settings.projectDirectory}/.env.${mode === "prod" ? "production" : "development"}.local`;

@@ -190,6 +190,7 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
     if (!plan) throw new OperationError(404, "That plan no longer exists. Plan again.");
     const name = plan.identity.deployment;
     const credentials = await profile(context, { ...params, profile: text(params, "profile") ?? plan.profile });
+    if (credentials.name !== plan.profile) throw new OperationError(409, "The selected AWS profile differs from this plan's reviewed connection. Plan again with the selected connection.");
     if (plan.result) throw new OperationError(409, "This plan was already applied. Plan again for further changes.");
     if (plan.expired) throw new OperationError(409, `This plan expired at ${plan.expiresAt}. Plan again.`);
     if (plan.status === "no-changes") throw new OperationError(409, "This plan changes nothing.");
@@ -414,16 +415,7 @@ const BUILDERS: Readonly<Record<OperationKind, Builder>> = {
   },
 
   async "aws-login"(context, params) {
-    const credentials = await profile(context, params);
-    const args = credentials.kind === "sso" ? ["sso", "login", "--profile", credentials.name]
-      : credentials.kind === "login" ? ["login", "--profile", credentials.name]
-        : undefined;
-    if (!args) throw new OperationError(400, `${credentials.name} uses ${credentials.kind} credentials, which do not sign in through a browser.`);
-    return {
-      kind: "aws-login", title: `Sign in to ${credentials.name}`, params: { profile: credentials.name }, locks: [`login:${credentials.name}`],
-      steps: [{ label: "Sign in through the browser", command: () => context.tools.aws(args, studioEnvironment(context.env)), after: (_result, step) => step.setSummary(`Signed in to ${credentials.name}.`) }],
-      onSettled: () => context.changed(credentials.name, undefined),
-    };
+    throw new OperationError(400, "Authentication is managed by AWS connections and cannot run as a logged deployment job.");
   },
 
   async drift(context, params) {

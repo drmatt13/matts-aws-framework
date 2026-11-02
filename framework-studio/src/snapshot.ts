@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import type { SnapshotEvent, SnapshotResponse } from "../shared/api";
 import type { SourceWatchState } from "../shared/watch";
+import type { AwsConnectionObservation } from "../shared/aws-connections";
 import { call, ApiError, token } from "./http";
 import { connectStudioEvents } from "./events";
 
@@ -22,6 +23,7 @@ export interface LiveState {
   readonly connected: boolean;
   readonly evaluating: boolean;
   readonly running: string | null;
+  readonly awsConnectionRevision?: number;
 }
 
 /** Keeps the snapshot current, and reports files changed outside the studio. */
@@ -59,6 +61,13 @@ export function useLiveUpdates(onExternal: (files: readonly string[]) => void): 
     });
     source.addEventListener("infrastructure", () => void queryClient.invalidateQueries({ queryKey: ["infrastructure"] }));
     source.addEventListener("database-history", () => void queryClient.invalidateQueries({ queryKey: snapshotQueryKey }));
+    source.addEventListener("aws-connections", () => {
+      setState(current => ({ ...current, awsConnectionRevision: (current.awsConnectionRevision ?? 0) + 1 }));
+      queryClient.setQueriesData<AwsConnectionObservation>({ queryKey: ["aws-connections", "identity"] }, previous => previous && ({
+        ...previous, state: "unchecked", lastKnownIdentity: previous.identity ?? previous.lastKnownIdentity, identity: undefined, problem: undefined,
+      }));
+      void queryClient.invalidateQueries({ queryKey: ["aws-connections"] });
+    });
     source.addEventListener("error", () => setState((current) => ({ ...current, connected: false })));
     return () => source.close();
   }, [queryClient]);

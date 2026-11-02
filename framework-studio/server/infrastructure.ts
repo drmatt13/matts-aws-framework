@@ -7,6 +7,8 @@ import { runCdkSynthesis, type CdkSynthesisRequest } from "../../scripts/cdk-syn
 import type { InfrastructureState } from "../shared/infrastructure";
 import type { Mode, Snapshot } from "../shared/model";
 import { selectedDeploymentInput } from "./deployment-inputs";
+import { studioEnvironment } from "./deploy/process";
+import { isAwsProfileName } from "../shared/aws-connections";
 
 /** The current framework adapter. Inventory extraction and the runner know nothing about PROD_DEPLOYMENT. */
 export function frameworkSynthesisInputs(root: string, mode: Mode, directory: string) {
@@ -65,10 +67,13 @@ export class InfrastructureService {
     return { ...state, stale: !!state.inventory && (state.status === "failed" || this.fingerprints.get(mode) !== infrastructureFingerprint(this.root, mode)) };
   }
 
+  /** Authentication/configuration changes expire evidence; they never start synthesis. */
+  invalidateConnections(): void { this.fingerprints.clear(); this.changed(); }
+
   /** Explicitly invoked. Switching graph/view or refreshing snapshots never calls this. */
   async synthesize(mode: Mode, profile?: string): Promise<InfrastructureState> {
     if (this.busy) throw Object.assign(new Error("An infrastructure synthesis is already running."), { status: 409 });
-    if (profile && !/^[\w][\w.@+-]{0,127}$/.test(profile)) throw Object.assign(new Error("Use an AWS profile name containing letters, numbers, dots, underscores, +, @ or hyphens."), { status: 400 });
+    if (profile !== undefined && !isAwsProfileName(profile)) throw Object.assign(new Error("Choose a configured AWS profile."), { status: 400 });
     const previous = this.states.get(mode);
     this.busy = true;
     this.states.set(mode, { ...previous, mode, status: "running", stale: !!previous?.inventory, startedAt: new Date().toISOString(), error: undefined });
@@ -85,7 +90,7 @@ export class InfrastructureService {
       values = inputs.values;
       const description = { ...inputs.description, ...(profile ? { profile } : {}) };
       await this.run({ repositoryRoot: this.root, outputDirectory: path.join(directory, "assembly"), context: inputs.context,
-        environment: { FRAMEWORK_INPUTS_FILE: inputs.file, ...(profile || values.AWS_PROFILE ? { AWS_PROFILE: profile || values.AWS_PROFILE } : {}),
+        environment: { ...studioEnvironment(process.env, { profile: profile || values.AWS_PROFILE }), FRAMEWORK_INPUTS_FILE: inputs.file,
           // A parent shell must not make the deployment resolver disagree with the isolated catalog.
           PROD_DEPLOYMENT: mode === "prod" ? "true" : "false", FRAMEWORK_MODE: mode }, profile: profile || values.AWS_PROFILE });
       const inventory = inspectInfrastructureAssembly(path.join(directory, "assembly"));

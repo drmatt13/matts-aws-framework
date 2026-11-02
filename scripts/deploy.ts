@@ -29,6 +29,7 @@ import { SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { contextFromArgs, readCdkContext, resolveRepositoryTarget, type RepositoryTarget } from "@repo/framework/deploy/node";
 import { stackEvidence, type DeploymentState } from "@repo/framework/deploy";
 import { runAwsSync, type AwsTarget } from "./aws-cli";
+import { cliCredentialProvider, connectionEnvironment } from "./aws-connections";
 import { deploymentArguments, inspectDeploymentAssembly } from "./deployment-assembly";
 import { assertDeploymentAllowed, productionDeployArguments } from "./deployment-guard";
 import { DeploymentInterrupt } from "./deployment-interrupt";
@@ -120,6 +121,7 @@ export interface DeploymentPlanDocument {
   readonly target: { readonly name: string; readonly mode: "dev" | "prod"; readonly inputsFile: string; readonly account?: string; readonly region?: string };
   readonly identity: { readonly deployment: string; readonly mode: "dev" | "prod"; readonly account: string; readonly region: string };
   readonly profile?: string;
+  readonly callerArn?: string;
   readonly forwarded: readonly string[];
   readonly guard: DeploymentState["kind"];
   readonly stacks: readonly PlanStack[];
@@ -173,7 +175,12 @@ async function prepare(args: readonly string[], assembly: { directory: string; s
   // An explicit flag or AWS_PROFILE selects named credentials. Otherwise the
   // AWS CLI and SDK use their standard default credential chain.
   const profile = selection.profile ?? process.env.AWS_PROFILE ?? authored.AWS_PROFILE;
-  if (profile) process.env.AWS_PROFILE = profile;
+  if (profile) {
+    // This script owns its process: CDK and every child receive the same selected source.
+    const environment = connectionEnvironment(process.env, profile, { validate: !process.env.FRAMEWORK_AWS_CLI });
+    for (const key of Object.keys(process.env)) if (key.startsWith("AWS_") && environment[key] === undefined) delete process.env[key];
+    Object.assign(process.env, environment);
+  }
   if (selection.region) process.env.AWS_REGION = selection.region;
   if (assembly.synthesize) {
     await run(cdk, ["synth", ...selection.forwarded, ...(selection.app ? ["--app", selection.app] : []), "--quiet", "--output", assembly.directory], cdkDirectory);
@@ -219,7 +226,7 @@ async function prepare(args: readonly string[], assembly: { directory: string; s
 
 function secretsClient(aws: AwsTarget) {
   if (process.env.FRAMEWORK_AWS_CLI) return { client: cliSecretsClient(aws), close: () => {} };
-  const client = new SecretsManagerClient({ region: aws.region });
+  const client = new SecretsManagerClient({ region: aws.region, ...(aws.profile ? { credentials: cliCredentialProvider(aws.profile, { env: process.env }) } : {}) });
   return { client, close: () => client.destroy() };
 }
 
@@ -438,6 +445,7 @@ async function plan(wrapper: Wrapper): Promise<void> {
       status, review,
       target: { name: prepared.target.target.name, mode: prepared.target.mode, inputsFile: prepared.target.inputsFile, ...(prepared.target.target.account ? { account: prepared.target.target.account } : {}), ...(prepared.target.target.region ? { region: prepared.target.target.region } : {}) },
       identity: graph.identity, ...(prepared.profile ? { profile: prepared.profile } : {}),
+      callerArn: prepared.callerArn,
       forwarded: prepared.selection.forwarded, guard: prepared.deployed.kind,
       stacks: stacks.map((stack) => ({ ...stack, dependencies: prepared.stacks.find((entry) => entry.id === stack.id)?.dependencies.map((id) => prepared.stacks.find((entry) => entry.id === id)?.name ?? id) ?? [] })),
       secrets: secretPlan.entries,
@@ -482,6 +490,7 @@ function readPlan(directory: string): DeploymentPlanDocument {
 /** The forwarded CDK arguments a plan was made with, and the profile this run selects. */
 function planArguments(document: DeploymentPlanDocument, rest: readonly string[]): string[] {
   const profile = deploymentArguments(rest).profile ?? document.profile;
+  if (profile !== document.profile) throw new Error("The AWS profile differs from this saved review. Create a new plan with the selected connection before applying.");
   return [...document.forwarded.filter((arg, index, all) => arg !== "--profile" && all[index - 1] !== "--profile" && !arg.startsWith("--profile=")), ...(profile ? ["--profile", profile] : [])];
 }
 
@@ -494,6 +503,7 @@ async function apply(wrapper: Wrapper): Promise<void> {
   if (document.status === "needs-secrets") throw new Error(`Plan ${document.planId} could not prepare change sets until its new secrets exist. Plan again with --create-secrets.`);
   if (document.status === "blocked" || document.reviewEvidence?.problems.length) throw new Error("The review has incomplete analysis. Resolve its errors and plan again. Nothing was changed.");
   if (document.status === "no-changes") { console.log(`Plan ${document.planId} has nothing to change.`); return; }
+  if (!document.callerArn) throw new Error("This saved plan predates AWS principal binding. Create a new plan with the selected connection before applying. Nothing was changed.");
   if (document.confirmation.level === "name" && wrapper.confirm !== document.identity.deployment) {
     throw new Error(`Plan ${document.planId} needs --confirm ${document.identity.deployment} (${document.confirmation.reasons.join("; ")}). Nothing was changed.`);
   }
@@ -505,6 +515,7 @@ async function apply(wrapper: Wrapper): Promise<void> {
   const prepared = await prepare(planArguments(document, wrapper.rest), { directory: resolve(directory, "assembly"), synthesize: false }, { inputsFile: document.target.inputsFile, reviewedTarget: document.target, plannedReviews });
   try {
     const { graph, aws } = prepared;
+    if (document.callerArn && document.callerArn !== prepared.callerArn) throw new Error("The AWS principal changed after this plan was reviewed. Create a new plan before applying. Nothing was changed.");
     if (graph.identity.deployment !== document.identity.deployment || graph.identity.mode !== document.identity.mode || graph.identity.account !== document.identity.account || graph.identity.region !== document.identity.region) {
       throw new Error("The plan's assembly no longer resolves to the identity it was reviewed for. Plan again.");
     }

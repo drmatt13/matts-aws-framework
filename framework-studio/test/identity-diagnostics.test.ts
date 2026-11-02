@@ -70,14 +70,15 @@ test("Cognito reads page/search and multi-type provider metadata without asking 
       assert.doesNotMatch(query, /client_secret|ClientSecret|MetadataFile|GetSecretValue/i);
       return { code: 0, stdout: JSON.stringify(values[operation]), stderr: "" };
     };
-    const result = await new IdentityService(root, deploy(), run).cognito(selection, "page-1", 'fake"name');
+    const selected = { ...selection, profile: "team developer" };
+    const result = await new IdentityService(root, deploy(), run).cognito(selected, "page-1", 'fake"name');
     assert.equal(result.users[0]?.username, "fake-user"); assert.equal(result.nextToken, "page-2");
     assert.equal(result.providers.length, 2); assert.equal(result.providers[1]?.signIn, "unverified"); assert.equal(result.providers[1]?.providerSide, "unverified");
     assert.deepEqual(result.providers[1]?.settings, { issuer: "https://idp.example.com", client_id: "public-client" });
     const users = calls.find(spec => spec.args[1] === "list-users")!;
     assert.equal(users.args[users.args.indexOf("--filter") + 1], 'username ^= "fake\\"name"');
     assert.ok(users.args.includes("--no-paginate")); assert.ok(users.args.includes("page-1"));
-    assert.ok(calls.every(spec => spec.env.AWS_PROFILE === "dev"));
+    assert.ok(calls.every(spec => spec.env.AWS_PROFILE === "team developer" && spec.args[spec.args.indexOf("--profile") + 1] === "team developer"));
   } finally { remove(root); }
 });
 

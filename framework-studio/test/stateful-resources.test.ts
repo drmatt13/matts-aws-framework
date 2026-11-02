@@ -116,11 +116,12 @@ test("reference approval delegates exact inspection and repeats live compatibili
   const f = fixture(async spec => { calls.push(spec); return { code: 0, stdout: JSON.stringify({ kind: "cognito", reference, checks: ["original physical identity and client verified"] }), stderr: "" }; });
   try {
     const before = f.service.source("dev");
-    const plan = await f.service.reference({ selection, kind: "cognito", id: reference.userPoolId, originalDeployment: reference.originalDeployment, clientId: reference.userPoolClientId, revision: "r1", hash: before.hash, reference: { arbitrary: "ignored" } });
+    const plan = await f.service.reference({ selection: { ...selection, profile: "team developer" }, kind: "cognito", id: reference.userPoolId, originalDeployment: reference.originalDeployment, clientId: reference.userPoolClientId, revision: "r1", hash: before.hash, reference: { arbitrary: "ignored" } });
     assert.equal(calls.length, 1); assert.ok(calls[0]!.args.includes("--id")); assert.ok(calls[0]!.args.includes(reference.userPoolId));
     assert.equal(readFileSync(path.join(f.root, STATEFUL_SOURCE_FILE), "utf8"), source);
     await f.service.apply(plan.planId);
     assert.equal(calls.length, 2);
+    assert.ok(calls.every(call => call.env.AWS_PROFILE === "team developer" && call.args[call.args.indexOf("--profile") + 1] === "team developer"));
     assert.deepEqual(JSON.parse(JSON.stringify(f.service.source("dev").resources.cognito.reference)), reference);
   } finally { f.remove(); }
 });

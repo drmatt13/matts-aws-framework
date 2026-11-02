@@ -6,6 +6,7 @@ import { STUDIO_PROTOCOL_VERSION } from "../../../shared/protocol";
 import { DEFAULT_FRONTEND_RELEASE } from "../../../shared/frontend-release";
 import { batchPlan, discovery, identity, NOW, overview, snapshot, stateful, workbench } from "./scenarios";
 import { installEvents } from "./events";
+import { connectionCatalogFixture, connectionObservationFixture } from "./aws-connections";
 
 const assets = path.resolve(__dirname, "../assets/fonts");
 export type Handler = (route: Route, url: URL) => Promise<void>;
@@ -33,6 +34,12 @@ export const test = base.extend<{ studio: StudioFixture }>({
     });
     await page.clock.setFixedTime(new Date(NOW));
     await context.addInitScript(installEvents);
+    // Operational scenarios represent a developer who explicitly configured a
+    // connection. Onboarding specs opt out; the application has no fallback.
+    await context.addInitScript(() => {
+      const key = "aws-studio:mode-profiles:v1:/studio-fixture";
+      try { if (localStorage.getItem(key) === null) localStorage.setItem(key, JSON.stringify({ dev: "browser", prod: "browser" })); } catch { /* Storage failure scenarios own their session-only selections. */ }
+    });
     await context.routeWebSocket(/.*/, socket => {
       const url = new URL(socket.url());
       if (url.hostname !== "studio-fixture.invalid") { unexpected.push(`WebSocket ${url}`); socket.close(); return; }
@@ -63,6 +70,8 @@ export const test = base.extend<{ studio: StudioFixture }>({
           case "GET /api/source-recovery": value = []; break;
           case "GET /api/deploy/overview": value = overview(); break;
           case "GET /api/deploy/profiles": value = overview().profiles; break;
+          case "GET /api/aws-connections": value = connectionCatalogFixture(overview().profiles); break;
+          case "POST /api/aws-connections/check": value = connectionObservationFixture((body as {profile:string}).profile); break;
           case "GET /api/deploy/identity": value = { ok: true, value: { context: { ...discovery().context, profile: url.searchParams.get("profile") } } }; break;
           case "GET /api/deploy/discover": value = { ok: true, value: discovery() }; break;
           case "GET /api/deploy/status": value = { ok: true, value: { ...discovery(), deployment: url.searchParams.get("deployment"), detail: undefined } }; break;

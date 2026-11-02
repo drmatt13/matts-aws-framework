@@ -42,6 +42,7 @@ after(async () => { await builder?.dispose(); dom.window.close(); });
 
 async function mount(Component: FunctionComponent = () => h("p", null, "Authentication test panel"), initial = "/cognito/user-pools", select: (id: string | undefined) => void = () => {}) {
   const previousContext = context;
+  dom.window.localStorage.setItem(`aws-studio:mode-profiles:v1:${response.snapshot.repositoryRoot}`, JSON.stringify({dev:"dev",prod:"production-readonly"}));
   function Root() {
     return h(studio.StudioProvider, { response, selected: undefined, select, children: h(Capture) });
   }
@@ -117,15 +118,16 @@ async function workspaceApi(policy = false, simulate?: () => Promise<Response>) 
   return { workspace, identity, deploy, overview, policies };
 }
 
-test("context controls wait for Deploy authority instead of silently replacing a profile typed during loading", async () => {
+test("destination controls wait for Deploy authority while the global profile association stays selected", async () => {
   const api = await workspaceApi();
   let resolve!: (overview: DeployOverview) => void;
   mock.method(api.deploy.deployApi, "overview", () => new Promise<DeployOverview>(done => { resolve = done; }));
   await mount(api.workspace.AuthenticationWorkspace);
-  assert.equal((ui.screen.getByLabelText("Identity AWS profile") as HTMLInputElement).disabled, true);
+  assert.ok(ui.screen.getAllByText(/Connection:/).some(item => /dev.*Development/.test(item.textContent ?? "")));
+  assert.equal(ui.screen.queryByLabelText("Identity AWS profile"), null);
   assert.equal((ui.screen.getByRole("button", { name: "Inspect authentication" }) as HTMLButtonElement).disabled, true);
   await ui.act(async () => resolve(api.overview));
-  await ui.waitFor(() => assert.equal((ui.screen.getByLabelText("Identity AWS profile") as HTMLInputElement).value, "dev"));
+  await ui.waitFor(() => assert.equal((ui.screen.getByLabelText("Identity deployment") as HTMLSelectElement).value, "qa-dev"));
   assert.equal((ui.screen.getByLabelText("Identity deployment") as HTMLSelectElement).value, "qa-dev");
   assert.equal((ui.screen.getByLabelText("Identity AWS region") as HTMLInputElement).readOnly, true);
 });
@@ -255,7 +257,7 @@ test("a delayed policy simulation never appears under another profile or an inac
   const simulate = await ui.screen.findByRole("button", { name: "Simulate saved policy" });
   await ui.waitFor(() => assert.equal((simulate as HTMLButtonElement).disabled, false));
   ui.fireEvent.click(simulate);
-  ui.fireEvent.change(ui.screen.getByLabelText("Identity AWS profile"), { target: { value: "other-profile" } });
+  ui.act(() => context.setAwsProfile("dev", "other-profile"));
   ui.act(() => { void app.navigate({ to: "/cognito/providers" }); });
   await ui.act(async () => resolve(Response.json({ engine: "aws-iam", profile: "dev", account: "111122223333", region: "us-east-1", role: "reader", observedAt: "2026-10-23T00:00:00Z", results: [{ action: "s3:GetObject", resource: "arn:aws:s3:::qa-fixture/tenant/example.json", decision: "allowed", missingContext: [] }], limitations: ["late-simulation-sentinel"] })));
   ui.act(() => { void app.navigate({ to: "/cognito/permissions" }); });

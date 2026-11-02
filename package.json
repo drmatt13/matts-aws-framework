@@ -77,5 +77,8 @@
     "workerd@1.20260901.1": true,
     "fsevents": false,
     "esbuild@0.28.2": true
+  },
+  "dependencies": {
+    "@smithy/shared-ini-file-loader": "4.7.2"
   }
 }

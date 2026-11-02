@@ -54,9 +54,10 @@ before(async () => {
   response = { snapshot: (await builder.refresh()).snapshot, evaluating: false, commands: {}, busy: null };
 });
 after(async () => { await builder.dispose(); dom.window.close(); });
-afterEach(() => { ui.cleanup(); clients.splice(0).forEach((client) => client.clear()); mock.restoreAll(); });
+afterEach(() => { ui.cleanup(); clients.splice(0).forEach((client) => client.clear()); mock.restoreAll(); dom.window.localStorage.clear(); });
 
 async function mount(navigate: (id: string) => void = () => {}, initialOwner?: string, environmentFile?: ModelResource, withShell = false) {
+  dom.window.localStorage.setItem(`aws-studio:mode-profiles:v1:${response.snapshot.repositoryRoot}`, JSON.stringify({ dev: "dev-connection", prod: "prod-connection" }));
   function Workbench() {
     const context = studio.useStudio();
     if (withShell) return h(shell.Shell, null,
@@ -93,10 +94,10 @@ test("the header keeps only the source mode", async () => {
   assert.ok(ui.within(header).getByRole("group", { name: "Source environment" }));
 });
 
-test("Stacks settings synthesize explicitly, switch inventories, and block synthesis during drafts", async () => {
-  const runs: Mode[] = [];
+test("Stacks settings synthesize explicitly with the active profile, switch inventories, and block synthesis during drafts", async () => {
+  const runs: { mode: Mode; profile?: string }[] = [];
   mock.method(api.api, "infrastructure", async (mode: Mode) => mode === "dev" ? ready : { mode, status: "empty", stale: false });
-  mock.method(api.api, "synthesize", async (mode: Mode) => { runs.push(mode); return { ...ready, mode }; });
+  mock.method(api.api, "synthesize", async (mode: Mode, profile?: string) => { runs.push({ mode, profile }); return { ...ready, mode }; });
   await mount(() => {}, undefined, undefined, true);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Stacks island settings" }));
   await ui.screen.findByRole("searchbox", { name: "Search infrastructure" });
@@ -104,12 +105,12 @@ test("Stacks settings synthesize explicitly, switch inventories, and block synth
   assert.equal(ui.screen.queryByText(/The framework has no shared defaults/), null);
   assert.deepEqual(runs, []);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Refresh from CDK" }));
-  await ui.waitFor(() => assert.deepEqual(runs, ["dev"]));
+  await ui.waitFor(() => assert.deepEqual(runs, [{ mode: "dev", profile: "dev-connection" }]));
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Production" }));
   const synthesize = await ui.screen.findByRole("button", { name: "Synthesize CDK" });
   await ui.waitFor(() => assert.equal((synthesize as HTMLButtonElement).disabled, false));
   assert.equal(ui.screen.queryByRole("searchbox", { name: "Search infrastructure" }), null);
-  assert.deepEqual(runs, ["dev"]);
+  assert.deepEqual(runs, [{ mode: "dev", profile: "dev-connection" }]);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Stage memory edit" }));
   assert.equal((synthesize as HTMLButtonElement).disabled, true);
   assert.ok(ui.screen.getByText(/Apply or discard the current draft before synthesizing/));
@@ -309,9 +310,9 @@ test("a failed explicit synthesis keeps prior resources and shows the stale/erro
 });
 
 test("switching environment reads its independent inventory and synthesizes only after an explicit click", async () => {
-  const runs: string[] = [];
+  const runs: { mode: Mode; profile?: string }[] = [];
   mock.method(api.api, "infrastructure", async (mode: Mode) => mode === "dev" ? ready : { mode: "prod", status: "empty", stale: false });
-  mock.method(api.api, "synthesize", async (mode: Mode) => { runs.push(mode); return { ...ready, mode }; });
+  mock.method(api.api, "synthesize", async (mode: Mode, profile?: string) => { runs.push({ mode, profile }); return { ...ready, mode }; });
   await mount(); await ui.screen.findByRole("searchbox");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Production" }));
   await ui.screen.findByRole("button", { name: "Synthesize CDK" });
@@ -319,7 +320,7 @@ test("switching environment reads its independent inventory and synthesizes only
   assert.deepEqual(runs, []);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Synthesize CDK" }));
   await ui.screen.findByRole("searchbox");
-  assert.deepEqual(runs, ["prod"]);
+  assert.deepEqual(runs, [{ mode: "prod", profile: "prod-connection" }]);
 });
 
 test("an outdated running server explains how to recover instead of offering a synthesis that returns Not Found", async () => {

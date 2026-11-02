@@ -2,6 +2,7 @@ import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { connectionEnvironment } from "../../../scripts/aws-connections";
 
 /**
  * How Deploy & Run starts a program: a fixed file and argv, no shell, an
@@ -53,8 +54,12 @@ const DROPPED = [
 ];
 
 export function studioEnvironment(base: NodeJS.ProcessEnv, options: { readonly profile?: string } = {}): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...base };
-  for (const key of DROPPED) delete env[key];
+  const env: NodeJS.ProcessEnv = options.profile ? connectionEnvironment(base, options.profile, { validate: false }) : { ...base };
+  for (const key of DROPPED) {
+    // The selected dependency chain may deliberately use Environment credentials.
+    if (options.profile && key.startsWith("AWS_") && !["AWS_PROFILE", "AWS_DEFAULT_PROFILE"].includes(key)) continue;
+    delete env[key];
+  }
   if (options.profile) env.AWS_PROFILE = options.profile;
   env.FORCE_COLOR = "0";
   env.NO_COLOR = "1";

@@ -40,6 +40,8 @@ import { identityRouter } from "./identity/routes";
 import { CognitoOperations } from "./identity/operations";
 import { StatefulResourceService, statefulResourceRouter } from "./stateful-resources";
 import { webSocketDefaults } from "./websockets";
+import { AwsConnectionsService } from "./aws-connections/service";
+import { awsConnectionsRouter } from "./aws-connections/routes";
 
 /**
  * The studio's HTTP surface: one origin, on the loopback interface only.
@@ -260,6 +262,18 @@ async function configureServer(
     return new Set(model?.status === "ok" && !model.stale ? model.targets.filter(target => target.kind === "service" && !target.lanes.local).map(target => target.id) : []);
   } });
   defer(() => deploy.dispose());
+  let activeAwsRequests = 0;
+  const connections = new AwsConnectionsService(repositoryRoot, {
+    busy: profiles => activeAwsRequests > 0 || deploy.jobs.running().some(job => !["local-watch", "local-client"].includes(job.kind) && typeof job.params.profile === "string" && profiles.includes(job.params.profile)),
+    changed: profiles => {
+      if (profiles.length) for (const profile of profiles) deploy.observer.invalidate(profile);
+      else deploy.observer.invalidate();
+      infrastructure.invalidateConnections();
+      broadcast("aws-connections", { profiles });
+    },
+  });
+  deploy.setConnections(connections);
+  defer(() => connections.dispose());
   const stateful = new StatefulResourceService(repositoryRoot, builder, deploy);
   /** Every preview was offered against one snapshot; a new one expires them all, whoever wrote it. */
   const published = (revision: string, external: readonly string[] = []) => {
@@ -305,7 +319,20 @@ async function configureServer(
     }
     next();
   });
+  api.use((request, response, next) => {
+    const awsOperation = request.method === "POST" && /^\/(?:deploy\/operations|identity\/(?:operations|domain-dns)|frontend-release|database\/(?:cloud|application)|stateful-resources)(?:\/|$)/.test(request.path);
+    if (!awsOperation) { next(); return; }
+    if (connections.hasCredentialMutation) {
+      response.status(409).json({ error: "AWS session sign-out is in progress. Wait for it to finish before starting an AWS operation." }); return;
+    }
+    activeAwsRequests++;
+    let finished = false;
+    const release = () => { if (!finished) { finished = true; activeAwsRequests--; } };
+    response.once("finish", release); response.once("close", release);
+    next();
+  });
   const send = sendJson;
+  api.use("/aws-connections", awsConnectionsRouter(connections));
   api.use("/identity-policy", identityPolicyRouter(new IdentityPolicyService(repositoryRoot, () => builder.current)));
   api.use("/database/sql", databaseSqlRouter(repositoryRoot));
   api.use("/frontend-release", frontendReleaseRouter(new FrontendReleaseService(repositoryRoot), new DeploymentIdentityService(repositoryRoot), () => { void refresh([]); }));
@@ -426,8 +453,8 @@ async function configureServer(
   }));
   api.post("/infrastructure/synthesize", (request, response) => send(response, async () => {
     if (request.body?.mode !== "dev" && request.body?.mode !== "prod") throw new EditError(400, "Choose development or production synthesis.");
-    if (request.body.profile !== undefined && typeof request.body.profile !== "string") throw new EditError(400, "An AWS profile is a name.");
-    return infrastructure.synthesize(request.body.mode, request.body.profile || undefined);
+    const profile = await deploy.requireProfile(request.body?.profile);
+    return infrastructure.synthesize(request.body.mode, profile);
   }));
 
   api.get("/resources/details", (request, response) => send(response, async () => resources.details(String(request.query.id ?? ""), request.query.mode === "prod" ? "prod" : "dev")));

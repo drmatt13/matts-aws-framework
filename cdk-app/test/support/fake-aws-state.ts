@@ -64,7 +64,7 @@ export function fakeAccount(state: Record<string, unknown>): FakeAccount {
   const inputs = path.join(directory, "dev.env");
   writeFileSync(inputs, "CDK_APP_NAME=my-aws-app\n");
   const config = path.join(directory, "config");
-  writeFileSync(config, `[profile dev]\nregion = ${REGION}\nsso_session = corp\n[sso-session corp]\nsso_start_url = https://example.awsapps.com/start\n`);
+  writeFileSync(config, `[profile dev]\nregion = ${REGION}\nsso_session = corp\nsso_account_id = ${ACCOUNT}\nsso_role_name = Dev\n[sso-session corp]\nsso_start_url = https://example.awsapps.com/start\nsso_region = ${REGION}\n`);
   const credentials = path.join(directory, "credentials");
   writeFileSync(credentials, "[default]\naws_access_key_id = AKIASENTINELNEVERPRINT\naws_secret_access_key = sentinel-secret-never-print\nregion = eu-west-2\n");
   const env: NodeJS.ProcessEnv = {

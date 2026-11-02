@@ -490,6 +490,8 @@ export function Detail(props: {
           ) : (
             <>
               <dl className={factsClasses}>
+                <dt className="text-graphite">Local AWS profile</dt>
+                <dd className="m-0 wrap-anywhere">{local.profile ? <>{local.startedBy !== "none" || local.watch.running || local.client.running ? "Running with" : "Last launched with"} <strong>{local.profile}</strong></> : "Not started by Studio"}</dd>
                 <dt className="text-graphite">Docker</dt>
                 <dd className="m-0 wrap-anywhere">
                   {local.docker.engine === "running"
@@ -541,6 +543,7 @@ export function Detail(props: {
                   )}
                 </dd>
               </dl>
+              <p className="m-0 mt-3 text-caption text-graphite">Local containers use native SDK credentials and a read-only AWS configuration mount. Browser sign-in does not establish container refresh or external-provider compatibility.</p>
               {local.services.length ? (
                 <ul
                   className="m-0 mt-3 grid list-none gap-1 border-t border-rule p-0 pt-3 text-step-minus1"

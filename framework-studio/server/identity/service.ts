@@ -17,6 +17,7 @@ import type { DeployService } from "../deploy/service";
 import { validateCognitoReference } from "../../../cdk-app/lib/app/cognito-lifecycle";
 import { ExternalCognitoReferenceError } from "./ownership";
 import { SIGN_IN_PROVIDERS, signInProviderKeys, signInProviders, type SignInProviderId } from "../../../framework-config/resources/sign-in-providers";
+import { isAwsProfileName } from "../../shared/aws-connections";
 
 /** Each framework sign-in provider's lines in one inputs file, by presence. Values never leave. */
 function signInProviderSources(parsed: Readonly<Record<string, string | undefined>>, mode: Mode): SignInProviderSource[] {
@@ -68,7 +69,7 @@ export class IdentityService {
     try { return JSON.parse(result.stdout); } catch { throw new EditError(502, `Invalid JSON from ${service} ${operation}.`); }
   }
   private async selected(selection: IdentitySelection): Promise<{ context: IdentityContext; stacks: readonly string[]; mode: Mode; actorArn?: string }> {
-    if (!/^[\w+=,.@-]{1,128}$/.test(selection.profile) || !/^[a-zA-Z][a-zA-Z0-9-]{0,127}$/.test(selection.deployment) || !/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/.test(selection.region)) throw new EditError(400, "Select a valid profile, deployment and AWS region.");
+    if (!isAwsProfileName(selection.profile) || !/^[a-zA-Z][a-zA-Z0-9-]{0,127}$/.test(selection.deployment) || !/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/.test(selection.region)) throw new EditError(400, "Select a valid profile, deployment and AWS region.");
     const target = this.deploy.targets().find(entry => entry.name === selection.deployment);
     if (!target) throw new EditError(422, "Select a deployment declared by this repository.");
     if (target.region && target.region !== selection.region) throw new EditError(422, "The selected region differs from the deployment target.");

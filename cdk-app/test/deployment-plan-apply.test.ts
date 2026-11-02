@@ -52,6 +52,34 @@ test("a development plan deploys only when applied, then verifies, records and e
     assert.equal(account.read().regions?.[REGION]?.stacks?.length ?? 0, 0, "planning deploys nothing");
     assert.deepEqual(account.calls().map((call) => call.key).filter((key) => !READ_VERB.test(key)), [], "planning writes nothing to AWS");
 
+    const beforeDifferentProfile = account.calls().length;
+    const differentProfile = deploy({}, "--apply", planDirectory, "--profile", "another-profile");
+    assert.notEqual(differentProfile.status, 0);
+    assert.match(differentProfile.output, /AWS profile differs from this saved review/);
+    assert.deepEqual(account.calls().slice(beforeDifferentProfile), [], "another profile is refused before AWS resolution");
+
+    const planFile = path.join(planDirectory, "plan.json");
+    const originalPlanText = readFileSync(planFile, "utf8");
+    const legacyPlan = { ...plan }; delete legacyPlan.callerArn;
+    writeFileSync(planFile, JSON.stringify(legacyPlan));
+    const beforeMissingPrincipal = account.calls().length;
+    const missingPrincipal = deploy({}, "--apply", planDirectory, "--profile", "dev");
+    assert.notEqual(missingPrincipal.status, 0);
+    assert.match(missingPrincipal.output, /(?:principal|identity|actor)/i);
+    assert.deepEqual(account.calls().slice(beforeMissingPrincipal), [], "a review with no actor evidence is refused before AWS resolution");
+    writeFileSync(planFile, originalPlanText);
+
+    const originalIdentity = account.read().identity;
+    account.write({ ...account.read(), identity: { ...originalIdentity, Arn: originalIdentity.Arn.replace(/\/[^/]+$/, "/another-principal") } });
+    const beforeDifferentPrincipal = account.calls().length;
+    const differentPrincipal = deploy({}, "--apply", planDirectory, "--profile", "dev");
+    assert.notEqual(differentPrincipal.status, 0);
+    assert.match(differentPrincipal.output, /AWS principal changed after this plan was reviewed/);
+    assert.deepEqual(account.calls().slice(beforeDifferentPrincipal).filter(call => !READ_VERB.test(call.key)), [], "changed identity cannot perform reviewed writes");
+    assert.equal(account.calls().slice(beforeDifferentPrincipal).some(call => call.key.startsWith("secretsmanager ")), false, "actor verification precedes secret access");
+    assert.equal(existsSync(path.join(planDirectory, "operation.json")), false);
+    account.write({ ...account.read(), identity: originalIdentity });
+
     const applied = deploy({}, "--apply", planDirectory, "--profile", "dev");
     assert.equal(applied.status, 0, applied.output);
     assert.match(applied.output, /✔ my-aws-app-CognitoStack verified/);
@@ -266,7 +294,8 @@ test("a secret written in AWS after the review, or a missing binding, refuses th
   let planId: string | undefined;
   try {
     withGoogle(inputs, REVIEWED_VALUE);
-    assert.equal(deploy({}, "--all", "--profile", "dev", "--plan", planDirectory).status, 0);
+    const planned = deploy({}, "--all", "--profile", "dev", "--plan", planDirectory);
+    assert.equal(planned.status, 0, planned.output);
     planId = planIdOf(planDirectory);
     const state = account.read();
     const stored = state.regions[REGION].secrets[0];

@@ -56,6 +56,7 @@ after(async () => { await builder?.dispose(); dom.window.close(); });
 
 async function mount() {
   const previousContext = context;
+  dom.window.localStorage.setItem(`aws-studio:mode-profiles:v1:${response.snapshot.repositoryRoot}`, JSON.stringify({dev:"dev"}));
   function Root() { return h(studio.StudioProvider, { response, selected: undefined, select: () => {}, children: h(Capture) }); }
   function Capture() { context = studio.useStudio(); return h(router.Outlet); }
   const root = router.createRootRoute({ component: Root });

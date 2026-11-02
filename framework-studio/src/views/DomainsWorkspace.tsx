@@ -8,6 +8,7 @@ import type { DomainsObservation, IdentitySelection, IdentitySource } from "../.
 import { deployApi } from "../deploy/api";
 import { identityApi, inspectionErrorMessage } from "../identity-api";
 import { useStudio } from "../studio";
+import { AwsConnectionSummary } from "./AwsConnectionSummary";
 import { openEnvironmentVariable } from "../environment-variable-link";
 import { buttonClasses } from "../ui/Button";
 import { Select, TextInput } from "../ui/FormControls";
@@ -225,14 +226,15 @@ function DomainEvidence({ result }: { result?: DomainsObservation }) {
 /** Domains retain their production-only input authority. Authentication lives
  * in AuthenticationWorkspace; only the transport is shared with this view. */
 export function DomainsWorkspace() {
-  const { snapshot, draft, draftState, select } = useStudio();
+  const { snapshot, draft, draftState, select, awsProfile, mode, live } = useStudio();
   const source = useQuery(identitySourceQuery("prod", snapshot.revision));
   const overview = useQuery(deploymentOverviewQuery());
-  const [selection, setSelection] = useState<IdentitySelection>({
-    profile: "dev",
+  const [destination, setSelection] = useState<IdentitySelection>({
+    profile: "",
     deployment: "",
-    region: "us-east-1",
+    region: "",
   });
+  const selection = { ...destination, profile: awsProfile ?? "" };
   const [result, setResult] = useState<DomainsObservation>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -244,7 +246,7 @@ export function DomainsWorkspace() {
     setError("");
     setBusy(false);
     return () => request.current?.abort();
-  }, [selection.profile, selection.region, selection.deployment]);
+  }, [mode, live.awsConnectionRevision, selection.profile, selection.region, selection.deployment]);
   useEffect(() => {
     if (
       overview.data &&
@@ -349,21 +351,7 @@ export function DomainsWorkspace() {
             </p>
           ) : null}
           <div className={inspectionControlClasses}>
-            <label className={inspectionFieldClasses}>
-              Profile
-              <TextInput
-                className="h-8 w-full"
-                aria-label="Identity AWS profile"
-                value={selection.profile}
-                onChange={(event) => setSelection({ ...selection, profile: event.target.value })}
-                list="identity-profiles"
-              />
-              <datalist id="identity-profiles">
-                {overview.data?.profiles.map((profile) => (
-                  <option key={profile.name}>{profile.name}</option>
-                ))}
-              </datalist>
-            </label>
+            <AwsConnectionSummary />
             <label className={inspectionFieldClasses}>
               Deployment
               <Select
@@ -402,7 +390,7 @@ export function DomainsWorkspace() {
             </label>
             <button
               className={cx(inspectionActionClasses, buttonClasses({ variant: "primary" }))}
-              disabled={busy || !selection.deployment}
+              disabled={busy || !selection.deployment || !selection.profile || !selection.region}
               onClick={() => void inspect()}
             >
               {busy ? "Inspecting…" : "Inspect deployed settings"}

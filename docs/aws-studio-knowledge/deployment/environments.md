@@ -28,12 +28,13 @@ There are exactly two `DeploymentMode`s: **dev** and **prod**. A named deploymen
 | Bootstrap | [main.ts](../../../cdk-app/bin/main.ts) / [app.ts](../../../cdk-app/bin/app.ts) establish mode/target before loading the composition |
 | Identity | `DeploymentIdentity`: deployment, mode, account, region; output contract plus newer template metadata/tags establish ownership |
 | Studio graph | [inputs.ts](../../../framework-studio/server/inputs.ts) / evaluators build fixed dev/prod projections, not one graph for every named target's custom input file |
-| Studio operations | `/deploy` owns its named target, profile, resolved account and region. The shared navbar retains Source selection; it does not select an AWS destination. Status, plan, drift and teardown evidence is keyed to the selected destination; changing destination clears transient approvals. Database operations require their own explicit target and approval, independent of graph mode |
+| Studio operations | The active Source mode supplies its saved AWS profile; operational workspaces retain their explicit target and region. The navbar does not select an AWS destination. Status, plan, drift and teardown evidence is keyed to connection and destination; changes clear transient approvals. Database operations retain independent target and approval boundaries |
 
 Dev AWS builds Cognito, AWS-invoked event Lambdas and replay support; normal routed workloads/tasks/workflows/agents execute locally. Prod builds the cloud-enabled application, network/database/frontend as configured. WebSocket API Gateway is framework managed in both modes. Handler deploy settings, including per-environment input conditions, determine which routes and Lambdas exist. `deploy` lanes remain distinct from these modes; see [configuration predicates](../framework/configuration.md).
 
-Deploy's account toolbar selects credentials by AWS profile name and labels the resolved
-account and region. A profile's default region is supporting information; the selected
+Deploy's account toolbar displays the active Source mode's profile and labels the resolved
+account and region. Even a Production target uses the active mode's connection; target
+selection never changes that association. A profile's default region is supporting information; the selected
 named deployment's region pin takes precedence. The deployment rail retains every
 declared target, including multiple targets using prod mode, and identifies unread
 deployment state as unverified.

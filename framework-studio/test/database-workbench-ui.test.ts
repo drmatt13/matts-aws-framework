@@ -38,6 +38,7 @@ let saves: string[];
 let saveGate: Promise<void> | undefined;
 let refreshUnavailable: boolean;
 let fullscreenElement: Element | null = null;
+let activeStudio: ReturnType<typeof import("../src/studio").useStudio>;
 const clients: import("@tanstack/react-query").QueryClient[] = [];
 const cloudPlacement = { binding: "fixture-launch-and-logs", launch: { cluster: "arn:aws:ecs:us-east-1:123456789012:cluster/production", containerName: "Main", launchType: "FARGATE", platformVersion: "LATEST", subnets: ["subnet-public"], securityGroups: ["sg-task"], assignPublicIp: true }, logs: { group: "database-logs", streamPrefix: "task" } };
 
@@ -105,12 +106,14 @@ beforeEach(() => {
   });
   mock.method(history.historyApi, "load", async () => ({ revision: "history", sourceHash: persisted.revision, migrations: [], snapshots: [], heads: [], refs: [], issues: [], observedAt: "2026-10-22T12:00:00Z" }));
 });
-afterEach(() => { ui.cleanup(); for (const client of clients.splice(0)) client.clear(); mock.restoreAll(); });
+afterEach(() => { ui.cleanup(); for (const client of clients.splice(0)) client.clear(); mock.restoreAll(); dom.window.localStorage.clear(); });
 after(() => dom.window.close());
 
-async function mount() {
+async function mount(associations: { dev?: string; prod?: string } = { dev: "dev", prod: "production-connection" }) {
   const response: SnapshotResponse = { snapshot: snapshot(), evaluating: false, commands: {}, busy: null };
-  function Root() { return h(studio.StudioProvider, { response, selected: undefined, select: () => {}, children: h("div", null, h(router.Link, { to: "/other" }, "Open other view"), h(router.Outlet)) }); }
+  dom.window.localStorage.setItem(`aws-studio:mode-profiles:v1:${response.snapshot.repositoryRoot}`, JSON.stringify(associations));
+  function Workbench() { activeStudio = studio.useStudio(); return h("div", null, h(router.Link, { to: "/other" }, "Open other view"), h(router.Outlet)); }
+  function Root() { return h(studio.StudioProvider, { response, selected: undefined, select: () => {}, children: h(Workbench) }); }
   const root = router.createRootRoute({ component: Root });
   const application = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/database"] }), routeTree: root.addChildren([
     router.createRoute({ getParentRoute: () => root, path: "/database", component: database.Database }),
@@ -388,7 +391,7 @@ test("production database exposes pinned destination and billing before separate
   const identity = { deployment: "production", account: "123456789012", region: "us-east-1", taskDefinitionArn: "arn:aws:ecs:us-east-1:123456789012:task-definition/database:7" };
   let preparations = 0, inspections = 0, applications = 0;
   const destination = { ...cloudPlacement, id: "prepared", expiresAt: "2026-10-22T13:00:00Z", profile: "dev", protocol: 1 as const, identity, effects: ["Inspect starts one billed Fargate task.", "Inspection never applies database changes."] };
-  mock.method(cloud.databaseCloudApi, "prepare", async () => { preparations++; return destination; });
+  mock.method(cloud.databaseCloudApi, "prepare", async (deployment: string, profile: string) => { assert.equal(deployment, "production"); assert.equal(profile, "dev", "the Development declaration profile serves the explicitly selected production target"); preparations++; return destination; });
   mock.method(cloud.databaseCloudApi, "review", async () => { inspections++; return { id: "approved", destination, profile: "dev", confirmation: "Apply production", expiresAt: destination.expiresAt, review: { version: 1 as const, identity, inputsDigest: "inputs", markerHash: "origin", markerIdentity: "markers", ledgerIdentity: "ledger", storageHash: "destination", helpers: [], digest: "exact-review", migrations: [{ spaceId: "app", dirName: "next", migrationHash: "edge", from: "origin", to: "destination", source: "Reviewed migration code", sql: [{ phase: "execute", sql: "ALTER TABLE entries ADD COLUMN archived boolean" }] }] } }; });
   mock.method(cloud.databaseCloudApi, "apply", async () => { applications++; return { status: "applied" as const, database: "applied" as const, source: "unchanged" as const, artifacts: "unchanged" as const, targetId: "production", message: "Reviewed production SQL applied.", applied: [] }; });
   await mount(); ui.fireEvent.click(ui.screen.getByRole("button", { name: "Database status" }));
@@ -433,4 +436,35 @@ test("empty production initialization previews complete steps/control DDL and ha
   assert.equal(apply.disabled, true); assert.equal(writes, 0);
   ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Confirm production database action" }), { target: { value: "Initialize production" } });
   assert.equal(apply.disabled, false); ui.fireEvent.click(apply); await ui.screen.findByText("Reviewed initialization applied."); assert.equal(writes, 1);
+});
+
+test("production database preparation requires the active association and never supplies a fallback profile", async () => {
+  persisted = { ...persisted, targets: persisted.targets.map(target => target.id === "production" ? { ...target, handoffs: [{ deployment: "production", account: "123456789012", region: "us-east-1", command: "", detail: "Private IAM/TLS" }] } : target) };
+  let preparations = 0;
+  mock.method(cloud.databaseCloudApi, "prepare", async () => { preparations++; throw new Error("An unselected connection must not be used."); });
+  await mount({}); ui.fireEvent.click(ui.screen.getByRole("button", { name: "Database status" }));
+  ui.fireEvent.change(await ui.screen.findByRole("combobox", { name: "Database target" }), { target: { value: "production" } });
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Production database deployment" }), { target: { value: "production" } });
+  assert.equal((ui.screen.getByRole("button", { name: "Check database task destination" }) as HTMLButtonElement).disabled, true);
+  assert.ok(ui.screen.getByRole("button", { name: "Choose connection" }));
+  assert.equal(preparations, 0);
+});
+
+test("changing the active connection clears a production approval without starting another inspection", async () => {
+  persisted = { ...persisted, targets: persisted.targets.map(target => target.id === "production" ? { ...target, handoffs: [{ deployment: "production", account: "123456789012", region: "us-east-1", command: "", detail: "Private IAM/TLS" }] } : target) };
+  const identity = { deployment: "production", account: "123456789012", region: "us-east-1", taskDefinitionArn: "arn:aws:ecs:us-east-1:123456789012:task-definition/database:7" };
+  const destination = { ...cloudPlacement, id: "prepared", expiresAt: "2026-10-22T13:00:00Z", profile: "dev", protocol: 1 as const, identity, effects: ["A billed read-only inspection requires separate approval."] };
+  let preparations = 0, inspections = 0;
+  mock.method(cloud.databaseCloudApi, "prepare", async () => { preparations++; return destination; });
+  mock.method(cloud.databaseCloudApi, "review", async () => { inspections++; throw new Error("The stale approval must not be submitted."); });
+  await mount(); ui.fireEvent.click(ui.screen.getByRole("button", { name: "Database status" }));
+  ui.fireEvent.change(await ui.screen.findByRole("combobox", { name: "Database target" }), { target: { value: "production" } });
+  ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Production database deployment" }), { target: { value: "production" } });
+  ui.fireEvent.click(ui.screen.getByRole("button", { name: "Check database task destination" }));
+  await ui.screen.findByRole("dialog", { name: "Authorize billed read-only database inspection" });
+  ui.act(() => activeStudio.setAwsProfile("dev", "another-connection"));
+  await ui.waitFor(() => assert.equal(ui.screen.queryByRole("dialog", { name: "Authorize billed read-only database inspection" }), null));
+  assert.equal(activeStudio.mode, "dev");
+  assert.equal(activeStudio.awsProfile, "another-connection");
+  assert.deepEqual([preparations, inspections], [1, 0]);
 });

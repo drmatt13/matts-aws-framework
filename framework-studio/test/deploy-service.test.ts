@@ -138,6 +138,13 @@ test("global profile reads list safe metadata and resolve identity without deplo
   assert.equal(identity.body.value.context.region, REGION);
   assert.deepEqual(account.calls().slice(offset).map(entry => entry.key), ["sts get-caller-identity"]);
   assert.equal((await get("/identity?profile=missing")).status, 400);
+  const configFile = account.env.AWS_CONFIG_FILE!, original = readFileSync(configFile, "utf8");
+  try {
+    writeFileSync(configFile, original + `\n[profile "team developer"]\nregion = ${REGION}\nrole_arn = arn:aws:iam::734849394764:role/Team\nsource_profile = dev\n`);
+    const spaced = await get<{ ok: true; value: { context: AccountContext } }>("/identity?profile=team%20developer&force=1");
+    assert.equal(spaced.status, 200); assert.equal(spaced.body.value.context.profile, "team developer");
+    assert.equal(account.calls().at(-1)?.options.profile, "team developer");
+  } finally { writeFileSync(configFile, original); }
 });
 
 test("an expired session is a classified problem the page can act on", async () => {

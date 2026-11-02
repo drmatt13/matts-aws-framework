@@ -42,6 +42,7 @@ function answers() {
   });
 }
 async function mount(kind?: "database" | "cognito") {
+  dom.window.localStorage.setItem(`aws-studio:mode-profiles:v1:${snapshot.repositoryRoot}`, JSON.stringify({dev:"dev"}));
   function Root() { return h(studio.StudioProvider, { response, selected: undefined, select: () => {}, children: h(router.Outlet) }); }
   const root = router.createRootRoute({ component: Root }), app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/lifecycle"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/lifecycle", component: () => h(view.DataRetention, { kind }) })]) });
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } }); clients.push(client);

@@ -145,7 +145,8 @@ configuration details.
 
 `SourceEnvironment` mounts once in `Shell`. It reflects the framework's two declaration
 projections and retains the unsaved-draft guard. Deploy, Database and inspection forms
-keep their own named-target, profile and account controls. Domains edits Production
+keep their own named-target and region controls, and display the active Source profile
+through `AwsConnectionSummary`; profile selection lives in the navbar. Domains edits Production
 domain settings; Database edits one shared contract and keeps its editor's draft undo.
 Source-edit undo/redo controls and APIs are removed; use Git for saved source history.
 Failed-write rollback and interrupted-write recovery retain their existing guards.
@@ -178,7 +179,7 @@ on toolbar labels. Source actions group their button and supporting explanation;
 on narrow screens the actions wrap within the card. Flow-spacing selectors exclude
 native dialogs so browser modal centering remains intact.
 
-Cognito and Domains share `inspectionControlClasses` for profile, deployment and region
+Cognito and Domains share `inspectionControlClasses` for connection summaries, deployment and region
 fields, including label spacing, 32px inputs and responsive wrapping. Cognito groups
 source provenance and its evidence disclosure on one wrapping support row. Inspection
 transport failures explain how to restore the Studio connection and retry; server
@@ -208,7 +209,7 @@ actions. Search counts and reset actions must leave the input editable at every 
 The map footer gives resource/connection counts; tile counts and frame timing belong
 to the existing diagnostics API, not normal application chrome.
 
-Deploy's account toolbar uses the same geometry. Profile and refresh remain aligned;
+Deploy's account toolbar uses the same geometry. Connection summary and refresh remain aligned;
 account, effective region and credential identity are distinct observations. A profile's
 default region never overrides a selected target's pinned region. Uninspected deployment
 status says **Unverified**. Related deployment disclosures share one summary target.
@@ -220,7 +221,7 @@ only through a disappearing notification.
 
 Cognito uses one persistent workspace below the application bar. Its internal route
 navigation has the same restrained selected treatment, followed by one wrapping
-profile/deployment/region toolbar and compact evidence status. User Pools starts
+connection/deployment/region toolbar and compact evidence status. User Pools starts
 with pool identity and app clients; provider setup and policy tools have their own
 routes. Use bounded, horizontally scrollable tables for long provider/role metadata,
 wrapping identifiers and associated form labels. Keep source declarations, AWS

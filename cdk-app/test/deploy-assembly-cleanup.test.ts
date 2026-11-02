@@ -22,10 +22,16 @@ function withDeployFixture(body: (fixture: string, deploy: Deploy, deployWith: D
       copyFileSync(path.join(root, "scripts", name), path.join(fixture, "scripts", name));
     }
     writeFileSync(path.join(fixture, "framework.config.ts"), `export { default } from "../../../framework.config";\n`);
+    // Explicit profiles now validate before synthesis. Keep this pre-AWS fixture
+    // independent of the developer's real AWS files while exercising that contract.
+    const config = path.join(fixture, "aws-config"), credentials = path.join(fixture, "aws-credentials");
+    const profileNames = ["default", "fixture-profile-from-inputs", "fixture-profile-from-relative"];
+    writeFileSync(config, profileNames.map(name => `[${name === "default" ? name : `profile ${name}`}]\nregion = us-east-1\n`).join("\n"));
+    writeFileSync(credentials, profileNames.map(name => `[${name}]\naws_access_key_id = SYNTHETIC_FIXTURE_KEY\naws_secret_access_key = SYNTHETIC_FIXTURE_SECRET\n`).join("\n"));
     writeFileSync(path.join(fixture, "failing-app.js"), "console.error(`app-profile=${process.env.AWS_PROFILE}`);\nconsole.error(`app-inputs=${process.env.FRAMEWORK_INPUTS_FILE}`);\nprocess.exit(3);\n");
     const app = `node "${path.join(fixture, "failing-app.js")}"`;
     const deployWith: DeployWith = (env, ...args) => spawnSync(process.execPath, ["--import", "tsx", path.join(fixture, "scripts", "deploy.ts"), "--all", "--no-notices", "--app", app, ...args], {
-      cwd: root, encoding: "utf8", timeout: 60_000, env: { ...process.env, ...env },
+      cwd: root, encoding: "utf8", timeout: 60_000, env: { ...process.env, AWS_PROFILE: undefined, AWS_CONFIG_FILE: config, AWS_SHARED_CREDENTIALS_FILE: credentials, ...env },
     });
     body(fixture, (...args) => deployWith({}, ...args), deployWith);
   } finally {

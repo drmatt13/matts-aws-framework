@@ -1,4 +1,5 @@
 import { execFile, execFileSync } from "node:child_process";
+import { classifyAwsConnectionError, connectionEnvironment } from "./aws-connections";
 
 /**
  * How the deployment scripts reach AWS: the AWS CLI, with an explicit profile
@@ -36,6 +37,7 @@ const MESSAGES: Record<AwsErrorKind, string> = {
 
 /** The kind of failure the CLI's stderr describes; credentials text is never echoed back. */
 export function classifyAwsError(stderr: string): AwsErrorKind {
+  if (classifyAwsConnectionError(stderr).code === "network") return "failed";
   if (/ENOENT|is not recognized|command not found/i.test(stderr)) return "missing-cli";
   if (/The config profile \(.*\) could not be found|ProfileNotFound/i.test(stderr)) return "profile";
   if (/ExpiredToken|token has expired|session (associated with this profile )?has expired|Error loading SSO Token|SSO session .* expired|refresh failed/i.test(stderr)) return "expired";
@@ -65,7 +67,11 @@ function failure(error: unknown): AwsCliError {
   const record = error as { code?: string; stderr?: string | Buffer };
   const stderr = record.code === "ENOENT" ? "ENOENT" : String(record.stderr ?? (error instanceof Error ? error.message : ""));
   const kind = classifyAwsError(stderr);
-  return new AwsCliError(kind, MESSAGES[kind], stderr.trim().split(/\r?\n/).slice(-3).join(" ").slice(0, 400));
+  const connectionProblem = classifyAwsConnectionError(stderr);
+  // These two internal predicates are used by deployment reconciliation. Never
+  // retain raw stderr: external providers may print credential-bearing text.
+  const detail = /not imported by any stack/i.test(stderr) ? "not imported by any stack" : kind === "not-found" ? "does not exist" : "";
+  return new AwsCliError(kind, connectionProblem.code === "network" ? connectionProblem.message : MESSAGES[kind], detail);
 }
 
 function parse(output: string): any {
@@ -74,7 +80,7 @@ function parse(output: string): any {
 
 export function runAwsSync(args: readonly string[], target: AwsTarget = {}): any {
   try {
-    return parse(execFileSync(command().file, argv(args, target), { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024, windowsHide: true }));
+    return parse(execFileSync(command().file, argv(args, target), { env: target.profile ? connectionEnvironment(process.env, target.profile, { region: target.region, validate: false }) : process.env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024, windowsHide: true }));
   } catch (error) {
     throw failure(error);
   }
@@ -82,7 +88,7 @@ export function runAwsSync(args: readonly string[], target: AwsTarget = {}): any
 
 export function runAws(args: readonly string[], target: AwsTarget = {}): Promise<any> {
   return new Promise((accept, reject) => {
-    execFile(command().file, argv(args, target), { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
+    execFile(command().file, argv(args, target), { env: target.profile ? connectionEnvironment(process.env, target.profile, { region: target.region, validate: false }) : process.env, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, windowsHide: true }, (error, stdout, stderr) => {
       if (error) reject(failure(Object.assign(error, { stderr })));
       else {
         try { accept(parse(stdout)); } catch (parseError) { reject(failure(parseError)); }

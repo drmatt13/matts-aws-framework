@@ -32,6 +32,7 @@ export function useJobLog(id: string | undefined): readonly JobLogLine[] {
 }
 
 export interface LiveHandlers {
+  readonly onConnectionChange?: () => void;
   readonly onJob?: (job: JobView) => void;
   readonly onEvent?: (deployment: string, event: StackEventView, context: { profile?: string; account?: string; region?: string }) => void;
 }
@@ -68,6 +69,10 @@ export function useDeployLive(handlers: LiveHandlers = {}): void {
     });
     source.addEventListener("deploy-changed", () => {
       void queryClient.invalidateQueries({ queryKey: ["deploy"] });
+    });
+    source.addEventListener("aws-connections", () => {
+      void queryClient.invalidateQueries({ queryKey: ["deploy"], refetchType: "none" });
+      current.current.onConnectionChange?.();
     });
     return () => source.close();
   }, [queryClient]);

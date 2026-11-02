@@ -10,6 +10,7 @@ import { ApiError } from "../http";
 import { editorLink, titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { ResourceStatus } from "./ResourceStatus";
+import { AwsConnectionSummary } from "./AwsConnectionSummary";
 
 function useInventory() {
   const { mode } = useStudio();
@@ -155,7 +156,7 @@ export function InfrastructurePanel({
   initialOwner?: string;
   onNavigate: (id: string) => void;
 }) {
-  const { mode, index, draft, draftState, live, model } = useStudio();
+  const { mode, awsProfile, index, draft, draftState, live, model } = useStudio();
   const query = useInventory();
   const client = useQueryClient();
   const [search, setSearch] = useState("");
@@ -230,7 +231,7 @@ export function InfrastructurePanel({
     setPending(true);
     setError("");
     try {
-      client.setQueryData(["infrastructure", mode], await api.synthesize(mode));
+      client.setQueryData(["infrastructure", mode], await api.synthesize(mode, awsProfile));
     } catch (error) {
       setError(infrastructureError(error));
     } finally {
@@ -256,9 +257,10 @@ export function InfrastructurePanel({
         </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2.5" data-slot="infrastructure-run">
+        <AwsConnectionSummary />
         <button
           className={buttonClasses({ variant: "neutral" })}
-          disabled={query.isPending || !!query.error || running || blocked}
+          disabled={!awsProfile || query.isPending || !!query.error || running || blocked}
           onClick={() => void synthesize()}
         >
           {running ? "Synthesizing…" : state?.inventory ? "Refresh from CDK" : "Synthesize CDK"}
@@ -270,8 +272,8 @@ export function InfrastructurePanel({
               state.stale || state.status === "failed" ? "text-local" : "text-graphite",
             )}
           >
-            {state.stale
-              ? "Needs refresh"
+            {state.stale || (!!state.inventory && state.inputs?.profile !== awsProfile)
+              ? "Needs refresh for selected connection"
               : state.status === "failed"
                 ? "Synthesis failed"
                 : state.inventory

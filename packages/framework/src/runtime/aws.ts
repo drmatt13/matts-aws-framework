@@ -86,10 +86,11 @@ export function buildTaskOverrides(
 export async function runAwsTask(
   descriptor: AwsTaskDescriptor,
   encodedInput: string,
+  options: { readonly client?: Pick<import("@aws-sdk/client-ecs").ECSClient, "send"> } = {},
 ): Promise<{ readonly runId: string }> {
   const { launch } = descriptor;
   const { RunTaskCommand } = await import("@aws-sdk/client-ecs");
-  const client = await ecsClient(launch.region);
+  const client = options.client ?? await ecsClient(launch.region);
 
   const response = await client.send(
     new RunTaskCommand({

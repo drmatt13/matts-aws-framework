@@ -131,6 +131,27 @@ test("synthesis isolates both modes, preserves authored inputs, and never runs f
   } finally { remove(root); }
 });
 
+test("synthesis forwards an existing profile with spaces as one explicit connection", async () => {
+  const root = fixture();
+  const oldConfig = process.env.AWS_CONFIG_FILE, oldCredentials = process.env.AWS_SHARED_CREDENTIALS_FILE;
+  try {
+    const config = path.join(root, "aws-config"), credentials = path.join(root, "aws-credentials");
+    writeFileSync(config, '[profile "team developer"]\nregion = us-east-1\n'); writeFileSync(credentials, "");
+    process.env.AWS_CONFIG_FILE = config; process.env.AWS_SHARED_CREDENTIALS_FILE = credentials;
+    let calls = 0;
+    const service = new InfrastructureService(root, () => undefined, async request => {
+      calls++; assert.equal(request.profile, "team developer"); assert.equal(request.environment?.AWS_PROFILE, "team developer"); assembly(request.outputDirectory);
+    });
+    const result = await service.synthesize("dev", "team developer");
+    assert.equal(calls, 1); assert.equal(result.status, "ready"); assert.equal(result.inputs?.profile, "team developer");
+    await assert.rejects(service.synthesize("dev", "team\nother"), /Choose a configured AWS profile/);
+  } finally {
+    if (oldConfig === undefined) delete process.env.AWS_CONFIG_FILE; else process.env.AWS_CONFIG_FILE = oldConfig;
+    if (oldCredentials === undefined) delete process.env.AWS_SHARED_CREDENTIALS_FILE; else process.env.AWS_SHARED_CREDENTIALS_FILE = oldCredentials;
+    remove(root);
+  }
+});
+
 test("ambiguous exports remain unresolved and shared workload source changes invalidate freshness", async () => {
   const root = fixture();
   try {

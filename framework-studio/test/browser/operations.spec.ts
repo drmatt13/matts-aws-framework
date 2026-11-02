@@ -1,6 +1,7 @@
 import { test, expect } from "./support/test";
 import { deploymentPlan, identity, overview } from "./support/scenarios";
 import { writeFile } from "node:fs/promises";
+import { connectionCatalogFixture } from "./support/aws-connections";
 
 test("baseline Cognito provider evidence and permissions remain bounded", async ({ page, studio }) => {
   await studio.goto("/cognito/providers");
@@ -51,10 +52,12 @@ test("Cognito subsection navigation retains the selected profile and independent
   unavailable = false;
   await page.getByRole("button", { name: "Retry source", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Fixture identity source unavailable" })).not.toBeVisible();
-  const profile = page.getByLabel("Identity AWS profile", { exact: true });
-  await profile.fill("typed-profile");
+  studio.reply("GET", "/api/aws-connections", route => route.fulfill({ json: connectionCatalogFixture([{ name: "typed-profile", kind: "sso" }]) }));
+  await page.getByRole("button", { name: /Development AWS profile:/ }).click();
+  await page.getByRole("combobox", { name: "AWS profile", exact: true }).selectOption("typed-profile");
+  await page.keyboard.press("Escape");
   await page.getByRole("navigation", { name: "Cognito sections" }).getByRole("link", { name: "Providers", exact: true }).click();
-  await expect(profile).toHaveValue("typed-profile");
+  await expect(page.locator("[data-slot=aws-connection-summary]").first()).toContainText("typed-profile");
   await expect(page.getByRole("heading", { name: "Federation providers", exact: true })).toBeVisible();
   expect(studio.requests.some(request => request.path.startsWith("/api/identity/cognito"))).toBe(false);
 });

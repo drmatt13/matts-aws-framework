@@ -9,6 +9,7 @@ source:
   - framework-studio/src/studio.tsx
   - framework-studio/src/aws-profile-selection.ts
   - framework-studio/src/views/AwsProfileMenu.tsx
+  - framework-studio/src/views/AwsProfileConfiguration.tsx
   - framework-studio/src/snapshot.ts
   - framework-studio/src/views/DomainsWorkspace.tsx
   - framework-studio/src/views/Shell.tsx
@@ -36,20 +37,24 @@ declaration graph. Its trailing chevron opens an AWS profile popover for the acc
 Only profile names are cached in browser local storage, keyed by repository root and mode;
 both modes may use the same profile. Missing profiles remain visible as unavailable until
 reselected or cleared. Storage failures retain session choices, and storage events synchronize
-tabs. The popover lists local profile metadata and checks STS caller identity through
-`/api/deploy/profiles` and `/api/deploy/identity`, without deployment discovery or mutations.
+tabs. The popover lists local profile metadata through `/api/aws-connections` and checks
+STS caller identity through its protected POST `/check`, without deployment discovery.
 Account/caller observations are query-cached, never persisted in local storage. Escape and
 outside click dismiss the popover; keyboard focus returns to its trigger. While open,
 the Development/Production buttons keep the popover open and update its mode/profile.
 Switching modes while it is closed does not open it.
 Profile selection automatically refreshes account details. The cog beside **AWS profile**
-opens a foreground **AWS profile configuration** modal, currently a placeholder without
-editing actions. Closing it returns focus to the navbar chevron.
+opens a foreground **AWS profile configuration** modal with profile discovery, cached
+health, explicit connection tests, native sign-in, reviewed non-secret edits, and guided
+Console/Identity Center/role creation. Closing it returns focus to the navbar chevron.
 
-Operational workspaces still own their existing profile/target selections in this first
-increment; they do not yet consume the shared association. Named deployment selection and
-operation approvals remain separate. Domains edits Production
-intent even while the global source selector displays Development.
+Operational workspaces consume the active declaration mode's profile association and retain
+independent deployment/region controls and approvals. Target selection never restores a
+remembered profile. Domains still edits Production intent while the global source selector
+may display Development: its operational connection is explicitly the active association.
+Changing that association or its authentication/configuration invalidates evidence and
+pending reviews; it does not start resource discovery or retarget running jobs. Refresh or
+explicit target selection inspects the new context. See [AWS connections](../../framework-studio/aws-connections.md).
 
 | Workspace | Route | What the interface controls |
 | --- | --- | --- |

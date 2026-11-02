@@ -69,7 +69,7 @@ test("IAM simulation is read-only, account-bound, source-bound and reports expli
   };
   try {
     const service = new IdentityPolicyService(f.directory, () => f.state, run);
-    const input = { target: "resource:access", revision: "revision", profile: "dev", account: "111122223333", region: "us-east-1", role: "reader", actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], resources: ["arn:aws:s3:::policy-fixture/tenant/protected/example.json"] };
+    const input = { target: "resource:access", revision: "revision", profile: "team developer", account: "111122223333", region: "us-east-1", role: "reader", actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"], resources: ["arn:aws:s3:::policy-fixture/tenant/protected/example.json"] };
     const result = await service.simulate(input); assert.equal(result.engine, "aws-iam"); assert.deepEqual(result.results.map(row => row.decision), ["allowed", "explicitDeny", "implicitDeny"]); assert.match(result.limitations.join(" "), /boundaries.*SCPs.*resource policies/);
     const missing = await service.simulate({ ...input, role: "default" }); assert.equal(missing.engine, "source-empty-policy"); assert.ok(missing.results.every(row => row.decision === "implicitDeny"));
     const before = calls.length; await assert.rejects(service.simulate({ ...input, account: "999988887777" }), /different account/); assert.equal(calls.length, before + 1, "wrong-account refusal sends STS only");
@@ -81,5 +81,6 @@ test("IAM simulation is read-only, account-bound, source-bound and reports expli
     };
     await assert.rejects(new IdentityPolicyService(f.directory, () => f.state, changesHelper).simulate(input), /Source changed during simulation/);
     assert.ok(calls.every(call => call.args.includes("get-caller-identity") || call.args.includes("simulate-custom-policy")), "no IAM/resource mutation operation exists");
+    assert.ok(calls.every(call => call.args[call.args.indexOf("--profile") + 1] === "team developer"), "a spaced profile is one literal argv value");
   } finally { f.cleanup(); }
 });

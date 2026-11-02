@@ -1,12 +1,12 @@
 import type { ChildProcess } from "node:child_process";
 import type { AccountContext, AwsProblem, AwsProfileInfo, DiscoveryView, DriftView, StatusView, TeardownPlanView } from "../../shared/deploy";
 import { lineSplitter, start, stopTree, studioEnvironment, tethered, type Runner, type Tools } from "./process";
+import { classifyAwsConnectionError, readAwsFiles } from "../../../scripts/aws-connections";
 
 /**
  * What AWS holds, read only through the repository's own commands:
  * deploy:status (profiles, discover, status, watch) and destroy:resources
- * --plan. Studio has no AWS SDK and makes no AWS call of its own, so the CLI
- * and Studio see one truth by one set of rules.
+ * --plan. Credential resolution is shared with connection management.
  *
  * Reads are cached briefly and shared while in flight, so a page that asks
  * twice starts one process.
@@ -29,8 +29,7 @@ export function interpret<T>(result: { code: number | null; stdout: string; stde
     return { ok: false, problem: { kind, message: parsed.error.message } };
   }
   if (result.code === 0 && parsed !== undefined) return { ok: true, value: parsed as T };
-  const lines = result.stderr.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  return { ok: false, problem: { kind: "failed", message: lines.pop() ?? `The command exited with code ${String(result.code)}.` } };
+  return { ok: false, problem: { kind: "failed", message: classifyAwsConnectionError(result.stderr).message } };
 }
 
 export interface WatchLine {
@@ -45,6 +44,7 @@ export class AwsObserver {
   constructor(private readonly tools: Tools, private readonly run: Runner, private readonly baseEnv: NodeJS.ProcessEnv) {}
 
   private read<T>(key: string, ttlMs: number, force: boolean, args: readonly string[], profile?: string, script = STATUS_SCRIPT): Promise<Observation<T>> {
+    key = `${readAwsFiles(this.baseEnv).revision}|${key}`;
     const cached = this.cache.get(key);
     if (cached && !force && Date.now() - cached.at < ttlMs) return cached.promise as Promise<Observation<T>>;
     const promise = this.run(this.tools.script(script, args, studioEnvironment(this.baseEnv, { profile })), { timeoutMs: 180_000 })

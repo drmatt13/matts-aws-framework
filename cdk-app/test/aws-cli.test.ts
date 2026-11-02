@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyAwsError } from "../../scripts/aws-cli";
+import { AwsCliError, classifyAwsError, runAwsSync } from "../../scripts/aws-cli";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 test("missing credentials retain their diagnosis when the CLI suggests aws login", () => {
   assert.equal(classifyAwsError('aws: [ERROR]: An error occurred (NoCredentials): Unable to locate credentials. You can configure credentials by running "aws login".'), "no-credentials");
@@ -14,4 +17,18 @@ test("explicit expired sessions and tokens retain their diagnosis", () => {
     "Error loading SSO Token: refresh failed; Unable to locate credentials",
     "Run aws login to refresh the session.",
   ]) assert.equal(classifyAwsError(message), "expired", message);
+});
+
+test("network and TLS refresh failures retain a network remedy instead of requesting sign-in", () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), "aws-network-error-"));
+  const fake = path.join(directory, "fake.mjs");
+  const previous = process.env.FRAMEWORK_AWS_CLI;
+  try {
+    const message = 'The SSO session has expired: refresh failed due SSL validation failed. Run aws sso login.';
+    assert.equal(classifyAwsError(message), "failed");
+    assert.equal(classifyAwsError("refresh failed: Could not connect to the endpoint URL. Run aws login."), "failed");
+    writeFileSync(fake, `process.stderr.write(${JSON.stringify(message)}); process.exitCode=1;`);
+    process.env.FRAMEWORK_AWS_CLI = fake;
+    assert.throws(() => runAwsSync(["sts", "get-caller-identity"]), error => error instanceof AwsCliError && error.kind === "failed" && /network, proxy, TLS/.test(error.message) && !/Sign in again/.test(error.message) && !error.detail);
+  } finally { if (previous === undefined) delete process.env.FRAMEWORK_AWS_CLI; else process.env.FRAMEWORK_AWS_CLI = previous; rmSync(directory, { recursive: true, force: true }); }
 });

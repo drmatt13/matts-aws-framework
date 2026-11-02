@@ -1,5 +1,6 @@
 import path from "node:path";
 import { listAwsProfiles } from "../../../scripts/aws-profiles";
+import { isAwsProfileName } from "../../shared/aws-connections";
 import { DEFAULT_DEPLOYMENT_NAME } from "@repo/framework/deploy";
 import { repositoryTargets } from "@repo/framework/deploy/node";
 import type { DeployOverview, DockerView, DriftView, JobView, ManagedProcessView, OperationRequest, PrerequisiteView } from "../../shared/deploy";
@@ -11,6 +12,7 @@ import { Preferences } from "./preferences";
 import { probeDocker, probePrerequisites } from "./prereqs";
 import { runCommand, Tools, type Runner } from "./process";
 import { buildOperation, exportDirectory, managedSpec, OperationError, type ManagedCommands, type OperationContext, type RepositoryTarget } from "./registry";
+import type { AwsConnectionsService } from "../aws-connections/service";
 
 /**
  * Deploy & Run's server side: the observers, the operation registry and the
@@ -41,6 +43,7 @@ export class DeployService {
   private prerequisites?: { at: number; promise: Promise<{ prerequisites: PrerequisiteView[]; docker: DockerView }> };
   private docker?: { at: number; promise: Promise<DockerView> };
   private readonly context: OperationContext;
+  private connections?: Pick<AwsConnectionsService, "catalog" | "check" | "startAuthentication">;
 
   constructor(readonly root: string, private readonly broadcast: (event: string, data: unknown) => void, options: DeployServiceOptions = {}) {
     this.env = options.env ?? process.env;
@@ -123,13 +126,27 @@ export class DeployService {
   }
 
   async requireProfile(name: unknown): Promise<string> {
-    if (typeof name !== "string" || !this.profiles().some((entry) => entry.name === name)) throw new OperationError(400, "Choose a profile from your AWS configuration.");
+    if (!isAwsProfileName(name) || !this.profiles().some((entry) => entry.name === name)) throw new OperationError(400, "Choose a profile from your AWS configuration.");
     return name;
   }
 
   profiles() { return listAwsProfiles(this.env); }
 
-  identity(profile: string, force: boolean) { return this.observer.identity(profile, force); }
+  setConnections(service: Pick<AwsConnectionsService, "catalog" | "check" | "startAuthentication">) { this.connections = service; }
+
+  async authenticate(profile: unknown) {
+    if (!this.connections) throw new OperationError(409, "Open AWS profile configuration to connect. Restart Studio if it is unavailable.");
+    return this.connections.startAuthentication({ profile: await this.requireProfile(profile) });
+  }
+
+  async identity(profile: string, force: boolean): Promise<Observation<{ context: import("../../shared/deploy").AccountContext }>> {
+    if (!this.connections) return this.observer.identity(profile, force);
+    const observation = await this.connections.check(profile, force);
+    if (observation.state === "connected" && observation.identity) return { ok: true, value: { context: { profile, ...observation.identity, region: observation.region.value ?? "" } } };
+    const code = observation.problem?.code;
+    const kind = code === "expired" || code === "no-credentials" || code === "missing-cli" || code === "denied" || code === "throttled" ? code : code === "profile" || code === "configuration" ? "profile" : "failed";
+    return { ok: false, problem: { kind, message: observation.problem?.message ?? "The selected AWS identity is unverified. Open connection diagnostics." } };
+  }
 
   discover(profile: string, region: string | undefined, force: boolean): Promise<Observation<unknown>> {
     return this.observer.discover(profile, region, force);
@@ -156,6 +173,7 @@ export class DeployService {
 
   async perform(request: OperationRequest): Promise<JobView> {
     if (!request || typeof request.kind !== "string") throw new OperationError(400, "An operation has a kind.");
+    if (request.kind === "aws-login") throw new OperationError(400, "Authentication uses AWS connection management. Open Configure AWS profiles.");
     const spec = await buildOperation(this.context, request);
     try {
       return this.jobs.start(spec);

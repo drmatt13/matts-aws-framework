@@ -19,6 +19,7 @@ import type { TeardownPlanView } from "../../shared/deploy";
 import { call } from "../http";
 import { deployApi } from "../deploy/api";
 import { useStudio } from "../studio";
+import { AwsConnectionSummary } from "./AwsConnectionSummary";
 import { WorkbenchDialog } from "./WorkbenchUI";
 
 type RetentionAppearance = "workbench" | "document";
@@ -77,13 +78,16 @@ export function DataRetention({
   readonly appearance?: RetentionAppearance;
 }) {
   const styles = retentionStyles(appearance);
-  const { snapshot, mode: selectedMode, draft, draftState, live } = useStudio();
+  const { snapshot, mode: selectedMode, draft, draftState, live, awsProfile } = useStudio();
   const [mode, setMode] = useState<Mode>(suppliedSelection?.mode ?? selectedMode);
   const [source, setSource] = useState<StatefulSource>();
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string>(),
     [message, setMessage] = useState<string>();
   const [plan, setPlan] = useState<StatefulPlan>();
+  const connectionKey = JSON.stringify([selectedMode, awsProfile, live.awsConnectionRevision]);
+  const currentConnection = useRef(connectionKey);
+  currentConnection.current = connectionKey;
   const generation = useRef(0);
   const sourceBusy = draft.dirty || !!draftState.busy || live.evaluating || draft.conflict;
   const run = async (work: () => Promise<void>) => {
@@ -118,6 +122,7 @@ export function DataRetention({
       generation.current++;
     };
   }, [mode, snapshot.revision]);
+  useEffect(() => { setPlan(undefined); }, [selectedMode, awsProfile, live.awsConnectionRevision]);
   const kinds: readonly StatefulKind[] = kind ? [kind] : ["database", "cognito"];
   return (
     <section
@@ -263,13 +268,14 @@ export function DataRetention({
         disabled={busy || sourceBusy || !source}
         onReview={async (payload) => {
           const request = generation.current;
+          const connection = currentConnection.current;
           await run(async () => {
             const reviewed = await call<StatefulPlan>("/stateful-resources/reference/plan", {
               ...payload,
               hash: source!.hash,
               revision: snapshot.revision,
             });
-            if (generation.current === request) setPlan(reviewed);
+            if (generation.current === request && currentConnection.current === connection) setPlan(reviewed);
           });
         }}
       />
@@ -398,8 +404,9 @@ function StatefulRecovery({
 }) {
   const styles = retentionStyles(appearance);
   const overview = useQuery({ ...deploymentOverviewQuery(), staleTime: 15_000 });
-  const [profile, setProfile] = useState(supplied?.profile ?? "dev"),
-    [deployment, setDeployment] = useState(supplied?.deployment ?? ""),
+  const { awsProfile, mode: declarationMode, live } = useStudio();
+  const profile = awsProfile ?? "";
+  const [deployment, setDeployment] = useState(supplied?.deployment ?? ""),
     [region, setRegion] = useState(supplied?.region ?? "");
   const [kind, setKind] = useState<StatefulKind>(kinds[0]!);
   const [id, setId] = useState(""),
@@ -410,7 +417,7 @@ function StatefulRecovery({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState<string>(),
     [policyError, setPolicyError] = useState<string>();
-  const context = JSON.stringify([mode, profile, deployment, region]);
+  const context = JSON.stringify([declarationMode, mode, profile, deployment, region, live.awsConnectionRevision]);
   const latest = useRef(context);
   latest.current = context;
   useEffect(() => {
@@ -492,16 +499,7 @@ function StatefulRecovery({
         className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,230px),1fr))] gap-4"
         data-slot="stateful-context"
       >
-        <label className={styles.label}>
-          AWS profile
-          <TextInput
-            aria-label="Lifecycle AWS profile"
-            value={profile}
-            disabled={busy || !!supplied}
-            onChange={(event) => setProfile(event.target.value)}
-            className="w-full min-w-0"
-          />
-        </label>
+        <AwsConnectionSummary />
         <label className={styles.label}>
           Destination deployment
           <Select

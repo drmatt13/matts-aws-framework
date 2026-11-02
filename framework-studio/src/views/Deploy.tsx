@@ -28,6 +28,8 @@ import { Rail, type RailRow } from "./deploy/Rail";
 import { ServiceLogs, Teardown } from "./deploy/Teardown";
 import { DeploymentIdentities, FrontendRelease } from "./deploy/FrontendRelease";
 import { LifecycleDisclosure } from "./DataRetention";
+import { useStudio } from "../studio";
+import { openAwsProfileConfiguration } from "../aws-profile-queries";
 
 /**
  * Deploy & Run: what this repository intends, what the chosen account holds,
@@ -37,10 +39,15 @@ import { LifecycleDisclosure } from "./DataRetention";
  * an operation the studio server runs as a job, whose progress streams below.
  */
 export function Deploy() {
+  const { awsProfile: profile, mode: declarationMode, live } = useStudio();
+  const connectionKey = `${declarationMode}|${profile ?? ""}|${live.awsConnectionRevision}`;
+  const currentConnection = useRef(connectionKey);
+  currentConnection.current = connectionKey;
+  const [readConnection, setReadConnection] = useState(connectionKey);
+  const connectionReady = readConnection === connectionKey;
   const queryClient = useQueryClient();
   const overviewQuery = useQuery({ ...deploymentOverviewQuery(), refetchInterval: 15_000 });
   const overview = overviewQuery.data;
-  const [profile, setProfileState] = useState<string>();
   const [selected, setSelected] = useState<string>();
   const [refreshing, setRefreshing] = useState(false);
   const refreshInFlight = useRef(false);
@@ -56,6 +63,7 @@ export function Deploy() {
   const [toasts, setToasts] = useState<{ id: number; text: string; tone: "refuse" | "info" }[]>([]);
   const [liveEvents, setLiveEvents] = useState<Record<string, StackEventView[]>>({});
   const startedHere = useRef(new Set<string>());
+  const startedConnections = useRef(new Map<string, string>());
   /** What to do once a job this page started succeeds: one operation after another. */
   const afterSuccess = useRef(new Map<string, () => void>());
 
@@ -65,44 +73,26 @@ export function Deploy() {
     setTimeout(() => setToasts((current) => current.filter((entry) => entry.id !== id)), 7000);
   }, []);
 
-  // The remembered profile and deployment, once the overview has them.
+  // Targets are independent from the active declaration mode's connection.
   useEffect(() => {
     if (!overview) return;
-    setProfileState(
-      (current) =>
-        current ??
-        overview.preferences.profile ??
-        overview.profiles.find((entry) => entry.region)?.name ??
-        overview.profiles[0]?.name,
-    );
     setSelected(
       (current) => current ?? overview.preferences.deployment ?? overview.targets[0]?.name,
     );
   }, [overview]);
 
-  const setProfile = (name: string) => {
-    setProfileState(name);
-    void deployApi
-      .preferences({ profile: name, ...(selected ? { deployment: selected } : {}) })
-      .catch(() => {});
+  const select = (name: string) => {
+    setReadConnection(connectionKey);
+    setSelected(name);
+    void deployApi.preferences({ deployment: name }).catch(() => {});
   };
 
-  const select = (name: string) => {
-    setSelected(name);
-    const remembered = overview?.preferences.profiles[name];
-    if (
-      remembered &&
-      remembered !== profile &&
-      overview?.profiles.some((entry) => entry.name === remembered)
-    )
-      setProfileState(remembered);
-    void deployApi
-      .preferences({
-        deployment: name,
-        ...((remembered ?? profile) ? { profile: remembered ?? profile } : {}),
-      })
-      .catch(() => {});
-  };
+  useEffect(() => {
+    setReviewKey(undefined);
+    setTeardown(undefined);
+    // Follow-up actions must not acquire a new actor after their starting context changes.
+    afterSuccess.current.clear();
+  }, [connectionKey]);
 
   const jobs = overview?.jobs ?? [];
   const runningFor = (name: string | undefined) =>
@@ -122,14 +112,14 @@ export function Deploy() {
   const selectedRegion = overview?.targets.find((target) => target.name === selectedName)?.region;
   const discoveryQuery = useQuery({
     ...deploymentDiscoveryQuery(profile),
-    enabled: Boolean(profile),
+    enabled: Boolean(profile && connectionReady),
     staleTime: 20_000,
     refetchInterval: 60_000,
   });
   const busySelected = Boolean(runningFor(selectedName));
   const statusQuery = useQuery({
     ...deploymentStatusQuery(profile, selectedName, selectedRegion),
-    enabled: Boolean(profile && selectedName),
+    enabled: Boolean(profile && selectedName && connectionReady),
     staleTime: 3_000,
     refetchInterval: (query) => {
       const data = query.state.data;
@@ -138,8 +128,8 @@ export function Deploy() {
         : 60_000;
     },
   });
-  const status = statusQuery.data?.ok ? statusQuery.data.value : undefined;
-  const discovery = discoveryQuery.data?.ok ? discoveryQuery.data.value : status;
+  const status = connectionReady && statusQuery.data?.ok ? statusQuery.data.value : undefined;
+  const discovery = connectionReady && discoveryQuery.data?.ok ? discoveryQuery.data.value : status;
   const problem =
     statusQuery.data && !statusQuery.data.ok
       ? statusQuery.data.problem
@@ -193,6 +183,12 @@ export function Deploy() {
   });
 
   useDeployLive({
+    onConnectionChange: () => {
+      setReadConnection("");
+      setReviewKey(undefined);
+      setTeardown(undefined);
+      afterSuccess.current.clear();
+    },
     onJob: (job) => {
       if (job.status === "running") return;
       const then = afterSuccess.current.get(job.id);
@@ -200,6 +196,7 @@ export function Deploy() {
       if (then && job.status === "succeeded") then();
       if (
         startedHere.current.has(job.id) &&
+        startedConnections.current.get(job.id) === connectionKey &&
         job.status === "succeeded" &&
         job.kind === "deploy-plan" &&
         job.planId
@@ -240,8 +237,10 @@ export function Deploy() {
       params: Record<string, string | boolean | undefined>,
     ): Promise<JobView | undefined> => {
       try {
+        const capturedConnection = currentConnection.current;
         const job = await deployApi.operate(kind, params);
         startedHere.current.add(job.id);
+        startedConnections.current.set(job.id, capturedConnection);
         setActivityJob(job.id);
         setActivityOpen(true);
         // The live stream may already have reported this job further along: keep that.
@@ -266,6 +265,7 @@ export function Deploy() {
     if (refreshInFlight.current) return;
     refreshInFlight.current = true;
     setRefreshing(true);
+    setReadConnection(connectionKey);
     // Fetch through the query cache so pending/errors are observable and a failed
     // refresh keeps the last successful evidence on screen.
     await Promise.allSettled([
@@ -328,7 +328,7 @@ export function Deploy() {
     const name = row.name;
     switch (action.id) {
       case "sign-in":
-        void operate("aws-login", { profile });
+        openAwsProfileConfiguration();
         break;
       case "refresh":
         refreshAll();
@@ -432,7 +432,6 @@ export function Deploy() {
       <AccountBar
         profiles={overview.profiles}
         profile={profile}
-        onProfile={setProfile}
         context={selectedContext}
         problem={problem}
         loading={
@@ -443,14 +442,16 @@ export function Deploy() {
         }
         readError={readError ? readError.message : undefined}
         scopeNotice={
-          discoveryQuery.data && !discoveryQuery.data.ok && status
+          !connectionReady
+            ? "Connection changed. Refresh to inspect this account and the selected target."
+            : discoveryQuery.data && !discoveryQuery.data.ok && status
             ? "Account discovery in the profile's default region could not be read: " +
               discoveryQuery.data.problem.message +
               ". The selected deployment's observation below is separate."
             : undefined
         }
         onRefresh={refreshAll}
-        onSignIn={() => profile && void operate("aws-login", { profile })}
+        onSignIn={openAwsProfileConfiguration}
         prerequisites={overview.prerequisites}
         onRemedy={remedy}
       />
@@ -500,7 +501,7 @@ export function Deploy() {
                     onCreated={select}
                   />
                   <FrontendRelease
-                    key={[row.name, profile, selectedRegion ?? selectedContext?.region].join("|")}
+                    key={[row.name, connectionKey, selectedRegion ?? selectedContext?.region].join("|")}
                     deployment={row.name}
                     profile={profile}
                     region={selectedRegion ?? selectedContext?.region}
@@ -550,35 +551,35 @@ export function Deploy() {
             setReviewKey(undefined);
             void operate("deploy-apply", {
               plan: plan.key,
-              profile: plan.profile ?? profile,
+              profile,
               ...(confirm ? { confirm } : {}),
             });
           }}
           onDiscard={(plan) => {
             setReviewKey(undefined);
-            void operate("deploy-discard", { plan: plan.key, profile: plan.profile ?? profile });
+            void operate("deploy-discard", { plan: plan.key, profile });
           }}
           onReplan={(plan, createSecrets) => {
             setReviewKey(undefined);
             if (plan.result) {
               void operate("deploy-plan", {
                 deployment: plan.identity.deployment,
-                profile: plan.profile ?? profile,
+                profile,
                 review: plan.review,
               });
               return;
             }
             void operate("deploy-discard", {
               plan: plan.key,
-              profile: plan.profile ?? profile,
+              profile,
             }).then((job) => {
-              if (job)
+              if (job && startedConnections.current.get(job.id) === currentConnection.current)
                 afterSuccess.current.set(
                   job.id,
                   () =>
                     void operate("deploy-plan", {
                       deployment: plan.identity.deployment,
-                      profile: plan.profile ?? profile,
+                      profile,
                       review: plan.review,
                       ...(createSecrets ? { createSecrets: true } : {}),
                     }),

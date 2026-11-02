@@ -16,6 +16,7 @@ smallest relevant page.
 | Framework architecture and DSL | [Architecture](aws-studio-knowledge/framework/architecture.md), [Framework guide](FRAMEWORK.md), [declaration layout](../framework-config/README.md) |
 | Source ownership and cross-subsystem flow | [Repository map](aws-studio-knowledge/REPOSITORY-MAP.md), [architecture map](aws-studio-knowledge/ARCHITECTURE-MAP.md), [authority contracts](aws-studio-knowledge/architecture/contracts.md) |
 | Studio user interface and backend | [Interface](aws-studio-knowledge/studio/interface.md), [backend](aws-studio-knowledge/studio/backend.md), [workspace README](../framework-studio/README.md) |
+| AWS profiles, credentials and local sign-in | [AWS connections](framework-studio/aws-connections.md) |
 | Graph, source inference and rendering | [Graph](aws-studio-knowledge/studio/graph-model.md), [source indexing](aws-studio-knowledge/studio/source-indexing.md), [rendering](aws-studio-knowledge/studio/rendering.md) |
 | Source changes and creation | [Editing](aws-studio-knowledge/studio/editing.md), [creation/connections](aws-studio-knowledge/studio/creation-and-connections.md) |
 | Resources, native capabilities and CDK | [Resources/CDK](aws-studio-knowledge/framework/resources-and-cdk.md) |
@@ -46,6 +47,7 @@ version-sensitive claim against the current source-linked contract.
 | Document | Role |
 | --- | --- |
 | [architecture](framework-studio/architecture.md) | Detailed Studio architecture; concise authority reference lives in the wiki |
+| [aws-connections](framework-studio/aws-connections.md) | Machine-local profiles, native authentication, diagnostics and execution boundaries |
 | [cognito-lifecycle](framework-studio/cognito-lifecycle.md) | Cognito state retention and lifecycle |
 | [cognito-workspace-2026-10-23](framework-studio/cognito-workspace-2026-10-23.md) | Cognito workspace implementation and operational detail |
 | [database-workbench](framework-studio/database-workbench.md) | Prisma editing, migration planning and database execution boundaries |

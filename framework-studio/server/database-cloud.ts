@@ -10,6 +10,7 @@ import type { DatabaseApplicationResult, DatabaseOperationRecord } from "../shar
 import { EditError } from "./edits/io";
 import { DatabaseOperationStore } from "./database-operations";
 import { runCommand, studioEnvironment, Tools, type Runner } from "./deploy/process";
+import { isAwsProfileName } from "../shared/aws-connections";
 
 interface Destination { identity: DatabaseCloudIdentity; profile: string; descriptor: AwsTaskDescriptor; logGroup: string; streamPrefix: string }
 const destinationBinding = (destination: Destination) => digest({ identity: destination.identity, descriptor: destination.descriptor, logGroup: destination.logGroup, streamPrefix: destination.streamPrefix });
@@ -31,7 +32,7 @@ export class DatabaseCloudService {
   }
 
   private async destination(deployment: string, profile: string): Promise<Destination> {
-    if (!profile.trim() || profile.length > 200 || /[\r\n\0]/.test(profile)) throw new EditError(400, "Choose a configured AWS profile.");
+    if (!isAwsProfileName(profile)) throw new EditError(400, "Choose a configured AWS profile.");
     const target = repositoryTargets(this.root, this.env).find(target => target.name === deployment && target.mode === "prod");
     if (!target?.account || !target.region) throw new EditError(422, "Production database operations require a named production target with a pinned account and region.");
     const caller = await this.aws(profile, target.region, ["sts", "get-caller-identity"]);

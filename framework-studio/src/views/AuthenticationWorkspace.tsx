@@ -17,6 +17,7 @@ import { deployApi } from "../deploy/api";
 import { identityApi, inspectionErrorMessage } from "../identity-api";
 import { editorLink } from "../lookup";
 import { useStudio } from "../studio";
+import { AwsConnectionSummary } from "./AwsConnectionSummary";
 import { buttonClasses } from "../ui/Button";
 import { Select, TextInput } from "../ui/FormControls";
 import { noticeClasses, workspaceToolbarClasses } from "../ui/Surface";
@@ -65,16 +66,11 @@ interface Inspection {
   readonly errors?: Partial<Record<"cognito" | "pools", string>>;
 }
 
-export function authenticationSelection(mode: Mode, overview?: DeployOverview): IdentitySelection {
+export function authenticationSelection(mode: Mode, overview?: DeployOverview, profile = ""): IdentitySelection {
   const preferred = overview?.targets.find(
     (target) => target.name === overview.preferences?.deployment && target.mode === mode,
   );
   const target = preferred ?? overview?.targets.find((target) => target.mode === mode);
-  const profile =
-    (target && overview?.preferences?.profiles[target.name]) ||
-    overview?.preferences?.profile ||
-    overview?.profiles[0]?.name ||
-    "";
   return {
     profile,
     deployment: target?.name ?? "",
@@ -434,7 +430,7 @@ function PoolRelationships({ result }: { readonly result?: IdentityPoolsObservat
 /** One route owner keeps all four panels and their drafts mounted. AWS reads are
  * bound to the exact environment/profile/target/region and source revision. */
 export function AuthenticationWorkspace() {
-  const { mode, snapshot, model, draft, draftState, select, live } = useStudio();
+  const { mode, snapshot, model, draft, draftState, select, live, awsProfile } = useStudio();
   const pathname = useLocation({ select: (location) => location.pathname });
   const section: Section =
     sections.find((entry) => pathname.endsWith(`/${entry.id}`))?.id ?? "user-pools";
@@ -442,14 +438,15 @@ export function AuthenticationWorkspace() {
   const overview = useQuery(deploymentOverviewQuery());
   const [selections, setSelections] = useState<Partial<Record<Mode, IdentitySelection>>>({});
   const candidate = selections[mode];
-  const selection =
+  const destination =
     candidate &&
     (!candidate.deployment ||
       overview.data?.targets.some(
         (target) => target.name === candidate.deployment && target.mode === mode,
       ))
       ? candidate
-      : authenticationSelection(mode, overview.data);
+      : authenticationSelection(mode, overview.data, awsProfile);
+  const selection = { ...destination, profile: awsProfile ?? "" };
   const selectedTarget = overview.data?.targets.find(
     (target) => target.name === selection.deployment && target.mode === mode,
   );
@@ -460,6 +457,7 @@ export function AuthenticationWorkspace() {
     normalizeInputPath(selectedTarget.inputs) !== normalizeInputPath(sourceInputsFile);
   const contextKey = JSON.stringify([
     mode,
+    live.awsConnectionRevision,
     selection.profile,
     selection.deployment,
     selection.region,
@@ -502,7 +500,7 @@ export function AuthenticationWorkspace() {
     setSelections((current) => ({ ...current, [mode]: next }));
     // Reuse Deploy's remembered destination authority, without running discovery.
     void deployApi
-      .preferences({ profile: next.profile, deployment: next.deployment })
+      .preferences({ deployment: next.deployment })
       .catch(() => {});
   };
   const inspect = async (onlyCognito = false, nextToken?: string) => {
@@ -602,22 +600,7 @@ export function AuthenticationWorkspace() {
             <h1 className="m-0 font-sans text-step1 font-semibold leading-[1.3]">Cognito</h1>
           </div>
           <div className={inspectionControlClasses}>
-            <label className={inspectionFieldClasses}>
-              Profile
-              <TextInput
-                className="h-8 w-full"
-                aria-label="Identity AWS profile"
-                disabled={overview.isPending || !!overview.error}
-                value={selection.profile}
-                onChange={(event) => updateSelection({ profile: event.target.value })}
-                list="authentication-profiles"
-              />
-              <datalist id="authentication-profiles">
-                {overview.data?.profiles.map((profile) => (
-                  <option key={profile.name} value={profile.name} />
-                ))}
-              </datalist>
-            </label>
+            <AwsConnectionSummary />
             <label className={inspectionFieldClasses}>
               Deployment
               <Select
@@ -632,8 +615,6 @@ export function AuthenticationWorkspace() {
                   updateSelection({
                     deployment: event.target.value,
                     region: target?.region ?? selection.region,
-                    profile:
-                      overview.data?.preferences?.profiles[event.target.value] ?? selection.profile,
                   });
                 }}
               >
@@ -1040,6 +1021,7 @@ export function AuthenticationWorkspace() {
           <Groups result={cog} />
           <CognitoManagement
             selection={selection}
+            connectionRevision={live.awsConnectionRevision}
             active={section === "user-pools"}
             onChanged={() =>
               setObservations((current) => ({

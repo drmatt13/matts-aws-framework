@@ -42,7 +42,7 @@ mkdirSync('dist/assets',{recursive:true});writeFileSync('dist/assets/app.js','co
   writeFileSync(fake, `import {readFileSync,writeFileSync} from 'node:fs';
 const file=process.env.RELEASE_FAKE_STATE;const state=JSON.parse(readFileSync(file,'utf8'));const args=process.argv.slice(2);state.calls.push(args);writeFileSync(file,JSON.stringify(state));
 const send=x=>console.log(JSON.stringify(x));const key=args.slice(0,2).join(' ');
-if(key==='sts get-caller-identity')send({Account:state.account});
+if(key==='sts get-caller-identity')send({Account:state.account,Arn:state.actorArn??'arn:aws:iam::111122223333:user/fixture'});
 else if(key==='cloudformation describe-stacks')send({Stacks:[state.stack]});
 else if(key==='cloudformation list-stack-resources')send({StackResourceSummaries:[{ResourceType:'AWS::S3::Bucket',PhysicalResourceId:'fixture-owned-website'},{ResourceType:'AWS::CloudFront::Distribution',PhysicalResourceId:'EFIXTURE1234'}]});
 else if(key==='s3api head-bucket')send({});
@@ -61,7 +61,10 @@ test("real public client export uses the named target inputs without Docker or c
   for (const mode of ["dev", "prod"] as const) {
     const fixtureCase = fixture(mode);
     try {
-      const generated = await fixtureCase.service.generateEnvironment(fixtureCase.input);
+      const profile = "team developer";
+      const generated = await fixtureCase.service.generateEnvironment({ ...fixtureCase.input, profile });
+      assert.equal(generated.destination.profile, profile);
+      assert.ok(fixtureCase.load().calls.every((args: string[]) => args[args.indexOf("--profile") + 1] === profile), "the full existing profile name remains one argv value");
       const contents = readFileSync(path.join(fixtureCase.root, generated.file), "utf8");
       assert.equal(parseEnv(contents).VITE_PUBLIC, "public-from-target");
       assert.doesNotMatch(contents, /never-leak-secret|wrong-conventional|wrong-development/);
@@ -70,6 +73,16 @@ test("real public client export uses the named target inputs without Docker or c
       assert.ok(fixtureCase.load().calls.every((args: string[]) => !["s3", "cloudfront", "docker"].includes(args[0]!)));
     } finally { fixtureCase.cleanup(); }
   }
+});
+
+test("a changed AWS principal invalidates publication even in the same account", async () => {
+  const f = fixture();
+  try {
+    const review = await f.service.build(f.input);
+    const state = f.load(); state.actorArn = `arn:aws:iam::${account}:user/another-user`; f.save(state);
+    await assert.rejects(f.service.publish(review.id, `Publish ${f.input.deployment} to fixture-owned-website`), /changed.*nothing was published/);
+    assert.ok(f.load().calls.every((args: string[]) => !["put-object", "delete-object", "create-invalidation"].includes(args[1]!)), "identity changes refuse every publication effect");
+  } finally { f.cleanup(); }
 });
 
 test("alternate frontend builds fresh, excludes secrets/maps, binds approval and retries failed invalidation", async () => {

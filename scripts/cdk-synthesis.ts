@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { connectionEnvironment } from "./aws-connections";
 
 export interface CdkSynthesisRequest {
   repositoryRoot: string;
@@ -12,6 +13,10 @@ export interface CdkSynthesisRequest {
 }
 /** Synthesis only. Mode/input policy belongs to the caller; no deployment or secret synchronization. */
 export function runCdkSynthesis(request: CdkSynthesisRequest): Promise<void> {
+  const inherited = { ...process.env, ...request.environment };
+  const environment = request.profile
+    ? connectionEnvironment(inherited, request.profile, { validate: false })
+    : inherited;
   const cdk = createRequire(path.join(request.repositoryRoot, "cdk-app/package.json")).resolve("aws-cdk/bin/cdk");
   const args = [cdk, "synth", "--quiet", "--output", request.outputDirectory,
     ...(request.profile ? ["--profile", request.profile] : []),
@@ -20,7 +25,7 @@ export function runCdkSynthesis(request: CdkSynthesisRequest): Promise<void> {
     let output = "";
     let timedOut = false;
     const child = spawn(process.execPath, args, { cwd: path.join(request.repositoryRoot, "cdk-app"),
-      env: { ...process.env, ...request.environment, FORCE_COLOR: "0", NO_COLOR: "1" }, shell: false, windowsHide: true });
+      env: { ...environment, FORCE_COLOR: "0", NO_COLOR: "1" }, shell: false, windowsHide: true });
     const append = (chunk: Buffer) => { output = (output + chunk.toString("utf8")).slice(-32_000); };
     child.stdout.on("data", append); child.stderr.on("data", append);
     const timer = setTimeout(() => { timedOut = true; child.kill(); }, request.timeoutMs ?? 10 * 60_000);

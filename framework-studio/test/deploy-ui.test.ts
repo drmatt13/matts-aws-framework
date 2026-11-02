@@ -5,6 +5,7 @@ import { createElement as h, type ReactNode } from "react";
 import type { DeployOverview, DiscoveryView, DiscoveredDeploymentView, PlanSummaryView, PlanView, TeardownPlanView } from "../shared/deploy";
 import { STUDIO_PROTOCOL_VERSION } from "../shared/protocol";
 import { DEFAULT_FRONTEND_RELEASE } from "../shared/frontend-release";
+import { snapshot as snapshotFixture } from "./browser/support/scenarios";
 
 /**
  * The Deploy & Run page in a DOM, against scripted /api/deploy answers: what it
@@ -16,6 +17,9 @@ let ui: typeof import("@testing-library/react");
 let query: typeof import("@tanstack/react-query");
 let page: typeof import("../src/views/Deploy");
 let dialogs: typeof import("../src/views/deploy/Teardown");
+let studio: typeof import("../src/studio");
+let router: typeof import("@tanstack/react-router");
+let activeStudio: ReturnType<typeof import("../src/studio").useStudio>;
 const clients: import("@tanstack/react-query").QueryClient[] = [];
 let answers: Record<string, unknown>;
 let posted: { path: string; body: any }[];
@@ -60,6 +64,7 @@ before(async () => {
   const { JSDOM } = require("jsdom");
   dom = new JSDOM(`<!doctype html><html><head><meta name="studio-token" content="t"><meta name="studio-protocol" content="${STUDIO_PROTOCOL_VERSION}"></head><body></body></html>`, { url: "http://localhost/", pretendToBeVisual: true });
   for (const name of ["window", "self", "document", "navigator", "HTMLElement", "Node", "MutationObserver", "getComputedStyle"] as const) Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] });
+  Object.defineProperty(globalThis, "scrollTo", { configurable: true, value: () => {} });
   // The studio's event stream, which a test can speak through: emit(event, data).
   Object.defineProperty(globalThis, "EventSource", { configurable: true, value: class {
     readonly listeners = new Map<string, ((event: { data: string }) => void)[]>();
@@ -89,14 +94,17 @@ before(async () => {
   });
   ui = require("@testing-library/react");
   query = require("@tanstack/react-query");
+  router = require("@tanstack/react-router");
+  studio = await import("../src/studio");
   page = await import("../src/views/Deploy");
   dialogs = await import("../src/views/deploy/Teardown");
 });
 after(() => dom.window.close());
-afterEach(() => { ui.cleanup(); clients.splice(0).forEach((client) => client.clear()); });
+afterEach(() => { ui.cleanup(); clients.splice(0).forEach((client) => client.clear()); dom.window.localStorage.clear(); });
 
-function render(scripted: Record<string, unknown>, content?: ReactNode) {
+function render(scripted: Record<string, unknown>, content?: ReactNode, associations: { dev?: string; prod?: string } = { dev: "dev", prod: "prod" }) {
   posted = [];
+  requested.length = 0;
   answers = { "/deploy/plans": [], "/deploy/drift": null,
     "/frontend-release/settings": { settings: DEFAULT_FRONTEND_RELEASE, hash: "settings-review-hash" },
     "/frontend-release/history": [],
@@ -105,7 +113,12 @@ function render(scripted: Record<string, unknown>, content?: ReactNode) {
   if (Array.isArray(answers["/deploy/plans"])) answers["/deploy/plans"] = (answers["/deploy/plans"] as PlanSummaryView[]).map((plan) => ({ account: context.account, region: context.region, ...plan }));
   const client = new query.QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   clients.push(client);
-  return ui.render(h(query.QueryClientProvider, { client }, content ?? h(page.Deploy)));
+  const response = snapshotFixture();
+  dom.window.localStorage.setItem(`aws-studio:mode-profiles:v1:${response.snapshot.repositoryRoot}`, JSON.stringify(associations));
+  function Workbench() { activeStudio = studio.useStudio(); return content ?? h(page.Deploy); }
+  const root = router.createRootRoute({ component: () => h(studio.StudioProvider, { response, selected: undefined, select: () => {}, children: h(Workbench) }) });
+  const app = router.createRouter({ history: router.createMemoryHistory({ initialEntries: ["/"] }), routeTree: root.addChildren([router.createRoute({ getParentRoute: () => root, path: "/", component: () => null })]) });
+  return ui.render(h(query.QueryClientProvider, { client }, h(router.RouterProvider, { router: app })));
 }
 
 const operations = () => posted.filter((entry) => entry.path === "/deploy/operations").map((entry) => entry.body);
@@ -161,7 +174,8 @@ test("the empty profile state can refresh and discover a newly configured profil
   answers["/deploy/overview"] = overview();
   ui.fireEvent.click(refresh);
   await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
-  assert.equal((ui.screen.getByLabelText("AWS profile") as HTMLSelectElement).value, "dev");
+  assert.match(ui.screen.getByRole("banner", { name: "AWS account" }).textContent ?? "", /Connection: dev.*selected for Development/);
+  assert.equal(ui.screen.queryByRole("combobox", { name: "AWS profile" }), null);
   assert.equal(operations().length, 0);
 });
 
@@ -195,12 +209,17 @@ test("an absent development deployment prepares a review without automatic appli
   assert.deepEqual(operations()[0], { kind: "deploy-plan", params: { deployment: "my-aws-app", profile: "dev", review: "template" } });
 });
 
-test("an expired session offers Sign in, which signs in that profile", async () => {
+test("an expired session opens connection management without starting a raw-output login job", async () => {
   const expired = { ok: false, problem: { kind: "expired", message: "The selected profile's session has expired." } };
   render({ "/deploy/overview": overview(), "/deploy/discover": expired, "/deploy/status": expired });
   const buttons = await ui.screen.findAllByRole("button", { name: /Sign in/ }, { timeout: 3000 });
-  ui.fireEvent.click(buttons[0]!);
-  await ui.waitFor(() => assert.deepEqual(operations()[0], { kind: "aws-login", params: { profile: "dev" } }));
+  let opened = 0; const onOpen = () => { opened++; };
+  dom.window.addEventListener("studio:aws-profile-configuration", onOpen);
+  try {
+    ui.fireEvent.click(buttons[0]!);
+    assert.equal(opened, 1);
+    assert.deepEqual(operations(), []);
+  } finally { dom.window.removeEventListener("studio:aws-profile-configuration", onOpen); }
 });
 
 test("a production plan is applied only with its name typed", async () => {
@@ -320,9 +339,8 @@ test("named staging remains a production-mode destination with its own resolved 
   const header = ui.screen.getByRole("banner", { name: "AWS account" });
   await ui.waitFor(() => assert.ok(ui.within(header).getByText(staging.region)));
   assert.equal(ui.within(header).queryByText(context.region), null, "profile defaults are not presented as the selected deployment region");
-  const profile = ui.within(header).getByRole("combobox", { name: "AWS profile" }) as HTMLSelectElement;
-  assert.equal(profile.selectedOptions[0]?.text, "dev", "credential profile names are independent of deployment mode");
-  assert.match(profile.title, /Profile default region: us-east-1/);
+  assert.equal(ui.within(header).queryByRole("combobox", { name: "AWS profile" }), null);
+  assert.match(header.textContent ?? "", /Connection: dev.*selected for Development/, "the active declaration profile is independent of the production destination");
   assert.equal(operations().length, 0);
 });
 
@@ -403,5 +421,46 @@ test("incomplete security analysis stays inside review and cannot be applied", a
   ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }));
   assert.ok(await ui.screen.findByText("AccessDenied while inspecting IAM"));
   assert.equal(ui.screen.queryByRole("button", { name: `Apply to ${context.account}` }), null);
+  assert.equal(operations().length, 0);
+});
+
+test("switching targets never restores a remembered profile or changes the declaration association", async () => {
+  render({
+    "/deploy/overview": overview({ preferences: { deployment: "my-aws-app", profile: "legacy", profiles: { "my-aws-app-prod": "legacy-production" } } }),
+    "/deploy/discover": { ok: true, value: discovery() },
+    "/deploy/status": (url: URL) => ({ ok: true, value: { ...discovery(), deployment: url.searchParams.get("deployment") } }),
+  });
+  await ui.screen.findByRole("heading", { name: /my-aws-app Dev/ });
+  const rail = ui.screen.getByRole("navigation", { name: "Deployments" });
+  ui.fireEvent.click(ui.within(rail).getByTitle("my-aws-app-prod").closest("button")!);
+  await ui.screen.findByRole("heading", { name: /my-aws-app-prod Prod/ });
+  assert.equal(activeStudio.awsProfile, "dev"); assert.equal(activeStudio.mode, "dev");
+  assert.ok(requested.some(url => url.startsWith("/deploy/status") && url.includes("deployment=my-aws-app-prod") && url.includes("profile=dev")));
+  assert.ok(requested.every(url => !url.includes("profile=legacy")));
+  assert.ok(posted.filter(entry => entry.path === "/deploy/preferences").every(entry => !Object.hasOwn(entry.body, "profile")));
+  assert.equal(operations().length, 0);
+});
+
+test("a missing global association prevents AWS reads and never adopts a legacy preference", async () => {
+  render({ "/deploy/overview": overview() }, undefined, {});
+  await ui.screen.findByRole("button", { name: "Choose connection" });
+  assert.equal(activeStudio.awsProfile, undefined);
+  assert.equal(requested.some(url => /^\/deploy\/(?:discover|status)/.test(url)), false);
+  assert.equal(operations().length, 0);
+  assert.equal(ui.screen.queryByRole("combobox", { name: "AWS profile" }), null);
+});
+
+test("mode changes clear a pending operation review and require explicit account refresh", async () => {
+  const summary: PlanSummaryView = { key: "actor-review", deployment: "my-aws-app", mode: "dev", account: context.account, region: context.region, status: "ready", createdAt: "2026-10-22T00:00:00Z", expired: false };
+  const plan: PlanView = { key: summary.key, planId: "plan-actor-review", profile: "dev", createdAt: summary.createdAt, expiresAt: "2099-01-01T00:00:00Z", expired: false, status: "ready", review: "template", identity: { deployment: summary.deployment, mode: "dev", account: context.account, region: context.region }, guard: "ready", stacks: [], secrets: [], dockerImages: [], iamBroadening: false, confirmation: { level: "click", reasons: [] }, uncertainties: [] };
+  render({ "/deploy/overview": overview(), "/deploy/discover": { ok: true, value: discovery() }, "/deploy/status": { ok: true, value: { ...discovery(), deployment: summary.deployment } }, "/deploy/plans": [summary], [`/deploy/plans/${summary.key}`]: plan });
+  ui.fireEvent.click(await ui.screen.findByRole("button", { name: "Review plan" }));
+  await ui.screen.findByRole("button", { name: `Apply to ${context.account}` });
+  const count = requested.filter(url => /^\/deploy\/(?:discover|status)/.test(url)).length;
+  ui.act(() => activeStudio.setMode("prod"));
+  await ui.waitFor(() => assert.equal(ui.screen.queryByRole("button", { name: `Apply to ${context.account}` }), null));
+  assert.equal(activeStudio.awsProfile, "prod");
+  assert.ok(ui.screen.getByText(/Connection changed. Refresh to inspect/));
+  assert.equal(requested.filter(url => /^\/deploy\/(?:discover|status)/.test(url)).length, count, "mode selection starts no account discovery");
   assert.equal(operations().length, 0);
 });

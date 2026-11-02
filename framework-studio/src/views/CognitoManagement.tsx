@@ -41,10 +41,12 @@ export function CognitoManagement({
   selection,
   onChanged,
   active = true,
+  connectionRevision,
 }: {
   readonly selection: IdentitySelection;
   readonly onChanged?: () => void;
   readonly active?: boolean;
+  readonly connectionRevision?: number;
 }) {
   const [action, setAction] = useState<CognitoAction>("create-user");
   const [username, setUsername] = useState(""),
@@ -62,7 +64,7 @@ export function CognitoManagement({
   const [result, setResult] = useState<CognitoOperationResult>(),
     [history, setHistory] = useState<readonly CognitoOperationRecord[]>([]);
   const request = useRef(0);
-  const selected = [selection.profile, selection.deployment, selection.region].join("|");
+  const selected = [selection.profile, selection.deployment, selection.region, connectionRevision].join("|");
   const selectedNow = useRef(selected);
   selectedNow.current = selected;
   const refreshHistory = async () => setHistory(await cognitoManagementApi.history());

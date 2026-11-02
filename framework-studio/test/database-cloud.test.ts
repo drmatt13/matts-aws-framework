@@ -177,11 +177,11 @@ test("first production database gets separately reviewed initialization; populat
   }
 });
 
-function cloudHarness() {
+function cloudHarness(profile = "dev") {
   const root = fixture(); const commands: string[][] = []; let protocol = "1", account = identity.account, revision = identity.taskDefinitionArn, logGroup = "private-migration", mode: "ok" | "incomplete" | "refused" | "unchanged" | "initialize" = "ok", lastRequest: DatabaseCloudRequest;
   const launch = { region: identity.region, cluster: `arn:aws:ecs:${identity.region}:${identity.account}:cluster/production`, taskDefinitionFamily: "production-db-migrate", containerName: "Main", launchType: "FARGATE", platformVersion: "LATEST", subnets: ["subnet-private"], securityGroups: ["sg-db-task"], assignPublicIp: false };
   const run: Runner = async spec => {
-    const args = [...spec.args]; commands.push(args); assert.equal(args[args.indexOf("--profile") + 1], "dev"); assert.equal(args[args.indexOf("--region") + 1], identity.region);
+    const args = [...spec.args]; commands.push(args); assert.equal(args[args.indexOf("--profile") + 1], profile); assert.equal(args[args.indexOf("--region") + 1], identity.region);
     let value: unknown;
     if (args[0] === "sts") value = { Account: account };
     else if (args[0] === "cloudformation" && args[1] === "describe-stacks") value = { Stacks: [{ StackStatus: "UPDATE_COMPLETE", Outputs: [{ Description: "framework:deployment:v1", OutputValue: JSON.stringify({ version: 1, ...identity, mode: "prod" }) }, { Description: "framework:task-launch:v1:db-migrate", OutputValue: JSON.stringify({ version: 1, kind: "task", transport: "aws", target: "db-migrate", launch }) }] }] };
@@ -201,12 +201,12 @@ function cloudHarness() {
 }
 
 test("production preflight pins stack-owned revision and refuses old protocol/account without launch", async () => {
-  const harness = cloudHarness();
-  const destination = await harness.service.prepare("production", "dev"); assert.equal(destination.identity.taskDefinitionArn, identity.taskDefinitionArn); assert.match(destination.effects.join(" "), /billed Fargate/);
+  const profile = "team developer", harness = cloudHarness(profile);
+  const destination = await harness.service.prepare("production", profile); assert.equal(destination.profile, profile); assert.equal(destination.identity.taskDefinitionArn, identity.taskDefinitionArn); assert.match(destination.effects.join(" "), /billed Fargate/);
   assert.ok(!harness.commands.some(args => args[1] === "run-task"));
-  await assert.rejects(harness.service.review("production", "dev", "Inspect production", "unknown"), /expired or changed/);
-  harness.setProtocol("0"); await assert.rejects(harness.service.prepare("production", "dev"), /predates/);
-  harness.setAccount("999999999999"); await assert.rejects(harness.service.prepare("production", "dev"), /profile account differs/);
+  await assert.rejects(harness.service.review("production", profile, "Inspect production", "unknown"), /expired or changed/);
+  harness.setProtocol("0"); await assert.rejects(harness.service.prepare("production", profile), /predates/);
+  harness.setAccount("999999999999"); await assert.rejects(harness.service.prepare("production", profile), /profile account differs/);
   assert.ok(!harness.commands.some(args => args[1] === "run-task"));
 });
 

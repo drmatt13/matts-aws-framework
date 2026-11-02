@@ -29,7 +29,7 @@ export function DomainOperations({ selection }: { readonly selection: IdentitySe
     <DomainOperationsPanel
       selection={selection}
       sourceBusy={draft.dirty || !!draftState.busy || draft.conflict || live.evaluating}
-      sourceRevision={snapshot.revision}
+      sourceRevision={`${snapshot.revision}:${live.awsConnectionRevision ?? 0}`}
     />
   );
 }
@@ -73,7 +73,7 @@ export function DomainOperationsPanel({
       .catch(() => {});
     return () => controller.abort();
   }, [receipt, selection.profile, selection.deployment]);
-  const blocked = busy || sourceBusy || !selection.deployment;
+  const blocked = busy || sourceBusy || !selection.deployment || !selection.profile || !selection.region;
   const run = async (work: () => Promise<void>) => {
     const current = ++generation.current;
     setBusy(true);
