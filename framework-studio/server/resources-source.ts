@@ -294,7 +294,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
       if (fallback !== null || required) return fail("A standalone input has a value, without an environment-file default or requirement.");
       if (!present && value != null) return fail(`${mode === "dev" ? "Development" : "Production"} does not hold this input, so it cannot have a value there.`);
       if (present && (typeof value !== "string" || !value.trim())) return fail("Enter a value for every environment that holds this standalone input.");
-      if (present && choices?.length && !choices.some(choice => choice.toLowerCase() === value!.trim().toLowerCase())) return fail("The value must be one of the declared choices.");
+      if (present && choices?.length && !choices.includes(value!)) return fail("The value must be one of the declared choices.");
       continue;
     }
     if (value != null) return fail("An environment-linked input has an optional default, not a standalone value.");
@@ -302,7 +302,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
     if (fallback === null) continue;
     if (intent.kind === "secret") return fail("Secrets cannot have a default in source. Author the value only in cdk-app/.env.");
     if (!fallback.trim()) return fail("Use no default instead of a blank default.");
-    if (choices?.length && !choices.some(choice => choice.toLowerCase() === fallback.trim().toLowerCase())) return fail("The default must be one of the declared choices.");
+    if (choices?.length && !choices.includes(fallback)) return fail("The default must be one of the declared choices.");
   }
   const facts = (overlay.size ? buildSourceIndex(root, state.snapshot.models.dev, new SourceFiles(overlay)).catalog : state.built.catalog).get(resource.path.join("."));
   if (!facts) return fail("This resource could not be located in source.");

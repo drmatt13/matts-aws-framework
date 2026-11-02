@@ -228,7 +228,8 @@ they are not a secret-isolation or hostile-code sandbox.
 ## CDK environment files and input parameters
 
 **Input parameters and secrets** contains only inputs and secrets declared in
-`framework-config/resources.ts`. **Environment files** shows one **CDK environment**
+`framework-config/resources.ts`, plus projected framework inputs from their owning readers.
+**Environment files** shows one **CDK environment**
 beside **Client environment**. CDK environment is **Framework managed** and represents
 the separate `cdk-app/.env.dev` and `.env.prod` files, with their values still editable.
 Matching supplies share one connection row with Dev/Prod descriptors and separate file evidence.
@@ -239,14 +240,20 @@ Catalog identities are reused, preserving their workload and secret-consumer lin
 An input has an explicit source in its creation form and Inspector. With **Link to .env file**
 off, a **Source parameter** stores a non-secret **Value** in its declaration through
 `resource.value(...)`. It has no environment variable, fallback default, local-file editor
-or file-to-parameter link. `enableWebSocketApi`, for example, is a source parameter whose
-value is `true`. Environment files cannot override that value.
+or file-to-parameter link. Environment files cannot override that value.
 
 With the link on, an **Environment parameter** reads its named variable from each
 environment's file and may declare an optional **Default value**. Switching the link carries
 the entered text between Value and Default; source review shows the change before saving.
 Creation or changing the link never overwrites existing `.env` contents. Secrets always use
 the protected environment-file source and have neither public source values nor defaults.
+
+**Allowed values** edits an input's `.enum(...)` declaration. Add, change or remove choices,
+or turn off **Restrict allowed values** to remove the enum, then **Review Changes** and
+**Apply All**. Defaults and source values must remain in the list. Application inputs and
+literal deployment/local framework declarations support this editor; database choices
+follow the database setting's type and explain that ownership. Changing an enum does not
+change how a framework reader interprets the value.
 
 **Input behavior** is a Dev | Prod grid. Both sources expose **Present**; source parameters
 expose **Value**, while environment parameters expose **Required** and optional **Default**.

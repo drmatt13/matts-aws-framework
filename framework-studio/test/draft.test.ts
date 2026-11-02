@@ -48,6 +48,21 @@ test("environment declarations use ordinary source creation with a fixed link an
   assert.equal(draft.creation(), undefined);
 });
 
+test("framework enum drafts preserve managed group labels instead of validating them as catalog identifiers", async () => {
+  const { draft, requests } = fixture();
+  const resource = baseline.models.dev.resources.find(item => item.id === "framework:deployment.skipEmailVerification")!;
+  assert.ok(resource.inputChoices);
+  draft.setResource(resource, { ...initialResourceForm(resource), choices: ["true", "false", "preview"] });
+  assert.equal(draft.invalid, false);
+  await draft.review();
+  const edit = requests[0]![0]!;
+  assert.equal(edit.kind, "resourceConfig");
+  if (edit.kind === "resourceConfig") {
+    assert.equal(edit.intent.group, "Deployment settings");
+    assert.deepEqual(edit.intent.choices, ["true", "false", "preview"]);
+  }
+});
+
 test("removing a variable retains its removal operation through private review and can be undone", async () => {
   const { draft, transport } = fixture();
   let submitted: unknown;

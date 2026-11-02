@@ -459,6 +459,12 @@ been removed; the renderer has one visual style.
    spare do not move. Collision validation checks the final curves after fallback and
    tiny-move removal, restoring an unsafe parallel group together (see
    [Rendering](../aws-studio-knowledge/studio/rendering.md)).
+   A final safeguard shortens excessive crests on long, nearly vertical single-type
+   wires. It retains normal lift and exact attachments, accepting only a correction
+   with no newly hit obstacle, additional crossing or increased corridor overlap.
+   Ordinary arcs and parallel fans keep their exact paths; an unsafe correction
+   falls back to the original. It runs after routing so neighboring wires and island
+   positions cannot change in response.
    Drawing, picking and packets share the same cached path, and Fit includes its crest.
    Three purpose categories filter background connections: Routes and events, Environment and secrets,
    and Resource interactions. Categories with no connections have no pill.
@@ -587,7 +593,11 @@ tweening. A still picture draws nothing.
   - Wheel deltas in lines and pages are normalized to pixels.
   - Each event's delta is clamped to ±240 px, and the factor is `exp(−px · 0.0015)`.
   - Pinch uses two pointers.
-- **Fit** shows the bounds with 40 px of padding, capped at 1.2×.
+- **Fit** shows the bounds with 40 px of padding, capped at 1.2×. It reserves room
+  for left-side titles, then uses spare horizontal room to center the painted terrain,
+  icons and wires. A gentle 8-screen-pixel lift leaves 32 px of top clearance with
+  the default padding. These camera corrections preserve zoom and all world positions;
+  horizontal centering stops before any title would lose its padding.
 - **Tweens** take 450 ms, ease in and out, and interpolate zoom in log space. With reduced
   motion they are instant.
 - **Inputs:**

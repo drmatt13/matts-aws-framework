@@ -14,6 +14,7 @@ source:
   - framework-studio/src/scene/routing.ts
   - framework-studio/src/scene/corridors.ts
   - framework-studio/src/scene/render.ts
+  - framework-studio/src/scene/fit.ts
   - framework-studio/src/endpoint-services.ts
   - framework-studio/src/input-groups.ts
   - framework-studio/src/issues.ts
@@ -192,6 +193,12 @@ callbacks stay in the coordinator, including the navigator's memoization boundar
 `build.ts` constructs them and retains type re-exports for existing consumers.
 `layout-geometry.pathBounds` supplies the shared path envelope used by routing,
 render preparation and map picking metadata. It does not change routes or hit tolerance.
+`fitScene` in `scene/fit.ts` includes left-side title allowances when choosing zoom.
+It then centers the painted terrain, frames, icons and wires within spare horizontal
+room, clamping the camera so the full title bounds retain their horizontal padding.
+A small vertical lift uses half the padding, capped at 8 screen pixels:
+the default 40 px padding gives an 8 px lift and retains 32 px at the top. Fit preserves
+zoom; no island, node or connection geometry changes.
 
 | Stage | Source / important behavior |
 | --- | --- |
@@ -317,6 +324,19 @@ an unsafe endpoint-pair group returns together to its original arcs. This valida
 only while groups are removed, bounded by the moving group count. The pass is deterministic,
 independent of input order and lens, and leaves unrelated wires bit-identical; above
 `CORRIDOR_LIMIT` (300) connections it is skipped.
+
+After separation, `trimNarrowCrests` corrects only tall hairpins: a single-type wire
+with at least 320 world units of projected depth, width at most 10% of that depth,
+and a crest above the higher endpoint exceeding both 48 units and its width. The
+largest avoidance detour can otherwise save one icon collision by making a nearly
+vertical connection rise sharply and double back. The correction retains the normal
+physical/projected lift, trying the current horizontal control coordinate then offsets
+of ±24 and ±48 units. It accepts only a smaller crest within that bound, with no newly
+hit obstacle, no additional crossings and no increase in corridor overlap length.
+If no candidate passes, the exact original path stays. This final pass cannot feed
+back into layout or earlier routing decisions; ordinary arcs and parallel-type fans
+keep their exact samples. It shares the 300-connection limit. Drawing, packets and
+picking all reuse the corrected cached path.
 
 Conditional deployment is an input-control relationship: `Conditional deployment: $inputPath`.
 It uses the same dashed colour as Supplies input. Its model endpoints, arrow, packets,

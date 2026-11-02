@@ -51,7 +51,7 @@ export function ResourceView(props: { readonly resource: ModelResource }) {
   if (resource.clientEnvironment)
     return <ClientEnvironmentFileView key={resource.id} resource={resource} />;
   if (resource.deploymentFile || resource.deploymentFiles) return <EnvironmentFileView key={`${resource.id}:${inspectorNavigation.key}`} resource={resource} />;
-  // Framework-managed inputs are projected, not declared in source, so they have their own read-only views.
+  // Projected framework inputs use their owning readers' views and narrowly scoped source edits.
   if (resource.frameworkInput)
     return resource.kind === "group" ? (
       <FrameworkInputGroupView key={resource.id} resource={resource} />

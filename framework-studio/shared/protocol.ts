@@ -1,5 +1,5 @@
 /** Bump when a running server cannot safely accept the current browser's drafts. */
-// Environment edits include reviewed assignment removal, which older servers interpret as blanking.
+// Reviewed resource configuration now includes enum choices, which older servers cannot accept.
 export const STUDIO_PROTOCOL_VERSION = "11";
 export const STUDIO_RESTART_MESSAGE = "Studio's server and browser use different declaration APIs. Restart npm run studio, reload this page, and review your changes again. No files were written.";
 

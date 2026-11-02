@@ -3,7 +3,7 @@ import { arcPoints } from "./picking";
 import { intersects, pathBounds, pathHits, pathLength, pathsCross, type Obstacle } from "./layout-geometry";
 import type { LayoutLink } from "./layout-graph";
 import { ELEVATION_STEP } from "./iso";
-import { separateCorridors, type CorridorWire } from "./corridors";
+import { CORRIDOR_LIMIT, corridorConflicts, separateCorridors, type CorridorWire } from "./corridors";
 
 /** Control-point lift for a quadratic whose crest clears its higher end by `rise`.
  * Unlike a midpoint-only offset, this also arches above steep/receding endpoints. */
@@ -41,10 +41,51 @@ export function connectionMidpoint(points: readonly Point[]): Point {
  * Independent wires that compete for one corridor are spread apart after their arcs are chosen. */
 export function routeConnections(links: readonly LayoutLink[], obstacles: readonly Obstacle[]): ConnectionRoutes {
   const wires = routeArcs(links, obstacles), moved = separateCorridors(wires, obstacles);
-  return Object.fromEntries(wires.map((wire) => {
-    const points = moved.get(wire.id) ?? wire.points;
+  const paths = wires.map(wire => ({ ...wire, points: moved.get(wire.id) ?? wire.points }));
+  trimNarrowCrests(paths, links, obstacles);
+  return Object.fromEntries(paths.map((wire) => {
+    const points = wire.points;
     return [wire.id, { points, length: pathLength(points) }];
   }));
+}
+
+/** A steep, almost depth-aligned wire can buy a tiny collision improvement with the
+ * largest upward detour, producing a tall hairpin. Correct only those outliers after
+ * routing/separation, so the correction cannot influence any other wire or the layout.
+ * Keep the ordinary physical/projected lift and try only small sideways adjustments.
+ * Unsafe candidates leave the original route intact. Parallel-type fans stay together. */
+function trimNarrowCrests(paths: CorridorWire[], links: readonly LayoutLink[], obstacles: readonly Obstacle[]): void {
+  if (paths.length > CORRIDOR_LIMIT) return;
+  const byId = new Map(links.map(link => [link.id, link]));
+  const groups = new Map<string, number>();
+  for (const path of paths) groups.set(path.group, (groups.get(path.group) ?? 0) + 1);
+  for (let at = 0; at < paths.length; at++) {
+    const wire = paths[at]!, a = wire.points[0]!, b = wire.points.at(-1)!;
+    const width = Math.abs(b.x - a.x), height = Math.abs(b.y - a.y);
+    const crest = Math.min(a.y, b.y) - Math.min(...wire.points.map(point => point.y));
+    // Ordinary 24-unit crests, wide arcs, short spans and intentional parallel fans
+    // retain their exact samples. No resource names or relationship types are special.
+    if (groups.get(wire.group)! > 1 || height < 320 || width > height * 0.1 || crest <= Math.max(48, width)) continue;
+    const link = byId.get(wire.id)!;
+    const controlY = (a.y + b.y) / 2 - connectionLift(link.from, link.to, 0);
+    const midpoint = wire.points[(wire.points.length - 1) / 2]!;
+    const controlX = 2 * midpoint.x - (a.x + b.x) / 2;
+    const blocked = obstacles.filter(obstacle => !wire.exempt.includes(obstacle.id) && !pathHits(wire.points, obstacle.bounds));
+    const crossings = (points: readonly Point[]) => paths.reduce((sum, other, index) => sum + Number(index !== at && pathsCross(points, other.points)), 0);
+    const originalCrossings = crossings(wire.points);
+    const focus = new Set([at]);
+    const congestion = () => corridorConflicts(paths, undefined, undefined, focus).reduce((sum, conflict) => sum + conflict.length, 0);
+    const originalCongestion = congestion();
+    for (const shift of [0, 24, -24, 48, -48]) {
+      const points = arcPoints(a, { x: controlX + shift, y: controlY }, b, wire.points.length - 1);
+      const nextCrest = Math.min(a.y, b.y) - Math.min(...points.map(point => point.y));
+      if (nextCrest >= crest || nextCrest > Math.max(48, width)
+        || blocked.some(obstacle => pathHits(points, obstacle.bounds)) || crossings(points) > originalCrossings) continue;
+      paths[at] = { ...wire, points };
+      if (congestion() <= originalCongestion) break;
+      paths[at] = wire;
+    }
+  }
 }
 /** Each relationship's own arc: the lifted quadratic that best avoids obstacles and crossings.
  * Related edges share a direction corridor but retain distinct endpoints and lanes. */

@@ -78,7 +78,7 @@ export function planFrameworkInputChoices(root: string, resource: ModelResource,
   const facts = frameworkInputChoices(root, resource.frameworkInput!, resource.path.at(-1)!, resource.fromEnv!, overlay);
   if (!facts) throw new Error("This input's enum is computed or unavailable. Edit its declaration in source.");
   const choices = intent.choices.map(value => value.trim());
-  if (choices.length && facts.defaults.some(value => !choices.some(choice => choice.toLowerCase() === value.trim().toLowerCase()))) throw new Error("Every declared default must remain one of the allowed values.");
+  if (choices.length && facts.defaults.some(value => !choices.includes(value))) throw new Error("Every declared default must remain one of the allowed values.");
   const original = facts.expression.getText(facts.sourceFile);
   const start = facts.expression.getStart(facts.sourceFile);
   const call = choices.length ? `.enum(${choices.map(value => JSON.stringify(value)).join(", ")})` : "";

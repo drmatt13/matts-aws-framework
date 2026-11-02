@@ -99,6 +99,18 @@ the normal reviewed source writer, without reading, moving or rewriting `.env` v
 Secret inputs always remain environment-linked and never accept a source value or default.
 The `enableWebSocketApi` example reads `ENABLE_WEB_SOCKET_API`, with a default of `true`.
 
+**Allowed values** edits an input's `.enum(...)` in the same source draft as its other settings.
+The restriction switch selects unrestricted text or an explicit list; add/remove controls retain
+keyboard focus. Choices are non-blank and unique ignoring case, with at most 100 single-line
+values of 500 characters each. Declared defaults and source values must fit the proposed list.
+Secrets never acquire enum metadata. Explicit deployment/local framework builders expose this
+same editor while their reader/identity/mode policy remains managed. The source writer locates
+the literal owning builder, preserves retained comments and other calls, fingerprints both fixed
+declaration files, revalidates apply and verifies refreshed choices before confirming success.
+Projection reads this public metadata from current source rather than cached server imports, so
+an applied enum change is reflected without restarting Studio. Computed enums and inferred
+database types stay source-owned. Private environment edits remain a separate review.
+
 Source projection includes public `authoredValue` and mode `value` metadata, while resolved
 environment-file values stay out of snapshots and symbolic client previews. New client
 input recipes use canonical catalog IDs; legacy variable-name aliases remain readable.

@@ -65,8 +65,12 @@ framework-managed input groups on the inputs island (`framework:deployment`, `fr
 `framework:local`), each entry an input with no default. `REQUIRED_FRAMEWORK_INPUTS` in that file lists
 the lines each environment's file must write (the uncommented framework lines of its template), so a
 file or template that drops one shows a missing value on its supply connection and an error on the
-group. Their behavior is read-only in Studio; values are edited in place through the file, like any
-input's. Synthesis keeps the fallbacks its own declarations give. A catalog `fromEnv` or `secret` of
+group. Their reader, identity and environment policy stay read-only in Studio; values are edited in
+place through the file, like any input's. Literal enums in `cdk-app/deployment-inputs.ts` and
+`cdk-app/framework-inputs.ts` can be edited through **Allowed values**, including removal of the
+restriction. This uses the guarded source review, preserves defaults/comments, and rejects lists
+that exclude declared defaults. Database choices follow the setting's type and remain read-only;
+computed declarations explain their source-owned boundary. Synthesis keeps the fallbacks its own declarations give. A catalog `fromEnv` or `secret` of
 the same name stays the catalog's. `framework-studio/test/framework-settings.test.ts` keeps both
 templates in step with the required list and requires every variable they name to belong to exactly
 one place.

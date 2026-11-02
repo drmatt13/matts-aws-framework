@@ -5,12 +5,13 @@ import path from "node:path";
 /**
  * The files the studio may write, and how it recognizes them unchanged.
  *
- * Exactly the composition root and the section modules beside it. Anything
+ * The general config writer owns the composition root and section modules beside it. Anything
  * else — CDK, handlers, generated output, env files — is refused by this config writer before a
  * write is attempted, whatever a request asks for. The separate deployment-input
  * service permits typed edits to just the two fixed mode-specific dotenv files.
  * Local replay has its own authority for the selected event's resolved handler;
- * it does not expand this configuration-file allowlist.
+ * it does not expand this configuration-file allowlist. Fingerprints additionally cover the two
+ * fixed public CDK input declaration files, whose separate resource writer permits enum-only edits.
  */
 
 export function sha256(text: string): string {
