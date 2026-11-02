@@ -50,6 +50,10 @@ export interface DeploymentInputEntry {
   readonly requirements?: readonly InputRequirement[];
 }
 
+/** A written assignment must link to an input or secret in either environment's input model. */
+export const isUndeclaredEnvironmentInput = (entry: DeploymentInputEntry): boolean =>
+  entry.status !== "missing" && entry.targets.length === 0;
+
 /** What reads a framework setting, and so which framework-managed input group holds it. */
 export type FrameworkSettingOwner = "deployment" | "database" | "local" | "authentication";
 

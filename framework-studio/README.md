@@ -275,15 +275,18 @@ file is written; saving does not synthesize or deploy. Dotenv syntax and value r
 are checked; infrastructure validation remains a separate synthesis action.
 
 Both file inspectors list the same variables: the file's own lines, the other file's lines,
-and every environment-linked catalog input its graph holds, catalog inputs first. A blank catalog row shows its
+and every environment-linked catalog input its graph holds. A blank catalog row shows its
 declared default; a row the other file alone writes says so. An input declared `.only()` the
 other graph is left out, and flagged **Not read** if a line for it is written anyway. Showing a
 row never writes one: typing a value adds the line, and clearing it again drops the edit.
-Variables the catalog does not declare but the application reads are grouped with their owner:
-**Deployment settings** (cdk-app/deployment-inputs.ts) and **Database** overrides, each with its
-default, choices and note; a database override in the development file is flagged **Not read**.
-Anything else is listed under **Other variables**.
-File-to-resource links use catalog declarations only. Names, line presence and declared
+Variables are grouped by their input model's outermost input group, using its display name and
+saved description. Standalone parameters and secrets have no section heading. Framework-managed
+inputs follow the same parent-group relationships. Every assignment in either file, including a
+blank one, must link to an environment parameter or secret in **Input parameters and secrets**.
+An undeclared assignment highlights its variable and reports an error on the CDK environment in
+both source modes. Source-only parameters do not claim environment assignments. A declared input
+written in an environment that does not read it is still flagged **Not read** separately.
+File-to-resource links use the input model's declarations. Names, line presence and declared
 defaults remain available without values in the map. Values load only into the selected
 inspector and its in-memory draft, outside graph/search data and query caches. A sensitive
 line's value is withheld from the file inspector: it shows as set, typing replaces it, and

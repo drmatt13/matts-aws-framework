@@ -39,6 +39,14 @@ unknown or mode-inapplicable assignments. Editing does not change the map's Sour
 operational target; one private review writes whichever files changed, each checked against its
 own hash.
 
+The file editor derives sections from the input model's outermost parent groups and reuses their
+display names and saved descriptions; standalone inputs and secrets remain ungrouped. Every
+written assignment across both files, including blank assignments, must link to an environment
+input or secret in **Input parameters and secrets**. Unlinked variables are highlighted and produce
+a CDK environment resource error in both source modes. A declaration in either graph counts;
+mode-inapplicable assignments retain their separate **Not read** state. Source-only parameters
+have no environment link and cannot satisfy this requirement. Values are never needed for these errors.
+
 Every variable the framework itself reads, rather than a workload, has exactly one owner: the
 deployment settings in [cdk-app/deployment-inputs.ts](../../../cdk-app/deployment-inputs.ts), the
 production database overrides (`DATABASE_SETTING_INPUTS`), or the local development tooling in

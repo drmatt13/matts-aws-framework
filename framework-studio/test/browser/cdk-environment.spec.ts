@@ -65,6 +65,70 @@ function environmentFixture(studio: Fixture) {
 
 const environmentName = (mode: Mode) => (mode === "dev" ? "Development" : "Production");
 
+for (const width of [1440, 390]) test(`environment groups follow input declarations and undeclared assignments are errors at ${width}px`, async ({ page, studio }, info) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const fixture = environmentFixture(studio);
+  const group = "resource:browserEnvironment";
+  const nested = `${group}.credentials`;
+  const unknown = "BROWSER_UNDECLARED";
+  const description = "Settings shared by the browser integration and its credentials.";
+  Object.assign(studio.response.snapshot.descriptions.values, { [group]: description });
+  Object.assign(studio.response.snapshot, { displayNames: { values: { [group]: "Integration settings" } } });
+  for (const model of Object.values(studio.response.snapshot.models)) {
+    Object.assign(model, { resources: [...model.resources,
+      { id: group, kind: "group", path: ["browserEnvironment"], absent: false },
+      { id: nested, kind: "group", path: ["browserEnvironment", "credentials"], parent: group, absent: false },
+      { id: "resource:browserRequired", kind: "input", path: ["browserRequired"], fromEnv: requiredName, absent: false },
+    ] });
+    Object.assign(model.resources.find(resource => resource.id === inputId)!, { parent: group });
+    Object.assign(model.resources.find(resource => resource.id === secretId)!, { parent: nested });
+    for (const resource of model.resources.filter(resource => resource.deploymentFile)) {
+      const file = resource.deploymentFile!;
+      Object.assign(file.entries.find(entry => entry.name === requiredName)!, { targets: ["resource:browserRequired"] });
+      // An empty assignment still needs a declaration; the mirrored missing row does not.
+      (file.entries as DeploymentInputEntry[]).push({ name: unknown, status: file.mode === "prod" ? "empty" : "missing",
+        counterpart: file.mode === "dev" ? "empty" : "missing", sensitive: false, defaulted: false, targets: [] });
+    }
+  }
+  studio.reply("GET", "/api/deployment-inputs/details", async (route, url) => {
+    const mode = url.searchParams.get("mode") === "prod" ? "prod" : "dev";
+    const details = fixture.details(mode);
+    await route.fulfill({ json: { ...details, entries: [...details.entries, ...(mode === "prod" ? [{ name: unknown, value: "", sensitive: false }] : [])] } });
+  });
+  await studio.goto(`/?select=${encodeURIComponent(environmentId)}`);
+  const panel = page.getByRole("complementary", { name: "Inspector", exact: true });
+  const row = (name: string) => panel.locator(`[data-slot="environment-variable"][data-variable="${name}"]`);
+  const section = panel.locator('[data-slot="environment-variable-group"]');
+  await expect(section).toHaveCount(1);
+  await expect(section.getByRole("heading", { name: "Integration settings", exact: true })).toBeVisible();
+  await expect(section).toContainText(description);
+  await expect(section.locator('[data-slot="environment-variable"]')).toHaveCount(2);
+  await expect(row(requiredName).locator('xpath=ancestor::*[@data-slot="environment-variable-group"]')).toHaveCount(0);
+  await expect(row(unknown).locator('xpath=ancestor::*[@data-slot="environment-variable-group"]')).toHaveCount(0);
+  await expect(panel.getByRole("heading", { name: /Inputs and secrets|Other variables|Deployment settings/ })).toHaveCount(0);
+  await expect(panel.getByRole("alert").filter({ hasText: ".env.prod has undeclared variables" })).toBeVisible();
+  await expect(row(unknown).locator('[data-slot="environment-variable-name"]')).toHaveClass(/text-refuse/);
+  const summary = row(unknown).locator("summary");
+  await summary.focus();
+  await page.keyboard.press("Enter");
+  await expect(row(unknown)).toHaveJSProperty("open", true);
+  const value = panel.getByRole("textbox", { name: `Value for ${unknown} in Production`, exact: true });
+  await expect(value).toHaveAttribute("aria-invalid", "true");
+  await expect(value).toHaveAccessibleDescription(/No linked input parameter or secret/);
+  await expect(row(unknown).locator('[data-environment="dev"] input, [data-environment="dev"] textarea')).toHaveAttribute("aria-invalid", "false");
+  await panel.getByRole("searchbox", { name: "Filter environment variables", exact: true }).fill(inputName);
+  await expect(panel.locator('[data-slot="environment-variable"]')).toHaveCount(1);
+  await expect(section.getByRole("heading", { name: "Integration settings", exact: true })).toBeVisible();
+  await expect(section).toContainText(description);
+  await panel.getByRole("searchbox", { name: "Filter environment variables", exact: true }).fill("no-such-variable");
+  await expect(panel.getByText("No variables match this search.", { exact: true })).toBeVisible();
+  await panel.getByRole("searchbox", { name: "Filter environment variables", exact: true }).fill("");
+  await assertAccessible(page);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await panel.screenshot({ path: info.outputPath("inferred-environment-groups.png"), animations: "disabled" });
+  expect(studio.requests.filter(request => /\/deployment-inputs\/(create|plan|apply)$/.test(request.path))).toHaveLength(0);
+});
+
 for (const width of [1440, 390]) test(`CDK environment edits both files side by side and reviews them together at ${width}px`, async ({ page, studio }, info) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width, height: 1000 });

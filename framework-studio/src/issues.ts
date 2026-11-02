@@ -1,4 +1,4 @@
-import type { InputRequirement } from "../shared/deployment-inputs";
+import { isUndeclaredEnvironmentInput, type InputRequirement } from "../shared/deployment-inputs";
 import type { Diagnostic, Mode, ModelResource, ModelTarget } from "../shared/model";
 import type { IconKey } from "./icons";
 import { entryCount, groupEntries } from "./input-groups";
@@ -33,12 +33,14 @@ const ordered = (issues: readonly EntityIssue[]): readonly EntityIssue[] =>
 export function resourceIssues(resource: ModelResource, resources?: Iterable<ModelResource>): readonly EntityIssue[] {
   if (resource.deploymentFiles && resources) {
     const files = new Set(Object.values(resource.deploymentFiles));
-    return ordered([...resources].filter((item) => files.has(item.id) && !item.absent).flatMap((item) => resourceIssues(item)));
+    return ordered([...resources].filter((item) => files.has(item.id)).flatMap((item) =>
+      item.absent ? undeclaredEnvironmentIssues(item) : resourceIssues(item)));
   }
   const issues: EntityIssue[] = [];
   const file = resource.deploymentFile;
   // CDK environment shows both files' issues together, so each names its own file.
   const name = file && `.env.${file.mode}`;
+  issues.push(...undeclaredEnvironmentIssues(resource));
   if (file?.setupProblem) {
     issues.push({ severity: "error", title: `${name} could not be created`, badge: "error", details: [file.setupProblem] });
   } else if (file?.problem) {
@@ -54,6 +56,15 @@ export function resourceIssues(resource: ModelResource, resources?: Iterable<Mod
   const unset = missingValueIssue(resource, resources);
   if (unset) issues.push(unset);
   return ordered(issues);
+}
+
+/** Both CDK files must be covered by the input model, regardless of the selected source mode. */
+function undeclaredEnvironmentIssues(resource: ModelResource): readonly EntityIssue[] {
+  const file = resource.deploymentFile;
+  if (!file?.exists || file.problem) return [];
+  const unknown = file.entries.filter(isUndeclaredEnvironmentInput);
+  return unknown.length ? [{ severity: "error", title: `.env.${file.mode} has undeclared variables`, badge: "error",
+    details: unknown.map((entry) => `${entry.name} in ${file.path} has no linked input parameter or secret in Input parameters and secrets. Declare it there or remove the assignment.`) }] : [];
 }
 
 const valueMissing = (entry: ModelResource): boolean => !entry.absent && entry.inputRequirement?.status === "missing";

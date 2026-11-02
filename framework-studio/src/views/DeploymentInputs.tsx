@@ -23,10 +23,10 @@ import { resourceIssues } from "../issues";
 import {
   CDK_ENVIRONMENT_ID,
   FRAMEWORK_INPUT_GROUPS,
+  isUndeclaredEnvironmentInput,
   type DeploymentInputDetails,
   type DeploymentInputEntry,
   type DeploymentInputFile,
-  type FrameworkSettingOwner,
 } from "../../shared/deployment-inputs";
 import type { EnvironmentEdit } from "../draft";
 import { Description } from "./Description";
@@ -35,6 +35,7 @@ import { EnvironmentValueControl as ValueControl } from "./EnvironmentValueContr
 import { EnvironmentPills } from "./DeploymentBadge";
 import { RetryNotice } from "./RetryNotice";
 import { openEnvironmentVariable, takeEnvironmentVariableRequest } from "../environment-variable-link";
+import { inputGroupOf } from "../input-groups";
 
 /** How a file's line reads, without the value: set, blank with a default standing in, or absent. */
 export function lineSummary(entry: DeploymentInputEntry): string {
@@ -97,21 +98,8 @@ function EnvironmentLabel({ mode, className }: { readonly mode: Mode; readonly c
 /** One variable across both files: each file's entry comes from its own environment's graph. */
 interface VariableRow {
   readonly name: string;
-  readonly group: GroupKey;
   readonly entries: Readonly<Partial<Record<Mode, DeploymentInputEntry>>>;
 }
-type GroupKey = "inputs" | Exclude<FrameworkSettingOwner, "authentication"> | "other";
-const GROUPS: readonly { readonly key: GroupKey; readonly title: string; readonly note?: string }[] = [
-  { key: "inputs", title: "Inputs and secrets" },
-  { key: "deployment", title: FRAMEWORK_INPUT_GROUPS.deployment.title, note: `Read by ${FRAMEWORK_INPUT_GROUPS.deployment.reader}.` },
-  { key: "database", title: FRAMEWORK_INPUT_GROUPS.database.title, note: "Read in production only, by the database declaration at synthesis. Development builds no RDS." },
-  { key: "local", title: FRAMEWORK_INPUT_GROUPS.local.title, note: "Read in development only, by Docker Compose and the local tooling. Nothing here is deployed." },
-  { key: "other", title: "Other variables" },
-];
-const groupOf = (entries: readonly DeploymentInputEntry[]): GroupKey => {
-  const owner = entries.find((entry) => entry.owner)?.owner;
-  return owner && owner !== "authentication" ? owner : entries.some((entry) => entry.targets.length) ? "inputs" : "other";
-};
 /** Whether this environment reads the variable at all: its catalog targets, or its framework reader. */
 const reads = (entry: DeploymentInputEntry | undefined, mode: Mode): boolean =>
   !!entry && !entry.notRead && (!entry.owner || FRAMEWORK_INPUT_GROUPS[entry.owner].modes.includes(mode));
@@ -227,7 +215,14 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   }
   const rows: VariableRow[] = [...byName]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, entries]) => ({ name, entries, group: groupOf(Object.values(entries)) }));
+    .map(([name, entries]) => ({ name, entries }));
+  // Use both input models: a group can exist only in the other environment. The selected
+  // model wins shared identities, just as its labels do elsewhere in the inspector.
+  const declarations = new Map([...MODES.flatMap((mode) => snapshot.models[mode].resources), ...index.resources.values()].map((item) => [item.id, item]));
+  const inputIndex = { ...index, resources: declarations };
+  const groupedRows = rows.map((row) => ({ ...row, group: MODES.flatMap((mode) => row.entries[mode]?.targets ?? [])
+    .map((id) => declarations.get(id)).filter((item) => !!item)
+    .map((item) => inputGroupOf(item, declarations)).find((group) => !!group) }));
 
   const hasValue = (row: VariableRow, mode: Mode) => {
     const edit = editOf(mode, row.name);
@@ -292,8 +287,11 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   }, [missingIn]);
 
   const query = filter.trim().toLowerCase();
-  const matches = rows.filter((row) => (!query || row.name.toLowerCase().includes(query)) && (!missingIn || missingIn.names.has(row.name)));
-  const groups = GROUPS.map((group) => ({ ...group, rows: matches.filter((row) => row.group === group.key) })).filter((group) => group.rows.length);
+  const matches = groupedRows.filter((row) => (!query || row.name.toLowerCase().includes(query)) && (!missingIn || missingIn.names.has(row.name)));
+  const groups = [...new Map(matches.flatMap((row) => row.group ? [[row.group.id, row.group] as const] : [])).values()]
+    .map((group) => ({ key: group.id, title: titleOf(inputIndex, group.id), note: draft.description(group.id).trim(), rows: matches.filter((row) => row.group?.id === group.id) }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+  const ungrouped = matches.filter((row) => !row.group);
   const errors = [...new Set(MODES.flatMap((mode) => pending[mode]?.error ? [pending[mode]!.error!] : []))];
   const issues = MODES.flatMap((mode) => fileResources[mode] ? resourceIssues(fileResources[mode]!) : []);
   const unavailableFiles = MODES.filter((mode) => files[mode] && !files[mode]!.exists);
@@ -309,7 +307,9 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
     else if (!entry || (!reads(entry, mode) && entry.status === "missing")) content = note(`Not read in ${MODE_NAMES[mode]}.`);
     else {
       const value = valueOf(mode, row.name);
-      const invalid = missing(row, mode);
+      const undeclared = isUndeclaredEnvironmentInput(entry);
+      const invalid = missing(row, mode) || undeclared;
+      const errorId = `undeclared-${mode}-${row.name}`;
       const fixed = row.name === "PROD_DEPLOYMENT";
       const placeholder = hidden(mode, row.name)
         ? "Set · hidden"
@@ -322,6 +322,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
           {entry.choices && !entry.sensitive ? (
             <Select
               aria-invalid={invalid}
+              aria-describedby={undeclared ? errorId : undefined}
               aria-label={`Value for ${label}`}
               value={value}
               disabled={disabledFor(mode)}
@@ -335,6 +336,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
             <ValueControl
               key={`${details[mode]?.hash ?? "loading"}:${draftState.latest.revision}`}
               invalid={invalid}
+              describedBy={undeclared ? errorId : undefined}
               name={label}
               value={value}
               placeholder={placeholder}
@@ -344,6 +346,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
               onReveal={reveal(mode, row.name)}
             />
           )}
+          {undeclared ? <p id={errorId} className="m-0 text-caption text-refuse wrap-anywhere">No linked input parameter or secret in Input parameters and secrets. Declare {row.name} there or remove the assignment.</p> : null}
           {entry.notRead ? <p className="m-0 text-caption text-refuse">Written here, but {MODE_NAMES[mode]} never reads it.</p> : null}
           {invalid && reasons.length ? <p className="m-0 text-caption text-refuse wrap-anywhere">{reasons.join(" ")}</p> : null}
           {fixed ? <p className="m-0 text-caption text-graphite">Set by each file's environment.</p> : null}
@@ -359,8 +362,9 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   };
 
   const variable = (row: VariableRow) => {
-    const attention = { dev: missing(row, "dev"), prod: missing(row, "prod") };
-    const lit = (mode: Mode) => reads(row.entries[mode], mode) && (hasValue(row, mode) || row.entries[mode]?.default !== undefined);
+    const undeclared = (mode: Mode) => !!row.entries[mode] && isUndeclaredEnvironmentInput(row.entries[mode]!);
+    const attention = byMode((mode) => missing(row, mode) || undeclared(mode));
+    const lit = (mode: Mode) => !undeclared(mode) && reads(row.entries[mode], mode) && (hasValue(row, mode) || row.entries[mode]?.default !== undefined);
     const edited = MODES.some((mode) => !!editOf(mode, row.name));
     const absent = attention.dev || attention.prod;
     const targets = [...new Set(MODES.flatMap((mode) => row.entries[mode]?.targets ?? []))];
@@ -376,7 +380,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
             <span className={cx("flex min-w-0 flex-1 items-center gap-1.5", absent && "text-refuse")} data-slot="environment-variable-name">
               {absent ? <X size={14} aria-hidden className="flex-none" /> : null}
               <code className="min-w-0 text-meta font-medium wrap-anywhere">{row.name}</code>
-              {absent ? <span className="sr-only">, required value missing</span> : null}
+              {absent ? <span className="sr-only">{MODES.some(undeclared) ? ", undeclared variable" : ", required value missing"}</span> : null}
             </span>
             {edited ? <span className="flex-none text-meta text-graphite" data-slot="environment-variable-edited">Edited</span> : null}
             <EnvironmentPills
@@ -386,7 +390,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
               attention={attention}
               descriptions={byMode((mode) => hasValue(row, mode) ? "set" : `uses the default ${row.entries[mode]?.default}`)}
               unavailableDescription={byMode((mode) =>
-                attention[mode] ? "required value missing" : reads(row.entries[mode], mode) ? "blank" : `not read in ${MODE_NAMES[mode]}`)}
+                undeclared(mode) ? "undeclared variable" : attention[mode] ? "required value missing" : reads(row.entries[mode], mode) ? "blank" : `not read in ${MODE_NAMES[mode]}`)}
             />
           </InspectorSummary>
           {/* Indented past the disclosure chevron, so each environment's label sits under the name. */}
@@ -602,16 +606,13 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
           })}
         </ul>
         <div data-slot="environment-variables">
+          {ungrouped.length ? <ul className="m-0 list-none p-0" key="ungrouped" data-slot="input-file-entries">{ungrouped.map(variable)}</ul> : null}
           {groups.map((group) => (
             <div key={group.key} data-slot="environment-variable-group">
-              {groups.length > 1 ? (
-                <>
-                  <h4 className="m-[var(--space-4)_0_0] text-caption font-medium text-balance text-graphite" data-slot="input-group-heading">
-                    {group.title}
-                  </h4>
-                  {group.note ? <p className="mt-0.5 mb-1 text-caption text-graphite">{group.note}</p> : null}
-                </>
-              ) : null}
+              <h4 className="m-[var(--space-4)_0_0] text-caption font-medium text-balance text-graphite" data-slot="input-group-heading">
+                {group.title}
+              </h4>
+              {group.note ? <p className="mt-0.5 mb-1 text-caption text-graphite">{group.note}</p> : null}
               <ul className="m-0 list-none p-0" data-slot="input-file-entries">
                 {group.rows.map(variable)}
               </ul>

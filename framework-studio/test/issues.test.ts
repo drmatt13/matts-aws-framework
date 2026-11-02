@@ -148,6 +148,25 @@ test("the logical CDK environment reports setup errors only from the selected so
   }
 });
 
+test("undeclared assignments in either file mark the CDK environment as an error in both source modes", () => {
+  const environment: ModelResource = { id: CDK_ENVIRONMENT_ID, path: ["CDK environment"], kind: "envFile", absent: false,
+    deploymentFiles: { dev: "envfile:dev", prod: "envfile:prod" } };
+  const dev = file(true);
+  const prod: ModelResource = { ...file(true), id: "envfile:prod", absent: true,
+    deploymentFile: { ...file(true).deploymentFile!, mode: "prod", path: "cdk-app/.env.prod", entries: [
+      { name: "UNKNOWN_BLANK", status: "empty", counterpart: "missing", sensitive: false, defaulted: false, targets: [] },
+      { name: "DECLARED", status: "configured", counterpart: "missing", sensitive: false, defaulted: false, targets: ["resource:declared"] },
+      { name: "MIRRORED", status: "missing", counterpart: "configured", sensitive: false, defaulted: false, targets: [] },
+    ] } };
+  const expected = resourceIssues(prod);
+  assert.equal(expected[0]!.severity, "error");
+  assert.equal(expected[0]!.title, ".env.prod has undeclared variables");
+  assert.deepEqual(expected[0]!.details, ["UNKNOWN_BLANK in cdk-app/.env.prod has no linked input parameter or secret in Input parameters and secrets. Declare it there or remove the assignment."]);
+  assert.deepEqual(resourceIssues(environment, [dev, prod]), expected, "an undeclared production line is visible from Development");
+  assert.deepEqual(resourceIssues(environment, [{ ...dev, absent: true }, { ...prod, absent: false }]), expected);
+  assert.deepEqual(cornerBadges({ roleIcon: "managed", frameworkManaged: true, issues: expected }), { right: "error" });
+});
+
 test("a group with a missing required value is an error, in names and files only", () => {
   const SECRET = "PRIVATE_REASON_MUST_NOT_SHOW";
   const entry = (name: string, kind: "input" | "secret", status: InputRequirement["status"], absent = false): ModelResource => ({

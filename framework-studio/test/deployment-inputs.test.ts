@@ -4,7 +4,7 @@ import path from "node:path";
 import { parseEnv } from "node:util";
 import { test } from "node:test";
 import { createDeploymentInput, initializeDeploymentInputs, withDeploymentInputs } from "../server/deployment-inputs";
-import { CDK_ENVIRONMENT_ID } from "../shared/deployment-inputs";
+import { CDK_ENVIRONMENT_ID, isUndeclaredEnvironmentInput } from "../shared/deployment-inputs";
 import { REQUIRED_FRAMEWORK_INPUTS } from "../../cdk-app/framework-inputs";
 import { InfrastructureService } from "../server/infrastructure";
 
@@ -25,6 +25,29 @@ const model: ModeModel = { mode: "dev", status: "ok", targets: [], routes: [], w
   { id: "resource:setting", path: ["setting"], kind: "input", fromEnv: "SETTING", default: "default", absent: false },
   { id: "resource:token", path: ["token"], kind: "secret", fromEnv: "TOKEN", absent: false },
 ] };
+
+test("every written variable needs a linked input or secret across the two input models", () => {
+  const root = fixture();
+  try {
+    writeFileSync(path.join(root, "cdk-app/.env.dev"), "SETTING=\nTOKEN=private-test-token\nLOCAL_AWS_REGION=us-east-1\nUNKNOWN_BLANK=\nSOURCE_ONLY=ignored\nPROD_ONLY=written-in-dev\n");
+    writeFileSync(path.join(root, "cdk-app/.env.prod"), "UNKNOWN_PROD=private-test-value\nPROD_ONLY=production\n");
+    const dev: ModeModel = { ...model, resources: [...model.resources,
+      { id: "resource:source", path: ["source"], kind: "input", authoredValue: "public", absent: false },
+    ] };
+    const prod: ModeModel = { ...model, mode: "prod", resources: [...model.resources,
+      { id: "resource:group", path: ["group"], kind: "group", absent: false },
+      { id: "resource:group.production", path: ["group", "production"], parent: "resource:group", kind: "input", fromEnv: "PROD_ONLY", absent: false },
+    ] };
+    for (const mode of ["dev", "prod"] as const) {
+      const projected = withDeploymentInputs(root, { dev, prod }[mode], { dev, prod });
+      const file = projected.resources.find((resource) => resource.id === `envfile:${mode}`)!.deploymentFile!;
+      assert.deepEqual(file.entries.filter(isUndeclaredEnvironmentInput).map((entry) => entry.name),
+        mode === "dev" ? ["SOURCE_ONLY", "UNKNOWN_BLANK"] : ["UNKNOWN_PROD"]);
+      assert.equal(file.entries.find((entry) => entry.name === "PROD_ONLY")!.targets[0], "resource:group.production", "a declaration in the other model counts, even when not read here");
+      assert.ok(!JSON.stringify(projected).includes("private-test-"), "declaration errors never need input values");
+    }
+  } finally { remove(root); }
+});
 
 test("input parameters carry comparison outcomes for each selected environment and inherit defaults", () => {
   const root = fixture();
