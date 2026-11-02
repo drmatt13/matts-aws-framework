@@ -64,6 +64,13 @@ dims the whole icon, including its ownership context, without changing ownership
 Every island inspector ends with one **Island entries** disclosure, after its controls
 and supporting sections. Environment-file islands use the same entry navigation;
 do not add a separate Files list.
+
+CDK environment variables use compact, bordered input-group disclosures that start collapsed.
+Headers share a 44px minimum target, show variable counts, and retain compact framework
+ownership badges and missing-required-variable counts while closed. Descriptions and editable
+variable rows live inside the expanded group; standalone variables remain ungrouped. Search
+and missing-value filters open matching groups temporarily and restore manual expansion when
+cleared. Variable links open both their group and value row before focusing the target field.
 Native CDK construction remains source-owned. A catalog presence change must never be
 presented as an AWS deployment switch. Event deployment changes omit optional native
 hooks on the next deployment, and the source review calls out that effect.

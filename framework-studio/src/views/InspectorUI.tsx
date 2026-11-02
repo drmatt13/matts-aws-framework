@@ -368,13 +368,15 @@ export function InspectorSummary({
   children,
   className,
   marker = true,
+  targetSize = "caption",
   ...props
-}: ComponentProps<"summary"> & { readonly marker?: boolean }) {
+}: ComponentProps<"summary"> & { readonly marker?: boolean; readonly targetSize?: "caption" | "row" }) {
   return (
     <summary
       {...props}
       className={cx(
-        "in-[[data-inspector-context]]:min-h-(--panel-caption-target) in-[[data-inspector-context]]:list-none in-[[data-inspector-context]]:[&::-webkit-details-marker]:hidden",
+        "in-[[data-inspector-context]]:list-none in-[[data-inspector-context]]:[&::-webkit-details-marker]:hidden",
+        targetSize === "row" ? "min-h-11" : "in-[[data-inspector-context]]:min-h-(--panel-caption-target)",
         className,
       )}
     >

@@ -17,7 +17,8 @@ import { api } from "../api";
 import { editorLink, titleOf } from "../lookup";
 import { useStudio } from "../studio";
 import { EntityIcon } from "./EntityIcon";
-import { EnvironmentFileStatus } from "./ResourceStatus";
+import { EnvironmentFileStatus, FrameworkManagedStatus } from "./ResourceStatus";
+import { isFrameworkManagedResource } from "../../shared/framework-management";
 import { IssueNotice } from "./IssueNotice";
 import { resourceIssues } from "../issues";
 import {
@@ -43,6 +44,12 @@ export function lineSummary(entry: DeploymentInputEntry): string {
   if (entry.status === "configured") return "Set";
   if (entry.default !== undefined) return `Default · ${entry.default}`;
   return entry.status === "empty" ? "Blank" : "Not set";
+}
+
+/** A linked or filtered variable must remain reachable inside a collapsed group. */
+function openVariableGroup(row: HTMLDetailsElement) {
+  const group = row.closest<HTMLDetailsElement>('details[data-slot="environment-variable-group"]');
+  if (group) group.open = true;
 }
 
 export function InputSources({ resource }: { resource: ModelResource }) {
@@ -137,6 +144,8 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
   const [createError, setCreateError] = useState("");
   const requests = useRef(new AbortController());
   const rowElements = useRef(new Map<string, HTMLDetailsElement>());
+  // Search and missing-value filters expand groups temporarily without replacing manual choices.
+  const groupExpansion = useRef(new Map<string, boolean>());
   const removalBackups = useRef(new Map<string, Partial<Record<Mode, EnvironmentEdit>>>());
 
   const exists = { dev: !!files.dev?.exists, prod: !!files.prod?.exists };
@@ -291,6 +300,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
     if (!focus) return;
     const row = rowElements.current.get(focus.name);
     if (!row || !exists[focus.mode]) { setFocus(undefined); return; }
+    openVariableGroup(row);
     row.open = true;
     row.scrollIntoView?.({ block: "nearest" });
     const value = `[data-slot="environment-value"][data-environment="${focus.mode}"]`;
@@ -298,13 +308,23 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
     if (control) { control.focus(); setFocus(undefined); }
   });
   useEffect(() => {
-    if (missingIn) for (const name of missingIn.names) { const row = rowElements.current.get(name); if (row) row.open = true; }
+    if (missingIn) for (const name of missingIn.names) { const row = rowElements.current.get(name); if (row) { openVariableGroup(row); row.open = true; } }
   }, [missingIn]);
 
   const query = filter.trim().toLowerCase();
+  useEffect(() => {
+    if (query) for (const [name, row] of rowElements.current) if (name.toLowerCase().includes(query)) openVariableGroup(row);
+  }, [query]);
   const matches = groupedRows.filter((row) => (!query || row.name.toLowerCase().includes(query)) && (!missingIn || missingIn.names.has(row.name)));
   const groups = [...new Map(matches.flatMap((row) => row.group ? [[row.group.id, row.group] as const] : [])).values()]
-    .map((group) => ({ key: group.id, title: titleOf(inputIndex, group.id), note: draft.description(group.id).trim(), rows: matches.filter((row) => row.group?.id === group.id) }))
+    .map((group) => {
+      const rows = matches.filter((row) => row.group?.id === group.id);
+      const total = groupedRows.filter((row) => row.group?.id === group.id).length;
+      const countLabel = rows.length === total ? `${total} ${total === 1 ? "variable" : "variables"}` : `${rows.length} of ${total} variables`;
+      return { key: group.id, title: titleOf(inputIndex, group.id), managed: isFrameworkManagedResource(group, declarations), note: draft.description(group.id).trim(), rows,
+        total, countLabel,
+        missing: rows.filter((row) => MODES.some((mode) => missing(row, mode))).length };
+    })
     .sort((a, b) => a.title.localeCompare(b.title));
   const ungrouped = matches.filter((row) => !row.group);
   const errors = [...new Set(MODES.flatMap((mode) => pending[mode]?.error ? [pending[mode]!.error!] : []))];
@@ -538,8 +558,8 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
             );
           })}
         </ul>
-        <div className="my-3 flex items-center gap-2 inspector-420:flex-wrap" data-slot="environment-toolbar">
-          <label className="min-w-0 flex-1 inspector-420:basis-full" data-slot="environment-search">
+        <div className="my-3 flex items-center gap-2" data-slot="environment-toolbar">
+          <label className="min-w-0 flex-1" data-slot="environment-search">
             <span className="sr-only">Filter environment variables</span>
             <TextInput
               className="w-full flex-1"
@@ -642,19 +662,39 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
             );
           })}
         </ul>
-        <div data-slot="environment-variables">
+        <div className="grid gap-3" data-slot="environment-variables">
           {ungrouped.length ? <ul className="m-0 list-none p-0" key="ungrouped" data-slot="input-file-entries">{ungrouped.map(variable)}</ul> : null}
-          {groups.map((group) => (
-            <div key={group.key} data-slot="environment-variable-group">
-              <h4 className="m-[var(--space-4)_0_0] text-caption font-medium text-balance text-graphite" data-slot="input-group-heading">
-                {group.title}
-              </h4>
-              {group.note ? <p className="mt-0.5 mb-1 text-caption text-graphite">{group.note}</p> : null}
-              <ul className="m-0 list-none p-0" data-slot="input-file-entries">
-                {group.rows.map(variable)}
-              </ul>
-            </div>
-          ))}
+          {groups.length ? <div className="grid gap-2" data-slot="environment-variable-groups">
+            {groups.map((group) => (
+              <details key={group.key} open={!!query || !!missingIn || groupExpansion.current.get(group.key) === true}
+                onToggle={(event) => { if (!query && !missingIn) groupExpansion.current.set(group.key, event.currentTarget.open); }}
+                className="group/environment rounded-md border border-rule open:border-rule-strong" data-slot="environment-variable-group">
+                <InspectorSummary targetSize="row" className="flex cursor-pointer items-center gap-1 rounded-[5px] px-3 py-2 text-caption hover:bg-wash group-open/environment:rounded-b-none group-open/environment:bg-wash"
+                  onClick={(event) => {
+                    // Native toggle events can arrive after the next search change; capture activation now.
+                    if (!query && !missingIn) groupExpansion.current.set(group.key, !(event.currentTarget.parentElement as HTMLDetailsElement).open);
+                  }}>
+                  <h4 className="m-0 flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-label font-medium text-ink wrap-anywhere" data-slot="input-group-heading">
+                    <span>{group.title}</span>
+                    {group.managed ? <FrameworkManagedStatus as="span" placement="adjacent" density="compact" /> : null}
+                  </h4>
+                  <span className="ml-2 flex flex-none items-center gap-2 text-meta text-graphite tabular-nums">
+                    <span title={group.countLabel}>
+                      <span aria-hidden>{group.rows.length === group.total ? group.total : `${group.rows.length}/${group.total}`}</span>
+                      <span className="sr-only">{group.countLabel}</span>
+                    </span>
+                    {group.missing ? <span className="flex items-center gap-1 text-refuse"><X size={12} aria-hidden />{group.missing} missing<span className="sr-only"> required {group.missing === 1 ? "variable" : "variables"}</span></span> : null}
+                  </span>
+                </InspectorSummary>
+                <div className="border-t border-rule px-3 pt-3 pb-1" data-slot="environment-variable-group-content">
+                  {group.note ? <p className="mt-0 mb-2 text-caption leading-[1.5] text-graphite">{group.note}</p> : null}
+                  <ul className="m-0 list-none p-0" data-slot="input-file-entries">
+                    {group.rows.map(variable)}
+                  </ul>
+                </div>
+              </details>
+            ))}
+          </div> : null}
         </div>
         {query && !matches.length ? <p className="mt-0 mb-2 text-caption text-graphite">No variables match this search.</p> : null}
         {!query && !missingIn && !rows.length && !created.length && writable.length ? (

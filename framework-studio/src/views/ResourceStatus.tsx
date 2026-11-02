@@ -10,12 +10,13 @@ type StatusPlacement = "header" | "inline";
 
 /** Badge spacing belongs here, including consecutive header badges. Data attributes identify states
  * for browser tests; no parent selector controls this component's appearance. */
-function resourceStatusClasses(placement: StatusPlacement | "map", stacked = false) {
+function resourceStatusClasses(placement: StatusPlacement | "map" | "adjacent", stacked = false, compact = false) {
   return cx(
-    "flex w-fit items-center gap-1.5 rounded-[5px] border border-current px-[7px] py-1 text-meta leading-[1.4]",
+    "flex w-fit items-center rounded-[5px] border border-current leading-[1.4]",
+    compact ? "gap-1 px-1.5 py-0.5 text-micro" : "gap-1.5 px-[7px] py-1 text-meta",
     placement === "header"
       ? cx(stacked ? "-mt-1" : "mt-2.5", "mb-2.5 last:mb-0")
-      : placement === "map"
+      : placement === "map" || placement === "adjacent"
         ? "m-0"
         : "mt-0 mb-2",
   );
@@ -54,30 +55,34 @@ export function IssueChips({
 }
 
 export function FrameworkManagedStatus({
+  as: Tag = "p",
   title,
   placement = "header",
   appearance = "default",
+  density = "regular",
   className,
 }: {
+  readonly as?: "p" | "span";
   readonly title?: string;
-  readonly placement?: StatusPlacement;
+  readonly placement?: StatusPlacement | "adjacent";
   readonly appearance?: "default" | "map";
+  readonly density?: "regular" | "compact";
   readonly className?: string;
 } = {}) {
   return (
-    <p
+    <Tag
       data-resource-status="managed"
       title={title}
       className={cx(
-        resourceStatusClasses(appearance === "map" ? "map" : placement),
+        resourceStatusClasses(appearance === "map" ? "map" : placement, false, density === "compact"),
         "bg-[#6699bb10]",
         appearance === "map" ? "text-[#2fb3bc]" : "text-[#0c7580] dark:text-dev",
         className,
       )}
     >
-      <LockKeyhole size={14} aria-hidden />
+      <LockKeyhole size={density === "compact" ? 12 : 14} aria-hidden />
       Framework managed
-    </p>
+    </Tag>
   );
 }
 

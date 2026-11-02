@@ -230,6 +230,16 @@ for (const width of [1440, 390]) test(`environment groups follow input declarati
   await expect(section.getByRole("heading", { name: "Integration settings", exact: true })).toBeVisible();
   await expect(section).toContainText(description);
   await expect(section.locator('[data-slot="environment-variable"]')).toHaveCount(2);
+  await expect(section).toHaveJSProperty("open", false);
+  await expect(row(inputName)).toBeHidden();
+  await section.locator(":scope > summary").click();
+  await expect(row(inputName)).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(row(inputName)).toBeHidden();
+  await page.keyboard.press("Enter");
+  await expect(row(inputName)).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(row(inputName)).toBeHidden();
   await expect(row(requiredName).locator('xpath=ancestor::*[@data-slot="environment-variable-group"]')).toHaveCount(0);
   await expect(row(unknown).locator('xpath=ancestor::*[@data-slot="environment-variable-group"]')).toHaveCount(0);
   await expect(panel.getByRole("heading", { name: /Inputs and secrets|Other variables|Deployment settings/ })).toHaveCount(0);
@@ -245,15 +255,63 @@ for (const width of [1440, 390]) test(`environment groups follow input declarati
   await expect(row(unknown).locator('[data-environment="dev"] input, [data-environment="dev"] textarea')).toHaveAttribute("aria-invalid", "false");
   await panel.getByRole("searchbox", { name: "Filter environment variables", exact: true }).fill(inputName);
   await expect(panel.locator('[data-slot="environment-variable"]')).toHaveCount(1);
+  await expect(row(inputName)).toBeVisible();
   await expect(section.getByRole("heading", { name: "Integration settings", exact: true })).toBeVisible();
   await expect(section).toContainText(description);
   await panel.getByRole("searchbox", { name: "Filter environment variables", exact: true }).fill("no-such-variable");
   await expect(panel.getByText("No variables match this search.", { exact: true })).toBeVisible();
   await panel.getByRole("searchbox", { name: "Filter environment variables", exact: true }).fill("");
+  await expect(section).toHaveJSProperty("open", false);
+  await expect(row(inputName)).toBeHidden();
   await assertAccessible(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await panel.screenshot({ path: info.outputPath("inferred-environment-groups.png"), animations: "disabled" });
   expect(studio.requests.filter(request => /\/deployment-inputs\/(create|plan|apply)$/.test(request.path))).toHaveLength(0);
+});
+
+for (const width of [1440, 390]) test(`collapsed environment groups retain error context and manual expansion at ${width}px`, async ({ page, studio }, info) => {
+  await page.setViewportSize({ width, height: 1000 });
+  environmentFixture(studio);
+  const group = "resource:browserSettings";
+  for (const model of Object.values(studio.response.snapshot.models)) {
+    Object.assign(model, { resources: [...model.resources,
+      { id: group, kind: "group", path: ["browserSettings"], frameworkManaged: true, absent: false },
+      { id: "resource:browserRequired", kind: "input", path: ["browserSettings", "required"], parent: group, fromEnv: requiredName, absent: false },
+    ] });
+    Object.assign(model.resources.find(resource => resource.id === inputId)!, { parent: group });
+    for (const resource of model.resources.filter(resource => resource.deploymentFile))
+      Object.assign(resource.deploymentFile!.entries.find(entry => entry.name === requiredName)!, { targets: ["resource:browserRequired"] });
+  }
+  await studio.goto(`/?select=${encodeURIComponent(environmentId)}`);
+  const panel = page.getByRole("complementary", { name: "Inspector", exact: true });
+  const section = panel.locator('[data-slot="environment-variable-group"]');
+  const summary = section.locator(":scope > summary");
+  const search = panel.getByRole("searchbox", { name: "Filter environment variables", exact: true });
+  await expect(section).toHaveJSProperty("open", false);
+  await expect(summary).toContainText("Framework managed");
+  await expect(summary).toContainText("1 missing");
+  await expect(summary).toContainText("2 variables");
+  await expect(section.locator('[data-slot="environment-variable-group-content"]')).toBeHidden();
+  await assertAccessible(page);
+  await panel.screenshot({ path: info.outputPath("collapsed-environment-group-error.png"), animations: "disabled" });
+
+  await panel.getByRole("button", { name: "Show what Production still needs", exact: true }).click();
+  await expect(section).toHaveJSProperty("open", true);
+  await expect(section.locator(`[data-variable="${requiredName}"]`)).toHaveJSProperty("open", true);
+  await panel.getByRole("button", { name: "Show all variables", exact: true }).click();
+  await expect(section).toHaveJSProperty("open", false);
+
+  await summary.click();
+  await expect(section).toHaveJSProperty("open", true);
+  await search.fill(secretName);
+  await expect(section).toHaveCount(0);
+  await search.fill("");
+  await expect(section).toHaveJSProperty("open", true);
+  await search.fill(inputName);
+  await expect(summary).toContainText("1 of 2 variables");
+  await search.fill("");
+  await expect(section).toHaveJSProperty("open", true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
 for (const width of [1440, 390]) test(`CDK environment edits both files side by side and reviews them together at ${width}px`, async ({ page, studio }, info) => {
