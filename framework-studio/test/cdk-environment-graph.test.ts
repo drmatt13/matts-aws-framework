@@ -107,7 +107,7 @@ test("map, Board, searches and hover locations share one CDK environment while r
   for (const mode of MODES) {
     const scene = buildScene(models[mode], { layoutModels: Object.values(models) });
     const environment = scene.nodes.filter(node => node.island === "island:environment");
-    assert.deepEqual(environment.map(node => node.id).sort(), [CDK_ENVIRONMENT_ID, "client-envfile"].sort());
+    assert.deepEqual(environment.map(node => node.id), [CDK_ENVIRONMENT_ID]);
     assert.equal(scene.nodes.find(node => node.id === CDK_ENVIRONMENT_ID)!.presence, "present");
     for (const fileMode of MODES) {
       assert.equal(scene.representatives[`envfile:${fileMode}`], CDK_ENVIRONMENT_ID);

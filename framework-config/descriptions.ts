@@ -174,6 +174,6 @@ export const descriptions = {
   "island:orchestration": "Declared workflow graphs interpreted locally or compiled to AWS Step Functions. Steps invoke only the targets and integrations declared by the workflow.",
   "island:stacks": "Application catalog stacks and framework output stacks. Inspect a stack to see public fields, source relationships and mapped CloudFormation outputs.",
   "island:inputs": "Input parameters and secrets declared in framework-config/resources.ts, with links to their consumers and supplying environment files.",
-  "island:environment": "Framework input files and application environment mappings. Open an island entry to inspect its variables, sources and delivery. Source edits, file generation and deployment are separate actions.",
+  "island:environment": "The CDK app's development and production input files, cdk-app/.env.dev and cdk-app/.env.prod. Open the CDK environment to compare and edit both files; file generation and deployment are separate actions.",
   "island:client-environment": "Client-app environment file and its variable mappings, linked to development or production CDK inputs and public stack outputs. File generation is a separate step.",
 } satisfies Record<string, string>;

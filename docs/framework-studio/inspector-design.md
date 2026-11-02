@@ -31,7 +31,7 @@ Deployment information follows the resource's actual configuration authority:
 | API gateway, stack member, network component | Read-only deployment summary and ownership explanation with navigation to handlers, stack or VPC |
 | Catalog input, secret or group | No Deployment section. Inputs/secrets show declaration pills in their header; groups show pills beside each entry and none in the header. Sources, requirements and consumers explain delivery |
 | Native/framework stack, managed database, VPC island | Explicit ownership explanation and navigation; no ineffective independent workload flag |
-| CDK/client environment file and input/environment islands | No Deployment section; Environment files shows one Framework managed CDK environment beside client mappings; each variable row edits both files' values side by side |
+| CDK/client environment file and input/environment islands | No Deployment section; CDK environment files holds one Framework managed CDK environment; Client environment files holds client mappings without an ownership badge. Each CDK variable row edits both files' values side by side |
 | Other grouping islands | Read-only deployment summary with navigation to entries |
 
 Inferred ownership is text with owner links, never a disabled Deploy selector.

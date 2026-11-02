@@ -350,18 +350,24 @@ test("input and environment grouping inspectors omit deployment controls", async
     assert.equal(ui.screen.queryByRole("region", { name: "Deployment" }), null, id);
     assert.equal(ui.screen.queryByRole("combobox", { name: "Deploy" }), null, id);
     if (id === "island:environment" || id === "island:client-environment") {
-      assert.ok(ui.screen.getByRole("heading", { name: "Environment files" }));
+      const cdk = id === "island:environment";
+      assert.ok(ui.screen.getByRole("heading", { name: cdk ? "CDK environment files" : "Client environment files" }));
       ui.fireEvent.click(ui.screen.getByText("Island entries", { selector: "summary span" }).closest("summary")!);
       const members = document.querySelector('[data-slot="island-members"]')!;
       // Only framework ownership is badged; the application's client mappings carry none.
-      assert.equal(ui.within(members as HTMLElement).getAllByText("Framework managed").length, 1);
+      assert.equal(ui.within(members as HTMLElement).queryAllByText("Framework managed").length, cdk ? 1 : 0);
+      assert.equal(members.children.length, 1);
       assert.equal(ui.within(members as HTMLElement).queryByText("Application"), null);
-      assert.ok(ui.screen.getByRole("button", { name: "client-app/.env" }));
       assert.equal(ui.screen.queryByRole("searchbox", { name: "Search client mappings" }), null);
-      ui.fireEvent.click(ui.screen.getByRole("button", { name: "client-app/.env" }));
-      await draw();
+      if (cdk) {
+        assert.equal(ui.screen.queryByRole("button", { name: "client-app/.env" }), null);
+        assert.ok(ui.within(members as HTMLElement).getByRole("button", { name: "CDK environment" }));
+      } else {
+        ui.fireEvent.click(ui.screen.getByRole("button", { name: "client-app/.env" }));
+        await draw();
+      }
     }
-    if (id === "client-envfile" || id === "island:environment" || id === "island:client-environment") {
+    if (id === "client-envfile" || id === "island:client-environment") {
       assert.ok(ui.screen.getByRole("heading", { name: "client-app/.env" }));
       assert.ok(ui.screen.getByText("client-app/.env.development.local", { selector: "dd code" }));
       assert.ok(ui.screen.getByText("client-app/.env.production.local", { selector: "dd code" }));

@@ -142,7 +142,7 @@ export function prepareMeasure(islands: readonly IslandFootprint[], graph: Layou
     const content = areas.reduce((sum, value) => sum + value, 0) + titles.reduce((sum, d) => sum + (d.x1 - d.x0) * (d.y1 - d.y0), 0);
     const fill = content / (Math.max(width, height * aspect) * Math.max(height, width / aspect));
     const cost = islandOverlaps * 1e8 + labelOverlaps * 200000 + weightedCrossings * 2500 + edgeObstacles * 5000 + length * (TYPICAL_FILL / Math.min(TYPICAL_FILL, fill))
-      + Math.abs(Math.log(actualAspect / aspect)) * 1200 + movement * 3 + congestion * 4000 + flow * 6 + cohesion * 20;
+      + Math.abs(Math.log(actualAspect / aspect)) * 1200 + movement * 3 + congestion * 4000 + flow * 12 + cohesion * 20;
     return { crossings, weightedCrossings, length, islandOverlaps, labelOverlaps, edgeObstacles, congestion, flow, cohesion, aspect: actualAspect, utilization, fill, movement, cost, frame };
   };
 }

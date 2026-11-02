@@ -166,6 +166,7 @@ incremental stability, shared routing and measured before/after results.
 | Shared lower row, second | Workflows | Step Functions workflows | 4 |
 | Shared lower row, third | Stacks | All `resource.stack<T>()` entries together, one node per class; public fields expand in the inspector | 2 |
 | Immediately left of input parameters and secrets | CDK environment files | `.env.dev` and `.env.prod`; file-to-parameter links use assignment names and source locations, with no values. A file that has not been generated wears a red cross, and the island inspector generates it from its `.template` | 1 |
+| Left cluster | Client environment files | Client variables mapped from input parameters and public stack outputs into `client-app/.env.development.local` and `.env.production.local`; select `client-app/.env` to inspect the mappings | 1 |
 
 The subnets stand level, left to right from public to isolated. Exposure reads in colour
 rather than height: public is green, private blue and isolated
@@ -198,7 +199,7 @@ subnet terraces inside the VPC foundation.
   order, each joins the row above while the row still fits that width; otherwise it starts
   a new row. An island after the first in a row first leaves room on its left for its
   flat title (`titleRoom`), so labels never land on a neighbour. Rows are centred in the
-  column, and islands in a row are centred on the row's height. Environment files and
+  column, and islands in a row are centred on the row's height. CDK environment files and
   input parameters form one measured row, with files on the left and a reserved gap
   for the input island's title. Their vertical centres stay aligned as either grows;
   if inputs are absent, files still belong to the left cluster. The same packing places

@@ -199,7 +199,7 @@ render preparation and map picking metadata. It does not change routes or hit to
 | Graph for layout | [layout-graph.ts](../../../framework-studio/src/scene/layout-graph.ts): weighted connections, dev/prod union topology, request-path `flows`; layout reversals do not change semantic edge direction |
 | Envelope | [layout-shape.ts](../../../framework-studio/src/scene/layout-shape.ts): each island's painted terrain, walls, headroom and VPC foundation as an eight-sided polytope over the projection's own directions, plus its overview title; exact, allocation-free clearance |
 | Seed | [layout.ts](../../../framework-studio/src/scene/layout.ts): the semantic row packer, one deterministic start among several and the benchmark baseline |
-| Optimize | `optimizeLayout` in [layout-optimize.ts](../../../framework-studio/src/scene/layout-optimize.ts): stress majorization ([layout-stress.ts](../../../framework-studio/src/scene/layout-stress.ts)) from classical scaling and the seed, oriented for reading direction and aspect; projection, lattice legalizing and compaction ([layout-place.ts](../../../framework-studio/src/scene/layout-place.ts)); bounded relocate/dock/swap/translate refinement; fingerprinted incremental edits and bounded caches |
+| Optimize | `optimizeLayout` in [layout-optimize.ts](../../../framework-studio/src/scene/layout-optimize.ts): stress majorization ([layout-stress.ts](../../../framework-studio/src/scene/layout-stress.ts)) from classical scaling and the seed, oriented and stretched for reading direction and aspect; projection, lattice legalizing and compaction ([layout-place.ts](../../../framework-studio/src/scene/layout-place.ts)); bounded relocate/dock/margin/swap/translate refinement; fingerprinted incremental edits choose between yielding and parting by squared displacement; bounded caches |
 | Score | `measureLayout` / `measureSceneLayout` in [layout-quality.ts](../../../framework-studio/src/scene/layout-quality.ts): overlaps, titles, crossings, obstacles, length scaled by overview fill, corridor congestion, reading flow, group cohesion and movement |
 | Route | `routeConnections` in [routing.ts](../../../framework-studio/src/scene/routing.ts): `routeArcs` picks each connection's quadratic from bounded bow candidates by sampled obstacle/crossing costs; `separateCorridors` in [corridors.ts](../../../framework-studio/src/scene/corridors.ts) then spreads only the wires competing for one corridor. Cached polylines; heuristic, not a global routing solver |
 | Draw | `SceneRenderer` in [render.ts](../../../framework-studio/src/scene/render.ts): Canvas2D, cached Path2D/geometry, viewport culling, DPR handling, caption collisions and zoom-dependent labels |
@@ -360,8 +360,9 @@ These are derived presentation indexes, never cached source authorities or stage
 
 Validation: [island placement](../../../framework-studio/test/island-placement.test.ts), [graph layout](../../../framework-studio/test/graph-layout.test.ts), [landscape](../../../framework-studio/test/landscape.test.ts), [isometric UI](../../../framework-studio/test/isometric-ui.test.ts), [iso](../../../framework-studio/test/iso.test.ts), [hover](../../../framework-studio/test/hover.test.ts), [labels](../../../framework-studio/test/labels.test.ts). Check overlap/crossing scores, evaluation bounds and reuse on representative fixtures; browser-test zoom/pan/picking/resize for real rendering changes. [Snapshot](snapshots.md) tests do not establish visual performance.
 
-The Environment files island has one **CDK environment** building and one **Client
-environment** building. Physical CDK file records share the logical `envfile:cdk`
+The **CDK environment files** island has one **CDK environment** building; the separate
+**Client environment files** island has the client mappings building. Both are catalog
+islands in the configuration group. Physical CDK file records share the logical `envfile:cdk`
 representative for layout, search, focus, navigator entries and connections, including
 the retained Board. Old file selections open the combined editor on the requested mode.
 

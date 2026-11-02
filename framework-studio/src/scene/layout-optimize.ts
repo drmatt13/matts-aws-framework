@@ -18,10 +18,10 @@ import type { Point } from "./camera";
  *    straight up the page) and match the workspace's aspect.
  * 3. Legal and compact: every origin lands on the lattice `build.ts` places exactly, at the
  *    nearest clear spot, then slides inward while it stays clear.
- * 4. Refinement: bounded discrete moves (relocate to neighbours, dock against a partner, swap,
- *    translate) against the full objective in `layout-quality.ts`: crossings, obstacles,
- *    length scaled by how well the overview is filled, titles, corridor congestion, reading
- *    flow, group cohesion and movement.
+ * 4. Refinement: bounded discrete moves (relocate to neighbours, dock against a partner, move
+ *    into viewport margins, swap, translate) against the full objective in `layout-quality.ts`:
+ *    crossings, obstacles, length scaled by how well the overview is filled, titles, corridor
+ *    congestion, reading flow, group cohesion and movement.
  *
  * Edits are incremental: unchanged islands keep their exact origin (a resized island keeps its
  * centre), new ones take the nearest clear spot beside their neighbours, and only the changed
@@ -226,6 +226,20 @@ export function optimizeLayout(islands: readonly IslandFootprint[], graph: Layou
       for (const i of [...order].reverse()) for (const { other } of neighbours[i]!.slice(0, 1)) {
         for (let k = 0; k < 8; k++) { const p = contact(i, other, k * Math.PI / 4); if (p) moveTo(i, p); }
       }
+      // Use the spare margins a fitted viewport shows beside the bodies.
+      const bodies = spots.map((p, i) => shiftDop(shapes[i]!.body, p.left * UNIT_X, p.top * UNIT_Y));
+      const x0 = Math.min(...bodies.map((d) => d.x0)), x1 = Math.max(...bodies.map((d) => d.x1));
+      const y0 = Math.min(...bodies.map((d) => d.y0)), y1 = Math.max(...bodies.map((d) => d.y1));
+      const w = x1 - x0, h = y1 - y0;
+      const spareX = Math.max(0, h * aspect - w) / 2, spareY = Math.max(0, w / aspect - h) / 2;
+      const targets = [0.25, 0.5, 0.75].flatMap((t): Point[] => [
+        ...(spareX > 0 ? [{ x: x0 - spareX / 2, y: y0 + h * t }, { x: x1 + spareX / 2, y: y0 + h * t }] : []),
+        ...(spareY > 0 ? [{ x: x0 + w * t, y: y0 - spareY / 2 }, { x: x0 + w * t, y: y1 + spareY / 2 }] : []),
+      ]);
+      for (const i of [...order].sort((a, b) => mass[a]! - mass[b]! || a - b)) for (const target of targets) {
+        const others = spots.map((p, j) => j === i ? undefined : p);
+        moveTo(i, nearestClear(ctx, i, originAt(i, target), others));
+      }
       // Exchange two islands' places.
       for (let a = 0; a < order.length; a++) for (let b = a + 1; b < order.length; b++) {
         if (evaluations >= limit) break;
@@ -302,7 +316,13 @@ export function optimizeLayout(islands: readonly IslandFootprint[], graph: Layou
     }
     orientations.sort((a, b) => a.score - b.score);
     // Very large maps keep only the best orientation: each solve is quadratic in islands.
-    for (const orientation of orientations.slice(0, n > 24 ? 1 : 3)) withCompaction(solve(orientation.points, orientation.sx, orientation.sy));
+    for (const orientation of orientations.slice(0, n > 24 ? 1 : 3)) {
+      withCompaction(solve(orientation.points, orientation.sx, orientation.sy));
+      if (n <= 24) {
+        const s = Math.max(0.55, Math.min(1.8, orientation.sx ** 2));
+        withCompaction(solve(orientation.points, s, 1 / s));
+      }
+    }
     // The semantic packer's arrangement, relaxed by the same stress.
     withCompaction(solve(seed.map((p, i) => ({ x: p.left + centreUnits[i]!.x, y: p.top + centreUnits[i]!.y })), 1, 1));
     // Every candidate first takes its cheapest, most effective improvement (each island beside
@@ -344,12 +364,22 @@ export function optimizeLayout(islands: readonly IslandFootprint[], graph: Layou
     const shift = (prints?.[island.id]?.size ?? island.size) - island.size;
     return { left: p.left + shift / 2, top: p.top + shift / 2 };
   });
-  // Make room: where a resize or a longer title brought islands together, they part along the
-  // shortest way out. A resized island holds its ground; the others give way by size.
+  // Make room by either yielding one island at a time or parting colliding pairs. Compare
+  // squared displacement so neither a ripple through the map nor a long eviction wins cheaply.
   const roomMass = sorted.map((island, i) => pinned[i] ? Infinity : island.size ** 2 * (resized[i] ? 4 : 1));
-  separate(ctx, wish, roomMass, 200, isNew);
   const existingOrder = heavyFirst.filter((i) => !isNew[i]);
-  const settled: (Spot | undefined)[] = legalize(ctx, wish.map((p, i) => snap(ctx, i, p)), existingOrder, pinned).map((p, i) => isNew[i] ? undefined : p);
+  const snapped = wish.map((p, i) => snap(ctx, i, p));
+  const yielded: (Spot | undefined)[] = snapped.map((p, i) => isNew[i] && !pinned[i] ? undefined : p);
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    if (!yielded[i] || !yielded[j] || pinned[i] && pinned[j] || intrusion(ctx, i, yielded[i]!, j, yielded[j]!) <= 0) continue;
+    const moving = pinned[i] ? j : pinned[j] ? i : resized[i] !== resized[j] ? (resized[i] ? j : i) : mass[i]! <= mass[j]! ? i : j;
+    yielded[moving] = nearestClear(ctx, moving, snapped[moving]!, yielded);
+  }
+  const parted = [...wish];
+  separate(ctx, parted, roomMass, 200, isNew);
+  const legalized: (Spot | undefined)[] = legalize(ctx, parted.map((p, i) => snap(ctx, i, p)), existingOrder, pinned).map((p, i) => isNew[i] && !pinned[i] ? undefined : p);
+  const displacement = (spots: readonly (Spot | undefined)[]) => spots.reduce((sum, p, i) => sum + (p && !isNew[i] ? ((p.left - snapped[i]!.left) * UNIT_X) ** 2 + ((p.top - snapped[i]!.top) * UNIT_Y) ** 2 : 0), 0);
+  const settled = displacement(yielded) <= displacement(legalized) ? yielded : legalized;
   // A new island takes the nearest clear spot to the weighted centre of its placed neighbours.
   for (const i of heavyFirst.filter((k) => isNew[k] && !pinned[k])) {
     const around = neighbours[i]!.filter(({ other }) => settled[other]);

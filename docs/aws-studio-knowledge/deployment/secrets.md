@@ -33,7 +33,7 @@ controls such as domains, frontend URL and the retention fallback are separately
 declared in [cdk-app/deployment-inputs.ts](../../../cdk-app/deployment-inputs.ts).
 They influence the graph rather than becoming workload variables automatically.
 
-The **CDK environment** inspector, under the shared **Environment files** island, lists both
+The **CDK environment** inspector, under the **CDK environment files** island, lists both
 physical files' assignments as one set of variables with their declaration owners, including
 unknown or mode-inapplicable assignments. Editing does not change the map's Source or a named
 operational target; one private review writes whichever files changed, each checked against its

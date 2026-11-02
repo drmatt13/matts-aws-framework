@@ -15,7 +15,7 @@ import { RouteStatus } from "./RouteStatus";
 import { Description } from "./Description";
 import {
   CLIENT_ENVIRONMENT_ISLAND,
-  ENVIRONMENT_FILES_ISLAND,
+  CDK_ENVIRONMENT_ISLAND,
 } from "../../shared/client-environment";
 import { Tags } from "./Tags";
 import { DeploymentSection, DeploymentOwnership } from "./Deployment";
@@ -28,8 +28,7 @@ const GROUPS: Readonly<Record<string, readonly string[]>> = {
 };
 
 /** Island membership comes from the same layout as the canvas, never a second graph. */
-export function IslandInspector({ id: selection }: { readonly id: string }) {
-  const id = selection === CLIENT_ENVIRONMENT_ISLAND ? ENVIRONMENT_FILES_ISLAND : selection;
+export function IslandInspector({ id }: { readonly id: string }) {
   const { model, snapshot, select, index, mode, draft, draftState, live } = useStudio();
   const scene = useMemo(
     () =>
@@ -101,7 +100,7 @@ export function IslandInspector({ id: selection }: { readonly id: string }) {
       </header>
       <Tags entity={id} />
       <Description entity={id} />
-      {id !== "island:inputs" && id !== "island:environment" && id !== CLIENT_ENVIRONMENT_ISLAND ? (
+      {id !== "island:inputs" && id !== CDK_ENVIRONMENT_ISLAND && id !== CLIENT_ENVIRONMENT_ISLAND ? (
         <DeploymentSection
           availability={availability}
           locations={network ? { prod: "In AWS" } : undefined}
@@ -158,7 +157,7 @@ export function IslandInspector({ id: selection }: { readonly id: string }) {
           }
         />
       ) : id.startsWith("island:vpc:") ||
-        id === "island:environment" ||
+        id === CDK_ENVIRONMENT_ISLAND ||
         id === "island:inputs" ||
         id === "island:stacks" ||
         id === CLIENT_ENVIRONMENT_ISLAND ? null : (

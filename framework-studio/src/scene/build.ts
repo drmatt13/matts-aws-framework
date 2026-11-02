@@ -16,7 +16,7 @@ import { optimizeLayout } from "./layout-optimize";
 import { layoutLabels, layoutObstacles } from "./layout-quality";
 import { connectionStyle } from "./connections";
 import { routeConnections } from "./routing";
-import { ENVIRONMENT_FILES_ISLAND } from "../../shared/client-environment";
+import { CDK_ENVIRONMENT_ISLAND, CLIENT_ENVIRONMENT_ISLAND } from "../../shared/client-environment";
 import { aggregateConnections } from "../connections";
 import { entryCount, groupEntries } from "../input-groups";
 import { isFrameworkManagedResource } from "../../shared/framework-management";
@@ -390,15 +390,16 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
   const catalog: IslandSpec[] = [];
   const loose: Item[] = [];
   const stacks: Item[] = [];
-  const environmentFiles: Item[] = [];
+  const deploymentFiles: Item[] = [];
+  const clientEnvironment: Item[] = [];
   for (const resource of model.resources) {
     if (resource.parent || standIns[resource.id]?.startsWith("gateway:") || resource.deploymentFile && standIns[resource.id]) continue;
     if (resource.clientEnvironment) {
-      environmentFiles.push({ ...catalogItem(resource), presenceText: "Application environment file. Variables mapped from input parameters and stack outputs. Select to inspect the mappings." });
+      clientEnvironment.push({ ...catalogItem(resource), presenceText: "Application environment file. Variables mapped from input parameters and stack outputs. Select to inspect the mappings." });
     } else if (resource.deploymentFiles) {
-      environmentFiles.push({ ...catalogItem(resource), presenceText: "Framework-managed inputs for development and production, in cdk-app/.env.dev and cdk-app/.env.prod. Select to compare and edit both." });
+      deploymentFiles.push({ ...catalogItem(resource), presenceText: "Framework-managed inputs for development and production, in cdk-app/.env.dev and cdk-app/.env.prod. Select to compare and edit both." });
     } else if (resource.deploymentFile) {
-      environmentFiles.push({ ...catalogItem(resource), badge: resource.deploymentFile.mode,
+      deploymentFiles.push({ ...catalogItem(resource), badge: resource.deploymentFile.mode,
         presenceText: `${resource.deploymentFile.path}: framework inputs; ${resource.deploymentFile.exists ? "local file" : "file missing; open CDK environment to retry setup"}. Values stay outside the graph.` });
     } else if (resource.kind === "stack") {
       stacks.push({ ...catalogItem(resource), label: resource.stackClass ?? resource.path.join(".") });
@@ -425,9 +426,12 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
       bands: [{ id: "band:inputs", title: "Input parameters and secrets", caption: [], h: 1, groups: [loose] }],
     });
   }
-  if (environmentFiles.length) catalog.push({ id: ENVIRONMENT_FILES_ISLAND, title: "Environment files", region: "catalog", group: "configuration",
-    caption: ["Framework input files and application environment mappings. Select an island entry to inspect its variables, sources and delivery. Values stay outside the graph."],
-    bands: [{ id: "band:environment", title: "Environment files", caption: [], h: 1, groups: [environmentFiles] }] });
+  if (deploymentFiles.length) catalog.push({ id: CDK_ENVIRONMENT_ISLAND, title: "CDK environment files", region: "catalog", group: "configuration",
+    caption: ["The CDK app's development and production inputs, cdk-app/.env.dev and cdk-app/.env.prod. Select an entry to compare and edit the files. Values stay outside the graph."],
+    bands: [{ id: "band:environment", title: "CDK environment files", caption: [], h: 1, groups: [deploymentFiles] }] });
+  if (clientEnvironment.length) catalog.push({ id: CLIENT_ENVIRONMENT_ISLAND, title: "Client environment files", region: "catalog", group: "configuration",
+    caption: ["The client app's variables, generated into client-app/.env.development.local and .env.production.local from input parameters and public stack outputs. Select an entry to inspect the mappings."],
+    bands: [{ id: "band:client-environment", title: "Client environment files", caption: [], h: 1, groups: [clientEnvironment] }] });
   return { entry, compute, catalog };
 }
 

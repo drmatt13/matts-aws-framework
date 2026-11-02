@@ -34,7 +34,7 @@ placement. No dependency or worker was added; the measured cost below does not j
 
 1. `build.ts` measures each island's terrain (`ground`: width, length, elevations, VPC
    foundation inset) and its projected building anchors, and declares architectural
-   `group`s (every VPC; the two configuration islands).
+   `group`s (every VPC; inputs, CDK environment files and client environment files).
 2. `layout-graph.ts` unions both environments' relationships, aggregates island bundles and
    weights, and marks request-path relations (`FLOW_RELATIONS`: routes, tasks, workflows,
    agents, tools, steps, grants, databases) with a reading direction. Configuration,
@@ -49,11 +49,13 @@ placement. No dependency or worker was added; the measured cost below does not j
    (three best orientations) and the semantic packer — with `layout-stress.ts` majorization
    and `layout-place.ts` projection. Stress ignores rotation, so each start is turned to read
    requests from the upper left, keep heavy bundles off the vertical (wires lift straight up
-   the page) and suit the workspace aspect, which also stretches the stress frame.
+   the page) and suit the workspace aspect, which also stretches the stress frame. Maps with
+   at most 24 islands also try a stronger stretch for each of the top orientations.
 5. Every candidate lands on the exact lattice (`build.ts` places an origin with no rounding
    when `left + top + length` is even), takes its nearest clear spot, and compacts inward.
    Each is polished by relocating islands beside their neighbours; the best is refined by
-   relocate, dock (contact against the strongest partner from eight directions), swap and
+   relocate, dock (contact against the strongest partner from eight directions), margin
+   (small islands try the spare space a viewport-shaped fit shows), swap and
    lattice translation moves against the objective, within a fixed evaluation budget.
 6. `routing.ts` routes every real relationship. Island obstacles are boxes that hug each
    envelope (`dopBoxes`), so a wire is not bent around a diamond's empty corner.
@@ -82,8 +84,10 @@ apart; `measureSceneLayout` measures the actual painted routes.
   exact positions with zero evaluations. Mode switches therefore never move anything.
 - **Incremental edits.** A result carries per-island fingerprints (size and bundles). On the
   next build, unchanged islands keep their exact origin and a resized island keeps its
-  centre. Where growth now collides, projection parts the colliding pairs only, with the
-  resized island holding its ground; islands merely resting at their clearance stay put.
+  centre. Where growth now collides, it compares yielding one island at a time (the unchanged
+  one, otherwise the smaller unpinned one) with projection parting the colliding pairs.
+  The lower sum of squared displacement from the snapped remembered spots wins; islands
+  merely resting at their clearance stay put.
   A new island takes the nearest clear spot at the weighted centre of its placed neighbours.
   Refinement is limited to new and resized islands, islands whose bundles changed, and
   neighbours of anything new or resized, within 96–192 px of where they settled.
@@ -119,8 +123,9 @@ pairs between islands, excluding shared endpoints; lengths weight declared relat
 and source-inferred links by 1.
 
 Measured 2026-11-01 (Apple silicon, Node 26), previous optimizer versus this one on
-identical snapshots and identical route metrics. Zoom is the fitted overview zoom (larger
-draws every island larger); time is a warm scene build including routing.
+identical snapshots and identical route metrics, before the CDK/client island split. Zoom is
+the fitted overview zoom (larger draws every island larger); time is a warm scene build
+including routing.
 
 | Architecture | Workspace | Crossings | Weighted length | Overview zoom | Scene build |
 | --- | --- | --- | --- | --- | --- |

@@ -363,11 +363,14 @@ test("switching the graph changes what is shown, never where it stands", () => {
 
 test("the desktop overview fills a 1080p monitor and reads requests from the upper left", () => {
   const viewport = { width: 1920, height: 1080 - 52 };
-  for (const scene of [dev, prod]) {
+  for (const [at, scene] of [dev, prod].entries()) {
     const fitted = fitBounds(scene.bounds, viewport, 48);
     // The islands keep a useful overview on a 16:9 monitor as the topology changes.
-    assert.ok((scene.bounds.maxX - scene.bounds.minX) * fitted.zoom > viewport.width * 0.7, "uses the monitor's width");
-    assert.ok((scene.bounds.maxY - scene.bounds.minY) * fitted.zoom > viewport.height * 0.7, "uses the monitor's height");
+    const widthFraction = (scene.bounds.maxX - scene.bounds.minX) * fitted.zoom / viewport.width;
+    const heightFraction = (scene.bounds.maxY - scene.bounds.minY) * fitted.zoom / viewport.height;
+    assert.ok(Math.max(widthFraction, heightFraction) > 0.85, "fills at least one viewport dimension");
+    const seed = buildScene(at ? snapshot.models.prod : snapshot.models.dev, { layoutModels: Object.values(snapshot.models), layoutSettings: { budget: 1 } });
+    assert.ok(fitted.zoom >= fitBounds(seed.bounds, viewport, 48).zoom * 0.95, "islands fit at least as large as the seed within 5%");
     // An API entry point stands up and to the left of the compute it routes to.
     const centre = (island: Island) => ({ x: (island.gx0 + island.gx1 - island.gy0 - island.gy1) * 16, y: (island.gx0 + island.gx1 + island.gy0 + island.gy1) * 8 });
     const islandOf = new Map(scene.nodes.map((node) => [node.id, scene.islands.find((island) => island.id === node.island)!]));
