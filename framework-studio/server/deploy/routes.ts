@@ -44,6 +44,10 @@ export function deployRouter(service: DeployService): express.Router {
 
   router.get("/overview", (request, response) => send(response, () => service.overview(force(request.query.force))));
 
+  router.get("/profiles", (_request, response) => send(response, () => service.profiles()));
+  router.get("/identity", (request, response) => send(response, async () =>
+    service.identity(await service.requireProfile(request.query.profile), force(request.query.force))));
+
   router.get("/discover", (request, response) => send(response, async () =>
     service.discover(await service.requireProfile(request.query.profile), region(request.query.region), force(request.query.force))));
 

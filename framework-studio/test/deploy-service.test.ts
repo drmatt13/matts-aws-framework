@@ -5,7 +5,7 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { after, before, test } from "node:test";
 import express from "express";
-import type { DeployOverview, DiscoveryView, JobView, PlanView, StatusView, TeardownPlanView } from "../shared/deploy";
+import type { AccountContext, AwsProfileInfo, DeployOverview, DiscoveryView, JobView, PlanView, StatusView, TeardownPlanView } from "../shared/deploy";
 import { composeProjectName } from "../server/deploy/local";
 import { deployRouter } from "../server/deploy/routes";
 import { DeployService } from "../server/deploy/service";
@@ -123,6 +123,21 @@ test("discovery resolves the profile's account and finds every deployment by its
   assert.deepEqual(body.value.deployments.map((entry) => [entry.name, entry.mode]), [["alex-dev", "dev"]]);
   assert.deepEqual(body.value.targets.map((entry) => [entry.name, entry.status]), [["my-aws-app", "absent"], ["my-aws-app-prod", "absent"]]);
   assert.deepEqual(account.calls().map((call) => call.key).filter((key) => !READ_VERB.test(key)), []);
+});
+
+test("global profile reads list safe metadata and resolve identity without deployment discovery", async () => {
+  const profiles = await get<AwsProfileInfo[]>("/profiles");
+  assert.equal(profiles.status, 200);
+  assert.deepEqual(profiles.body.map(entry => entry.name).sort(), ["default", "dev"]);
+  assert.doesNotMatch(JSON.stringify(profiles.body), /sentinel/);
+  const offset = account.calls().length;
+  const identity = await get<{ ok: true; value: { context: AccountContext } }>("/identity?profile=dev&force=1");
+  assert.equal(identity.status, 200);
+  assert.equal(identity.body.ok, true);
+  assert.equal(identity.body.value.context.profile, "dev");
+  assert.equal(identity.body.value.context.region, REGION);
+  assert.deepEqual(account.calls().slice(offset).map(entry => entry.key), ["sts get-caller-identity"]);
+  assert.equal((await get("/identity?profile=missing")).status, 400);
 });
 
 test("an expired session is a classified problem the page can act on", async () => {

@@ -1,4 +1,5 @@
 import path from "node:path";
+import { listAwsProfiles } from "../../../scripts/aws-profiles";
 import { DEFAULT_DEPLOYMENT_NAME } from "@repo/framework/deploy";
 import { repositoryTargets } from "@repo/framework/deploy/node";
 import type { DeployOverview, DockerView, DriftView, JobView, ManagedProcessView, OperationRequest, PrerequisiteView } from "../../shared/deploy";
@@ -122,9 +123,13 @@ export class DeployService {
   }
 
   async requireProfile(name: unknown): Promise<string> {
-    if (typeof name !== "string" || !(await this.observer.profiles()).some((entry) => entry.name === name)) throw new OperationError(400, "Choose a profile from your AWS configuration.");
+    if (typeof name !== "string" || !this.profiles().some((entry) => entry.name === name)) throw new OperationError(400, "Choose a profile from your AWS configuration.");
     return name;
   }
+
+  profiles() { return listAwsProfiles(this.env); }
+
+  identity(profile: string, force: boolean) { return this.observer.identity(profile, force); }
 
   discover(profile: string, region: string | undefined, force: boolean): Promise<Observation<unknown>> {
     return this.observer.discover(profile, region, force);

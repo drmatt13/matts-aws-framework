@@ -10,6 +10,7 @@ import { NamingHistory, presentedSnapshot, type DisplayNames } from "./naming";
 import { remapEntity } from "../shared/naming";
 import { indexModel, titleOf, type ModelIndex } from "./lookup";
 import { useInspectorNavigation, type InspectorNavigation } from "./inspector-navigation";
+import { useAwsProfileSelection, type ModeProfiles } from "./aws-profile-selection";
 
 export interface Toast { readonly id: number; readonly text: string; readonly tone: "plain" | "refuse" }
 interface StudioContextValue {
@@ -17,6 +18,10 @@ interface StudioContextValue {
   readonly snapshot: Snapshot;
   readonly mode: Mode;
   readonly setMode: (mode: Mode) => void;
+  readonly awsProfiles: ModeProfiles;
+  readonly awsProfile: string | undefined;
+  readonly setAwsProfile: (mode: Mode, profile: string | undefined) => void;
+  readonly awsProfileCacheError: boolean;
   readonly model: ModeModel;
   readonly index: ModelIndex;
   readonly selected: string | undefined;
@@ -54,6 +59,7 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
   const query = useQueryClient();
   const [created, setCreated] = useState<{ id: string; revision: string }>();
   const [mode, setMode] = useState<Mode>("dev");
+  const aws = useAwsProfileSelection(response.snapshot.repositoryRoot);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextToast = useRef(1);
   const toast = useCallback((text: string, tone: Toast["tone"] = "plain") => {
@@ -129,6 +135,7 @@ export function StudioProvider(props: { readonly response: SnapshotResponse; rea
     if (result.select) { setCreated({ id: result.select, revision: result.revision }); props.select(result.select); }
   };
   return <StudioContext.Provider value={{ response, snapshot, mode: draftState.mode,
+    awsProfiles: aws.profiles, awsProfile: aws.profiles[draftState.mode], setAwsProfile: aws.setProfile, awsProfileCacheError: aws.cacheError,
     setMode: (next) => { if (next !== draftState.mode) draft.requestNavigation(() => setMode(next)); },
     model, index, selected: draftState.selected, select: inspection.select, inspect: inspection.inspect,
     inspectorNavigation: inspection.navigation, live, toast, toasts, draft, draftState, applyDraft, created: draftState.applied?.names ? undefined : created, entityAliases, namingRevision,

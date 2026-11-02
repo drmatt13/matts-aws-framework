@@ -7,6 +7,8 @@ read_when:
 source:
   - framework-studio/src/main.tsx
   - framework-studio/src/studio.tsx
+  - framework-studio/src/aws-profile-selection.ts
+  - framework-studio/src/views/AwsProfileMenu.tsx
   - framework-studio/src/snapshot.ts
   - framework-studio/src/views/DomainsWorkspace.tsx
   - framework-studio/src/views/Shell.tsx
@@ -29,8 +31,24 @@ completed. Start Studio with `npm run studio`, then open `http://127.0.0.1:4590/
 
 [main.tsx](../../../framework-studio/src/main.tsx) owns the routes. The navbar has seven
 workspaces and a shared **Source** Development/Production selector. Source mode selects a
-declaration graph; it does not select credentials or a live AWS deployment. Named deployment,
-profile, account and region belong to the operational workspace. Domains edits Production
+declaration graph. Its trailing chevron opens an AWS profile popover for the accepted mode.
+`StudioProvider` exposes `awsProfile`, `awsProfiles` and `setAwsProfile(mode, name)` globally.
+Only profile names are cached in browser local storage, keyed by repository root and mode;
+both modes may use the same profile. Missing profiles remain visible as unavailable until
+reselected or cleared. Storage failures retain session choices, and storage events synchronize
+tabs. The popover lists local profile metadata and checks STS caller identity through
+`/api/deploy/profiles` and `/api/deploy/identity`, without deployment discovery or mutations.
+Account/caller observations are query-cached, never persisted in local storage. Escape and
+outside click dismiss the popover; keyboard focus returns to its trigger. While open,
+the Development/Production buttons keep the popover open and update its mode/profile.
+Switching modes while it is closed does not open it.
+Profile selection automatically refreshes account details. The cog beside **AWS profile**
+opens a foreground **AWS profile configuration** modal, currently a placeholder without
+editing actions. Closing it returns focus to the navbar chevron.
+
+Operational workspaces still own their existing profile/target selections in this first
+increment; they do not yet consume the shared association. Named deployment selection and
+operation approvals remain separate. Domains edits Production
 intent even while the global source selector displays Development.
 
 | Workspace | Route | What the interface controls |
@@ -59,6 +77,7 @@ own exact-text session and navigation protection.
 | --- | --- |
 | Requested entity | Router `?select`; the draft/navigation guard controls acceptance |
 | Accepted source mode, graph and pending edits | One mounted `StudioProvider`/`InspectorDraft`; dirty sessions retain their baseline |
+| AWS profile associated with each source mode | `StudioProvider` via `aws-profile-selection.ts`; browser cache scoped to repository root, containing profile names only |
 | Latest snapshot and source-read evidence | TanStack Query; [snapshot.ts](../../../framework-studio/src/snapshot.ts) and feature query definitions retain existing keys and refresh policies |
 | Inspector return trail | In-memory accepted visits, with presentation retained separately per source mode; see [rendering](rendering.md) |
 | Prisma text, validation and diagram | Independent `DatabaseSession`, preserving editor identity/undo |

@@ -172,7 +172,7 @@ test("source environment offers the two source modes and protects unsaved edits 
   }
   await mount(Workspace);
   const environment = ui.within(ui.screen.getByRole("group", { name: "Source environment" }));
-  assert.deepEqual(environment.getAllByRole("button").map(button => button.textContent), ["Development", "Production"], "named deployments such as staging must not masquerade as additional source modes");
+  assert.deepEqual(environment.getAllByRole("button").filter(button => button.hasAttribute("aria-pressed")).map(button => button.textContent), ["Development", "Production"], "named deployments such as staging must not masquerade as additional source modes");
   const development = environment.getByRole("button", { name: "Development" });
   const production = environment.getByRole("button", { name: "Production" });
   assert.equal(development.getAttribute("aria-pressed"), "true");

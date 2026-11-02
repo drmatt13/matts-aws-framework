@@ -1,5 +1,5 @@
 import type { ChildProcess } from "node:child_process";
-import type { AwsProblem, AwsProfileInfo, DiscoveryView, DriftView, StatusView, TeardownPlanView } from "../../shared/deploy";
+import type { AccountContext, AwsProblem, AwsProfileInfo, DiscoveryView, DriftView, StatusView, TeardownPlanView } from "../../shared/deploy";
 import { lineSplitter, start, stopTree, studioEnvironment, tethered, type Runner, type Tools } from "./process";
 
 /**
@@ -67,6 +67,10 @@ export class AwsObserver {
 
   discover(profile: string, region: string | undefined, force = false): Promise<Observation<DiscoveryView>> {
     return this.read(`discover|${profile}|${region ?? ""}`, 20_000, force, ["discover", "--profile", profile, ...(region ? ["--region", region] : []), "--json"], profile);
+  }
+
+  identity(profile: string, force = false): Promise<Observation<{ context: AccountContext }>> {
+    return this.read(`identity|${profile}|`, 30_000, force, ["identity", "--profile", profile, "--json"], profile);
   }
 
   status(profile: string, deployment: string, region: string | undefined, force = false): Promise<Observation<StatusView>> {
