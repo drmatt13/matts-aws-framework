@@ -216,6 +216,24 @@ test("catalog creation preserves authored environment values and secret consumer
   rmSync(authored);
 });
 
+test("environment repair creates a secret in an existing input group and preserves both files", async () => {
+  const files = (["dev", "prod"] as const).map(mode => ({ file: path.join(fixture, `cdk-app/.env.${mode}`), text: `STUDIO_EXAMPLE=private-repair-${mode}\n` }));
+  try {
+    for (const item of files) writeFileSync(item.file, item.text);
+    await builder.refresh();
+    const plan = await edits.planBatch([{ kind: "create", request: valid("secret", { group: "langgraph" }) }], revision());
+    assert.ok(plan.ok, JSON.stringify(plan.preflight));
+    assert.ok(!JSON.stringify(plan).includes("private-repair"));
+    assert.equal((await edits.applyBatch(plan.planId)).status, "applied");
+    for (const mode of ["dev", "prod"] as const) {
+      const resource = state().snapshot.models[mode].resources.find(item => item.id === "resource:langgraph.studioExample")!;
+      assert.deepEqual([resource.kind, resource.parent, resource.fromEnv], ["secret", "resource:langgraph", "STUDIO_EXAMPLE"]);
+      assert.deepEqual(state().snapshot.models[mode].resources.find(item => item.id === `envfile:${mode}`)!.deploymentFile!.entries.find(item => item.name === "STUDIO_EXAMPLE")!.targets, [resource.id]);
+    }
+    for (const item of files) assert.equal(readFileSync(item.file, "utf8"), item.text);
+  } finally { for (const item of files) rmSync(item.file, { force: true }); }
+});
+
 test("standalone input creation reviews its source value and consumer binding without environment-file links", async () => {
   const templates = ["dev", "prod"].map(mode => path.join(fixture, `cdk-app/.env.${mode}.template`));
   const before = templates.map(file => readFileSync(file, "utf8"));

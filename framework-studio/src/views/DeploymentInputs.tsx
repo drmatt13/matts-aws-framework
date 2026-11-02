@@ -379,10 +379,10 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
 
   const variable = (row: VariableRow) => {
     const undeclared = (mode: Mode) => !!row.entries[mode] && isUndeclaredEnvironmentInput(row.entries[mode]!);
-    const attention = byMode((mode) => missing(row, mode) || undeclared(mode));
-    const lit = (mode: Mode) => !undeclared(mode) && reads(row.entries[mode], mode) && (hasValue(row, mode) || row.entries[mode]?.default !== undefined);
+    const attention = byMode((mode) => missing(row, mode));
+    const lit = (mode: Mode) => reads(row.entries[mode], mode) && (hasValue(row, mode) || row.entries[mode]?.default !== undefined);
     const edited = MODES.some((mode) => !!editOf(mode, row.name));
-    const absent = !removed(row.name) && (attention.dev || attention.prod);
+    const absent = !removed(row.name) && (attention.dev || attention.prod || MODES.some(undeclared));
     const targets = [...new Set(MODES.flatMap((mode) => row.entries[mode]?.targets ?? []))];
     const note = MODES.map((mode) => row.entries[mode]?.note).find(Boolean);
     return (
@@ -406,7 +406,7 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
               attention={attention}
               descriptions={byMode((mode) => hasValue(row, mode) ? "set" : `uses the default ${row.entries[mode]?.default}`)}
               unavailableDescription={byMode((mode) =>
-                undeclared(mode) ? "undeclared variable" : attention[mode] ? "required value missing" : reads(row.entries[mode], mode) ? "blank" : `not read in ${MODE_NAMES[mode]}`)}
+                attention[mode] ? "required value missing" : reads(row.entries[mode], mode) ? "blank" : `not read in ${MODE_NAMES[mode]}`)}
             />
           </InspectorSummary>
           {/* Indented past the disclosure chevron, so each environment's label sits under the name. */}
@@ -514,8 +514,9 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
                   ? "Could not be read"
                   : count
                     ? `${count === 1 ? "1 required value" : `${count} required values`} missing`
-                    : "Every required value is set";
+                    : "";
             const problem = !exists[mode] || !!files[mode]?.problem || !!readErrors[mode] || count > 0;
+            if (!problem && !showing) return null;
             return (
               <li key={mode} className="flex min-h-(--panel-caption-target) items-center gap-2 text-caption" data-environment={mode} data-slot="environment-readiness-row">
                 <EnvironmentLabel mode={mode} className="w-[2.75rem] flex-none" />

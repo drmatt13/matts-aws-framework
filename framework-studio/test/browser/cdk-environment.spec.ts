@@ -114,6 +114,9 @@ for (const width of [1440, 390]) {
     const issue = panel.getByRole("alert").filter({ hasText: `${name} is undeclared` });
     await expect(issue).toHaveCount(1);
     await expect(issue).toContainText(".env.dev and .env.prod");
+    await expect(row.locator('summary [data-attention="true"]')).toHaveCount(0);
+    await expect(row.locator('summary [data-enabled="true"]')).toHaveCount(2);
+    await expect(row.locator('[data-slot="environment-variable-name"]')).toHaveClass(/text-refuse/);
     await row.locator("summary").click();
     await expect(row.locator('[data-slot="environment-variable-resolution"] > p')).toHaveCount(1);
     const create = row.getByRole("button", { name: "Create input parameter or secret", exact: true });
@@ -313,9 +316,10 @@ for (const width of [1440, 390]) test(`CDK environment edits both files side by 
   await expect(panel.locator('[data-slot="environment-variable"]')).toHaveCount(1);
   await expect(value(requiredName, "prod")).toBeVisible();
   await value(requiredName, "prod").fill("browser-label");
-  await expect(readiness("prod")).toContainText("Every required value is set");
+  await expect(panel).not.toContainText("Every required value is set");
   await expect(panel.locator('[data-slot="environment-variable"]')).toHaveCount(1);
   await readiness("prod").getByRole("button", { name: "Show all variables", exact: true }).click();
+  await expect(readiness("prod")).toHaveCount(0);
   await expect(panel.locator('[data-slot="environment-variable"]')).toHaveCount(3);
   await assertAccessible(page);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
