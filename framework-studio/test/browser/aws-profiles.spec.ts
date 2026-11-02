@@ -459,7 +459,7 @@ test("credential lifecycle events mark observations stale without another provid
   );
 });
 
-test("bulk profile health checks execute only on request with concurrency limited to two", async ({
+test("profile refresh stays icon-only and busy for a full second without checking credentials", async ({
   page,
   studio,
 }) => {
@@ -470,24 +470,34 @@ test("bulk profile health checks execute only on request with concurrency limite
       ),
     }),
   );
-  let running = 0,
-    peak = 0;
-  studio.reply("POST", "/api/aws-connections/check", async (route) => {
-    running++;
-    peak = Math.max(peak, running);
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    running--;
-    await route.fulfill({
-      json: connectionObservationFixture(route.request().postDataJSON().profile),
-    });
-  });
   await studio.goto("/graphql");
   const modal = await openConfiguration(page);
+  await expect(modal.getByRole("searchbox")).toHaveCount(0);
+  await expect(modal.getByRole("button", { name: "Check profiles", exact: true })).toHaveCount(0);
   expect(profileChecks(studio.requests)).toHaveLength(0);
-  await modal.getByRole("button", { name: "Check profiles", exact: true }).click();
-  await expect(modal.getByRole("button", { name: "Check profiles", exact: true })).toBeEnabled();
-  expect(profileChecks(studio.requests)).toHaveLength(5);
-  expect(peak).toBeLessThanOrEqual(2);
+  const refresh = modal.getByRole("button", { name: "Refresh AWS profiles", exact: true });
+  const before = await refresh.boundingBox();
+  await refresh.evaluate((button) => {
+    const times = { start: 0, end: 0 };
+    (window as unknown as { refreshTimes: typeof times }).refreshTimes = times;
+    const observer = new MutationObserver(() => {
+      if (button.getAttribute("aria-busy") === "true") times.start ||= performance.now();
+      else if (times.start) { times.end = performance.now(); observer.disconnect(); }
+    });
+    observer.observe(button, { attributes: true, attributeFilter: ["aria-busy"] });
+  });
+  await refresh.click();
+  await expect(refresh).toHaveAttribute("aria-busy", "true");
+  await expect(refresh).toHaveAccessibleName("Refresh AWS profiles");
+  await expect(refresh).toHaveText("");
+  await expect(refresh).toHaveAttribute("aria-busy", "false");
+  const duration = await page.evaluate(() => {
+    const times = (window as unknown as { refreshTimes: { start: number; end: number } }).refreshTimes;
+    return times.end - times.start;
+  });
+  expect(duration).toBeGreaterThanOrEqual(990);
+  expect(await refresh.boundingBox()).toEqual(before);
+  expect(profileChecks(studio.requests)).toHaveLength(0);
 });
 
 test("blocked browser storage retains both mode choices for the session", async ({
@@ -550,4 +560,154 @@ test("explicit connection tests show provider expiration without rendering nativ
   await expect(modal).not.toContainText("SecretAccessKey");
   await expect(modal).not.toContainText("SessionToken");
   expect(profileChecks(studio.requests)).toHaveLength(1);
+});
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 700 }, { width: 320, height: 568 }])
+  test(`profile switching and association feedback preserve modal geometry at ${viewport.width}px`, async ({ page, studio }, testInfo) => {
+    const profiles = connectionCatalogFixture([
+      { name: "dev", kind: "login", region: "us-east-1" },
+      { name: "production", kind: "assume-role", region: "eu-west-1" },
+    ]);
+    const longProfile = profiles.profiles[1]!;
+    studio.reply("GET", "/api/aws-connections", route => route.fulfill({ json: {
+      ...profiles,
+      profiles: [profiles.profiles[0], { ...longProfile, sourceProfile: "dev", roleArn: "arn:aws:iam::123456789012:role/ProductionDeveloper", configuration: { region: "eu-west-1", source_profile: "dev", role_arn: "arn:aws:iam::123456789012:role/ProductionDeveloper" } }],
+    } }));
+    await page.setViewportSize(viewport);
+    await studio.goto("/graphql");
+    const modal = await openConfiguration(page);
+    const initial = await modal.boundingBox();
+    const cards = modal.locator('[data-slot="aws-profile-card"]');
+    const cardGeometry = () => cards.evaluateAll(elements => elements.map(element => {
+      const box = element.getBoundingClientRect(); return { y: box.y, height: box.height };
+    }));
+    const initialCards = await cardGeometry();
+    await modal.getByRole("button", { name: /^dev AWS Console/ }).click();
+    await expect(modal.getByRole("heading", { name: "dev", exact: true })).toBeVisible();
+    if (viewport.width <= 760) await expect(modal.getByRole("heading", { name: "dev", exact: true })).toBeFocused();
+    expect(await modal.boundingBox()).toEqual(initial);
+    const detail = modal.locator('[data-slot="aws-profile-detail-scroll"]');
+    const detailBefore = await detail.boundingBox();
+    await modal.getByRole("button", { name: "Use for Production", exact: true }).click();
+    await expect(modal.locator('[data-slot="aws-profile-feedback"]')).toContainText("dev is selected for Production");
+    expect(await modal.boundingBox()).toEqual(initial);
+    expect(await detail.boundingBox()).toEqual(detailBefore);
+    if (viewport.width <= 760) {
+      await modal.getByRole("button", { name: "All profiles", exact: true }).click();
+      await expect(modal.getByRole("button", { name: /^dev AWS Console/ })).toBeFocused();
+    }
+    expect(await cardGeometry()).toEqual(initialCards);
+    await modal.getByRole("button", { name: /^production IAM role/ }).click();
+    await modal.getByText("Advanced role settings", { exact: true }).click();
+    expect(await modal.boundingBox()).toEqual(initial);
+    expect(await detail.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
+    expect(initial!.height).toBeLessThanOrEqual(viewport.height - 48);
+    expect(await modal.evaluate(element => element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+    await assertAccessible(page);
+    await page.screenshot({ path: testInfo.outputPath("profile-modal-stable.png") });
+  });
+
+test("a failed refresh keeps its spinner for one second and feedback does not move the dialog", async ({ page, studio }) => {
+  await studio.goto("/graphql");
+  const modal = await openConfiguration(page);
+  const initial = await modal.boundingBox();
+  const refresh = modal.getByRole("button", { name: "Refresh AWS profiles", exact: true });
+  studio.reply("GET", "/api/aws-connections", route => route.fulfill({ status: 503, json: { error: "Profile discovery is temporarily unavailable." } }));
+  const started = Date.now();
+  await refresh.click();
+  await expect(refresh).toHaveAttribute("aria-busy", "true");
+  await expect(refresh).toHaveAttribute("aria-busy", "false");
+  expect(Date.now() - started).toBeGreaterThanOrEqual(990);
+  await expect(modal.getByRole("alert")).toContainText("temporarily unavailable");
+  expect(await modal.boundingBox()).toEqual(initial);
+  await expect(refresh).toHaveText("");
+  await expect(modal.locator('[data-slot="aws-profile-card"]')).toHaveCount(catalog.profiles.length);
+});
+
+function deletionReview(name: string, blockers: string[] = [], dependentProfiles: string[] = []) {
+  return { id: "delete-review-fixture", name, files: ["config", "credentials"], blockers, dependentProfiles, expiresAt: "2026-12-01T00:00:00Z" };
+}
+
+test("short-screen deletion keeps the target visible while its actions receive keyboard focus", async ({ page, studio }) => {
+  studio.reply("POST", "/api/aws-connections/delete/review", route => route.fulfill({ json: deletionReview("dev") }));
+  studio.reply("POST", "/api/aws-connections/discard", route => route.fulfill({ json: { discarded: true } }));
+  await page.setViewportSize({ width: 320, height: 568 });
+  await studio.goto("/graphql");
+  const modal = await openConfiguration(page);
+  const initial = await modal.boundingBox();
+  const trash = modal.getByRole("button", { name: "Delete AWS profile dev", exact: true });
+  await trash.click();
+  const confirmation = modal.getByRole("region", { name: "Delete AWS profile confirmation" });
+  const target = confirmation.getByRole("heading", { name: "Delete profile dev?", exact: true });
+  await expect(confirmation.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+  await expect(target).toBeInViewport({ ratio: 1 });
+  await page.keyboard.press("Tab");
+  await expect(confirmation.getByRole("button", { name: "Delete profile", exact: true })).toBeFocused();
+  await expect(target).toBeInViewport({ ratio: 1 });
+  expect(await modal.boundingBox()).toEqual(initial);
+  await assertAccessible(page);
+  await page.keyboard.press("Escape");
+  await expect(trash).toBeFocused();
+});
+
+for (const storageBlocked of [false, true])
+  test(`confirmed deletion clears both mode associations${storageBlocked ? " with unavailable browser storage" : ""}`, async ({ context, page, studio }) => {
+    if (storageBlocked) await context.addInitScript(() => { Storage.prototype.setItem = () => { throw new DOMException("Storage disabled", "SecurityError"); }; });
+    let deleted = false;
+    studio.reply("GET", "/api/aws-connections", route => route.fulfill({ json: deleted ? { ...catalog, profiles: catalog.profiles.filter(profile => profile.name !== "dev") } : catalog }));
+    studio.reply("POST", "/api/aws-connections/delete/review", route => route.fulfill({ json: deletionReview(route.request().postDataJSON().profile) }));
+    studio.reply("POST", "/api/aws-connections/delete/apply", route => { deleted = true; return route.fulfill({ json: { name: "dev", changed: true } }); });
+    studio.reply("POST", "/api/aws-connections/discard", route => route.fulfill({ json: { discarded: true } }));
+    await studio.goto("/graphql");
+    const modal = await openConfiguration(page);
+    await modal.getByRole("button", { name: /^dev IAM Identity Center/ }).click();
+    await modal.getByRole("button", { name: "Use for Development", exact: true }).click();
+    await modal.getByRole("button", { name: "Use for Production", exact: true }).click();
+    const trash = modal.getByRole("button", { name: "Delete AWS profile dev", exact: true });
+    await trash.click();
+    const confirmation = modal.getByRole("region", { name: "Delete AWS profile confirmation" });
+    await expect(confirmation).toContainText("Development and Production");
+    await expect(confirmation.getByRole("button", { name: "Cancel", exact: true })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(modal).toBeVisible();
+    await expect(confirmation).toHaveCount(0);
+    await expect(trash).toBeFocused();
+    expect(studio.requests.filter(request => request.path === "/api/aws-connections/delete/apply")).toHaveLength(0);
+    await trash.click();
+    await confirmation.getByRole("button", { name: "Delete profile", exact: true }).click();
+    await expect(modal).toContainText("Deleted profile dev.");
+    await expect(modal.getByRole("button", { name: "Delete AWS profile dev", exact: true })).toHaveCount(0);
+    await expect(modal.getByRole("button", { name: "Delete AWS profile production", exact: true })).toBeVisible();
+    await assertAccessible(page);
+    await modal.getByRole("button", { name: "Close AWS profile configuration" }).click();
+    await expect(page.getByRole("button", { name: /Development AWS profile:/ })).toHaveAccessibleName("Development AWS profile: choose a profile");
+    await page.getByRole("button", { name: "Production", exact: true }).click();
+    await expect(page.getByRole("button", { name: /Production AWS profile:/ })).toHaveAccessibleName("Production AWS profile: choose a profile");
+  });
+
+test("dependent profiles block deletion and stale deletion failures preserve the selected connection", async ({ page, studio }) => {
+  let blocked = true;
+  studio.reply("POST", "/api/aws-connections/delete/review", route => route.fulfill({ json: deletionReview("dev", blocked ? ["Another profile uses this source. Change its source before deleting."] : [], blocked ? ["production"] : []) }));
+  studio.reply("POST", "/api/aws-connections/delete/apply", route => route.fulfill({ status: 409, json: { error: "AWS configuration changed after review. Nothing was deleted." } }));
+  studio.reply("POST", "/api/aws-connections/discard", route => route.fulfill({ json: { discarded: true } }));
+  await studio.goto("/graphql");
+  const modal = await openConfiguration(page);
+  const initial = await modal.boundingBox();
+  await modal.getByRole("button", { name: /^dev IAM Identity Center/ }).click();
+  await modal.getByRole("button", { name: "Use for Development", exact: true }).click();
+  const trash = modal.getByRole("button", { name: "Delete AWS profile dev", exact: true });
+  await trash.click();
+  const confirmation = modal.getByRole("region", { name: "Delete AWS profile confirmation" });
+  await expect(confirmation).toContainText("production");
+  await expect(confirmation.getByRole("button", { name: "Delete profile", exact: true })).toBeDisabled();
+  expect(studio.requests.filter(request => request.path === "/api/aws-connections/delete/apply")).toHaveLength(0);
+  await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+  blocked = false;
+  await trash.click();
+  await confirmation.getByRole("button", { name: "Delete profile", exact: true }).click();
+  await expect(modal.getByRole("alert")).toContainText("Nothing was deleted");
+  expect(await modal.boundingBox()).toEqual(initial);
+  await expect(trash).toBeVisible();
+  await modal.getByRole("button", { name: "Close AWS profile configuration" }).click();
+  await expect(page.getByRole("button", { name: /Development AWS profile:/ })).toHaveAccessibleName("Development AWS profile: dev");
 });

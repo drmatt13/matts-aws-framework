@@ -107,8 +107,8 @@ function reviewValue(key: string, value: string | undefined): string | undefined
   try { validateFields({ [key]: value }); return value; }
   catch { return "Unrecognized value"; }
 }
-interface FileAuthority { text: string; identity: string; exists: boolean; mode?: number; uid?: number; gid?: number }
-function authority(file: string, writing = false): FileAuthority {
+export interface FileAuthority { text: string; identity: string; exists: boolean; mode?: number; uid?: number; gid?: number }
+export function authority(file: string, writing = false): FileAuthority {
   let stat;
   try { stat = lstatSync(file); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return { text: "", identity: "absent", exists: false }; throw new ConnectionInputError(422, "AWS file metadata could not be read."); }
@@ -116,7 +116,7 @@ function authority(file: string, writing = false): FileAuthority {
   const text = fileText(file);
   return { text, identity: `${stat.dev}:${stat.ino}:${stat.mode}:${stat.uid}:${stat.gid}:${hash(text)}`, exists: true, mode: stat.mode & 0o777, uid: stat.uid, gid: stat.gid };
 }
-function safeParent(file: string): void {
+export function safeParent(file: string): void {
   let current = path.dirname(file);
   while (current !== path.dirname(current)) {
     if (existsSync(current) && lstatSync(current).isSymbolicLink()) throw new ConnectionInputError(422, "Studio does not edit AWS configuration through linked directories.");

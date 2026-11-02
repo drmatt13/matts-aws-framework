@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Mode } from "../shared/model";
 
 export type ModeProfiles = Readonly<Partial<Record<Mode, string>>>;
@@ -23,23 +23,31 @@ export function useAwsProfileSelection(repositoryRoot: string) {
     try { return parseModeProfiles(window.localStorage.getItem(key)); } catch { return {}; }
   });
   const [cacheError, setCacheError] = useState(false);
+  const sessionProfiles = useRef(profiles);
+  const storageUnavailable = useRef(false);
+  sessionProfiles.current = profiles;
   useEffect(() => {
     const sync = (event: StorageEvent) => {
-      if (event.key === key || event.key === null) setProfiles(parseModeProfiles(event.newValue));
+      if (event.key === key || event.key === null) {
+        const next = parseModeProfiles(event.newValue);
+        sessionProfiles.current = next;
+        setProfiles(next);
+      }
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
   }, [key]);
   const setProfile = useCallback((mode: Mode, profile: string | undefined) => {
     // Merge against the latest cache so another tab's choice in the other mode survives.
-    let latest = profiles;
-    try { if (!cacheError) latest = parseModeProfiles(window.localStorage.getItem(key)); } catch { /* Session only. */ }
+    let latest = sessionProfiles.current;
+    try { if (!storageUnavailable.current) latest = parseModeProfiles(window.localStorage.getItem(key)); } catch { storageUnavailable.current = true; }
     const next = { ...latest };
     if (profile) next[mode] = profile;
     else delete next[mode];
+    sessionProfiles.current = next;
     setProfiles(next);
-    try { window.localStorage.setItem(key, JSON.stringify(next)); setCacheError(false); }
-    catch { setCacheError(true); }
-  }, [key, profiles, cacheError]);
+    try { window.localStorage.setItem(key, JSON.stringify(next)); storageUnavailable.current = false; setCacheError(false); }
+    catch { storageUnavailable.current = true; setCacheError(true); }
+  }, [key]);
   return { profiles, setProfile, cacheError };
 }

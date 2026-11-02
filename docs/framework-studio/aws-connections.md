@@ -17,7 +17,10 @@ discovery. Running operations retain their captured connection.
 Open the navbar chevron, then Configure AWS profiles. The dialog discovers safe metadata
 without testing every profile. It shows profile usage, configured methods, source-role
 relationships, file editability and cached connection observations. Test connection checks
-the selected profile; Check profiles runs at most two checks concurrently.
+the selected profile. The icon-only refresh reloads configuration metadata without checking
+credentials; its spinner lasts at least one second. The viewport-bounded dialog keeps its
+height while profiles change, with scrolling within the list/details and reserved feedback
+space for association changes and errors.
 
 Add profile offers Console sign-in, IAM Identity Center, an IAM role, and guidance for
 access keys or external providers. Creating/authenticating a profile does not select it:
@@ -37,8 +40,19 @@ use the explicit Development/Production actions afterward.
 Supported non-secret changes require a review. The writer preserves unrelated text,
 comments and line endings and checks both original files before atomic config replacement.
 Ambiguous touched definitions, linked/read-only files and credentials-file-owned settings
-remain externally managed. Renaming, deletion and method conversion are outside this
-release. Removing a mode association does not remove the AWS profile.
+remain externally managed. Renaming and method conversion are outside this release.
+Removing a mode association does not remove the AWS profile.
+
+Each profile card has a Delete action with explicit confirmation. Its review identifies
+which AWS files contain the profile and any Development/Production associations that will
+be cleared. Applying removes only that profile's sections from the effective config and
+credentials files; shared sessions, caches, unrelated profiles and standalone comments stay
+intact. Source-profile dependents, active operations/sign-in, managed or ambiguous files,
+links and read-only files block deletion. A stale review writes nothing. Each file is
+replaced atomically; a multi-file failure compensates completed replacements only when
+their bytes still belong to Studio. If an external edit prevents compensation, private
+`.studio-profile-delete-*.restore` copies retain the originals for manual recovery.
+Deletion never selects a replacement profile or signs out native sessions.
 
 ## Identity and session meaning
 
@@ -77,10 +91,12 @@ a private refreshable provider, sharing native CLI role/MFA cache behavior. Cred
 stay in backend memory. Sensitive helpers use restrictive temporary copies of both AWS
 files with CLI history disabled; copies are removed by their owner and scoped recovery.
 Native login/SSO cache locations remain native. Original AWS files are changed only by
-explicitly applying a configuration review.
+explicitly applying a configuration or deletion review.
 
 `server/aws-connections` owns the guarded `/api/aws-connections` catalog, POST checks,
-ephemeral authentication sessions, profile review/apply/discard and logout review/apply.
+ephemeral authentication sessions, profile review/apply/discard, deletion review/apply
+and logout review/apply. Deletion reviews expose file kinds and safe blockers, never file
+contents or credential fields.
 It never sends raw files, provider commands, raw subprocess errors or credentials to the
 browser/log stream. Shared-session leases coordinate Studio processes. Existing token,
 Host/origin and mutation-protocol checks protect these endpoints.

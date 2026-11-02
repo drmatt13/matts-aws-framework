@@ -40,6 +40,7 @@ function terminalIdentityCommand(profile: string): string {
 
 function ConnectionIdentity({ observation }: { readonly observation?: AwsConnectionObservation }) {
   const identity = observation?.identity ?? observation?.lastKnownIdentity;
+  const identityNote = "m-0 text-caption text-ink";
   return (
     <div className="grid gap-2 rounded-md border border-rule bg-wash p-3" role="status">
       <strong className="text-label">
@@ -68,18 +69,22 @@ function ConnectionIdentity({ observation }: { readonly observation?: AwsConnect
           ) : null}
         </>
       ) : (
-        <p className={note}>Test this profile to resolve its actual AWS account and principal.</p>
+        <p className={identityNote}>
+          Test this profile to resolve its actual AWS account and principal.
+        </p>
       )}
       {observation?.checkedAt ? (
-        <span className={note}>Checked {new Date(observation.checkedAt).toLocaleString()}</span>
+        <span className={identityNote}>
+          Checked {new Date(observation.checkedAt).toLocaleString()}
+        </span>
       ) : null}
       {observation?.region.value ? (
-        <span className={note}>
+        <span className={identityNote}>
           Region: {observation.region.value} · {observation.region.source}
         </span>
       ) : null}
       {observation?.credentialExpiration ? (
-        <span className={note}>
+        <span className={identityNote}>
           Native provider reports credential expiration:{" "}
           {new Date(observation.credentialExpiration.at).toLocaleString()}. The upstream session may
           refresh them.
@@ -120,7 +125,9 @@ export function AwsProfileDetails({
   return (
     <>
       <div className="grid gap-1">
-        <h3 className="m-0 text-[18px] font-semibold wrap-anywhere">{profile.name}</h3>
+        <h3 tabIndex={-1} className="m-0 text-[18px] font-semibold wrap-anywhere">
+          {profile.name}
+        </h3>
         <p className={note}>{profileMethodLabels[profile.kind]}</p>
       </div>
       <ConnectionIdentity observation={observation} />
@@ -199,10 +206,15 @@ export function AwsProfileDetails({
             variant="quiet"
             size="compact"
             disabled={pending}
+            aria-pressed={associations[mode] === profile.name}
             onClick={() => onUse(mode)}
           >
-            {associations[mode] === profile.name ? <Check size={14} aria-hidden /> : null}Use for{" "}
-            {mode === "dev" ? "Development" : "Production"}
+            <Check
+              size={14}
+              aria-hidden
+              className={associations[mode] === profile.name ? undefined : "invisible"}
+            />
+            Use for {mode === "dev" ? "Development" : "Production"}
           </Button>
         ))}
       </div>

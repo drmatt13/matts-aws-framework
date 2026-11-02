@@ -1,8 +1,86 @@
-import type { ProfileReview, LogoutReview } from "../aws-connections-api";
+import { useEffect, useRef } from "react";
+import type {
+  ProfileReview,
+  ProfileDeletionReview as DeletionReview,
+  LogoutReview,
+} from "../aws-connections-api";
+import type { ModeProfiles } from "../aws-profile-selection";
 import { Button } from "../ui/Button";
 
 const note = "m-0 text-caption text-graphite";
 const heading = "m-0 text-body font-semibold";
+
+export function ProfileDeletionReview({
+  review,
+  associations,
+  pending,
+  onCancel,
+  onConfirm,
+}: {
+  readonly review: DeletionReview;
+  readonly associations: ModeProfiles;
+  readonly pending: boolean;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}) {
+  const cancel = useRef<HTMLButtonElement>(null);
+  useEffect(() => cancel.current?.focus(), []);
+  const modes = [
+    associations.dev === review.name && "Development",
+    associations.prod === review.name && "Production",
+  ].filter(Boolean);
+  const files = review.files.length
+    ? `${review.files.join(" and ")} ${review.files.length === 1 ? "file" : "files"}`
+    : "configuration";
+  return (
+    <section
+      className="grid gap-4 rounded-md border border-rule-strong p-4"
+      aria-label="Delete AWS profile confirmation"
+    >
+      <h3 className={`${heading} sticky top-0 z-10 bg-sheet py-1`}>
+        Delete profile {review.name}?
+      </h3>
+      <p className="m-0 text-label">
+        Remove this profile from your machine’s AWS {files}. Other profiles and shared sign-in
+        sessions will be kept. AWS resources are unaffected.
+      </p>
+      {modes.length ? (
+        <p className={note}>
+          {modes.join(" and ")} will have no selected profile in this repository. Choose another
+          profile before running AWS operations.
+        </p>
+      ) : null}
+      {review.dependentProfiles.length ? (
+        <p className={note}>Profiles using this source: {review.dependentProfiles.join(", ")}.</p>
+      ) : null}
+      {review.blockers.length ? (
+        <div className="grid gap-2" role="alert">
+          <p className="m-0 text-label font-medium text-refuse">
+            This profile cannot be deleted yet.
+          </p>
+          <ul className="m-0 grid gap-1 pl-5 text-caption text-refuse">
+            {review.blockers.map((blocker, index) => (
+              <li key={index}>{blocker}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        <Button ref={cancel} disabled={pending} onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          tone="danger"
+          disabled={pending || !!review.blockers.length}
+          onClick={onConfirm}
+        >
+          Delete profile
+        </Button>
+      </div>
+    </section>
+  );
+}
 
 export function ProfileChangeReview({
   review,

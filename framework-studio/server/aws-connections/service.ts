@@ -6,6 +6,7 @@ import { isAwsProfileName, type AwsConnectionObservation, type AwsProfileCatalog
 import type { AwsAuthenticationRequest, AwsCliCapabilities, AwsLogoutReview, AwsProfileChangeRequest } from "../../shared/aws-connection-management";
 import { AuthenticationCoordinator, profileDependents, type AuthenticationOptions } from "./authentication";
 import { awsPaths, ConnectionInputError, ProfileConfiguration } from "./configuration";
+import { ProfileDeletion } from "./deletion";
 
 export interface AwsConnectionsOptions {
   readonly env?: NodeJS.ProcessEnv;
@@ -19,6 +20,7 @@ interface CheckCache { at: number; observation?: AwsConnectionObservation; pendi
 export class AwsConnectionsService {
   readonly authentication: AuthenticationCoordinator;
   readonly configuration: ProfileConfiguration;
+  readonly deletion: ProfileDeletion;
   private readonly env: NodeJS.ProcessEnv;
   private readonly run: typeof runPrivateAws;
   private readonly checks = new Map<string, CheckCache>();
@@ -36,6 +38,7 @@ export class AwsConnectionsService {
     this.env = options.env ?? process.env; this.run = options.run ?? runPrivateAws;
     this.authentication = new AuthenticationCoordinator({ ...options.authentication, env: this.env, changed: profiles => this.invalidate(profiles) });
     this.configuration = new ProfileConfiguration(this.env, profiles => this.busy(profiles));
+    this.deletion = new ProfileDeletion(this.env, profiles => this.busy(profiles));
     if (options.watch !== false) {
       const paths = awsPaths(this.env);
       for (const directory of new Set([path.dirname(paths.config), path.dirname(paths.credentials)])) if (existsSync(directory)) {
@@ -145,6 +148,28 @@ export class AwsConnectionsService {
     this.invalidate(catalog ? profileDependents(catalog, [result.name]) : undefined);
     return result;
   }
+  deleteReview(profile: string) { return this.deletion.review(profile); }
+  async deleteApply(reviewId: string) {
+    const review = this.deletion.get(reviewId);
+    if (review.blockers.length) return this.deletion.apply(reviewId);
+    const catalog = await loadAwsCatalog(this.env).catch(() => { throw new ConnectionInputError(409, "AWS configuration could not be validated. Refresh and review deletion again; nothing was written."); });
+    // Malformed role sources cannot start native authentication; let users remove
+    // those broken profiles without asking rootProfile to resolve an invalid chain.
+    const profile = catalog.profiles.find(entry => entry.name === review.name);
+    const invalidChain = profile?.diagnostics.some(issue => ["role-cycle", "missing-source-profile"].includes(issue.code));
+    const release = this.authentication.lockProfiles(catalog, invalidChain ? [] : [review.name]);
+    try {
+      const result = this.deletion.apply(reviewId);
+      this.lastGood.delete(result.name);
+      this.invalidate([result.name]);
+      return result;
+    } finally { release(); }
+  }
+  discard(reviewId: string) {
+    this.configuration.discard(reviewId); this.deletion.discard(reviewId);
+    this.reviewAuthentications.delete(reviewId);
+    return { discarded: true };
+  }
   async logoutReview(profile: string): Promise<AwsLogoutReview> {
     const catalog = await loadAwsCatalog(this.env);
     const descriptor = catalog.profiles.find(entry => entry.name === profile);
@@ -176,7 +201,7 @@ export class AwsConnectionsService {
   async dispose() {
     this.controller.abort(); if (this.refreshTimer) clearTimeout(this.refreshTimer);
     for (const watcher of this.watchers) watcher.close();
-    await this.authentication.dispose(); this.configuration.dispose(); this.checks.clear(); this.logoutReviews.clear();
+    await this.authentication.dispose(); this.configuration.dispose(); this.deletion.dispose(); this.checks.clear(); this.logoutReviews.clear();
     this.reviewAuthentications.clear();
   }
 }

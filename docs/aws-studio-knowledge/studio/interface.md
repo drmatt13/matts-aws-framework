@@ -46,7 +46,11 @@ Switching modes while it is closed does not open it.
 Profile selection automatically refreshes account details. The cog beside **AWS profile**
 opens a foreground **AWS profile configuration** modal with profile discovery, cached
 health, explicit connection tests, native sign-in, reviewed non-secret edits, and guided
-Console/Identity Center/role creation. Closing it returns focus to the navbar chevron.
+Console/Identity Center/role creation. Its fixed viewport-bounded height, scrolling panes,
+icon-only refresh and reserved feedback space keep profile/association changes stable.
+Each profile card offers confirmed deletion with dependency/file checks; successful deletion
+clears matching mode associations without selecting a replacement. Cancel/Escape restores
+focus to that card's delete button. Closing the modal returns focus to the navbar chevron.
 
 Operational workspaces consume the active declaration mode's profile association and retain
 independent deployment/region controls and approvals. Target selection never restores a

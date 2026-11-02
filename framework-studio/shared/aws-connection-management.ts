@@ -14,6 +14,14 @@ export interface AwsProfileReview {
   readonly affectedProfiles: readonly string[];
   readonly expiresAt: string;
 }
+export interface AwsProfileDeletionReview {
+  readonly id: string;
+  readonly name: string;
+  readonly files: readonly ("config" | "credentials")[];
+  readonly dependentProfiles: readonly string[];
+  readonly blockers: readonly string[];
+  readonly expiresAt: string;
+}
 export interface AwsAuthenticationRequest {
   readonly profile?: string;
   readonly method?: "login" | "sso";

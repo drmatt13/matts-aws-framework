@@ -6,9 +6,11 @@ import type {
   AwsProfileReview,
   AwsLogoutReview,
   AwsProfileChangeRequest,
+  AwsProfileDeletionReview,
 } from "../shared/aws-connection-management";
 export type AuthenticationSession = AwsAuthenticationSession;
 export type ProfileReview = AwsProfileReview;
+export type ProfileDeletionReview = AwsProfileDeletionReview;
 export type LogoutReview = AwsLogoutReview;
 export type AuthenticationRequest = AwsAuthenticationRequest;
 export const awsConnectionsApi = {
@@ -44,13 +46,21 @@ export const awsConnectionsApi = {
   review: (request: AwsProfileChangeRequest) =>
     call<ProfileReview>("/aws-connections/review", request),
   apply: (reviewId: string) =>
-    call<{ name: string; changed: boolean; message?: string }>("/aws-connections/apply", { reviewId }),
+    call<{ name: string; changed: boolean; message?: string }>("/aws-connections/apply", {
+      reviewId,
+    }),
   discard: (reviewId: string) =>
     call<{ discarded: boolean }>("/aws-connections/discard", { reviewId }),
   logoutReview: (profile: string) =>
     call<LogoutReview>("/aws-connections/logout/review", { profile }),
   logout: (reviewId: string) =>
     call<{ message: string }>("/aws-connections/logout/apply", { reviewId }),
+  deleteReview: (profile: string) =>
+    call<ProfileDeletionReview>("/aws-connections/delete/review", { profile }),
+  deleteProfile: (reviewId: string) =>
+    call<{ name: string; changed: true }>("/aws-connections/delete/apply", {
+      reviewId,
+    }),
 };
 
 export function authenticationFinished(session: AuthenticationSession) {

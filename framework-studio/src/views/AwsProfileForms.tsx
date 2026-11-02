@@ -222,7 +222,9 @@ export function AddProfile({
       }}
     >
       <div className="grid gap-1">
-        <h3 className="m-0 text-body font-semibold">Add AWS profile</h3>
+        <h3 tabIndex={-1} className="m-0 text-body font-semibold">
+          Add AWS profile
+        </h3>
         <p className={helpClass}>
           Connect using your existing AWS account access. Temporary credentials are recommended.
         </p>

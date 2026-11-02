@@ -20,7 +20,9 @@ export function awsConnectionsRouter(service: AwsConnectionsService) {
   router.post("/authentication/:id/roles", (request, response) => sendJson(response, () => service.authentication.roles(id(request.params.id), request.body?.account)));
   router.post("/review", (request, response) => sendJson(response, () => service.review(request.body)));
   router.post("/apply", (request, response) => sendJson(response, () => service.apply(id(request.body?.reviewId))));
-  router.post("/discard", (request, response) => sendJson(response, () => service.configuration.discard(id(request.body?.reviewId))));
+  router.post("/discard", (request, response) => sendJson(response, () => service.discard(id(request.body?.reviewId))));
+  router.post("/delete/review", (request, response) => sendJson(response, () => service.deleteReview(request.body?.profile)));
+  router.post("/delete/apply", (request, response) => sendJson(response, () => service.deleteApply(id(request.body?.reviewId))));
   router.post("/logout/review", (request, response) => sendJson(response, () => service.logoutReview(request.body?.profile)));
   router.post("/logout/apply", (request, response) => sendJson(response, () => service.logoutApply(id(request.body?.reviewId))));
   return router;

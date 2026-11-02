@@ -41,7 +41,7 @@ fixed command children. See [snapshots](snapshots.md) for startup, reload and di
 | `InfrastructureService` | Explicit CDK synthesis and sanitized assembly inventory, with per-mode freshness | Deployment, live drift or AWS runtime health |
 | `DeployService`, frontend-release and stateful-resource services | Named targets, plans, operation approvals, evidence and recovery/lifecycle workflows | Implicit authority from source Apply or a canvas selection |
 | Identity and identity-policy services | Source-owned identity configuration, selected AWS observations and typed operation boundaries | A generic IAM policy simulator or proof that provider-side sign-in works |
-| `AwsConnectionsService` | Machine-local profile catalog, identity observations, native authentication coordination and reviewed non-secret AWS configuration | Deployment approval, complete IAM authorization or browser access to credentials |
+| `AwsConnectionsService` | Machine-local profile catalog, identity observations, native authentication coordination, reviewed non-secret AWS configuration and profile deletion | Deployment approval, complete IAM authorization or browser access to credentials |
 | `CommandRunner` | Fixed `framework:check` and confirmed `framework:generate` scripts | A request-controlled shell or the complete operations surface |
 
 Each authority has its own typed request and checks. The generic configuration writer
@@ -86,7 +86,7 @@ All prefixes in this table are relative to `/api`.
 | `/database/workbench`, `/database/history` | Source validation/format/review/save; history compare/plan/install/discard |
 | `/database/application`, `/database/cloud`, `/database/sql` | Separate target review/application and SQL operations |
 | `/deploy` | `server/deploy/routes.ts`: target discovery, plans, approvals, operations and local runtime |
-| `/aws-connections` | `server/aws-connections`: catalog, protected connection checks, ephemeral authentication, configuration and logout reviews |
+| `/aws-connections` | `server/aws-connections`: catalog, protected connection checks, ephemeral authentication, configuration, deletion and logout reviews |
 | `/frontend-release` | `server/frontend-release-routes.ts`: frontend release and deployment identity workflows |
 | `/identity`, `/identity-policy` | `server/identity/routes.ts`, `server/identity-policy.ts`: identity/domain evidence and source/operation workflows |
 | `/stateful-resources` | `server/stateful-resources.ts`: lifecycle inventory, reviews and operations |
