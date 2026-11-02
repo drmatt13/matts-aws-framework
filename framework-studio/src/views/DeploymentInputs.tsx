@@ -674,14 +674,16 @@ export function EnvironmentFileView({ resource }: { resource: ModelResource }) {
                     // Native toggle events can arrive after the next search change; capture activation now.
                     if (!query && !missingIn) groupExpansion.current.set(group.key, !(event.currentTarget.parentElement as HTMLDetailsElement).open);
                   }}>
-                  <h4 className="m-0 flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1 text-label font-medium text-ink wrap-anywhere" data-slot="input-group-heading">
+                  <h4 className="m-0 min-w-0 flex-1 text-label font-medium text-ink wrap-anywhere" data-slot="input-group-heading">
                     <span>{group.title}</span>
-                    {group.managed ? <FrameworkManagedStatus as="span" placement="adjacent" density="compact" /> : null}
                   </h4>
-                  <span className="ml-2 flex flex-none items-center gap-2 text-meta text-graphite tabular-nums">
-                    <span title={group.countLabel}>
-                      <span aria-hidden>{group.rows.length === group.total ? group.total : `${group.rows.length}/${group.total}`}</span>
-                      <span className="sr-only">{group.countLabel}</span>
+                  <span className="ml-2 flex max-w-[60%] flex-none flex-wrap items-center justify-end gap-x-2 gap-y-1 text-meta text-graphite tabular-nums">
+                    <span className="flex flex-none items-center gap-2">
+                      {group.managed ? <FrameworkManagedStatus as="span" placement="adjacent" density="compact" /> : null}
+                      <span className="min-w-[2ch] text-right" title={group.countLabel}>
+                        <span aria-hidden>{group.rows.length === group.total ? group.total : `${group.rows.length}/${group.total}`}</span>
+                        <span className="sr-only">{group.countLabel}</span>
+                      </span>
                     </span>
                     {group.missing ? <span className="flex items-center gap-1 text-refuse"><X size={12} aria-hidden />{group.missing} missing<span className="sr-only"> required {group.missing === 1 ? "variable" : "variables"}</span></span> : null}
                   </span>
