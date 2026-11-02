@@ -10,9 +10,20 @@ export interface LayoutAnchor extends Point {
 }
 export interface LayoutLink { readonly id: string; readonly from: LayoutAnchor; readonly to: LayoutAnchor; readonly weight: number; readonly category: string }
 export interface IslandLink { readonly from: string; readonly to: string; readonly weight: number }
-export interface LayoutGraph { readonly links: readonly LayoutLink[]; readonly islands: readonly IslandLink[]; readonly signature: string }
+export interface LayoutGraph {
+  readonly links: readonly LayoutLink[];
+  readonly islands: readonly IslandLink[];
+  /** Request-path relationships between islands, in reading order (caller to callee). */
+  readonly flows?: readonly IslandLink[];
+  readonly signature: string;
+}
 const weights: Record<Relation, number> = { deployWhen: 2, contains: 1, routes: 3, authorizes: 2, env: 2, supplies: 2, maps: 2, secret: 2, grant: 1.5, database: 3, localReplay: 2, trigger: 3, runsTask: 3, startsWorkflow: 3, invokesAgent: 3, usesTool: 3, step: 3, integration: 2, completesCallback: 2, manageConnections: 2, cdk: 1 };
 const reverse = new Set<Relation>(["env", "secret", "grant", "database", "localReplay", "integration"]);
+/** Relations that follow a request from where it enters to what serves it: an architecture
+ * diagram reads them left to right. Configuration, authorization, event sources (a stack both
+ * emits events and serves requests) and source links have no reading direction; layout places
+ * them by connection strength alone. */
+export const FLOW_RELATIONS: ReadonlySet<Relation> = new Set<Relation>(["routes", "runsTask", "startsWorkflow", "invokesAgent", "usesTool", "step", "grant", "database"]);
 
 /** Union both deployment topologies. Mode visibility and presentation are not topology. */
 export function topologyEdges(models: readonly ModeModel[]): readonly ModelEdge[] {
@@ -25,6 +36,7 @@ export function extractLayoutGraph(anchors: readonly LayoutAnchor[], edges: read
   const byId = new Map(anchors.map((anchor) => [anchor.id, anchor]));
   const links = new Map<string, LayoutLink>();
   const pairs = new Map<string, IslandLink>();
+  const flows = new Map<string, IslandLink>();
   for (const edge of [...edges].sort((a, b) => a.id < b.id ? -1 : 1)) {
     const from = byId.get(representatives[edge.from] ?? edge.from), to = byId.get(representatives[edge.to] ?? edge.to);
     if (!from || !to || from.island === to.island) continue;
@@ -35,7 +47,11 @@ export function extractLayoutGraph(anchors: readonly LayoutAnchor[], edges: read
     const target = reverse.has(edge.relation) ? from.island : to.island;
     const pair = `${source}>${target}`;
     pairs.set(pair, { from: source, to: target, weight: (pairs.get(pair)?.weight ?? 0) + weight });
+    if (FLOW_RELATIONS.has(edge.relation)) {
+      const flow = `${from.island}>${to.island}`;
+      flows.set(flow, { from: from.island, to: to.island, weight: (flows.get(flow)?.weight ?? 0) + weight });
+    }
   }
   const values = [...links.values()];
-  return { links: values, islands: [...pairs.values()], signature: JSON.stringify(values.map((link) => [link.id, link.weight, link.from.x, link.from.y, link.to.x, link.to.y])) };
+  return { links: values, islands: [...pairs.values()], flows: [...flows.values()], signature: JSON.stringify(values.map((link) => [link.id, link.weight, link.from.x, link.from.y, link.to.x, link.to.y])) };
 }

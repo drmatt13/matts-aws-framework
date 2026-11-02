@@ -1,5 +1,5 @@
 import type { Region } from "./types";
-import type { Bounds } from "./camera";
+import type { IslandGround } from "./layout-shape";
 
 const COLUMN_GAP = 6;
 const ISLAND_GAP = 5;
@@ -10,7 +10,10 @@ export interface IslandFootprint {
   readonly title: string;
   readonly region: Region;
   readonly size: number;
-  readonly bounds?: Bounds;
+  /** Measured terrain, from which placement derives the exact projected envelope. */
+  readonly ground?: IslandGround;
+  /** Islands of one architectural kind (every VPC, say) that read best near one another. */
+  readonly group?: string;
 }
 export interface IslandPosition { readonly id: string; readonly left: number; readonly top: number }
 

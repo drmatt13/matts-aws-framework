@@ -38,7 +38,12 @@ The code is in [framework-studio/src/scene/](../../framework-studio/src/scene) a
 | `look.ts` | yes | Graphite colour tokens, trim colour per island, icon tint per icon |
 | `focus.ts` | yes | Metadata search, selection precedence and shared focus/opacity state |
 | `hover.ts` | yes | Hover-card facts read from both models: which environments deploy an item (with where, for assistive technology) and the framework-managed flag (tested in [test/hover.test.ts](../../framework-studio/test/hover.test.ts)) |
-| `layout.ts` | yes | Measured island row packing, environment/input pairing and compact right-hand network grouping |
+| `layout.ts` | yes | Semantic island row packing: one deterministic starting arrangement and the benchmark baseline |
+| `layout-shape.ts` | yes | Each island's exact painted envelope and overview title over the projection's four directions; clearance, separation and segment tests |
+| `layout-stress.ts` | yes | Weighted stress majorization and classical scaling over island centres |
+| `layout-place.ts` | yes | Exact-lattice snapping, overlap projection, nearest clear spot, legalizing and compaction |
+| `layout-optimize.ts` | yes | Global solve, orientation, refinement, incremental edits and the result cache |
+| `layout-quality.ts` | yes | The layout objective, measured on proxy wires or on painted routes |
 | `frame.ts` | yes | VPC foundation and frame colour |
 | `camera.ts` | yes | World↔screen transforms, pan, pointer-anchored zoom, wheel normalization, fit, tween |
 | `picking.ts` | yes | Point-in-polygon, entity picking, painted-slab picking, arc geometry, card placement |
@@ -142,15 +147,16 @@ world.y = (gx + gy) * 16 - h * 16
 
 ## Layout ([build.ts](../../framework-studio/src/scene/build.ts))
 
-The measured packer below supplies a semantic seed. The graph-aware optimizer can
-move islands away from those starting rows to reduce projected crossings and wire
-length, while retaining environment-left/input-next and right-hand network constraints.
-See [graph-aware layout](graph-layout.md) for graph extraction, scoring, incremental
-stability, shared routing, viewport adaptation and measured before/after results.
+Islands are placed from the architecture's topology: strongly connected islands sit
+together, hubs settle centrally, requests read from the upper left, islands of one group
+(every VPC; the configuration islands) stay near one another, and the arrangement fills
+the workspace's shape. The measured row packer below is one starting arrangement, not a
+set of slots. See [graph-aware layout](graph-layout.md) for the algorithm, objective,
+incremental stability, shared routing and measured before/after results.
 
 ### Regions
 
-| Placement | Island | Holds | Height |
+| Seed placement | Island | Holds | Height |
 | --- | --- | --- | --- |
 | Upper left | APIs | One HTTP API and one WebSocket API Gateway; agent paths fold into their agent | 2 |
 | Lower left | Input parameters and secrets | Only catalog-declared inputs, secrets and groups on one shared lattice; each input group is one building holding its entries; other dotenv keys stay in the file inspectors | 1 |
@@ -210,11 +216,11 @@ subnet terraces inside the VPC foundation.
   group stays below outside compute in the right cluster and reserves a title gutter
   from inputs on the left. The current declaration model supports multiple explicit
   VPCs in `networks`; each receives its own island and VPC-qualified fixtures.
-- **Graph-aware refinement.** Node slots remain on their measured lattice. Island
-  dependencies guide layered/barycentric seeds and bounded moves and swaps. The lower
-  islands need not share one row; Workflows stay left of Stacks. Benchmarks compare
-  the current packer's unrefined seed with its refined layout; the previous
-  one-sided node barycentre and legacy router have been removed.
+- **Graph-aware placement.** Node slots remain on their measured lattice. The packer's
+  rows (above) are the seed's preferences only: the optimizer moves whole islands by
+  connection strength, reading flow, groups, exact painted clearance and overview fill,
+  and no placement rule names an island. Benchmarks compare the packer's unrefined seed
+  with the optimized layout.
 - **Chamfered corners.** Each corner is cut back by one straight chamfer (`CHAMFER = 2`
   cells along each edge, at most a third of the island's shorter side). A cell is removed
   exactly when its centre falls outside the cut (`chamfered`), so tiles, walls, picking

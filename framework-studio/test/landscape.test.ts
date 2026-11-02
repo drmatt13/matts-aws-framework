@@ -23,6 +23,8 @@ import { indexModel, isEventConnection } from "../src/lookup";
 import { existsSync, readFileSync } from "node:fs";
 import { landscapeFocus, searchOpacity, searchScene, SEARCH_FADE } from "../src/scene/focus";
 import { layoutIslands, type IslandFootprint } from "../src/scene/layout";
+import { layoutFrame, measureSceneLayout } from "../src/scene/layout-quality";
+import { islandShape, separation } from "../src/scene/layout-shape";
 import { aggregateConnections, connectionLabel, connectionType } from "../src/connections";
 
 /**
@@ -316,25 +318,38 @@ test("buildings stand on their island's ground, at its height", () => {
   }
 });
 
-test("islands pack into rows: small ones share a row when it fits, leave room for a title, and never overlap", () => {
-  // An island's box in the screen-aligned frame: sx = gx - gy across, sy = gx + gy down.
-  const box = (island: Island) => ({ left: island.gx0 - island.gy1 - 1, right: island.gx1 - island.gy0 + 1, top: island.gx0 + island.gy0 - 1, bottom: island.gx1 + island.gy1 + 1 });
+/** Each island's painted terrain, walls and foundation, straight from the renderer's slabs. */
+function paintedIslands(scene: Scene) {
+  return islandSlabs(scene).map((slab) => ({ id: slab.island.id, polygons: [
+    ...slab.bands.flatMap((band) => [band.top, ...band.walls.map((wall) => wall.quad)]),
+    ...scene.frames.filter((frame) => frame.members.includes(slab.island.id)).flatMap((frame) => [frame.geometry.top, frame.geometry.left, frame.geometry.right]),
+  ] }));
+}
+/** Separating-axis test for two convex polygons given as flat [x, y, ...] lists; touching is not overlap. */
+function convexOverlap(a: readonly number[], b: readonly number[]): boolean {
+  for (const polygon of [a, b]) for (let at = 0; at < polygon.length; at += 2) {
+    const nx = polygon[(at + 3) % polygon.length]! - polygon[at + 1]!, ny = polygon[at]! - polygon[(at + 2) % polygon.length]!;
+    if (!nx && !ny) continue;
+    const project = (points: readonly number[]) => { let min = Infinity, max = -Infinity; for (let k = 0; k < points.length; k += 2) { const v = points[k]! * nx + points[k + 1]! * ny; min = Math.min(min, v); max = Math.max(max, v); } return { min, max }; };
+    const one = project(a), two = project(b);
+    if (one.max <= two.min + 1e-6 || two.max <= one.min + 1e-6) return false;
+  }
+  return true;
+}
+function overlappingIslands(scene: Scene): string[] {
+  const painted = paintedIslands(scene), clashes: string[] = [];
+  for (const [at, one] of painted.entries()) for (const two of painted.slice(at + 1)) {
+    if (one.polygons.some((a) => two.polygons.some((b) => convexOverlap(a, b)))) clashes.push(`${one.id} overlaps ${two.id}`);
+  }
+  return clashes;
+}
+
+test("islands never overlap: painted terrain, walls and foundations stay apart, and every title has room", () => {
   for (const scene of [dev, prod]) {
-    for (const [a, b] of scene.islands.flatMap((one, at) => scene.islands.slice(at + 1).map((two) => [one, two] as const))) {
-      const one = box(a);
-      const two = box(b);
-      assert.ok(one.right <= two.left || two.right <= one.left || one.bottom <= two.top || two.bottom <= one.top, `${a.id} overlaps ${b.id}`);
-    }
-    const island = (id: string) => scene.islands.find((candidate) => candidate.id === id);
-    const compute = scene.islands.filter((candidate) => ["compute", "network", "agents", "orchestration"].includes(candidate.region));
-    const width = Math.max(...compute.map((candidate) => box(candidate).right - box(candidate).left));
-    const agents = island("island:agentcore");
-    const flows = island("island:orchestration");
-    if (!agents || !flows) continue;
-    const size = (candidate: Island) => box(candidate).right - box(candidate).left;
-    if (size(agents) + titleRoom(flows.title) + size(flows) > width) continue;
-    // They fit one row, so they share it: level with each other, the second leaving room for its title.
-    if (Math.abs(box(agents).top + box(agents).bottom - box(flows).top - box(flows).bottom) <= 2) assert.ok(Math.abs(box(flows).left - box(agents).right) >= titleRoom(flows.title) - 1, "neighbours leave title room");
+    assert.deepEqual(overlappingIslands(scene), []);
+    const quality = measureSceneLayout(scene);
+    assert.equal(quality.islandOverlaps, 0, "every pair keeps the full clearance");
+    assert.equal(quality.labelOverlaps, 0, "every overview title clears the other islands and titles");
   }
 });
 
@@ -346,27 +361,26 @@ test("switching the graph changes what is shown, never where it stands", () => {
   assert.deepEqual(buildScene(snapshot.models.dev, { layoutModels: Object.values(snapshot.models) }).nodes.map((node) => [node.id, node.gx, node.gy]), dev.nodes.map((node) => [node.id, node.gx, node.gy]));
 });
 
-test("the desktop overview fills a 1080p monitor, with Workflows before Stacks", () => {
+test("the desktop overview fills a 1080p monitor and reads requests from the upper left", () => {
   const viewport = { width: 1920, height: 1080 - 52 };
   for (const scene of [dev, prod]) {
-    const lower = ["island:agentcore", "island:orchestration", "island:stacks"].map((id) => scene.islands.find((island) => island.id === id)!);
-    const centre = (island: Island) => ({
-      x: (island.gx0 + island.gx1 - island.gy0 - island.gy1) / 2,
-      y: (island.gx0 + island.gx1 + island.gy0 + island.gy1) / 2,
-    });
-    // Only Workflows-before-Stacks is constrained; other islands follow their dependencies.
-    assert.ok(centre(lower[1]!).x < centre(lower[2]!).x, "Workflows stay before Stacks");
-    const core = scene.islands.filter((island) => !lower.includes(island) && island.id !== "island:environment");
     const fitted = fitBounds(scene.bounds, viewport, 48);
-    // The islands retain a useful overview on a 16:9 monitor as the topology changes. Since input
-    // groups became single buildings the overview is height-bound (about 91% of the height, 73% of
-    // the width); a wider inputs lattice reaches 79% of the width at the cost of 20 more crossings.
+    // The islands keep a useful overview on a 16:9 monitor as the topology changes.
     assert.ok((scene.bounds.maxX - scene.bounds.minX) * fitted.zoom > viewport.width * 0.7, "uses the monitor's width");
-    assert.ok((scene.bounds.maxY - scene.bounds.minY) * fitted.zoom > viewport.height * 0.8, "uses the monitor's height");
+    assert.ok((scene.bounds.maxY - scene.bounds.minY) * fitted.zoom > viewport.height * 0.7, "uses the monitor's height");
+    // An API entry point stands up and to the left of the compute it routes to.
+    const centre = (island: Island) => ({ x: (island.gx0 + island.gx1 - island.gy0 - island.gy1) * 16, y: (island.gx0 + island.gx1 + island.gy0 + island.gy1) * 8 });
+    const islandOf = new Map(scene.nodes.map((node) => [node.id, scene.islands.find((island) => island.id === node.island)!]));
+    for (const edge of scene.edges.filter((candidate) => candidate.edge.relation === "routes")) {
+      const from = islandOf.get(edge.from)!, to = islandOf.get(edge.to)!;
+      if (from === to) continue;
+      const a = centre(from), b = centre(to);
+      assert.ok(b.x - a.x + b.y - a.y > 0, `${from.id} reads before ${to.id}`);
+    }
   }
 });
 
-test("environment files stay beside and left of catalog inputs as either island grows and shrinks", () => {
+test("configuration islands stay together and clear of each other as either grows and shrinks", () => {
   const source = snapshot.models.dev;
   const environment = source.resources.find((resource) => resource.id === "envfile:dev")!;
   const input = source.resources.find((resource) => resource.kind === "input" && resource.fromEnv)!;
@@ -374,14 +388,14 @@ test("environment files stay beside and left of catalog inputs as either island 
     const extra = Array.from({ length: count }, (_, at) => ({ ...input, id: `resource:layout-input-${at}`, path: [`layoutInput${at}`], fromEnv: `LAYOUT_INPUT_${at}` }));
     const files = Array.from({ length: Math.max(1, Math.floor(count / 3)) }, (_, at) => ({ ...environment, id: `envfile:layout-${at}`, path: [`.env.layout${at}`] }));
     const scene = buildScene({ ...source, resources: [...source.resources.filter((resource) => resource.kind !== "input" && resource.kind !== "secret" && !resource.deploymentFile), ...extra, ...files] });
-    const parameters = scene.islands.find((island) => island.id === "island:inputs")!;
-    const env = scene.islands.find((island) => island.id === "island:environment")!;
-    const rightEdge = (island: Island) => island.gx1 - island.gy0;
-    const leftEdge = (island: Island) => island.gx0 - island.gy1;
-    assert.ok(rightEdge(env) + titleRoom(parameters.title) - 1 <= leftEdge(parameters), "measured boundaries leave room for the input title");
-    assert.ok(Math.abs(env.gx0 + env.gx1 + env.gy0 + env.gy1 - parameters.gx0 - parameters.gx1 - parameters.gy0 - parameters.gy1) <= 2, "the pair stays vertically aligned");
-    const vpc = scene.islands.find((island) => island.region === "network")!;
-    assert.ok(leftEdge(vpc) > rightEdge(parameters), "the network remains right of the input cluster");
+    assert.deepEqual(overlappingIslands(scene), [], `${count} inputs`);
+    const quality = measureSceneLayout(scene);
+    assert.equal(quality.labelOverlaps, 0, "titles keep their room as the islands grow");
+    // Even with no connections between them, the two configuration islands read as one group.
+    const { footprints, positions } = scene.layout;
+    const frame = layoutFrame(footprints, footprints.map(islandShape), positions, 16 / 9);
+    const body = (id: string) => frame.bodies[footprints.findIndex((footprint) => footprint.id === id)]!;
+    assert.ok(separation(body("island:environment"), body("island:inputs")) < 600, `${count} inputs: environment files stay near their inputs`);
   }
 });
 
@@ -441,12 +455,7 @@ test("mixed service groups share a regular lattice as islands grow and shrink", 
     assert.ok(extent >= previousExtent, "growth does not shrink the footprint");
     previousExtent = extent;
     assert.equal(new Set(scene.nodes.map((node) => `${node.gx},${node.gy}`)).size, scene.nodes.length);
-    for (const a of scene.islands) for (const b of scene.islands) {
-      if (a.id >= b.id) continue;
-      const box = (island: Island) => ({ left: island.gx0 - island.gy1, right: island.gx1 - island.gy0, top: island.gx0 + island.gy0, bottom: island.gx1 + island.gy1 });
-      const aa = box(a), bb = box(b);
-      assert.ok(aa.right < bb.left || bb.right < aa.left || aa.bottom < bb.top || bb.bottom < aa.top, `${a.id} clears ${b.id} at ${count} nodes`);
-    }
+    assert.deepEqual(overlappingIslands(scene), [], `${count} nodes`);
     assert.deepEqual(buildScene(input).nodes.map(({ id, gx, gy }) => [id, gx, gy]), scene.nodes.map(({ id, gx, gy }) => [id, gx, gy]));
   }
   for (const scene of [dev, prod]) for (const prop of scene.props) for (const node of scene.nodes.filter((node) => prop.serves.includes(node.band))) {

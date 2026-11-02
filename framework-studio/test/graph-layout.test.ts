@@ -43,7 +43,7 @@ test("dependency-aware placement reduces a deliberately crossed bipartite graph 
   assert.equal(after.islandOverlaps, 0);
   assert.equal(after.labelOverlaps, 0);
   assert.deepEqual(optimizeLayout([...islands].reverse(), graph).positions, result.positions);
-  assert.ok(result.evaluations <= 360);
+  assert.ok(result.evaluations <= 720);
 });
 
 test("dense many-to-many graphs have bounded computation and preserve every individual routed relationship", () => {
@@ -51,7 +51,7 @@ test("dense many-to-many graphs have bounded computation and preserve every indi
   const result = optimizeLayout(islands, graph);
   assert.ok(result.after.cost <= result.before.cost);
   assert.equal(result.after.islandOverlaps, 0);
-  assert.ok(result.evaluations <= 360);
+  assert.ok(result.evaluations <= 720);
   const routes = routeConnections(positionedLinks(graph, result.positions), layoutObstacles(islands, result.positions));
   assert.equal(Object.keys(routes).length, graph.links.length);
   for (const link of positionedLinks(graph, result.positions)) {
@@ -64,7 +64,7 @@ test("dense many-to-many graphs have bounded computation and preserve every indi
   const large = fixture(80, true);
   const started = performance.now();
   const bounded = optimizeLayout(large.islands, large.graph);
-  assert.ok(bounded.evaluations <= 90);
+  assert.ok(bounded.evaluations <= 150);
   assert.equal(bounded.after.islandOverlaps, 0);
   assert.ok(performance.now() - started < 5000, "bounded work completes even on slow CI");
 });

@@ -8,6 +8,9 @@ source:
   - framework-studio/src/scene/build.ts
   - framework-studio/src/scene/types.ts
   - framework-studio/src/scene/layout-optimize.ts
+  - framework-studio/src/scene/layout-shape.ts
+  - framework-studio/src/scene/layout-stress.ts
+  - framework-studio/src/scene/layout-place.ts
   - framework-studio/src/scene/routing.ts
   - framework-studio/src/scene/corridors.ts
   - framework-studio/src/scene/render.ts
@@ -192,11 +195,12 @@ render preparation and map picking metadata. It does not change routes or hit to
 
 | Stage | Source / important behavior |
 | --- | --- |
-| Group and measure | `buildScene` in [scene/build.ts](../../../framework-studio/src/scene/build.ts): semantic API/compute/orchestration/resource islands; VPC subnet terraces; member visibility and measured footprints |
-| Graph for layout | [layout-graph.ts](../../../framework-studio/src/scene/layout-graph.ts): weighted connections, dev/prod union topology; layout reversals do not change semantic edge direction |
-| Initial placement | [layout.ts](../../../framework-studio/src/scene/layout.ts): semantic rows, network placement and aspect-aware packing |
-| Optimize | `optimizeLayout` in [layout-optimize.ts](../../../framework-studio/src/scene/layout-optimize.ts): bounded proxy links, mutually reachable grouping, dependency ranking/barycentric ordering, candidate moves/swaps, prior-position reuse and bounded caches |
-| Score | `measureLayout` / `measureSceneLayout` in [layout-quality.ts](../../../framework-studio/src/scene/layout-quality.ts): heavy overlap penalties, labels, crossings, obstacles, connection length, aspect and movement |
+| Group and measure | `buildScene` in [scene/build.ts](../../../framework-studio/src/scene/build.ts): semantic API/compute/orchestration/resource islands; VPC subnet terraces; member visibility, measured terrain (`ground`) and architectural `group`s |
+| Graph for layout | [layout-graph.ts](../../../framework-studio/src/scene/layout-graph.ts): weighted connections, dev/prod union topology, request-path `flows`; layout reversals do not change semantic edge direction |
+| Envelope | [layout-shape.ts](../../../framework-studio/src/scene/layout-shape.ts): each island's painted terrain, walls, headroom and VPC foundation as an eight-sided polytope over the projection's own directions, plus its overview title; exact, allocation-free clearance |
+| Seed | [layout.ts](../../../framework-studio/src/scene/layout.ts): the semantic row packer, one deterministic start among several and the benchmark baseline |
+| Optimize | `optimizeLayout` in [layout-optimize.ts](../../../framework-studio/src/scene/layout-optimize.ts): stress majorization ([layout-stress.ts](../../../framework-studio/src/scene/layout-stress.ts)) from classical scaling and the seed, oriented for reading direction and aspect; projection, lattice legalizing and compaction ([layout-place.ts](../../../framework-studio/src/scene/layout-place.ts)); bounded relocate/dock/swap/translate refinement; fingerprinted incremental edits and bounded caches |
+| Score | `measureLayout` / `measureSceneLayout` in [layout-quality.ts](../../../framework-studio/src/scene/layout-quality.ts): overlaps, titles, crossings, obstacles, length scaled by overview fill, corridor congestion, reading flow, group cohesion and movement |
 | Route | `routeConnections` in [routing.ts](../../../framework-studio/src/scene/routing.ts): `routeArcs` picks each connection's quadratic from bounded bow candidates by sampled obstacle/crossing costs; `separateCorridors` in [corridors.ts](../../../framework-studio/src/scene/corridors.ts) then spreads only the wires competing for one corridor. Cached polylines; heuristic, not a global routing solver |
 | Draw | `SceneRenderer` in [render.ts](../../../framework-studio/src/scene/render.ts): Canvas2D, cached Path2D/geometry, viewport culling, DPR handling, caption collisions and zoom-dependent labels |
 | Interact | [Isometric.tsx](../../../framework-studio/src/views/Isometric.tsx), [picking.ts](../../../framework-studio/src/scene/picking.ts), [focus.ts](../../../framework-studio/src/scene/focus.ts): coalesced pointer/frame work, geometry-based picking, selection/search fades |
@@ -318,9 +322,14 @@ hover and inspector all run from the selecting input to the workload it controls
 Deployment availability and comparison literals still come from the workload's `Lanes.when`;
 the connection ID and description key remain stable when changing this visual direction.
 
-When a seed has title collisions, the optimizer reserves a small part of its existing
-evaluation budget for local title-clearance moves after the wire search. Added input
-groups can keep their titles clear without increasing the optimizer's work limit.
+Island placement follows the topology, not fixed slots: no placement rule names an island,
+and the semantic packer only supplies one starting arrangement. Clearance
+covers each island's exact painted envelope and its screen-sized title at the zoom the
+overview reaches, so diamonds nest diagonally and titles keep their flank. Edits keep
+unchanged islands exactly in place, keep a resized island's centre, slot new islands beside
+their neighbours and refine only that neighbourhood; a fresh solve replaces an edit only
+after a broad change and when substantially better. See [graph-aware layout](../../framework-studio/graph-layout.md)
+for the objective, stability rules and measurements.
 
 The optimizer keeps at most 36 proxy links. Within that cap it preserves genuine shared
 node attachments and spends unused slots on the geometric spread of input/handler fans;
@@ -349,7 +358,7 @@ the growing bucket for every entity makes a shared tag value quadratic. Hidden m
 lookups must resolve to the same visible representative without repeated node scans.
 These are derived presentation indexes, never cached source authorities or staged edits.
 
-Validation: [graph layout](../../../framework-studio/test/graph-layout.test.ts), [landscape](../../../framework-studio/test/landscape.test.ts), [isometric UI](../../../framework-studio/test/isometric-ui.test.ts), [iso](../../../framework-studio/test/iso.test.ts), [hover](../../../framework-studio/test/hover.test.ts), [labels](../../../framework-studio/test/labels.test.ts). Check overlap/crossing scores, evaluation bounds and reuse on representative fixtures; browser-test zoom/pan/picking/resize for real rendering changes. [Snapshot](snapshots.md) tests do not establish visual performance.
+Validation: [island placement](../../../framework-studio/test/island-placement.test.ts), [graph layout](../../../framework-studio/test/graph-layout.test.ts), [landscape](../../../framework-studio/test/landscape.test.ts), [isometric UI](../../../framework-studio/test/isometric-ui.test.ts), [iso](../../../framework-studio/test/iso.test.ts), [hover](../../../framework-studio/test/hover.test.ts), [labels](../../../framework-studio/test/labels.test.ts). Check overlap/crossing scores, evaluation bounds and reuse on representative fixtures; browser-test zoom/pan/picking/resize for real rendering changes. [Snapshot](snapshots.md) tests do not establish visual performance.
 
 The Environment files island has one **CDK environment** building and one **Client
 environment** building. Physical CDK file records share the logical `envfile:cdk`

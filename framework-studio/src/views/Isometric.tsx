@@ -216,6 +216,7 @@ export function Isometric() {
           aspect,
           previous: previousLayout.current?.positions,
           previousKey: previousLayout.current?.topologyKey,
+          previousFingerprints: previousLayout.current?.fingerprints,
           preservePositions: namingRevision === snapshot.revision,
         },
       }),

@@ -148,6 +148,8 @@ interface IslandSpec {
   readonly ghost?: Island["ghost"];
   readonly propPresence?: Prop["presence"];
   readonly bands: readonly BandSpec[];
+  /** Islands of one architectural kind that layout keeps near one another. */
+  readonly group?: string;
 }
 
 function targetItem(target: ModelTarget, mode: Mode, diagnostics?: readonly Diagnostic[]): Item {
@@ -296,6 +298,7 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
       id: `island:vpc:${network.id}`,
       title: `${network.name ?? network.id} · ${network.cidr}`,
       region: "network",
+      group: "network",
       ghost: mode === "dev" ? "blueprint" : undefined,
       propPresence: vpcBuilt ? "built" : "other",
       caption: [
@@ -417,11 +420,12 @@ function islandSpecs(model: ModeModel, options: SceneOptions): { entry: IslandSp
       id: "island:inputs",
       title: "Input parameters and secrets",
       region: "catalog",
+      group: "configuration",
       caption: ["Input parameters and secrets declared in framework-config/resources.ts, and the framework-managed input groups the framework itself reads. An input group stands as one building for its entries. Environment file links carry names and presence, never secret values."],
       bands: [{ id: "band:inputs", title: "Input parameters and secrets", caption: [], h: 1, groups: [loose] }],
     });
   }
-  if (environmentFiles.length) catalog.push({ id: ENVIRONMENT_FILES_ISLAND, title: "Environment files", region: "catalog",
+  if (environmentFiles.length) catalog.push({ id: ENVIRONMENT_FILES_ISLAND, title: "Environment files", region: "catalog", group: "configuration",
     caption: ["Framework input files and application environment mappings. Select an island entry to inspect its variables, sources and delivery. Values stay outside the graph."],
     bands: [{ id: "band:environment", title: "Environment files", caption: [], h: 1, groups: [environmentFiles] }] });
   return { entry, compute, catalog };
@@ -531,8 +535,9 @@ export function buildScene(model: ModeModel, options: SceneOptions = {}): Scene 
         (frame.maxY - ((width + length) * TILE_HEIGHT / 2 - base * ELEVATION_STEP)) / (TILE_HEIGHT / 2)));
     }
     const size = width + length + inset * 2;
-    return { id: spec.id, title: spec.title, region: spec.region, size, inset,
-      bounds: { minX: 0, maxX: size * TILE_WIDTH / 2, minY: -Math.max(...spec.bands.map((band) => band.h)) * ELEVATION_STEP - 54, maxY: size * TILE_HEIGHT / 2 + 16 } };
+    const top = Math.max(...spec.bands.map((band) => band.h)), base = Math.min(...spec.bands.map((band) => band.h)) - THICKNESS;
+    return { id: spec.id, title: spec.title, region: spec.region, size, inset, ...(spec.group ? { group: spec.group } : {}),
+      ground: { width, length, inset, top, base, ...(spec.region === "network" ? { frame: 1 } : {}) } };
   });
   const insets = new Map(footprints.map((footprint) => [footprint.id, footprint.inset]));
   const anchors: LayoutAnchor[] = all.flatMap((spec) => {
