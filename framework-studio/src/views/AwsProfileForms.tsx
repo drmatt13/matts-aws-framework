@@ -165,18 +165,20 @@ export function ProfileFields({
 export function AddProfile({
   catalog,
   capabilities,
+  fixedName,
   busy,
   onAuthenticate,
   onReview,
 }: {
   readonly catalog: AwsProfileCatalog;
   readonly capabilities?: AwsCliCapabilities;
+  readonly fixedName?: string;
   readonly busy: boolean;
   readonly onAuthenticate: (request: AuthenticationRequest) => void;
   readonly onReview: (name: string, fields: AwsEditableFields) => void;
 }) {
   const [method, setMethod] = useState("login");
-  const [name, setName] = useState("");
+  const [name, setName] = useState(fixedName ?? "");
   const [region, setRegion] = useState("");
   const [session, setSession] = useState("");
   const [startUrl, setStartUrl] = useState("");
@@ -223,7 +225,7 @@ export function AddProfile({
     >
       <div className="grid gap-1">
         <h3 tabIndex={-1} className="m-0 text-body font-semibold">
-          Add AWS profile
+          {fixedName === "default" ? "Configure default profile" : "Add AWS profile"}
         </h3>
         <p className={helpClass}>
           Connect using your existing AWS account access. Temporary credentials are recommended.
@@ -258,18 +260,21 @@ export function AddProfile({
               Profile name
               <TextInput
                 required
+                readOnly={!!fixedName}
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 onBlur={() => setNameTouched(true)}
-                aria-describedby={nameHelp}
+                aria-describedby={fixedName ? undefined : nameHelp}
                 aria-invalid={collision || (nameTouched && !validName) || undefined}
                 placeholder="For example, team-developer"
               />
             </label>
-            <p id={nameHelp} className={helpClass}>
-              Use letters, numbers, dots, underscores, +, @ or hyphens, starting with a letter,
-              number or underscore.
-            </p>
+            {!fixedName ? (
+              <p id={nameHelp} className={helpClass}>
+                Use letters, numbers, dots, underscores, +, @ or hyphens, starting with a letter,
+                number or underscore.
+              </p>
+            ) : null}
             {collision ? (
               <p className="m-0 text-caption text-refuse" role="alert">
                 A profile with this name already exists. Choose a new name.
@@ -372,7 +377,7 @@ export function AddProfile({
             </p>
             {method === "static" ? (
               <code className="text-caption wrap-anywhere">
-                aws configure --profile your-profile-name
+                aws configure --profile {fixedName ?? "your-profile-name"}
               </code>
             ) : null}
             <p className={helpClass}>Then refresh the profile list.</p>

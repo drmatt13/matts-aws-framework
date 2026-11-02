@@ -19,8 +19,14 @@ without testing every profile. It shows profile usage, configured methods, sourc
 relationships, file editability and cached connection observations. Test connection checks
 the selected profile. The icon-only refresh reloads configuration metadata without checking
 credentials; its spinner lasts at least one second. The viewport-bounded dialog keeps its
-height while profiles change, with scrolling within the list/details and reserved feedback
-space for association changes and errors.
+height while profiles change, with scrolling within the list/details and a compact reserved
+status line for association changes and errors. Configuration file provenance stays in
+backend metadata rather than adding another disclosure to profile details.
+
+When `default` has no definition, the list retains a **Not configured · Click to configure**
+entry. It opens guided creation with the name fixed to `default`; it is not added to the
+credential catalog, operational selector or source-profile choices until saved. Studio
+does not select or execute that entry automatically.
 
 Add profile offers Console sign-in, IAM Identity Center, an IAM role, and guidance for
 access keys or external providers. Creating/authenticating a profile does not select it:
@@ -43,7 +49,7 @@ Ambiguous touched definitions, linked/read-only files and credentials-file-owned
 remain externally managed. Renaming and method conversion are outside this release.
 Removing a mode association does not remove the AWS profile.
 
-Each profile card has a Delete action with explicit confirmation. Its review identifies
+Each configured profile card has a Delete action with explicit confirmation. Its review identifies
 which AWS files contain the profile and any Development/Production associations that will
 be cleared. Applying removes only that profile's sections from the effective config and
 credentials files; shared sessions, caches, unrelated profiles and standalone comments stay
@@ -52,7 +58,9 @@ links and read-only files block deletion. A stale review writes nothing. Each fi
 replaced atomically; a multi-file failure compensates completed replacements only when
 their bytes still belong to Studio. If an external edit prevents compensation, private
 `.studio-profile-delete-*.restore` copies retain the originals for manual recovery.
-Deletion never selects a replacement profile or signs out native sessions.
+Deletion never selects a replacement profile or signs out native sessions. Deleting
+`default` clears its definition and mode associations, then leaves its unconfigured entry
+available for setup.
 
 ## Identity and session meaning
 

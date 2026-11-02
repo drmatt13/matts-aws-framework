@@ -44,6 +44,11 @@ export function ProfileDeletionReview({
         Remove this profile from your machine’s AWS {files}. Other profiles and shared sign-in
         sessions will be kept. AWS resources are unaffected.
       </p>
+      {review.name === "default" ? (
+        <p className={note}>
+          The default entry will remain in Studio as not configured, ready to set up again.
+        </p>
+      ) : null}
       {modes.length ? (
         <p className={note}>
           {modes.join(" and ")} will have no selected profile in this repository. Choose another

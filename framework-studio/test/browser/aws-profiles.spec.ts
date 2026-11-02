@@ -579,7 +579,9 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 700 
     const initial = await modal.boundingBox();
     const cards = modal.locator('[data-slot="aws-profile-card"]');
     const cardGeometry = () => cards.evaluateAll(elements => elements.map(element => {
-      const box = element.getBoundingClientRect(); return { y: box.y, height: box.height };
+      // Keyboard focus can intentionally scroll the list to the selected row.
+      // Compare content positions so that scrolling is distinct from layout shift.
+      const box = element.getBoundingClientRect(); return { y: box.y + element.parentElement!.scrollTop, height: box.height };
     }));
     const initialCards = await cardGeometry();
     await modal.getByRole("button", { name: /^dev AWS Console/ }).click();
@@ -621,12 +623,116 @@ test("a failed refresh keeps its spinner for one second and feedback does not mo
   await expect(modal.getByRole("alert")).toContainText("temporarily unavailable");
   expect(await modal.boundingBox()).toEqual(initial);
   await expect(refresh).toHaveText("");
-  await expect(modal.locator('[data-slot="aws-profile-card"]')).toHaveCount(catalog.profiles.length);
+  await expect(modal.locator('[data-slot="aws-profile-card"]')).toHaveCount(catalog.profiles.length + 1);
+});
+
+test("profile actions use quiet hover styling and compact feedback without repeated copy", async ({ page, studio }) => {
+  await studio.goto("/graphql");
+  const modal = await openConfiguration(page);
+  await modal.getByRole("button", { name: /^dev IAM Identity Center/ }).click();
+  await expect(modal).not.toContainText("Configuration provenance");
+  await expect(modal).not.toContainText("Profile configuration stays on this machine");
+  const feedback = modal.locator('[data-slot="aws-profile-feedback"]');
+  await expect(feedback).toHaveText("");
+  expect((await feedback.boundingBox())!.height).toBe(32);
+  const palette = await modal.evaluate(element => {
+    const probe = document.createElement("span");
+    element.append(probe);
+    const color = (token: string) => { probe.style.color = `var(${token})`; return getComputedStyle(probe).color; };
+    const values = { gray: color("--graphite"), red: color("--refuse"), wash: color("--wash") };
+    probe.remove();
+    return values;
+  });
+  const trash = modal.getByRole("button", { name: "Delete AWS profile production", exact: true });
+  const close = modal.getByRole("button", { name: "Close AWS profile configuration", exact: true });
+  await expect(trash).toHaveCSS("color", palette.gray);
+  await expect(trash).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  expect(await trash.evaluate(element => getComputedStyle(element).borderRadius)).toBe(await close.evaluate(element => getComputedStyle(element).borderRadius));
+  const before = await trash.boundingBox();
+  await trash.hover();
+  await expect(trash).toHaveCSS("color", palette.red);
+  await expect(trash).toHaveCSS("background-color", palette.wash);
+  expect(await trash.boundingBox()).toEqual(before);
+  await page.mouse.move(0, 0);
+  await modal.getByRole("button", { name: /^production IAM Identity Center/ }).focus();
+  await page.keyboard.press("Tab");
+  await expect(trash).toBeFocused();
+  await expect(trash).toHaveCSS("color", palette.red);
+  await assertAccessible(page);
+});
+
+test("an unconfigured default opens named setup without becoming an operational profile", async ({ page, studio }) => {
+  await studio.goto("/graphql");
+  const modal = await openConfiguration(page);
+  const placeholder = modal.getByRole("button", { name: "Configure default AWS profile", exact: true });
+  await expect(placeholder).toContainText("Not configured");
+  await expect(placeholder).toContainText("Click to configure");
+  await expect(modal.getByRole("button", { name: "Delete AWS profile default", exact: true })).toHaveCount(0);
+  await placeholder.click();
+  await expect(modal.getByRole("heading", { name: "Configure default profile", exact: true })).toBeVisible();
+  const name = modal.getByRole("textbox", { name: "Profile name", exact: true });
+  await expect(name).toHaveValue("default");
+  await expect(name).toHaveAttribute("readonly", "");
+  await modal.getByRole("combobox", { name: "How do you connect to AWS?" }).selectOption("role");
+  await expect(modal.getByRole("combobox", { name: "Source profile", exact: true }).locator('option[value="default"]')).toHaveCount(0);
+  expect(profileChecks(studio.requests)).toHaveLength(0);
+  await modal.getByRole("button", { name: "Add profile", exact: true }).click();
+  await expect(name).toHaveValue("");
+  await expect(name).not.toHaveAttribute("readonly");
+  await modal.getByRole("button", { name: "Close AWS profile configuration", exact: true }).click();
+  await page.getByRole("button", { name: /Development AWS profile:/ }).click();
+  await expect(page.getByRole("combobox", { name: "AWS profile", exact: true }).locator('option[value="default"]')).toHaveCount(0);
 });
 
 function deletionReview(name: string, blockers: string[] = [], dependentProfiles: string[] = []) {
   return { id: "delete-review-fixture", name, files: ["config", "credentials"], blockers, dependentProfiles, expiresAt: "2026-12-01T00:00:00Z" };
 }
+
+for (const width of [1440, 320])
+  test(`deleted default stays available for reviewed setup at ${width}px without selecting a replacement`, async ({ page, studio }, testInfo) => {
+    let deleted = false, recreated = false;
+    const configured = connectionCatalogFixture([{ name: "default", kind: "login", region: "us-east-1" }, { name: "dev", kind: "login", region: "us-east-1" }]);
+    studio.reply("GET", "/api/aws-connections", route => route.fulfill({ json: deleted && !recreated ? { ...configured, profiles: configured.profiles.filter(profile => profile.name !== "default") } : configured }));
+    studio.reply("POST", "/api/aws-connections/delete/review", route => route.fulfill({ json: deletionReview("default") }));
+    studio.reply("POST", "/api/aws-connections/delete/apply", route => { deleted = true; return route.fulfill({ json: { name: "default", changed: true } }); });
+    studio.reply("POST", "/api/aws-connections/review", route => route.fulfill({ json: { id: "default-creation-review", name: "default", create: true, changes: [{ field: "region", after: "us-west-2" }], affectedProfiles: [], expiresAt: "2026-12-01T00:00:00Z" } }));
+    studio.reply("POST", "/api/aws-connections/apply", route => { recreated = true; return route.fulfill({ json: { name: "default", changed: true } }); });
+    await page.setViewportSize({ width, height: 800 });
+    await studio.goto("/graphql");
+    const modal = await openConfiguration(page);
+    await modal.getByRole("button", { name: /^default AWS Console/ }).click();
+    await modal.getByRole("button", { name: "Use for Production", exact: true }).click();
+    if (width <= 760) await modal.getByRole("button", { name: "All profiles", exact: true }).click();
+    await modal.getByRole("button", { name: "Delete AWS profile default", exact: true }).click();
+    const confirmation = modal.getByRole("region", { name: "Delete AWS profile confirmation" });
+    await expect(confirmation).toContainText("default entry will remain");
+    await confirmation.getByRole("button", { name: "Delete profile", exact: true }).click();
+    const placeholder = modal.getByRole("button", { name: "Configure default AWS profile", exact: true });
+    await expect(placeholder).toBeVisible();
+    await expect(placeholder).toContainText("Not configured");
+    await expect(modal.getByRole("button", { name: "Delete AWS profile default", exact: true })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("default-unconfigured.png") });
+    await placeholder.click();
+    const heading = modal.getByRole("heading", { name: "Configure default profile", exact: true });
+    await expect(heading).toBeVisible();
+    if (width <= 760) await expect(heading).toBeFocused();
+    await expect(modal.getByRole("textbox", { name: "Profile name", exact: true })).toHaveValue("default");
+    await modal.getByRole("combobox", { name: "How do you connect to AWS?" }).selectOption("role");
+    await modal.getByRole("textbox", { name: "Default AWS region" }).fill("us-west-2");
+    await modal.getByRole("combobox", { name: "Source profile", exact: true }).selectOption("dev");
+    await modal.getByRole("textbox", { name: "Role ARN", exact: true }).fill("arn:aws:iam::123456789012:role/Developer");
+    await modal.getByRole("button", { name: "Review new profile", exact: true }).click();
+    expect(studio.requests.find(request => request.path === "/api/aws-connections/review")?.body).toMatchObject({ name: "default", create: true });
+    await modal.getByRole("button", { name: "Save profile", exact: true }).click();
+    await expect(modal.getByRole("heading", { name: "default", exact: true })).toBeVisible();
+    if (width <= 760) await modal.getByRole("button", { name: "All profiles", exact: true }).click();
+    await expect(placeholder).toHaveCount(0);
+    await expect(modal.getByRole("button", { name: "Delete AWS profile default", exact: true })).toBeVisible();
+    await assertAccessible(page);
+    await modal.getByRole("button", { name: "Close AWS profile configuration", exact: true }).click();
+    await page.getByRole("button", { name: "Production", exact: true }).click();
+    await expect(page.getByRole("button", { name: /Production AWS profile:/ })).toHaveAccessibleName("Production AWS profile: choose a profile");
+  });
 
 test("short-screen deletion keeps the target visible while its actions receive keyboard focus", async ({ page, studio }) => {
   studio.reply("POST", "/api/aws-connections/delete/review", route => route.fulfill({ json: deletionReview("dev") }));

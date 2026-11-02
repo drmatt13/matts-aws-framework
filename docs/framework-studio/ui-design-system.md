@@ -28,7 +28,10 @@ editor styles. Its controls explicitly own appearance that React primitives cann
 regular and prominent sizes; default and danger tones. Repeated compact trigger rows use
 `size="dense"`; `size="custom"` leaves padding and minimum height to explicit caller
 utilities for uncommon geometry. `IconButton` requires an
-accessible label. `TextInput`, `Select` and `Textarea` retain native props/events/refs;
+accessible label. Quiet danger icon buttons use graphite at rest, the shared rounded wash
+on hover, and the refuse color on hover or visible keyboard focus. Destructive confirmation
+buttons retain their explicit danger treatment.
+`TextInput`, `Select` and `Textarea` retain native props/events/refs;
 `controlSize` is separate from the native `size`; `controlSize="panel"` follows the
 inspector or dialog control-height token. `UnitInput` draws a numeric unit inside the
 input's trailing edge; callers keep the unit in the accessible label. `Card`, `Notice` and

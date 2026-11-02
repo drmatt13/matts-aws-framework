@@ -48,9 +48,11 @@ opens a foreground **AWS profile configuration** modal with profile discovery, c
 health, explicit connection tests, native sign-in, reviewed non-secret edits, and guided
 Console/Identity Center/role creation. Its fixed viewport-bounded height, scrolling panes,
 icon-only refresh and reserved feedback space keep profile/association changes stable.
-Each profile card offers confirmed deletion with dependency/file checks; successful deletion
+Each configured profile card offers confirmed deletion with dependency/file checks; successful deletion
 clears matching mode associations without selecting a replacement. Cancel/Escape restores
-focus to that card's delete button. Closing the modal returns focus to the navbar chevron.
+focus to that card's delete button. An absent or deleted `default` remains visible as an
+unconfigured setup action; it becomes selectable for operations only after configuration.
+Closing the modal returns focus to the navbar chevron.
 
 Operational workspaces consume the active declaration mode's profile association and retain
 independent deployment/region controls and approvals. Target selection never restores a

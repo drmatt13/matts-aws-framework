@@ -47,6 +47,7 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
   )?.capabilities;
   const [selectedName, setSelectedName] = useState(awsProfile ?? "");
   const [adding, setAdding] = useState(false);
+  const [addingName, setAddingName] = useState<string>();
   const [detailVisible, setDetailVisible] = useState(Boolean(awsProfile));
   const [busy, setBusy] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -76,6 +77,7 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
   const currentAssociations = useRef(awsProfiles);
   currentAssociations.current = awsProfiles;
   const profile = catalog.data?.profiles.find((item) => item.name === selectedName);
+  const defaultUnconfigured = !!catalog.data && !catalog.data.profiles.some((item) => item.name === "default");
   useEffect(() => {
     setChecks({});
     setReview(undefined);
@@ -262,6 +264,20 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
     detailScroll.current?.scrollTo({ top: 0 });
     if (trigger) focusDetailsWhenTriggerHidden(trigger);
   };
+  const addProfile = (trigger: HTMLElement, name?: string) => {
+    setAdding(true);
+    setAddingName(name);
+    if (name) setSelectedName(name);
+    setDetailVisible(true);
+    setAuthentication(undefined);
+    setReview(undefined);
+    setLogoutReview(undefined);
+    setDeletionReview(undefined);
+    setError("");
+    setMessage("");
+    detailScroll.current?.scrollTo({ top: 0 });
+    focusDetailsWhenTriggerHidden(trigger);
+  };
   const showProfiles = () => {
     setDetailVisible(false);
     window.requestAnimationFrame(() => {
@@ -349,19 +365,7 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
                   ref={addTrigger}
                   size="compact"
                   disabled={pending}
-                  onClick={(event) => {
-                    const trigger = event.currentTarget;
-                    setAdding(true);
-                    setDetailVisible(true);
-                    setAuthentication(undefined);
-                    setReview(undefined);
-                    setLogoutReview(undefined);
-                    setDeletionReview(undefined);
-                    setError("");
-                    setMessage("");
-                    detailScroll.current?.scrollTo({ top: 0 });
-                    focusDetailsWhenTriggerHidden(trigger);
-                  }}
+                  onClick={(event) => addProfile(event.currentTarget)}
                 >
                   <Plus size={14} aria-hidden />
                   Add profile
@@ -391,6 +395,24 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
                 ref={profileList}
                 className="m-0 grid min-h-0 list-none content-start gap-1 overflow-y-auto p-1 [scrollbar-gutter:stable]"
               >
+                {defaultUnconfigured ? (
+                  <li data-slot="aws-profile-card" data-profile="default">
+                    <button
+                      disabled={pending}
+                      aria-label="Configure default AWS profile"
+                      aria-current={adding && addingName === "default" ? "true" : undefined}
+                      onClick={(event) => addProfile(event.currentTarget, "default")}
+                      className={cx(
+                        "group/profile grid h-[124px] w-full min-w-0 cursor-pointer grid-rows-[28px_18px_18px_18px] gap-1 rounded-md border border-rule bg-sheet p-3 text-left text-ink enabled:hover:bg-wash disabled:opacity-55",
+                        adding && addingName === "default" && "border-rule-strong bg-wash",
+                      )}
+                    >
+                      <strong className="self-center text-label">default</strong>
+                      <span className="text-caption">Not configured</span>
+                      <span className="text-caption">Click to configure</span>
+                    </button>
+                  </li>
+                ) : null}
                 {catalog.data.profiles.map((item) => {
                   const selected = !adding && item.name === selectedName;
                   const metadata = cx(
@@ -518,7 +540,9 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
                       queryClient.removeQueries({
                         queryKey: awsProfileIdentityQuery(result.name).queryKey,
                       });
-                      setMessage(`Deleted profile ${result.name}.`);
+                      setMessage(result.name === "default"
+                        ? "Default profile cleared."
+                        : `Deleted profile ${result.name}.`);
                       try {
                         await refreshCatalog();
                       } catch {
@@ -669,10 +693,14 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
                         setDetailVisible(true);
                         setMessage(
                           result.message ||
-                            "Profile saved. Choose which declaration mode should use it.",
+                            "Profile saved.",
                         );
                         await refreshCatalog();
                         await check(result.name);
+                        detailScroll.current?.scrollTo({ top: 0 });
+                        window.requestAnimationFrame(() => {
+                          detailScroll.current?.querySelector<HTMLElement>("h3")?.focus({ preventScroll: true });
+                        });
                       })
                     }
                   />
@@ -695,8 +723,10 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
                 {adding && !authentication ? (
                   <div hidden={!!review}>
                     <AddProfile
+                      key={addingName ?? "new"}
                       catalog={catalog.data}
                       capabilities={capabilities}
+                      fixedName={addingName}
                       busy={pending}
                       onAuthenticate={authenticate}
                       onReview={(name, fields) => reviewFields(name, fields, true)}
@@ -741,12 +771,7 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
                     <Button
                       className="justify-self-start"
                       disabled={pending}
-                      onClick={(event) => {
-                        const trigger = event.currentTarget;
-                        setAdding(true);
-                        setDetailVisible(true);
-                        focusDetailsWhenTriggerHidden(trigger);
-                      }}
+                      onClick={(event) => addProfile(event.currentTarget)}
                     >
                       Add AWS profile
                     </Button>
@@ -777,7 +802,9 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
       </div>
       <footer
         data-slot="aws-profile-feedback"
-        className="h-16 flex-none overflow-y-auto border-t border-rule px-5 py-3 vp-420:px-4"
+        aria-label="AWS profile status"
+        tabIndex={error || busy || message ? 0 : undefined}
+        className="h-8 flex-none overflow-y-auto border-t border-rule px-5 py-1 vp-420:px-4"
       >
         {error ? (
           <p role="alert" className="m-0 text-label text-refuse wrap-anywhere">
@@ -790,11 +817,7 @@ export function AwsProfileConfiguration({ onClose }: { readonly onClose: () => v
           >
             {busy || message}
           </p>
-        ) : (
-          <p className={note}>
-            Profile configuration stays on this machine. Credentials never enter the browser.
-          </p>
-        )}
+        ) : null}
       </footer>
     </dialog>,
     document.body,

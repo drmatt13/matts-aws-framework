@@ -228,16 +228,6 @@ export function AwsProfileDetails({
           onReview={onReview}
         />
       </div>
-      <details>
-        <summary className="cursor-pointer text-label">Configuration provenance</summary>
-        <p className={cx(note, "pt-2")}>
-          {profile.provenance.config ? "Defined in AWS config. " : ""}
-          {profile.provenance.credentials ? "Has an entry in AWS credentials. " : ""}
-          {profile.kind === "process"
-            ? "External provider commands remain private and are managed by their own tooling."
-            : "Credential values remain on the machine."}
-        </p>
-      </details>
     </>
   );
 }
