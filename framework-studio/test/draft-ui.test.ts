@@ -1051,7 +1051,18 @@ test("per-environment input settings participate in the unified resource draft",
   assert.deepEqual([modes.prod.present, modes.prod.required], [true, true]);
 });
 
+// Keep source-value editor coverage independent of the application's environment-linked flag.
+function useStandaloneFlagFixture() {
+  const graph = (mode: "dev" | "prod") => ({ ...baseline.models[mode], resources: baseline.models[mode].resources.map(resource => {
+    if (resource.id !== "resource:enableWebSocketApi") return resource;
+    const { fromEnv: _env, default: _default, inputSources: _sources, inputRequirement: _requirement, ...plain } = resource;
+    return { ...plain, authoredValue: "true", required: false, modes: { dev: { present: true, required: false, value: "true" }, prod: { present: true, required: false, value: "true" } } };
+  }) });
+  persisted = { ...baseline, models: { dev: graph("dev"), prod: graph("prod") } };
+}
+
 test("source parameters edit values without reading or presenting an environment file", async () => {
+  useStandaloneFlagFixture();
   let reads = 0;
   mock.method(apiModule.api, "resourceDetails", async () => { reads++; return { configured: false }; });
   await mount("resource:enableWebSocketApi");
@@ -1071,6 +1082,7 @@ test("source parameters edit values without reading or presenting an environment
 });
 
 test("source linking switches values to optional defaults and back without losing edits", async () => {
+  useStandaloneFlagFixture();
   await mount("resource:enableWebSocketApi");
   ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Link to .env file" }));
   assert.equal((ui.screen.getByRole("textbox", { name: "Environment variable" }) as HTMLInputElement).value, "ENABLE_WEB_SOCKET_API");

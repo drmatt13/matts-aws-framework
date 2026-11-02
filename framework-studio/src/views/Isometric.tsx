@@ -1218,10 +1218,10 @@ export function Isometric() {
                   data-ui="landscape-chip landscape-errors-chip"
                   className={mapFilterChipClasses}
                   aria-pressed={errorsShown}
-                  title={`${errorsShown ? "Stop pinning" : "Pin"} errors: ${[
+                  title={`${errorsShown ? "Hide" : "Show"} errors: ${[
                     errorCount.nodes ? `${errorCount.nodes} ${errorCount.nodes === 1 ? "resource" : "resources"}` : "",
                     errorCount.edges ? `${errorCount.edges} ${errorCount.edges === 1 ? "connection" : "connections"} with missing values` : "",
-                  ].filter(Boolean).join(" and ")}. When on, their connections show whatever the other filters hide, and their names stay fully visible at every zoom.`}
+                  ].filter(Boolean).join(" and ")}. When on, resource error badges and labels are highlighted, their connections show whatever the other filters hide, and their names stay fully visible at every zoom.`}
                   onClick={() => {
                     setErrorsShown((current) => !current);
                     setHovered(undefined);

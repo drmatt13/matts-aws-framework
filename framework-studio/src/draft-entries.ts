@@ -1,6 +1,6 @@
 import type { DraftEdit, EditIntent, LiteralValue } from "../shared/api";
 import type { Mode, ModelResource, Snapshot } from "../shared/model";
-import { inputModeIntents, type ResourceIntent } from "../shared/resources";
+import { inputChoicesError, inputModeIntents, type ResourceIntent } from "../shared/resources";
 import type { DeploymentInputEdit } from "../shared/deployment-inputs";
 import type { FailureDestinationSettings, TriggerBinding } from "../shared/triggers";
 import type { ClientEnvironmentMappings } from "../shared/client-environment";
@@ -24,6 +24,7 @@ export interface ResourceForm {
   readonly modes: Readonly<Record<Mode, ResourceModeForm>>;
   readonly group: string;
   readonly requirements: ResourceIntent["requirements"];
+  readonly choices?: readonly string[];
 }
 export interface FieldEntry { readonly kind: "field"; readonly key: string; readonly raw: LiteralValue | undefined; readonly intent: EditIntent; readonly error?: string }
 export interface RouteEntry { readonly kind: "route"; readonly key: string; readonly route: string; readonly value: string; readonly error?: string }
@@ -53,7 +54,7 @@ export type DraftEntry =
 export function initialResourceForm(resource: ModelResource): ResourceForm {
   const modes = inputModeIntents(resource);
   const column = (mode: Mode): ResourceModeForm => ({ present: modes[mode].present, required: modes[mode].required, default: modes[mode].default ?? "", ...(resource.fromEnv ? {} : { value: modes[mode].value ?? resource.authoredValue ?? "" }) });
-  return { secret: resource.kind === "secret", fromEnv: resource.fromEnv ?? null, modes: { dev: column("dev"), prod: column("prod") }, group: resource.path.length > 1 ? resource.path[0]! : "", requirements: {} };
+  return { secret: resource.kind === "secret", fromEnv: resource.fromEnv ?? null, modes: { dev: column("dev"), prod: column("prod") }, group: resource.path.length > 1 ? resource.path[0]! : "", requirements: {}, choices: resource.values ?? [] };
 }
 
 /** Normalize authored form values without reading private environment contents. */
@@ -75,14 +76,17 @@ export function normalizeResourceEntry(
   const column = ({ present, required, default: fallback, value }: ResourceModeForm) => ({ present, required: present && linked && required,
     default: present && linked && !form.secret && fallback.trim() ? fallback : null,
     ...(!linked && !form.secret ? { value: present ? value ?? fallback : null } : {}) });
-  const intent: ResourceIntent = { resource: resource.id, kind: form.secret ? "secret" : "input", fromEnv, modes: { dev: column(form.modes.dev), prod: column(form.modes.prod) }, group: form.group.trim(), requirements };
+  const choices = (form.choices ?? resource.values ?? []).map(value => value.trim());
+  const choicesChanged = !form.secret && JSON.stringify(choices) !== JSON.stringify(resource.values ?? []);
+  const intent: ResourceIntent = { resource: resource.id, kind: form.secret ? "secret" : "input", fromEnv, modes: { dev: column(form.modes.dev), prod: column(form.modes.prod) }, group: form.group.trim(), requirements, ...(choicesChanged ? { choices } : {}) };
   const saved = inputModeIntents(resource);
   const settings = (["dev", "prod"] as const).reduce((sum, mode) => sum + Number(intent.modes[mode].present !== saved[mode].present) + Number(intent.modes[mode].required !== saved[mode].required) + Number(intent.modes[mode].default !== saved[mode].default) + Number((intent.modes[mode].value ?? null) !== (saved[mode].value ?? null)), 0);
-  const count = settings + Number(fromEnv !== (resource.fromEnv ?? null)) + Number(intent.kind !== resource.kind) + Number(intent.group !== (resource.path.length > 1 ? resource.path[0] : "")) + Object.keys(requirements).length;
+  const count = settings + Number(choicesChanged) + Number(fromEnv !== (resource.fromEnv ?? null)) + Number(intent.kind !== resource.kind) + Number(intent.group !== (resource.path.length > 1 ? resource.path[0] : "")) + Object.keys(requirements).length;
   const missingValue = !linked && (["dev", "prod"] as const).some(mode => intent.modes[mode].present && !intent.modes[mode].value?.trim());
-  const invalidValue = !linked && resource.values && (["dev", "prod"] as const).some(mode => intent.modes[mode].present && !resource.values!.includes(intent.modes[mode].value ?? ""));
+  const defaults = [...(resource.inputChoices?.defaults ?? []), ...Object.values(intent.modes).flatMap(policy => policy.present ? [policy.default, policy.value].filter((value): value is string => !!value) : [])];
+  const choiceError = !form.secret ? inputChoicesError(choices) ?? (choices.length && defaults.some(value => !choices.some(choice => choice.toLowerCase() === value.trim().toLowerCase())) ? "Every declared default or source value must be one of the allowed values." : undefined) : undefined;
   const reparenting = intent.group !== (resource.path.length > 1 ? resource.path[0] : "");
-  const error = reparenting && codeRenamePending ? "Apply or discard the code rename before moving this input to another group." : !intent.modes.dev.present && !intent.modes.prod.present ? "Keep this input in at least one environment." : form.secret && !linked ? "Secrets require an environment-file link." : linked && !/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(fromEnv) ? "Use a SCREAMING_SNAKE_CASE environment variable name." : missingValue ? "Enter a value for each environment that holds this input." : invalidValue ? "Choose one of the allowed values for each environment." : intent.group && !/^[A-Za-z_$][\w$]*$/.test(intent.group) ? "Use a single valid group name." : undefined;
+  const error = choiceError ?? (reparenting && codeRenamePending ? "Apply or discard the code rename before moving this input to another group." : !intent.modes.dev.present && !intent.modes.prod.present ? "Keep this input in at least one environment." : form.secret && !linked ? "Secrets require an environment-file link." : linked && !/^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/.test(fromEnv) ? "Use a SCREAMING_SNAKE_CASE environment variable name." : missingValue ? "Enter a value for each environment that holds this input." : intent.group && !/^[A-Za-z_$][\w$]*$/.test(intent.group) ? "Use a single valid group name." : undefined);
   return count ? { kind: "resource", key: `resource:${resource.id}`, form: { ...form, requirements }, intent, count, ...(error ? { error } : {}) } : undefined;
 }
 

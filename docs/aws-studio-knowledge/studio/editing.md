@@ -97,7 +97,7 @@ local-value read or catalog-derived environment-file row. A linked input reads i
 an optional `.default(...)`. Switching sources carries the Value/Default form text through
 the normal reviewed source writer, without reading, moving or rewriting `.env` values.
 Secret inputs always remain environment-linked and never accept a source value or default.
-The `enableWebSocketApi` example uses a source value of `true` rather than a file override.
+The `enableWebSocketApi` example reads `ENABLE_WEB_SOCKET_API`, with a default of `true`.
 
 Source projection includes public `authoredValue` and mode `value` metadata, while resolved
 environment-file values stay out of snapshots and symbolic client previews. New client

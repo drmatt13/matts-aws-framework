@@ -50,8 +50,8 @@ children produce, the parsed source, and the edit journal.
 - `FRAMEWORK_INPUTS_FILE` points at `.cache/framework-studio/inputs-<mode>.env`, which
   holds one line, `PROD_DEPLOYMENT=true|false`. The parent privately resolves declared
   deployment conditions against each mode's input source and returns only holds/fails/unset
-  outcomes. Source parameters such as `enableWebSocketApi` resolve their declared public
-  value, not an environment-file override. Children inherit the host environment and execute
+  outcomes. Source parameters resolve their declared public value; environment parameters
+  such as `enableWebSocketApi` resolve their linked file value or declared default. Children inherit the host environment and execute
   trusted repository code; this is module-lifetime isolation, not a secret-proof sandbox.
   See [server/inputs.ts](../../framework-studio/server/inputs.ts).
 - The selected-resource endpoint separately reads the selected mode's input file for one declared input

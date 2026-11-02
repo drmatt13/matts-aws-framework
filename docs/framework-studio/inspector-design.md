@@ -278,7 +278,8 @@ the variable name and an optional **Default value**, plus the environment-specif
 value editor after the link is saved. Switching sources carries the entered Value/Default
 text across and stages source review; it never transfers or rewrites existing environment
 file values. Source parameters have no local-file destination, file-source rows or missing
-environment-file requirement. `enableWebSocketApi` is a source parameter set to `true`.
+environment-file requirement. `enableWebSocketApi` is an environment parameter reading
+`ENABLE_WEB_SOCKET_API`, with a default of `true`.
 Secrets always stay environment-linked, masked and without a source value or default.
 
 Boolean setting help describes what the option does and stays the same when toggled. Keep related

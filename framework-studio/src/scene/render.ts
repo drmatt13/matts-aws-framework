@@ -606,7 +606,7 @@ export class SceneRenderer {
             const tile = project({ x: item.prop.gx, y: item.prop.gy, h: item.prop.h });
             if (!ghost) this.drawStand(tile, item.prop.geometry.faces, item.prop.icon, factor);
             this.drawPlaqueGraphite(tile, item.prop.icon, (ghost ? 0.32 : 0.9) * factor, matched, ghost, false);
-            const badges = cornerBadges(item.prop);
+            const badges = cornerBadges(item.prop, state.errors !== false);
             if (badges.right) this.drawRoleIconGraphite(tile, badges.right, (ghost ? 0.32 : 0.9) * factor, ghost, item.prop.serviceIcon);
             if (badges.left) this.drawRoleIconGraphite(tile, badges.left, (ghost ? 0.32 : 0.9) * factor, ghost, undefined, true);
           }
@@ -948,7 +948,7 @@ export class SceneRenderer {
     const factor = dimmed ? 0.32 : 1;
     if (!ghost) this.drawStand(tile, node.geometry.faces, node.icon, factor);
     this.drawPlaqueGraphite(tile, node.icon, factor * (ghost ? 0.32 : 1), selected, ghost, hovered);
-    const badges = cornerBadges(node);
+    const badges = cornerBadges(node, state.errors !== false);
     if (badges.right) this.drawRoleIconGraphite(tile, badges.right, factor * (ghost ? 0.32 : 1), ghost);
     if (badges.left) this.drawRoleIconGraphite(tile, badges.left, factor * (ghost ? 0.32 : 1), ghost, undefined, true);
     if (selected || hovered) {
@@ -1213,7 +1213,8 @@ export class SceneRenderer {
       const ghost = node.tagFiltered || node.presence === "other" || node.presence === "nowhere" || node.presence === "absent";
       const hover = hovers.get(node.id)!;
       const alpha = this.captionAlpha(node, state, detail, hover);
-      const issue = node.issues?.[0] ? ISSUE_CAPTION[node.issues[0].severity] : undefined;
+      const visibleIssue = node.issues?.find(issue => state.errors !== false || issue.severity !== "error");
+      const issue = visibleIssue ? ISSUE_CAPTION[visibleIssue.severity] : undefined;
       // Let the plate dissolve faster than its name so distant islands keep a quiet texture.
       context.globalAlpha = alpha * (selected || pinnedCaption(node, state) ? 1 : plate + (1 - plate) * hover);
       context.fillStyle = selected ? issue?.plate ?? "#f3efe4" : "#0e131b";

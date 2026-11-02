@@ -1,10 +1,10 @@
 import os from "node:os";
 import path from "node:path";
-import { getFrameworkTargets, isTargetEnabled, isResourceReference } from "@repo/framework/config";
+import { getFrameworkTargets, isTargetEnabled, isResourceReference, listResourceDeclarations, referenceForGraph, resolveInput } from "@repo/framework/config";
 import framework from "../framework.config";
 
 /**
- * Every host port Docker Compose publishes, authored in cdk-app/.env.dev.
+ * Every host port Docker Compose publishes, supplied by cdk-app/.env.dev or a declared input default.
  *
  * Compose interpolates these by name, and packages/framework/scripts/check-local.ts
  * asserts the two lists agree, so a service that publishes a port nobody can move
@@ -54,15 +54,18 @@ export function localExportValues(
     throw new Error("LOCAL_BROWSER_ORIGINS in cdk-app/.env.dev is no longer read: the local allowlist is derived from LOCAL_DEV_URL and the WebSocket tester's host port. Remove it, and set LOCAL_DEV_URL if you need a different frontend origin.");
   }
 
-  // Host ports are authored, not defaulted: a port is a fact about this machine,
-  // and a silent default is what makes a collision hard to find. Only the
-  // published side is configurable — a container's own listen port and every
-  // Compose-DNS address stay literal in docker-compose.yml.
+  // Use the catalog's own resolver for declared port inputs so Compose and client URL
+  // recipes agree on blank/missing overrides. Framework-owned ports still require an
+  // authored value. Container listen ports and Compose-DNS addresses remain fixed.
+  const portInputs = new Map(listResourceDeclarations(framework.resources ?? {}).flatMap(reference =>
+    reference.fromEnv && !reference.secretArn ? [[reference.fromEnv, reference] as const] : []));
   const claimedBy = new Map<string, string>();
   for (const name of LOCAL_HOST_PORT_NAMES) {
-    const port = authored[name];
+    const reference = portInputs.get(name);
+    const resolved = reference && resolveInput(referenceForGraph(reference, "dev"), { env: authored });
+    const port = resolved ? resolved.state === "supplied" || resolved.state === "fallback" ? resolved.value : undefined : authored[name];
     if (port === undefined) {
-      throw new Error(`${name} is missing from cdk-app/.env.dev. Every published host port is authored there; copy the block from cdk-app/.env.dev.template.`);
+      throw new Error(`${name} is missing from cdk-app/.env.dev and has no input default. Set it using cdk-app/.env.dev.template.`);
     }
     if (!/^[1-9][0-9]*$/.test(port) || Number(port) > 65535) {
       throw new Error(`${name}=${port} in cdk-app/.env.dev is not a port number between 1 and 65535.`);

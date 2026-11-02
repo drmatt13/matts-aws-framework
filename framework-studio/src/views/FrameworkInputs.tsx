@@ -27,6 +27,7 @@ import {
 import { IssueNotice } from "./IssueNotice";
 import { LocalValue } from "./LocalValue";
 import { FrameworkManagedStatus } from "./ResourceStatus";
+import { InputAllowedValues } from "./InputAllowedValues";
 
 const MODES = ["dev", "prod"] as const;
 const file = (mode: Mode) => `cdk-app/.env.${mode}`;
@@ -203,7 +204,7 @@ export function FrameworkInputView({
                 data-mode={environment}
               >
                 <EnvironmentName mode={environment} active={present} />
-                <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-caption">
+                <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-caption text-ink">
                   <dt className="text-graphite">Available</dt>
                   <dd className="m-0">{present ? "Yes" : "No"}</dd>
                   <dt className="text-graphite">Required</dt>
@@ -220,10 +221,11 @@ export function FrameworkInputView({
         ) : null}
         <p className={cx(inspectorNoteClasses, "mt-2")}>
           Framework managed: {group.reader} reads it from the inputs file, so it
-          takes no default and its behavior is not edited here. Set its value
-          below or in the file.
+          takes no file-level default. Its availability and requirements stay managed;
+          an explicit enum declaration can be edited below. Set its value below or in the file.
         </p>
       </section>
+      <InputAllowedValues resource={resource} />
       {resource.absent ? (
         <section className={inspectorSectionClasses} aria-label="Local value">
           <p className="m-0 text-caption text-graphite">

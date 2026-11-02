@@ -6,6 +6,7 @@ import { BatchEditor } from "./edits/batch";
 import { sha256 } from "./files";
 import type { SnapshotBuilder, StudioState } from "./snapshot";
 import { inputText, selectedDeploymentInput } from "./deployment-inputs";
+import { inputChoicesError } from "../shared/resources";
 
 export function readResourceIntent(body: unknown): ResourceIntent {
   const intent = (body as { intent?: unknown } | undefined)?.intent as Record<string, unknown> | undefined;
@@ -14,8 +15,9 @@ export function readResourceIntent(body: unknown): ResourceIntent {
     && typeof value.present === "boolean" && typeof value.required === "boolean" && (value.default === null || typeof value.default === "string")
     && (value.value === undefined || value.value === null || typeof value.value === "string");
   if (!modes || typeof modes !== "object" || Object.keys(modes).some((mode) => mode !== "dev" && mode !== "prod") || !modeIntent(modes.dev) || !modeIntent(modes.prod)) throw new EditError(400, "A resource edit states its presence, requirement and default for Development and Production.");
-  if (!intent || Object.keys(intent).some((key) => !["resource", "kind", "modes", "group", "requirements", "fromEnv"].includes(key)) || typeof intent.resource !== "string" || !["input", "secret"].includes(String(intent.kind)) || typeof intent.group !== "string" || !intent.requirements || typeof intent.requirements !== "object" || Array.isArray(intent.requirements) || Object.values(intent.requirements).some((value) => value !== "required" && value !== "optional")
+  if (!intent || Object.keys(intent).some((key) => !["resource", "kind", "modes", "group", "requirements", "fromEnv", "choices"].includes(key)) || typeof intent.resource !== "string" || !["input", "secret"].includes(String(intent.kind)) || typeof intent.group !== "string" || !intent.requirements || typeof intent.requirements !== "object" || Array.isArray(intent.requirements) || Object.values(intent.requirements).some((value) => value !== "required" && value !== "optional")
     || (intent.fromEnv !== undefined && intent.fromEnv !== null && typeof intent.fromEnv !== "string") || (intent.kind === "secret" && intent.fromEnv === null)) throw new EditError(400, "A resource edit names its kind, input source, group, value or default and workload requirements.");
+  if (intent.choices !== undefined && (!Array.isArray(intent.choices) || intent.choices.some(value => typeof value !== "string") || inputChoicesError(intent.choices as string[]) || intent.kind === "secret")) throw new EditError(400, "Use unique, non-blank allowed values for an input parameter.");
   return intent as unknown as ResourceIntent;
 }
 
@@ -44,7 +46,7 @@ export class ResourceService {
     const entry = declared(model) ?? declared(state.snapshot.models[mode === "dev" ? "prod" : "dev"]);
     if (model.stale) throw new EditError(422, "The resource declaration is unavailable. Refresh after fixing the configuration.");
     if (!entry || (entry.kind !== "input" && entry.kind !== "secret") || (!entry.fromEnv && entry.authoredValue === undefined)) throw new EditError(404, "Select a defined input parameter or secret.");
-    if (!state.built.catalog.has(entry.path.join("."))) throw new EditError(422, "The resource declaration could not be located in source.");
+    if (!entry.inputChoices && !state.built.catalog.has(entry.path.join("."))) throw new EditError(422, "The resource declaration could not be located in source.");
     return entry;
   }
   expirePlans(): void { this.plans.clear(); this.batches.expirePlans(); }

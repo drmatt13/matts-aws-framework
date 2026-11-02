@@ -51,9 +51,11 @@ test("canonical client identities preserve the underlying environment input's pu
   }), /Secret inputs cannot be exported/);
 });
 
-test("the application's standalone WebSocket flag ignores unused environment overrides", () => {
-  const context = { deployment: "example", stacks: deployed("dev"), inputs: { ...ports, ENABLE_WEBSOCKET_API: "false" }, ...catalog("dev") };
-  assert.equal(resolveClientEnvironmentMappings(defaults, context).VITE_LOCAL_WS_URL, "ws://localhost:8081");
+test("the application's WebSocket input honors its environment override and declared default", () => {
+  const context = { deployment: "example", stacks: deployed("dev"), inputs: { ...ports, ENABLE_WEB_SOCKET_API: "false" }, ...catalog("dev") };
+  assert.equal(resolveClientEnvironmentMappings(defaults, context).VITE_LOCAL_WS_URL, "");
+  assert.equal(resolveClientEnvironmentMappings(defaults, { ...context, inputs: { ...ports, ENABLE_WEB_SOCKET_API: "" } }).VITE_LOCAL_WS_URL, "ws://localhost:8081");
+  assert.equal(resolveClientEnvironmentMappings(defaults, { ...context, inputs: ports }).VITE_LOCAL_WS_URL, "ws://localhost:8081");
 });
 
 test("default client mappings preserve endpoint, identity and per-mode behavior", () => {
@@ -72,7 +74,7 @@ test("default client mappings preserve endpoint, identity and per-mode behavior"
   assert.equal(prod.VITE_WS_TESTER_URL, "");
   assert.deepEqual(Object.keys(dev), Object.keys(prod));
   assert.equal(resolveClientEnvironmentMappings(defaults, { deployment: "example", stacks: deployed("dev"), inputs: { ...ports, VITE_API_GATEWAY_URL: "https://app.example.com" }, ...catalog("dev") }).VITE_API_GATEWAY_URL, "https://app.example.com");
-  assert.throws(() => resolveClientEnvironmentMappings(defaults, { deployment: "example", stacks: deployed("dev"), inputs: { ...ports, WS_TESTER_HOST_PORT: "" }, ...catalog("dev") }), /Set WS_TESTER_HOST_PORT/, "a required development port still stops the export");
+  assert.equal(resolveClientEnvironmentMappings(defaults, { deployment: "example", stacks: deployed("dev"), inputs: { ...ports, WS_TESTER_HOST_PORT: "" }, ...catalog("dev") }).VITE_WS_TESTER_URL, "http://localhost:3001", "a blank development port uses its declared default");
 });
 
 test("custom references resolve inputs and defaults, fallbacks, regions, empty values and omitted fields", () => {

@@ -7,21 +7,25 @@ export const openaiApiKey = resource.secret("OPENAI_API_KEY", {
 });
 
 export const enableWebSocketApi = resource
-  .value("true", { tags: { area: "realtime" } })
-  .enum("true", "false");
+  .fromEnv("ENABLE_WEB_SOCKET_API", { tags: { area: "realtime" } })
+  .required()
+  .enum("true", "false")
+  .default("true");
 
 // Client URL recipes consume catalog inputs; only development has local servers,
 // so production holds none of these and its client fields built from them stay blank.
 export const client = {
-  apiPort: resource.fromEnv("LOCAL_API_DEV_SERVER_HOST_PORT").only("dev").required(),
+  apiPort: resource.fromEnv("LOCAL_API_DEV_SERVER_HOST_PORT").only("dev").required().default("8080"),
   webSocketPort: resource
     .fromEnv("LOCAL_WS_DEV_SERVER_HOST_PORT")
     .only("dev")
-    .required(),
+    .required()
+    .default("8081"),
   webSocketTesterPort: resource
     .fromEnv("WS_TESTER_HOST_PORT")
     .only("dev")
-    .required(),
+    .required()
+    .default("3001"),
   apiUrl: resource.fromEnv("VITE_API_GATEWAY_URL").only("dev"),
 };
 

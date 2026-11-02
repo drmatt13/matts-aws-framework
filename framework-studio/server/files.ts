@@ -33,6 +33,8 @@ export function editableFiles(repositoryRoot: string): string[] {
   };
   const configDirectory = path.join(repositoryRoot, "framework-config");
   if (existsSync(configDirectory)) visit(configDirectory);
+  // Fingerprint the two public input declaration owners; their enum-only writer has its own authority.
+  for (const file of ["cdk-app/deployment-inputs.ts", "cdk-app/framework-inputs.ts"]) if (existsSync(path.join(repositoryRoot, file))) files.push(file);
   return files.sort();
 }
 

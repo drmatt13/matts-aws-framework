@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { locateConfigSource } from "../../packages/framework/scripts/config-source";
 import { buildSourceIndex, SourceFiles } from "./source";
 import { preserveResourceBuilderComments } from "./resource-config-comments";
-import { inputModeIntents, sameInputModes, type ResourceIntent, type RequirementRule } from "../shared/resources";
+import { inputChoicesError, inputModeIntents, sameInputModes, type ResourceIntent, type RequirementRule } from "../shared/resources";
 import type { Mode, ModelResource, ModelTarget } from "../shared/model";
 import { editableFiles, toRelative } from "./files";
 import { insertProperty, removeProperty } from "./edits/splice";
@@ -16,6 +16,7 @@ import type { StudioState } from "./snapshot";
 import { readCatalogSource } from "./source/catalog";
 import { CLIENT_ENVIRONMENT_FILE, isSplitMapping, type ClientEnvironmentBinding, type ClientEnvironmentMappings } from "../shared/client-environment";
 import { parseClientMappings, rewriteClientMappings } from "./client-environment-source";
+import { planFrameworkInputChoices } from "./input-choices-source";
 
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 const ENVIRONMENT_VARIABLE = /^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*$/;
@@ -116,7 +117,7 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
     } else if (!literalArgument(call.name, argument)) return fail("This resource uses computed arguments. Edit it in source.");
   }
   const fromEnv = intent.fromEnv === undefined ? resource.fromEnv ?? null : intent.fromEnv;
-  if (intent.kind === resource.kind && fromEnv === (resource.fromEnv ?? null) && sameInputModes(intent.modes, current)) {
+  if (intent.kind === resource.kind && fromEnv === (resource.fromEnv ?? null) && sameInputModes(intent.modes, current) && (intent.choices === undefined || JSON.stringify(intent.choices) === JSON.stringify(resource.values ?? []))) {
     const original = outer.getText();
     if (calls[0]!.args.length) return original;
     const base = calls[0]!.node;
@@ -140,7 +141,9 @@ function builderExpression(value: ts.Expression, resource: ModelResource, intent
     }
   }
   const metadata = metadataText ? `, ${metadataText}` : "";
-  const choiceCall = intent.kind === "input" && choices ? `.enum(${choices.args.map((argument) => argument.getText()).join(", ")})` : "";
+  const choiceCall = intent.kind !== "input" ? "" : intent.choices !== undefined
+    ? intent.choices.length ? `.enum(${intent.choices.map(value => JSON.stringify(value.trim())).join(", ")})` : ""
+    : choices ? `.enum(${choices.args.map((argument) => argument.getText()).join(", ")})` : "";
   let result: string;
   if (fromEnv === null) {
     const present = MODES.filter((mode) => intent.modes[mode].present);
@@ -276,6 +279,9 @@ function migrateClientInputReferences(root: string, resource: ModelResource, int
 }
 
 export function planResourceSource(root: string, state: StudioState, resource: ModelResource, intent: ResourceIntent, overlay: ReadonlyMap<string, string> = new Map(), allowNoop = false, skipReferenceEdits = false): { overrides: Record<string, string>; nextResource: string } {
+  if (resource.frameworkInput && !resource.id.startsWith("resource:")) return planFrameworkInputChoices(root, resource, intent, overlay);
+  const choices = intent.choices ?? resource.values;
+  if (intent.choices && (intent.kind === "secret" || inputChoicesError(intent.choices))) return fail(inputChoicesError(intent.choices) ?? "Secrets do not declare allowed values.");
   if (!IDENTIFIER.test(intent.group || "ungrouped") || ["__proto__", "constructor", "prototype"].includes(intent.group)) return fail("A group must be a safe TypeScript property name, or empty for no group.");
   if (!MODES.some((mode) => intent.modes[mode].present)) return fail("Keep this input in at least one environment, or delete it.");
   const fromEnv = intent.fromEnv === undefined ? resource.fromEnv ?? null : intent.fromEnv;
@@ -288,7 +294,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
       if (fallback !== null || required) return fail("A standalone input has a value, without an environment-file default or requirement.");
       if (!present && value != null) return fail(`${mode === "dev" ? "Development" : "Production"} does not hold this input, so it cannot have a value there.`);
       if (present && (typeof value !== "string" || !value.trim())) return fail("Enter a value for every environment that holds this standalone input.");
-      if (present && resource.values && !resource.values.includes(value!)) return fail("The value must be one of the declared choices.");
+      if (present && choices?.length && !choices.some(choice => choice.toLowerCase() === value!.trim().toLowerCase())) return fail("The value must be one of the declared choices.");
       continue;
     }
     if (value != null) return fail("An environment-linked input has an optional default, not a standalone value.");
@@ -296,7 +302,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
     if (fallback === null) continue;
     if (intent.kind === "secret") return fail("Secrets cannot have a default in source. Author the value only in cdk-app/.env.");
     if (!fallback.trim()) return fail("Use no default instead of a blank default.");
-    if (resource.values && !resource.values.includes(fallback)) return fail("The default must be one of the declared choices.");
+    if (choices?.length && !choices.some(choice => choice.toLowerCase() === fallback.trim().toLowerCase())) return fail("The default must be one of the declared choices.");
   }
   const facts = (overlay.size ? buildSourceIndex(root, state.snapshot.models.dev, new SourceFiles(overlay)).catalog : state.built.catalog).get(resource.path.join("."));
   if (!facts) return fail("This resource could not be located in source.");
@@ -304,7 +310,7 @@ export function planResourceSource(root: string, state: StudioState, resource: M
   const original = overlay.get(file) ?? readFileSync(file, "utf8");
   const nextPath = [...(intent.group ? [intent.group] : []), resource.path.at(-1)!];
   const moved = nextPath.join(".") !== resource.path.join(".");
-  const metadataChanged = intent.kind !== resource.kind || fromEnv !== (resource.fromEnv ?? null) || !sameInputModes(intent.modes, inputModeIntents(resource));
+  const metadataChanged = intent.kind !== resource.kind || fromEnv !== (resource.fromEnv ?? null) || !sameInputModes(intent.modes, inputModeIntents(resource)) || intent.choices !== undefined && JSON.stringify(intent.choices) !== JSON.stringify(resource.values ?? []);
   let text = original;
   const overrides: Record<string, string> = Object.fromEntries(overlay);
   const parsed = parse(file, original);

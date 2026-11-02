@@ -1175,9 +1175,10 @@ certificate pairs, and optional Google credentials. WebSocket API Gateway is fra
 `DEPLOY_PROD_WEBSOCKET_API` and its context aliases are retired (`true` warns, `false`
 is refused). Remove those settings and control handlers with `deploy` instead. A gateway
 is omitted only when no route handler is deployed; an authorizer alone creates no API.
-The application's catalog declares `resources.enableWebSocketApi` as a source parameter
-using `resource.value("true").enum("true", "false")`. Its value is edited in source or
-Studio, without reading a CDK environment file. Each WebSocket handler and its authorizer declares the same
+The application's catalog declares `resources.enableWebSocketApi` as an environment parameter
+using `resource.fromEnv("ENABLE_WEB_SOCKET_API").required().enum("true", "false").default("true")`.
+Set the variable in each CDK environment file to override the default independently; blank or
+unset uses `true`. Each WebSocket handler and its authorizer declares the same
 `deploy: { when: { resource: resources.enableWebSocketApi, equals: "true" } }`.
 This is an ordinary workload condition,
 not a deployment-wide CDK switch; it gates local execution as well as AWS deployment.

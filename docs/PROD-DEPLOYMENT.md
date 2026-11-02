@@ -41,9 +41,8 @@ share settings or secret values. Set:
   built-in sender stops after about 50 messages a day, which ends sign-up verification and
   password reset for everyone; synth warns while it is unset.
 - The `resources.enableWebSocketApi` catalog selector controls the WebSocket handlers
-  and authorizer. It currently authors `resource.value("true")`; edit that standalone
-  value, or its per-mode values, in source/Studio. A dotenv `ENABLE_WEBSOCKET_API` line
-  does not override it unless the declaration is explicitly linked to that input.
+  and authorizer. It reads `ENABLE_WEB_SOCKET_API` from the selected inputs file, defaulting
+  to `true`; set it to `false` in production's file to disable them.
   Also configure any cloud-enabled workload inputs. The example service is local-only;
   the example agent currently declares `deploy: "both"`, so production includes its
   AgentCore resources and tools. SKIP_EMAIL_VERIFICATION is

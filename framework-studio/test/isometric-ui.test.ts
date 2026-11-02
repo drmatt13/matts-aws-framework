@@ -234,7 +234,7 @@ test("an Errors filter appears only with errors, starts on, and keeps error wire
   const graph = (model: typeof response.snapshot.models.dev, broken: boolean) => ({
     ...model,
     diagnostics: [],
-    resources: model.resources.map(resource => resource.deploymentFile ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists: !broken } }
+    resources: model.resources.map(resource => resource.deploymentFile ? { ...resource, deploymentFile: { ...resource.deploymentFile, exists: !broken, entries: resource.deploymentFile.entries.filter(entry => entry.targets.length) } }
       : resource.inputRequirement ? { ...resource, inputRequirement: { ...resource.inputRequirement, status: broken ? "missing" as const : "configured" as const } } : resource),
     targets: model.targets.map(target => target.implementation ? { ...target, implementation: { ready: true, problems: [] } } : target),
     edges: model.edges.map(edge => edge.inputRequirement ? { ...edge, inputRequirement: { ...edge.inputRequirement, status: broken ? "missing" as const : "configured" as const } } : edge),
@@ -1978,6 +1978,16 @@ test("an error replaces the ownership lock on the map and reddens the name; othe
   const selected = close.render({ camera: { ...file.geometry.top, zoom: 1 }, viewport, dpr: 1, time: 2, motion: false, selected: file.id, focus: landscapeFocus(alone, file.id) });
   const chosen = selected.cards.find(({ id }) => id === file.id)!;
   assert.equal(labelPaints.find(({ y }) => y === chosen.y + chosen.height / 2 + 0.5)?.fill, "#ffffff", "selected, the name is white on a red plate");
+  let imageStart = images.length; labelPaints.length = 0;
+  const hidden = close.render({ camera: { ...file.geometry.top, zoom: 1 }, viewport, dpr: 1, time: 3, motion: false, errors: false, focus: landscapeFocus(alone) });
+  const normal = hidden.cards.find(({ id }) => id === file.id)!;
+  assert.equal(images.slice(imageStart).filter(image => image.src === iconUrl("error")).length, 0, "Errors off hides the red X");
+  assert.equal(images.slice(imageStart).filter(image => image.src === iconUrl("managed")).length, 1, "the normal ownership badge returns");
+  assert.equal(labelPaints.find(({ y }) => y === normal.y + normal.height / 2 + 0.5)?.fill, "#e7eaef", "Errors off uses the normal name colour");
+  imageStart = images.length; labelPaints.length = 0;
+  close.render({ camera: { ...file.geometry.top, zoom: 1 }, viewport, dpr: 1, time: 4, motion: false, errors: true, focus: landscapeFocus(alone) });
+  assert.equal(images.slice(imageStart).filter(image => image.src === iconUrl("error")).length, 1, "Errors on restores the red X");
+  assert.equal(labelPaints.find(({ y }) => y === normal.y + normal.height / 2 + 0.5)?.fill, ISSUE_COLOR.error, "Errors on restores the red name");
   // Zoomed out, the Errors filter keeps the name at full opacity; without it the name fades or drops.
   const far = (errors: boolean) => {
     labelPaints.length = 0;

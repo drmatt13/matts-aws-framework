@@ -157,8 +157,9 @@ export class BatchEditor {
       if (edits.filter(item => item.kind === "resourceConfig" && item.intent.resource === edit.intent.resource).length !== 1) throw new EditError(422, "Review one configuration change per input.");
       const resource = Object.values(state.snapshot.models).flatMap(model => model.resources).find(resource => resource.id === edit.intent.resource && !resource.absent)
         ?? model.resources.find(resource => resource.id === edit.intent.resource);
-      if (!resource || !["input", "secret"].includes(resource.kind) || !namingCapabilities(Object.values(state.snapshot.models))[resource.id]?.code) throw new EditError(422, "Select an authored input or secret to edit its configuration.");
+      if (!resource || !["input", "secret"].includes(resource.kind) || !resource.inputChoices && !namingCapabilities(Object.values(state.snapshot.models))[resource.id]?.code) throw new EditError(422, "Select an authored input or secret to edit its configuration.");
       const oldGroup = resource.path.slice(0, -1).join(".");
+      if (resource.inputChoices && edit.intent.group !== oldGroup) throw new EditError(422, "Framework input groups are managed; only allowed values can be edited.");
       if (oldGroup !== edit.intent.group) moves.push({ entity: resource.id, path: [...(edit.intent.group ? [edit.intent.group] : []), resource.path.at(-1)!] });
       const references = edit.intent.kind !== resource.kind ? await planResourceNaming(this.root, state, { kind: "references", entity: resource.id }, overrides) : undefined;
       const referenceIssues = references?.issues ?? [];
@@ -640,6 +641,12 @@ export class BatchEditor {
       }
       cleanupCreatedDirectories(entry);
       const actual = await this.builder.refresh();
+      for (const edit of entry.edits) if (edit.kind === "resourceConfig" && edit.intent.choices !== undefined) {
+        for (const mode of ["dev", "prod"] as const) {
+          const resource = actual.snapshot.models[mode].resources.find(resource => resource.id === (entry.entityRemap?.[edit.intent.resource] ?? edit.intent.resource));
+          if (resource && !resource.absent && JSON.stringify(resource.values ?? []) !== JSON.stringify(edit.intent.choices.map(value => value.trim()))) throw new Error("The saved input choices did not match the review.");
+        }
+      }
       const mappingChange = changes.find((change) => change.file === path.join(this.root, CLIENT_ENVIRONMENT_FILE));
       if (mappingChange) {
         const file = actual.snapshot.models.dev.resources.find((resource) => resource.clientEnvironment)?.clientEnvironment;

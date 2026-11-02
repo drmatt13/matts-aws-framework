@@ -46,8 +46,8 @@ export { titleRoom } from "./layout";
  * aside, so a problem reads on its own; a role badge (event, WebSocket, tool) it displaces moves
  * to the left corner. Drawing, picking geometry and the Resources row all read this one rule.
  */
-export function cornerBadges(item: { readonly roleIcon?: IconKey; readonly frameworkManaged?: true; readonly issues?: readonly EntityIssue[] }): { readonly right?: IconKey; readonly left?: IconKey } {
-  const issue = item.issues?.[0];
+export function cornerBadges(item: { readonly roleIcon?: IconKey; readonly frameworkManaged?: true; readonly issues?: readonly EntityIssue[] }, errors = true): { readonly right?: IconKey; readonly left?: IconKey } {
+  const issue = item.issues?.find(issue => errors || issue.severity !== "error");
   if (issue) return { right: issue.badge, ...(item.roleIcon && item.roleIcon !== "managed" ? { left: item.roleIcon } : {}) };
   return { ...(item.roleIcon ? { right: item.roleIcon } : {}), ...(item.frameworkManaged && item.roleIcon !== "managed" ? { left: "managed" as const } : {}) };
 }

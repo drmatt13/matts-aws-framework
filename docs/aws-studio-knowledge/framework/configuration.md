@@ -53,10 +53,10 @@ native hooks and framework trigger descriptors; required native lookups still fa
 
 The application uses one shared conditional Deploy input for its WebSocket routes
 and authorizer: `resources.enableWebSocketApi` is
-`resource.value("true").enum("true", "false")` in
+`resource.fromEnv("ENABLE_WEB_SOCKET_API").required().enum("true", "false").default("true")` in
 [resources/inputs.ts](../../../framework-config/resources/inputs.ts). Every handler
-requires `equals: "true"`. This source-owned value has no environment-file line or
-context override; use a mode-valued declaration if the two graphs should differ.
+requires `equals: "true"`. Each environment's input file can override it independently;
+blank or unset uses `true`, and `false` disables those handlers.
 It does not add another global API Gateway flag to CDK.
 
 Batch tooling uses `getLambdaTargets` and `createTargetArtifactValidator` from the

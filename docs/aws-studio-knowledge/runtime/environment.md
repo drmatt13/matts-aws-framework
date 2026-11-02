@@ -46,6 +46,12 @@ missing; an optional one is unresolved. Inputs absent from the selected graph ar
 not applicable. Standalone values are supplied from source before external reads.
 Secrets resolve through secret handles rather than this public-string path.
 
+The development client API, WebSocket and tester port inputs declare defaults of 8080, 8081
+and 3001 in `framework-config/resources/inputs.ts`. Both client URL generation and
+`scripts/local-export.ts` use these declarations through `resolveInput`, so blank/missing
+overrides agree. Local export still validates port ranges and collisions; framework-only host
+ports without an input default must be supplied explicitly.
+
 ## Delivery and process scope
 
 ```mermaid

@@ -83,6 +83,18 @@ test("missing and empty values differ from a configured value", () => {
   } finally { writeFileSync(file, before); }
 });
 
+test("existing catalog inputs can add and remove enum restrictions through resource review", async () => {
+  for (const choices of [["initial", "from local env", "other"], []]) {
+    const plan = await service.plan(intent({ choices }), revision(), "dev");
+    assert.ok(plan.ok, JSON.stringify(plan.diagnostics));
+    assert.ok(plan.changes.some(change => change.file === "framework-config/resources.ts"));
+    assert.ok(!JSON.stringify(plan).includes("do not return"));
+    assert.equal((await service.apply(plan.planId)).status, "applied");
+    assert.deepEqual(builder.current!.snapshot.models.dev.resources.find(resource => resource.id === "resource:setting")!.values ?? [], choices);
+  }
+  assert.throws(() => readResourceIntent({ intent: intent({ kind: "secret", default: null, choices: ["one"] }) }), /allowed values/);
+});
+
 test("a selected input supplies the file revision for private review without reading other variables", () => {
   const details = service.details("resource:setting", "dev");
   assert.equal(details.inputFile?.exists, true);

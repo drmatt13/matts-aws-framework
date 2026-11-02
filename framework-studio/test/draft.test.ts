@@ -387,7 +387,7 @@ test("code and display naming compose with input configuration, tags and descrip
   draft.setDescription(entity, "Controls WebSocket deployment.");
   draft.changeTags(entity, { feature: "websockets" });
   const form = initialResourceForm(resource);
-  draft.setResource(resource, { ...form, modes: { ...form.modes, dev: { ...form.modes.dev, value: "false" } } });
+  draft.setResource(resource, { ...form, modes: { ...form.modes, dev: { ...form.modes.dev, ...(resource.fromEnv ? { default: "false" } : { value: "false" }) } } });
   assert.equal(draft.invalid, false);
   assert.equal(draft.codeName(entity), "allowWebSockets");
   assert.equal(draft.getSnapshot().baseline.models.dev.resources.find(item => item.id === entity)?.path.at(-1), "enableWebSocketApi");

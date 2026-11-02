@@ -29,7 +29,9 @@ Template creation supplies framework defaults; configure your own deployment val
 
 - A distinct CDK_APP_NAME for your own development deployment. It may not be the name of a
   target declared in `cdk-app/cdk.json` (`framework:targets`), such as the production one.
-- LOCAL_DEV_URL, LOCAL_AWS_REGION, and every host port in the example. Leave
+- LOCAL_DEV_URL, LOCAL_AWS_REGION, and the framework tooling's host ports in the example.
+  The client API, WebSocket and tester ports may stay blank: their input defaults are
+  8080, 8081 and 3001, shared by client URL generation and the local Compose export. Leave
   LOCAL_AWS_PROFILE blank to use your AWS default profile.
 - Any workload settings, such as the example agent's LangGraph model provider. With
   LANGGRAPH_MODEL_PROVIDER=openai, also set OPENAI_API_KEY and deploy: the agent reads the
@@ -116,12 +118,10 @@ workflows or agents that the dev graph does not build. Set `deploy: "local-only"
 such a handler locally. An input condition on `deploy` controls both local and AWS
 execution, resolved separately for each environment from the selector's declared
 source: standalone value or environment-linked input/default.
-The application's `resources.enableWebSocketApi` currently uses a standalone
-`resource.value("true")` in `framework-config/resources/inputs.ts`. All WebSocket routes
-and their authorizer require it to equal `"true"`. Edit that value in source or Studio
-to disable them; use per-mode values when development and production should differ.
-An `ENABLE_WEBSOCKET_API` dotenv assignment has no effect on this standalone value.
-Link the declaration to a CDK input explicitly if an operator-supplied value is intended.
+The application's `resources.enableWebSocketApi` reads `ENABLE_WEB_SOCKET_API` in
+`framework-config/resources/inputs.ts`, with a declared default of `"true"`. All WebSocket
+routes and their authorizer require it to equal `"true"`. Set `ENABLE_WEB_SOCKET_API=false`
+in the selected CDK environment file to disable them; blank or unset uses the default.
 Restart local containers after changing a deployment selector.
 The retired `DEPLOY_PROD_WEBSOCKET_API` setting must be removed (`true` warns; `false`
 is refused). Use a separate full cloud deployment when testing HTTP routing.

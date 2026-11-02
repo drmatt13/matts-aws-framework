@@ -320,6 +320,8 @@ export interface ModelResource {
    * inputs files, by reader. Projected from its declarations, read-only, and never in the catalog.
    */
   readonly frameworkInput?: import("./deployment-inputs").FrameworkSettingOwner;
+  /** An explicit framework builder whose enum can be edited separately from its managed policy. */
+  readonly inputChoices?: { readonly source: SourceLocation; readonly defaults: readonly string[] };
   /** Assignment metadata for this catalog declaration; never dotenv values. */
   readonly inputSources?: readonly { readonly file: string; readonly entry: import("./deployment-inputs").DeploymentInputEntry }[];
 }

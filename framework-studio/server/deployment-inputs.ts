@@ -10,6 +10,7 @@ import { DATABASE_SETTING_INPUTS } from "../../packages/framework/src/config/dat
 import { deploymentInputs } from "../../cdk-app/deployment-inputs";
 import { localInputs, REQUIRED_FRAMEWORK_INPUTS } from "../../cdk-app/framework-inputs";
 import { SIGN_IN_PROVIDERS, signInProviderKeys, type SignInProviderId } from "../../framework-config/resources/sign-in-providers";
+import { frameworkInputChoices } from "./input-choices-source";
 
 export const deploymentInputPath = (mode: Mode) => `cdk-app/.env.${mode}`;
 export const deploymentInputTemplate = (mode: Mode) => `${deploymentInputPath(mode)}.template`;
@@ -203,7 +204,7 @@ export function withDeploymentInputs(root: string, model: ModeModel, models?: Re
   // is required there, so a file that drops one shows a missing value. A name the catalog also
   // declares stays the catalog's, and database overrides apply only with a managed database.
   const database = (models?.prod ?? model).managedDatabase;
-  type Owned = { readonly owner: FrameworkSettingOwner; readonly key: string; readonly choices?: readonly string[]; readonly note?: string };
+  type Owned = { readonly owner: FrameworkSettingOwner; readonly key: string; readonly choices?: readonly string[]; readonly note?: string; readonly inputChoices?: ModelResource["inputChoices"] };
   const owned = new Map<string, Owned>();
   for (const reference of listResourceDeclarations(deploymentInputs(model.mode))) owned.set(reference.fromEnv!, { owner: "deployment", key: reference.path.at(-1)!,
     ...(reference.values ? { choices: reference.values } : {}), ...(reference.note ? { note: reference.note } : {}) });
@@ -212,6 +213,12 @@ export function withDeploymentInputs(root: string, model: ModeModel, models?: Re
   }
   for (const reference of listResourceDeclarations(localInputs())) owned.set(reference.fromEnv!, { owner: "local", key: reference.path.at(-1)!,
     ...(reference.values ? { choices: reference.values } : {}), ...(reference.note ? { note: reference.note } : {}) });
+  for (const [name, known] of owned) {
+    try {
+      const facts = frameworkInputChoices(root, known.owner, known.key, name);
+      if (facts) owned.set(name, { ...known, choices: facts.choices, inputChoices: { source: facts.source, defaults: facts.defaults } });
+    } catch { /* Unsafe or computed source remains read-only. */ }
+  }
   for (const name of declared.keys()) owned.delete(name);
   const projected = (known: Owned) => known.owner !== "database" || !!database;
   const frameworkId = (known: Owned) => `${FRAMEWORK_INPUT_GROUPS[known.owner].id}.${known.key}`;
@@ -285,6 +292,7 @@ export function withDeploymentInputs(root: string, model: ModeModel, models?: Re
     for (const [name, known] of members) {
       const modes = Object.fromEntries(MODES.map((mode) => [mode, { present: readIn(known, mode), required: readIn(known, mode) && REQUIRED_FRAMEWORK_INPUTS[mode].includes(name) }])) as Record<Mode, InputModePolicy>;
       resources.push({ id: frameworkId(known), path: [group.title, known.key], parent: group.id, kind: "input", absent, frameworkInput: owner, fromEnv: name,
+        ...(known.inputChoices ? { inputChoices: known.inputChoices } : {}),
         ...(known.choices ? { values: known.choices } : {}), ...(known.note ? { note: known.note } : {}),
         ...(modes[model.mode].required ? { required: true } : {}), modes,
         ...(absent ? {} : { inputRequirement: frameworkRequirement(name, known, model.mode) }),

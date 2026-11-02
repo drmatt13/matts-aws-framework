@@ -11,6 +11,7 @@ import type { ResourceModeForm } from "../draft";
 import { resourceOutputEnvironmentName } from "@repo/framework/config";
 import { EnvironmentName, FormGroup, InspectorSwitch } from "./InspectorUI";
 import { LocalValue } from "./LocalValue";
+import { InputAllowedValues } from "./InputAllowedValues";
 
 /** An environment card's checkbox options: ink text on the card's tint, a 24 px row, dimmed when unavailable. */
 const modeOptionClasses =
@@ -51,6 +52,7 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
 
   const form = draft.resourceForm(resource);
   const { secret, modes, group } = form;
+  const choices = form.choices ?? resource.values ?? [];
   const fromEnv = form.fromEnv === undefined ? (resource.fromEnv ?? null) : form.fromEnv;
   const linked = fromEnv !== null;
   const update = (change: Partial<typeof form>) =>
@@ -148,6 +150,7 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
           </p>
         </section>
       ) : null}
+      <InputAllowedValues resource={resource} />
       {/* Its first group's legend heads the section; a generic "Configuration" heading above it said nothing more. */}
       <section
         className={inspectorSectionClasses}
@@ -212,7 +215,7 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
                     {!secret ? (
                       <label className="mt-1 grid min-w-0 gap-1 text-graphite">
                         {linked ? "Default" : "Value"}
-                        {resource.values ? (
+                        {choices.length ? (
                           <Select
                             controlSize="panel"
                             className="w-full text-ink"
@@ -224,8 +227,8 @@ export function ResourceEditor({ resource }: { readonly resource: ModelResource 
                             <option value="" disabled={!linked}>
                               {linked ? "None" : "Choose a value"}
                             </option>
-                            {resource.values.map((value) => (
-                              <option key={value}>{value}</option>
+                            {choices.map((value, index) => (
+                              <option key={index}>{value}</option>
                             ))}
                           </Select>
                         ) : (

@@ -227,7 +227,9 @@ the zoom slot and caption fade, wins overlaps with other names, and may cover ne
 buildings. Only the name is pinned; its deployment tag keeps the zoom fade. The other
 environment's errors recede like the rest of it: their names fade, and their wires and markers
 rest at the out-of-lens strength. The pill counts only the viewed environment's errors.
-Warnings are not pinned.
+Warnings are not pinned. Turning Errors off also hides red resource-icon error badges and
+returns node captions to their ordinary colours. Normal role/ownership badges return; warning
+badges keep their own treatment. Issue data, inspector notices and layout remain unchanged.
 An aggregated connection matches any member's category across the dev/prod union, independently
 of its styling representative. Drawing and pointer picking share `connectionVisible`;
 selecting or previewing a resource reveals its links regardless of those filters. Clearing

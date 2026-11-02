@@ -26,6 +26,22 @@ function devClient(authored: Record<string, string>, apiGatewayWebSocketUrl = ""
   return clientEnvironment({ ...cognito, ...localClientEndpoints({ ...ports, ...authored }, values), apiGatewayWebSocketUrl });
 }
 
+test("declared client port defaults supply blank or missing overrides consistently with Compose exports", () => {
+  for (const blank of [false, true]) {
+    const authored: Record<string, string> = { ...ports };
+    for (const name of ["LOCAL_API_DEV_SERVER_HOST_PORT", "LOCAL_WS_DEV_SERVER_HOST_PORT", "WS_TESTER_HOST_PORT"]) {
+      if (blank) authored[name] = "";
+      else delete authored[name];
+    }
+    const values = localExportValues(authored, { repositoryRoot: process.cwd() });
+    assert.deepEqual(localClientEndpoints(authored, values), { apiUrl: "http://localhost:8080", localWebSocketUrl: "ws://localhost:8081", webSocketTesterUrl: "http://localhost:3001" });
+  }
+  assert.equal(localExportValues({ ...ports, LOCAL_API_DEV_SERVER_HOST_PORT: "9080" }, { repositoryRoot: process.cwd() }).get("LOCAL_API_DEV_SERVER_HOST_PORT"), "9080");
+  assert.throws(() => localExportValues({ ...ports, LOCAL_API_DEV_SERVER_HOST_PORT: "", POSTGRES_HOST_PORT: "8080" }, { repositoryRoot: process.cwd() }), /Two Compose services/, "defaulted ports still participate in collision checks");
+  const { PGADMIN_HOST_PORT: _port, ...missing } = ports;
+  assert.throws(() => localExportValues(missing, { repositoryRoot: process.cwd() }), /PGADMIN_HOST_PORT.*no input default/, "ports without a catalog default stay explicit");
+});
+
 test("development client endpoints follow the authored host ports and what the deployment holds", () => {
   // Compose runs local-ws-dev-server whatever DEPLOY_PROD_WEBSOCKET_API says; the
   // flag only decides whether AWS holds a WebSocket API, which export reads.

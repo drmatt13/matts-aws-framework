@@ -37,6 +37,15 @@ export interface ResourceIntent {
   /** Empty means an ungrouped catalog entry. */
   readonly group: string;
   readonly requirements: Readonly<Record<string, "required" | "optional">>;
+  /** Omitted preserves the declaration; empty removes its enum restriction. */
+  readonly choices?: readonly string[];
+}
+
+export function inputChoicesError(choices: readonly string[]): string | undefined {
+  if (choices.length > 100) return "Use at most 100 allowed values.";
+  if (choices.some(value => !value.trim() || value.length > 500 || /[\r\n\0]/.test(value))) return "Each allowed value must be non-blank, on one line, and at most 500 characters.";
+  if (new Set(choices.map(value => value.trim().toLowerCase())).size !== choices.length) return "Allowed values must be unique, ignoring case.";
+  return undefined;
 }
 
 /** An input's declared settings per graph, as an edit starts from them. */
