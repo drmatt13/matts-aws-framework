@@ -368,7 +368,7 @@ The initial mappings are:
 
 | Variable | Development source | Production source |
 | --- | --- | --- |
-| `VITE_API_GATEWAY_URL` | CDK `VITE_API_GATEWAY_URL` override, otherwise `http://localhost:${LOCAL_API_DEV_SERVER_HOST_PORT}` | Frontend stack `CloudFrontUrl` output |
+| `VITE_API_GATEWAY_URL` | Generated `http://localhost:${LOCAL_API_DEV_SERVER_HOST_PORT}` proxy target | Frontend stack `CloudFrontUrl` output for same-origin `/api` routing |
 | `VITE_LOCAL_WS_URL` | `ws://localhost:${LOCAL_WS_DEV_SERVER_HOST_PORT}` when `enableWebSocketApi` matches `"true"`, otherwise empty | Same recipe; blank, because its port is development-only |
 | `VITE_API_GATEWAY_WS_URL` | WebSocket stack `WebSocketAPIEndpoint` when enabled, otherwise empty | Same rule |
 | `VITE_WS_TESTER_URL` | `http://localhost:${WS_TESTER_HOST_PORT}` | Same recipe; blank, because its port is development-only |

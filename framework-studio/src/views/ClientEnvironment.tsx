@@ -353,14 +353,14 @@ function SourceControls({
               onChange={(checked) => {
                 const { override: _old, ...reference } = binding;
                 onChange(
-                  checked ? { ...reference, override: name } : reference,
+                  checked ? { ...reference, override: "" } : reference,
                 );
               }}
             />
           </div>
           <InputSelect
             label={`Override input for ${name}`}
-            value={binding.override ?? name}
+            value={binding.override ?? ""}
             options={options}
             disabled={binding.override === undefined}
             onChange={(override) => onChange({ ...binding, override })}

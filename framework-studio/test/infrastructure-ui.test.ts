@@ -170,6 +170,7 @@ test("client mappings give a searchable source overview and show where each fiel
   assert.equal((ui.screen.getByRole("combobox", { name: "Stack for VITE_API_GATEWAY_URL in Production" }) as HTMLSelectElement).value, "FrontendWebsiteS3Stack");
   assert.equal((ui.screen.getByRole("combobox", { name: "Mapping for VITE_API_GATEWAY_URL in Production" }) as HTMLSelectElement).value, "CloudFrontUrl");
   assert.equal((ui.screen.getByRole("combobox", { name: "Source type for VITE_API_GATEWAY_URL in Development" }) as HTMLSelectElement).value, "endpoint");
+  assert.equal((ui.screen.getByRole("combobox", { name: "Override input for VITE_API_GATEWAY_URL in Development" }) as HTMLSelectElement).value, "", "an unused override must not fabricate an undeclared VITE input");
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Remove VITE_USER_POOL_CLIENT_ID" }));
   assert.equal(ui.screen.queryByRole("button", { name: "Edit mapping for VITE_USER_POOL_CLIENT_ID" }), null);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Discard" }));
@@ -192,6 +193,8 @@ test("client fields can be added, remapped, split per environment, reviewed and 
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Protocol for VITE_API_GATEWAY_URL in Development" }), { target: { value: "https" } });
   ui.fireEvent.change(ui.screen.getByRole("textbox", { name: "Hostname for VITE_API_GATEWAY_URL in Development" }), { target: { value: "app.localhost" } });
   ui.fireEvent.change(ui.screen.getByRole("combobox", { name: "Port input for VITE_API_GATEWAY_URL in Development" }), { target: { value: testerPort } });
+  ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Use URL override for VITE_API_GATEWAY_URL in Development" }));
+  assert.equal((ui.screen.getByRole("combobox", { name: "Override input for VITE_API_GATEWAY_URL in Development" }) as HTMLSelectElement).disabled, false);
   ui.fireEvent.click(ui.screen.getByRole("switch", { name: "Use URL override for VITE_API_GATEWAY_URL in Development" }));
   assert.ok((ui.screen.getByRole("combobox", { name: "Override input for VITE_API_GATEWAY_URL in Development" }) as HTMLSelectElement).disabled);
   ui.fireEvent.click(ui.screen.getByRole("button", { name: "Add field" }));

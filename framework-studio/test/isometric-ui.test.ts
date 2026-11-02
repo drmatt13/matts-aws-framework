@@ -1674,9 +1674,9 @@ test("input group hovers label every entry with its own environments and omit ag
   const card = await hoverOver("resource:client");
   assert.equal(card.querySelector("[data-ui~=\"landscape-hover-tags\"]"), null);
   const rows = [...card.querySelectorAll<HTMLElement>("[data-ui~=\"landscape-hover-entries\"] > li")];
-  assert.deepEqual(rows.map(row => row.querySelector("[data-ui~=\"landscape-hover-entry-name\"]")?.textContent), ["apiPort", "webSocketPort", "webSocketTesterPort", "apiUrl"]);
+  assert.deepEqual(rows.map(row => row.querySelector("[data-ui~=\"landscape-hover-entry-name\"]")?.textContent), ["apiPort", "webSocketPort", "webSocketTesterPort"]);
   for (const row of rows) assert.deepEqual(visibleTags(row), [["dev", "Dev"], ["off", "Prod"]]);
-  assert.equal(card.querySelector("[data-ui~=\"landscape-hover-subtitle\"]")?.textContent, "Input group · 4 inputs");
+  assert.equal(card.querySelector("[data-ui~=\"landscape-hover-subtitle\"]")?.textContent, "Input group · 3 inputs");
   assert.ok(!card.textContent?.includes("Not declared"), "the unlit Prod pill already says it");
   assert.ok(!card.textContent?.includes("Holds apiPort"), "the list replaces the prose name summary");
 });

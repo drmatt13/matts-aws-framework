@@ -126,7 +126,6 @@ export function localExportValues(
  * The AWS WebSocket API URL is read from deployment outputs, not from here.
  */
 export function localClientEndpoints(
-  authored: Readonly<Record<string, string>>,
   values: ReadonlyMap<string, string>,
 ): { apiUrl: string; localWebSocketUrl: string; webSocketTesterUrl: string } {
   const hostPort = (name: (typeof LOCAL_HOST_PORT_NAMES)[number]): string => {
@@ -135,7 +134,7 @@ export function localClientEndpoints(
     return port;
   };
   return {
-    apiUrl: authored.VITE_API_GATEWAY_URL ?? `http://localhost:${hostPort("LOCAL_API_DEV_SERVER_HOST_PORT")}`,
+    apiUrl: `http://localhost:${hostPort("LOCAL_API_DEV_SERVER_HOST_PORT")}`,
     localWebSocketUrl: `ws://localhost:${hostPort("LOCAL_WS_DEV_SERVER_HOST_PORT")}`,
     webSocketTesterUrl: `http://localhost:${hostPort("WS_TESTER_HOST_PORT")}`,
   };

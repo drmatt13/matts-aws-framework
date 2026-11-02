@@ -88,12 +88,13 @@ test("mappings reuse renamed catalog identities and never expose authored input 
   const base = snapshot.models.dev;
   const renamed = withClientEnvironment({ ...base, resources: base.resources.map((resource) => {
     if (resource.stackClass === "CognitoStack") return { ...resource, id: "resource:identity" };
-    if (resource.fromEnv === "VITE_API_GATEWAY_URL") return { ...resource, inputState: "supplied" as const, inputSources: [{ file: "cdk-app/.env.dev", entry: { name: "VITE_API_GATEWAY_URL", status: "configured" as const, counterpart: "missing" as const, sensitive: false, defaulted: false, targets: [resource.id], value: sentinel } }] };
+    if (resource.fromEnv === "LOCAL_API_DEV_SERVER_HOST_PORT") return { ...resource, inputState: "supplied" as const, inputSources: [{ file: "cdk-app/.env.dev", entry: { name: "LOCAL_API_DEV_SERVER_HOST_PORT", status: "configured" as const, counterpart: "missing" as const, sensitive: false, defaulted: false, targets: [resource.id], value: sentinel } }] };
     return resource;
   }) });
   const file = clientFile(renamed);
   assert.ok(file.entries.find((entry) => entry.name === "VITE_USER_POOL_ID")!.sources.every((source) => source.entity === "resource:identity"));
-  assert.match(file.entries.find((entry) => entry.name === "VITE_API_GATEWAY_URL")!.sources[0]!.label, /VITE_API_GATEWAY_URL/);
+  assert.match(file.entries.find((entry) => entry.name === "VITE_API_GATEWAY_URL")!.sources[0]!.label, /LOCAL_API_DEV_SERVER_HOST_PORT/);
+  assert.ok(!renamed.resources.some(resource => resource.id === "resource:client.apiUrl"));
   assert.ok(!JSON.stringify(file).includes(sentinel));
   const twice = withClientEnvironment(renamed);
   assert.equal(twice.resources.filter((resource) => resource.id === CLIENT_ENVIRONMENT_ID).length, 1);

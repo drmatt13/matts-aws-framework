@@ -4,7 +4,8 @@
 // inputs, so they are blank in production. Values are resolved during generation.
 export const clientEnvironment = {
   VITE_API_GATEWAY_URL: {
-    dev: { kind: "endpoint", protocol: "http", port: "LOCAL_API_DEV_SERVER_HOST_PORT", override: "VITE_API_GATEWAY_URL" },
+    // Local /api proxy target; the deployed frontend serves /api through CloudFront.
+    dev: { kind: "endpoint", protocol: "http", port: "LOCAL_API_DEV_SERVER_HOST_PORT" },
     prod: { kind: "output", stack: "FrontendWebsiteS3Stack", outputs: ["CloudFrontUrl", "FrontendWebsiteUrl"] },
   },
   VITE_LOCAL_WS_URL: { kind: "endpoint", protocol: "ws", port: "LOCAL_WS_DEV_SERVER_HOST_PORT", when: { input: "resource:enableWebSocketApi", equals: "true" } },

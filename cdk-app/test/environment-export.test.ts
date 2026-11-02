@@ -23,7 +23,7 @@ const cognito = {
 };
 function devClient(authored: Record<string, string>, apiGatewayWebSocketUrl = "") {
   const values = localExportValues({ ...ports, ...authored }, { repositoryRoot: process.cwd() });
-  return clientEnvironment({ ...cognito, ...localClientEndpoints({ ...ports, ...authored }, values), apiGatewayWebSocketUrl });
+  return clientEnvironment({ ...cognito, ...localClientEndpoints(values), apiGatewayWebSocketUrl });
 }
 
 test("declared client port defaults supply blank or missing overrides consistently with Compose exports", () => {
@@ -34,7 +34,7 @@ test("declared client port defaults supply blank or missing overrides consistent
       else delete authored[name];
     }
     const values = localExportValues(authored, { repositoryRoot: process.cwd() });
-    assert.deepEqual(localClientEndpoints(authored, values), { apiUrl: "http://localhost:8080", localWebSocketUrl: "ws://localhost:8081", webSocketTesterUrl: "http://localhost:3001" });
+    assert.deepEqual(localClientEndpoints(values), { apiUrl: "http://localhost:8080", localWebSocketUrl: "ws://localhost:8081", webSocketTesterUrl: "http://localhost:3001" });
   }
   assert.equal(localExportValues({ ...ports, LOCAL_API_DEV_SERVER_HOST_PORT: "9080" }, { repositoryRoot: process.cwd() }).get("LOCAL_API_DEV_SERVER_HOST_PORT"), "9080");
   assert.throws(() => localExportValues({ ...ports, LOCAL_API_DEV_SERVER_HOST_PORT: "", POSTGRES_HOST_PORT: "8080" }, { repositoryRoot: process.cwd() }), /Two Compose services/, "defaulted ports still participate in collision checks");
@@ -56,7 +56,7 @@ test("development client endpoints follow the authored host ports and what the d
   assert.equal(both.VITE_API_GATEWAY_WS_URL, "wss://abc.execute-api.us-east-1.amazonaws.com/prod");
   assert.equal(both.VITE_WS_TESTER_URL, "http://localhost:4001");
   assert.equal(both.VITE_API_GATEWAY_URL, "http://localhost:8080");
-  assert.equal(devClient({ VITE_API_GATEWAY_URL: "http://192.168.1.5:8080" }).VITE_API_GATEWAY_URL, "http://192.168.1.5:8080");
+  assert.equal(devClient({ VITE_API_GATEWAY_URL: "http://192.168.1.5:8080", LOCAL_API_DEV_SERVER_HOST_PORT: "9080" }).VITE_API_GATEWAY_URL, "http://localhost:9080", "the generated local URL follows the port, not an authored VITE value");
   assert.equal(localExportValues(ports, { repositoryRoot: process.cwd() }).has("VITE_API_GATEWAY_URL"), false, "the proxy target belongs to the client-app block only");
 });
 

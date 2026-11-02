@@ -52,6 +52,12 @@ and 3001 in `framework-config/resources/inputs.ts`. Both client URL generation a
 overrides agree. Local export still validates port ranges and collisions; framework-only host
 ports without an input default must be supplied explicitly.
 
+`VITE_API_GATEWAY_URL` is generated output, never a catalog input or an authored CDK
+environment variable. Development derives the Vite proxy target from the local HTTP API
+port; production maps the frontend stack's `CloudFrontUrl` (legacy `FrontendWebsiteUrl`
+fallback), which owns the browser's same-origin `/api` entry point. The HTTP API stack
+exports `HttpApiUrl` separately; the production browser continues using same-origin paths.
+
 ## Delivery and process scope
 
 ```mermaid

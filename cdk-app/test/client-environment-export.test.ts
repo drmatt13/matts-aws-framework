@@ -73,7 +73,9 @@ test("default client mappings preserve endpoint, identity and per-mode behavior"
   assert.equal(prod.VITE_LOCAL_WS_URL, "");
   assert.equal(prod.VITE_WS_TESTER_URL, "");
   assert.deepEqual(Object.keys(dev), Object.keys(prod));
-  assert.equal(resolveClientEnvironmentMappings(defaults, { deployment: "example", stacks: deployed("dev"), inputs: { ...ports, VITE_API_GATEWAY_URL: "https://app.example.com" }, ...catalog("dev") }).VITE_API_GATEWAY_URL, "https://app.example.com");
+  assert.equal(resolveClientEnvironmentMappings(defaults, { deployment: "example", stacks: deployed("dev"), inputs: { ...ports, VITE_API_GATEWAY_URL: "https://app.example.com", LOCAL_API_DEV_SERVER_HOST_PORT: "9080" }, ...catalog("dev") }).VITE_API_GATEWAY_URL, "http://localhost:9080", "a stale authored VITE URL cannot override the local server");
+  assert.equal(resolveClientEnvironmentMappings(defaults, { deployment: "example", stacks: deployed("prod"), inputs: { VITE_API_GATEWAY_URL: "https://wrong.example.com" }, ...catalog("prod") }).VITE_API_GATEWAY_URL, "https://example.cloudfront.net", "production always follows its owning frontend stack output");
+  for (const mode of ["dev", "prod"] as const) assert.ok(!catalog(mode).declarations.some(input => input.fromEnv === "VITE_API_GATEWAY_URL"));
   assert.equal(resolveClientEnvironmentMappings(defaults, { deployment: "example", stacks: deployed("dev"), inputs: { ...ports, WS_TESTER_HOST_PORT: "" }, ...catalog("dev") }).VITE_WS_TESTER_URL, "http://localhost:3001", "a blank development port uses its declared default");
 });
 

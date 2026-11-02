@@ -26,7 +26,6 @@ export const client = {
     .only("dev")
     .required()
     .default("3001"),
-  apiUrl: resource.fromEnv("VITE_API_GATEWAY_URL").only("dev"),
 };
 
 // Cohesive inputs stay together; their catalog paths do not depend on this file.
